@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { Toaster, toast } from "sonner";
 import { TooltipProvider } from "./components/ui/Tooltip";
 import { useAgentSocket } from "./api/useAgentSocket";
-import { useStore } from "./store/sessionStore";
+import { useStore, type ChatMessage } from "./store/sessionStore";
 import { SessionList } from "./components/SessionList";
 import { ChatPanel } from "./components/ChatPanel";
 import { ThinkingTimeline } from "./components/ThinkingTimeline";
@@ -12,10 +12,18 @@ import type { UserProfileData } from "./api/eventTypes";
 
 const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8787";
 
+type PendingAfterTruncate = {
+  sessionId: string;
+  requestId: string;
+  nextInput: string;
+  modelProviderId?: string;
+};
+
 export function App(): JSX.Element {
   const ingest = useStore((s) => s.ingest);
   const registerSession = useStore((s) => s.registerCreatingSession);
   const clearAllSessions = useStore((s) => s.clearAllSessions);
+  const removeSession = useStore((s) => s.removeSession);
   const appendUserMessage = useStore((s) => s.appendUserMessage);
   const renameSession = useStore((s) => s.renameSession);
   const activeId = useStore((s) => s.activeSessionId);
@@ -39,9 +47,7 @@ export function App(): JSX.Element {
   } | null>(null);
   const hydrationToastShownRef = useRef(false);
   // 待办的"truncate 完后做点啥"队列——避免 setTimeout 魔法等待
-  const pendingAfterTruncateRef = useRef<
-    Array<{ sessionId: string; requestId: string; nextInput?: string; modelProviderId?: string }>
-  >([]);
+  const pendingAfterTruncateRef = useRef<PendingAfterTruncate[]>([]);
 
   const { status, send } = useAgentSocket({
     url: WS_URL,
@@ -83,7 +89,6 @@ export function App(): JSX.Element {
             return;
           }
           if (data.operation === "session.close") {
-            useStore.getState().removeSession(lost);
             if (sendRef.current) sendRef.current({ type: "session.list" });
             toast("会话已从本地列表移除", {
               description: "后端已不存在该会话。",
@@ -147,20 +152,28 @@ export function App(): JSX.Element {
           if (idx >= 0) {
             const pending = queue[idx];
             queue.splice(idx, 1);
-            if (pending.nextInput) {
-              const newRequestId = generateId();
-              // 直接走 store + send；不依赖 React 闭包里的 handleSend
-              useStore
-                .getState()
-                .appendUserMessage(pending.sessionId, newRequestId, pending.nextInput);
-              sendRef.current({
-                type: "session.message",
-                sessionId: pending.sessionId,
-                requestId: newRequestId,
-                modelProviderId: pending.modelProviderId,
-                input: pending.nextInput,
-              });
+            const newRequestId = generateId();
+            const messageRequest = {
+              type: "session.message" as const,
+              sessionId: pending.sessionId,
+              requestId: newRequestId,
+              modelProviderId: pending.modelProviderId,
+              input: pending.nextInput,
+            };
+            const ok = sendRef.current(messageRequest);
+            if (!ok) {
+              toast.error("重新发送失败，连接可能已断开");
+              return;
             }
+            lastSendRef.current = {
+              sessionId: pending.sessionId,
+              requestId: newRequestId,
+              input: pending.nextInput,
+              modelProviderId: pending.modelProviderId,
+            };
+            useStore
+              .getState()
+              .appendUserMessage(pending.sessionId, newRequestId, pending.nextInput);
           }
         }
 
@@ -243,16 +256,25 @@ export function App(): JSX.Element {
       return;
     }
     const id = generateId();
+    const ok = send({ type: "session.create", sessionId: id });
+    if (!ok) {
+      toast.error("新建失败，连接可能已断开");
+      return;
+    }
     registerSession(id);
-    send({ type: "session.create", sessionId: id });
     serverKnownRef.current.add(id);
   }, [status, send, registerSession]);
 
   const handleCloseSession = useCallback(
     (id: string) => {
-      send({ type: "session.close", sessionId: id });
+      const ok = send({ type: "session.close", sessionId: id });
+      if (!ok) {
+        toast.error("删除失败，连接可能已断开");
+        return;
+      }
+      removeSession(id);
     },
-    [send],
+    [removeSession, send],
   );
 
   const handleCloseSessions = useCallback(
@@ -260,11 +282,20 @@ export function App(): JSX.Element {
       const uniqueIds = [...new Set(ids)].filter(Boolean);
       if (uniqueIds.length === 0) return;
 
-      clearAllSessions(uniqueIds);
+      const sentIds: string[] = [];
       uniqueIds.forEach((id) => {
-        serverKnownRef.current.delete(id);
-        send({ type: "session.close", sessionId: id });
+        const ok = send({ type: "session.close", sessionId: id });
+        if (ok) {
+          sentIds.push(id);
+          serverKnownRef.current.delete(id);
+        }
       });
+      if (sentIds.length > 0) {
+        clearAllSessions(sentIds);
+      }
+      if (sentIds.length < uniqueIds.length) {
+        toast.error(`有 ${uniqueIds.length - sentIds.length} 个会话删除请求发送失败`);
+      }
     },
     [clearAllSessions, send],
   );
@@ -303,10 +334,34 @@ export function App(): JSX.Element {
     toast("已发送中断请求…");
   }, [activeId, status, send]);
 
-  /** 重新回答：truncate 该轮的所有 entry，再以新 requestId 重新提交同一 user 消息。
-   *  用 pendingAfterTruncateRef 队列等 SessionTruncated 事件抵达后才发——不用 setTimeout 魔法。 */
+  const sendAfterTruncate = useCallback(
+    (pending: PendingAfterTruncate): boolean => {
+      pendingAfterTruncateRef.current = [
+        ...pendingAfterTruncateRef.current.filter(
+          (item) => item.sessionId !== pending.sessionId || item.requestId !== pending.requestId,
+        ),
+        pending,
+      ];
+
+      const ok = send({
+        type: "session.truncate_from",
+        sessionId: pending.sessionId,
+        requestId: pending.requestId,
+      });
+      if (!ok) {
+        pendingAfterTruncateRef.current = pendingAfterTruncateRef.current.filter(
+          (item) => item.sessionId !== pending.sessionId || item.requestId !== pending.requestId,
+        );
+        toast.error("操作失败，连接可能已断开");
+      }
+      return ok;
+    },
+    [send],
+  );
+
+  /** 重新回答：截断该轮及之后的历史，再以新 requestId 重新提交同一 user 消息。 */
   const handleRegenerate = useCallback(
-    (message: import("./store/sessionStore").ChatMessage) => {
+    (message: ChatMessage) => {
       if (!activeId || status !== "open") return;
       const state = useStore.getState();
       const session = state.sessions[activeId];
@@ -321,23 +376,18 @@ export function App(): JSX.Element {
         toast.error("找不到对应的用户消息");
         return;
       }
-      pendingAfterTruncateRef.current.push({
+      sendAfterTruncate({
         sessionId: activeId,
         requestId: message.requestId,
         nextInput: userMsg.content,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
       });
-      send({
-        type: "session.truncate_from",
-        sessionId: activeId,
-        requestId: message.requestId,
-      });
     },
-    [activeId, status, send],
+    [activeId, sendAfterTruncate, status],
   );
 
   const handleEditUserMessage = useCallback(
-    (message: import("./store/sessionStore").ChatMessage, nextContent: string) => {
+    (message: ChatMessage, nextContent: string) => {
       if (!activeId || status !== "open") return;
       if (!message.requestId) {
         toast.error("无法编辑：缺少 requestId");
@@ -349,37 +399,33 @@ export function App(): JSX.Element {
         return;
       }
 
-      // Strategy: truncate from this requestId, then re-send the edited content as a new requestId.
-      // We do not try to "edit in place" on the server yet; server history is SSOT and currently
-      // only supports truncate_from + append via session.message.
-      pendingAfterTruncateRef.current.push({
+      sendAfterTruncate({
         sessionId: activeId,
         requestId: message.requestId,
         nextInput: trimmed,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
       });
-      send({
-        type: "session.truncate_from",
-        sessionId: activeId,
-        requestId: message.requestId,
-      });
     },
-    [activeId, status, send],
+    [activeId, sendAfterTruncate, status],
   );
 
   const handleDeleteFromMessage = useCallback(
-    (message: import("./store/sessionStore").ChatMessage) => {
+    (message: ChatMessage) => {
       if (!activeId || status !== "open") return;
       if (!message.requestId) {
         toast.error("无法删除：缺少 requestId");
         return;
       }
       if (!window.confirm("从此处开始删除？这一条及之后的所有消息将从后端永久移除。")) return;
-      send({
+      const ok = send({
         type: "session.truncate_from",
         sessionId: activeId,
         requestId: message.requestId,
       });
+      if (!ok) {
+        toast.error("删除失败，连接可能已断开");
+        return;
+      }
       toast.success("已删除");
     },
     [activeId, status, send],
@@ -388,7 +434,7 @@ export function App(): JSX.Element {
   /** 查看对应消息所在 turn 的工作流——在右栏切到该 run */
   const setViewedRun = useStore((s) => s.setViewedRun);
   const handleViewWorkflow = useCallback(
-    (message: import("./store/sessionStore").ChatMessage) => {
+    (message: ChatMessage) => {
       if (!activeId || !message.requestId) {
         toast.error("无法定位该消息的工作流");
         return;
@@ -422,19 +468,27 @@ export function App(): JSX.Element {
           serverKnownRef.current.delete(targetSessionId);
         }
         targetSessionId = generateId();
+        const ok = send({ type: "session.create", sessionId: targetSessionId });
+        if (!ok) {
+          toast.error("创建会话失败，连接可能已断开");
+          return;
+        }
         registerSession(targetSessionId);
-        send({ type: "session.create", sessionId: targetSessionId });
         serverKnownRef.current.add(targetSessionId);
       }
 
       const requestId = generateId();
-      // 写入前端
-      appendUserMessage(targetSessionId, requestId, input);
       // 保证后端认识这个 sessionId（幂等）
       if (!serverKnownRef.current.has(targetSessionId)) {
-        send({ type: "session.create", sessionId: targetSessionId });
+        const ok = send({ type: "session.create", sessionId: targetSessionId });
+        if (!ok) {
+          toast.error("创建会话失败，连接可能已断开");
+          return;
+        }
         serverKnownRef.current.add(targetSessionId);
       }
+      // 写入前端
+      appendUserMessage(targetSessionId, requestId, input);
       // 记下来，万一 session.not_found 可重放
       lastSendRef.current = { sessionId: targetSessionId, requestId, input, modelProviderId };
       const ok = send({

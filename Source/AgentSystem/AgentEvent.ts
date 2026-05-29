@@ -35,9 +35,7 @@ export const AgentEventKinds = {
   SessionBusy: "session.busy",
   SessionNotFound: "session.not_found",
   SessionListSnapshot: "session.list.snapshot",
-  SessionHistoryStarted: "session.history.started",
-  SessionHistoryEntry: "session.history.entry",
-  SessionHistoryCompleted: "session.history.completed",
+  SessionHistorySnapshot: "session.history.snapshot",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
   PromptRendered: "prompt.rendered",
@@ -153,6 +151,7 @@ export type AgentDomainEvent =
       data: {
         sessionId: string;
         activeRequestId: string;
+        rejectedRequestId?: string;
         operation: "session.message" | "session.close";
         message: string;
       };
@@ -182,32 +181,19 @@ export type AgentDomainEvent =
       };
     }
   | {
-      kind: typeof AgentEventKinds.SessionHistoryStarted;
+      kind: typeof AgentEventKinds.SessionHistorySnapshot;
       context: Required<Pick<AgentEventContext, "sessionId">>;
       data: {
         sessionId: string;
         totalEntries: number;
         messageCount: number;
-      };
-    }
-  | {
-      kind: typeof AgentEventKinds.SessionHistoryEntry;
-      context: Required<Pick<AgentEventContext, "sessionId">>;
-      data: {
-        sessionId: string;
-        entry: import("./AgentConversation.js").AgentConversationEntry;
-        /** 后端预解析的可见文本，仅 assistant.decision 时存在 */
-        visible?: {
-          kind: "final_answer" | "ask_user" | "tool_calls" | "unknown";
-          text: string;
-        };
-      };
-    }
-  | {
-      kind: typeof AgentEventKinds.SessionHistoryCompleted;
-      context: Required<Pick<AgentEventContext, "sessionId">>;
-      data: {
-        sessionId: string;
+        entries: Array<{
+          entry: import("./AgentConversation.js").AgentConversationEntry;
+          visible?: {
+            kind: string;
+            text: string;
+          };
+        }>;
       };
     }
   | {
@@ -536,15 +522,7 @@ const EventSpecTable: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
   },
-  [AgentEventKinds.SessionHistoryStarted]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Session,
-  },
-  [AgentEventKinds.SessionHistoryEntry]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Session,
-  },
-  [AgentEventKinds.SessionHistoryCompleted]: {
+  [AgentEventKinds.SessionHistorySnapshot]: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
   },

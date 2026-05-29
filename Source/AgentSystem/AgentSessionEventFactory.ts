@@ -44,16 +44,18 @@ export class AgentSessionEventFactory {
   busy(
     session: AgentSession,
     operation: "session.message" | "session.close",
+    rejectedRequestId?: string,
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.SessionBusy,
       context: {
         sessionId: session.id,
-        requestId: session.activeRequest?.requestId,
+        requestId: rejectedRequestId ?? session.activeRequest?.requestId,
       },
       data: {
         sessionId: session.id,
         activeRequestId: session.activeRequest?.requestId ?? "",
+        rejectedRequestId,
         operation,
         message: "会话当前仍在处理中。",
       },

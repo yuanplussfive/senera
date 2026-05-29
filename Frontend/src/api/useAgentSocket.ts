@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EventKinds, type EventEnvelope, type WsRequest } from "./eventTypes";
 
 export type SocketStatus = "idle" | "connecting" | "open" | "closed" | "error";
@@ -42,7 +42,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   const pendingRef = useRef<EventEnvelope[]>([]);
   const rafIdRef = useRef<number | null>(null);
 
-  const flush = (): void => {
+  const flush = useCallback((): void => {
     rafIdRef.current = null;
     const queue = pendingRef.current;
     if (queue.length === 0) return;
@@ -50,14 +50,14 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     for (const env of queue) {
       onEventRef.current(env);
     }
-  };
+  }, []);
 
-  const scheduleFlush = (): void => {
+  const scheduleFlush = useCallback((): void => {
     if (rafIdRef.current !== null) return;
     rafIdRef.current = requestAnimationFrame(flush);
-  };
+  }, [flush]);
 
-  const dispatch = (env: EventEnvelope): void => {
+  const dispatch = useCallback((env: EventEnvelope): void => {
     if (COALESCE_KINDS.has(env.kind)) {
       pendingRef.current.push(env);
       scheduleFlush();
@@ -68,9 +68,11 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       flush();
     }
     onEventRef.current(env);
-  };
+  }, [flush, scheduleFlush]);
 
-  const connect = (): void => {
+  const scheduleRetryRef = useRef<() => void>(() => undefined);
+
+  const connect = useCallback((): void => {
     const connectSeq = ++connectSeqRef.current;
     closedByUserRef.current = false;
     setStatus("connecting");
@@ -79,7 +81,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       ws = new WebSocket(url);
     } catch {
       setStatus("error");
-      scheduleRetry();
+      scheduleRetryRef.current();
       return;
     }
     wsRef.current = ws;
@@ -116,12 +118,12 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       setStatus("closed");
       wsRef.current = null;
       if (!closedByUserRef.current) {
-        scheduleRetry();
+        scheduleRetryRef.current();
       }
     };
-  };
+  }, [dispatch, url]);
 
-  const scheduleRetry = (): void => {
+  const scheduleRetry = useCallback((): void => {
     if (retryTimerRef.current !== null) return;
     const attempt = retryRef.current;
     retryRef.current = attempt + 1;
@@ -130,7 +132,9 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       retryTimerRef.current = null;
       connect();
     }, delay);
-  };
+  }, [connect]);
+
+  scheduleRetryRef.current = scheduleRetry;
 
   useEffect(() => {
     connect();
@@ -151,14 +155,14 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
-  const send = (req: WsRequest): boolean => {
+  const send = useCallback((req: WsRequest): boolean => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
     ws.send(JSON.stringify(req));
     return true;
-  };
+  }, []);
 
-  const reconnect = (): void => {
+  const reconnect = useCallback((): void => {
     if (retryTimerRef.current !== null) {
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
@@ -166,7 +170,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     wsRef.current?.close();
     retryRef.current = 0;
     connect();
-  };
+  }, [connect]);
 
   return { status, send, reconnect };
 }

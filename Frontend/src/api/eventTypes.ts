@@ -29,9 +29,7 @@ export const EventKinds = {
   SessionBusy: "session.busy",
   SessionNotFound: "session.not_found",
   SessionListSnapshot: "session.list.snapshot",
-  SessionHistoryStarted: "session.history.started",
-  SessionHistoryEntry: "session.history.entry",
-  SessionHistoryCompleted: "session.history.completed",
+  SessionHistorySnapshot: "session.history.snapshot",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
   PromptRendered: "prompt.rendered",
@@ -116,6 +114,14 @@ export interface SessionNotFoundData {
   message: string;
 }
 
+export interface SessionBusyData {
+  sessionId: string;
+  activeRequestId: string;
+  rejectedRequestId?: string;
+  operation: "session.message" | "session.close";
+  message: string;
+}
+
 export type ConversationEntryDto =
   | {
       id: string;
@@ -141,6 +147,16 @@ export type ConversationEntryDto =
       xml: string;
       metadata?: ConversationEntryMetadata;
     };
+
+export interface SessionHistorySnapshotData {
+  sessionId: string;
+  totalEntries: number;
+  messageCount: number;
+  entries: Array<{
+    entry: ConversationEntryDto;
+    visible?: { kind: string; text: string };
+  }>;
+}
 
 export interface ModelProviderMetadata {
   id: string;
@@ -185,26 +201,6 @@ export interface ConversationEntryMetadata {
     modelProvider: ModelProviderMetadata;
     usage?: ModelUsageMetadata;
   };
-}
-
-export interface SessionHistoryEntryData {
-  sessionId: string;
-  entry: ConversationEntryDto;
-  /** 后端预解析的"用户可见文本"，仅 assistant.decision 有；前端不做 XML 解析 */
-  visible?: {
-    kind: "final_answer" | "ask_user" | "tool_calls" | "unknown";
-    text: string;
-  };
-}
-
-export interface SessionHistoryStartedData {
-  sessionId: string;
-  totalEntries: number;
-  messageCount?: number;
-}
-
-export interface SessionHistoryCompletedData {
-  sessionId: string;
 }
 
 export interface SessionTruncatedData {

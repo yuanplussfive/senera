@@ -20,8 +20,8 @@ import {
   type RetryPlannedData,
   type RunFailedData,
   type RunStartedData,
-  type SessionHistoryEntryData,
-  type SessionHistoryStartedData,
+  type SessionBusyData,
+  type SessionHistorySnapshotData,
   type SessionListItem,
   type SessionListSnapshotData,
   type SessionNotFoundData,
@@ -141,8 +141,10 @@ interface StoreState {
   historyLoadingIds: Record<string, boolean>;
   /** 已确认不在后端存在、仅本地残留的 sessionId */
   missingOnServerIds: Record<string, boolean>;
-  /** 本地已经发起删除的 sessionId；用于过滤删除过程中的旧 session.list 快照 */
-  locallyDeletedSessionIds: Record<string, boolean>;
+  /** 本地刚创建、尚未被 session.list 快照确认的 sessionId */
+  pendingCreatedSessionIds: Record<string, boolean>;
+  /** 本地已请求删除、尚未被 session.list 快照确认消失的 sessionId */
+  pendingDeletedSessionIds: Record<string, boolean>;
   modelProviders: ModelProviderListItem[];
   selectedModelProviderId: string | null;
   userProfile: UserProfile;
@@ -205,14 +207,6 @@ function currentRun(session: SessionRecord, requestId?: string): RunRecord | und
 
 function syncSessionCountsFromLoadedMessages(session: SessionRecord): void {
   session.messageCount = session.messages.length;
-}
-
-function syncSessionCountsFromHistoryStart(
-  session: SessionRecord,
-  data: SessionHistoryStartedData,
-): void {
-  session.entryCount = data.totalEntries;
-  session.messageCount = data.messageCount ?? session.messageCount;
 }
 
 function bumpSessionMessageCount(session: SessionRecord): void {
@@ -307,7 +301,8 @@ export const useStore = create<StoreState>()(
       historyLoadedIds: {},
       historyLoadingIds: {},
       missingOnServerIds: {},
-      locallyDeletedSessionIds: {},
+      pendingCreatedSessionIds: {},
+      pendingDeletedSessionIds: {},
       modelProviders: [],
       selectedModelProviderId: null,
       userProfile: DEFAULT_USER_PROFILE,
@@ -348,7 +343,15 @@ export const useStore = create<StoreState>()(
 
     registerCreatingSession: (sessionId, title) =>
       set((state) => {
-        if (state.sessions[sessionId]) return;
+        delete state.pendingDeletedSessionIds[sessionId];
+        state.pendingCreatedSessionIds[sessionId] = true;
+        if (state.sessions[sessionId]) {
+          if (!state.sessionOrder.includes(sessionId)) {
+            state.sessionOrder.unshift(sessionId);
+          }
+          state.activeSessionId = sessionId;
+          return;
+        }
         state.sessions[sessionId] = {
           sessionId,
           title: title ?? DEFAULT_SESSION_TITLE,
@@ -372,7 +375,8 @@ export const useStore = create<StoreState>()(
 
     removeSession: (sessionId) =>
       set((state) => {
-        state.locallyDeletedSessionIds[sessionId] = true;
+        state.pendingDeletedSessionIds[sessionId] = true;
+        delete state.pendingCreatedSessionIds[sessionId];
         delete state.sessions[sessionId];
         state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
         if (state.activeSessionId === sessionId) {
@@ -384,15 +388,13 @@ export const useStore = create<StoreState>()(
       set((state) => {
         const ids = sessionIds?.length ? sessionIds : state.sessionOrder;
         for (const id of ids) {
-          state.locallyDeletedSessionIds[id] = true;
+          state.pendingDeletedSessionIds[id] = true;
+          delete state.pendingCreatedSessionIds[id];
+          deleteSessionRuntimeState(state, id);
         }
-        state.sessions = {};
-        state.sessionOrder = [];
-        state.activeSessionId = null;
-        state.viewedRunIdBySession = {};
-        state.historyLoadedIds = {};
-        state.historyLoadingIds = {};
-        state.missingOnServerIds = {};
+        if (state.activeSessionId && !state.sessions[state.activeSessionId]) {
+          state.activeSessionId = state.sessionOrder[0] ?? null;
+        }
       }),
 
     markHistoryLoading: (sessionId) =>
@@ -501,7 +503,8 @@ export const useStore = create<StoreState>()(
           historyLoadedIds: {},
           historyLoadingIds: {},
           missingOnServerIds: {},
-          locallyDeletedSessionIds: {},
+          pendingCreatedSessionIds: {},
+          pendingDeletedSessionIds: {},
         };
       },
     },
@@ -522,6 +525,14 @@ export function clearPersistedStore(): void {
 
 function applyEvent(state: StoreState, env: EventEnvelope): void {
   const sessionId = env.sessionId;
+
+  if (
+    sessionId &&
+    state.pendingDeletedSessionIds[sessionId] &&
+    !isPendingDeleteResolutionEvent(env.kind)
+  ) {
+    return;
+  }
 
   switch (env.kind) {
     case EventKinds.ModelListSnapshot: {
@@ -547,6 +558,8 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
     case EventKinds.SessionSnapshot: {
       if (!sessionId) return;
       const data = env.data as SessionSnapshotData;
+      delete state.pendingCreatedSessionIds[sessionId];
+      if (state.pendingDeletedSessionIds[sessionId]) return;
       const existing = state.sessions[sessionId];
       if (existing) {
         existing.status = "ready";
@@ -577,14 +590,16 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
     }
 
     case EventKinds.SessionClosed: {
-      if (!sessionId || !state.sessions[sessionId]) return;
+      if (!sessionId) return;
+      delete state.pendingDeletedSessionIds[sessionId];
+      delete state.pendingCreatedSessionIds[sessionId];
+      if (!state.sessions[sessionId]) return;
       delete state.sessions[sessionId];
       state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
       delete state.historyLoadedIds[sessionId];
       delete state.historyLoadingIds[sessionId];
       delete state.viewedRunIdBySession[sessionId];
       delete state.missingOnServerIds[sessionId];
-      delete state.locallyDeletedSessionIds[sessionId];
       if (state.activeSessionId === sessionId) {
         state.activeSessionId = state.sessionOrder[0] ?? null;
       }
@@ -667,6 +682,34 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       });
       bumpSessionMessageCount(session);
       session.activeRequestId = undefined;
+      return;
+    }
+
+    case EventKinds.SessionBusy: {
+      if (!sessionId) return;
+      const session = state.sessions[sessionId];
+      if (!session) return;
+      const data = env.data as SessionBusyData;
+      const rejectedRequestId = data.rejectedRequestId || env.requestId;
+      if (!rejectedRequestId || rejectedRequestId === data.activeRequestId) return;
+      const run = session.runs.find((item) => item.requestId === rejectedRequestId);
+      if (run) {
+        run.status = "failed";
+        run.endedAt = env.timestamp;
+        upsertStep(run, {
+          id: `${run.requestId}-busy`,
+          kind: "error",
+          title: "会话正忙",
+          description: data.message,
+          status: "failed",
+          startedAt: env.timestamp,
+          endedAt: env.timestamp,
+          errorMessage: data.message,
+        });
+      }
+      if (session.activeRequestId === rejectedRequestId) {
+        session.activeRequestId = data.activeRequestId || undefined;
+      }
       return;
     }
 
@@ -1038,41 +1081,18 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
-    case EventKinds.SessionHistoryStarted: {
+    case EventKinds.SessionHistorySnapshot: {
       if (!sessionId) return;
-      const data = env.data as SessionHistoryStartedData;
+      const data = env.data as SessionHistorySnapshotData;
       const session = state.sessions[sessionId];
       if (!session) return;
-      // 清空原有 messages，准备从后端回放（避免重复）
-      session.messages = [];
-      syncSessionCountsFromHistoryStart(session, data);
-      state.historyLoadingIds[sessionId] = true;
-      // total info 可用于显示进度，但目前未必需要
-      void data;
-      return;
-    }
-
-    case EventKinds.SessionHistoryEntry: {
-      if (!sessionId) return;
-      const data = env.data as SessionHistoryEntryData;
-      const session = state.sessions[sessionId];
-      if (!session) return;
-      const message = projectEntryToMessage(data.entry, data.visible);
-      if (message) {
-        session.messages.push(message);
-        syncSessionCountsFromLoadedMessages(session);
-      }
-      return;
-    }
-
-    case EventKinds.SessionHistoryCompleted: {
-      if (!sessionId) return;
-      if (!state.sessions[sessionId]) return;
+      session.messages = data.entries
+        .map((item) => projectEntryToMessage(item.entry, item.visible))
+        .filter((message): message is ChatMessage => Boolean(message));
+      session.entryCount = data.totalEntries;
+      session.messageCount = data.messageCount;
       state.historyLoadingIds[sessionId] = false;
       state.historyLoadedIds[sessionId] = true;
-      if (state.sessions[sessionId]) {
-        syncSessionCountsFromLoadedMessages(state.sessions[sessionId]);
-      }
       delete state.missingOnServerIds[sessionId];
       return;
     }
@@ -1081,6 +1101,16 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (!sessionId) return;
       const data = env.data as SessionNotFoundData;
       state.historyLoadingIds[sessionId] = false;
+      if (data.operation === "session.close") {
+        delete state.pendingDeletedSessionIds[sessionId];
+        delete state.pendingCreatedSessionIds[sessionId];
+        delete state.sessions[sessionId];
+        state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
+        if (state.activeSessionId === sessionId) {
+          state.activeSessionId = state.sessionOrder[0] ?? null;
+        }
+        return;
+      }
       if (data.operation === "session.history") {
         state.missingOnServerIds[sessionId] = true;
         delete state.historyLoadedIds[sessionId];
@@ -1123,6 +1153,10 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
   }
 }
 
+function isPendingDeleteResolutionEvent(kind: string): boolean {
+  return kind === EventKinds.SessionClosed || kind === EventKinds.SessionNotFound;
+}
+
 // ---- 历史回放：把 conversation entry 投影成可见 message ----
 
 function projectEntryToMessage(
@@ -1158,21 +1192,19 @@ function projectEntryToMessage(
 // ---- session.list.snapshot：合并后端目录到本地 ----
 
 function ingestSessionList(state: StoreState, items: SessionListItem[]): void {
-  // 后端覆盖本地（后端是 SSOT）。不在后端列表中的本地残留会话直接清理。
-  const visibleItems = items.filter((item) => !state.locallyDeletedSessionIds[item.sessionId]);
-  const deletedIds = new Set(Object.keys(state.locallyDeletedSessionIds));
-  for (const item of items) {
-    if (!deletedIds.has(item.sessionId)) continue;
-    delete state.sessions[item.sessionId];
-    delete state.historyLoadedIds[item.sessionId];
-    delete state.historyLoadingIds[item.sessionId];
-    delete state.viewedRunIdBySession[item.sessionId];
-    delete state.missingOnServerIds[item.sessionId];
+  const serverIds = new Set(items.map((item) => item.sessionId));
+
+  for (const pendingId of Object.keys(state.pendingDeletedSessionIds)) {
+    if (serverIds.has(pendingId)) continue;
+    delete state.pendingDeletedSessionIds[pendingId];
+    deleteSessionRuntimeState(state, pendingId);
   }
 
-  const serverIds = new Set<string>();
+  const visibleItems = items.filter((item) => !state.pendingDeletedSessionIds[item.sessionId]);
+  const visibleServerIds = new Set<string>();
   for (const item of visibleItems) {
-    serverIds.add(item.sessionId);
+    visibleServerIds.add(item.sessionId);
+    delete state.pendingCreatedSessionIds[item.sessionId];
     const existing = state.sessions[item.sessionId];
     if (existing) {
       existing.title = item.title;
@@ -1199,22 +1231,56 @@ function ingestSessionList(state: StoreState, items: SessionListItem[]): void {
 
   // 重新排序：后端列表已按 updatedAt DESC 排序
   const serverOrdered = visibleItems.map((i) => i.sessionId);
-  const localOnly = state.sessionOrder.filter((id) => !serverIds.has(id));
-  state.sessionOrder = serverOrdered;
+  const pendingCreatedOrdered = state.sessionOrder.filter(
+    (id) => state.pendingCreatedSessionIds[id] && state.sessions[id] && !visibleServerIds.has(id),
+  );
+  state.sessionOrder = mergeSessionOrder(pendingCreatedOrdered, serverOrdered);
 
-  if (state.activeSessionId && !serverIds.has(state.activeSessionId) && serverOrdered.length > 0) {
-    state.activeSessionId = serverOrdered[0];
-  } else if (state.activeSessionId && !serverIds.has(state.activeSessionId) && serverOrdered.length === 0) {
+  if (
+    state.activeSessionId &&
+    !state.sessionOrder.includes(state.activeSessionId) &&
+    state.sessionOrder.length > 0
+  ) {
+    state.activeSessionId = state.sessionOrder[0];
+  } else if (
+    state.activeSessionId &&
+    !state.sessionOrder.includes(state.activeSessionId) &&
+    state.sessionOrder.length === 0
+  ) {
     state.activeSessionId = null;
   } else if (!state.activeSessionId && state.sessionOrder.length > 0) {
     state.activeSessionId = state.sessionOrder[0];
   }
 
-  for (const localId of localOnly) {
-    delete state.sessions[localId];
-    delete state.historyLoadedIds[localId];
-    delete state.historyLoadingIds[localId];
-    delete state.viewedRunIdBySession[localId];
-    delete state.missingOnServerIds[localId];
+  for (const localId of Object.keys(state.sessions)) {
+    const shouldKeep =
+      visibleServerIds.has(localId) ||
+      Boolean(state.pendingCreatedSessionIds[localId]) ||
+      Boolean(state.pendingDeletedSessionIds[localId]);
+    if (!shouldKeep) {
+      deleteSessionRuntimeState(state, localId);
+    }
   }
+}
+
+function mergeSessionOrder(...groups: string[][]): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const group of groups) {
+    for (const id of group) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ordered.push(id);
+    }
+  }
+  return ordered;
+}
+
+function deleteSessionRuntimeState(state: StoreState, sessionId: string): void {
+  delete state.sessions[sessionId];
+  delete state.historyLoadedIds[sessionId];
+  delete state.historyLoadingIds[sessionId];
+  delete state.viewedRunIdBySession[sessionId];
+  delete state.missingOnServerIds[sessionId];
+  state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
 }

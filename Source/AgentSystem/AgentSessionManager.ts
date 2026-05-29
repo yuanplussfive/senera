@@ -30,8 +30,7 @@ export class AgentSessionManager {
   private readonly conversationPolicy: AgentConversationPolicy;
   private readonly conversationProjector: AgentConversationProjector;
   private readonly eventFactory: AgentSessionEventFactory;
-  /** 每个 sessionId 一个 AbortController；只在 turn 进行中存在 */
-  private readonly activeControllers = new Map<string, AbortController>();
+  private readonly activeRuns = new Map<string, ActiveSessionRun>();
 
   constructor(private readonly options: AgentSessionManagerOptions) {
     this.store = options.store ?? new AgentSessionStore();
@@ -69,25 +68,15 @@ export class AgentSessionManager {
         );
       },
       found: async ({ session }) => {
-        const gate = this.assertAvailable(session, "session.close");
-        return matchByKind(gate, {
-          available: async () => {
-            const closed = this.store.close(session.id);
-            await emitAgentEvent(
-              request.onEvent,
-              matchByKind(closed, {
-                closed: ({ session: current }) => this.eventFactory.closed(current),
-                missing: ({ sessionId }) => this.eventFactory.notFound(sessionId, "session.close"),
-              }),
-            );
-          },
-          busy: async ({ current }) => {
-            await emitAgentEvent(
-              request.onEvent,
-              this.eventFactory.busy(current, "session.close"),
-            );
-          },
-        });
+        this.discardActiveRun(session);
+        const closed = this.store.close(session.id);
+        await emitAgentEvent(
+          request.onEvent,
+          matchByKind(closed, {
+            closed: ({ session: current }) => this.eventFactory.closed(current),
+            missing: ({ sessionId }) => this.eventFactory.notFound(sessionId, "session.close"),
+          }),
+        );
       },
     });
   }
@@ -117,7 +106,7 @@ export class AgentSessionManager {
           busy: async ({ current }) => {
             await emitAgentEvent(
               request.onEvent,
-              this.eventFactory.busy(current, "session.message"),
+              this.eventFactory.busy(current, "session.message", request.requestId),
             );
           },
         });
@@ -171,34 +160,20 @@ export class AgentSessionManager {
       }
 
     await emitAgentEvent(request.onEvent, {
-      kind: AgentEventKinds.SessionHistoryStarted,
+      kind: AgentEventKinds.SessionHistorySnapshot,
       context: { sessionId },
       data: {
         sessionId,
         totalEntries: entries.length,
         messageCount: this.conversationPolicy.materialize(entries).length,
-      },
-    });
-
-    for (const entry of entries) {
-      await emitAgentEvent(request.onEvent, {
-        kind: AgentEventKinds.SessionHistoryEntry,
-        context: { sessionId },
-        data: {
-          sessionId,
+        entries: entries.map((entry) => ({
           entry,
           visible:
             entry.kind === AgentConversationEntryKinds.AssistantDecision
               ? extractDecisionStreamingPreview(entry.xml)
               : undefined,
-        },
-      });
-    }
-
-    await emitAgentEvent(request.onEvent, {
-      kind: AgentEventKinds.SessionHistoryCompleted,
-      context: { sessionId },
-      data: { sessionId },
+        })),
+      },
     });
   }
 
@@ -221,10 +196,20 @@ export class AgentSessionManager {
 
   /** 用户主动取消活跃 run——直接 abort 对应的 AbortController */
   cancelActiveRun(sessionId: string): boolean {
-    const controller = this.activeControllers.get(sessionId);
-    if (!controller) return false;
-    controller.abort();
+    const run = this.activeRuns.get(sessionId);
+    if (!run) return false;
+    run.controller.abort();
     return true;
+  }
+
+  private discardActiveRun(session: AgentSession): void {
+    const run = this.activeRuns.get(session.id);
+    if (run) {
+      run.controller.abort();
+      this.activeRuns.delete(session.id);
+    }
+    session.status = AgentSessionStatuses.Idle;
+    session.activeRequest = undefined;
   }
 
   /** 从指定 requestId 起截断会话（删除该轮 + 之后所有 entries） */
@@ -233,10 +218,16 @@ export class AgentSessionManager {
     requestId: string;
     onEvent?: AgentEventSink;
   }): Promise<void> {
-    // 若该会话还有进行中的 run，先取消
-    this.cancelActiveRun(request.sessionId);
+    const lookup = this.store.get(request.sessionId);
+    if (lookup.kind === "found") {
+      this.discardActiveRun(lookup.session);
+    }
 
     const removed = this.store.truncateFromRequest(request.sessionId, request.requestId);
+    if (lookup.kind === "found") {
+      lookup.session.updatedAt = new Date().toISOString();
+      this.store.persistMetadata(lookup.session);
+    }
     await emitAgentEvent(request.onEvent, {
       kind: AgentEventKinds.SessionTruncated,
       context: { sessionId: request.sessionId },
@@ -270,7 +261,14 @@ export class AgentSessionManager {
         kind: "busy";
         current: AgentSession;
       } {
-    return session.status === AgentSessionStatuses.Running
+    const activeRun = this.activeRuns.get(session.id);
+    if (session.status === AgentSessionStatuses.Running && !activeRun) {
+      session.status = AgentSessionStatuses.Idle;
+      session.activeRequest = undefined;
+      this.store.persistMetadata(session);
+    }
+
+    return activeRun
       ? {
           kind: "busy",
           current: session,
@@ -316,9 +314,10 @@ export class AgentSessionManager {
     this.store.persistEntries(session.id, [userEntry]);
 
     // 该 session 已有 active run 时（不应该到这——但防御一下）先取消
-    this.activeControllers.get(session.id)?.abort();
+    this.activeRuns.get(session.id)?.controller.abort();
     const controller = new AbortController();
-    this.activeControllers.set(session.id, controller);
+    const run: ActiveSessionRun = { requestId, controller };
+    this.activeRuns.set(session.id, run);
 
     try {
       const result = await this.options.loopFactory(request.modelProviderId).run({
@@ -326,13 +325,19 @@ export class AgentSessionManager {
         input: request.input,
         messages,
         signal: controller.signal,
-        onEvent: (event) => emitAgentEvent(
-          request.onEvent,
-          withEventContext(event, {
-            sessionId: session.id,
-          }),
-        ),
+        onEvent: (event) => this.isActiveRun(session.id, run)
+          ? emitAgentEvent(
+            request.onEvent,
+            withEventContext(event, {
+              sessionId: session.id,
+            }),
+          )
+          : undefined,
       });
+      if (!this.isActiveRun(session.id, run)) {
+        return;
+      }
+
       const assistantEntry = this.conversationProjector.projectAssistantDecision(
         requestId,
         result.decisionXml,
@@ -379,6 +384,9 @@ export class AgentSessionManager {
           }
         : session.metadata;
     } catch (error) {
+      if (!this.isActiveRun(session.id, run)) {
+        return;
+      }
       // 用户主动取消——发 RunCancelled 终态事件，不算 RunFailed
       if (error instanceof AgentCancellationError) {
         await emitAgentEvent(request.onEvent, {
@@ -390,12 +398,18 @@ export class AgentSessionManager {
       }
       throw error;
     } finally {
-      this.activeControllers.delete(session.id);
-      session.status = AgentSessionStatuses.Idle;
-      session.updatedAt = new Date().toISOString();
-      session.activeRequest = undefined;
-      this.store.persistMetadata(session);
+      if (this.isActiveRun(session.id, run)) {
+        this.activeRuns.delete(session.id);
+        session.status = AgentSessionStatuses.Idle;
+        session.updatedAt = new Date().toISOString();
+        session.activeRequest = undefined;
+        this.store.persistMetadata(session);
+      }
     }
+  }
+
+  private isActiveRun(sessionId: string, run: ActiveSessionRun): boolean {
+    return this.activeRuns.get(sessionId) === run;
   }
 
   private mergeConversationEntries(
@@ -436,4 +450,9 @@ export class AgentSessionManager {
     }
     return "新对话";
   }
+}
+
+interface ActiveSessionRun {
+  requestId: string;
+  controller: AbortController;
 }
