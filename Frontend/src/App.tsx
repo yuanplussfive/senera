@@ -31,6 +31,7 @@ export function App(): JSX.Element {
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const setSidebarCollapsed = useStore((s) => s.setSidebarCollapsed);
   const markHistoryLoading = useStore((s) => s.markHistoryLoading);
+  const markHistoryLoadFailed = useStore((s) => s.markHistoryLoadFailed);
   const modelProviders = useStore((s) => s.modelProviders);
   const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
   const selectModelProvider = useStore((s) => s.selectModelProvider);
@@ -88,15 +89,7 @@ export function App(): JSX.Element {
           const lost = env.sessionId;
           serverKnownRef.current.delete(lost);
           if (data.operation === "session.history") {
-            const state = useStore.getState();
-            if (!state.sessions[lost]) {
-              return;
-            }
-            const serverSessions = state.sessionOrder.filter((id) => !state.missingOnServerIds[id]);
-            const fallbackId = serverSessions[0] ?? null;
-            if (fallbackId && state.activeSessionId === lost) {
-              state.selectSession(fallbackId);
-            }
+            ingest(env);
             toast.warning("该本地会话在后端不存在", {
               description: "已切换到仍存在历史的会话。旧的本地占位不会再被自动恢复成空会话。",
             });
@@ -130,9 +123,18 @@ export function App(): JSX.Element {
 
         // 其他错误 toast
         if (env.kind === EventKinds.RunFailed) {
-          toast.error("运行失败", {
-            description: (env.data as { message?: string }).message ?? "",
-          });
+          const state = useStore.getState();
+          const session = env.sessionId ? state.sessions[env.sessionId] : null;
+          const hasMatchingRun = session?.runs.some((run) => run.requestId === env.requestId) ?? false;
+          if (env.sessionId && state.historyLoadingIds[env.sessionId] && !hasMatchingRun) {
+            toast.error("历史同步失败", {
+              description: (env.data as { message?: string }).message ?? "",
+            });
+          } else {
+            toast.error("运行失败", {
+              description: (env.data as { message?: string }).message ?? "",
+            });
+          }
         } else if (env.kind === EventKinds.SessionBusy) {
           toast.warning("会话正忙，请等待当前请求结束");
         } else if (env.kind === EventKinds.ToolCallFailed) {
@@ -196,6 +198,19 @@ export function App(): JSX.Element {
     ),
   });
 
+  const requestSessionHistory = useCallback(
+    (sessionId: string): boolean => {
+      markHistoryLoading(sessionId);
+      const ok = send({ type: "session.history", sessionId });
+      if (!ok) {
+        markHistoryLoadFailed(sessionId);
+        toast.error("历史同步失败，连接可能已断开");
+      }
+      return ok;
+    },
+    [markHistoryLoadFailed, markHistoryLoading, send],
+  );
+
   // 暴露 send 给 ref，让事件回调能用最新的 send
   useEffect(() => {
     sendRef.current = send;
@@ -240,10 +255,9 @@ export function App(): JSX.Element {
       return;
     }
     if (!state.historyLoadedIds[activeId] && !state.historyLoadingIds[activeId]) {
-      markHistoryLoading(activeId);
-      send({ type: "session.history", sessionId: activeId });
+      requestSessionHistory(activeId);
     }
-  }, [activeId, status, send, markHistoryLoading]);
+  }, [activeId, status, requestSessionHistory]);
 
   // 全局快捷键
   useEffect(() => {
@@ -484,6 +498,11 @@ export function App(): JSX.Element {
       const modelProviderId = state.selectedModelProviderId ?? undefined;
       let targetSessionId = activeId;
 
+      if (targetSessionId && state.historyLoadingIds[targetSessionId]) {
+        toast.warning("正在恢复历史，请稍后再发送");
+        return;
+      }
+
       if (!targetSessionId || state.missingOnServerIds[targetSessionId]) {
         if (targetSessionId) {
           serverKnownRef.current.delete(targetSessionId);
@@ -585,6 +604,7 @@ export function App(): JSX.Element {
             onViewWorkflow={handleViewWorkflow}
             onOpenSessionPanel={handleOpenSessionPanel}
             onOpenWorkflowPanel={() => setWorkflowDrawerOpen(true)}
+            onRetryHistory={requestSessionHistory}
           />
         }
         workflowPanel={<ThinkingTimeline presentation="auto" />}

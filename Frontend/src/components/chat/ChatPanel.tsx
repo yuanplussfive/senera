@@ -4,6 +4,7 @@ import { useStore, type ChatMessage, type UserProfile, DEFAULT_SESSION_TITLE } f
 import { ChatComposer } from "./ChatComposer";
 import { ChatHeader } from "./ChatHeader";
 import { EmptyChatState } from "./EmptyChatState";
+import { HistoryRecoveryState } from "./HistoryRecoveryState";
 import { MessageList } from "./MessageList";
 import { readSelectedModelProvider } from "./modelProvider";
 
@@ -21,6 +22,7 @@ interface Props {
   userProfile: UserProfile;
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
+  onRetryHistory?: (sessionId: string) => void;
 }
 
 export function ChatPanel({
@@ -37,13 +39,23 @@ export function ChatPanel({
   userProfile,
   onOpenSessionPanel,
   onOpenWorkflowPanel,
+  onRetryHistory,
 }: Props): JSX.Element {
   const activeId = useStore((s) => s.activeSessionId);
   const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
+  const historyLoading = useStore((s) => (activeId ? !!s.historyLoadingIds[activeId] : false));
+  const historyFailed = useStore((s) => (activeId ? !!s.historyFailedIds[activeId] : false));
 
   const messages = session?.messages ?? [];
   const currentRun = session?.runs[session.runs.length - 1];
   const isRunning = currentRun?.status === "running";
+  const composerDisabled = socketStatus !== "open" || historyLoading;
+  const shouldShowHistoryRecovery =
+    messages.length === 0 &&
+    !isRunning &&
+    !!session &&
+    session.messageCount > 0 &&
+    (historyLoading || historyFailed);
   const assistantAvatarIcon = useMemo(
     () => readSelectedModelProvider(modelProviders, selectedModelProviderId)?.icon,
     [modelProviders, selectedModelProviderId],
@@ -61,7 +73,14 @@ export function ChatPanel({
         onOpenSessionPanel={onOpenSessionPanel}
         onOpenWorkflowPanel={onOpenWorkflowPanel}
       />
-      {messages.length === 0 && !isRunning ? (
+      {shouldShowHistoryRecovery ? (
+        <HistoryRecoveryState
+          failed={historyFailed}
+          messageCount={session.messageCount}
+          onRetry={activeId && onRetryHistory ? () => onRetryHistory(activeId) : undefined}
+          retryDisabled={socketStatus !== "open"}
+        />
+      ) : messages.length === 0 && !isRunning ? (
         <div className="flex flex-1 items-center justify-center px-6">
           <EmptyChatState
             onSelectSuggestion={socketStatus === "open" ? onSend : undefined}
@@ -82,7 +101,7 @@ export function ChatPanel({
         />
       )}
       <ChatComposer
-        disabled={socketStatus !== "open"}
+        disabled={composerDisabled}
         running={!!isRunning}
         modelProviders={modelProviders}
         selectedModelProviderId={selectedModelProviderId}
