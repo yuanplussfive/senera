@@ -375,8 +375,16 @@ function summarizeStepSubtitle(step: TimelineStep): string | undefined {
   if (step.toolErrorMessage) return step.toolErrorMessage;
   if (step.errorMessage) return step.errorMessage;
   if (step.retryCode && step.description) return `${step.retryCode} · ${step.description}`;
-  if (typeof step.promptChars === "number" || typeof step.promptLines === "number") {
-    return [typeof step.promptChars === "number" ? `${step.promptChars} chars` : null, typeof step.promptLines === "number" ? `${step.promptLines} lines` : null]
+  if (
+    typeof step.promptChars === "number"
+    || typeof step.promptLines === "number"
+    || typeof step.promptTokenCount === "number"
+  ) {
+    return [
+      typeof step.promptChars === "number" ? `${step.promptChars} 字` : null,
+      typeof step.promptLines === "number" ? `${step.promptLines} 行` : null,
+      typeof step.promptTokenCount === "number" ? `${step.promptTokenCount} token` : null,
+    ]
       .filter(Boolean)
       .join(" · ");
   }

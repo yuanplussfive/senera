@@ -92,6 +92,7 @@ export type AgentLoopCommandSucceeded =
       requestId: string;
       step: number;
       prompt: string;
+      promptTokenCount: number;
     }
   | {
       kind: "tool_calls_collected";
@@ -224,7 +225,12 @@ export class AgentLoopStateMachine {
           prompt: entry.prompt,
           messages: state.messages,
         },
-        events: this.eventFactory.promptRendered(entry.requestId, entry.step, entry.prompt),
+        events: this.eventFactory.promptRendered(
+          entry.requestId,
+          entry.step,
+          entry.prompt,
+          entry.promptTokenCount,
+        ),
       }),
       tool_calls_collected: (entry) => ({
         state: {

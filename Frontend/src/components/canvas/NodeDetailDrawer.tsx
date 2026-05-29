@@ -195,8 +195,16 @@ function MetaStrip({ step }: { step: TimelineStep }): JSX.Element {
     chips.push({ label: "callId", value: step.callId.slice(0, 14), mono: true });
   if (typeof step.retryAttempt === "number")
     chips.push({ label: "重试", value: `第 ${step.retryAttempt} 次`, tone: "warn" });
-  if (typeof step.promptChars === "number")
-    chips.push({ label: "提示词", value: `${step.promptChars} 字 · ${step.promptLines ?? 0} 行` });
+  if (typeof step.promptChars === "number") {
+    chips.push({
+      label: "提示词",
+      value: [
+        `${step.promptChars} 字`,
+        `${step.promptLines ?? 0} 行`,
+        typeof step.promptTokenCount === "number" ? `${step.promptTokenCount} token` : null,
+      ].filter(Boolean).join(" · "),
+    });
+  }
   if (step.startedAt && step.endedAt)
     chips.push({ label: "时长", value: formatDuration(step.startedAt, step.endedAt), mono: true });
   else if (step.startedAt)

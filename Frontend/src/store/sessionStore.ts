@@ -17,6 +17,7 @@ import {
   type ModelStartedData,
   type ModelProviderMetadata,
   type ModelProviderListItem,
+  type PromptSummaryData,
   type RetryPlannedData,
   type RunFailedData,
   type RunStartedData,
@@ -85,6 +86,7 @@ export interface TimelineStep {
   modelName?: string;
   promptChars?: number;
   promptLines?: number;
+  promptTokenCount?: number;
   decisionKind?: string;
   xmlRoot?: string;
 }
@@ -105,6 +107,7 @@ export interface RunRecord {
   /** 后端实时解析出的"用户可见文本"——直接用于打字机效果 */
   visibleText: string;
   visibleKind: "final_answer" | "ask_user" | "tool_calls" | "unknown";
+  decisionMode: "none" | "tool_candidate";
   /** 通过 decision.parsed.detail 暂存的工具参数 */
   pendingToolArgsByName: Record<string, unknown>;
   modelProvider?: ModelProviderMetadata;
@@ -245,6 +248,7 @@ function createRunRecord(input: {
     xmlPreview: "",
     visibleText: "",
     visibleKind: "unknown",
+    decisionMode: "none",
     pendingToolArgsByName: {},
   };
 }
@@ -723,6 +727,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
         run.streamingRaw = "";
         run.xmlPreview = "";
         run.visibleText = "";
+        run.decisionMode = "none";
         upsertStep(run, {
           id: `${run.requestId}-cancelled`,
           kind: "error",
@@ -743,7 +748,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       const session = ensureSession(state, sessionId);
       const run = currentRun(session, env.requestId);
       if (!run) return;
-      const data = env.data as { chars: number; lines: number };
+      const data = env.data as PromptSummaryData;
       upsertStep(run, {
         id: `${run.requestId}-prompt-${env.step ?? 0}`,
         kind: "prompt",
@@ -754,6 +759,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
         endedAt: env.timestamp,
         promptChars: data.chars,
         promptLines: data.lines,
+        promptTokenCount: data.tokenCount,
       });
       return;
     }
@@ -785,6 +791,10 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (!run) return;
       const data = env.data as ModelDeltaData;
       run.streamingRaw += data.text;
+      if (run.decisionMode === "tool_candidate") {
+        touchRun(run);
+        return;
+      }
       run.visibleText = run.streamingRaw;
       run.visibleKind = "final_answer";
       touchRun(run);
@@ -813,6 +823,9 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (!run) return;
       const data = env.data as DecisionXmlProgressData;
       run.xmlPreview = data.xml;
+      if (data.kind === "tool_calls") {
+        run.decisionMode = "tool_candidate";
+      }
       run.visibleText = data.text;
       run.visibleKind = data.kind;
       touchRun(run);
@@ -1034,6 +1047,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
         run.streamingRaw = "";
         run.xmlPreview = "";
         run.visibleText = "";
+        run.decisionMode = "none";
       }
       session.updatedAt = env.timestamp;
       // 这个会话挪到列表顶部
@@ -1071,6 +1085,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
         run.streamingRaw = "";
         run.xmlPreview = "";
         run.visibleText = "";
+        run.decisionMode = "none";
       }
       return;
     }

@@ -132,7 +132,7 @@ export class AgentDecisionXmlCollector {
             state: snapshot.state,
             xml: snapshot.candidateXml,
             ...extractDecisionStreamingPreview(
-              snapshot.candidateXml,
+              snapshot.rawText,
               this.options.policy,
               this.previewRules,
             ),

@@ -62,6 +62,7 @@ const ActivityProjectors: Partial<Record<string, Projector>> = {
       formatStep(event.step),
       formatCount(normalizeRecord(event.data).chars, "字"),
       formatCount(normalizeRecord(event.data).lines, "行"),
+      formatCount(normalizeRecord(event.data).tokenCount, "token"),
     ),
     tone: AgentCliActivityTone.Neutral,
     state: "completed",

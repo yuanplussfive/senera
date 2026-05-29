@@ -47,7 +47,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     const queue = pendingRef.current;
     if (queue.length === 0) return;
     pendingRef.current = [];
-    for (const env of queue) {
+    for (const env of compactStreamingEvents(queue)) {
       onEventRef.current(env);
     }
   }, []);
@@ -173,4 +173,58 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   }, [connect]);
 
   return { status, send, reconnect };
+}
+
+function compactStreamingEvents(queue: readonly EventEnvelope[]): EventEnvelope[] {
+  const byRun = new Map<string, {
+    model?: EventEnvelope;
+    decision?: EventEnvelope;
+  }>();
+
+  for (const env of queue) {
+    const key = streamingEventKey(env);
+    const entry = byRun.get(key) ?? {};
+
+    if (env.kind === EventKinds.ModelDelta) {
+      entry.model = mergeModelDelta(entry.model, env);
+    } else if (env.kind === EventKinds.DecisionXmlProgress) {
+      entry.decision = env;
+    }
+
+    byRun.set(key, entry);
+  }
+
+  return Array.from(byRun.values()).flatMap((entry) => [
+    ...(entry.model ? [entry.model] : []),
+    ...(entry.decision ? [entry.decision] : []),
+  ]);
+}
+
+function streamingEventKey(env: EventEnvelope): string {
+  return [
+    env.sessionId ?? "",
+    env.requestId ?? "",
+    env.step ?? "",
+  ].join("\u0000");
+}
+
+function mergeModelDelta(
+  previous: EventEnvelope | undefined,
+  current: EventEnvelope,
+): EventEnvelope {
+  if (!previous) return current;
+  return {
+    ...current,
+    sequence: previous.sequence,
+    timestamp: previous.timestamp,
+    data: {
+      text: readDeltaText(previous) + readDeltaText(current),
+    },
+  };
+}
+
+function readDeltaText(env: EventEnvelope): string {
+  return typeof (env.data as { text?: unknown }).text === "string"
+    ? (env.data as { text: string }).text
+    : "";
 }

@@ -89,6 +89,7 @@ export class AgentLoopCommandExecutor {
         requestId: command.requestId,
         step: command.step,
         prompt,
+        promptTokenCount: this.options.runtime.tokenEstimator.estimate(prompt).tokenCount,
       },
     };
   }

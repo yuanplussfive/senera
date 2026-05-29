@@ -216,6 +216,7 @@ export interface RunStartedData {
 export interface PromptSummaryData {
   chars: number;
   lines: number;
+  tokenCount: number;
 }
 
 export interface ModelDeltaData {
@@ -242,6 +243,7 @@ export interface DecisionXmlProgressData {
   /** 后端已经把 CDATA 剥好、实体转义反过来的"用户可见文本"——流式逐步增长 */
   kind: "final_answer" | "ask_user" | "tool_calls" | "unknown";
   text: string;
+  preambleText: string;
 }
 
 export interface DecisionXmlSummaryData {

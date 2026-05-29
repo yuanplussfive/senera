@@ -72,6 +72,7 @@ const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormatter>> =
         formatStepToken(event.step),
         formatCountToken(data.chars, "字"),
         formatCountToken(data.lines, "行"),
+        formatCountToken(data.tokenCount, "token"),
       ],
     };
   },

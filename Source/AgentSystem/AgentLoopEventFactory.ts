@@ -24,8 +24,13 @@ export class AgentLoopEventFactory {
     };
   }
 
-  promptRendered(requestId: string, step: number, prompt: string): AgentDomainEvent[] {
-    const summary = summarizePrompt(prompt);
+  promptRendered(
+    requestId: string,
+    step: number,
+    prompt: string,
+    tokenCount: number,
+  ): AgentDomainEvent[] {
+    const summary = summarizePrompt(prompt, tokenCount);
 
     return [
       {

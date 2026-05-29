@@ -225,6 +225,7 @@ export type AgentDomainEvent =
       data: {
         chars: number;
         lines: number;
+        tokenCount: number;
       };
     }
   | {
@@ -273,6 +274,7 @@ export type AgentDomainEvent =
         /** 已剥离 CDATA 与实体转义的用户可见文本（流式逐步增长） */
         kind: "final_answer" | "ask_user" | "tool_calls" | "unknown";
         text: string;
+        preambleText: string;
       };
     }
   | {
@@ -739,9 +741,10 @@ function readDetailId(data: unknown): string | undefined {
     : undefined;
 }
 
-export function summarizePrompt(prompt: string): AgentEventSpec<typeof AgentEventKinds.PromptSummary, {
+export function summarizePrompt(prompt: string, tokenCount: number): AgentEventSpec<typeof AgentEventKinds.PromptSummary, {
   chars: number;
   lines: number;
+  tokenCount: number;
 }> {
   return {
     kind: AgentEventKinds.PromptSummary,
@@ -750,6 +753,7 @@ export function summarizePrompt(prompt: string): AgentEventSpec<typeof AgentEven
     data: {
       chars: prompt.length,
       lines: prompt.length === 0 ? 0 : prompt.split(/\r?\n/).length,
+      tokenCount,
     },
   };
 }
