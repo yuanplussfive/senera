@@ -434,7 +434,6 @@ export function App(): JSX.Element {
         toast.error("无法删除：缺少 requestId");
         return;
       }
-      if (!window.confirm("从此处开始删除？这一条及之后的所有消息将从后端永久移除。")) return;
       const ok = send({
         type: "session.truncate_from",
         sessionId: activeId,

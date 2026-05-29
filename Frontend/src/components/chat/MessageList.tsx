@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import type { ModelProviderListItem } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
+import { DeleteMessageDialog } from "./DeleteMessageDialog";
 import { EditMessageDialog } from "./EditMessageDialog";
 import { MessageRow, StreamingRow } from "./MessageRow";
 import { useVirtuosoAutoStickToBottom } from "./useVirtuosoAutoStickToBottom";
@@ -45,6 +46,7 @@ export function MessageList({
 }: MessageListProps): JSX.Element {
   const [editing, setEditing] = useState<{ id: string; message: ChatMessage } | null>(null);
   const [draft, setDraft] = useState("");
+  const [deleting, setDeleting] = useState<ChatMessage | null>(null);
   const items = useMemo(
     () => (currentRun ? [...messages, { __streaming: true as const, run: currentRun }] : messages),
     [messages, currentRun],
@@ -102,7 +104,7 @@ export function MessageList({
                 selectedModelProvider={selectedModelProvider}
                 userProfile={userProfile}
                 onRegenerate={() => onRegenerate(item)}
-                onDelete={() => onDeleteFromMessage(item)}
+                onDelete={() => setDeleting(item)}
                 onViewWorkflow={() => onViewWorkflow(item)}
               />
             </div>
@@ -121,6 +123,17 @@ export function MessageList({
         onSubmit={(target, next) => {
           onEditUserMessage(target, next);
           closeEditor();
+        }}
+      />
+      <DeleteMessageDialog
+        open={!!deleting}
+        message={deleting}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+        onConfirm={(target) => {
+          onDeleteFromMessage(target);
+          setDeleting(null);
         }}
       />
     </>
