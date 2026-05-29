@@ -1,0 +1,62 @@
+{
+  "Plugin": {
+    "Name": "FastContextIndexToolPlugin",
+    "Title": "Fast Context Index Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Entry": {
+      "Kind": "Process",
+      "Command": "node",
+      "Args": [
+        "index.js"
+      ],
+      "Cwd": "."
+    }
+  },
+  "Discovery": {
+    "Tags": [
+      "context",
+      "index",
+      "minisearch",
+      "symbol",
+      "workspace"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 71
+  },
+  "Tools": [
+    {
+      "Name": "FastContextIndexSearchTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "filesystem:read:workspace",
+        "filesystem:write:.state"
+      ]
+    },
+    {
+      "Name": "FastContextRefreshIndexTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "filesystem:read:workspace",
+        "filesystem:write:.state"
+      ]
+    }
+  ],
+  "Security": {
+    "TrustLevel": "Local",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [
+        "../.."
+      ],
+      "Write": [
+        ".state"
+      ]
+    },
+    "RequiresApproval": false
+  }
+}

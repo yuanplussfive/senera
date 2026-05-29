@@ -1,0 +1,31 @@
+{
+  "Plugin": {
+    "Name": "AgentTemplatePlugin",
+    "Title": "Agent Prompt Templates",
+    "Version": "0.1.0",
+    "Kind": "System",
+    "Description": "提供面向模型的基础 Liquid 提示词模板。"
+  },
+  "Templates": [
+    {
+      "Name": "BaseSystemPrompt",
+      "Path": "./Templates/BaseSystemPrompt.liquid"
+    },
+    {
+      "Name": "RepairPrompt",
+      "Path": "./Templates/RepairPrompt.liquid"
+    },
+    {
+      "Name": "PromptGuidance",
+      "Path": "./Templates/PromptGuidance.liquid"
+    },
+    {
+      "Name": "DecisionProtocol",
+      "Path": "./Templates/DecisionProtocol.liquid"
+    },
+    {
+      "Name": "ToolCatalog",
+      "Path": "./Templates/ToolCatalog.liquid"
+    }
+  ]
+}

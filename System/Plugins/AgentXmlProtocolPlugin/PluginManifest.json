@@ -1,0 +1,20 @@
+{
+  "Plugin": {
+    "Name": "AgentXmlProtocolPlugin",
+    "Title": "Agent XML Protocol",
+    "Version": "0.1.0",
+    "Kind": "System",
+    "Description": "定义 AgentSystem 使用的受限 XML 子集。"
+  },
+  "XmlProtocol": {
+    "AllowAttributes": false,
+    "AllowDoctype": false,
+    "AllowEntity": false,
+    "AllowNamespace": false,
+    "AllowProcessingInstruction": false,
+    "AllowMixedContent": false,
+    "MaxDepth": 8,
+    "MaxTextLength": 20000,
+    "MaxToolCalls": 8
+  }
+}

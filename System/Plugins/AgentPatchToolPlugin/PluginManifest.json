@@ -1,0 +1,47 @@
+{
+  "Plugin": {
+    "Name": "AgentPatchToolPlugin",
+    "Title": "Apply Patch Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool"
+  },
+  "Discovery": {
+    "Tags": [
+      "patch",
+      "edit",
+      "workspace",
+      "filesystem"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 95
+  },
+  "Tools": [
+    {
+      "Name": "ApplyPatchTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "filesystem:write:workspace"
+      ],
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "patch.apply"
+      }
+    }
+  ],
+  "Security": {
+    "TrustLevel": "System",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [
+        "../.."
+      ],
+      "Write": [
+        "../.."
+      ]
+    },
+    "RequiresApproval": false
+  }
+}

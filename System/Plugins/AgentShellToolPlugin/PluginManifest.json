@@ -1,0 +1,48 @@
+{
+  "Plugin": {
+    "Name": "AgentShellToolPlugin",
+    "Title": "Host Shell Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool"
+  },
+  "Discovery": {
+    "Tags": [
+      "shell",
+      "command",
+      "workspace",
+      "host"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 90
+  },
+  "Tools": [
+    {
+      "Name": "ShellCommandTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "process:shell",
+        "filesystem:workspace"
+      ],
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "shell.run"
+      }
+    }
+  ],
+  "Security": {
+    "TrustLevel": "System",
+    "Network": "Allow",
+    "FileSystem": {
+      "Read": [
+        "../.."
+      ],
+      "Write": [
+        "../.."
+      ]
+    },
+    "RequiresApproval": false
+  }
+}

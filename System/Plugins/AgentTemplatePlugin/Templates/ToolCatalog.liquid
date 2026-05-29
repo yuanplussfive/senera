@@ -1,0 +1,41 @@
+<tool_protocol>
+  <rules>
+    <rule>只有决定调用工具时才使用本节；否则直接自然语言回复。</rule>
+    <rule>调用工具时，整条回复只能是一个 &lt;tool_calls&gt; 根标签，不能包含任何其它文字。</rule>
+    <rule>每个 &lt;tool_call&gt; 必须包含精确工具名 &lt;name&gt; 和参数容器 &lt;arguments&gt;。</rule>
+    <rule>字段用子标签表达，数组字段用重复 &lt;item&gt;，禁止 XML 属性。</rule>
+    <rule>对象和数组容器保持 XML 结构；字符串、数字、布尔、枚举等叶子值字段直接写文本。</rule>
+    <rule>参数 contract 只用于理解参数形状；你仍然必须输出 XML，不要输出 TypeScript 或 JSON。</rule>
+    <rule>arguments_contract 里的字段对应 &lt;arguments&gt; 内的同名子标签。</rule>
+    <rule>可选字段可以省略；有默认值的字段可以省略。</rule>
+  </rules>
+</tool_protocol>
+
+<tools>
+{% for tool in ToolCards %}
+  <tool>
+    <name>{{ tool.name | escape }}</name>
+    <summary>{{ tool.description | escape }}</summary>
+    <use_when>{{ tool.whenToUse | escape }}</use_when>
+    <avoid_when>{{ tool.whenNotToUse | escape }}</avoid_when>
+{% if tool.argumentsContract %}
+    <arguments_contract>
+      <ts_like_preview>
+{% for line in tool.argumentsContract.tsHintLines %}
+        <line>{{ line | escape }}</line>
+{% endfor %}
+      </ts_like_preview>
+      <fields>
+{% include "ContractFieldTree.liquid", Properties: tool.argumentsContract.properties %}
+      </fields>
+      <xml_structure>
+{{ tool.argumentsContract.xmlPreview }}
+      </xml_structure>
+    </arguments_contract>
+{% endif %}
+    <documentation>
+{{ tool.documentationXml }}
+    </documentation>
+  </tool>
+{% endfor %}
+</tools>

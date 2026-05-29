@@ -1,0 +1,47 @@
+{
+  "Plugin": {
+    "Name": "WeatherToolPlugin",
+    "Title": "Weather Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Entry": {
+      "Kind": "Process",
+      "Command": "node",
+      "Args": [
+        "index.js"
+      ],
+      "Cwd": "."
+    }
+  },
+  "Discovery": {
+    "Tags": [
+      "weather",
+      "open-meteo",
+      "real-world"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 50
+  },
+  "Tools": [
+    {
+      "Name": "WeatherTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "network:https://api.open-meteo.com",
+        "network:https://geocoding-api.open-meteo.com"
+      ]
+    }
+  ],
+  "Security": {
+    "TrustLevel": "External",
+    "Network": "Allow",
+    "FileSystem": {
+      "Read": [],
+      "Write": []
+    },
+    "RequiresApproval": false
+  }
+}

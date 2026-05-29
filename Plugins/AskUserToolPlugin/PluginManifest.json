@@ -1,0 +1,43 @@
+{
+  "Plugin": {
+    "Name": "AskUserToolPlugin",
+    "Title": "Ask User Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Entry": {
+      "Kind": "Process",
+      "Command": "node",
+      "Args": [
+        "index.js"
+      ],
+      "Cwd": "."
+    }
+  },
+  "Discovery": {
+    "Tags": [
+      "ask-user",
+      "clarification"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 20
+  },
+  "Tools": [
+    {
+      "Name": "AskUserTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": []
+    }
+  ],
+  "Security": {
+    "TrustLevel": "Local",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [],
+      "Write": []
+    },
+    "RequiresApproval": false
+  }
+}

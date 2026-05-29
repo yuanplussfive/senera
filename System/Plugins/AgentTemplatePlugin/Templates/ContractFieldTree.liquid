@@ -1,0 +1,29 @@
+{% for property in Properties %}
+<field>
+  <name>{{ property.displayName | escape }}</name>
+{% if property.displayName != property.name %}
+  <tag_name>{{ property.name | escape }}</tag_name>
+{% endif %}
+  <path>{{ property.path | escape }}</path>
+  <depth>{{ property.depth }}</depth>
+  <kind>{{ property.kind | escape }}</kind>
+  <required>{{ property.required }}</required>
+  <type>{{ property.typeText | escape }}</type>
+{% if property.comment != "" %}
+  <note>{{ property.comment | escape }}</note>
+{% endif %}
+{% if property.xmlHint != "" %}
+  <xml_hint>{{ property.xmlHint | escape }}</xml_hint>
+{% endif %}
+{% if property.children.size > 0 %}
+  <children>
+{% include "ContractFieldTree.liquid", Properties: property.children %}
+  </children>
+{% endif %}
+{% if property.elements.size > 0 %}
+  <element>
+{% include "ContractFieldTree.liquid", Properties: property.elements %}
+  </element>
+{% endif %}
+</field>
+{% endfor %}

@@ -1,0 +1,73 @@
+{
+  "Plugin": {
+    "Name": "FastContextSearchToolPlugin",
+    "Title": "Fast Context Search Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Entry": {
+      "Kind": "Process",
+      "Command": "node",
+      "Args": [
+        "index.js"
+      ],
+      "Cwd": "."
+    }
+  },
+  "Discovery": {
+    "Tags": [
+      "context",
+      "search",
+      "ripgrep",
+      "hybrid",
+      "symbol",
+      "workspace"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 70
+  },
+  "Tools": [
+    {
+      "Name": "FastContextHybridSearchTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "filesystem:read:workspace",
+        "filesystem:write:.state",
+        "process:ripgrep"
+      ]
+    },
+    {
+      "Name": "FastContextSymbolSearchTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "filesystem:read:workspace",
+        "filesystem:write:.state"
+      ]
+    },
+    {
+      "Name": "FastContextSearchTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "filesystem:read:workspace",
+        "process:ripgrep"
+      ]
+    }
+  ],
+  "Security": {
+    "TrustLevel": "Local",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [
+        "../.."
+      ],
+      "Write": [
+        ".state"
+      ]
+    },
+    "RequiresApproval": false
+  }
+}

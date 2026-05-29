@@ -1,0 +1,10 @@
+{
+  "name": "@senera/plugin-fast-context-index-tool",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "@senera/tool-plugin-sdk": "file:../../Packages/ToolPluginSdk",
+    "@senera/workspace-context-core": "file:../../Packages/WorkspaceContextCore"
+  }
+}

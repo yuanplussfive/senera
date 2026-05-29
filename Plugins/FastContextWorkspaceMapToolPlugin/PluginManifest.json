@@ -1,0 +1,48 @@
+{
+  "Plugin": {
+    "Name": "FastContextWorkspaceMapToolPlugin",
+    "Title": "Fast Context Workspace Map Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Entry": {
+      "Kind": "Process",
+      "Command": "node",
+      "Args": [
+        "index.js"
+      ],
+      "Cwd": "."
+    }
+  },
+  "Discovery": {
+    "Tags": [
+      "context",
+      "workspace",
+      "map"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 68
+  },
+  "Tools": [
+    {
+      "Name": "FastContextWorkspaceMapTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "filesystem:read:workspace"
+      ]
+    }
+  ],
+  "Security": {
+    "TrustLevel": "Local",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [
+        "../.."
+      ],
+      "Write": []
+    },
+    "RequiresApproval": false
+  }
+}

@@ -1,0 +1,16 @@
+.env
+.env.local
+*.local
+senera.config.json
+Dist/
+Frontend/dist/
+Frontend/.vite-dev*.log
+Frontend/tsconfig.tsbuildinfo
+node_modules/
+.senera/
+.claude/settings.local.json
+tmp/
+Plugins/*/PluginConfig.toml
+Plugins/*/.state/
+Plugins/*/node_modules/
+Plugins/*/package-lock.json

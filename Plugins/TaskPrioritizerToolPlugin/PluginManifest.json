@@ -1,0 +1,45 @@
+{
+  "Plugin": {
+    "Name": "TaskPrioritizerToolPlugin",
+    "Title": "Task Prioritizer Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Entry": {
+      "Kind": "Process",
+      "Command": "node",
+      "Args": [
+        "index.js"
+      ],
+      "Cwd": "."
+    }
+  },
+  "Discovery": {
+    "Tags": [
+      "task",
+      "planning",
+      "priority",
+      "local"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 57
+  },
+  "Tools": [
+    {
+      "Name": "TaskPrioritizerTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": []
+    }
+  ],
+  "Security": {
+    "TrustLevel": "Local",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [],
+      "Write": []
+    },
+    "RequiresApproval": false
+  }
+}

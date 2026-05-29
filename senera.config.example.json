@@ -1,0 +1,107 @@
+{
+  "PluginRoots": {
+    "System": [
+      "./System/Plugins"
+    ],
+    "User": [
+      "./Plugins"
+    ]
+  },
+  "PluginDiscovery": {
+    "ManifestFileName": "PluginManifest.json"
+  },
+  "XmlProtocol": {
+    "MaxDepth": 16,
+    "MaxDecisionTokens": 32000,
+    "MaxToolCalls": 8,
+    "ArrayElementNames": [
+      "tool_call",
+      "item"
+    ],
+    "ArrayElementNameSuffix": "_item"
+  },
+  "ToolExecution": {
+    "Mode": "Process",
+    "TimeoutMs": 120000,
+    "MaxStdoutBytes": 1000000,
+    "MaxStderrBytes": 1000000
+  },
+  "PluginDocumentation": {
+    "Markdown": {
+      "MinNonEmptyLines": 8,
+      "ExcludePathFragments": [
+        "node_modules",
+        "Dist",
+        "Plugins/*/node_modules"
+      ]
+    },
+    "ToolDescription": {
+      "MinNonEmptyLines": 8,
+      "SummarySection": "简述",
+      "TriggerSection": "何时使用",
+      "AvoidSection": "不要使用的情况",
+      "RequiredSections": [
+        "简述",
+        "何时使用",
+        "不要使用的情况",
+        "输入",
+        "输出",
+        "调用示例",
+        "执行约束"
+      ]
+    },
+    "DecisionActionDescription": {
+      "MinNonEmptyLines": 8,
+      "SummarySection": "简述",
+      "TriggerSection": "何时使用",
+      "AvoidSection": "不要使用的情况",
+      "RequiredSections": [
+        "简述",
+        "何时使用",
+        "不要使用的情况",
+        "输出",
+        "调用示例",
+        "执行约束"
+      ]
+    },
+    "PromptXml": {
+      "XmlFenceLanguages": [
+        "xml"
+      ],
+      "CodeFenceLanguages": []
+    }
+  },
+  "DefaultModelProviderId": "main",
+  "ModelProviders": [
+    {
+      "Id": "main",
+      "Title": "Main Model",
+      "Icon": "openai",
+      "Kind": "OpenAICompatible",
+      "Endpoint": "Responses",
+      "BaseUrl": "https://api.openai.com/v1",
+      "ApiKey": "YOUR_API_KEY",
+      "Model": "gpt-5.5",
+      "Temperature": 0.2,
+      "MaxOutputTokens": -1,
+      "Stream": true,
+      "TimeoutMs": 120000,
+      "MaxNetworkRetries": 2
+    }
+  ],
+  "AgentLoop": {
+    "MaxSteps": -1,
+    "MaxRepairAttempts": 2,
+    "LoadedTools": "all"
+  },
+  "Server": {
+    "Host": "127.0.0.1",
+    "Port": 8787,
+    "HotReload": true,
+    "RequestMaxBytes": 1048576
+  },
+  "Persistence": {
+    "Kind": "sqlite",
+    "DatabasePath": ".senera/senera.db"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "Plugin": {
+    "Name": "ExpenseSummaryToolPlugin",
+    "Title": "Expense Summary Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Entry": {
+      "Kind": "Process",
+      "Command": "node",
+      "Args": [
+        "index.js"
+      ],
+      "Cwd": "."
+    }
+  },
+  "Discovery": {
+    "Tags": [
+      "finance",
+      "expense",
+      "settlement",
+      "local"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 56
+  },
+  "Tools": [
+    {
+      "Name": "ExpenseSummaryTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": []
+    }
+  ],
+  "Security": {
+    "TrustLevel": "Local",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [],
+      "Write": []
+    },
+    "RequiresApproval": false
+  }
+}

@@ -1,0 +1,9 @@
+[tavily]
+# Put one or more Tavily API keys here. The plugin rotates them across calls.
+api_keys = [
+  "tvly-YOUR_API_KEY"
+]
+
+base_url = "https://api.tavily.com"
+timeout_ms = 300000
+state_dir = ".state"

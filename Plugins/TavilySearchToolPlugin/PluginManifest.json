@@ -1,0 +1,53 @@
+{
+  "Plugin": {
+    "Name": "TavilySearchToolPlugin",
+    "Title": "Tavily Search Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Entry": {
+      "Kind": "Process",
+      "Command": "node",
+      "Args": [
+        "index.js"
+      ],
+      "Cwd": "."
+    }
+  },
+  "Discovery": {
+    "Tags": [
+      "search",
+      "web",
+      "tavily",
+      "real-world"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 68
+  },
+  "Tools": [
+    {
+      "Name": "TavilySearchTool",
+      "DescriptionFile": "./Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "network:https://api.tavily.com",
+        "filesystem:read:PluginConfig.toml",
+        "filesystem:write:.state"
+      ]
+    }
+  ],
+  "Security": {
+    "TrustLevel": "External",
+    "Network": "Allow",
+    "FileSystem": {
+      "Read": [
+        "PluginConfig.toml"
+      ],
+      "Write": [
+        ".state"
+      ]
+    },
+    "RequiresApproval": false
+  }
+}

@@ -1,0 +1,22 @@
+[fast_context]
+# Paths are relative to the workspace root. Empty means auto-discover top-level roots.
+roots = []
+
+exclude = [
+  ".git",
+  ".claude",
+  "Dist",
+  "dist",
+  "build",
+  "coverage",
+  "node_modules",
+  ".senera",
+  ".state",
+  "package-lock.json"
+]
+
+max_file_bytes = 300000
+max_index_files = 5000
+default_max_results = 12
+default_context_lines = 4
+state_dir = ".state"

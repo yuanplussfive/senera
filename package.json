@@ -1,0 +1,58 @@
+{
+  "name": "senera",
+  "version": "1.0.0",
+  "description": "",
+  "main": "Dist/Source/AgentSystem/AgentSystemRuntime.js",
+  "exports": {
+    ".": {
+      "types": "./Source/AgentSystem/AgentSystemRuntime.ts",
+      "require": "./Dist/Source/AgentSystem/AgentSystemRuntime.js",
+      "default": "./Dist/Source/AgentSystem/AgentSystemRuntime.js"
+    },
+    "./plugin-sdk": {
+      "types": "./Source/AgentSystem/AgentToolPluginSdk.ts",
+      "require": "./Dist/Source/AgentSystem/AgentToolPluginSdk.js",
+      "default": "./Dist/Source/AgentSystem/AgentToolPluginSdk.js"
+    }
+  },
+  "scripts": {
+    "clean": "node Scripts/CleanDist.js",
+    "check": "tsc --noEmit",
+    "build": "node Scripts/CleanDist.js && tsc",
+    "server": "npm run build && node Dist/Scripts/SeneraServer.js",
+    "cli": "npm run build && node Dist/Scripts/SeneraCli.js",
+    "test": "npm run check"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.10.0",
+    "chalk": "^4.1.2",
+    "cross-spawn": "^7.0.6",
+    "dotenv": "^17.4.2",
+    "entities": "^8.0.0",
+    "eventsource-parser": "^3.0.8",
+    "fast-xml-parser": "^5.7.3",
+    "gpt-tokenizer": "^3.4.0",
+    "json-parse-even-better-errors": "^5.0.0",
+    "json-source-map": "^0.6.1",
+    "liquidjs": "^10.25.7",
+    "markdown-it": "^14.1.1",
+    "parse5": "^8.0.1",
+    "saxes": "^6.0.0",
+    "smol-toml": "^1.6.1",
+    "tree-kill": "^1.2.2",
+    "ws": "^8.20.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^25.6.2",
+    "@types/ws": "^8.18.1",
+    "typescript": "^6.0.3"
+  }
+}
