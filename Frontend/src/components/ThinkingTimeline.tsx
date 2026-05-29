@@ -36,15 +36,27 @@ import { NodeDetailDrawer } from "./canvas/NodeDetailDrawer";
 
 const NODE_TYPES = { step: StepNode };
 
-export function ThinkingTimeline(): JSX.Element {
+export function ThinkingTimeline({
+  presentation = "auto",
+  hidePanelTitle = false,
+}: {
+  presentation?: "auto" | "panel" | "rail";
+  hidePanelTitle?: boolean;
+}): JSX.Element {
   return (
     <ReactFlowProvider>
-      <ThinkingPanel />
+      <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} />
     </ReactFlowProvider>
   );
 }
 
-function ThinkingPanel(): JSX.Element {
+function ThinkingPanel({
+  presentation,
+  hidePanelTitle,
+}: {
+  presentation: "auto" | "panel" | "rail";
+  hidePanelTitle: boolean;
+}): JSX.Element {
   const activeId = useStore((s) => s.activeSessionId);
   const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
   const collapsed = useStore((s) => s.rightPanelCollapsed);
@@ -75,7 +87,8 @@ function ThinkingPanel(): JSX.Element {
     }
   }, [activeId, viewedRunId, selectedRun, latestRun?.requestId, setViewedRun]);
 
-  if (collapsed) {
+  const isRail = presentation === "rail" || (presentation === "auto" && collapsed);
+  if (isRail) {
     return (
       <aside className="flex h-full w-[44px] shrink-0 flex-col items-center border-l border-ink-200/60 bg-paper-100/40 py-3">
         <Tooltip content="展开思考过程" side="left">
@@ -99,15 +112,19 @@ function ThinkingPanel(): JSX.Element {
   }
 
   return (
-    <aside className="flex h-full w-[460px] shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40">
+    <aside className={cn(
+      "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
+      presentation === "panel" ? "w-full border-l-0" : "w-[460px]",
+    )}>
       <TopBar
         run={run}
         runs={runs}
         currentRunId={run?.requestId}
         pinnedToHistory={isPinnedToHistory}
+        hideTitle={hidePanelTitle}
         onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
         onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
-        onCollapse={toggleCollapsed}
+        onCollapse={presentation === "panel" ? undefined : toggleCollapsed}
       />
       <CanvasArea run={run} />
     </aside>
@@ -121,6 +138,7 @@ function TopBar({
   runs,
   currentRunId,
   pinnedToHistory,
+  hideTitle,
   onSelect,
   onFollowLatest,
   onCollapse,
@@ -129,9 +147,10 @@ function TopBar({
   runs: RunRecord[];
   currentRunId?: string;
   pinnedToHistory: boolean;
+  hideTitle?: boolean;
   onSelect: (requestId: string) => void;
   onFollowLatest: () => void;
-  onCollapse: () => void;
+  onCollapse?: () => void;
 }): JSX.Element {
   const completed = run?.steps.filter((s) => s.status === "done").length ?? 0;
   const failed = run?.steps.filter((s) => s.status === "failed").length ?? 0;
@@ -147,18 +166,24 @@ function TopBar({
   return (
     <>
       <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 bg-paper-100/70 px-3">
-        <Tooltip content="收起思考过程" side="left">
-          <button
-            type="button"
-            onClick={onCollapse}
-            className="grid h-7 w-7 place-items-center rounded text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900"
-            aria-label="collapse"
-          >
-            <PanelRightClose className="h-4 w-4" />
-          </button>
-        </Tooltip>
-        <Lightbulb className="h-4 w-4 text-terra-500" />
-        <span className="text-[13px] font-medium text-ink-800">思考过程</span>
+        {onCollapse ? (
+          <Tooltip content="收起思考过程" side="left">
+            <button
+              type="button"
+              onClick={onCollapse}
+              className="grid h-7 w-7 place-items-center rounded text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900"
+              aria-label="collapse"
+            >
+              <PanelRightClose className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        ) : null}
+        {hideTitle ? null : (
+          <>
+            <Lightbulb className="h-4 w-4 text-terra-500" />
+            <span className="text-[13px] font-medium text-ink-800">思考过程</span>
+          </>
+        )}
         <div className="ml-auto flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-400">
           {run?.status === "running" ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-terra-50 px-1.5 py-0.5 text-terra-600">
