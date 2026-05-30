@@ -296,10 +296,13 @@ export class AgentSessionManager {
       request.input,
       timestamp,
     );
-    const messages = this.conversationPolicy.materialize([
-      ...session.conversation,
-      userEntry,
-    ]);
+    const messages = [
+      ...this.conversationPolicy.materialize(session.conversation),
+      {
+        role: "user" as const,
+        content: request.input,
+      },
+    ];
 
     session.status = AgentSessionStatuses.Running;
     session.updatedAt = timestamp;

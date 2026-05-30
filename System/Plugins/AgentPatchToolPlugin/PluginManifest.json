@@ -8,9 +8,14 @@
   "Discovery": {
     "Tags": [
       "patch",
+      "补丁",
       "edit",
+      "编辑",
       "workspace",
-      "filesystem"
+      "工作区",
+      "filesystem",
+      "文件",
+      "修改"
     ]
   },
   "Prompting": {
@@ -20,7 +25,7 @@
   "Tools": [
     {
       "Name": "ApplyPatchTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:write:workspace"
@@ -28,6 +33,36 @@
       "Handler": {
         "Kind": "HostCapability",
         "Capability": "patch.apply"
+      },
+      "Search": {
+        "Summary": "按结构化编辑操作创建、替换、插入、删除或修改工作区文件。",
+        "Keywords": [
+          "patch",
+          "edit",
+          "apply",
+          "file",
+          "modify",
+          "create",
+          "delete",
+          "补丁",
+          "编辑",
+          "修改",
+          "写入",
+          "创建文件",
+          "删除文件"
+        ],
+        "UseCases": [
+          "需要实际修改代码、配置、文档或批量应用文件变更时使用。"
+        ],
+        "Examples": [
+          "修改 AgentToolSearchIndex.ts",
+          "给 PluginManifest.json 增加 Search 字段",
+          "create a new config example",
+          "replace lines 20 to 35"
+        ],
+        "Avoid": [
+          "只想查看文件内容时使用读取工具；只想运行命令时使用 ShellCommandTool。"
+        ]
       }
     }
   ],

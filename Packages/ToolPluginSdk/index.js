@@ -17,7 +17,7 @@ const AgentToolProcessErrorPhases = {
 };
 const DefaultXmlProtocolSpec = {
   roots: {
-    toolCalls: "tool_calls"
+    toolCalls: "senera_tool_calls"
   },
   items: {
     toolCall: "tool_call",

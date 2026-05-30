@@ -16,8 +16,13 @@
   "Discovery": {
     "Tags": [
       "context",
+      "上下文",
       "workspace",
-      "map"
+      "工作区",
+      "map",
+      "目录",
+      "结构",
+      "项目地图"
     ]
   },
   "Prompting": {
@@ -27,11 +32,40 @@
   "Tools": [
     {
       "Name": "FastContextWorkspaceMapTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace"
-      ]
+      ],
+      "Search": {
+        "Summary": "快速查看工作区目录结构和主要文件分布。",
+        "Keywords": [
+          "workspace",
+          "map",
+          "tree",
+          "directory",
+          "structure",
+          "project",
+          "工作区",
+          "目录",
+          "结构",
+          "文件树",
+          "项目地图",
+          "有哪些文件"
+        ],
+        "UseCases": [
+          "不清楚项目结构、需要先看有哪些目录或避免猜路径时使用。"
+        ],
+        "Examples": [
+          "项目有哪些目录",
+          "先看看工作区结构",
+          "不要猜 src app web 先列项目地图",
+          "show workspace tree"
+        ],
+        "Avoid": [
+          "不要用于读取完整文件内容或精确搜索代码。"
+        ]
+      }
     }
   ],
   "Security": {

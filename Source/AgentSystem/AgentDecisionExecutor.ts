@@ -19,6 +19,7 @@ import { AgentDecisionErrorFactory } from "./AgentDecisionErrorFactory.js";
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import { createToolCallId } from "./AgentIds.js";
 import { AgentExecutionErrorCodes } from "./AgentXmlStatus.js";
+import type { AgentToolSearchRuntime } from "./AgentToolSearchRuntime.js";
 
 export type AgentExecutionResult =
   | {
@@ -39,6 +40,7 @@ export interface AgentDecisionExecutionContext {
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;
+  loadedToolNames?: "all" | readonly string[];
 }
 
 type ToolCallDecision = Extract<AgentDecision, { kind: "ToolCalls" }>["payload"]["tool_call"][number];
@@ -61,13 +63,15 @@ export class AgentDecisionExecutor {
     errorFactory?: AgentDecisionErrorFactory,
     workspaceRoot?: string,
     hostCapabilities?: AgentToolHostCapabilityRegistry,
+    toolSearch?: AgentToolSearchRuntime,
   ) {
     const resolvedWorkspaceRoot = workspaceRoot ?? process.cwd();
     this.toolRunner = toolRunner ?? new AgentToolRunner(
       config,
       protocol,
       resolvedWorkspaceRoot,
-      hostCapabilities ?? createDefaultHostCapabilityRegistry(),
+      hostCapabilities ?? createDefaultHostCapabilityRegistry({ toolSearch }),
+      registry,
     );
     this.errors = errorFactory ?? new AgentDecisionErrorFactory();
   }
@@ -165,7 +169,11 @@ export class AgentDecisionExecutor {
     callId: string,
   ): Promise<AgentToolProcessRunResult> {
     await this.emitToolCallStarted(context, index, tool.name, callId);
-    const execution = await this.toolRunner.run(tool, args);
+    const execution = await this.toolRunner.run(tool, args, {
+      requestId: context.requestId,
+      step: context.step,
+      visibleToolNames: context.loadedToolNames === "all" ? undefined : context.loadedToolNames,
+    });
 
     if (!execution.response.ok) {
       await this.emitToolCallFailed(context, index, tool.name, callId, execution.response.error);
@@ -369,5 +377,12 @@ export class AgentDecisionExecutor {
     const text = stderr || stdout;
     const suffix = text ? ` · ${text.slice(0, 120)}` : "";
     return `exit ${exitCode} · ${command}${suffix}`;
+  }
+
+  private toolCallPath(
+    callIndex: number,
+    ...path: Array<string | number>
+  ): Array<string | number> {
+    return [this.protocol.items.toolCall, callIndex, ...path];
   }
 }

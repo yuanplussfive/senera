@@ -16,6 +16,7 @@ import { AgentToolResultXmlRenderer } from "./AgentToolResultXmlRenderer.js";
 import type { AgentConversationEntry } from "./AgentConversation.js";
 import { AgentRetryableError } from "./AgentRetryableError.js";
 import { AgentDecisionXmlCollectionRetryableError } from "./AgentDecisionXmlCollector.js";
+import { AgentActionPlannerContextBuilder } from "./AgentActionPlannerContext.js";
 
 export interface AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
@@ -27,6 +28,7 @@ export class AgentLoopCommandExecutor {
   private readonly executionProjector = new AgentExecutionProjector();
   private readonly resultRenderer: AgentToolResultXmlRenderer;
   private readonly decisionXmlCollector;
+  private readonly actionPlannerContextBuilder;
 
   constructor(private readonly options: AgentLoopCommandExecutorOptions) {
     const errorFactory = new AgentDecisionErrorFactory({
@@ -38,6 +40,14 @@ export class AgentLoopCommandExecutor {
     this.retryPlanner = new AgentRetryPlanner(errorFactory);
     this.resultRenderer = new AgentToolResultXmlRenderer(options.runtime.xmlPolicy.protocol);
     this.decisionXmlCollector = options.runtime.createDecisionXmlCollector(options.model);
+    this.actionPlannerContextBuilder = new AgentActionPlannerContextBuilder(
+      {
+        maxRecentDeltas: options.runtime.actionPlannerConfig.ContextBudget.MaxRecentDeltas,
+        maxStateCalls: options.runtime.actionPlannerConfig.ContextBudget.MaxStateCalls,
+        maxEvidence: options.runtime.actionPlannerConfig.ContextBudget.MaxEvidence,
+        maxPreviewChars: options.runtime.actionPlannerConfig.ContextBudget.MaxPreviewChars,
+      },
+    );
   }
 
   async execute(
@@ -46,12 +56,68 @@ export class AgentLoopCommandExecutor {
     signal?: AbortSignal,
   ): Promise<AgentLoopCommandResult> {
     return matchByKind(command, {
+      plan_action: (entry) => this.planAction(entry, signal),
       render_prompt: (entry) => this.renderPrompt(entry),
       collect_decision_xml: (entry) => this.collectDecisionXml(entry, onEvent, signal),
       parse_decision: (entry) => this.parseDecision(entry),
       execute_decision: (entry) => this.executeDecision(entry, onEvent),
       plan_retry: (entry) => this.planRetry(entry),
     });
+  }
+
+  private async planAction(
+    command: Extract<AgentLoopCommand, { kind: "plan_action" }>,
+    signal?: AbortSignal,
+  ): Promise<AgentLoopCommandResult> {
+    const dynamicTools = this.options.runtime.agentLoopConfig.LoadedTools === "dynamic";
+    const plan = await this.options.runtime.actionPlanner.plan({
+      requestId: command.requestId,
+      input: this.actionPlannerContextBuilder.buildInput({
+        userMessage: command.input,
+        currentStep: command.step,
+        dynamicTools,
+        loadedToolNames: command.loadedToolNames,
+        ledger: command.plannerLedger,
+        toolCatalog: this.options.runtime.toolCatalog
+          .list()
+          .slice(0, this.options.runtime.actionPlannerConfig.MaxCatalogTools),
+      }),
+      signal,
+    });
+    const decision = plan.kind === "planned" ? plan.decision : undefined;
+    const loadedToolNames = decision
+      ? this.options.runtime.toolSearch.resolvePlannedLoadedTools({
+          input: command.input,
+          loadedTools: this.options.runtime.agentLoopConfig.LoadedTools,
+          currentLoadedTools: command.loadedToolNames,
+          preferredTools: decision.preferredTools,
+          toolSearchQueries: decision.toolSearchQueries,
+          discover: decision.action === "discover_tools",
+        })
+      : this.options.runtime.toolSearch.resolvePlannedLoadedTools({
+          input: command.input,
+          loadedTools: this.options.runtime.agentLoopConfig.LoadedTools,
+          currentLoadedTools: command.loadedToolNames,
+        });
+
+    this.options.runtime.toolSearch.rememberAutoSearch(
+      command.requestId,
+      command.input,
+      loadedToolNames,
+    );
+
+    return {
+      kind: "succeeded",
+      output: {
+        kind: "action_planned",
+        requestId: command.requestId,
+        step: command.step,
+        plan,
+        loadedToolNames,
+        plannerLedger: command.plannerLedger,
+        actionDirective: decision,
+      },
+    };
   }
 
   private async renderPrompt(
@@ -68,7 +134,8 @@ export class AgentLoopCommandExecutor {
 
     const prompt = await this.options.runtime.promptRenderer.renderFile(template.path, {
       ...this.options.runtime.promptContextBuilder.buildBaseContext({
-        loadedToolNames: this.options.runtime.agentLoopConfig.LoadedTools,
+        loadedToolNames: command.loadedToolNames,
+        actionDirective: command.actionDirective,
         toolSections: {
           summary: toolDescription?.SummarySection,
           trigger: toolDescription?.TriggerSection,
@@ -106,6 +173,8 @@ export class AgentLoopCommandExecutor {
         step: command.step,
         systemPrompt: command.prompt,
         messages: command.messages,
+        actionDirective: command.actionDirective,
+        loadedToolNames: command.loadedToolNames,
         onEvent,
         signal,
       });
@@ -188,40 +257,57 @@ export class AgentLoopCommandExecutor {
         requestId: command.requestId,
         step: command.step,
         onEvent,
+        loadedToolNames: command.loadedToolNames,
       });
       const resultXml = execution.kind === "ToolResults"
         ? this.resultRenderer.render(execution)
         : undefined;
 
-      return execution.kind === "ToolResults"
-        ? {
-            kind: "succeeded",
-            output: {
-              kind: "tool_results_generated",
-              requestId: command.requestId,
-              step: command.step,
-              responseText: command.responseText,
-              execution,
-              resultXml: resultXml ?? "",
-              messages: [
-                ...command.messages,
-                {
-                  role: "assistant",
-                  content: command.responseText,
-                },
-                {
-                  role: "user",
-                  content: this.options.runtime.conversationPolicy.renderContextToolResultsXml(resultXml ?? ""),
-                },
-              ],
-              conversationEntries: this.buildToolResultConversationEntries(
-                command.requestId,
-                command.responseText,
-                resultXml ?? "",
-              ),
+      if (execution.kind !== "ToolResults") {
+        return this.projectTerminal(command.requestId, command.step, execution);
+      }
+
+      const loadedToolNames = this.options.runtime.toolSearch.afterToolResults({
+        requestId: command.requestId,
+        loadedTools: command.loadedToolNames,
+        dynamicTools: this.options.runtime.agentLoopConfig.LoadedTools === "dynamic",
+        execution,
+      });
+      const plannerLedger = this.actionPlannerContextBuilder.advanceAfterToolResults({
+        ledger: command.plannerLedger,
+        step: command.step,
+        results: execution.value,
+      });
+
+      return {
+        kind: "succeeded",
+        output: {
+          kind: "tool_results_generated",
+          requestId: command.requestId,
+          step: command.step,
+          responseText: command.responseText,
+          execution,
+          resultXml: resultXml ?? "",
+          messages: [
+            ...command.messages,
+            {
+              role: "assistant",
+              content: command.responseText,
             },
-          }
-        : this.projectTerminal(command.requestId, command.step, execution);
+            {
+              role: "user",
+              content: this.options.runtime.conversationPolicy.renderContextToolResultsXml(resultXml ?? ""),
+            },
+          ],
+          conversationEntries: this.buildToolResultConversationEntries(
+            command.requestId,
+            command.responseText,
+            resultXml ?? "",
+          ),
+          loadedToolNames,
+          plannerLedger,
+        },
+      };
     } catch (error) {
       return this.retryableFailure(command.requestId, command.step, command.responseText, error);
     }

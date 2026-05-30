@@ -13,10 +13,16 @@ import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "./AgentModelMetadata.js";
 import { AgentEventKinds } from "./AgentEvent.js";
+import type { AgentActionDecision, AgentActionPlanResult } from "./AgentActionPlanner.js";
+import {
+  buildInitialActionPlannerLedger,
+  type AgentActionPlannerLedger,
+} from "./AgentActionPlannerContext.js";
 
 export interface AgentLoopMachineConfig {
   maxSteps: number;
   maxRepairAttempts: number;
+  dynamicTools: boolean;
 }
 
 export interface RunningAgentLoopMachineState {
@@ -29,6 +35,9 @@ export interface RunningAgentLoopMachineState {
   lastDecisionXml?: string;
   lastModelProvider?: AgentModelProviderMetadata;
   lastUsage?: AgentModelUsage;
+  loadedToolNames: "all" | string[];
+  plannerLedger: AgentActionPlannerLedger;
+  actionDirective?: AgentActionDecision;
 }
 
 export interface CompletedAgentLoopMachineState {
@@ -51,9 +60,20 @@ export type AgentLoopMachineState =
 
 export type AgentLoopCommand =
   | {
+      kind: "plan_action";
+      requestId: string;
+      step: number;
+      input: string;
+      messages: AgentLanguageModelMessage[];
+      loadedToolNames: "all" | string[];
+      plannerLedger: AgentActionPlannerLedger;
+    }
+  | {
       kind: "render_prompt";
       requestId: string;
       step: number;
+      loadedToolNames: "all" | string[];
+      actionDirective?: AgentActionDecision;
     }
   | {
       kind: "collect_decision_xml";
@@ -61,6 +81,8 @@ export type AgentLoopCommand =
       step: number;
       prompt: string;
       messages: AgentLanguageModelMessage[];
+      actionDirective?: AgentActionDecision;
+      loadedToolNames: "all" | string[];
     }
   | {
       kind: "parse_decision";
@@ -75,6 +97,8 @@ export type AgentLoopCommand =
       responseText: string;
       decision: AgentDecision;
       messages: AgentLanguageModelMessage[];
+      loadedToolNames: "all" | string[];
+      plannerLedger: AgentActionPlannerLedger;
     }
   | {
       kind: "plan_retry";
@@ -87,6 +111,15 @@ export type AgentLoopCommand =
     };
 
 export type AgentLoopCommandSucceeded =
+  | {
+      kind: "action_planned";
+      requestId: string;
+      step: number;
+      plan: AgentActionPlanResult;
+      loadedToolNames: "all" | string[];
+      plannerLedger: AgentActionPlannerLedger;
+      actionDirective?: AgentActionDecision;
+    }
   | {
       kind: "prompt_rendered";
       requestId: string;
@@ -128,6 +161,8 @@ export type AgentLoopCommandSucceeded =
       resultXml: string;
       messages: AgentLanguageModelMessage[];
       conversationEntries: AgentConversationEntry[];
+      loadedToolNames: "all" | string[];
+      plannerLedger: AgentActionPlannerLedger;
     }
   | {
       kind: "terminal_projected";
@@ -174,6 +209,9 @@ export class AgentLoopStateMachine {
     requestId: string;
     input: string;
     messages?: AgentLanguageModelMessage[];
+    loadedToolNames: "all" | string[];
+    actionDirective?: AgentActionDecision;
+    emitRunStarted?: boolean;
   }): AgentLoopTransition {
     const fallbackMessages: AgentLanguageModelMessage[] = [
       {
@@ -190,14 +228,19 @@ export class AgentLoopStateMachine {
       messages: request.messages && request.messages.length > 0
         ? request.messages
         : fallbackMessages,
+      loadedToolNames: request.loadedToolNames,
+      plannerLedger: buildInitialActionPlannerLedger(request.messages),
+      actionDirective: request.actionDirective,
     };
 
     return {
       state,
-      command: this.renderPromptCommand(state),
-      events: [
-        this.eventFactory.runStarted(request.requestId, request.input),
-      ],
+      command: this.planActionCommand(state),
+      events: request.emitRunStarted === false
+        ? []
+        : [
+            this.eventFactory.runStarted(request.requestId, request.input),
+          ],
     };
   }
 
@@ -216,6 +259,25 @@ export class AgentLoopStateMachine {
     output: AgentLoopCommandSucceeded,
   ): AgentLoopTransition {
     return matchByKind(output, {
+      action_planned: (entry) => {
+        const nextState: RunningAgentLoopMachineState = {
+          ...state,
+          loadedToolNames: entry.loadedToolNames,
+          plannerLedger: entry.plannerLedger,
+          actionDirective: entry.actionDirective,
+        };
+
+        return {
+          state: nextState,
+          command: this.renderPromptCommand(nextState),
+          events: this.eventFactory.actionPlanned(
+            entry.requestId,
+            entry.step,
+            entry.plan,
+            entry.loadedToolNames,
+          ),
+        };
+      },
       prompt_rendered: (entry) => ({
         state,
         command: {
@@ -224,6 +286,9 @@ export class AgentLoopStateMachine {
           step: entry.step,
           prompt: entry.prompt,
           messages: state.messages,
+          actionDirective: state.actionDirective,
+          loadedToolNames: state.loadedToolNames,
+          plannerLedger: state.plannerLedger,
         },
         events: this.eventFactory.promptRendered(
           entry.requestId,
@@ -282,6 +347,7 @@ export class AgentLoopStateMachine {
         state: {
           ...state,
           lastDecisionXml: entry.sanitized.raw,
+          repairAttempts: 0,
         },
         command: {
           kind: "execute_decision",
@@ -289,7 +355,11 @@ export class AgentLoopStateMachine {
           step: entry.step,
           responseText: entry.sanitized.raw,
           decision: entry.decision,
-          messages: state.messages,
+          messages: state.repairAttempts > 0
+            ? this.stripRepairConversation(state.messages)
+            : state.messages,
+          loadedToolNames: state.loadedToolNames,
+          plannerLedger: state.plannerLedger,
         },
         events: [
           ...this.eventFactory.sanitizedDecisionXml(entry.requestId, entry.step, entry.sanitized),
@@ -301,6 +371,8 @@ export class AgentLoopStateMachine {
           state,
           entry.messages,
           entry.responseText,
+          entry.loadedToolNames,
+          entry.plannerLedger,
           this.eventFactory.toolResults(
             entry.requestId,
             entry.step,
@@ -374,6 +446,8 @@ export class AgentLoopStateMachine {
     state: RunningAgentLoopMachineState,
     messages: AgentLanguageModelMessage[],
     responseText: string,
+    loadedToolNames: "all" | string[],
+    plannerLedger: AgentActionPlannerLedger,
     events: AgentDomainEvent[],
   ): AgentLoopTransition {
     const nextState: RunningAgentLoopMachineState = {
@@ -381,7 +455,10 @@ export class AgentLoopStateMachine {
       step: state.step + 1,
       repairAttempts: 0,
       messages,
+      loadedToolNames: this.config.dynamicTools ? loadedToolNames : state.loadedToolNames,
+      plannerLedger,
       lastDecisionXml: responseText,
+      actionDirective: undefined,
     };
 
     return this.config.maxSteps !== -1 && nextState.step > this.config.maxSteps
@@ -393,9 +470,19 @@ export class AgentLoopStateMachine {
         )
       : {
           state: nextState,
-          command: this.renderPromptCommand(nextState),
+          command: this.planActionCommand(nextState),
           events,
         };
+  }
+
+  private stripRepairConversation(
+    messages: AgentLanguageModelMessage[],
+  ): AgentLanguageModelMessage[] {
+    const last = messages.at(-1);
+    const previous = messages.at(-2);
+    return last?.role === "user" && previous?.role === "assistant"
+      ? messages.slice(0, -2)
+      : messages;
   }
 
   private renderPromptCommand(state: RunningAgentLoopMachineState): AgentLoopCommand {
@@ -403,6 +490,20 @@ export class AgentLoopStateMachine {
       kind: "render_prompt",
       requestId: state.requestId,
       step: state.step,
+      loadedToolNames: state.loadedToolNames,
+      actionDirective: state.actionDirective,
+    };
+  }
+
+  private planActionCommand(state: RunningAgentLoopMachineState): AgentLoopCommand {
+    return {
+      kind: "plan_action",
+      requestId: state.requestId,
+      step: state.step,
+      input: state.input,
+      messages: state.messages,
+      loadedToolNames: state.loadedToolNames,
+      plannerLedger: state.plannerLedger,
     };
   }
 

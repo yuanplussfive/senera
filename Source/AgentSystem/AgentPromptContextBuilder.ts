@@ -14,6 +14,8 @@ import {
   AgentPromptContractProjector,
   type AgentPromptContractView,
 } from "./AgentPromptContractProjector.js";
+import { createXmlProtocolSpec, type AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
+import type { AgentActionDecision } from "./AgentActionPlanner.js";
 
 export interface AgentPromptToolContext {
   name: string;
@@ -36,8 +38,29 @@ export interface AgentPromptDecisionActionContext {
 }
 
 export interface AgentPromptContext {
+  ToolCallProtocol: AgentPromptToolCallProtocolContext;
   DecisionActions: AgentPromptDecisionActionContext[];
   ToolCards: AgentPromptToolContext[];
+  ToolDiscoveryToolName?: string;
+  ActionDirective: AgentPromptActionDirectiveContext | null;
+}
+
+export interface AgentPromptToolCallProtocolContext {
+  root: string;
+  callTag: string;
+  nameTag: string;
+  argumentsTag: string;
+  arrayItemTag: string;
+}
+
+export interface AgentPromptActionDirectiveContext {
+  action: string;
+  intent: string;
+  requiredCapabilities: string[];
+  toolSearchQueries: string[];
+  preferredTools: string[];
+  confidence: number;
+  instruction: string;
 }
 
 export interface AgentPromptContextOptions {
@@ -47,6 +70,7 @@ export interface AgentPromptContextOptions {
   summarySection?: string;
   triggerSection?: string;
   avoidSection?: string;
+  actionDirective?: AgentActionDecision;
 }
 
 export interface AgentPromptSectionOptions {
@@ -58,11 +82,13 @@ export interface AgentPromptSectionOptions {
 export class AgentPromptContextBuilder {
   private readonly markdownRenderer: AgentMarkdownPromptXmlRenderer;
   private readonly contractProjector = new AgentPromptContractProjector();
+  private readonly protocol: AgentXmlProtocolSpec;
 
   constructor(
     private readonly registry: AgentPluginRegistry,
     config: AgentSystemConfig,
   ) {
+    this.protocol = createXmlProtocolSpec(config);
     this.markdownRenderer = new AgentMarkdownPromptXmlRenderer({
       xmlFenceLanguages: config.PluginDocumentation?.PromptXml?.XmlFenceLanguages,
       codeFenceLanguages: config.PluginDocumentation?.PromptXml?.CodeFenceLanguages,
@@ -91,10 +117,49 @@ export class AgentPromptContextBuilder {
       .filter((tool) => loadedToolNames.has(tool.name))
       .sort((left, right) => this.comparePromptPriority(left.plugin, right.plugin))
       .map((tool) => this.buildToolContext(tool, toolSections));
+    const loadedTools = tools.filter((tool) => loadedToolNames.has(tool.name));
 
     return {
+      ToolCallProtocol: this.buildToolCallProtocolContext(actions),
       DecisionActions: actions,
       ToolCards: toolCards,
+      ToolDiscoveryToolName: loadedTools.find((tool) =>
+        tool.handler.kind === "HostCapability" && tool.handler.capability === "tool.search"
+      )?.name,
+      ActionDirective: options.actionDirective
+        ? this.buildActionDirectiveContext(options.actionDirective)
+        : null,
+    };
+  }
+
+  private buildActionDirectiveContext(
+    directive: AgentActionDecision,
+  ): AgentPromptActionDirectiveContext {
+    return {
+      action: directive.action,
+      intent: directive.intent,
+      requiredCapabilities: directive.requiredCapabilities,
+      toolSearchQueries: directive.toolSearchQueries,
+      preferredTools: directive.preferredTools,
+      confidence: directive.confidence,
+      instruction: directive.instructionToMainModel,
+    };
+  }
+
+  private buildToolCallProtocolContext(
+    actions: readonly AgentPromptDecisionActionContext[],
+  ): AgentPromptToolCallProtocolContext {
+    const action = actions.find((item) => item.kind === "ToolCalls");
+    if (!action) {
+      throw new Error("ToolCalls 决策动作没有注册。");
+    }
+
+    return {
+      root: action.xmlRoot,
+      callTag: this.protocol.items.toolCall,
+      nameTag: this.protocol.toolCall.name,
+      argumentsTag: this.protocol.toolCall.arguments,
+      arrayItemTag: this.protocol.items.arrayItem,
     };
   }
 

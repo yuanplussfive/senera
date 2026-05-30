@@ -65,6 +65,8 @@ const baseConfig: ResolvedAgentModelProviderConfig = {
   MaxOutputTokens: -1,
   Stream: false,
   TimeoutMs: 1000,
+  FirstTokenTimeoutMs: -1,
+  MaxRequestMs: -1,
   MaxNetworkRetries: 0,
   Headers: {},
 };

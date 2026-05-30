@@ -1,0 +1,210 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { AgentDecisionXmlCollector, AgentDecisionXmlCollectionRetryableError } from "../Source/AgentSystem/AgentDecisionXmlCollector.js";
+import { createXmlProtocolPolicy } from "../Source/AgentSystem/AgentXmlPolicy.js";
+import type { AgentLanguageModel, AgentLanguageModelStream } from "../Source/AgentSystem/AgentLanguageModel.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types.js";
+import type { AgentActionDecision } from "../Source/AgentSystem/AgentActionPlanner.js";
+import type { AgentModelProviderMetadata } from "../Source/AgentSystem/AgentModelMetadata.js";
+import { AgentRetryPlanner } from "../Source/AgentSystem/AgentRetryPlanner.js";
+import { AgentActionMismatchRepairPromptBuilder } from "../Source/AgentSystem/AgentActionMismatchRepairPromptBuilder.js";
+import { AgentPromptRenderer } from "../Source/AgentSystem/AgentPromptRenderer.js";
+import type { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
+import type { AgentToolCatalogProjector } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
+
+async function main(): Promise<void> {
+  const policy = createXmlProtocolPolicy({
+    ModelProviders: [],
+    PluginRoots: {
+      System: [],
+      User: [],
+    },
+  } satisfies AgentSystemConfig);
+  const toolCallsRoot = policy.protocol.roots.toolCalls;
+  const toolXml = [
+    `<${toolCallsRoot}>`,
+    "  <tool_call>",
+    "    <name>FastContextWorkspaceMapTool</name>",
+    "    <arguments>",
+    "      <maxChildrenPerRoot>30</maxChildrenPerRoot>",
+    "    </arguments>",
+    "  </tool_call>",
+    `</${toolCallsRoot}>`,
+  ].join("\n");
+  const mixed = [
+    "好的，我先查看项目结构。",
+    "",
+    toolXml,
+  ].join("\n");
+
+  const useTools = action("use_tools");
+  const answer = action("answer");
+
+  const recovered = await collect(mixed, useTools, policy);
+  assert.equal(recovered.kind, "tool_calls");
+  assert.equal(recovered.toolCallsXml, toolXml);
+  assert.equal(recovered.text, mixed);
+
+  const finalText = await collect(mixed, answer, policy);
+  assert.equal(finalText.kind, "final_text");
+  assert.equal(finalText.text, mixed);
+
+  const mismatch = await collectError("我可以直接解释这个项目。", useTools, policy);
+  assert.equal(mismatch.instruction.code, "MixedXmlContent");
+  assert.match(mismatch.instruction.repairPrompt ?? "", /<senera_tool_calls>/);
+  assert.match(mismatch.instruction.repairPrompt ?? "", /第一个非空字符必须是 </);
+  assert.match(mismatch.instruction.repairPrompt ?? "", /FastContextWorkspaceMapTool/);
+
+  const repairedMessages = new AgentRetryPlanner().buildRepairConversation(
+    [{ role: "user", content: "看看项目是干嘛的" }],
+    "我可以直接解释这个项目。",
+    mismatch,
+  );
+  assert.equal(repairedMessages.at(-2)?.role, "assistant");
+  assert.doesNotMatch(repairedMessages.at(-2)?.content ?? "", /我可以直接解释这个项目/);
+  assert.match(repairedMessages.at(-2)?.content ?? "", /上一条输出已丢弃/);
+
+  const pureTool = await collect(toolXml, useTools, policy);
+  assert.equal(pureTool.kind, "tool_calls");
+  assert.equal(pureTool.toolCallsXml, toolXml);
+
+  console.log("Action-driven XML resolution verification passed.");
+}
+
+async function collectError(
+  output: string,
+  actionDirective: AgentActionDecision,
+  policy: ReturnType<typeof createXmlProtocolPolicy>,
+): Promise<AgentDecisionXmlCollectionRetryableError> {
+  try {
+    await collect(output, actionDirective, policy);
+  } catch (error) {
+    if (error instanceof AgentDecisionXmlCollectionRetryableError) {
+      return error;
+    }
+    throw error;
+  }
+
+  throw new Error("Expected retryable collection error.");
+}
+
+async function collect(
+  output: string,
+  actionDirective: AgentActionDecision,
+  policy: ReturnType<typeof createXmlProtocolPolicy>,
+) {
+  const collector = new AgentDecisionXmlCollector({
+    model: new StaticTextModel(output),
+    policy,
+    textBudget: {
+      measure: () => ({
+        state: "within_budget",
+        model: "test",
+        encodingName: "cl100k_base",
+        resolution: "default_encoding",
+        tokenCount: 0,
+        tokenLimit: 10000,
+        remainingTokens: 10000,
+      }),
+    },
+    tokenEstimator: {
+      estimate: (text) => ({
+        tokenCount: text.length,
+      }),
+    },
+    decisionActions: [{
+      kind: "ToolCalls",
+      xmlRoot: policy.protocol.roots.toolCalls,
+    }],
+    actionMismatchRepairPromptBuilder: new AgentActionMismatchRepairPromptBuilder({
+      registry: {
+        getTemplate: (name: string) => name === "ActionMismatchRepairPrompt"
+          ? {
+              name,
+              path: path.resolve(
+                "System/Plugins/AgentTemplatePlugin/Templates/ActionMismatchRepairPrompt.liquid",
+              ),
+            }
+          : undefined,
+      } as AgentPluginRegistry,
+      promptRenderer: new AgentPromptRenderer(),
+      toolCatalog: {
+        listVisible: () => [{
+          name: "FastContextWorkspaceMapTool",
+          title: "Workspace Map",
+          summary: "快速查看项目目录结构。",
+          tags: [],
+          useCases: [],
+          examples: ["查看项目结构"],
+          avoid: [],
+          permissions: [],
+        }],
+      } as unknown as AgentToolCatalogProjector,
+      protocol: policy.protocol,
+    }),
+  });
+
+  return collector.collect({
+    requestId: "verify-action-xml",
+    step: 1,
+    systemPrompt: "",
+    messages: [],
+    actionDirective,
+  });
+}
+
+function action(kind: AgentActionDecision["action"]): AgentActionDecision {
+  return {
+    action: kind,
+    intent: "verify",
+    progressAssessment: "verification",
+    nextStepGoal: kind === "answer" ? "produce final answer" : "call verification tool",
+    requiredCapabilities: [],
+    toolSearchQueries: [],
+    preferredTools: kind === "answer" ? [] : ["FastContextWorkspaceMapTool"],
+    confidence: 1,
+    instructionToMainModel: "",
+  };
+}
+
+class StaticTextModel implements AgentLanguageModel {
+  readonly metadata = TestModelMetadata;
+
+  constructor(private readonly text: string) {}
+
+  async complete() {
+    return {
+      text: this.text,
+    };
+  }
+
+  async stream(): Promise<AgentLanguageModelStream> {
+    return createStream(this.text);
+  }
+}
+
+function createStream(text: string): AgentLanguageModelStream {
+  return {
+    metadata: TestModelMetadata,
+    abort: () => {},
+    async *[Symbol.asyncIterator]() {
+      yield {
+        textDelta: text,
+        accumulatedText: text,
+      };
+    },
+  };
+}
+
+const TestModelMetadata = {
+  id: "test",
+  kind: "OpenAICompatible",
+  endpoint: "Responses",
+  baseUrl: "",
+  model: "test",
+} satisfies AgentModelProviderMetadata;
+
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

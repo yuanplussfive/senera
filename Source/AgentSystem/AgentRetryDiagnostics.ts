@@ -3,6 +3,10 @@ import type { AgentSchemaValidationError } from "./AgentSchemaValidator.js";
 import type { AgentProtocolErrorCode } from "./AgentXmlStatus.js";
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
 import type { AgentPromptRenderer } from "./AgentPromptRenderer.js";
+import {
+  AgentDefaultXmlProtocolSpec,
+  type AgentXmlProtocolSpec,
+} from "./AgentXmlPolicy.js";
 
 type RepairPromptDiagnostic = {
   message: string;
@@ -20,6 +24,7 @@ export class AgentRetryDiagnostics {
       registry: AgentPluginRegistry;
       promptRenderer: AgentPromptRenderer;
       workspaceRoot: string;
+      protocol?: AgentXmlProtocolSpec;
     },
   ) {}
 
@@ -39,10 +44,36 @@ export class AgentRetryDiagnostics {
       heading,
       code,
       diagnostics: diagnostics.map(mapDiagnostic),
+      ToolCallProtocol: this.readToolCallProtocol(),
     });
 
     // Liquid may preserve some leading/trailing whitespace; normalize for stable prompts.
     return rendered.trim();
+  }
+
+  private readToolCallProtocol(): {
+    root: string;
+    callTag: string;
+    nameTag: string;
+    argumentsTag: string;
+    arrayItemTag: string;
+  } {
+    const action = this.deps.registry
+      .listDecisionActions()
+      .find((item) => item.kind === "ToolCalls");
+    if (!action) {
+      throw new Error("ToolCalls 决策动作没有注册。");
+    }
+
+    return {
+      root: action.xmlRoot,
+      callTag: this.deps.protocol?.items.toolCall ?? AgentDefaultXmlProtocolSpec.items.toolCall,
+      nameTag: this.deps.protocol?.toolCall.name ?? AgentDefaultXmlProtocolSpec.toolCall.name,
+      argumentsTag:
+        this.deps.protocol?.toolCall.arguments
+        ?? AgentDefaultXmlProtocolSpec.toolCall.arguments,
+      arrayItemTag: this.deps.protocol?.items.arrayItem ?? AgentDefaultXmlProtocolSpec.items.arrayItem,
+    };
   }
 }
 

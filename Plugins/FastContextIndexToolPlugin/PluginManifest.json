@@ -16,10 +16,15 @@
   "Discovery": {
     "Tags": [
       "context",
+      "上下文",
       "index",
+      "索引",
       "minisearch",
       "symbol",
-      "workspace"
+      "workspace",
+      "工作区",
+      "代码",
+      "缓存"
     ]
   },
   "Prompting": {
@@ -29,21 +34,73 @@
   "Tools": [
     {
       "Name": "FastContextIndexSearchTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/IndexSearch.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace",
         "filesystem:write:.state"
-      ]
+      ],
+      "Search": {
+        "Summary": "使用本地轻量索引快速搜索代码、路径和文本片段。",
+        "Keywords": [
+          "index",
+          "minisearch",
+          "code",
+          "workspace",
+          "cached",
+          "索引",
+          "本地检索",
+          "代码搜索",
+          "缓存",
+          "快速搜索"
+        ],
+        "UseCases": [
+          "需要低成本、快速地从已索引工作区里查找相关代码或文件时使用。"
+        ],
+        "Examples": [
+          "用索引搜索 AgentLoop",
+          "快速找前端删除会话逻辑",
+          "search indexed workspace for tool registry"
+        ],
+        "Avoid": [
+          "需要最新未索引内容时先刷新索引或使用精确搜索。"
+        ]
+      }
     },
     {
       "Name": "FastContextRefreshIndexTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/RefreshIndex.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace",
         "filesystem:write:.state"
-      ]
+      ],
+      "Search": {
+        "Summary": "刷新或重建本地代码检索索引。",
+        "Keywords": [
+          "refresh",
+          "reindex",
+          "index",
+          "cache",
+          "workspace",
+          "刷新",
+          "重建",
+          "索引",
+          "缓存",
+          "重新扫描"
+        ],
+        "UseCases": [
+          "代码刚改动、索引结果过期或需要强制重建检索缓存时使用。"
+        ],
+        "Examples": [
+          "刷新代码索引",
+          "重建工作区检索缓存",
+          "refresh fast context index"
+        ],
+        "Avoid": [
+          "只是读取文件或搜索一个字符串时不需要刷新索引。"
+        ]
+      }
     }
   ],
   "Security": {

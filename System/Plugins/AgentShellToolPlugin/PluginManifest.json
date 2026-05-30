@@ -8,9 +8,14 @@
   "Discovery": {
     "Tags": [
       "shell",
+      "终端",
       "command",
+      "命令",
       "workspace",
-      "host"
+      "工作区",
+      "host",
+      "构建",
+      "测试"
     ]
   },
   "Prompting": {
@@ -20,7 +25,7 @@
   "Tools": [
     {
       "Name": "ShellCommandTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "process:shell",
@@ -29,6 +34,36 @@
       "Handler": {
         "Kind": "HostCapability",
         "Capability": "shell.run"
+      },
+      "Search": {
+        "Summary": "在工作区内执行宿主机 shell 命令。",
+        "Keywords": [
+          "shell",
+          "command",
+          "terminal",
+          "build",
+          "test",
+          "npm",
+          "git",
+          "命令",
+          "终端",
+          "执行",
+          "构建",
+          "测试",
+          "检查"
+        ],
+        "UseCases": [
+          "需要运行测试、构建、类型检查、git、脚本或系统命令时使用。"
+        ],
+        "Examples": [
+          "运行 npm run check",
+          "执行 git status",
+          "查看 node --version",
+          "run tests in Frontend"
+        ],
+        "Avoid": [
+          "不要用于直接编辑文件；编辑文件使用 ApplyPatchTool。"
+        ]
       }
     }
   ],

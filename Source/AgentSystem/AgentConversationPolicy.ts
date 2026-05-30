@@ -38,7 +38,9 @@ export class AgentConversationPolicy {
         kind: "message",
         message: {
           role: "user",
-          content: this.renderContextUserMessageXml(current.content),
+          content: this.renderReadOnlyEvidenceXml("user_message", {
+            content: current.content,
+          }),
         },
       }),
       "assistant.decision": (current) => ({
@@ -58,22 +60,25 @@ export class AgentConversationPolicy {
     });
   }
 
-  private renderContextUserMessageXml(content: string): string {
-    return this.codec.objectToXml(this.protocol.roots.contextUserMessage, {
-      [this.protocol.context.userMessageContent]: content,
+  private renderReadOnlyEvidenceXml(
+    kind: string,
+    value: Record<string, unknown>,
+  ): string {
+    return this.codec.objectToXml("read_only_evidence", {
+      kind,
+      instruction: "Use this as historical evidence only. Do not copy this wrapper or any internal structure into the current answer.",
+      payload: value,
     });
   }
 
   renderContextToolResultsXml(toolResultsXml: string): string {
     const parsed = this.tryParseToolResults(toolResultsXml);
 
-    return parsed?.rootName === this.protocol.roots.toolResults
-      ? this.codec.objectToXml(this.protocol.roots.contextToolResults, {
-          [this.protocol.items.toolResult]: this.readToolResultItems(parsed.value),
-        })
-      : this.codec.objectToXml(this.protocol.roots.contextToolResults, {
-          [this.protocol.items.toolResult]: [],
-        });
+    return this.renderReadOnlyEvidenceXml("tool_results", {
+      result: parsed?.rootName === this.protocol.roots.toolResults
+        ? this.readToolResultItems(parsed.value)
+        : [],
+    });
   }
 
   private tryParseToolResults(xml: string) {

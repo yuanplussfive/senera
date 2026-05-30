@@ -40,6 +40,7 @@ export const AgentEventKinds = {
   RunStarted: "run.started",
   PromptRendered: "prompt.rendered",
   PromptSummary: "prompt.summary",
+  ActionPlanned: "action.planned",
   ModelStarted: "model.started",
   ModelStreamOpened: "model.stream.opened",
   ModelDelta: "model.delta",
@@ -226,6 +227,31 @@ export type AgentDomainEvent =
         chars: number;
         lines: number;
         tokenCount: number;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.ActionPlanned;
+      context: Required<Pick<AgentEventContext, "requestId" | "step">>;
+      data: {
+        status: "planned" | "fallback";
+        action?: string;
+        expectedOutputMode?: "tool_call_xml" | "final_text" | "open";
+        intent?: string;
+        progressAssessment?: string;
+        nextStepGoal?: string;
+        preferredTools: string[];
+        toolSearchQueries: string[];
+        loadedTools: string[] | "all";
+        currentStep?: number;
+        executionState?: {
+          totalToolCalls: number;
+          totalEvidence: number;
+          repeatedCallCount: number;
+          stalled: boolean;
+          recentDeltaCount: number;
+        };
+        repaired?: boolean;
+        reason?: string;
       };
     }
   | {
@@ -543,6 +569,10 @@ const EventSpecTable: {
   [AgentEventKinds.PromptSummary]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Prompt,
+  },
+  [AgentEventKinds.ActionPlanned]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Decision,
   },
   [AgentEventKinds.ModelStarted]: {
     layer: AgentEventLayers.Progress,

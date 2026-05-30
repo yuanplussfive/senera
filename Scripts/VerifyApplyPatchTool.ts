@@ -26,6 +26,7 @@ async function main(): Promise<void> {
     protocol,
     workspaceRoot,
     createDefaultHostCapabilityRegistry(),
+    registry,
   );
   const fixtureDir = path.join(workspaceRoot, ".senera", "verify-apply-patch");
   const fixtureFile = path.join(workspaceRoot, "Scripts", "VerifyApplyPatchTool.fixture.txt");

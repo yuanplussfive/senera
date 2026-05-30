@@ -16,12 +16,20 @@
       "Path": "./Templates/RepairPrompt.liquid"
     },
     {
+      "Name": "ActionMismatchRepairPrompt",
+      "Path": "./Templates/ActionMismatchRepairPrompt.liquid"
+    },
+    {
       "Name": "PromptGuidance",
       "Path": "./Templates/PromptGuidance.liquid"
     },
     {
       "Name": "DecisionProtocol",
       "Path": "./Templates/DecisionProtocol.liquid"
+    },
+    {
+      "Name": "ActionDirective",
+      "Path": "./Templates/ActionDirective.liquid"
     },
     {
       "Name": "ToolCatalog",

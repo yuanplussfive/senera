@@ -56,6 +56,7 @@ export class AgentPluginRegistry {
           : undefined,
         permissions: tool.Permissions ?? [],
         handler: readToolHandler(tool),
+        search: tool.Search,
       });
     }
 

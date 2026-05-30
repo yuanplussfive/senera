@@ -1,0 +1,36 @@
+{% if ActionDirective %}
+<senera_action_directive>
+  <policy>
+    <rule>这是宿主在本轮主推理前生成的执行指令，优先级高于普通上下文。</rule>
+    <rule>它不是用户可见内容，不要复述标签名或规划字段。</rule>
+    <rule>如果 action 指向工具使用，优先调用 preferred_tools 中已展示的工具。</rule>
+  </policy>
+  <decision>
+    <action>{{ ActionDirective.action | escape }}</action>
+    <intent>{{ ActionDirective.intent | escape }}</intent>
+    <confidence>{{ ActionDirective.confidence }}</confidence>
+    <instruction>{{ ActionDirective.instruction | escape }}</instruction>
+{% if ActionDirective.preferredTools.size > 0 %}
+    <preferred_tools>
+{% for tool in ActionDirective.preferredTools %}
+      <tool>{{ tool | escape }}</tool>
+{% endfor %}
+    </preferred_tools>
+{% endif %}
+{% if ActionDirective.toolSearchQueries.size > 0 %}
+    <tool_search_queries>
+{% for query in ActionDirective.toolSearchQueries %}
+      <query>{{ query | escape }}</query>
+{% endfor %}
+    </tool_search_queries>
+{% endif %}
+{% if ActionDirective.requiredCapabilities.size > 0 %}
+    <required_capabilities>
+{% for capability in ActionDirective.requiredCapabilities %}
+      <capability>{{ capability | escape }}</capability>
+{% endfor %}
+    </required_capabilities>
+{% endif %}
+  </decision>
+</senera_action_directive>
+{% endif %}

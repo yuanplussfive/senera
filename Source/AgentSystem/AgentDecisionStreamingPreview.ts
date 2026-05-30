@@ -1,5 +1,8 @@
 import type { RegisteredDecisionAction } from "./Types.js";
-import type { AgentXmlProtocolPolicy } from "./AgentXmlPolicy.js";
+import {
+  AgentDefaultXmlProtocolSpec,
+  type AgentXmlProtocolPolicy,
+} from "./AgentXmlPolicy.js";
 import { readXmlRootName } from "./AgentXmlRootReader.js";
 
 export type DecisionStreamingPreviewKind =
@@ -19,7 +22,7 @@ export interface DecisionStreamingPreviewRule {
 }
 
 const DEFAULT_DECISION_STREAMING_PREVIEW_RULES: readonly DecisionStreamingPreviewRule[] = [
-  { root: "tool_calls", kind: "tool_calls" },
+  { root: AgentDefaultXmlProtocolSpec.roots.toolCalls, kind: "tool_calls" },
 ];
 
 export function createDecisionStreamingPreviewRules(
@@ -44,10 +47,11 @@ export function extractDecisionStreamingPreview(
     return { kind: "unknown", text: "", preambleText: "" };
   }
 
-  const candidate = findDecisionPreviewCandidate(text, rules);
-  const root = candidate
-    ? readXmlRootName(candidate.xml)?.toLowerCase()
-    : readXmlRootName(text)?.toLowerCase();
+  if (!isClosedPureXml(text)) {
+    return { kind: "final_answer", text, preambleText: "" };
+  }
+
+  const root = readXmlRootName(text)?.toLowerCase();
   if (!root) {
     return { kind: "final_answer", text, preambleText: "" };
   }
@@ -56,41 +60,13 @@ export function extractDecisionStreamingPreview(
   return rule
     ? {
         kind: rule.kind,
-        text: candidate?.preamble ?? "",
-        preambleText: candidate?.preamble ?? "",
+        text: "",
+        preambleText: "",
       }
     : { kind: "final_answer", text, preambleText: "" };
 }
 
-function findDecisionPreviewCandidate(
-  text: string,
-  rules: readonly DecisionStreamingPreviewRule[],
-): { preamble: string; xml: string } | undefined {
-  const matches = rules
-    .flatMap((rule) => findRootStartOffsets(text, rule.root))
-    .sort((left, right) => left - right);
-  const offset = matches[0];
-
-  return offset === undefined
-    ? undefined
-    : {
-        preamble: text.slice(0, offset).trim(),
-        xml: text.slice(offset),
-      };
-}
-
-function findRootStartOffsets(text: string, root: string): number[] {
-  const offsets: number[] = [];
-  const pattern = new RegExp(`<\\s*${escapeRegExp(root)}(?:\\s|>|/)`, "giu");
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(text))) {
-    offsets.push(match.index);
-  }
-
-  return offsets;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function isClosedPureXml(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.startsWith("<") && trimmed.endsWith(">");
 }

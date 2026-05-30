@@ -2,7 +2,9 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import {
+  DecisionXmlRoots,
   EventKinds,
+  type ActionPlannedData,
   type EventEnvelope,
   type AskUserData,
   type ConversationEntryDto,
@@ -107,7 +109,8 @@ export interface RunRecord {
   /** 后端实时解析出的"用户可见文本"——直接用于打字机效果 */
   visibleText: string;
   visibleKind: "final_answer" | "ask_user" | "tool_calls" | "unknown";
-  decisionMode: "none" | "tool_candidate";
+  expectedOutputMode: "unknown" | "final_text" | "tool_call_xml";
+  decisionMode: "none" | "tool_candidate" | "final_text";
   /** 通过 decision.parsed.detail 暂存的工具参数 */
   pendingToolArgsByName: Record<string, unknown>;
   modelProvider?: ModelProviderMetadata;
@@ -189,18 +192,71 @@ export const DEFAULT_USER_PROFILE: UserProfile = {
   updatedAt: "",
 };
 
-/** 把 decisionKind 翻译成中文用户语 */
+/** 把后端行动/决策枚举翻译成中文用户语。 */
 export function friendlyDecisionKind(decisionKind: string): string {
   switch (decisionKind) {
+    case "answer":
     case "FinalAnswer":
       return "生成回复";
-    case "ToolCalls":
-      return "调用工具";
+    case "ask_user":
     case "AskUser":
       return "向用户提问";
+    case "discover_tools":
+      return "发现工具";
+    case "use_tools":
+    case "ToolCalls":
+      return "调用工具";
     default:
       return decisionKind;
   }
+}
+
+function summarizeActionPlan(data: ActionPlannedData): string {
+  if (data.status === "fallback") {
+    return data.reason
+      ? `规划失败，已回退动态工具检索 · ${friendlyActionPlanFallbackReason(data.reason)}`
+      : "规划失败，已回退动态工具检索";
+  }
+
+  const intent = data.intent ? truncate(data.intent, 96) : "";
+  const progress = data.progressAssessment ? truncate(data.progressAssessment, 96) : "";
+  const nextGoal = data.nextStepGoal ? truncate(data.nextStepGoal, 96) : "";
+  const toolSummary = data.preferredTools.length > 0
+    ? `${data.preferredTools.length} 个候选工具`
+    : "";
+  const stateSummary = data.executionState
+    ? `${data.executionState.totalToolCalls} 次工具 · ${data.executionState.totalEvidence} 条证据`
+    : "";
+  return [progress, nextGoal, intent, toolSummary, stateSummary]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function friendlyActionPlanFallbackReason(reason: string): string {
+  const code = reason.split(":")[0];
+  switch (code) {
+    case "disabled":
+      return "未启用";
+    case "action_planner_http_error":
+      return "规划模型请求失败";
+    case "action_planner_timeout":
+      return "规划模型超时";
+    case "action_planner_aborted":
+      return "规划已取消";
+    case "action_planner_incomplete_output":
+      return "规划输出不完整";
+    case "action_planner_invalid_structured_output":
+    case "action_planner_invalid_decision":
+      return "规划输出无效";
+    default:
+      return truncate(reason, 80);
+  }
+}
+
+function readExpectedOutputMode(data: ActionPlannedData): RunRecord["expectedOutputMode"] {
+  return data.expectedOutputMode === "tool_call_xml" || data.expectedOutputMode === "final_text"
+    ? data.expectedOutputMode
+    : "unknown";
 }
 
 function currentRun(session: SessionRecord, requestId?: string): RunRecord | undefined {
@@ -232,6 +288,60 @@ function normalizeUserProfile(value: unknown): UserProfile {
   };
 }
 
+type ToolCallStreamClassification =
+  | "tool_prefix"
+  | "not_tool";
+
+function classifyToolCallStream(text: string): ToolCallStreamClassification {
+  const body = text.trimStart();
+  if (!body.startsWith("<")) return "not_tool";
+
+  const expectedRoot = `<${DecisionXmlRoots.ToolCalls}`.toLowerCase();
+  const comparable = body.slice(0, expectedRoot.length).toLowerCase();
+  const isPrefixCandidate = comparable.length < expectedRoot.length
+    ? expectedRoot.startsWith(comparable)
+    : comparable === expectedRoot && isXmlNameBoundary(body[expectedRoot.length]);
+
+  return isPrefixCandidate ? "tool_prefix" : "not_tool";
+}
+
+function isXmlNameBoundary(char: string | undefined): boolean {
+  return char === undefined || char === ">" || char === "/" || /\s/.test(char);
+}
+
+function projectStreamingVisibility(run: RunRecord): void {
+  if (run.expectedOutputMode === "tool_call_xml") {
+    run.decisionMode = "tool_candidate";
+    run.visibleText = "";
+    run.visibleKind = "tool_calls";
+    return;
+  }
+
+  if (run.expectedOutputMode === "final_text") {
+    run.decisionMode = "final_text";
+    run.visibleText = run.streamingRaw;
+    run.visibleKind = "final_answer";
+    return;
+  }
+
+  if (run.decisionMode === "final_text") {
+    run.visibleText = run.streamingRaw;
+    run.visibleKind = "final_answer";
+    return;
+  }
+
+  if (classifyToolCallStream(run.streamingRaw) === "tool_prefix") {
+    run.decisionMode = "tool_candidate";
+    run.visibleText = "";
+    run.visibleKind = "unknown";
+    return;
+  }
+
+  run.decisionMode = "final_text";
+  run.visibleText = run.streamingRaw;
+  run.visibleKind = "final_answer";
+}
+
 function createRunRecord(input: {
   requestId: string;
   startedAt: string;
@@ -248,6 +358,7 @@ function createRunRecord(input: {
     xmlPreview: "",
     visibleText: "",
     visibleKind: "unknown",
+    expectedOutputMode: "unknown",
     decisionMode: "none",
     pendingToolArgsByName: {},
   };
@@ -764,6 +875,37 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
+    case EventKinds.ActionPlanned: {
+      if (!sessionId) return;
+      const session = ensureSession(state, sessionId);
+      const run = currentRun(session, env.requestId);
+      if (!run) return;
+      const data = env.data as ActionPlannedData;
+      const planned = data.status === "planned";
+      run.expectedOutputMode = planned
+        ? readExpectedOutputMode(data)
+        : "unknown";
+      if (run.expectedOutputMode === "tool_call_xml") {
+        run.decisionMode = "tool_candidate";
+        run.visibleText = "";
+        run.visibleKind = "tool_calls";
+      }
+      upsertStep(run, {
+        id: `${run.requestId}-action-plan-${env.step ?? 0}`,
+        kind: "decision",
+        title: planned
+          ? `规划行动 · ${friendlyDecisionKind(data.action ?? "")}`
+          : "规划行动 · 回退",
+        description: summarizeActionPlan(data),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        decisionKind: data.action,
+        detailJson: data,
+      });
+      return;
+    }
+
     case EventKinds.ModelStarted: {
       if (!sessionId) return;
       const session = ensureSession(state, sessionId);
@@ -772,6 +914,11 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       const data = env.data as ModelStartedData;
       const modelName = data.provider?.title ?? data.model;
       run.modelProvider = data.provider;
+      run.streamingRaw = "";
+      run.xmlPreview = "";
+      run.visibleText = "";
+      run.visibleKind = run.expectedOutputMode === "tool_call_xml" ? "tool_calls" : "unknown";
+      run.decisionMode = run.expectedOutputMode === "tool_call_xml" ? "tool_candidate" : "none";
       upsertStep(run, {
         id: `${run.requestId}-model-${env.step ?? 0}`,
         kind: "model",
@@ -791,12 +938,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (!run) return;
       const data = env.data as ModelDeltaData;
       run.streamingRaw += data.text;
-      if (run.decisionMode === "tool_candidate") {
-        touchRun(run);
-        return;
-      }
-      run.visibleText = run.streamingRaw;
-      run.visibleKind = "final_answer";
+      projectStreamingVisibility(run);
       touchRun(run);
       return;
     }
@@ -823,10 +965,24 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (!run) return;
       const data = env.data as DecisionXmlProgressData;
       run.xmlPreview = data.xml;
-      if (data.kind === "tool_calls") {
+      if (run.expectedOutputMode === "tool_call_xml" || data.kind === "tool_calls") {
         run.decisionMode = "tool_candidate";
+        run.visibleText = "";
+        run.visibleKind = "tool_calls";
+        touchRun(run);
+        return;
       }
-      run.visibleText = data.text;
+      if (
+        run.decisionMode === "tool_candidate" &&
+        classifyToolCallStream(run.streamingRaw) === "tool_prefix"
+      ) {
+        run.visibleText = "";
+        run.visibleKind = "unknown";
+        touchRun(run);
+        return;
+      }
+      run.decisionMode = "none";
+      run.visibleText = data.text || run.streamingRaw;
       run.visibleKind = data.kind;
       touchRun(run);
       return;

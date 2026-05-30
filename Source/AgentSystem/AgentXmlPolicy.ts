@@ -73,7 +73,7 @@ export const AgentDefaultXmlProtocolSpec = {
   roots: {
     contextUserMessage: "context_user_message",
     contextToolResults: "context_tool_results",
-    toolCalls: "tool_calls",
+    toolCalls: "senera_tool_calls",
     toolResults: "tool_results",
     agentResult: "agent_result",
   },

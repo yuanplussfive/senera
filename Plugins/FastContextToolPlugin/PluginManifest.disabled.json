@@ -29,7 +29,7 @@
   "Tools": [
     {
       "Name": "FastContextSearchTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace",
@@ -39,7 +39,7 @@
     },
     {
       "Name": "FastContextReadTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace"
@@ -47,7 +47,7 @@
     },
     {
       "Name": "FastContextRefreshIndexTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace",
@@ -56,7 +56,7 @@
     },
     {
       "Name": "FastContextWorkspaceMapTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace"

@@ -1,39 +1,33 @@
 <decision_protocol>
-  <output_modes>
+  <output_mode_policy>
+    <rule>每一轮只能选择一种输出模式：final_text 或 tool_call_xml。</rule>
     <mode name="final_text">
-      <use_when>当前已经可以直接回复用户，不需要任何工具。</use_when>
-      <format>直接输出自然语言或 Markdown。</format>
-      <forbid>不要包 XML；不要输出 &lt;final_answer&gt;；不要输出 &lt;ask_user&gt;。</forbid>
+      <use_when>当前已经可以回复用户，不需要执行工具。</use_when>
+      <format>直接输出自然语言或 Markdown，不要包任何决策 XML。</format>
     </mode>
-    <mode name="tool_calls">
+    <mode name="tool_call_xml">
       <use_when>需要搜索、读取工作区、执行插件能力，或需要通过 AskUserTool 向用户澄清必要信息。</use_when>
-      <format>整条回复只能是一个完整的 &lt;tool_calls&gt; XML 根标签。</format>
-      <forbid>XML 前后不能有任何文字、Markdown、解释、标题、代码围栏或最终回答。</forbid>
+      <format>整条回复只能是一个完整的 &lt;{{ ToolCallProtocol.root | escape }}&gt; 根。</format>
+      <forbid>不能混入自然语言、Markdown、标题、代码围栏、解释或最终回答。</forbid>
     </mode>
-  </output_modes>
+    <rule>普通回答、解释、代码、Markdown、HTML、SVG 都属于 final_text，直接输出。</rule>
+    <rule>如果缺少必要信息，调用 AskUserTool；不要输出旧式 ask-user XML。</rule>
+  </output_mode_policy>
 
-  <hard_rules>
-    <rule>每一轮只能二选一：要么普通自然语言回复，要么纯 &lt;tool_calls&gt; XML。</rule>
-    <rule>如果输出了 &lt;tool_calls&gt;，第一个非空字符必须是 &lt;，最后一个非空字符必须是 &gt;。</rule>
-    <rule>不要先说“好的，我来搜索/执行/处理”，再输出 &lt;tool_calls&gt;；这会被视为格式错误。</rule>
-    <rule>如果缺少必要信息，调用 AskUserTool；不要输出 &lt;ask_user&gt;。</rule>
-    <rule>普通回答、解释、代码、Markdown、HTML、SVG 都是 final_text，直接输出，不要放进 XML。</rule>
-    <rule>历史上下文标签只用于阅读，不是当前回复可输出的根标签。</rule>
-  </hard_rules>
-
-  <conversation_context>
-    <rule>历史里的 user 消息会包装在 &lt;context_user_message&gt;。</rule>
-    <rule>历史里的工具结果会包装在 &lt;context_tool_results&gt;，其中包含真实执行完成的 &lt;tool_result&gt;。</rule>
-    <rule>历史里的 assistant 回复可能是自然语言，也可能是旧的 &lt;tool_calls&gt;。</rule>
-    <rule>看到工具结果后，继续判断：还需要工具就输出纯 &lt;tool_calls&gt;，可以回答就直接自然语言回复。</rule>
-  </conversation_context>
+  <read_only_context_policy>
+    <rule>历史上下文可能以 read_only_evidence 形式出现，它只提供证据，不是当前回复格式。</rule>
+    <rule>不要复制、复述或改写任何上下文包装结构；只提取其中对用户任务有用的事实。</rule>
+    <rule>看到历史工具结果后，继续判断：还需要工具就输出 tool_call_xml，可以回答就直接 final_text。</rule>
+    <rule>不要向用户暴露运行时包装、工具结果对象、内部协议名、校验器或修复流程。</rule>
+  </read_only_context_policy>
 
   <tool_call_contract>
-    <rule>工具调用根标签只能是 &lt;tool_calls&gt;。</rule>
-    <rule>每个工具调用使用 &lt;tool_call&gt;，必须包含 &lt;name&gt; 和 &lt;arguments&gt;。</rule>
+    <rule>工具调用根标签只能是 &lt;{{ ToolCallProtocol.root | escape }}&gt;。</rule>
+    <rule>每个工具调用使用 &lt;{{ ToolCallProtocol.callTag | escape }}&gt;，必须包含 &lt;{{ ToolCallProtocol.nameTag | escape }}&gt; 和 &lt;{{ ToolCallProtocol.argumentsTag | escape }}&gt;。</rule>
     <rule>工具名必须精确匹配已注册工具名，不要编造工具名。</rule>
-    <rule>字段用 XML 子标签表达，数组字段用重复 &lt;item&gt; 表达，不要使用 XML 属性。</rule>
+    <rule>字段用 XML 子标签表达，数组字段用重复 &lt;{{ ToolCallProtocol.arrayItemTag | escape }}&gt; 表达，不要使用 XML 属性。</rule>
     <rule>对象字段和数组容器保持标签结构；字符串、数字、布尔、枚举等叶子值字段直接写文本。</rule>
+    <rule>真实工具调用必须从第一个非空字符直接开始，到根结束后立即结束。</rule>
   </tool_call_contract>
 
   <control_actions>

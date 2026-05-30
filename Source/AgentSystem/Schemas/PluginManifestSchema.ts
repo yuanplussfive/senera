@@ -36,6 +36,16 @@ const ToolHandlerSchema = z.discriminatedUnion("Kind", [
     .strict(),
 ]);
 
+const ToolSearchSchema = z
+  .object({
+    Summary: z.string().min(1).optional(),
+    Keywords: z.array(z.string().min(1)).optional(),
+    UseCases: z.array(z.string().min(1)).optional(),
+    Examples: z.array(z.string().min(1)).optional(),
+    Avoid: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 const ToolSchema = z
   .object({
     Name: z.string().min(1),
@@ -43,6 +53,7 @@ const ToolSchema = z
     SignatureFile: z.string().min(1).optional(),
     Permissions: z.array(z.string()).optional(),
     Handler: ToolHandlerSchema.optional(),
+    Search: ToolSearchSchema.optional(),
   })
   .strict();
 

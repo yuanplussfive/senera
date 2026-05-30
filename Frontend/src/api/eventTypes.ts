@@ -34,6 +34,7 @@ export const EventKinds = {
   RunStarted: "run.started",
   PromptRendered: "prompt.rendered",
   PromptSummary: "prompt.summary",
+  ActionPlanned: "action.planned",
   ModelStarted: "model.started",
   ModelStreamOpened: "model.stream.opened",
   ModelDelta: "model.delta",
@@ -66,6 +67,10 @@ export const EventKinds = {
   ProfileSnapshot: "profile.snapshot",
 } as const;
 export type EventKind = (typeof EventKinds)[keyof typeof EventKinds];
+
+export const DecisionXmlRoots = {
+  ToolCalls: "senera_tool_calls",
+} as const;
 
 export interface EventEnvelope<TKind extends string = EventKind, TData = unknown> {
   channel: "agent.event";
@@ -217,6 +222,28 @@ export interface PromptSummaryData {
   chars: number;
   lines: number;
   tokenCount: number;
+}
+
+export interface ActionPlannedData {
+  status: "planned" | "fallback";
+  action?: string;
+  expectedOutputMode?: "tool_call_xml" | "final_text" | "open";
+  intent?: string;
+  progressAssessment?: string;
+  nextStepGoal?: string;
+  preferredTools: string[];
+  toolSearchQueries: string[];
+  loadedTools: string[] | "all";
+  currentStep?: number;
+  executionState?: {
+    totalToolCalls: number;
+    totalEvidence: number;
+    repeatedCallCount: number;
+    stalled: boolean;
+    recentDeltaCount: number;
+  };
+  repaired?: boolean;
+  reason?: string;
 }
 
 export interface ModelDeltaData {

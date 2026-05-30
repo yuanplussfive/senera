@@ -19,6 +19,7 @@ export const AgentXmlErrorCodes = {
   XmlDepthExceeded: "XmlDepthExceeded",
   InvalidDecisionPayload: "InvalidDecisionPayload",
   UnknownDecisionRoot: "UnknownDecisionRoot",
+  ForbiddenOutputXml: "ForbiddenOutputXml",
 } as const;
 
 export const AgentExecutionErrorCodes = {

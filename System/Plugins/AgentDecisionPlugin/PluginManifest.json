@@ -14,9 +14,9 @@
     {
       "Name": "ToolCalls",
       "Kind": "ToolCalls",
-      "XmlRoot": "tool_calls",
+      "XmlRoot": "senera_tool_calls",
       "Schema": "./Schemas/ToolCallsDecisionSchema.ts",
-      "DescriptionFile": "./Actions/ToolCalls.md",
+      "DescriptionFile": "./docs/ToolCalls.md",
       "SignatureFile": "./Actions/ToolCallsSignature.ts"
     }
   ]

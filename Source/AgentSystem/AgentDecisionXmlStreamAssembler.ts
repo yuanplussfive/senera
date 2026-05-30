@@ -53,6 +53,7 @@ export interface AgentDecisionXmlStreamAssemblerOptions {
   policy?: AgentXmlProtocolPolicy;
   acceptRoot?: (rootName: string) => boolean;
   allowEmbeddedCandidates?: boolean;
+  allowFencedEnvelope?: boolean;
   candidateNormalizer?: AgentXmlCandidateNormalizer;
 }
 
@@ -72,6 +73,7 @@ export class AgentDecisionXmlStreamAssembler {
       policy: options.policy,
       acceptRoot: options.acceptRoot,
       allowEmbeddedCandidates: options.allowEmbeddedCandidates,
+      allowFencedEnvelope: options.allowFencedEnvelope,
       candidateNormalizer: options.candidateNormalizer,
     });
   }

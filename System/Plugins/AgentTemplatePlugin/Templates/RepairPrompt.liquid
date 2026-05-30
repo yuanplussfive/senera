@@ -2,9 +2,10 @@
 错误代码：{{ code }}
 
 上一条回复被判定为工具调用，但格式无效。
-本次修复只能输出一个干净的 <tool_calls> XML 根标签。
+本次修复只能输出一个干净的 <{{ ToolCallProtocol.root }}> XML 根标签。
 不要输出解释、Markdown、代码围栏、自然语言前缀、自然语言后缀或最终回答。
 不要输出 <final_answer> 或 <ask_user>。
+不要使用 Markdown 代码围栏。
 
 {% for diag in diagnostics %}
 
@@ -26,16 +27,17 @@
 
 必须满足：
 - 第一个非空字符是 <。
-- 根标签只能是 <tool_calls>。
+- 根标签只能是 <{{ ToolCallProtocol.root }}>。
 - XML 外不能有任何文字。
-- 每个 <tool_call> 必须包含 <name> 和 <arguments>。
-- 字段用 XML 子标签表达；数组字段用重复 <item>。
+- XML 不能放进 Markdown 代码块。
+- 每个 <{{ ToolCallProtocol.callTag }}> 必须包含 <{{ ToolCallProtocol.nameTag }}> 和 <{{ ToolCallProtocol.argumentsTag }}>。
+- 字段用 XML 子标签表达；数组字段用重复 <{{ ToolCallProtocol.arrayItemTag }}>。
 
 模板：
-<tool_calls>
-  <tool_call>
-    <name>工具名</name>
-    <arguments>
-    </arguments>
-  </tool_call>
-</tool_calls>
+<{{ ToolCallProtocol.root }}>
+  <{{ ToolCallProtocol.callTag }}>
+    <{{ ToolCallProtocol.nameTag }}>工具名</{{ ToolCallProtocol.nameTag }}>
+    <{{ ToolCallProtocol.argumentsTag }}>
+    </{{ ToolCallProtocol.argumentsTag }}>
+  </{{ ToolCallProtocol.callTag }}>
+</{{ ToolCallProtocol.root }}>

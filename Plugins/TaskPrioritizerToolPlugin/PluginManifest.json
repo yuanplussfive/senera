@@ -16,9 +16,14 @@
   "Discovery": {
     "Tags": [
       "task",
+      "任务",
       "planning",
+      "计划",
       "priority",
-      "local"
+      "local",
+      "优先级",
+      "排序",
+      "待办"
     ]
   },
   "Prompting": {
@@ -28,9 +33,36 @@
   "Tools": [
     {
       "Name": "TaskPrioritizerTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
-      "Permissions": []
+      "Permissions": [],
+      "Search": {
+        "Summary": "根据影响、紧急度、工作量和依赖关系给任务排序。",
+        "Keywords": [
+          "task",
+          "priority",
+          "planning",
+          "todo",
+          "schedule",
+          "任务",
+          "优先级",
+          "排序",
+          "计划",
+          "待办",
+          "排期"
+        ],
+        "UseCases": [
+          "用户给出一组任务，需要规划执行顺序、优先级或聚焦策略时使用。"
+        ],
+        "Examples": [
+          "帮我给这些任务排优先级",
+          "这些待办先做哪个",
+          "prioritize this task list"
+        ],
+        "Avoid": [
+          "不要用于执行命令、编辑文件或搜索代码。"
+        ]
+      }
     }
   ],
   "Security": {

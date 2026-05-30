@@ -16,8 +16,15 @@
   "Discovery": {
     "Tags": [
       "context",
+      "上下文",
       "read",
-      "workspace"
+      "读取",
+      "workspace",
+      "工作区",
+      "file",
+      "文件",
+      "directory",
+      "目录"
     ]
   },
   "Prompting": {
@@ -27,11 +34,40 @@
   "Tools": [
     {
       "Name": "FastContextReadTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace"
-      ]
+      ],
+      "Search": {
+        "Summary": "读取工作区内指定文件片段，目录路径返回轻量子路径摘要。",
+        "Keywords": [
+          "read",
+          "file",
+          "open",
+          "lines",
+          "directory",
+          "workspace",
+          "读取",
+          "查看",
+          "文件",
+          "源码",
+          "行号",
+          "目录"
+        ],
+        "UseCases": [
+          "已知道具体路径，需要查看文件内容、行号片段或目录摘要时使用。"
+        ],
+        "Examples": [
+          "读取 README.md 前 100 行",
+          "看 Source/AgentSystem/AgentLoop.ts",
+          "read package.json",
+          "查看 Frontend/src 目录"
+        ],
+        "Avoid": [
+          "不知道路径时先用工作区地图或搜索工具定位。"
+        ]
+      }
     }
   ],
   "Security": {

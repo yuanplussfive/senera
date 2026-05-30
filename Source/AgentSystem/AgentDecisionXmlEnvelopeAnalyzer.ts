@@ -6,6 +6,7 @@ import { AgentXmlEnvelopeBoundaryScanner } from "./AgentXmlEnvelopeBoundaryScann
 import { AgentXmlEnvelopeClassifier } from "./AgentXmlEnvelopeClassifier.js";
 import { AgentMarkdownFenceScanner } from "./AgentMarkdownFenceScanner.js";
 import { AgentTextLocator } from "./AgentTextLocator.js";
+import { AgentXmlCandidateOffsetScanner } from "./AgentXmlCandidateOffsetScanner.js";
 import {
   AgentXmlEnvelopeKinds,
   AgentXmlErrorCodes,
@@ -17,6 +18,7 @@ export interface AgentDecisionXmlEnvelopeAnalyzerOptions {
   policy?: AgentXmlProtocolPolicy;
   acceptRoot?: (rootName: string) => boolean;
   allowEmbeddedCandidates?: boolean;
+  allowFencedEnvelope?: boolean;
   candidateNormalizer?: AgentXmlCandidateNormalizer;
 }
 
@@ -107,6 +109,7 @@ export class AgentDecisionXmlEnvelopeAnalyzer {
 
   private readonly scanner = new AgentXmlLexicalScanner();
   private readonly boundaryScanner = new AgentXmlEnvelopeBoundaryScanner();
+  private readonly candidateOffsetScanner = new AgentXmlCandidateOffsetScanner();
   private readonly locator = new AgentTextLocator();
   private readonly fenceScanner = new AgentMarkdownFenceScanner(this.locator);
   private readonly classifier: AgentXmlEnvelopeClassifier;
@@ -114,12 +117,14 @@ export class AgentDecisionXmlEnvelopeAnalyzer {
   private readonly policy?: AgentXmlProtocolPolicy;
   private readonly acceptRoot?: (rootName: string) => boolean;
   private readonly allowEmbeddedCandidates: boolean;
+  private readonly allowFencedEnvelope: boolean;
   private readonly candidateNormalizer?: AgentXmlCandidateNormalizer;
 
   constructor(options: AgentDecisionXmlEnvelopeAnalyzerOptions = {}) {
     this.policy = options.policy;
     this.acceptRoot = options.acceptRoot;
     this.allowEmbeddedCandidates = options.allowEmbeddedCandidates ?? true;
+    this.allowFencedEnvelope = options.allowFencedEnvelope ?? true;
     this.candidateNormalizer = options.candidateNormalizer;
     this.xmlFenceLanguages = new Set(
       options.policy
@@ -154,6 +159,9 @@ export class AgentDecisionXmlEnvelopeAnalyzer {
   inspectStreamingEnvelope(rawText: string): StreamingDecisionXmlEnvelope {
     const raw = this.stripBom(rawText);
     const leading = this.readLeadingContent(raw);
+    const opening = leading
+      ? this.fenceScanner.readOpening(leading, (info) => this.isAllowedFenceLanguage(info))
+      : undefined;
 
     return leading === undefined
       ? {
@@ -162,7 +170,14 @@ export class AgentDecisionXmlEnvelopeAnalyzer {
           body: "",
           fenced: false,
         }
-      : this.fenceScanner.readOpening(leading, (info) => this.isAllowedFenceLanguage(info)).kind !== "absent"
+      : opening?.kind !== "absent" && !this.allowFencedEnvelope
+        ? {
+            kind: AgentXmlEnvelopeKinds.Collecting,
+            raw,
+            body: raw,
+            fenced: opening?.kind === "open",
+          }
+      : opening?.kind !== "absent"
         ? this.inspectFencedStreamingEnvelope(raw, leading)
         : this.classifyStreamingBody(raw, leading, false);
   }
@@ -175,9 +190,12 @@ export class AgentDecisionXmlEnvelopeAnalyzer {
     text: string,
     options: {
       acceptRoot?: (rootName: string) => boolean;
+      includeFenced?: boolean;
     } = {},
   ): AgentDecisionXmlCandidate | undefined {
-    for (const offset of this.findCandidateStartOffsets(text)) {
+    for (const offset of this.findCandidateStartOffsets(text, {
+      includeFenced: options.includeFenced ?? true,
+    })) {
       const candidate = text.slice(offset);
       if (this.scanner.readLeadingTag(candidate) === undefined) {
         continue;
@@ -216,6 +234,15 @@ export class AgentDecisionXmlEnvelopeAnalyzer {
     }
 
     return undefined;
+  }
+
+  *findCandidateStartOffsets(
+    text: string,
+    options: {
+      includeFenced?: boolean;
+    } = {},
+  ): Iterable<number> {
+    yield* this.candidateOffsetScanner.findOffsets(text, options);
   }
 
   private normalizeCompleteCandidate(candidate: string, boundary: number): string {
@@ -412,14 +439,6 @@ export class AgentDecisionXmlEnvelopeAnalyzer {
 
   private isAcceptedStreamingRoot(rootName: string): boolean {
     return !this.acceptRoot || this.acceptRoot(rootName);
-  }
-
-  private *findCandidateStartOffsets(text: string): Iterable<number> {
-    const pattern = /</g;
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(text))) {
-      yield match.index;
-    }
   }
 
   private readLeadingContent(text: string): string | undefined {

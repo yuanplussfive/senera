@@ -1,6 +1,6 @@
 import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
 import type { AgentEventSink } from "./AgentEvent.js";
-import { emitAgentEvent } from "./AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent } from "./AgentEvent.js";
 import type { AgentLanguageModel } from "./AgentLanguageModel.js";
 import {
   AgentLoopCommandExecutor,
@@ -35,15 +35,32 @@ export class AgentLoop {
     this.stateMachine = new AgentLoopStateMachine({
       maxSteps: options.runtime.agentLoopConfig.MaxSteps,
       maxRepairAttempts: options.runtime.agentLoopConfig.MaxRepairAttempts,
+      dynamicTools: options.runtime.agentLoopConfig.LoadedTools === "dynamic",
     });
     this.commandExecutor = new AgentLoopCommandExecutor(options);
   }
 
   async run(request: AgentRunRequest): Promise<AgentCompletedRunResult> {
+    await emitAgentEvent(request.onEvent, {
+      kind: AgentEventKinds.RunStarted,
+      context: {
+        requestId: request.requestId,
+      },
+      data: {
+        input: request.input,
+      },
+    });
+
+    const loadedToolNames = this.options.runtime.toolSearch.resolveInitialLoadedTools(
+      request.input,
+      this.options.runtime.agentLoopConfig.LoadedTools,
+    );
     let transition = this.stateMachine.start({
       requestId: request.requestId,
       input: request.input,
       messages: request.messages,
+      loadedToolNames,
+      emitRunStarted: false,
     });
 
     await this.emitAll(request.onEvent, transition.events);

@@ -21,6 +21,17 @@ import type { AgentXmlCandidateNormalizer } from "./AgentToolCallsXmlNormalizer.
 import type { RegisteredDecisionAction } from "./Types.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "./AgentModelMetadata.js";
 import { AgentXmlErrorCodes } from "./AgentXmlStatus.js";
+import {
+  AgentForbiddenOutputXmlGuard,
+  AgentForbiddenOutputXmlRetryableError,
+} from "./AgentForbiddenOutputXmlGuard.js";
+import type { AgentActionDecision } from "./AgentActionPlanner.js";
+import {
+  AgentDecisionOutputResolver,
+  type AgentDecisionOutputContract,
+  type AgentDecisionOutputShape,
+} from "./AgentDecisionOutputResolver.js";
+import type { AgentActionMismatchRepairPromptBuilder } from "./AgentActionMismatchRepairPromptBuilder.js";
 
 export type DecisionXmlCollectionResult =
   | {
@@ -56,6 +67,7 @@ export interface AgentDecisionXmlCollectorOptions {
   };
   decisionActions?: readonly Pick<RegisteredDecisionAction, "kind" | "xmlRoot">[];
   candidateNormalizer?: AgentXmlCandidateNormalizer;
+  actionMismatchRepairPromptBuilder?: AgentActionMismatchRepairPromptBuilder;
 }
 
 export class AgentDecisionXmlCollectionRetryableError extends AgentRetryableError {
@@ -72,16 +84,25 @@ export class AgentDecisionXmlCollector {
   private readonly previewRules: readonly DecisionStreamingPreviewRule[];
   private readonly allowedRoots: ReadonlySet<string>;
   private readonly toolCallsRoot: string;
+  private readonly forbiddenOutputGuard: AgentForbiddenOutputXmlGuard;
+  private readonly outputResolver: AgentDecisionOutputResolver;
 
   constructor(private readonly options: AgentDecisionXmlCollectorOptions) {
     this.previewRules = createDecisionStreamingPreviewRules(options.decisionActions);
     const toolCallsAction = options.decisionActions?.find((action) => action.kind === "ToolCalls");
-    this.toolCallsRoot = toolCallsAction?.xmlRoot ?? "tool_calls";
+    this.toolCallsRoot = toolCallsAction?.xmlRoot ?? options.policy.protocol.roots.toolCalls;
     this.allowedRoots = new Set([this.toolCallsRoot]);
+    this.forbiddenOutputGuard = new AgentForbiddenOutputXmlGuard(options.policy.protocol);
     this.analyzer = new AgentDecisionXmlEnvelopeAnalyzer({
       policy: options.policy,
       acceptRoot: (rootName) => this.allowedRoots.has(rootName),
       allowEmbeddedCandidates: true,
+      candidateNormalizer: options.candidateNormalizer,
+    });
+    this.outputResolver = new AgentDecisionOutputResolver({
+      policy: options.policy,
+      toolCallsRoot: this.toolCallsRoot,
+      acceptRoot: (rootName) => this.allowedRoots.has(rootName),
       candidateNormalizer: options.candidateNormalizer,
     });
   }
@@ -91,6 +112,8 @@ export class AgentDecisionXmlCollector {
     step: number;
     systemPrompt: string;
     messages: AgentLanguageModelMessage[];
+    actionDirective?: AgentActionDecision;
+    loadedToolNames?: "all" | readonly string[];
     onEvent?: AgentEventSink;
     signal?: AbortSignal;
   }): Promise<DecisionXmlCollectionResult> {
@@ -103,7 +126,8 @@ export class AgentDecisionXmlCollector {
     const assembler = new AgentDecisionXmlStreamAssembler({
       policy: this.options.policy,
       acceptRoot: (rootName) => this.allowedRoots.has(rootName),
-      allowEmbeddedCandidates: true,
+      allowEmbeddedCandidates: false,
+      allowFencedEnvelope: false,
       candidateNormalizer: this.options.candidateNormalizer,
     });
 
@@ -131,11 +155,7 @@ export class AgentDecisionXmlCollector {
           data: {
             state: snapshot.state,
             xml: snapshot.candidateXml,
-            ...extractDecisionStreamingPreview(
-              snapshot.rawText,
-              this.options.policy,
-              this.previewRules,
-            ),
+            ...this.extractStreamingPreview(snapshot.rawText, request.actionDirective),
           },
         });
 
@@ -191,28 +211,6 @@ export class AgentDecisionXmlCollector {
 
         if (snapshot.state === "root_closed") {
           toolCallsSnapshot = snapshot;
-          await emitAgentEvent(request.onEvent, {
-            kind: AgentEventKinds.DecisionXmlReady,
-            context: {
-              requestId: request.requestId,
-              step: request.step,
-            },
-            data: {
-              stopReason: "root_closed",
-            },
-          });
-          stream.abort();
-          await emitAgentEvent(request.onEvent, {
-            kind: AgentEventKinds.ModelStreamAborted,
-            context: {
-              requestId: request.requestId,
-              step: request.step,
-            },
-            data: {
-              reason: "xml_root_closed",
-            },
-          });
-          break;
         }
       }
     } catch (error) {
@@ -241,92 +239,177 @@ export class AgentDecisionXmlCollector {
       },
     });
 
-    const snapshot = toolCallsSnapshot ?? assembler.current();
-    if (snapshot.state !== "root_closed") {
-      const embedded = this.findEmbeddedToolCalls(text);
-      if (embedded) {
-        await this.emitDecisionXmlArtifacts(request, embedded.xml, {
-          sanitized: embedded.sanitized,
-          rawXml: embedded.sanitized ? text : undefined,
-        });
+    const pureSnapshot = this.readPureToolCallsSnapshot(
+      toolCallsSnapshot ?? assembler.current(),
+      text,
+    );
+    const resolved = this.outputResolver.resolve({
+      text,
+      actionDirective: request.actionDirective,
+      pureToolXml: pureSnapshot?.candidateXml,
+    });
 
-        return {
-          kind: "tool_calls",
-          text,
-          toolCallsXml: embedded.xml,
-          stopReason: "stream_completed",
-          modelProvider: stream.metadata,
-          usage: this.estimateOutputUsage(text),
-        };
+    if (resolved.kind === "action_mismatch") {
+      throw this.buildActionMismatchError({
+        ...resolved,
+        actionDirective: request.actionDirective,
+        loadedToolNames: request.loadedToolNames ?? [],
+      });
+    }
+
+    if (resolved.kind === "final_text") {
+      if (this.containsToolCallsIntent(text)) {
+        throw this.buildIncompleteToolCallsError(text);
       }
 
-      if (this.containsToolCallsIntent(text)) {
-        throw new AgentDecisionXmlCollectionRetryableError(text, {
-          retryable: true,
-          code: AgentXmlErrorCodes.IncompleteXmlEnvelope,
-          message: "模型尝试输出工具调用，但 <tool_calls> XML 没有形成完整、合法的根节点。",
-          diagnostics: [{
-            message: "模型尝试输出工具调用，但 <tool_calls> XML 没有形成完整、合法的根节点。",
-            pointer: "/tool_calls",
-            suggestion: "重新输出一个完整的 <tool_calls> 根标签；标签名、开始标签和结束标签必须保持完整，参数文本放在对应字段内部。",
-          }],
-          repairPrompt: [
-            "上一条回复尝试调用工具，但 <tool_calls> XML 结构损坏。",
-            "只输出修正后的完整 <tool_calls> XML，不要输出解释文本。",
-            "标签名、开始标签和结束标签必须保持完整。",
-            "参数文本放在对应字段内部，不要插入到标签名或结束标签中。",
-          ].join("\n"),
-        });
+      const forbidden = this.forbiddenOutputGuard.inspect(text);
+      if (forbidden) {
+        throw new AgentForbiddenOutputXmlRetryableError(text, forbidden);
       }
 
       return {
         kind: "final_text",
-        text,
+        text: resolved.text,
         modelProvider: stream.metadata,
-        usage: this.estimateOutputUsage(text),
+        usage: this.estimateOutputUsage(resolved.text),
       };
     }
 
-    await this.emitDecisionXmlArtifacts(request, snapshot.candidateXml, {
+    await this.emitDecisionXmlArtifacts(request, resolved.xml, {
       sanitized: false,
-      rawXml: snapshot.candidateXml === snapshot.rawText ? undefined : snapshot.rawText,
+      rawXml: resolved.recovered ? resolved.text : undefined,
     });
 
     return {
       kind: "tool_calls",
-      text,
-      toolCallsXml: snapshot.rawText,
-      stopReason: "root_closed",
+      text: resolved.text,
+      toolCallsXml: resolved.xml,
+      stopReason: "stream_completed",
       modelProvider: stream.metadata,
       usage: this.estimateOutputUsage(text),
     };
   }
 
-  private findEmbeddedToolCalls(text: string): {
-    xml: string;
-    sanitized: boolean;
-  } | undefined {
-    const candidate = this.analyzer.findFirstCompleteCandidate(text, {
-      acceptRoot: (rootName) => this.allowedRoots.has(rootName),
-    });
-    if (!candidate) {
-      return undefined;
-    }
-
-    const boundary = this.analyzer.findFirstCompleteBoundary(candidate.xmlText);
-    if (boundary === undefined) {
-      return undefined;
-    }
-
-    const xml = candidate.xmlText.slice(0, boundary).trim();
-    return {
-      xml,
-      sanitized: xml !== text.trim(),
-    };
+  private readPureToolCallsSnapshot(
+    snapshot: ReturnType<AgentDecisionXmlStreamAssembler["current"]>,
+    text: string,
+  ): Extract<ReturnType<AgentDecisionXmlStreamAssembler["current"]>, { state: "root_closed" }> | undefined {
+    return snapshot.state === "root_closed" && snapshot.candidateXml.trim() === text.trim()
+      ? snapshot
+      : undefined;
   }
 
   private containsToolCallsIntent(text: string): boolean {
-    return text.toLowerCase().includes(`<${this.toolCallsRoot.toLowerCase()}`);
+    if (!this.outputResolver.hasToolEnvelopeStart(text)) {
+      return false;
+    }
+
+    const boundary = this.analyzer.findFirstCompleteBoundary(text.trimStart());
+    return boundary === undefined;
+  }
+
+  private buildActionMismatchError(options: {
+    text: string;
+    expected: AgentDecisionOutputContract;
+    actual: AgentDecisionOutputShape["kind"];
+    actionDirective?: AgentActionDecision;
+    loadedToolNames: "all" | readonly string[];
+  }): AgentDecisionXmlCollectionRetryableError {
+    const expectedText = {
+      tool_call_xml: `只输出一个完整、干净的 <${this.toolCallsRoot}> 工具调用根标签。`,
+      final_text: "直接输出自然语言或 Markdown，不要输出工具调用 XML。",
+      open: "按当前任务选择自然语言回复或工具调用 XML。",
+    } satisfies Record<AgentDecisionOutputContract, string>;
+
+    const actualText = {
+      plain_text: "自然语言回复",
+      pure_tool_envelope: "纯工具调用 XML",
+      mixed_tool_envelope: "自然语言混合工具调用 XML",
+      tool_envelope_fragment: "未完整闭合的工具调用 XML",
+    } satisfies Record<AgentDecisionOutputShape["kind"], string>;
+
+    const code = AgentXmlErrorCodes.MixedXmlContent;
+    const message = `模型输出形态与本轮 Action 不一致：期望 ${options.expected}，实际是 ${options.actual}。`;
+    return new AgentDecisionXmlCollectionRetryableError(options.text, {
+      retryable: true,
+      code,
+      message,
+      diagnostics: [{
+        message,
+        pointer: "/",
+        suggestion: expectedText[options.expected],
+      }],
+      repairPrompt: this.buildActionMismatchRepairPrompt({
+        code,
+        expected: options.expected,
+        actual: options.actual,
+        actionDirective: options.actionDirective,
+        loadedToolNames: options.loadedToolNames,
+      }),
+      details: {
+        expected: options.expected,
+        actual: options.actual,
+        suppressAssistantRepairEcho: true,
+        previousOutputShape: actualText[options.actual],
+      },
+    });
+  }
+
+  private buildActionMismatchRepairPrompt(options: {
+    code: typeof AgentXmlErrorCodes.MixedXmlContent;
+    expected: AgentDecisionOutputContract;
+    actual: AgentDecisionOutputShape["kind"];
+    actionDirective?: AgentActionDecision;
+    loadedToolNames: "all" | readonly string[];
+  }): string {
+    return this.options.actionMismatchRepairPromptBuilder?.build(options)
+      ?? this.buildFallbackActionMismatchRepairPrompt(options);
+  }
+
+  private buildFallbackActionMismatchRepairPrompt(options: {
+    expected: AgentDecisionOutputContract;
+    actual: AgentDecisionOutputShape["kind"];
+  }): string {
+    const expectedText = {
+      tool_call_xml: `只输出一个完整、干净的 <${this.toolCallsRoot}> 工具调用根标签。`,
+      final_text: "直接输出自然语言或 Markdown，不要输出工具调用 XML。",
+      open: "按当前任务选择自然语言回复或工具调用 XML。",
+    } satisfies Record<AgentDecisionOutputContract, string>;
+
+    const actualText = {
+      plain_text: "自然语言回复",
+      pure_tool_envelope: "纯工具调用 XML",
+      mixed_tool_envelope: "自然语言混合工具调用 XML",
+      tool_envelope_fragment: "未完整闭合的工具调用 XML",
+    } satisfies Record<AgentDecisionOutputShape["kind"], string>;
+
+    return [
+      "上一条回复没有遵守本轮 Action 输出契约。",
+      `本轮期望：${expectedText[options.expected]}`,
+      `上一条实际输出形态：${actualText[options.actual]}。`,
+      "不要解释，只重新输出符合本轮 Action 的内容。",
+    ].join("\n");
+  }
+
+  private buildIncompleteToolCallsError(text: string): AgentDecisionXmlCollectionRetryableError {
+    const rootTag = `<${this.toolCallsRoot}>`;
+    return new AgentDecisionXmlCollectionRetryableError(text, {
+      retryable: true,
+      code: AgentXmlErrorCodes.IncompleteXmlEnvelope,
+      message: `模型尝试输出工具调用，但 ${rootTag} XML 没有形成完整、合法的根节点。`,
+      diagnostics: [{
+        message: `模型尝试输出工具调用，但 ${rootTag} XML 没有形成完整、合法的根节点。`,
+        pointer: `/${this.toolCallsRoot}`,
+        suggestion: `重新输出一个完整的 ${rootTag} 根标签；标签名、开始标签和结束标签必须保持完整，参数文本放在对应字段内部。`,
+      }],
+      repairPrompt: [
+        `上一条回复尝试调用工具，但 ${rootTag} XML 结构损坏。`,
+        `只输出修正后的完整 ${rootTag} XML，不要输出解释文本。`,
+        "不要使用 Markdown 代码围栏。",
+        "标签名、开始标签和结束标签必须保持完整。",
+        "参数文本放在对应字段内部，不要插入到标签名或结束标签中。",
+      ].join("\n"),
+    });
   }
 
   private estimateOutputUsage(text: string): AgentModelUsage {
@@ -334,6 +417,23 @@ export class AgentDecisionXmlCollector {
       source: "local_estimate",
       outputTokens: this.options.tokenEstimator.estimate(text).tokenCount,
     };
+  }
+
+  private extractStreamingPreview(
+    text: string,
+    actionDirective: AgentActionDecision | undefined,
+  ) {
+    return actionDirective && ToolActionKinds.has(actionDirective.action)
+      ? {
+          kind: "tool_calls" as const,
+          text: "",
+          preambleText: "",
+        }
+      : extractDecisionStreamingPreview(
+          text,
+          this.options.policy,
+          this.previewRules,
+        );
   }
 
   private async emitDecisionXmlArtifacts(
@@ -382,3 +482,9 @@ export class AgentDecisionXmlCollector {
     });
   }
 }
+
+const ToolActionKinds = new Set<AgentActionDecision["action"]>([
+  "ask_user",
+  "discover_tools",
+  "use_tools",
+]);

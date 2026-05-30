@@ -17,6 +17,8 @@
   },
   "scripts": {
     "clean": "node Scripts/CleanDist.js",
+    "baml:check": "baml check --from baml_src",
+    "baml:generate": "baml generate --from baml_src",
     "check": "tsc --noEmit",
     "build": "node Scripts/CleanDist.js && tsc",
     "server": "npm run build && node Dist/Scripts/SeneraServer.js",
@@ -28,6 +30,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@boundaryml/baml": "^0.222.0",
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^12.10.0",
     "chalk": "^4.1.2",
@@ -41,6 +44,7 @@
     "json-source-map": "^0.6.1",
     "liquidjs": "^10.25.7",
     "markdown-it": "^14.1.1",
+    "minisearch": "^7.2.0",
     "parse5": "^8.0.1",
     "saxes": "^6.0.0",
     "smol-toml": "^1.6.1",

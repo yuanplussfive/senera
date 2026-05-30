@@ -10,6 +10,8 @@ import type { AgentProjectedTerminalResult } from "./AgentExecutionProjector.js"
 import type { AgentRetryInstruction } from "./AgentRetryableError.js";
 import type { SanitizedDecisionXml } from "./AgentDecisionXmlSanitizer.js";
 import type { AgentDecision } from "./Types.js";
+import type { AgentActionPlanResult } from "./AgentActionPlanner.js";
+import { agentDecisionOutputContractForAction } from "./AgentDecisionOutputResolver.js";
 
 export class AgentLoopEventFactory {
   runStarted(requestId: string, input: string): AgentDomainEvent {
@@ -50,6 +52,51 @@ export class AgentLoopEventFactory {
         data: {
           prompt,
         },
+      },
+    ];
+  }
+
+  actionPlanned(
+    requestId: string,
+    step: number,
+    plan: AgentActionPlanResult,
+    loadedToolNames: "all" | string[],
+  ): AgentDomainEvent[] {
+    return [
+      {
+        kind: AgentEventKinds.ActionPlanned,
+        context: {
+          requestId,
+          step,
+        },
+        data: plan.kind === "planned"
+          ? {
+              status: "planned",
+              action: plan.decision.action,
+              expectedOutputMode: agentDecisionOutputContractForAction(plan.decision.action),
+              intent: plan.decision.intent,
+              progressAssessment: plan.decision.progressAssessment,
+              nextStepGoal: plan.decision.nextStepGoal,
+              preferredTools: plan.decision.preferredTools,
+              toolSearchQueries: plan.decision.toolSearchQueries,
+              loadedTools: loadedToolNames,
+              currentStep: plan.input.runtime.currentStep,
+              executionState: {
+                totalToolCalls: plan.input.executionState.progress.totalToolCalls,
+                totalEvidence: plan.input.executionState.progress.totalEvidence,
+                repeatedCallCount: plan.input.executionState.progress.repeatedCallCount,
+                stalled: plan.input.executionState.progress.stalled,
+                recentDeltaCount: plan.input.recentDeltas.length,
+              },
+              repaired: plan.repaired,
+            }
+          : {
+              status: "fallback",
+              preferredTools: [],
+              toolSearchQueries: [],
+              loadedTools: loadedToolNames,
+              reason: plan.reason,
+            },
       },
     ];
   }

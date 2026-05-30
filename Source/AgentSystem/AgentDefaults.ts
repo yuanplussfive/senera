@@ -1,6 +1,8 @@
 import type {
   ResolvedAgentModelProviderConfig,
   AgentSystemConfig,
+  ResolvedAgentActionPlannerConfig,
+  ResolvedAgentToolSearchConfig,
 } from "./Types.js";
 
 export const AgentDefaults = {
@@ -16,13 +18,54 @@ export const AgentDefaults = {
     MaxOutputTokens: -1,
     Stream: true,
     TimeoutMs: 120000,
+    FirstTokenTimeoutMs: -1,
+    MaxRequestMs: -1,
     MaxNetworkRetries: 2,
     Headers: {},
   },
   AgentLoop: {
-    MaxSteps: 8,
+    MaxSteps: 16,
     MaxRepairAttempts: 2,
-    LoadedTools: "all",
+    LoadedTools: "dynamic",
+  },
+  ToolSearch: {
+    Dynamic: {
+      BootstrapTools: [
+        "ToolSearchTool",
+        "AskUserTool",
+      ],
+    },
+    Memory: {
+      Kind: "sqlite",
+      DatabasePath: ".senera/ToolSearch.sqlite",
+      MaxEpisodes: 5000,
+      HalfLifeDays: 30,
+    },
+    Ranking: {
+      RrfK: 60,
+      MmrLambda: 0.72,
+      MinScore: 0,
+    },
+  },
+  ActionPlanner: {
+    Enabled: true,
+    MaxRepairAttempts: 1,
+    MaxCatalogTools: 48,
+    RecentContextChars: 6000,
+    ContextBudget: {
+      MaxRecentDeltas: 12,
+      MaxStateCalls: 12,
+      MaxEvidence: 16,
+      MaxPreviewChars: 320,
+    },
+    Client: {
+      Provider: "auto",
+      BaseUrl: "",
+      ApiKey: "",
+      Model: "",
+      Temperature: 0.1,
+      MaxTokens: -1,
+    },
   },
   Server: {
     Host: "127.0.0.1",
@@ -33,6 +76,8 @@ export const AgentDefaults = {
 } as const satisfies {
   ModelProviderDefaults: import("./Types.js").ResolvedAgentModelProviderConfig;
   AgentLoop: Required<NonNullable<AgentSystemConfig["AgentLoop"]>>;
+  ToolSearch: ResolvedAgentToolSearchConfig;
+  ActionPlanner: ResolvedAgentActionPlannerConfig;
   Server: Required<NonNullable<AgentSystemConfig["Server"]>>;
 };
 
@@ -95,6 +140,49 @@ export function resolveAgentLoopConfig(config: AgentSystemConfig) {
   return {
     ...AgentDefaults.AgentLoop,
     ...config.AgentLoop,
+  };
+}
+
+export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgentToolSearchConfig {
+  return {
+    Dynamic: {
+      ...AgentDefaults.ToolSearch.Dynamic,
+      ...config.ToolSearch?.Dynamic,
+    },
+    Memory: {
+      ...AgentDefaults.ToolSearch.Memory,
+      ...config.ToolSearch?.Memory,
+    },
+    Ranking: {
+      ...AgentDefaults.ToolSearch.Ranking,
+      ...config.ToolSearch?.Ranking,
+    },
+  };
+}
+
+export function resolveActionPlannerConfig(
+  config: AgentSystemConfig,
+  providerId?: string,
+): ResolvedAgentActionPlannerConfig {
+  const provider = resolveModelProviderConfig(config, providerId);
+  const configured = config.ActionPlanner;
+  const client = configured?.Client;
+
+  return {
+    ...AgentDefaults.ActionPlanner,
+    ...configured,
+    ContextBudget: {
+      ...AgentDefaults.ActionPlanner.ContextBudget,
+      ...configured?.ContextBudget,
+    },
+    Client: {
+      Provider: client?.Provider ?? AgentDefaults.ActionPlanner.Client.Provider,
+      BaseUrl: client?.BaseUrl ?? provider.BaseUrl,
+      ApiKey: client?.ApiKey ?? provider.ApiKey,
+      Model: client?.Model ?? provider.Model,
+      Temperature: client?.Temperature ?? AgentDefaults.ActionPlanner.Client.Temperature,
+      MaxTokens: client?.MaxTokens ?? AgentDefaults.ActionPlanner.Client.MaxTokens,
+    },
   };
 }
 

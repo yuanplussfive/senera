@@ -151,6 +151,14 @@ export class AgentMarkdownPromptXmlRenderer {
   }
 
   private renderParagraph(context: RenderContext, inline: Token | undefined): void {
+    const standaloneXml = this.readStandaloneXmlExample(inline);
+    if (standaloneXml) {
+      context.output.push("<example>");
+      context.output.push(standaloneXml);
+      context.output.push("</example>");
+      return;
+    }
+
     const tagName = context.listStack.length > 0 ? "text" : "paragraph";
     context.output.push(`<${tagName}>${this.renderInline(inline)}</${tagName}>`);
   }
@@ -225,6 +233,19 @@ export class AgentMarkdownPromptXmlRenderer {
 
   private normalizeFenceLanguage(info: string): string {
     return info.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  }
+
+  private readStandaloneXmlExample(inline: Token | undefined): string | undefined {
+    const content = inline?.content.trim();
+    if (!content?.startsWith("<") || !content.endsWith(">")) {
+      return undefined;
+    }
+
+    return XMLValidator.validate(content, {
+      allowBooleanAttributes: false,
+    }) === true
+      ? content
+      : undefined;
   }
 
   private skipInline(token: Token | undefined): number {

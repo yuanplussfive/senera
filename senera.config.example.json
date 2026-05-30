@@ -86,13 +86,51 @@
       "MaxOutputTokens": -1,
       "Stream": true,
       "TimeoutMs": 120000,
+      "FirstTokenTimeoutMs": -1,
+      "MaxRequestMs": -1,
       "MaxNetworkRetries": 2
     }
   ],
   "AgentLoop": {
     "MaxSteps": -1,
     "MaxRepairAttempts": 2,
-    "LoadedTools": "all"
+    "LoadedTools": "dynamic"
+  },
+  "ToolSearch": {
+    "Dynamic": {
+      "BootstrapTools": [
+        "ToolSearchTool",
+        "AskUserTool"
+      ]
+    },
+    "Memory": {
+      "Kind": "sqlite",
+      "DatabasePath": ".senera/ToolSearch.sqlite",
+      "MaxEpisodes": 5000,
+      "HalfLifeDays": 30
+    },
+    "Ranking": {
+      "RrfK": 60,
+      "MmrLambda": 0.72,
+      "MinScore": 0
+    }
+  },
+  "ActionPlanner": {
+    "Enabled": true,
+    "MaxRepairAttempts": 1,
+    "MaxCatalogTools": 48,
+    "RecentContextChars": 6000,
+    "ContextBudget": {
+      "MaxRecentDeltas": 12,
+      "MaxStateCalls": 12,
+      "MaxEvidence": 16,
+      "MaxPreviewChars": 320
+    },
+    "Client": {
+      "Provider": "auto",
+      "Temperature": 0.1,
+      "MaxTokens": -1
+    }
   },
   "Server": {
     "Host": "127.0.0.1",

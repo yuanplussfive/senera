@@ -3,6 +3,7 @@ import type {
 } from "./AgentToolProcessRunner.js";
 import type {
   AgentSystemConfig,
+  AgentPluginRegistryLike,
   RegisteredTool,
 } from "./Types.js";
 
@@ -10,6 +11,10 @@ export interface AgentHostToolContext {
   tool: RegisteredTool;
   config: AgentSystemConfig;
   workspaceRoot: string;
+  registry: AgentPluginRegistryLike;
+  requestId?: string;
+  step?: number;
+  visibleToolNames?: readonly string[];
 }
 
 export type AgentHostToolHandler = (

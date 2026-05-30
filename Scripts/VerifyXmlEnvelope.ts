@@ -17,28 +17,29 @@ async function main(): Promise<void> {
       User: [],
     },
   } satisfies AgentSystemConfig);
+  const toolCallsRoot = policy.protocol.roots.toolCalls;
 
   const toolCallsXml = [
-    "<tool_calls>",
+    `<${toolCallsRoot}>`,
     "  <tool_call>",
     "    <name>AskUserTool</name>",
     "    <arguments>",
     "      <question>需要哪个范围？</question>",
     "    </arguments>",
     "  </tool_call>",
-    "</tool_calls>",
+    `</${toolCallsRoot}>`,
   ].join("\n");
 
   const registry = {
     listDecisionActions: () => [{
       kind: "ToolCalls",
-      xmlRoot: "tool_calls",
+      xmlRoot: toolCallsRoot,
     }],
     getDecisionActionByRoot: (root: string) =>
-      root === "tool_calls"
+      root === toolCallsRoot
         ? {
             kind: "ToolCalls",
-            xmlRoot: "tool_calls",
+            xmlRoot: toolCallsRoot,
             schemaPath: "",
           }
         : undefined,
@@ -85,7 +86,7 @@ async function main(): Promise<void> {
   const unknownRootError = factory.unknownDecisionRoot({
     rootName: "svg",
     source: new AgentXmlSourceHelper("<svg></svg>"),
-    allowedRoots: ["tool_calls"],
+    allowedRoots: [toolCallsRoot],
   });
   const unknownRootDetails = unknownRootError.instruction.details as { suggestion?: string } | undefined;
 
@@ -96,7 +97,7 @@ async function main(): Promise<void> {
 
   const streamAssembler = new AgentDecisionXmlStreamAssembler({
     policy,
-    acceptRoot: (rootName) => rootName === "tool_calls",
+    acceptRoot: (rootName) => rootName === toolCallsRoot,
     allowEmbeddedCandidates: false,
   });
 
@@ -109,7 +110,7 @@ async function main(): Promise<void> {
 
   const toolAssembler = new AgentDecisionXmlStreamAssembler({
     policy,
-    acceptRoot: (rootName) => rootName === "tool_calls",
+    acceptRoot: (rootName) => rootName === toolCallsRoot,
     allowEmbeddedCandidates: false,
   });
   const toolSnapshot = toolAssembler.push(toolCallsXml);

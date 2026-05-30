@@ -8,7 +8,10 @@ import {
 import type { AgentPromptRenderer } from "./AgentPromptRenderer.js";
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
 import type { AgentExceededTextBudgetSnapshot } from "./AgentTextBudget.js";
-import type { AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
+import {
+  AgentDefaultXmlProtocolSpec,
+  type AgentXmlProtocolSpec,
+} from "./AgentXmlPolicy.js";
 import {
   AgentExecutionErrorCodes,
   AgentXmlErrorCodes,
@@ -50,7 +53,7 @@ export class AgentDecisionErrorFactory {
       spec.heading ?? "上一条 XML 决策没有通过解析或校验。",
       `错误代码：${spec.code}`,
       "只输出修正后的 XML，不要输出解释文本。",
-      "当前 XML 修复只适用于工具调用；根标签必须是 <tool_calls>。",
+      `当前 XML 修复只适用于工具调用；根标签必须是 <${this.toolCallsRootName()}>。`,
     ].join("\n");
 
     return new AgentRetryableError({
@@ -67,6 +70,15 @@ export class AgentDecisionErrorFactory {
         : fallback,
       details: spec.details,
     });
+  }
+
+  private toolCallsRootName(): string {
+    return this.registry
+      ?.listDecisionActions()
+      .find((item) => item.kind === "ToolCalls")
+      ?.xmlRoot
+      ?? this.protocol?.roots.toolCalls
+      ?? AgentDefaultXmlProtocolSpec.roots.toolCalls;
   }
 
   fromSanitizerFailure(error: unknown): AgentRetryableError {

@@ -16,11 +16,17 @@
   "Discovery": {
     "Tags": [
       "context",
+      "上下文",
       "search",
+      "搜索",
       "ripgrep",
       "hybrid",
       "symbol",
-      "workspace"
+      "workspace",
+      "工作区",
+      "代码",
+      "符号",
+      "定位"
     ]
   },
   "Prompting": {
@@ -30,31 +36,120 @@
   "Tools": [
     {
       "Name": "FastContextHybridSearchTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/HybridSearch.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace",
         "filesystem:write:.state",
         "process:ripgrep"
-      ]
+      ],
+      "Search": {
+        "Summary": "混合检索本地代码、路径、错误文本和相关上下文。",
+        "Keywords": [
+          "hybrid",
+          "search",
+          "code",
+          "context",
+          "ripgrep",
+          "index",
+          "workspace",
+          "混合检索",
+          "代码搜索",
+          "上下文",
+          "定位",
+          "错误文本",
+          "前端",
+          "后端"
+        ],
+        "UseCases": [
+          "用户用自然语言描述代码位置、Bug、UI 逻辑或错误文本，需要在本地项目里定位相关文件时使用。"
+        ],
+        "Examples": [
+          "定位左侧会话列表消息数量不更新的前端代码",
+          "找 XML 根标签前存在多余文本的处理逻辑",
+          "搜索 requestId 相关实现",
+          "find code handling streaming preview"
+        ],
+        "Avoid": [
+          "已知道精确符号名时优先用符号搜索；已知道路径时用读取工具。"
+        ]
+      }
     },
     {
       "Name": "FastContextSymbolSearchTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/SymbolSearch.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace",
         "filesystem:write:.state"
-      ]
+      ],
+      "Search": {
+        "Summary": "按函数、类、类型、组件等符号名查找定义位置。",
+        "Keywords": [
+          "symbol",
+          "definition",
+          "function",
+          "class",
+          "type",
+          "component",
+          "符号",
+          "定义",
+          "函数",
+          "类",
+          "类型",
+          "组件",
+          "声明"
+        ],
+        "UseCases": [
+          "知道函数名、类名、类型名、组件名或近似符号名，需要找定义时使用。"
+        ],
+        "Examples": [
+          "函数名 createDecisionStreamingPreviewRules 找定义",
+          "找 AgentToolSearchIndex 类",
+          "查 SessionList 组件定义",
+          "where is parseToolCalls defined"
+        ],
+        "Avoid": [
+          "自然语言问题或错误文本定位优先用混合搜索。"
+        ]
+      }
     },
     {
       "Name": "FastContextSearchTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/ExactSearch.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "filesystem:read:workspace",
         "process:ripgrep"
-      ]
+      ],
+      "Search": {
+        "Summary": "使用 ripgrep 精确搜索本地文本、标识符、路径片段或正则。",
+        "Keywords": [
+          "ripgrep",
+          "grep",
+          "exact",
+          "regex",
+          "text",
+          "identifier",
+          "精确搜索",
+          "文本搜索",
+          "正则",
+          "标识符",
+          "代码搜索"
+        ],
+        "UseCases": [
+          "用户给出明确字符串、错误码、XML 标签、变量名或正则表达式，需要快速精确搜索时使用。"
+        ],
+        "Examples": [
+          "搜索 IncompleteXmlEnvelope",
+          "rg senera_tool_calls",
+          "查找 messageCount 字符串",
+          "find exact string MaxOutputTokens"
+        ],
+        "Avoid": [
+          "抽象代码定位优先用混合搜索；符号定义优先用符号搜索。"
+        ]
+      }
     }
   ],
   "Security": {

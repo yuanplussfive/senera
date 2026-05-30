@@ -16,7 +16,11 @@
   "Discovery": {
     "Tags": [
       "ask-user",
-      "clarification"
+      "clarification",
+      "用户",
+      "澄清",
+      "提问",
+      "确认"
     ]
   },
   "Prompting": {
@@ -26,9 +30,35 @@
   "Tools": [
     {
       "Name": "AskUserTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
-      "Permissions": []
+      "Permissions": [],
+      "Search": {
+        "Summary": "向用户提出一个简短澄清问题，等待用户补充关键信息。",
+        "Keywords": [
+          "ask",
+          "user",
+          "clarify",
+          "question",
+          "confirm",
+          "用户",
+          "询问",
+          "澄清",
+          "确认",
+          "缺少信息"
+        ],
+        "UseCases": [
+          "缺少必要参数、目标不明确或继续执行有歧义时使用。"
+        ],
+        "Examples": [
+          "你想搜索什么关键词",
+          "请确认要删除哪个文件",
+          "ask user for missing location"
+        ],
+        "Avoid": [
+          "如果已经可以直接回答或直接调用工具，不要再询问用户。"
+        ]
+      }
     }
   ],
   "Security": {

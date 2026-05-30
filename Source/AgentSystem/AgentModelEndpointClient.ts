@@ -12,16 +12,11 @@ import {
   type AgentModelProviderMetadata,
 } from "./AgentModelMetadata.js";
 import type { AgentSystemConfig } from "./Types.js";
-import { ClaudeMessagesEndpoint } from "./ModelEndpoints/ClaudeMessagesEndpoint.js";
-import { GoogleGenerateContentEndpoint } from "./ModelEndpoints/GoogleGenerateContentEndpoint.js";
 import { ModelHttpClient } from "./ModelEndpoints/ModelHttpClient.js";
-import { OpenAiChatCompletionsEndpoint } from "./ModelEndpoints/OpenAiChatCompletionsEndpoint.js";
-import { OpenAiResponsesEndpoint } from "./ModelEndpoints/OpenAiResponsesEndpoint.js";
 import type {
-  EndpointRuntime,
-  ModelEndpoint,
   TextGenerationEndpoint,
 } from "./ModelEndpoints/ModelEndpointTypes.js";
+import { createModelEndpoint } from "./ModelEndpoints/ModelEndpointTypes.js";
 
 type ModelProviderConfig = ReturnType<typeof resolveModelProviderConfig>;
 
@@ -38,7 +33,7 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
     }
 
     this.metadata = createModelProviderMetadata(this.providerConfig);
-    this.endpoint = createEndpoint(this.providerConfig.Endpoint, {
+    this.endpoint = createModelEndpoint(this.providerConfig.Endpoint, {
       config: this.providerConfig,
       http: new ModelHttpClient(this.providerConfig, this.metadata),
     });
@@ -133,15 +128,4 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
     }
     return text;
   }
-}
-
-function createEndpoint(endpoint: ModelEndpoint, runtime: EndpointRuntime): TextGenerationEndpoint {
-  const endpoints: Record<ModelEndpoint, (runtime: EndpointRuntime) => TextGenerationEndpoint> = {
-    Responses: (item) => new OpenAiResponsesEndpoint(item),
-    ChatCompletions: (item) => new OpenAiChatCompletionsEndpoint(item),
-    ClaudeMessages: (item) => new ClaudeMessagesEndpoint(item),
-    GoogleGenerateContent: (item) => new GoogleGenerateContentEndpoint(item),
-  };
-
-  return endpoints[endpoint](runtime);
 }

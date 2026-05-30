@@ -1,0 +1,57 @@
+上一条回复违反了本轮 Action 输出契约。不要解释，不要回答用户，只修复上一条输出。
+
+错误代码：{{ code }}
+期望输出：{{ expectedLabel }}
+实际输出：{{ actualLabel }}
+
+{% if action %}
+本轮 Action：
+- action: {{ action.action }}
+- intent: {{ action.intent }}
+{% if action.instruction %}
+- instruction: {{ action.instruction }}
+{% endif %}
+{% if action.preferredTools.size > 0 %}
+- preferred_tools: {% for tool in action.preferredTools %}{{ tool }}{% unless forloop.last %}, {% endunless %}{% endfor %}
+{% endif %}
+{% if action.toolSearchQueries.size > 0 %}
+- tool_search_queries: {% for query in action.toolSearchQueries %}{{ query }}{% unless forloop.last %}; {% endunless %}{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if expected == "tool_call_xml" %}
+现在必须只输出工具调用 XML。
+
+硬性要求：
+- 第一个非空字符必须是 <。
+- 根标签只能是 <{{ ToolCallProtocol.root }}>。
+- XML 外不能有自然语言、Markdown、标题、代码围栏或解释。
+- 工具名必须从可用工具中选择，不能编造。
+- 如果没有参数，保留空的 <{{ ToolCallProtocol.argumentsTag }}></{{ ToolCallProtocol.argumentsTag }}>。
+
+{% if tools.size > 0 %}
+可用工具：
+{% for tool in tools %}
+- {{ tool.name }}: {{ tool.summary }}
+{% if tool.examples.size > 0 %}
+  示例意图：{% for example in tool.examples limit: 2 %}{{ example }}{% unless forloop.last %}; {% endunless %}{% endfor %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+输出模板，只填工具名和参数字段：
+<{{ ToolCallProtocol.root }}>
+  <{{ ToolCallProtocol.callTag }}>
+    <{{ ToolCallProtocol.nameTag }}>工具名</{{ ToolCallProtocol.nameTag }}>
+    <{{ ToolCallProtocol.argumentsTag }}>
+    </{{ ToolCallProtocol.argumentsTag }}>
+  </{{ ToolCallProtocol.callTag }}>
+</{{ ToolCallProtocol.root }}>
+{% else %}
+现在必须直接输出自然语言或 Markdown。
+
+硬性要求：
+- 不要输出 <{{ ToolCallProtocol.root }}>。
+- 不要输出任何内部上下文 XML。
+- 如果只是说明工具协议，XML 片段必须作为普通说明内容，不要作为可执行调用输出。
+{% endif %}

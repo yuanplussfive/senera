@@ -3,6 +3,7 @@ import { AgentToolProcessRunner } from "./AgentToolProcessRunner.js";
 import type { AgentToolHostCapabilityRegistry } from "./AgentToolHostCapabilityRegistry.js";
 import type {
   AgentSystemConfig,
+  AgentPluginRegistryLike,
   RegisteredTool,
 } from "./Types.js";
 import {
@@ -13,7 +14,17 @@ import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
 import type { AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
 
 export interface AgentToolRunnerLike {
-  run(tool: RegisteredTool, args: Record<string, unknown>): Promise<AgentToolProcessRunResult>;
+  run(
+    tool: RegisteredTool,
+    args: Record<string, unknown>,
+    context?: AgentToolRunnerContext,
+  ): Promise<AgentToolProcessRunResult>;
+}
+
+export interface AgentToolRunnerContext {
+  requestId?: string;
+  step?: number;
+  visibleToolNames?: readonly string[];
 }
 
 export class AgentToolRunner implements AgentToolRunnerLike {
@@ -24,15 +35,20 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     protocol: AgentXmlProtocolSpec,
     private readonly workspaceRoot: string,
     private readonly hostCapabilities: AgentToolHostCapabilityRegistry,
+    private readonly registry: AgentPluginRegistryLike,
     processRunner?: AgentToolProcessRunner,
   ) {
     this.processRunner = processRunner ?? new AgentToolProcessRunner(config, protocol, workspaceRoot);
   }
 
-  async run(tool: RegisteredTool, args: Record<string, unknown>): Promise<AgentToolProcessRunResult> {
+  async run(
+    tool: RegisteredTool,
+    args: Record<string, unknown>,
+    context: AgentToolRunnerContext = {},
+  ): Promise<AgentToolProcessRunResult> {
     const runners = {
       PluginProcess: () => this.processRunner.run(tool, args),
-      HostCapability: () => this.runHostCapability(tool, args),
+      HostCapability: () => this.runHostCapability(tool, args, context),
     } satisfies Record<RegisteredTool["handler"]["kind"], () => Promise<AgentToolProcessRunResult>>;
 
     return runners[tool.handler.kind]();
@@ -41,6 +57,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
   private async runHostCapability(
     tool: RegisteredTool,
     args: Record<string, unknown>,
+    context: AgentToolRunnerContext,
   ): Promise<AgentToolProcessRunResult> {
     if (tool.handler.kind !== "HostCapability") {
       return this.failure(
@@ -66,6 +83,10 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       tool,
       config: this.config,
       workspaceRoot: this.workspaceRoot,
+      registry: this.registry,
+      requestId: context.requestId,
+      step: context.step,
+      visibleToolNames: context.visibleToolNames,
     });
   }
 

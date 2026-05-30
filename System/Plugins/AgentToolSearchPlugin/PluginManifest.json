@@ -1,0 +1,72 @@
+{
+  "Plugin": {
+    "Name": "AgentToolSearchPlugin",
+    "Title": "Tool Search",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Description": "Searches the registered tool catalog and loads matching tool cards."
+  },
+  "Discovery": {
+    "Tags": [
+      "tool",
+      "工具",
+      "search",
+      "检索",
+      "catalog",
+      "目录",
+      "planning",
+      "dynamic",
+      "动态加载",
+      "能力发现"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 10
+  },
+  "Tools": [
+    {
+      "Name": "ToolSearchTool",
+      "DescriptionFile": "./docs/Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [],
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "tool.search"
+      },
+      "Search": {
+        "Summary": "搜索当前工作区已注册工具，返回适合任务的工具名和用途。",
+        "Keywords": [
+          "tool",
+          "search",
+          "catalog",
+          "discover",
+          "dynamic",
+          "工具",
+          "检索",
+          "查找能力",
+          "能力发现",
+          "动态加载"
+        ],
+        "UseCases": [
+          "不确定该调用哪个工具时先搜索工具目录。",
+          "需要把隐藏工具加载进下一轮提示词。"
+        ],
+        "Examples": [
+          "查找能搜索网页的工具",
+          "我需要编辑文件应该用哪个工具",
+          "find tool for workspace code search"
+        ]
+      }
+    }
+  ],
+  "Security": {
+    "TrustLevel": "System",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [],
+      "Write": []
+    },
+    "RequiresApproval": false
+  }
+}

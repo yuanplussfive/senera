@@ -1,7 +1,12 @@
 import path from "node:path";
 import { AgentConfigLoader } from "./AgentConfigLoader.js";
 import { AgentModelTextBudget, AgentModelTokenEstimator } from "./AgentTextBudget.js";
-import { resolveAgentLoopConfig, resolveModelProviderConfig } from "./AgentDefaults.js";
+import {
+  resolveActionPlannerConfig,
+  resolveAgentLoopConfig,
+  resolveModelProviderConfig,
+  resolveToolSearchConfig,
+} from "./AgentDefaults.js";
 import { AgentDecisionXmlCollector } from "./AgentDecisionXmlCollector.js";
 import { AgentDecisionExecutor } from "./AgentDecisionExecutor.js";
 import { AgentDecisionParser } from "./AgentDecisionParser.js";
@@ -18,6 +23,10 @@ import type { AgentSystemConfig } from "./Types.js";
 import { createXmlProtocolPolicy } from "./AgentXmlPolicy.js";
 import { AgentDecisionErrorFactory } from "./AgentDecisionErrorFactory.js";
 import { AgentToolCallsXmlNormalizer } from "./AgentToolCallsXmlNormalizer.js";
+import { AgentToolSearchRuntime } from "./AgentToolSearchRuntime.js";
+import { AgentActionPlanner } from "./AgentActionPlanner.js";
+import { AgentToolCatalogProjector } from "./AgentToolCatalogProjector.js";
+import { AgentActionMismatchRepairPromptBuilder } from "./AgentActionMismatchRepairPromptBuilder.js";
 
 export class AgentSystemRuntime {
   readonly registry = new AgentPluginRegistry();
@@ -29,6 +38,8 @@ export class AgentSystemRuntime {
   readonly conversationProjector = new AgentConversationProjector();
   readonly modelProviderConfig;
   readonly agentLoopConfig;
+  readonly toolSearchConfig;
+  readonly actionPlannerConfig;
   readonly xmlPolicy;
   readonly decisionXmlTextBudget;
   readonly tokenEstimator;
@@ -36,6 +47,10 @@ export class AgentSystemRuntime {
   readonly toolCallsXmlNormalizer: AgentToolCallsXmlNormalizer;
   readonly decisionParser: AgentDecisionParser;
   readonly decisionExecutor: AgentDecisionExecutor;
+  readonly toolSearch: AgentToolSearchRuntime;
+  readonly toolCatalog: AgentToolCatalogProjector;
+  readonly actionPlanner: AgentActionPlanner;
+  readonly actionMismatchRepairPromptBuilder: AgentActionMismatchRepairPromptBuilder;
 
   private constructor(
     readonly workspaceRoot: string,
@@ -45,6 +60,8 @@ export class AgentSystemRuntime {
   ) {
     this.modelProviderConfig = resolveModelProviderConfig(config, modelProviderId);
     this.agentLoopConfig = resolveAgentLoopConfig(config);
+    this.toolSearchConfig = resolveToolSearchConfig(config);
+    this.actionPlannerConfig = resolveActionPlannerConfig(config, modelProviderId);
     this.xmlPolicy = createXmlProtocolPolicy(config);
     this.decisionXmlTextBudget = new AgentModelTextBudget({
       model: this.modelProviderConfig.Model,
@@ -54,6 +71,23 @@ export class AgentSystemRuntime {
       model: this.modelProviderConfig.Model,
     });
     this.promptContextBuilder = new AgentPromptContextBuilder(this.registry, config);
+    this.toolSearch = new AgentToolSearchRuntime(
+      this.registry,
+      this.toolSearchConfig,
+      this.workspaceRoot,
+    );
+    this.toolCatalog = new AgentToolCatalogProjector(this.registry);
+    this.actionPlanner = new AgentActionPlanner(
+      this.actionPlannerConfig,
+      this.modelProviderConfig,
+      this.toolCatalog,
+    );
+    this.actionMismatchRepairPromptBuilder = new AgentActionMismatchRepairPromptBuilder({
+      registry: this.registry,
+      promptRenderer: this.promptRenderer,
+      toolCatalog: this.toolCatalog,
+      protocol: this.xmlPolicy.protocol,
+    });
 
     this.errorFactory = new AgentDecisionErrorFactory({
       registry: this.registry,
@@ -89,6 +123,8 @@ export class AgentSystemRuntime {
       undefined,
       this.errorFactory,
       this.workspaceRoot,
+      undefined,
+      this.toolSearch,
     );
   }
 
@@ -100,6 +136,7 @@ export class AgentSystemRuntime {
       tokenEstimator: this.tokenEstimator,
       decisionActions: this.registry.listDecisionActions(),
       candidateNormalizer: this.toolCallsXmlNormalizer,
+      actionMismatchRepairPromptBuilder: this.actionMismatchRepairPromptBuilder,
     });
   }
 

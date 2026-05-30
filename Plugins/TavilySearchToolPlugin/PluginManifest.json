@@ -16,9 +16,14 @@
   "Discovery": {
     "Tags": [
       "search",
+      "搜索",
       "web",
+      "网页",
       "tavily",
-      "real-world"
+      "real-world",
+      "联网",
+      "新闻",
+      "事实"
     ]
   },
   "Prompting": {
@@ -28,13 +33,44 @@
   "Tools": [
     {
       "Name": "TavilySearchTool",
-      "DescriptionFile": "./Tool.md",
+      "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "network:https://api.tavily.com",
         "filesystem:read:PluginConfig.toml",
         "filesystem:write:.state"
-      ]
+      ],
+      "Search": {
+        "Summary": "联网搜索网页、新闻和实时事实信息。",
+        "Keywords": [
+          "search",
+          "web",
+          "news",
+          "latest",
+          "tavily",
+          "internet",
+          "搜索",
+          "网页",
+          "新闻",
+          "最新",
+          "实时",
+          "联网",
+          "资料"
+        ],
+        "UseCases": [
+          "需要查询当前新闻、官网资料、实时事件或外部网页时使用。",
+          "需要比较产品、公司、政策、价格、发布时间等可能变化的信息时使用。"
+        ],
+        "Examples": [
+          "查今天 OpenAI 最新新闻",
+          "搜索 Tavily API 文档",
+          "对比两家公司最近动态",
+          "find latest release notes"
+        ],
+        "Avoid": [
+          "不要用于搜索本地代码或读取工作区文件。"
+        ]
+      }
     }
   ],
   "Security": {

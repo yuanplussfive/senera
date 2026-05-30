@@ -1,13 +1,17 @@
 <tool_protocol>
   <rules>
     <rule>只有决定调用工具时才使用本节；否则直接自然语言回复。</rule>
-    <rule>调用工具时，整条回复只能是一个 &lt;tool_calls&gt; 根标签，不能包含任何其它文字。</rule>
-    <rule>每个 &lt;tool_call&gt; 必须包含精确工具名 &lt;name&gt; 和参数容器 &lt;arguments&gt;。</rule>
-    <rule>字段用子标签表达，数组字段用重复 &lt;item&gt;，禁止 XML 属性。</rule>
+    <rule>调用工具时，整条回复只能是一个 &lt;{{ ToolCallProtocol.root | escape }}&gt; 根标签，不能包含任何其它文字。</rule>
+    <rule>真实工具调用 XML 不能放进 Markdown 代码块，不能使用代码围栏包裹。</rule>
+    <rule>每个 &lt;{{ ToolCallProtocol.callTag | escape }}&gt; 必须包含精确工具名 &lt;{{ ToolCallProtocol.nameTag | escape }}&gt; 和参数容器 &lt;{{ ToolCallProtocol.argumentsTag | escape }}&gt;。</rule>
+    <rule>字段用子标签表达，数组字段用重复 &lt;{{ ToolCallProtocol.arrayItemTag | escape }}&gt;，禁止 XML 属性。</rule>
     <rule>对象和数组容器保持 XML 结构；字符串、数字、布尔、枚举等叶子值字段直接写文本。</rule>
     <rule>参数 contract 只用于理解参数形状；你仍然必须输出 XML，不要输出 TypeScript 或 JSON。</rule>
-    <rule>arguments_contract 里的字段对应 &lt;arguments&gt; 内的同名子标签。</rule>
+    <rule>arguments_contract 里的字段对应 &lt;{{ ToolCallProtocol.argumentsTag | escape }}&gt; 内的同名子标签。</rule>
     <rule>可选字段可以省略；有默认值的字段可以省略。</rule>
+{% if ToolDiscoveryToolName %}
+    <rule>如果当前工具目录没有你需要的能力，先调用 {{ ToolDiscoveryToolName | escape }} 搜索工具目录；不要猜测未展示的工具名。</rule>
+{% endif %}
   </rules>
 </tool_protocol>
 

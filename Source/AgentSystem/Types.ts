@@ -58,8 +58,10 @@ export interface AgentSystemConfig {
   AgentLoop?: {
     MaxSteps?: number;
     MaxRepairAttempts?: number;
-    LoadedTools?: "all" | string[];
+    LoadedTools?: AgentLoadedToolsConfig;
   };
+  ToolSearch?: AgentToolSearchConfig;
+  ActionPlanner?: AgentActionPlannerConfig;
   Server?: {
     Host?: string;
     Port?: number;
@@ -70,6 +72,84 @@ export interface AgentSystemConfig {
     Kind?: "sqlite" | "memory";
     DatabasePath?: string;
   };
+}
+
+export type AgentLoadedToolsConfig = "all" | "dynamic" | string[];
+
+export interface AgentToolSearchConfig {
+  Dynamic?: {
+    BootstrapTools?: string[];
+  };
+  Memory?: {
+    Kind?: "sqlite" | "memory";
+    DatabasePath?: string;
+    MaxEpisodes?: number;
+    HalfLifeDays?: number;
+  };
+  Ranking?: {
+    RrfK?: number;
+    MmrLambda?: number;
+    MinScore?: number;
+  };
+}
+
+export interface ResolvedAgentToolSearchConfig {
+  Dynamic: {
+    BootstrapTools: string[];
+  };
+  Memory: {
+    Kind: "sqlite" | "memory";
+    DatabasePath: string;
+    MaxEpisodes: number;
+    HalfLifeDays: number;
+  };
+  Ranking: {
+    RrfK: number;
+    MmrLambda: number;
+    MinScore: number;
+  };
+}
+
+export interface AgentActionPlannerConfig {
+  Enabled?: boolean;
+  MaxRepairAttempts?: number;
+  MaxCatalogTools?: number;
+  RecentContextChars?: number;
+  ContextBudget?: AgentActionPlannerContextBudgetConfig;
+  Client?: AgentActionPlannerClientConfig;
+}
+
+export interface AgentActionPlannerContextBudgetConfig {
+  MaxRecentDeltas?: number;
+  MaxStateCalls?: number;
+  MaxEvidence?: number;
+  MaxPreviewChars?: number;
+}
+
+export type AgentActionPlannerClientProvider =
+  | "auto"
+  | "openai-generic"
+  | "openai-responses"
+  | "anthropic"
+  | "google-ai";
+
+export interface AgentActionPlannerClientConfig {
+  Provider?: AgentActionPlannerClientProvider;
+  BaseUrl?: string;
+  ApiKey?: string;
+  Model?: string;
+  Temperature?: number;
+  /** -1 means do not send a provider token limit field. */
+  MaxTokens?: number;
+}
+
+export interface ResolvedAgentActionPlannerConfig {
+  Enabled: boolean;
+  MaxRepairAttempts: number;
+  MaxCatalogTools: number;
+  RecentContextChars: number;
+  ContextBudget: Required<AgentActionPlannerContextBudgetConfig>;
+  Client: Required<AgentActionPlannerClientConfig>;
 }
 
 export interface AgentModelProviderConfig {
@@ -86,6 +166,8 @@ export interface AgentModelProviderConfig {
   MaxOutputTokens: number;
   Stream: boolean;
   TimeoutMs: number;
+  FirstTokenTimeoutMs?: number;
+  MaxRequestMs?: number;
   MaxNetworkRetries: number;
   Headers?: Record<string, string>;
 }
@@ -104,6 +186,8 @@ export interface ResolvedAgentModelProviderConfig {
   MaxOutputTokens: number;
   Stream: boolean;
   TimeoutMs: number;
+  FirstTokenTimeoutMs: number;
+  MaxRequestMs: number;
   MaxNetworkRetries: number;
   Headers: Record<string, string>;
 }
@@ -186,6 +270,15 @@ export interface ToolManifest {
   SignatureFile?: string;
   Permissions?: string[];
   Handler?: ToolHandlerManifest;
+  Search?: ToolSearchManifest;
+}
+
+export interface ToolSearchManifest {
+  Summary?: string;
+  Keywords?: string[];
+  UseCases?: string[];
+  Examples?: string[];
+  Avoid?: string[];
 }
 
 export type ToolHandlerManifest =
@@ -249,6 +342,7 @@ export interface RegisteredTool {
   signatureFile?: string;
   permissions: string[];
   handler: RegisteredToolHandler;
+  search?: ToolSearchManifest;
 }
 
 export interface RegisteredTemplate {
