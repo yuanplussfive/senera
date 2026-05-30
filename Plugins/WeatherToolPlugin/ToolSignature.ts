@@ -1,20 +1,13 @@
 export type WeatherToolArguments = {
-  // 城市、地区或地址文本，例如 Shanghai、Beijing、New York。
-  // 和 latitude/longitude 二选一；如果提供经纬度，可以省略。
-  location?: string
+  // 城市、地区、地址、邮编或国家地区组合，例如 北京、上海浦东、Tokyo、New York。
+  location: string
 
-  // 纬度，范围 -90..90；必须和 longitude 同时提供。
-  latitude?: number
+  // 查询天数。1 表示当前天气；2-7 返回当前天气和逐日预报。
+  days?: number
 
-  // 经度，范围 -180..180；必须和 latitude 同时提供。
-  longitude?: number
+  // 返回语言；默认使用插件配置，例如 zh 或 en。
+  language?: string
 
-  // IANA 时区；默认 "auto"。
-  timezone?: string
-
-  // 温度单位；默认 "celsius"。
-  temperatureUnit?: "celsius" | "fahrenheit"
-
-  // 整数。天气接口请求超时，范围 1000..9000；默认 8000。
+  // 请求超时；通常不需要填写。
   timeoutMs?: number
 }

@@ -1,0 +1,26 @@
+[weather]
+# qweather: default, better for Chinese city names and domestic weather.
+# weatherapi: global city/address lookup.
+# visual_crossing: good for timeline forecast and address lookup.
+provider = "qweather"
+
+# Multiple keys are rotated across calls. You can also set WEATHER_API_KEY.
+api_keys = ["replace-with-your-api-key"]
+
+# QWeather requires each account's API Host. Bare host names are accepted.
+# You can also set WEATHER_API_HOST.
+api_host = "your-id.re.qweatherapi.com"
+
+# Optional. Defaults depend on provider:
+# weatherapi -> https://api.weatherapi.com/v1
+# qweather -> https://devapi.qweather.com
+# visual_crossing -> https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline
+# base_url = "https://api.weatherapi.com/v1"
+# QWeather city lookup uses api_host by default; override only for legacy GeoAPI.
+# geo_base_url = "https://geoapi.qweather.com"
+
+# You can also set WEATHER_LANG.
+language = "zh"
+unit = "metric"
+timeout_ms = 15000
+state_dir = ".state"

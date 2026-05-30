@@ -1,43 +1,46 @@
 "use strict";
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-var WeatherToolResultSchema_exports = {};
-__export(WeatherToolResultSchema_exports, {
-  Schema: () => Schema
-});
-module.exports = __toCommonJS(WeatherToolResultSchema_exports);
-var import_zod = require("@senera/tool-plugin-sdk");
-const Schema = import_zod.z.object({
-  location: import_zod.z.string(),
-  latitude: import_zod.z.number(),
-  longitude: import_zod.z.number(),
-  timezone: import_zod.z.string(),
-  temperature: import_zod.z.number(),
-  temperatureUnit: import_zod.z.string(),
-  windSpeed: import_zod.z.number(),
-  windSpeedUnit: import_zod.z.string(),
-  windDirection: import_zod.z.number(),
-  weatherCode: import_zod.z.number().int(),
-  weatherText: import_zod.z.string(),
-  observationTime: import_zod.z.string(),
-  source: import_zod.z.string()
+
+const { z } = require("@senera/tool-plugin-sdk");
+
+const ForecastDaySchema = z.object({
+  date: z.string(),
+  condition: z.string(),
+  maxTemperature: z.number().optional(),
+  minTemperature: z.number().optional(),
+  avgTemperature: z.number().optional(),
+  temperatureUnit: z.string(),
+  chanceOfRain: z.number().optional(),
+  precipitation: z.number().optional(),
+  precipitationUnit: z.string().optional(),
+  sunrise: z.string().optional(),
+  sunset: z.string().optional()
 }).strict();
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
+
+const Schema = z.object({
+  location: z.string(),
+  resolvedLocation: z.string(),
+  country: z.string().optional(),
+  region: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
+  timezone: z.string().optional(),
+  localTime: z.string().optional(),
+  observationTime: z.string().optional(),
+  temperature: z.number().optional(),
+  feelsLike: z.number().optional(),
+  temperatureUnit: z.string(),
+  condition: z.string(),
+  humidity: z.number().optional(),
+  windSpeed: z.number().optional(),
+  windSpeedUnit: z.string().optional(),
+  windDirection: z.string().optional(),
+  airQualityIndex: z.number().optional(),
+  forecast: z.object({
+    item: z.array(ForecastDaySchema)
+  }).optional(),
+  source: z.string()
+}).strict();
+
+module.exports = {
   Schema
-});
+};

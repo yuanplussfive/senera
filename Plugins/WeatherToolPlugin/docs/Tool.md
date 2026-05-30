@@ -2,23 +2,23 @@
 
 ## 简述
 
-获取城市或坐标的当前天气。
+按城市、地区、地址或邮编查询当前天气，可选返回未来几天预报。
 
 ## 何时使用
 
-用户询问当前天气、温度、风力、是否下雨或天气概况时使用。
+用户询问天气、温度、降雨、风力、湿度、今天/明天/未来几天天气时使用。
 
 ## 不要使用的情况
 
-不要用于历史天气、逐小时预报、空气质量、预警或复杂气象分析。缺少地点时用 `AskUserTool`。
+不要用于新闻、网页搜索、本地代码或长期气候分析。缺少地点时先用 `AskUserTool`。
 
 ## 输入
 
-`location` 或 `latitude`+`longitude` 二选一。`timezone` 默认 `auto`。`temperatureUnit` 默认 `celsius`。`timeoutMs` 可选。
+只需 `location`。`days` 可选，1 为当前天气，2-7 为逐日预报。`language` 和 `timeoutMs` 通常不用填。
 
 ## 输出
 
-返回地点、坐标、时区、温度、风速、风向、天气说明、观测时间和来源。
+返回解析后的地点、当前天气、体感温度、湿度、风力、观测时间、来源；有预报时返回逐日预报。
 
 ## 调用示例
 
@@ -26,11 +26,12 @@
   <tool_call>
     <name>WeatherTool</name>
     <arguments>
-      <location>Shanghai</location>
+      <location>北京</location>
+      <days>3</days>
     </arguments>
   </tool_call>
 </senera_tool_calls>
 
 ## 执行约束
 
-不要编造天气。工具失败时说明原因，必要时请用户换更明确地点。
+不要编造天气。地点歧义或工具失败时说明原因，并让用户补充城市、省份或国家。

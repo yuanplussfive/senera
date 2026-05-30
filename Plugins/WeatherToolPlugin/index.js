@@ -1,121 +1,489 @@
 "use strict";
-var import_plugin_sdk = require("@senera/tool-plugin-sdk");
-var import_WeatherToolArgumentsSchema = require("./Schemas/WeatherToolArgumentsSchema.js");
-var import_WeatherToolResultSchema = require("./Schemas/WeatherToolResultSchema.js");
-void (0, import_plugin_sdk.runToolPlugin)({
+
+const fs = require("node:fs");
+const path = require("node:path");
+const {
+  parsePluginTomlConfig,
+  readPluginTomlConfig,
+  runToolPlugin,
+  z
+} = require("@senera/tool-plugin-sdk");
+const { Schema: ArgumentSchema } = require("./Schemas/WeatherToolArgumentsSchema.js");
+const { Schema: ResultSchema } = require("./Schemas/WeatherToolResultSchema.js");
+
+const ConfigFileName = "PluginConfig.toml";
+const DefaultTimeoutMs = 15000;
+const DefaultStateDir = ".state";
+const ProviderNames = {
+  WeatherApi: "weatherapi",
+  QWeather: "qweather",
+  VisualCrossing: "visual_crossing"
+};
+
+const ConfigSchema = z.object({
+  weather: z.object({
+    provider: z.enum([
+      ProviderNames.WeatherApi,
+      ProviderNames.QWeather,
+      ProviderNames.VisualCrossing
+    ]).default(ProviderNames.QWeather),
+    api_keys: z.array(z.string().trim().min(1)).default([]),
+    api_host: z.string().trim().min(1).optional(),
+    weather_api_host: z.string().trim().min(1).optional(),
+    base_url: z.string().trim().min(1).optional(),
+    geo_base_url: z.string().trim().min(1).optional(),
+    language: z.string().trim().min(1).default("zh"),
+    unit: z.enum(["metric", "imperial"]).default("metric"),
+    timeout_ms: z.coerce.number().int().min(1000).max(300000).default(DefaultTimeoutMs),
+    state_dir: z.string().trim().min(1).default(DefaultStateDir)
+  }).strict()
+}).strict();
+
+const Providers = {
+  [ProviderNames.WeatherApi]: {
+    title: "WeatherAPI.com",
+    defaultBaseUrl: "https://api.weatherapi.com/v1",
+    async fetch(options) {
+      const endpoint = options.args.days > 1 ? "/forecast.json" : "/current.json";
+      const url = new URL(endpoint, options.config.base_url);
+      url.searchParams.set("key", options.apiKey);
+      url.searchParams.set("q", options.args.location);
+      url.searchParams.set("lang", options.language);
+      url.searchParams.set("aqi", "yes");
+      if (options.args.days > 1) {
+        url.searchParams.set("days", String(options.args.days));
+        url.searchParams.set("alerts", "no");
+      }
+      return normalizeWeatherApi(await fetchJson(url, options.timeoutMs), options.args.location, options.config.unit);
+    }
+  },
+  [ProviderNames.QWeather]: {
+    title: "QWeather",
+    defaultBaseUrl: "https://devapi.qweather.com",
+    async fetch(options) {
+      const location = await lookupQWeatherLocation(options);
+      const nowUrl = new URL("/v7/weather/now", options.config.base_url);
+      nowUrl.searchParams.set("location", location.id);
+      nowUrl.searchParams.set("lang", options.language);
+      nowUrl.searchParams.set("unit", options.config.unit === "imperial" ? "i" : "m");
+      const now = await fetchQWeatherJson(nowUrl, options.timeoutMs, options.apiKey);
+      const forecast = options.args.days > 1
+        ? await fetchQWeatherForecast(options, location.id)
+        : undefined;
+      return normalizeQWeather(now, forecast, location, options.args.location, options.config.unit);
+    }
+  },
+  [ProviderNames.VisualCrossing]: {
+    title: "Visual Crossing",
+    defaultBaseUrl: "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline",
+    async fetch(options) {
+      const encodedLocation = encodeURIComponent(options.args.location);
+      const url = new URL(`${trimTrailingSlash(options.config.base_url)}/${encodedLocation}`);
+      url.searchParams.set("key", options.apiKey);
+      url.searchParams.set("unitGroup", options.config.unit === "imperial" ? "us" : "metric");
+      url.searchParams.set("lang", options.language);
+      url.searchParams.set("include", options.args.days > 1 ? "current,days" : "current");
+      url.searchParams.set("contentType", "json");
+      return normalizeVisualCrossing(await fetchJson(url, options.timeoutMs), options.args.location, options.args.days);
+    }
+  }
+};
+
+void runToolPlugin({
   toolName: "WeatherTool",
-  argumentSchema: import_WeatherToolArgumentsSchema.Schema,
-  resultSchema: import_WeatherToolResultSchema.Schema,
+  argumentSchema: ArgumentSchema,
+  resultSchema: ResultSchema,
   async execute(args) {
-    const coordinates = args.latitude !== void 0 && args.longitude !== void 0 ? {
-      location: args.location ?? `${args.latitude},${args.longitude}`,
-      latitude: args.latitude,
-      longitude: args.longitude,
-      timezone: args.timezone
-    } : await geocodeLocation(args.location ?? "", args.timeoutMs);
-    const forecast = await fetchCurrentWeather({
-      latitude: coordinates.latitude,
-      longitude: coordinates.longitude,
-      timezone: args.timezone === "auto" ? coordinates.timezone : args.timezone,
-      temperatureUnit: args.temperatureUnit,
-      timeoutMs: args.timeoutMs
+    const config = readConfig();
+    const provider = Providers[config.provider];
+    const apiKey = await claimNextApiKey(config);
+    return provider.fetch({
+      args,
+      apiKey,
+      config: resolveProviderConfig(config, provider),
+      language: args.language ?? config.language,
+      timeoutMs: args.timeoutMs ?? config.timeout_ms
     });
-    return {
-      location: coordinates.location,
-      latitude: forecast.latitude,
-      longitude: forecast.longitude,
-      timezone: forecast.timezone,
-      temperature: forecast.current.temperature_2m,
-      temperatureUnit: forecast.current_units.temperature_2m,
-      windSpeed: forecast.current.wind_speed_10m,
-      windSpeedUnit: forecast.current_units.wind_speed_10m,
-      windDirection: forecast.current.wind_direction_10m,
-      weatherCode: forecast.current.weather_code,
-      weatherText: describeWeatherCode(forecast.current.weather_code),
-      observationTime: forecast.current.time,
-      source: "Open-Meteo"
-    };
   }
 });
-async function geocodeLocation(location, timeoutMs) {
-  const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
-  url.searchParams.set("name", location);
-  url.searchParams.set("count", "1");
-  url.searchParams.set("language", "zh");
-  url.searchParams.set("format", "json");
-  const response = await fetchJson(url, timeoutMs);
-  const first = response.results?.[0];
-  if (!first) {
-    throw new Error(`\u6CA1\u6709\u627E\u5230\u5929\u6C14\u4F4D\u7F6E\uFF1A${location}`);
+
+function readConfig() {
+  const parsed = readConfigFile();
+  const result = ConfigSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(`Weather 插件配置无效：${path.resolve(process.cwd(), ConfigFileName)}：${result.error.message}`);
   }
+  return withEnvironmentConfig(result.data.weather);
+}
+
+function readConfigFile() {
+  const configPath = path.resolve(process.cwd(), ConfigFileName);
+  if (!fs.existsSync(configPath)) {
+    return parsePluginTomlConfig("[weather]\n");
+  }
+  return readPluginTomlConfig(ConfigFileName, {
+    exampleFileName: "PluginConfig.example.toml"
+  });
+}
+
+function withEnvironmentConfig(config) {
   return {
-    location: [first.name, first.admin1, first.country].filter(Boolean).join(", "),
-    latitude: first.latitude,
-    longitude: first.longitude,
-    timezone: first.timezone ?? "auto"
+    ...config,
+    api_keys: appendDefined(
+      config.api_keys,
+      process.env.WEATHER_API_KEY,
+      process.env.QWEATHER_API_KEY
+    ),
+    api_host: process.env.WEATHER_API_HOST ?? config.api_host ?? config.weather_api_host,
+    language: process.env.WEATHER_LANG ?? config.language
   };
 }
-async function fetchCurrentWeather(options) {
-  const url = new URL("https://api.open-meteo.com/v1/forecast");
-  url.searchParams.set("latitude", String(options.latitude));
-  url.searchParams.set("longitude", String(options.longitude));
-  url.searchParams.set("current", [
-    "temperature_2m",
-    "weather_code",
-    "wind_speed_10m",
-    "wind_direction_10m"
-  ].join(","));
-  url.searchParams.set("timezone", options.timezone);
-  if (options.temperatureUnit === "fahrenheit") {
-    url.searchParams.set("temperature_unit", "fahrenheit");
-  }
-  return fetchJson(url, options.timeoutMs);
+
+function resolveProviderConfig(config, provider) {
+  const qWeatherHost = config.provider === ProviderNames.QWeather
+    ? normalizeBaseUrl(config.api_host)
+    : undefined;
+  const baseUrl = normalizeBaseUrl(config.base_url) ?? qWeatherHost ?? provider.defaultBaseUrl;
+  return {
+    ...config,
+    base_url: baseUrl,
+    geo_base_url: normalizeBaseUrl(config.geo_base_url) ?? qWeatherHost ?? provider.defaultGeoBaseUrl ?? baseUrl
+  };
 }
-async function fetchJson(url, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
+
+function appendDefined(values, ...candidates) {
+  return [
+    ...values,
+    ...candidates.filter((value) => typeof value === "string" && value.trim().length > 0)
+  ];
+}
+
+function normalizeBaseUrl(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+async function claimNextApiKey(config) {
+  if (config.api_keys.length < 1) {
+    throw new Error("Weather 插件缺少 API key：请在 PluginConfig.toml 的 weather.api_keys 中填写，或设置 WEATHER_API_KEY。");
+  }
+  if (config.api_keys.length === 1) {
+    return config.api_keys[0];
+  }
+
+  const stateFilePath = resolveStateFilePath(config);
+  fs.mkdirSync(path.dirname(stateFilePath), { recursive: true });
+  const releaseLock = await acquireStateLock(`${stateFilePath}.lock`);
   try {
-    const response = await fetch(url, {
-      signal: controller.signal
+    const current = readKeyCursor(stateFilePath);
+    const nextIndex = current % config.api_keys.length;
+    writeJsonFileAtomic(stateFilePath, {
+      cursor: (nextIndex + 1) % config.api_keys.length,
+      updatedAt: new Date().toISOString()
     });
-    if (!response.ok) {
-      throw new Error(`\u5929\u6C14\u63A5\u53E3\u8BF7\u6C42\u5931\u8D25\uFF1A${response.status} ${response.statusText}`);
+    return config.api_keys[nextIndex];
+  } finally {
+    releaseLock();
+  }
+}
+
+function resolveStateFilePath(config) {
+  const stateDir = path.isAbsolute(config.state_dir)
+    ? config.state_dir
+    : path.resolve(process.cwd(), config.state_dir);
+  return path.join(stateDir, "weather-key-cursor.json");
+}
+
+function readKeyCursor(filePath) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return Number.isInteger(parsed.cursor) && parsed.cursor >= 0 ? parsed.cursor : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function acquireStateLock(lockFilePath) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 3000) {
+    try {
+      const handle = await fs.promises.open(lockFilePath, "wx");
+      await handle.writeFile(JSON.stringify({
+        pid: process.pid,
+        createdAt: new Date().toISOString()
+      }));
+      await handle.close();
+      return () => fs.rmSync(lockFilePath, { force: true });
+    } catch (error) {
+      if (!isNodeErrorCode(error, "EEXIST")) {
+        throw error;
+      }
+      removeStaleLock(lockFilePath);
+      await sleep(50);
     }
-    return response.json();
+  }
+  throw new Error(`Weather key 轮询状态锁等待超时：${lockFilePath}`);
+}
+
+function removeStaleLock(lockFilePath) {
+  try {
+    const stat = fs.statSync(lockFilePath);
+    if (Date.now() - stat.mtimeMs > 10000) {
+      fs.rmSync(lockFilePath, { force: true });
+    }
+  } catch (error) {
+    if (!isNodeErrorCode(error, "ENOENT")) {
+      throw error;
+    }
+  }
+}
+
+function writeJsonFileAtomic(filePath, value) {
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(value, null, 2));
+  fs.renameSync(tempPath, filePath);
+}
+
+async function fetchQWeatherForecast(options, locationId) {
+  const url = new URL("/v7/weather/3d", options.config.base_url);
+  url.searchParams.set("location", locationId);
+  url.searchParams.set("lang", options.language);
+  url.searchParams.set("unit", options.config.unit === "imperial" ? "i" : "m");
+  return fetchQWeatherJson(url, options.timeoutMs, options.apiKey);
+}
+
+async function lookupQWeatherLocation(options) {
+  const url = new URL(qWeatherGeoLookupPath(options.config), options.config.geo_base_url);
+  url.searchParams.set("location", options.args.location);
+  url.searchParams.set("lang", options.language);
+  url.searchParams.set("number", "1");
+  const response = await fetchQWeatherJson(url, options.timeoutMs, options.apiKey);
+  const [location] = Array.isArray(response.location) ? response.location : [];
+  if (!location) {
+    throw new Error(`QWeather 没有找到天气位置：${options.args.location}`);
+  }
+  return location;
+}
+
+function qWeatherGeoLookupPath(config) {
+  return isLegacyQWeatherGeoHost(config.geo_base_url)
+    ? "/v2/city/lookup"
+    : "/geo/v2/city/lookup";
+}
+
+function isLegacyQWeatherGeoHost(value) {
+  try {
+    return new URL(value).hostname === "geoapi.qweather.com";
+  } catch {
+    return false;
+  }
+}
+
+async function fetchQWeatherJson(url, timeoutMs, apiKey) {
+  const response = await fetchJson(url, timeoutMs, {
+    "X-QW-Api-Key": apiKey
+  });
+  const code = stringOrUndefined(asRecord(response).code);
+  if (code && code !== "200") {
+    throw new Error(`QWeather 请求失败：code=${code} path=${url.pathname}`);
+  }
+  return response;
+}
+
+async function fetchJson(url, timeoutMs, headers = undefined) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`天气接口请求失败：${response.status} ${response.statusText} ${text}`);
+    }
+    return text.length > 0 ? JSON.parse(text) : {};
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`\u5929\u6C14\u63A5\u53E3\u8BF7\u6C42\u8D85\u65F6\uFF0C\u8D85\u8FC7 ${timeoutMs}ms\uFF1A${url.hostname}`);
+      throw new Error(`天气接口请求超时，超过 ${timeoutMs}ms：${url.hostname}`);
     }
     throw error;
   } finally {
     clearTimeout(timer);
   }
 }
-function describeWeatherCode(code) {
-  const descriptions = {
-    0: "\u6674\u6717",
-    1: "\u5927\u90E8\u6674\u6717",
-    2: "\u5C40\u90E8\u591A\u4E91",
-    3: "\u9634\u5929",
-    45: "\u96FE",
-    48: "\u96FE\u51C7",
-    51: "\u5C0F\u6BDB\u6BDB\u96E8",
-    53: "\u4E2D\u7B49\u6BDB\u6BDB\u96E8",
-    55: "\u5F3A\u6BDB\u6BDB\u96E8",
-    61: "\u5C0F\u96E8",
-    63: "\u4E2D\u96E8",
-    65: "\u5927\u96E8",
-    71: "\u5C0F\u96EA",
-    73: "\u4E2D\u96EA",
-    75: "\u5927\u96EA",
-    80: "\u5C0F\u9635\u96E8",
-    81: "\u4E2D\u7B49\u9635\u96E8",
-    82: "\u5F3A\u9635\u96E8",
-    95: "\u96F7\u66B4",
-    96: "\u96F7\u66B4\u4F34\u5C0F\u51B0\u96F9",
-    99: "\u96F7\u66B4\u4F34\u5927\u51B0\u96F9"
+
+function normalizeWeatherApi(value, originalLocation, unit) {
+  const location = asRecord(value.location);
+  const current = asRecord(value.current);
+  const condition = asRecord(current.condition);
+  const metric = unit === "metric";
+  return {
+    location: originalLocation,
+    resolvedLocation: joinLocation([location.name, location.region, location.country]),
+    country: stringOrUndefined(location.country),
+    region: stringOrUndefined(location.region),
+    latitude: numberOrUndefined(location.lat),
+    longitude: numberOrUndefined(location.lon),
+    timezone: stringOrUndefined(location.tz_id),
+    localTime: stringOrUndefined(location.localtime),
+    observationTime: stringOrUndefined(current.last_updated),
+    temperature: numberOrUndefined(metric ? current.temp_c : current.temp_f),
+    feelsLike: numberOrUndefined(metric ? current.feelslike_c : current.feelslike_f),
+    temperatureUnit: metric ? "celsius" : "fahrenheit",
+    condition: stringOrUndefined(condition.text) ?? "",
+    humidity: numberOrUndefined(current.humidity),
+    windSpeed: numberOrUndefined(metric ? current.wind_kph : current.wind_mph),
+    windSpeedUnit: metric ? "kph" : "mph",
+    windDirection: stringOrUndefined(current.wind_dir),
+    airQualityIndex: numberOrUndefined(asRecord(current.air_quality)["us-epa-index"]),
+    forecast: normalizeWeatherApiForecast(value.forecast, unit),
+    source: "WeatherAPI.com"
   };
-  return descriptions[code] ?? `\u672A\u77E5\u5929\u6C14\u4EE3\u7801 ${code}`;
+}
+
+function normalizeWeatherApiForecast(forecast, unit) {
+  const metric = unit === "metric";
+  const days = asArray(asRecord(forecast).forecastday).map((entry) => {
+    const record = asRecord(entry);
+    const day = asRecord(record.day);
+    const astro = asRecord(record.astro);
+    const condition = asRecord(day.condition);
+    return {
+      date: stringValue(record.date),
+      condition: stringOrUndefined(condition.text) ?? "",
+      maxTemperature: numberOrUndefined(metric ? day.maxtemp_c : day.maxtemp_f),
+      minTemperature: numberOrUndefined(metric ? day.mintemp_c : day.mintemp_f),
+      avgTemperature: numberOrUndefined(metric ? day.avgtemp_c : day.avgtemp_f),
+      temperatureUnit: metric ? "celsius" : "fahrenheit",
+      chanceOfRain: numberOrUndefined(day.daily_chance_of_rain),
+      precipitation: numberOrUndefined(metric ? day.totalprecip_mm : day.totalprecip_in),
+      precipitationUnit: metric ? "mm" : "in",
+      sunrise: stringOrUndefined(astro.sunrise),
+      sunset: stringOrUndefined(astro.sunset)
+    };
+  });
+  return days.length > 0 ? { item: days } : undefined;
+}
+
+function normalizeQWeather(nowResponse, forecastResponse, location, originalLocation, unit) {
+  const now = asRecord(nowResponse.now);
+  const metric = unit === "metric";
+  return {
+    location: originalLocation,
+    resolvedLocation: joinLocation([location.name, location.adm1, location.country]),
+    country: stringOrUndefined(location.country),
+    region: stringOrUndefined(location.adm1),
+    latitude: numberOrUndefined(location.lat),
+    longitude: numberOrUndefined(location.lon),
+    timezone: stringOrUndefined(location.tz),
+    observationTime: stringOrUndefined(now.obsTime),
+    temperature: numberOrUndefined(now.temp),
+    feelsLike: numberOrUndefined(now.feelsLike),
+    temperatureUnit: metric ? "celsius" : "fahrenheit",
+    condition: stringOrUndefined(now.text) ?? "",
+    humidity: numberOrUndefined(now.humidity),
+    windSpeed: numberOrUndefined(now.windSpeed),
+    windSpeedUnit: metric ? "kph" : "mph",
+    windDirection: stringOrUndefined(now.windDir),
+    forecast: normalizeQWeatherForecast(forecastResponse, unit),
+    source: "QWeather"
+  };
+}
+
+function normalizeQWeatherForecast(response, unit) {
+  const metric = unit === "metric";
+  const days = asArray(asRecord(response).daily).map((entry) => {
+    const record = asRecord(entry);
+    return {
+      date: stringValue(record.fxDate),
+      condition: joinLocation([record.textDay, record.textNight]),
+      maxTemperature: numberOrUndefined(record.tempMax),
+      minTemperature: numberOrUndefined(record.tempMin),
+      temperatureUnit: metric ? "celsius" : "fahrenheit",
+      precipitation: numberOrUndefined(record.precip),
+      precipitationUnit: "mm",
+      sunrise: stringOrUndefined(record.sunrise),
+      sunset: stringOrUndefined(record.sunset)
+    };
+  });
+  return days.length > 0 ? { item: days } : undefined;
+}
+
+function normalizeVisualCrossing(value, originalLocation, days) {
+  const current = asRecord(value.currentConditions);
+  return {
+    location: originalLocation,
+    resolvedLocation: stringOrUndefined(value.resolvedAddress) ?? originalLocation,
+    latitude: numberOrUndefined(value.latitude),
+    longitude: numberOrUndefined(value.longitude),
+    timezone: stringOrUndefined(value.timezone),
+    observationTime: stringOrUndefined(current.datetime),
+    temperature: numberOrUndefined(current.temp),
+    feelsLike: numberOrUndefined(current.feelslike),
+    temperatureUnit: "celsius",
+    condition: stringOrUndefined(current.conditions) ?? "",
+    humidity: numberOrUndefined(current.humidity),
+    windSpeed: numberOrUndefined(current.windspeed),
+    windSpeedUnit: "kph",
+    windDirection: stringOrUndefined(current.winddir),
+    forecast: normalizeVisualCrossingForecast(value.days, days),
+    source: "Visual Crossing"
+  };
+}
+
+function normalizeVisualCrossingForecast(value, maxDays) {
+  const days = asArray(value).slice(0, maxDays).map((entry) => {
+    const record = asRecord(entry);
+    return {
+      date: stringValue(record.datetime),
+      condition: stringOrUndefined(record.conditions) ?? "",
+      maxTemperature: numberOrUndefined(record.tempmax),
+      minTemperature: numberOrUndefined(record.tempmin),
+      avgTemperature: numberOrUndefined(record.temp),
+      temperatureUnit: "celsius",
+      precipitation: numberOrUndefined(record.precip),
+      precipitationUnit: "mm",
+      sunrise: stringOrUndefined(record.sunrise),
+      sunset: stringOrUndefined(record.sunset)
+    };
+  });
+  return days.length > 0 ? { item: days } : undefined;
+}
+
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function numberOrUndefined(value) {
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function stringOrUndefined(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function stringValue(value) {
+  return stringOrUndefined(value) ?? "";
+}
+
+function joinLocation(values) {
+  return values.map(stringOrUndefined).filter(Boolean).join(", ");
+}
+
+function trimTrailingSlash(value) {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isNodeErrorCode(error, code) {
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === code);
 }
