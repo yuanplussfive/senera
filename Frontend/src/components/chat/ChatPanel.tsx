@@ -63,7 +63,9 @@ export function ChatPanel({
       />
       {messages.length === 0 && !isRunning ? (
         <div className="flex flex-1 items-center justify-center px-6">
-          <EmptyChatState />
+          <EmptyChatState
+            onSelectSuggestion={socketStatus === "open" ? onSend : undefined}
+          />
         </div>
       ) : (
         <MessageList

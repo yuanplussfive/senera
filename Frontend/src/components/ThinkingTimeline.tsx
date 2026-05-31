@@ -19,6 +19,9 @@ import {
   ChevronDown,
   Check,
   X as XIcon,
+  Clock3,
+  ListTree,
+  Wrench,
 } from "lucide-react";
 import { useStore, type RunRecord } from "../store/sessionStore";
 import { cn, formatDuration, formatTime } from "../lib/util";
@@ -33,6 +36,7 @@ import {
 import { StepNode } from "./canvas/StepNode";
 import { layoutSteps, type StepNodeData } from "./canvas/layout";
 import { NodeDetailDrawer } from "./canvas/NodeDetailDrawer";
+import { summarizeRun, type RunSummary } from "./workflow/runSummary";
 
 const NODE_TYPES = { step: StepNode };
 
@@ -152,9 +156,7 @@ function TopBar({
   onFollowLatest: () => void;
   onCollapse?: () => void;
 }): JSX.Element {
-  const completed = run?.steps.filter((s) => s.status === "done").length ?? 0;
-  const failed = run?.steps.filter((s) => s.status === "failed").length ?? 0;
-  const total = run?.steps.length ?? 0;
+  const summary = run ? summarizeRun(run) : undefined;
   const rf = useReactFlow();
   const fit = (): void => {
     try {
@@ -193,8 +195,8 @@ function TopBar({
           ) : null}
           {run ? (
             <span>
-              {completed}/{total}
-              {failed > 0 ? <span className="ml-1 text-brick-500">·{failed} 失败</span> : null}
+              {summary?.completed}/{summary?.total}
+              {summary && summary.failed > 0 ? <span className="ml-1 text-brick-500">·{summary.failed} 失败</span> : null}
             </span>
           ) : null}
           {pinnedToHistory ? (
@@ -221,14 +223,75 @@ function TopBar({
 
       {/* Run 选择器 */}
       {runs.length > 0 ? (
-        <RunSelector
-          runs={runs}
-          currentRunId={currentRunId}
-          onSelect={onSelect}
-          pinnedToHistory={pinnedToHistory}
-        />
+        <div className="border-b border-ink-200/40 bg-paper-50/70 px-3 py-2">
+          {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
+          <RunSelector
+            runs={runs}
+            currentRunId={currentRunId}
+            onSelect={onSelect}
+            pinnedToHistory={pinnedToHistory}
+          />
+        </div>
       ) : null}
     </>
+  );
+}
+
+function RunSummaryStrip({
+  run,
+  summary,
+}: {
+  run: RunRecord;
+  summary: RunSummary;
+}): JSX.Element {
+  return (
+    <div className="mb-2 grid grid-cols-3 gap-1.5">
+      <MetricChip
+        icon={<ListTree className="h-3 w-3" />}
+        label="节点"
+        value={`${summary.completed}/${summary.total}`}
+        tone={summary.failed > 0 ? "danger" : run.status === "running" ? "live" : "neutral"}
+      />
+      <MetricChip
+        icon={<Wrench className="h-3 w-3" />}
+        label="工具"
+        value={`${summary.tools}`}
+      />
+      <MetricChip
+        icon={<Clock3 className="h-3 w-3" />}
+        label={summary.startedAt}
+        value={summary.duration || "进行中"}
+      />
+    </div>
+  );
+}
+
+function MetricChip({
+  icon,
+  label,
+  value,
+  tone = "neutral",
+}: {
+  icon: JSX.Element;
+  label: string;
+  value: string;
+  tone?: "neutral" | "live" | "danger";
+}): JSX.Element {
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1.5",
+        tone === "danger"
+          ? "border-brick-100 bg-brick-50/70 text-brick-600"
+          : tone === "live"
+            ? "border-terra-100 bg-terra-50/70 text-terra-600"
+            : "border-ink-200/60 bg-paper-100/70 text-ink-600",
+      )}
+    >
+      <span className="shrink-0">{icon}</span>
+      <span className="min-w-0 truncate font-mono text-[10px] text-current/70">{label}</span>
+      <span className="ml-auto shrink-0 font-mono text-[10.5px] font-medium">{value}</span>
+    </div>
   );
 }
 
@@ -246,7 +309,7 @@ function RunSelector({
   const current = runs.find((r) => r.requestId === currentRunId) ?? runs[runs.length - 1];
   const reversed = [...runs].reverse(); // 最新在前
   return (
-    <div className="border-b border-ink-200/40 bg-paper-50/70 px-3 py-2">
+    <div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -449,18 +512,34 @@ function CanvasArea({ run }: { run?: RunRecord }): JSX.Element {
 
 function EmptyCanvas(): JSX.Element {
   return (
-    <div className="flex flex-col items-center px-6 text-center">
-      <div className="grid h-10 w-10 place-items-center rounded-xl bg-paper-200/60">
-        <Lightbulb className="h-5 w-5 text-ink-400" />
+    <div className="flex max-w-[320px] flex-col items-center px-6 text-center">
+      <div className="grid h-11 w-11 place-items-center rounded-xl border border-ink-200/70 bg-paper-50 shadow-[0_1px_2px_rgba(28,26,23,0.04)]">
+        <ListTree className="h-5 w-5 text-ink-500" />
       </div>
-      <p className="mt-3 text-[12.5px] leading-relaxed text-ink-500">
-        发送一条消息后，
-        <br />
-        这里会出现整个思考、决策与工具调用的执行图。
+      <p className="mt-3 text-[13px] font-medium text-ink-850">
+        执行图会在运行开始后生成
       </p>
-      <p className="mt-2 text-[11px] text-ink-400">
-        点节点看完整数据 · 拖拽节点 · 滚轮平移 · Ctrl+滚轮缩放
+      <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
+        这里会汇总理解、模型决策、工具调用和最终回复，方便回看每一步的输入输出。
+      </p>
+      <div className="mt-3 grid w-full grid-cols-2 gap-1.5 text-left">
+        <EmptyHint icon={<ListTree className="h-3 w-3" />} label="节点详情" />
+        <EmptyHint icon={<Wrench className="h-3 w-3" />} label="工具链路" />
+        <EmptyHint icon={<Maximize2 className="h-3 w-3" />} label="自适应视图" />
+        <EmptyHint icon={<Clock3 className="h-3 w-3" />} label="耗时统计" />
+      </div>
+      <p className="mt-3 text-[11px] text-ink-400">
+        可拖拽节点，滚轮平移，Ctrl+滚轮缩放。
       </p>
     </div>
+  );
+}
+
+function EmptyHint({ icon, label }: { icon: JSX.Element; label: string }): JSX.Element {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-ink-200/60 bg-paper-50/70 px-2 py-1.5 text-[11.5px] text-ink-600">
+      <span className="shrink-0 text-ink-400">{icon}</span>
+      <span className="truncate">{label}</span>
+    </span>
   );
 }

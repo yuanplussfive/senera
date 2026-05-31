@@ -1,10 +1,12 @@
 import { LogoMark } from "../ui/Logo";
+import { parseEmptySuggestions } from "./emptySuggestions";
 
-export function EmptyChatState(): JSX.Element {
-  const suggestions = (import.meta.env.VITE_EMPTY_SUGGESTIONS ?? "")
-    .split("|")
-    .map((s: string) => s.trim())
-    .filter(Boolean);
+export function EmptyChatState({
+  onSelectSuggestion,
+}: {
+  onSelectSuggestion?: (suggestion: string) => void;
+}): JSX.Element {
+  const suggestions = parseEmptySuggestions(import.meta.env.VITE_EMPTY_SUGGESTIONS);
   return (
     <div className="flex max-w-xl flex-col items-center text-center">
       <LogoMark size={34} />
@@ -16,13 +18,24 @@ export function EmptyChatState(): JSX.Element {
       </p>
       {suggestions.length > 0 ? (
         <div className="mt-7 flex flex-wrap items-center justify-center gap-2">
-          {suggestions.map((s: string) => (
-            <span
-              key={s}
-              className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-paper-100 px-3 py-1 text-[12.5px] text-ink-700"
-            >
-              {s}
-            </span>
+          {suggestions.map((suggestion) => (
+            onSelectSuggestion ? (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => onSelectSuggestion(suggestion)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-paper-100 px-3 py-1 text-[12.5px] text-ink-700 transition hover:border-ink-300 hover:bg-paper-50 hover:text-ink-900 focus:outline-none focus:ring-2 focus:ring-terra-200/60"
+              >
+                {suggestion}
+              </button>
+            ) : (
+              <span
+                key={suggestion}
+                className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-paper-100 px-3 py-1 text-[12.5px] text-ink-700"
+              >
+                {suggestion}
+              </span>
+            )
           ))}
         </div>
       ) : null}
