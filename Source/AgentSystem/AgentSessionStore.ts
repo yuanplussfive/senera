@@ -91,6 +91,10 @@ export class AgentSessionStore {
       : { kind: "missing", sessionId };
   }
 
+  hasPersistedSession(sessionId: string): boolean {
+    return Boolean(this.sessions.get(sessionId) ?? this.repository.loadSession(sessionId));
+  }
+
   close(sessionId: string): AgentSessionCloseResult {
     const lookup = this.get(sessionId);
     if (lookup.kind === "missing") return lookup;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { TooltipProvider } from "./components/ui/Tooltip";
 import { useAgentSocket } from "./api/useAgentSocket";
@@ -6,6 +6,7 @@ import { useStore, type ChatMessage } from "./store/sessionStore";
 import { SessionList } from "./components/SessionList";
 import { ChatPanel } from "./components/ChatPanel";
 import { ThinkingTimeline } from "./components/ThinkingTimeline";
+import { AppShell, useMediaQuery } from "./components/layout/AppShell";
 import { EventKinds, type WsRequest } from "./api/eventTypes";
 import { generateId } from "./lib/util";
 import type { UserProfileData } from "./api/eventTypes";
@@ -28,13 +29,27 @@ export function App(): JSX.Element {
   const renameSession = useStore((s) => s.renameSession);
   const activeId = useStore((s) => s.activeSessionId);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
+  const setSidebarCollapsed = useStore((s) => s.setSidebarCollapsed);
   const markHistoryLoading = useStore((s) => s.markHistoryLoading);
+  const markHistoryLoadFailed = useStore((s) => s.markHistoryLoadFailed);
   const modelProviders = useStore((s) => s.modelProviders);
   const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
   const selectModelProvider = useStore((s) => s.selectModelProvider);
   const userProfile = useStore((s) => s.userProfile);
   const setUserProfile = useStore((s) => s.setUserProfile);
   const markUserProfileSynced = useStore((s) => s.markUserProfileSynced);
+  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
+  const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
+  const hasPersistentSessionPanel = useMediaQuery("(min-width: 1280px)");
+  const hasPersistentWorkflowPanel = useMediaQuery("(min-width: 1024px)");
+
+  const handleOpenSessionPanel = useCallback((): void => {
+    if (hasPersistentSessionPanel) {
+      setSidebarCollapsed(false);
+      return;
+    }
+    setSessionDrawerOpen(true);
+  }, [hasPersistentSessionPanel, setSidebarCollapsed]);
 
   // 哪些 sessionId 已经被当前 WS 连接的后端确认存在
   const serverKnownRef = useRef<Set<string>>(new Set());
@@ -74,15 +89,7 @@ export function App(): JSX.Element {
           const lost = env.sessionId;
           serverKnownRef.current.delete(lost);
           if (data.operation === "session.history") {
-            const state = useStore.getState();
-            if (!state.sessions[lost]) {
-              return;
-            }
-            const serverSessions = state.sessionOrder.filter((id) => !state.missingOnServerIds[id]);
-            const fallbackId = serverSessions[0] ?? null;
-            if (fallbackId && state.activeSessionId === lost) {
-              state.selectSession(fallbackId);
-            }
+            ingest(env);
             toast.warning("该本地会话在后端不存在", {
               description: "已切换到仍存在历史的会话。旧的本地占位不会再被自动恢复成空会话。",
             });
@@ -116,9 +123,18 @@ export function App(): JSX.Element {
 
         // 其他错误 toast
         if (env.kind === EventKinds.RunFailed) {
-          toast.error("运行失败", {
-            description: (env.data as { message?: string }).message ?? "",
-          });
+          const state = useStore.getState();
+          const session = env.sessionId ? state.sessions[env.sessionId] : null;
+          const hasMatchingRun = session?.runs.some((run) => run.requestId === env.requestId) ?? false;
+          if (env.sessionId && state.historyLoadingIds[env.sessionId] && !hasMatchingRun) {
+            toast.error("历史同步失败", {
+              description: (env.data as { message?: string }).message ?? "",
+            });
+          } else {
+            toast.error("运行失败", {
+              description: (env.data as { message?: string }).message ?? "",
+            });
+          }
         } else if (env.kind === EventKinds.SessionBusy) {
           toast.warning("会话正忙，请等待当前请求结束");
         } else if (env.kind === EventKinds.ToolCallFailed) {
@@ -182,6 +198,19 @@ export function App(): JSX.Element {
     ),
   });
 
+  const requestSessionHistory = useCallback(
+    (sessionId: string): boolean => {
+      markHistoryLoading(sessionId);
+      const ok = send({ type: "session.history", sessionId });
+      if (!ok) {
+        markHistoryLoadFailed(sessionId);
+        toast.error("历史同步失败，连接可能已断开");
+      }
+      return ok;
+    },
+    [markHistoryLoadFailed, markHistoryLoading, send],
+  );
+
   // 暴露 send 给 ref，让事件回调能用最新的 send
   useEffect(() => {
     sendRef.current = send;
@@ -226,10 +255,9 @@ export function App(): JSX.Element {
       return;
     }
     if (!state.historyLoadedIds[activeId] && !state.historyLoadingIds[activeId]) {
-      markHistoryLoading(activeId);
-      send({ type: "session.history", sessionId: activeId });
+      requestSessionHistory(activeId);
     }
-  }, [activeId, status, send, markHistoryLoading]);
+  }, [activeId, status, requestSessionHistory]);
 
   // 全局快捷键
   useEffect(() => {
@@ -239,7 +267,11 @@ export function App(): JSX.Element {
       const key = e.key.toLowerCase();
       if (key === "b") {
         e.preventDefault();
-        toggleSidebar();
+        if (hasPersistentSessionPanel) {
+          toggleSidebar();
+          return;
+        }
+        setSessionDrawerOpen((open) => !open);
       } else if (key === "n") {
         e.preventDefault();
         handleNewSession();
@@ -248,7 +280,7 @@ export function App(): JSX.Element {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [status, hasPersistentSessionPanel]);
 
   const handleNewSession = useCallback(() => {
     if (status !== "open") {
@@ -416,7 +448,6 @@ export function App(): JSX.Element {
         toast.error("无法删除：缺少 requestId");
         return;
       }
-      if (!window.confirm("从此处开始删除？这一条及之后的所有消息将从后端永久移除。")) return;
       const ok = send({
         type: "session.truncate_from",
         sessionId: activeId,
@@ -449,12 +480,16 @@ export function App(): JSX.Element {
         return;
       }
       setViewedRun(activeId, run.requestId);
+      if (!hasPersistentWorkflowPanel) {
+        setWorkflowDrawerOpen(true);
+        return;
+      }
       // 顺便如果右栏是折叠的，展开它
       if (state.rightPanelCollapsed) {
         state.toggleRightPanel();
       }
     },
-    [activeId, setViewedRun],
+    [activeId, hasPersistentWorkflowPanel, setViewedRun],
   );
 
   const handleSend = useCallback(
@@ -462,6 +497,11 @@ export function App(): JSX.Element {
       const state = useStore.getState();
       const modelProviderId = state.selectedModelProviderId ?? undefined;
       let targetSessionId = activeId;
+
+      if (targetSessionId && state.historyLoadingIds[targetSessionId]) {
+        toast.warning("正在恢复历史，请稍后再发送");
+        return;
+      }
 
       if (!targetSessionId || state.missingOnServerIds[targetSessionId]) {
         if (targetSessionId) {
@@ -507,32 +547,73 @@ export function App(): JSX.Element {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="relative flex h-screen w-screen overflow-hidden text-ink-900">
-        <SessionList
-          onNewSession={handleNewSession}
-          onCloseSession={handleCloseSession}
-          onCloseSessions={handleCloseSessions}
-          onRefreshSessions={handleRefreshSessions}
-          onRenameSession={handleRenameSession}
-          userProfile={userProfile}
-          onUpdateUserProfile={handleUpdateUserProfile}
-          socketStatus={status}
-        />
-        <ChatPanel
-          userProfile={userProfile}
-          modelProviders={modelProviders}
-          selectedModelProviderId={selectedModelProviderId}
-          onSelectModelProvider={selectModelProvider}
-          socketStatus={status}
-          onSend={handleSend}
-          onCancel={handleCancel}
-          onRegenerate={handleRegenerate}
-          onEditUserMessage={handleEditUserMessage}
-          onDeleteFromMessage={handleDeleteFromMessage}
-          onViewWorkflow={handleViewWorkflow}
-        />
-        <ThinkingTimeline />
-      </div>
+      <AppShell
+        sessionRail={
+          <SessionList
+            presentation="rail"
+            onNewSession={handleNewSession}
+            onCloseSession={handleCloseSession}
+            onCloseSessions={handleCloseSessions}
+            onRefreshSessions={handleRefreshSessions}
+            onRenameSession={handleRenameSession}
+            userProfile={userProfile}
+            onUpdateUserProfile={handleUpdateUserProfile}
+            socketStatus={status}
+            onOpenSessionPanel={handleOpenSessionPanel}
+          />
+        }
+        sessionPanel={
+          <SessionList
+            presentation="auto"
+            onNewSession={handleNewSession}
+            onCloseSession={handleCloseSession}
+            onCloseSessions={handleCloseSessions}
+            onRefreshSessions={handleRefreshSessions}
+            onRenameSession={handleRenameSession}
+            userProfile={userProfile}
+            onUpdateUserProfile={handleUpdateUserProfile}
+            socketStatus={status}
+          />
+        }
+        sessionDrawer={
+          <SessionList
+            presentation="panel"
+            onNewSession={handleNewSession}
+            onCloseSession={handleCloseSession}
+            onCloseSessions={handleCloseSessions}
+            onRefreshSessions={handleRefreshSessions}
+            onRenameSession={handleRenameSession}
+            userProfile={userProfile}
+            onUpdateUserProfile={handleUpdateUserProfile}
+            socketStatus={status}
+            onSessionSelected={() => setSessionDrawerOpen(false)}
+          />
+        }
+        chatPanel={
+          <ChatPanel
+            userProfile={userProfile}
+            modelProviders={modelProviders}
+            selectedModelProviderId={selectedModelProviderId}
+            onSelectModelProvider={selectModelProvider}
+            socketStatus={status}
+            onSend={handleSend}
+            onCancel={handleCancel}
+            onRegenerate={handleRegenerate}
+            onEditUserMessage={handleEditUserMessage}
+            onDeleteFromMessage={handleDeleteFromMessage}
+            onViewWorkflow={handleViewWorkflow}
+            onOpenSessionPanel={handleOpenSessionPanel}
+            onOpenWorkflowPanel={() => setWorkflowDrawerOpen(true)}
+            onRetryHistory={requestSessionHistory}
+          />
+        }
+        workflowPanel={<ThinkingTimeline presentation="auto" />}
+        workflowDrawer={<ThinkingTimeline presentation="panel" hidePanelTitle />}
+        sessionDrawerOpen={sessionDrawerOpen}
+        onSessionDrawerOpenChange={setSessionDrawerOpen}
+        workflowDrawerOpen={workflowDrawerOpen}
+        onWorkflowDrawerOpenChange={setWorkflowDrawerOpen}
+      />
       <Toaster
         position="bottom-right"
         toastOptions={{

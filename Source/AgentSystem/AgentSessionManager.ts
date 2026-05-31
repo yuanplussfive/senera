@@ -18,6 +18,8 @@ import {
 import { AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
 import { AgentSessionStore } from "./AgentSessionStore.js";
 
+const HISTORY_REPLAY_CHUNK_SIZE = 50;
+
 export interface AgentSessionManagerOptions {
   loopFactory: (modelProviderId?: string) => AgentLoop;
   store?: AgentSessionStore;
@@ -149,7 +151,7 @@ export class AgentSessionManager {
     } else {
       // 直接读仓储，不调用 store.open()（避免幽灵会话）
       entries = this.store.loadConversation(sessionId);
-        if (entries.length === 0) {
+        if (entries.length === 0 && !this.store.hasPersistedSession(sessionId)) {
           // 仓储里也没有这个会话——告诉客户端不存在，但不创建
           await emitAgentEvent(
             request.onEvent,
@@ -157,23 +159,40 @@ export class AgentSessionManager {
           );
           return;
         }
-      }
+    }
 
     await emitAgentEvent(request.onEvent, {
-      kind: AgentEventKinds.SessionHistorySnapshot,
+      kind: AgentEventKinds.SessionHistoryStarted,
       context: { sessionId },
       data: {
         sessionId,
         totalEntries: entries.length,
         messageCount: this.conversationPolicy.materialize(entries).length,
-        entries: entries.map((entry) => ({
-          entry,
-          visible:
-            entry.kind === AgentConversationEntryKinds.AssistantDecision
-              ? extractDecisionStreamingPreview(entry.xml)
-              : undefined,
-        })),
       },
+    });
+
+    for (let index = 0; index < entries.length; index += HISTORY_REPLAY_CHUNK_SIZE) {
+      const chunk = entries.slice(index, index + HISTORY_REPLAY_CHUNK_SIZE);
+      await emitAgentEvent(request.onEvent, {
+        kind: AgentEventKinds.SessionHistoryChunk,
+        context: { sessionId },
+        data: {
+          sessionId,
+          entries: chunk.map((entry) => ({
+            entry,
+            visible:
+              entry.kind === AgentConversationEntryKinds.AssistantDecision
+                ? extractDecisionStreamingPreview(entry.xml)
+                : undefined,
+          })),
+        },
+      });
+    }
+
+    await emitAgentEvent(request.onEvent, {
+      kind: AgentEventKinds.SessionHistoryCompleted,
+      context: { sessionId },
+      data: { sessionId },
     });
   }
 
