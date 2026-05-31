@@ -77,6 +77,8 @@ export class AgentLoopEventFactory {
               intent: plan.decision.intent,
               progressAssessment: plan.decision.progressAssessment,
               nextStepGoal: plan.decision.nextStepGoal,
+              requiredCapabilities: plan.decision.requiredCapabilities,
+              tags: plan.decision.tags,
               preferredTools: plan.decision.preferredTools,
               toolSearchQueries: plan.decision.toolSearchQueries,
               loadedTools: loadedToolNames,

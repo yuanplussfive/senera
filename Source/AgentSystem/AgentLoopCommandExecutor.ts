@@ -40,14 +40,7 @@ export class AgentLoopCommandExecutor {
     this.retryPlanner = new AgentRetryPlanner(errorFactory);
     this.resultRenderer = new AgentToolResultXmlRenderer(options.runtime.xmlPolicy.protocol);
     this.decisionXmlCollector = options.runtime.createDecisionXmlCollector(options.model);
-    this.actionPlannerContextBuilder = new AgentActionPlannerContextBuilder(
-      {
-        maxRecentDeltas: options.runtime.actionPlannerConfig.ContextBudget.MaxRecentDeltas,
-        maxStateCalls: options.runtime.actionPlannerConfig.ContextBudget.MaxStateCalls,
-        maxEvidence: options.runtime.actionPlannerConfig.ContextBudget.MaxEvidence,
-        maxPreviewChars: options.runtime.actionPlannerConfig.ContextBudget.MaxPreviewChars,
-      },
-    );
+    this.actionPlannerContextBuilder = new AgentActionPlannerContextBuilder();
   }
 
   async execute(
@@ -77,6 +70,7 @@ export class AgentLoopCommandExecutor {
         currentStep: command.step,
         dynamicTools,
         loadedToolNames: command.loadedToolNames,
+        messages: command.messages,
         ledger: command.plannerLedger,
         toolCatalog: this.options.runtime.toolCatalog
           .list()
@@ -90,6 +84,13 @@ export class AgentLoopCommandExecutor {
           input: command.input,
           loadedTools: this.options.runtime.agentLoopConfig.LoadedTools,
           currentLoadedTools: command.loadedToolNames,
+          tags: decision.tags,
+          plannerText: [
+            decision.intent,
+            decision.nextStepGoal,
+            decision.progressAssessment,
+            decision.instructionToMainModel,
+          ],
           preferredTools: decision.preferredTools,
           toolSearchQueries: decision.toolSearchQueries,
           discover: decision.action === "discover_tools",

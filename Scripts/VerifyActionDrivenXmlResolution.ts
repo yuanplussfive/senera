@@ -160,6 +160,7 @@ function action(kind: AgentActionDecision["action"]): AgentActionDecision {
     progressAssessment: "verification",
     nextStepGoal: kind === "answer" ? "produce final answer" : "call verification tool",
     requiredCapabilities: [],
+    tags: [],
     toolSearchQueries: [],
     preferredTools: kind === "answer" ? [] : ["FastContextWorkspaceMapTool"],
     confidence: 1,

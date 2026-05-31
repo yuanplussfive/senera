@@ -8,7 +8,7 @@ const path = require("node:path");
 const ConfigFileName = "PluginConfig.toml";
 const IndexVersion = 4;
 const DefaultConfig = {
-  roots: ["Source", "System", "Plugins", "Packages", "Frontend/src", "Scripts"],
+  roots: ["."],
   exclude: [
     ".git",
     ".claude",

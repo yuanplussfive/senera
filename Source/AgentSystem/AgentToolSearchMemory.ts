@@ -6,6 +6,7 @@ import type { ResolvedAgentToolSearchConfig } from "./Types.js";
 export interface AgentToolSearchEpisode {
   query: string;
   queryTokens: string[];
+  plannerTags: string[];
   candidates: string[];
   chosenTools: string[];
   outcome: "success" | "failure" | "unknown";
@@ -23,6 +24,7 @@ export interface AgentToolSearchMemoryEvidence {
 interface StoredEpisodeRow {
   query: string;
   query_tokens: string;
+  planner_tags: string;
   candidates: string;
   chosen_tools: string;
   outcome: string;
@@ -157,6 +159,7 @@ class SqliteToolSearchMemoryStore implements MemoryStore {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         query TEXT NOT NULL,
         query_tokens TEXT NOT NULL,
+        planner_tags TEXT NOT NULL DEFAULT '[]',
         candidates TEXT NOT NULL,
         chosen_tools TEXT NOT NULL,
         outcome TEXT NOT NULL,
@@ -168,12 +171,12 @@ class SqliteToolSearchMemoryStore implements MemoryStore {
     `);
     this.insertStmt = this.db.prepare(`
       INSERT INTO tool_search_episodes
-        (query, query_tokens, candidates, chosen_tools, outcome, project_id, timestamp)
+        (query, query_tokens, planner_tags, candidates, chosen_tools, outcome, project_id, timestamp)
       VALUES
-        (@query, @query_tokens, @candidates, @chosen_tools, @outcome, @project_id, @timestamp)
+        (@query, @query_tokens, @planner_tags, @candidates, @chosen_tools, @outcome, @project_id, @timestamp)
     `);
     this.listStmt = this.db.prepare<[string, number], StoredEpisodeRow>(`
-      SELECT query, query_tokens, candidates, chosen_tools, outcome, project_id, timestamp
+      SELECT query, query_tokens, planner_tags, candidates, chosen_tools, outcome, project_id, timestamp
       FROM tool_search_episodes
       WHERE project_id = ?
       ORDER BY timestamp DESC
@@ -191,6 +194,7 @@ class SqliteToolSearchMemoryStore implements MemoryStore {
     this.insertStmt.run({
       query: episode.query,
       query_tokens: JSON.stringify(episode.queryTokens),
+      planner_tags: JSON.stringify(episode.plannerTags),
       candidates: JSON.stringify(episode.candidates),
       chosen_tools: JSON.stringify(episode.chosenTools),
       outcome: episode.outcome,
@@ -237,6 +241,7 @@ function rowToEpisode(row: StoredEpisodeRow): AgentToolSearchEpisode {
   return {
     query: row.query,
     queryTokens: parseStringArray(row.query_tokens),
+    plannerTags: parseStringArray(row.planner_tags),
     candidates: parseStringArray(row.candidates),
     chosenTools: parseStringArray(row.chosen_tools),
     outcome: row.outcome === "success" || row.outcome === "failure" ? row.outcome : "unknown",

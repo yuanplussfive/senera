@@ -57,6 +57,7 @@ export interface AgentPromptActionDirectiveContext {
   action: string;
   intent: string;
   requiredCapabilities: string[];
+  tags: string[];
   toolSearchQueries: string[];
   preferredTools: string[];
   confidence: number;
@@ -139,6 +140,7 @@ export class AgentPromptContextBuilder {
       action: directive.action,
       intent: directive.intent,
       requiredCapabilities: directive.requiredCapabilities,
+      tags: directive.tags,
       toolSearchQueries: directive.toolSearchQueries,
       preferredTools: directive.preferredTools,
       confidence: directive.confidence,

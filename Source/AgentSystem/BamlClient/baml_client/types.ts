@@ -72,32 +72,34 @@ export interface ActionDecision {
   progressAssessment: string
   nextStepGoal: string
   requiredCapabilities: string[]
+  tags: string[]
   toolSearchQueries: string[]
   preferredTools: string[]
   confidence: number
   instructionToMainModel: string
-  
+
 }
 
 export interface ActionPlanInput {
   task: ActionTask
   runtime: ActionRuntime
+  history: PlannerHistoryTurn[]
   executionState: ExecutionState
   recentDeltas: ExecutionDelta[]
   toolCatalog: ToolCatalogItem[]
-  
+
 }
 
 export interface ActionRuntime {
   currentStep: number
   dynamicTools: boolean
   loadedTools: string[]
-  
+
 }
 
 export interface ActionTask {
   userMessage: string
-  
+
 }
 
 export interface EvidenceRecord {
@@ -106,7 +108,7 @@ export interface EvidenceRecord {
   label: string
   artifactId: string
   source: string
-  
+
 }
 
 export interface ExecutionDelta {
@@ -119,7 +121,7 @@ export interface ExecutionDelta {
   artifactId: string
   evidenceKeys: string[]
   note: string
-  
+
 }
 
 export interface ExecutionState {
@@ -127,7 +129,15 @@ export interface ExecutionState {
   evidence: EvidenceRecord[]
   warnings: RepeatedCallWarning[]
   progress: ProgressSignals
-  
+
+}
+
+export interface PlannerHistoryTurn {
+  index: number
+  role: string
+  kind: string
+  content: string
+
 }
 
 export interface ProgressSignals {
@@ -136,7 +146,7 @@ export interface ProgressSignals {
   lastNewEvidenceStep: number
   repeatedCallCount: number
   stalled: boolean
-  
+
 }
 
 export interface RepeatedCallWarning {
@@ -144,7 +154,7 @@ export interface RepeatedCallWarning {
   argsHash: string
   count: number
   lastStep: number
-  
+
 }
 
 export interface ToolCallRecord {
@@ -155,7 +165,7 @@ export interface ToolCallRecord {
   artifactId: string
   evidenceKeys: string[]
   error: string
-  
+
 }
 
 export interface ToolCatalogItem {
@@ -168,5 +178,5 @@ export interface ToolCatalogItem {
   avoid: string[]
   permissions: string[]
   loaded: boolean
-  
+
 }

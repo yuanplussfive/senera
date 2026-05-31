@@ -231,6 +231,8 @@ export interface ActionPlannedData {
   intent?: string;
   progressAssessment?: string;
   nextStepGoal?: string;
+  requiredCapabilities?: string[];
+  tags?: string[];
   preferredTools: string[];
   toolSearchQueries: string[];
   loadedTools: string[] | "all";

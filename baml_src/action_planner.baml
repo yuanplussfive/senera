@@ -39,6 +39,13 @@ class ActionRuntime {
   loadedTools string[]
 }
 
+class PlannerHistoryTurn {
+  index int
+  role string
+  kind string
+  content string
+}
+
 class ToolCallRecord {
   step int
   toolName string
@@ -94,6 +101,7 @@ class ExecutionDelta {
 class ActionPlanInput {
   task ActionTask
   runtime ActionRuntime
+  history PlannerHistoryTurn[]
   executionState ExecutionState
   recentDeltas ExecutionDelta[]
   toolCatalog ToolCatalogItem[]
@@ -105,6 +113,7 @@ class ActionDecision {
   progressAssessment string
   nextStepGoal string
   requiredCapabilities string[]
+  tags string[]
   toolSearchQueries string[]
   preferredTools string[]
   confidence float
@@ -132,6 +141,7 @@ function PlanAction(input: ActionPlanInput) -> ActionDecision {
     - Current visible tools may be only a subset of all registered tools.
     - If the task needs hidden capabilities, choose DiscoverTools or name exact catalog tools in preferredTools.
     - Do not invent tool names. Only use preferredTools from loaded tools or catalog items with strong evidence.
+    - Use tags as compact routing hints derived from the task and the visible tool catalog metadata.
 
     Action semantics:
     - Answer: the main agent can answer directly without tools.
@@ -140,15 +150,20 @@ function PlanAction(input: ActionPlanInput) -> ActionDecision {
     - UseTools: suitable loaded tools are already available and should be used by the main agent.
 
     Decision rules:
+    - Treat history as sanitized conversation memory. Use it to preserve user constraints, prior assistant answers, and completed tool observations.
     - Use executionState and recentDeltas as the source of progress truth.
-    - If executionState already contains enough evidence to answer the user, choose Answer.
+    - If history plus executionState already contains enough evidence to answer the user, choose Answer.
     - If recentDeltas show repeated calls or stalled progress, avoid more tools unless nextStepGoal names a concrete missing fact.
-    - For workspace code search, reading files, editing files, command execution, web search, external APIs, or real-time data, prefer UseTools only when a concrete missing fact requires it.
-    - For vague requests that still require project inspection, prefer DiscoverTools only when current loaded tools cannot perform the next concrete step.
+    - Do not claim a file, URL, fact, or tool result was observed unless it appears in history or executionState.
+    - Extract compact tags from the task even when the user does not explicitly name a tool.
+    - Prefer exact tags already present in toolCatalog.tags. Add only short user-intent tags when no catalog tag fits.
+    - Choose UseTools only when the current catalog and executionState show that a concrete missing fact requires a tool.
+    - For vague requests that still require inspection, prefer DiscoverTools only when current loaded tools cannot perform the next concrete step.
     - For normal conversation or explanation that does not require external state, use Answer.
-    - When the user asks about this repository or implementation details, prefer local workspace tools.
+    - When a task needs evidence, choose tools by matching the task to toolCatalog metadata.
     - progressAssessment must state whether the current evidence is enough, insufficient, repeated, or blocked.
     - nextStepGoal must be concrete. If action is Answer, use a final-answer goal.
+    - Tool search queries should combine user terms with the strongest catalog-aligned tags.
     - Keep instructionToMainModel short, imperative, and directly actionable.
     - Use PascalCase enum values exactly as defined.
 
@@ -161,6 +176,10 @@ function PlanAction(input: ActionPlanInput) -> ActionDecision {
     {{ _.role("user") }}
     Runtime:
     {{ input.runtime }}
+
+    {{ _.role("user") }}
+    Sanitized conversation and run history:
+    {{ input.history }}
 
     {{ _.role("user") }}
     Execution state:

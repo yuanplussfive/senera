@@ -112,20 +112,20 @@
     "Ranking": {
       "RrfK": 60,
       "MmrLambda": 0.72,
+      "MmrCandidateScoreRatio": 0.92,
       "MinScore": 0
+    },
+    "Rerank": {
+      "Enabled": true,
+      "CandidateLimit": 24,
+      "ScoreScale": 0.018,
+      "FeatureWeights": {}
     }
   },
   "ActionPlanner": {
     "Enabled": true,
     "MaxRepairAttempts": 1,
     "MaxCatalogTools": 48,
-    "RecentContextChars": 6000,
-    "ContextBudget": {
-      "MaxRecentDeltas": 12,
-      "MaxStateCalls": 12,
-      "MaxEvidence": 16,
-      "MaxPreviewChars": 320
-    },
     "Client": {
       "Provider": "auto",
       "Temperature": 0.1,

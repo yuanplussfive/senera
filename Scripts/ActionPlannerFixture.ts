@@ -12,6 +12,7 @@ export function createActionPlanInputFixture(
       dynamicTools: true,
       loadedTools: [],
     },
+    history: [],
     executionState: {
       calls: [],
       evidence: [],
@@ -36,6 +37,7 @@ export function createActionDecisionFixture(): string {
     progressAssessment: "No tool evidence is required.",
     nextStepGoal: "Produce the final answer.",
     requiredCapabilities: [],
+    tags: [],
     toolSearchQueries: [],
     preferredTools: [],
     confidence: 0.9,

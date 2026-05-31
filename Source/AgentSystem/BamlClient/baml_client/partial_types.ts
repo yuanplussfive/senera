@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types"
-import type {  ActionDecision,  ActionKind,  ActionPlanInput,  ActionRuntime,  ActionTask,  EvidenceRecord,  ExecutionDelta,  ExecutionDeltaOp,  ExecutionState,  ProgressSignals,  RepeatedCallWarning,  ToolCallRecord,  ToolCallStatus,  ToolCatalogItem } from "./types"
+import type {  ActionDecision,  ActionKind,  ActionPlanInput,  ActionRuntime,  ActionTask,  EvidenceRecord,  ExecutionDelta,  ExecutionDeltaOp,  ExecutionState,  PlannerHistoryTurn,  ProgressSignals,  RepeatedCallWarning,  ToolCallRecord,  ToolCallStatus,  ToolCatalogItem } from "./types"
 import type * as types from "./types"
 
 /******************************************************************************
@@ -42,6 +42,7 @@ export namespace partial_types {
       progressAssessment?: string | null
       nextStepGoal?: string | null
       requiredCapabilities: string[]
+      tags: string[]
       toolSearchQueries: string[]
       preferredTools: string[]
       confidence?: number | null
@@ -50,6 +51,7 @@ export namespace partial_types {
     export interface ActionPlanInput {
       task?: ActionTask | null
       runtime?: ActionRuntime | null
+      history: PlannerHistoryTurn[]
       executionState?: ExecutionState | null
       recentDeltas: ExecutionDelta[]
       toolCatalog: ToolCatalogItem[]
@@ -85,6 +87,12 @@ export namespace partial_types {
       evidence: EvidenceRecord[]
       warnings: RepeatedCallWarning[]
       progress?: ProgressSignals | null
+    }
+    export interface PlannerHistoryTurn {
+      index?: number | null
+      role?: string | null
+      kind?: string | null
+      content?: string | null
     }
     export interface ProgressSignals {
       totalToolCalls?: number | null

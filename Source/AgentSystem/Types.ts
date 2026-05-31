@@ -89,7 +89,14 @@ export interface AgentToolSearchConfig {
   Ranking?: {
     RrfK?: number;
     MmrLambda?: number;
+    MmrCandidateScoreRatio?: number;
     MinScore?: number;
+  };
+  Rerank?: {
+    Enabled?: boolean;
+    CandidateLimit?: number;
+    ScoreScale?: number;
+    FeatureWeights?: Record<string, number>;
   };
 }
 
@@ -106,7 +113,14 @@ export interface ResolvedAgentToolSearchConfig {
   Ranking: {
     RrfK: number;
     MmrLambda: number;
+    MmrCandidateScoreRatio: number;
     MinScore: number;
+  };
+  Rerank: {
+    Enabled: boolean;
+    CandidateLimit: number;
+    ScoreScale: number;
+    FeatureWeights: Record<string, number>;
   };
 }
 
@@ -114,16 +128,7 @@ export interface AgentActionPlannerConfig {
   Enabled?: boolean;
   MaxRepairAttempts?: number;
   MaxCatalogTools?: number;
-  RecentContextChars?: number;
-  ContextBudget?: AgentActionPlannerContextBudgetConfig;
   Client?: AgentActionPlannerClientConfig;
-}
-
-export interface AgentActionPlannerContextBudgetConfig {
-  MaxRecentDeltas?: number;
-  MaxStateCalls?: number;
-  MaxEvidence?: number;
-  MaxPreviewChars?: number;
 }
 
 export type AgentActionPlannerClientProvider =
@@ -147,8 +152,6 @@ export interface ResolvedAgentActionPlannerConfig {
   Enabled: boolean;
   MaxRepairAttempts: number;
   MaxCatalogTools: number;
-  RecentContextChars: number;
-  ContextBudget: Required<AgentActionPlannerContextBudgetConfig>;
   Client: Required<AgentActionPlannerClientConfig>;
 }
 

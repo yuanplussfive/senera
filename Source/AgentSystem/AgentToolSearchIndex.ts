@@ -9,9 +9,12 @@ import type {
 import { AgentPromptContractProjector } from "./AgentPromptContractProjector.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
+import { AgentToolSearchReranker } from "./AgentToolSearchReranker.js";
+import type { AgentToolSearchRerankDocument } from "./AgentToolSearchReranker.js";
 
 export interface AgentToolSearchOptions {
   query: string;
+  plannerTags?: readonly string[];
   includeLoaded?: boolean;
   loadedToolNames?: readonly string[];
   memoryEvidence?: readonly AgentToolSearchMemoryEvidence[];
@@ -29,21 +32,8 @@ export interface AgentToolSearchResult {
   matchedTerms: string[];
 }
 
-interface ToolSearchDocument {
+interface ToolSearchDocument extends AgentToolSearchRerankDocument {
   id: string;
-  toolName: string;
-  title: string;
-  pluginName: string;
-  pluginTitle: string;
-  tags: string;
-  summary: string;
-  whenToUse: string;
-  examples: string;
-  avoid: string;
-  params: string;
-  permissions: string;
-  priority: number;
-  coreText: string;
 }
 
 type RankerName = "bm25" | "exact" | "memory" | "priority";
@@ -59,7 +49,6 @@ const SearchFields = [
   "summary",
   "whenToUse",
   "examples",
-  "avoid",
   "params",
   "permissions",
 ] satisfies Array<keyof ToolSearchDocument>;
@@ -76,6 +65,7 @@ const StoreFields = [
 export class AgentToolSearchIndex {
   private readonly tokenizer = new AgentToolSearchTokenizer();
   private readonly contractProjector = new AgentPromptContractProjector();
+  private readonly reranker: AgentToolSearchReranker<RankerName>;
   private readonly miniSearch;
   private readonly docs: ToolSearchDocument[];
   private readonly docsByTool = new Map<string, ToolSearchDocument>();
@@ -88,6 +78,7 @@ export class AgentToolSearchIndex {
     this.docs = registry.listTools().map((tool) => this.buildDocument(tool));
     this.docs.forEach((doc) => this.docsByTool.set(doc.toolName, doc));
     this.buildDocumentFrequency();
+    this.reranker = new AgentToolSearchReranker(config.Rerank, this.tokenizer);
     this.miniSearch = new MiniSearch<ToolSearchDocument>({
       idField: "id",
       fields: [...SearchFields],
@@ -98,13 +89,12 @@ export class AgentToolSearchIndex {
         boost: {
           toolName: 7,
           title: 5,
-          tags: 4,
+          tags: 7,
           summary: 3,
           whenToUse: 3,
           examples: 4,
           params: 2.5,
           permissions: 1.5,
-          avoid: 0.2,
         },
         prefix: (term) => term.length >= 3,
         fuzzy: (term) => term.length >= 5 ? 0.18 : false,
@@ -123,7 +113,15 @@ export class AgentToolSearchIndex {
     const rankers = this.rankers(options, queryTokens, initialNames);
     const candidateNames = this.relevantCandidates(rankers, queryTokens);
     const fused = this.fuse(rankers, candidateNames);
-    const diversified = this.diversify(fused, queryTokens);
+    const reranked = this.reranker.rerank(fused, {
+      queryTokens,
+      plannerTagTokens: this.tokenizer.tokenize((options.plannerTags ?? []).join(" ")),
+      rankers,
+      docsByTool: this.docsByTool,
+      memoryByTool: toMemoryEvidenceMap(options.memoryEvidence ?? []),
+      inverseDocumentFrequency: (token) => this.inverseDocumentFrequency(token),
+    });
+    const diversified = this.diversify(reranked, queryTokens);
 
     return diversified
       .filter((entry) => entry.score >= this.config.Ranking.MinScore)
@@ -182,7 +180,7 @@ export class AgentToolSearchIndex {
     const fields = [
       { text: doc.toolName, boost: 8 },
       { text: doc.title, boost: 5 },
-      { text: doc.tags, boost: 4 },
+      { text: doc.tags, boost: 7 },
       { text: doc.summary, boost: 3 },
       { text: doc.whenToUse, boost: 3 },
       { text: doc.examples, boost: 4 },
@@ -254,7 +252,10 @@ export class AgentToolSearchIndex {
     const querySet = new Set(queryTokens);
 
     while (remaining.length > 0) {
-      const next = remaining
+      const bestScore = Math.max(...remaining.map((entry) => entry.score));
+      const pool = remaining.filter((entry) =>
+        entry.score >= bestScore * this.config.Ranking.MmrCandidateScoreRatio);
+      const next = pool
         .map((entry) => ({
           entry,
           score: this.diversifiedScore(entry, selected, querySet),
@@ -418,7 +419,6 @@ export class AgentToolSearchIndex {
       summary,
       whenToUse,
       examples,
-      avoid,
       params,
       permissions,
     ].filter(Boolean).join(" ");
@@ -472,6 +472,12 @@ function readContractPropertyTokens(
 
 function toRankMap(toolNames: string[]): RankMap {
   return new Map(toolNames.map((toolName, index) => [toolName, index + 1]));
+}
+
+function toMemoryEvidenceMap(
+  evidence: readonly AgentToolSearchMemoryEvidence[],
+): Map<string, AgentToolSearchMemoryEvidence> {
+  return new Map(evidence.map((entry) => [entry.toolName, entry]));
 }
 
 function stableToolDocumentId(tool: RegisteredTool): string {

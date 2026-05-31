@@ -32,6 +32,7 @@ export type LoadedToolsState = "all" | string[];
 interface PendingToolSearch {
   query: string;
   queryTokens: string[];
+  plannerTags: string[];
   candidates: string[];
   timestamp: number;
 }
@@ -79,6 +80,8 @@ export class AgentToolSearchRuntime {
     input: string;
     loadedTools: AgentLoadedToolsConfig;
     currentLoadedTools?: LoadedToolsState;
+    tags?: readonly string[];
+    plannerText?: readonly string[];
     preferredTools?: readonly string[];
     toolSearchQueries?: readonly string[];
     discover?: boolean;
@@ -92,14 +95,10 @@ export class AgentToolSearchRuntime {
       ? this.registry.listTools().map((tool) => tool.name)
       : options.currentLoadedTools ?? [];
     const preferred = this.existingToolNames(options.preferredTools ?? []);
-    const discovered = (options.toolSearchQueries && options.toolSearchQueries.length > 0
-      ? options.toolSearchQueries
-      : options.discover
-        ? [options.input]
-        : []
-    ).flatMap((query) =>
+    const discovered = this.buildPlannedSearchQueries(options).flatMap((query) =>
       this.search({
-        query,
+        query: query.text,
+        plannerTags: query.tags,
         includeLoaded: false,
         loadedToolNames: [...bootstrap, ...preferred],
       }).map((result) => result.toolName));
@@ -126,6 +125,7 @@ export class AgentToolSearchRuntime {
     this.rememberSearch(requestId, {
       query,
       queryTokens: this.tokenize(query),
+      plannerTags: [],
       candidates,
       timestamp: Date.now(),
     });
@@ -151,6 +151,7 @@ export class AgentToolSearchRuntime {
 
   search(options: {
     query: string;
+    plannerTags?: readonly string[];
     includeLoaded?: boolean;
     loadedToolNames?: readonly string[];
   }): AgentToolSearchResult[] {
@@ -200,6 +201,7 @@ export class AgentToolSearchRuntime {
       this.rememberSearch(context.requestId, {
         query: parsed.data.query,
         queryTokens: this.tokenize(parsed.data.query),
+        plannerTags: [],
         candidates: result.tools.item.map((entry) => entry.name),
         timestamp: Date.now(),
       });
@@ -256,6 +258,31 @@ export class AgentToolSearchRuntime {
     this.pendingSearches.set(requestId, [...entries.slice(-4), search]);
   }
 
+  private buildPlannedSearchQueries(options: {
+    input: string;
+    tags?: readonly string[];
+    plannerText?: readonly string[];
+    toolSearchQueries?: readonly string[];
+    discover?: boolean;
+  }): Array<{ text: string; tags: string[] }> {
+    if (!options.discover && (options.toolSearchQueries ?? []).length === 0) {
+      return [];
+    }
+
+    return uniqueNonEmpty([
+      ...(options.toolSearchQueries ?? []),
+      structuredToolSearchQuery({
+        task: options.input,
+        plannerText: options.plannerText ?? [],
+        tags: options.tags ?? [],
+      }),
+      ...(options.discover ? [options.input] : []),
+    ]).map((text) => ({
+      text,
+      tags: uniqueNonEmpty([...(options.tags ?? [])]),
+    }));
+  }
+
   private recordToolUsage(
     requestId: string,
     results: ExecutedToolCallResult[],
@@ -282,6 +309,7 @@ export class AgentToolSearchRuntime {
     this.memory.record({
       query: relevant.query,
       queryTokens: relevant.queryTokens,
+      plannerTags: relevant.plannerTags,
       candidates: relevant.candidates,
       chosenTools,
       outcome: results.some((result) => hasToolError(result.result)) ? "failure" : "success",
@@ -376,6 +404,22 @@ function coerceBooleanLike(value: unknown): unknown {
   if (normalized === "true") return true;
   if (normalized === "false") return false;
   return value;
+}
+
+function structuredToolSearchQuery(options: {
+  task: string;
+  plannerText: readonly string[];
+  tags: readonly string[];
+}): string {
+  return [
+    options.task,
+    ...options.plannerText,
+    ...options.tags,
+  ].join(" ");
+}
+
+function uniqueNonEmpty(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function createProjectId(workspaceRoot: string): string {

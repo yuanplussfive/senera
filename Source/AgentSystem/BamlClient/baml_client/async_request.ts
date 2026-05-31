@@ -23,7 +23,7 @@ import type { BamlRuntime, BamlCtxManager, Image, Audio, Pdf, Video, FunctionLog
 import { toBamlError, HTTPRequest, ClientRegistry } from "@boundaryml/baml"
 import type { Checked, Check } from "./types"
 import type * as types from "./types"
-import type {ActionDecision, ActionKind, ActionPlanInput, ActionRuntime, ActionTask, EvidenceRecord, ExecutionDelta, ExecutionDeltaOp, ExecutionState, ProgressSignals, RepeatedCallWarning, ToolCallRecord, ToolCallStatus, ToolCatalogItem} from "./types"
+import type {ActionDecision, ActionKind, ActionPlanInput, ActionRuntime, ActionTask, EvidenceRecord, ExecutionDelta, ExecutionDeltaOp, ExecutionState, PlannerHistoryTurn, ProgressSignals, RepeatedCallWarning, ToolCallRecord, ToolCallStatus, ToolCatalogItem} from "./types"
 import type TypeBuilder from "./type_builder"
 import type * as events from "./events"
 

@@ -60,7 +60,17 @@ const ToolSearchSchema = z
       .object({
         RrfK: z.number().positive().optional(),
         MmrLambda: z.number().min(0).max(1).optional(),
+        MmrCandidateScoreRatio: z.number().min(0).max(1).optional(),
         MinScore: z.number().min(0).optional(),
+      })
+      .strict()
+      .optional(),
+    Rerank: z
+      .object({
+        Enabled: z.boolean().optional(),
+        CandidateLimit: z.number().int().min(1).optional(),
+        ScoreScale: z.number().min(0).optional(),
+        FeatureWeights: z.record(z.string(), z.number()).optional(),
       })
       .strict()
       .optional(),
@@ -72,16 +82,6 @@ const ActionPlannerSchema = z
     Enabled: z.boolean().optional(),
     MaxRepairAttempts: z.number().int().min(0).optional(),
     MaxCatalogTools: z.number().int().min(1).optional(),
-    RecentContextChars: z.number().int().min(0).optional(),
-    ContextBudget: z
-      .object({
-        MaxRecentDeltas: z.number().int().min(0).optional(),
-        MaxStateCalls: z.number().int().min(0).optional(),
-        MaxEvidence: z.number().int().min(0).optional(),
-        MaxPreviewChars: z.number().int().min(0).optional(),
-      })
-      .strict()
-      .optional(),
     Client: z
       .object({
         Provider: z.enum([

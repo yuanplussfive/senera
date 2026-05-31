@@ -143,7 +143,7 @@ npm run cli
 | `AgentLoop.MaxSteps` | 最大行动步数,`-1` 表示不限制。 |
 | `AgentLoop.MaxRepairAttempts` | 工具调用解析 / 校验失败后的自动修复重试上限。 |
 | `AgentLoop.LoadedTools` | `"dynamic"` 动态按需发现工具(推荐);`"all"` 加载全部;也可填工具名数组做白名单。 |
-| `ToolSearch.*` | 动态工具发现的旋钮:`BootstrapTools` 启动工具、`Memory`(SQLite 记忆 / 半衰期)、`Ranking`(RRF / MMR 参数)。 |
+| `ToolSearch.*` | 动态工具发现的旋钮:`BootstrapTools` 启动工具、`Memory`(SQLite 记忆 / 半衰期)、`Ranking`(RRF / MMR 参数)、`Rerank`(字段化轻量重排)。 |
 | `ActionPlanner.*` | 行动规划器:是否启用、目录工具上限、上下文预算,以及 `Client.Provider`(默认 `"auto"`,按当前 `Endpoint` 自动同步 BAML planner 路由)。 |
 
 ---

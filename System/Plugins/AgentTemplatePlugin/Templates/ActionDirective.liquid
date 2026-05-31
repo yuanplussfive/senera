@@ -31,6 +31,13 @@
 {% endfor %}
     </required_capabilities>
 {% endif %}
+{% if ActionDirective.tags.size > 0 %}
+    <tags>
+{% for tag in ActionDirective.tags %}
+      <tag>{{ tag | escape }}</tag>
+{% endfor %}
+    </tags>
+{% endif %}
   </decision>
 </senera_action_directive>
 {% endif %}

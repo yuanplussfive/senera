@@ -25,6 +25,7 @@ const ActionDecisionSchema = z
     progressAssessment: z.string(),
     nextStepGoal: z.string(),
     requiredCapabilities: z.array(z.string()),
+    tags: z.array(z.string()),
     toolSearchQueries: z.array(z.string()),
     preferredTools: z.array(z.string()),
     confidence: z.number().min(0).max(1),
@@ -61,6 +62,7 @@ export interface AgentActionDecision {
   progressAssessment: string;
   nextStepGoal: string;
   requiredCapabilities: string[];
+  tags: string[];
   toolSearchQueries: string[];
   preferredTools: string[];
   confidence: number;
@@ -181,6 +183,7 @@ export class AgentActionPlanner {
       progressAssessment: parsed.progressAssessment.trim(),
       nextStepGoal: parsed.nextStepGoal.trim(),
       requiredCapabilities: uniqueTrimmed(parsed.requiredCapabilities),
+      tags: uniqueTrimmed(parsed.tags),
       toolSearchQueries: uniqueTrimmed(parsed.toolSearchQueries),
       preferredTools: uniqueTrimmed(parsed.preferredTools),
       confidence: parsed.confidence,

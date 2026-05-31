@@ -22,7 +22,7 @@ import type { BamlRuntime, BamlCtxManager, Image, Audio, Pdf, Video } from "@bou
 import { toBamlError, HTTPRequest, ClientRegistry } from "@boundaryml/baml"
 import type { Checked, Check } from "./types"
 import type * as types from "./types"
-import type {ActionDecision, ActionKind, ActionPlanInput, ActionRuntime, ActionTask, EvidenceRecord, ExecutionDelta, ExecutionDeltaOp, ExecutionState, ProgressSignals, RepeatedCallWarning, ToolCallRecord, ToolCallStatus, ToolCatalogItem} from "./types"
+import type {ActionDecision, ActionKind, ActionPlanInput, ActionRuntime, ActionTask, EvidenceRecord, ExecutionDelta, ExecutionDeltaOp, ExecutionState, PlannerHistoryTurn, ProgressSignals, RepeatedCallWarning, ToolCallRecord, ToolCallStatus, ToolCatalogItem} from "./types"
 import type TypeBuilder from "./type_builder"
 import type * as events from "./events"
 
@@ -37,7 +37,7 @@ type BamlCallOptions<EventsT = never> = {
 export class HttpRequest {
   constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
-  
+
   PlanAction(
       input: types.ActionPlanInput,
       __baml_options__?: BamlCallOptions<never>
@@ -70,7 +70,7 @@ export class HttpRequest {
       throw toBamlError(error);
     }
   }
-  
+
   RepairActionDecision(
       input: types.ActionPlanInput,invalidDecision: string,issues: string[],
       __baml_options__?: BamlCallOptions<never>
@@ -103,13 +103,13 @@ export class HttpRequest {
       throw toBamlError(error);
     }
   }
-  
+
 }
 
 export class HttpStreamRequest {
   constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
-  
+
   PlanAction(
       input: types.ActionPlanInput,
       __baml_options__?: BamlCallOptions<never>
@@ -142,7 +142,7 @@ export class HttpStreamRequest {
       throw toBamlError(error);
     }
   }
-  
+
   RepairActionDecision(
       input: types.ActionPlanInput,invalidDecision: string,issues: string[],
       __baml_options__?: BamlCallOptions<never>
@@ -175,5 +175,5 @@ export class HttpStreamRequest {
       throw toBamlError(error);
     }
   }
-  
-}
+
+}

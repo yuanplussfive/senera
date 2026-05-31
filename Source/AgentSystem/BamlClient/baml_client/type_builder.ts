@@ -26,105 +26,111 @@ export { FieldType, EnumBuilder, ClassBuilder }
 
 export default class TypeBuilder {
     private tb: _TypeBuilder;
-    
-    ActionDecision: ClassViewer<'ActionDecision', "action" | "intent" | "progressAssessment" | "nextStepGoal" | "requiredCapabilities" | "toolSearchQueries" | "preferredTools" | "confidence" | "instructionToMainModel">;
-    
-    ActionPlanInput: ClassViewer<'ActionPlanInput', "task" | "runtime" | "executionState" | "recentDeltas" | "toolCatalog">;
-    
+
+    ActionDecision: ClassViewer<'ActionDecision', "action" | "intent" | "progressAssessment" | "nextStepGoal" | "requiredCapabilities" | "tags" | "toolSearchQueries" | "preferredTools" | "confidence" | "instructionToMainModel">;
+
+    ActionPlanInput: ClassViewer<'ActionPlanInput', "task" | "runtime" | "history" | "executionState" | "recentDeltas" | "toolCatalog">;
+
     ActionRuntime: ClassViewer<'ActionRuntime', "currentStep" | "dynamicTools" | "loadedTools">;
-    
+
     ActionTask: ClassViewer<'ActionTask', "userMessage">;
-    
+
     EvidenceRecord: ClassViewer<'EvidenceRecord', "key" | "kind" | "label" | "artifactId" | "source">;
-    
+
     ExecutionDelta: ClassViewer<'ExecutionDelta', "step" | "op" | "key" | "toolName" | "argsHash" | "status" | "artifactId" | "evidenceKeys" | "note">;
-    
+
     ExecutionState: ClassViewer<'ExecutionState', "calls" | "evidence" | "warnings" | "progress">;
-    
+
+    PlannerHistoryTurn: ClassViewer<'PlannerHistoryTurn', "index" | "role" | "kind" | "content">;
+
     ProgressSignals: ClassViewer<'ProgressSignals', "totalToolCalls" | "totalEvidence" | "lastNewEvidenceStep" | "repeatedCallCount" | "stalled">;
-    
+
     RepeatedCallWarning: ClassViewer<'RepeatedCallWarning', "toolName" | "argsHash" | "count" | "lastStep">;
-    
+
     ToolCallRecord: ClassViewer<'ToolCallRecord', "step" | "toolName" | "argsHash" | "status" | "artifactId" | "evidenceKeys" | "error">;
-    
+
     ToolCatalogItem: ClassViewer<'ToolCatalogItem', "name" | "title" | "summary" | "tags" | "useCases" | "examples" | "avoid" | "permissions" | "loaded">;
-    
-    
+
+
     ActionKind: EnumViewer<'ActionKind', "Answer" | "AskUser" | "DiscoverTools" | "UseTools">;
-    
+
     ExecutionDeltaOp: EnumViewer<'ExecutionDeltaOp', "AddCall" | "AddEvidence" | "AddWarning">;
-    
+
     ToolCallStatus: EnumViewer<'ToolCallStatus', "Success" | "Failure" | "Empty">;
-    
+
 
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ActionDecision","ActionPlanInput","ActionRuntime","ActionTask","EvidenceRecord","ExecutionDelta","ExecutionState","ProgressSignals","RepeatedCallWarning","ToolCallRecord","ToolCatalogItem",
+            "ActionDecision","ActionPlanInput","ActionRuntime","ActionTask","EvidenceRecord","ExecutionDelta","ExecutionState","PlannerHistoryTurn","ProgressSignals","RepeatedCallWarning","ToolCallRecord","ToolCatalogItem",
           ]),
           enums: new Set([
             "ActionKind","ExecutionDeltaOp","ToolCallStatus",
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
-        
+
         this.ActionDecision = this.tb.classViewer("ActionDecision", [
-          "action","intent","progressAssessment","nextStepGoal","requiredCapabilities","toolSearchQueries","preferredTools","confidence","instructionToMainModel",
+          "action","intent","progressAssessment","nextStepGoal","requiredCapabilities","tags","toolSearchQueries","preferredTools","confidence","instructionToMainModel",
         ]);
-        
+
         this.ActionPlanInput = this.tb.classViewer("ActionPlanInput", [
-          "task","runtime","executionState","recentDeltas","toolCatalog",
+          "task","runtime","history","executionState","recentDeltas","toolCatalog",
         ]);
-        
+
         this.ActionRuntime = this.tb.classViewer("ActionRuntime", [
           "currentStep","dynamicTools","loadedTools",
         ]);
-        
+
         this.ActionTask = this.tb.classViewer("ActionTask", [
           "userMessage",
         ]);
-        
+
         this.EvidenceRecord = this.tb.classViewer("EvidenceRecord", [
           "key","kind","label","artifactId","source",
         ]);
-        
+
         this.ExecutionDelta = this.tb.classViewer("ExecutionDelta", [
           "step","op","key","toolName","argsHash","status","artifactId","evidenceKeys","note",
         ]);
-        
+
         this.ExecutionState = this.tb.classViewer("ExecutionState", [
           "calls","evidence","warnings","progress",
         ]);
-        
+
+        this.PlannerHistoryTurn = this.tb.classViewer("PlannerHistoryTurn", [
+          "index","role","kind","content",
+        ]);
+
         this.ProgressSignals = this.tb.classViewer("ProgressSignals", [
           "totalToolCalls","totalEvidence","lastNewEvidenceStep","repeatedCallCount","stalled",
         ]);
-        
+
         this.RepeatedCallWarning = this.tb.classViewer("RepeatedCallWarning", [
           "toolName","argsHash","count","lastStep",
         ]);
-        
+
         this.ToolCallRecord = this.tb.classViewer("ToolCallRecord", [
           "step","toolName","argsHash","status","artifactId","evidenceKeys","error",
         ]);
-        
+
         this.ToolCatalogItem = this.tb.classViewer("ToolCatalogItem", [
           "name","title","summary","tags","useCases","examples","avoid","permissions","loaded",
         ]);
-        
-        
+
+
         this.ActionKind = this.tb.enumViewer("ActionKind", [
           "Answer","AskUser","DiscoverTools","UseTools",
         ]);
-        
+
         this.ExecutionDeltaOp = this.tb.enumViewer("ExecutionDeltaOp", [
           "AddCall","AddEvidence","AddWarning",
         ]);
-        
+
         this.ToolCallStatus = this.tb.enumViewer("ToolCallStatus", [
           "Success","Failure","Empty",
         ]);
-        
+
     }
 
     reset(): void {
@@ -136,7 +142,7 @@ export default class TypeBuilder {
         // wraps over the Rust type builder, so we only need to call tb.reset().
         // In JS it's not possible unless we refactor the way class builders are
         // accessed.
-        
+
     }
 
     __tb() {
@@ -198,4 +204,4 @@ export default class TypeBuilder {
     addBaml(baml: string): void {
         this.tb.addBaml(baml);
     }
-}
+}

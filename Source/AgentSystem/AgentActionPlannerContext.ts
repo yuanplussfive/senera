@@ -7,13 +7,11 @@ import { ExecutionDeltaOp, ToolCallStatus } from "./BamlClient/baml_client/types
 import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
 import type { ExecutedToolCallResult } from "./Types.js";
 import type { AgentToolCatalogItem } from "./AgentToolCatalogProjector.js";
-
-export interface AgentActionPlannerContextBudget {
-  maxRecentDeltas: number;
-  maxStateCalls: number;
-  maxEvidence: number;
-  maxPreviewChars: number;
-}
+import { AgentXmlParser } from "./AgentXmlParser.js";
+import {
+  createXmlProtocolSpec,
+  listXmlArrayElementNames,
+} from "./AgentXmlPolicy.js";
 
 export interface AgentActionPlannerLedger {
   calls: PlannerToolCallRecord[];
@@ -69,13 +67,18 @@ export const EmptyActionPlannerLedger: AgentActionPlannerLedger = {
 };
 
 export class AgentActionPlannerContextBuilder {
-  constructor(private readonly budget: AgentActionPlannerContextBudget) {}
+  private readonly historyProjector: AgentActionPlannerHistoryProjector;
+
+  constructor() {
+    this.historyProjector = new AgentActionPlannerHistoryProjector();
+  }
 
   buildInput(options: {
     userMessage: string;
     currentStep: number;
     dynamicTools: boolean;
     loadedToolNames: "all" | readonly string[];
+    messages: readonly AgentLanguageModelMessage[];
     ledger: AgentActionPlannerLedger;
     toolCatalog: AgentToolCatalogItem[];
   }): ActionPlanInput {
@@ -93,9 +96,10 @@ export class AgentActionPlannerContextBuilder {
         dynamicTools: options.dynamicTools,
         loadedTools,
       },
+      history: this.historyProjector.project(options.messages),
       executionState: {
-        calls: tail(options.ledger.calls, this.budget.maxStateCalls),
-        evidence: tail(options.ledger.evidence, this.budget.maxEvidence),
+        calls: options.ledger.calls,
+        evidence: options.ledger.evidence,
         warnings: options.ledger.warnings,
         progress: {
           totalToolCalls: options.ledger.calls.length,
@@ -105,7 +109,7 @@ export class AgentActionPlannerContextBuilder {
           stalled: this.isStalled(options.currentStep, options.ledger),
         },
       },
-      recentDeltas: tail(options.ledger.deltas, this.budget.maxRecentDeltas),
+      recentDeltas: options.ledger.deltas,
       toolCatalog: options.toolCatalog.map((tool) => ({
         ...tool,
         loaded: visibleTools.has(tool.name),
@@ -134,7 +138,7 @@ export class AgentActionPlannerContextBuilder {
     const argsHash = stableHash(result.arguments);
     const artifactId = stableArtifactId(step, result.name, argsHash, result.result);
     const status = readToolStatus(result.result);
-    const evidence = collectEvidence(result, artifactId, this.budget.maxPreviewChars);
+    const evidence = collectEvidence(result, artifactId);
     const evidenceKeys = evidence.map((item) => item.key);
     const call: PlannerToolCallRecord = {
       step,
@@ -206,23 +210,178 @@ export class AgentActionPlannerContextBuilder {
   }
 }
 
-export function buildInitialActionPlannerLedger(
-  messages: readonly AgentLanguageModelMessage[] | undefined,
-): AgentActionPlannerLedger {
-  if (!messages || messages.length === 0) {
-    return EmptyActionPlannerLedger;
+class AgentActionPlannerHistoryProjector {
+  private readonly protocol = createXmlProtocolSpec();
+  private readonly parser = new AgentXmlParser({
+    arrayElementNames: listXmlArrayElementNames(this.protocol),
+    arrayElementNameSuffix: this.protocol.arrayElementNameSuffix,
+  });
+
+  project(messages: readonly AgentLanguageModelMessage[]): Array<{
+    index: number;
+    role: string;
+    kind: string;
+    content: string;
+  }> {
+    return messages.map((message, index) => ({
+      index,
+      role: message.role,
+      ...this.projectMessage(message),
+    }));
   }
 
-  return {
-    ...EmptyActionPlannerLedger,
-    evidence: tail(messages, 4).map((message, index) => ({
-      key: `history:${index}:${stableHash(message)}`,
-      kind: "history",
-      label: message.role,
-      artifactId: `history:${stableHash(message.content)}`,
-      source: truncateText(message.content, 240),
-    })),
-  };
+  private projectMessage(message: AgentLanguageModelMessage): {
+    kind: string;
+    content: string;
+  } {
+    const parsed = this.tryParseXml(message.content);
+    const projected = parsed ? this.projectXmlRoot(parsed.rootName, parsed.value, message.content) : undefined;
+    if (projected) {
+      return projected;
+    }
+
+    return {
+      kind: message.role === "assistant" ? "assistant_message" : "user_message",
+      content: message.content,
+    };
+  }
+
+  private projectXmlRoot(rootName: string, value: unknown, source: string): {
+    kind: string;
+    content: string;
+  } | undefined {
+    if (rootName === "read_only_evidence") {
+      return this.projectReadOnlyEvidence(value);
+    }
+
+    if (rootName === this.protocol.roots.toolCalls) {
+      return {
+        kind: "tool_call",
+        content: stringifyPreview(this.projectToolCalls(value)),
+      };
+    }
+
+    if (rootName === this.protocol.roots.toolResults) {
+      return {
+        kind: "tool_result",
+        content: stringifyPreview(this.projectToolResults(value)),
+      };
+    }
+
+    return source.trimStart().startsWith(`<${rootName}`)
+      ? {
+          kind: "xml_observation",
+          content: stringifyPreview(value),
+        }
+      : undefined;
+  }
+
+  private projectReadOnlyEvidence(value: unknown): {
+    kind: string;
+    content: string;
+  } | undefined {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return undefined;
+    }
+
+    const record = value as Record<string, unknown>;
+    const kind = readString(record.kind) ?? "read_only_evidence";
+    const payload = record.payload;
+    const normalizedPayload = kind === "tool_results"
+      ? this.projectReadOnlyToolResults(payload)
+      : payload;
+
+    return {
+      kind,
+      content: stringifyPreview(normalizedPayload),
+    };
+  }
+
+  private projectReadOnlyToolResults(value: unknown): unknown {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+
+    const result = (value as Record<string, unknown>).result;
+    return {
+      result: Array.isArray(result)
+        ? result.map((entry) => this.projectToolResultItem(entry))
+        : result,
+    };
+  }
+
+  private projectToolCalls(value: unknown): unknown {
+    return readArrayItems(value, this.protocol.items.toolCall).map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return entry;
+      }
+      const record = entry as Record<string, unknown>;
+      return {
+        name: readString(record[this.protocol.toolCall.name]) ?? "",
+        arguments: record[this.protocol.toolCall.arguments] ?? {},
+      };
+    });
+  }
+
+  private projectToolResults(value: unknown): unknown {
+    return readArrayItems(value, this.protocol.items.toolResult).map((entry) =>
+      this.projectToolResultItem(entry));
+  }
+
+  private projectToolResultItem(value: unknown): unknown {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+
+    const record = value as Record<string, unknown>;
+    return compactObject({
+      callId: record[this.protocol.toolResult.callId],
+      name: record[this.protocol.toolResult.name],
+      arguments: record[this.protocol.toolResult.arguments],
+      result: record[this.protocol.toolResult.result],
+      runtime: this.projectToolRuntime(record[this.protocol.toolResult.runtime]),
+      response: this.projectToolResponse(record[this.protocol.toolResult.response]),
+    });
+  }
+
+  private projectToolRuntime(value: unknown): unknown {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return undefined;
+    }
+
+    const record = value as Record<string, unknown>;
+    return compactObject({
+      exitCode: record.exitCode,
+      signal: record.signal,
+      stderr: record.stderr,
+    });
+  }
+
+  private projectToolResponse(value: unknown): unknown {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return undefined;
+    }
+
+    const record = value as Record<string, unknown>;
+    return compactObject({
+      ok: record.ok,
+      error: record.error,
+    });
+  }
+
+  private tryParseXml(value: string) {
+    try {
+      return this.parser.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+export function buildInitialActionPlannerLedger(
+  _messages: readonly AgentLanguageModelMessage[] | undefined,
+): AgentActionPlannerLedger {
+  return EmptyActionPlannerLedger;
 }
 
 function cloneLedger(ledger: AgentActionPlannerLedger): AgentActionPlannerLedger {
@@ -238,9 +397,8 @@ function cloneLedger(ledger: AgentActionPlannerLedger): AgentActionPlannerLedger
 function collectEvidence(
   result: ExecutedToolCallResult,
   artifactId: string,
-  maxPreviewChars: number,
 ): PlannerEvidenceRecord[] {
-  const records = collectPathEvidence(result.result, artifactId, maxPreviewChars);
+  const records = collectPathEvidence(result.result, artifactId);
   return records.length > 0
     ? records
     : [{
@@ -248,14 +406,35 @@ function collectEvidence(
         kind: "tool_result",
         label: result.name,
         artifactId,
-        source: truncateText(stringifyPreview(result.result), maxPreviewChars),
+        source: stringifyPreview(result.result),
       }];
+}
+
+function readArrayItems(value: unknown, itemKey: string): unknown[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  const item = (value as Record<string, unknown>)[itemKey];
+  return Array.isArray(item)
+    ? item
+    : item !== undefined
+      ? [item]
+      : [];
+}
+
+function compactObject(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) =>
+      entry !== undefined
+      && entry !== ""
+      && !(Array.isArray(entry) && entry.length === 0)),
+  );
 }
 
 function collectPathEvidence(
   value: unknown,
   artifactId: string,
-  maxPreviewChars: number,
 ): PlannerEvidenceRecord[] {
   const records: PlannerEvidenceRecord[] = [];
   visitJson(value, (entry) => {
@@ -277,7 +456,7 @@ function collectPathEvidence(
       kind: path ? "file" : "url",
       label: title,
       artifactId,
-      source: truncateText(readString(entry.snippet) ?? readString(entry.content) ?? title, maxPreviewChars),
+      source: readString(entry.snippet) ?? readString(entry.content) ?? title,
     });
   });
   return records;
@@ -379,15 +558,4 @@ function stringifyPreview(value: unknown): string {
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function truncateText(value: string, maxChars: number): string {
-  if (maxChars <= 0) {
-    return "";
-  }
-  return value.length > maxChars ? `${value.slice(0, maxChars)}...` : value;
-}
-
-function tail<T>(values: readonly T[], maxItems: number): T[] {
-  return maxItems <= 0 ? [] : values.slice(-maxItems);
 }

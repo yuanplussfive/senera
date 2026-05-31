@@ -44,20 +44,20 @@ export const AgentDefaults = {
     Ranking: {
       RrfK: 60,
       MmrLambda: 0.72,
+      MmrCandidateScoreRatio: 0.92,
       MinScore: 0,
+    },
+    Rerank: {
+      Enabled: true,
+      CandidateLimit: 24,
+      ScoreScale: 0.018,
+      FeatureWeights: {},
     },
   },
   ActionPlanner: {
     Enabled: true,
     MaxRepairAttempts: 1,
     MaxCatalogTools: 48,
-    RecentContextChars: 6000,
-    ContextBudget: {
-      MaxRecentDeltas: 12,
-      MaxStateCalls: 12,
-      MaxEvidence: 16,
-      MaxPreviewChars: 320,
-    },
     Client: {
       Provider: "auto",
       BaseUrl: "",
@@ -157,6 +157,14 @@ export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgen
       ...AgentDefaults.ToolSearch.Ranking,
       ...config.ToolSearch?.Ranking,
     },
+    Rerank: {
+      ...AgentDefaults.ToolSearch.Rerank,
+      ...config.ToolSearch?.Rerank,
+      FeatureWeights: {
+        ...AgentDefaults.ToolSearch.Rerank.FeatureWeights,
+        ...config.ToolSearch?.Rerank?.FeatureWeights,
+      },
+    },
   };
 }
 
@@ -171,10 +179,6 @@ export function resolveActionPlannerConfig(
   return {
     ...AgentDefaults.ActionPlanner,
     ...configured,
-    ContextBudget: {
-      ...AgentDefaults.ActionPlanner.ContextBudget,
-      ...configured?.ContextBudget,
-    },
     Client: {
       Provider: client?.Provider ?? AgentDefaults.ActionPlanner.Client.Provider,
       BaseUrl: client?.BaseUrl ?? provider.BaseUrl,
