@@ -36,6 +36,9 @@ export const AgentEventKinds = {
   SessionNotFound: "session.not_found",
   SessionListSnapshot: "session.list.snapshot",
   SessionHistorySnapshot: "session.history.snapshot",
+  SessionHistoryStarted: "session.history.started",
+  SessionHistoryEntry: "session.history.entry",
+  SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
   PromptRendered: "prompt.rendered",
@@ -195,6 +198,34 @@ export type AgentDomainEvent =
             text: string;
           };
         }>;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionHistoryStarted;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        totalEntries: number;
+        messageCount: number;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionHistoryEntry;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        entry: import("./AgentConversation.js").AgentConversationEntry;
+        visible?: {
+          kind: string;
+          text: string;
+        };
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionHistoryCompleted;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
       };
     }
   | {
@@ -551,6 +582,18 @@ const EventSpecTable: {
     phase: AgentEventPhases.Session,
   },
   [AgentEventKinds.SessionHistorySnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
+  },
+  [AgentEventKinds.SessionHistoryStarted]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
+  },
+  [AgentEventKinds.SessionHistoryEntry]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
+  },
+  [AgentEventKinds.SessionHistoryCompleted]: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
   },

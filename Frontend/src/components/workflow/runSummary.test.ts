@@ -15,6 +15,8 @@ describe("summarizeRun", () => {
       xmlPreview: "",
       visibleText: "",
       visibleKind: "unknown",
+      expectedOutputMode: "unknown",
+      decisionMode: "none",
       pendingToolArgsByName: {},
       steps: [
         {

@@ -30,6 +30,9 @@ export const EventKinds = {
   SessionNotFound: "session.not_found",
   SessionListSnapshot: "session.list.snapshot",
   SessionHistorySnapshot: "session.history.snapshot",
+  SessionHistoryStarted: "session.history.started",
+  SessionHistoryEntry: "session.history.entry",
+  SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
   PromptRendered: "prompt.rendered",
@@ -161,6 +164,22 @@ export interface SessionHistorySnapshotData {
     entry: ConversationEntryDto;
     visible?: { kind: string; text: string };
   }>;
+}
+
+export interface SessionHistoryStartedData {
+  sessionId: string;
+  totalEntries: number;
+  messageCount: number;
+}
+
+export interface SessionHistoryEntryData {
+  sessionId: string;
+  entry: ConversationEntryDto;
+  visible?: { kind: string; text: string };
+}
+
+export interface SessionHistoryCompletedData {
+  sessionId: string;
 }
 
 export interface ModelProviderMetadata {

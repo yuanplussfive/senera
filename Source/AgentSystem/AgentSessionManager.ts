@@ -160,20 +160,34 @@ export class AgentSessionManager {
       }
 
     await emitAgentEvent(request.onEvent, {
-      kind: AgentEventKinds.SessionHistorySnapshot,
+      kind: AgentEventKinds.SessionHistoryStarted,
       context: { sessionId },
       data: {
         sessionId,
         totalEntries: entries.length,
         messageCount: this.conversationPolicy.materialize(entries).length,
-        entries: entries.map((entry) => ({
+      },
+    });
+
+    for (const entry of entries) {
+      await emitAgentEvent(request.onEvent, {
+        kind: AgentEventKinds.SessionHistoryEntry,
+        context: { sessionId },
+        data: {
+          sessionId,
           entry,
           visible:
             entry.kind === AgentConversationEntryKinds.AssistantDecision
               ? extractDecisionStreamingPreview(entry.xml)
               : undefined,
-        })),
-      },
+        },
+      });
+    }
+
+    await emitAgentEvent(request.onEvent, {
+      kind: AgentEventKinds.SessionHistoryCompleted,
+      context: { sessionId },
+      data: { sessionId },
     });
   }
 

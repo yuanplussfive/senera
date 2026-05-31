@@ -22,7 +22,10 @@ import {
   type PromptSummaryData,
   type RetryPlannedData,
   type RunFailedData,
+  type SessionHistoryCompletedData,
+  type SessionHistoryEntryData,
   type RunStartedData,
+  type SessionHistoryStartedData,
   type SessionBusyData,
   type SessionHistorySnapshotData,
   type SessionListItem,
@@ -145,6 +148,8 @@ interface StoreState {
   historyLoadedIds: Record<string, boolean>;
   /** 正在拉取历史的 sessionId */
   historyLoadingIds: Record<string, boolean>;
+  /** 历史回放失败的 sessionId，避免把失败会话伪装成新会话空态 */
+  historyFailedIds: Record<string, boolean>;
   /** 已确认不在后端存在、仅本地残留的 sessionId */
   missingOnServerIds: Record<string, boolean>;
   /** 本地刚创建、尚未被 session.list 快照确认的 sessionId */
@@ -168,6 +173,7 @@ interface StoreState {
   removeSession: (sessionId: string) => void;
   clearAllSessions: (sessionIds?: string[]) => void;
   markHistoryLoading: (sessionId: string) => void;
+  markHistoryLoadFailed: (sessionId: string) => void;
   selectModelProvider: (id: string) => void;
   setUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   markUserProfileSynced: (profile?: UserProfileData) => void;
@@ -415,6 +421,7 @@ export const useStore = create<StoreState>()(
       viewedRunIdBySession: {},
       historyLoadedIds: {},
       historyLoadingIds: {},
+      historyFailedIds: {},
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},
@@ -515,6 +522,13 @@ export const useStore = create<StoreState>()(
     markHistoryLoading: (sessionId) =>
       set((state) => {
         state.historyLoadingIds[sessionId] = true;
+        delete state.historyFailedIds[sessionId];
+      }),
+
+    markHistoryLoadFailed: (sessionId) =>
+      set((state) => {
+        state.historyLoadingIds[sessionId] = false;
+        state.historyFailedIds[sessionId] = true;
       }),
 
     selectModelProvider: (id) =>
@@ -548,6 +562,7 @@ export const useStore = create<StoreState>()(
 
     appendUserMessage: (sessionId, requestId, input) =>
       set((state) => {
+        if (state.historyLoadingIds[sessionId]) return;
         const session = state.sessions[sessionId];
         if (!session) return;
         if (session.messages.length === 0) {
@@ -617,6 +632,7 @@ export const useStore = create<StoreState>()(
           // 这两个是运行时态，rehydrate 一律重置
           historyLoadedIds: {},
           historyLoadingIds: {},
+          historyFailedIds: {},
           missingOnServerIds: {},
           pendingCreatedSessionIds: {},
           pendingDeletedSessionIds: {},
@@ -773,6 +789,13 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       const session = ensureSession(state, sessionId);
       const data = env.data as RunFailedData;
       const run = currentRun(session, env.requestId);
+      if (!run && state.historyLoadingIds[sessionId]) {
+        session.messages = [];
+        session.runs = [];
+        state.historyLoadingIds[sessionId] = false;
+        state.historyFailedIds[sessionId] = true;
+        return;
+      }
       if (run) {
         run.status = "failed";
         run.endedAt = env.timestamp;
@@ -1264,7 +1287,54 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       session.messageCount = data.messageCount;
       state.historyLoadingIds[sessionId] = false;
       state.historyLoadedIds[sessionId] = true;
+      delete state.historyFailedIds[sessionId];
       delete state.missingOnServerIds[sessionId];
+      return;
+    }
+
+    case EventKinds.SessionHistoryStarted: {
+      if (!sessionId) return;
+      const data = env.data as SessionHistoryStartedData;
+      const session = state.sessions[sessionId];
+      if (!session) return;
+      session.messages = [];
+      session.runs = [];
+      session.entryCount = data.totalEntries;
+      session.messageCount = data.messageCount;
+      state.historyLoadingIds[sessionId] = true;
+      delete state.historyLoadedIds[sessionId];
+      delete state.historyFailedIds[sessionId];
+      delete state.missingOnServerIds[sessionId];
+      return;
+    }
+
+    case EventKinds.SessionHistoryEntry: {
+      if (!sessionId) return;
+      const data = env.data as SessionHistoryEntryData;
+      const session = state.sessions[sessionId];
+      if (!session) return;
+      const message = projectEntryToMessage(data.entry, data.visible);
+      if (!message) return;
+      const existingIndex = session.messages.findIndex((item) => item.id === message.id);
+      if (existingIndex >= 0) {
+        session.messages[existingIndex] = message;
+      } else {
+        session.messages.push(message);
+      }
+      return;
+    }
+
+    case EventKinds.SessionHistoryCompleted: {
+      if (!sessionId) return;
+      const data = env.data as SessionHistoryCompletedData;
+      if (data.sessionId && data.sessionId !== sessionId) return;
+      const session = state.sessions[sessionId];
+      if (!session) return;
+      state.historyLoadingIds[sessionId] = false;
+      state.historyLoadedIds[sessionId] = true;
+      delete state.historyFailedIds[sessionId];
+      delete state.missingOnServerIds[sessionId];
+      syncSessionCountsFromLoadedMessages(session);
       return;
     }
 
@@ -1272,6 +1342,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (!sessionId) return;
       const data = env.data as SessionNotFoundData;
       state.historyLoadingIds[sessionId] = false;
+      delete state.historyFailedIds[sessionId];
       if (data.operation === "session.close") {
         delete state.pendingDeletedSessionIds[sessionId];
         delete state.pendingCreatedSessionIds[sessionId];
@@ -1290,6 +1361,9 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
           state.sessions[sessionId].runs = [];
           state.sessions[sessionId].entryCount = 0;
           state.sessions[sessionId].messageCount = 0;
+        }
+        if (state.activeSessionId === sessionId) {
+          state.activeSessionId = readFirstAvailableSessionId(state, sessionId);
         }
       }
       return;
@@ -1406,13 +1480,14 @@ function ingestSessionList(state: StoreState, items: SessionListItem[]): void {
     (id) => state.pendingCreatedSessionIds[id] && state.sessions[id] && !visibleServerIds.has(id),
   );
   state.sessionOrder = mergeSessionOrder(pendingCreatedOrdered, serverOrdered);
+  const fallbackActiveSessionId = readPreferredActiveSessionId(state, visibleItems);
 
   if (
     state.activeSessionId &&
     !state.sessionOrder.includes(state.activeSessionId) &&
     state.sessionOrder.length > 0
   ) {
-    state.activeSessionId = state.sessionOrder[0];
+    state.activeSessionId = fallbackActiveSessionId;
   } else if (
     state.activeSessionId &&
     !state.sessionOrder.includes(state.activeSessionId) &&
@@ -1420,7 +1495,7 @@ function ingestSessionList(state: StoreState, items: SessionListItem[]): void {
   ) {
     state.activeSessionId = null;
   } else if (!state.activeSessionId && state.sessionOrder.length > 0) {
-    state.activeSessionId = state.sessionOrder[0];
+    state.activeSessionId = fallbackActiveSessionId;
   }
 
   for (const localId of Object.keys(state.sessions)) {
@@ -1432,6 +1507,29 @@ function ingestSessionList(state: StoreState, items: SessionListItem[]): void {
       deleteSessionRuntimeState(state, localId);
     }
   }
+}
+
+function readPreferredActiveSessionId(
+  state: StoreState,
+  visibleItems: readonly SessionListItem[],
+): string | null {
+  const pendingCreatedId = state.sessionOrder.find(
+    (id) => state.pendingCreatedSessionIds[id] && state.sessions[id],
+  );
+  if (pendingCreatedId) return pendingCreatedId;
+  return visibleItems.find((item) => item.messageCount > 0)?.sessionId
+    ?? visibleItems[0]?.sessionId
+    ?? null;
+}
+
+function readFirstAvailableSessionId(state: StoreState, excludedSessionId?: string): string | null {
+  return state.sessionOrder.find(
+    (id) =>
+      id !== excludedSessionId &&
+      Boolean(state.sessions[id]) &&
+      !state.missingOnServerIds[id] &&
+      !state.pendingDeletedSessionIds[id],
+  ) ?? null;
 }
 
 function mergeSessionOrder(...groups: string[][]): string[] {
@@ -1451,6 +1549,7 @@ function deleteSessionRuntimeState(state: StoreState, sessionId: string): void {
   delete state.sessions[sessionId];
   delete state.historyLoadedIds[sessionId];
   delete state.historyLoadingIds[sessionId];
+  delete state.historyFailedIds[sessionId];
   delete state.viewedRunIdBySession[sessionId];
   delete state.missingOnServerIds[sessionId];
   state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
