@@ -151,7 +151,7 @@ export class AgentSessionManager {
     } else {
       // 直接读仓储，不调用 store.open()（避免幽灵会话）
       entries = this.store.loadConversation(sessionId);
-        if (entries.length === 0) {
+        if (entries.length === 0 && !this.store.hasPersistedSession(sessionId)) {
           // 仓储里也没有这个会话——告诉客户端不存在，但不创建
           await emitAgentEvent(
             request.onEvent,
@@ -159,7 +159,7 @@ export class AgentSessionManager {
           );
           return;
         }
-      }
+    }
 
     await emitAgentEvent(request.onEvent, {
       kind: AgentEventKinds.SessionHistoryStarted,
