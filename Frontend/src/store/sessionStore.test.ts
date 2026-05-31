@@ -33,6 +33,7 @@ function resetStore(): void {
     historyLoadedIds: {},
     historyLoadingIds: {},
     historyFailedIds: {},
+    historyReplayBuffers: {},
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
@@ -125,7 +126,7 @@ describe("sessionStore history recovery", () => {
     expect(session.messageCount).toBe(2);
   });
 
-  it("drops partial streamed history when the history load fails", () => {
+  it("drops partial chunked history when the history load fails", () => {
     useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
       sessions: [
         sessionItem({
@@ -147,16 +148,20 @@ describe("sessionStore history recovery", () => {
       "history-session",
     ));
     useStore.getState().ingest(envelope(
-      EventKinds.SessionHistoryEntry,
+      EventKinds.SessionHistoryChunk,
       {
         sessionId: "history-session",
-        entry: {
-          id: "req-1:user",
-          requestId: "req-1",
-          timestamp: "2026-05-29T08:00:00.000Z",
-          kind: "user.message",
-          content: "你好",
-        },
+        entries: [
+          {
+            entry: {
+              id: "req-1:user",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "你好",
+            },
+          },
+        ],
       },
       "history-session",
     ));
@@ -279,7 +284,7 @@ describe("sessionStore history recovery", () => {
     expect(session.messages.at(-1)?.kind).toBe("Error");
   });
 
-  it("materializes streamed history events and marks the session loaded on completion", () => {
+  it("buffers chunked history events and atomically materializes them on completion", () => {
     useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
       sessions: [
         sessionItem({
@@ -301,34 +306,46 @@ describe("sessionStore history recovery", () => {
       "history-session",
     ));
     useStore.getState().ingest(envelope(
-      "session.history.entry",
+      EventKinds.SessionHistoryChunk,
       {
         sessionId: "history-session",
-        entry: {
-          id: "req-1:user",
-          requestId: "req-1",
-          timestamp: "2026-05-29T08:00:00.000Z",
-          kind: "user.message",
-          content: "你好",
-        },
+        entries: [
+          {
+            entry: {
+              id: "req-1:user",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "你好",
+            },
+          },
+        ],
       },
       "history-session",
     ));
+    expect(useStore.getState().sessions["history-session"].messages).toEqual([]);
+
     useStore.getState().ingest(envelope(
-      "session.history.entry",
+      EventKinds.SessionHistoryChunk,
       {
         sessionId: "history-session",
-        entry: {
-          id: "req-1:assistant",
-          requestId: "req-1",
-          timestamp: "2026-05-29T08:00:02.000Z",
-          kind: "assistant.decision",
-          xml: "<final_answer>你好呀</final_answer>",
-        },
-        visible: { kind: "final_answer", text: "你好呀" },
+        entries: [
+          {
+            entry: {
+              id: "req-1:assistant",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:02.000Z",
+              kind: "assistant.decision",
+              xml: "<final_answer>你好呀</final_answer>",
+            },
+            visible: { kind: "final_answer", text: "你好呀" },
+          },
+        ],
       },
       "history-session",
     ));
+    expect(useStore.getState().sessions["history-session"].messages).toEqual([]);
+
     useStore.getState().ingest(envelope(
       "session.history.completed",
       { sessionId: "history-session" },
@@ -339,6 +356,160 @@ describe("sessionStore history recovery", () => {
     expect(useStore.getState().historyLoadingIds["history-session"]).toBe(false);
     expect(useStore.getState().historyLoadedIds["history-session"]).toBe(true);
     expect(session.messages.map((message) => message.content)).toEqual(["你好", "你好呀"]);
+    expect(session.messageCount).toBe(2);
+  });
+
+  it("keeps materialized history when completion is received more than once", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 1,
+          messageCount: 1,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-1:user",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "你好",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    const completed = envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    );
+
+    useStore.getState().ingest(completed);
+    useStore.getState().ingest(completed);
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["你好"]);
+    expect(session.messageCount).toBe(1);
+  });
+
+  it("keeps accepting legacy streamed history entries", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 1,
+          messageCount: 1,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      "session.history.entry",
+      {
+        sessionId: "history-session",
+        entry: {
+          id: "req-1:user",
+          requestId: "req-1",
+          timestamp: "2026-05-29T08:00:00.000Z",
+          kind: "user.message",
+          content: "旧 entry 仍可恢复",
+        },
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["旧 entry 仍可恢复"]);
+    expect(session.messageCount).toBe(1);
+  });
+
+  it("drops buffered chunked history when the history load fails", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 2,
+          messageCount: 2,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 2,
+        messageCount: 2,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-1:user",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "你好",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.RunFailed,
+      { message: "history projection failed after one chunk" },
+      "history-session",
+      "server-generated-request-id",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(useStore.getState().historyLoadingIds["history-session"]).toBe(false);
+    expect(useStore.getState().historyLoadedIds["history-session"]).toBeUndefined();
+    expect(useStore.getState().historyFailedIds["history-session"]).toBe(true);
+    expect(session.messages).toEqual([]);
+    expect(session.runs).toEqual([]);
     expect(session.messageCount).toBe(2);
   });
 

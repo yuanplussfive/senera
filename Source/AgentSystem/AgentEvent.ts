@@ -37,7 +37,7 @@ export const AgentEventKinds = {
   SessionListSnapshot: "session.list.snapshot",
   SessionHistorySnapshot: "session.history.snapshot",
   SessionHistoryStarted: "session.history.started",
-  SessionHistoryEntry: "session.history.entry",
+  SessionHistoryChunk: "session.history.chunk",
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
@@ -210,15 +210,17 @@ export type AgentDomainEvent =
       };
     }
   | {
-      kind: typeof AgentEventKinds.SessionHistoryEntry;
+      kind: typeof AgentEventKinds.SessionHistoryChunk;
       context: Required<Pick<AgentEventContext, "sessionId">>;
       data: {
         sessionId: string;
-        entry: import("./AgentConversation.js").AgentConversationEntry;
-        visible?: {
-          kind: string;
-          text: string;
-        };
+        entries: Array<{
+          entry: import("./AgentConversation.js").AgentConversationEntry;
+          visible?: {
+            kind: string;
+            text: string;
+          };
+        }>;
       };
     }
   | {
@@ -589,7 +591,7 @@ const EventSpecTable: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
   },
-  [AgentEventKinds.SessionHistoryEntry]: {
+  [AgentEventKinds.SessionHistoryChunk]: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
   },

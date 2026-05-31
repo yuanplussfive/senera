@@ -24,6 +24,7 @@ import {
   type RunFailedData,
   type SessionHistoryCompletedData,
   type SessionHistoryEntryData,
+  type SessionHistoryChunkData,
   type RunStartedData,
   type SessionHistoryStartedData,
   type SessionBusyData,
@@ -136,6 +137,11 @@ export type UserProfile = UserProfileData & {
   syncState?: "synced" | "pending";
 };
 
+type HistoryReplayEntry = {
+  entry: ConversationEntryDto;
+  visible?: { kind: string; text: string };
+};
+
 interface StoreState {
   sessions: Record<string, SessionRecord>;
   sessionOrder: string[];
@@ -150,6 +156,8 @@ interface StoreState {
   historyLoadingIds: Record<string, boolean>;
   /** 历史回放失败的 sessionId，避免把失败会话伪装成新会话空态 */
   historyFailedIds: Record<string, boolean>;
+  /** 正在回放但尚未 completed 的历史条目；completed 前不污染真实消息列表 */
+  historyReplayBuffers: Record<string, HistoryReplayEntry[]>;
   /** 已确认不在后端存在、仅本地残留的 sessionId */
   missingOnServerIds: Record<string, boolean>;
   /** 本地刚创建、尚未被 session.list 快照确认的 sessionId */
@@ -422,6 +430,7 @@ export const useStore = create<StoreState>()(
       historyLoadedIds: {},
       historyLoadingIds: {},
       historyFailedIds: {},
+      historyReplayBuffers: {},
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},
@@ -522,6 +531,7 @@ export const useStore = create<StoreState>()(
     markHistoryLoading: (sessionId) =>
       set((state) => {
         state.historyLoadingIds[sessionId] = true;
+        state.historyReplayBuffers[sessionId] = [];
         delete state.historyFailedIds[sessionId];
       }),
 
@@ -529,6 +539,7 @@ export const useStore = create<StoreState>()(
       set((state) => {
         state.historyLoadingIds[sessionId] = false;
         state.historyFailedIds[sessionId] = true;
+        delete state.historyReplayBuffers[sessionId];
       }),
 
     selectModelProvider: (id) =>
@@ -633,6 +644,7 @@ export const useStore = create<StoreState>()(
           historyLoadedIds: {},
           historyLoadingIds: {},
           historyFailedIds: {},
+          historyReplayBuffers: {},
           missingOnServerIds: {},
           pendingCreatedSessionIds: {},
           pendingDeletedSessionIds: {},
@@ -794,6 +806,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
         session.runs = [];
         state.historyLoadingIds[sessionId] = false;
         state.historyFailedIds[sessionId] = true;
+        delete state.historyReplayBuffers[sessionId];
         return;
       }
       if (run) {
@@ -1287,6 +1300,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       session.messageCount = data.messageCount;
       state.historyLoadingIds[sessionId] = false;
       state.historyLoadedIds[sessionId] = true;
+      delete state.historyReplayBuffers[sessionId];
       delete state.historyFailedIds[sessionId];
       delete state.missingOnServerIds[sessionId];
       return;
@@ -1301,10 +1315,22 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       session.runs = [];
       session.entryCount = data.totalEntries;
       session.messageCount = data.messageCount;
+      state.historyReplayBuffers[sessionId] = [];
       state.historyLoadingIds[sessionId] = true;
       delete state.historyLoadedIds[sessionId];
       delete state.historyFailedIds[sessionId];
       delete state.missingOnServerIds[sessionId];
+      return;
+    }
+
+    case EventKinds.SessionHistoryChunk: {
+      if (!sessionId) return;
+      const data = env.data as SessionHistoryChunkData;
+      const session = state.sessions[sessionId];
+      if (!session) return;
+      const buffer = state.historyReplayBuffers[sessionId];
+      if (!state.historyLoadingIds[sessionId] || !buffer) return;
+      state.historyReplayBuffers[sessionId] = buffer.concat(data.entries);
       return;
     }
 
@@ -1313,14 +1339,12 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       const data = env.data as SessionHistoryEntryData;
       const session = state.sessions[sessionId];
       if (!session) return;
-      const message = projectEntryToMessage(data.entry, data.visible);
-      if (!message) return;
-      const existingIndex = session.messages.findIndex((item) => item.id === message.id);
-      if (existingIndex >= 0) {
-        session.messages[existingIndex] = message;
-      } else {
-        session.messages.push(message);
-      }
+      const buffer = state.historyReplayBuffers[sessionId];
+      if (!state.historyLoadingIds[sessionId] || !buffer) return;
+      state.historyReplayBuffers[sessionId] = buffer.concat({
+        entry: data.entry,
+        visible: data.visible,
+      });
       return;
     }
 
@@ -1330,8 +1354,15 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (data.sessionId && data.sessionId !== sessionId) return;
       const session = state.sessions[sessionId];
       if (!session) return;
+      const buffer = state.historyReplayBuffers[sessionId];
+      if (!state.historyLoadingIds[sessionId] || !buffer) return;
+      session.messages = buffer
+        .map((item) => projectEntryToMessage(item.entry, item.visible))
+        .filter((message): message is ChatMessage => Boolean(message));
+      session.runs = [];
       state.historyLoadingIds[sessionId] = false;
       state.historyLoadedIds[sessionId] = true;
+      delete state.historyReplayBuffers[sessionId];
       delete state.historyFailedIds[sessionId];
       delete state.missingOnServerIds[sessionId];
       syncSessionCountsFromLoadedMessages(session);
@@ -1342,6 +1373,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (!sessionId) return;
       const data = env.data as SessionNotFoundData;
       state.historyLoadingIds[sessionId] = false;
+      delete state.historyReplayBuffers[sessionId];
       delete state.historyFailedIds[sessionId];
       if (data.operation === "session.close") {
         delete state.pendingDeletedSessionIds[sessionId];
@@ -1550,6 +1582,7 @@ function deleteSessionRuntimeState(state: StoreState, sessionId: string): void {
   delete state.historyLoadedIds[sessionId];
   delete state.historyLoadingIds[sessionId];
   delete state.historyFailedIds[sessionId];
+  delete state.historyReplayBuffers[sessionId];
   delete state.viewedRunIdBySession[sessionId];
   delete state.missingOnServerIds[sessionId];
   state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);

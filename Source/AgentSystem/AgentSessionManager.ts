@@ -18,6 +18,8 @@ import {
 import { AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
 import { AgentSessionStore } from "./AgentSessionStore.js";
 
+const HISTORY_REPLAY_CHUNK_SIZE = 50;
+
 export interface AgentSessionManagerOptions {
   loopFactory: (modelProviderId?: string) => AgentLoop;
   store?: AgentSessionStore;
@@ -169,17 +171,20 @@ export class AgentSessionManager {
       },
     });
 
-    for (const entry of entries) {
+    for (let index = 0; index < entries.length; index += HISTORY_REPLAY_CHUNK_SIZE) {
+      const chunk = entries.slice(index, index + HISTORY_REPLAY_CHUNK_SIZE);
       await emitAgentEvent(request.onEvent, {
-        kind: AgentEventKinds.SessionHistoryEntry,
+        kind: AgentEventKinds.SessionHistoryChunk,
         context: { sessionId },
         data: {
           sessionId,
-          entry,
-          visible:
-            entry.kind === AgentConversationEntryKinds.AssistantDecision
-              ? extractDecisionStreamingPreview(entry.xml)
-              : undefined,
+          entries: chunk.map((entry) => ({
+            entry,
+            visible:
+              entry.kind === AgentConversationEntryKinds.AssistantDecision
+                ? extractDecisionStreamingPreview(entry.xml)
+                : undefined,
+          })),
         },
       });
     }

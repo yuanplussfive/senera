@@ -32,6 +32,7 @@ export const EventKinds = {
   SessionHistorySnapshot: "session.history.snapshot",
   SessionHistoryStarted: "session.history.started",
   SessionHistoryEntry: "session.history.entry",
+  SessionHistoryChunk: "session.history.chunk",
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
@@ -176,6 +177,14 @@ export interface SessionHistoryEntryData {
   sessionId: string;
   entry: ConversationEntryDto;
   visible?: { kind: string; text: string };
+}
+
+export interface SessionHistoryChunkData {
+  sessionId: string;
+  entries: Array<{
+    entry: ConversationEntryDto;
+    visible?: { kind: string; text: string };
+  }>;
 }
 
 export interface SessionHistoryCompletedData {
