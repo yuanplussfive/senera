@@ -33,12 +33,15 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
 } from "./ui/DropdownMenu";
+import { Dialog, DialogContent } from "./ui/Dialog";
 import { StepNode } from "./canvas/StepNode";
 import { layoutSteps, type StepNodeData } from "./canvas/layout";
 import { NodeDetailDrawer } from "./canvas/NodeDetailDrawer";
 import { summarizeRun, type RunSummary } from "./workflow/runSummary";
 
 const NODE_TYPES = { step: StepNode };
+const FIT_VIEW_PADDING = 0.16;
+const FIT_VIEW_DURATION_MS = 240;
 
 export function ThinkingTimeline({
   presentation = "auto",
@@ -69,6 +72,7 @@ function ThinkingPanel({
     activeId ? s.viewedRunIdBySession[activeId] : undefined,
   );
   const setViewedRun = useStore((s) => s.setViewedRun);
+  const [focusOpen, setFocusOpen] = useState(false);
 
   const runs = session?.runs ?? [];
   const latestRun = runs[runs.length - 1];
@@ -92,6 +96,11 @@ function ThinkingPanel({
   }, [activeId, viewedRunId, selectedRun, latestRun?.requestId, setViewedRun]);
 
   const isRail = presentation === "rail" || (presentation === "auto" && collapsed);
+
+  const toggleFocus = useCallback(() => {
+    setFocusOpen((value) => !value);
+  }, []);
+
   if (isRail) {
     return (
       <aside className="flex h-full w-[44px] shrink-0 flex-col items-center border-l border-ink-200/60 bg-paper-100/40 py-3">
@@ -116,22 +125,36 @@ function ThinkingPanel({
   }
 
   return (
-    <aside className={cn(
-      "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
-      presentation === "panel" ? "w-full border-l-0" : "w-[460px]",
-    )}>
-      <TopBar
+    <>
+      <aside className={cn(
+        "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
+        presentation === "panel" ? "w-full border-l-0" : "w-[460px]",
+      )}>
+        <TopBar
+          run={run}
+          runs={runs}
+          currentRunId={run?.requestId}
+          pinnedToHistory={isPinnedToHistory}
+          focusOpen={focusOpen}
+          hideTitle={hidePanelTitle}
+          onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
+          onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
+          onToggleFocus={toggleFocus}
+          onCollapse={presentation === "panel" ? undefined : toggleCollapsed}
+        />
+        <CanvasArea run={run} />
+      </aside>
+      <TimelineFocusDialog
+        open={focusOpen}
         run={run}
         runs={runs}
         currentRunId={run?.requestId}
         pinnedToHistory={isPinnedToHistory}
-        hideTitle={hidePanelTitle}
+        onOpenChange={setFocusOpen}
         onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
         onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
-        onCollapse={presentation === "panel" ? undefined : toggleCollapsed}
       />
-      <CanvasArea run={run} />
-    </aside>
+    </>
   );
 }
 
@@ -142,29 +165,26 @@ function TopBar({
   runs,
   currentRunId,
   pinnedToHistory,
+  focusOpen,
   hideTitle,
   onSelect,
   onFollowLatest,
+  onToggleFocus,
   onCollapse,
 }: {
   run?: RunRecord;
   runs: RunRecord[];
   currentRunId?: string;
   pinnedToHistory: boolean;
+  focusOpen: boolean;
   hideTitle?: boolean;
   onSelect: (requestId: string) => void;
   onFollowLatest: () => void;
+  onToggleFocus: () => void;
   onCollapse?: () => void;
 }): JSX.Element {
   const summary = run ? summarizeRun(run) : undefined;
-  const rf = useReactFlow();
-  const fit = (): void => {
-    try {
-      rf.fitView({ padding: 0.16, duration: 240 });
-    } catch {
-      /* ignore */
-    }
-  };
+
   return (
     <>
       <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 bg-paper-100/70 px-3">
@@ -186,36 +206,41 @@ function TopBar({
             <span className="text-[13px] font-medium text-ink-800">思考过程</span>
           </>
         )}
-        <div className="ml-auto flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-400">
-          {run?.status === "running" ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-terra-50 px-1.5 py-0.5 text-terra-600">
-              <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              live
-            </span>
-          ) : null}
-          {run ? (
-            <span>
-              {summary?.completed}/{summary?.total}
-              {summary && summary.failed > 0 ? <span className="ml-1 text-brick-500">·{summary.failed} 失败</span> : null}
-            </span>
-          ) : null}
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          <div className="hidden min-w-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-400 sm:flex">
+            {run?.status === "running" ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-terra-50 px-1.5 py-0.5 text-terra-600">
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                live
+              </span>
+            ) : null}
+            {run ? (
+              <span>
+                {summary?.completed}/{summary?.total}
+                {summary && summary.failed > 0 ? <span className="ml-1 text-brick-500">·{summary.failed} 失败</span> : null}
+              </span>
+            ) : null}
+          </div>
           {pinnedToHistory ? (
+          <div className="flex shrink-0 items-center gap-1 rounded-md border border-ink-200/60 bg-paper-50/80 p-0.5 shadow-[0_1px_0_rgba(28,26,23,0.04)]">
             <button
               type="button"
               onClick={onFollowLatest}
-              className="rounded-full bg-paper-50 px-1.5 py-0.5 text-[10px] text-ink-500 transition hover:bg-paper-200 hover:text-ink-800"
+              className="h-7 rounded px-2 text-[11.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
             >
               跟随最新
             </button>
+          </div>
           ) : null}
-          <Tooltip content="自适应窗口" side="bottom">
+          <Tooltip content="放大查看" side="bottom">
             <button
               type="button"
-              onClick={fit}
-              className="grid h-6 w-6 place-items-center rounded text-ink-400 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
-              aria-label="fit"
+              onClick={onToggleFocus}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+              aria-pressed={focusOpen}
+              aria-label="放大查看"
             >
-              <Maximize2 className="h-3 w-3" />
+              <Maximize2 className="h-4 w-4" />
             </button>
           </Tooltip>
         </div>
@@ -393,10 +418,75 @@ function RunStatusBadge({ status }: { status: RunRecord["status"] }): JSX.Elemen
   );
 }
 
+function TimelineFocusDialog({
+  open,
+  run,
+  runs,
+  currentRunId,
+  pinnedToHistory,
+  onOpenChange,
+  onSelect,
+  onFollowLatest,
+}: {
+  open: boolean;
+  run?: RunRecord;
+  runs: RunRecord[];
+  currentRunId?: string;
+  pinnedToHistory: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (requestId: string) => void;
+  onFollowLatest: () => void;
+}): JSX.Element {
+  const summary = run ? summarizeRun(run) : undefined;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        title="思考过程"
+        description={summary ? `${summary.completed}/${summary.total} 节点 · ${summary.tools} 工具` : undefined}
+        className="t-modal bottom-3 left-3 right-3 top-3 h-auto max-h-none w-auto max-w-none translate-x-0 translate-y-0 rounded-lg sm:bottom-4 sm:left-4 sm:right-4 sm:top-4"
+        bodyClassName="flex min-h-0 flex-1 flex-col bg-paper-100/40"
+      >
+        <div className="min-h-0 flex flex-1 flex-col">
+          {runs.length > 0 ? (
+            <div className="shrink-0 border-b border-ink-200/40 bg-paper-50/70 px-3 py-2 sm:px-4">
+              {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
+              <RunSelector
+                runs={runs}
+                currentRunId={currentRunId}
+                onSelect={onSelect}
+                pinnedToHistory={pinnedToHistory}
+              />
+              {pinnedToHistory ? (
+                <button
+                  type="button"
+                  onClick={onFollowLatest}
+                  className="mt-2 h-8 rounded-md px-2.5 text-[12px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+                >
+                  跟随最新
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <ReactFlowProvider>
+            <CanvasArea run={run} focusVersion={open ? 1 : 0} />
+          </ReactFlowProvider>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ---------- 画布 ----------
 
-function CanvasArea({ run }: { run?: RunRecord }): JSX.Element {
+function CanvasArea({
+  run,
+  focusVersion = 0,
+}: {
+  run?: RunRecord;
+  focusVersion?: number;
+}): JSX.Element {
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [flowReady, setFlowReady] = useState(false);
   const rf = useReactFlow<Node<StepNodeData>>();
   const steps = run?.steps ?? [];
   const selectedStep = useMemo(
@@ -435,18 +525,33 @@ function CanvasArea({ run }: { run?: RunRecord }): JSX.Element {
     };
   }, [steps]);
 
-  // 新节点加入 / 切 run 时自适应
-  useEffect(() => {
-    if (nodes.length === 0) return;
-    const t = window.setTimeout(() => {
+  const fitCanvas = useCallback((duration = FIT_VIEW_DURATION_MS): void => {
+    if (!flowReady || nodes.length === 0) return;
+    window.requestAnimationFrame(() => {
       try {
-        rf.fitView({ padding: 0.16, duration: 240 });
+        void rf.fitView({ padding: FIT_VIEW_PADDING, duration });
       } catch {
         /* ignore */
       }
-    }, 60);
+    });
+  }, [flowReady, nodes.length, rf]);
+
+  // 新节点加入 / 切 run 时自适应
+  useEffect(() => {
+    if (!flowReady || nodes.length === 0) return;
+    const t = window.setTimeout(() => {
+      fitCanvas();
+    }, 80);
     return () => window.clearTimeout(t);
-  }, [steps.length, run?.requestId, rf]);
+  }, [fitCanvas, flowReady, nodes.length, run?.requestId, steps.length]);
+
+  useEffect(() => {
+    if (!flowReady || nodes.length === 0) return;
+    const timer = window.setTimeout(() => {
+      fitCanvas();
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [fitCanvas, flowReady, focusVersion, nodes.length]);
 
   useEffect(() => {
     if (!selectedStepId) return;
@@ -478,7 +583,7 @@ function CanvasArea({ run }: { run?: RunRecord }): JSX.Element {
         nodeTypes={NODE_TYPES}
         onNodeClick={handleNodeClick}
         fitView
-        fitViewOptions={{ padding: 0.16 }}
+        fitViewOptions={{ padding: FIT_VIEW_PADDING }}
         minZoom={0.4}
         maxZoom={1.6}
         translateExtent={translateExtent}
@@ -491,7 +596,16 @@ function CanvasArea({ run }: { run?: RunRecord }): JSX.Element {
         zoomOnPinch
         zoomOnScroll={false}
         selectionOnDrag={false}
-        onInit={(instance) => instance.fitView({ padding: 0.16 })}
+        onInit={(instance) => {
+          setFlowReady(true);
+          window.requestAnimationFrame(() => {
+            try {
+              void instance.fitView({ padding: FIT_VIEW_PADDING });
+            } catch {
+              /* ignore */
+            }
+          });
+        }}
       >
         <Background
           variant={BackgroundVariant.Dots}
@@ -525,7 +639,7 @@ function EmptyCanvas(): JSX.Element {
       <div className="mt-3 grid w-full grid-cols-2 gap-1.5 text-left">
         <EmptyHint icon={<ListTree className="h-3 w-3" />} label="节点详情" />
         <EmptyHint icon={<Wrench className="h-3 w-3" />} label="工具链路" />
-        <EmptyHint icon={<Maximize2 className="h-3 w-3" />} label="自适应视图" />
+        <EmptyHint icon={<Maximize2 className="h-3 w-3" />} label="放大查看" />
         <EmptyHint icon={<Clock3 className="h-3 w-3" />} label="耗时统计" />
       </div>
       <p className="mt-3 text-[11px] text-ink-400">

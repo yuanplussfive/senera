@@ -3,7 +3,6 @@ import {
   ChevronDown,
   ChevronRight,
   GitBranch,
-  Loader2,
   Wrench,
 } from "lucide-react";
 import { cn } from "../lib/util";
@@ -75,10 +74,7 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
             <span className="caret-blink" />
           </div>
         ) : (
-          <div className="flex items-center gap-3 py-2 text-[13px] text-ink-500">
-            <LoadingDots />
-            <span>{model.placeholder}</span>
-          </div>
+          <PendingLine label={model.placeholder} />
         )}
         {model.footer ? (
           <div className="pt-1.5 font-mono text-[10.5px] text-ink-400">{model.footer}</div>
@@ -211,8 +207,8 @@ function deriveFeedModel(run: RunRecord): FeedModel {
     headline: mapHeadlineItem(run, activeStep, latestDecision),
     groups,
     bodyText: run.visibleText,
-    placeholder: "...",
-    footer: deriveFooter(activeStep, latestDecision),
+    placeholder: derivePendingLabel(run, activeStep, latestDecision),
+    footer: deriveFooter(activeStep),
   };
 }
 
@@ -371,6 +367,41 @@ function summarizeDecisionSubtitle(step?: TimelineStep): string | undefined {
   return summarizeStepSubtitle(step);
 }
 
+function derivePendingLabel(
+  run: RunRecord,
+  activeStep?: TimelineStep,
+  latestDecision?: TimelineStep,
+): string {
+  if (activeStep?.kind === "tool" && activeStep.toolName) {
+    return activeStep.status === "running"
+      ? `正在执行 ${activeStep.toolName}`
+      : `准备执行 ${activeStep.toolName}`;
+  }
+
+  if (run.visibleKind === "tool_calls") {
+    const tools = summarizeDecisionSubtitle(latestDecision);
+    return tools ? `正在准备工具调用：${tools}` : "正在准备工具调用";
+  }
+
+  if (run.visibleKind === "ask_user") {
+    return "正在整理需要确认的问题";
+  }
+
+  if (run.visibleKind === "final_answer") {
+    return "正在生成回复";
+  }
+
+  if (activeStep?.kind === "model") {
+    return activeStep.modelName ? `正在调用 ${activeStep.modelName}` : "正在调用模型";
+  }
+
+  if (activeStep?.title) {
+    return activeStep.status === "running" ? `正在处理：${activeStep.title}` : activeStep.title;
+  }
+
+  return run.status === "running" ? "正在执行下一步" : "等待输出";
+}
+
 function summarizeStepSubtitle(step: TimelineStep): string | undefined {
   if (step.toolErrorMessage) return step.toolErrorMessage;
   if (step.errorMessage) return step.errorMessage;
@@ -394,9 +425,8 @@ function summarizeStepSubtitle(step: TimelineStep): string | undefined {
   return step.description;
 }
 
-function deriveFooter(activeStep?: TimelineStep, latestDecision?: TimelineStep): string | undefined {
-  if (activeStep?.callId) return `callId · ${activeStep.callId}`;
-  if (latestDecision?.xmlRoot) return `xml · ${latestDecision.xmlRoot}`;
+function deriveFooter(activeStep?: TimelineStep): string | undefined {
+  if (activeStep?.callId) return `call ${activeStep.callId.slice(0, 12)}`;
   return undefined;
 }
 
@@ -454,16 +484,18 @@ function statusTextClass(status: TimelineStepStatus | "neutral"): string {
   }
 }
 
-function LoadingDots(): JSX.Element {
+function PendingLine({ label }: { label: string }): JSX.Element {
   return (
-    <span className="inline-flex items-center gap-1">
-      {[0, 1, 2].map((i) => (
-        <Loader2
-          key={i}
-          className="h-3 w-3 animate-spin text-ink-400"
-          style={{ animationDelay: `${i * 140}ms`, animationDuration: "1.1s" }}
-        />
-      ))}
-    </span>
+    <div
+      className="my-1.5 inline-flex max-w-full items-center gap-2 rounded-lg bg-paper-100/70 px-2.5 py-1.5 text-[12.75px] text-ink-500"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center" aria-hidden="true">
+        <span className="absolute h-2.5 w-2.5 animate-ping rounded-full bg-terra-400/35" />
+        <span className="h-1.5 w-1.5 rounded-full bg-terra-500" />
+      </span>
+      <span className="min-w-0 truncate">{label}</span>
+    </div>
   );
 }
