@@ -5,7 +5,7 @@ import type { ModelProviderListItem } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { cn, formatTime } from "../../lib/util";
 import { AgentExecutionFeed } from "../AgentExecutionFeed";
-import { MarkdownRenderer } from "../MarkdownRenderer";
+import { LazyMarkdownRenderer } from "../LazyMarkdownRenderer";
 import { ModelProviderIcon } from "../ModelProviderIcon";
 import { Tooltip } from "../ui/Tooltip";
 import { ThinkingSummaryBar } from "./ThinkingSummaryBar";
@@ -90,12 +90,12 @@ export function MessageRow({
         />
         <div className="mt-1 min-w-0">
           <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} />
-          <MarkdownRenderer
+          <LazyMarkdownRenderer
             className="mt-1 min-w-0"
             contentClassName="text-[14.5px] leading-[1.72] text-ink-800"
           >
             {message.content}
-          </MarkdownRenderer>
+          </LazyMarkdownRenderer>
           {message.kind === "AskUser" ? (
             <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-terra-50 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-wider text-terra-600">
               需要你的回复

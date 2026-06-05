@@ -1,15 +1,4 @@
-import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ReactFlow,
-  ReactFlowProvider,
-  Background,
-  BackgroundVariant,
-  Controls,
-  type Node,
-  type NodeMouseHandler,
-  useReactFlow,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Lightbulb,
   Loader2,
@@ -34,14 +23,14 @@ import {
   DropdownMenuLabel,
 } from "./ui/DropdownMenu";
 import { Dialog, DialogContent } from "./ui/Dialog";
-import { StepNode } from "./canvas/StepNode";
-import { layoutSteps, type StepNodeData } from "./canvas/layout";
-import { NodeDetailDrawer } from "./canvas/NodeDetailDrawer";
 import { summarizeRun, type RunSummary } from "./workflow/runSummary";
+import { shouldLoadWorkflowCanvas } from "./workflow/canvasLoadPolicy";
 
-const NODE_TYPES = { step: StepNode };
-const FIT_VIEW_PADDING = 0.16;
-const FIT_VIEW_DURATION_MS = 240;
+const LazyThinkingTimelineCanvas = lazy(() =>
+  import("./ThinkingTimelineCanvas").then((module) => ({
+    default: module.ThinkingTimelineCanvas,
+  })),
+);
 
 export function ThinkingTimeline({
   presentation = "auto",
@@ -50,11 +39,7 @@ export function ThinkingTimeline({
   presentation?: "auto" | "panel" | "rail";
   hidePanelTitle?: boolean;
 }): JSX.Element {
-  return (
-    <ReactFlowProvider>
-      <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} />
-    </ReactFlowProvider>
-  );
+  return <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} />;
 }
 
 function ThinkingPanel({
@@ -467,9 +452,7 @@ function TimelineFocusDialog({
               ) : null}
             </div>
           ) : null}
-          <ReactFlowProvider>
-            <CanvasArea run={run} focusVersion={open ? 1 : 0} />
-          </ReactFlowProvider>
+          <CanvasArea run={run} focusVersion={open ? 1 : 0} />
         </div>
       </DialogContent>
     </Dialog>
@@ -485,89 +468,7 @@ function CanvasArea({
   run?: RunRecord;
   focusVersion?: number;
 }): JSX.Element {
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [flowReady, setFlowReady] = useState(false);
-  const rf = useReactFlow<Node<StepNodeData>>();
-  const steps = run?.steps ?? [];
-  const selectedStep = useMemo(
-    () => steps.find((step) => step.id === selectedStepId) ?? null,
-    [steps, selectedStepId],
-  );
-
-  const { nodes, edges, translateExtent } = useMemo(() => {
-    const { nodes, edges } = layoutSteps(steps);
-    if (nodes.length === 0) {
-      return {
-        nodes,
-        edges,
-        translateExtent: [
-          [-1000, -1000],
-          [1000, 1000],
-        ] as [[number, number], [number, number]],
-      };
-    }
-    // 计算节点包围盒，加 padding 限制平移范围
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const n of nodes) {
-      minX = Math.min(minX, n.position.x);
-      minY = Math.min(minY, n.position.y);
-      maxX = Math.max(maxX, n.position.x + 240); // node width
-      maxY = Math.max(maxY, n.position.y + 120); // approx node height
-    }
-    const padding = 200;
-    return {
-      nodes,
-      edges,
-      translateExtent: [
-        [minX - padding, minY - padding],
-        [maxX + padding, maxY + padding],
-      ] as [[number, number], [number, number]],
-    };
-  }, [steps]);
-
-  const fitCanvas = useCallback((duration = FIT_VIEW_DURATION_MS): void => {
-    if (!flowReady || nodes.length === 0) return;
-    window.requestAnimationFrame(() => {
-      try {
-        void rf.fitView({ padding: FIT_VIEW_PADDING, duration });
-      } catch {
-        /* ignore */
-      }
-    });
-  }, [flowReady, nodes.length, rf]);
-
-  // 新节点加入 / 切 run 时自适应
-  useEffect(() => {
-    if (!flowReady || nodes.length === 0) return;
-    const t = window.setTimeout(() => {
-      fitCanvas();
-    }, 80);
-    return () => window.clearTimeout(t);
-  }, [fitCanvas, flowReady, nodes.length, run?.requestId, steps.length]);
-
-  useEffect(() => {
-    if (!flowReady || nodes.length === 0) return;
-    const timer = window.setTimeout(() => {
-      fitCanvas();
-    }, 80);
-    return () => window.clearTimeout(timer);
-  }, [fitCanvas, flowReady, focusVersion, nodes.length]);
-
-  useEffect(() => {
-    if (!selectedStepId) return;
-    if (steps.some((step) => step.id === selectedStepId)) return;
-    setSelectedStepId(null);
-  }, [selectedStepId, steps]);
-
-  const handleNodeClick = useCallback<NodeMouseHandler<Node<StepNodeData>>>(
-    (_, node) => {
-      if (node.id === selectedStepId) return;
-      startTransition(() => setSelectedStepId(node.id));
-    },
-    [selectedStepId],
-  );
-
-  if (!run || steps.length === 0) {
+  if (!shouldLoadWorkflowCanvas(run)) {
     return (
       <div className="relative flex flex-1 items-center justify-center overflow-hidden">
         <EmptyCanvas />
@@ -576,50 +477,19 @@ function CanvasArea({
   }
 
   return (
-    <div className="relative flex-1 overflow-hidden">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={NODE_TYPES}
-        onNodeClick={handleNodeClick}
-        fitView
-        fitViewOptions={{ padding: FIT_VIEW_PADDING }}
-        minZoom={0.4}
-        maxZoom={1.6}
-        translateExtent={translateExtent}
-        proOptions={{ hideAttribution: true }}
-        nodesDraggable
-        nodesConnectable={false}
-        elementsSelectable={false}
-        panOnScroll
-        panOnScrollMode={"free" as never}
-        zoomOnPinch
-        zoomOnScroll={false}
-        selectionOnDrag={false}
-        onInit={(instance) => {
-          setFlowReady(true);
-          window.requestAnimationFrame(() => {
-            try {
-              void instance.fitView({ padding: FIT_VIEW_PADDING });
-            } catch {
-              /* ignore */
-            }
-          });
-        }}
-      >
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={18}
-          size={1}
-          color="rgba(28,26,23,0.10)"
-        />
-        <Controls
-          position="bottom-left"
-          showInteractive={false}
-          className={cn("!rounded-md !border !border-ink-200 !bg-paper-50 !shadow-bubble-ai")}
-        />
-      </ReactFlow>
-      <NodeDetailDrawer step={selectedStep} onClose={() => setSelectedStepId(null)} />
+    <Suspense fallback={<CanvasLoading />}>
+      <LazyThinkingTimelineCanvas run={run} focusVersion={focusVersion} />
+    </Suspense>
+  );
+}
+
+function CanvasLoading(): JSX.Element {
+  return (
+    <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+      <div className="inline-flex items-center gap-2 rounded-md border border-ink-200/60 bg-paper-50/80 px-3 py-2 text-[12px] text-ink-500 shadow-bubble-ai">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-terra-500" />
+        加载执行图
+      </div>
     </div>
   );
 }

@@ -21,6 +21,10 @@ export class LruCache<K, V> {
     this.trim();
   }
 
+  delete(key: K): void {
+    this.entries.delete(key);
+  }
+
   private trim(): void {
     while (this.entries.size > this.capacity) {
       const oldest = this.entries.keys().next().value as K | undefined;

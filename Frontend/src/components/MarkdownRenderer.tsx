@@ -1,6 +1,8 @@
 import {
   Children,
   isValidElement,
+  lazy,
+  Suspense,
   useState,
   type AnchorHTMLAttributes,
   type CSSProperties,
@@ -23,12 +25,16 @@ import { toast } from "sonner";
 import { cn } from "../lib/util";
 import { readCodeArtifact, type CodeArtifact } from "./CodeArtifactModel";
 import { CodeArtifactSourceView } from "./CodeArtifactSourceView";
-import { CodeArtifactViewer } from "./CodeArtifactViewer";
 import { Tooltip } from "./ui/Tooltip";
 
 const DEFAULT_CODE_PREVIEW_LINES = 10;
+const LazyCodeArtifactViewer = lazy(() =>
+  import("./CodeArtifactViewer").then((module) => ({
+    default: module.CodeArtifactViewer,
+  })),
+);
 
-interface MarkdownRendererProps {
+export interface MarkdownRendererProps {
   children: string;
   className?: string;
   contentClassName?: string;
@@ -189,13 +195,26 @@ function PreviewCodeBlock({
           <span>{artifact.lineCount} lines</span>
         </div>
       </button>
-      <CodeArtifactViewer
-        artifact={artifact}
-        open={viewerOpen}
-        initialView={viewerInitialView}
-        onOpenChange={setViewerOpen}
-      />
+      {viewerOpen ? (
+        <Suspense fallback={<CodeArtifactViewerLoading />}>
+          <LazyCodeArtifactViewer
+            artifact={artifact}
+            open={viewerOpen}
+            initialView={viewerInitialView}
+            onOpenChange={setViewerOpen}
+          />
+        </Suspense>
+      ) : null}
     </figure>
+  );
+}
+
+function CodeArtifactViewerLoading(): JSX.Element {
+  return (
+    <div className="code-artifact-viewer__loading" role="status" aria-live="polite">
+      <div className="h-2 w-24 rounded bg-ink-900/10" />
+      <div className="h-2 w-40 rounded bg-ink-900/10" />
+    </div>
   );
 }
 

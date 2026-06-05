@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
-import { TooltipProvider } from "./components/ui/Tooltip";
+import { TooltipProvider } from "./shared/ui";
 import { useAgentSocket } from "./api/useAgentSocket";
 import { useStore, type ChatMessage } from "./store/sessionStore";
 import { SessionList } from "./components/SessionList";
@@ -10,6 +10,7 @@ import { AppShell, useMediaQuery } from "./components/layout/AppShell";
 import { EventKinds, type WsRequest } from "./api/eventTypes";
 import { generateId } from "./lib/util";
 import type { UserProfileData } from "./api/eventTypes";
+import { useGlobalShortcuts } from "./app/useGlobalShortcuts";
 
 const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8787";
 
@@ -259,29 +260,6 @@ export function App(): JSX.Element {
     }
   }, [activeId, status, requestSessionHistory]);
 
-  // 全局快捷键
-  useEffect(() => {
-    const handler = (e: KeyboardEvent): void => {
-      const meta = e.metaKey || e.ctrlKey;
-      if (!meta) return;
-      const key = e.key.toLowerCase();
-      if (key === "b") {
-        e.preventDefault();
-        if (hasPersistentSessionPanel) {
-          toggleSidebar();
-          return;
-        }
-        setSessionDrawerOpen((open) => !open);
-      } else if (key === "n") {
-        e.preventDefault();
-        handleNewSession();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, hasPersistentSessionPanel]);
-
   const handleNewSession = useCallback(() => {
     if (status !== "open") {
       toast.warning("后端未连接，无法新建会话");
@@ -296,6 +274,19 @@ export function App(): JSX.Element {
     registerSession(id);
     serverKnownRef.current.add(id);
   }, [status, send, registerSession]);
+
+  const handleToggleSessionPanelShortcut = useCallback((): void => {
+    if (hasPersistentSessionPanel) {
+      toggleSidebar();
+      return;
+    }
+    setSessionDrawerOpen((open) => !open);
+  }, [hasPersistentSessionPanel, toggleSidebar]);
+
+  useGlobalShortcuts({
+    onNewSession: handleNewSession,
+    onToggleSessionPanel: handleToggleSessionPanelShortcut,
+  });
 
   const handleCloseSession = useCallback(
     (id: string) => {

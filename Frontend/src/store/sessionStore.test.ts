@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EventKinds, type EventEnvelope, type SessionListItem } from "../api/eventTypes";
+import { sessionPersistOptions } from "./session/persistence";
 import { DEFAULT_USER_PROFILE, useStore } from "./sessionStore";
 
 const localStorageStub = vi.hoisted(() => {
@@ -359,6 +360,70 @@ describe("sessionStore history recovery", () => {
     expect(session.messageCount).toBe(2);
   });
 
+  it("appends chunked history into the replay buffer without cloning previous chunks", () => {
+    const concatSpy = vi.spyOn(Array.prototype, "concat");
+    try {
+      useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+        sessions: [
+          sessionItem({
+            sessionId: "history-session",
+            entryCount: 2,
+            messageCount: 2,
+          }),
+        ],
+      }));
+      useStore.getState().markHistoryLoading("history-session");
+
+      useStore.getState().ingest(envelope(
+        EventKinds.SessionHistoryStarted,
+        {
+          sessionId: "history-session",
+          totalEntries: 2,
+          messageCount: 2,
+        },
+        "history-session",
+      ));
+      useStore.getState().ingest(envelope(
+        EventKinds.SessionHistoryChunk,
+        {
+          sessionId: "history-session",
+          entries: [
+            {
+              entry: {
+                id: "req-1:user",
+                requestId: "req-1",
+                timestamp: "2026-05-29T08:00:00.000Z",
+                kind: "user.message",
+                content: "你好",
+              },
+            },
+          ],
+        },
+        "history-session",
+      ));
+      useStore.getState().ingest(envelope(
+        EventKinds.SessionHistoryEntry,
+        {
+          sessionId: "history-session",
+          entry: {
+            id: "req-1:assistant",
+            requestId: "req-1",
+            timestamp: "2026-05-29T08:00:02.000Z",
+            kind: "assistant.decision",
+            xml: "<final_answer>你好呀</final_answer>",
+          },
+          visible: { kind: "final_answer", text: "你好呀" },
+        },
+        "history-session",
+      ));
+
+      expect(useStore.getState().historyReplayBuffers["history-session"]).toHaveLength(2);
+      expect(concatSpy).not.toHaveBeenCalled();
+    } finally {
+      concatSpy.mockRestore();
+    }
+  });
+
   it("keeps materialized history when completion is received more than once", () => {
     useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
       sessions: [
@@ -560,5 +625,40 @@ describe("sessionStore history recovery", () => {
     expect(useStore.getState().historyLoadingIds["history-session"]).toBe(false);
     expect(useStore.getState().historyLoadedIds["history-session"]).toBe(true);
     expect(session.messages.map((message) => message.content)).toEqual(["旧协议还在吗", "还在"]);
+  });
+});
+
+describe("session persistence migration", () => {
+  it("returns only persisted UI preferences when migrating legacy state", () => {
+    const migrate = sessionPersistOptions.migrate;
+    expect(migrate).toBeDefined();
+
+    const migrated = migrate?.({
+      sidebarCollapsed: true,
+      rightPanelCollapsed: true,
+      selectedModelProviderId: "provider-1",
+      userProfile: {
+        name: "Ada",
+        avatarDataUrl: null,
+        updatedAt: "2026-05-29T08:00:00.000Z",
+      },
+      activeSessionId: "legacy-active",
+      sessions: { "legacy-active": {} },
+      sessionOrder: ["legacy-active"],
+      viewedRunIdBySession: { "legacy-active": "req-1" },
+      modelProviders: [{ id: "provider-1" }],
+      historyLoadingIds: { "legacy-active": true },
+    }, 1);
+
+    expect(migrated).toEqual({
+      sidebarCollapsed: true,
+      rightPanelCollapsed: true,
+      selectedModelProviderId: "provider-1",
+      userProfile: {
+        name: "Ada",
+        avatarDataUrl: null,
+        updatedAt: "2026-05-29T08:00:00.000Z",
+      },
+    });
   });
 });

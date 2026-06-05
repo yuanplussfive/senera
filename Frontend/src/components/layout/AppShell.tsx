@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Sheet, SheetContent } from "../ui-shadcn/sheet";
+import { Sheet, SheetContent } from "../../shared/ui";
 
 interface AppShellProps {
   sessionRail: ReactNode;
