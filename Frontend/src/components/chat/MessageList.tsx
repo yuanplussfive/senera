@@ -10,6 +10,7 @@ import { useVirtuosoAutoStickToBottom } from "./useVirtuosoAutoStickToBottom";
 interface MessageListProps {
   sessionId: string;
   messages: ChatMessage[];
+  runs: RunRecord[];
   currentRun?: RunRecord;
   assistantAvatarIcon?: string;
   selectedModelProvider?: ModelProviderListItem;
@@ -35,6 +36,7 @@ function readMessageListItemKey(item: MessageListItem): string {
 export function MessageList({
   sessionId,
   messages,
+  runs,
   currentRun,
   assistantAvatarIcon,
   selectedModelProvider,
@@ -47,6 +49,11 @@ export function MessageList({
   const [editing, setEditing] = useState<{ id: string; message: ChatMessage } | null>(null);
   const [draft, setDraft] = useState("");
   const [deleting, setDeleting] = useState<ChatMessage | null>(null);
+  const runsByRequestId = useMemo(() => {
+    const map = new Map<string, RunRecord>();
+    for (const run of runs) map.set(run.requestId, run);
+    return map;
+  }, [runs]);
   const items = useMemo(
     () => (currentRun ? [...messages, { __streaming: true as const, run: currentRun }] : messages),
     [messages, currentRun],
@@ -94,6 +101,7 @@ export function MessageList({
             <div className="chat-message-item mx-auto box-border w-full max-w-3xl px-4 pb-3 pt-1 sm:px-6">
               <MessageRow
                 message={item}
+                run={item.requestId ? runsByRequestId.get(item.requestId) : undefined}
                 onClickBubble={() => {
                   if (item.role !== "user") return;
                   if (!item.requestId) return;

@@ -39,6 +39,8 @@ import {
   type ToolCallStartedData,
   type ToolCallsPlannedData,
   type ToolResultsDetailData,
+  type SessionHistoryStepsData,
+  type StepTraceDto,
   type UserProfileData,
 } from "../api/eventTypes";
 
@@ -158,6 +160,8 @@ interface StoreState {
   historyFailedIds: Record<string, boolean>;
   /** 正在回放但尚未 completed 的历史条目；completed 前不污染真实消息列表 */
   historyReplayBuffers: Record<string, HistoryReplayEntry[]>;
+  /** 回放期间暂存的 step 轨迹 run，completed 时据此重建 session.runs */
+  historyStepBuffers: Record<string, SessionHistoryStepsData["runs"]>;
   /** 已确认不在后端存在、仅本地残留的 sessionId */
   missingOnServerIds: Record<string, boolean>;
   /** 本地刚创建、尚未被 session.list 快照确认的 sessionId */
@@ -412,6 +416,84 @@ function upsertStep(run: RunRecord, step: TimelineStep): void {
   touchRun(run);
 }
 
+/** 把持久化的精简档 StepTrace 还原成与实时态一致的 TimelineStep（id 约定对齐 ingest case） */
+function stepTraceToTimelineStep(trace: StepTraceDto, fallbackTime: string): TimelineStep {
+  const startedAt = trace.startedAt ?? fallbackTime;
+  const endedAt = trace.endedAt ?? startedAt;
+  if (trace.kind === "tool") {
+    return {
+      id: trace.callId ? `tool-${trace.callId}` : `tool-${trace.step}-${trace.seq}`,
+      kind: "tool",
+      title: trace.status === "failed" ? `调用 ${trace.toolName ?? "工具"} 失败` : `调用 ${trace.toolName ?? "工具"}`,
+      status: trace.status,
+      startedAt,
+      endedAt,
+      toolName: trace.toolName,
+      callId: trace.callId,
+      toolArgs: trace.toolArgs,
+      toolPreview: trace.toolPreview,
+      toolResult: trace.toolResult,
+      toolErrorMessage: trace.toolErrorMessage,
+    };
+  }
+  if (trace.kind === "answer") {
+    return {
+      id: `${trace.step}-answer-${trace.seq}`,
+      kind: "answer",
+      title: trace.title ?? "生成回复",
+      status: trace.status,
+      startedAt,
+      endedAt,
+    };
+  }
+  if (trace.kind === "retry") {
+    return {
+      id: `retry-${trace.step}-${trace.seq}`,
+      kind: "retry",
+      title: "重试",
+      status: trace.status,
+      startedAt,
+      endedAt,
+      retryCode: trace.retryCode,
+      errorMessage: trace.errorMessage,
+    };
+  }
+  // decision
+  return {
+    id: `decision-${trace.step}-${trace.seq}`,
+    kind: "decision",
+    title: "确定行动",
+    description: trace.decisionKind ? friendlyDecisionKind(trace.decisionKind) : undefined,
+    status: trace.status,
+    startedAt,
+    endedAt,
+    decisionKind: trace.decisionKind,
+  };
+}
+
+/** 从历史 step 轨迹重建一个已完成的 RunRecord */
+function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][number]): RunRecord {
+  const record: RunRecord = {
+    requestId: run.requestId,
+    revision: 0,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt,
+    status: run.status,
+    input: run.input,
+    steps: run.traces.map((trace) => stepTraceToTimelineStep(trace, run.startedAt)),
+    streamingRaw: "",
+    xmlPreview: "",
+    visibleText: "",
+    visibleKind: "unknown",
+    expectedOutputMode: "unknown",
+    decisionMode: "none",
+    pendingToolArgsByName: {},
+    modelProvider: run.modelProvider,
+  };
+  record.revision = record.steps.length;
+  return record;
+}
+
 // =========================
 // Store（Immer 中间件——所有 mutation 都自动产生新引用）
 // =========================
@@ -431,6 +513,7 @@ export const useStore = create<StoreState>()(
       historyLoadingIds: {},
       historyFailedIds: {},
       historyReplayBuffers: {},
+      historyStepBuffers: {},
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},
@@ -540,6 +623,7 @@ export const useStore = create<StoreState>()(
         state.historyLoadingIds[sessionId] = false;
         state.historyFailedIds[sessionId] = true;
         delete state.historyReplayBuffers[sessionId];
+        delete state.historyStepBuffers[sessionId];
       }),
 
     selectModelProvider: (id) =>
@@ -645,6 +729,7 @@ export const useStore = create<StoreState>()(
           historyLoadingIds: {},
           historyFailedIds: {},
           historyReplayBuffers: {},
+          historyStepBuffers: {},
           missingOnServerIds: {},
           pendingCreatedSessionIds: {},
           pendingDeletedSessionIds: {},
@@ -807,6 +892,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
         state.historyLoadingIds[sessionId] = false;
         state.historyFailedIds[sessionId] = true;
         delete state.historyReplayBuffers[sessionId];
+        delete state.historyStepBuffers[sessionId];
         return;
       }
       if (run) {
@@ -1301,6 +1387,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       state.historyLoadingIds[sessionId] = false;
       state.historyLoadedIds[sessionId] = true;
       delete state.historyReplayBuffers[sessionId];
+      delete state.historyStepBuffers[sessionId];
       delete state.historyFailedIds[sessionId];
       delete state.missingOnServerIds[sessionId];
       return;
@@ -1316,6 +1403,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       session.entryCount = data.totalEntries;
       session.messageCount = data.messageCount;
       state.historyReplayBuffers[sessionId] = [];
+      state.historyStepBuffers[sessionId] = [];
       state.historyLoadingIds[sessionId] = true;
       delete state.historyLoadedIds[sessionId];
       delete state.historyFailedIds[sessionId];
@@ -1348,6 +1436,16 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
+    case EventKinds.SessionHistorySteps: {
+      if (!sessionId) return;
+      const data = env.data as SessionHistoryStepsData;
+      const session = state.sessions[sessionId];
+      if (!session) return;
+      if (!state.historyLoadingIds[sessionId]) return;
+      state.historyStepBuffers[sessionId] = data.runs;
+      return;
+    }
+
     case EventKinds.SessionHistoryCompleted: {
       if (!sessionId) return;
       const data = env.data as SessionHistoryCompletedData;
@@ -1359,10 +1457,13 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       session.messages = buffer
         .map((item) => projectEntryToMessage(item.entry, item.visible))
         .filter((message): message is ChatMessage => Boolean(message));
-      session.runs = [];
+      // 用回放的 step 轨迹重建 session.runs（替代此前写死的 []）
+      const stepRuns = state.historyStepBuffers[sessionId] ?? [];
+      session.runs = stepRuns.map((run) => rebuildRunFromHistory(run));
       state.historyLoadingIds[sessionId] = false;
       state.historyLoadedIds[sessionId] = true;
       delete state.historyReplayBuffers[sessionId];
+      delete state.historyStepBuffers[sessionId];
       delete state.historyFailedIds[sessionId];
       delete state.missingOnServerIds[sessionId];
       syncSessionCountsFromLoadedMessages(session);
@@ -1374,6 +1475,7 @@ function applyEvent(state: StoreState, env: EventEnvelope): void {
       const data = env.data as SessionNotFoundData;
       state.historyLoadingIds[sessionId] = false;
       delete state.historyReplayBuffers[sessionId];
+      delete state.historyStepBuffers[sessionId];
       delete state.historyFailedIds[sessionId];
       if (data.operation === "session.close") {
         delete state.pendingDeletedSessionIds[sessionId];
@@ -1583,6 +1685,7 @@ function deleteSessionRuntimeState(state: StoreState, sessionId: string): void {
   delete state.historyLoadingIds[sessionId];
   delete state.historyFailedIds[sessionId];
   delete state.historyReplayBuffers[sessionId];
+  delete state.historyStepBuffers[sessionId];
   delete state.viewedRunIdBySession[sessionId];
   delete state.missingOnServerIds[sessionId];
   state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);

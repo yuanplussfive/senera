@@ -2,6 +2,18 @@ import type { AgentRetryInstruction } from "./AgentRetryableError.js";
 import type { AgentModelProviderMetadata } from "./AgentModelMetadata.js";
 import type { AgentModelProviderListItem } from "./Types.js";
 import { readXmlRootName } from "./AgentXmlRootReader.js";
+import type { StepTrace } from "./AgentStepTrace.js";
+
+/** 回放时按轮次重建执行图的 run：steps 来自 step_traces，其余字段从 entries 派生 */
+export interface AgentHistoryStepRun {
+  requestId: string;
+  input: string;
+  startedAt: string;
+  endedAt?: string;
+  status: "completed" | "failed" | "cancelled";
+  modelProvider?: AgentModelProviderMetadata;
+  traces: StepTrace[];
+}
 
 export const AgentEventLayers = {
   Progress: "progress",
@@ -38,6 +50,7 @@ export const AgentEventKinds = {
   SessionHistorySnapshot: "session.history.snapshot",
   SessionHistoryStarted: "session.history.started",
   SessionHistoryChunk: "session.history.chunk",
+  SessionHistorySteps: "session.history.steps",
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
@@ -228,6 +241,14 @@ export type AgentDomainEvent =
       context: Required<Pick<AgentEventContext, "sessionId">>;
       data: {
         sessionId: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionHistorySteps;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        runs: AgentHistoryStepRun[];
       };
     }
   | {
@@ -594,6 +615,10 @@ const EventSpecTable: {
     phase: AgentEventPhases.Session,
   },
   [AgentEventKinds.SessionHistoryChunk]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
+  },
+  [AgentEventKinds.SessionHistorySteps]: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
   },

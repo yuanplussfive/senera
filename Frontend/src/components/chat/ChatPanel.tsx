@@ -90,6 +90,7 @@ export function ChatPanel({
         <MessageList
           sessionId={session?.sessionId ?? activeId ?? ""}
           messages={messages}
+          runs={session?.runs ?? []}
           currentRun={isRunning ? currentRun : undefined}
           assistantAvatarIcon={assistantAvatarIcon}
           selectedModelProvider={selectedModelProvider}

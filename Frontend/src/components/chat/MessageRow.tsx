@@ -8,10 +8,12 @@ import { AgentExecutionFeed } from "../AgentExecutionFeed";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { ModelProviderIcon } from "../ModelProviderIcon";
 import { Tooltip } from "../ui/Tooltip";
+import { ThinkingSummaryBar } from "./ThinkingSummaryBar";
 import { formatModelProviderName } from "./modelProvider";
 
 interface MessageRowProps {
   message: ChatMessage;
+  run?: RunRecord;
   onClickBubble?: () => void;
   assistantAvatarIcon?: string;
   selectedModelProvider?: ModelProviderListItem;
@@ -23,6 +25,7 @@ interface MessageRowProps {
 
 export function MessageRow({
   message,
+  run,
   onClickBubble,
   assistantAvatarIcon,
   selectedModelProvider,
@@ -58,6 +61,7 @@ export function MessageRow({
             content={message.content}
             placement="right"
             hasRequestId={!!message.requestId}
+            hasWorkflow={!!run}
             onRegenerate={onRegenerate}
             onDelete={onDelete}
             onViewWorkflow={onViewWorkflow}
@@ -85,6 +89,7 @@ export function MessageRow({
           timestamp={message.createdAt}
         />
         <div className="mt-1 min-w-0">
+          <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} />
           <MarkdownRenderer
             className="mt-1 min-w-0"
             contentClassName="text-[14.5px] leading-[1.72] text-ink-800"
@@ -101,6 +106,7 @@ export function MessageRow({
           content={message.content}
           placement="left"
           hasRequestId={!!message.requestId}
+          hasWorkflow={!!run}
           onRegenerate={onRegenerate}
           onDelete={onDelete}
           onViewWorkflow={onViewWorkflow}
@@ -139,6 +145,7 @@ function MessageActions({
   content,
   placement,
   hasRequestId,
+  hasWorkflow,
   onRegenerate,
   onDelete,
   onViewWorkflow,
@@ -146,6 +153,7 @@ function MessageActions({
   content: string;
   placement: "left" | "right";
   hasRequestId: boolean;
+  hasWorkflow: boolean;
   onRegenerate: () => void;
   onDelete: () => void;
   onViewWorkflow: () => void;
@@ -171,7 +179,7 @@ function MessageActions({
       <ActionBtn label="复制" onClick={onCopy}>
         {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
       </ActionBtn>
-      {hasRequestId ? (
+      {hasRequestId && hasWorkflow ? (
         <ActionBtn label="查看工作流" onClick={onViewWorkflow}>
           <GitBranch className="h-3.5 w-3.5" />
         </ActionBtn>

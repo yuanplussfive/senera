@@ -2,6 +2,7 @@ import { AgentEventKinds, type AgentDomainEvent } from "./AgentEvent.js";
 import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentExecutionResult } from "./AgentDecisionExecutor.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "./AgentModelMetadata.js";
+import type { StepTrace } from "./AgentStepTrace.js";
 
 export type AgentTerminalResult =
   | {
@@ -27,6 +28,7 @@ export interface AgentCompletedRunResult {
   modelProvider?: AgentModelProviderMetadata;
   usage?: AgentModelUsage;
   conversationEntries: AgentConversationEntry[];
+  stepTraces: StepTrace[];
 }
 
 export class AgentExecutionProjector {

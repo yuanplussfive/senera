@@ -33,6 +33,7 @@ export const EventKinds = {
   SessionHistoryStarted: "session.history.started",
   SessionHistoryEntry: "session.history.entry",
   SessionHistoryChunk: "session.history.chunk",
+  SessionHistorySteps: "session.history.steps",
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
@@ -189,6 +190,39 @@ export interface SessionHistoryChunkData {
 
 export interface SessionHistoryCompletedData {
   sessionId: string;
+}
+
+/** 精简档执行步骤轨迹（与后端 StepTrace 对齐）；回放时重建 run.steps */
+export interface StepTraceDto {
+  step: number;
+  seq: number;
+  kind: "decision" | "tool" | "retry" | "answer";
+  decisionKind?: string;
+  toolName?: string;
+  callId?: string;
+  status: "done" | "failed";
+  startedAt?: string;
+  endedAt?: string;
+  title?: string;
+  toolArgs?: unknown;
+  toolPreview?: string;
+  toolResult?: unknown;
+  toolErrorMessage?: string;
+  errorMessage?: string;
+  retryCode?: string;
+}
+
+export interface SessionHistoryStepsData {
+  sessionId: string;
+  runs: Array<{
+    requestId: string;
+    input: string;
+    startedAt: string;
+    endedAt?: string;
+    status: "completed" | "failed" | "cancelled";
+    modelProvider?: ModelProviderMetadata;
+    traces: StepTraceDto[];
+  }>;
 }
 
 export interface ModelProviderMetadata {

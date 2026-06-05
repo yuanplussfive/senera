@@ -3,9 +3,10 @@ import {
   AgentSessionStatuses,
   type AgentSession,
 } from "./AgentSession.js";
-import type { AgentSessionRepository } from "./AgentSqliteSessionRepository.js";
+import type { AgentSessionRepository, StoredStepTraceRun } from "./AgentSqliteSessionRepository.js";
 import { InMemorySessionRepository } from "./AgentSqliteSessionRepository.js";
 import type { AgentConversationEntry } from "./AgentConversation.js";
+import type { StepTrace } from "./AgentStepTrace.js";
 
 export type AgentSessionOpenResult =
   | {
@@ -121,6 +122,9 @@ export class AgentSessionStore {
 
   /** 删除某 sessionId 从指定 requestId 起的所有 entries，并同步内存缓存 */
   truncateFromRequest(sessionId: string, requestId: string): number {
+    // 先删 step 轨迹：其 turn_sequence 锚点独立于 conversation_entries，
+    // 但保持「先删派生数据、后删主数据」的顺序更稳妥。
+    this.repository.deleteStepTracesFrom(sessionId, requestId);
     const removed = this.repository.deleteEntriesFrom(sessionId, requestId);
     const session = this.sessions.get(sessionId);
     if (session) {
@@ -145,6 +149,29 @@ export class AgentSessionStore {
     const items = entries.map((entry, i) => ({ entry, sequence: baseSeq + i }));
     this.repository.appendEntries(sessionId, items);
     this.sequenceBySession.set(sessionId, baseSeq + entries.length);
+  }
+
+  /**
+   * 一轮 turn 的 entries 与 step 轨迹原子落盘。
+   * turn_sequence 取该 turn 起始 entry 的 sequence，供 truncate 时按「该轮及之后」删除。
+   */
+  persistTurnArtifacts(
+    sessionId: string,
+    requestId: string,
+    entries: ReadonlyArray<AgentConversationEntry>,
+    traces: ReadonlyArray<StepTrace>,
+  ): void {
+    if (entries.length === 0 && traces.length === 0) return;
+    const baseSeq = this.sequenceBySession.get(sessionId) ?? 0;
+    const entryItems = entries.map((entry, i) => ({ entry, sequence: baseSeq + i }));
+    const traceItems = traces.map((trace) => ({ requestId, turnSequence: baseSeq, trace }));
+    this.repository.persistTurnArtifacts(sessionId, entryItems, traceItems);
+    this.sequenceBySession.set(sessionId, baseSeq + entries.length);
+  }
+
+  /** 读取某会话所有 step 轨迹，按轮次分组（回放重建执行图用） */
+  loadStepTraces(sessionId: string): StoredStepTraceRun[] {
+    return this.repository.loadStepTraces(sessionId);
   }
 
   private createAndStore(sessionId: string): AgentSession {

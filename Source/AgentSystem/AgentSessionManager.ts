@@ -1,5 +1,6 @@
 import type { AgentEventSink } from "./AgentEvent.js";
 import { AgentEventKinds, emitAgentEvent, withEventContext } from "./AgentEvent.js";
+import type { AgentHistoryStepRun } from "./AgentEvent.js";
 import { AgentConversationPolicy } from "./AgentConversationPolicy.js";
 import { AgentConversationProjector } from "./AgentConversationProjector.js";
 import {
@@ -17,8 +18,26 @@ import {
 } from "./AgentSession.js";
 import { AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
 import { AgentSessionStore } from "./AgentSessionStore.js";
+import type { StepTrace } from "./AgentStepTrace.js";
 
 const HISTORY_REPLAY_CHUNK_SIZE = 50;
+
+/**
+ * 给状态机累积的（无时间戳）step 轨迹补上 turn 级基准时间。
+ * 精简档不承诺逐步精确计时：startedAt 用 turn 起始时间，
+ * 终结节点（answer）用 assistant entry 落盘时间。
+ */
+function stampStepTraces(
+  traces: ReadonlyArray<StepTrace>,
+  startedAt: string,
+  endedAt: string,
+): StepTrace[] {
+  return traces.map((trace) => ({
+    ...trace,
+    startedAt: trace.startedAt ?? startedAt,
+    endedAt: trace.endedAt ?? (trace.kind === "answer" ? endedAt : startedAt),
+  }));
+}
 
 export interface AgentSessionManagerOptions {
   loopFactory: (modelProviderId?: string) => AgentLoop;
@@ -189,10 +208,59 @@ export class AgentSessionManager {
       });
     }
 
+    // step 轨迹：按轮次重建执行图所需的精简档 + 从 entries 派生的 run 字段
+    const stepRuns = this.buildHistoryStepRuns(sessionId, entries);
+    if (stepRuns.length > 0) {
+      await emitAgentEvent(request.onEvent, {
+        kind: AgentEventKinds.SessionHistorySteps,
+        context: { sessionId },
+        data: { sessionId, runs: stepRuns },
+      });
+    }
+
     await emitAgentEvent(request.onEvent, {
       kind: AgentEventKinds.SessionHistoryCompleted,
       context: { sessionId },
       data: { sessionId },
+    });
+  }
+
+  /**
+   * 把持久化的 step 轨迹按轮次组装成回放用的 run 列表。
+   * steps 来自 step_traces；input/startedAt/endedAt/modelProvider 从同 requestId 的
+   * user.message 与 assistant.decision 派生，否则历史 run 选择器会显示「无输入」或时间错乱。
+   */
+  private buildHistoryStepRuns(
+    sessionId: string,
+    entries: AgentConversationEntry[],
+  ): AgentHistoryStepRun[] {
+    const storedRuns = this.store.loadStepTraces(sessionId);
+    if (storedRuns.length === 0) return [];
+
+    const userByRequest = new Map<string, AgentConversationEntry>();
+    const assistantByRequest = new Map<string, AgentConversationEntry>();
+    for (const entry of entries) {
+      if (entry.kind === AgentConversationEntryKinds.UserMessage) {
+        if (!userByRequest.has(entry.requestId)) userByRequest.set(entry.requestId, entry);
+      } else if (entry.kind === AgentConversationEntryKinds.AssistantDecision) {
+        assistantByRequest.set(entry.requestId, entry);
+      }
+    }
+
+    return storedRuns.map((run) => {
+      const userEntry = userByRequest.get(run.requestId);
+      const assistantEntry = assistantByRequest.get(run.requestId);
+      const modelProvider =
+        assistantEntry?.metadata?.run?.modelProvider ?? userEntry?.metadata?.run?.modelProvider;
+      return {
+        requestId: run.requestId,
+        input: userEntry?.kind === AgentConversationEntryKinds.UserMessage ? userEntry.content : "",
+        startedAt: userEntry?.timestamp ?? run.traces[0]?.startedAt ?? "",
+        endedAt: assistantEntry?.timestamp,
+        status: "completed" as const,
+        modelProvider,
+        traces: run.traces,
+      };
     });
   }
 
@@ -388,7 +456,10 @@ export class AgentSessionManager {
       if (!previousIds.has(assistantEntry.id)) {
         fresh.push(assistantEntry);
       }
-      this.store.persistEntries(session.id, fresh);
+      // 精简档 step 轨迹：状态机不产生时间戳，这里统一补 turn 级基准时间后
+      // 与 entries 在同一事务内原子落盘。
+      const stampedTraces = stampStepTraces(result.stepTraces, timestamp, assistantEntry.timestamp);
+      this.store.persistTurnArtifacts(session.id, requestId, fresh, stampedTraces);
 
       session.conversation = this.mergeConversationEntries([
         ...session.conversation,

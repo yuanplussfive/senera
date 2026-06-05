@@ -18,6 +18,13 @@ import {
   buildInitialActionPlannerLedger,
   type AgentActionPlannerLedger,
 } from "./AgentActionPlannerContext.js";
+import {
+  buildAnswerTrace,
+  buildDecisionTrace,
+  buildRetryTrace,
+  buildToolTraces,
+  type StepTrace,
+} from "./AgentStepTrace.js";
 
 export interface AgentLoopMachineConfig {
   maxSteps: number;
@@ -38,6 +45,8 @@ export interface RunningAgentLoopMachineState {
   loadedToolNames: "all" | string[];
   plannerLedger: AgentActionPlannerLedger;
   actionDirective?: AgentActionDecision;
+  /** 精简档执行轨迹累积；spread 转移天然透传，终态输出供 manager 落盘 */
+  stepTraces: StepTrace[];
 }
 
 export interface CompletedAgentLoopMachineState {
@@ -231,6 +240,7 @@ export class AgentLoopStateMachine {
       loadedToolNames: request.loadedToolNames,
       plannerLedger: buildInitialActionPlannerLedger(request.messages),
       actionDirective: request.actionDirective,
+      stepTraces: [],
     };
 
     return {
@@ -325,6 +335,10 @@ export class AgentLoopStateMachine {
             modelProvider: entry.modelProvider,
             usage: entry.usage,
             conversationEntries: [],
+            stepTraces: [
+              ...state.stepTraces,
+              buildAnswerTrace(entry.step, state.stepTraces.length, "final_answer"),
+            ],
           },
         },
         events: this.eventFactory.terminal({
@@ -348,6 +362,10 @@ export class AgentLoopStateMachine {
           ...state,
           lastDecisionXml: entry.sanitized.raw,
           repairAttempts: 0,
+          stepTraces: [
+            ...state.stepTraces,
+            buildDecisionTrace(entry.step, state.stepTraces.length, entry.decision),
+          ],
         },
         command: {
           kind: "execute_decision",
@@ -373,6 +391,7 @@ export class AgentLoopStateMachine {
           entry.responseText,
           entry.loadedToolNames,
           entry.plannerLedger,
+          buildToolTraces(entry.step, state.stepTraces.length, entry.execution),
           this.eventFactory.toolResults(
             entry.requestId,
             entry.step,
@@ -390,6 +409,14 @@ export class AgentLoopStateMachine {
             modelProvider: state.lastModelProvider,
             usage: state.lastUsage,
             conversationEntries: [],
+            stepTraces: [
+              ...state.stepTraces,
+              buildAnswerTrace(
+                entry.step,
+                state.stepTraces.length,
+                entry.projected.result.kind === "AskUser" ? "ask_user" : "final_answer",
+              ),
+            ],
           },
         },
         events: this.eventFactory.terminal(entry.projected, entry.requestId),
@@ -400,6 +427,15 @@ export class AgentLoopStateMachine {
           repairAttempts: entry.attempt,
           messages: entry.repairedMessages,
           lastDecisionXml: entry.responseText || state.lastDecisionXml,
+          stepTraces: [
+            ...state.stepTraces,
+            buildRetryTrace(
+              entry.step,
+              state.stepTraces.length,
+              entry.instruction.code,
+              entry.instruction.message,
+            ),
+          ],
         };
 
         return {
@@ -448,6 +484,7 @@ export class AgentLoopStateMachine {
     responseText: string,
     loadedToolNames: "all" | string[],
     plannerLedger: AgentActionPlannerLedger,
+    toolTraces: StepTrace[],
     events: AgentDomainEvent[],
   ): AgentLoopTransition {
     const nextState: RunningAgentLoopMachineState = {
@@ -459,6 +496,7 @@ export class AgentLoopStateMachine {
       plannerLedger,
       lastDecisionXml: responseText,
       actionDirective: undefined,
+      stepTraces: [...state.stepTraces, ...toolTraces],
     };
 
     return this.config.maxSteps !== -1 && nextState.step > this.config.maxSteps
