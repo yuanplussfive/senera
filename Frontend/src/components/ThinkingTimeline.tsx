@@ -1,15 +1,4 @@
-import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ReactFlow,
-  ReactFlowProvider,
-  Background,
-  BackgroundVariant,
-  Controls,
-  type Node,
-  type NodeMouseHandler,
-  useReactFlow,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Lightbulb,
   Loader2,
@@ -33,12 +22,15 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
 } from "./ui/DropdownMenu";
-import { StepNode } from "./canvas/StepNode";
-import { layoutSteps, type StepNodeData } from "./canvas/layout";
-import { NodeDetailDrawer } from "./canvas/NodeDetailDrawer";
+import { Dialog, DialogContent } from "./ui/Dialog";
 import { summarizeRun, type RunSummary } from "./workflow/runSummary";
+import { shouldLoadWorkflowCanvas } from "./workflow/canvasLoadPolicy";
 
-const NODE_TYPES = { step: StepNode };
+const LazyThinkingTimelineCanvas = lazy(() =>
+  import("./ThinkingTimelineCanvas").then((module) => ({
+    default: module.ThinkingTimelineCanvas,
+  })),
+);
 
 export function ThinkingTimeline({
   presentation = "auto",
@@ -47,11 +39,7 @@ export function ThinkingTimeline({
   presentation?: "auto" | "panel" | "rail";
   hidePanelTitle?: boolean;
 }): JSX.Element {
-  return (
-    <ReactFlowProvider>
-      <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} />
-    </ReactFlowProvider>
-  );
+  return <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} />;
 }
 
 function ThinkingPanel({
@@ -69,6 +57,7 @@ function ThinkingPanel({
     activeId ? s.viewedRunIdBySession[activeId] : undefined,
   );
   const setViewedRun = useStore((s) => s.setViewedRun);
+  const [focusOpen, setFocusOpen] = useState(false);
 
   const runs = session?.runs ?? [];
   const latestRun = runs[runs.length - 1];
@@ -92,6 +81,11 @@ function ThinkingPanel({
   }, [activeId, viewedRunId, selectedRun, latestRun?.requestId, setViewedRun]);
 
   const isRail = presentation === "rail" || (presentation === "auto" && collapsed);
+
+  const toggleFocus = useCallback(() => {
+    setFocusOpen((value) => !value);
+  }, []);
+
   if (isRail) {
     return (
       <aside className="flex h-full w-[44px] shrink-0 flex-col items-center border-l border-ink-200/60 bg-paper-100/40 py-3">
@@ -116,22 +110,36 @@ function ThinkingPanel({
   }
 
   return (
-    <aside className={cn(
-      "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
-      presentation === "panel" ? "w-full border-l-0" : "w-[460px]",
-    )}>
-      <TopBar
+    <>
+      <aside className={cn(
+        "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
+        presentation === "panel" ? "w-full border-l-0" : "w-[460px]",
+      )}>
+        <TopBar
+          run={run}
+          runs={runs}
+          currentRunId={run?.requestId}
+          pinnedToHistory={isPinnedToHistory}
+          focusOpen={focusOpen}
+          hideTitle={hidePanelTitle}
+          onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
+          onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
+          onToggleFocus={toggleFocus}
+          onCollapse={presentation === "panel" ? undefined : toggleCollapsed}
+        />
+        <CanvasArea run={run} />
+      </aside>
+      <TimelineFocusDialog
+        open={focusOpen}
         run={run}
         runs={runs}
         currentRunId={run?.requestId}
         pinnedToHistory={isPinnedToHistory}
-        hideTitle={hidePanelTitle}
+        onOpenChange={setFocusOpen}
         onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
         onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
-        onCollapse={presentation === "panel" ? undefined : toggleCollapsed}
       />
-      <CanvasArea run={run} />
-    </aside>
+    </>
   );
 }
 
@@ -142,29 +150,26 @@ function TopBar({
   runs,
   currentRunId,
   pinnedToHistory,
+  focusOpen,
   hideTitle,
   onSelect,
   onFollowLatest,
+  onToggleFocus,
   onCollapse,
 }: {
   run?: RunRecord;
   runs: RunRecord[];
   currentRunId?: string;
   pinnedToHistory: boolean;
+  focusOpen: boolean;
   hideTitle?: boolean;
   onSelect: (requestId: string) => void;
   onFollowLatest: () => void;
+  onToggleFocus: () => void;
   onCollapse?: () => void;
 }): JSX.Element {
   const summary = run ? summarizeRun(run) : undefined;
-  const rf = useReactFlow();
-  const fit = (): void => {
-    try {
-      rf.fitView({ padding: 0.16, duration: 240 });
-    } catch {
-      /* ignore */
-    }
-  };
+
   return (
     <>
       <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 bg-paper-100/70 px-3">
@@ -186,36 +191,41 @@ function TopBar({
             <span className="text-[13px] font-medium text-ink-800">思考过程</span>
           </>
         )}
-        <div className="ml-auto flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-400">
-          {run?.status === "running" ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-terra-50 px-1.5 py-0.5 text-terra-600">
-              <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              live
-            </span>
-          ) : null}
-          {run ? (
-            <span>
-              {summary?.completed}/{summary?.total}
-              {summary && summary.failed > 0 ? <span className="ml-1 text-brick-500">·{summary.failed} 失败</span> : null}
-            </span>
-          ) : null}
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          <div className="hidden min-w-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-400 sm:flex">
+            {run?.status === "running" ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-terra-50 px-1.5 py-0.5 text-terra-600">
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                live
+              </span>
+            ) : null}
+            {run ? (
+              <span>
+                {summary?.completed}/{summary?.total}
+                {summary && summary.failed > 0 ? <span className="ml-1 text-brick-500">·{summary.failed} 失败</span> : null}
+              </span>
+            ) : null}
+          </div>
           {pinnedToHistory ? (
+          <div className="flex shrink-0 items-center gap-1 rounded-md border border-ink-200/60 bg-paper-50/80 p-0.5 shadow-[0_1px_0_rgba(28,26,23,0.04)]">
             <button
               type="button"
               onClick={onFollowLatest}
-              className="rounded-full bg-paper-50 px-1.5 py-0.5 text-[10px] text-ink-500 transition hover:bg-paper-200 hover:text-ink-800"
+              className="h-7 rounded px-2 text-[11.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
             >
               跟随最新
             </button>
+          </div>
           ) : null}
-          <Tooltip content="自适应窗口" side="bottom">
+          <Tooltip content="放大查看" side="bottom">
             <button
               type="button"
-              onClick={fit}
-              className="grid h-6 w-6 place-items-center rounded text-ink-400 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
-              aria-label="fit"
+              onClick={onToggleFocus}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+              aria-pressed={focusOpen}
+              aria-label="放大查看"
             >
-              <Maximize2 className="h-3 w-3" />
+              <Maximize2 className="h-4 w-4" />
             </button>
           </Tooltip>
         </div>
@@ -393,76 +403,72 @@ function RunStatusBadge({ status }: { status: RunRecord["status"] }): JSX.Elemen
   );
 }
 
+function TimelineFocusDialog({
+  open,
+  run,
+  runs,
+  currentRunId,
+  pinnedToHistory,
+  onOpenChange,
+  onSelect,
+  onFollowLatest,
+}: {
+  open: boolean;
+  run?: RunRecord;
+  runs: RunRecord[];
+  currentRunId?: string;
+  pinnedToHistory: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (requestId: string) => void;
+  onFollowLatest: () => void;
+}): JSX.Element {
+  const summary = run ? summarizeRun(run) : undefined;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        title="思考过程"
+        description={summary ? `${summary.completed}/${summary.total} 节点 · ${summary.tools} 工具` : undefined}
+        className="t-modal bottom-3 left-3 right-3 top-3 h-auto max-h-none w-auto max-w-none translate-x-0 translate-y-0 rounded-lg sm:bottom-4 sm:left-4 sm:right-4 sm:top-4"
+        bodyClassName="flex min-h-0 flex-1 flex-col bg-paper-100/40"
+      >
+        <div className="min-h-0 flex flex-1 flex-col">
+          {runs.length > 0 ? (
+            <div className="shrink-0 border-b border-ink-200/40 bg-paper-50/70 px-3 py-2 sm:px-4">
+              {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
+              <RunSelector
+                runs={runs}
+                currentRunId={currentRunId}
+                onSelect={onSelect}
+                pinnedToHistory={pinnedToHistory}
+              />
+              {pinnedToHistory ? (
+                <button
+                  type="button"
+                  onClick={onFollowLatest}
+                  className="mt-2 h-8 rounded-md px-2.5 text-[12px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+                >
+                  跟随最新
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <CanvasArea run={run} focusVersion={open ? 1 : 0} />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ---------- 画布 ----------
 
-function CanvasArea({ run }: { run?: RunRecord }): JSX.Element {
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const rf = useReactFlow<Node<StepNodeData>>();
-  const steps = run?.steps ?? [];
-  const selectedStep = useMemo(
-    () => steps.find((step) => step.id === selectedStepId) ?? null,
-    [steps, selectedStepId],
-  );
-
-  const { nodes, edges, translateExtent } = useMemo(() => {
-    const { nodes, edges } = layoutSteps(steps);
-    if (nodes.length === 0) {
-      return {
-        nodes,
-        edges,
-        translateExtent: [
-          [-1000, -1000],
-          [1000, 1000],
-        ] as [[number, number], [number, number]],
-      };
-    }
-    // 计算节点包围盒，加 padding 限制平移范围
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const n of nodes) {
-      minX = Math.min(minX, n.position.x);
-      minY = Math.min(minY, n.position.y);
-      maxX = Math.max(maxX, n.position.x + 240); // node width
-      maxY = Math.max(maxY, n.position.y + 120); // approx node height
-    }
-    const padding = 200;
-    return {
-      nodes,
-      edges,
-      translateExtent: [
-        [minX - padding, minY - padding],
-        [maxX + padding, maxY + padding],
-      ] as [[number, number], [number, number]],
-    };
-  }, [steps]);
-
-  // 新节点加入 / 切 run 时自适应
-  useEffect(() => {
-    if (nodes.length === 0) return;
-    const t = window.setTimeout(() => {
-      try {
-        rf.fitView({ padding: 0.16, duration: 240 });
-      } catch {
-        /* ignore */
-      }
-    }, 60);
-    return () => window.clearTimeout(t);
-  }, [steps.length, run?.requestId, rf]);
-
-  useEffect(() => {
-    if (!selectedStepId) return;
-    if (steps.some((step) => step.id === selectedStepId)) return;
-    setSelectedStepId(null);
-  }, [selectedStepId, steps]);
-
-  const handleNodeClick = useCallback<NodeMouseHandler<Node<StepNodeData>>>(
-    (_, node) => {
-      if (node.id === selectedStepId) return;
-      startTransition(() => setSelectedStepId(node.id));
-    },
-    [selectedStepId],
-  );
-
-  if (!run || steps.length === 0) {
+function CanvasArea({
+  run,
+  focusVersion = 0,
+}: {
+  run?: RunRecord;
+  focusVersion?: number;
+}): JSX.Element {
+  if (!shouldLoadWorkflowCanvas(run)) {
     return (
       <div className="relative flex flex-1 items-center justify-center overflow-hidden">
         <EmptyCanvas />
@@ -471,41 +477,19 @@ function CanvasArea({ run }: { run?: RunRecord }): JSX.Element {
   }
 
   return (
-    <div className="relative flex-1 overflow-hidden">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={NODE_TYPES}
-        onNodeClick={handleNodeClick}
-        fitView
-        fitViewOptions={{ padding: 0.16 }}
-        minZoom={0.4}
-        maxZoom={1.6}
-        translateExtent={translateExtent}
-        proOptions={{ hideAttribution: true }}
-        nodesDraggable
-        nodesConnectable={false}
-        elementsSelectable={false}
-        panOnScroll
-        panOnScrollMode={"free" as never}
-        zoomOnPinch
-        zoomOnScroll={false}
-        selectionOnDrag={false}
-        onInit={(instance) => instance.fitView({ padding: 0.16 })}
-      >
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={18}
-          size={1}
-          color="rgba(28,26,23,0.10)"
-        />
-        <Controls
-          position="bottom-left"
-          showInteractive={false}
-          className={cn("!rounded-md !border !border-ink-200 !bg-paper-50 !shadow-bubble-ai")}
-        />
-      </ReactFlow>
-      <NodeDetailDrawer step={selectedStep} onClose={() => setSelectedStepId(null)} />
+    <Suspense fallback={<CanvasLoading />}>
+      <LazyThinkingTimelineCanvas run={run} focusVersion={focusVersion} />
+    </Suspense>
+  );
+}
+
+function CanvasLoading(): JSX.Element {
+  return (
+    <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+      <div className="inline-flex items-center gap-2 rounded-md border border-ink-200/60 bg-paper-50/80 px-3 py-2 text-[12px] text-ink-500 shadow-bubble-ai">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-terra-500" />
+        加载执行图
+      </div>
     </div>
   );
 }
@@ -525,7 +509,7 @@ function EmptyCanvas(): JSX.Element {
       <div className="mt-3 grid w-full grid-cols-2 gap-1.5 text-left">
         <EmptyHint icon={<ListTree className="h-3 w-3" />} label="节点详情" />
         <EmptyHint icon={<Wrench className="h-3 w-3" />} label="工具链路" />
-        <EmptyHint icon={<Maximize2 className="h-3 w-3" />} label="自适应视图" />
+        <EmptyHint icon={<Maximize2 className="h-3 w-3" />} label="放大查看" />
         <EmptyHint icon={<Clock3 className="h-3 w-3" />} label="耗时统计" />
       </div>
       <p className="mt-3 text-[11px] text-ink-400">

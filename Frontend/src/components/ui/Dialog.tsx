@@ -42,7 +42,7 @@ export const DialogContent = forwardRef<
         // Centered modal with a stable max height.
         "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
         "w-[min(720px,calc(100vw-28px))] max-h-[min(720px,calc(100vh-28px))]",
-        "overflow-hidden rounded-xl border border-ink-200/80 bg-paper-50 shadow-soft",
+        "flex flex-col overflow-hidden rounded-xl border border-ink-200/80 bg-paper-50 shadow-soft",
         "data-[state=open]:animate-dialog-in data-[state=closed]:animate-dialog-out",
         className,
       )}

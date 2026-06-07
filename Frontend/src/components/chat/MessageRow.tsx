@@ -5,13 +5,15 @@ import type { ModelProviderListItem } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { cn, formatTime } from "../../lib/util";
 import { AgentExecutionFeed } from "../AgentExecutionFeed";
-import { MarkdownRenderer } from "../MarkdownRenderer";
+import { LazyMarkdownRenderer } from "../LazyMarkdownRenderer";
 import { ModelProviderIcon } from "../ModelProviderIcon";
 import { Tooltip } from "../ui/Tooltip";
+import { ThinkingSummaryBar } from "./ThinkingSummaryBar";
 import { formatModelProviderName } from "./modelProvider";
 
 interface MessageRowProps {
   message: ChatMessage;
+  run?: RunRecord;
   onClickBubble?: () => void;
   assistantAvatarIcon?: string;
   selectedModelProvider?: ModelProviderListItem;
@@ -23,6 +25,7 @@ interface MessageRowProps {
 
 export function MessageRow({
   message,
+  run,
   onClickBubble,
   assistantAvatarIcon,
   selectedModelProvider,
@@ -58,6 +61,7 @@ export function MessageRow({
             content={message.content}
             placement="right"
             hasRequestId={!!message.requestId}
+            hasWorkflow={!!run}
             onRegenerate={onRegenerate}
             onDelete={onDelete}
             onViewWorkflow={onViewWorkflow}
@@ -85,12 +89,13 @@ export function MessageRow({
           timestamp={message.createdAt}
         />
         <div className="mt-1 min-w-0">
-          <MarkdownRenderer
+          <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} />
+          <LazyMarkdownRenderer
             className="mt-1 min-w-0"
             contentClassName="text-[14.5px] leading-[1.72] text-ink-800"
           >
             {message.content}
-          </MarkdownRenderer>
+          </LazyMarkdownRenderer>
           {message.kind === "AskUser" ? (
             <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-terra-50 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-wider text-terra-600">
               需要你的回复
@@ -101,6 +106,7 @@ export function MessageRow({
           content={message.content}
           placement="left"
           hasRequestId={!!message.requestId}
+          hasWorkflow={!!run}
           onRegenerate={onRegenerate}
           onDelete={onDelete}
           onViewWorkflow={onViewWorkflow}
@@ -139,6 +145,7 @@ function MessageActions({
   content,
   placement,
   hasRequestId,
+  hasWorkflow,
   onRegenerate,
   onDelete,
   onViewWorkflow,
@@ -146,6 +153,7 @@ function MessageActions({
   content: string;
   placement: "left" | "right";
   hasRequestId: boolean;
+  hasWorkflow: boolean;
   onRegenerate: () => void;
   onDelete: () => void;
   onViewWorkflow: () => void;
@@ -171,7 +179,7 @@ function MessageActions({
       <ActionBtn label="复制" onClick={onCopy}>
         {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
       </ActionBtn>
-      {hasRequestId ? (
+      {hasRequestId && hasWorkflow ? (
         <ActionBtn label="查看工作流" onClick={onViewWorkflow}>
           <GitBranch className="h-3.5 w-3.5" />
         </ActionBtn>

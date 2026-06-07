@@ -18,6 +18,14 @@ import {
   type AgentUserProfileInput,
   type AgentUserProfileRepository,
 } from "./AgentUserProfile.js";
+import type { StepTrace } from "./AgentStepTrace.js";
+
+/** 一轮 turn 的 step 轨迹分组——回放时据此重建一个 RunRecord */
+export interface StoredStepTraceRun {
+  requestId: string;
+  turnSequence: number;
+  traces: StepTrace[];
+}
 
 export interface AgentSessionRepository extends AgentUserProfileRepository {
   /** 列出所有会话，最近更新优先 */
@@ -35,6 +43,16 @@ export interface AgentSessionRepository extends AgentUserProfileRepository {
     sessionId: string,
     entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,
   ): void;
+  /** 一整轮 turn 的 entries 与 step 轨迹在同一事务内原子落盘 */
+  persistTurnArtifacts(
+    sessionId: string,
+    entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,
+    traces: ReadonlyArray<{ requestId: string; turnSequence: number; trace: StepTrace }>,
+  ): void;
+  /** 读取某会话所有 step 轨迹，按 (turn_sequence, step, seq) 升序、按 requestId 分组 */
+  loadStepTraces(sessionId: string): StoredStepTraceRun[];
+  /** 删除某 sessionId 中、从指定 requestId 所在轮次开始（含）之后所有 step 轨迹 */
+  deleteStepTracesFrom(sessionId: string, requestId: string): number;
   /** 重命名 */
   renameSession(sessionId: string, title: string): void;
   /** 删除会话（含所有 entries） */
@@ -47,7 +65,7 @@ export interface AgentSessionRepository extends AgentUserProfileRepository {
   close(): void;
 }
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const SCHEMA_DDL = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -79,6 +97,18 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value       TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS step_traces (
+  session_id    TEXT NOT NULL,
+  request_id    TEXT NOT NULL,
+  turn_sequence INTEGER NOT NULL,
+  step          INTEGER NOT NULL,
+  seq           INTEGER NOT NULL,
+  data          TEXT NOT NULL,
+  PRIMARY KEY (session_id, request_id, step, seq),
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_step_traces_session ON step_traces(session_id, turn_sequence, step, seq);
 `;
 
 const USER_PROFILE_SETTING_KEY = "user.profile";
@@ -114,6 +144,14 @@ interface AppSettingRow {
   updated_at: string;
 }
 
+interface StepTraceRow {
+  request_id: string;
+  turn_sequence: number;
+  step: number;
+  seq: number;
+  data: string;
+}
+
 export class SqliteSessionRepository implements AgentSessionRepository {
   private readonly db: Database.Database;
   private readonly deleteFromStmt: Database.Statement;
@@ -129,7 +167,11 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     selectEntries: Database.Statement<[string], EntryRow>;
     selectSetting: Database.Statement<[string], AppSettingRow>;
     upsertSetting: Database.Statement;
+    appendStepTrace: Database.Statement;
+    selectStepTraces: Database.Statement<[string], StepTraceRow>;
   };
+
+  private readonly deleteStepTracesFromStmt: Database.Statement;
 
   constructor(databasePath: string) {
     fs.mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -199,7 +241,27 @@ export class SqliteSessionRepository implements AgentSessionRepository {
           value = excluded.value,
           updated_at = excluded.updated_at
       `),
+      appendStepTrace: this.db.prepare(`
+        INSERT OR IGNORE INTO step_traces
+          (session_id, request_id, turn_sequence, step, seq, data)
+        VALUES (@session_id, @request_id, @turn_sequence, @step, @seq, @data)
+      `),
+      selectStepTraces: this.db.prepare<[string], StepTraceRow>(`
+        SELECT request_id, turn_sequence, step, seq, data
+        FROM step_traces
+        WHERE session_id = ?
+        ORDER BY turn_sequence ASC, step ASC, seq ASC
+      `),
     };
+
+    this.deleteStepTracesFromStmt = this.db.prepare(`
+      DELETE FROM step_traces
+      WHERE session_id = ?
+        AND turn_sequence >= (
+          SELECT MIN(sequence) FROM conversation_entries
+          WHERE session_id = ? AND request_id = ?
+        )
+    `);
 
     this.deleteFromStmt = this.db.prepare(`
       DELETE FROM conversation_entries
@@ -273,6 +335,49 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     insert(entries);
   }
 
+  persistTurnArtifacts(
+    sessionId: string,
+    entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,
+    traces: ReadonlyArray<{ requestId: string; turnSequence: number; trace: StepTrace }>,
+  ): void {
+    if (entries.length === 0 && traces.length === 0) return;
+    const persist = this.db.transaction(() => {
+      for (const { entry, sequence } of entries) {
+        this.stmts.appendEntry.run(this.entryToRow(sessionId, entry, sequence));
+      }
+      for (const { requestId, turnSequence, trace } of traces) {
+        this.stmts.appendStepTrace.run({
+          session_id: sessionId,
+          request_id: requestId,
+          turn_sequence: turnSequence,
+          step: trace.step,
+          seq: trace.seq,
+          data: JSON.stringify(trace),
+        });
+      }
+    });
+    persist();
+  }
+
+  loadStepTraces(sessionId: string): StoredStepTraceRun[] {
+    const rows = this.stmts.selectStepTraces.all(sessionId);
+    const byRequest = new Map<string, StoredStepTraceRun>();
+    for (const row of rows) {
+      let run = byRequest.get(row.request_id);
+      if (!run) {
+        run = { requestId: row.request_id, turnSequence: row.turn_sequence, traces: [] };
+        byRequest.set(row.request_id, run);
+      }
+      run.traces.push(JSON.parse(row.data) as StepTrace);
+    }
+    return Array.from(byRequest.values()).sort((a, b) => a.turnSequence - b.turnSequence);
+  }
+
+  deleteStepTracesFrom(sessionId: string, requestId: string): number {
+    const info = this.deleteStepTracesFromStmt.run(sessionId, sessionId, requestId);
+    return info.changes;
+  }
+
   renameSession(sessionId: string, title: string): void {
     this.stmts.renameSession.run(title, new Date().toISOString(), sessionId);
   }
@@ -319,7 +424,8 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   private runMigrations(): void {
     const row = this.db.pragma("user_version", { simple: true }) as number;
     if (row >= SCHEMA_VERSION) return;
-    // 当前只有 v1。将来加 migration 写在这里。
+    // v1 → v2: 新增 step_traces 表。建表 DDL 已在 SCHEMA_DDL 中以 IF NOT EXISTS
+    // 无条件执行，存量库启动即补建；这里只推进版本号。
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
 
@@ -448,6 +554,10 @@ function parseEntryMetadata(
 export class InMemorySessionRepository implements AgentSessionRepository {
   private readonly sessions = new Map<string, AgentSession>();
   private readonly entries = new Map<string, AgentConversationEntry[]>();
+  private readonly stepTraces = new Map<
+    string,
+    Array<{ requestId: string; turnSequence: number; trace: StepTrace }>
+  >();
   private userProfile = createDefaultAgentUserProfile();
 
   listSessions(): Array<AgentSession & { entryCount: number; messageCount: number }> {
@@ -503,6 +613,50 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     for (const { entry } of entries) this.appendEntry(sessionId, entry);
   }
 
+  persistTurnArtifacts(
+    sessionId: string,
+    entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,
+    traces: ReadonlyArray<{ requestId: string; turnSequence: number; trace: StepTrace }>,
+  ): void {
+    for (const { entry } of entries) this.appendEntry(sessionId, entry);
+    if (traces.length > 0) {
+      const list = this.stepTraces.get(sessionId) ?? [];
+      list.push(...traces);
+      this.stepTraces.set(sessionId, list);
+    }
+  }
+
+  loadStepTraces(sessionId: string): StoredStepTraceRun[] {
+    const list = this.stepTraces.get(sessionId) ?? [];
+    const byRequest = new Map<string, StoredStepTraceRun>();
+    for (const { requestId, turnSequence, trace } of list) {
+      let run = byRequest.get(requestId);
+      if (!run) {
+        run = { requestId, turnSequence, traces: [] };
+        byRequest.set(requestId, run);
+      }
+      run.traces.push(trace);
+    }
+    return Array.from(byRequest.values())
+      .map((run) => ({
+        ...run,
+        traces: [...run.traces].sort((a, b) => a.step - b.step || a.seq - b.seq),
+      }))
+      .sort((a, b) => a.turnSequence - b.turnSequence);
+  }
+
+  deleteStepTracesFrom(sessionId: string, requestId: string): number {
+    const list = this.stepTraces.get(sessionId);
+    if (!list) return 0;
+    const entries = this.entries.get(sessionId) ?? [];
+    const anchorSequence = entries.findIndex((entry) => entry.requestId === requestId);
+    if (anchorSequence < 0) return 0;
+    const kept = list.filter((item) => item.turnSequence < anchorSequence);
+    const removed = list.length - kept.length;
+    this.stepTraces.set(sessionId, kept);
+    return removed;
+  }
+
   renameSession(_sessionId: string, _title: string): void {
     // 内存仓储不存 title，靠 session.metadata 之类未来扩展
   }
@@ -510,6 +664,7 @@ export class InMemorySessionRepository implements AgentSessionRepository {
   deleteSession(sessionId: string): boolean {
     const had = this.sessions.delete(sessionId);
     this.entries.delete(sessionId);
+    this.stepTraces.delete(sessionId);
     return had;
   }
 
