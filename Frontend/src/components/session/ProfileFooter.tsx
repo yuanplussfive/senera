@@ -36,7 +36,7 @@ export function UserFooter({
     socketStatus === "open"
       ? "bg-moss-500"
       : socketStatus === "connecting" || socketStatus === "idle"
-        ? "bg-terra-400 animate-pulse"
+        ? "bg-umber-500 motion-safe:animate-pulse"
         : "bg-brick-500";
 
   return (

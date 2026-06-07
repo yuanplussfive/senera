@@ -15,6 +15,7 @@ import {
   normalizeUserProfile,
   type UserProfile,
 } from "./session/userProfile";
+import type { MotionLevel } from "../shared/motion";
 import {
   type ConversationEntryDto,
   type ConversationEntryMetadata,
@@ -132,6 +133,7 @@ export interface StoreState {
   activeSessionId: string | null;
   sidebarCollapsed: boolean;
   rightPanelCollapsed: boolean;
+  motionLevel: MotionLevel;
   /** 每个 session 当前在右栏查看的 run requestId；不存在则用最新 run */
   viewedRunIdBySession: Record<string, string>;
   /** 已从后端拉取过历史的 sessionId 集合（避免重复拉） */
@@ -159,6 +161,7 @@ export interface StoreState {
   toggleRightPanel: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
+  setMotionLevel: (level: MotionLevel) => void;
   setViewedRun: (sessionId: string, requestId: string | undefined) => void;
   registerCreatingSession: (sessionId: string, title?: string) => void;
   renameSession: (sessionId: string, title: string) => void;
@@ -171,6 +174,7 @@ export interface StoreState {
   selectModelProvider: (id: string) => void;
   setUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   markUserProfileSynced: (profile?: UserProfileData) => void;
+  replaceWithDevMockData: (sessions: SessionRecord[], activeSessionId?: string) => void;
 }
 
 // =========================
@@ -191,6 +195,7 @@ export const useStore = create<StoreState>()(
       activeSessionId: null,
       sidebarCollapsed: false,
       rightPanelCollapsed: false,
+      motionLevel: "full",
       viewedRunIdBySession: {},
       historyLoadedIds: {},
       historyLoadingIds: {},
@@ -227,6 +232,11 @@ export const useStore = create<StoreState>()(
     setRightPanelCollapsed: (collapsed) =>
       set((state) => {
         state.rightPanelCollapsed = collapsed;
+      }),
+
+    setMotionLevel: (level) =>
+      set((state) => {
+        state.motionLevel = level;
       }),
 
     setViewedRun: (sessionId, requestId) =>
@@ -336,6 +346,30 @@ export const useStore = create<StoreState>()(
           ...snapshot,
           syncState: "synced",
         };
+      }),
+
+    replaceWithDevMockData: (mockSessions, activeSessionId) =>
+      set((state) => {
+        if (!import.meta.env.DEV) return;
+        state.sessions = {};
+        state.sessionOrder = [];
+        state.viewedRunIdBySession = {};
+        state.historyLoadedIds = {};
+        state.historyLoadingIds = {};
+        state.historyFailedIds = {};
+        state.historyReplayBuffers = {};
+        state.historyStepBuffers = {};
+        state.missingOnServerIds = {};
+        state.pendingCreatedSessionIds = {};
+        state.pendingDeletedSessionIds = {};
+        for (const session of mockSessions) {
+          state.sessions[session.sessionId] = session;
+          state.sessionOrder.push(session.sessionId);
+          state.historyLoadedIds[session.sessionId] = true;
+        }
+        state.activeSessionId = activeSessionId && state.sessions[activeSessionId]
+          ? activeSessionId
+          : state.sessionOrder[0] ?? null;
       }),
 
     appendUserMessage: (sessionId, requestId, input) =>

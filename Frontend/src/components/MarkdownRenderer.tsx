@@ -24,7 +24,7 @@ import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import { cn } from "../lib/util";
 import { readCodeArtifact, type CodeArtifact } from "./CodeArtifactModel";
-import { CodeArtifactSourceView } from "./CodeArtifactSourceView";
+import { CollapsibleCodeBlock } from "./CollapsibleCodeBlock";
 import { Tooltip } from "./ui/Tooltip";
 
 const DEFAULT_CODE_PREVIEW_LINES = 10;
@@ -178,10 +178,11 @@ function PreviewCodeBlock({
           onCopy={onCopy}
         />
       </figcaption>
-      <CodeArtifactSourceView
+      <CollapsibleCodeBlock
         code={artifact.code}
         language={artifact.language}
-        maxVisibleLines={DEFAULT_CODE_PREVIEW_LINES}
+        lineCount={artifact.lineCount}
+        previewLines={DEFAULT_CODE_PREVIEW_LINES}
         className="markdown-renderer__artifact-source"
       />
       <button
@@ -212,8 +213,8 @@ function PreviewCodeBlock({
 function CodeArtifactViewerLoading(): JSX.Element {
   return (
     <div className="code-artifact-viewer__loading" role="status" aria-live="polite">
-      <div className="h-2 w-24 rounded bg-ink-900/10" />
-      <div className="h-2 w-40 rounded bg-ink-900/10" />
+      <div className="h-2 w-24 rounded bg-ink-700/30" />
+      <div className="h-2 w-40 rounded bg-ink-700/30" />
     </div>
   );
 }

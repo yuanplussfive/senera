@@ -122,7 +122,7 @@ export function layoutSteps(steps: TimelineStep[]): {
 
 function edgeStyle(status: TimelineStep["status"]): React.CSSProperties {
   if (status === "failed") return { stroke: "#a8392a", strokeWidth: 1.5 };
-  if (status === "running") return { stroke: "#b3441f", strokeWidth: 1.5 };
+  if (status === "running") return { stroke: "#8a6a3f", strokeWidth: 1.5 };
   return { stroke: "#bdb7a4", strokeWidth: 1 };
 }
 

@@ -41,7 +41,7 @@ export function ChatComposer({
 
   const hint = useMemo(() => {
     if (running) return "正在思考——可按 Esc 中断";
-    if (socketStatus === "open") return "向 senera 发个问题…";
+    if (socketStatus === "open") return "跟 senera 说点什么";
     if (socketStatus === "connecting" || socketStatus === "idle") return "正在连接后端…";
     return "后端未连接，请检查服务";
   }, [socketStatus, running]);
@@ -121,7 +121,7 @@ export function ChatComposer({
                 onClick={onCancel}
                 variant="destructive"
                 size="icon"
-                className="h-9 w-9 rounded-xl"
+                className="h-9 w-9 rounded-xl transition-transform hover:scale-105 active:scale-95"
                 aria-label="cancel"
               >
                 <Square className="h-3.5 w-3.5 fill-current" />

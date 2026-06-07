@@ -35,3 +35,21 @@ export const preferenceSections = [
 ] as const;
 
 export type LayoutPreferenceId = (typeof preferenceSections)[number]["items"][number]["id"];
+
+export const motionLevelOptions = [
+  {
+    id: "full",
+    title: "完整",
+    description: "结构变化、列表插入和轻触反馈都启用。",
+  },
+  {
+    id: "reduced",
+    title: "轻量",
+    description: "保留淡入淡出，关闭位移和缩放。",
+  },
+  {
+    id: "none",
+    title: "关闭",
+    description: "关闭 Motion 和 CSS 动画。",
+  },
+] as const;

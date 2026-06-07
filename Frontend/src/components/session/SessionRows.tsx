@@ -1,6 +1,8 @@
 import { ChevronDown, MessageSquare, PencilLine, SquarePen, Trash2 } from "lucide-react";
+import { motion } from "framer-motion";
 import { useState } from "react";
 import { cn } from "../../lib/util";
+import { motionTimings, readTapScale, useMotionLevel } from "../../shared/motion";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -21,6 +23,7 @@ import type { SessionAction } from "./types";
 
 interface SessionRowProps {
   active: boolean;
+  sessionId: string;
   title: string;
   subtitle: string;
   accent: "idle" | "running" | "failed";
@@ -31,6 +34,7 @@ interface SessionRowProps {
 
 export function SessionRow({
   active,
+  sessionId,
   title,
   subtitle,
   accent,
@@ -39,6 +43,8 @@ export function SessionRow({
   onClose,
 }: SessionRowProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { reduceMotion, disableMotion } = useMotionLevel();
+  const tapScale = readTapScale(disableMotion || reduceMotion ? "reduced" : "full");
   const actions: SessionAction[] = [
     {
       id: "rename",
@@ -58,35 +64,46 @@ export function SessionRow({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div
+        <motion.div
+          data-session-row={sessionId}
           onClick={onClick}
+          whileTap={tapScale ? { scale: tapScale } : undefined}
+          transition={motionTimings.fast}
           className={cn(
-            "group relative mt-0.5 grid cursor-pointer grid-cols-[24px_minmax(0,1fr)_28px] items-start gap-2 rounded-lg px-2.5 py-2 transition",
+            "group relative isolate mt-0.5 grid w-full cursor-pointer grid-cols-[24px_minmax(0,1fr)_28px] items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
             "data-[state=open]:bg-ink-900/[0.055]",
             active
-              ? "bg-ink-900/[0.055] text-ink-900"
+              ? "text-ink-900"
               : "text-ink-700 hover:bg-ink-900/[0.03]",
           )}
         >
-          <div className="mt-0.5 grid h-5 w-5 place-items-center">
+          {active ? (
+            <motion.span
+              key={sessionId}
+              layoutId="active-session-indicator"
+              className="pointer-events-none absolute inset-0 z-0 rounded-lg bg-ink-900/[0.055]"
+              transition={reduceMotion || disableMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 42 }}
+            />
+          ) : null}
+          <div className="relative z-10 mt-0.5 grid h-5 w-5 place-items-center">
             {accent === "running" ? (
-              <span className="block h-1.5 w-1.5 rounded-full bg-terra-500 shadow-[0_0_0_4px_rgba(179,68,31,0.18)]" />
+              <span className="block h-1.5 w-1.5 rounded-full bg-umber-500 motion-safe:animate-pulse" />
             ) : accent === "failed" ? (
               <span className="block h-1.5 w-1.5 rounded-full bg-brick-500" />
             ) : (
               <MessageSquare className="h-3.5 w-3.5 text-ink-500" />
             )}
           </div>
-          <div className="min-w-0 overflow-hidden pr-1">
+          <div className="relative z-10 min-w-0 overflow-hidden pr-1">
             <div className="flex min-w-0 items-center gap-1">
               <span
                 title={title}
-                className="block min-w-0 max-w-full truncate text-[13px] font-medium leading-tight"
+                className="block min-w-0 max-w-full truncate text-[13px] font-medium leading-tight cursor-[inherit] select-none"
               >
                 {title}
               </span>
             </div>
-            <div className="mt-0.5 truncate font-mono text-[10.5px] text-ink-400">
+            <div className="mt-0.5 truncate font-mono text-[10.5px] text-ink-400 cursor-[inherit] select-none">
               {subtitle}
             </div>
           </div>
@@ -109,7 +126,7 @@ export function SessionRow({
               <DropdownSessionActions actions={actions} />
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
+        </motion.div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-[196px]">
         <ContextMenuLabel>会话操作</ContextMenuLabel>

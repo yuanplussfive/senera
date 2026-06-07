@@ -1,8 +1,9 @@
-import { CircleAlert } from "lucide-react";
+import { Check, CircleAlert } from "lucide-react";
 import { cn } from "../../lib/util";
 import { Dialog, DialogClose, DialogContent } from "../ui/Dialog";
+import type { MotionLevel } from "../../shared/motion";
 import type { ConfirmationIntent, LayoutPreferenceId } from "./types";
-import { preferenceSections } from "./types";
+import { motionLevelOptions, preferenceSections } from "./types";
 
 export function RenameDialog({
   open,
@@ -120,12 +121,16 @@ export function ConfirmationDialog({
 export function PreferencesDialog({
   open,
   values,
+  motionLevel,
   onValueChange,
+  onMotionLevelChange,
   onOpenChange,
 }: {
   open: boolean;
   values: Record<LayoutPreferenceId, boolean>;
+  motionLevel: MotionLevel;
   onValueChange: (id: LayoutPreferenceId, value: boolean) => void;
+  onMotionLevelChange: (level: MotionLevel) => void;
   onOpenChange: (open: boolean) => void;
 }): JSX.Element {
   return (
@@ -156,9 +161,56 @@ export function PreferencesDialog({
               </div>
             </section>
           ))}
+          <section>
+            <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-ink-400">
+              动画
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 rounded-lg border border-ink-200/70 bg-paper-50 p-1">
+              {motionLevelOptions.map((option) => (
+                <MotionLevelOption
+                  key={option.id}
+                  title={option.title}
+                  description={option.description}
+                  selected={motionLevel === option.id}
+                  onSelect={() => onMotionLevelChange(option.id)}
+                />
+              ))}
+            </div>
+          </section>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function MotionLevelOption({
+  title,
+  description,
+  selected,
+  onSelect,
+}: {
+  title: string;
+  description: string;
+  selected: boolean;
+  onSelect: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "flex min-w-0 flex-col rounded-md border px-2.5 py-2 text-left transition",
+        "hover:border-ink-300 hover:bg-ink-900/[0.035]",
+        selected ? "border-ink-900 bg-ink-900/[0.04]" : "border-transparent",
+      )}
+      aria-pressed={selected}
+    >
+      <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink-900">
+        {title}
+        {selected ? <Check className="h-3.5 w-3.5 text-terra-500" /> : null}
+      </span>
+      <span className="mt-1 text-[11px] leading-4 text-ink-500">{description}</span>
+    </button>
   );
 }
 

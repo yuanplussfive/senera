@@ -8,6 +8,13 @@ import { cn, formatTime, formatDuration } from "../../lib/util";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { Tooltip } from "../ui/Tooltip";
 import { DataView } from "./DataView";
+import {
+  motionSprings,
+  motionTimings,
+  readDrawerVariants,
+  readOverlayVariants,
+  useMotionLevel,
+} from "../../shared/motion";
 
 interface Props {
   step: TimelineStep | null;
@@ -16,6 +23,8 @@ interface Props {
 
 export function NodeDetailDrawer({ step, onClose }: Props): JSX.Element {
   const [contentReady, setContentReady] = useState(false);
+  const { level, reduceMotion, disableMotion } = useMotionLevel();
+  const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -37,18 +46,20 @@ export function NodeDetailDrawer({ step, onClose }: Props): JSX.Element {
       {step ? (
         <>
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12, ease: "easeOut" }}
+            variants={readOverlayVariants(effectiveLevel)}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+            transition={disableMotion ? { duration: 0 } : motionTimings.fast}
             onClick={onClose}
             className="fixed inset-0 z-40 bg-ink-900/10"
           />
           <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            variants={readDrawerVariants(effectiveLevel, "right")}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+            transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.drawer}
             className="fixed right-0 top-0 z-50 flex h-full w-[min(560px,90vw)] flex-col border-l border-ink-200 bg-paper-50 shadow-soft will-change-transform"
           >
             <Header step={step} onClose={onClose} />
@@ -132,14 +143,14 @@ const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
 
       {step.toolErrorMessage ? (
         <Section label="错误">
-          <div className="rounded-md border border-brick-100 bg-brick-50/70 px-3 py-2 text-[13px] text-brick-600">
+          <div className="rounded-md border border-brick-200/70 bg-brick-50/50 px-3 py-2 text-[13px] text-brick-600">
             {step.toolErrorMessage}
           </div>
         </Section>
       ) : null}
       {step.errorMessage && step.errorMessage !== step.toolErrorMessage ? (
         <Section label="错误">
-          <div className="rounded-md border border-brick-100 bg-brick-50/70 px-3 py-2 text-[13px] text-brick-600">
+          <div className="rounded-md border border-brick-200/70 bg-brick-50/50 px-3 py-2 text-[13px] text-brick-600">
             {step.errorMessage}
           </div>
         </Section>
@@ -246,11 +257,11 @@ function statusTone(s: TimelineStep["status"]): "default" | "warn" | "ok" | "liv
 function toneClass(tone: "default" | "warn" | "ok" | "live" | undefined): string {
   switch (tone) {
     case "warn":
-      return "border-brick-100 bg-brick-50/60";
+      return "border-brick-200/70 bg-brick-50/50";
     case "ok":
       return "border-moss-100/60 bg-moss-50/60";
     case "live":
-      return "border-terra-200 bg-terra-50";
+      return "border-umber-200/60 bg-umber-50";
     default:
       return "border-ink-200/60 bg-paper-100/60";
   }

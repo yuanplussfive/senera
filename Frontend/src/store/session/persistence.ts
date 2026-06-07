@@ -1,23 +1,25 @@
 import { createJSONStorage, type PersistOptions } from "zustand/middleware";
 import type { StoreState } from "./types";
 import { normalizeUserProfile } from "./userProfile";
+import type { MotionLevel } from "../../shared/motion";
 
 export const PERSIST_KEY = "senera-frontend@v1";
 
 type PersistedSessionState = Partial<Pick<
   StoreState,
-  "rightPanelCollapsed" | "selectedModelProviderId" | "sidebarCollapsed" | "userProfile"
+  "motionLevel" | "rightPanelCollapsed" | "selectedModelProviderId" | "sidebarCollapsed" | "userProfile"
 >>;
 
 export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionState> = {
   name: PERSIST_KEY,
-  version: 3,
+  version: 4,
   storage: createJSONStorage(() => localStorage),
   // 后端是 SSOT；前端只缓存 UI 偏好 + 会话元数据（标题/时间）。
   // messages 不持久化 —— 后端 session.history 会权威回放。
   partialize: (state) => ({
     sidebarCollapsed: state.sidebarCollapsed,
     rightPanelCollapsed: state.rightPanelCollapsed,
+    motionLevel: state.motionLevel,
     selectedModelProviderId: state.selectedModelProviderId,
     userProfile: state.userProfile,
   }),
@@ -30,9 +32,13 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       p.viewedRunIdBySession = (p.viewedRunIdBySession as Record<string, string>) ?? {};
       p.rightPanelCollapsed = (p.rightPanelCollapsed as boolean) ?? false;
     }
+    if (fromVersion < 4) {
+      p.motionLevel = "full";
+    }
     return {
       sidebarCollapsed: p.sidebarCollapsed,
       rightPanelCollapsed: p.rightPanelCollapsed,
+      motionLevel: readPersistedMotionLevel(p.motionLevel),
       selectedModelProviderId: p.selectedModelProviderId,
       userProfile: p.userProfile,
     };
@@ -44,6 +50,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       ...current,
       sidebarCollapsed: p.sidebarCollapsed ?? false,
       rightPanelCollapsed: p.rightPanelCollapsed ?? false,
+      motionLevel: readPersistedMotionLevel(p.motionLevel),
       selectedModelProviderId: p.selectedModelProviderId ?? null,
       userProfile: normalizeUserProfile(p.userProfile),
       modelProviders: [],
@@ -63,6 +70,10 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     };
   },
 };
+
+function readPersistedMotionLevel(value: unknown): MotionLevel {
+  return value === "reduced" || value === "none" || value === "full" ? value : "full";
+}
 
 export function clearPersistedStore(): void {
   try {

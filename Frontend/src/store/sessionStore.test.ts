@@ -30,6 +30,9 @@ function resetStore(): void {
     sessions: {},
     sessionOrder: [],
     activeSessionId: null,
+    sidebarCollapsed: false,
+    rightPanelCollapsed: false,
+    motionLevel: "full",
     viewedRunIdBySession: {},
     historyLoadedIds: {},
     historyLoadingIds: {},
@@ -636,6 +639,7 @@ describe("session persistence migration", () => {
     const migrated = migrate?.({
       sidebarCollapsed: true,
       rightPanelCollapsed: true,
+      motionLevel: "none",
       selectedModelProviderId: "provider-1",
       userProfile: {
         name: "Ada",
@@ -653,12 +657,46 @@ describe("session persistence migration", () => {
     expect(migrated).toEqual({
       sidebarCollapsed: true,
       rightPanelCollapsed: true,
+      motionLevel: "full",
       selectedModelProviderId: "provider-1",
       userProfile: {
         name: "Ada",
         avatarDataUrl: null,
         updatedAt: "2026-05-29T08:00:00.000Z",
       },
+    });
+  });
+
+  it("keeps persisted motion level when migrating current preferences", () => {
+    const migrate = sessionPersistOptions.migrate;
+    expect(migrate).toBeDefined();
+
+    const migrated = migrate?.({
+      sidebarCollapsed: false,
+      rightPanelCollapsed: true,
+      motionLevel: "reduced",
+      selectedModelProviderId: null,
+      userProfile: DEFAULT_USER_PROFILE,
+      sessions: { discarded: {} },
+    }, 4);
+
+    expect(migrated).toMatchObject({
+      sidebarCollapsed: false,
+      rightPanelCollapsed: true,
+      motionLevel: "reduced",
+    });
+  });
+
+  it("falls back to full motion when persisted motion level is invalid", () => {
+    const migrate = sessionPersistOptions.migrate;
+    expect(migrate).toBeDefined();
+
+    const migrated = migrate?.({
+      motionLevel: "cinematic",
+    }, 4);
+
+    expect(migrated).toMatchObject({
+      motionLevel: "full",
     });
   });
 });

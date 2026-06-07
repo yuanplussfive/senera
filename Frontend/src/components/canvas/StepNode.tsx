@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
   Globe,
@@ -14,6 +15,11 @@ import {
 } from "lucide-react";
 import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
 import { cn, formatDuration } from "../../lib/util";
+import {
+  motionTimings,
+  useMotionLevel,
+  type MotionLevel,
+} from "../../shared/motion";
 
 const KindIcon: Record<TimelineStepKind, React.ComponentType<{ className?: string }>> = {
   understand: MessageSquareText,
@@ -31,6 +37,8 @@ function StepNodeBase({ data, selected }: NodeProps): JSX.Element {
   const Icon = KindIcon[step.kind];
 
   const accent = colorOf(step);
+  const { level, reduceMotion, disableMotion } = useMotionLevel();
+  const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
 
   return (
     <div
@@ -56,20 +64,20 @@ function StepNodeBase({ data, selected }: NodeProps): JSX.Element {
             accent.iconBg,
           )}
         >
-          {step.status === "running" ? (
-            <Loader2 className={cn("h-3 w-3 animate-spin", accent.iconFg)} />
-          ) : step.status === "failed" || step.kind === "error" ? (
-            <X className={cn("h-3 w-3", accent.iconFg)} />
-          ) : (
-            <Icon className={cn("h-3 w-3", accent.iconFg)} />
-          )}
+          <StatusIcon
+            status={step.status}
+            kind={step.kind}
+            icon={Icon}
+            className={accent.iconFg}
+            motionLevel={effectiveLevel}
+          />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="truncate text-[12.5px] font-medium text-ink-900">
               {step.title}
             </span>
-            <StatusDot status={step.status} />
+            <StatusDot status={step.status} motionLevel={effectiveLevel} />
           </div>
           {step.description ? (
             <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-ink-500">
@@ -93,21 +101,13 @@ function StepNodeBase({ data, selected }: NodeProps): JSX.Element {
 
       {/* 错误一笔带过——细节看抽屉 */}
       {step.toolErrorMessage || step.errorMessage ? (
-        <div className="mt-1.5 line-clamp-2 rounded-md border border-brick-100 bg-brick-50/60 px-2 py-1 text-[10.5px] text-brick-600">
+        <div className="mt-1.5 line-clamp-2 rounded-md border border-brick-200/70 bg-brick-50/50 px-2 py-1 text-[10.5px] text-brick-600">
           {step.toolErrorMessage || step.errorMessage}
         </div>
       ) : null}
 
       {/* 底部：时长 */}
-      {step.endedAt ? (
-        <div className="mt-1.5 text-right font-mono text-[10px] text-ink-400">
-          {formatDuration(step.startedAt, step.endedAt)}
-        </div>
-      ) : step.status === "running" ? (
-        <div className="mt-1.5 text-right font-mono text-[10px] text-terra-500">
-          live · 进行中
-        </div>
-      ) : null}
+      <StatusFooter step={step} motionLevel={effectiveLevel} />
 
       {/* 底部 handle 接后继 */}
       <Handle
@@ -121,19 +121,104 @@ function StepNodeBase({ data, selected }: NodeProps): JSX.Element {
 
 export const StepNode = memo(StepNodeBase);
 
-function StatusDot({ status }: { status: TimelineStep["status"] }): JSX.Element | null {
-  if (status === "running") {
-    return (
-      <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-terra-500 shadow-[0_0_0_3px_rgba(179,68,31,0.18)]" />
-    );
-  }
-  if (status === "done") {
-    return <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-moss-500" />;
-  }
-  if (status === "failed") {
-    return <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-brick-500" />;
-  }
-  return <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-ink-300" />;
+function StatusIcon({
+  status,
+  kind,
+  icon: Icon,
+  className,
+  motionLevel,
+}: {
+  status: TimelineStep["status"];
+  kind: TimelineStep["kind"];
+  icon: React.ComponentType<{ className?: string }>;
+  className: string;
+  motionLevel: MotionLevel;
+}): JSX.Element {
+  const iconKey = status === "failed" || kind === "error" ? "failed" : status;
+  const transition = motionLevel === "none" ? { duration: 0 } : motionTimings.fast;
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.span
+        key={iconKey}
+        initial={{ opacity: motionLevel === "none" ? 1 : 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: motionLevel === "none" ? 1 : 0 }}
+        transition={transition}
+        className="grid h-3 w-3 place-items-center"
+      >
+        {status === "running" ? (
+          <Loader2 className={cn("h-3 w-3 animate-spin", className)} />
+        ) : status === "failed" || kind === "error" ? (
+          <X className={cn("h-3 w-3", className)} />
+        ) : (
+          <Icon className={cn("h-3 w-3", className)} />
+        )}
+      </motion.span>
+    </AnimatePresence>
+  );
+}
+
+function StatusDot({
+  status,
+  motionLevel,
+}: {
+  status: TimelineStep["status"];
+  motionLevel: MotionLevel;
+}): JSX.Element | null {
+  const transition = motionLevel === "none" ? { duration: 0 } : motionTimings.fast;
+  const color =
+    status === "running"
+      ? "bg-umber-500 motion-safe:animate-pulse"
+      : status === "done"
+        ? "bg-moss-500"
+        : status === "failed"
+          ? "bg-brick-500"
+          : "bg-ink-300";
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.span
+        key={status}
+        initial={{ opacity: motionLevel === "none" ? 1 : 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: motionLevel === "none" ? 1 : 0 }}
+        transition={transition}
+        className={cn("inline-flex h-1.5 w-1.5 shrink-0 rounded-full", color)}
+      />
+    </AnimatePresence>
+  );
+}
+
+function StatusFooter({
+  step,
+  motionLevel,
+}: {
+  step: TimelineStep;
+  motionLevel: MotionLevel;
+}): JSX.Element | null {
+  const label = step.endedAt
+    ? formatDuration(step.startedAt, step.endedAt)
+    : step.status === "running"
+      ? "live · 进行中"
+      : null;
+  if (!label) return null;
+  const transition = motionLevel === "none" ? { duration: 0 } : motionTimings.fast;
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={step.status === "running" ? "running" : step.endedAt ?? "ended"}
+        initial={{ opacity: motionLevel === "none" ? 1 : 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: motionLevel === "none" ? 1 : 0 }}
+        transition={transition}
+        className={cn(
+          "mt-1.5 text-right font-mono text-[10px]",
+          step.status === "running" ? "text-umber-600" : "text-ink-400",
+        )}
+      >
+        {label}
+      </motion.div>
+    </AnimatePresence>
+  );
 }
 
 interface NodeAccent {
@@ -152,9 +237,9 @@ function colorOf(step: TimelineStep): NodeAccent {
   }
   if (step.status === "running") {
     return {
-      border: "border-terra-200",
-      iconBg: "bg-terra-50",
-      iconFg: "text-terra-500",
+      border: "border-umber-200/60",
+      iconBg: "bg-umber-50",
+      iconFg: "text-umber-500",
     };
   }
   switch (step.kind) {

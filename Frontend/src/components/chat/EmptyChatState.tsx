@@ -14,7 +14,7 @@ export function EmptyChatState({
         今天想做点什么？
       </h2>
       <p className="mt-1 text-[13.5px] text-ink-500">
-        senera 用行动决策协议处理你的请求；右栏会展示完整的思考、决策与工具链路。
+        senera 用行动决策协议帮你完成工作
       </p>
       {suggestions.length > 0 ? (
         <div className="mt-7 flex flex-wrap items-center justify-center gap-2">

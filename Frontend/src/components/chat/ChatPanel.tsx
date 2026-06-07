@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import type { ModelProviderListItem } from "../../api/eventTypes";
 import { useStore, type ChatMessage, type UserProfile, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
 import { ChatComposer } from "./ChatComposer";
@@ -7,6 +8,7 @@ import { EmptyChatState } from "./EmptyChatState";
 import { HistoryRecoveryState } from "./HistoryRecoveryState";
 import { MessageList } from "./MessageList";
 import { readSelectedModelProvider } from "./modelProvider";
+import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
 
 interface Props {
   modelProviders: ModelProviderListItem[];
@@ -45,6 +47,8 @@ export function ChatPanel({
   const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
   const historyLoading = useStore((s) => (activeId ? !!s.historyLoadingIds[activeId] : false));
   const historyFailed = useStore((s) => (activeId ? !!s.historyFailedIds[activeId] : false));
+  const { level, reduceMotion, disableMotion } = useMotionLevel();
+  const effectiveMotionLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
 
   const messages = session?.messages ?? [];
   const currentRun = session?.runs[session.runs.length - 1];
@@ -73,34 +77,42 @@ export function ChatPanel({
         onOpenSessionPanel={onOpenSessionPanel}
         onOpenWorkflowPanel={onOpenWorkflowPanel}
       />
-      {shouldShowHistoryRecovery ? (
-        <HistoryRecoveryState
-          failed={historyFailed}
-          messageCount={session.messageCount}
-          onRetry={activeId && onRetryHistory ? () => onRetryHistory(activeId) : undefined}
-          retryDisabled={socketStatus !== "open"}
-        />
-      ) : messages.length === 0 && !isRunning ? (
-        <div className="flex flex-1 items-center justify-center px-6">
-          <EmptyChatState
-            onSelectSuggestion={socketStatus === "open" ? onSend : undefined}
-          />
-        </div>
-      ) : (
-        <MessageList
-          sessionId={session?.sessionId ?? activeId ?? ""}
-          messages={messages}
-          runs={session?.runs ?? []}
-          currentRun={isRunning ? currentRun : undefined}
-          assistantAvatarIcon={assistantAvatarIcon}
-          selectedModelProvider={selectedModelProvider}
-          userProfile={userProfile}
-          onRegenerate={onRegenerate}
-          onEditUserMessage={onEditUserMessage}
-          onDeleteFromMessage={onDeleteFromMessage}
-          onViewWorkflow={onViewWorkflow}
-        />
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        {shouldShowHistoryRecovery ? (
+          <ChatContentMotion key={`history:${activeId}:${historyFailed ? "failed" : "loading"}`} motionLevel={effectiveMotionLevel}>
+            <HistoryRecoveryState
+              failed={historyFailed}
+              messageCount={session.messageCount}
+              onRetry={activeId && onRetryHistory ? () => onRetryHistory(activeId) : undefined}
+              retryDisabled={socketStatus !== "open"}
+            />
+          </ChatContentMotion>
+        ) : messages.length === 0 && !isRunning ? (
+          <ChatContentMotion key={`empty:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
+            <div className="flex flex-1 items-center justify-center px-6">
+              <EmptyChatState
+                onSelectSuggestion={socketStatus === "open" ? onSend : undefined}
+              />
+            </div>
+          </ChatContentMotion>
+        ) : (
+          <ChatContentMotion key={`messages:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
+            <MessageList
+              sessionId={session?.sessionId ?? activeId ?? ""}
+              messages={messages}
+              runs={session?.runs ?? []}
+              currentRun={isRunning ? currentRun : undefined}
+              assistantAvatarIcon={assistantAvatarIcon}
+              selectedModelProvider={selectedModelProvider}
+              userProfile={userProfile}
+              onRegenerate={onRegenerate}
+              onEditUserMessage={onEditUserMessage}
+              onDeleteFromMessage={onDeleteFromMessage}
+              onViewWorkflow={onViewWorkflow}
+            />
+          </ChatContentMotion>
+        )}
+      </AnimatePresence>
       <ChatComposer
         disabled={composerDisabled}
         running={!!isRunning}
@@ -113,4 +125,47 @@ export function ChatPanel({
       />
     </main>
   );
+}
+
+function ChatContentMotion({
+  children,
+  motionLevel,
+}: {
+  children: JSX.Element;
+  motionLevel: MotionLevel;
+}): JSX.Element {
+  return (
+    <motion.div
+      className="flex min-h-0 flex-1 flex-col"
+      initial={motionLevel === "none" ? false : "hidden"}
+      animate="show"
+      exit="exit"
+      variants={readChatContentVariants(motionLevel)}
+      transition={motionLevel === "none" ? { duration: 0 } : motionTimings.base}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function readChatContentVariants(level: MotionLevel) {
+  if (level === "none") {
+    return {
+      hidden: { opacity: 1 },
+      show: { opacity: 1 },
+      exit: { opacity: 1 },
+    };
+  }
+  if (level === "reduced") {
+    return {
+      hidden: { opacity: 0 },
+      show: { opacity: 1 },
+      exit: { opacity: 0 },
+    };
+  }
+  return {
+    hidden: { opacity: 0, y: 8 },
+    show: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: -4 },
+  };
 }

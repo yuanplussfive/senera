@@ -29,6 +29,7 @@ import { ConfirmationDialog, PreferencesDialog, RenameDialog } from "./SessionDi
 import { EmptyState, SessionRow } from "./SessionRows";
 import { UserFooter } from "./ProfileFooter";
 import type { ConfirmationIntent, LayoutPreferenceId } from "./types";
+import { MotionList, MotionListItem } from "../../shared/motion";
 
 interface Props {
   onNewSession: () => void;
@@ -67,11 +68,13 @@ export function SessionList({
   const active = useStore((s) => s.activeSessionId);
   const collapsed = useStore((s) => s.sidebarCollapsed);
   const rightPanelCollapsed = useStore((s) => s.rightPanelCollapsed);
+  const motionLevel = useStore((s) => s.motionLevel);
   const historyLoadingIds = useStore((s) => s.historyLoadingIds);
   const select = useStore((s) => s.selectSession);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const setSidebarCollapsed = useStore((s) => s.setSidebarCollapsed);
   const setRightPanelCollapsed = useStore((s) => s.setRightPanelCollapsed);
+  const setMotionLevel = useStore((s) => s.setMotionLevel);
 
   const [confirmation, setConfirmation] = useState<ConfirmationIntent | null>(null);
   const [renaming, setRenaming] = useState<RenameIntent | null>(null);
@@ -232,30 +235,39 @@ export function SessionList({
                   最近 · {sessionList.length}
                 </div>
               </div>
-              {sessionList.map((session) => {
-                const isActive = session.sessionId === active;
-                const lastRun = session.runs[session.runs.length - 1];
-                const isRunning = lastRun?.status === "running";
-                const hasFailed = lastRun?.status === "failed";
-                const isHistoryLoading = !!historyLoadingIds[session.sessionId];
-                const subtitle = formatSessionSubtitle(session, isHistoryLoading);
+              <MotionList>
+                {sessionList.map((session, index) => {
+                  const isActive = session.sessionId === active;
+                  const lastRun = session.runs[session.runs.length - 1];
+                  const isRunning = lastRun?.status === "running";
+                  const hasFailed = lastRun?.status === "failed";
+                  const isHistoryLoading = !!historyLoadingIds[session.sessionId];
+                  const subtitle = formatSessionSubtitle(session, isHistoryLoading);
 
-                return (
-                  <SessionRow
-                    key={session.sessionId}
-                    active={isActive}
-                    title={session.title}
-                    subtitle={subtitle}
-                    accent={isRunning ? "running" : hasFailed ? "failed" : "idle"}
-                    onClick={() => {
-                      select(session.sessionId);
-                      onSessionSelected?.();
-                    }}
-                    onRename={() => openRename(session)}
-                    onClose={() => confirmDeleteSession(session)}
-                  />
-                );
-              })}
+                  return (
+                    <MotionListItem
+                      key={session.sessionId}
+                      index={index}
+                      itemCount={sessionList.length}
+                      layout="position"
+                    >
+                      <SessionRow
+                        active={isActive}
+                        sessionId={session.sessionId}
+                        title={session.title}
+                        subtitle={subtitle}
+                        accent={isRunning ? "running" : hasFailed ? "failed" : "idle"}
+                        onClick={() => {
+                          select(session.sessionId);
+                          onSessionSelected?.();
+                        }}
+                        onRename={() => openRename(session)}
+                        onClose={() => confirmDeleteSession(session)}
+                      />
+                    </MotionListItem>
+                  );
+                })}
+              </MotionList>
             </>
           )}
         </div>
@@ -291,7 +303,9 @@ export function SessionList({
       <PreferencesDialog
         open={preferencesOpen}
         values={layoutPreferenceValues}
+        motionLevel={motionLevel}
         onValueChange={setLayoutPreference}
+        onMotionLevelChange={setMotionLevel}
         onOpenChange={setPreferencesOpen}
       />
     </>
@@ -404,7 +418,7 @@ function ConnectionDot({ status }: { status: string }): JSX.Element {
     status === "open"
       ? "bg-moss-500"
       : status === "connecting" || status === "idle"
-        ? "bg-terra-400"
+        ? "bg-umber-500 motion-safe:animate-pulse"
         : "bg-brick-500";
   const label =
     status === "open"

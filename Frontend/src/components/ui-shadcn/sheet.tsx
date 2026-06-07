@@ -2,6 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { forwardRef } from "react";
 import { cn } from "@/lib/util";
+import { MotionDialogOverlay, MotionSheetContent } from "@/shared/motion";
 
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
@@ -16,21 +17,25 @@ export const SheetOverlay = forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
+    asChild
+    forceMount
+    {...props}
+  >
+    <MotionDialogOverlay
     className={cn(
       "fixed inset-0 z-50 bg-ink-950/35 backdrop-blur-[1px]",
-      "data-[state=open]:animate-dialog-in data-[state=closed]:animate-dialog-out",
       className,
     )}
-    {...props}
-  />
+    />
+  </DialogPrimitive.Overlay>
 ));
 SheetOverlay.displayName = "SheetOverlay";
 
 type SheetSide = "left" | "right";
 
 const sideClasses: Record<SheetSide, string> = {
-  left: "left-0 border-r data-[state=open]:animate-dialog-in",
-  right: "right-0 border-l data-[state=open]:animate-dialog-in",
+  left: "left-0 border-r",
+  right: "right-0 border-l",
 };
 
 export interface SheetContentProps
@@ -47,14 +52,18 @@ export const SheetContent = forwardRef<HTMLDivElement, SheetContentProps>(
       <SheetOverlay />
       <DialogPrimitive.Content
         ref={ref}
+        asChild
+        forceMount
+        {...props}
+      >
+        <MotionSheetContent
+          side={side}
         className={cn(
           "fixed top-0 z-50 flex h-full w-[min(360px,calc(100vw-24px))] flex-col overflow-hidden",
           "border-ink-200 bg-paper-50 shadow-soft outline-none",
-          "data-[state=closed]:animate-dialog-out",
           sideClasses[side],
           className,
         )}
-        {...props}
       >
         {(title || showClose) ? (
           <div className="flex min-h-14 items-start gap-3 border-b border-ink-200/70 bg-paper-50 px-4 py-3.5">
@@ -88,6 +97,7 @@ export const SheetContent = forwardRef<HTMLDivElement, SheetContentProps>(
           </div>
         ) : null}
         {children}
+        </MotionSheetContent>
       </DialogPrimitive.Content>
     </SheetPortal>
   ),
