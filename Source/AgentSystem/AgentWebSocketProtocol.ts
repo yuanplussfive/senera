@@ -46,6 +46,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("session.history"),
       sessionId: z.string().min(1),
+      refresh: z.boolean().optional(),
     })
     .strict(),
   z

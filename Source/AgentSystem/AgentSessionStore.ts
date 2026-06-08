@@ -3,7 +3,11 @@ import {
   AgentSessionStatuses,
   type AgentSession,
 } from "./AgentSession.js";
-import type { AgentSessionRepository, StoredStepTraceRun } from "./AgentSqliteSessionRepository.js";
+import type {
+  AgentSessionRepository,
+  StoredRunSnapshot,
+  StoredStepTraceRun,
+} from "./AgentSqliteSessionRepository.js";
 import { InMemorySessionRepository } from "./AgentSqliteSessionRepository.js";
 import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { StepTrace } from "./AgentStepTrace.js";
@@ -125,6 +129,7 @@ export class AgentSessionStore {
     // 先删 step 轨迹：其 turn_sequence 锚点独立于 conversation_entries，
     // 但保持「先删派生数据、后删主数据」的顺序更稳妥。
     this.repository.deleteStepTracesFrom(sessionId, requestId);
+    this.repository.deleteRunSnapshotsFrom(sessionId, requestId);
     const removed = this.repository.deleteEntriesFrom(sessionId, requestId);
     const session = this.sessions.get(sessionId);
     if (session) {
@@ -172,6 +177,16 @@ export class AgentSessionStore {
   /** 读取某会话所有 step 轨迹，按轮次分组（回放重建执行图用） */
   loadStepTraces(sessionId: string): StoredStepTraceRun[] {
     return this.repository.loadStepTraces(sessionId);
+  }
+
+  /** upsert 一轮请求的轻量生命周期快照，用于刷新后恢复运行态 */
+  persistRunSnapshot(snapshot: StoredRunSnapshot): void {
+    this.repository.upsertRunSnapshot(snapshot);
+  }
+
+  /** 读取某会话所有 run snapshots */
+  loadRunSnapshots(sessionId: string): StoredRunSnapshot[] {
+    return this.repository.loadRunSnapshots(sessionId);
   }
 
   private createAndStore(sessionId: string): AgentSession {

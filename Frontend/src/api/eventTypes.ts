@@ -172,6 +172,7 @@ export interface SessionHistoryStartedData {
   sessionId: string;
   totalEntries: number;
   messageCount: number;
+  refresh?: boolean;
 }
 
 export interface SessionHistoryEntryData {
@@ -190,6 +191,7 @@ export interface SessionHistoryChunkData {
 
 export interface SessionHistoryCompletedData {
   sessionId: string;
+  refresh?: boolean;
 }
 
 /** 精简档执行步骤轨迹（与后端 StepTrace 对齐）；回放时重建 run.steps */
@@ -219,7 +221,7 @@ export interface SessionHistoryStepsData {
     input: string;
     startedAt: string;
     endedAt?: string;
-    status: "completed" | "failed" | "cancelled";
+    status: "running" | "completed" | "failed" | "cancelled";
     modelProvider?: ModelProviderMetadata;
     traces: StepTraceDto[];
   }>;
@@ -422,7 +424,7 @@ export type WsRequest =
   | { type: "session.cancel"; sessionId: string }
   | { type: "session.truncate_from"; sessionId: string; requestId: string }
   | { type: "session.list" }
-  | { type: "session.history"; sessionId: string }
+  | { type: "session.history"; sessionId: string; refresh?: boolean }
   | { type: "session.rename"; sessionId: string; title: string }
   | { type: "model.list" }
   | { type: "profile.get" }

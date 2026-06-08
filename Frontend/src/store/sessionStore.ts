@@ -107,6 +107,7 @@ export interface RunRecord {
   /** 通过 decision.parsed.detail 暂存的工具参数 */
   pendingToolArgsByName: Record<string, unknown>;
   modelProvider?: ModelProviderMetadata;
+  recoverySource?: "history";
 }
 
 export interface SessionRecord {

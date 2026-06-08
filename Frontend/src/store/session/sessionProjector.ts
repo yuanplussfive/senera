@@ -322,9 +322,50 @@ function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][number]): Ru
     decisionMode: "none",
     pendingToolArgsByName: {},
     modelProvider: run.modelProvider,
+    recoverySource: run.status === "running" ? "history" : undefined,
   };
   record.revision = record.steps.length;
   return record;
+}
+
+function upsertMessageByRequestId(session: SessionRecord, message: ChatMessage): void {
+  if (!message.requestId) {
+    session.messages.push(message);
+    return;
+  }
+  const idx = session.messages.findIndex(
+    (item) =>
+      item.requestId === message.requestId &&
+      item.role === message.role &&
+      (item.kind ?? "") === (message.kind ?? ""),
+  );
+  if (idx >= 0) {
+    session.messages[idx] = message;
+    return;
+  }
+  session.messages.push(message);
+}
+
+function mergeHistoryMessages(session: SessionRecord, messages: ChatMessage[]): void {
+  for (const message of messages) {
+    upsertMessageByRequestId(session, message);
+  }
+  session.messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+function mergeHistoryRuns(session: SessionRecord, runs: RunRecord[]): void {
+  for (const run of runs) {
+    const idx = session.runs.findIndex((item) => item.requestId === run.requestId);
+    if (idx >= 0) {
+      session.runs[idx] = {
+        ...run,
+        revision: Math.max(session.runs[idx].revision + 1, run.revision),
+      };
+    } else {
+      session.runs.push(run);
+    }
+  }
+  session.runs.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 }
 
 // =========================
@@ -880,7 +921,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       const session = ensureSession(state, sessionId);
       const run = currentRun(session, env.requestId);
       const data = env.data as FinalAnswerData;
-      session.messages.push({
+      upsertMessageByRequestId(session, {
         id: `${env.requestId ?? "final"}-answer`,
         role: "assistant",
         content: data.content,
@@ -918,7 +959,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       const session = ensureSession(state, sessionId);
       const run = currentRun(session, env.requestId);
       const data = env.data as AskUserData;
-      session.messages.push({
+      upsertMessageByRequestId(session, {
         id: `${env.requestId ?? "ask"}-ask`,
         role: "assistant",
         content: data.question,
@@ -978,14 +1019,18 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       const data = env.data as SessionHistoryStartedData;
       const session = state.sessions[sessionId];
       if (!session) return;
-      session.messages = [];
-      session.runs = [];
+      if (!data.refresh) {
+        session.messages = [];
+        session.runs = [];
+      }
       session.entryCount = data.totalEntries;
       session.messageCount = data.messageCount;
       state.historyReplayBuffers[sessionId] = [];
       state.historyStepBuffers[sessionId] = [];
       state.historyLoadingIds[sessionId] = true;
-      delete state.historyLoadedIds[sessionId];
+      if (!data.refresh) {
+        delete state.historyLoadedIds[sessionId];
+      }
       delete state.historyFailedIds[sessionId];
       delete state.missingOnServerIds[sessionId];
       return;
@@ -1034,12 +1079,19 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (!session) return;
       const buffer = state.historyReplayBuffers[sessionId];
       if (!state.historyLoadingIds[sessionId] || !buffer) return;
-      session.messages = buffer
+      const nextMessages = buffer
         .map((item) => projectEntryToMessage(item.entry, item.visible))
         .filter((message): message is ChatMessage => Boolean(message));
       // 用回放的 step 轨迹重建 session.runs（替代此前写死的 []）
       const stepRuns = state.historyStepBuffers[sessionId] ?? [];
-      session.runs = stepRuns.map((run) => rebuildRunFromHistory(run));
+      const nextRuns = stepRuns.map((run) => rebuildRunFromHistory(run));
+      if (data.refresh) {
+        mergeHistoryMessages(session, nextMessages);
+        mergeHistoryRuns(session, nextRuns);
+      } else {
+        session.messages = nextMessages;
+        session.runs = nextRuns;
+      }
       state.historyLoadingIds[sessionId] = false;
       state.historyLoadedIds[sessionId] = true;
       delete state.historyReplayBuffers[sessionId];

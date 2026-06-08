@@ -18,6 +18,7 @@ import {
   type AgentUserProfileInput,
   type AgentUserProfileRepository,
 } from "./AgentUserProfile.js";
+import type { AgentModelProviderMetadata } from "./AgentModelMetadata.js";
 import type { StepTrace } from "./AgentStepTrace.js";
 
 /** 一轮 turn 的 step 轨迹分组——回放时据此重建一个 RunRecord */
@@ -25,6 +26,21 @@ export interface StoredStepTraceRun {
   requestId: string;
   turnSequence: number;
   traces: StepTrace[];
+}
+
+export type StoredRunSnapshotStatus = "running" | "completed" | "failed" | "cancelled";
+
+/** 一轮请求的轻量生命周期快照，用于刷新后恢复运行态，不参与 prompt history。 */
+export interface StoredRunSnapshot {
+  sessionId: string;
+  requestId: string;
+  input: string;
+  status: StoredRunSnapshotStatus;
+  startedAt: string;
+  updatedAt: string;
+  endedAt?: string;
+  errorMessage?: string;
+  modelProvider?: AgentModelProviderMetadata;
 }
 
 export interface AgentSessionRepository extends AgentUserProfileRepository {
@@ -53,6 +69,12 @@ export interface AgentSessionRepository extends AgentUserProfileRepository {
   loadStepTraces(sessionId: string): StoredStepTraceRun[];
   /** 删除某 sessionId 中、从指定 requestId 所在轮次开始（含）之后所有 step 轨迹 */
   deleteStepTracesFrom(sessionId: string, requestId: string): number;
+  /** upsert 一轮请求的生命周期快照 */
+  upsertRunSnapshot(snapshot: StoredRunSnapshot): void;
+  /** 读取某会话所有 run snapshots，按 startedAt 升序 */
+  loadRunSnapshots(sessionId: string): StoredRunSnapshot[];
+  /** 删除某 sessionId 中、从指定 requestId 所在轮次开始（含）之后所有 run snapshots */
+  deleteRunSnapshotsFrom(sessionId: string, requestId: string): number;
   /** 重命名 */
   renameSession(sessionId: string, title: string): void;
   /** 删除会话（含所有 entries） */
@@ -65,7 +87,7 @@ export interface AgentSessionRepository extends AgentUserProfileRepository {
   close(): void;
 }
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA_DDL = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -109,6 +131,21 @@ CREATE TABLE IF NOT EXISTS step_traces (
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_step_traces_session ON step_traces(session_id, turn_sequence, step, seq);
+
+CREATE TABLE IF NOT EXISTS run_snapshots (
+  session_id      TEXT NOT NULL,
+  request_id      TEXT NOT NULL,
+  input           TEXT NOT NULL,
+  status          TEXT NOT NULL CHECK(status IN ('running','completed','failed','cancelled')),
+  started_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  ended_at        TEXT,
+  error_message   TEXT,
+  model_provider  TEXT,
+  PRIMARY KEY (session_id, request_id),
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_run_snapshots_session ON run_snapshots(session_id, started_at);
 `;
 
 const USER_PROFILE_SETTING_KEY = "user.profile";
@@ -152,6 +189,18 @@ interface StepTraceRow {
   data: string;
 }
 
+interface RunSnapshotRow {
+  session_id: string;
+  request_id: string;
+  input: string;
+  status: string;
+  started_at: string;
+  updated_at: string;
+  ended_at: string | null;
+  error_message: string | null;
+  model_provider: string | null;
+}
+
 export class SqliteSessionRepository implements AgentSessionRepository {
   private readonly db: Database.Database;
   private readonly deleteFromStmt: Database.Statement;
@@ -169,9 +218,12 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     upsertSetting: Database.Statement;
     appendStepTrace: Database.Statement;
     selectStepTraces: Database.Statement<[string], StepTraceRow>;
+    upsertRunSnapshot: Database.Statement;
+    selectRunSnapshots: Database.Statement<[string], RunSnapshotRow>;
   };
 
   private readonly deleteStepTracesFromStmt: Database.Statement;
+  private readonly deleteRunSnapshotsFromStmt: Database.Statement;
 
   constructor(databasePath: string) {
     fs.mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -252,6 +304,28 @@ export class SqliteSessionRepository implements AgentSessionRepository {
         WHERE session_id = ?
         ORDER BY turn_sequence ASC, step ASC, seq ASC
       `),
+      upsertRunSnapshot: this.db.prepare(`
+        INSERT INTO run_snapshots
+          (session_id, request_id, input, status, started_at, updated_at, ended_at, error_message, model_provider)
+        VALUES
+          (@session_id, @request_id, @input, @status, @started_at, @updated_at, @ended_at, @error_message, @model_provider)
+        ON CONFLICT(session_id, request_id) DO UPDATE SET
+          input          = excluded.input,
+          status         = excluded.status,
+          started_at     = excluded.started_at,
+          updated_at     = excluded.updated_at,
+          ended_at       = excluded.ended_at,
+          error_message  = excluded.error_message,
+          model_provider = excluded.model_provider
+      `),
+      selectRunSnapshots: this.db.prepare<[string], RunSnapshotRow>(`
+        SELECT
+          session_id, request_id, input, status, started_at, updated_at,
+          ended_at, error_message, model_provider
+        FROM run_snapshots
+        WHERE session_id = ?
+        ORDER BY started_at ASC
+      `),
     };
 
     this.deleteStepTracesFromStmt = this.db.prepare(`
@@ -260,6 +334,25 @@ export class SqliteSessionRepository implements AgentSessionRepository {
         AND turn_sequence >= (
           SELECT MIN(sequence) FROM conversation_entries
           WHERE session_id = ? AND request_id = ?
+        )
+    `);
+
+    this.deleteRunSnapshotsFromStmt = this.db.prepare(`
+      DELETE FROM run_snapshots
+      WHERE session_id = ?
+        AND (
+          started_at >= (
+            SELECT started_at FROM run_snapshots
+            WHERE session_id = ? AND request_id = ?
+          )
+          OR request_id IN (
+            SELECT request_id FROM conversation_entries
+            WHERE session_id = ?
+              AND sequence >= (
+                SELECT MIN(sequence) FROM conversation_entries
+                WHERE session_id = ? AND request_id = ?
+              )
+          )
         )
     `);
 
@@ -378,6 +471,26 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     return info.changes;
   }
 
+  upsertRunSnapshot(snapshot: StoredRunSnapshot): void {
+    this.stmts.upsertRunSnapshot.run(this.runSnapshotToRow(snapshot));
+  }
+
+  loadRunSnapshots(sessionId: string): StoredRunSnapshot[] {
+    return this.stmts.selectRunSnapshots.all(sessionId).map((row) => this.rowToRunSnapshot(row));
+  }
+
+  deleteRunSnapshotsFrom(sessionId: string, requestId: string): number {
+    const info = this.deleteRunSnapshotsFromStmt.run(
+      sessionId,
+      sessionId,
+      requestId,
+      sessionId,
+      sessionId,
+      requestId,
+    );
+    return info.changes;
+  }
+
   renameSession(sessionId: string, title: string): void {
     this.stmts.renameSession.run(title, new Date().toISOString(), sessionId);
   }
@@ -426,6 +539,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     if (row >= SCHEMA_VERSION) return;
     // v1 → v2: 新增 step_traces 表。建表 DDL 已在 SCHEMA_DDL 中以 IF NOT EXISTS
     // 无条件执行，存量库启动即补建；这里只推进版本号。
+    // v2 → v3: 新增 run_snapshots 表，用于刷新后恢复运行态；旧 run 无需回填。
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
 
@@ -529,6 +643,44 @@ export class SqliteSessionRepository implements AgentSessionRepository {
         throw new Error(`未知 conversation entry kind: ${row.kind}`);
     }
   }
+
+  private runSnapshotToRow(snapshot: StoredRunSnapshot): {
+    session_id: string;
+    request_id: string;
+    input: string;
+    status: StoredRunSnapshotStatus;
+    started_at: string;
+    updated_at: string;
+    ended_at: string | null;
+    error_message: string | null;
+    model_provider: string | null;
+  } {
+    return {
+      session_id: snapshot.sessionId,
+      request_id: snapshot.requestId,
+      input: snapshot.input,
+      status: snapshot.status,
+      started_at: snapshot.startedAt,
+      updated_at: snapshot.updatedAt,
+      ended_at: snapshot.endedAt ?? null,
+      error_message: snapshot.errorMessage ?? null,
+      model_provider: snapshot.modelProvider ? JSON.stringify(snapshot.modelProvider) : null,
+    };
+  }
+
+  private rowToRunSnapshot(row: RunSnapshotRow): StoredRunSnapshot {
+    return {
+      sessionId: row.session_id,
+      requestId: row.request_id,
+      input: row.input,
+      status: parseRunSnapshotStatus(row.status),
+      startedAt: row.started_at,
+      updatedAt: row.updated_at,
+      endedAt: row.ended_at ?? undefined,
+      errorMessage: row.error_message ?? undefined,
+      modelProvider: parseModelProviderMetadata(row.model_provider),
+    };
+  }
 }
 
 function parseJsonObject(value: string): Record<string, unknown> {
@@ -550,6 +702,25 @@ function parseEntryMetadata(
     : undefined;
 }
 
+function parseRunSnapshotStatus(raw: string): StoredRunSnapshotStatus {
+  if (raw === "running" || raw === "completed" || raw === "failed" || raw === "cancelled") {
+    return raw;
+  }
+  return "failed";
+}
+
+function parseModelProviderMetadata(value: string | null): AgentModelProviderMetadata | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as AgentModelProviderMetadata
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 内存仓储——测试或禁用持久化时用 */
 export class InMemorySessionRepository implements AgentSessionRepository {
   private readonly sessions = new Map<string, AgentSession>();
@@ -558,6 +729,7 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     string,
     Array<{ requestId: string; turnSequence: number; trace: StepTrace }>
   >();
+  private readonly runSnapshots = new Map<string, Map<string, StoredRunSnapshot>>();
   private userProfile = createDefaultAgentUserProfile();
 
   listSessions(): Array<AgentSession & { entryCount: number; messageCount: number }> {
@@ -657,6 +829,48 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     return removed;
   }
 
+  upsertRunSnapshot(snapshot: StoredRunSnapshot): void {
+    const snapshots = this.runSnapshots.get(snapshot.sessionId) ?? new Map<string, StoredRunSnapshot>();
+    snapshots.set(snapshot.requestId, { ...snapshot });
+    this.runSnapshots.set(snapshot.sessionId, snapshots);
+  }
+
+  loadRunSnapshots(sessionId: string): StoredRunSnapshot[] {
+    const snapshots = this.runSnapshots.get(sessionId);
+    if (!snapshots) return [];
+    return Array.from(snapshots.values())
+      .map((snapshot) => ({ ...snapshot }))
+      .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  }
+
+  deleteRunSnapshotsFrom(sessionId: string, requestId: string): number {
+    const snapshots = this.runSnapshots.get(sessionId);
+    if (!snapshots) return 0;
+    const anchorSnapshot = snapshots.get(requestId);
+    const entries = this.entries.get(sessionId) ?? [];
+    const anchorSequence = entries.findIndex((entry) => entry.requestId === requestId);
+    const requestIdsFromAnchor = new Set(
+      anchorSequence >= 0 ? entries.slice(anchorSequence).map((entry) => entry.requestId) : [],
+    );
+
+    let removed = 0;
+    for (const snapshot of Array.from(snapshots.values())) {
+      const shouldDelete =
+        (anchorSnapshot && snapshot.startedAt >= anchorSnapshot.startedAt) ||
+        requestIdsFromAnchor.has(snapshot.requestId);
+      if (shouldDelete) {
+        snapshots.delete(snapshot.requestId);
+        removed += 1;
+      }
+    }
+    if (snapshots.size === 0) {
+      this.runSnapshots.delete(sessionId);
+    } else {
+      this.runSnapshots.set(sessionId, snapshots);
+    }
+    return removed;
+  }
+
   renameSession(_sessionId: string, _title: string): void {
     // 内存仓储不存 title，靠 session.metadata 之类未来扩展
   }
@@ -665,6 +879,7 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     const had = this.sessions.delete(sessionId);
     this.entries.delete(sessionId);
     this.stepTraces.delete(sessionId);
+    this.runSnapshots.delete(sessionId);
     return had;
   }
 
