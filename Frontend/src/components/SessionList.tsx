@@ -1,1 +1,1 @@
-export { SessionList } from "./session/SessionList";
+export { SessionList } from "../features/session/SessionList";
