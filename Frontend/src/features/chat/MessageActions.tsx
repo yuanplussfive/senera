@@ -106,6 +106,7 @@ function ActionBtn({
       tooltipSide="bottom"
       size="sm"
       tone={destructive ? "danger" : "muted"}
+      touchSafe
       className="h-7 w-7 rounded-md"
       onClick={onClick}
     >

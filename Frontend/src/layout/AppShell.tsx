@@ -8,6 +8,7 @@ import type { ResponsiveMode } from "../shared/responsive";
 const SESSION_RAIL_WIDTH = 56;
 const SESSION_PANEL_WIDTH = 264;
 const WORKFLOW_RAIL_WIDTH = 44;
+const WORKFLOW_PANEL_WIDTH_COMPACT = 360;
 const WORKFLOW_PANEL_WIDTH = 460;
 const SESSION_DRAWER_WIDTH = "w-[min(360px,calc(100vw-24px))]";
 const SESSION_OVERLAY_WIDTH = "w-[min(360px,calc(100vw-32px))]";
@@ -60,6 +61,8 @@ export function AppShell({
   const useWorkflowSheet = responsiveMode.prefersDrawerNavigation;
   const useSessionOverlay = !responsiveMode.hasPersistentSessionPanel && !useSessionSheet;
   const useWorkflowOverlay = !responsiveMode.hasPersistentWorkflowPanel && !useWorkflowSheet;
+  const workflowPanelWidth =
+    responsiveMode.viewport === "desktop" ? WORKFLOW_PANEL_WIDTH_COMPACT : WORKFLOW_PANEL_WIDTH;
 
   useEffect(() => {
     if (responsiveMode.hasPersistentSessionPanel && sessionDrawerOpen) {
@@ -91,7 +94,7 @@ export function AppShell({
       <div className="flex min-w-0 flex-1">{chatPanel}</div>
       <motion.div
         initial={false}
-        animate={{ width: rightPanelCollapsed ? WORKFLOW_RAIL_WIDTH : WORKFLOW_PANEL_WIDTH }}
+        animate={{ width: rightPanelCollapsed ? WORKFLOW_RAIL_WIDTH : workflowPanelWidth }}
         transition={panelResizeTransition}
         className="hidden h-full shrink-0 overflow-hidden lg:flex"
       >

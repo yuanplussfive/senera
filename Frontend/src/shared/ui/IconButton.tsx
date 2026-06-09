@@ -2,6 +2,7 @@ import type { HTMLMotionProps } from "framer-motion";
 import { forwardRef, type ReactNode } from "react";
 import { cn } from "../../lib/util";
 import { MotionButton } from "../motion";
+import { useResponsiveMode } from "../responsive";
 import { Tooltip } from "./Tooltip";
 
 type IconButtonSize = "sm" | "md" | "lg";
@@ -16,6 +17,7 @@ export interface IconButtonProps extends Omit<HTMLMotionProps<"button">, "aria-l
   tooltip?: ReactNode;
   tooltipSide?: TooltipSide;
   tooltipShortcut?: string;
+  touchSafe?: boolean;
 }
 
 const sizeClasses: Record<IconButtonSize, string> = {
@@ -42,10 +44,14 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       tooltip,
       tooltipSide = "bottom",
       tooltipShortcut,
+      touchSafe = false,
       ...props
     },
     ref,
   ) => {
+    const { isCoarsePointer } = useResponsiveMode();
+    const touchSafeClassName = touchSafe && isCoarsePointer ? "min-h-11 min-w-11" : undefined;
+
     const button = (
       <MotionButton
         ref={ref}
@@ -53,6 +59,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         className={cn(
           "grid shrink-0 place-items-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
           sizeClasses[size],
+          touchSafeClassName,
           toneClasses[tone],
           className,
         )}
