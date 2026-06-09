@@ -74,18 +74,20 @@ export const MotionDialogContent = forwardRef<HTMLDivElement, MotionDialogConten
 MotionDialogContent.displayName = "MotionDialogContent";
 
 export const MotionSheetContent = forwardRef<HTMLDivElement, MotionSheetContentProps>(
-  ({ side = "right", ...props }, ref) => {
+  ({ side = "right", style, ...props }, ref) => {
     const { level, reduceMotion, disableMotion } = useMotionLevel();
     const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
     const state = readRadixState(props);
+    const variants = readDrawerVariants(effectiveLevel, side);
+    const animationState = state === "closed" ? "exit" : "show";
+    const pointerEvents = state === "closed" ? "none" : style?.pointerEvents;
     return (
       <motion.div
         ref={ref}
-        variants={readDrawerVariants(effectiveLevel, side)}
-        initial={false}
-        animate={state === "closed" ? "exit" : "show"}
+        initial={variants.hidden}
+        animate={variants[animationState]}
         transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.drawer}
-        style={{ pointerEvents: state === "closed" ? "none" : undefined, ...props.style }}
+        style={{ ...style, pointerEvents }}
         {...props}
       />
     );

@@ -4,6 +4,7 @@ import type { MotionLevel } from "./types";
 const easeOut = [0.22, 1, 0.36, 1] as const;
 export type DialogMotionPreset = "modal" | "focus";
 export type DialogPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
+export type DrawerPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export const dialogPresenceExitMs = 320;
 
 export const motionSprings = {
@@ -159,7 +160,7 @@ export function readDialogPanelTransition(level: MotionLevel, preset: DialogMoti
   return preset === "focus" ? motionTimings.slow : motionTimings.dialog;
 }
 
-export function readDrawerVariants(level: MotionLevel, side: "left" | "right" = "right"): Variants {
+export function readDrawerVariants(level: MotionLevel, side: "left" | "right" = "right"): DrawerPanelVariants {
   if (level === "none") {
     return {
       hidden: { opacity: 1 },
