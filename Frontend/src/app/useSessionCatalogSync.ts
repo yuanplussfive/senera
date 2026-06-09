@@ -1,0 +1,76 @@
+import { useCallback, useEffect, useRef } from "react";
+import { toast } from "sonner";
+import type { WsRequest } from "../api/eventTypes";
+import type { SocketStatus } from "../api/useAgentSocket";
+import { useStore, type UserProfile } from "../store/sessionStore";
+
+export interface UseSessionCatalogSyncOptions {
+  status: SocketStatus;
+  send: (request: WsRequest) => boolean;
+  onServerSessionsReset: () => void;
+}
+
+export interface SessionCatalogSyncHandle {
+  refreshSessionCatalog: () => void;
+}
+
+export function buildConnectionOpenSyncRequests(userProfile: UserProfile): WsRequest[] {
+  const requests: WsRequest[] = [
+    { type: "session.list" },
+    { type: "model.list" },
+  ];
+
+  if (userProfile.syncState === "pending") {
+    const { name, avatarDataUrl } = userProfile;
+    requests.push({ type: "profile.update", profile: { name, avatarDataUrl } });
+  } else {
+    requests.push({ type: "profile.get" });
+  }
+
+  return requests;
+}
+
+export function buildManualRefreshRequests(): WsRequest[] {
+  return [
+    { type: "session.list" },
+    { type: "model.list" },
+    { type: "profile.get" },
+  ];
+}
+
+export function useSessionCatalogSync({
+  status,
+  send,
+  onServerSessionsReset,
+}: UseSessionCatalogSyncOptions): SessionCatalogSyncHandle {
+  const hydrationToastShownRef = useRef(false);
+
+  const refreshSessionCatalog = useCallback((): void => {
+    if (status !== "open") return;
+    for (const request of buildManualRefreshRequests()) {
+      send(request);
+    }
+  }, [send, status]);
+
+  useEffect(() => {
+    if (status !== "open") {
+      onServerSessionsReset();
+      return;
+    }
+
+    onServerSessionsReset();
+    const state = useStore.getState();
+    for (const request of buildConnectionOpenSyncRequests(state.userProfile)) {
+      send(request);
+    }
+
+    if (!hydrationToastShownRef.current && state.sessionOrder.length > 0) {
+      hydrationToastShownRef.current = true;
+      toast.success(`恢复 ${state.sessionOrder.length} 个会话`, {
+        description: "正在从后端同步消息历史…",
+      });
+    }
+  }, [onServerSessionsReset, send, status]);
+
+  return { refreshSessionCatalog };
+}
