@@ -21,7 +21,6 @@ export function ChatHeader({
           tooltipSide="bottom"
           onClick={onOpenSessionPanel}
           touchSafe
-          className="md:hidden"
         >
           <PanelLeftOpen className="h-4 w-4" />
         </IconButton>
@@ -45,7 +44,7 @@ export function ChatHeader({
           tooltipSide="bottom"
           onClick={onOpenWorkflowPanel}
           touchSafe
-          className="ml-auto lg:hidden"
+          className="ml-auto"
         >
           <Lightbulb className="h-4 w-4" />
         </IconButton>

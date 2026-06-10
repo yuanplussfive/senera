@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultResponsiveQueryMatches,
   deriveResponsiveMode,
+  responsiveMediaQueries,
   type ResponsiveQueryMatches,
 } from "./responsiveMode";
 
@@ -10,12 +11,16 @@ function matches(overrides: Partial<ResponsiveQueryMatches>): ResponsiveQueryMat
 }
 
 describe("deriveResponsiveMode", () => {
+  it("reserves persistent workflow for desktop and dual persistent panels for wide screens", () => {
+    expect(responsiveMediaQueries.desktopUp).toBe("(min-width: 1024px)");
+    expect(responsiveMediaQueries.wideUp).toBe("(min-width: 1536px)");
+  });
+
   it("maps viewport breakpoints to persistent panel capabilities", () => {
     expect(deriveResponsiveMode(matches({}))).toMatchObject({
       viewport: "mobile",
       hasPersistentSessionPanel: false,
       hasPersistentWorkflowPanel: false,
-      prefersDrawerNavigation: true,
       prefersCompactControls: true,
     });
 
@@ -23,7 +28,6 @@ describe("deriveResponsiveMode", () => {
       viewport: "tablet",
       hasPersistentSessionPanel: false,
       hasPersistentWorkflowPanel: false,
-      prefersDrawerNavigation: false,
       prefersCompactControls: false,
     });
 
@@ -31,7 +35,6 @@ describe("deriveResponsiveMode", () => {
       viewport: "desktop",
       hasPersistentSessionPanel: false,
       hasPersistentWorkflowPanel: true,
-      prefersDrawerNavigation: false,
     });
 
     expect(deriveResponsiveMode(matches({ tabletUp: true, desktopUp: true, wideUp: true }))).toMatchObject({
@@ -39,6 +42,11 @@ describe("deriveResponsiveMode", () => {
       hasPersistentSessionPanel: true,
       hasPersistentWorkflowPanel: true,
     });
+  });
+
+  it("does not expose screen-specific transient drawer modes", () => {
+    expect(deriveResponsiveMode(matches({}))).not.toHaveProperty("prefersDrawerNavigation");
+    expect(deriveResponsiveMode(matches({ tabletUp: true }))).not.toHaveProperty("prefersDrawerNavigation");
   });
 
   it("uses coarse pointer capability for compact controls beyond width alone", () => {

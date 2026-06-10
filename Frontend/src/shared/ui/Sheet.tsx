@@ -1,8 +1,16 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { forwardRef, useRef, type CSSProperties, type HTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type HTMLAttributes,
+  type ReactNode,
+} from "react";
 import { cn } from "../../lib/util";
-import { dialogPresenceExitMs, MotionDialogOverlay, MotionSheetContent } from "../motion";
+import { MotionDialogOverlay, MotionSheetContent, useMotionLevel } from "../motion";
 
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
@@ -11,12 +19,17 @@ export const SheetPortal = DialogPrimitive.Portal;
 export const SheetTitle = DialogPrimitive.Title;
 export const SheetDescription = DialogPrimitive.Description;
 
+export const sheetOverlayClassName =
+  "dialog-presence fixed inset-0 z-50 bg-ink-950/24 [will-change:opacity]";
+const sheetPresenceExitMs = 240;
+const sheetDeferredContentDelayMs = 96;
+
 type SheetPresenceStyle = CSSProperties & {
   "--dialog-presence-exit-dur"?: string;
 };
 
 const sheetPresenceStyle = {
-  "--dialog-presence-exit-dur": `${dialogPresenceExitMs}ms`,
+  "--dialog-presence-exit-dur": `${sheetPresenceExitMs}ms`,
 } satisfies SheetPresenceStyle;
 
 function mergeSheetPresenceStyle(style?: CSSProperties): SheetPresenceStyle {
@@ -34,10 +47,7 @@ export const SheetOverlay = forwardRef<
     {...props}
   >
     <MotionDialogOverlay
-      className={cn(
-        "dialog-presence fixed inset-0 z-50 bg-ink-950/35 backdrop-blur-[1px]",
-        className,
-      )}
+      className={cn(sheetOverlayClassName, className)}
       style={mergeSheetPresenceStyle(style)}
     />
   </DialogPrimitive.Overlay>
@@ -57,9 +67,25 @@ export interface SheetContentProps
   title?: string;
   description?: string;
   overlayClassName?: string;
+  deferContentMount?: boolean;
   focusContentOnOpen?: boolean;
   showClose?: boolean;
   showHeader?: boolean;
+}
+
+interface SheetChildrenMountState {
+  dataState?: string;
+  deferContentMount: boolean;
+  deferredContentReady: boolean;
+}
+
+export function shouldMountSheetChildren({
+  dataState,
+  deferContentMount,
+  deferredContentReady,
+}: SheetChildrenMountState): boolean {
+  if (dataState === "closed") return false;
+  return !deferContentMount || deferredContentReady;
 }
 
 type SheetContentSnapshot = {
@@ -84,6 +110,7 @@ type SheetContentFrameProps = Omit<
   | "title"
 > & SheetContentSnapshot & {
   "data-state"?: string;
+  deferContentMount: boolean;
   style?: CSSProperties;
 };
 
@@ -93,6 +120,7 @@ const SheetContentFrame = forwardRef<
 >(({
   children,
   className,
+  deferContentMount,
   description,
   showClose,
   showHeader,
@@ -102,6 +130,9 @@ const SheetContentFrame = forwardRef<
   "data-state": dataState,
   ...props
 }, ref) => {
+  const { reduceMotion, disableMotion } = useMotionLevel();
+  const shouldDeferContentMount = deferContentMount && !reduceMotion && !disableMotion;
+  const [deferredContentReady, setDeferredContentReady] = useState(!shouldDeferContentMount);
   const liveContent: SheetContentSnapshot = {
     children,
     className,
@@ -116,6 +147,28 @@ const SheetContentFrame = forwardRef<
     openContentRef.current = liveContent;
   }
   const content = dataState === "closed" ? openContentRef.current : liveContent;
+  const keepHeavyChildrenMounted = shouldMountSheetChildren({
+    dataState,
+    deferContentMount: shouldDeferContentMount,
+    deferredContentReady,
+  });
+
+  useEffect(() => {
+    if (!shouldDeferContentMount) {
+      setDeferredContentReady(true);
+      return;
+    }
+    if (dataState === "closed") {
+      setDeferredContentReady(false);
+      return;
+    }
+
+    setDeferredContentReady(false);
+    const timeoutId = window.setTimeout(() => {
+      setDeferredContentReady(true);
+    }, sheetDeferredContentDelayMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [dataState, shouldDeferContentMount]);
 
   return (
     <MotionSheetContent
@@ -170,7 +223,7 @@ const SheetContentFrame = forwardRef<
           ) : null}
         </>
       )}
-      {content.children}
+      {keepHeavyChildrenMounted ? content.children : null}
     </MotionSheetContent>
   );
 });
@@ -183,6 +236,7 @@ export const SheetContent = forwardRef<HTMLDivElement, SheetContentProps>(
     children,
     title,
     description,
+    deferContentMount = false,
     overlayClassName,
     focusContentOnOpen = false,
     showClose = true,
@@ -209,6 +263,7 @@ export const SheetContent = forwardRef<HTMLDivElement, SheetContentProps>(
         <SheetContentFrame
           side={side}
           className={className}
+          deferContentMount={deferContentMount}
           description={description}
           showClose={showClose}
           showHeader={showHeader}

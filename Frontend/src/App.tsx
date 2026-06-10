@@ -6,7 +6,7 @@ import { useStore } from "./store/sessionStore";
 import { ChatPanel } from "./features/chat";
 import { SessionList } from "./features/session";
 import { ThinkingTimeline } from "./features/workflow";
-import { AppShell } from "./layout/AppShell";
+import { AppShell, readAppShellRenderPlan } from "./layout/AppShell";
 import type { WsRequest } from "./api/eventTypes";
 import {
   useChatCommands,
@@ -43,6 +43,7 @@ export function App(): JSX.Element {
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
   const { hasPersistentSessionPanel, hasPersistentWorkflowPanel } = responsiveMode;
+  const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
 
   const handleOpenSessionPanel = useCallback((): void => {
     if (hasPersistentSessionPanel) {
@@ -228,8 +229,10 @@ export function App(): JSX.Element {
             onEditUserMessage={handleEditUserMessage}
             onDeleteFromMessage={handleDeleteFromMessage}
             onViewWorkflow={handleViewWorkflow}
-            onOpenSessionPanel={handleOpenSessionPanel}
-            onOpenWorkflowPanel={() => setWorkflowDrawerOpen(true)}
+            onOpenSessionPanel={appShellRenderPlan.showChatSessionPanelAction ? handleOpenSessionPanel : undefined}
+            onOpenWorkflowPanel={
+              appShellRenderPlan.showChatWorkflowPanelAction ? () => setWorkflowDrawerOpen(true) : undefined
+            }
             onRetryHistory={requestSessionHistory}
           />
         }

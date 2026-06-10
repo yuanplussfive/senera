@@ -2,7 +2,6 @@ import { motion } from "framer-motion";
 import type { HTMLMotionProps } from "framer-motion";
 import { forwardRef } from "react";
 import {
-  motionSprings,
   motionTimings,
   readDialogPanelTransition,
   readDialogPanelVariants,
@@ -86,8 +85,8 @@ export const MotionSheetContent = forwardRef<HTMLDivElement, MotionSheetContentP
         ref={ref}
         initial={variants.hidden}
         animate={variants[animationState]}
-        transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.drawer}
-        style={{ ...style, pointerEvents }}
+        transition={disableMotion ? { duration: 0 } : motionTimings.dialog}
+        style={{ ...style, pointerEvents, willChange: "transform" }}
         {...props}
       />
     );

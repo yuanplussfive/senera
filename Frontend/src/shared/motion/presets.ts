@@ -161,11 +161,12 @@ export function readDialogPanelTransition(level: MotionLevel, preset: DialogMoti
 }
 
 export function readDrawerVariants(level: MotionLevel, side: "left" | "right" = "right"): DrawerPanelVariants {
+  const hiddenX = side === "right" ? "100%" : "-100%";
   if (level === "none") {
     return {
-      hidden: { opacity: 1 },
-      show: { opacity: 1 },
-      exit: { opacity: 1 },
+      hidden: { opacity: 1, x: hiddenX },
+      show: { opacity: 1, x: 0 },
+      exit: { opacity: 1, x: hiddenX },
     };
   }
   if (level === "reduced") {
@@ -175,7 +176,6 @@ export function readDrawerVariants(level: MotionLevel, side: "left" | "right" = 
       exit: { opacity: 0 },
     };
   }
-  const hiddenX = side === "right" ? "100%" : "-100%";
   return {
     hidden: { opacity: 1, x: hiddenX },
     show: { opacity: 1, x: 0 },

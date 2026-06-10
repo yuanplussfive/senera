@@ -199,6 +199,31 @@ function assertFeatureCrossImportsUseExplicitEntrypoints() {
   }
 }
 
+function assertFeatureCodeDoesNotUseLowLevelDrawerMotion() {
+  if (!exists(FEATURES_DIR)) return;
+  const forbiddenNames = [
+    "readDrawerVariants",
+    "readOverlayVariants",
+    "MotionSheetContent",
+    "MotionDialogOverlay",
+  ];
+
+  for (const file of walkFiles(FEATURES_DIR)) {
+    if (file.endsWith(".test.ts") || file.endsWith(".test.tsx")) continue;
+    const content = read(file);
+    for (const name of forbiddenNames) {
+      const pattern = new RegExp(`\\b${name}\\b`);
+      if (pattern.test(content)) {
+        report(
+          file,
+          "feature code should use shared/ui Sheet or Dialog instead of low-level overlay/drawer motion primitives.",
+          `matched: ${name}`,
+        );
+      }
+    }
+  }
+}
+
 function exists(file) {
   try {
     readFileSync(file);
@@ -240,6 +265,7 @@ assertNoRawResponsiveChecks();
 assertSharedUiIsDomainNeutral();
 assertSharedCodeLazyEntrypointsStayExplicit();
 assertFeatureCrossImportsUseExplicitEntrypoints();
+assertFeatureCodeDoesNotUseLowLevelDrawerMotion();
 
 if (failures.length > 0) {
   console.error("Frontend architecture check failed:\n");

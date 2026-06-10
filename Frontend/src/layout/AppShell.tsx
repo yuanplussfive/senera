@@ -11,9 +11,7 @@ const WORKFLOW_RAIL_WIDTH = 44;
 const WORKFLOW_PANEL_WIDTH_COMPACT = 360;
 const WORKFLOW_PANEL_WIDTH = 460;
 const SESSION_DRAWER_WIDTH = "w-[min(360px,calc(100vw-24px))]";
-const SESSION_OVERLAY_WIDTH = "w-[min(360px,calc(100vw-32px))]";
 const WORKFLOW_DRAWER_WIDTH = "w-[min(560px,calc(100vw-24px))]";
-const WORKFLOW_OVERLAY_WIDTH = "w-[min(560px,calc(100vw-32px))]";
 
 interface AppShellProps {
   sessionRail: ReactNode;
@@ -35,8 +33,51 @@ interface ResponsiveDrawerProps {
   side: "left" | "right";
   title: string;
   widthClassName: string;
-  displayMode: "sheet" | "overlay";
+  focusContentOnOpen?: boolean;
+  showClose?: boolean;
+  showHeader?: boolean;
   children: ReactNode;
+}
+
+type AppShellSurface = "drawer" | "persistent";
+
+interface AppShellSurfacePlan {
+  session: AppShellSurface;
+  workflow: AppShellSurface;
+}
+
+interface AppShellRenderPlan {
+  showSessionRail: boolean;
+  showSessionPersistentPanel: boolean;
+  showWorkflowPersistentPanel: boolean;
+  showSessionDrawer: boolean;
+  showWorkflowDrawer: boolean;
+  showChatSessionPanelAction: boolean;
+  showChatWorkflowPanelAction: boolean;
+}
+
+export function readAppShellSurfacePlan(responsiveMode: ResponsiveMode): AppShellSurfacePlan {
+  return {
+    session: responsiveMode.hasPersistentSessionPanel ? "persistent" : "drawer",
+    workflow: responsiveMode.hasPersistentWorkflowPanel ? "persistent" : "drawer",
+  };
+}
+
+export function readAppShellRenderPlan(responsiveMode: ResponsiveMode): AppShellRenderPlan {
+  const surfacePlan = readAppShellSurfacePlan(responsiveMode);
+  return {
+    showSessionRail: responsiveMode.viewport === "tablet" || responsiveMode.viewport === "desktop",
+    showSessionPersistentPanel: surfacePlan.session === "persistent",
+    showWorkflowPersistentPanel: surfacePlan.workflow === "persistent",
+    showSessionDrawer: surfacePlan.session === "drawer",
+    showWorkflowDrawer: surfacePlan.workflow === "drawer",
+    showChatSessionPanelAction: responsiveMode.viewport === "mobile",
+    showChatWorkflowPanelAction: surfacePlan.workflow === "drawer",
+  };
+}
+
+export function readWorkflowPanelWidth(responsiveMode: ResponsiveMode): number {
+  return responsiveMode.viewport === "wide" ? WORKFLOW_PANEL_WIDTH : WORKFLOW_PANEL_WIDTH_COMPACT;
 }
 
 export function AppShell({
@@ -57,12 +98,8 @@ export function AppShell({
   const { reduceMotion, disableMotion } = useMotionLevel();
   const panelResizeTransition: Transition =
     disableMotion || reduceMotion ? { duration: 0 } : motionTimings.slow;
-  const useSessionSheet = responsiveMode.prefersDrawerNavigation;
-  const useWorkflowSheet = responsiveMode.prefersDrawerNavigation;
-  const useSessionOverlay = !responsiveMode.hasPersistentSessionPanel && !useSessionSheet;
-  const useWorkflowOverlay = !responsiveMode.hasPersistentWorkflowPanel && !useWorkflowSheet;
-  const workflowPanelWidth =
-    responsiveMode.viewport === "desktop" ? WORKFLOW_PANEL_WIDTH_COMPACT : WORKFLOW_PANEL_WIDTH;
+  const renderPlan = readAppShellRenderPlan(responsiveMode);
+  const workflowPanelWidth = readWorkflowPanelWidth(responsiveMode);
 
   useEffect(() => {
     if (responsiveMode.hasPersistentSessionPanel && sessionDrawerOpen) {
@@ -82,72 +119,51 @@ export function AppShell({
 
   return (
     <div className="relative flex h-screen w-screen overflow-hidden text-ink-900">
-      <div className="hidden md:flex xl:hidden">{sessionRail}</div>
-      <motion.div
-        initial={false}
-        animate={{ width: sidebarCollapsed ? SESSION_RAIL_WIDTH : SESSION_PANEL_WIDTH }}
-        transition={panelResizeTransition}
-        className="hidden h-full shrink-0 overflow-hidden xl:flex"
-      >
-        {sessionPanel}
-      </motion.div>
+      {renderPlan.showSessionRail ? <div className="flex">{sessionRail}</div> : null}
+      {renderPlan.showSessionPersistentPanel ? (
+        <motion.div
+          initial={false}
+          animate={{ width: sidebarCollapsed ? SESSION_RAIL_WIDTH : SESSION_PANEL_WIDTH }}
+          transition={panelResizeTransition}
+          className="h-full shrink-0 overflow-hidden"
+        >
+          {sessionPanel}
+        </motion.div>
+      ) : null}
       <div className="flex min-w-0 flex-1">{chatPanel}</div>
-      <motion.div
-        initial={false}
-        animate={{ width: rightPanelCollapsed ? WORKFLOW_RAIL_WIDTH : workflowPanelWidth }}
-        transition={panelResizeTransition}
-        className="hidden h-full shrink-0 overflow-hidden lg:flex"
-      >
-        {workflowPanel}
-      </motion.div>
-
-      {useSessionOverlay ? (
-        <ResponsiveDrawer
-          open={sessionDrawerOpen}
-          onOpenChange={onSessionDrawerOpenChange}
-          side="left"
-          title="会话"
-          widthClassName={SESSION_OVERLAY_WIDTH}
-          displayMode="overlay"
+      {renderPlan.showWorkflowPersistentPanel ? (
+        <motion.div
+          initial={false}
+          animate={{ width: rightPanelCollapsed ? WORKFLOW_RAIL_WIDTH : workflowPanelWidth }}
+          transition={panelResizeTransition}
+          className="h-full shrink-0 overflow-hidden"
         >
-          {sessionDrawer}
-        </ResponsiveDrawer>
+          {workflowPanel}
+        </motion.div>
       ) : null}
 
-      {useWorkflowOverlay ? (
-        <ResponsiveDrawer
-          open={workflowDrawerOpen}
-          onOpenChange={onWorkflowDrawerOpenChange}
-          side="right"
-          title="思考过程"
-          widthClassName={WORKFLOW_OVERLAY_WIDTH}
-          displayMode="overlay"
-        >
-          {workflowDrawer}
-        </ResponsiveDrawer>
-      ) : null}
-
-      {useSessionSheet ? (
+      {renderPlan.showSessionDrawer ? (
         <ResponsiveDrawer
           open={sessionDrawerOpen}
           onOpenChange={onSessionDrawerOpenChange}
           side="left"
           title="会话"
           widthClassName={SESSION_DRAWER_WIDTH}
-          displayMode="sheet"
+          focusContentOnOpen
+          showClose={false}
+          showHeader={false}
         >
           {sessionDrawer}
         </ResponsiveDrawer>
       ) : null}
 
-      {useWorkflowSheet ? (
+      {renderPlan.showWorkflowDrawer ? (
         <ResponsiveDrawer
           open={workflowDrawerOpen}
           onOpenChange={onWorkflowDrawerOpenChange}
           side="right"
           title="思考过程"
           widthClassName={WORKFLOW_DRAWER_WIDTH}
-          displayMode="sheet"
         >
           {workflowDrawer}
         </ResponsiveDrawer>
@@ -162,21 +178,21 @@ function ResponsiveDrawer({
   side,
   title,
   widthClassName,
-  displayMode,
+  focusContentOnOpen,
+  showClose,
+  showHeader,
   children,
 }: ResponsiveDrawerProps): JSX.Element {
-  const isOverlay = displayMode === "overlay";
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side={side}
         title={title}
         className={`${widthClassName} p-0`}
-        overlayClassName={isOverlay ? "bg-ink-950/20" : undefined}
-        focusContentOnOpen={isOverlay}
-        showClose={isOverlay && side === "left" ? false : undefined}
-        showHeader={isOverlay && side === "left" ? false : undefined}
+        deferContentMount
+        focusContentOnOpen={focusContentOnOpen}
+        showClose={showClose}
+        showHeader={showHeader}
       >
         <div className="min-h-0 flex-1">{children}</div>
       </SheetContent>

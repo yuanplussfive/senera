@@ -109,7 +109,8 @@ describe("createResponsiveModeStore", () => {
 
     expect(store.getSnapshot()).toMatchObject({
       viewport: "mobile",
-      prefersDrawerNavigation: true,
+      hasPersistentSessionPanel: false,
+      hasPersistentWorkflowPanel: false,
       prefersCompactControls: true,
     });
   });

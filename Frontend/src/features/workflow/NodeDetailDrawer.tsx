@@ -1,18 +1,10 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import { X, Copy, Check } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import type { TimelineStep } from "../../store/sessionStore";
 import { friendlyDecisionKind } from "../../store/sessionStore";
 import { cn, formatTime, formatDuration } from "../../lib/util";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
-import { MetaLabel, Tooltip, useClipboardCopy } from "../../shared/ui";
-import {
-  motionSprings,
-  motionTimings,
-  readDrawerVariants,
-  readOverlayVariants,
-  useMotionLevel,
-} from "../../shared/motion";
+import { MetaLabel, Sheet, SheetContent, Tooltip, useClipboardCopy } from "../../shared/ui";
 import {
   readStepKindLabel,
   readStepStatusLabel,
@@ -27,16 +19,6 @@ export interface NodeDetailDrawerProps {
 
 export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.Element {
   const [contentReady, setContentReady] = useState(false);
-  const { level, reduceMotion, disableMotion } = useMotionLevel();
-  const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent): void => {
-      if (e.key === "Escape" && step) onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [step, onClose]);
 
   useEffect(() => {
     setContentReady(false);
@@ -46,34 +28,30 @@ export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.
   }, [step?.id]);
 
   return (
-    <AnimatePresence>
-      {step ? (
-        <>
-          <motion.div
-            variants={readOverlayVariants(effectiveLevel)}
-            initial="hidden"
-            animate="show"
-            exit="exit"
-            transition={disableMotion ? { duration: 0 } : motionTimings.fast}
-            onClick={onClose}
-            className="fixed inset-0 z-40 bg-ink-900/10"
-          />
-          <motion.div
-            variants={readDrawerVariants(effectiveLevel, "right")}
-            initial="hidden"
-            animate="show"
-            exit="exit"
-            transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.drawer}
-            className="fixed right-0 top-0 z-50 flex h-full w-[min(560px,90vw)] flex-col border-l border-ink-200 bg-paper-50 shadow-soft will-change-transform"
-          >
+    <Sheet
+      open={!!step}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <SheetContent
+        side="right"
+        title={step?.title ?? "节点详情"}
+        className="w-[min(560px,90vw)] p-0"
+        deferContentMount={false}
+        showClose={false}
+        showHeader={false}
+      >
+        {step ? (
+          <>
             <Header step={step} onClose={onClose} />
             <div className="scrollbar-thin flex-1 overflow-y-auto px-5 pb-8 pt-3">
               {contentReady ? <Body step={step} /> : <DetailSkeleton />}
             </div>
-          </motion.div>
-        </>
-      ) : null}
-    </AnimatePresence>
+          </>
+        ) : null}
+      </SheetContent>
+    </Sheet>
   );
 }
 
