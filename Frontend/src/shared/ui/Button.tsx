@@ -13,7 +13,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   default: "bg-ink-900 text-paper-50 hover:bg-ink-800",
   ghost: "text-ink-600 hover:bg-ink-900/[0.05] hover:text-ink-900",
   outline: "border border-ink-200 bg-paper-50 text-ink-700 hover:bg-ink-900/[0.04]",
-  destructive: "bg-brick-500 text-paper-50 hover:bg-brick-600",
+  destructive: "bg-brick-600 text-paper-50 hover:bg-brick-700",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {

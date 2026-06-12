@@ -118,7 +118,7 @@ export function AppShell({
   ]);
 
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden text-ink-900">
+    <div className="relative flex h-dvh w-screen overflow-hidden text-ink-900">
       {renderPlan.showSessionRail ? <div className="flex">{sessionRail}</div> : null}
       {renderPlan.showSessionPersistentPanel ? (
         <motion.div
