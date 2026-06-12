@@ -101,11 +101,6 @@ function ThinkingPanel({
           <PanelRightOpen className="h-4 w-4" />
         </IconButton>
         <Lightbulb className="mt-2 h-4 w-4 text-terra-500" />
-        {run ? (
-          <MetaLabel as="div" size="sm" className="mt-2 rotate-180" style={{ writingMode: "vertical-rl" }}>
-            {run.steps.length} 步
-          </MetaLabel>
-        ) : null}
       </aside>
     );
   }
