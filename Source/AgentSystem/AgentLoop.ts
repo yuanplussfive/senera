@@ -1,4 +1,5 @@
 import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
+import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentEventSink } from "./AgentEvent.js";
 import { AgentEventKinds, emitAgentEvent } from "./AgentEvent.js";
 import type { AgentLanguageModel } from "./AgentLanguageModel.js";
@@ -13,6 +14,7 @@ import {
 } from "./AgentLoopStateMachine.js";
 import type { AgentSystemRuntime } from "./AgentSystemRuntime.js";
 import type { AgentCompletedRunResult } from "./AgentExecutionProjector.js";
+import { AgentCancellationError, throwIfAborted } from "./AgentCancellation.js";
 
 export interface AgentLoopOptions extends AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
@@ -23,6 +25,7 @@ export interface AgentRunRequest {
   requestId: string;
   input: string;
   messages?: AgentLanguageModelMessage[];
+  conversationEntries?: AgentConversationEntry[];
   onEvent?: AgentEventSink;
   signal?: AbortSignal;
 }
@@ -59,6 +62,7 @@ export class AgentLoop {
       requestId: request.requestId,
       input: request.input,
       messages: request.messages,
+      conversationEntries: request.conversationEntries,
       loadedToolNames,
       emitRunStarted: false,
     });
@@ -67,9 +71,7 @@ export class AgentLoop {
 
     while (transition.command) {
       // 命令间检查取消信号
-      if (request.signal?.aborted) {
-        throw new AgentCancellationError();
-      }
+      throwIfAborted(request.signal);
       const runningState = this.expectRunningState(transition.state);
       const result = await this.commandExecutor.execute(
         transition.command,
@@ -113,11 +115,4 @@ export class AgentLoop {
   }
 }
 
-/** 用户主动取消运行时抛出。用 instanceof 判定，不依赖错误消息字符串。 */
-export class AgentCancellationError extends Error {
-  readonly kind = "AgentCancellationError" as const;
-  constructor(message = "Run cancelled by user.") {
-    super(message);
-    this.name = "AgentCancellationError";
-  }
-}
+export { AgentCancellationError };

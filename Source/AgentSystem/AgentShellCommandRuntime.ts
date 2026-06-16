@@ -9,6 +9,8 @@ import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
 } from "./AgentXmlStatus.js";
+import { cancelledToolProcessResult } from "./AgentToolCancellation.js";
+import { resolveToolExecutionConfig } from "./AgentDefaults.js";
 
 const ShellCommandArgumentsSchema = z
   .object({
@@ -61,11 +63,14 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
     });
   }
 
+  const toolExecution = resolveToolExecutionConfig(context.config);
+
   return runShellCommand(parsed.data, {
     cwd: cwdResult.cwd,
-    defaultTimeoutMs: context.config.ToolExecution?.TimeoutMs ?? 120000,
-    maxStdoutBytes: context.config.ToolExecution?.MaxStdoutBytes ?? 500000,
-    maxStderrBytes: context.config.ToolExecution?.MaxStderrBytes ?? 500000,
+    defaultTimeoutMs: toolExecution.TimeoutMs,
+    maxStdoutBytes: toolExecution.MaxStdoutBytes,
+    maxStderrBytes: toolExecution.MaxStderrBytes,
+    signal: context.signal,
   });
 };
 
@@ -76,10 +81,20 @@ function runShellCommand(
     defaultTimeoutMs: number;
     maxStdoutBytes: number;
     maxStderrBytes: number;
+    signal?: AbortSignal;
   },
 ): Promise<AgentToolProcessRunResult> {
   const shell = resolveShell();
   const timeoutMs = request.timeoutMs ?? options.defaultTimeoutMs;
+
+  if (options.signal?.aborted) {
+    return Promise.resolve(cancelledToolProcessResult({
+      signal: options.signal,
+      phase: "before_spawn",
+      command: request.command,
+      cwd: options.cwd,
+    }));
+  }
 
   return new Promise((resolve) => {
     const child = spawn(shell.command, [...shell.args, request.command], {
@@ -96,15 +111,34 @@ function runShellCommand(
       stderrBytes: 0,
     };
     let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const abortListener = (): void => {
+      killProcessTree(child.pid);
+      settle(cancelledToolProcessResult({
+        signal: options.signal,
+        phase: "runtime",
+        command: request.command,
+        cwd: options.cwd,
+      }));
+    };
 
     const settle = (result: AgentToolProcessRunResult): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+      }
+      options.signal?.removeEventListener("abort", abortListener);
       resolve(result);
     };
 
-    const timer = setTimeout(() => {
+    options.signal?.addEventListener("abort", abortListener, { once: true });
+    if (options.signal?.aborted) {
+      abortListener();
+      return;
+    }
+
+    timer = setTimeout(() => {
       killProcessTree(child.pid);
       settle(shellFailure({
         code: AgentExecutionErrorCodes.ToolProcessTimeout,

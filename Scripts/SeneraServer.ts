@@ -1,6 +1,5 @@
 import path from "node:path";
 import { AgentConfigWatcher } from "../Source/AgentSystem/AgentConfigWatcher.js";
-import { AgentEnvironment } from "../Source/AgentSystem/AgentEnvironment.js";
 import { AgentLoop } from "../Source/AgentSystem/AgentLoop.js";
 import { AgentSessionManager } from "../Source/AgentSystem/AgentSessionManager.js";
 import { AgentSessionStore } from "../Source/AgentSystem/AgentSessionStore.js";
@@ -11,19 +10,19 @@ import {
 } from "../Source/AgentSystem/AgentSqliteSessionRepository.js";
 import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
 import { AgentWebSocketServer } from "../Source/AgentSystem/AgentWebSocketServer.js";
-import { resolveServerConfig } from "../Source/AgentSystem/AgentDefaults.js";
+import {
+  resolvePersistenceConfig,
+  resolveServerConfig,
+} from "../Source/AgentSystem/AgentDefaults.js";
 import { AgentModelEndpointClient } from "../Source/AgentSystem/AgentModelEndpointClient.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types.js";
 import { AgentUserProfileManager } from "../Source/AgentSystem/AgentUserProfile.js";
+import { AgentPluginConfigManager } from "../Source/AgentSystem/AgentPluginConfigManager.js";
 
 function main(): void {
   const workspaceRoot = process.cwd();
   const configPath = resolveConfigPath(workspaceRoot);
   let server: AgentWebSocketServer;
-
-  AgentEnvironment.load({
-    workspaceRoot,
-  });
 
   const initialRuntime = AgentSystemRuntime.load({
     workspaceRoot,
@@ -61,12 +60,18 @@ function main(): void {
     store: sessionStore,
   });
   const userProfileManager = new AgentUserProfileManager(repository);
+  const pluginConfigManager = new AgentPluginConfigManager({
+    workspaceRoot,
+    configSnapshot: () => watcher.snapshot().value,
+  });
 
   server = new AgentWebSocketServer({
     config: initialRuntime.config,
+    workspaceRoot,
     configSnapshot: () => watcher.snapshot().value,
     sessionManager,
     userProfileManager,
+    pluginConfigManager,
   });
 
   server.start();
@@ -83,13 +88,13 @@ function main(): void {
 }
 
 function createRepository(workspaceRoot: string, config: AgentSystemConfig): AgentSessionRepository {
-  const kind = config.Persistence?.Kind ?? "sqlite";
-  if (kind === "memory") {
+  const persistence = resolvePersistenceConfig(config);
+  if (persistence.Kind === "memory") {
     return new InMemorySessionRepository();
   }
   const dbPath = path.resolve(
     workspaceRoot,
-    config.Persistence?.DatabasePath ?? ".senera/senera.db",
+    persistence.DatabasePath,
   );
   return new SqliteSessionRepository(dbPath);
 }

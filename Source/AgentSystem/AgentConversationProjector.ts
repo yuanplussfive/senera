@@ -4,6 +4,11 @@ import {
   type AgentConversationEntry,
 } from "./AgentConversation.js";
 import type { AgentConversationEntryMetadata } from "./AgentModelMetadata.js";
+import type {
+  AgentPlannerJournalEntryRecord,
+  AgentToolEvidenceMemoryEntryRecord,
+} from "./AgentPlannerMemory.js";
+import type { AgentUploadAttachment } from "./Uploads/AgentUploadTypes.js";
 
 export class AgentConversationProjector {
   projectUserInput(
@@ -11,6 +16,7 @@ export class AgentConversationProjector {
     content: string,
     timestamp = this.now(),
     metadata?: AgentConversationEntryMetadata,
+    attachments?: readonly AgentUploadAttachment[],
   ): Extract<AgentConversationEntry, { kind: "user.message" }> {
     return {
       kind: AgentConversationEntryKinds.UserMessage,
@@ -18,6 +24,7 @@ export class AgentConversationProjector {
       requestId,
       timestamp,
       content,
+      attachments: attachments && attachments.length > 0 ? [...attachments] : undefined,
       metadata,
     };
   }
@@ -27,10 +34,11 @@ export class AgentConversationProjector {
     xml: string,
     timestamp = this.now(),
     metadata?: AgentConversationEntryMetadata,
+    scope?: string | number,
   ): Extract<AgentConversationEntry, { kind: "assistant.decision" }> {
     return {
       kind: AgentConversationEntryKinds.AssistantDecision,
-      id: createConversationEntryId(requestId, "assistant"),
+      id: createConversationEntryId(requestId, "assistant", scope),
       requestId,
       timestamp,
       xml,
@@ -43,13 +51,48 @@ export class AgentConversationProjector {
     xml: string,
     timestamp = this.now(),
     metadata?: AgentConversationEntryMetadata,
+    scope?: string | number,
   ): Extract<AgentConversationEntry, { kind: "context.tool_results" }> {
     return {
       kind: AgentConversationEntryKinds.ContextToolResults,
-      id: createConversationEntryId(requestId, "tool_results"),
+      id: createConversationEntryId(requestId, "tool_results", scope),
       requestId,
       timestamp,
       xml,
+      metadata,
+    };
+  }
+
+  projectPlannerJournal(
+    requestId: string,
+    record: AgentPlannerJournalEntryRecord,
+    timestamp = this.now(),
+    metadata?: AgentConversationEntryMetadata,
+    scope?: string | number,
+  ): Extract<AgentConversationEntry, { kind: "planner.journal" }> {
+    return {
+      kind: AgentConversationEntryKinds.PlannerJournal,
+      id: createConversationEntryId(requestId, "planner", scope ?? record.step),
+      requestId,
+      timestamp,
+      record,
+      metadata,
+    };
+  }
+
+  projectToolEvidenceMemory(
+    requestId: string,
+    record: AgentToolEvidenceMemoryEntryRecord,
+    timestamp = this.now(),
+    metadata?: AgentConversationEntryMetadata,
+    scope?: string | number,
+  ): Extract<AgentConversationEntry, { kind: "tool.evidence_memory" }> {
+    return {
+      kind: AgentConversationEntryKinds.ToolEvidenceMemory,
+      id: createConversationEntryId(requestId, "evidence_memory", scope ?? record.step),
+      requestId,
+      timestamp,
+      record,
       metadata,
     };
   }

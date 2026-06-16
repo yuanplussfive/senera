@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { EventKinds, type EventEnvelope, type WsRequest } from "./eventTypes";
+import { type EventEnvelope, type WsRequest } from "./eventTypes";
+import {
+  coalesceStreamingEvents,
+  isBufferedStreamingEvent,
+  StreamingEventMaxLatencyMs,
+} from "./streamingEventCoalescer";
 
 export type SocketStatus = "idle" | "connecting" | "open" | "closed" | "error";
 
@@ -14,18 +19,12 @@ export interface AgentSocketHandle {
   reconnect: () => void;
 }
 
-/** 高频事件——累积到下一帧再 flush，避免每秒数百次 setState 堵 UI 线程 */
-const COALESCE_KINDS: ReadonlySet<string> = new Set([
-  EventKinds.ModelDelta,
-  EventKinds.DecisionXmlProgress,
-]);
-
 /**
  * 单连接 + 指数退避自动重连。后端协议本身是无状态的（每次请求自带 sessionId），
  * 因此重连不需要恢复服务端状态，只需要 UI 重新订阅事件流即可。
  *
  * 流式优化：对 model.delta / decision.xml.progress 这类高频事件，
- * 用 requestAnimationFrame 累积到下一帧再回放给 onEvent，每帧只触发一次 React 重渲染。
+ * 累积到浏览器帧再回放给 onEvent；同时用最大等待窗口保证实时输出不会被拖到最终事件。
  */
 export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   const { url, onEvent } = opts;
@@ -41,24 +40,40 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   // rAF 批量队列
   const pendingRef = useRef<EventEnvelope[]>([]);
   const rafIdRef = useRef<number | null>(null);
+  const latencyTimerRef = useRef<number | null>(null);
 
-  const flush = useCallback((): void => {
-    rafIdRef.current = null;
-    const queue = pendingRef.current;
-    if (queue.length === 0) return;
-    pendingRef.current = [];
-    for (const env of compactStreamingEvents(queue)) {
-      onEventRef.current(env);
+  const clearFlushSchedule = useCallback((): void => {
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    if (latencyTimerRef.current !== null) {
+      clearTimeout(latencyTimerRef.current);
+      latencyTimerRef.current = null;
     }
   }, []);
 
+  const flush = useCallback((): void => {
+    clearFlushSchedule();
+    const queue = pendingRef.current;
+    if (queue.length === 0) return;
+    pendingRef.current = [];
+    for (const env of coalesceStreamingEvents(queue)) {
+      onEventRef.current(env);
+    }
+  }, [clearFlushSchedule]);
+
   const scheduleFlush = useCallback((): void => {
-    if (rafIdRef.current !== null) return;
-    rafIdRef.current = requestAnimationFrame(flush);
+    if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(flush);
+    }
+    if (latencyTimerRef.current === null) {
+      latencyTimerRef.current = window.setTimeout(flush, StreamingEventMaxLatencyMs);
+    }
   }, [flush]);
 
   const dispatch = useCallback((env: EventEnvelope): void => {
-    if (COALESCE_KINDS.has(env.kind)) {
+    if (isBufferedStreamingEvent(env.kind)) {
       pendingRef.current.push(env);
       scheduleFlush();
       return;
@@ -144,10 +159,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = null;
-      }
+      clearFlushSchedule();
       connectSeqRef.current += 1;
       wsRef.current?.close();
       wsRef.current = null;
@@ -173,58 +185,4 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   }, [connect]);
 
   return { status, send, reconnect };
-}
-
-function compactStreamingEvents(queue: readonly EventEnvelope[]): EventEnvelope[] {
-  const byRun = new Map<string, {
-    model?: EventEnvelope;
-    decision?: EventEnvelope;
-  }>();
-
-  for (const env of queue) {
-    const key = streamingEventKey(env);
-    const entry = byRun.get(key) ?? {};
-
-    if (env.kind === EventKinds.ModelDelta) {
-      entry.model = mergeModelDelta(entry.model, env);
-    } else if (env.kind === EventKinds.DecisionXmlProgress) {
-      entry.decision = env;
-    }
-
-    byRun.set(key, entry);
-  }
-
-  return Array.from(byRun.values()).flatMap((entry) => [
-    ...(entry.model ? [entry.model] : []),
-    ...(entry.decision ? [entry.decision] : []),
-  ]);
-}
-
-function streamingEventKey(env: EventEnvelope): string {
-  return [
-    env.sessionId ?? "",
-    env.requestId ?? "",
-    env.step ?? "",
-  ].join("\u0000");
-}
-
-function mergeModelDelta(
-  previous: EventEnvelope | undefined,
-  current: EventEnvelope,
-): EventEnvelope {
-  if (!previous) return current;
-  return {
-    ...current,
-    sequence: previous.sequence,
-    timestamp: previous.timestamp,
-    data: {
-      text: readDeltaText(previous) + readDeltaText(current),
-    },
-  };
-}
-
-function readDeltaText(env: EventEnvelope): string {
-  return typeof (env.data as { text?: unknown }).text === "string"
-    ? (env.data as { text: string }).text
-    : "";
 }

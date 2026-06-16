@@ -1,9 +1,0 @@
-{
-  "name": "@senera/plugin-expense-summary-tool",
-  "version": "0.1.0",
-  "private": true,
-  "type": "commonjs",
-  "dependencies": {
-    "@senera/tool-plugin-sdk": "file:../../Packages/ToolPluginSdk"
-  }
-}

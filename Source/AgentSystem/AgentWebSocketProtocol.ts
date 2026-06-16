@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createRequestId } from "./AgentIds.js";
 import { AgentUserProfileInputSchema } from "./AgentUserProfile.js";
+import { AgentUploadAttachmentListSchema } from "./Uploads/AgentUploadTypes.js";
 
 export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
@@ -16,6 +17,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       requestId: z.string().min(1).optional(),
       modelProviderId: z.string().min(1).optional(),
       input: z.string().min(1),
+      attachments: AgentUploadAttachmentListSchema.optional(),
     })
     .strict(),
   z
@@ -58,6 +60,28 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("model.list"),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("plugin.config.list"),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("plugin.config.update"),
+      requestId: z.string().min(1).optional(),
+      pluginName: z.string().min(1),
+      toml: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("plugin.config.set_enabled"),
+      requestId: z.string().min(1).optional(),
+      pluginName: z.string().min(1),
+      toolName: z.string().min(1).optional(),
+      enabled: z.boolean(),
     })
     .strict(),
   z

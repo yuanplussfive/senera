@@ -1,26 +1,87 @@
+[senera]
+# 是否启用天气查询插件。
+enabled = true
+
 [weather]
-# qweather: default, better for Chinese city names and domestic weather.
-# weatherapi: global city/address lookup.
-# visual_crossing: good for timeline forecast and address lookup.
+# qweather: 默认服务，更适合中文城市名和国内天气。
+# weatherapi: 国际城市和地址天气查询。
+# visual_crossing: 适合时间线预报和地址查询。
 provider = "qweather"
 
-# Multiple keys are rotated across calls. You can also set WEATHER_API_KEY.
+# 支持多个密钥轮换调用，也可以通过 WEATHER_API_KEY 设置。
 api_keys = ["replace-with-your-api-key"]
 
-# QWeather requires each account's API Host. Bare host names are accepted.
-# You can also set WEATHER_API_HOST.
+# 和风天气需要填写账号对应的接口域名，支持裸域名。
+# 也可以通过 WEATHER_API_HOST 设置。
 api_host = "your-id.re.qweatherapi.com"
 
-# Optional. Defaults depend on provider:
+# 可选项，默认值取决于天气服务：
 # weatherapi -> https://api.weatherapi.com/v1
 # qweather -> https://devapi.qweather.com
 # visual_crossing -> https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline
 # base_url = "https://api.weatherapi.com/v1"
-# QWeather city lookup uses api_host by default; override only for legacy GeoAPI.
+# 和风天气城市查询默认使用 api_host；只有兼容旧地理接口时才需要覆盖。
 # geo_base_url = "https://geoapi.qweather.com"
 
-# You can also set WEATHER_LANG.
+# 也可以通过 WEATHER_LANG 设置语言。
 language = "zh"
 unit = "metric"
 timeout_ms = 15000
 state_dir = ".state"
+
+[senera.fields.senera.enabled]
+label = "启用插件"
+description = "关闭后天气查询工具不会参与外部工具集。"
+type = "boolean"
+
+[senera.fields.weather.provider]
+label = "天气服务"
+description = "选择天气数据提供方。"
+type = "string"
+options = ["qweather", "weatherapi", "visual_crossing"]
+optionLabels = { qweather = "和风天气", weatherapi = "国际天气服务", visual_crossing = "全球天气服务" }
+
+[senera.fields.weather.api_keys]
+label = "接口密钥"
+description = "支持多个密钥轮换调用。"
+type = "array"
+itemType = "string"
+secret = true
+
+[senera.fields.weather.api_host]
+label = "接口域名"
+description = "和风天气账号对应的接口域名。"
+type = "string"
+placeholder = "your-id.re.qweatherapi.com"
+
+[senera.fields.weather.language]
+label = "语言"
+description = "天气服务请求语言。"
+type = "string"
+
+[senera.fields.weather.unit]
+label = "单位"
+description = "温度和风速单位。"
+type = "string"
+options = ["metric", "imperial"]
+optionLabels = { metric = "公制", imperial = "英制" }
+
+[senera.fields.weather.timeout_ms]
+label = "请求超时"
+description = "天气服务请求超时时间，单位毫秒。"
+type = "number"
+min = 1000
+step = 1000
+
+[senera.fields.weather.state_dir]
+label = "状态目录"
+description = "路径相对插件目录。"
+type = "string"
+
+[senera.sections.senera]
+label = "启用状态"
+description = "控制天气查询插件是否参与外部工具集。"
+
+[senera.sections.weather]
+label = "天气参数"
+description = "配置天气服务、密钥、语言、单位和本地状态目录。"

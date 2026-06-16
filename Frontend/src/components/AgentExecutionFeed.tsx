@@ -28,7 +28,7 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
       <FeedHeadline item={model.headline} stepCount={run.steps.length} />
-      <div className="relative ml-1 pl-5 before:absolute before:left-[5px] before:top-1 before:bottom-0 before:w-px before:bg-ink-200/70">
+      <div className="relative ml-1 pl-5 before:absolute before:left-[5px] before:bottom-0 before:top-1 before:w-px before:bg-ink-200/70">
         {toolGroup ? (
           <ToolGroup
             group={toolGroup}

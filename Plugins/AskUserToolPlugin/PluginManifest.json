@@ -1,7 +1,7 @@
 {
   "Plugin": {
     "Name": "AskUserToolPlugin",
-    "Title": "Ask User Tool",
+    "Title": "询问用户",
     "Version": "0.1.0",
     "Kind": "Tool",
     "Entry": {
@@ -33,6 +33,63 @@
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [],
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "clarification_request",
+            "Records": "$.control",
+            "Slots": {
+              "kind": "$.kind",
+              "question": "$.question",
+              "reasonCode": "$.reason_code"
+            },
+            "Identity": {
+              "Parts": [
+                "question",
+                {
+                  "Slot": "reasonCode",
+                  "Required": false
+                }
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "Q",
+              "Locator": "{% if reasonCode != blank %}{{ reasonCode }}{% else %}clarification{% endif %}",
+              "Display": "clarification requested: {{ question }}",
+              "Label": "{{ question }}",
+              "Source": "{% if reasonCode != blank %}{{ reasonCode }}{% else %}missing_information{% endif %}"
+            },
+            "Confidence": 0.9,
+            "Metadata": {
+              "reasonCode": "$.reason_code"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "question",
+                "reasonCode"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "question",
+                "reasonCode"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} ask user: {{ e.slots.question }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} clarification request\n  question: {{ e.slots.question }}\n  reason: {{ e.slots.reasonCode }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "向用户提出一个简短澄清问题，等待用户补充关键信息。",
         "Keywords": [
@@ -46,6 +103,57 @@
           "澄清",
           "确认",
           "缺少信息"
+        ],
+        "Capabilities": [
+          {
+            "Id": "conversation.ask-user",
+            "Title": "Ask user",
+            "Description": "Ask the user for missing essential information, confirmation, or disambiguation.",
+            "Facets": {
+              "Actions": [
+                "ask",
+                "clarify",
+                "confirm"
+              ],
+              "Targets": [
+                "user",
+                "conversation",
+                "missing-information"
+              ],
+              "Inputs": [
+                "question",
+                "reason-code"
+              ],
+              "Outputs": [
+                "clarification-request",
+                "user-question"
+              ],
+              "Evidence": [
+                "clarification-request"
+              ],
+              "Effects": [
+                "blocks-run",
+                "user-visible"
+              ]
+            },
+            "Aliases": [
+              "问用户",
+              "澄清问题",
+              "ask for clarification",
+              "confirm with user"
+            ],
+            "Examples": [
+              "请确认要删除哪个文件",
+              "ask user for missing location"
+            ],
+            "Avoid": [
+              "如果已经可以直接回答或直接调用工具，不要再询问用户"
+            ],
+            "Risk": {
+              "SideEffect": "user-visible",
+              "Permission": "none"
+            }
+          }
         ],
         "UseCases": [
           "缺少必要参数、目标不明确或继续执行有歧义时使用。"

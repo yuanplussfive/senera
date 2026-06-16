@@ -19,8 +19,13 @@ export class ModelHttpClient {
     private readonly metadata: AgentModelProviderMetadata,
   ) {}
 
-  async postJson(path: ModelHttpPathSegment[], payload: unknown, headers: HeadersInit): Promise<JsonObject> {
-    const lifetime = this.createRequestLifetime();
+  async postJson(
+    path: ModelHttpPathSegment[],
+    payload: unknown,
+    headers: HeadersInit,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<JsonObject> {
+    const lifetime = this.createRequestLifetime(options.signal);
     try {
       const response = await this.fetchWithRetries(this.url(path), {
         method: "POST",
@@ -42,9 +47,13 @@ export class ModelHttpClient {
     headers: HeadersInit,
     extractText: (event: JsonObject) => string,
     query?: Record<string, string>,
+    options: { signal?: AbortSignal } = {},
   ): Promise<AgentLanguageModelStream> {
     const controller = new AbortController();
-    const lifetime = this.createRequestLifetime(controller.signal);
+    const requestSignal = options.signal
+      ? combineAbortSignals(options.signal, controller.signal)
+      : controller.signal;
+    const lifetime = this.createRequestLifetime(requestSignal);
     let response: Response;
     try {
       response = await this.fetchWithRetries(this.url(path, query), {

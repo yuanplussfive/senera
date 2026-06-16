@@ -1,24 +1,38 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { TooltipProvider } from "./shared/ui";
 import { useAgentSocket } from "./api/useAgentSocket";
+import { buildUploadUrl } from "./api/uploadClient";
 import { useStore, type ChatMessage } from "./store/sessionStore";
 import { SessionList } from "./components/SessionList";
 import { ChatPanel } from "./components/ChatPanel";
 import { ThinkingTimeline } from "./components/ThinkingTimeline";
 import { AppShell, useMediaQuery } from "./components/layout/AppShell";
-import { EventKinds, type WsRequest } from "./api/eventTypes";
+import {
+  EventKinds,
+  type ConfigFailedData,
+  type PluginConfigMutationState,
+  type PluginConfigSnapshotData,
+  type UploadAttachmentData,
+  type WsRequest,
+} from "./api/eventTypes";
 import { generateId } from "./lib/util";
 import type { UserProfileData } from "./api/eventTypes";
 import { useGlobalShortcuts } from "./app/useGlobalShortcuts";
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8787";
+const WS_URL = __SENERA_DEFAULT_WS_URL__;
 
 type PendingAfterTruncate = {
   sessionId: string;
   requestId: string;
   nextInput: string;
+  attachments?: UploadAttachmentData[];
   modelProviderId?: string;
+};
+
+type PendingPluginConfigOperation = {
+  pluginName: string;
+  kind: "update" | "set_enabled";
 };
 
 export function App(): JSX.Element {
@@ -36,11 +50,14 @@ export function App(): JSX.Element {
   const modelProviders = useStore((s) => s.modelProviders);
   const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
   const selectModelProvider = useStore((s) => s.selectModelProvider);
+  const pluginConfigs = useStore((s) => s.pluginConfigs);
   const userProfile = useStore((s) => s.userProfile);
   const setUserProfile = useStore((s) => s.setUserProfile);
   const markUserProfileSynced = useStore((s) => s.markUserProfileSynced);
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
+  const [pluginConfigOperations, setPluginConfigOperations] = useState<Record<string, PluginConfigMutationState>>({});
+  const uploadUrl = useMemo(() => buildUploadUrl(WS_URL), []);
   const hasPersistentSessionPanel = useMediaQuery("(min-width: 1280px)");
   const hasPersistentWorkflowPanel = useMediaQuery("(min-width: 1024px)");
 
@@ -59,8 +76,10 @@ export function App(): JSX.Element {
     sessionId: string;
     requestId: string;
     input: string;
+    attachments?: UploadAttachmentData[];
     modelProviderId?: string;
   } | null>(null);
+  const pendingPluginConfigOpsRef = useRef<Map<string, PendingPluginConfigOperation>>(new Map());
   const hydrationToastShownRef = useRef(false);
   // 待办的"truncate 完后做点啥"队列——避免 setTimeout 魔法等待
   const pendingAfterTruncateRef = useRef<PendingAfterTruncate[]>([]);
@@ -113,6 +132,7 @@ export function App(): JSX.Element {
               sessionId: lost,
               requestId: last.requestId,
               input: last.input,
+              attachments: last.attachments,
               modelProviderId: last.modelProviderId,
             });
             toast("已自动恢复会话", {
@@ -151,10 +171,54 @@ export function App(): JSX.Element {
 
         if (env.kind === EventKinds.ConfigReloaded && sendRef.current) {
           sendRef.current({ type: "model.list" });
+          sendRef.current({ type: "plugin.config.list" });
         }
 
         if (env.kind === EventKinds.ProfileSnapshot) {
           markUserProfileSynced(env.data as UserProfileData);
+        }
+
+        if (env.kind === EventKinds.PluginConfigSnapshot) {
+          const operation = (env.data as PluginConfigSnapshotData).operation;
+          const requestId = operation?.requestId;
+          const pending = requestId ? pendingPluginConfigOpsRef.current.get(requestId) : undefined;
+          if (requestId && pending) {
+            pendingPluginConfigOpsRef.current.delete(requestId);
+            setPluginConfigOperations((operations) => ({
+              ...operations,
+              [requestId]: {
+                requestId,
+                pluginName: pending.pluginName,
+                kind: pending.kind,
+                status: "success",
+                updatedAt: new Date().toISOString(),
+              },
+            }));
+            toast.success(pending.kind === "update" ? "插件配置已保存" : "插件状态已更新");
+          }
+        }
+
+        if (env.kind === EventKinds.ConfigFailed) {
+          const data = env.data as ConfigFailedData;
+          const requestId = data.operation?.requestId;
+          const pending = requestId ? pendingPluginConfigOpsRef.current.get(requestId) : undefined;
+          if (requestId && pending) {
+            pendingPluginConfigOpsRef.current.delete(requestId);
+            setPluginConfigOperations((operations) => ({
+              ...operations,
+              [requestId]: {
+                requestId,
+                pluginName: pending.pluginName,
+                kind: pending.kind,
+                status: "error",
+                message: data.message,
+                updatedAt: new Date().toISOString(),
+              },
+            }));
+            toast.error(pending.kind === "update" ? "插件配置保存失败" : "插件状态更新失败", {
+              description: data.message,
+            });
+          }
         }
 
         // truncate 完成后，执行排队的"重新回答"等动作（消除 setTimeout race）
@@ -176,6 +240,7 @@ export function App(): JSX.Element {
               requestId: newRequestId,
               modelProviderId: pending.modelProviderId,
               input: pending.nextInput,
+              attachments: pending.attachments,
             };
             const ok = sendRef.current(messageRequest);
             if (!ok) {
@@ -186,11 +251,12 @@ export function App(): JSX.Element {
               sessionId: pending.sessionId,
               requestId: newRequestId,
               input: pending.nextInput,
+              attachments: pending.attachments,
               modelProviderId: pending.modelProviderId,
             };
             useStore
               .getState()
-              .appendUserMessage(pending.sessionId, newRequestId, pending.nextInput);
+              .appendUserMessage(pending.sessionId, newRequestId, pending.nextInput, pending.attachments);
           }
         }
 
@@ -228,6 +294,7 @@ export function App(): JSX.Element {
     // 拉后端权威会话列表（覆盖本地缓存的元数据）
     send({ type: "session.list" });
     send({ type: "model.list" });
+    send({ type: "plugin.config.list" });
 
     const state = useStore.getState();
     if (state.userProfile.syncState === "pending") {
@@ -327,8 +394,99 @@ export function App(): JSX.Element {
     if (status !== "open") return;
     send({ type: "session.list" });
     send({ type: "model.list" });
+    send({ type: "plugin.config.list" });
     send({ type: "profile.get" });
   }, [status, send]);
+
+  const handleRefreshPluginConfigs = useCallback(() => {
+    if (status !== "open") return;
+    send({ type: "plugin.config.list" });
+  }, [send, status]);
+
+  const handleSavePluginConfig = useCallback(
+    (pluginName: string, toml: string) => {
+      if (status !== "open") {
+        toast.error("插件配置保存失败，后端未连接");
+        return null;
+      }
+      const requestId = generateId();
+      pendingPluginConfigOpsRef.current.set(requestId, {
+        pluginName,
+        kind: "update",
+      });
+      setPluginConfigOperations((operations) => ({
+        ...operations,
+        [requestId]: {
+          requestId,
+          pluginName,
+          kind: "update",
+          status: "pending",
+          updatedAt: new Date().toISOString(),
+        },
+      }));
+      const ok = send({
+        type: "plugin.config.update",
+        requestId,
+        pluginName,
+        toml,
+      });
+      if (!ok) {
+        pendingPluginConfigOpsRef.current.delete(requestId);
+        setPluginConfigOperations((operations) => {
+          const next = { ...operations };
+          delete next[requestId];
+          return next;
+        });
+        toast.error("插件配置保存失败，连接可能已断开");
+        return null;
+      }
+      return requestId;
+    },
+    [send, status],
+  );
+
+  const handleSetPluginEnabled = useCallback(
+    (pluginName: string, enabled: boolean, toolName?: string) => {
+      if (status !== "open") {
+        toast.error("插件配置更新失败，后端未连接");
+        return null;
+      }
+      const requestId = generateId();
+      pendingPluginConfigOpsRef.current.set(requestId, {
+        pluginName,
+        kind: "set_enabled",
+      });
+      setPluginConfigOperations((operations) => ({
+        ...operations,
+        [requestId]: {
+          requestId,
+          pluginName,
+          kind: "set_enabled",
+          status: "pending",
+          updatedAt: new Date().toISOString(),
+        },
+      }));
+      const ok = send({
+        type: "plugin.config.set_enabled",
+        requestId,
+        pluginName,
+        toolName,
+        enabled,
+      });
+      if (!ok) {
+        pendingPluginConfigOpsRef.current.delete(requestId);
+        setPluginConfigOperations((operations) => {
+          const next = { ...operations };
+          delete next[requestId];
+          return next;
+        });
+        toast.error("插件配置更新失败，连接可能已断开");
+        return null;
+      }
+      return requestId;
+    },
+    [send, status],
+  );
 
   const handleRenameSession = useCallback(
     (id: string, title: string) => {
@@ -403,6 +561,7 @@ export function App(): JSX.Element {
         sessionId: activeId,
         requestId: message.requestId,
         nextInput: userMsg.content,
+        attachments: userMsg.attachments,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
       });
     },
@@ -426,6 +585,7 @@ export function App(): JSX.Element {
         sessionId: activeId,
         requestId: message.requestId,
         nextInput: trimmed,
+        attachments: message.attachments,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
       });
     },
@@ -484,7 +644,7 @@ export function App(): JSX.Element {
   );
 
   const handleSend = useCallback(
-    (input: string) => {
+    (input: string, attachments?: UploadAttachmentData[]) => {
       const state = useStore.getState();
       const modelProviderId = state.selectedModelProviderId ?? undefined;
       let targetSessionId = activeId;
@@ -519,15 +679,16 @@ export function App(): JSX.Element {
         serverKnownRef.current.add(targetSessionId);
       }
       // 写入前端
-      appendUserMessage(targetSessionId, requestId, input);
+      appendUserMessage(targetSessionId, requestId, input, attachments);
       // 记下来，万一 session.not_found 可重放
-      lastSendRef.current = { sessionId: targetSessionId, requestId, input, modelProviderId };
+      lastSendRef.current = { sessionId: targetSessionId, requestId, input, attachments, modelProviderId };
       const ok = send({
         type: "session.message",
         sessionId: targetSessionId,
         requestId,
         modelProviderId,
         input,
+        attachments,
       });
       if (!ok) {
         toast.error("发送失败，连接可能已断开");
@@ -586,7 +747,13 @@ export function App(): JSX.Element {
             modelProviders={modelProviders}
             selectedModelProviderId={selectedModelProviderId}
             onSelectModelProvider={selectModelProvider}
+            pluginConfigs={pluginConfigs}
+            pluginConfigOperations={pluginConfigOperations}
+            onRefreshPluginConfigs={handleRefreshPluginConfigs}
+            onSavePluginConfig={handleSavePluginConfig}
+            onSetPluginEnabled={handleSetPluginEnabled}
             socketStatus={status}
+            uploadUrl={uploadUrl}
             onSend={handleSend}
             onCancel={handleCancel}
             onRegenerate={handleRegenerate}

@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
-import { cn, formatDuration } from "../../lib/util";
+import { cn, formatDuration, hasMeasuredDuration } from "../../lib/util";
 
 const KindIcon: Record<TimelineStepKind, React.ComponentType<{ className?: string }>> = {
   understand: MessageSquareText,
@@ -99,7 +99,7 @@ function StepNodeBase({ data, selected }: NodeProps): JSX.Element {
       ) : null}
 
       {/* 底部：时长 */}
-      {step.endedAt ? (
+      {hasMeasuredDuration(step.startedAt, step.endedAt) ? (
         <div className="mt-1.5 text-right font-mono text-[10px] text-ink-400">
           {formatDuration(step.startedAt, step.endedAt)}
         </div>

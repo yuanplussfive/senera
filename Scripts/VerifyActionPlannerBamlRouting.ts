@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createActionPlannerBamlClient } from "../Source/AgentSystem/AgentActionPlannerBamlClient.js";
 import { b as baml } from "../Source/AgentSystem/BamlClient/baml_client/index.js";
+import { buildActionPlannerPromptJson } from "../Source/AgentSystem/AgentActionPlannerPromptJson.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
 import { createActionPlanInputFixture } from "./ActionPlannerFixture.js";
 
@@ -74,7 +75,9 @@ async function main(): Promise<void> {
       },
     );
 
-    const request = await baml.request.PlanAction(input, {
+    const request = await baml.request.SelectAction(buildActionPlannerPromptJson(input, {
+      stage: "selectAction",
+    }), {
       clientRegistry: client.registry,
     });
     const body = request.body.json() as Record<string, unknown>;
@@ -94,7 +97,9 @@ async function main(): Promise<void> {
     Temperature: 0.1,
     MaxTokens: 321,
   });
-  const limitedRequest = await baml.request.PlanAction(input, {
+  const limitedRequest = await baml.request.SelectAction(buildActionPlannerPromptJson(input, {
+    stage: "selectAction",
+  }), {
     clientRegistry: limitedClient.registry,
   });
   assert.equal((limitedRequest.body.json() as Record<string, unknown>).max_tokens, 321);

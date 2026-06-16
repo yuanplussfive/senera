@@ -1,4 +1,9 @@
 import type { AgentActionDecision } from "./AgentActionPlanner.js";
+import {
+  agentActionInstruction,
+  agentActionPreferredTools,
+  agentActionToolSearchQueries,
+} from "./AgentActionPlanner.js";
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
 import type { AgentPromptRenderer } from "./AgentPromptRenderer.js";
 import type { AgentToolCatalogProjector } from "./AgentToolCatalogProjector.js";
@@ -41,10 +46,9 @@ export class AgentActionMismatchRepairPromptBuilder {
       action: input.actionDirective
         ? {
             action: input.actionDirective.action,
-            intent: input.actionDirective.intent,
-            instruction: input.actionDirective.instructionToMainModel,
-            preferredTools: input.actionDirective.preferredTools,
-            toolSearchQueries: input.actionDirective.toolSearchQueries,
+            instruction: agentActionInstruction(input.actionDirective),
+            preferredTools: agentActionPreferredTools(input.actionDirective),
+            toolSearchQueries: agentActionToolSearchQueries(input.actionDirective),
           }
         : null,
       tools: this.deps.toolCatalog.listVisible(input.loadedToolNames),

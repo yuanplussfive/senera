@@ -34,6 +34,67 @@
         "Kind": "HostCapability",
         "Capability": "tool.search"
       },
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "tool_candidate",
+            "Records": "$.tools.item[*]",
+            "Slots": {
+              "name": "$.name",
+              "title": "$.title",
+              "summary": "$.summary",
+              "score": "$.score",
+              "reason": "$.reason"
+            },
+            "Identity": {
+              "Parts": [
+                "name"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "T",
+              "Locator": "tool:{{ name }}",
+              "Display": "tool candidate: {{ title }}",
+              "Label": "{{ title }}",
+              "Source": "{{ summary }}"
+            },
+            "Confidence": 0.8,
+            "Metadata": {
+              "score": "$.score",
+              "reason": "$.reason"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "name",
+                "title",
+                "summary",
+                "score",
+                "reason"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "name",
+                "title",
+                "score",
+                "reason"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} tool: {{ e.slots.name }} - {{ e.slots.title }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} tool: {{ e.slots.name }}\n  title: {{ e.slots.title }}\n  summary: {{ e.slots.summary }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "搜索当前工作区已注册工具，返回适合任务的工具名和用途。",
         "Keywords": [
@@ -47,6 +108,62 @@
           "查找能力",
           "能力发现",
           "动态加载"
+        ],
+        "Capabilities": [
+          {
+            "Id": "tool.catalog-search",
+            "Title": "Tool catalog search",
+            "Description": "Search registered tools and expose matching tool cards for later turns.",
+            "Facets": {
+              "Actions": [
+                "search",
+                "discover",
+                "route"
+              ],
+              "Targets": [
+                "tool-catalog",
+                "capability-catalog",
+                "runtime-tools"
+              ],
+              "Inputs": [
+                "task",
+                "query",
+                "capability-need"
+              ],
+              "Outputs": [
+                "tool-candidate",
+                "matched-capability",
+                "routing-hint"
+              ],
+              "Evidence": [
+                "tool-candidate"
+              ],
+              "Effects": [
+                "read-only",
+                "context-load"
+              ]
+            },
+            "Aliases": [
+              "工具发现",
+              "查找能力",
+              "load matching tools",
+              "discover available tool"
+            ],
+            "Examples": [
+              "查找能搜索网页的工具",
+              "find tool for workspace code search"
+            ],
+            "Avoid": [
+              "工具已经明确且已经加载时不要重复搜索"
+            ],
+            "Risk": {
+              "SideEffect": "context-load",
+              "Permission": "none",
+              "Notes": [
+                "Only searches registered tool metadata."
+              ]
+            }
+          }
         ],
         "UseCases": [
           "不确定该调用哪个工具时先搜索工具目录。",

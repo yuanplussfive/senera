@@ -1,7 +1,7 @@
 {
   "Plugin": {
     "Name": "FastContextReadToolPlugin",
-    "Title": "Fast Context Read Tool",
+    "Title": "文件读取",
     "Version": "0.1.0",
     "Kind": "Tool",
     "Entry": {
@@ -39,6 +39,93 @@
       "Permissions": [
         "filesystem:read:workspace"
       ],
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "workspace_read",
+            "Records": "$",
+            "Slots": {
+              "kind": "$.kind",
+              "path": "$.path",
+              "startLine": "$.startLine",
+              "endLine": "$.endLine",
+              "totalLines": "$.totalLines",
+              "childCount": "$.childCount",
+              "directoryCount": "$.directoryCount",
+              "fileCount": "$.fileCount",
+              "truncated": "$.truncated"
+            },
+            "Identity": {
+              "Parts": [
+                "path",
+                "kind",
+                {
+                  "Slot": "startLine",
+                  "Required": false
+                },
+                {
+                  "Slot": "endLine",
+                  "Required": false
+                }
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "R",
+              "Locator": "{% if startLine %}{{ path }}:{{ startLine }}-{{ endLine }}{% else %}{{ path }}{% endif %}",
+              "Display": "workspace {{ kind }} read: {{ path }}",
+              "Label": "{{ path }}",
+              "Source": "{{ kind }}"
+            },
+            "Confidence": 0.9,
+            "Metadata": {
+              "kind": "$.kind",
+              "totalLines": "$.totalLines",
+              "childCount": "$.childCount",
+              "directoryCount": "$.directoryCount",
+              "fileCount": "$.fileCount",
+              "truncated": "$.truncated"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "kind",
+                "path",
+                "startLine",
+                "endLine",
+                "totalLines",
+                "childCount",
+                "directoryCount",
+                "fileCount",
+                "truncated"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "kind",
+                "path",
+                "startLine",
+                "endLine",
+                "totalLines",
+                "childCount",
+                "directoryCount",
+                "fileCount",
+                "truncated"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} read {{ e.slots.kind }} {{ e.locator }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace read\n  kind: {{ e.slots.kind }}\n  locator: {{ e.locator }}{% if e.slots.totalLines %}\n  totalLines: {{ e.slots.totalLines }}{% endif %}{% if e.slots.childCount %}\n  childCount: {{ e.slots.childCount }}{% endif %}\n  truncated: {{ e.slots.truncated }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "读取工作区内指定文件片段，目录路径返回轻量子路径摘要。",
         "Keywords": [
@@ -54,6 +141,58 @@
           "源码",
           "行号",
           "目录"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.file-read",
+            "Title": "Workspace file read",
+            "Description": "Read known workspace files, line ranges, or directory summaries.",
+            "Facets": {
+              "Actions": [
+                "read",
+                "inspect",
+                "open"
+              ],
+              "Targets": [
+                "workspace",
+                "file",
+                "directory",
+                "source-code"
+              ],
+              "Inputs": [
+                "path",
+                "line-range"
+              ],
+              "Outputs": [
+                "file-content",
+                "directory-summary",
+                "source-location"
+              ],
+              "Evidence": [
+                "workspace-read"
+              ],
+              "Effects": [
+                "read-only"
+              ]
+            },
+            "Aliases": [
+              "读取文件",
+              "查看源码",
+              "open file",
+              "read lines"
+            ],
+            "Examples": [
+              "读取 README.md 前 100 行",
+              "read package.json"
+            ],
+            "Avoid": [
+              "不知道路径时先用工作区地图或搜索工具定位"
+            ],
+            "Risk": {
+              "SideEffect": "none",
+              "Permission": "read"
+            }
+          }
         ],
         "UseCases": [
           "已知道具体路径，需要查看文件内容、行号片段或目录摘要时使用。"

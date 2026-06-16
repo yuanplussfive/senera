@@ -1,37 +1,67 @@
 import { z } from "zod";
+import { AgentCliConfigSchema } from "./AgentCliConfigSchema.js";
 
 const disabledOrPositiveInteger = (fieldName: string) => z.number().int().refine((value) => value === -1 || value >= 1, {
   message: `${fieldName} 必须为 -1，或大于等于 1。`,
 });
+
+const ModelEndpointSchema = z.union([
+  z.literal("Responses"),
+  z.literal("ChatCompletions"),
+  z.literal("ClaudeMessages"),
+  z.literal("GoogleGenerateContent"),
+]);
 
 const ModelProviderSchema = z
   .object({
     Id: z.string().min(1),
     Title: z.string().min(1).optional(),
     Icon: z.string().min(1).optional(),
-    Kind: z.literal("OpenAICompatible"),
-    Endpoint: z.union([
-      z.literal("Responses"),
-      z.literal("ChatCompletions"),
-      z.literal("ClaudeMessages"),
-      z.literal("GoogleGenerateContent"),
-    ]),
-    BaseUrl: z.string().url(),
-    ApiKey: z.string().min(1),
+    Kind: z.literal("OpenAICompatible").optional(),
+    Endpoint: ModelEndpointSchema,
+    BaseUrl: z.string().url().optional(),
+    ApiKey: z.string().min(1).optional(),
     ApiVersion: z.string().min(1).optional(),
     Model: z.string().min(1),
-    Temperature: z.number().min(0).max(2),
+    Temperature: z.number().min(0).max(2).optional(),
     MaxOutputTokens: z.number().int().refine((value) => value === -1 || value >= 1, {
       message: "MaxOutputTokens 必须为 -1，或大于等于 1。",
-    }),
-    Stream: z.boolean(),
-    TimeoutMs: z.number().int().min(1),
+    }).optional(),
+    Stream: z.boolean().optional(),
+    TimeoutMs: z.number().int().min(1).optional(),
     FirstTokenTimeoutMs: disabledOrPositiveInteger("FirstTokenTimeoutMs").optional(),
     MaxRequestMs: disabledOrPositiveInteger("MaxRequestMs").optional(),
-    MaxNetworkRetries: z.number().int().min(0),
+    MaxNetworkRetries: z.number().int().min(0).optional(),
     Headers: z.record(z.string(), z.string()).optional(),
   })
   .strict();
+
+const ModelProviderDefaultsSchema = z
+  .object({
+    Kind: z.literal("OpenAICompatible").optional(),
+    BaseUrl: z.string().url().optional(),
+    ApiKey: z.string().min(1).optional(),
+    ApiVersion: z.string().min(1).optional(),
+    Temperature: z.number().min(0).max(2).optional(),
+    MaxOutputTokens: z.number().int().refine((value) => value === -1 || value >= 1, {
+      message: "ModelProviderDefaults.MaxOutputTokens 必须为 -1，或大于等于 1。",
+    }).optional(),
+    Stream: z.boolean().optional(),
+    TimeoutMs: z.number().int().min(1).optional(),
+    FirstTokenTimeoutMs: disabledOrPositiveInteger("ModelProviderDefaults.FirstTokenTimeoutMs").optional(),
+    MaxRequestMs: disabledOrPositiveInteger("ModelProviderDefaults.MaxRequestMs").optional(),
+    MaxNetworkRetries: z.number().int().min(0).optional(),
+    Headers: z.record(z.string(), z.string()).optional(),
+  })
+  .strict();
+
+const ModelProviderRuntimeDefaultsSchema = ModelProviderDefaultsSchema.extend({
+  Id: z.string().min(1).optional(),
+  Title: z.string().min(1).optional(),
+  Icon: z.string().min(1).optional(),
+  Endpoint: ModelEndpointSchema.optional(),
+  Model: z.string().min(1).optional(),
+}).strict();
 
 const LoadedToolsSchema = z.union([
   z.literal("all"),
@@ -81,7 +111,6 @@ const ActionPlannerSchema = z
   .object({
     Enabled: z.boolean().optional(),
     MaxRepairAttempts: z.number().int().min(0).optional(),
-    MaxCatalogTools: z.number().int().min(1).optional(),
     Client: z
       .object({
         Provider: z.enum([
@@ -102,37 +131,150 @@ const ActionPlannerSchema = z
   })
   .strict();
 
-export const AgentSystemConfigSchema = z
+const ArtifactsSchema = z
+  .object({
+    RootDir: z.string().min(1).optional(),
+    SummaryMaxChars: z.number().int().min(256).optional(),
+    RawJsonMaxBytes: z.number().int().min(1024).optional(),
+    TextFileMaxBytes: z.number().int().min(1024).optional(),
+  })
+  .strict();
+
+const UploadsSchema = z
+  .object({
+    RootDir: z.string().min(1).optional(),
+    MaxFileBytes: z.number().int().min(1).optional(),
+  })
+  .strict();
+
+const FrontendSchema = z
+  .object({
+    DevServer: z
+      .object({
+        Host: z.string().min(1).optional(),
+        Port: z.number().int().min(1).max(65535).optional(),
+        StrictPort: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    PreviewServer: z
+      .object({
+        Host: z.string().min(1).optional(),
+        Port: z.number().int().min(1).max(65535).optional(),
+        StrictPort: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    Client: z
+      .object({
+        WebSocketUrl: z.string().min(1).optional(),
+        ModelLabel: z.string().min(1).optional(),
+        UserName: z.string().min(1).optional(),
+        EmptySuggestions: z.array(z.string().min(1)).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const AgentDefaultsSchema = z
   .object({
     PluginRoots: z
       .object({
-        System: z.array(z.string().min(1)),
-        User: z.array(z.string().min(1)),
+        System: z.array(z.string().min(1)).optional(),
+        User: z.array(z.string().min(1)).optional(),
       })
-      .strict(),
+      .strict()
+      .optional(),
     PluginDiscovery: z
       .object({
-        ManifestFileName: z.string().min(1),
+        ManifestFileName: z.string().min(1).optional(),
+        ConfigFileName: z.string().min(1).optional(),
       })
-      .strict(),
+      .strict()
+      .optional(),
+    ModelProviderDefaults: ModelProviderRuntimeDefaultsSchema.optional(),
+    Cli: AgentCliConfigSchema.optional(),
+    ToolExecution: z
+      .object({
+        Mode: z.literal("Process").optional(),
+        TimeoutMs: z.number().int().min(1).optional(),
+        MaxStdoutBytes: z.number().int().min(1).optional(),
+        MaxStderrBytes: z.number().int().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    AgentLoop: z
+      .object({
+        MaxSteps: z.number().int().refine((value) => value === -1 || value >= 1, {
+          message: "Defaults.AgentLoop.MaxSteps 必须是 -1 或大于等于 1 的整数。",
+        }).optional(),
+        MaxRepairAttempts: z.number().int().min(0).optional(),
+        LoadedTools: LoadedToolsSchema.optional(),
+      })
+      .strict()
+      .optional(),
+    ToolSearch: ToolSearchSchema.optional(),
+    Artifacts: ArtifactsSchema.optional(),
+    Uploads: UploadsSchema.optional(),
+    ActionPlanner: ActionPlannerSchema.optional(),
+    Frontend: FrontendSchema.optional(),
+    Server: z
+      .object({
+        Host: z.string().min(1).optional(),
+        Port: z.number().int().min(1).max(65535).optional(),
+        HotReload: z.boolean().optional(),
+        RequestMaxBytes: z.number().int().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    Persistence: z
+      .object({
+        Kind: z.union([z.literal("sqlite"), z.literal("memory")]).optional(),
+        DatabasePath: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const AgentSystemConfigSchema = z
+  .object({
+    Defaults: AgentDefaultsSchema.optional(),
+    PluginRoots: z
+      .object({
+        System: z.array(z.string().min(1)).optional(),
+        User: z.array(z.string().min(1)).optional(),
+      })
+      .strict()
+      .optional(),
+    PluginDiscovery: z
+      .object({
+        ManifestFileName: z.string().min(1).optional(),
+        ConfigFileName: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
     XmlProtocol: z
       .object({
-        MaxDepth: z.number().int().min(1),
+        MaxDepth: z.number().int().min(1).optional(),
         MaxTextLength: z.number().int().min(1).optional(),
         MaxDecisionTokens: z.number().int().min(1).optional(),
-        MaxToolCalls: z.number().int().min(1),
+        MaxToolCalls: z.number().int().min(1).optional(),
         ArrayElementNames: z.array(z.string().min(1)).optional(),
         ArrayElementNameSuffix: z.string().min(1).optional(),
       })
-      .strict(),
+      .strict()
+      .optional(),
     ToolExecution: z
       .object({
-        Mode: z.literal("Process"),
-        TimeoutMs: z.number().int().min(1),
-        MaxStdoutBytes: z.number().int().min(1),
-        MaxStderrBytes: z.number().int().min(1),
+        Mode: z.literal("Process").optional(),
+        TimeoutMs: z.number().int().min(1).optional(),
+        MaxStdoutBytes: z.number().int().min(1).optional(),
+        MaxStderrBytes: z.number().int().min(1).optional(),
       })
-      .strict(),
+      .strict()
+      .optional(),
     PluginDocumentation: z
       .object({
         Markdown: z
@@ -172,31 +314,36 @@ export const AgentSystemConfigSchema = z
       .strict()
       .optional(),
     DefaultModelProviderId: z.string().min(1).optional(),
+    ModelProviderDefaults: ModelProviderDefaultsSchema.optional(),
     ModelProviders: z.array(ModelProviderSchema).min(1),
+    Cli: AgentCliConfigSchema.optional(),
     AgentLoop: z
       .object({
         MaxSteps: z.number().int().refine((value) => value === -1 || value >= 1, {
           message: "MaxSteps 必须是 -1 或大于等于 1 的整数。",
-        }),
-        MaxRepairAttempts: z.number().int().min(0),
-        LoadedTools: LoadedToolsSchema,
+        }).optional(),
+        MaxRepairAttempts: z.number().int().min(0).optional(),
+        LoadedTools: LoadedToolsSchema.optional(),
       })
       .strict()
       .optional(),
     ToolSearch: ToolSearchSchema.optional(),
+    Artifacts: ArtifactsSchema.optional(),
+    Uploads: UploadsSchema.optional(),
     ActionPlanner: ActionPlannerSchema.optional(),
+    Frontend: FrontendSchema.optional(),
     Server: z
       .object({
-        Host: z.string().min(1),
-        Port: z.number().int().min(1).max(65535),
-        HotReload: z.boolean(),
-        RequestMaxBytes: z.number().int().min(1),
+        Host: z.string().min(1).optional(),
+        Port: z.number().int().min(1).max(65535).optional(),
+        HotReload: z.boolean().optional(),
+        RequestMaxBytes: z.number().int().min(1).optional(),
       })
       .strict()
       .optional(),
     Persistence: z
       .object({
-        Kind: z.union([z.literal("sqlite"), z.literal("memory")]),
+        Kind: z.union([z.literal("sqlite"), z.literal("memory")]).optional(),
         DatabasePath: z.string().min(1).optional(),
       })
       .strict()

@@ -24,7 +24,7 @@ import { toBamlError, BamlStream, BamlAbortError, Collector, ClientRegistry } fr
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types"
 import type { partial_types } from "./partial_types"
 import type * as types from "./types"
-import type {ActionDecision, ActionKind, ActionPlanInput, ActionRuntime, ActionTask, EvidenceRecord, ExecutionDelta, ExecutionDeltaOp, ExecutionState, PlannerHistoryTurn, ProgressSignals, RepeatedCallWarning, ToolCallRecord, ToolCallStatus, ToolCatalogItem} from "./types"
+import type {ActionDecision, ActionKind, ActionPlanInput, ActionRunState, ActionSelection, AnswerActionPayload, AskUserActionPayload, CapabilityNeed, DiscoverToolsActionPayload, EvidenceSlot, ExecutionDeltaOp, PlannerEvidenceMemoryItem, PlannerJournalItem, PlannerTimelineTurn, ProgressSignals, RepeatedCallWarning, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, UseToolsActionPayload} from "./types"
 import type TypeBuilder from "./type_builder"
 import { AsyncHttpRequest, AsyncHttpStreamRequest } from "./async_request"
 import { LlmResponseParser, LlmStreamParser } from "./parser"
@@ -96,9 +96,9 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
         return this.llmStreamParser
         }
 
-
-        async PlanAction(
-        input: types.ActionPlanInput,
+        
+        async BuildActionPayload(
+        promptJson: string,
         __baml_options__?: BamlCallOptions<never>
         ): Promise<types.ActionDecision> {
           try {
@@ -111,8 +111,8 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
 
           // Check if onTick is provided - route through streaming if so
           if (__options__.onTick) {
-          const __stream__ = this.stream.PlanAction(
-          input,
+          const __stream__ = this.stream.BuildActionPayload(
+          promptJson,
           __baml_options__
           );
 
@@ -134,9 +134,9 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             }
 
             const __raw__ = await this.runtime.callFunction(
-            "PlanAction",
+            "BuildActionPayload",
             {
-            "input": input
+            "promptJson": promptJson
             },
             this.ctxManager.cloneContext(),
             __options__.tb?.__tb(),
@@ -152,9 +152,9 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             throw toBamlError(error);
             }
             }
-
-        async RepairActionDecision(
-        input: types.ActionPlanInput,invalidDecision: string,issues: string[],
+            
+        async RepairActionPayload(
+        promptJson: string,
         __baml_options__?: BamlCallOptions<never>
         ): Promise<types.ActionDecision> {
           try {
@@ -167,8 +167,8 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
 
           // Check if onTick is provided - route through streaming if so
           if (__options__.onTick) {
-          const __stream__ = this.stream.RepairActionDecision(
-          input,invalidDecision,issues,
+          const __stream__ = this.stream.RepairActionPayload(
+          promptJson,
           __baml_options__
           );
 
@@ -190,9 +190,9 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             }
 
             const __raw__ = await this.runtime.callFunction(
-            "RepairActionDecision",
+            "RepairActionPayload",
             {
-            "input": input,"invalidDecision": invalidDecision,"issues": issues
+            "promptJson": promptJson
             },
             this.ctxManager.cloneContext(),
             __options__.tb?.__tb(),
@@ -208,7 +208,119 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             throw toBamlError(error);
             }
             }
+            
+        async RepairActionSelection(
+        promptJson: string,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.ActionSelection> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
 
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.RepairActionSelection(
+          promptJson,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "RepairActionSelection",
+            {
+            "promptJson": promptJson
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.ActionSelection
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
+        async SelectAction(
+        promptJson: string,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.ActionSelection> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.SelectAction(
+          promptJson,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "SelectAction",
+            {
+            "promptJson": promptJson
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.ActionSelection
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
             }
 
             class BamlStreamClient {
@@ -222,9 +334,9 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             this.bamlOptions = bamlOptions || {}
             }
 
-
-            PlanAction(
-            input: types.ActionPlanInput,
+            
+            BuildActionPayload(
+            promptJson: string,
             __baml_options__?: BamlCallOptions<never>
             ): BamlStream<partial_types.ActionDecision, types.ActionDecision>
               {
@@ -252,7 +364,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
               try {
               __options__.onTick!("Unknown", __log__);
               } catch (error) {
-              console.error("Error in onTick callback for PlanAction", error);
+              console.error("Error in onTick callback for BuildActionPayload", error);
               }
               }
               };
@@ -271,9 +383,9 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                 }
 
                 const __raw__ = this.runtime.streamFunction(
-                "PlanAction",
+                "BuildActionPayload",
                 {
-                "input": input
+                "promptJson": promptJson
                 },
                 undefined,
                 this.ctxManager.cloneContext(),
@@ -296,9 +408,9 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   throw toBamlError(error);
                   }
                   }
-
-            RepairActionDecision(
-            input: types.ActionPlanInput,invalidDecision: string,issues: string[],
+                  
+            RepairActionPayload(
+            promptJson: string,
             __baml_options__?: BamlCallOptions<never>
             ): BamlStream<partial_types.ActionDecision, types.ActionDecision>
               {
@@ -326,7 +438,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
               try {
               __options__.onTick!("Unknown", __log__);
               } catch (error) {
-              console.error("Error in onTick callback for RepairActionDecision", error);
+              console.error("Error in onTick callback for RepairActionPayload", error);
               }
               }
               };
@@ -345,9 +457,9 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                 }
 
                 const __raw__ = this.runtime.streamFunction(
-                "RepairActionDecision",
+                "RepairActionPayload",
                 {
-                "input": input,"invalidDecision": invalidDecision,"issues": issues
+                "promptJson": promptJson
                 },
                 undefined,
                 this.ctxManager.cloneContext(),
@@ -370,8 +482,156 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   throw toBamlError(error);
                   }
                   }
+                  
+            RepairActionSelection(
+            promptJson: string,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.ActionSelection, types.ActionSelection>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
 
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for RepairActionSelection", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "RepairActionSelection",
+                {
+                "promptJson": promptJson
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.ActionSelection, types.ActionSelection>(
+                  __raw__,
+                  (a): partial_types.ActionSelection => a,
+                  (a): types.ActionSelection => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
+            SelectAction(
+            promptJson: string,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.ActionSelection, types.ActionSelection>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for SelectAction", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "SelectAction",
+                {
+                "promptJson": promptJson
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.ActionSelection, types.ActionSelection>(
+                  __raw__,
+                  (a): partial_types.ActionSelection => a,
+                  (a): types.ActionSelection => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
                   }
 
                   export const b = new BamlAsyncClient(DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME,
-                  DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_CTX)
+                  DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_CTX)

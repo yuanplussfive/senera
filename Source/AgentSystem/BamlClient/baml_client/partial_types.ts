@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types"
-import type {  ActionDecision,  ActionKind,  ActionPlanInput,  ActionRuntime,  ActionTask,  EvidenceRecord,  ExecutionDelta,  ExecutionDeltaOp,  ExecutionState,  PlannerHistoryTurn,  ProgressSignals,  RepeatedCallWarning,  ToolCallRecord,  ToolCallStatus,  ToolCatalogItem } from "./types"
+import type {  ActionDecision,  ActionKind,  ActionPlanInput,  ActionRunState,  ActionSelection,  AnswerActionPayload,  AskUserActionPayload,  CapabilityNeed,  DiscoverToolsActionPayload,  EvidenceSlot,  ExecutionDeltaOp,  PlannerEvidenceMemoryItem,  PlannerJournalItem,  PlannerTimelineTurn,  ProgressSignals,  RepeatedCallWarning,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  UseToolsActionPayload } from "./types"
 import type * as types from "./types"
 
 /******************************************************************************
@@ -38,61 +38,80 @@ export interface StreamState<T> {
 export namespace partial_types {
     export interface ActionDecision {
       action?: types.ActionKind | null
-      intent?: string | null
-      progressAssessment?: string | null
-      nextStepGoal?: string | null
-      requiredCapabilities: string[]
-      tags: string[]
-      toolSearchQueries: string[]
-      preferredTools: string[]
-      confidence?: number | null
-      instructionToMainModel?: string | null
+      answer?: AnswerActionPayload | null
+      askUser?: AskUserActionPayload | null
+      useTools?: UseToolsActionPayload | null
+      discoverTools?: DiscoverToolsActionPayload | null
     }
     export interface ActionPlanInput {
-      task?: ActionTask | null
-      runtime?: ActionRuntime | null
-      history: PlannerHistoryTurn[]
-      executionState?: ExecutionState | null
-      recentDeltas: ExecutionDelta[]
+      runState?: ActionRunState | null
+      timeline: PlannerTimelineTurn[]
+      evidenceMemory: PlannerEvidenceMemoryItem[]
+      plannerJournal: PlannerJournalItem[]
       toolCatalog: ToolCatalogItem[]
     }
-    export interface ActionRuntime {
+    export interface ActionRunState {
       currentStep?: number | null
       dynamicTools?: boolean | null
       loadedTools: string[]
-    }
-    export interface ActionTask {
-      userMessage?: string | null
-    }
-    export interface EvidenceRecord {
-      key?: string | null
-      kind?: string | null
-      label?: string | null
-      artifactId?: string | null
-      source?: string | null
-    }
-    export interface ExecutionDelta {
-      step?: number | null
-      op?: types.ExecutionDeltaOp | null
-      key?: string | null
-      toolName?: string | null
-      argsHash?: string | null
-      status?: types.ToolCallStatus | null
-      artifactId?: string | null
-      evidenceKeys: string[]
-      note?: string | null
-    }
-    export interface ExecutionState {
-      calls: ToolCallRecord[]
-      evidence: EvidenceRecord[]
-      warnings: RepeatedCallWarning[]
       progress?: ProgressSignals | null
+      warnings: RepeatedCallWarning[]
     }
-    export interface PlannerHistoryTurn {
+    export interface ActionSelection {
+      action?: types.ActionKind | null
+    }
+    export interface AnswerActionPayload {
+      content?: string | null
+    }
+    export interface AskUserActionPayload {
+      question?: string | null
+      reason?: string | null
+    }
+    export interface CapabilityNeed {
+      actions?: string[] | null
+      targets?: string[] | null
+      inputs?: string[] | null
+      outputs?: string[] | null
+      evidence?: string[] | null
+      effects?: string[] | null
+    }
+    export interface DiscoverToolsActionPayload {
+      queries: string[]
+      needs: CapabilityNeed[]
+    }
+    export interface EvidenceSlot {
+      name?: string | null
+      value?: string | null
+    }
+    export interface PlannerEvidenceMemoryItem {
+      evidenceRef?: string | null
+      kind?: string | null
+      locator?: string | null
+      display?: string | null
+      label?: string | null
+      confidence?: number | null
+      toolName?: string | null
+      artifactUri?: string | null
+      facts: EvidenceSlot[]
+      artifactRefs: string[]
+    }
+    export interface PlannerJournalItem {
+      requestId?: string | null
+      step?: number | null
+      selectedAction?: string | null
+      evidenceRefs: string[]
+      artifactUris: string[]
+      loadedTools: string[]
+      outcome?: string | null
+    }
+    export interface PlannerTimelineTurn {
       index?: number | null
       role?: string | null
       kind?: string | null
+      step?: number | null
       content?: string | null
+      evidenceRefs: string[]
+      artifactUris: string[]
     }
     export interface ProgressSignals {
       totalToolCalls?: number | null
@@ -107,24 +126,39 @@ export namespace partial_types {
       count?: number | null
       lastStep?: number | null
     }
-    export interface ToolCallRecord {
-      step?: number | null
-      toolName?: string | null
-      argsHash?: string | null
-      status?: types.ToolCallStatus | null
-      artifactId?: string | null
-      evidenceKeys: string[]
-      error?: string | null
+    export interface ToolCapabilityFacets {
+      Actions?: string[] | null
+      Targets?: string[] | null
+      Inputs?: string[] | null
+      Outputs?: string[] | null
+      Evidence?: string[] | null
+      Effects?: string[] | null
+    }
+    export interface ToolCapabilityItem {
+      id?: string | null
+      title?: string | null
+      description?: string | null
+      facets?: ToolCapabilityFacets | null
+      risk?: ToolCapabilityRisk | null
+    }
+    export interface ToolCapabilityRisk {
+      sideEffect?: string | null
+      permission?: string | null
     }
     export interface ToolCatalogItem {
       name?: string | null
       title?: string | null
       summary?: string | null
+      capabilities: ToolCapabilityItem[]
       tags: string[]
       useCases: string[]
       examples: string[]
       avoid: string[]
       permissions: string[]
       loaded?: boolean | null
+    }
+    export interface UseToolsActionPayload {
+      preferredTools: string[]
+      instruction?: string | null
     }
 }

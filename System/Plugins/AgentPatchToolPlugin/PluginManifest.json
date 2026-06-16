@@ -34,6 +34,86 @@
         "Kind": "HostCapability",
         "Capability": "patch.apply"
       },
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "workspace_file",
+            "Records": "$.changedFiles.item[*]",
+            "Slots": {
+              "path": "$.path",
+              "status": "$.status",
+              "additions": "$.additions",
+              "deletions": "$.deletions"
+            },
+            "Identity": {
+              "Parts": [
+                "path",
+                "status"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "F",
+              "Locator": "{{ path }}",
+              "Display": "workspace file {{ status }}: {{ path }}",
+              "Label": "{{ path }}",
+              "Source": "{{ status }}"
+            },
+            "Confidence": 0.95,
+            "Metadata": {
+              "additions": "$.additions",
+              "deletions": "$.deletions",
+              "status": "$.status"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "path",
+                "status",
+                "additions",
+                "deletions"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "path",
+                "status",
+                "additions",
+                "deletions"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection",
+                "workspaceDiff",
+                "workspacePatch"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.status }} {{ e.slots.path }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.status }} {{ e.slots.path }} (+{{ e.slots.additions }}, -{{ e.slots.deletions }})\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        },
+        "Workspace": {
+          "Capture": "declared",
+          "Paths": [
+            {
+              "Selector": "$.operations.item[*].path",
+              "Base": "$.cwd"
+            },
+            {
+              "Selector": "$.changedFiles.item[*].path"
+            }
+          ],
+          "MaxFileBytes": 262144,
+          "MaxFiles": 128,
+          "MaxDirectoryDepth": 0,
+          "CaptureContent": "text",
+          "PatchContextLines": 3
+        }
+      },
       "Search": {
         "Summary": "按结构化编辑操作创建、替换、插入、删除或修改工作区文件。",
         "Keywords": [
@@ -50,6 +130,67 @@
           "写入",
           "创建文件",
           "删除文件"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.patch-edit",
+            "Title": "Workspace patch edit",
+            "Description": "Apply structured file edits, creations, replacements, insertions, and deletions in the workspace.",
+            "Facets": {
+              "Actions": [
+                "edit",
+                "patch",
+                "create",
+                "replace",
+                "insert",
+                "delete"
+              ],
+              "Targets": [
+                "workspace",
+                "file",
+                "source-code",
+                "configuration",
+                "documentation"
+              ],
+              "Inputs": [
+                "path",
+                "operation",
+                "content",
+                "line-range"
+              ],
+              "Outputs": [
+                "workspace-file-change",
+                "patch-summary",
+                "changed-file"
+              ],
+              "Evidence": [
+                "workspace-file"
+              ],
+              "Effects": [
+                "write-workspace"
+              ]
+            },
+            "Aliases": [
+              "编辑文件",
+              "应用补丁",
+              "modify file",
+              "apply patch"
+            ],
+            "Examples": [
+              "修改 AgentToolSearchIndex.ts",
+              "create a new config example"
+            ],
+            "Avoid": [
+              "只想查看文件内容时使用读取工具；只想运行命令时使用 ShellCommandTool"
+            ],
+            "Risk": {
+              "SideEffect": "write-workspace",
+              "Permission": "write",
+              "Notes": [
+                "Changes workspace files."
+              ]
+            }
+          }
         ],
         "UseCases": [
           "需要实际修改代码、配置、文档或批量应用文件变更时使用。"

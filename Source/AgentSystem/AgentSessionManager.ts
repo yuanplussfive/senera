@@ -1,6 +1,7 @@
 import type { AgentEventSink } from "./AgentEvent.js";
+import type { AgentEventEnvelope } from "./AgentEventBase.js";
 import { AgentEventKinds, emitAgentEvent, withEventContext } from "./AgentEvent.js";
-import type { AgentHistoryStepRun } from "./AgentEvent.js";
+import type { AgentHistoryStepRun } from "./AgentSessionEventTypes.js";
 import { AgentConversationPolicy } from "./AgentConversationPolicy.js";
 import { AgentConversationProjector } from "./AgentConversationProjector.js";
 import {
@@ -10,7 +11,7 @@ import {
 import { extractDecisionStreamingPreview } from "./AgentDecisionStreamingPreview.js";
 import { createRequestId } from "./AgentIds.js";
 import type { AgentLoop } from "./AgentLoop.js";
-import { AgentCancellationError } from "./AgentLoop.js";
+import { AgentCancellationError } from "./AgentCancellation.js";
 import { matchByKind } from "./AgentMatch.js";
 import {
   AgentSessionStatuses,
@@ -19,6 +20,8 @@ import {
 import { AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
 import { AgentSessionStore } from "./AgentSessionStore.js";
 import type { StepTrace } from "./AgentStepTrace.js";
+import { AgentRunEventHistoryReplayChunkSize } from "./AgentRunEventHistoryPolicy.js";
+import type { AgentUploadAttachment } from "./Uploads/AgentUploadTypes.js";
 
 const HISTORY_REPLAY_CHUNK_SIZE = 50;
 
@@ -107,6 +110,7 @@ export class AgentSessionManager {
     requestId?: string;
     modelProviderId?: string;
     input: string;
+    attachments?: AgentUploadAttachment[];
     onEvent?: AgentEventSink;
   }): Promise<void> {
     const lookup = this.store.get(request.sessionId);
@@ -218,6 +222,19 @@ export class AgentSessionManager {
       });
     }
 
+    const runEvents = this.store.loadRunEvents(sessionId);
+    for (let index = 0; index < runEvents.length; index += AgentRunEventHistoryReplayChunkSize) {
+      const chunk = runEvents.slice(index, index + AgentRunEventHistoryReplayChunkSize);
+      await emitAgentEvent(request.onEvent, {
+        kind: AgentEventKinds.SessionRunHistoryChunk,
+        context: { sessionId },
+        data: {
+          sessionId,
+          events: chunk,
+        },
+      });
+    }
+
     await emitAgentEvent(request.onEvent, {
       kind: AgentEventKinds.SessionHistoryCompleted,
       context: { sessionId },
@@ -264,6 +281,14 @@ export class AgentSessionManager {
     });
   }
 
+  recordRunEvent(envelope: AgentEventEnvelope): void {
+    if (!envelope.sessionId || !envelope.requestId) {
+      return;
+    }
+
+    this.store.persistRunEvent(envelope.sessionId, envelope);
+  }
+
   async renameSession(request: {
     sessionId: string;
     title: string;
@@ -281,11 +306,51 @@ export class AgentSessionManager {
     await emitAgentEvent(request.onEvent, this.eventFactory.snapshot(lookup.session));
   }
 
-  /** 用户主动取消活跃 run——直接 abort 对应的 AbortController */
-  cancelActiveRun(sessionId: string): boolean {
-    const run = this.activeRuns.get(sessionId);
+  /** 用户主动取消活跃 run：立即发终态事件并解除会话 busy，同时让后台执行链路尽快 abort。 */
+  async cancelActiveRun(request: {
+    sessionId: string;
+    onEvent?: AgentEventSink;
+  }): Promise<boolean> {
+    const run = this.activeRuns.get(request.sessionId);
     if (!run) return false;
-    run.controller.abort();
+
+    if (!run.cancelled) {
+      run.cancelled = true;
+      run.controller.abort(new AgentCancellationError());
+    }
+
+    this.activeRuns.delete(request.sessionId);
+    const lookup = this.store.get(request.sessionId);
+    if (lookup.kind === "found") {
+      lookup.session.status = AgentSessionStatuses.Idle;
+      lookup.session.updatedAt = new Date().toISOString();
+      lookup.session.activeRequest = undefined;
+      this.store.persistMetadata(lookup.session);
+    }
+
+    await emitAgentEvent(request.onEvent ?? run.onEvent, {
+      kind: AgentEventKinds.RunCancelled,
+      context: {
+        sessionId: request.sessionId,
+        requestId: run.requestId,
+      },
+      data: { reason: "user_cancelled" },
+    });
+
+    const removedEntries = this.store.truncateFromRequest(request.sessionId, run.requestId);
+    if (lookup.kind === "found") {
+      lookup.session.updatedAt = new Date().toISOString();
+      this.store.persistMetadata(lookup.session);
+    }
+    await emitAgentEvent(request.onEvent ?? run.onEvent, {
+      kind: AgentEventKinds.SessionTruncated,
+      context: { sessionId: request.sessionId },
+      data: {
+        sessionId: request.sessionId,
+        fromRequestId: run.requestId,
+        removedEntries,
+      },
+    });
     return true;
   }
 
@@ -373,6 +438,7 @@ export class AgentSessionManager {
       requestId?: string;
       modelProviderId?: string;
       input: string;
+      attachments?: AgentUploadAttachment[];
       onEvent?: AgentEventSink;
     },
   ): Promise<void> {
@@ -382,12 +448,21 @@ export class AgentSessionManager {
       requestId,
       request.input,
       timestamp,
+      undefined,
+      request.attachments,
     );
     const messages = [
-      ...this.conversationPolicy.materialize(session.conversation),
+      ...this.conversationPolicy.materialize(session.conversation, {
+        toolResultsScope: {
+          kind: "none",
+        },
+        evidenceMemoryScope: {
+          kind: "all",
+        },
+      }),
       {
         role: "user" as const,
-        content: request.input,
+        content: this.conversationPolicy.renderCurrentUserMessage(userEntry),
       },
     ];
 
@@ -397,6 +472,7 @@ export class AgentSessionManager {
       requestId,
       input: request.input,
       startedAt: timestamp,
+      attachments: request.attachments,
     };
     this.store.persistMetadata(session);
 
@@ -406,7 +482,7 @@ export class AgentSessionManager {
     // 该 session 已有 active run 时（不应该到这——但防御一下）先取消
     this.activeRuns.get(session.id)?.controller.abort();
     const controller = new AbortController();
-    const run: ActiveSessionRun = { requestId, controller };
+    const run: ActiveSessionRun = { requestId, controller, onEvent: request.onEvent };
     this.activeRuns.set(session.id, run);
 
     try {
@@ -414,6 +490,10 @@ export class AgentSessionManager {
         requestId,
         input: request.input,
         messages,
+        conversationEntries: [
+          ...session.conversation,
+          userEntry,
+        ],
         signal: controller.signal,
         onEvent: (event) => this.isActiveRun(session.id, run)
           ? emitAgentEvent(
@@ -548,4 +628,6 @@ export class AgentSessionManager {
 interface ActiveSessionRun {
   requestId: string;
   controller: AbortController;
+  onEvent?: AgentEventSink;
+  cancelled?: boolean;
 }

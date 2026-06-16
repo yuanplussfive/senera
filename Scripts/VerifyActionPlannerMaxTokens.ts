@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { AgentActionPlannerModelClient } from "../Source/AgentSystem/AgentActionPlannerModelClient.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
 import {
-  createActionDecisionFixture,
   createActionPlanInputFixture,
 } from "./ActionPlannerFixture.js";
 
@@ -24,7 +23,9 @@ const baseProvider: ResolvedAgentModelProviderConfig = {
   Headers: {},
 };
 
-const emptyDecision = createActionDecisionFixture();
+const actionSelection = JSON.stringify({
+  action: "Answer",
+});
 
 main().catch((error: unknown) => {
   console.error(error);
@@ -56,11 +57,51 @@ async function main(): Promise<void> {
     Array.isArray(googleUnlimited.contents) && googleUnlimited.contents.length > 0,
     "Google action planner payload must include non-empty contents.",
   );
-  assert.match(JSON.stringify(googleUnlimited.contents), /userMessage/);
+  const googlePrompt = readGooglePlannerPrompt(googleUnlimited);
+  assert.ok("context" in googlePrompt);
+  assert.ok("timeline" in googlePrompt.context);
+  assert.ok("directive" in googlePrompt);
+  assert.equal(googlePrompt.directive.stage, "selectAction");
+  assert.doesNotMatch(JSON.stringify(googleUnlimited.contents), /Timeline turn/);
   assert.doesNotMatch(JSON.stringify(googleUnlimited.contents), /Produce the ActionDecision JSON now/);
   assert.match(String(googleUnlimited.__url), /alt=sse/);
 
   console.log("Action planner MaxTokens verification passed.");
+}
+
+function readGooglePlannerPrompt(payload: Record<string, unknown>): {
+  context: {
+    timeline: unknown[];
+  };
+  directive: {
+    stage: string;
+  };
+} {
+  const contents = Array.isArray(payload.contents) ? payload.contents : [];
+  for (const content of contents) {
+    const contentRecord = content && typeof content === "object"
+      ? content as Record<string, unknown>
+      : {};
+    const parts = Array.isArray(contentRecord.parts) ? contentRecord.parts : [];
+    for (const part of parts) {
+      const partRecord = part && typeof part === "object"
+        ? part as Record<string, unknown>
+        : {};
+      const text = partRecord.text;
+      if (typeof text === "string" && text.trim().startsWith("{")) {
+        return JSON.parse(text) as {
+          context: {
+            timeline: unknown[];
+          };
+          directive: {
+            stage: string;
+          };
+        };
+      }
+    }
+  }
+
+  throw new Error("Google action planner payload did not contain planner JSON.");
 }
 
 async function capturePayload(
@@ -97,7 +138,7 @@ async function capturePayload(
         MaxTokens: maxTokens,
       },
     );
-    await client.plan(createActionPlanInputFixture("test"));
+    await client.selectAction(createActionPlanInputFixture("test"));
     assert.ok(payload);
     return payload;
   } finally {
@@ -109,25 +150,25 @@ function responseBody(endpoint: ResolvedAgentModelProviderConfig["Endpoint"]): s
   const responseByEndpoint = {
     Responses: sseEvent({
       type: "response.output_text.delta",
-      delta: emptyDecision,
+      delta: actionSelection,
     }),
     ChatCompletions: sseEvent({
       choices: [{
         delta: {
-          content: emptyDecision,
+          content: actionSelection,
         },
       }],
     }),
     ClaudeMessages: sseEvent({
       type: "content_block_delta",
       delta: {
-        text: emptyDecision,
+        text: actionSelection,
       },
     }),
     GoogleGenerateContent: sseEvent({
       candidates: [{
         content: {
-          parts: [{ text: emptyDecision }],
+          parts: [{ text: actionSelection }],
         },
       }],
     }),

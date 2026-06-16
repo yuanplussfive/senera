@@ -4,6 +4,7 @@ import { AgentModelTextBudget, AgentModelTokenEstimator } from "./AgentTextBudge
 import {
   resolveActionPlannerConfig,
   resolveAgentLoopConfig,
+  resolveArtifactsConfig,
   resolveModelProviderConfig,
   resolveToolSearchConfig,
 } from "./AgentDefaults.js";
@@ -27,6 +28,7 @@ import { AgentToolSearchRuntime } from "./AgentToolSearchRuntime.js";
 import { AgentActionPlanner } from "./AgentActionPlanner.js";
 import { AgentToolCatalogProjector } from "./AgentToolCatalogProjector.js";
 import { AgentActionMismatchRepairPromptBuilder } from "./AgentActionMismatchRepairPromptBuilder.js";
+import { AgentToolExecutionArtifactRecorder } from "./Artifacts/AgentToolExecutionArtifactRecorder.js";
 
 export class AgentSystemRuntime {
   readonly registry = new AgentPluginRegistry();
@@ -39,6 +41,7 @@ export class AgentSystemRuntime {
   readonly modelProviderConfig;
   readonly agentLoopConfig;
   readonly toolSearchConfig;
+  readonly artifactsConfig;
   readonly actionPlannerConfig;
   readonly xmlPolicy;
   readonly decisionXmlTextBudget;
@@ -49,6 +52,7 @@ export class AgentSystemRuntime {
   readonly decisionExecutor: AgentDecisionExecutor;
   readonly toolSearch: AgentToolSearchRuntime;
   readonly toolCatalog: AgentToolCatalogProjector;
+  readonly artifactRecorder: AgentToolExecutionArtifactRecorder;
   readonly actionPlanner: AgentActionPlanner;
   readonly actionMismatchRepairPromptBuilder: AgentActionMismatchRepairPromptBuilder;
 
@@ -61,6 +65,7 @@ export class AgentSystemRuntime {
     this.modelProviderConfig = resolveModelProviderConfig(config, modelProviderId);
     this.agentLoopConfig = resolveAgentLoopConfig(config);
     this.toolSearchConfig = resolveToolSearchConfig(config);
+    this.artifactsConfig = resolveArtifactsConfig(config);
     this.actionPlannerConfig = resolveActionPlannerConfig(config, modelProviderId);
     this.xmlPolicy = createXmlProtocolPolicy(config);
     this.decisionXmlTextBudget = new AgentModelTextBudget({
@@ -77,6 +82,10 @@ export class AgentSystemRuntime {
       this.workspaceRoot,
     );
     this.toolCatalog = new AgentToolCatalogProjector(this.registry);
+    this.artifactRecorder = new AgentToolExecutionArtifactRecorder({
+      workspaceRoot: this.workspaceRoot,
+      config: this.artifactsConfig,
+    });
     this.actionPlanner = new AgentActionPlanner(
       this.actionPlannerConfig,
       this.modelProviderConfig,

@@ -29,6 +29,10 @@ const EventMessageCatalog: Record<string, string> = {
   "run.started": "任务开始",
   "prompt.summary": "提示词摘要",
   "prompt.rendered": "提示词已渲染",
+  "action.planner.stage.started": "行动规划阶段开始",
+  "action.planner.stage.completed": "行动规划阶段完成",
+  "action.planner.stage.failed": "行动规划阶段失败",
+  "action.planned": "行动规划完成",
   "model.started": "模型开始输出",
   "model.stream.opened": "模型流已打开",
   "model.stream.aborted": "模型流已停止",
@@ -53,6 +57,7 @@ const EventMessageCatalog: Record<string, string> = {
   "config.reloaded": "配置已热更新",
   "config.failed": "配置热更新失败",
   "model.list.snapshot": "模型列表已同步",
+  "plugin.config.snapshot": "插件配置已同步",
   "profile.snapshot": "用户资料已同步",
 };
 
@@ -80,6 +85,50 @@ const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormatter>> =
     message: "提示词已渲染",
     tokens: [formatStepToken(event.step)],
   }),
+  "action.planner.stage.started": (event) => {
+    const data = normalizeRecord(event.data);
+    return {
+      message: "行动规划阶段开始",
+      tokens: [
+        formatStepToken(event.step),
+        formatPlannerStageToken(data.stage),
+      ],
+    };
+  },
+  "action.planner.stage.completed": (event) => {
+    const data = normalizeRecord(event.data);
+    return {
+      message: "行动规划阶段完成",
+      tokens: [
+        formatStepToken(event.step),
+        formatPlannerStageToken(data.stage),
+        readStringToken(data.selectedAction),
+        Boolean(data.repaired) ? "已修复" : undefined,
+      ],
+    };
+  },
+  "action.planner.stage.failed": (event) => {
+    const data = normalizeRecord(event.data);
+    return {
+      message: "行动规划阶段失败",
+      tokens: [
+        formatStepToken(event.step),
+        formatPlannerStageToken(data.stage),
+        readStringToken(data.message),
+      ],
+    };
+  },
+  "action.planned": (event) => {
+    const data = normalizeRecord(event.data);
+    return {
+      message: "行动规划完成",
+      tokens: [
+        formatStepToken(event.step),
+        readStringToken(data.action),
+        readStringToken(data.status),
+      ],
+    };
+  },
   "model.started": (event) => {
     const data = normalizeRecord(event.data);
     return {
@@ -306,6 +355,19 @@ function formatStopReasonToken(value: unknown): string | undefined {
     stream_completed: "流结束",
   };
   return catalog[reason] ?? reason;
+}
+
+function formatPlannerStageToken(value: unknown): string | undefined {
+  const stage = readNonEmptyString(value);
+  if (!stage) {
+    return undefined;
+  }
+
+  const catalog: Record<string, string> = {
+    selectAction: "选择行动",
+    buildActionPayload: "构建参数",
+  };
+  return catalog[stage] ?? stage;
 }
 
 function formatActiveRequestToken(value: unknown): string | undefined {

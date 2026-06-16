@@ -1,91 +1,47 @@
-import { z } from "zod";
-import {
-  BamlAbortError,
-  BamlTimeoutError,
-} from "@boundaryml/baml";
-import {
-  ActionKind,
-  BamlClientFinishReasonError,
-  BamlClientHttpError,
-  BamlValidationError,
-  type ActionDecision as BamlActionDecision,
-  type ActionPlanInput,
-} from "./BamlClient/baml_client/index.js";
+import { ActionKind, type ActionPlanInput } from "./BamlClient/baml_client/index.js";
 import type { AgentToolCatalogItem } from "./AgentToolCatalogProjector.js";
 import type {
   ResolvedAgentActionPlannerConfig,
   ResolvedAgentModelProviderConfig,
 } from "./Types.js";
 import { AgentActionPlannerModelClient } from "./AgentActionPlannerModelClient.js";
+import {
+  isRepairablePlanningFailure,
+  issueMessages,
+  normalizePlanningFailure,
+  stringifyIssueValue,
+  summarizePlannerFailure,
+} from "./AgentActionPlannerFailure.js";
+import {
+  ActionKindMap,
+  assertSelectedAction,
+  parseActionDecision,
+  parseActionSelection,
+} from "./AgentActionPlannerSchema.js";
+import {
+  AgentActionPlannerStageNames,
+  type AgentActionPlannerStageName,
+  type AgentActionPlannerStageSink,
+} from "./AgentActionPlannerTelemetry.js";
+import type {
+  AgentActionDecision,
+  AgentActionPlanResult,
+} from "./AgentActionPlannerTypes.js";
+import { AgentCancellationError, throwIfAborted } from "./AgentCancellation.js";
 
-const ActionDecisionSchema = z
-  .object({
-    action: z.enum(ActionKind),
-    intent: z.string(),
-    progressAssessment: z.string(),
-    nextStepGoal: z.string(),
-    requiredCapabilities: z.array(z.string()),
-    tags: z.array(z.string()),
-    toolSearchQueries: z.array(z.string()),
-    preferredTools: z.array(z.string()),
-    confidence: z.number().min(0).max(1),
-    instructionToMainModel: z.string(),
-  })
-  .strict()
-  .superRefine((decision, context) => {
-    if (decision.action === ActionKind.DiscoverTools && decision.toolSearchQueries.length === 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["toolSearchQueries"],
-        message: "DiscoverTools 需要至少一个工具搜索 query。",
-      });
-    }
-
-    if (decision.action === ActionKind.UseTools && decision.preferredTools.length === 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["preferredTools"],
-        message: "UseTools 需要至少一个 preferredTools。",
-      });
-    }
-  });
-
-export type AgentActionKind =
-  | "answer"
-  | "ask_user"
-  | "discover_tools"
-  | "use_tools";
-
-export interface AgentActionDecision {
-  action: AgentActionKind;
-  intent: string;
-  progressAssessment: string;
-  nextStepGoal: string;
-  requiredCapabilities: string[];
-  tags: string[];
-  toolSearchQueries: string[];
-  preferredTools: string[];
-  confidence: number;
-  instructionToMainModel: string;
-}
-
-export type AgentActionPlanResult =
-  | {
-      kind: "planned";
-      decision: AgentActionDecision;
-      input: ActionPlanInput;
-      repaired: boolean;
-    }
-  | {
-      kind: "fallback";
-      reason: string;
-      input?: ActionPlanInput;
-    };
-
-interface RawActionPlanningFailure {
-  error: unknown;
-  invalidDecision?: unknown;
-}
+export type {
+  AgentActionCapabilityNeed,
+  AgentActionDecision,
+  AgentActionKind,
+  AgentActionPlanResult,
+} from "./AgentActionPlannerTypes.js";
+export {
+  agentActionCapabilityNeeds,
+  agentActionDirectAnswer,
+  agentActionInstruction,
+  agentActionPreferredTools,
+  agentActionToolSearchQueries,
+} from "./AgentActionPlannerTypes.js";
 
 export class AgentActionPlanner {
   private readonly client: AgentActionPlannerModelClient;
@@ -104,6 +60,7 @@ export class AgentActionPlanner {
     requestId: string;
     input: ActionPlanInput;
     signal?: AbortSignal;
+    onStage?: AgentActionPlannerStageSink;
   }): Promise<AgentActionPlanResult> {
     if (!this.isEnabled()) {
       return {
@@ -115,47 +72,138 @@ export class AgentActionPlanner {
     const input = options.input;
 
     try {
-      const decision = await this.client.plan(input);
+      throwIfAborted(options.signal);
+      const selection = await this.runStage(
+        AgentActionPlannerStageNames.SelectAction,
+        options.onStage,
+        () => this.selectActionOrRepair(input, options.signal),
+        (result) => ({
+          selectedAction: ActionKindMap[result.action],
+          repaired: result.repaired,
+        }),
+      );
+      throwIfAborted(options.signal);
+      const payload = await this.runStage(
+        AgentActionPlannerStageNames.BuildActionPayload,
+        options.onStage,
+        () => this.buildPayloadOrRepair(input, selection.action, options.signal),
+        (result) => ({
+          selectedAction: ActionKindMap[selection.action],
+          repaired: result.repaired,
+        }),
+      );
 
       return {
         kind: "planned",
-        decision: this.parse(decision),
+        decision: payload.decision,
         input,
-        repaired: false,
+        selectedAction: ActionKindMap[selection.action],
+        selectionRepaired: selection.repaired,
+        payloadRepaired: payload.repaired,
       };
     } catch (error) {
-      return this.repairOrFallback({
-        input,
-        signal: options.signal,
-        failure: normalizePlanningFailure(error),
-      });
+      if (error instanceof AgentCancellationError || options.signal?.aborted) {
+        throw error instanceof AgentCancellationError ? error : new AgentCancellationError();
+      }
+      return this.fallback(input, error);
     }
   }
 
-  private async repairOrFallback(options: {
-    input: ActionPlanInput;
-    signal?: AbortSignal;
-    failure: RawActionPlanningFailure;
-  }): Promise<AgentActionPlanResult> {
-    if (this.config.MaxRepairAttempts <= 0 || !isRepairablePlanningFailure(options.failure.error)) {
-      return this.fallback(options.input, options.failure.error);
-    }
-
+  private async selectActionOrRepair(input: ActionPlanInput, signal?: AbortSignal): Promise<{
+    action: ActionKind;
+    repaired: boolean;
+  }> {
     try {
-      const repaired = await this.client.repair({
-        input: options.input,
-        invalidDecision: stringifyIssueValue(options.failure.invalidDecision ?? options.failure.error),
-        issues: issueMessages(options.failure.error),
-      });
-
       return {
-        kind: "planned",
-        decision: this.parse(repaired),
-        input: options.input,
+        action: parseActionSelection(await this.client.selectAction(input, { signal })),
+        repaired: false,
+      };
+    } catch (error) {
+      throwIfAborted(signal);
+      const failure = normalizePlanningFailure(error);
+      if (this.config.MaxRepairAttempts <= 0 || !isRepairablePlanningFailure(failure.error)) {
+        throw error;
+      }
+
+      const repaired = await this.client.repairActionSelection({
+        input,
+        invalidSelection: stringifyIssueValue(failure.invalidOutput ?? failure.error),
+        issues: issueMessages(failure.error),
+      }, { signal });
+      return {
+        action: parseActionSelection(repaired),
         repaired: true,
       };
-    } catch (repairError) {
-      return this.fallback(options.input, repairError);
+    }
+  }
+
+  private async buildPayloadOrRepair(
+    input: ActionPlanInput,
+    selectedAction: ActionKind,
+    signal?: AbortSignal,
+  ): Promise<{
+    decision: AgentActionDecision;
+    repaired: boolean;
+  }> {
+    try {
+      const decision = parseActionDecision(await this.client.buildPayload({
+        input,
+        selectedAction,
+      }, { signal }), this.catalog);
+      assertSelectedAction(decision, selectedAction);
+      return {
+        decision,
+        repaired: false,
+      };
+    } catch (error) {
+      throwIfAborted(signal);
+      const failure = normalizePlanningFailure(error);
+      if (this.config.MaxRepairAttempts <= 0 || !isRepairablePlanningFailure(failure.error)) {
+        throw error;
+      }
+
+      const decision = parseActionDecision(await this.client.repairPayload({
+        input,
+        selectedAction,
+        invalidDecision: stringifyIssueValue(failure.invalidOutput ?? failure.error),
+        issues: issueMessages(failure.error),
+      }, { signal }), this.catalog);
+      assertSelectedAction(decision, selectedAction);
+      return {
+        decision,
+        repaired: true,
+      };
+    }
+  }
+
+  private async runStage<T>(
+    stage: AgentActionPlannerStageName,
+    onStage: AgentActionPlannerStageSink | undefined,
+    work: () => Promise<T>,
+    completed: (result: T) => {
+      selectedAction?: string;
+      repaired?: boolean;
+    },
+  ): Promise<T> {
+    await onStage?.({
+      status: "started",
+      stage,
+    });
+    try {
+      const result = await work();
+      await onStage?.({
+        status: "completed",
+        stage,
+        ...completed(result),
+      });
+      return result;
+    } catch (error) {
+      await onStage?.({
+        status: "failed",
+        stage,
+        message: summarizePlannerFailure(error),
+      });
+      throw error;
     }
   }
 
@@ -167,135 +215,10 @@ export class AgentActionPlanner {
     };
   }
 
-  private parse(decision: BamlActionDecision): AgentActionDecision {
-    const parsed = ActionDecisionSchema.parse(decision);
-    const knownTools = new Set(this.catalog.list().map((tool) => tool.name));
-    const unknownTools = parsed.preferredTools.filter((tool) => !knownTools.has(tool));
-    if (unknownTools.length > 0) {
-      throw new AgentActionPlannerValidationError([
-        `preferredTools 包含未注册工具：${unknownTools.join(", ")}`,
-      ], decision);
-    }
-
-    return {
-      action: ActionKindMap[parsed.action],
-      intent: parsed.intent,
-      progressAssessment: parsed.progressAssessment.trim(),
-      nextStepGoal: parsed.nextStepGoal.trim(),
-      requiredCapabilities: uniqueTrimmed(parsed.requiredCapabilities),
-      tags: uniqueTrimmed(parsed.tags),
-      toolSearchQueries: uniqueTrimmed(parsed.toolSearchQueries),
-      preferredTools: uniqueTrimmed(parsed.preferredTools),
-      confidence: parsed.confidence,
-      instructionToMainModel: parsed.instructionToMainModel.trim(),
-    };
-  }
-
   private isEnabled(): boolean {
     return this.config.Enabled
       && Boolean(this.config.Client.BaseUrl.trim())
       && Boolean(this.config.Client.ApiKey.trim())
       && Boolean(this.config.Client.Model.trim());
-  }
-}
-
-const ActionKindMap = {
-  [ActionKind.Answer]: "answer",
-  [ActionKind.AskUser]: "ask_user",
-  [ActionKind.DiscoverTools]: "discover_tools",
-  [ActionKind.UseTools]: "use_tools",
-} satisfies Record<ActionKind, AgentActionKind>;
-
-function uniqueTrimmed(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-
-function issueMessages(error: unknown): string[] {
-  if (error instanceof AgentActionPlannerValidationError) {
-    return error.issues;
-  }
-
-  if (error instanceof z.ZodError) {
-    return error.issues.map((issue) => `${issue.path.join(".") || "/"}: ${issue.message}`);
-  }
-
-  return [error instanceof Error ? error.message : String(error)];
-}
-
-function stringifyIssueValue(error: unknown): string {
-  if (error instanceof AgentActionPlannerValidationError) {
-    return JSON.stringify(error.invalidDecision, null, 2);
-  }
-
-  if (error instanceof z.ZodError) {
-    return JSON.stringify(error.issues, null, 2);
-  }
-
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}`;
-  }
-
-  return JSON.stringify(error);
-}
-
-function normalizePlanningFailure(error: unknown): RawActionPlanningFailure {
-  return error instanceof AgentActionPlannerValidationError
-    ? {
-        error,
-        invalidDecision: error.invalidDecision,
-      }
-    : {
-        error,
-      };
-}
-
-function isRepairablePlanningFailure(error: unknown): boolean {
-  return error instanceof AgentActionPlannerValidationError
-    || error instanceof z.ZodError
-    || error instanceof BamlValidationError;
-}
-
-function summarizePlannerFailure(error: unknown): string {
-  if (error instanceof BamlTimeoutError) {
-    return "action_planner_timeout";
-  }
-
-  if (error instanceof BamlClientHttpError) {
-    return `action_planner_http_error${error.status_code > 0 ? `:${error.status_code}` : ""}`;
-  }
-
-  if (error instanceof BamlAbortError) {
-    return "action_planner_aborted";
-  }
-
-  if (error instanceof BamlClientFinishReasonError) {
-    return "action_planner_incomplete_output";
-  }
-
-  if (error instanceof BamlValidationError) {
-    return "action_planner_invalid_structured_output";
-  }
-
-  if (error instanceof AgentActionPlannerValidationError || error instanceof z.ZodError) {
-    return "action_planner_invalid_decision";
-  }
-
-  return error instanceof Error ? truncateOneLine(error.message, 160) : truncateOneLine(String(error), 160);
-}
-
-function truncateOneLine(value: string, maxLength: number): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  return normalized.length > maxLength
-    ? `${normalized.slice(0, maxLength)}...`
-    : normalized;
-}
-
-class AgentActionPlannerValidationError extends Error {
-  constructor(
-    readonly issues: string[],
-    readonly invalidDecision: unknown,
-  ) {
-    super(issues.join("\n"));
-    this.name = "AgentActionPlannerValidationError";
   }
 }

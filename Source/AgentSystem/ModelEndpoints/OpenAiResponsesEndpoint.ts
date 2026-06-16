@@ -37,7 +37,9 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
       payload.max_output_tokens = this.runtime.config.MaxOutputTokens;
     }
     const body = ResponsesBodySchema.parse(
-      await this.runtime.http.postJson(["responses"], payload, this.authHeaders()),
+      await this.runtime.http.postJson(["responses"], payload, this.authHeaders(), {
+        signal: request.signal,
+      }),
     );
 
     return {
@@ -64,6 +66,8 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
       return parsed.type === "response.output_text.delta" || parsed.type === "response_output_text_delta"
         ? parsed.delta ?? ""
         : "";
+    }, undefined, {
+      signal: request.signal,
     });
   }
 

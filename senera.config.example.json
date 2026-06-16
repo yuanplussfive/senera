@@ -1,145 +1,127 @@
 {
-  "PluginRoots": {
-    "System": [
-      "./System/Plugins"
-    ],
-    "User": [
-      "./Plugins"
-    ]
-  },
-  "PluginDiscovery": {
-    "ManifestFileName": "PluginManifest.json"
-  },
-  "XmlProtocol": {
-    "MaxDepth": 16,
-    "MaxDecisionTokens": 32000,
-    "MaxToolCalls": 8,
-    "ArrayElementNames": [
-      "tool_call",
-      "item"
-    ],
-    "ArrayElementNameSuffix": "_item"
-  },
-  "ToolExecution": {
-    "Mode": "Process",
-    "TimeoutMs": 120000,
-    "MaxStdoutBytes": 1000000,
-    "MaxStderrBytes": 1000000
-  },
-  "PluginDocumentation": {
-    "Markdown": {
-      "MinNonEmptyLines": 8,
-      "ExcludePathFragments": [
-        "node_modules",
-        "Dist",
-        "Plugins/*/node_modules"
-      ]
+  "Defaults": {
+    "PluginRoots": {
+      "System": ["./System/Plugins"],
+      "User": ["./Plugins"]
     },
-    "ToolDescription": {
-      "MinNonEmptyLines": 8,
-      "SummarySection": "简述",
-      "TriggerSection": "何时使用",
-      "AvoidSection": "不要使用的情况",
-      "RequiredSections": [
-        "简述",
-        "何时使用",
-        "不要使用的情况",
-        "输入",
-        "输出",
-        "调用示例",
-        "执行约束"
-      ]
+    "PluginDiscovery": {
+      "ManifestFileName": "PluginManifest.json",
+      "ConfigFileName": "PluginConfig.toml"
     },
-    "DecisionActionDescription": {
-      "MinNonEmptyLines": 8,
-      "SummarySection": "简述",
-      "TriggerSection": "何时使用",
-      "AvoidSection": "不要使用的情况",
-      "RequiredSections": [
-        "简述",
-        "何时使用",
-        "不要使用的情况",
-        "输出",
-        "调用示例",
-        "执行约束"
-      ]
+    "Cli": {
+      "Connection": {
+        "Url": "ws://127.0.0.1:8787",
+        "TimeoutMs": 180000
+      },
+      "Display": {
+        "EventDisplayMode": "activity",
+        "DetailMode": "tools",
+        "ShowXml": false,
+        "StreamXml": false,
+        "LivePreview": true,
+        "PreviewMode": "block",
+        "PreviewTokenLimit": 50
+      }
     },
-    "PromptXml": {
-      "XmlFenceLanguages": [
-        "xml"
-      ],
-      "CodeFenceLanguages": []
+    "AgentLoop": {
+      "MaxSteps": 16,
+      "MaxRepairAttempts": 2,
+      "LoadedTools": "dynamic"
+    },
+    "ToolExecution": {
+      "Mode": "Process",
+      "TimeoutMs": 120000,
+      "MaxStdoutBytes": 1000000,
+      "MaxStderrBytes": 1000000
+    },
+    "ToolSearch": {
+      "Dynamic": {
+        "BootstrapTools": [
+          "ToolSearchTool",
+          "AskUserTool",
+          "ArtifactMemoryReadTool"
+        ]
+      },
+      "Memory": {
+        "Kind": "sqlite",
+        "DatabasePath": ".senera/ToolSearch.sqlite",
+        "MaxEpisodes": 5000,
+        "HalfLifeDays": 30
+      },
+      "Ranking": {
+        "RrfK": 60,
+        "MmrLambda": 0.72,
+        "MmrCandidateScoreRatio": 0.92,
+        "MinScore": 0
+      },
+      "Rerank": {
+        "Enabled": true,
+        "CandidateLimit": 24,
+        "ScoreScale": 0.018,
+        "FeatureWeights": {}
+      }
+    },
+    "Artifacts": {
+      "RootDir": ".senera/artifacts/runs",
+      "SummaryMaxChars": 2400,
+      "RawJsonMaxBytes": 1048576,
+      "TextFileMaxBytes": 262144
+    },
+    "Frontend": {
+      "DevServer": {
+        "Host": "127.0.0.1",
+        "Port": 5173,
+        "StrictPort": true
+      },
+      "PreviewServer": {
+        "Host": "127.0.0.1",
+        "Port": 4173,
+        "StrictPort": true
+      },
+      "Client": {
+        "WebSocketUrl": "ws://127.0.0.1:8787",
+        "ModelLabel": "senera",
+        "UserName": "you",
+        "EmptySuggestions": [
+          "整理今天的工作优先级",
+          "分析一段错误日志",
+          "把需求拆成可执行步骤"
+        ]
+      }
+    },
+    "ActionPlanner": {
+      "Enabled": true,
+      "MaxRepairAttempts": 1,
+      "Client": {
+        "Provider": "auto",
+        "Temperature": 0.1,
+        "MaxTokens": -1
+      }
+    },
+    "Server": {
+      "Host": "127.0.0.1",
+      "Port": 8787,
+      "HotReload": true,
+      "RequestMaxBytes": 1048576
+    },
+    "Persistence": {
+      "Kind": "sqlite",
+      "DatabasePath": ".senera/senera.db"
     }
   },
   "DefaultModelProviderId": "main",
+  "ModelProviderDefaults": {
+    "BaseUrl": "https://api.openai.com/v1",
+    "ApiKey": "YOUR_API_KEY",
+    "MaxOutputTokens": 4096
+  },
   "ModelProviders": [
     {
       "Id": "main",
       "Title": "Main Model",
       "Icon": "openai",
-      "Kind": "OpenAICompatible",
       "Endpoint": "Responses",
-      "BaseUrl": "https://api.openai.com/v1",
-      "ApiKey": "YOUR_API_KEY",
-      "Model": "gpt-5.5",
-      "Temperature": 0.2,
-      "MaxOutputTokens": -1,
-      "Stream": true,
-      "TimeoutMs": 120000,
-      "FirstTokenTimeoutMs": -1,
-      "MaxRequestMs": -1,
-      "MaxNetworkRetries": 2
+      "Model": "gpt-5.5"
     }
-  ],
-  "AgentLoop": {
-    "MaxSteps": -1,
-    "MaxRepairAttempts": 2,
-    "LoadedTools": "dynamic"
-  },
-  "ToolSearch": {
-    "Dynamic": {
-      "BootstrapTools": [
-        "ToolSearchTool",
-        "AskUserTool"
-      ]
-    },
-    "Memory": {
-      "Kind": "sqlite",
-      "DatabasePath": ".senera/ToolSearch.sqlite",
-      "MaxEpisodes": 5000,
-      "HalfLifeDays": 30
-    },
-    "Ranking": {
-      "RrfK": 60,
-      "MmrLambda": 0.72,
-      "MmrCandidateScoreRatio": 0.92,
-      "MinScore": 0
-    },
-    "Rerank": {
-      "Enabled": true,
-      "CandidateLimit": 24,
-      "ScoreScale": 0.018,
-      "FeatureWeights": {}
-    }
-  },
-  "ActionPlanner": {
-    "Enabled": true,
-    "MaxRepairAttempts": 1,
-    "MaxCatalogTools": 48,
-    "Client": {
-      "Provider": "auto",
-      "Temperature": 0.1,
-      "MaxTokens": -1
-    }
-  },
-  "Server": {
-    "Host": "127.0.0.1",
-    "Port": 8787,
-    "HotReload": true,
-    "RequestMaxBytes": 1048576
-  },
-  "Persistence": {
-    "Kind": "sqlite",
-    "DatabasePath": ".senera/senera.db"
-  }
+  ]
 }

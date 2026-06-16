@@ -1,0 +1,3 @@
+[senera]
+# 系统插件由运行时固定启用。
+enabled = true

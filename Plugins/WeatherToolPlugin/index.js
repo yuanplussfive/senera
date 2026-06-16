@@ -21,6 +21,7 @@ const ProviderNames = {
 };
 
 const ConfigSchema = z.object({
+  senera: z.unknown().optional(),
   weather: z.object({
     provider: z.enum([
       ProviderNames.WeatherApi,

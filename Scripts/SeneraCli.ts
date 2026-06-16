@@ -3,21 +3,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { WebSocket } from "ws";
 import { AgentCliDetailMode, type AgentCliDetailMode as AgentCliDetailModeType } from "../Source/AgentSystem/AgentCliActivity.js";
-import { AgentCliConfigLoader } from "../Source/AgentSystem/AgentCliConfigLoader.js";
 import { AgentCliPreviewFormatter } from "../Source/AgentSystem/AgentCliPreviewFormatter.js";
 import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
+import { AgentConfigWatcher } from "../Source/AgentSystem/AgentConfigWatcher.js";
 import { AgentConsoleTheme } from "../Source/AgentSystem/AgentConsoleTheme.js";
-import { AgentEventChannels, type AgentEventEnvelope } from "../Source/AgentSystem/AgentEvent.js";
-import { AgentDefaults, resolveModelProviderConfig } from "../Source/AgentSystem/AgentDefaults.js";
+import { AgentEventChannels, AgentEventKinds, type AgentEventEnvelope } from "../Source/AgentSystem/AgentEvent.js";
+import { resolveAgentDefaults, resolveCliConfig, resolveModelProviderConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { type AgentEventDisplayMode } from "../Source/AgentSystem/AgentEventDisplayCatalog.js";
 import { createSessionId, describeSessionHandle } from "../Source/AgentSystem/AgentIds.js";
 import { AgentLogger } from "../Source/AgentSystem/AgentLogger.js";
 import { fitTerminalLine, measureTerminalWidth } from "../Source/AgentSystem/AgentTerminalText.js";
 import { readXmlRootName } from "../Source/AgentSystem/AgentXmlRootReader.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types.js";
 
 type PreviewMode = "block" | "line";
 
 interface ClientOptions {
+  runtimeConfigPath: string;
   url: string;
   sessionId: string;
   showXml: boolean;
@@ -45,11 +47,7 @@ interface PendingRequest {
 }
 
 const DefaultOptions = {
-  url: "ws://127.0.0.1:8787",
-  timeoutMs: 180000,
-  cliConfigPath: "senera.cli.yaml",
   runtimeConfigPath: "senera.config.json",
-  previewTokenLimit: 50,
 } as const;
 
 let logger = new AgentLogger();
@@ -89,9 +87,10 @@ async function main(): Promise<void> {
 }
 
 function readOptions(argv: string[]): CliParseResult {
-  const cliConfig = AgentCliConfigLoader.loadIfExists(
-    path.resolve(process.cwd(), DefaultOptions.cliConfigPath),
-  );
+  const runtimeConfigPath = path.resolve(process.cwd(), DefaultOptions.runtimeConfigPath);
+  const runtimeConfig = loadRuntimeConfigIfExists(runtimeConfigPath);
+  const defaults = resolveAgentDefaults(runtimeConfig);
+  const cliConfig = resolveCliConfig(runtimeConfig);
   const parseState: {
     values: Record<string, string | boolean>;
     inputParts: string[];
@@ -145,16 +144,20 @@ function readOptions(argv: string[]): CliParseResult {
     };
   }
 
-  const previewMode = resolvePreviewMode(undefined);
-  const timeoutMs = resolveTimeoutMs(parseState.values.timeout);
+  const previewMode = resolvePreviewMode(cliConfig.Display?.PreviewMode);
+  const timeoutMs = resolveTimeoutMs(
+    parseState.values.timeout,
+    cliConfig.Connection?.TimeoutMs,
+  );
   const initialInput = cleanCliText(parseState.inputParts.join(" ")).trim();
-  const previewModel = readPreviewModel(path.resolve(process.cwd(), DefaultOptions.runtimeConfigPath));
+  const previewModel = readPreviewModel(runtimeConfig);
 
   return {
     options: {
+      runtimeConfigPath,
       url: readStringOption(parseState.values.url)
         || cliConfig.Connection?.Url
-        || DefaultOptions.url,
+        || defaults.Cli.Connection.Url,
       sessionId: readStringOption(parseState.values.sessionId)
         || cliConfig.Connection?.SessionId
         || createSessionId(),
@@ -164,9 +167,9 @@ function readOptions(argv: string[]): CliParseResult {
       detailMode: resolveDetailMode(cliConfig.Display?.DetailMode),
       livePreview: process.stdout.isTTY && (cliConfig.Display?.LivePreview ?? true),
       previewMode: cliConfig.Display?.PreviewMode ?? previewMode,
-      previewTokenLimit: cliConfig.Display?.PreviewTokenLimit ?? DefaultOptions.previewTokenLimit,
+      previewTokenLimit: cliConfig.Display?.PreviewTokenLimit ?? defaults.Cli.Display.PreviewTokenLimit,
       previewModel,
-      timeoutMs: cliConfig.Connection?.TimeoutMs ?? timeoutMs,
+      timeoutMs,
       initialInput: initialInput || undefined,
     },
   };
@@ -193,7 +196,7 @@ function renderHelp(): string {
     "  --timeout=MS           单次请求超时毫秒数，默认 180000",
     "  --help                 显示帮助",
     "",
-    "展示相关配置请修改 senera.cli.yaml",
+    "展示相关配置请修改 senera.config.json 的 Cli 字段",
   ].join("\n");
 }
 
@@ -229,6 +232,7 @@ function parseLongOptionToken(token: string): (
 
 async function runInteractiveClient(options: ClientOptions): Promise<void> {
   const socket = await openSocket(options.url);
+  const configWatcher = startCliConfigWatcher(options);
   const state = {
     sessionId: options.sessionId,
     pendingRequest: undefined as PendingRequest | undefined,
@@ -286,6 +290,7 @@ async function runInteractiveClient(options: ClientOptions): Promise<void> {
     }
 
     lifecycle.shutdownRequested = true;
+    configWatcher?.stop();
     clearPendingRequest();
     closeReadline();
     closeSocket();
@@ -513,6 +518,67 @@ function clearPending(pending: PendingRequest | undefined): void {
   }
 }
 
+function loadRuntimeConfigIfExists(configPath: string): AgentSystemConfig | undefined {
+  return fs.existsSync(configPath)
+    ? AgentConfigLoader.load(configPath)
+    : undefined;
+}
+
+function startCliConfigWatcher(options: ClientOptions): AgentConfigWatcher | undefined {
+  if (!fs.existsSync(options.runtimeConfigPath)) {
+    return undefined;
+  }
+
+  let watcher: AgentConfigWatcher;
+  watcher = new AgentConfigWatcher({
+    configPath: options.runtimeConfigPath,
+    enabled: true,
+    onEvent: async (event) => {
+      if (event.kind === AgentEventKinds.ConfigReloaded) {
+        applyCliRuntimeConfig(options, watcher.snapshot().value);
+        logger.info("CLI 配置已热更新", {
+          configPath: options.runtimeConfigPath,
+        });
+        return;
+      }
+
+      if (event.kind === AgentEventKinds.ConfigFailed) {
+        logger.warn("CLI 配置热更新失败", {
+          configPath: options.runtimeConfigPath,
+          message: String(event.data.message),
+        });
+      }
+    },
+  });
+  watcher.start();
+  return watcher;
+}
+
+function applyCliRuntimeConfig(options: ClientOptions, runtimeConfig: AgentSystemConfig): void {
+  const defaults = resolveAgentDefaults(runtimeConfig);
+  const cliConfig = resolveCliConfig(runtimeConfig);
+  const nextPreviewModel = readPreviewModel(runtimeConfig);
+
+  options.showXml = cliConfig.Display?.ShowXml ?? false;
+  options.streamXml = cliConfig.Display?.StreamXml ?? false;
+  options.eventDisplayMode = cliConfig.Display?.EventDisplayMode ?? "activity";
+  options.detailMode = resolveDetailMode(cliConfig.Display?.DetailMode);
+  options.livePreview = process.stdout.isTTY && (cliConfig.Display?.LivePreview ?? true);
+  options.previewMode = cliConfig.Display?.PreviewMode ?? resolvePreviewMode(undefined);
+  options.previewTokenLimit =
+    cliConfig.Display?.PreviewTokenLimit ?? defaults.Cli.Display.PreviewTokenLimit;
+  options.previewModel = nextPreviewModel;
+  options.timeoutMs = cliConfig.Connection?.TimeoutMs ?? defaults.Cli.Connection.TimeoutMs;
+
+  logger = new AgentLogger({
+    eventDisplayMode: options.eventDisplayMode,
+  });
+  currentPreviewFormatter = new AgentCliPreviewFormatter({
+    model: options.previewModel,
+    tokenLimit: options.previewTokenLimit,
+  });
+}
+
 function readStringOption(value: string | boolean | undefined): string {
   return typeof value === "string" ? value : "";
 }
@@ -525,9 +591,11 @@ function resolvePreviewMode(value: string | boolean | undefined): PreviewMode {
       : "block";
 }
 
-function resolveTimeoutMs(value: string | boolean | undefined): number {
+function resolveTimeoutMs(value: string | boolean | undefined, defaultValue: number | undefined): number {
   const parsed = typeof value === "string" ? Number(value) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DefaultOptions.timeoutMs;
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : defaultValue ?? resolveAgentDefaults(undefined).Cli.Connection.TimeoutMs;
 }
 
 function resolveDetailMode(value: string | boolean | undefined): AgentCliDetailModeType {
@@ -1097,9 +1165,10 @@ function previewFormatter(): AgentCliPreviewFormatter {
     return currentPreviewFormatter;
   }
 
+  const defaults = resolveAgentDefaults(undefined);
   currentPreviewFormatter = new AgentCliPreviewFormatter({
-    model: AgentDefaults.ModelProviderDefaults.Model,
-    tokenLimit: DefaultOptions.previewTokenLimit,
+    model: defaults.ModelProviderDefaults.Model,
+    tokenLimit: defaults.Cli.Display.PreviewTokenLimit,
   });
   return currentPreviewFormatter;
 }
@@ -1112,10 +1181,11 @@ function previewStructuredRecord(value: unknown): Record<string, unknown> {
   return normalizeRecord(previewStructuredValue(value));
 }
 
-function readPreviewModel(configPath: string): string {
-  return fs.existsSync(configPath)
-    ? resolveModelProviderConfig(AgentConfigLoader.load(configPath)).Model
-    : AgentDefaults.ModelProviderDefaults.Model;
+function readPreviewModel(config: AgentSystemConfig | undefined): string {
+  const defaults = resolveAgentDefaults(config);
+  return config
+    ? resolveModelProviderConfig(config).Model
+    : defaults.ModelProviderDefaults.Model;
 }
 
 function isTerminalEvent(event: AgentEventEnvelope<string, unknown>): boolean {

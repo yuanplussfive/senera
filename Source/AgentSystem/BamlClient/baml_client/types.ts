@@ -68,76 +68,103 @@ export enum ToolCallStatus {
 
 export interface ActionDecision {
   action: ActionKind
-  intent: string
-  progressAssessment: string
-  nextStepGoal: string
-  requiredCapabilities: string[]
-  tags: string[]
-  toolSearchQueries: string[]
-  preferredTools: string[]
-  confidence: number
-  instructionToMainModel: string
-
+  answer?: AnswerActionPayload | null
+  askUser?: AskUserActionPayload | null
+  useTools?: UseToolsActionPayload | null
+  discoverTools?: DiscoverToolsActionPayload | null
+  
 }
 
 export interface ActionPlanInput {
-  task: ActionTask
-  runtime: ActionRuntime
-  history: PlannerHistoryTurn[]
-  executionState: ExecutionState
-  recentDeltas: ExecutionDelta[]
+  runState: ActionRunState
+  timeline: PlannerTimelineTurn[]
+  evidenceMemory: PlannerEvidenceMemoryItem[]
+  plannerJournal: PlannerJournalItem[]
   toolCatalog: ToolCatalogItem[]
-
+  
 }
 
-export interface ActionRuntime {
+export interface ActionRunState {
   currentStep: number
   dynamicTools: boolean
   loadedTools: string[]
-
-}
-
-export interface ActionTask {
-  userMessage: string
-
-}
-
-export interface EvidenceRecord {
-  key: string
-  kind: string
-  label: string
-  artifactId: string
-  source: string
-
-}
-
-export interface ExecutionDelta {
-  step: number
-  op: ExecutionDeltaOp
-  key: string
-  toolName: string
-  argsHash: string
-  status: ToolCallStatus
-  artifactId: string
-  evidenceKeys: string[]
-  note: string
-
-}
-
-export interface ExecutionState {
-  calls: ToolCallRecord[]
-  evidence: EvidenceRecord[]
-  warnings: RepeatedCallWarning[]
   progress: ProgressSignals
-
+  warnings: RepeatedCallWarning[]
+  
 }
 
-export interface PlannerHistoryTurn {
+export interface ActionSelection {
+  action: ActionKind
+  
+}
+
+export interface AnswerActionPayload {
+  content: string
+  
+}
+
+export interface AskUserActionPayload {
+  question: string
+  reason?: string | null
+  
+}
+
+export interface CapabilityNeed {
+  actions?: string[] | null
+  targets?: string[] | null
+  inputs?: string[] | null
+  outputs?: string[] | null
+  evidence?: string[] | null
+  effects?: string[] | null
+  
+}
+
+export interface DiscoverToolsActionPayload {
+  queries: string[]
+  needs: CapabilityNeed[]
+  
+}
+
+export interface EvidenceSlot {
+  name: string
+  value: string
+  
+}
+
+export interface PlannerEvidenceMemoryItem {
+  evidenceRef: string
+  kind: string
+  locator: string
+  display: string
+  label: string
+  confidence: number
+  toolName: string
+  artifactUri: string
+  facts: EvidenceSlot[]
+  artifactRefs: string[]
+  
+}
+
+export interface PlannerJournalItem {
+  requestId: string
+  step: number
+  selectedAction: string
+  evidenceRefs: string[]
+  artifactUris: string[]
+  loadedTools: string[]
+  outcome: string
+  
+}
+
+export interface PlannerTimelineTurn {
   index: number
   role: string
   kind: string
+  step?: number | null
   content: string
-
+  evidenceRefs: string[]
+  artifactUris: string[]
+  
 }
 
 export interface ProgressSignals {
@@ -146,7 +173,7 @@ export interface ProgressSignals {
   lastNewEvidenceStep: number
   repeatedCallCount: number
   stalled: boolean
-
+  
 }
 
 export interface RepeatedCallWarning {
@@ -154,29 +181,50 @@ export interface RepeatedCallWarning {
   argsHash: string
   count: number
   lastStep: number
-
+  
 }
 
-export interface ToolCallRecord {
-  step: number
-  toolName: string
-  argsHash: string
-  status: ToolCallStatus
-  artifactId: string
-  evidenceKeys: string[]
-  error: string
+export interface ToolCapabilityFacets {
+  Actions?: string[] | null
+  Targets?: string[] | null
+  Inputs?: string[] | null
+  Outputs?: string[] | null
+  Evidence?: string[] | null
+  Effects?: string[] | null
+  
+}
 
+export interface ToolCapabilityItem {
+  id: string
+  title: string
+  description: string
+  facets: ToolCapabilityFacets
+  risk?: ToolCapabilityRisk | null
+  
+}
+
+export interface ToolCapabilityRisk {
+  sideEffect?: string | null
+  permission?: string | null
+  
 }
 
 export interface ToolCatalogItem {
   name: string
   title: string
   summary: string
+  capabilities: ToolCapabilityItem[]
   tags: string[]
   useCases: string[]
   examples: string[]
   avoid: string[]
   permissions: string[]
   loaded: boolean
+  
+}
 
+export interface UseToolsActionPayload {
+  preferredTools: string[]
+  instruction: string
+  
 }

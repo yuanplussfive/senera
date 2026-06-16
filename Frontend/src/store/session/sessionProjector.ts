@@ -4,6 +4,10 @@ import {
   DecisionXmlRoots,
   EventKinds,
   type ActionPlannedData,
+  type ActionPlannerStageCompletedData,
+  type ActionPlannerStageFailedData,
+  type ActionPlannerStageName,
+  type ActionPlannerStageStartedData,
   type EventEnvelope,
   type AskUserData,
   type ConversationEntryDto,
@@ -15,12 +19,14 @@ import {
   type ModelDeltaData,
   type ModelListSnapshotData,
   type ModelStartedData,
+  type PluginConfigSnapshotData,
   type PromptSummaryData,
   type RetryPlannedData,
   type RunFailedData,
   type SessionHistoryCompletedData,
   type SessionHistoryEntryData,
   type SessionHistoryChunkData,
+  type SessionRunHistoryChunkData,
   type RunStartedData,
   type SessionHistoryStartedData,
   type SessionBusyData,
@@ -124,6 +130,40 @@ function readExpectedOutputMode(data: ActionPlannedData): RunRecord["expectedOut
   return data.expectedOutputMode === "tool_call_xml" || data.expectedOutputMode === "final_text"
     ? data.expectedOutputMode
     : "unknown";
+}
+
+function plannerStageBaseTitle(stage: ActionPlannerStageName): string {
+  switch (stage) {
+    case "selectAction":
+      return "选择行动";
+    case "buildActionPayload":
+      return "构建行动参数";
+    default:
+      return stage;
+  }
+}
+
+function plannerStageTitle(
+  stage: ActionPlannerStageName,
+  selectedAction?: string,
+): string {
+  const base = plannerStageBaseTitle(stage);
+  return stage === "buildActionPayload" && selectedAction
+    ? `${base} · ${friendlyDecisionKind(selectedAction)}`
+    : base;
+}
+
+function plannerStageStepId(
+  requestId: string,
+  step: number | undefined,
+  stage: ActionPlannerStageName,
+): string {
+  return `${requestId}-action-planner-${step ?? 0}-${stage}`;
+}
+
+function hasPlannerStageForStep(run: RunRecord, step: number | undefined): boolean {
+  const prefix = `${run.requestId}-action-planner-${step ?? 0}-`;
+  return run.steps.some((entry) => entry.id.startsWith(prefix));
 }
 
 function currentRun(session: SessionRecord, requestId?: string): RunRecord | undefined {
@@ -362,6 +402,12 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
+    case EventKinds.PluginConfigSnapshot: {
+      const data = env.data as PluginConfigSnapshotData;
+      state.pluginConfigs = data.plugins;
+      return;
+    }
+
     case EventKinds.SessionCreated:
     case EventKinds.SessionSnapshot: {
       if (!sessionId) return;
@@ -577,6 +623,64 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
+    case EventKinds.ActionPlannerStageStarted: {
+      if (!sessionId) return;
+      const session = ensureSession(state, sessionId);
+      const run = currentRun(session, env.requestId);
+      if (!run) return;
+      const data = env.data as ActionPlannerStageStartedData;
+      upsertStep(run, {
+        id: plannerStageStepId(run.requestId, env.step, data.stage),
+        kind: "decision",
+        title: plannerStageTitle(data.stage),
+        status: "running",
+        startedAt: env.timestamp,
+        decisionKind: data.stage,
+      });
+      return;
+    }
+
+    case EventKinds.ActionPlannerStageCompleted: {
+      if (!sessionId) return;
+      const session = ensureSession(state, sessionId);
+      const run = currentRun(session, env.requestId);
+      if (!run) return;
+      const data = env.data as ActionPlannerStageCompletedData;
+      upsertStep(run, {
+        id: plannerStageStepId(run.requestId, env.step, data.stage),
+        kind: "decision",
+        title: plannerStageTitle(data.stage, data.selectedAction),
+        status: "done",
+        startedAt: run.steps.find((step) =>
+          step.id === plannerStageStepId(run.requestId, env.step, data.stage))?.startedAt ?? env.timestamp,
+        endedAt: env.timestamp,
+        decisionKind: data.selectedAction,
+        detailJson: data,
+      });
+      return;
+    }
+
+    case EventKinds.ActionPlannerStageFailed: {
+      if (!sessionId) return;
+      const session = ensureSession(state, sessionId);
+      const run = currentRun(session, env.requestId);
+      if (!run) return;
+      const data = env.data as ActionPlannerStageFailedData;
+      upsertStep(run, {
+        id: plannerStageStepId(run.requestId, env.step, data.stage),
+        kind: "decision",
+        title: plannerStageTitle(data.stage),
+        description: data.message,
+        status: "failed",
+        startedAt: run.steps.find((step) =>
+          step.id === plannerStageStepId(run.requestId, env.step, data.stage))?.startedAt ?? env.timestamp,
+        endedAt: env.timestamp,
+        errorMessage: data.message,
+        detailJson: data,
+      });
+      return;
+    }
+
     case EventKinds.ActionPlanned: {
       if (!sessionId) return;
       const session = ensureSession(state, sessionId);
@@ -591,6 +695,9 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
         run.decisionMode = "tool_candidate";
         run.visibleText = "";
         run.visibleKind = "tool_calls";
+      }
+      if (hasPlannerStageForStep(run, env.step)) {
+        return;
       }
       upsertStep(run, {
         id: `${run.requestId}-action-plan-${env.step ?? 0}`,
@@ -1026,6 +1133,22 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
+    case EventKinds.SessionRunHistoryChunk: {
+      if (!sessionId) return;
+      const data = env.data as SessionRunHistoryChunkData;
+      if (data.sessionId && data.sessionId !== sessionId) return;
+      const session = state.sessions[sessionId];
+      if (!session) return;
+      if (!state.historyLoadingIds[sessionId]) return;
+      for (const event of data.events) {
+        applyEvent(state, {
+          ...event,
+          sessionId: event.sessionId ?? sessionId,
+        });
+      }
+      return;
+    }
+
     case EventKinds.SessionHistoryCompleted: {
       if (!sessionId) return;
       const data = env.data as SessionHistoryCompletedData;
@@ -1039,7 +1162,9 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
         .filter((message): message is ChatMessage => Boolean(message));
       // 用回放的 step 轨迹重建 session.runs（替代此前写死的 []）
       const stepRuns = state.historyStepBuffers[sessionId] ?? [];
-      session.runs = stepRuns.map((run) => rebuildRunFromHistory(run));
+      if (stepRuns.length > 0) {
+        session.runs = stepRuns.map((run) => rebuildRunFromHistory(run));
+      }
       state.historyLoadingIds[sessionId] = false;
       state.historyLoadedIds[sessionId] = true;
       delete state.historyReplayBuffers[sessionId];
@@ -1129,6 +1254,7 @@ function projectEntryToMessage(
       content: entry.content,
       createdAt: entry.timestamp,
       requestId: entry.requestId,
+      attachments: entry.attachments,
       metadata: entry.metadata,
     };
   }

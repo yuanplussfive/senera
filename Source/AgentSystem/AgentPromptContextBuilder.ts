@@ -15,7 +15,14 @@ import {
   type AgentPromptContractView,
 } from "./AgentPromptContractProjector.js";
 import { createXmlProtocolSpec, type AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
-import type { AgentActionDecision } from "./AgentActionPlanner.js";
+import {
+  agentActionCapabilityNeeds,
+  agentActionInstruction,
+  agentActionPreferredTools,
+  agentActionToolSearchQueries,
+  type AgentActionCapabilityNeed,
+  type AgentActionDecision,
+} from "./AgentActionPlanner.js";
 
 export interface AgentPromptToolContext {
   name: string;
@@ -55,13 +62,10 @@ export interface AgentPromptToolCallProtocolContext {
 
 export interface AgentPromptActionDirectiveContext {
   action: string;
-  intent: string;
-  requiredCapabilities: string[];
-  tags: string[];
-  toolSearchQueries: string[];
-  preferredTools: string[];
-  confidence: number;
   instruction: string;
+  preferredTools: string[];
+  toolSearchQueries: string[];
+  needs: AgentActionCapabilityNeed[];
 }
 
 export interface AgentPromptContextOptions {
@@ -138,13 +142,10 @@ export class AgentPromptContextBuilder {
   ): AgentPromptActionDirectiveContext {
     return {
       action: directive.action,
-      intent: directive.intent,
-      requiredCapabilities: directive.requiredCapabilities,
-      tags: directive.tags,
-      toolSearchQueries: directive.toolSearchQueries,
-      preferredTools: directive.preferredTools,
-      confidence: directive.confidence,
-      instruction: directive.instructionToMainModel,
+      instruction: agentActionInstruction(directive),
+      preferredTools: agentActionPreferredTools(directive),
+      toolSearchQueries: agentActionToolSearchQueries(directive),
+      needs: agentActionCapabilityNeeds(directive),
     };
   }
 

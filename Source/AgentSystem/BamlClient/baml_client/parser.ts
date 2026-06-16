@@ -23,14 +23,14 @@ import { toBamlError } from "@boundaryml/baml"
 import type { Checked, Check } from "./types"
 import type { partial_types } from "./partial_types"
 import type * as types from "./types"
-import type {ActionDecision, ActionKind, ActionPlanInput, ActionRuntime, ActionTask, EvidenceRecord, ExecutionDelta, ExecutionDeltaOp, ExecutionState, PlannerHistoryTurn, ProgressSignals, RepeatedCallWarning, ToolCallRecord, ToolCallStatus, ToolCatalogItem} from "./types"
+import type {ActionDecision, ActionKind, ActionPlanInput, ActionRunState, ActionSelection, AnswerActionPayload, AskUserActionPayload, CapabilityNeed, DiscoverToolsActionPayload, EvidenceSlot, ExecutionDeltaOp, PlannerEvidenceMemoryItem, PlannerJournalItem, PlannerTimelineTurn, ProgressSignals, RepeatedCallWarning, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, UseToolsActionPayload} from "./types"
 import type TypeBuilder from "./type_builder"
 
 export class LlmResponseParser {
   constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
-
-  PlanAction(
+  
+  BuildActionPayload(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
   ): types.ActionDecision {
@@ -40,7 +40,7 @@ export class LlmResponseParser {
         Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
       );
       return this.runtime.parseLlmResponse(
-        "PlanAction",
+        "BuildActionPayload",
         llmResponse,
         false,
         this.ctxManager.cloneContext(),
@@ -52,8 +52,8 @@ export class LlmResponseParser {
       throw toBamlError(error);
     }
   }
-
-  RepairActionDecision(
+  
+  RepairActionPayload(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
   ): types.ActionDecision {
@@ -63,7 +63,7 @@ export class LlmResponseParser {
         Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
       );
       return this.runtime.parseLlmResponse(
-        "RepairActionDecision",
+        "RepairActionPayload",
         llmResponse,
         false,
         this.ctxManager.cloneContext(),
@@ -75,14 +75,60 @@ export class LlmResponseParser {
       throw toBamlError(error);
     }
   }
-
+  
+  RepairActionSelection(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.ActionSelection {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "RepairActionSelection",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.ActionSelection
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  SelectAction(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.ActionSelection {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "SelectAction",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.ActionSelection
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
 }
 
 export class LlmStreamParser {
   constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
-
-  PlanAction(
+  
+  BuildActionPayload(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
   ): partial_types.ActionDecision {
@@ -92,7 +138,7 @@ export class LlmStreamParser {
         Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
       );
       return this.runtime.parseLlmResponse(
-        "PlanAction",
+        "BuildActionPayload",
         llmResponse,
         true,
         this.ctxManager.cloneContext(),
@@ -104,8 +150,8 @@ export class LlmStreamParser {
       throw toBamlError(error);
     }
   }
-
-  RepairActionDecision(
+  
+  RepairActionPayload(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
   ): partial_types.ActionDecision {
@@ -115,7 +161,7 @@ export class LlmStreamParser {
         Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
       );
       return this.runtime.parseLlmResponse(
-        "RepairActionDecision",
+        "RepairActionPayload",
         llmResponse,
         true,
         this.ctxManager.cloneContext(),
@@ -127,5 +173,51 @@ export class LlmStreamParser {
       throw toBamlError(error);
     }
   }
-
-}
+  
+  RepairActionSelection(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.ActionSelection {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "RepairActionSelection",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.ActionSelection
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  SelectAction(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.ActionSelection {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "SelectAction",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.ActionSelection
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+}

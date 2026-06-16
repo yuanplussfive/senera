@@ -1,9 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveFrom } from "./AgentPath.js";
-import type { AgentSystemConfig, LoadedPlugin, PluginManifest } from "./Types.js";
+import type {
+  AgentSystemConfig,
+  LoadedPlugin,
+  PluginManifest,
+  PluginRootKind,
+} from "./Types.js";
 import { AgentJsonFileLoader } from "./AgentJsonFileLoader.js";
 import { PluginManifestSchema } from "./Schemas/PluginManifestSchema.js";
+import { readLoadedPluginConfig } from "./AgentPluginConfig.js";
+import {
+  resolvePluginDiscoveryConfig,
+  resolvePluginRootsConfig,
+} from "./AgentDefaults.js";
 
 export class AgentPluginScanner {
   constructor(
@@ -12,15 +22,23 @@ export class AgentPluginScanner {
   ) {}
 
   scan(): LoadedPlugin[] {
-    const pluginRoots = [
-      ...this.config.PluginRoots.System,
-      ...this.config.PluginRoots.User,
+    const roots = resolvePluginRootsConfig(this.config);
+    const discovery = resolvePluginDiscoveryConfig(this.config);
+    const pluginRoots: Array<{ kind: PluginRootKind; path: string }> = [
+      ...roots.System.map((pluginRoot) => ({
+        kind: "System" as const,
+        path: pluginRoot,
+      })),
+      ...roots.User.map((pluginRoot) => ({
+        kind: "User" as const,
+        path: pluginRoot,
+      })),
     ];
 
     const plugins: LoadedPlugin[] = [];
 
     for (const pluginRoot of pluginRoots) {
-      const absoluteRoot = resolveFrom(this.workspaceRoot, pluginRoot);
+      const absoluteRoot = resolveFrom(this.workspaceRoot, pluginRoot.path);
       if (!fs.existsSync(absoluteRoot)) {
         continue;
       }
@@ -31,12 +49,7 @@ export class AgentPluginScanner {
         }
 
         const rootPath = path.join(absoluteRoot, entry.name);
-        const manifestFileName = this.config.PluginDiscovery?.ManifestFileName;
-        if (!manifestFileName) {
-          throw new Error("senera 配置缺少 PluginDiscovery.ManifestFileName。");
-        }
-
-        const manifestPath = path.join(rootPath, manifestFileName);
+        const manifestPath = path.join(rootPath, discovery.ManifestFileName);
 
         if (!fs.existsSync(manifestPath)) {
           continue;
@@ -50,7 +63,9 @@ export class AgentPluginScanner {
 
         plugins.push({
           rootPath,
+          rootKind: pluginRoot.kind,
           manifestPath,
+          config: readLoadedPluginConfig(rootPath, this.config),
           manifest,
         });
       }

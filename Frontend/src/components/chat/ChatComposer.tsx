@@ -1,7 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, Check, ChevronDown, Paperclip, Square } from "lucide-react";
-import type { ModelProviderListItem } from "../../api/eventTypes";
-import { cn } from "../../lib/util";
+import {
+  AlertCircle,
+  ArrowUp,
+  Check,
+  ChevronDown,
+  Loader2,
+  Paperclip,
+  Square,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
+import type {
+  ModelProviderListItem,
+  PluginConfigItem,
+  PluginConfigMutationState,
+  UploadAttachmentData,
+} from "../../api/eventTypes";
+import { uploadFile, type UploadProgress } from "../../api/uploadClient";
+import { cn, generateId } from "../../lib/util";
+import { FilePreviewIcon } from "../FilePreviewIcon";
 import { ModelProviderIcon } from "../ModelProviderIcon";
 import { Tooltip } from "../ui/Tooltip";
 import {
@@ -14,6 +31,7 @@ import {
 } from "../ui/DropdownMenu";
 import { Button } from "../ui-shadcn/button";
 import { readSelectedModelProvider } from "./modelProvider";
+import { PluginConfigControl } from "./PluginConfigPanel";
 
 interface ChatComposerProps {
   disabled: boolean;
@@ -21,10 +39,27 @@ interface ChatComposerProps {
   modelProviders: ModelProviderListItem[];
   selectedModelProviderId: string | null;
   onSelectModelProvider: (id: string) => void;
+  pluginConfigs: PluginConfigItem[];
+  pluginConfigOperations: Record<string, PluginConfigMutationState>;
+  onRefreshPluginConfigs: () => void;
+  onSavePluginConfig: (pluginName: string, toml: string) => string | null;
+  onSetPluginEnabled: (pluginName: string, enabled: boolean, toolName?: string) => string | null;
   socketStatus: string;
-  onSend: (input: string) => void;
+  uploadUrl: string;
+  onSend: (input: string, attachments?: UploadAttachmentData[]) => void;
   onCancel: () => void;
 }
+
+type PendingAttachment = {
+  id: string;
+  fileName: string;
+  mime?: string;
+  size: number;
+  status: "uploading" | "uploaded" | "error";
+  progress?: UploadProgress;
+  attachment?: UploadAttachmentData;
+  error?: string;
+};
 
 export function ChatComposer({
   disabled,
@@ -32,12 +67,22 @@ export function ChatComposer({
   modelProviders,
   selectedModelProviderId,
   onSelectModelProvider,
+  pluginConfigs,
+  pluginConfigOperations,
+  onRefreshPluginConfigs,
+  onSavePluginConfig,
+  onSetPluginEnabled,
   socketStatus,
+  uploadUrl,
   onSend,
   onCancel,
 }: ChatComposerProps): JSX.Element {
   const [value, setValue] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepthRef = useRef(0);
 
   const hint = useMemo(() => {
     if (running) return "正在思考——可按 Esc 中断";
@@ -64,9 +109,13 @@ export function ChatComposer({
 
   const submit = (): void => {
     const text = value.trim();
-    if (!text || disabled || running) return;
-    onSend(text);
+    const uploading = pendingAttachments.some((attachment) => attachment.status === "uploading");
+    if (!text || disabled || running || uploading) return;
+    const attachments = pendingAttachments.flatMap((entry) =>
+      entry.status === "uploaded" && entry.attachment ? [entry.attachment] : []);
+    onSend(text, attachments.length > 0 ? attachments : undefined);
     setValue("");
+    setPendingAttachments([]);
     if (taRef.current) taRef.current.style.height = "auto";
   };
 
@@ -84,23 +133,168 @@ export function ChatComposer({
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   };
 
-  const canSend = !disabled && !running && value.trim().length > 0;
+  const uploading = pendingAttachments.some((attachment) => attachment.status === "uploading");
+  const canSend = !disabled && !running && !uploading && value.trim().length > 0;
+
+  const handleAttachClick = (): void => {
+    fileInputRef.current?.click();
+  };
+
+  const enqueueFiles = (files: File[]): void => {
+    if (files.length === 0) return;
+    for (const file of files) {
+      const id = generateId();
+      setPendingAttachments((current) => [
+        ...current,
+        {
+          id,
+          fileName: file.name,
+          mime: file.type,
+          size: file.size,
+          status: "uploading",
+          progress: {
+            loaded: 0,
+            total: file.size,
+            ratio: file.size === 0 ? 1 : 0,
+          },
+        },
+      ]);
+      void uploadFile(uploadUrl, file, {
+        onProgress: (progress) => {
+          setPendingAttachments((current) => current.map((entry) =>
+            entry.id === id
+              ? {
+                  ...entry,
+                  progress,
+                }
+              : entry));
+        },
+      })
+        .then((attachment) => {
+          setPendingAttachments((current) => current.map((entry) =>
+            entry.id === id
+              ? {
+                  ...entry,
+                  fileName: attachment.name,
+                  mime: attachment.mime,
+                  size: attachment.size,
+                  status: "uploaded",
+                  progress: {
+                    loaded: attachment.size,
+                    total: attachment.size,
+                    ratio: 1,
+                  },
+                  attachment,
+                }
+              : entry));
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          setPendingAttachments((current) => current.map((entry) =>
+            entry.id === id
+              ? {
+                  ...entry,
+                  status: "error",
+                  error: message,
+                }
+              : entry));
+          toast.error("文件上传失败", { description: message });
+        });
+    }
+  };
+
+  const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>): void => {
+    enqueueFiles(Array.from(event.target.files ?? []));
+    event.target.value = "";
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>): void => {
+    if (disabled || running) return;
+    const files = readClipboardFiles(event.clipboardData);
+    if (files.length === 0) return;
+
+    enqueueFiles(files);
+    if (!event.clipboardData.getData("text/plain")) {
+      event.preventDefault();
+    }
+  };
+
+  const removeAttachment = (id: string): void => {
+    setPendingAttachments((current) => current.filter((entry) => entry.id !== id));
+  };
+
+  const acceptsDraggedFiles = (event: React.DragEvent): boolean =>
+    Array.from(event.dataTransfer.types).includes("Files");
+
+  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (disabled || running || !acceptsDraggedFiles(event)) return;
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFiles(true);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (disabled || running || !acceptsDraggedFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (!acceptsDraggedFiles(event)) return;
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDraggingFiles(false);
+    }
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (disabled || running || !acceptsDraggedFiles(event)) return;
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFiles(false);
+    enqueueFiles(Array.from(event.dataTransfer.files ?? []));
+  };
 
   return (
     <div className="border-t border-ink-200/60 bg-paper-50 px-3 pb-4 pt-3 sm:px-6 sm:pb-6">
       <div
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         className={cn(
-          "mx-auto flex max-w-3xl flex-col gap-1.5 rounded-2xl border border-ink-200 bg-paper-100/80 px-3 py-2 shadow-bubble-ai transition",
+          "relative mx-auto flex max-w-3xl flex-col gap-1.5 rounded-2xl border border-ink-200 bg-paper-100/80 px-3 py-2 shadow-bubble-ai transition",
           "focus-within:border-ink-300 focus-within:bg-paper-50",
+          isDraggingFiles && "border-terra-300 bg-terra-50/70 ring-2 ring-terra-200/70",
         )}
       >
+        {isDraggingFiles ? (
+          <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-[14px] border border-dashed border-terra-300 bg-paper-50/80 text-[13px] font-medium text-terra-700 backdrop-blur-sm">
+            松开上传文件
+          </div>
+        ) : null}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          multiple
+          onChange={handleFileSelection}
+        />
+        {pendingAttachments.length > 0 ? (
+          <AttachmentTray
+            attachments={pendingAttachments}
+            onRemove={removeAttachment}
+          />
+        ) : null}
         <div className="flex items-end gap-2">
-          <Tooltip content="附加文件（待接入）" side="top">
+          <Tooltip content="附加文件" side="top">
             <button
               type="button"
+              onClick={handleAttachClick}
               className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
               aria-label="attach"
-              disabled={running}
+              disabled={disabled || running}
             >
               <Paperclip className="h-4 w-4" />
             </button>
@@ -111,6 +305,7 @@ export function ChatComposer({
             rows={1}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={hint}
             disabled={running}
             className="scrollbar-thin max-h-[240px] min-w-0 flex-1 resize-none bg-transparent py-2 text-[14.5px] leading-6 text-ink-900 placeholder:text-ink-400 focus:outline-none disabled:opacity-60"
@@ -161,16 +356,144 @@ export function ChatComposer({
               </>
             )}
           </span>
-          <ModelSelector
-            disabled={disabled || running}
-            models={modelProviders}
-            selectedId={selectedModelProviderId}
-            onSelect={onSelectModelProvider}
-          />
+          <span className="flex min-w-0 items-center gap-1">
+            <PluginConfigControl
+              disabled={disabled || running}
+              plugins={pluginConfigs}
+              operations={pluginConfigOperations}
+              onRefresh={onRefreshPluginConfigs}
+              onSave={onSavePluginConfig}
+              onSetEnabled={onSetPluginEnabled}
+            />
+            <ModelSelector
+              disabled={disabled || running}
+              models={modelProviders}
+              selectedId={selectedModelProviderId}
+              onSelect={onSelectModelProvider}
+            />
+          </span>
         </div>
       </div>
     </div>
   );
+}
+
+function AttachmentTray({
+  attachments,
+  onRemove,
+}: {
+  attachments: PendingAttachment[];
+  onRemove: (id: string) => void;
+}): JSX.Element {
+  return (
+    <div className="flex flex-wrap gap-1.5 px-0.5 pb-1">
+      {attachments.map((entry) => (
+        <div
+          key={entry.id}
+          className={cn(
+            "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]",
+            entry.status === "uploading" && "min-w-[210px]",
+            entry.status === "error"
+              ? "border-brick-200 bg-brick-50 text-brick-700"
+              : "border-ink-200 bg-paper-50 text-ink-650",
+          )}
+        >
+          <span className="relative shrink-0">
+            <FilePreviewIcon
+              name={entry.fileName}
+              mime={entry.mime ?? entry.attachment?.mime}
+            />
+            {entry.status === "uploading" ? (
+              <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-paper-50">
+                <Loader2 className="h-2.5 w-2.5 animate-spin text-terra-500" />
+              </span>
+            ) : null}
+            {entry.status === "error" ? (
+              <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-brick-50">
+                <AlertCircle className="h-2.5 w-2.5 text-brick-500" />
+              </span>
+            ) : null}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 truncate">{entry.fileName}</span>
+              <span className="shrink-0 font-mono text-[10px] text-ink-350">
+                {formatFileSize(entry.size)}
+              </span>
+              {entry.status === "uploading" ? (
+                <span className="shrink-0 font-mono text-[10px] text-terra-600">
+                  {formatUploadProgress(entry.progress)}
+                </span>
+              ) : null}
+            </span>
+            {entry.status === "uploading" ? (
+              <UploadProgressBar progress={entry.progress} />
+            ) : null}
+          </span>
+          <Tooltip content={entry.error ?? "移除"} side="top">
+            <button
+              type="button"
+              onClick={() => onRemove(entry.id)}
+              className="grid h-5 w-5 shrink-0 place-items-center rounded-md text-ink-350 transition hover:bg-ink-900/[0.06] hover:text-ink-800"
+              aria-label="移除附件"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Tooltip>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UploadProgressBar({ progress }: { progress?: UploadProgress }): JSX.Element {
+  const ratio = readProgressRatio(progress);
+  return (
+    <span className="h-1 overflow-hidden rounded-full bg-ink-200/70">
+      <span
+        className={cn(
+          "block h-full origin-left rounded-full bg-terra-500 transition-transform duration-150",
+          ratio === undefined && "animate-pulse",
+        )}
+        style={{ transform: `scaleX(${ratio ?? 1})` }}
+      />
+    </span>
+  );
+}
+
+function formatUploadProgress(progress?: UploadProgress): string {
+  const ratio = readProgressRatio(progress);
+  return ratio === undefined ? "上传中" : `${Math.round(ratio * 100)}%`;
+}
+
+function readProgressRatio(progress?: UploadProgress): number | undefined {
+  const ratio = progress?.ratio ?? (
+    progress?.total && progress.total > 0
+      ? progress.loaded / progress.total
+      : undefined
+  );
+  return typeof ratio === "number" && Number.isFinite(ratio)
+    ? Math.min(1, Math.max(0, ratio))
+    : undefined;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)}KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(mb < 10 ? 1 : 0)}MB`;
+}
+
+function readClipboardFiles(data: DataTransfer): File[] {
+  const files = Array.from(data.files ?? []);
+  if (files.length > 0) return files;
+
+  return Array.from(data.items ?? []).flatMap((item) => {
+    if (item.kind !== "file") return [];
+    const file = item.getAsFile();
+    return file ? [file] : [];
+  });
 }
 
 function ModelSelector({

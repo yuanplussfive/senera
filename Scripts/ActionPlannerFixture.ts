@@ -4,19 +4,10 @@ export function createActionPlanInputFixture(
   userMessage = "inspect project",
 ): ActionPlanInput {
   return {
-    task: {
-      userMessage,
-    },
-    runtime: {
+    runState: {
       currentStep: 1,
       dynamicTools: true,
       loadedTools: [],
-    },
-    history: [],
-    executionState: {
-      calls: [],
-      evidence: [],
-      warnings: [],
       progress: {
         totalToolCalls: 0,
         totalEvidence: 0,
@@ -24,8 +15,18 @@ export function createActionPlanInputFixture(
         repeatedCallCount: 0,
         stalled: false,
       },
+      warnings: [],
     },
-    recentDeltas: [],
+    timeline: [{
+      index: 0,
+      role: "user",
+      kind: "user_message",
+      content: userMessage,
+      evidenceRefs: [],
+      artifactUris: [],
+    }],
+    evidenceMemory: [],
+    plannerJournal: [],
     toolCatalog: [],
   };
 }
@@ -33,14 +34,11 @@ export function createActionPlanInputFixture(
 export function createActionDecisionFixture(): string {
   return JSON.stringify({
     action: "Answer",
-    intent: "test",
-    progressAssessment: "No tool evidence is required.",
-    nextStepGoal: "Produce the final answer.",
-    requiredCapabilities: [],
-    tags: [],
-    toolSearchQueries: [],
-    preferredTools: [],
-    confidence: 0.9,
-    instructionToMainModel: "answer directly",
+    answer: {
+      content: "Direct fixture answer.",
+    },
+    askUser: null,
+    useTools: null,
+    discoverTools: null,
   });
 }

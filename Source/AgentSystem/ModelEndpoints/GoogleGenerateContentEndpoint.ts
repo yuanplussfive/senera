@@ -30,6 +30,7 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
         this.path("generateContent"),
         this.buildPayload(request),
         this.authHeaders(),
+        { signal: request.signal },
       ),
     );
 
@@ -43,6 +44,7 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
       this.authHeaders(),
       (event) => readGoogleText(GoogleGenerateContentBodySchema.parse(event)),
       { alt: "sse" },
+      { signal: request.signal },
     );
   }
 

@@ -1,7 +1,7 @@
 {
   "Plugin": {
     "Name": "FastContextWorkspaceMapToolPlugin",
-    "Title": "Fast Context Workspace Map Tool",
+    "Title": "项目地图",
     "Version": "0.1.0",
     "Kind": "Tool",
     "Entry": {
@@ -37,6 +37,99 @@
       "Permissions": [
         "filesystem:read:workspace"
       ],
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "workspace_map_path",
+            "Records": "$.topLevel.item[*]",
+            "Slots": {
+              "path": "$.path",
+              "kind": "$.kind",
+              "purpose": "$.purpose"
+            },
+            "Identity": {
+              "Parts": [
+                "path"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "M",
+              "Locator": "{{ path }}",
+              "Display": "workspace {{ kind }}: {{ path }}",
+              "Label": "{{ path }}",
+              "Source": "{{ purpose }}"
+            },
+            "Confidence": 0.72,
+            "Metadata": {
+              "kind": "$.kind"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "path",
+                "kind",
+                "purpose"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "path",
+                "kind",
+                "purpose"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.kind }} {{ e.slots.path }} - {{ e.slots.purpose }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace path\n  path: {{ e.slots.path }}\n  kind: {{ e.slots.kind }}\n  purpose: {{ e.slots.purpose }}\n{% endfor %}"
+            }
+          },
+          {
+            "Kind": "workspace_recommended_root",
+            "Records": "$.project.recommendedRoots.item[*]",
+            "Slots": {
+              "root": "$"
+            },
+            "Identity": {
+              "Parts": [
+                "root"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "MR",
+              "Locator": "{{ root }}",
+              "Display": "recommended workspace root: {{ root }}",
+              "Label": "{{ root }}",
+              "Source": "{{ root }}"
+            },
+            "Confidence": 0.78,
+            "ModelProjection": {
+              "Slots": [
+                "root"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "root"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} recommended root: {{ e.slots.root }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} recommended root: {{ e.slots.root }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "快速查看工作区目录结构和主要文件分布。",
         "Keywords": [
@@ -52,6 +145,58 @@
           "文件树",
           "项目地图",
           "有哪些文件"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.map",
+            "Title": "Workspace map",
+            "Description": "Inspect top-level workspace structure, project roots, and likely source areas before selecting files.",
+            "Facets": {
+              "Actions": [
+                "inspect",
+                "map",
+                "orient"
+              ],
+              "Targets": [
+                "workspace",
+                "directory-tree",
+                "project-structure"
+              ],
+              "Inputs": [
+                "workspace-root",
+                "path"
+              ],
+              "Outputs": [
+                "directory-summary",
+                "recommended-root",
+                "path-reference"
+              ],
+              "Evidence": [
+                "workspace-map-path",
+                "workspace-recommended-root"
+              ],
+              "Effects": [
+                "read-only"
+              ]
+            },
+            "Aliases": [
+              "项目地图",
+              "目录结构",
+              "workspace tree",
+              "project layout"
+            ],
+            "Examples": [
+              "先看看工作区结构",
+              "show workspace tree"
+            ],
+            "Avoid": [
+              "不要用于读取完整文件内容或精确搜索代码"
+            ],
+            "Risk": {
+              "SideEffect": "none",
+              "Permission": "read"
+            }
+          }
         ],
         "UseCases": [
           "不清楚项目结构、需要先看有哪些目录或避免猜路径时使用。"

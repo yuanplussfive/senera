@@ -1,48 +1,38 @@
 import crypto from "node:crypto";
-import { z } from "zod";
+import type { AgentActionCapabilityNeed } from "./AgentActionPlanner.js";
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
 import type {
   AgentLoadedToolsConfig,
   ExecutedToolCallResult,
   ResolvedAgentToolSearchConfig,
 } from "./Types.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "./AgentXmlStatus.js";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
 import { AgentToolSearchIndex, type AgentToolSearchResult } from "./AgentToolSearchIndex.js";
 import {
   AgentToolSearchMemory,
-  type AgentToolSearchEpisode,
 } from "./AgentToolSearchMemory.js";
+import type {
+  LoadedToolsState,
+} from "./AgentToolSearchRuntimeTypes.js";
+import {
+  ToolSearchArgumentsSchema,
+  invalidToolSearchArgumentsResult,
+  okToolSearchResult,
+  type ToolSearchArguments,
+} from "./AgentToolSearchToolProtocol.js";
+import { buildToolSearchResultProjection } from "./AgentToolSearchResultProjector.js";
+import { buildPlannedToolSearchQueries } from "./AgentToolSearchQueryPlanner.js";
+import { AgentToolSearchUsageMemory } from "./AgentToolSearchUsageMemory.js";
+import { throwIfAborted } from "./AgentCancellation.js";
 
-const ToolSearchArgumentsSchema = z
-  .object({
-    query: z.preprocess(coerceStringLike, z.string().trim().min(1)),
-    includeLoaded: z.preprocess(coerceBooleanLike, z.boolean()).optional(),
-  })
-  .strict();
-
-type ToolSearchArguments = z.infer<typeof ToolSearchArgumentsSchema>;
-export type LoadedToolsState = "all" | string[];
-
-interface PendingToolSearch {
-  query: string;
-  queryTokens: string[];
-  plannerTags: string[];
-  candidates: string[];
-  timestamp: number;
-}
-
-export const ToolSearchToolName = "ToolSearchTool";
+export type { LoadedToolsState } from "./AgentToolSearchRuntimeTypes.js";
+export { ToolSearchToolName } from "./AgentToolSearchRuntimeTypes.js";
 
 export class AgentToolSearchRuntime {
   private readonly memory: AgentToolSearchMemory;
+  private readonly usageMemory: AgentToolSearchUsageMemory;
   private index?: AgentToolSearchIndex;
-  private readonly pendingSearches = new Map<string, PendingToolSearch[]>();
   private readonly projectId: string;
 
   constructor(
@@ -52,13 +42,17 @@ export class AgentToolSearchRuntime {
   ) {
     this.memory = new AgentToolSearchMemory(config, workspaceRoot);
     this.projectId = createProjectId(workspaceRoot);
+    this.usageMemory = new AgentToolSearchUsageMemory(this.memory, this.projectId);
   }
 
   createHostHandler(): AgentHostToolHandler {
-    return async (args, context) => this.runToolSearch(args, {
-      requestId: context.requestId,
-      visibleToolNames: context.visibleToolNames,
-    });
+    return async (args, context) => {
+      throwIfAborted(context.signal);
+      return this.runToolSearch(args, {
+        requestId: context.requestId,
+        visibleToolNames: context.visibleToolNames,
+      });
+    };
   }
 
   resolveInitialLoadedTools(input: string, loadedTools: AgentLoadedToolsConfig): LoadedToolsState {
@@ -80,10 +74,9 @@ export class AgentToolSearchRuntime {
     input: string;
     loadedTools: AgentLoadedToolsConfig;
     currentLoadedTools?: LoadedToolsState;
-    tags?: readonly string[];
-    plannerText?: readonly string[];
     preferredTools?: readonly string[];
-    toolSearchQueries?: readonly string[];
+    queries?: readonly string[];
+    needs?: readonly AgentActionCapabilityNeed[];
     discover?: boolean;
   }): LoadedToolsState {
     if (options.loadedTools !== "dynamic") {
@@ -95,10 +88,10 @@ export class AgentToolSearchRuntime {
       ? this.registry.listTools().map((tool) => tool.name)
       : options.currentLoadedTools ?? [];
     const preferred = this.existingToolNames(options.preferredTools ?? []);
-    const discovered = this.buildPlannedSearchQueries(options).flatMap((query) =>
+    const discovered = buildPlannedToolSearchQueries(options, (text) => this.tokenize(text)).flatMap((query) =>
       this.search({
         query: query.text,
-        plannerTags: query.tags,
+        plannerTags: query.facets,
         includeLoaded: false,
         loadedToolNames: [...bootstrap, ...preferred],
       }).map((result) => result.toolName));
@@ -122,7 +115,7 @@ export class AgentToolSearchRuntime {
       return;
     }
 
-    this.rememberSearch(requestId, {
+    this.usageMemory.rememberSearch(requestId, {
       query,
       queryTokens: this.tokenize(query),
       plannerTags: [],
@@ -137,7 +130,7 @@ export class AgentToolSearchRuntime {
     dynamicTools: boolean;
     execution: { value: ExecutedToolCallResult[] };
   }): LoadedToolsState {
-    this.recordToolUsage(options.requestId, options.execution.value);
+    this.usageMemory.recordToolUsage(options.requestId, options.execution.value);
     if (!options.dynamicTools || options.loadedTools === "all") {
       return options.loadedTools;
     }
@@ -145,7 +138,7 @@ export class AgentToolSearchRuntime {
     return this.capVisibleTools([
       ...options.loadedTools,
       ...options.execution.value.map((result) => result.name),
-      ...this.extractSearchResultToolNames(options.execution.value),
+      ...this.usageMemory.extractSearchResultToolNames(options.execution.value),
     ]);
   }
 
@@ -180,25 +173,12 @@ export class AgentToolSearchRuntime {
   ): Promise<AgentToolProcessRunResult> {
     const parsed = ToolSearchArgumentsSchema.safeParse(args);
     if (!parsed.success) {
-      return failure({
-        code: AgentExecutionErrorCodes.InvalidToolArguments,
-        message: "ToolSearchTool 参数无效。",
-        details: {
-          phase: AgentToolProcessErrorPhases.RuntimeExecution,
-          issues: parsed.error.issues,
-          toolName: ToolSearchToolName,
-        },
-        diagnostics: parsed.error.issues.map((issue) => ({
-          message: issue.message,
-          pointer: `/${issue.path.join("/")}`,
-          path: issue.path.map((entry) => typeof entry === "number" ? entry : String(entry)),
-        })),
-      });
+      return invalidToolSearchArgumentsResult(parsed.error.issues);
     }
 
     const result = this.buildToolSearchResult(parsed.data, context.visibleToolNames ?? []);
     if (context.requestId) {
-      this.rememberSearch(context.requestId, {
+      this.usageMemory.rememberSearch(context.requestId, {
         query: parsed.data.query,
         queryTokens: this.tokenize(parsed.data.query),
         plannerTags: [],
@@ -207,17 +187,7 @@ export class AgentToolSearchRuntime {
       });
     }
 
-    return {
-      response: {
-        protocol: AgentToolProcessProtocol,
-        ok: true,
-        result,
-      },
-      stdout: "",
-      stderr: "",
-      exitCode: null,
-      signal: null,
-    };
+    return okToolSearchResult(result);
   }
 
   private buildToolSearchResult(
@@ -230,99 +200,7 @@ export class AgentToolSearchRuntime {
       loadedToolNames,
     });
 
-    return {
-      query: args.query,
-      tools: {
-        item: results.map((result) => ({
-          name: result.toolName,
-          title: result.title,
-          summary: result.summary,
-          whenToUse: result.whenToUse,
-          score: result.score,
-          matchedTerms: {
-            item: result.matchedTerms,
-          },
-          permissions: {
-            item: result.permissions,
-          },
-        })),
-      },
-      guidance: results.length > 0
-        ? "这些工具会在下一轮提示词中展开完整能力卡片；下一步需要工具时只调用其中最匹配的工具。"
-        : "没有找到匹配工具；换更具体的任务、对象、路径、错误文本或能力关键词重新搜索。",
-    };
-  }
-
-  private rememberSearch(requestId: string, search: PendingToolSearch): void {
-    const entries = this.pendingSearches.get(requestId) ?? [];
-    this.pendingSearches.set(requestId, [...entries.slice(-4), search]);
-  }
-
-  private buildPlannedSearchQueries(options: {
-    input: string;
-    tags?: readonly string[];
-    plannerText?: readonly string[];
-    toolSearchQueries?: readonly string[];
-    discover?: boolean;
-  }): Array<{ text: string; tags: string[] }> {
-    if (!options.discover && (options.toolSearchQueries ?? []).length === 0) {
-      return [];
-    }
-
-    return uniqueNonEmpty([
-      ...(options.toolSearchQueries ?? []),
-      structuredToolSearchQuery({
-        task: options.input,
-        plannerText: options.plannerText ?? [],
-        tags: options.tags ?? [],
-      }),
-      ...(options.discover ? [options.input] : []),
-    ]).map((text) => ({
-      text,
-      tags: uniqueNonEmpty([...(options.tags ?? [])]),
-    }));
-  }
-
-  private recordToolUsage(
-    requestId: string,
-    results: ExecutedToolCallResult[],
-  ): void {
-    const chosenTools = results
-      .map((result) => result.name)
-      .filter((name) => name !== ToolSearchToolName);
-    if (chosenTools.length === 0) {
-      return;
-    }
-
-    const pending = this.pendingSearches.get(requestId);
-    if (!pending || pending.length === 0) {
-      return;
-    }
-
-    const relevant = [...pending]
-      .reverse()
-      .find((entry) => chosenTools.some((name) => entry.candidates.includes(name)));
-    if (!relevant) {
-      return;
-    }
-
-    this.memory.record({
-      query: relevant.query,
-      queryTokens: relevant.queryTokens,
-      plannerTags: relevant.plannerTags,
-      candidates: relevant.candidates,
-      chosenTools,
-      outcome: results.some((result) => hasToolError(result.result)) ? "failure" : "success",
-      projectId: this.projectId,
-      timestamp: Date.now(),
-    } satisfies AgentToolSearchEpisode);
-    this.pendingSearches.delete(requestId);
-  }
-
-  private extractSearchResultToolNames(results: ExecutedToolCallResult[]): string[] {
-    return results
-      .filter((result) => result.name === ToolSearchToolName)
-      .flatMap((result) => readToolNamesFromSearchResult(result.result));
+    return buildToolSearchResultProjection(args, results);
   }
 
   private existingToolNames(toolNames: readonly string[]): string[] {
@@ -342,84 +220,6 @@ export class AgentToolSearchRuntime {
     this.index ??= new AgentToolSearchIndex(this.registry, this.config);
     return this.index;
   }
-}
-
-function readToolNamesFromSearchResult(result: unknown): string[] {
-  if (!result || typeof result !== "object" || Array.isArray(result)) {
-    return [];
-  }
-
-  const tools = (result as Record<string, unknown>).tools;
-  if (!tools || typeof tools !== "object" || Array.isArray(tools)) {
-    return [];
-  }
-
-  const item = (tools as Record<string, unknown>).item;
-  if (!Array.isArray(item)) {
-    return [];
-  }
-
-  return item.flatMap((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return [];
-    }
-
-    const name = (entry as Record<string, unknown>).name;
-    return typeof name === "string" && name.trim().length > 0 ? [name.trim()] : [];
-  });
-}
-
-function hasToolError(result: unknown): boolean {
-  return Boolean(
-    result
-      && typeof result === "object"
-      && !Array.isArray(result)
-      && "error" in result,
-  );
-}
-
-function failure(error: NonNullable<AgentToolProcessRunResult["response"]["error"]>): AgentToolProcessRunResult {
-  return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error,
-    },
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    signal: null,
-  };
-}
-
-function coerceStringLike(value: unknown): unknown {
-  return typeof value === "number" || typeof value === "boolean" ? String(value) : value;
-}
-
-function coerceBooleanLike(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return value;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "true") return true;
-  if (normalized === "false") return false;
-  return value;
-}
-
-function structuredToolSearchQuery(options: {
-  task: string;
-  plannerText: readonly string[];
-  tags: readonly string[];
-}): string {
-  return [
-    options.task,
-    ...options.plannerText,
-    ...options.tags,
-  ].join(" ");
-}
-
-function uniqueNonEmpty(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function createProjectId(workspaceRoot: string): string {

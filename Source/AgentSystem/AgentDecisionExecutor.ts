@@ -20,6 +20,11 @@ import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import { createToolCallId } from "./AgentIds.js";
 import { AgentExecutionErrorCodes } from "./AgentXmlStatus.js";
 import type { AgentToolSearchRuntime } from "./AgentToolSearchRuntime.js";
+import {
+  AgentWorkspaceChangeCapture,
+  type PreparedWorkspaceCapture,
+} from "./Artifacts/AgentWorkspaceChangeCapture.js";
+import { throwIfAborted } from "./AgentCancellation.js";
 
 export type AgentExecutionResult =
   | {
@@ -41,6 +46,7 @@ export interface AgentDecisionExecutionContext {
   step?: number;
   onEvent?: AgentEventSink;
   loadedToolNames?: "all" | readonly string[];
+  signal?: AbortSignal;
 }
 
 type ToolCallDecision = Extract<AgentDecision, { kind: "ToolCalls" }>["payload"]["tool_call"][number];
@@ -54,6 +60,7 @@ export class AgentDecisionExecutor {
   private readonly toolRunner: AgentToolRunnerLike;
   private readonly errors: AgentDecisionErrorFactory;
   private readonly eventFactory = new AgentLoopEventFactory();
+  private readonly workspaceCapture: AgentWorkspaceChangeCapture;
 
   constructor(
     private readonly registry: AgentPluginRegistry,
@@ -66,6 +73,9 @@ export class AgentDecisionExecutor {
     toolSearch?: AgentToolSearchRuntime,
   ) {
     const resolvedWorkspaceRoot = workspaceRoot ?? process.cwd();
+    this.workspaceCapture = new AgentWorkspaceChangeCapture({
+      workspaceRoot: resolvedWorkspaceRoot,
+    });
     this.toolRunner = toolRunner ?? new AgentToolRunner(
       config,
       protocol,
@@ -82,23 +92,46 @@ export class AgentDecisionExecutor {
   ): Promise<AgentExecutionResult> {
     await this.emitToolCallsPlanned(decision, context);
 
-    const results = await Promise.all(
-      decision.payload.tool_call.map(async (call, index) => {
+    const plannedCalls = decision.payload.tool_call.map((call, index) => ({
+      call,
+      index,
+      tool: this.resolveTool(decision, call, index),
+    }));
+    const shouldRunSequentially = plannedCalls.some((entry) =>
+      entry.tool.artifactPolicy?.Workspace?.Capture
+      && entry.tool.artifactPolicy.Workspace.Capture !== "none");
+    const runCall = async (entry: typeof plannedCalls[number]) => {
+        throwIfAborted(context.signal);
         const callId = createToolCallId();
-        const tool = this.resolveTool(decision, call, index);
-        const args = call.arguments ?? {};
-        const execution = await this.runTool(decision, context, tool, args, index, callId);
+        const args = entry.call.arguments ?? {};
+        const capture = await this.workspaceCapture.prepare({
+          policy: entry.tool.artifactPolicy,
+          args,
+        });
+        throwIfAborted(context.signal);
+        const execution = await this.runTool(decision, context, entry.tool, args, entry.index, callId);
+        throwIfAborted(context.signal);
+        const workspaceCapture = await this.completeWorkspaceCapture(capture, execution.response.result);
+        throwIfAborted(context.signal);
         const control = this.readToolControlResult(execution.response.result);
 
         return {
           callId,
-          tool,
+          tool: entry.tool,
           args,
           execution,
+          workspaceCapture,
           control,
         };
-      }),
-    );
+    };
+    const results = shouldRunSequentially
+      ? []
+      : await Promise.all(plannedCalls.map(runCall));
+    if (shouldRunSequentially) {
+      for (const entry of plannedCalls) {
+        results.push(await runCall(entry));
+      }
+    }
 
     const controls = results.flatMap((entry) =>
       entry.control ? [{ ...entry, control: entry.control }] : []);
@@ -126,7 +159,7 @@ export class AgentDecisionExecutor {
 
     return {
       kind: "ToolResults",
-      value: results.map(({ callId, tool, args, execution }) => ({
+      value: results.map(({ callId, tool, args, execution, workspaceCapture }) => ({
         callId,
         name: tool.name,
         arguments: args,
@@ -136,8 +169,17 @@ export class AgentDecisionExecutor {
           stderr: execution.stderr,
         },
         result: execution.response.result,
+        artifactPolicy: tool.artifactPolicy,
+        workspaceCapture,
       })),
     };
+  }
+
+  private async completeWorkspaceCapture(
+    capture: PreparedWorkspaceCapture,
+    result: unknown,
+  ) {
+    return capture.complete(result);
   }
 
   private resolveTool(
@@ -169,11 +211,14 @@ export class AgentDecisionExecutor {
     callId: string,
   ): Promise<AgentToolProcessRunResult> {
     await this.emitToolCallStarted(context, index, tool.name, callId);
+    throwIfAborted(context.signal);
     const execution = await this.toolRunner.run(tool, args, {
       requestId: context.requestId,
       step: context.step,
       visibleToolNames: context.loadedToolNames === "all" ? undefined : context.loadedToolNames,
+      signal: context.signal,
     });
+    throwIfAborted(context.signal);
 
     if (!execution.response.ok) {
       await this.emitToolCallFailed(context, index, tool.name, callId, execution.response.error);

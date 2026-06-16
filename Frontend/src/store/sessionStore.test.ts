@@ -35,11 +35,13 @@ function resetStore(): void {
     historyLoadingIds: {},
     historyFailedIds: {},
     historyReplayBuffers: {},
+    historyStepBuffers: {},
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
     modelProviders: [],
     selectedModelProviderId: null,
+    pluginConfigs: [],
     userProfile: DEFAULT_USER_PROFILE,
   });
 }
@@ -72,6 +74,21 @@ function envelope<TKind extends string, TData>(
     sessionId,
     requestId,
     data,
+  };
+}
+
+function timedEnvelope<TKind extends string, TData>(
+  kind: TKind,
+  timestamp: string,
+  data: TData,
+  sessionId?: string,
+  requestId?: string,
+  step?: number,
+): EventEnvelope<TKind, TData> {
+  return {
+    ...envelope(kind, data, sessionId, requestId),
+    timestamp,
+    step,
   };
 }
 
@@ -424,6 +441,139 @@ describe("sessionStore history recovery", () => {
     }
   });
 
+  it("rebuilds persisted run history while materializing chat history", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 2,
+          messageCount: 2,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 2,
+        messageCount: 2,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-1:user",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "查天气",
+            },
+          },
+          {
+            entry: {
+              id: "req-1:assistant",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:03.000Z",
+              kind: "assistant.decision",
+              xml: "<final_answer>有雨</final_answer>",
+            },
+            visible: { kind: "final_answer", text: "有雨" },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: "history-session",
+        events: [
+          timedEnvelope(
+            EventKinds.RunStarted,
+            "2026-05-29T08:00:00.000Z",
+            { input: "查天气" },
+            "history-session",
+            "req-1",
+          ),
+          timedEnvelope(
+            EventKinds.ActionPlannerStageStarted,
+            "2026-05-29T08:00:01.000Z",
+            { stage: "selectAction" },
+            "history-session",
+            "req-1",
+            1,
+          ),
+          timedEnvelope(
+            EventKinds.ActionPlannerStageCompleted,
+            "2026-05-29T08:00:01.250Z",
+            { stage: "selectAction", selectedAction: "use_tools" },
+            "history-session",
+            "req-1",
+            1,
+          ),
+          timedEnvelope(
+            EventKinds.ToolCallStarted,
+            "2026-05-29T08:00:01.500Z",
+            { index: 1, toolName: "WeatherTool", callId: "call-1" },
+            "history-session",
+            "req-1",
+            1,
+          ),
+          timedEnvelope(
+            EventKinds.ToolCallCompleted,
+            "2026-05-29T08:00:02.000Z",
+            { index: 1, toolName: "WeatherTool", callId: "call-1", preview: "Rain" },
+            "history-session",
+            "req-1",
+            1,
+          ),
+          timedEnvelope(
+            EventKinds.FinalAnswer,
+            "2026-05-29T08:00:03.000Z",
+            { content: "有雨" },
+            "history-session",
+            "req-1",
+          ),
+          timedEnvelope(
+            EventKinds.RunCompleted,
+            "2026-05-29T08:00:03.010Z",
+            {},
+            "history-session",
+            "req-1",
+          ),
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["查天气", "有雨"]);
+    expect(session.runs).toHaveLength(1);
+    expect(session.runs[0].status).toBe("completed");
+    expect(session.runs[0].steps.map((step) => step.title)).toEqual([
+      "理解用户问题",
+      "选择行动",
+      "调用 WeatherTool",
+      "生成回复",
+    ]);
+    expect(session.runs[0].steps[1]).toMatchObject({
+      startedAt: "2026-05-29T08:00:01.000Z",
+      endedAt: "2026-05-29T08:00:01.250Z",
+    });
+  });
+
   it("keeps materialized history when completion is received more than once", () => {
     useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
       sessions: [
@@ -660,5 +810,92 @@ describe("session persistence migration", () => {
         updatedAt: "2026-05-29T08:00:00.000Z",
       },
     });
+  });
+});
+
+describe("sessionStore planner timeline", () => {
+  beforeEach(() => {
+    resetStore();
+  });
+
+  it("projects action planning as two measured stages", () => {
+    const sessionId = "planner-session";
+    const requestId = "planner-request";
+    useStore.getState().registerCreatingSession(sessionId, "规划测试");
+
+    useStore.getState().ingest(timedEnvelope(
+      EventKinds.RunStarted,
+      "2026-05-29T08:00:00.000Z",
+      { input: "查明天上海天气" },
+      sessionId,
+      requestId,
+    ));
+    useStore.getState().ingest(timedEnvelope(
+      EventKinds.ActionPlannerStageStarted,
+      "2026-05-29T08:00:01.000Z",
+      { stage: "selectAction" },
+      sessionId,
+      requestId,
+      1,
+    ));
+    useStore.getState().ingest(timedEnvelope(
+      EventKinds.ActionPlannerStageCompleted,
+      "2026-05-29T08:00:01.250Z",
+      { stage: "selectAction", selectedAction: "use_tools", repaired: false },
+      sessionId,
+      requestId,
+      1,
+    ));
+    useStore.getState().ingest(timedEnvelope(
+      EventKinds.ActionPlannerStageStarted,
+      "2026-05-29T08:00:01.300Z",
+      { stage: "buildActionPayload" },
+      sessionId,
+      requestId,
+      1,
+    ));
+    useStore.getState().ingest(timedEnvelope(
+      EventKinds.ActionPlannerStageCompleted,
+      "2026-05-29T08:00:01.700Z",
+      { stage: "buildActionPayload", selectedAction: "use_tools", repaired: false },
+      sessionId,
+      requestId,
+      1,
+    ));
+    useStore.getState().ingest(timedEnvelope(
+      EventKinds.ActionPlanned,
+      "2026-05-29T08:00:01.720Z",
+      {
+        status: "planned",
+        action: "use_tools",
+        expectedOutputMode: "tool_call_xml",
+        preferredTools: ["WeatherTool"],
+        toolSearchQueries: [],
+        loadedTools: ["WeatherTool"],
+      },
+      sessionId,
+      requestId,
+      1,
+    ));
+
+    const run = useStore.getState().sessions[sessionId]?.runs[0];
+    expect(run?.steps.map((step) => step.title)).toEqual([
+      "理解用户问题",
+      "选择行动",
+      "构建行动参数 · 调用工具",
+    ]);
+    expect(run?.steps[1]).toMatchObject({
+      status: "done",
+      startedAt: "2026-05-29T08:00:01.000Z",
+      endedAt: "2026-05-29T08:00:01.250Z",
+      decisionKind: "use_tools",
+    });
+    expect(run?.steps[2]).toMatchObject({
+      status: "done",
+      startedAt: "2026-05-29T08:00:01.300Z",
+      endedAt: "2026-05-29T08:00:01.700Z",
+      decisionKind: "use_tools",
+    });
+    expect(run?.steps.filter((step) => step.title.startsWith("规划行动"))).toHaveLength(0);
   });
 });

@@ -16,6 +16,8 @@ import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
 } from "./AgentXmlStatus.js";
+import { cancelledToolProcessResult } from "./AgentToolCancellation.js";
+import { resolveToolExecutionConfig } from "./AgentDefaults.js";
 
 export interface AgentToolProcessSpawnOptions {
   cwd: string;
@@ -65,7 +67,11 @@ export class AgentToolProcessRunner {
     this.xmlCodec = new AgentXmlCodec(protocol);
   }
 
-  async run(tool: RegisteredTool, args: Record<string, unknown>): Promise<AgentToolProcessRunResult> {
+  async run(
+    tool: RegisteredTool,
+    args: Record<string, unknown>,
+    context: { signal?: AbortSignal } = {},
+  ): Promise<AgentToolProcessRunResult> {
     const entry = tool.plugin.manifest.Plugin.Entry;
     if (!entry) {
       return this.failedResult({
@@ -98,21 +104,34 @@ export class AgentToolProcessRunner {
       arguments: args,
     };
 
-    return this.spawnProcessEntry(tool, entry, request);
+    return this.spawnProcessEntry(tool, entry, request, context);
   }
 
   private spawnProcessEntry(
     tool: RegisteredTool,
     entry: PluginEntryManifest,
     request: AgentToolProcessRequest,
+    context: { signal?: AbortSignal },
   ): Promise<AgentToolProcessRunResult> {
-    const timeoutMs = this.config.ToolExecution?.TimeoutMs ?? 10000;
-    const maxStdoutBytes = this.config.ToolExecution?.MaxStdoutBytes ?? 200000;
-    const maxStderrBytes = this.config.ToolExecution?.MaxStderrBytes ?? 200000;
+    const toolExecution = resolveToolExecutionConfig(this.config);
+    const timeoutMs = toolExecution.TimeoutMs;
+    const maxStdoutBytes = toolExecution.MaxStdoutBytes;
+    const maxStderrBytes = toolExecution.MaxStderrBytes;
     const cwd = this.resolveEntryCwd(tool, entry);
     const command = entry.Command;
     const commandArgs = entry.Args ?? [];
     const processLabel = [command, ...commandArgs].join(" ");
+    const signal = context.signal;
+
+    if (signal?.aborted) {
+      return Promise.resolve(cancelledToolProcessResult({
+        signal,
+        toolName: tool.name,
+        phase: "before_spawn",
+        command: processLabel,
+        cwd,
+      }));
+    }
 
     return new Promise((resolve) => {
       const child = this.spawnProcess(command, commandArgs, {
@@ -132,17 +151,37 @@ export class AgentToolProcessRunner {
       let stdoutBytes = 0;
       let stderrBytes = 0;
       let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const abortListener = (): void => {
+        child.kill("SIGTERM");
+        settle(cancelledToolProcessResult({
+          signal,
+          toolName: tool.name,
+          phase: "runtime",
+          command: processLabel,
+          cwd,
+        }));
+      };
       const settle = (result: AgentToolProcessRunResult): void => {
         if (settled) {
           return;
         }
 
         settled = true;
-        clearTimeout(timer);
+        if (timer) {
+          clearTimeout(timer);
+        }
+        signal?.removeEventListener("abort", abortListener);
         resolve(result);
       };
 
-      const timer = setTimeout(() => {
+      signal?.addEventListener("abort", abortListener, { once: true });
+      if (signal?.aborted) {
+        abortListener();
+        return;
+      }
+
+      timer = setTimeout(() => {
         child.kill("SIGTERM");
         settle(this.failedResult({
           code: AgentExecutionErrorCodes.ToolProcessTimeout,

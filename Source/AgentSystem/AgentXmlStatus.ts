@@ -30,6 +30,7 @@ export const AgentExecutionErrorCodes = {
   ToolProcessRuntimeUnsupported: "ToolProcessRuntimeUnsupported",
   ToolProcessSpawnFailed: "ToolProcessSpawnFailed",
   ToolProcessTimeout: "ToolProcessTimeout",
+  ToolProcessCancelled: "ToolProcessCancelled",
   ToolProcessStdoutLimitExceeded: "ToolProcessStdoutLimitExceeded",
   ToolProcessStderrLimitExceeded: "ToolProcessStderrLimitExceeded",
   ToolProcessResponseMissing: "ToolProcessResponseMissing",

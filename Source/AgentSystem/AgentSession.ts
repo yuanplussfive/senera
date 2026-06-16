@@ -1,5 +1,6 @@
 import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentSessionMetadata } from "./AgentModelMetadata.js";
+import type { AgentUploadAttachment } from "./Uploads/AgentUploadTypes.js";
 
 export const AgentSessionStatuses = {
   Idle: "idle",
@@ -13,6 +14,7 @@ export interface AgentSessionActiveRequest {
   requestId: string;
   input: string;
   startedAt: string;
+  attachments?: AgentUploadAttachment[];
 }
 
 export interface AgentSession {

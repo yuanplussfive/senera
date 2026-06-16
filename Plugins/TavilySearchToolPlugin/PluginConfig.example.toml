@@ -1,5 +1,9 @@
+[senera]
+# 是否启用网页搜索插件。
+enabled = true
+
 [tavily]
-# Put one or more Tavily API keys here. The plugin rotates them across calls.
+# 填写一个或多个网页搜索服务密钥，插件会自动轮换调用。
 api_keys = [
   "tvly-YOUR_API_KEY"
 ]
@@ -7,3 +11,40 @@ api_keys = [
 base_url = "https://api.tavily.com"
 timeout_ms = 300000
 state_dir = ".state"
+
+[senera.fields.senera.enabled]
+label = "启用插件"
+description = "关闭后网页搜索工具不会参与外部工具集。"
+type = "boolean"
+
+[senera.fields.tavily.api_keys]
+label = "接口密钥"
+description = "支持多个搜索服务密钥轮换调用。"
+type = "array"
+itemType = "string"
+secret = true
+
+[senera.fields.tavily.base_url]
+label = "服务地址"
+description = "网页搜索服务地址。"
+type = "string"
+
+[senera.fields.tavily.timeout_ms]
+label = "请求超时"
+description = "搜索请求超时时间，单位毫秒。"
+type = "number"
+min = 1000
+step = 1000
+
+[senera.fields.tavily.state_dir]
+label = "状态目录"
+description = "路径相对插件目录。"
+type = "string"
+
+[senera.sections.senera]
+label = "启用状态"
+description = "控制网页搜索插件是否参与外部工具集。"
+
+[senera.sections.tavily]
+label = "网页搜索参数"
+description = "配置搜索服务地址、密钥、请求超时和本地状态目录。"

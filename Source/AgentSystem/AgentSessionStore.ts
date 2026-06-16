@@ -7,6 +7,7 @@ import type { AgentSessionRepository, StoredStepTraceRun } from "./AgentSqliteSe
 import { InMemorySessionRepository } from "./AgentSqliteSessionRepository.js";
 import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { StepTrace } from "./AgentStepTrace.js";
+import type { AgentEventEnvelope } from "./AgentEventBase.js";
 
 export type AgentSessionOpenResult =
   | {
@@ -115,6 +116,11 @@ export class AgentSessionStore {
     return this.repository.loadEntries(sessionId);
   }
 
+  /** 读取某会话执行事件日志（用于右侧执行轨迹历史回放）。 */
+  loadRunEvents(sessionId: string): AgentEventEnvelope[] {
+    return this.repository.loadRunEvents(sessionId);
+  }
+
   rename(sessionId: string, title: string): void {
     this.repository.renameSession(sessionId, title);
     // 内存缓存里没有 title 字段（沿用旧 model），不动
@@ -122,9 +128,8 @@ export class AgentSessionStore {
 
   /** 删除某 sessionId 从指定 requestId 起的所有 entries，并同步内存缓存 */
   truncateFromRequest(sessionId: string, requestId: string): number {
-    // 先删 step 轨迹：其 turn_sequence 锚点独立于 conversation_entries，
-    // 但保持「先删派生数据、后删主数据」的顺序更稳妥。
     this.repository.deleteStepTracesFrom(sessionId, requestId);
+    this.repository.deleteRunEventsFrom(sessionId, requestId);
     const removed = this.repository.deleteEntriesFrom(sessionId, requestId);
     const session = this.sessions.get(sessionId);
     if (session) {
@@ -172,6 +177,10 @@ export class AgentSessionStore {
   /** 读取某会话所有 step 轨迹，按轮次分组（回放重建执行图用） */
   loadStepTraces(sessionId: string): StoredStepTraceRun[] {
     return this.repository.loadStepTraces(sessionId);
+  }
+
+  persistRunEvent(sessionId: string, event: AgentEventEnvelope): void {
+    this.repository.appendRunEvent(sessionId, event);
   }
 
   private createAndStore(sessionId: string): AgentSession {

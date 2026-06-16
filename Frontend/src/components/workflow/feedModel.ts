@@ -4,6 +4,7 @@ import {
   type TimelineStep,
   type TimelineStepStatus,
 } from "../../store/sessionStore";
+import { formatDuration, hasMeasuredDuration } from "../../lib/util";
 
 export type FeedItemKind = "tool" | "trace";
 
@@ -171,7 +172,7 @@ function mapToolItem(step: TimelineStep): FeedItem {
     status: step.status,
     title: step.toolName ?? step.title,
     subtitle: summarizeToolSubtitle(step),
-    meta: statusLabel(step.status),
+    meta: stepMeta(step),
   };
 }
 
@@ -182,8 +183,15 @@ function mapTraceItem(step: TimelineStep): FeedItem {
     status: step.status,
     title: step.title,
     subtitle: summarizeStepSubtitle(step),
-    meta: statusLabel(step.status),
+    meta: stepMeta(step),
   };
+}
+
+function stepMeta(step: TimelineStep): string | undefined {
+  if (hasMeasuredDuration(step.startedAt, step.endedAt)) {
+    return formatDuration(step.startedAt, step.endedAt);
+  }
+  return statusLabel(step.status);
 }
 
 function summarizeToolSubtitle(step: TimelineStep): string | undefined {

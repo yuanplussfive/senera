@@ -34,11 +34,15 @@ export const EventKinds = {
   SessionHistoryEntry: "session.history.entry",
   SessionHistoryChunk: "session.history.chunk",
   SessionHistorySteps: "session.history.steps",
+  SessionRunHistoryChunk: "session.run_history.chunk",
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
   PromptRendered: "prompt.rendered",
   PromptSummary: "prompt.summary",
+  ActionPlannerStageStarted: "action.planner.stage.started",
+  ActionPlannerStageCompleted: "action.planner.stage.completed",
+  ActionPlannerStageFailed: "action.planner.stage.failed",
   ActionPlanned: "action.planned",
   ModelStarted: "model.started",
   ModelStreamOpened: "model.stream.opened",
@@ -69,6 +73,7 @@ export const EventKinds = {
   ConfigReloaded: "config.reloaded",
   ConfigFailed: "config.failed",
   ModelListSnapshot: "model.list.snapshot",
+  PluginConfigSnapshot: "plugin.config.snapshot",
   ProfileSnapshot: "profile.snapshot",
 } as const;
 export type EventKind = (typeof EventKinds)[keyof typeof EventKinds];
@@ -139,6 +144,7 @@ export type ConversationEntryDto =
       timestamp: string;
       kind: "user.message";
       content: string;
+      attachments?: UploadAttachmentData[];
       metadata?: ConversationEntryMetadata;
     }
   | {
@@ -186,6 +192,11 @@ export interface SessionHistoryChunkData {
     entry: ConversationEntryDto;
     visible?: { kind: string; text: string };
   }>;
+}
+
+export interface SessionRunHistoryChunkData {
+  sessionId: string;
+  events: EventEnvelope[];
 }
 
 export interface SessionHistoryCompletedData {
@@ -250,6 +261,106 @@ export interface ModelListSnapshotData {
   defaultModelProviderId: string;
 }
 
+export interface PluginConfigSection {
+  name: string;
+  label?: string;
+  description?: string;
+  keyCount: number;
+  toml: string;
+  fields: PluginConfigField[];
+}
+
+export type PluginConfigFieldType =
+  | "boolean"
+  | "string"
+  | "number"
+  | "array"
+  | "table"
+  | "unknown";
+
+export type PluginConfigFieldOptionValue = string | number | boolean;
+
+export interface PluginConfigField {
+  label?: string;
+  section: string;
+  key: string;
+  path: string[];
+  type: PluginConfigFieldType;
+  itemType?: PluginConfigFieldType;
+  value: unknown;
+  description?: string;
+  placeholder?: string;
+  options?: PluginConfigFieldOptionValue[];
+  optionLabels?: Record<string, string>;
+  min?: number;
+  max?: number;
+  step?: number;
+  secret?: boolean;
+  multiline?: boolean;
+}
+
+export interface PluginConfigDiagnostic {
+  severity: "error" | "warning";
+  message: string;
+}
+
+export interface PluginConfigToolItem {
+  name: string;
+  summary?: string;
+  enabled: boolean;
+}
+
+export interface PluginConfigItem {
+  name: string;
+  title: string;
+  kind: string;
+  rootKind: "System" | "User";
+  description?: string;
+  rootPath: string;
+  manifestPath: string;
+  configPath: string;
+  configExists: boolean;
+  enabled: boolean;
+  available: boolean;
+  toolCount: number;
+  enabledToolCount: number;
+  tools: PluginConfigToolItem[];
+  sections: PluginConfigSection[];
+  toml: string;
+  diagnostics: PluginConfigDiagnostic[];
+}
+
+export type PluginConfigOperationKind = "list" | "update" | "set_enabled";
+
+export interface PluginConfigOperationResult {
+  requestId?: string;
+  kind: PluginConfigOperationKind;
+  pluginName?: string;
+}
+
+export interface PluginConfigSnapshotData {
+  plugins: PluginConfigItem[];
+  operation?: PluginConfigOperationResult;
+}
+
+export interface ConfigFailedData {
+  configPath: string;
+  message: string;
+  details?: unknown;
+  operation?: PluginConfigOperationResult;
+}
+
+export type PluginConfigMutationStatus = "pending" | "success" | "error";
+
+export interface PluginConfigMutationState {
+  requestId: string;
+  pluginName: string;
+  kind: PluginConfigOperationKind;
+  status: PluginConfigMutationStatus;
+  message?: string;
+  updatedAt: string;
+}
+
 export interface UserProfileData {
   name: string;
   avatarDataUrl: string | null;
@@ -268,6 +379,15 @@ export interface ConversationEntryMetadata {
     modelProvider: ModelProviderMetadata;
     usage?: ModelUsageMetadata;
   };
+}
+
+export interface UploadAttachmentData {
+  uploadUri: string;
+  name: string;
+  mime: string;
+  size: number;
+  sha256?: string;
+  status: "uploaded";
 }
 
 export interface SessionTruncatedData {
@@ -308,6 +428,23 @@ export interface ActionPlannedData {
   };
   repaired?: boolean;
   reason?: string;
+}
+
+export type ActionPlannerStageName = "selectAction" | "buildActionPayload";
+
+export interface ActionPlannerStageStartedData {
+  stage: ActionPlannerStageName;
+}
+
+export interface ActionPlannerStageCompletedData {
+  stage: ActionPlannerStageName;
+  selectedAction?: string;
+  repaired?: boolean;
+}
+
+export interface ActionPlannerStageFailedData {
+  stage: ActionPlannerStageName;
+  message: string;
 }
 
 export interface ModelDeltaData {
@@ -417,7 +554,14 @@ export interface RunFailedData {
 
 export type WsRequest =
   | { type: "session.create"; sessionId?: string }
-  | { type: "session.message"; sessionId: string; requestId?: string; modelProviderId?: string; input: string }
+  | {
+      type: "session.message";
+      sessionId: string;
+      requestId?: string;
+      modelProviderId?: string;
+      input: string;
+      attachments?: UploadAttachmentData[];
+    }
   | { type: "session.close"; sessionId: string }
   | { type: "session.cancel"; sessionId: string }
   | { type: "session.truncate_from"; sessionId: string; requestId: string }
@@ -425,5 +569,8 @@ export type WsRequest =
   | { type: "session.history"; sessionId: string }
   | { type: "session.rename"; sessionId: string; title: string }
   | { type: "model.list" }
+  | { type: "plugin.config.list" }
+  | { type: "plugin.config.update"; requestId?: string; pluginName: string; toml: string }
+  | { type: "plugin.config.set_enabled"; requestId?: string; pluginName: string; toolName?: string; enabled: boolean }
   | { type: "profile.get" }
   | { type: "profile.update"; profile: Pick<UserProfileData, "name" | "avatarDataUrl"> };

@@ -1,7 +1,7 @@
 {
   "Plugin": {
     "Name": "FastContextSearchToolPlugin",
-    "Title": "Fast Context Search Tool",
+    "Title": "工作区搜索",
     "Version": "0.1.0",
     "Kind": "Tool",
     "Entry": {
@@ -43,6 +43,81 @@
         "filesystem:write:.state",
         "process:ripgrep"
       ],
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "workspace_search_match",
+            "Records": "$.results.item[*]",
+            "Slots": {
+              "path": "$.path",
+              "startLine": "$.startLine",
+              "endLine": "$.endLine",
+              "line": "$.line",
+              "snippet": "$.snippet",
+              "score": "$.score",
+              "engine": "$.source",
+              "reason": "$.reason"
+            },
+            "Identity": {
+              "Parts": [
+                "path",
+                "line",
+                "engine"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "S",
+              "Locator": "{{ path }}:{{ line }}",
+              "Display": "{{ engine }} match in {{ path }}:{{ line }}",
+              "Label": "{{ path }}",
+              "Source": "{{ snippet }}"
+            },
+            "Confidence": 0.78,
+            "Metadata": {
+              "startLine": "$.startLine",
+              "endLine": "$.endLine",
+              "score": "$.score",
+              "reason": "$.reason",
+              "engine": "$.source"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "path",
+                "line",
+                "startLine",
+                "endLine",
+                "snippet",
+                "engine",
+                "score",
+                "reason"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "path",
+                "line",
+                "startLine",
+                "endLine",
+                "engine",
+                "score",
+                "reason"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }} - {{ e.slots.snippet }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "混合检索本地代码、路径、错误文本和相关上下文。",
         "Keywords": [
@@ -60,6 +135,63 @@
           "错误文本",
           "前端",
           "后端"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.hybrid-search",
+            "Title": "Workspace hybrid search",
+            "Description": "Locate relevant source files from natural language, errors, paths, identifiers, and context clues.",
+            "Facets": {
+              "Actions": [
+                "search",
+                "locate",
+                "inspect"
+              ],
+              "Targets": [
+                "workspace",
+                "source-code",
+                "path",
+                "error-text"
+              ],
+              "Inputs": [
+                "query",
+                "natural-language",
+                "path",
+                "identifier",
+                "error-text"
+              ],
+              "Outputs": [
+                "file-reference",
+                "code-snippet",
+                "match-list",
+                "source-location"
+              ],
+              "Evidence": [
+                "workspace-search-match"
+              ],
+              "Effects": [
+                "read-only",
+                "index-cache"
+              ]
+            },
+            "Aliases": [
+              "混合检索",
+              "代码定位",
+              "find related code",
+              "search workspace context"
+            ],
+            "Examples": [
+              "定位左侧会话列表消息数量不更新的前端代码",
+              "find code handling streaming preview"
+            ],
+            "Avoid": [
+              "已知道精确符号名时优先用符号搜索；已知道路径时用读取工具"
+            ],
+            "Risk": {
+              "SideEffect": "index-cache",
+              "Permission": "read"
+            }
+          }
         ],
         "UseCases": [
           "用户用自然语言描述代码位置、Bug、UI 逻辑或错误文本，需要在本地项目里定位相关文件时使用。"
@@ -83,6 +215,79 @@
         "filesystem:read:workspace",
         "filesystem:write:.state"
       ],
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "workspace_symbol",
+            "Records": "$.symbols.item[*]",
+            "Slots": {
+              "id": "$.id",
+              "name": "$.name",
+              "kind": "$.kind",
+              "path": "$.path",
+              "line": "$.line",
+              "signature": "$.signature",
+              "exported": "$.exported",
+              "score": "$.score"
+            },
+            "Identity": {
+              "Parts": [
+                "id"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "SYM",
+              "Locator": "{{ path }}:{{ line }}",
+              "Display": "symbol definition: {{ name }} ({{ kind }})",
+              "Label": "{{ name }}",
+              "Source": "{{ signature }}"
+            },
+            "Confidence": 0.86,
+            "Metadata": {
+              "kind": "$.kind",
+              "path": "$.path",
+              "line": "$.line",
+              "exported": "$.exported",
+              "score": "$.score"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "id",
+                "name",
+                "kind",
+                "path",
+                "line",
+                "signature",
+                "exported",
+                "score"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "id",
+                "name",
+                "kind",
+                "path",
+                "line",
+                "exported",
+                "score"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.kind }} {{ e.slots.name }} @ {{ e.slots.path }}:{{ e.slots.line }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} symbol\n  name: {{ e.slots.name }}\n  kind: {{ e.slots.kind }}\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  signature: {{ e.slots.signature }}\n  exported: {{ e.slots.exported }}\n  score: {{ e.slots.score }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "按函数、类、类型、组件等符号名查找定义位置。",
         "Keywords": [
@@ -99,6 +304,64 @@
           "类型",
           "组件",
           "声明"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.symbol-search",
+            "Title": "Workspace symbol search",
+            "Description": "Find definitions for functions, classes, types, components, constants, and exported symbols.",
+            "Facets": {
+              "Actions": [
+                "search",
+                "locate",
+                "resolve"
+              ],
+              "Targets": [
+                "symbol",
+                "definition",
+                "source-code",
+                "workspace"
+              ],
+              "Inputs": [
+                "symbol",
+                "identifier",
+                "function-name",
+                "class-name",
+                "component-name",
+                "type-name"
+              ],
+              "Outputs": [
+                "symbol-definition",
+                "source-location",
+                "signature",
+                "file-reference"
+              ],
+              "Evidence": [
+                "workspace-symbol"
+              ],
+              "Effects": [
+                "read-only",
+                "index-cache"
+              ]
+            },
+            "Aliases": [
+              "符号搜索",
+              "找定义",
+              "definition lookup",
+              "where is this function"
+            ],
+            "Examples": [
+              "找 AgentToolSearchIndex 类",
+              "where is parseToolCalls defined"
+            ],
+            "Avoid": [
+              "自然语言问题或错误文本定位优先用混合搜索"
+            ],
+            "Risk": {
+              "SideEffect": "index-cache",
+              "Permission": "read"
+            }
+          }
         ],
         "UseCases": [
           "知道函数名、类名、类型名、组件名或近似符号名，需要找定义时使用。"
@@ -122,6 +385,81 @@
         "filesystem:read:workspace",
         "process:ripgrep"
       ],
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "workspace_search_match",
+            "Records": "$.results.item[*]",
+            "Slots": {
+              "path": "$.path",
+              "startLine": "$.startLine",
+              "endLine": "$.endLine",
+              "line": "$.line",
+              "snippet": "$.snippet",
+              "score": "$.score",
+              "engine": "$.source",
+              "reason": "$.reason"
+            },
+            "Identity": {
+              "Parts": [
+                "path",
+                "line",
+                "engine"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "S",
+              "Locator": "{{ path }}:{{ line }}",
+              "Display": "{{ engine }} match in {{ path }}:{{ line }}",
+              "Label": "{{ path }}",
+              "Source": "{{ snippet }}"
+            },
+            "Confidence": 0.82,
+            "Metadata": {
+              "startLine": "$.startLine",
+              "endLine": "$.endLine",
+              "score": "$.score",
+              "reason": "$.reason",
+              "engine": "$.source"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "path",
+                "line",
+                "startLine",
+                "endLine",
+                "snippet",
+                "engine",
+                "score",
+                "reason"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "path",
+                "line",
+                "startLine",
+                "endLine",
+                "engine",
+                "score",
+                "reason"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }} - {{ e.slots.snippet }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "使用 ripgrep 精确搜索本地文本、标识符、路径片段或正则。",
         "Keywords": [
@@ -136,6 +474,62 @@
           "正则",
           "标识符",
           "代码搜索"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.exact-search",
+            "Title": "Workspace exact search",
+            "Description": "Run exact text, identifier, path-fragment, or regular-expression search over workspace files.",
+            "Facets": {
+              "Actions": [
+                "search",
+                "grep",
+                "locate"
+              ],
+              "Targets": [
+                "workspace",
+                "source-code",
+                "text",
+                "path"
+              ],
+              "Inputs": [
+                "query",
+                "exact-text",
+                "identifier",
+                "regex",
+                "path-fragment"
+              ],
+              "Outputs": [
+                "file-reference",
+                "code-snippet",
+                "match-list",
+                "source-location"
+              ],
+              "Evidence": [
+                "workspace-search-match"
+              ],
+              "Effects": [
+                "read-only"
+              ]
+            },
+            "Aliases": [
+              "精确搜索",
+              "文本搜索",
+              "ripgrep",
+              "grep workspace"
+            ],
+            "Examples": [
+              "搜索 IncompleteXmlEnvelope",
+              "find exact string MaxOutputTokens"
+            ],
+            "Avoid": [
+              "抽象代码定位优先用混合搜索；符号定义优先用符号搜索"
+            ],
+            "Risk": {
+              "SideEffect": "none",
+              "Permission": "read"
+            }
+          }
         ],
         "UseCases": [
           "用户给出明确字符串、错误码、XML 标签、变量名或正则表达式，需要快速精确搜索时使用。"

@@ -154,17 +154,48 @@ async function collect(
 }
 
 function action(kind: AgentActionDecision["action"]): AgentActionDecision {
+  if (kind === "answer") {
+    return {
+      action: kind,
+      answer: {
+        content: "verification answer",
+      },
+    };
+  }
+
+  if (kind === "ask_user") {
+    return {
+      action: kind,
+      askUser: {
+        question: "Which target should I use?",
+        reason: null,
+      },
+    };
+  }
+
+  if (kind === "discover_tools") {
+    return {
+      action: kind,
+      discoverTools: {
+        queries: ["workspace map"],
+        needs: [{
+          actions: ["inspect"],
+          targets: ["workspace"],
+          inputs: [],
+          outputs: ["directory-summary"],
+          evidence: [],
+          effects: ["read-only"],
+        }],
+      },
+    };
+  }
+
   return {
     action: kind,
-    intent: "verify",
-    progressAssessment: "verification",
-    nextStepGoal: kind === "answer" ? "produce final answer" : "call verification tool",
-    requiredCapabilities: [],
-    tags: [],
-    toolSearchQueries: [],
-    preferredTools: kind === "answer" ? [] : ["FastContextWorkspaceMapTool"],
-    confidence: 1,
-    instructionToMainModel: "",
+    useTools: {
+      preferredTools: ["FastContextWorkspaceMapTool"],
+      instruction: "Call FastContextWorkspaceMapTool.",
+    },
   };
 }
 

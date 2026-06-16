@@ -8,6 +8,7 @@ import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
 } from "./AgentXmlStatus.js";
+import { throwIfAborted } from "./AgentCancellation.js";
 
 const TextSchema = z.preprocess(coerceStringLike, z.string());
 const NonEmptyTextSchema = z.preprocess(coerceStringLike, z.string().trim().min(1));
@@ -154,7 +155,8 @@ export const applyPatchHostTool: AgentHostToolHandler = async (args, context) =>
   }
 
   try {
-    const result = await applyPatch(parsed.data, context.workspaceRoot);
+    throwIfAborted(context.signal);
+    const result = await applyPatch(parsed.data, context.workspaceRoot, context.signal);
     return {
       response: {
         protocol: AgentToolProcessProtocol,
@@ -184,13 +186,14 @@ export const applyPatchHostTool: AgentHostToolHandler = async (args, context) =>
   }
 };
 
-async function applyPatch(args: ApplyPatchArguments, workspaceRoot: string) {
+async function applyPatch(args: ApplyPatchArguments, workspaceRoot: string, signal?: AbortSignal) {
   const root = path.resolve(workspaceRoot);
   const cwd = resolveWorkspaceCwd(root, args.cwd);
   const plan = await buildWritePlan(root, cwd, args.operations.item);
+  throwIfAborted(signal);
 
   if (!args.dryRun) {
-    await commitWritePlan(plan);
+    await commitWritePlan(plan, signal);
   }
 
   return {
@@ -441,8 +444,9 @@ function countDeletedLines(operation: EditOperation): number {
     : 0;
 }
 
-async function commitWritePlan(plan: WritePlan[]): Promise<void> {
+async function commitWritePlan(plan: WritePlan[], signal?: AbortSignal): Promise<void> {
   for (const entry of plan) {
+    throwIfAborted(signal);
     if (entry.status === "deleted") {
       await fs.rm(entry.absolutePath, { force: false });
       continue;

@@ -1,7 +1,7 @@
 {
   "Plugin": {
     "Name": "FastContextIndexToolPlugin",
-    "Title": "Fast Context Index Tool",
+    "Title": "工作区索引",
     "Version": "0.1.0",
     "Kind": "Tool",
     "Entry": {
@@ -40,6 +40,81 @@
         "filesystem:read:workspace",
         "filesystem:write:.state"
       ],
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "workspace_search_match",
+            "Records": "$.results.item[*]",
+            "Slots": {
+              "path": "$.path",
+              "startLine": "$.startLine",
+              "endLine": "$.endLine",
+              "line": "$.line",
+              "snippet": "$.snippet",
+              "score": "$.score",
+              "engine": "$.source",
+              "reason": "$.reason"
+            },
+            "Identity": {
+              "Parts": [
+                "path",
+                "line",
+                "engine"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "S",
+              "Locator": "{{ path }}:{{ line }}",
+              "Display": "{{ engine }} match in {{ path }}:{{ line }}",
+              "Label": "{{ path }}",
+              "Source": "{{ snippet }}"
+            },
+            "Confidence": 0.76,
+            "Metadata": {
+              "startLine": "$.startLine",
+              "endLine": "$.endLine",
+              "score": "$.score",
+              "reason": "$.reason",
+              "engine": "$.source"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "path",
+                "line",
+                "startLine",
+                "endLine",
+                "snippet",
+                "engine",
+                "score",
+                "reason"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "path",
+                "line",
+                "startLine",
+                "endLine",
+                "engine",
+                "score",
+                "reason"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }} - {{ e.slots.snippet }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} indexed match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "使用本地轻量索引快速搜索代码、路径和文本片段。",
         "Keywords": [
@@ -53,6 +128,61 @@
           "代码搜索",
           "缓存",
           "快速搜索"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.index-search",
+            "Title": "Workspace index search",
+            "Description": "Search previously indexed workspace documents, code, paths, and symbol text with low latency.",
+            "Facets": {
+              "Actions": [
+                "search",
+                "locate",
+                "inspect"
+              ],
+              "Targets": [
+                "workspace-index",
+                "workspace",
+                "source-code",
+                "path"
+              ],
+              "Inputs": [
+                "query",
+                "keyword",
+                "path",
+                "symbol"
+              ],
+              "Outputs": [
+                "file-reference",
+                "code-snippet",
+                "match-list"
+              ],
+              "Evidence": [
+                "workspace-search-match"
+              ],
+              "Effects": [
+                "read-only",
+                "uses-cache"
+              ]
+            },
+            "Aliases": [
+              "索引搜索",
+              "本地检索",
+              "cached workspace search",
+              "fast code search"
+            ],
+            "Examples": [
+              "用索引搜索 AgentLoop",
+              "search indexed workspace for tool registry"
+            ],
+            "Avoid": [
+              "需要最新未索引内容时先刷新索引或使用精确搜索"
+            ],
+            "Risk": {
+              "SideEffect": "none",
+              "Permission": "read"
+            }
+          }
         ],
         "UseCases": [
           "需要低成本、快速地从已索引工作区里查找相关代码或文件时使用。"
@@ -75,6 +205,78 @@
         "filesystem:read:workspace",
         "filesystem:write:.state"
       ],
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "workspace_index",
+            "Records": "$",
+            "Slots": {
+              "workspaceRoot": "$.workspaceRoot",
+              "stateFile": "$.stateFile",
+              "indexedFiles": "$.indexedFiles",
+              "indexedDocuments": "$.indexedDocuments",
+              "indexedSymbols": "$.indexedSymbols",
+              "skippedFiles": "$.skippedFiles",
+              "elapsedMs": "$.elapsedMs"
+            },
+            "Identity": {
+              "Parts": [
+                "workspaceRoot",
+                "stateFile"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "IDX",
+              "Locator": "{{ stateFile }}",
+              "Display": "workspace index refreshed: {{ indexedFiles }} files, {{ indexedSymbols }} symbols",
+              "Label": "{{ workspaceRoot }}",
+              "Source": "{{ stateFile }}"
+            },
+            "Confidence": 0.88,
+            "Metadata": {
+              "indexedFiles": "$.indexedFiles",
+              "indexedDocuments": "$.indexedDocuments",
+              "indexedSymbols": "$.indexedSymbols",
+              "skippedFiles": "$.skippedFiles",
+              "elapsedMs": "$.elapsedMs"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "workspaceRoot",
+                "stateFile",
+                "indexedFiles",
+                "indexedDocuments",
+                "indexedSymbols",
+                "skippedFiles",
+                "elapsedMs"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "workspaceRoot",
+                "stateFile",
+                "indexedFiles",
+                "indexedDocuments",
+                "indexedSymbols",
+                "skippedFiles",
+                "elapsedMs"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} index refreshed: {{ e.slots.indexedFiles }} files, {{ e.slots.indexedSymbols }} symbols\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace index\n  root: {{ e.slots.workspaceRoot }}\n  state: {{ e.slots.stateFile }}\n  files: {{ e.slots.indexedFiles }}\n  documents: {{ e.slots.indexedDocuments }}\n  symbols: {{ e.slots.indexedSymbols }}\n  skipped: {{ e.slots.skippedFiles }}\n  elapsedMs: {{ e.slots.elapsedMs }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "刷新或重建本地代码检索索引。",
         "Keywords": [
@@ -88,6 +290,57 @@
           "索引",
           "缓存",
           "重新扫描"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.index-refresh",
+            "Title": "Workspace index refresh",
+            "Description": "Refresh or rebuild the local workspace search index after file changes or stale search results.",
+            "Facets": {
+              "Actions": [
+                "refresh",
+                "rebuild",
+                "index"
+              ],
+              "Targets": [
+                "workspace-index",
+                "workspace-cache",
+                "source-code"
+              ],
+              "Inputs": [
+                "workspace-root",
+                "path"
+              ],
+              "Outputs": [
+                "index-summary",
+                "cache-state",
+                "indexed-file-count"
+              ],
+              "Evidence": [
+                "workspace-index"
+              ],
+              "Effects": [
+                "write-cache"
+              ]
+            },
+            "Aliases": [
+              "刷新索引",
+              "重建缓存",
+              "refresh index",
+              "reindex workspace"
+            ],
+            "Examples": [
+              "刷新代码索引",
+              "refresh fast context index"
+            ],
+            "Avoid": [
+              "只是读取文件或搜索一个字符串时不需要刷新索引"
+            ],
+            "Risk": {
+              "SideEffect": "write-cache",
+              "Permission": "read-write-cache"
+            }
+          }
         ],
         "UseCases": [
           "代码刚改动、索引结果过期或需要强制重建检索缓存时使用。"

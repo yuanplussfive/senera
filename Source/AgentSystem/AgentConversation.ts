@@ -2,6 +2,8 @@ export const AgentConversationEntryKinds = {
   UserMessage: "user.message",
   ContextToolResults: "context.tool_results",
   AssistantDecision: "assistant.decision",
+  PlannerJournal: "planner.journal",
+  ToolEvidenceMemory: "tool.evidence_memory",
 } as const;
 
 export type AgentConversationEntryKind =
@@ -18,6 +20,7 @@ export type AgentConversationEntry =
   | (AgentConversationEntryBase & {
       kind: typeof AgentConversationEntryKinds.UserMessage;
       content: string;
+      attachments?: AgentUploadAttachment[];
     })
   | (AgentConversationEntryBase & {
       kind: typeof AgentConversationEntryKinds.ContextToolResults;
@@ -26,12 +29,26 @@ export type AgentConversationEntry =
   | (AgentConversationEntryBase & {
       kind: typeof AgentConversationEntryKinds.AssistantDecision;
       xml: string;
+    })
+  | (AgentConversationEntryBase & {
+      kind: typeof AgentConversationEntryKinds.PlannerJournal;
+      record: AgentPlannerJournalEntryRecord;
+    })
+  | (AgentConversationEntryBase & {
+      kind: typeof AgentConversationEntryKinds.ToolEvidenceMemory;
+      record: AgentToolEvidenceMemoryEntryRecord;
     });
 
 export function createConversationEntryId(
   requestId: string,
-  slot: "user" | "tool_results" | "assistant",
+  slot: "user" | "tool_results" | "assistant" | "planner" | "evidence_memory",
+  scope?: string | number,
 ): string {
-  return `${requestId}:${slot}`;
+  return scope === undefined ? `${requestId}:${slot}` : `${requestId}:${slot}:${scope}`;
 }
 import type { AgentConversationEntryMetadata } from "./AgentModelMetadata.js";
+import type {
+  AgentPlannerJournalEntryRecord,
+  AgentToolEvidenceMemoryEntryRecord,
+} from "./AgentPlannerMemory.js";
+import type { AgentUploadAttachment } from "./Uploads/AgentUploadTypes.js";

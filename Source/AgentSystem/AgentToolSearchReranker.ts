@@ -12,6 +12,10 @@ export interface AgentToolSearchRerankDocument {
   whenToUse: string;
   examples: string;
   avoid: string;
+  capabilityText: string;
+  capabilityFacets: string;
+  capabilityAvoid: string;
+  capabilityRiskText: string;
   params: string;
   permissions: string;
   priority: number;
@@ -45,6 +49,8 @@ const TextFeatureFields = [
   { feature: "field.summary", read: (doc) => doc.summary },
   { feature: "field.when_to_use", read: (doc) => doc.whenToUse },
   { feature: "field.examples", read: (doc) => doc.examples },
+  { feature: "field.capability_text", read: (doc) => doc.capabilityText },
+  { feature: "field.capability_facets", read: (doc) => doc.capabilityFacets },
   { feature: "field.params", read: (doc) => doc.params },
   { feature: "field.permissions", read: (doc) => doc.permissions },
 ] satisfies TextFeatureField[];
@@ -64,9 +70,13 @@ export const AgentToolSearchRerankDefaultWeights = {
   "field.summary": 0.13,
   "field.when_to_use": 0.14,
   "field.examples": 0.1,
+  "field.capability_text": 0.2,
+  "field.capability_facets": 0.24,
   "field.params": 0.13,
   "field.permissions": 0.04,
   "field.avoid": -0.32,
+  "field.capability_avoid": -0.18,
+  "risk.side_effect": -0.05,
   "planner_tags.coverage": 0.14,
   "planner_tags.tags": 0.24,
   "planner_tags.core": 0.12,
@@ -160,6 +170,13 @@ export class AgentToolSearchReranker<RankerName extends string> {
       ),
       ...fieldFeatures,
       "field.avoid": this.informationOverlap(doc.avoid, queryTokens, queryInformation, context),
+      "field.capability_avoid": this.informationOverlap(
+        doc.capabilityAvoid,
+        queryTokens,
+        queryInformation,
+        context,
+      ),
+      "risk.side_effect": boundedLog(this.tokenizer.tokenize(doc.capabilityRiskText).length),
       "planner_tags.coverage": this.coverage(doc.coreText, plannerTagTokens),
       "planner_tags.tags": this.informationOverlap(
         doc.tags,

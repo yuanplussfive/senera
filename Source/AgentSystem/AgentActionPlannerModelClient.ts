@@ -1,8 +1,9 @@
 import { ClientRegistry } from "@boundaryml/baml";
-import { b as baml } from "./BamlClient/baml_client/index.js";
+import { ActionKind, b as baml } from "./BamlClient/baml_client/index.js";
 import type {
   ActionDecision as BamlActionDecision,
   ActionPlanInput,
+  ActionSelection as BamlActionSelection,
 } from "./BamlClient/baml_client/types.js";
 import { createModelProviderMetadata } from "./AgentModelMetadata.js";
 import { createModelEndpoint } from "./ModelEndpoints/ModelEndpointTypes.js";
@@ -13,13 +14,40 @@ import type {
   ResolvedAgentModelProviderConfig,
 } from "./Types.js";
 import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
+import { buildActionPlannerPromptJson } from "./AgentActionPlannerPromptJson.js";
+import { throwIfAborted } from "./AgentCancellation.js";
 
 interface PlannerModelRequest {
   requestId: string;
   step: number;
   systemPrompt: string;
   messages: AgentLanguageModelMessage[];
+  signal?: AbortSignal;
 }
+
+type PlannerBamlFunctionArgs =
+  | {
+      functionName: "SelectAction";
+      input: ActionPlanInput;
+    }
+  | {
+      functionName: "RepairActionSelection";
+      input: ActionPlanInput;
+      invalidSelection: string;
+      issues: string[];
+    }
+  | {
+      functionName: "BuildActionPayload";
+      input: ActionPlanInput;
+      selectedAction: ActionKind;
+    }
+  | {
+      functionName: "RepairActionPayload";
+      input: ActionPlanInput;
+      selectedAction: ActionKind;
+      invalidDecision: string;
+      issues: string[];
+    };
 
 export class AgentActionPlannerModelClient {
   readonly providerConfig: ResolvedAgentModelProviderConfig;
@@ -42,56 +70,126 @@ export class AgentActionPlannerModelClient {
     });
   }
 
-  async plan(input: ActionPlanInput): Promise<BamlActionDecision> {
-    const prompt = await this.buildPrompt("PlanAction", { input });
-    return baml.parse.PlanAction(await this.complete(prompt));
+  async selectAction(
+    input: ActionPlanInput,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<BamlActionSelection> {
+    const prompt = await this.buildPrompt({
+      functionName: "SelectAction",
+      input,
+    });
+    return baml.parse.SelectAction(await this.complete(prompt, options.signal));
   }
 
-  async repair(options: {
+  async repairActionSelection(options: {
     input: ActionPlanInput;
+    invalidSelection: string;
+    issues: string[];
+  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlActionSelection> {
+    const prompt = await this.buildPrompt({
+      functionName: "RepairActionSelection",
+      ...options,
+    });
+    return baml.parse.RepairActionSelection(await this.complete(prompt, requestOptions.signal));
+  }
+
+  async buildPayload(options: {
+    input: ActionPlanInput;
+    selectedAction: ActionKind;
+  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlActionDecision> {
+    const prompt = await this.buildPrompt({
+      functionName: "BuildActionPayload",
+      ...options,
+    });
+    return baml.parse.BuildActionPayload(await this.complete(prompt, requestOptions.signal));
+  }
+
+  async repairPayload(options: {
+    input: ActionPlanInput;
+    selectedAction: ActionKind;
     invalidDecision: string;
     issues: string[];
-  }): Promise<BamlActionDecision> {
-    const prompt = await this.buildPrompt("RepairActionDecision", options);
-    return baml.parse.RepairActionDecision(await this.complete(prompt));
+  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlActionDecision> {
+    const prompt = await this.buildPrompt({
+      functionName: "RepairActionPayload",
+      ...options,
+    });
+    return baml.parse.RepairActionPayload(await this.complete(prompt, requestOptions.signal));
   }
 
-  private async complete(request: PlannerModelRequest): Promise<string> {
-    const stream = await this.endpoint.stream(request);
+  private async complete(request: PlannerModelRequest, signal?: AbortSignal): Promise<string> {
+    throwIfAborted(signal);
+    const stream = await this.endpoint.stream({
+      ...request,
+      signal,
+    });
     let text = "";
-    for await (const chunk of stream) {
-      text = chunk.accumulatedText;
+    const abort = (): void => stream.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      for await (const chunk of stream) {
+        throwIfAborted(signal);
+        text = chunk.accumulatedText;
+      }
+    } finally {
+      signal?.removeEventListener("abort", abort);
     }
+    throwIfAborted(signal);
     return text;
   }
 
-  private async buildPrompt(
-    functionName: "PlanAction" | "RepairActionDecision",
-    args: {
-      input: ActionPlanInput;
-      invalidDecision?: string;
-      issues?: string[];
-    },
-  ): Promise<PlannerModelRequest> {
-    const request = functionName === "PlanAction"
-      ? await baml.request.PlanAction(args.input, {
-          clientRegistry: this.promptRegistry,
-        })
-      : await baml.request.RepairActionDecision(
-          args.input,
-          args.invalidDecision ?? "",
-          args.issues ?? [],
-          {
-            clientRegistry: this.promptRegistry,
-          },
-        );
+  private async buildPrompt(args: PlannerBamlFunctionArgs): Promise<PlannerModelRequest> {
+    const request = await this.buildBamlRequest(args);
     const prompt = projectBamlPrompt(request.body.json() as Record<string, unknown>);
     return {
-      requestId: `action-planner:${functionName}`,
+      requestId: `action-planner:${args.functionName}`,
       step: 0,
       systemPrompt: prompt.systemPrompt,
       messages: prompt.messages,
     };
+  }
+
+  private buildBamlRequest(args: PlannerBamlFunctionArgs) {
+    const options = {
+      clientRegistry: this.promptRegistry,
+    };
+
+    switch (args.functionName) {
+      case "SelectAction":
+        return baml.request.SelectAction(
+          buildActionPlannerPromptJson(args.input, {
+            stage: "selectAction",
+          }),
+          options,
+        );
+      case "RepairActionSelection":
+        return baml.request.RepairActionSelection(
+          buildActionPlannerPromptJson(args.input, {
+            stage: "repairActionSelection",
+            invalidSelection: args.invalidSelection,
+            issues: args.issues,
+          }),
+          options,
+        );
+      case "BuildActionPayload":
+        return baml.request.BuildActionPayload(
+          buildActionPlannerPromptJson(args.input, {
+            stage: "buildActionPayload",
+            selectedAction: args.selectedAction,
+          }),
+          options,
+        );
+      case "RepairActionPayload":
+        return baml.request.RepairActionPayload(
+          buildActionPlannerPromptJson(args.input, {
+            stage: "repairActionPayload",
+            selectedAction: args.selectedAction,
+            invalidDecision: args.invalidDecision,
+            issues: args.issues,
+          }),
+          options,
+        );
+    }
   }
 }
 
@@ -99,7 +197,6 @@ function createPromptRegistry(): ClientRegistry {
   const registry = new ClientRegistry();
   registry.addLlmClient("SeneraActionPlannerPromptBuilder", "openai-generic", {
     base_url: "https://example.invalid/v1",
-    api_key: "prompt-builder",
     model: "prompt-builder",
     temperature: 0,
   });

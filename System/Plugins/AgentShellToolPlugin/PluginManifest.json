@@ -35,6 +35,70 @@
         "Kind": "HostCapability",
         "Capability": "shell.run"
       },
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "shell_execution",
+            "Records": "$",
+            "Slots": {
+              "cwd": "$.cwd",
+              "command": "$.command",
+              "exitCode": "$.exitCode",
+              "signal": "$.signal",
+              "stdout": "$.stdout",
+              "stderr": "$.stderr"
+            },
+            "Identity": {
+              "Parts": [
+                "cwd",
+                "command",
+                "exitCode"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "SH",
+              "Locator": "{{ cwd }}",
+              "Display": "shell exit {{ exitCode }}: {{ command }}",
+              "Label": "{{ command }}",
+              "Source": "{% if stderr != blank %}{{ stderr }}{% else %}{{ stdout }}{% endif %}"
+            },
+            "Confidence": 0.74,
+            "Metadata": {
+              "cwd": "$.cwd",
+              "exitCode": "$.exitCode",
+              "signal": "$.signal"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "cwd",
+                "command",
+                "exitCode",
+                "signal"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "cwd",
+                "command",
+                "exitCode",
+                "signal"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} shell exit {{ e.slots.exitCode }}: {{ e.slots.command }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} shell execution\n  cwd: {{ e.slots.cwd }}\n  command: {{ e.slots.command }}\n  exitCode: {{ e.slots.exitCode }}{% if e.slots.signal %}\n  signal: {{ e.slots.signal }}{% endif %}\n  output: {{ e.source }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "在工作区内执行宿主机 shell 命令。",
         "Keywords": [
@@ -51,6 +115,69 @@
           "构建",
           "测试",
           "检查"
+        ],
+        "Capabilities": [
+          {
+            "Id": "host.shell-command",
+            "Title": "Host shell command",
+            "Description": "Run shell commands in the workspace for tests, builds, checks, git, scripts, and diagnostics.",
+            "Facets": {
+              "Actions": [
+                "run",
+                "execute",
+                "test",
+                "build",
+                "check"
+              ],
+              "Targets": [
+                "shell",
+                "process",
+                "workspace",
+                "test-suite",
+                "build-system"
+              ],
+              "Inputs": [
+                "command",
+                "cwd",
+                "timeout"
+              ],
+              "Outputs": [
+                "exit-code",
+                "stdout",
+                "stderr",
+                "shell-execution"
+              ],
+              "Evidence": [
+                "shell-execution"
+              ],
+              "Effects": [
+                "process",
+                "may-write-workspace",
+                "network-possible"
+              ]
+            },
+            "Aliases": [
+              "运行命令",
+              "终端",
+              "run tests",
+              "npm run check",
+              "git status"
+            ],
+            "Examples": [
+              "运行 npm run check",
+              "执行 git status"
+            ],
+            "Avoid": [
+              "不要用于直接编辑文件；编辑文件使用 ApplyPatchTool"
+            ],
+            "Risk": {
+              "SideEffect": "process",
+              "Permission": "shell",
+              "Notes": [
+                "Commands can read, write, spawn processes, or access network depending on the command."
+              ]
+            }
+          }
         ],
         "UseCases": [
           "需要运行测试、构建、类型检查、git、脚本或系统命令时使用。"

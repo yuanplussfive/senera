@@ -1,12 +1,14 @@
+import http from "node:http";
 import { WebSocketServer, WebSocket, type RawData } from "ws";
 import {
   AgentEventKinds,
   AgentEventSequencer,
+  type AgentEventEnvelope,
   type AgentDomainEvent,
   toEventEnvelope,
 } from "./AgentEvent.js";
 import type { AgentSystemConfig } from "./Types.js";
-import { resolveModelProviderCatalog, resolveServerConfig } from "./AgentDefaults.js";
+import { resolveModelProviderCatalog, resolveServerConfig, resolveUploadsConfig } from "./AgentDefaults.js";
 import {
   AgentWebSocketRequestSchema,
 } from "./AgentWebSocketProtocol.js";
@@ -16,28 +18,47 @@ import { AgentSessionManager } from "./AgentSessionManager.js";
 import { matchByType } from "./AgentMatch.js";
 import { createRequestId } from "./AgentIds.js";
 import type { AgentUserProfileManager } from "./AgentUserProfile.js";
+import { projectAgentRunEventForHistory } from "./AgentRunEventHistoryPolicy.js";
+import { AgentPluginConfigManager } from "./AgentPluginConfigManager.js";
+import { AgentUploadHttpApi } from "./Uploads/AgentUploadHttpApi.js";
+import { AgentUploadStore } from "./Uploads/AgentUploadStore.js";
 
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
+  workspaceRoot?: string;
   configSnapshot?: () => AgentSystemConfig;
   sessionManager: AgentSessionManager;
   userProfileManager: AgentUserProfileManager;
+  pluginConfigManager?: AgentPluginConfigManager;
 }
 
 export class AgentWebSocketServer {
   private readonly serverConfig: ReturnType<typeof resolveServerConfig>;
+  private httpServer?: http.Server;
   private server?: WebSocketServer;
   private readonly logger = new AgentLogger();
   private readonly sequencer = new AgentEventSequencer();
+  private readonly pluginConfigManager: AgentPluginConfigManager;
+  private readonly uploadApi: AgentUploadHttpApi;
 
   constructor(private readonly options: AgentWebSocketServerOptions) {
     this.serverConfig = resolveServerConfig(options.config);
+    this.pluginConfigManager = options.pluginConfigManager ?? new AgentPluginConfigManager({
+      workspaceRoot: process.cwd(),
+      configSnapshot: () => options.configSnapshot?.() ?? options.config,
+    });
+    this.uploadApi = new AgentUploadHttpApi({
+      storeFactory: () => this.createUploadStore(),
+    });
   }
 
   start(): void {
+    this.httpServer = http.createServer((request, response) => {
+      void this.handleHttpRequest(request, response);
+    });
+
     this.server = new WebSocketServer({
-      host: this.serverConfig.Host,
-      port: this.serverConfig.Port,
+      server: this.httpServer,
       maxPayload: this.serverConfig.RequestMaxBytes,
     });
 
@@ -45,8 +66,8 @@ export class AgentWebSocketServer {
       this.handleConnection(socket);
     });
 
-    this.server.on("listening", () => {
-      const address = this.server?.address();
+    this.httpServer.on("listening", () => {
+      const address = this.httpServer?.address();
       const addressText =
         typeof address === "object" && address
           ? `${address.address}:${address.port}`
@@ -57,10 +78,13 @@ export class AgentWebSocketServer {
         requestMaxBytes: this.serverConfig.RequestMaxBytes,
       });
     });
+
+    this.httpServer.listen(this.serverConfig.Port, this.serverConfig.Host);
   }
 
   stop(): void {
     this.server?.close();
+    this.httpServer?.close();
   }
 
   broadcast(event: AgentDomainEvent): void {
@@ -75,6 +99,27 @@ export class AgentWebSocketServer {
     socket.on("message", (data) => {
       void this.handleMessage(socket, data);
     });
+  }
+
+  private async handleHttpRequest(
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+  ): Promise<void> {
+    if (this.uploadApi.canHandle(request)) {
+      await this.uploadApi.handle(request, response);
+      return;
+    }
+
+    response.writeHead(404, {
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    response.end(JSON.stringify({
+      ok: false,
+      error: {
+        code: "not_found",
+        message: "接口不存在。",
+      },
+    }));
   }
 
   private async handleMessage(socket: WebSocket, data: RawData): Promise<void> {
@@ -124,6 +169,7 @@ export class AgentWebSocketServer {
             requestId: request.requestId,
             modelProviderId: request.modelProviderId,
             input: request.input,
+            attachments: request.attachments,
             onEvent: sendEvent,
           });
         },
@@ -134,7 +180,10 @@ export class AgentWebSocketServer {
           });
         },
         "session.cancel": async (request) => {
-          this.options.sessionManager.cancelActiveRun(request.sessionId);
+          await this.options.sessionManager.cancelActiveRun({
+            sessionId: request.sessionId,
+            onEvent: sendEvent,
+          });
         },
         "session.truncate_from": async (request) => {
           await this.options.sessionManager.truncateFromRequest({
@@ -172,6 +221,48 @@ export class AgentWebSocketServer {
             },
           });
         },
+        "plugin.config.list": async () => {
+          sendEvent({
+            kind: AgentEventKinds.PluginConfigSnapshot,
+            context: {},
+            data: this.pluginConfigManager.snapshot(),
+          });
+        },
+        "plugin.config.update": async (request) => {
+          sendEvent({
+            kind: AgentEventKinds.PluginConfigSnapshot,
+            context: {},
+            data: {
+              ...this.pluginConfigManager.updatePluginConfig({
+                pluginName: request.pluginName,
+                toml: request.toml,
+              }),
+              operation: {
+                requestId: request.requestId,
+                kind: "update",
+                pluginName: request.pluginName,
+              },
+            },
+          });
+        },
+        "plugin.config.set_enabled": async (request) => {
+          sendEvent({
+            kind: AgentEventKinds.PluginConfigSnapshot,
+            context: {},
+            data: {
+              ...this.pluginConfigManager.setPluginEnabled({
+                pluginName: request.pluginName,
+                toolName: request.toolName,
+                enabled: request.enabled,
+              }),
+              operation: {
+                requestId: request.requestId,
+                kind: "set_enabled",
+                pluginName: request.pluginName,
+              },
+            },
+          });
+        },
         "profile.get": async () => {
           await this.options.userProfileManager.emitSnapshot({
             onEvent: sendEvent,
@@ -185,6 +276,27 @@ export class AgentWebSocketServer {
         },
       });
     } catch (error) {
+      if (
+        parsed.data.type === "plugin.config.update" ||
+        parsed.data.type === "plugin.config.set_enabled"
+      ) {
+        sendEvent({
+          kind: AgentEventKinds.ConfigFailed,
+          context: {},
+          data: {
+            configPath: parsed.data.pluginName,
+            message: error instanceof Error ? error.message : String(error),
+            details: serializeError(error),
+            operation: {
+              requestId: parsed.data.requestId,
+              kind: parsed.data.type === "plugin.config.update" ? "update" : "set_enabled",
+              pluginName: parsed.data.pluginName,
+            },
+          },
+        });
+        return;
+      }
+
       const requestId = parsed.data.type === "session.message"
         ? parsed.data.requestId ?? createRequestId()
         : createRequestId();
@@ -203,7 +315,9 @@ export class AgentWebSocketServer {
   }
 
   private sendEnvelope(socket: WebSocket, event: AgentDomainEvent): void {
-    this.send(socket, this.serialize(toEventEnvelope(event, this.sequencer.next())));
+    const envelope = toEventEnvelope(event, this.sequencer.next());
+    this.persistRunEvent(envelope);
+    this.send(socket, this.serialize(envelope));
   }
 
   private send(socket: WebSocket, payload: string): void {
@@ -216,5 +330,32 @@ export class AgentWebSocketServer {
 
   private serialize(payload: unknown): string {
     return JSON.stringify(payload);
+  }
+
+  private persistRunEvent(envelope: AgentEventEnvelope): void {
+    const projected = projectAgentRunEventForHistory(envelope);
+    if (!projected) {
+      return;
+    }
+
+    try {
+      this.options.sessionManager.recordRunEvent(projected);
+    } catch (error) {
+      this.logger.warn("执行事件持久化失败", {
+        kind: projected.kind,
+        requestId: projected.requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private createUploadStore(): AgentUploadStore {
+    const config = this.options.configSnapshot?.() ?? this.options.config;
+    const uploads = resolveUploadsConfig(config);
+    return new AgentUploadStore({
+      workspaceRoot: this.options.workspaceRoot ?? process.cwd(),
+      rootDir: uploads.RootDir,
+      maxFileBytes: uploads.MaxFileBytes,
+    });
   }
 }

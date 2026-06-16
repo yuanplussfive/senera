@@ -1,0 +1,32 @@
+# ImageVisionTool
+
+## 简述
+按 `uploadUri` 读取用户上传图片，并使用插件 TOML 配置的视觉模型进行描述、OCR、UI 检查或图片问答。
+
+视觉模型供应商在插件自己的 `[vision.provider]` 中配置，独立于主对话模型。`maxOutputTokens = -1` 表示不向供应商请求体传递输出 token 限制。
+
+## 何时使用
+用户上传截图、照片、图片文件，并要求“看图”“识别文字”“分析截图”“图里是什么”时使用。调用前需要上下文里已经有附件 `uploadUri`。
+
+## 不要使用的情况
+不要猜测 `uploadUri`。不要传本地绝对路径。非图片文件先调用 `DocumentTool` 处理。工具返回的是视觉模型观察结果，不应声称已经读取了图片以外的隐藏文件内容。
+
+## 输入
+- `uploadUri`：附件卡片里的上传句柄。
+- `task`：本次视觉任务，例如 `describe`、`ocr`、`inspect-ui`、`answer-question`。
+- `question`：用户对图片的具体问题；没有具体问题时可以省略。
+
+## 输出
+返回图片识别状态、使用的模型、简要答案或可见观察结果。返回内容不包含本地绝对路径，也不包含 base64 图片数据。
+
+## 调用示例
+<senera_tool_calls>
+  <tool_call>
+    <name>ImageVisionTool</name>
+    <arguments>
+      <uploadUri>senera://upload/upl_0123abcd</uploadUri>
+      <task>inspect-ui</task>
+      <question>这个截图里的界面问题是什么？</question>
+    </arguments>
+  </tool_call>
+</senera_tool_calls>

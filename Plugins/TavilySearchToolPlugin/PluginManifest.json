@@ -1,7 +1,7 @@
 {
   "Plugin": {
     "Name": "TavilySearchToolPlugin",
-    "Title": "Tavily Search Tool",
+    "Title": "网页搜索",
     "Version": "0.1.0",
     "Kind": "Tool",
     "Entry": {
@@ -40,6 +40,74 @@
         "filesystem:read:PluginConfig.toml",
         "filesystem:write:.state"
       ],
+      "Artifacts": {
+        "Redact": {
+          "Paths": [
+            "$.apiKey"
+          ]
+        },
+        "Evidence": [
+          {
+            "Kind": "web_result",
+            "Records": "$.results.item[*]",
+            "Slots": {
+              "title": "$.title",
+              "url": "$.url",
+              "content": "$.content",
+              "score": "$.score",
+              "publishedDate": "$.publishedDate",
+              "favicon": "$.favicon"
+            },
+            "Identity": {
+              "Parts": [
+                "url"
+              ]
+            },
+            "Presentation": {
+              "RefPrefix": "W",
+              "Locator": "{{ url }}",
+              "Display": "web result: {{ title }}",
+              "Label": "{{ title }}",
+              "Source": "{{ content }}"
+            },
+            "Confidence": 0.82,
+            "Metadata": {
+              "score": "$.score",
+              "publishedDate": "$.publishedDate",
+              "favicon": "$.favicon"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "title",
+                "url",
+                "content",
+                "score",
+                "publishedDate"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "title",
+                "url",
+                "score",
+                "publishedDate"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.title }} - {{ e.slots.url }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} web result\n  title: {{ e.slots.title }}\n  url: {{ e.slots.url }}\n  score: {{ e.slots.score }}{% if e.slots.publishedDate %}\n  published: {{ e.slots.publishedDate }}{% endif %}\n  content: {{ e.slots.content }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
       "Search": {
         "Summary": "联网搜索网页、新闻和实时事实信息。",
         "Keywords": [
@@ -56,6 +124,66 @@
           "实时",
           "联网",
           "资料"
+        ],
+        "Capabilities": [
+          {
+            "Id": "web.search",
+            "Title": "Web search",
+            "Description": "Search external web pages, current news, public documentation, and real-world facts.",
+            "Facets": {
+              "Actions": [
+                "search",
+                "lookup",
+                "verify"
+              ],
+              "Targets": [
+                "web",
+                "news",
+                "public-documentation",
+                "current-fact",
+                "external-source"
+              ],
+              "Inputs": [
+                "query",
+                "domain",
+                "date-range",
+                "topic",
+                "country"
+              ],
+              "Outputs": [
+                "web-result",
+                "url",
+                "source-snippet",
+                "answer-summary"
+              ],
+              "Evidence": [
+                "web-result"
+              ],
+              "Effects": [
+                "network"
+              ]
+            },
+            "Aliases": [
+              "联网搜索",
+              "网页搜索",
+              "latest news",
+              "official docs lookup"
+            ],
+            "Examples": [
+              "查今天 OpenAI 最新新闻",
+              "find latest release notes"
+            ],
+            "Avoid": [
+              "不要用于搜索本地代码或读取工作区文件"
+            ],
+            "Risk": {
+              "SideEffect": "network",
+              "Permission": "external-api",
+              "Notes": [
+                "Sends the search query to Tavily."
+              ]
+            }
+          }
         ],
         "UseCases": [
           "需要查询当前新闻、官网资料、实时事件或外部网页时使用。",

@@ -20,7 +20,62 @@ export class AgentToolResultXmlRenderer {
           [this.protocol.toolResult.arguments]: entry.arguments,
         },
         [this.protocol.toolResult.response]: {
-          [this.protocol.toolResult.result]: entry.result,
+          [this.protocol.toolResult.result]: entry.artifact ? undefined : entry.result,
+          artifact: entry.artifact
+            ? {
+                artifactId: entry.artifact.artifactId,
+                artifactUri: entry.artifact.artifactUri,
+                summary: entry.artifact.summary,
+                evidence: {
+                  item: entry.artifact.evidence.map((evidence) => ({
+                    ref: evidence.ref,
+                    kind: evidence.kind,
+                    locator: evidence.locator,
+                    display: evidence.display,
+                    label: evidence.label,
+                    source: evidence.source,
+                    confidence: evidence.confidence,
+                    slots: {
+                      item: evidence.modelSlots.map((slot) => ({
+                        name: slot.name,
+                        value: slot.value,
+                      })),
+                    },
+                  })),
+                },
+                delta: {
+                  item: entry.artifact.delta.map((delta) => ({
+                    kind: delta.kind,
+                    status: delta.status,
+                    summary: delta.summary,
+                  })),
+                },
+                workspace: entry.artifact.workspace
+                  ? {
+                      patch: {
+                        generated: entry.artifact.workspace.changes.some((change) =>
+                          change.patch?.status === "generated"),
+                        changeCount: entry.artifact.workspace.changes.filter((change) =>
+                          change.patch?.status === "generated").length,
+                      },
+                      changes: {
+                        item: entry.artifact.workspace.changes.map((change) => ({
+                          path: change.path,
+                          status: change.status,
+                          beforeHash: change.beforeHash,
+                          afterHash: change.afterHash,
+                          patch: change.patch
+                            ? {
+                                status: change.patch.status,
+                                reason: change.patch.reason,
+                              }
+                            : undefined,
+                        })),
+                      },
+                    }
+                  : undefined,
+              }
+            : undefined,
         },
       })),
     });

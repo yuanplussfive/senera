@@ -32,6 +32,7 @@ const DefaultBaseUrl = "https://api.tavily.com";
 const DefaultTimeoutMs = 3e5;
 const DefaultStateDir = ".state";
 const ConfigSchema = import_zod.z.object({
+  senera: import_zod.z.unknown().optional(),
   tavily: import_zod.z.object({
     api_keys: import_zod.z.array(import_zod.z.string().trim().min(1)).min(1),
     base_url: import_zod.z.string().trim().url().default(DefaultBaseUrl),

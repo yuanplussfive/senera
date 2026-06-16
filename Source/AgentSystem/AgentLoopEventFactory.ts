@@ -10,7 +10,15 @@ import type { AgentProjectedTerminalResult } from "./AgentExecutionProjector.js"
 import type { AgentRetryInstruction } from "./AgentRetryableError.js";
 import type { SanitizedDecisionXml } from "./AgentDecisionXmlSanitizer.js";
 import type { AgentDecision } from "./Types.js";
-import type { AgentActionPlanResult } from "./AgentActionPlanner.js";
+import {
+  agentActionCapabilityNeeds,
+  agentActionDirectAnswer,
+  agentActionInstruction,
+  agentActionPreferredTools,
+  agentActionToolSearchQueries,
+  type AgentActionPlanResult,
+} from "./AgentActionPlanner.js";
+import type { AgentActionPlannerStageEvent } from "./AgentActionPlannerTelemetry.js";
 import { agentDecisionOutputContractForAction } from "./AgentDecisionOutputResolver.js";
 
 export class AgentLoopEventFactory {
@@ -74,23 +82,24 @@ export class AgentLoopEventFactory {
               status: "planned",
               action: plan.decision.action,
               expectedOutputMode: agentDecisionOutputContractForAction(plan.decision.action),
-              intent: plan.decision.intent,
-              progressAssessment: plan.decision.progressAssessment,
-              nextStepGoal: plan.decision.nextStepGoal,
-              requiredCapabilities: plan.decision.requiredCapabilities,
-              tags: plan.decision.tags,
-              preferredTools: plan.decision.preferredTools,
-              toolSearchQueries: plan.decision.toolSearchQueries,
+              instruction: agentActionInstruction(plan.decision),
+              answerPreview: truncateEventText(agentActionDirectAnswer(plan.decision) ?? "", 160),
+              askUserQuestion: plan.decision.action === "ask_user" ? plan.decision.askUser.question : undefined,
+              capabilityNeeds: agentActionCapabilityNeeds(plan.decision),
+              preferredTools: agentActionPreferredTools(plan.decision),
+              toolSearchQueries: agentActionToolSearchQueries(plan.decision),
               loadedTools: loadedToolNames,
-              currentStep: plan.input.runtime.currentStep,
-              executionState: {
-                totalToolCalls: plan.input.executionState.progress.totalToolCalls,
-                totalEvidence: plan.input.executionState.progress.totalEvidence,
-                repeatedCallCount: plan.input.executionState.progress.repeatedCallCount,
-                stalled: plan.input.executionState.progress.stalled,
-                recentDeltaCount: plan.input.recentDeltas.length,
+              currentStep: plan.input.runState.currentStep,
+              runState: {
+                totalToolCalls: plan.input.runState.progress.totalToolCalls,
+                totalEvidence: plan.input.runState.progress.totalEvidence,
+                repeatedCallCount: plan.input.runState.progress.repeatedCallCount,
+                stalled: plan.input.runState.progress.stalled,
+                timelineTurnCount: plan.input.timeline.length,
               },
-              repaired: plan.repaired,
+              selectedAction: plan.selectedAction,
+              selectionRepaired: plan.selectionRepaired,
+              payloadRepaired: plan.payloadRepaired,
             }
           : {
               status: "fallback",
@@ -101,6 +110,47 @@ export class AgentLoopEventFactory {
             },
       },
     ];
+  }
+
+  actionPlannerStage(
+    requestId: string,
+    step: number,
+    event: AgentActionPlannerStageEvent,
+  ): AgentDomainEvent {
+    const context = {
+      requestId,
+      step,
+    };
+
+    switch (event.status) {
+      case "started":
+        return {
+          kind: AgentEventKinds.ActionPlannerStageStarted,
+          context,
+          data: {
+            stage: event.stage,
+          },
+        };
+      case "completed":
+        return {
+          kind: AgentEventKinds.ActionPlannerStageCompleted,
+          context,
+          data: {
+            stage: event.stage,
+            selectedAction: event.selectedAction,
+            repaired: event.repaired,
+          },
+        };
+      case "failed":
+        return {
+          kind: AgentEventKinds.ActionPlannerStageFailed,
+          context,
+          data: {
+            stage: event.stage,
+            message: event.message,
+          },
+        };
+    }
   }
 
   sanitizedDecisionXml(
@@ -366,4 +416,31 @@ export class AgentLoopEventFactory {
       },
     ];
   }
+}
+
+function truncateEventText(value: string, maxLength: number): string | undefined {
+  const normalized = collapseWhitespace(value);
+  if (normalized.length === 0) {
+    return undefined;
+  }
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
+}
+
+function collapseWhitespace(value: string): string {
+  const parts: string[] = [];
+  let current = "";
+  for (const char of value) {
+    if (char.trim().length === 0) {
+      if (current.length > 0) {
+        parts.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current.length > 0) {
+    parts.push(current);
+  }
+  return parts.join(" ");
 }

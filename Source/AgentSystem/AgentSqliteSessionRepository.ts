@@ -5,6 +5,11 @@ import {
   AgentConversationEntryKinds,
   type AgentConversationEntry,
 } from "./AgentConversation.js";
+import type { AgentEventEnvelope } from "./AgentEventBase.js";
+import {
+  AgentUploadAttachmentListSchema,
+  type AgentUploadAttachment,
+} from "./Uploads/AgentUploadTypes.js";
 import {
   AgentSessionStatuses,
   type AgentSession,
@@ -61,6 +66,12 @@ export interface AgentSessionRepository extends AgentUserProfileRepository {
   loadEntries(sessionId: string): AgentConversationEntry[];
   /** 删除某 sessionId 中、从指定 requestId 开始（含）之后所有的 entries */
   deleteEntriesFrom(sessionId: string, requestId: string): number;
+  /** 追加单个执行事件（右侧执行轨迹），不参与模型上下文。 */
+  appendRunEvent(sessionId: string, event: AgentEventEnvelope): void;
+  /** 读取某会话的执行事件日志（按写入顺序升序）。 */
+  loadRunEvents(sessionId: string): AgentEventEnvelope[];
+  /** 删除某 sessionId 中、从指定 requestId 开始（含）之后所有执行事件。 */
+  deleteRunEventsFrom(sessionId: string, requestId: string): number;
   /** 关闭底层连接 */
   close(): void;
 }
@@ -91,6 +102,21 @@ CREATE TABLE IF NOT EXISTS conversation_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_entries_session_seq ON conversation_entries(session_id, sequence);
 CREATE INDEX IF NOT EXISTS idx_entries_request ON conversation_entries(request_id);
+
+CREATE TABLE IF NOT EXISTS run_events (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id     TEXT NOT NULL,
+  request_id     TEXT NOT NULL,
+  kind           TEXT NOT NULL,
+  timestamp      TEXT NOT NULL,
+  event_sequence INTEGER NOT NULL,
+  step           INTEGER,
+  detail_id      TEXT,
+  event_json     TEXT NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_run_events_session_id ON run_events(session_id, id);
+CREATE INDEX IF NOT EXISTS idx_run_events_request ON run_events(request_id);
 
 CREATE TABLE IF NOT EXISTS app_settings (
   key         TEXT PRIMARY KEY,
@@ -138,6 +164,18 @@ interface EntryRow {
   data: string;
 }
 
+interface RunEventRow {
+  id: number;
+  session_id: string;
+  request_id: string;
+  kind: string;
+  timestamp: string;
+  event_sequence: number;
+  step: number | null;
+  detail_id: string | null;
+  event_json: string;
+}
+
 interface AppSettingRow {
   key: string;
   value: string;
@@ -155,16 +193,19 @@ interface StepTraceRow {
 export class SqliteSessionRepository implements AgentSessionRepository {
   private readonly db: Database.Database;
   private readonly deleteFromStmt: Database.Statement;
+  private readonly deleteRunEventsFromStmt: Database.Statement;
 
   private readonly stmts: {
     upsertSession: Database.Statement;
     renameSession: Database.Statement;
     deleteSession: Database.Statement;
     appendEntry: Database.Statement;
+    appendRunEvent: Database.Statement;
     selectSession: Database.Statement<[string], SessionRow>;
     selectAllSessions: Database.Statement<[], SessionRow>;
     selectSessionList: Database.Statement<[], SessionListRow>;
     selectEntries: Database.Statement<[string], EntryRow>;
+    selectRunEvents: Database.Statement<[string], RunEventRow>;
     selectSetting: Database.Statement<[string], AppSettingRow>;
     upsertSetting: Database.Statement;
     appendStepTrace: Database.Statement;
@@ -205,6 +246,11 @@ export class SqliteSessionRepository implements AgentSessionRepository {
           (id, session_id, request_id, kind, timestamp, sequence, data)
         VALUES (@id, @session_id, @request_id, @kind, @timestamp, @sequence, @data)
       `),
+      appendRunEvent: this.db.prepare(`
+        INSERT INTO run_events
+          (session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_json)
+        VALUES (@session_id, @request_id, @kind, @timestamp, @event_sequence, @step, @detail_id, @event_json)
+      `),
       selectSession: this.db.prepare<[string], SessionRow>(`
         SELECT id, title, status, created_at, updated_at, active_request_id, metadata
         FROM sessions WHERE id = ?
@@ -228,6 +274,12 @@ export class SqliteSessionRepository implements AgentSessionRepository {
         FROM conversation_entries
         WHERE session_id = ?
         ORDER BY sequence ASC
+      `),
+      selectRunEvents: this.db.prepare<[string], RunEventRow>(`
+        SELECT id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_json
+        FROM run_events
+        WHERE session_id = ?
+        ORDER BY id ASC
       `),
       selectSetting: this.db.prepare<[string], AppSettingRow>(`
         SELECT key, value, updated_at
@@ -269,6 +321,18 @@ export class SqliteSessionRepository implements AgentSessionRepository {
         AND sequence >= (
           SELECT MIN(sequence) FROM conversation_entries
           WHERE session_id = ? AND request_id = ?
+        )
+    `);
+    this.deleteRunEventsFromStmt = this.db.prepare(`
+      DELETE FROM run_events
+      WHERE session_id = ?
+        AND request_id IN (
+          SELECT DISTINCT request_id FROM conversation_entries
+          WHERE session_id = ?
+            AND sequence >= (
+              SELECT MIN(sequence) FROM conversation_entries
+              WHERE session_id = ? AND request_id = ?
+            )
         )
     `);
   }
@@ -392,6 +456,34 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     return info.changes;
   }
 
+  appendRunEvent(sessionId: string, event: AgentEventEnvelope): void {
+    if (!event.requestId) {
+      return;
+    }
+    this.stmts.appendRunEvent.run({
+      session_id: sessionId,
+      request_id: event.requestId,
+      kind: event.kind,
+      timestamp: event.timestamp,
+      event_sequence: event.sequence,
+      step: event.step ?? null,
+      detail_id: event.detailId ?? null,
+      event_json: JSON.stringify(event),
+    });
+  }
+
+  loadRunEvents(sessionId: string): AgentEventEnvelope[] {
+    return this.stmts.selectRunEvents.all(sessionId).flatMap((row) => {
+      const event = parseStoredRunEvent(row.event_json);
+      return event ? [event] : [];
+    });
+  }
+
+  deleteRunEventsFrom(sessionId: string, requestId: string): number {
+    const info = this.deleteRunEventsFromStmt.run(sessionId, sessionId, sessionId, requestId);
+    return info.changes;
+  }
+
   loadUserProfile(): AgentUserProfile {
     const row = this.stmts.selectSetting.get(USER_PROFILE_SETTING_KEY);
     if (!row) return createDefaultAgentUserProfile();
@@ -477,10 +569,21 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     data: string;
   } {
     const data: Record<string, unknown> = {};
-    if (entry.kind === AgentConversationEntryKinds.UserMessage) {
-      data.content = entry.content;
-    } else {
-      data.xml = entry.xml;
+    switch (entry.kind) {
+      case AgentConversationEntryKinds.UserMessage:
+        data.content = entry.content;
+        if (entry.attachments && entry.attachments.length > 0) {
+          data.attachments = entry.attachments;
+        }
+        break;
+      case AgentConversationEntryKinds.AssistantDecision:
+      case AgentConversationEntryKinds.ContextToolResults:
+        data.xml = entry.xml;
+        break;
+      case AgentConversationEntryKinds.PlannerJournal:
+      case AgentConversationEntryKinds.ToolEvidenceMemory:
+        data.record = entry.record;
+        break;
     }
     if (entry.metadata) {
       data.metadata = entry.metadata;
@@ -497,7 +600,13 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   }
 
   private rowToEntry(row: EntryRow): AgentConversationEntry {
-    const data = JSON.parse(row.data) as { content?: string; xml?: string; metadata?: unknown };
+    const data = JSON.parse(row.data) as {
+      content?: string;
+      attachments?: unknown;
+      xml?: string;
+      record?: unknown;
+      metadata?: unknown;
+    };
     const base = {
       id: row.id,
       requestId: row.request_id,
@@ -509,6 +618,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
           ...base,
           kind: AgentConversationEntryKinds.UserMessage,
           content: data.content ?? "",
+          attachments: parseUploadAttachments(data.attachments),
           metadata: parseEntryMetadata(data.metadata),
         };
       case AgentConversationEntryKinds.AssistantDecision:
@@ -523,6 +633,20 @@ export class SqliteSessionRepository implements AgentSessionRepository {
           ...base,
           kind: AgentConversationEntryKinds.ContextToolResults,
           xml: data.xml ?? "",
+          metadata: parseEntryMetadata(data.metadata),
+        };
+      case AgentConversationEntryKinds.PlannerJournal:
+        return {
+          ...base,
+          kind: AgentConversationEntryKinds.PlannerJournal,
+          record: parsePlannerJournalRecord(data.record, row.request_id, row.timestamp),
+          metadata: parseEntryMetadata(data.metadata),
+        };
+      case AgentConversationEntryKinds.ToolEvidenceMemory:
+        return {
+          ...base,
+          kind: AgentConversationEntryKinds.ToolEvidenceMemory,
+          record: parseToolEvidenceMemoryRecord(data.record, row.request_id, row.timestamp),
           metadata: parseEntryMetadata(data.metadata),
         };
       default:
@@ -542,12 +666,174 @@ function parseJsonObject(value: string): Record<string, unknown> {
   }
 }
 
+function parseStoredRunEvent(value: string): AgentEventEnvelope | undefined {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+
+    const record = parsed as Partial<AgentEventEnvelope>;
+    return typeof record.kind === "string"
+      && typeof record.timestamp === "string"
+      && typeof record.sequence === "number"
+      && typeof record.channel === "string"
+      ? record as AgentEventEnvelope
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function parseEntryMetadata(
   value: unknown,
 ): import("./AgentModelMetadata.js").AgentConversationEntryMetadata | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as import("./AgentModelMetadata.js").AgentConversationEntryMetadata
     : undefined;
+}
+
+function parseUploadAttachments(value: unknown): AgentUploadAttachment[] | undefined {
+  const parsed = AgentUploadAttachmentListSchema.safeParse(value);
+  return parsed.success && parsed.data.length > 0 ? parsed.data : undefined;
+}
+
+function parsePlannerJournalRecord(
+  value: unknown,
+  requestId: string,
+  timestamp: string,
+): import("./AgentPlannerMemory.js").AgentPlannerJournalEntryRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {
+      requestId,
+      step: 0,
+      selectedAction: "unknown",
+      decision: {},
+      evidenceRefs: [],
+      artifactUris: [],
+      loadedTools: [],
+      result: "unknown",
+      createdAt: timestamp,
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+  return {
+    requestId: readStringField(record.requestId) || requestId,
+    step: readNumberField(record.step),
+    selectedAction: readStringField(record.selectedAction) || "unknown",
+    decision: record.decision ?? {},
+    evidenceRefs: readStringArray(record.evidenceRefs),
+    artifactUris: readStringArray(record.artifactUris),
+    loadedTools: readStringArray(record.loadedTools),
+    result: readStringField(record.result) || "unknown",
+    createdAt: readStringField(record.createdAt) || timestamp,
+  };
+}
+
+function parseToolEvidenceMemoryRecord(
+  value: unknown,
+  requestId: string,
+  timestamp: string,
+): import("./AgentPlannerMemory.js").AgentToolEvidenceMemoryEntryRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {
+      requestId,
+      step: 0,
+      toolName: "",
+      artifactId: "",
+      artifactUri: "",
+      artifactPath: "",
+      evidence: [],
+      createdAt: timestamp,
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+  return {
+    requestId: readStringField(record.requestId) || requestId,
+    step: readNumberField(record.step),
+    toolName: readStringField(record.toolName),
+    artifactId: readStringField(record.artifactId),
+    artifactUri: readStringField(record.artifactUri),
+    artifactPath: readStringField(record.artifactPath),
+    evidence: readEvidenceMemoryItems(record.evidence),
+    createdAt: readStringField(record.createdAt) || timestamp,
+  };
+}
+
+function readEvidenceMemoryItems(
+  value: unknown,
+): import("./BamlClient/baml_client/types.js").PlannerEvidenceMemoryItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(readEvidenceMemoryItem)
+    .filter((entry): entry is import("./BamlClient/baml_client/types.js").PlannerEvidenceMemoryItem =>
+      Boolean(entry));
+}
+
+function readEvidenceMemoryItem(
+  value: unknown,
+): import("./BamlClient/baml_client/types.js").PlannerEvidenceMemoryItem | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const evidenceRef = readStringField(record.evidenceRef);
+  const kind = readStringField(record.kind);
+  if (!evidenceRef || !kind) {
+    return undefined;
+  }
+
+  return {
+    evidenceRef,
+    kind,
+    locator: readStringField(record.locator),
+    display: readStringField(record.display),
+    label: readStringField(record.label),
+    confidence: readNumberField(record.confidence),
+    toolName: readStringField(record.toolName),
+    artifactUri: readStringField(record.artifactUri),
+    facts: readEvidenceFacts(record.facts),
+    artifactRefs: readStringArray(record.artifactRefs),
+  };
+}
+
+function readEvidenceFacts(
+  value: unknown,
+): import("./BamlClient/baml_client/types.js").EvidenceSlot[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return [];
+    }
+
+    const record = entry as Record<string, unknown>;
+    const name = readStringField(record.name);
+    const slotValue = readStringField(record.value);
+    return name && slotValue ? [{ name, value: slotValue }] : [];
+  });
+}
+
+function readStringField(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function readNumberField(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
 }
 
 /** 内存仓储——测试或禁用持久化时用 */
@@ -558,6 +844,7 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     string,
     Array<{ requestId: string; turnSequence: number; trace: StepTrace }>
   >();
+  private readonly runEvents = new Map<string, AgentEventEnvelope[]>();
   private userProfile = createDefaultAgentUserProfile();
 
   listSessions(): Array<AgentSession & { entryCount: number; messageCount: number }> {
@@ -665,7 +952,31 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     const had = this.sessions.delete(sessionId);
     this.entries.delete(sessionId);
     this.stepTraces.delete(sessionId);
+    this.runEvents.delete(sessionId);
     return had;
+  }
+
+  appendRunEvent(sessionId: string, event: AgentEventEnvelope): void {
+    const list = this.runEvents.get(sessionId) ?? [];
+    list.push(event);
+    this.runEvents.set(sessionId, list);
+  }
+
+  loadRunEvents(sessionId: string): AgentEventEnvelope[] {
+    return [...(this.runEvents.get(sessionId) ?? [])];
+  }
+
+  deleteRunEventsFrom(sessionId: string, requestId: string): number {
+    const entries = this.entries.get(sessionId) ?? [];
+    const idx = entries.findIndex((entry) => entry.requestId === requestId);
+    if (idx < 0) return 0;
+
+    const removedRequestIds = new Set(entries.slice(idx).map((entry) => entry.requestId));
+    const events = this.runEvents.get(sessionId) ?? [];
+    const retained = events.filter((event) =>
+      !event.requestId || !removedRequestIds.has(event.requestId));
+    this.runEvents.set(sessionId, retained);
+    return events.length - retained.length;
   }
 
   deleteEntriesFrom(sessionId: string, requestId: string): number {

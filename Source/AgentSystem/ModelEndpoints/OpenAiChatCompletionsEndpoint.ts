@@ -46,7 +46,9 @@ export class OpenAiChatCompletionsEndpoint implements TextGenerationEndpoint {
       payload.max_tokens = this.runtime.config.MaxOutputTokens;
     }
     const body = ChatCompletionBodySchema.parse(
-      await this.runtime.http.postJson(["chat", "completions"], payload, this.authHeaders()),
+      await this.runtime.http.postJson(["chat", "completions"], payload, this.authHeaders(), {
+        signal: request.signal,
+      }),
     );
 
     return {
@@ -68,6 +70,8 @@ export class OpenAiChatCompletionsEndpoint implements TextGenerationEndpoint {
     return this.runtime.http.postSseStream(["chat", "completions"], payload, this.authHeaders(), (event) => {
       const parsed = ChatCompletionStreamEventSchema.parse(event);
       return readTextContent(parsed.choices?.[0]?.delta?.content);
+    }, undefined, {
+      signal: request.signal,
     });
   }
 

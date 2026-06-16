@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import type { ModelProviderListItem } from "../../api/eventTypes";
+import type {
+  ModelProviderListItem,
+  PluginConfigItem,
+  PluginConfigMutationState,
+  UploadAttachmentData,
+} from "../../api/eventTypes";
 import { useStore, type ChatMessage, type UserProfile, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
 import { ChatComposer } from "./ChatComposer";
 import { ChatHeader } from "./ChatHeader";
@@ -12,8 +17,14 @@ interface Props {
   modelProviders: ModelProviderListItem[];
   selectedModelProviderId: string | null;
   onSelectModelProvider: (id: string) => void;
+  pluginConfigs: PluginConfigItem[];
+  pluginConfigOperations: Record<string, PluginConfigMutationState>;
+  onRefreshPluginConfigs: () => void;
+  onSavePluginConfig: (pluginName: string, toml: string) => string | null;
+  onSetPluginEnabled: (pluginName: string, enabled: boolean, toolName?: string) => string | null;
   socketStatus: string;
-  onSend: (input: string) => void;
+  uploadUrl: string;
+  onSend: (input: string, attachments?: UploadAttachmentData[]) => void;
   onCancel: () => void;
   onRegenerate: (message: ChatMessage) => void;
   onEditUserMessage: (message: ChatMessage, nextContent: string) => void;
@@ -29,7 +40,13 @@ export function ChatPanel({
   modelProviders,
   selectedModelProviderId,
   onSelectModelProvider,
+  pluginConfigs,
+  pluginConfigOperations,
+  onRefreshPluginConfigs,
+  onSavePluginConfig,
+  onSetPluginEnabled,
   socketStatus,
+  uploadUrl,
   onSend,
   onCancel,
   onRegenerate,
@@ -107,7 +124,13 @@ export function ChatPanel({
         modelProviders={modelProviders}
         selectedModelProviderId={selectedModelProviderId}
         onSelectModelProvider={onSelectModelProvider}
+        pluginConfigs={pluginConfigs}
+        pluginConfigOperations={pluginConfigOperations}
+        onRefreshPluginConfigs={onRefreshPluginConfigs}
+        onSavePluginConfig={onSavePluginConfig}
+        onSetPluginEnabled={onSetPluginEnabled}
         socketStatus={socketStatus}
+        uploadUrl={uploadUrl}
         onSend={onSend}
         onCancel={onCancel}
       />

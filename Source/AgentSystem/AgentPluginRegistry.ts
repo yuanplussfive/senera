@@ -4,7 +4,14 @@ import type {
   RegisteredDecisionAction,
   RegisteredTemplate,
   RegisteredTool,
+  ToolArtifactPolicyManifest,
 } from "./Types.js";
+import { AgentJsonFileLoader } from "./AgentJsonFileLoader.js";
+import { ToolArtifactPolicySchema } from "./Schemas/PluginManifestSchema.js";
+import {
+  isLoadedPluginAvailable,
+  isLoadedPluginToolEnabled,
+} from "./AgentPluginConfig.js";
 
 export class AgentPluginRegistry {
   private readonly plugins = new Map<string, LoadedPlugin>();
@@ -13,6 +20,10 @@ export class AgentPluginRegistry {
   private readonly templates = new Map<string, RegisteredTemplate>();
 
   registerPlugin(plugin: LoadedPlugin): void {
+    if (!isLoadedPluginAvailable(plugin)) {
+      return;
+    }
+
     const pluginName = plugin.manifest.Plugin.Name;
     if (this.plugins.has(pluginName)) {
       throw new Error(`插件名重复：${pluginName}`);
@@ -41,6 +52,10 @@ export class AgentPluginRegistry {
     }
 
     for (const tool of plugin.manifest.Tools ?? []) {
+      if (!isLoadedPluginToolEnabled(plugin, tool.Name)) {
+        continue;
+      }
+
       if (this.tools.has(tool.Name)) {
         throw new Error(`工具名重复：${tool.Name}`);
       }
@@ -57,6 +72,7 @@ export class AgentPluginRegistry {
         permissions: tool.Permissions ?? [],
         handler: readToolHandler(tool),
         search: tool.Search,
+        artifactPolicy: readToolArtifactPolicy(plugin, tool),
       });
     }
 
@@ -100,6 +116,80 @@ export class AgentPluginRegistry {
   listTemplates(): RegisteredTemplate[] {
     return [...this.templates.values()];
   }
+}
+
+function readToolArtifactPolicy(
+  plugin: LoadedPlugin,
+  tool: import("./Types.js").ToolManifest,
+): ToolArtifactPolicyManifest | undefined {
+  const fromFile = tool.ArtifactPolicyFile
+    ? new AgentJsonFileLoader().load(
+        resolveFrom(plugin.rootPath, tool.ArtifactPolicyFile),
+        ToolArtifactPolicySchema,
+      ) as ToolArtifactPolicyManifest
+    : undefined;
+
+  return mergeArtifactPolicy(fromFile, tool.Artifacts);
+}
+
+function mergeArtifactPolicy(
+  base: ToolArtifactPolicyManifest | undefined,
+  override: ToolArtifactPolicyManifest | undefined,
+): ToolArtifactPolicyManifest | undefined {
+  if (!base && !override) {
+    return undefined;
+  }
+
+  const redactionKeys = [
+    ...(base?.Redact?.Keys ?? []),
+    ...(override?.Redact?.Keys ?? []),
+  ];
+  const redactionPaths = [
+    ...(base?.Redact?.Paths ?? []),
+    ...(override?.Redact?.Paths ?? []),
+  ];
+  const evidence = [
+    ...(base?.Evidence ?? []),
+    ...(override?.Evidence ?? []),
+  ];
+  const workspacePaths = [
+    ...(base?.Workspace?.Paths ?? []),
+    ...(override?.Workspace?.Paths ?? []),
+  ];
+  const merged: ToolArtifactPolicyManifest = {};
+
+  if (base?.Redact || override?.Redact) {
+    merged.Redact = {
+      ...(base?.Redact ?? {}),
+      ...(override?.Redact ?? {}),
+      ...(redactionKeys.length > 0 ? { Keys: redactionKeys } : {}),
+      ...(redactionPaths.length > 0 ? { Paths: redactionPaths } : {}),
+    };
+  }
+
+  if (evidence.length > 0) {
+    merged.Evidence = evidence;
+  }
+
+  const summary = override?.Summary ?? base?.Summary;
+  if (summary) {
+    merged.Summary = summary;
+  }
+
+  if (base?.Workspace || override?.Workspace) {
+    const workspaceSource = override?.Workspace ?? base?.Workspace;
+    if (!workspaceSource) {
+      throw new Error("Artifact Workspace 策略缺少来源。");
+    }
+    merged.Workspace = {
+      ...(base?.Workspace ?? {}),
+      ...(override?.Workspace ?? {}),
+      PatchContextLines: workspaceSource.PatchContextLines,
+      ...(workspacePaths.length > 0 ? { Paths: workspacePaths } : {}),
+    };
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 function readToolHandler(

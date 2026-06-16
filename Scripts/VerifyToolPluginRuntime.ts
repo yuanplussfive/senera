@@ -15,29 +15,10 @@ async function main(): Promise<void> {
     registry.registerPlugin(plugin);
   }
 
-  const tool = registry.getTool("TaskPrioritizerTool");
-  assert.ok(tool, "TaskPrioritizerTool should be registered");
   const fastContextTool = registry.getTool("FastContextSearchTool");
   assert.ok(fastContextTool, "FastContextSearchTool should be registered");
 
   const runner = new AgentToolProcessRunner(config, protocol, workspaceRoot);
-  const result = await runner.run(tool, {
-    tasks: {
-      item: [{
-        title: "Ship plugin runtime verification",
-        impact: 5,
-        urgency: 4,
-        effort: 2,
-        blocked: "false",
-      }],
-    },
-  });
-
-  assert.equal(result.response.ok, true);
-  const toolResult = result.response.result as { totalTasks?: unknown } | undefined;
-  assert.equal(toolResult?.totalTasks, 1);
-  assert.equal(path.basename(tool.plugin.rootPath), "TaskPrioritizerToolPlugin");
-
   const fastContextResult = await runner.run(fastContextTool, {
     query: "runToolPluginSuite",
     maxResults: 3,

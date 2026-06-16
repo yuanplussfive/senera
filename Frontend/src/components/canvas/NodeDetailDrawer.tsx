@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import type { TimelineStep } from "../../store/sessionStore";
 import { friendlyDecisionKind } from "../../store/sessionStore";
-import { cn, formatTime, formatDuration } from "../../lib/util";
+import { cn, formatTime, formatDuration, hasMeasuredDuration } from "../../lib/util";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { Tooltip } from "../ui/Tooltip";
 import { DataView } from "./DataView";
@@ -205,8 +205,10 @@ function MetaStrip({ step }: { step: TimelineStep }): JSX.Element {
       ].filter(Boolean).join(" · "),
     });
   }
-  if (step.startedAt && step.endedAt)
+  if (hasMeasuredDuration(step.startedAt, step.endedAt))
     chips.push({ label: "时长", value: formatDuration(step.startedAt, step.endedAt), mono: true });
+  else if (step.endedAt && step.status !== "running")
+    chips.push({ label: "完成", value: formatTime(step.endedAt), mono: true });
   else if (step.startedAt)
     chips.push({ label: "开始", value: formatTime(step.startedAt), mono: true });
 

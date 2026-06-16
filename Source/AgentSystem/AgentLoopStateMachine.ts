@@ -13,7 +13,11 @@ import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "./AgentModelMetadata.js";
 import { AgentEventKinds } from "./AgentEvent.js";
-import type { AgentActionDecision, AgentActionPlanResult } from "./AgentActionPlanner.js";
+import {
+  agentActionDirectAnswer,
+  type AgentActionDecision,
+  type AgentActionPlanResult,
+} from "./AgentActionPlanner.js";
 import {
   buildInitialActionPlannerLedger,
   type AgentActionPlannerLedger,
@@ -39,6 +43,7 @@ export interface RunningAgentLoopMachineState {
   step: number;
   repairAttempts: number;
   messages: AgentLanguageModelMessage[];
+  conversationEntries: AgentConversationEntry[];
   lastDecisionXml?: string;
   lastModelProvider?: AgentModelProviderMetadata;
   lastUsage?: AgentModelUsage;
@@ -74,6 +79,7 @@ export type AgentLoopCommand =
       step: number;
       input: string;
       messages: AgentLanguageModelMessage[];
+      conversationEntries: AgentConversationEntry[];
       loadedToolNames: "all" | string[];
       plannerLedger: AgentActionPlannerLedger;
     }
@@ -106,6 +112,7 @@ export type AgentLoopCommand =
       responseText: string;
       decision: AgentDecision;
       messages: AgentLanguageModelMessage[];
+      conversationEntries: AgentConversationEntry[];
       loadedToolNames: "all" | string[];
       plannerLedger: AgentActionPlannerLedger;
     }
@@ -127,6 +134,7 @@ export type AgentLoopCommandSucceeded =
       plan: AgentActionPlanResult;
       loadedToolNames: "all" | string[];
       plannerLedger: AgentActionPlannerLedger;
+      conversationEntries: AgentConversationEntry[];
       actionDirective?: AgentActionDecision;
     }
   | {
@@ -218,6 +226,7 @@ export class AgentLoopStateMachine {
     requestId: string;
     input: string;
     messages?: AgentLanguageModelMessage[];
+    conversationEntries?: AgentConversationEntry[];
     loadedToolNames: "all" | string[];
     actionDirective?: AgentActionDecision;
     emitRunStarted?: boolean;
@@ -237,6 +246,7 @@ export class AgentLoopStateMachine {
       messages: request.messages && request.messages.length > 0
         ? request.messages
         : fallbackMessages,
+      conversationEntries: [...(request.conversationEntries ?? [])],
       loadedToolNames: request.loadedToolNames,
       plannerLedger: buildInitialActionPlannerLedger(request.messages),
       actionDirective: request.actionDirective,
@@ -274,18 +284,57 @@ export class AgentLoopStateMachine {
           ...state,
           loadedToolNames: entry.loadedToolNames,
           plannerLedger: entry.plannerLedger,
+          conversationEntries: entry.conversationEntries,
           actionDirective: entry.actionDirective,
         };
+        const actionEvents = this.eventFactory.actionPlanned(
+          entry.requestId,
+          entry.step,
+          entry.plan,
+          entry.loadedToolNames,
+        );
+        const directAnswer = agentActionDirectAnswer(entry.actionDirective);
+        if (directAnswer) {
+          const terminal = {
+            kind: "FinalAnswer" as const,
+            content: directAnswer,
+          };
+          return {
+            state: {
+              kind: "completed",
+              requestId: entry.requestId,
+            result: {
+              terminal,
+              decisionXml: directAnswer,
+              conversationEntries: nextState.conversationEntries,
+              stepTraces: [
+                ...nextState.stepTraces,
+                buildAnswerTrace(entry.step, nextState.stepTraces.length, "final_answer"),
+              ],
+            },
+            },
+            events: [
+              ...actionEvents,
+              ...this.eventFactory.terminal({
+                event: {
+                  kind: AgentEventKinds.FinalAnswer,
+                  context: {
+                  requestId: entry.requestId,
+                },
+                data: {
+                  content: directAnswer,
+                },
+              },
+              result: terminal,
+              }, entry.requestId),
+            ],
+          };
+        }
 
         return {
           state: nextState,
           command: this.renderPromptCommand(nextState),
-          events: this.eventFactory.actionPlanned(
-            entry.requestId,
-            entry.step,
-            entry.plan,
-            entry.loadedToolNames,
-          ),
+          events: actionEvents,
         };
       },
       prompt_rendered: (entry) => ({
@@ -334,7 +383,7 @@ export class AgentLoopStateMachine {
             decisionXml: entry.responseText,
             modelProvider: entry.modelProvider,
             usage: entry.usage,
-            conversationEntries: [],
+            conversationEntries: state.conversationEntries,
             stepTraces: [
               ...state.stepTraces,
               buildAnswerTrace(entry.step, state.stepTraces.length, "final_answer"),
@@ -376,6 +425,7 @@ export class AgentLoopStateMachine {
           messages: state.repairAttempts > 0
             ? this.stripRepairConversation(state.messages)
             : state.messages,
+          conversationEntries: state.conversationEntries,
           loadedToolNames: state.loadedToolNames,
           plannerLedger: state.plannerLedger,
         },
@@ -388,6 +438,7 @@ export class AgentLoopStateMachine {
         this.advanceAfterToolResults(
           state,
           entry.messages,
+          entry.conversationEntries,
           entry.responseText,
           entry.loadedToolNames,
           entry.plannerLedger,
@@ -408,7 +459,7 @@ export class AgentLoopStateMachine {
             decisionXml: state.lastDecisionXml ?? "",
             modelProvider: state.lastModelProvider,
             usage: state.lastUsage,
-            conversationEntries: [],
+            conversationEntries: state.conversationEntries,
             stepTraces: [
               ...state.stepTraces,
               buildAnswerTrace(
@@ -481,6 +532,7 @@ export class AgentLoopStateMachine {
   private advanceAfterToolResults(
     state: RunningAgentLoopMachineState,
     messages: AgentLanguageModelMessage[],
+    conversationEntries: AgentConversationEntry[],
     responseText: string,
     loadedToolNames: "all" | string[],
     plannerLedger: AgentActionPlannerLedger,
@@ -492,6 +544,10 @@ export class AgentLoopStateMachine {
       step: state.step + 1,
       repairAttempts: 0,
       messages,
+      conversationEntries: [
+        ...state.conversationEntries,
+        ...conversationEntries,
+      ],
       loadedToolNames: this.config.dynamicTools ? loadedToolNames : state.loadedToolNames,
       plannerLedger,
       lastDecisionXml: responseText,
@@ -540,6 +596,7 @@ export class AgentLoopStateMachine {
       step: state.step,
       input: state.input,
       messages: state.messages,
+      conversationEntries: state.conversationEntries,
       loadedToolNames: state.loadedToolNames,
       plannerLedger: state.plannerLedger,
     };

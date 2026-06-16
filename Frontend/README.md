@@ -8,7 +8,7 @@ senera 后端 WebSocket 服务的三栏式 Web 界面。
 
 ```bash
 # 在仓库根目录
-npm run server     # 监听 ws://127.0.0.1:8787
+npm run server     # 默认监听 ws://127.0.0.1:8787
 ```
 
 再启动前端：
@@ -16,20 +16,22 @@ npm run server     # 监听 ws://127.0.0.1:8787
 ```bash
 # 在 Frontend/ 目录
 npm install        # 仅第一次需要
-npm run dev        # http://127.0.0.1:5173
+npm run dev        # 默认 http://127.0.0.1:5173
 ```
 
 打开浏览器即可。前端会自动建一个空会话并连后端。
 
-## 环境变量
+## 配置
 
-复制 `.env.example` 为 `.env.local` 后可覆盖：
+前端默认读取仓库根目录的 `senera.config.json`，配置入口是 `Defaults.Frontend` 或顶层 `Frontend`。顶层配置会覆盖 `Defaults.Frontend`。
 
-| 变量 | 默认 | 含义 |
+| 字段 | 默认 | 含义 |
 |---|---|---|
-| `VITE_WS_URL` | `ws://127.0.0.1:8787` | 后端 WS 地址 |
-| `VITE_MODEL_LABEL` | `senera · gpt-5.5` | 输入框右下角显示的模型名 |
-| `VITE_USER_NAME` | `you` | 左下角用户名 |
+| `Frontend.DevServer.Host` | `127.0.0.1` | Vite dev host |
+| `Frontend.DevServer.Port` | `5173` | Vite dev 端口 |
+| `Frontend.PreviewServer.Port` | `4173` | Vite preview 端口 |
+| `Frontend.Client.WebSocketUrl` | 根据 `Server.Host`/`Server.Port` 推导 | 浏览器连接后端的 WS 地址 |
+| `Frontend.Client.EmptySuggestions` | 内置三条建议 | 启动空状态建议 |
 
 ## 目录
 

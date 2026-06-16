@@ -14,9 +14,20 @@ import { AgentRetryPlanner } from "./AgentRetryPlanner.js";
 import type { AgentSystemRuntime } from "./AgentSystemRuntime.js";
 import { AgentToolResultXmlRenderer } from "./AgentToolResultXmlRenderer.js";
 import type { AgentConversationEntry } from "./AgentConversation.js";
+import type { ExecutedToolCallResult } from "./Types.js";
 import { AgentRetryableError } from "./AgentRetryableError.js";
 import { AgentDecisionXmlCollectionRetryableError } from "./AgentDecisionXmlCollector.js";
 import { AgentActionPlannerContextBuilder } from "./AgentActionPlannerContext.js";
+import {
+  createPlannerJournalEntry,
+  createToolEvidenceMemoryEntries,
+} from "./AgentPlannerMemory.js";
+import {
+  agentActionCapabilityNeeds,
+  agentActionPreferredTools,
+  agentActionToolSearchQueries,
+} from "./AgentActionPlanner.js";
+import { throwIfAborted } from "./AgentCancellation.js";
 
 export interface AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
@@ -26,6 +37,7 @@ export interface AgentLoopCommandExecutorOptions {
 export class AgentLoopCommandExecutor {
   private readonly retryPlanner: AgentRetryPlanner;
   private readonly executionProjector = new AgentExecutionProjector();
+  private readonly eventFactory = new AgentLoopEventFactory();
   private readonly resultRenderer: AgentToolResultXmlRenderer;
   private readonly decisionXmlCollector;
   private readonly actionPlannerContextBuilder;
@@ -40,7 +52,10 @@ export class AgentLoopCommandExecutor {
     this.retryPlanner = new AgentRetryPlanner(errorFactory);
     this.resultRenderer = new AgentToolResultXmlRenderer(options.runtime.xmlPolicy.protocol);
     this.decisionXmlCollector = options.runtime.createDecisionXmlCollector(options.model);
-    this.actionPlannerContextBuilder = new AgentActionPlannerContextBuilder();
+    this.actionPlannerContextBuilder = new AgentActionPlannerContextBuilder(
+      options.runtime.workspaceRoot,
+      options.runtime.artifactsConfig.RootDir,
+    );
   }
 
   async execute(
@@ -49,34 +64,45 @@ export class AgentLoopCommandExecutor {
     signal?: AbortSignal,
   ): Promise<AgentLoopCommandResult> {
     return matchByKind(command, {
-      plan_action: (entry) => this.planAction(entry, signal),
+      plan_action: (entry) => this.planAction(entry, onEvent, signal),
       render_prompt: (entry) => this.renderPrompt(entry),
       collect_decision_xml: (entry) => this.collectDecisionXml(entry, onEvent, signal),
       parse_decision: (entry) => this.parseDecision(entry),
-      execute_decision: (entry) => this.executeDecision(entry, onEvent),
+      execute_decision: (entry) => this.executeDecision(entry, onEvent, signal),
       plan_retry: (entry) => this.planRetry(entry),
     });
   }
 
   private async planAction(
     command: Extract<AgentLoopCommand, { kind: "plan_action" }>,
+    onEvent?: AgentEventSink,
     signal?: AbortSignal,
   ): Promise<AgentLoopCommandResult> {
     const dynamicTools = this.options.runtime.agentLoopConfig.LoadedTools === "dynamic";
+    const timelineMessages = this.buildActionPlannerTimelineMessages(command);
     const plan = await this.options.runtime.actionPlanner.plan({
       requestId: command.requestId,
       input: this.actionPlannerContextBuilder.buildInput({
+        requestId: command.requestId,
         userMessage: command.input,
         currentStep: command.step,
         dynamicTools,
         loadedToolNames: command.loadedToolNames,
-        messages: command.messages,
+        messages: timelineMessages,
+        conversationEntries: command.conversationEntries,
         ledger: command.plannerLedger,
-        toolCatalog: this.options.runtime.toolCatalog
-          .list()
-          .slice(0, this.options.runtime.actionPlannerConfig.MaxCatalogTools),
+        toolCatalog: this.options.runtime.toolCatalog.list(),
       }),
       signal,
+      onStage: async (event) => {
+        await onEvent?.(
+          this.eventFactory.actionPlannerStage(
+            command.requestId,
+            command.step,
+            event,
+          ),
+        );
+      },
     });
     const decision = plan.kind === "planned" ? plan.decision : undefined;
     const loadedToolNames = decision
@@ -84,15 +110,9 @@ export class AgentLoopCommandExecutor {
           input: command.input,
           loadedTools: this.options.runtime.agentLoopConfig.LoadedTools,
           currentLoadedTools: command.loadedToolNames,
-          tags: decision.tags,
-          plannerText: [
-            decision.intent,
-            decision.nextStepGoal,
-            decision.progressAssessment,
-            decision.instructionToMainModel,
-          ],
-          preferredTools: decision.preferredTools,
-          toolSearchQueries: decision.toolSearchQueries,
+          preferredTools: agentActionPreferredTools(decision),
+          queries: agentActionToolSearchQueries(decision),
+          needs: agentActionCapabilityNeeds(decision),
           discover: decision.action === "discover_tools",
         })
       : this.options.runtime.toolSearch.resolvePlannedLoadedTools({
@@ -116,9 +136,38 @@ export class AgentLoopCommandExecutor {
         plan,
         loadedToolNames,
         plannerLedger: command.plannerLedger,
+        conversationEntries: [
+          ...command.conversationEntries,
+          createPlannerJournalEntry({
+            requestId: command.requestId,
+            step: command.step,
+            plan,
+            loadedToolNames,
+          }),
+        ],
         actionDirective: decision,
       },
     };
+  }
+
+  private buildActionPlannerTimelineMessages(
+    command: Extract<AgentLoopCommand, { kind: "plan_action" }>,
+  ) {
+    if (command.conversationEntries.length === 0) {
+      return command.messages;
+    }
+
+    const messages = this.options.runtime.conversationPolicy.materialize(
+      command.conversationEntries,
+      {
+        toolResultsScope: {
+          kind: "request",
+          requestId: command.requestId,
+        },
+      },
+    );
+
+    return messages.length > 0 ? messages : command.messages;
   }
 
   private async renderPrompt(
@@ -252,32 +301,44 @@ export class AgentLoopCommandExecutor {
   private async executeDecision(
     command: Extract<AgentLoopCommand, { kind: "execute_decision" }>,
     onEvent?: AgentEventSink,
+    signal?: AbortSignal,
   ): Promise<AgentLoopCommandResult> {
     try {
+      throwIfAborted(signal);
       const execution = await this.options.runtime.decisionExecutor.execute(command.decision, {
         requestId: command.requestId,
         step: command.step,
         onEvent,
         loadedToolNames: command.loadedToolNames,
+        signal,
       });
-      const resultXml = execution.kind === "ToolResults"
-        ? this.resultRenderer.render(execution)
-        : undefined;
+      throwIfAborted(signal);
 
       if (execution.kind !== "ToolResults") {
         return this.projectTerminal(command.requestId, command.step, execution);
       }
+      const recordedResults = await this.options.runtime.artifactRecorder.record({
+        requestId: command.requestId,
+        step: command.step,
+        results: execution.value,
+      });
+      const recordedExecution = {
+        ...execution,
+        value: recordedResults,
+      };
+      const resultXml = this.resultRenderer.render(recordedExecution);
 
       const loadedToolNames = this.options.runtime.toolSearch.afterToolResults({
         requestId: command.requestId,
         loadedTools: command.loadedToolNames,
         dynamicTools: this.options.runtime.agentLoopConfig.LoadedTools === "dynamic",
-        execution,
+        execution: recordedExecution,
       });
       const plannerLedger = this.actionPlannerContextBuilder.advanceAfterToolResults({
+        requestId: command.requestId,
         ledger: command.plannerLedger,
         step: command.step,
-        results: execution.value,
+        results: recordedExecution.value,
       });
 
       return {
@@ -287,8 +348,8 @@ export class AgentLoopCommandExecutor {
           requestId: command.requestId,
           step: command.step,
           responseText: command.responseText,
-          execution,
-          resultXml: resultXml ?? "",
+          execution: recordedExecution,
+          resultXml,
           messages: [
             ...command.messages,
             {
@@ -297,13 +358,15 @@ export class AgentLoopCommandExecutor {
             },
             {
               role: "user",
-              content: this.options.runtime.conversationPolicy.renderContextToolResultsXml(resultXml ?? ""),
+              content: this.options.runtime.conversationPolicy.renderContextToolResultsXml(resultXml),
             },
           ],
           conversationEntries: this.buildToolResultConversationEntries(
             command.requestId,
+            command.step,
             command.responseText,
-            resultXml ?? "",
+            resultXml,
+            recordedExecution.value,
           ),
           loadedToolNames,
           plannerLedger,
@@ -373,8 +436,10 @@ export class AgentLoopCommandExecutor {
 
   private buildToolResultConversationEntries(
     requestId: string,
+    step: number,
     decisionXml: string,
     resultXml: string,
+    results: readonly ExecutedToolCallResult[],
   ): AgentConversationEntry[] {
     const timestamp = new Date().toISOString();
     return [
@@ -382,12 +447,22 @@ export class AgentLoopCommandExecutor {
         requestId,
         decisionXml,
         timestamp,
+        undefined,
+        step,
       ),
       this.options.runtime.conversationProjector.projectContextToolResults(
         requestId,
         resultXml,
         timestamp,
+        undefined,
+        step,
       ),
+      ...createToolEvidenceMemoryEntries({
+        requestId,
+        step,
+        results,
+        timestamp,
+      }),
     ];
   }
 }

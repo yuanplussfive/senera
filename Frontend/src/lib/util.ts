@@ -33,6 +33,17 @@ export function formatDuration(startIso?: string, endIso?: string): string {
   }
 }
 
+export function hasMeasuredDuration(startIso?: string, endIso?: string): boolean {
+  if (!startIso || !endIso) return false;
+  try {
+    const start = new Date(startIso).getTime();
+    const end = new Date(endIso).getTime();
+    return Number.isFinite(start) && Number.isFinite(end) && end > start;
+  } catch {
+    return false;
+  }
+}
+
 export function generateId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();

@@ -1,0 +1,46 @@
+import type {
+  ToolSearchCapabilityManifest,
+} from "./Types.js";
+import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
+import type { AgentToolSearchRerankDocument } from "./AgentToolSearchReranker.js";
+
+export interface AgentToolSearchOptions {
+  query: string;
+  plannerTags?: readonly string[];
+  includeLoaded?: boolean;
+  loadedToolNames?: readonly string[];
+  memoryEvidence?: readonly AgentToolSearchMemoryEvidence[];
+}
+
+export interface AgentToolSearchResult {
+  toolName: string;
+  title: string;
+  pluginName: string;
+  summary: string;
+  whenToUse: string;
+  permissions: string[];
+  score: number;
+  ranks: Record<string, number>;
+  matchedTerms: string[];
+  matchedCapabilities: AgentToolSearchCapabilityMatch[];
+}
+
+export interface AgentToolSearchCapabilityMatch {
+  id: string;
+  title: string;
+  score: number;
+  matchedFacets: string[];
+  risk?: {
+    sideEffect?: string;
+    permission?: string;
+  };
+}
+
+export interface ToolSearchDocument extends AgentToolSearchRerankDocument {
+  id: string;
+  capabilities: ToolSearchCapabilityManifest[];
+}
+
+export type AgentToolSearchRankerName = "bm25" | "exact" | "memory" | "priority";
+export type AgentToolSearchRankMap = Map<string, number>;
+export type AgentToolSearchRankedEntry = { toolName: string; score: number };

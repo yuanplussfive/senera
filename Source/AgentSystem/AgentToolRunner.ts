@@ -25,6 +25,7 @@ export interface AgentToolRunnerContext {
   requestId?: string;
   step?: number;
   visibleToolNames?: readonly string[];
+  signal?: AbortSignal;
 }
 
 export class AgentToolRunner implements AgentToolRunnerLike {
@@ -47,7 +48,9 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     context: AgentToolRunnerContext = {},
   ): Promise<AgentToolProcessRunResult> {
     const runners = {
-      PluginProcess: () => this.processRunner.run(tool, args),
+      PluginProcess: () => this.processRunner.run(tool, args, {
+        signal: context.signal,
+      }),
       HostCapability: () => this.runHostCapability(tool, args, context),
     } satisfies Record<RegisteredTool["handler"]["kind"], () => Promise<AgentToolProcessRunResult>>;
 
@@ -87,6 +90,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       requestId: context.requestId,
       step: context.step,
       visibleToolNames: context.visibleToolNames,
+      signal: context.signal,
     });
   }
 

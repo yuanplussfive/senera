@@ -21,7 +21,9 @@ import {
   type EventEnvelope,
   type ModelProviderMetadata,
   type ModelProviderListItem,
+  type PluginConfigItem,
   type SessionHistoryStepsData,
+  type UploadAttachmentData,
   type UserProfileData,
 } from "../api/eventTypes";
 
@@ -44,6 +46,7 @@ export interface ChatMessage {
   kind?: "FinalAnswer" | "AskUser" | "Error";
   /** 后端 conversation entry 的 requestId——用于 truncate_from（删除 / 重新回答） */
   requestId?: string;
+  attachments?: UploadAttachmentData[];
   metadata?: ConversationEntryMetadata;
 }
 
@@ -152,6 +155,7 @@ export interface StoreState {
   pendingDeletedSessionIds: Record<string, boolean>;
   modelProviders: ModelProviderListItem[];
   selectedModelProviderId: string | null;
+  pluginConfigs: PluginConfigItem[];
   userProfile: UserProfile;
 
   selectSession: (id: string) => void;
@@ -162,7 +166,12 @@ export interface StoreState {
   setViewedRun: (sessionId: string, requestId: string | undefined) => void;
   registerCreatingSession: (sessionId: string, title?: string) => void;
   renameSession: (sessionId: string, title: string) => void;
-  appendUserMessage: (sessionId: string, requestId: string, input: string) => void;
+  appendUserMessage: (
+    sessionId: string,
+    requestId: string,
+    input: string,
+    attachments?: UploadAttachmentData[],
+  ) => void;
   ingest: (env: EventEnvelope) => void;
   removeSession: (sessionId: string) => void;
   clearAllSessions: (sessionIds?: string[]) => void;
@@ -202,6 +211,7 @@ export const useStore = create<StoreState>()(
       pendingDeletedSessionIds: {},
       modelProviders: [],
       selectedModelProviderId: null,
+      pluginConfigs: [],
       userProfile: DEFAULT_USER_PROFILE,
 
     selectSession: (id) =>
@@ -338,7 +348,7 @@ export const useStore = create<StoreState>()(
         };
       }),
 
-    appendUserMessage: (sessionId, requestId, input) =>
+    appendUserMessage: (sessionId, requestId, input, attachments) =>
       set((state) => {
         if (state.historyLoadingIds[sessionId]) return;
         const session = state.sessions[sessionId];
@@ -351,6 +361,7 @@ export const useStore = create<StoreState>()(
           id: `${requestId}-user`,
           role: "user",
           content: input,
+          attachments,
           createdAt: nowIso(),
           requestId,
         });

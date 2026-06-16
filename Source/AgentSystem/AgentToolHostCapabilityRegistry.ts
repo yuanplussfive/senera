@@ -15,6 +15,7 @@ export interface AgentHostToolContext {
   requestId?: string;
   step?: number;
   visibleToolNames?: readonly string[];
+  signal?: AbortSignal;
 }
 
 export type AgentHostToolHandler = (

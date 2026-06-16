@@ -32,6 +32,7 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
         ["messages"],
         this.buildPayload(request, false),
         this.authHeaders(),
+        { signal: request.signal },
       ),
     );
 
@@ -52,6 +53,8 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
         const parsed = ClaudeStreamEventSchema.parse(event);
         return parsed.type === "content_block_delta" ? parsed.delta?.text ?? "" : "";
       },
+      undefined,
+      { signal: request.signal },
     );
   }
 

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Virtuoso } from "react-virtuoso";
 import {
   Lightbulb,
   Loader2,
@@ -6,8 +7,9 @@ import {
   PanelRightClose,
   PanelRightOpen,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Check,
-  X as XIcon,
   Clock3,
   ListTree,
   Wrench,
@@ -15,13 +17,6 @@ import {
 import { useStore, type RunRecord } from "../store/sessionStore";
 import { cn, formatDuration, formatTime } from "../lib/util";
 import { Tooltip } from "./ui/Tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-} from "./ui/DropdownMenu";
 import { Dialog, DialogContent } from "./ui/Dialog";
 import { summarizeRun, type RunSummary } from "./workflow/runSummary";
 import { shouldLoadWorkflowCanvas } from "./workflow/canvasLoadPolicy";
@@ -31,6 +26,9 @@ const LazyThinkingTimelineCanvas = lazy(() =>
     default: module.ThinkingTimelineCanvas,
   })),
 );
+const RUN_DRAWER_ROW_HEIGHT = 44;
+const RUN_DRAWER_VERTICAL_PADDING = 12;
+const RUN_DRAWER_MAX_HEIGHT = 224;
 
 export function ThinkingTimeline({
   presentation = "auto",
@@ -316,90 +314,206 @@ function RunSelector({
   onSelect: (id: string) => void;
   pinnedToHistory: boolean;
 }): JSX.Element {
+  const [open, setOpen] = useState(false);
   const current = runs.find((r) => r.requestId === currentRunId) ?? runs[runs.length - 1];
-  const reversed = [...runs].reverse(); // 最新在前
+  const currentIndex = Math.max(0, runs.findIndex((run) => run.requestId === current.requestId));
+  const previousRun = currentIndex > 0 ? runs[currentIndex - 1] : undefined;
+  const nextRun = currentIndex < runs.length - 1 ? runs[currentIndex + 1] : undefined;
+  const newestRunId = runs[runs.length - 1]?.requestId;
+  const drawerHeight = Math.min(
+    runs.length * RUN_DRAWER_ROW_HEIGHT + RUN_DRAWER_VERTICAL_PADDING,
+    RUN_DRAWER_MAX_HEIGHT,
+  );
+  const selectRun = useCallback((runId: string) => {
+    onSelect(runId);
+    setOpen(false);
+  }, [onSelect]);
+
   return (
-    <div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="group flex w-full items-start gap-2 rounded-lg border border-ink-200/60 bg-paper-100/70 px-3 py-2 text-left transition hover:border-ink-300 hover:bg-paper-100"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-400">
-                <RunStatusBadge status={current.status} />
-                <span>
-                  {runs.length === 1
-                    ? "唯一一轮"
-                    : !pinnedToHistory
+    <div className="relative z-20 rounded-lg border border-ink-200/60 bg-paper-100/70">
+      <div className="flex min-w-0 items-stretch">
+        <RunNavButton
+          label="上一轮"
+          disabled={!previousRun}
+          onClick={() => previousRun && onSelect(previousRun.requestId)}
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </RunNavButton>
+
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className={cn(
+            "group flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left transition hover:bg-paper-50/80",
+            open && "bg-paper-50/80",
+          )}
+          aria-expanded={open}
+        >
+          <RunStatusDot status={current.status} />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-400">
+              <span className="shrink-0 text-ink-500">
+                {runs.length === 1
+                  ? "唯一一轮"
+                  : !pinnedToHistory && current.requestId === newestRunId
                     ? "最新一轮"
-                    : `第 ${runs.indexOf(current) + 1} / ${runs.length} 轮`}
-                </span>
-                <span>· {formatDuration(current.startedAt, current.endedAt)}</span>
-              </div>
-              <div className="mt-1 line-clamp-2 text-[12.5px] text-ink-800">
-                {current.input || "（无输入）"}
-              </div>
+                    : `第 ${currentIndex + 1} 轮`}
+              </span>
+              <span className="shrink-0">· {formatTime(current.startedAt)}</span>
+              <span className="shrink-0">· {formatDuration(current.startedAt, current.endedAt) || "进行中"}</span>
             </div>
-            <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-400 transition group-data-[state=open]:rotate-180" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="max-h-[60vh] w-[420px] overflow-y-auto scrollbar-thin">
-          <DropdownMenuLabel>本会话所有运行 · {runs.length} 轮</DropdownMenuLabel>
-          {reversed.map((r, i) => {
-            const isCurrent = r.requestId === current.requestId;
-            const indexFromOldest = runs.indexOf(r) + 1;
-            return (
-              <DropdownMenuItem
-                key={r.requestId}
-                onSelect={() => onSelect(r.requestId)}
-                icon={isCurrent ? <Check className="h-3.5 w-3.5 text-terra-500" /> : <span className="block h-3.5 w-3.5" />}
-              >
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="font-mono text-[10px] text-ink-400">
-                    {i === 0 ? "最新" : `#${indexFromOldest}`}
-                  </span>
-                  <span className="truncate text-[12.5px]">{r.input || "（无输入）"}</span>
+            <div className="mt-0.5 truncate text-[12.5px] leading-5 text-ink-850">
+              {current.input || "无输入"}
+            </div>
+          </div>
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 shrink-0 text-ink-400 transition group-hover:text-ink-700",
+              open && "rotate-180",
+            )}
+          />
+        </button>
+
+        <RunNavButton
+          label="下一轮"
+          disabled={!nextRun}
+          onClick={() => nextRun && onSelect(nextRun.requestId)}
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </RunNavButton>
+      </div>
+
+      <div
+        className={cn(
+          "absolute left-[-1px] right-[-1px] top-full z-30 origin-top overflow-hidden rounded-b-lg border-x border-b border-ink-200/60 bg-paper-50 shadow-soft transition-[opacity,transform,visibility] duration-150 ease-out will-change-transform",
+          open
+            ? "visible translate-y-0 scale-y-100 opacity-100"
+            : "invisible pointer-events-none -translate-y-1 scale-y-[0.98] opacity-0",
+        )}
+      >
+        <div className="border-t border-ink-200/50 p-1.5">
+          {open ? (
+            <Virtuoso
+              className="scrollbar-thin"
+              data={runs}
+              style={{ height: drawerHeight }}
+              initialTopMostItemIndex={currentIndex}
+              computeItemKey={(_index, run) => run.requestId}
+              itemContent={(index, run) => (
+                <div className="pb-1">
+                  <RunDrawerItem
+                    run={run}
+                    index={index}
+                    latest={run.requestId === newestRunId}
+                    selected={run.requestId === current.requestId}
+                    onSelect={() => selectRun(run.requestId)}
+                  />
                 </div>
-                <span className="ml-2 font-mono text-[10px] text-ink-400">
-                  {formatTime(r.startedAt)}
-                </span>
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
+              )}
+            />
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
 
-function RunStatusBadge({ status }: { status: RunRecord["status"] }): JSX.Element {
-  if (status === "running") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-terra-50 px-1.5 py-0.5 text-terra-600">
-        <Loader2 className="h-2.5 w-2.5 animate-spin" /> live
-      </span>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brick-50 px-1.5 py-0.5 text-brick-600">
-        <XIcon className="h-2.5 w-2.5" /> failed
-      </span>
-    );
-  }
-  if (status === "cancelled") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-1.5 py-0.5 text-ink-500">
-        cancelled
-      </span>
-    );
-  }
+function RunDrawerItem({
+  run,
+  index,
+  latest,
+  selected,
+  onSelect,
+}: {
+  run: RunRecord;
+  index: number;
+  latest: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}): JSX.Element {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-moss-50 px-1.5 py-0.5 text-moss-600">
-      <Check className="h-2.5 w-2.5" /> done
-    </span>
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left transition",
+        selected
+          ? "bg-ink-900 text-paper-50 shadow-sm"
+          : "text-ink-650 hover:bg-ink-900/[0.045] hover:text-ink-900",
+      )}
+      aria-current={selected ? "true" : undefined}
+    >
+      <RunStatusDot status={run.status} active={selected} />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className={cn("font-mono text-[10px]", selected ? "text-paper-50/70" : "text-ink-400")}>
+            {latest ? "最新" : `#${index + 1}`}
+          </span>
+          <span className="truncate text-[12.5px] leading-5">
+            {run.input || "无输入"}
+          </span>
+        </div>
+        <div className={cn("mt-0.5 font-mono text-[10px]", selected ? "text-paper-50/55" : "text-ink-400")}>
+          {formatTime(run.startedAt)} · {formatDuration(run.startedAt, run.endedAt) || "进行中"}
+        </div>
+      </div>
+      {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-paper-50/70" /> : null}
+    </button>
+  );
+}
+
+function RunNavButton({
+  children,
+  label,
+  disabled,
+  onClick,
+}: {
+  children: JSX.Element;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <Tooltip content={label} side="bottom">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={cn(
+          "grid w-8 shrink-0 place-items-center text-ink-500 transition",
+          disabled
+            ? "cursor-not-allowed opacity-35"
+            : "hover:bg-ink-900/[0.05] hover:text-ink-900",
+        )}
+        aria-label={label}
+      >
+        {children}
+      </button>
+    </Tooltip>
+  );
+}
+
+function RunStatusDot({
+  status,
+  active,
+}: {
+  status: RunRecord["status"];
+  active?: boolean;
+}): JSX.Element {
+  return (
+    <span
+      className={cn(
+        "h-1.5 w-1.5 shrink-0 rounded-full",
+        status === "running"
+          ? "bg-terra-500"
+          : status === "failed"
+            ? "bg-brick-500"
+            : status === "cancelled"
+              ? "bg-ink-400"
+              : "bg-moss-500",
+        active && "ring-2 ring-paper-50/40",
+      )}
+    />
   );
 }
 

@@ -7,9 +7,9 @@
   </policy>
   <decision>
     <action>{{ ActionDirective.action | escape }}</action>
-    <intent>{{ ActionDirective.intent | escape }}</intent>
-    <confidence>{{ ActionDirective.confidence }}</confidence>
+{% if ActionDirective.instruction %}
     <instruction>{{ ActionDirective.instruction | escape }}</instruction>
+{% endif %}
 {% if ActionDirective.preferredTools.size > 0 %}
     <preferred_tools>
 {% for tool in ActionDirective.preferredTools %}
@@ -24,19 +24,31 @@
 {% endfor %}
     </tool_search_queries>
 {% endif %}
-{% if ActionDirective.requiredCapabilities.size > 0 %}
-    <required_capabilities>
-{% for capability in ActionDirective.requiredCapabilities %}
-      <capability>{{ capability | escape }}</capability>
-{% endfor %}
-    </required_capabilities>
+{% if ActionDirective.needs.size > 0 %}
+    <capability_needs>
+{% for need in ActionDirective.needs %}
+      <need>
+{% if need.actions.size > 0 %}
+        <actions>{% for item in need.actions %}<item>{{ item | escape }}</item>{% endfor %}</actions>
 {% endif %}
-{% if ActionDirective.tags.size > 0 %}
-    <tags>
-{% for tag in ActionDirective.tags %}
-      <tag>{{ tag | escape }}</tag>
+{% if need.targets.size > 0 %}
+        <targets>{% for item in need.targets %}<item>{{ item | escape }}</item>{% endfor %}</targets>
+{% endif %}
+{% if need.inputs.size > 0 %}
+        <inputs>{% for item in need.inputs %}<item>{{ item | escape }}</item>{% endfor %}</inputs>
+{% endif %}
+{% if need.outputs.size > 0 %}
+        <outputs>{% for item in need.outputs %}<item>{{ item | escape }}</item>{% endfor %}</outputs>
+{% endif %}
+{% if need.evidence.size > 0 %}
+        <evidence>{% for item in need.evidence %}<item>{{ item | escape }}</item>{% endfor %}</evidence>
+{% endif %}
+{% if need.effects.size > 0 %}
+        <effects>{% for item in need.effects %}<item>{{ item | escape }}</item>{% endfor %}</effects>
+{% endif %}
+      </need>
 {% endfor %}
-    </tags>
+    </capability_needs>
 {% endif %}
   </decision>
 </senera_action_directive>

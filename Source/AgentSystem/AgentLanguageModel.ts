@@ -7,6 +7,7 @@ export interface AgentLanguageModelRequest {
   systemPrompt: string;
   messages: AgentLanguageModelMessage[];
   onEvent?: AgentEventSink;
+  signal?: AbortSignal;
 }
 
 export interface AgentLanguageModelMessage {

@@ -22,7 +22,7 @@ import type { BamlRuntime, BamlCtxManager, Image, Audio, Pdf, Video } from "@bou
 import { toBamlError, HTTPRequest, ClientRegistry } from "@boundaryml/baml"
 import type { Checked, Check } from "./types"
 import type * as types from "./types"
-import type {ActionDecision, ActionKind, ActionPlanInput, ActionRuntime, ActionTask, EvidenceRecord, ExecutionDelta, ExecutionDeltaOp, ExecutionState, PlannerHistoryTurn, ProgressSignals, RepeatedCallWarning, ToolCallRecord, ToolCallStatus, ToolCatalogItem} from "./types"
+import type {ActionDecision, ActionKind, ActionPlanInput, ActionRunState, ActionSelection, AnswerActionPayload, AskUserActionPayload, CapabilityNeed, DiscoverToolsActionPayload, EvidenceSlot, ExecutionDeltaOp, PlannerEvidenceMemoryItem, PlannerJournalItem, PlannerTimelineTurn, ProgressSignals, RepeatedCallWarning, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, UseToolsActionPayload} from "./types"
 import type TypeBuilder from "./type_builder"
 import type * as events from "./events"
 
@@ -37,9 +37,9 @@ type BamlCallOptions<EventsT = never> = {
 export class HttpRequest {
   constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
-
-  PlanAction(
-      input: types.ActionPlanInput,
+  
+  BuildActionPayload(
+      promptJson: string,
       __baml_options__?: BamlCallOptions<never>
   ): HTTPRequest {
     try {
@@ -56,9 +56,9 @@ export class HttpRequest {
       }
 
       return this.runtime.buildRequestSync(
-        "PlanAction",
+        "BuildActionPayload",
         {
-          "input": input
+          "promptJson": promptJson
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -70,9 +70,9 @@ export class HttpRequest {
       throw toBamlError(error);
     }
   }
-
-  RepairActionDecision(
-      input: types.ActionPlanInput,invalidDecision: string,issues: string[],
+  
+  RepairActionPayload(
+      promptJson: string,
       __baml_options__?: BamlCallOptions<never>
   ): HTTPRequest {
     try {
@@ -89,9 +89,9 @@ export class HttpRequest {
       }
 
       return this.runtime.buildRequestSync(
-        "RepairActionDecision",
+        "RepairActionPayload",
         {
-          "input": input,"invalidDecision": invalidDecision,"issues": issues
+          "promptJson": promptJson
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -103,15 +103,81 @@ export class HttpRequest {
       throw toBamlError(error);
     }
   }
+  
+  RepairActionSelection(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
 
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "RepairActionSelection",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        false,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  SelectAction(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "SelectAction",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        false,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
 }
 
 export class HttpStreamRequest {
   constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
-
-  PlanAction(
-      input: types.ActionPlanInput,
+  
+  BuildActionPayload(
+      promptJson: string,
       __baml_options__?: BamlCallOptions<never>
   ): HTTPRequest {
     try {
@@ -128,9 +194,9 @@ export class HttpStreamRequest {
       }
 
       return this.runtime.buildRequestSync(
-        "PlanAction",
+        "BuildActionPayload",
         {
-          "input": input
+          "promptJson": promptJson
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -142,9 +208,9 @@ export class HttpStreamRequest {
       throw toBamlError(error);
     }
   }
-
-  RepairActionDecision(
-      input: types.ActionPlanInput,invalidDecision: string,issues: string[],
+  
+  RepairActionPayload(
+      promptJson: string,
       __baml_options__?: BamlCallOptions<never>
   ): HTTPRequest {
     try {
@@ -161,9 +227,9 @@ export class HttpStreamRequest {
       }
 
       return this.runtime.buildRequestSync(
-        "RepairActionDecision",
+        "RepairActionPayload",
         {
-          "input": input,"invalidDecision": invalidDecision,"issues": issues
+          "promptJson": promptJson
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -175,5 +241,71 @@ export class HttpStreamRequest {
       throw toBamlError(error);
     }
   }
+  
+  RepairActionSelection(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
 
-}
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "RepairActionSelection",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        true,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  SelectAction(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "SelectAction",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        true,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+}

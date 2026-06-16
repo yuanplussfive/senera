@@ -66,6 +66,7 @@ export interface AgentXmlProtocolPolicy {
 }
 
 export const AgentXmlProtocolDefaults = {
+  maxDepth: 16,
   maxDecisionTokens: 32000,
 } as const;
 
@@ -190,7 +191,7 @@ export function createXmlProtocolPolicy(
       { pattern: /xmlns[:=]/i, label: "namespace" },
     ],
     allowBooleanAttributes: false,
-    maxDepth: config.XmlProtocol?.MaxDepth,
+    maxDepth: config.XmlProtocol?.MaxDepth ?? AgentXmlProtocolDefaults.maxDepth,
     maxTextLength: config.XmlProtocol?.MaxTextLength,
     maxDecisionTokens:
       config.XmlProtocol?.MaxDecisionTokens
