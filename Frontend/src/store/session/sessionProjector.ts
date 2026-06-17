@@ -171,6 +171,11 @@ function currentRun(session: SessionRecord, requestId?: string): RunRecord | und
   return session.runs.find((r) => r.requestId === requestId);
 }
 
+function isBufferedHistoryRun(state: StoreState, sessionId: string, requestId?: string): boolean {
+  if (!requestId) return false;
+  return (state.historyStepBuffers[sessionId] ?? []).some((run) => run.requestId === requestId);
+}
+
 function syncSessionCountsFromLoadedMessages(session: SessionRecord): void {
   session.messageCount = session.messages.length;
 }
@@ -554,6 +559,9 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       const data = env.data as RunFailedData;
       const run = currentRun(session, env.requestId);
       if (!run && state.historyLoadingIds[sessionId]) {
+        if (isBufferedHistoryRun(state, sessionId, env.requestId)) {
+          return;
+        }
         session.messages = [];
         session.runs = [];
         state.historyLoadingIds[sessionId] = false;
@@ -1186,6 +1194,9 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (!session) return;
       if (!state.historyLoadingIds[sessionId]) return;
       for (const event of data.events) {
+        if (isBufferedHistoryRun(state, sessionId, event.requestId)) {
+          continue;
+        }
         applyEvent(state, {
           ...event,
           sessionId: event.sessionId ?? sessionId,

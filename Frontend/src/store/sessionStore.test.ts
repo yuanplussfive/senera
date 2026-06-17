@@ -577,6 +577,117 @@ describe("sessionStore history recovery", () => {
     });
   });
 
+  it("does not treat replayed failed run events as history load failures", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 1,
+          messageCount: 1,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-failed:user",
+              requestId: "req-failed",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "触发失败",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-failed",
+            input: "触发失败",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            endedAt: "2026-05-29T08:00:02.000Z",
+            status: "failed",
+            traces: [
+              {
+                step: 0,
+                seq: 0,
+                kind: "answer",
+                status: "failed",
+                startedAt: "2026-05-29T08:00:00.000Z",
+                endedAt: "2026-05-29T08:00:02.000Z",
+                title: "回复数据丢失",
+                errorMessage: "model failed",
+              },
+            ],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: "history-session",
+        events: [
+          timedEnvelope(
+            EventKinds.RunFailed,
+            "2026-05-29T08:00:02.000Z",
+            { message: "model failed" },
+            "history-session",
+            "req-failed",
+          ),
+        ],
+      },
+      "history-session",
+    ));
+
+    expect(useStore.getState().historyLoadingIds["history-session"]).toBe(true);
+    expect(useStore.getState().historyFailedIds["history-session"]).toBeUndefined();
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(useStore.getState().historyLoadingIds["history-session"]).toBe(false);
+    expect(useStore.getState().historyLoadedIds["history-session"]).toBe(true);
+    expect(useStore.getState().historyFailedIds["history-session"]).toBeUndefined();
+    expect(session.messages.map((message) => message.content)).toEqual(["触发失败"]);
+    expect(session.messageCount).toBe(1);
+    expect(session.runs).toHaveLength(1);
+    expect(session.runs[0]).toMatchObject({
+      requestId: "req-failed",
+      status: "failed",
+      recoverySource: undefined,
+    });
+    expect(session.runs[0].steps[0]).toMatchObject({
+      title: "回复数据丢失",
+      status: "failed",
+    });
+  });
+
   it("keeps materialized history when completion is received more than once", () => {
     useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
       sessions: [
@@ -987,6 +1098,155 @@ describe("sessionStore history recovery", () => {
     expect(session.runs[0]).toMatchObject({
       requestId: "req-1",
       status: "completed",
+      recoverySource: undefined,
+    });
+  });
+
+  it("does not append replayed failed run events during refresh recovery", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 1,
+          messageCount: 1,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-failed:user",
+              requestId: "req-failed",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "触发失败",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-failed",
+            input: "触发失败",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            status: "running",
+            traces: [],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+        refresh: true,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-failed:user",
+              requestId: "req-failed",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "触发失败",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-failed",
+            input: "触发失败",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            endedAt: "2026-05-29T08:00:02.000Z",
+            status: "failed",
+            traces: [
+              {
+                step: 0,
+                seq: 0,
+                kind: "answer",
+                status: "failed",
+                startedAt: "2026-05-29T08:00:00.000Z",
+                endedAt: "2026-05-29T08:00:02.000Z",
+                title: "回复数据丢失",
+                errorMessage: "model failed",
+              },
+            ],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: "history-session",
+        events: [
+          timedEnvelope(
+            EventKinds.RunFailed,
+            "2026-05-29T08:00:02.000Z",
+            { message: "model failed" },
+            "history-session",
+            "req-failed",
+          ),
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session", refresh: true },
+      "history-session",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["触发失败"]);
+    expect(session.runs).toHaveLength(1);
+    expect(session.runs[0]).toMatchObject({
+      requestId: "req-failed",
+      status: "failed",
       recoverySource: undefined,
     });
   });

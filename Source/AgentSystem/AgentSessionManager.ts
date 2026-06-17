@@ -187,14 +187,14 @@ export class AgentSessionManager {
     } else {
       // 直接读仓储，不调用 store.open()（避免幽灵会话）
       entries = this.store.loadConversation(sessionId);
-        if (entries.length === 0 && !this.store.hasPersistedSession(sessionId)) {
-          // 仓储里也没有这个会话——告诉客户端不存在，但不创建
-          await emitAgentEvent(
-            request.onEvent,
-            this.eventFactory.notFound(sessionId, "session.history"),
-          );
-          return;
-        }
+      if (entries.length === 0 && !this.store.hasPersistedSession(sessionId)) {
+        // 仓储里也没有这个会话——告诉客户端不存在，但不创建
+        await emitAgentEvent(
+          request.onEvent,
+          this.eventFactory.notFound(sessionId, "session.history"),
+        );
+        return;
+      }
     }
 
     await emitAgentEvent(request.onEvent, {
@@ -490,15 +490,7 @@ export class AgentSessionManager {
   private assertAvailable(
     session: AgentSession,
     _operation: "session.message" | "session.close",
-  ):
-    | {
-        kind: "available";
-        current: AgentSession;
-      }
-    | {
-        kind: "busy";
-        current: AgentSession;
-      } {
+  ): { kind: "available"; current: AgentSession } | { kind: "busy"; current: AgentSession } {
     const activeRun = this.activeRuns.get(session.id);
     if (session.status === AgentSessionStatuses.Running && !activeRun) {
       session.status = AgentSessionStatuses.Idle;
