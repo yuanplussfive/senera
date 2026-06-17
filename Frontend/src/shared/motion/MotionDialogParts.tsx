@@ -6,6 +6,7 @@ import {
   readDialogPanelTransition,
   readDialogPanelVariants,
   readDrawerVariants,
+  readOverlayTransition,
   readOverlayVariants,
   type DialogMotionPreset,
 } from "./presets";
@@ -32,14 +33,16 @@ export const MotionDialogOverlay = forwardRef<HTMLDivElement, MotionDialogOverla
     const { level, reduceMotion, disableMotion } = useMotionLevel();
     const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
     const state = readRadixState(props);
+    const variants = readOverlayVariants(effectiveLevel);
+    const animationState = state === "closed" ? "exit" : "show";
     const pointerEvents = state === "closed" ? "none" : style?.pointerEvents;
     return (
       <motion.div
         ref={ref}
-        variants={readOverlayVariants(effectiveLevel)}
-        initial={false}
-        animate={state === "closed" ? "exit" : "show"}
-        transition={disableMotion ? { duration: 0 } : motionTimings.fast}
+        variants={variants}
+        initial={variants.hidden}
+        animate={variants[animationState]}
+        transition={readOverlayTransition(effectiveLevel, animationState)}
         style={{ ...style, pointerEvents }}
         {...props}
       />
@@ -63,7 +66,7 @@ export const MotionDialogContent = forwardRef<HTMLDivElement, MotionDialogConten
         variants={usesCustomVariants ? variants : undefined}
         initial={usesCustomVariants ? initial : initial === false ? false : defaultVariants.hidden}
         animate={usesCustomVariants ? animationState : defaultVariants[animationState]}
-        transition={transition ?? readDialogPanelTransition(effectiveLevel, motionPreset)}
+        transition={transition ?? readDialogPanelTransition(effectiveLevel, motionPreset, animationState)}
         style={{ ...style, pointerEvents }}
         {...props}
       />

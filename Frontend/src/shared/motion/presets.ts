@@ -5,6 +5,7 @@ const easeOut = [0.22, 1, 0.36, 1] as const;
 export type DialogMotionPreset = "modal" | "focus";
 export type DialogPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export type DrawerPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
+export type OverlayVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export const dialogPresenceExitMs = 320;
 
 export const motionSprings = {
@@ -17,6 +18,8 @@ export const motionTimings = {
   fast: { duration: 0.12, ease: easeOut } satisfies Transition,
   base: { duration: 0.18, ease: easeOut } satisfies Transition,
   dialog: { duration: 0.22, ease: easeOut } satisfies Transition,
+  modalOpen: { duration: 0.25, ease: easeOut } satisfies Transition,
+  modalClose: { duration: 0.15, ease: easeOut } satisfies Transition,
   slow: { duration: 0.28, ease: easeOut } satisfies Transition,
 };
 
@@ -110,12 +113,12 @@ export function readFeedItemVariants(level: MotionLevel): Variants {
   };
 }
 
-export function readOverlayVariants(level: MotionLevel): Variants {
+export function readOverlayVariants(level: MotionLevel): OverlayVariants {
   if (level === "none") {
     return {
-      hidden: { opacity: 1 },
+      hidden: { opacity: 0 },
       show: { opacity: 1 },
-      exit: { opacity: 1 },
+      exit: { opacity: 0 },
     };
   }
   return {
@@ -128,9 +131,9 @@ export function readOverlayVariants(level: MotionLevel): Variants {
 export function readDialogPanelVariants(level: MotionLevel, preset: DialogMotionPreset = "modal"): DialogPanelVariants {
   if (level === "none") {
     return {
-      hidden: { opacity: 1 },
+      hidden: { opacity: 0 },
       show: { opacity: 1 },
-      exit: { opacity: 1 },
+      exit: { opacity: 0 },
     };
   }
   if (level === "reduced") {
@@ -148,15 +151,25 @@ export function readDialogPanelVariants(level: MotionLevel, preset: DialogMotion
     };
   }
   return {
-    hidden: { opacity: 0, y: 8, scale: 0.98 },
-    show: { opacity: 1, y: 0, scale: 1 },
-    exit: { opacity: 0, y: 6, scale: 0.985 },
+    hidden: { opacity: 0, scale: 0.96 },
+    show: { opacity: 1, scale: 1 },
+    exit: { opacity: 0, scale: 0.96 },
   };
 }
 
-export function readDialogPanelTransition(level: MotionLevel, preset: DialogMotionPreset = "modal"): Transition {
+export function readOverlayTransition(level: MotionLevel, state: "show" | "exit" = "show"): Transition {
+  if (level === "none") return { duration: 0 };
+  return state === "exit" ? motionTimings.modalClose : motionTimings.modalOpen;
+}
+
+export function readDialogPanelTransition(
+  level: MotionLevel,
+  preset: DialogMotionPreset = "modal",
+  state: "show" | "exit" = "show",
+): Transition {
   if (level === "none") return { duration: 0 };
   if (level === "reduced") return motionTimings.base;
+  if (preset === "modal") return state === "exit" ? motionTimings.modalClose : motionTimings.modalOpen;
   return preset === "focus" ? motionTimings.slow : motionTimings.dialog;
 }
 

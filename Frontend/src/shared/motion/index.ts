@@ -18,6 +18,7 @@ export {
   readFeedItemVariants,
   readFocusPanelVariants,
   readMessageItemVariants,
+  readOverlayTransition,
   readOverlayVariants,
   readStagger,
   readTapScale,

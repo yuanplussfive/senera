@@ -67,7 +67,7 @@ html[data-motion-level="none"] .dialog-presence[data-state="closed"] {
     visibility: visible;
   }
   to {
-    visibility: visible;
+    visibility: hidden;
   }
 }
 
