@@ -599,6 +599,10 @@ export interface LoadedPluginConfig {
   fileName: string;
   path: string;
   exists: boolean;
+  source: "file" | "example" | "default";
+  templatePath?: string;
+  templateExists: boolean;
+  needsUserConfig: boolean;
   toml: string;
   sections: LoadedPluginConfigSection[];
   runtime: LoadedPluginRuntimeConfig;
@@ -667,6 +671,10 @@ export interface AgentPluginConfigSnapshotItem {
   manifestPath: string;
   configPath: string;
   configExists: boolean;
+  configSource: LoadedPluginConfig["source"];
+  configTemplatePath?: string;
+  configTemplateExists: boolean;
+  needsUserConfig: boolean;
   enabled: boolean;
   available: boolean;
   toolCount: number;

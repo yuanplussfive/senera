@@ -55,6 +55,9 @@ const artifactMemoryTool: RegisteredTool = {
       fileName: "PluginConfig.toml",
       path: path.join(workspaceRoot, "System", "Plugins", "AgentArtifactMemoryPlugin", "PluginConfig.toml"),
       exists: true,
+      source: "file",
+      templateExists: false,
+      needsUserConfig: false,
       toml: "[senera]\nenabled = true\n",
       sections: [],
       runtime: {

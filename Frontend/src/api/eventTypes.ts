@@ -322,6 +322,10 @@ export interface PluginConfigItem {
   manifestPath: string;
   configPath: string;
   configExists: boolean;
+  configSource: "file" | "example" | "default";
+  configTemplatePath?: string;
+  configTemplateExists: boolean;
+  needsUserConfig: boolean;
   enabled: boolean;
   available: boolean;
   toolCount: number;

@@ -95,15 +95,27 @@ export function readLoadedPluginConfig(
 ): LoadedPluginConfig {
   const fileName = resolvePluginConfigFileName(config);
   const configPath = path.join(pluginRootPath, fileName);
+  const templatePath = resolvePluginConfigTemplatePath(pluginRootPath, fileName);
   const exists = fs.existsSync(configPath);
-  const toml = exists ? fs.readFileSync(configPath, "utf8") : defaultPluginConfigToml();
+  const templateExists = fs.existsSync(templatePath);
+  const source = exists ? "file" : templateExists ? "example" : "default";
+  const toml = exists
+    ? fs.readFileSync(configPath, "utf8")
+    : templateExists
+      ? fs.readFileSync(templatePath, "utf8")
+      : defaultPluginConfigToml();
+  const parsed = parseLoadedPluginConfigToml(toml);
 
   return {
     fileName,
     path: configPath,
     exists,
+    source,
+    templatePath: templateExists ? templatePath : undefined,
+    templateExists,
+    needsUserConfig: source === "example",
     toml,
-    ...parseLoadedPluginConfigToml(toml),
+    ...parsed,
   };
 }
 
@@ -168,6 +180,10 @@ export function projectPluginConfigSnapshot(
     manifestPath: plugin.manifestPath,
     configPath: plugin.config.path,
     configExists: plugin.config.exists,
+    configSource: plugin.config.source,
+    configTemplatePath: plugin.config.templatePath,
+    configTemplateExists: plugin.config.templateExists,
+    needsUserConfig: plugin.config.needsUserConfig,
     enabled: plugin.config.runtime.enabled,
     available: isLoadedPluginAvailable(plugin),
     toolCount: tools.length,
@@ -184,7 +200,9 @@ export function isLoadedPluginAvailable(plugin: LoadedPlugin): boolean {
     return !hasErrorDiagnostics(plugin.config.diagnostics);
   }
 
-  return plugin.config.runtime.enabled && !hasErrorDiagnostics(plugin.config.diagnostics);
+  return plugin.config.runtime.enabled
+    && !plugin.config.needsUserConfig
+    && !hasErrorDiagnostics(plugin.config.diagnostics);
 }
 
 export function isLoadedPluginToolEnabled(
@@ -203,6 +221,10 @@ export function validatePluginConfigTomlForWrite(toml: string): void {
   const error = parsed.diagnostics.find((diagnostic) => diagnostic.severity === "error");
   if (error) {
     throw new Error(`插件配置 TOML 无效：${error.message}`);
+  }
+  const fieldErrors = validatePluginConfigFields(parsed.sections);
+  if (fieldErrors.length > 0) {
+    throw new Error(`插件配置字段无效：${fieldErrors.join("; ")}`);
   }
 }
 
@@ -249,6 +271,12 @@ export function defaultPluginConfigToml(): string {
   ].join("\n");
 }
 
+function resolvePluginConfigTemplatePath(pluginRootPath: string, fileName: string): string {
+  const extension = path.extname(fileName);
+  const baseName = extension ? fileName.slice(0, -extension.length) : fileName;
+  return path.join(pluginRootPath, `${baseName}.example${extension}`);
+}
+
 function projectRuntimeConfig(value: unknown): LoadedPluginRuntimeConfig {
   const framework = FrameworkRuntimeConfigSchema.parse(value ?? {});
   return {
@@ -273,6 +301,118 @@ function disabledRuntimeConfig(): LoadedPluginRuntimeConfig {
 
 function hasErrorDiagnostics(diagnostics: readonly LoadedPluginConfigDiagnostic[]): boolean {
   return diagnostics.some((diagnostic) => diagnostic.severity === "error");
+}
+
+function validatePluginConfigFields(
+  sections: readonly LoadedPluginConfigSection[],
+): string[] {
+  const errors: string[] = [];
+
+  for (const section of sections) {
+    for (const field of section.fields) {
+      errors.push(...validatePluginConfigField(field));
+    }
+  }
+
+  return errors;
+}
+
+function validatePluginConfigField(field: LoadedPluginConfigField): string[] {
+  const errors: string[] = [];
+  const label = configFieldDisplayName(field);
+
+  if (field.type === "boolean" && typeof field.value !== "boolean") {
+    errors.push(`${label} 必须是布尔值`);
+  }
+
+  if (field.type === "string" && typeof field.value !== "string") {
+    errors.push(`${label} 必须是字符串`);
+  }
+
+  if (field.type === "number") {
+    if (typeof field.value !== "number" || !Number.isFinite(field.value)) {
+      errors.push(`${label} 必须是数字`);
+    } else {
+      errors.push(...validateNumberConfigField(field, field.value, label));
+    }
+  }
+
+  if (field.type === "array") {
+    if (!Array.isArray(field.value)) {
+      errors.push(`${label} 必须是数组`);
+    } else {
+      field.value.forEach((item, index) => {
+        errors.push(...validateArrayConfigItem(field, item, index, label));
+      });
+    }
+  }
+
+  if (field.options && field.options.length > 0) {
+    const values = field.type === "array" && Array.isArray(field.value) ? field.value : [field.value];
+    values.forEach((value, index) => {
+      if (!field.options?.some((option) => sameConfigOptionValue(value, option))) {
+        const suffix = values.length > 1 ? ` 第 ${index + 1} 项` : "";
+        errors.push(`${label}${suffix} 必须是允许的选项`);
+      }
+    });
+  }
+
+  return errors;
+}
+
+function validateNumberConfigField(
+  field: LoadedPluginConfigField,
+  value: number,
+  label: string,
+): string[] {
+  const errors: string[] = [];
+  if (typeof field.min === "number" && value < field.min) {
+    errors.push(`${label} 不能小于 ${field.min}`);
+  }
+  if (typeof field.max === "number" && value > field.max) {
+    errors.push(`${label} 不能大于 ${field.max}`);
+  }
+  if (typeof field.step === "number" && field.step > 0) {
+    const base = typeof field.min === "number" ? field.min : 0;
+    const quotient = (value - base) / field.step;
+    if (Math.abs(quotient - Math.round(quotient)) > 1e-9) {
+      errors.push(`${label} 必须按 ${field.step} 递增`);
+    }
+  }
+  return errors;
+}
+
+function validateArrayConfigItem(
+  field: LoadedPluginConfigField,
+  item: unknown,
+  index: number,
+  label: string,
+): string[] {
+  const itemLabel = `${label} 第 ${index + 1} 项`;
+  if (field.itemType === "boolean" && typeof item !== "boolean") {
+    return [`${itemLabel} 必须是布尔值`];
+  }
+  if (field.itemType === "number") {
+    if (typeof item !== "number" || !Number.isFinite(item)) {
+      return [`${itemLabel} 必须是数字`];
+    }
+    return validateNumberConfigField(field, item, itemLabel);
+  }
+  if ((field.itemType === "string" || !field.itemType) && typeof item !== "string") {
+    return [`${itemLabel} 必须是字符串`];
+  }
+  return [];
+}
+
+function configFieldDisplayName(field: LoadedPluginConfigField): string {
+  return field.label ?? field.path.join(".");
+}
+
+function sameConfigOptionValue(
+  left: unknown,
+  right: string | number | boolean,
+): boolean {
+  return String(left) === String(right);
 }
 
 function asTomlTable(value: unknown): TomlTableWithoutBigInt {

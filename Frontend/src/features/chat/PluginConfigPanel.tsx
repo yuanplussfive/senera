@@ -70,25 +70,29 @@ export function PluginConfigControl({
   const hasErrors = configurablePlugins.some((plugin) =>
     plugin.diagnostics.some((diagnostic) => diagnostic.severity === "error")
   );
+  const needsConfiguration = configurablePlugins.some((plugin) => plugin.needsUserConfig);
   const filteredPlugins = useMemo(() => {
     const query = filterText.trim().toLocaleLowerCase();
     if (!query) {
       return configurablePlugins;
     }
-    return configurablePlugins.filter((plugin) => {
-      const text = [
-        pluginDisplayTitle(plugin),
-        plugin.description ?? "",
-      ].join(" ").toLocaleLowerCase();
-      return text.includes(query);
-    });
+    return configurablePlugins.filter((plugin) =>
+      pluginSearchText(plugin).includes(query)
+    );
   }, [configurablePlugins, filterText]);
   const parsedDraft = useMemo(() => parseDraftToml(draft), [draft]);
   const visibleSections = selected?.sections.filter((section) => section.fields.length > 0) ?? [];
+  const draftValidationErrors = useMemo(
+    () => selected && parsedDraft.value
+      ? validatePluginConfigDraft(selected.sections, parsedDraft.value)
+      : [],
+    [parsedDraft.value, selected],
+  );
   const saveOperation = saveRequestId ? operations[saveRequestId] : undefined;
   const toggleOperation = toggleRequestId ? operations[toggleRequestId] : undefined;
   const saving = saveOperation?.status === "pending";
   const toggling = toggleOperation?.status === "pending";
+  const hasDraftErrors = Boolean(parsedDraft.error) || draftValidationErrors.length > 0;
 
   useEffect(() => {
     if (!open) return;
@@ -139,7 +143,7 @@ export function PluginConfigControl({
   }, [toggleOperation?.status]);
 
   const save = (): void => {
-    if (!selected || !dirty || parsedDraft.error || saving) return;
+    if (!selected || !dirty || hasDraftErrors || saving) return;
     const requestId = onSave(selected.name, draft);
     if (!requestId) {
       return;
@@ -159,6 +163,20 @@ export function PluginConfigControl({
     updateDraft(nextDraft);
   };
 
+  const selectPlugin = (pluginName: string): void => {
+    if (pluginName === selected?.name) return;
+    if (dirty && !confirmDiscardDirtyDraft()) return;
+    setSelectedName(pluginName);
+  };
+
+  const setSelectedToolEnabled = (toolName: string, enabled: boolean): void => {
+    if (!selected) return;
+    const requestId = onSetEnabled(selected.name, enabled, toolName);
+    if (requestId) {
+      setToggleRequestId(requestId);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <Tooltip content="技能配置" side="top">
@@ -176,7 +194,9 @@ export function PluginConfigControl({
         >
           <BrainCircuit className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">技能</span>
-          {hasErrors ? <AlertTriangle className="h-3.5 w-3.5 text-brick-500" /> : null}
+          {hasErrors || needsConfiguration ? (
+            <AlertTriangle className={cn("h-3.5 w-3.5", hasErrors ? "text-brick-500" : "text-amber-500")} />
+          ) : null}
         </button>
       </Tooltip>
 
@@ -193,7 +213,7 @@ export function PluginConfigControl({
               <div className="min-w-0">
                 <div className="text-[12.5px] font-semibold text-ink-900">外部技能</div>
                 <div className="mt-0.5 text-[11px] text-ink-500">
-                  {activePlugins}/{configurablePlugins.length || 0} 已启用
+                  {activePlugins}/{configurablePlugins.length || 0} 可用
                 </div>
               </div>
               <Tooltip content="刷新技能配置" side="bottom">
@@ -235,13 +255,15 @@ export function PluginConfigControl({
                           ? "bg-paper-50 text-ink-900 shadow-panel"
                           : "text-ink-600 hover:bg-paper-50/70 hover:text-ink-900",
                       )}
-                      onClick={() => setSelectedName(plugin.name)}
+                      onClick={() => selectPlugin(plugin.name)}
                     >
                       <span
                         className={cn(
                           "h-2 w-2 shrink-0 rounded-full",
                           error
                             ? "bg-brick-500"
+                            : plugin.needsUserConfig
+                              ? "bg-amber-500"
                             : plugin.available
                               ? "bg-emerald-500"
                               : "bg-ink-300",
@@ -291,6 +313,11 @@ export function PluginConfigControl({
                             <span className="text-ink-300">/</span>
                             <span className="text-terra-700">正在保存</span>
                           </>
+                        ) : selected.needsUserConfig ? (
+                          <>
+                            <span className="text-ink-300">/</span>
+                            <span className="text-amber-700">需要配置</span>
+                          </>
                         ) : dirty ? (
                           <>
                             <span className="text-ink-300">/</span>
@@ -316,7 +343,7 @@ export function PluginConfigControl({
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={!dirty || saving || Boolean(parsedDraft.error)}
+                        disabled={!dirty || saving || hasDraftErrors}
                         onClick={save}
                         className="h-8"
                       >
@@ -329,15 +356,20 @@ export function PluginConfigControl({
                   <Diagnostics
                     diagnostics={selected.diagnostics}
                     parseError={parsedDraft.error}
+                    validationErrors={draftValidationErrors}
                     saveError={saveError}
                   />
+                  <ConfigSourceNotice plugin={selected} />
                 </div>
 
                 {view === "settings" ? (
                   <SettingsView
+                    plugin={selected}
                     sections={visibleSections}
                     parsedDraft={parsedDraft.value}
                     parseError={parsedDraft.error}
+                    toolsDisabled={dirty || toggling || !selected.enabled}
+                    onSetToolEnabled={setSelectedToolEnabled}
                     onUpdateField={updateField}
                   />
                 ) : (
@@ -394,14 +426,20 @@ function ViewSwitch({
 }
 
 function SettingsView({
+  plugin,
   sections,
   parsedDraft,
   parseError,
+  toolsDisabled,
+  onSetToolEnabled,
   onUpdateField,
 }: {
+  plugin: PluginConfigItem;
   sections: PluginConfigSection[];
   parsedDraft?: TomlTableWithoutBigInt;
   parseError?: string;
+  toolsDisabled: boolean;
+  onSetToolEnabled: (toolName: string, enabled: boolean) => void;
   onUpdateField: (field: PluginConfigField, value: unknown) => void;
 }): JSX.Element {
   return (
@@ -415,6 +453,11 @@ function SettingsView({
 
         {sections.length > 0 ? (
           <div className={cn("space-y-7", parseError && "opacity-60")}>
+            <PluginToolsSection
+              plugin={plugin}
+              disabled={toolsDisabled || Boolean(parseError)}
+              onSetToolEnabled={onSetToolEnabled}
+            />
             {sections.map((section, sectionIndex) => (
               <SettingsSection
                 key={section.name}
@@ -427,12 +470,70 @@ function SettingsView({
             ))}
           </div>
         ) : (
-          <div className="grid min-h-64 place-items-center rounded-xl border border-ink-200/70 bg-paper-50 text-[13px] text-ink-400 shadow-panel">
-            该技能没有可视化配置项
+          <div className="space-y-7">
+            <PluginToolsSection
+              plugin={plugin}
+              disabled={toolsDisabled || Boolean(parseError)}
+              onSetToolEnabled={onSetToolEnabled}
+            />
+            <div className="grid min-h-64 place-items-center rounded-xl border border-ink-200/70 bg-paper-50 text-[13px] text-ink-400 shadow-panel">
+              该技能没有可视化配置项
+            </div>
           </div>
         )}
       </div>
     </ScrollArea>
+  );
+}
+
+function PluginToolsSection({
+  plugin,
+  disabled,
+  onSetToolEnabled,
+}: {
+  plugin: PluginConfigItem;
+  disabled: boolean;
+  onSetToolEnabled: (toolName: string, enabled: boolean) => void;
+}): JSX.Element | null {
+  if (plugin.tools.length === 0) {
+    return null;
+  }
+
+  return (
+    <section>
+      <div className="mb-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-3 px-0.5">
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-semibold text-ink-900">工具开关</h3>
+          <p className="mt-0.5 text-[12px] leading-5 text-ink-500">
+            控制该插件下每个工具是否参与外部工具集。
+          </p>
+        </div>
+        <span className="pb-0.5 text-[11px] text-ink-400">
+          {plugin.enabledToolCount}/{plugin.toolCount} 项
+        </span>
+      </div>
+      <div className="divide-y divide-ink-200/70 overflow-hidden rounded-xl border border-ink-200/70 bg-paper-50 shadow-panel">
+        {plugin.tools.map((tool) => (
+          <div
+            key={tool.name}
+            className="grid min-w-0 gap-3 px-4 py-3.5 transition hover:bg-paper-100/45 md:grid-cols-[minmax(220px,1fr)_auto] md:items-center"
+          >
+            <div className="min-w-0 pr-2">
+              <div className="truncate text-[13px] font-medium text-ink-900">{tool.name}</div>
+              {tool.summary ? (
+                <p className="mt-1 text-[12px] leading-5 text-ink-500">{tool.summary}</p>
+              ) : null}
+            </div>
+            <TogglePill
+              enabled={tool.enabled}
+              disabled={disabled}
+              label={tool.name}
+              onClick={() => onSetToolEnabled(tool.name, !tool.enabled)}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -840,15 +941,18 @@ function TogglePill({
 function Diagnostics({
   diagnostics,
   parseError,
+  validationErrors,
   saveError,
 }: {
   diagnostics: PluginConfigItem["diagnostics"];
   parseError?: string;
+  validationErrors: string[];
   saveError?: string | null;
 }): JSX.Element | null {
   const items = [
     ...diagnostics,
     ...(parseError ? [{ severity: "error" as const, message: parseError }] : []),
+    ...validationErrors.map((message) => ({ severity: "error" as const, message })),
     ...(saveError ? [{ severity: "error" as const, message: saveError }] : []),
   ];
   if (items.length === 0) {
@@ -874,6 +978,22 @@ function Diagnostics({
   );
 }
 
+function ConfigSourceNotice({ plugin }: { plugin: PluginConfigItem }): JSX.Element | null {
+  if (!plugin.needsUserConfig) {
+    return null;
+  }
+
+  const templateName = plugin.configTemplatePath
+    ? plugin.configTemplatePath.split(/[\\/]/).pop()
+    : "PluginConfig.example.toml";
+
+  return (
+    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[12px] leading-5 text-amber-800">
+      当前显示 {templateName} 模板草稿，保存后会创建实际配置文件。
+    </div>
+  );
+}
+
 function parseDraftToml(toml: string): {
   value?: TomlTableWithoutBigInt;
   error?: string;
@@ -889,14 +1009,60 @@ function parseDraftToml(toml: string): {
   }
 }
 
-function writeDraftFieldValue(
+export function writeDraftFieldValue(
   toml: string,
   field: PluginConfigField,
   value: unknown,
 ): string {
+  const patched = patchTomlFieldValue(toml, field, coerceFieldValue(field, value));
+  if (patched) {
+    return patched;
+  }
+
   const document = parseToml(toml || "") as EditableTomlTable;
   setValueAtPath(document, field.path, coerceFieldValue(field, value));
   return ensureFinalNewline(stringifyToml(document as TomlTableWithoutBigInt));
+}
+
+function patchTomlFieldValue(
+  toml: string,
+  field: PluginConfigField,
+  value: unknown,
+): string | null {
+  const [lastKey] = field.path.slice(-1);
+  if (!lastKey) {
+    return null;
+  }
+
+  const sectionPath = field.path.slice(0, -1);
+  if (sectionPath.length === 0) {
+    return null;
+  }
+  const lines = splitTomlLines(toml);
+  const sections = findTomlSections(lines);
+  const nextLine = `${lastKey} = ${serializeTomlValue(value)}`;
+  const section = sections.find((item) => sameStringArray(item.path, sectionPath));
+
+  if (!section) {
+    const needsBlank = lines.length > 0 && lines[lines.length - 1]?.trim() !== "";
+    return ensureFinalNewline([
+      ...lines,
+      ...(needsBlank ? [""] : []),
+      `[${sectionPath.join(".")}]`,
+      nextLine,
+    ].join("\n"));
+  }
+
+  const keyLine = findTomlKeyLine(lines, section, lastKey);
+  if (keyLine < 0) {
+    lines.splice(section.endLine, 0, nextLine);
+    return ensureFinalNewline(lines.join("\n"));
+  }
+
+  const leadingWhitespace = readLeadingWhitespace(lines[keyLine]);
+  const valueEndLine = readTomlAssignmentValueEndLine(lines, section, keyLine);
+  lines.splice(keyLine, valueEndLine - keyLine + 1, `${leadingWhitespace}${nextLine}`);
+  return ensureFinalNewline(lines.join("\n"));
 }
 
 function setValueAtPath(
@@ -920,6 +1086,150 @@ function setValueAtPath(
   current[lastKey] = value;
 }
 
+function serializeTomlValue(value: unknown): string {
+  const serialized = stringifyToml({ value } as TomlTableWithoutBigInt).trim();
+  const prefix = "value = ";
+  return serialized.startsWith(prefix) ? serialized.slice(prefix.length) : JSON.stringify(value);
+}
+
+function splitTomlLines(toml: string): string[] {
+  const normalized = toml.split("\r\n").join("\n").split("\r").join("\n");
+  const body = normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
+  return body.length > 0 ? body.split("\n") : [];
+}
+
+function findTomlSections(lines: readonly string[]): TomlSectionRange[] {
+  const sections: TomlSectionRange[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const sectionPath = readTomlSectionPath(lines[index]);
+    if (!sectionPath) {
+      continue;
+    }
+
+    const previous = sections[sections.length - 1];
+    if (previous) {
+      previous.endLine = index;
+    }
+
+    sections.push({
+      path: sectionPath,
+      startLine: index,
+      endLine: lines.length,
+    });
+  }
+  return sections;
+}
+
+function readTomlSectionPath(line: string): string[] | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]") || trimmed.startsWith("[[")) {
+    return undefined;
+  }
+
+  const body = trimmed.slice(1, -1).trim();
+  const parts = body.split(".").map((part) => part.trim()).filter(Boolean);
+  return parts.length > 0 ? parts : undefined;
+}
+
+function findTomlKeyLine(
+  lines: readonly string[],
+  section: TomlSectionRange,
+  key: string,
+): number {
+  for (let index = section.startLine + 1; index < section.endLine; index += 1) {
+    if (tomlLineDefinesKey(lines[index], key)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function tomlLineDefinesKey(line: string, key: string): boolean {
+  const trimmed = line.trimStart();
+  if (!trimmed || trimmed.startsWith("#")) {
+    return false;
+  }
+
+  if (!trimmed.startsWith(key)) {
+    return false;
+  }
+
+  let index = key.length;
+  while (trimmed[index] === " " || trimmed[index] === "\t") {
+    index += 1;
+  }
+  return trimmed[index] === "=";
+}
+
+function readTomlAssignmentValueEndLine(
+  lines: readonly string[],
+  section: TomlSectionRange,
+  keyLine: number,
+): number {
+  if (!lines[keyLine]?.includes("[")) {
+    return keyLine;
+  }
+
+  let balance = 0;
+  for (let index = keyLine; index < section.endLine; index += 1) {
+    balance += countTomlArrayBalance(lines[index]);
+    if (balance <= 0) {
+      return index;
+    }
+  }
+  return keyLine;
+}
+
+function countTomlArrayBalance(line: string): number {
+  let balance = 0;
+  let quote: '"' | "'" | null = null;
+  let escaping = false;
+
+  for (const char of line) {
+    if (quote) {
+      if (quote === '"' && char === "\\" && !escaping) {
+        escaping = true;
+        continue;
+      }
+      if (char === quote && !escaping) {
+        quote = null;
+      }
+      escaping = false;
+      continue;
+    }
+
+    if (char === "\"" || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === "[") {
+      balance += 1;
+    }
+    if (char === "]") {
+      balance -= 1;
+    }
+  }
+  return balance;
+}
+
+function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function readLeadingWhitespace(value: string): string {
+  let index = 0;
+  while (value[index] === " " || value[index] === "\t") {
+    index += 1;
+  }
+  return value.slice(0, index);
+}
+
+interface TomlSectionRange {
+  path: string[];
+  startLine: number;
+  endLine: number;
+}
+
 function readDraftValue(
   parsedDraft: TomlTableWithoutBigInt | undefined,
   field: PluginConfigField,
@@ -929,6 +1239,106 @@ function readDraftValue(
     current = isRecord(current) ? current[part] : undefined;
   }
   return current === undefined ? field.value : current;
+}
+
+export function validatePluginConfigDraft(
+  sections: readonly PluginConfigSection[],
+  parsedDraft: TomlTableWithoutBigInt,
+): string[] {
+  const errors: string[] = [];
+  for (const section of sections) {
+    for (const field of section.fields) {
+      errors.push(...validatePluginConfigField(field, readDraftValue(parsedDraft, field)));
+    }
+  }
+  return errors;
+}
+
+function validatePluginConfigField(field: PluginConfigField, value: unknown): string[] {
+  const errors: string[] = [];
+  const label = settingLabel(field);
+
+  if (field.type === "boolean" && typeof value !== "boolean") {
+    errors.push(`${label} 必须是布尔值`);
+  }
+
+  if (field.type === "string" && typeof value !== "string") {
+    errors.push(`${label} 必须是字符串`);
+  }
+
+  if (field.type === "number") {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      errors.push(`${label} 必须是数字`);
+    } else {
+      errors.push(...validateNumberField(field, value, label));
+    }
+  }
+
+  if (field.type === "array") {
+    if (!Array.isArray(value)) {
+      errors.push(`${label} 必须是数组`);
+    } else {
+      value.forEach((item, index) => {
+        errors.push(...validateArrayItem(field, item, index, label));
+      });
+    }
+  }
+
+  if (field.options && field.options.length > 0) {
+    const values = field.type === "array" && Array.isArray(value) ? value : [value];
+    values.forEach((item, index) => {
+      if (!field.options?.some((option) => sameOptionValue(item, option))) {
+        const suffix = values.length > 1 ? ` 第 ${index + 1} 项` : "";
+        errors.push(`${label}${suffix} 必须是允许的选项`);
+      }
+    });
+  }
+
+  return errors;
+}
+
+function validateNumberField(
+  field: PluginConfigField,
+  value: number,
+  label: string,
+): string[] {
+  const errors: string[] = [];
+  if (typeof field.min === "number" && value < field.min) {
+    errors.push(`${label} 不能小于 ${field.min}`);
+  }
+  if (typeof field.max === "number" && value > field.max) {
+    errors.push(`${label} 不能大于 ${field.max}`);
+  }
+  if (typeof field.step === "number" && field.step > 0) {
+    const base = typeof field.min === "number" ? field.min : 0;
+    const quotient = (value - base) / field.step;
+    if (Math.abs(quotient - Math.round(quotient)) > 1e-9) {
+      errors.push(`${label} 必须按 ${field.step} 递增`);
+    }
+  }
+  return errors;
+}
+
+function validateArrayItem(
+  field: PluginConfigField,
+  value: unknown,
+  index: number,
+  label: string,
+): string[] {
+  const itemLabel = `${label} 第 ${index + 1} 项`;
+  if (field.itemType === "boolean" && typeof value !== "boolean") {
+    return [`${itemLabel} 必须是布尔值`];
+  }
+  if (field.itemType === "number") {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return [`${itemLabel} 必须是数字`];
+    }
+    return validateNumberField(field, value, itemLabel);
+  }
+  if ((field.itemType === "string" || !field.itemType) && typeof value !== "string") {
+    return [`${itemLabel} 必须是字符串`];
+  }
+  return [];
 }
 
 function coerceFieldValue(field: PluginConfigField, value: unknown): unknown {
@@ -1006,9 +1416,40 @@ function settingLabel(field: PluginConfigField): string {
   return field.label ?? "未命名参数";
 }
 
+function confirmDiscardDirtyDraft(): boolean {
+  return window.confirm("当前技能配置有未保存修改，切换后会丢失这些修改。确定切换吗？");
+}
+
+function pluginSearchText(plugin: PluginConfigItem): string {
+  const fieldText = plugin.sections
+    .flatMap((section) => [
+      section.name,
+      section.label ?? "",
+      section.description ?? "",
+      ...section.fields.flatMap((field) => [
+        field.key,
+        field.label ?? "",
+        field.description ?? "",
+      ]),
+    ])
+    .join(" ");
+  const toolText = plugin.tools
+    .flatMap((tool) => [tool.name, tool.summary ?? ""])
+    .join(" ");
+
+  return [
+    plugin.name,
+    pluginDisplayTitle(plugin),
+    plugin.description ?? "",
+    toolText,
+    fieldText,
+  ].join(" ").toLocaleLowerCase();
+}
+
 function pluginDisplayTitle(plugin: PluginConfigItem): string {
   const title = plugin.title.trim();
-  return title && title !== plugin.name ? title : "未命名技能";
+  const name = plugin.name.trim();
+  return title && title !== plugin.name ? title : name || "未命名技能";
 }
 
 function ensureFinalNewline(value: string): string {
