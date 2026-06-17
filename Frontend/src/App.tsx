@@ -21,6 +21,7 @@ import type { UserProfileData } from "./api/eventTypes";
 import { useGlobalShortcuts } from "./app/useGlobalShortcuts";
 
 const WS_URL = __SENERA_DEFAULT_WS_URL__;
+const RECOVERY_POLL_DELAYS_MS = [1500, 2000, 3000, 5000] as const;
 
 type PendingAfterTruncate = {
   sessionId: string;
@@ -54,6 +55,21 @@ export function App(): JSX.Element {
   const userProfile = useStore((s) => s.userProfile);
   const setUserProfile = useStore((s) => s.setUserProfile);
   const markUserProfileSynced = useStore((s) => s.markUserProfileSynced);
+  const recoveryPollingKey = useStore((s) =>
+    Object.values(s.sessions)
+      .flatMap((session) =>
+        session.runs
+          .filter((run) => run.status === "running" && run.recoverySource === "history")
+          .map((run) => [
+            session.sessionId,
+            run.requestId,
+            String(run.revision),
+            s.historyLoadingIds[session.sessionId] ? "loading" : "idle",
+          ].join("\u0001")),
+      )
+      .sort()
+      .join("\u0000"),
+  );
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
   const [pluginConfigOperations, setPluginConfigOperations] = useState<Record<string, PluginConfigMutationState>>({});
@@ -81,6 +97,7 @@ export function App(): JSX.Element {
   } | null>(null);
   const pendingPluginConfigOpsRef = useRef<Map<string, PendingPluginConfigOperation>>(new Map());
   const hydrationToastShownRef = useRef(false);
+  const recoveryPollingAttemptRef = useRef(0);
   // 待办的"truncate 完后做点啥"队列——避免 setTimeout 魔法等待
   const pendingAfterTruncateRef = useRef<PendingAfterTruncate[]>([]);
 
@@ -266,9 +283,9 @@ export function App(): JSX.Element {
   });
 
   const requestSessionHistory = useCallback(
-    (sessionId: string): boolean => {
+    (sessionId: string, options: { refresh?: boolean } = {}): boolean => {
       markHistoryLoading(sessionId);
-      const ok = send({ type: "session.history", sessionId });
+      const ok = send({ type: "session.history", sessionId, refresh: options.refresh || undefined });
       if (!ok) {
         markHistoryLoadFailed(sessionId);
         toast.error("历史同步失败，连接可能已断开");
@@ -277,6 +294,42 @@ export function App(): JSX.Element {
     },
     [markHistoryLoadFailed, markHistoryLoading, send],
   );
+
+  useEffect(() => {
+    if (status !== "open" || !recoveryPollingKey) {
+      recoveryPollingAttemptRef.current = 0;
+      return;
+    }
+
+    const sessionIds = [
+      ...new Set(recoveryPollingKey.split("\u0000").map((entry) => entry.split("\u0001")[0]).filter(Boolean)),
+    ];
+    const idleSessionIds = sessionIds.filter((sessionId) => !useStore.getState().historyLoadingIds[sessionId]);
+    if (idleSessionIds.length === 0) {
+      return;
+    }
+
+    const attempt = recoveryPollingAttemptRef.current;
+    const delay = RECOVERY_POLL_DELAYS_MS[Math.min(attempt, RECOVERY_POLL_DELAYS_MS.length - 1)];
+    const timer = window.setTimeout(() => {
+      const state = useStore.getState();
+      let requested = false;
+      for (const sessionId of idleSessionIds) {
+        const session = state.sessions[sessionId];
+        const stillNeedsRecovery = session?.runs.some(
+          (run) => run.status === "running" && run.recoverySource === "history",
+        );
+        if (!stillNeedsRecovery || state.historyLoadingIds[sessionId]) continue;
+        requestSessionHistory(sessionId, { refresh: true });
+        requested = true;
+      }
+      if (requested) {
+        recoveryPollingAttemptRef.current = Math.min(attempt + 1, RECOVERY_POLL_DELAYS_MS.length - 1);
+      }
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [recoveryPollingKey, requestSessionHistory, status]);
 
   // 暴露 send 给 ref，让事件回调能用最新的 send
   useEffect(() => {

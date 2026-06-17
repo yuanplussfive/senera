@@ -779,6 +779,240 @@ describe("sessionStore history recovery", () => {
     expect(useStore.getState().historyLoadedIds["history-session"]).toBe(true);
     expect(session.messages.map((message) => message.content)).toEqual(["旧协议还在吗", "还在"]);
   });
+
+  it("rebuilds running runs from history snapshots", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 1,
+          messageCount: 1,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-running:user",
+              requestId: "req-running",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "长回复",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-running",
+            input: "长回复",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            status: "running",
+            traces: [],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["长回复"]);
+    expect(session.runs[0]).toMatchObject({
+      requestId: "req-running",
+      status: "running",
+      recoverySource: "history",
+    });
+  });
+
+  it("merges refresh history without duplicating recovered runs or messages", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 1,
+          messageCount: 1,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-1:user",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "长回复",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-1",
+            input: "长回复",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            status: "running",
+            traces: [],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 2,
+        messageCount: 2,
+        refresh: true,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-1:user",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "长回复",
+            },
+          },
+          {
+            entry: {
+              id: "req-1:assistant",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:05.000Z",
+              kind: "assistant.decision",
+              xml: "<final_answer>完成了</final_answer>",
+            },
+            visible: { kind: "final_answer", text: "完成了" },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-1",
+            input: "长回复",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            endedAt: "2026-05-29T08:00:05.000Z",
+            status: "completed",
+            traces: [
+              {
+                step: 1,
+                seq: 0,
+                kind: "answer",
+                status: "done",
+                startedAt: "2026-05-29T08:00:00.000Z",
+                endedAt: "2026-05-29T08:00:05.000Z",
+              },
+            ],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session", refresh: true },
+      "history-session",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["长回复", "完成了"]);
+    expect(session.runs).toHaveLength(1);
+    expect(session.runs[0]).toMatchObject({
+      requestId: "req-1",
+      status: "completed",
+      recoverySource: undefined,
+    });
+  });
+
+  it("replaces existing assistant final answers for the same request", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [sessionItem({ sessionId: "history-session" })],
+    }));
+    useStore.getState().appendUserMessage("history-session", "req-1", "说一句");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.FinalAnswer,
+      { content: "第一版" },
+      "history-session",
+      "req-1",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.FinalAnswer,
+      { content: "第二版" },
+      "history-session",
+      "req-1",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["说一句", "第二版"]);
+  });
 });
 
 describe("session persistence migration", () => {

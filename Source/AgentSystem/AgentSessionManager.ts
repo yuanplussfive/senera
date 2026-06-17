@@ -22,6 +22,7 @@ import { AgentSessionStore } from "./AgentSessionStore.js";
 import type { StepTrace } from "./AgentStepTrace.js";
 import { AgentRunEventHistoryReplayChunkSize } from "./AgentRunEventHistoryPolicy.js";
 import type { AgentUploadAttachment } from "./Uploads/AgentUploadTypes.js";
+import type { StoredRunSnapshot } from "./AgentSqliteSessionRepository.js";
 
 const HISTORY_REPLAY_CHUNK_SIZE = 50;
 
@@ -40,6 +41,16 @@ function stampStepTraces(
     startedAt: trace.startedAt ?? startedAt,
     endedAt: trace.endedAt ?? (trace.kind === "answer" ? endedAt : startedAt),
   }));
+}
+
+function readErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "未知错误";
+  }
 }
 
 export interface AgentSessionManagerOptions {
@@ -61,6 +72,7 @@ export class AgentSessionManager {
     this.conversationPolicy = options.conversationPolicy ?? new AgentConversationPolicy();
     this.conversationProjector = options.conversationProjector ?? new AgentConversationProjector();
     this.eventFactory = new AgentSessionEventFactory(this.conversationPolicy);
+    this.cleanupOrphanedRunningSnapshots();
   }
 
   async createSession(request: {
@@ -163,6 +175,7 @@ export class AgentSessionManager {
   /** 把会话历史投影为 entry 事件流回放（纯读，不会创建幽灵 session） */
   async replayHistory(request: {
     sessionId: string;
+    refresh?: boolean;
     onEvent?: AgentEventSink;
   }): Promise<void> {
     const sessionId = request.sessionId;
@@ -191,6 +204,7 @@ export class AgentSessionManager {
         sessionId,
         totalEntries: entries.length,
         messageCount: this.conversationPolicy.materialize(entries).length,
+        refresh: request.refresh || undefined,
       },
     });
 
@@ -238,7 +252,7 @@ export class AgentSessionManager {
     await emitAgentEvent(request.onEvent, {
       kind: AgentEventKinds.SessionHistoryCompleted,
       context: { sessionId },
-      data: { sessionId },
+      data: { sessionId, refresh: request.refresh || undefined },
     });
   }
 
@@ -251,9 +265,6 @@ export class AgentSessionManager {
     sessionId: string,
     entries: AgentConversationEntry[],
   ): AgentHistoryStepRun[] {
-    const storedRuns = this.store.loadStepTraces(sessionId);
-    if (storedRuns.length === 0) return [];
-
     const userByRequest = new Map<string, AgentConversationEntry>();
     const assistantByRequest = new Map<string, AgentConversationEntry>();
     for (const entry of entries) {
@@ -264,12 +275,14 @@ export class AgentSessionManager {
       }
     }
 
-    return storedRuns.map((run) => {
+    const runsByRequest = new Map<string, AgentHistoryStepRun>();
+    const storedRuns = this.store.loadStepTraces(sessionId);
+    for (const run of storedRuns) {
       const userEntry = userByRequest.get(run.requestId);
       const assistantEntry = assistantByRequest.get(run.requestId);
       const modelProvider =
         assistantEntry?.metadata?.run?.modelProvider ?? userEntry?.metadata?.run?.modelProvider;
-      return {
+      runsByRequest.set(run.requestId, {
         requestId: run.requestId,
         input: userEntry?.kind === AgentConversationEntryKinds.UserMessage ? userEntry.content : "",
         startedAt: userEntry?.timestamp ?? run.traces[0]?.startedAt ?? "",
@@ -277,8 +290,50 @@ export class AgentSessionManager {
         status: "completed" as const,
         modelProvider,
         traces: run.traces,
-      };
-    });
+      });
+    }
+
+    const snapshots = this.store.loadRunSnapshots(sessionId);
+    for (const snapshot of snapshots) {
+      const existing = runsByRequest.get(snapshot.requestId);
+      if (existing) {
+        existing.input = existing.input || snapshot.input;
+        existing.startedAt = existing.startedAt || snapshot.startedAt;
+        existing.modelProvider = existing.modelProvider ?? snapshot.modelProvider;
+
+        const hasPersistedTraces = existing.traces.length > 0;
+        if (hasPersistedTraces) {
+          // step_traces are persisted with the assistant entry and are the authoritative completed run.
+          // A stale running snapshot may have been marked failed during restart cleanup.
+          existing.status = "completed";
+          existing.endedAt = existing.endedAt ?? snapshot.endedAt ?? snapshot.updatedAt;
+          continue;
+        }
+
+        existing.endedAt = snapshot.endedAt ?? existing.endedAt;
+        existing.status = snapshot.status;
+        if (snapshot.status === "completed") {
+          existing.status = "failed";
+          existing.endedAt = snapshot.endedAt ?? snapshot.updatedAt;
+          existing.traces = [createMissingRunDataTrace(snapshot)];
+        }
+
+        continue;
+      }
+
+      const status = snapshot.status === "completed" ? "failed" : snapshot.status;
+      runsByRequest.set(snapshot.requestId, {
+        requestId: snapshot.requestId,
+        input: snapshot.input,
+        startedAt: snapshot.startedAt,
+        endedAt: snapshot.endedAt ?? (status === "failed" ? snapshot.updatedAt : undefined),
+        status,
+        modelProvider: snapshot.modelProvider,
+        traces: status === "running" ? [] : [createMissingRunDataTrace(snapshot)],
+      });
+    }
+
+    return Array.from(runsByRequest.values()).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   }
 
   recordRunEvent(envelope: AgentEventEnvelope): void {
@@ -357,11 +412,42 @@ export class AgentSessionManager {
   private discardActiveRun(session: AgentSession): void {
     const run = this.activeRuns.get(session.id);
     if (run) {
+      const activeRequest = session.activeRequest;
+      if (activeRequest) {
+        const endedAt = new Date().toISOString();
+        this.store.persistRunSnapshot({
+          sessionId: session.id,
+          requestId: activeRequest.requestId,
+          input: activeRequest.input,
+          status: "cancelled",
+          startedAt: activeRequest.startedAt,
+          updatedAt: endedAt,
+          endedAt,
+          errorMessage: "请求已被中断。",
+        });
+      }
       run.controller.abort();
       this.activeRuns.delete(session.id);
     }
     session.status = AgentSessionStatuses.Idle;
     session.activeRequest = undefined;
+  }
+
+  private cleanupOrphanedRunningSnapshots(): void {
+    const now = new Date().toISOString();
+    for (const session of this.store.listSessions()) {
+      const snapshots = this.store.loadRunSnapshots(session.id);
+      for (const snapshot of snapshots) {
+        if (snapshot.status !== "running") continue;
+        this.store.persistRunSnapshot({
+          ...snapshot,
+          status: "failed",
+          updatedAt: now,
+          endedAt: now,
+          errorMessage: "后端重启前该请求仍在运行，已标记为失败。",
+        });
+      }
+    }
   }
 
   /** 从指定 requestId 起截断会话（删除该轮 + 之后所有 entries） */
@@ -478,6 +564,14 @@ export class AgentSessionManager {
 
     // 先把 user message 落盘——保证即使后面崩溃也能看到这一轮发生过
     this.store.persistEntries(session.id, [userEntry]);
+    this.store.persistRunSnapshot({
+      sessionId: session.id,
+      requestId,
+      input: request.input,
+      status: "running",
+      startedAt: timestamp,
+      updatedAt: timestamp,
+    });
 
     // 该 session 已有 active run 时（不应该到这——但防御一下）先取消
     this.activeRuns.get(session.id)?.controller.abort();
@@ -540,6 +634,16 @@ export class AgentSessionManager {
       // 与 entries 在同一事务内原子落盘。
       const stampedTraces = stampStepTraces(result.stepTraces, timestamp, assistantEntry.timestamp);
       this.store.persistTurnArtifacts(session.id, requestId, fresh, stampedTraces);
+      this.store.persistRunSnapshot({
+        sessionId: session.id,
+        requestId,
+        input: request.input,
+        status: "completed",
+        startedAt: timestamp,
+        updatedAt: assistantEntry.timestamp,
+        endedAt: assistantEntry.timestamp,
+        modelProvider: result.modelProvider,
+      });
 
       session.conversation = this.mergeConversationEntries([
         ...session.conversation,
@@ -562,6 +666,17 @@ export class AgentSessionManager {
       }
       // 用户主动取消——发 RunCancelled 终态事件，不算 RunFailed
       if (error instanceof AgentCancellationError) {
+        const endedAt = new Date().toISOString();
+        this.store.persistRunSnapshot({
+          sessionId: session.id,
+          requestId,
+          input: request.input,
+          status: "cancelled",
+          startedAt: timestamp,
+          updatedAt: endedAt,
+          endedAt,
+          errorMessage: error.message,
+        });
         await emitAgentEvent(request.onEvent, {
           kind: AgentEventKinds.RunCancelled,
           context: { sessionId: session.id, requestId },
@@ -569,6 +684,17 @@ export class AgentSessionManager {
         });
         return; // 用户取消是"成功"的一种结束，不重新抛出
       }
+      const endedAt = new Date().toISOString();
+      this.store.persistRunSnapshot({
+        sessionId: session.id,
+        requestId,
+        input: request.input,
+        status: "failed",
+        startedAt: timestamp,
+        updatedAt: endedAt,
+        endedAt,
+        errorMessage: readErrorMessage(error),
+      });
       throw error;
     } finally {
       if (this.isActiveRun(session.id, run)) {
@@ -630,4 +756,17 @@ interface ActiveSessionRun {
   controller: AbortController;
   onEvent?: AgentEventSink;
   cancelled?: boolean;
+}
+
+function createMissingRunDataTrace(snapshot: StoredRunSnapshot): StepTrace {
+  return {
+    step: 0,
+    seq: 0,
+    kind: "answer",
+    status: "failed",
+    startedAt: snapshot.startedAt,
+    endedAt: snapshot.endedAt ?? snapshot.updatedAt,
+    title: "回复数据丢失",
+    errorMessage: snapshot.errorMessage ?? "回复数据丢失，请重新发送请求。",
+  };
 }
