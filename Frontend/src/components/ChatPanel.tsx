@@ -1,1 +1,1 @@
-export { ChatPanel } from "./chat/ChatPanel";
+export { ChatPanel } from "../features/chat/ChatPanel";

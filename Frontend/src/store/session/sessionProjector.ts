@@ -1205,12 +1205,16 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       const nextMessages = buffer
         .map((item) => projectEntryToMessage(item.entry, item.visible))
         .filter((message): message is ChatMessage => Boolean(message));
-      // 用回放的 step 轨迹重建 session.runs（替代此前写死的 []）
       const stepRuns = state.historyStepBuffers[sessionId] ?? [];
-      const nextRuns = stepRuns.map((run) => rebuildRunFromHistory(run));
+      const hasStepRuns = stepRuns.length > 0;
+      const nextRuns = hasStepRuns
+        ? stepRuns.map((run) => rebuildRunFromHistory(run))
+        : session.runs;
       if (data.refresh) {
         mergeHistoryMessages(session, nextMessages);
-        mergeHistoryRuns(session, nextRuns);
+        if (hasStepRuns) {
+          mergeHistoryRuns(session, nextRuns);
+        }
       } else {
         session.messages = nextMessages;
         session.runs = nextRuns;
