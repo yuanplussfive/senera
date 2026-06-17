@@ -208,7 +208,7 @@ export function useChatCommands({
     if (!activeSessionId) return;
     if (status !== "open") return;
     send({ type: "session.cancel", sessionId: activeSessionId });
-    toast("已发送中断请求…");
+    toast.message("已发送中断请求…");
   }, [activeSessionId, send, status]);
 
   const regenerateMessage = useCallback((message: ChatMessage): void => {

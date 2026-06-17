@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { motionTimings, readTapScale, useMotionLevel } from "../../shared/motion";
-import { FilePreviewIcon } from "../../components/FilePreviewIcon";
+import { FilePreviewIcon } from "./FilePreviewIcon";
 import { MessageActions } from "./MessageActions";
 import { MessageAvatar, MessageMeta } from "./MessageChrome";
 

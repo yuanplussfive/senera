@@ -152,7 +152,7 @@ function showSessionNotFoundRecoveryToast(toastConfig: SessionNotFoundRecoveryTo
     toast.warning(toastConfig.title, { description: toastConfig.description });
     return;
   }
-  toast(toastConfig.title, { description: toastConfig.description });
+  toast.message(toastConfig.title, { description: toastConfig.description });
 }
 
 function readSessionNotFoundOperation(data: unknown): SessionNotFoundData["operation"] {

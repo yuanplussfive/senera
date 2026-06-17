@@ -21,8 +21,8 @@ import {
   IconButton,
   Tooltip,
 } from "../../shared/ui";
-import { FilePreviewIcon } from "../../components/FilePreviewIcon";
-import { PluginConfigControl } from "../../components/chat/PluginConfigPanel";
+import { FilePreviewIcon } from "./FilePreviewIcon";
+import { PluginConfigControl } from "./PluginConfigPanel";
 import { ModelProviderIcon } from "./ModelProviderIcon";
 import { readSelectedModelProvider } from "./modelProvider";
 
