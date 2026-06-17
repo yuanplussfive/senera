@@ -1,4 +1,5 @@
 import { Check, Copy, GitBranch, RotateCcw, Trash2, User } from "lucide-react";
+import { motion } from "framer-motion";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import type { ModelProviderListItem } from "../../api/eventTypes";
@@ -11,6 +12,7 @@ import { ModelProviderIcon } from "../ModelProviderIcon";
 import { Tooltip } from "../ui/Tooltip";
 import { ThinkingSummaryBar } from "./ThinkingSummaryBar";
 import { formatModelProviderName } from "./modelProvider";
+import { motionTimings, readTapScale, useMotionLevel } from "../../shared/motion";
 
 interface MessageRowProps {
   message: ChatMessage;
@@ -35,6 +37,9 @@ export function MessageRow({
   onDelete,
   onViewWorkflow,
 }: MessageRowProps): JSX.Element {
+  const { reduceMotion, disableMotion } = useMotionLevel();
+  const tapScale = readTapScale(disableMotion || reduceMotion ? "reduced" : "full");
+
   if (message.role === "user") {
     return (
       <div className="group/msg flex items-start justify-end gap-3">
@@ -48,9 +53,11 @@ export function MessageRow({
           {message.attachments && message.attachments.length > 0 ? (
             <MessageAttachments attachments={message.attachments} />
           ) : null}
-          <button
+          <motion.button
             type="button"
             onClick={onClickBubble}
+            whileTap={tapScale ? { scale: tapScale } : undefined}
+            transition={motionTimings.fast}
             className={cn(
               "mt-1 whitespace-pre-wrap rounded-2xl rounded-tr-md bg-ink-900 px-4 py-2.5 text-left text-[14.5px] leading-relaxed text-paper-50 shadow-bubble-user transition",
               message.requestId
@@ -60,7 +67,7 @@ export function MessageRow({
             aria-label="编辑这条消息"
           >
             {message.content}
-          </button>
+          </motion.button>
           <MessageActions
             content={message.content}
             placement="right"
@@ -96,7 +103,7 @@ export function MessageRow({
           <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} />
           <LazyMarkdownRenderer
             className="mt-1 min-w-0"
-            contentClassName="text-[14.5px] leading-[1.72] text-ink-800"
+            contentClassName="text-[14.5px] leading-[1.85] text-ink-800"
           >
             {message.content}
           </LazyMarkdownRenderer>
@@ -166,7 +173,7 @@ export function StreamingRow({
 }): JSX.Element {
   return (
     <div className="flex items-start gap-3">
-      <Avatar role="assistant" icon={assistantAvatarIcon} pulsing />
+      <Avatar role="assistant" icon={assistantAvatarIcon} />
       <div className="flex min-w-0 flex-1 flex-col">
         <MessageMeta
           title={readRunDisplayName(run, selectedModelProvider)}
@@ -318,12 +325,10 @@ function Avatar({
   role,
   icon,
   profile,
-  pulsing = false,
 }: {
   role: "user" | "assistant";
   icon?: string;
   profile?: UserProfile;
-  pulsing?: boolean;
 }): JSX.Element {
   if (role === "user") {
     const fallback = readUserInitial(profile?.name);
@@ -344,13 +349,12 @@ function Avatar({
     <div className="relative grid h-8 w-8 shrink-0 place-items-center">
       <div
         className={cn(
-          "grid h-8 w-8 place-items-center rounded-xl text-ink-700",
+          "relative z-10 grid h-8 w-8 place-items-center rounded-xl text-ink-700",
           hasIcon ? "bg-paper-50 ring-1 ring-ink-200" : "bg-transparent",
         )}
       >
         {hasIcon ? <ModelProviderIcon icon={icon} size={18} /> : null}
       </div>
-      {pulsing ? <span className="absolute -inset-1 rounded-[1rem] ring-2 ring-terra-300/60 animate-pulse" /> : null}
     </div>
   );
 }

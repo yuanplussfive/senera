@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { Virtuoso } from "react-virtuoso";
 import {
   Lightbulb,
@@ -20,6 +21,12 @@ import { Tooltip } from "./ui/Tooltip";
 import { Dialog, DialogContent } from "./ui/Dialog";
 import { summarizeRun, type RunSummary } from "./workflow/runSummary";
 import { shouldLoadWorkflowCanvas } from "./workflow/canvasLoadPolicy";
+import {
+  motionSprings,
+  motionTimings,
+  readFocusPanelVariants,
+  useMotionLevel,
+} from "../shared/motion";
 
 const LazyThinkingTimelineCanvas = lazy(() =>
   import("./ThinkingTimelineCanvas").then((module) => ({
@@ -191,12 +198,6 @@ function TopBar({
         )}
         <div className="ml-auto flex min-w-0 items-center gap-2">
           <div className="hidden min-w-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-400 sm:flex">
-            {run?.status === "running" ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-terra-50 px-1.5 py-0.5 text-terra-600">
-                <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                live
-              </span>
-            ) : null}
             {run ? (
               <span>
                 {summary?.completed}/{summary?.total}
@@ -292,7 +293,7 @@ function MetricChip({
         tone === "danger"
           ? "border-brick-100 bg-brick-50/70 text-brick-600"
           : tone === "live"
-            ? "border-terra-100 bg-terra-50/70 text-terra-600"
+            ? "border-umber-200/60 bg-umber-50 text-umber-600"
             : "border-ink-200/60 bg-paper-100/70 text-ink-600",
       )}
     >
@@ -537,15 +538,27 @@ function TimelineFocusDialog({
   onFollowLatest: () => void;
 }): JSX.Element {
   const summary = run ? summarizeRun(run) : undefined;
+  const { level, reduceMotion, disableMotion } = useMotionLevel();
+  const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title="思考过程"
         description={summary ? `${summary.completed}/${summary.total} 节点 · ${summary.tools} 工具` : undefined}
-        className="t-modal bottom-3 left-3 right-3 top-3 h-auto max-h-none w-auto max-w-none translate-x-0 translate-y-0 rounded-lg sm:bottom-4 sm:left-4 sm:right-4 sm:top-4"
+        placement="inset"
+        motionPreset="focus"
+        frameClassName="bottom-3 left-3 right-3 top-3 sm:bottom-4 sm:left-4 sm:right-4 sm:top-4"
+        className="h-auto max-h-none w-auto max-w-none rounded-lg"
         bodyClassName="flex min-h-0 flex-1 flex-col bg-paper-100/40"
       >
-        <div className="min-h-0 flex flex-1 flex-col">
+        <motion.div
+          variants={readFocusPanelVariants(effectiveLevel)}
+          initial="hidden"
+          animate="show"
+          exit="exit"
+          transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.soft}
+          className="min-h-0 flex flex-1 flex-col"
+        >
           {runs.length > 0 ? (
             <div className="shrink-0 border-b border-ink-200/40 bg-paper-50/70 px-3 py-2 sm:px-4">
               {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
@@ -567,7 +580,7 @@ function TimelineFocusDialog({
             </div>
           ) : null}
           <CanvasArea run={run} focusVersion={open ? 1 : 0} />
-        </div>
+        </motion.div>
       </DialogContent>
     </Dialog>
   );
@@ -601,7 +614,7 @@ function CanvasLoading(): JSX.Element {
   return (
     <div className="relative flex flex-1 items-center justify-center overflow-hidden">
       <div className="inline-flex items-center gap-2 rounded-md border border-ink-200/60 bg-paper-50/80 px-3 py-2 text-[12px] text-ink-500 shadow-bubble-ai">
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-terra-500" />
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-umber-500" />
         加载执行图
       </div>
     </div>
@@ -609,16 +622,24 @@ function CanvasLoading(): JSX.Element {
 }
 
 function EmptyCanvas(): JSX.Element {
+  const { level, reduceMotion, disableMotion } = useMotionLevel();
+  const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
   return (
-    <div className="flex max-w-[320px] flex-col items-center px-6 text-center">
+    <motion.div
+      variants={readFocusPanelVariants(effectiveLevel)}
+      initial="hidden"
+      animate="show"
+      transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.soft}
+      className="flex max-w-[320px] flex-col items-center px-6 text-center"
+    >
       <div className="grid h-11 w-11 place-items-center rounded-xl border border-ink-200/70 bg-paper-50 shadow-[0_1px_2px_rgba(28,26,23,0.04)]">
         <ListTree className="h-5 w-5 text-ink-500" />
       </div>
       <p className="mt-3 text-[13px] font-medium text-ink-850">
-        执行图会在运行开始后生成
+        执行图示
       </p>
       <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
-        这里会汇总理解、模型决策、工具调用和最终回复，方便回看每一步的输入输出。
+        这里会汇总理解、模型决策、工具调用和最终回复。
       </p>
       <div className="mt-3 grid w-full grid-cols-2 gap-1.5 text-left">
         <EmptyHint icon={<ListTree className="h-3 w-3" />} label="节点详情" />
@@ -629,7 +650,7 @@ function EmptyCanvas(): JSX.Element {
       <p className="mt-3 text-[11px] text-ink-400">
         可拖拽节点，滚轮平移，Ctrl+滚轮缩放。
       </p>
-    </div>
+    </motion.div>
   );
 }
 

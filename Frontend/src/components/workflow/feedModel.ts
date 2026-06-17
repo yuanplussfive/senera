@@ -328,22 +328,22 @@ export function statusLabel(status: TimelineStepStatus | "neutral"): string | un
   }
 }
 
-export function statusDotClass(status: TimelineStepStatus | "neutral", pulse = false): string {
+export function statusDotClass(status: TimelineStepStatus | "neutral", _pulse = false): string {
   const base =
     status === "running"
-      ? "bg-terra-500"
+      ? "bg-umber-500 motion-safe:animate-pulse"
       : status === "failed"
       ? "bg-brick-500"
       : status === "done"
       ? "bg-moss-500"
       : "bg-ink-300";
-  return pulse && status === "running" ? `${base} animate-pulse` : base;
+  return base;
 }
 
 export function statusTextClass(status: TimelineStepStatus | "neutral"): string {
   switch (status) {
     case "running":
-      return "text-terra-600";
+      return "text-umber-600";
     case "failed":
       return "text-brick-500";
     case "done":

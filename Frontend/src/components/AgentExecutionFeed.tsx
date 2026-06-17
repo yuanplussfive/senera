@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type AriaRole, type ReactNode } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronDown,
   ChevronRight,
@@ -14,12 +15,15 @@ import {
   type FeedGroup,
   type FeedItem,
 } from "./workflow/feedModel";
+import { motionTimings, readFeedItemVariants, useMotionLevel, type MotionLevel } from "../shared/motion";
 
 export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
   const model = useMemo(() => deriveFeedModel(run), [run]);
   const toolGroup = model.groups.find((group) => group.id === "tools");
   const traceGroups = model.groups.filter((group) => group.id !== "tools");
   const [toolsExpanded, setToolsExpanded] = useState(toolGroup?.defaultExpanded ?? true);
+  const { level, reduceMotion, disableMotion } = useMotionLevel();
+  const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
 
   useEffect(() => {
     setToolsExpanded(toolGroup?.defaultExpanded ?? true);
@@ -34,25 +38,32 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
             group={toolGroup}
             expanded={toolsExpanded}
             onToggle={() => setToolsExpanded((value) => !value)}
+            motionLevel={effectiveLevel}
           />
         ) : null}
         {traceGroups.map((group) => (
           <div key={group.id} className="mt-1 flex flex-col gap-1">
-            {group.items.map((item) => (
-              <FeedRow key={item.id} item={item} />
-            ))}
+            <AnimatePresence initial={false}>
+              {group.items.map((item) => (
+                <FeedRow key={item.id} item={item} motionLevel={effectiveLevel} />
+              ))}
+            </AnimatePresence>
           </div>
         ))}
-        {model.bodyText ? (
-          <div className="pt-2 text-[14.5px] leading-[1.72] text-ink-800">
-            <span className="whitespace-pre-wrap break-words">{model.bodyText}</span>
-            <span className="caret-blink" />
-          </div>
-        ) : (
-          <PendingLine label={model.placeholder} />
-        )}
+      </div>
+      <div className="ml-1 pl-5">
+        <AnimatePresence mode="wait" initial={false}>
+          {model.bodyText ? (
+            <FeedMotionBlock key="body" motionLevel={effectiveLevel} className="pt-2 text-[14.5px] leading-[1.72] text-ink-800">
+              <span className="whitespace-pre-wrap break-words">{model.bodyText}</span>
+              <span className="caret-blink" />
+            </FeedMotionBlock>
+          ) : (
+            <PendingLine key="pending" label={model.placeholder} motionLevel={effectiveLevel} />
+          )}
+        </AnimatePresence>
         {model.footer ? (
-          <div className="pt-1.5 font-mono text-[10.5px] text-ink-400">{model.footer}</div>
+          <FeedMotionBlock motionLevel={effectiveLevel} className="pt-1.5 font-mono text-[10.5px] text-ink-400">{model.footer}</FeedMotionBlock>
         ) : null}
       </div>
     </div>
@@ -93,10 +104,12 @@ function ToolGroup({
   group,
   expanded,
   onToggle,
+  motionLevel,
 }: {
   group: FeedGroup;
   expanded: boolean;
   onToggle: () => void;
+  motionLevel: MotionLevel;
 }): JSX.Element {
   return (
     <div className="flex flex-col gap-1.5">
@@ -114,20 +127,43 @@ function ToolGroup({
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-400" />
         )}
       </button>
-      {expanded ? (
-        <div className="ml-3 flex flex-col gap-1 border-l border-ink-200/60 pl-3">
-          {group.items.map((item) => (
-            <FeedRow key={item.id} item={item} compact />
-          ))}
-        </div>
-      ) : null}
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <FeedMotionBlock
+            key="tools"
+            motionLevel={motionLevel}
+            className="ml-3 flex flex-col gap-1 border-l border-ink-200/60 pl-3"
+          >
+            <AnimatePresence initial={false}>
+              {group.items.map((item) => (
+                <FeedRow key={item.id} item={item} compact motionLevel={motionLevel} />
+              ))}
+            </AnimatePresence>
+          </FeedMotionBlock>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
 
-function FeedRow({ item, compact = false }: { item: FeedItem; compact?: boolean }): JSX.Element {
+function FeedRow({
+  item,
+  compact = false,
+  motionLevel,
+}: {
+  item: FeedItem;
+  compact?: boolean;
+  motionLevel: MotionLevel;
+}): JSX.Element {
   return (
-    <div className={cn("flex min-w-0 items-start gap-2 rounded-lg px-2 py-1.5", compact && "py-1")}>
+    <motion.div
+      variants={readFeedItemVariants(motionLevel)}
+      initial="hidden"
+      animate="show"
+      exit="exit"
+      transition={motionLevel === "none" ? { duration: 0 } : motionTimings.base}
+      className={cn("flex min-w-0 items-start gap-2 rounded-lg px-2 py-1.5", compact && "py-1")}
+    >
       {item.kind === "tool" ? (
         <span className={cn("mt-[5px] inline-block h-1.5 w-1.5 shrink-0 rounded-full", statusDotClass(item.status))} />
       ) : (
@@ -142,22 +178,71 @@ function FeedRow({ item, compact = false }: { item: FeedItem; compact?: boolean 
       {item.meta ? (
         <span className={cn("shrink-0 pt-px text-[11.5px]", statusTextClass(item.status))}>{item.meta}</span>
       ) : null}
-    </div>
+    </motion.div>
   );
 }
 
-function PendingLine({ label }: { label: string }): JSX.Element {
+function FeedMotionBlock({
+  children,
+  className,
+  motionLevel,
+  role,
+  ariaLive,
+}: {
+  children: ReactNode;
+  className?: string;
+  motionLevel: MotionLevel;
+  role?: AriaRole;
+  ariaLive?: "off" | "polite" | "assertive";
+}): JSX.Element {
   return (
-    <div
-      className="my-1.5 inline-flex max-w-full items-center gap-2 rounded-lg bg-paper-100/70 px-2.5 py-1.5 text-[12.75px] text-ink-500"
-      role="status"
-      aria-live="polite"
+    <motion.div
+      variants={readFeedItemVariants(motionLevel)}
+      initial="hidden"
+      animate="show"
+      exit="exit"
+      transition={motionLevel === "none" ? { duration: 0 } : motionTimings.base}
+      className={className}
+      role={role}
+      aria-live={ariaLive}
     >
-      <span className="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center" aria-hidden="true">
-        <span className="absolute h-2.5 w-2.5 animate-ping rounded-full bg-terra-400/35" />
-        <span className="h-1.5 w-1.5 rounded-full bg-terra-500" />
-      </span>
+      {children}
+    </motion.div>
+  );
+}
+
+function PendingLine({ label, motionLevel }: { label: string; motionLevel: MotionLevel }): JSX.Element {
+  return (
+    <FeedMotionBlock
+      motionLevel={motionLevel}
+      className="my-1.5 inline-flex max-w-full items-center gap-2 py-1 text-[12.75px] leading-relaxed text-ink-500"
+      role="status"
+      ariaLive="polite"
+    >
+      <ThinkingLoader motionLevel={motionLevel} />
       <span className="min-w-0 truncate">{label}</span>
-    </div>
+    </FeedMotionBlock>
+  );
+}
+
+function ThinkingLoader({ motionLevel }: { motionLevel: MotionLevel }): JSX.Element {
+  return (
+    <span
+      className={cn(
+        "thinking-loader inline-flex h-4 w-5 shrink-0 items-center justify-center gap-0.5",
+        motionLevel === "none" && "thinking-loader--static",
+      )}
+      aria-hidden="true"
+      data-motion-level={motionLevel}
+    >
+      {[0, 1, 2].map((index) => (
+        <span
+          // eslint-disable-next-line react/no-array-index-key
+          key={index}
+          className="thinking-loader-dot block h-1 w-1 rounded-full bg-ink-400/85"
+          style={{ animationDelay: `${index * 140}ms` }}
+        />
+      ))}
+    </span>
   );
 }

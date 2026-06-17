@@ -16,6 +16,7 @@
   --modal-scale: 0.96;
   --modal-scale-close: 0.96;
   --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dialog-presence-exit-dur: 320ms;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -43,6 +44,7 @@ body {
   --scrollbar-thumb: rgba(28, 26, 23, 0.16);
   --scrollbar-thumb-hover: rgba(28, 26, 23, 0.26);
   --scrollbar-track: transparent;
+  --code-source-max-height: 500px;
 }
 .scrollbar-thin,
 [data-virtuoso-scroller="true"],
@@ -91,6 +93,39 @@ textarea::-webkit-scrollbar-track {
   contain: layout paint;
 }
 
+.streaming-complete-highlight {
+  animation: streaming-complete-highlight 640ms ease-out 1;
+  border-radius: 18px;
+}
+
+html[data-motion-level="reduced"] *,
+html[data-motion-level="reduced"] *::before,
+html[data-motion-level="reduced"] *::after,
+html[data-motion-level="none"] *,
+html[data-motion-level="none"] *::before,
+html[data-motion-level="none"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-motion-level="none"] *,
+html[data-motion-level="none"] *::before,
+html[data-motion-level="none"] *::after {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ----- 打字光标 ----- */
 .caret-blink::after {
   content: "▋";
@@ -113,8 +148,70 @@ textarea::-webkit-scrollbar-track {
   animation: shimmer 1.8s linear infinite;
 }
 
+/* ----- 内联等待点 ----- */
+.thinking-loader-dot {
+  animation: thinking-loader-dot 1.18s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  transform-origin: center;
+  will-change: opacity, transform;
+}
+
+html[data-motion-level="reduced"] .thinking-loader-dot {
+  animation-name: thinking-loader-dot-reduced;
+  animation-duration: 1.25s !important;
+  animation-iteration-count: infinite !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-loader[data-motion-level="reduced"] .thinking-loader-dot {
+    animation-name: thinking-loader-dot-reduced;
+    animation-duration: 1.25s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+html[data-motion-level="none"] .thinking-loader-dot,
+.thinking-loader--static .thinking-loader-dot {
+  animation: none !important;
+  opacity: 0.72;
+  transform: scale(0.92);
+}
+
 /* ----- 选中文字 ----- */
 ::selection {
   background: rgba(179, 68, 31, 0.18);
   color: #1c1a17;
+}
+
+@keyframes streaming-complete-highlight {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  42% {
+    background-color: rgba(179, 68, 31, 0.08);
+  }
+}
+
+@keyframes thinking-loader-dot {
+  0%,
+  72%,
+  100% {
+    opacity: 0.32;
+    transform: scale(0.82);
+  }
+  36% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+}
+
+@keyframes thinking-loader-dot-reduced {
+  0%,
+  72%,
+  100% {
+    opacity: 0.34;
+  }
+  36% {
+    opacity: 0.9;
+  }
 }
