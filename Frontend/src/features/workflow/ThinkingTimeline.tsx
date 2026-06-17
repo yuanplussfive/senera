@@ -101,11 +101,6 @@ function ThinkingPanel({
           <PanelRightOpen className="h-4 w-4" />
         </IconButton>
         <Lightbulb className="mt-2 h-4 w-4 text-terra-500" />
-        {run ? (
-          <MetaLabel as="div" size="sm" className="mt-2 rotate-180" style={{ writingMode: "vertical-rl" }}>
-            {run.steps.length} 步
-          </MetaLabel>
-        ) : null}
       </aside>
     );
   }
@@ -114,7 +109,7 @@ function ThinkingPanel({
     <>
       <aside className={cn(
         "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
-        presentation === "panel" ? "w-full border-l-0" : "w-[460px]",
+        presentation === "panel" ? "w-full border-l-0" : "w-full",
       )}>
         <TopBar
           run={run}

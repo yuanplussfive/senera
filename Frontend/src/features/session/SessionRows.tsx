@@ -113,6 +113,7 @@ export function SessionRow({
                 size="sm"
                 tone="muted"
                 onClick={(e) => e.stopPropagation()}
+                touchSafe
                 className={cn(
                   "justify-self-end hover:bg-ink-900/[0.06]",
                   menuOpen || active || showInlineActions ? "opacity-100" : "opacity-0 group-hover:opacity-100",

@@ -7,7 +7,7 @@ import { useStore } from "./store/sessionStore";
 import { ChatPanel } from "./features/chat";
 import { SessionList } from "./features/session";
 import { ThinkingTimeline } from "./features/workflow";
-import { AppShell } from "./layout/AppShell";
+import { AppShell, readAppShellRenderPlan } from "./layout/AppShell";
 import {
   EventKinds,
   type ConfigFailedData,
@@ -59,6 +59,7 @@ export function App(): JSX.Element {
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
   const [pluginConfigOperations, setPluginConfigOperations] = useState<Record<string, PluginConfigMutationState>>({});
   const uploadUrl = useMemo(() => buildUploadUrl(WS_URL), []);
+  const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
 
   const sendRef = useRef<((req: WsRequest) => boolean) | null>(null);
   const lastSendRef = useRef<LastSentMessage | null>(null);
@@ -380,8 +381,10 @@ export function App(): JSX.Element {
             onEditUserMessage={handleEditUserMessage}
             onDeleteFromMessage={handleDeleteFromMessage}
             onViewWorkflow={handleViewWorkflow}
-            onOpenSessionPanel={handleOpenSessionPanel}
-            onOpenWorkflowPanel={() => setWorkflowDrawerOpen(true)}
+            onOpenSessionPanel={appShellRenderPlan.showChatSessionPanelAction ? handleOpenSessionPanel : undefined}
+            onOpenWorkflowPanel={
+              appShellRenderPlan.showChatWorkflowPanelAction ? () => setWorkflowDrawerOpen(true) : undefined
+            }
             onRetryHistory={requestSessionHistory}
           />
         }

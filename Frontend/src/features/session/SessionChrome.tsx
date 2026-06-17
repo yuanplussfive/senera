@@ -1,5 +1,6 @@
 import { ChevronDown, PanelLeftClose, PanelLeftOpen, SquarePen } from "lucide-react";
 import { cn } from "../../lib/util";
+import { useResponsiveMode } from "../../shared/responsive";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,13 +38,14 @@ export function SessionRail({
         tooltipSide="right"
         tooltipShortcut="⌘B"
         onClick={onOpenSessionPanel}
+        touchSafe
       >
         <PanelLeftOpen className="h-4 w-4" />
       </IconButton>
       <div className="my-2 flex flex-col items-center">
         <LogoMark size={22} />
       </div>
-      <IconButton label="new" tooltip="新建对话" tooltipSide="right" onClick={onNewSession}>
+      <IconButton label="new" tooltip="新建对话" tooltipSide="right" onClick={onNewSession} touchSafe>
         <SquarePen className="h-4 w-4" />
       </IconButton>
       <div className="mt-auto pb-1">
@@ -58,6 +60,8 @@ export function SessionHeader({
   onNewSession,
   onToggleSidebar,
 }: SessionHeaderProps): JSX.Element {
+  const { isCoarsePointer } = useResponsiveMode();
+
   return (
     <div className="flex h-14 items-center gap-1.5 px-2.5">
       <IconButton
@@ -66,6 +70,7 @@ export function SessionHeader({
         tooltipSide="bottom"
         tooltipShortcut="⌘B"
         onClick={onToggleSidebar}
+        touchSafe
       >
         <PanelLeftClose className="h-4 w-4" />
       </IconButton>
@@ -74,7 +79,10 @@ export function SessionHeader({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="group flex h-8 flex-1 items-center gap-1 rounded-lg px-2 text-[13px] font-medium text-ink-800 transition hover:bg-ink-900/[0.05]"
+            className={cn(
+              "group flex h-8 flex-1 items-center gap-1 rounded-lg px-2 text-[13px] font-medium text-ink-800 transition hover:bg-ink-900/[0.05]",
+              isCoarsePointer && "min-h-11",
+            )}
           >
             <LogoMark size={16} />
             <LogoWordmark className="text-[15px]" />
@@ -92,6 +100,7 @@ export function SessionHeader({
         tooltipSide="bottom"
         tooltipShortcut="⌘N"
         onClick={onNewSession}
+        touchSafe
       >
         <SquarePen className="h-4 w-4" />
       </IconButton>

@@ -2,7 +2,6 @@ import { motion } from "framer-motion";
 import type { HTMLMotionProps } from "framer-motion";
 import { forwardRef } from "react";
 import {
-  motionSprings,
   motionTimings,
   readDialogPanelTransition,
   readDialogPanelVariants,
@@ -74,18 +73,20 @@ export const MotionDialogContent = forwardRef<HTMLDivElement, MotionDialogConten
 MotionDialogContent.displayName = "MotionDialogContent";
 
 export const MotionSheetContent = forwardRef<HTMLDivElement, MotionSheetContentProps>(
-  ({ side = "right", ...props }, ref) => {
+  ({ side = "right", style, ...props }, ref) => {
     const { level, reduceMotion, disableMotion } = useMotionLevel();
     const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
     const state = readRadixState(props);
+    const variants = readDrawerVariants(effectiveLevel, side);
+    const animationState = state === "closed" ? "exit" : "show";
+    const pointerEvents = state === "closed" ? "none" : style?.pointerEvents;
     return (
       <motion.div
         ref={ref}
-        variants={readDrawerVariants(effectiveLevel, side)}
-        initial={false}
-        animate={state === "closed" ? "exit" : "show"}
-        transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.drawer}
-        style={{ pointerEvents: state === "closed" ? "none" : undefined, ...props.style }}
+        initial={variants.hidden}
+        animate={variants[animationState]}
+        transition={disableMotion ? { duration: 0 } : motionTimings.dialog}
+        style={{ ...style, pointerEvents, willChange: "transform" }}
         {...props}
       />
     );

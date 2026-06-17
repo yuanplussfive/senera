@@ -14,7 +14,6 @@ export interface ResponsiveMode {
   viewport: ResponsiveViewport;
   hasPersistentSessionPanel: boolean;
   hasPersistentWorkflowPanel: boolean;
-  prefersDrawerNavigation: boolean;
   prefersCompactControls: boolean;
   supportsHover: boolean;
   isCoarsePointer: boolean;
@@ -24,7 +23,7 @@ export interface ResponsiveMode {
 export const responsiveMediaQueries = {
   tabletUp: "(min-width: 768px)",
   desktopUp: "(min-width: 1024px)",
-  wideUp: "(min-width: 1280px)",
+  wideUp: "(min-width: 1536px)",
   supportsHover: "(hover: hover)",
   hasPrimaryCoarsePointer: "(pointer: coarse)",
   hasAnyCoarsePointer: "(any-pointer: coarse)",
@@ -55,7 +54,6 @@ export function deriveResponsiveMode(matches: ResponsiveQueryMatches): Responsiv
     viewport,
     hasPersistentSessionPanel: matches.wideUp,
     hasPersistentWorkflowPanel: matches.desktopUp,
-    prefersDrawerNavigation: viewport === "mobile",
     prefersCompactControls: viewport === "mobile" || isCoarsePointer,
     supportsHover: matches.supportsHover,
     isCoarsePointer,

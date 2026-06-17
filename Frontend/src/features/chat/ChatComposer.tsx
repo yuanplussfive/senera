@@ -267,6 +267,7 @@ export function ChatComposer({
             tone="primary"
             disabled={running}
             onClick={() => fileInputRef.current?.click()}
+            touchSafe
           >
             <Paperclip className="h-4 w-4" />
           </IconButton>
@@ -286,7 +287,10 @@ export function ChatComposer({
             <Tooltip content="中断当前运行" side="top" shortcut={prefersCompactControls ? undefined : "Esc"}>
               <MotionButton
                 onClick={onCancel}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brick-500 text-paper-50 transition hover:bg-brick-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50"
+                className={cn(
+                  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brick-500 text-paper-50 transition hover:bg-brick-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
+                  prefersCompactControls && "min-h-11 min-w-11",
+                )}
                 aria-label="cancel"
               >
                 <Square className="h-3.5 w-3.5 fill-current" />
@@ -299,6 +303,7 @@ export function ChatComposer({
                 disabled={!canSend}
                 className={cn(
                   "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
+                  prefersCompactControls && "min-h-11 min-w-11",
                   canSend ? "bg-ink-900 text-paper-50 hover:bg-terra-500" : "bg-ink-200/60 text-ink-400",
                 )}
                 aria-label="send"
@@ -339,6 +344,7 @@ export function ChatComposer({
               models={modelProviders}
               selectedId={selectedModelProviderId}
               onSelect={onSelectModelProvider}
+              prefersCompactControls={prefersCompactControls}
             />
           </span>
         </div>
@@ -460,11 +466,13 @@ function ModelSelector({
   models,
   selectedId,
   onSelect,
+  prefersCompactControls,
 }: {
   disabled: boolean;
   models: ModelProviderListItem[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  prefersCompactControls: boolean;
 }): JSX.Element {
   const selected = useMemo(
     () => readSelectedModelProvider(models, selectedId) ?? null,
@@ -478,6 +486,7 @@ function ModelSelector({
         <MotionButton
           className={cn(
             "inline-flex h-9 min-w-0 max-w-[180px] items-center gap-1.5 rounded-md px-2 text-[11px] sm:h-7 sm:max-w-[230px]",
+            prefersCompactControls && "min-h-11 min-w-11",
             "text-ink-500 transition hover:bg-ink-900/[0.045] hover:text-ink-800",
             "focus:outline-none focus:ring-2 focus:ring-terra-200/60",
             (disabled || models.length === 0) && "pointer-events-none opacity-55",
