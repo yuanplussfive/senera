@@ -49,11 +49,37 @@
     opacity var(--modal-close-dur) var(--modal-ease);
 }
 
+.dialog-presence[data-state="closed"] {
+  animation: dialog-presence-exit var(--dialog-presence-exit-dur) linear both;
+}
+
+html[data-motion-level="reduced"] .dialog-presence[data-state="closed"] {
+  animation-duration: var(--dialog-presence-exit-dur) !important;
+  animation-iteration-count: 1 !important;
+}
+
+html[data-motion-level="none"] .dialog-presence[data-state="closed"] {
+  animation-duration: 0.001ms !important;
+}
+
+@keyframes dialog-presence-exit {
+  from {
+    visibility: visible;
+  }
+  to {
+    visibility: hidden;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .t-icon-swap .t-icon {
     transition: none !important;
   }
   .t-modal {
     transition: none !important;
+  }
+  .dialog-presence[data-state="closed"] {
+    animation-duration: var(--dialog-presence-exit-dur) !important;
+    animation-iteration-count: 1 !important;
   }
 }

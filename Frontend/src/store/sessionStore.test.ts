@@ -30,6 +30,9 @@ function resetStore(): void {
     sessions: {},
     sessionOrder: [],
     activeSessionId: null,
+    sidebarCollapsed: false,
+    rightPanelCollapsed: false,
+    motionLevel: "full",
     viewedRunIdBySession: {},
     historyLoadedIds: {},
     historyLoadingIds: {},
@@ -574,6 +577,117 @@ describe("sessionStore history recovery", () => {
     });
   });
 
+  it("does not treat replayed failed run events as history load failures", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 1,
+          messageCount: 1,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-failed:user",
+              requestId: "req-failed",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "触发失败",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-failed",
+            input: "触发失败",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            endedAt: "2026-05-29T08:00:02.000Z",
+            status: "failed",
+            traces: [
+              {
+                step: 0,
+                seq: 0,
+                kind: "answer",
+                status: "failed",
+                startedAt: "2026-05-29T08:00:00.000Z",
+                endedAt: "2026-05-29T08:00:02.000Z",
+                title: "回复数据丢失",
+                errorMessage: "model failed",
+              },
+            ],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: "history-session",
+        events: [
+          timedEnvelope(
+            EventKinds.RunFailed,
+            "2026-05-29T08:00:02.000Z",
+            { message: "model failed" },
+            "history-session",
+            "req-failed",
+          ),
+        ],
+      },
+      "history-session",
+    ));
+
+    expect(useStore.getState().historyLoadingIds["history-session"]).toBe(true);
+    expect(useStore.getState().historyFailedIds["history-session"]).toBeUndefined();
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(useStore.getState().historyLoadingIds["history-session"]).toBe(false);
+    expect(useStore.getState().historyLoadedIds["history-session"]).toBe(true);
+    expect(useStore.getState().historyFailedIds["history-session"]).toBeUndefined();
+    expect(session.messages.map((message) => message.content)).toEqual(["触发失败"]);
+    expect(session.messageCount).toBe(1);
+    expect(session.runs).toHaveLength(1);
+    expect(session.runs[0]).toMatchObject({
+      requestId: "req-failed",
+      status: "failed",
+      recoverySource: undefined,
+    });
+    expect(session.runs[0].steps[0]).toMatchObject({
+      title: "回复数据丢失",
+      status: "failed",
+    });
+  });
+
   it("keeps materialized history when completion is received more than once", () => {
     useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
       sessions: [
@@ -776,6 +890,389 @@ describe("sessionStore history recovery", () => {
     expect(useStore.getState().historyLoadedIds["history-session"]).toBe(true);
     expect(session.messages.map((message) => message.content)).toEqual(["旧协议还在吗", "还在"]);
   });
+
+  it("rebuilds running runs from history snapshots", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 1,
+          messageCount: 1,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-running:user",
+              requestId: "req-running",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "长回复",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-running",
+            input: "长回复",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            status: "running",
+            traces: [],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["长回复"]);
+    expect(session.runs[0]).toMatchObject({
+      requestId: "req-running",
+      status: "running",
+      recoverySource: "history",
+    });
+  });
+
+  it("merges refresh history without duplicating recovered runs or messages", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 1,
+          messageCount: 1,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-1:user",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "长回复",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-1",
+            input: "长回复",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            status: "running",
+            traces: [],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 2,
+        messageCount: 2,
+        refresh: true,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-1:user",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "长回复",
+            },
+          },
+          {
+            entry: {
+              id: "req-1:assistant",
+              requestId: "req-1",
+              timestamp: "2026-05-29T08:00:05.000Z",
+              kind: "assistant.decision",
+              xml: "<final_answer>完成了</final_answer>",
+            },
+            visible: { kind: "final_answer", text: "完成了" },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-1",
+            input: "长回复",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            endedAt: "2026-05-29T08:00:05.000Z",
+            status: "completed",
+            traces: [
+              {
+                step: 1,
+                seq: 0,
+                kind: "answer",
+                status: "done",
+                startedAt: "2026-05-29T08:00:00.000Z",
+                endedAt: "2026-05-29T08:00:05.000Z",
+              },
+            ],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session", refresh: true },
+      "history-session",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["长回复", "完成了"]);
+    expect(session.runs).toHaveLength(1);
+    expect(session.runs[0]).toMatchObject({
+      requestId: "req-1",
+      status: "completed",
+      recoverySource: undefined,
+    });
+  });
+
+  it("does not append replayed failed run events during refresh recovery", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 1,
+          messageCount: 1,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-failed:user",
+              requestId: "req-failed",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "触发失败",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-failed",
+            input: "触发失败",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            status: "running",
+            traces: [],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 1,
+        messageCount: 1,
+        refresh: true,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-failed:user",
+              requestId: "req-failed",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "触发失败",
+            },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-failed",
+            input: "触发失败",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            endedAt: "2026-05-29T08:00:02.000Z",
+            status: "failed",
+            traces: [
+              {
+                step: 0,
+                seq: 0,
+                kind: "answer",
+                status: "failed",
+                startedAt: "2026-05-29T08:00:00.000Z",
+                endedAt: "2026-05-29T08:00:02.000Z",
+                title: "回复数据丢失",
+                errorMessage: "model failed",
+              },
+            ],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: "history-session",
+        events: [
+          timedEnvelope(
+            EventKinds.RunFailed,
+            "2026-05-29T08:00:02.000Z",
+            { message: "model failed" },
+            "history-session",
+            "req-failed",
+          ),
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session", refresh: true },
+      "history-session",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["触发失败"]);
+    expect(session.runs).toHaveLength(1);
+    expect(session.runs[0]).toMatchObject({
+      requestId: "req-failed",
+      status: "failed",
+      recoverySource: undefined,
+    });
+  });
+
+  it("replaces existing assistant final answers for the same request", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [sessionItem({ sessionId: "history-session" })],
+    }));
+    useStore.getState().appendUserMessage("history-session", "req-1", "说一句");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.FinalAnswer,
+      { content: "第一版" },
+      "history-session",
+      "req-1",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.FinalAnswer,
+      { content: "第二版" },
+      "history-session",
+      "req-1",
+    ));
+
+    const session = useStore.getState().sessions["history-session"];
+    expect(session.messages.map((message) => message.content)).toEqual(["说一句", "第二版"]);
+  });
 });
 
 describe("session persistence migration", () => {
@@ -786,6 +1283,7 @@ describe("session persistence migration", () => {
     const migrated = migrate?.({
       sidebarCollapsed: true,
       rightPanelCollapsed: true,
+      motionLevel: "none",
       selectedModelProviderId: "provider-1",
       userProfile: {
         name: "Ada",
@@ -803,12 +1301,46 @@ describe("session persistence migration", () => {
     expect(migrated).toEqual({
       sidebarCollapsed: true,
       rightPanelCollapsed: true,
+      motionLevel: "full",
       selectedModelProviderId: "provider-1",
       userProfile: {
         name: "Ada",
         avatarDataUrl: null,
         updatedAt: "2026-05-29T08:00:00.000Z",
       },
+    });
+  });
+
+  it("keeps persisted motion level when migrating current preferences", () => {
+    const migrate = sessionPersistOptions.migrate;
+    expect(migrate).toBeDefined();
+
+    const migrated = migrate?.({
+      sidebarCollapsed: false,
+      rightPanelCollapsed: true,
+      motionLevel: "reduced",
+      selectedModelProviderId: null,
+      userProfile: DEFAULT_USER_PROFILE,
+      sessions: { discarded: {} },
+    }, 4);
+
+    expect(migrated).toMatchObject({
+      sidebarCollapsed: false,
+      rightPanelCollapsed: true,
+      motionLevel: "reduced",
+    });
+  });
+
+  it("falls back to full motion when persisted motion level is invalid", () => {
+    const migrate = sessionPersistOptions.migrate;
+    expect(migrate).toBeDefined();
+
+    const migrated = migrate?.({
+      motionLevel: "cinematic",
+    }, 4);
+
+    expect(migrated).toMatchObject({
+      motionLevel: "full",
     });
   });
 });

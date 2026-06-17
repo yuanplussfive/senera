@@ -200,6 +200,7 @@ export class AgentWebSocketServer {
         "session.history": async (request) => {
           await this.options.sessionManager.replayHistory({
             sessionId: request.sessionId,
+            refresh: request.refresh,
             onEvent: sendEvent,
           });
         },

@@ -178,6 +178,7 @@ export interface SessionHistoryStartedData {
   sessionId: string;
   totalEntries: number;
   messageCount: number;
+  refresh?: boolean;
 }
 
 export interface SessionHistoryEntryData {
@@ -201,6 +202,7 @@ export interface SessionRunHistoryChunkData {
 
 export interface SessionHistoryCompletedData {
   sessionId: string;
+  refresh?: boolean;
 }
 
 /** 精简档执行步骤轨迹（与后端 StepTrace 对齐）；回放时重建 run.steps */
@@ -230,7 +232,7 @@ export interface SessionHistoryStepsData {
     input: string;
     startedAt: string;
     endedAt?: string;
-    status: "completed" | "failed" | "cancelled";
+    status: "running" | "completed" | "failed" | "cancelled";
     modelProvider?: ModelProviderMetadata;
     traces: StepTraceDto[];
   }>;
@@ -320,6 +322,10 @@ export interface PluginConfigItem {
   manifestPath: string;
   configPath: string;
   configExists: boolean;
+  configSource: "file" | "example" | "default";
+  configTemplatePath?: string;
+  configTemplateExists: boolean;
+  needsUserConfig: boolean;
   enabled: boolean;
   available: boolean;
   toolCount: number;
@@ -566,7 +572,7 @@ export type WsRequest =
   | { type: "session.cancel"; sessionId: string }
   | { type: "session.truncate_from"; sessionId: string; requestId: string }
   | { type: "session.list" }
-  | { type: "session.history"; sessionId: string }
+  | { type: "session.history"; sessionId: string; refresh?: boolean }
   | { type: "session.rename"; sessionId: string; title: string }
   | { type: "model.list" }
   | { type: "plugin.config.list" }

@@ -72,6 +72,7 @@ export type AgentSessionDomainEvent =
         sessionId: string;
         totalEntries: number;
         messageCount: number;
+        refresh?: boolean;
       };
     }
   | {
@@ -103,6 +104,7 @@ export type AgentSessionDomainEvent =
       context: Required<Pick<AgentEventContext, "sessionId">>;
       data: {
         sessionId: string;
+        refresh?: boolean;
       };
     }
   | {
@@ -139,7 +141,7 @@ export interface AgentHistoryStepRun {
   input: string;
   startedAt: string;
   endedAt?: string;
-  status: "completed" | "failed" | "cancelled";
+  status: "running" | "completed" | "failed" | "cancelled";
   modelProvider?: AgentModelProviderMetadata;
   traces: StepTrace[];
 }
