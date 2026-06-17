@@ -169,6 +169,7 @@ class SqliteToolSearchMemoryStore implements MemoryStore {
       CREATE INDEX IF NOT EXISTS idx_tool_search_episodes_project_time
         ON tool_search_episodes(project_id, timestamp DESC);
     `);
+    this.migrate();
     this.insertStmt = this.db.prepare(`
       INSERT INTO tool_search_episodes
         (query, query_tokens, planner_tags, candidates, chosen_tools, outcome, project_id, timestamp)
@@ -213,6 +214,16 @@ class SqliteToolSearchMemoryStore implements MemoryStore {
 
   close(): void {
     this.db.close();
+  }
+
+  private migrate(): void {
+    const columns = this.db
+      .prepare("PRAGMA table_info(tool_search_episodes)")
+      .all() as Array<{ name: string }>;
+    const columnNames = new Set(columns.map((column) => column.name));
+    if (!columnNames.has("planner_tags")) {
+      this.db.exec("ALTER TABLE tool_search_episodes ADD COLUMN planner_tags TEXT NOT NULL DEFAULT '[]'");
+    }
   }
 }
 
