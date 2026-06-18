@@ -157,9 +157,6 @@ function action(kind: AgentActionDecision["action"]): AgentActionDecision {
   if (kind === "answer") {
     return {
       action: kind,
-      answer: {
-        content: "verification answer",
-      },
     };
   }
 

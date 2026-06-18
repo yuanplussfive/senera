@@ -28,6 +28,7 @@ function session(sessionId: string, runIds: string[]): SessionRecord {
       streamingRaw: "",
       xmlPreview: "",
       visibleText: "",
+      displayText: "",
       visibleKind: "unknown",
       expectedOutputMode: "unknown",
       decisionMode: "none",

@@ -67,7 +67,7 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
   return {
     headline: mapHeadlineItem(run, activeStep, latestDecision),
     groups,
-    bodyText: run.visibleText,
+    bodyText: run.displayText,
     placeholder: derivePendingLabel(run, activeStep, latestDecision),
     footer: deriveFooter(activeStep),
   };

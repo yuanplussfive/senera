@@ -2,6 +2,7 @@
 .env.local
 *.local
 senera.config.json
+package-lock.json
 Dist/
 Frontend/dist/
 Frontend/.vite-dev*.log

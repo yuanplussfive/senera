@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types"
-import type {  ActionDecision,  ActionKind,  ActionPlanInput,  ActionRunState,  ActionSelection,  AnswerActionPayload,  AskUserActionPayload,  CapabilityNeed,  DiscoverToolsActionPayload,  EvidenceSlot,  ExecutionDeltaOp,  PlannerEvidenceMemoryItem,  PlannerJournalItem,  PlannerTimelineTurn,  ProgressSignals,  RepeatedCallWarning,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  UseToolsActionPayload } from "./types"
+import type {  ActionDecision,  ActionKind,  ActionPlanInput,  ActionRunState,  ActionSelection,  AskUserActionPayload,  CapabilityNeed,  DiscoverToolsActionPayload,  EvidenceSlot,  ExecutionDeltaOp,  PlannerEvidenceMemoryItem,  PlannerJournalItem,  PlannerTimelineTurn,  ProgressSignals,  RepeatedCallWarning,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  UseToolsActionPayload } from "./types"
 import type * as types from "./types"
 
 /******************************************************************************
@@ -38,7 +38,6 @@ export interface StreamState<T> {
 export namespace partial_types {
     export interface ActionDecision {
       action?: types.ActionKind | null
-      answer?: AnswerActionPayload | null
       askUser?: AskUserActionPayload | null
       useTools?: UseToolsActionPayload | null
       discoverTools?: DiscoverToolsActionPayload | null
@@ -59,9 +58,6 @@ export namespace partial_types {
     }
     export interface ActionSelection {
       action?: types.ActionKind | null
-    }
-    export interface AnswerActionPayload {
-      content?: string | null
     }
     export interface AskUserActionPayload {
       question?: string | null

@@ -11,7 +11,7 @@ const machine = new AgentLoopStateMachine({
 });
 
 const started = machine.start({
-  requestId: "verify-direct-answer",
+  requestId: "verify-streamed-answer-route",
   input: "直接回答",
   loadedToolNames: [],
   emitRunStarted: false,
@@ -53,18 +53,14 @@ const plan: AgentActionPlanResult = {
   },
   decision: {
     action: "answer",
-    answer: {
-      content: "这是 planner 的直接回复。",
-    },
   },
 };
-assert.equal(plan.kind, "planned");
 
-const completed = machine.consume(started.state, {
+const routed = machine.consume(started.state, {
   kind: "succeeded",
   output: {
     kind: "action_planned",
-    requestId: "verify-direct-answer",
+    requestId: "verify-streamed-answer-route",
     step: 1,
     plan,
     loadedToolNames: [],
@@ -74,17 +70,56 @@ const completed = machine.consume(started.state, {
   },
 });
 
+assert.equal(routed.state.kind, "running");
+assert.equal(routed.command?.kind, "render_prompt");
+assert.equal(routed.events.some((event) => event.kind === AgentEventKinds.ActionPlanned), true);
+assert.equal(routed.events.some((event) => event.kind === AgentEventKinds.FinalAnswer), false);
+assert.equal(routed.events.some((event) => event.kind === AgentEventKinds.RunCompleted), false);
+
+const collecting = machine.consume(routed.state, {
+  kind: "succeeded",
+  output: {
+    kind: "prompt_rendered",
+    requestId: "verify-streamed-answer-route",
+    step: 1,
+    prompt: "<agent_system></agent_system>",
+    promptTokenCount: 1,
+  },
+});
+
+assert.equal(collecting.state.kind, "running");
+assert.equal(collecting.command?.kind, "collect_decision_xml");
+if (collecting.command?.kind !== "collect_decision_xml") {
+  throw new Error("Expected collect_decision_xml command.");
+}
+assert.equal(collecting.command.actionDirective, plan.decision);
+
+const completed = machine.consume(collecting.state, {
+  kind: "succeeded",
+  output: {
+    kind: "final_text_collected",
+    requestId: "verify-streamed-answer-route",
+    step: 1,
+    responseText: "这是主模型流式路径收集后的最终回复。",
+    modelProvider: {
+      id: "verification-provider",
+      kind: "openai-compatible",
+      endpoint: "openai-chat",
+      baseUrl: "https://example.invalid/v1",
+      model: "verification-model",
+    },
+    usage: {
+      source: "local_estimate",
+      inputTokens: 1,
+      outputTokens: 1,
+      totalTokens: 2,
+    },
+  },
+});
+
 assert.equal(completed.command, undefined);
 assert.equal(completed.state.kind, "completed");
-if (completed.state.kind !== "completed") {
-  throw new Error("Expected completed state.");
-}
-assert.deepEqual(completed.state.result.terminal, {
-  kind: "FinalAnswer",
-  content: "这是 planner 的直接回复。",
-});
-assert.equal(completed.events.some((event) => event.kind === AgentEventKinds.ActionPlanned), true);
 assert.equal(completed.events.some((event) => event.kind === AgentEventKinds.FinalAnswer), true);
 assert.equal(completed.events.some((event) => event.kind === AgentEventKinds.RunCompleted), true);
 
-console.log("Action planner direct answer verification passed.");
+console.log("Action planner streamed answer route verification passed.");

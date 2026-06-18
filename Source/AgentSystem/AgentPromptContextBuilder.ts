@@ -62,7 +62,7 @@ export interface AgentPromptToolCallProtocolContext {
 
 export interface AgentPromptActionDirectiveContext {
   action: string;
-  instruction: string;
+  instruction: string | null;
   preferredTools: string[];
   toolSearchQueries: string[];
   needs: AgentActionCapabilityNeed[];
@@ -140,9 +140,10 @@ export class AgentPromptContextBuilder {
   private buildActionDirectiveContext(
     directive: AgentActionDecision,
   ): AgentPromptActionDirectiveContext {
+    const instruction = agentActionInstruction(directive).trim();
     return {
       action: directive.action,
-      instruction: agentActionInstruction(directive),
+      instruction: instruction.length > 0 ? instruction : null,
       preferredTools: agentActionPreferredTools(directive),
       toolSearchQueries: agentActionToolSearchQueries(directive),
       needs: agentActionCapabilityNeeds(directive),

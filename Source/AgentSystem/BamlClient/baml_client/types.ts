@@ -68,7 +68,6 @@ export enum ToolCallStatus {
 
 export interface ActionDecision {
   action: ActionKind
-  answer?: AnswerActionPayload | null
   askUser?: AskUserActionPayload | null
   useTools?: UseToolsActionPayload | null
   discoverTools?: DiscoverToolsActionPayload | null
@@ -95,11 +94,6 @@ export interface ActionRunState {
 
 export interface ActionSelection {
   action: ActionKind
-  
-}
-
-export interface AnswerActionPayload {
-  content: string
   
 }
 

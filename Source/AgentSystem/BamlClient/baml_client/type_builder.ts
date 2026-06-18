@@ -26,153 +26,147 @@ export { FieldType, EnumBuilder, ClassBuilder }
 
 export default class TypeBuilder {
     private tb: _TypeBuilder;
-    
-    ActionDecision: ClassViewer<'ActionDecision', "action" | "answer" | "askUser" | "useTools" | "discoverTools">;
-    
+
+    ActionDecision: ClassViewer<'ActionDecision', "action" | "askUser" | "useTools" | "discoverTools">;
+
     ActionPlanInput: ClassViewer<'ActionPlanInput', "runState" | "timeline" | "evidenceMemory" | "plannerJournal" | "toolCatalog">;
-    
+
     ActionRunState: ClassViewer<'ActionRunState', "currentStep" | "dynamicTools" | "loadedTools" | "progress" | "warnings">;
-    
+
     ActionSelection: ClassViewer<'ActionSelection', "action">;
-    
-    AnswerActionPayload: ClassViewer<'AnswerActionPayload', "content">;
-    
+
     AskUserActionPayload: ClassViewer<'AskUserActionPayload', "question" | "reason">;
-    
+
     CapabilityNeed: ClassViewer<'CapabilityNeed', "actions" | "targets" | "inputs" | "outputs" | "evidence" | "effects">;
-    
+
     DiscoverToolsActionPayload: ClassViewer<'DiscoverToolsActionPayload', "queries" | "needs">;
-    
+
     EvidenceSlot: ClassViewer<'EvidenceSlot', "name" | "value">;
-    
+
     PlannerEvidenceMemoryItem: ClassViewer<'PlannerEvidenceMemoryItem', "evidenceRef" | "kind" | "locator" | "display" | "label" | "confidence" | "toolName" | "artifactUri" | "facts" | "artifactRefs">;
-    
+
     PlannerJournalItem: ClassViewer<'PlannerJournalItem', "requestId" | "step" | "selectedAction" | "evidenceRefs" | "artifactUris" | "loadedTools" | "outcome">;
-    
+
     PlannerTimelineTurn: ClassViewer<'PlannerTimelineTurn', "index" | "role" | "kind" | "step" | "content" | "evidenceRefs" | "artifactUris">;
-    
+
     ProgressSignals: ClassViewer<'ProgressSignals', "totalToolCalls" | "totalEvidence" | "lastNewEvidenceStep" | "repeatedCallCount" | "stalled">;
-    
+
     RepeatedCallWarning: ClassViewer<'RepeatedCallWarning', "toolName" | "argsHash" | "count" | "lastStep">;
-    
+
     ToolCapabilityFacets: ClassViewer<'ToolCapabilityFacets', "Actions" | "Targets" | "Inputs" | "Outputs" | "Evidence" | "Effects">;
-    
+
     ToolCapabilityItem: ClassViewer<'ToolCapabilityItem', "id" | "title" | "description" | "facets" | "risk">;
-    
+
     ToolCapabilityRisk: ClassViewer<'ToolCapabilityRisk', "sideEffect" | "permission">;
-    
+
     ToolCatalogItem: ClassViewer<'ToolCatalogItem', "name" | "title" | "summary" | "capabilities" | "tags" | "useCases" | "examples" | "avoid" | "permissions" | "loaded">;
-    
+
     UseToolsActionPayload: ClassViewer<'UseToolsActionPayload', "preferredTools" | "instruction">;
-    
-    
+
+
     ActionKind: EnumViewer<'ActionKind', "Answer" | "AskUser" | "DiscoverTools" | "UseTools">;
-    
+
     ExecutionDeltaOp: EnumViewer<'ExecutionDeltaOp', "AddCall" | "AddEvidence" | "AddWarning">;
-    
+
     ToolCallStatus: EnumViewer<'ToolCallStatus', "Success" | "Failure" | "Empty">;
-    
+
 
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ActionDecision","ActionPlanInput","ActionRunState","ActionSelection","AnswerActionPayload","AskUserActionPayload","CapabilityNeed","DiscoverToolsActionPayload","EvidenceSlot","PlannerEvidenceMemoryItem","PlannerJournalItem","PlannerTimelineTurn","ProgressSignals","RepeatedCallWarning","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","UseToolsActionPayload",
+            "ActionDecision","ActionPlanInput","ActionRunState","ActionSelection","AskUserActionPayload","CapabilityNeed","DiscoverToolsActionPayload","EvidenceSlot","PlannerEvidenceMemoryItem","PlannerJournalItem","PlannerTimelineTurn","ProgressSignals","RepeatedCallWarning","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","UseToolsActionPayload",
           ]),
           enums: new Set([
             "ActionKind","ExecutionDeltaOp","ToolCallStatus",
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
-        
+
         this.ActionDecision = this.tb.classViewer("ActionDecision", [
-          "action","answer","askUser","useTools","discoverTools",
+          "action","askUser","useTools","discoverTools",
         ]);
-        
+
         this.ActionPlanInput = this.tb.classViewer("ActionPlanInput", [
           "runState","timeline","evidenceMemory","plannerJournal","toolCatalog",
         ]);
-        
+
         this.ActionRunState = this.tb.classViewer("ActionRunState", [
           "currentStep","dynamicTools","loadedTools","progress","warnings",
         ]);
-        
+
         this.ActionSelection = this.tb.classViewer("ActionSelection", [
           "action",
         ]);
-        
-        this.AnswerActionPayload = this.tb.classViewer("AnswerActionPayload", [
-          "content",
-        ]);
-        
+
         this.AskUserActionPayload = this.tb.classViewer("AskUserActionPayload", [
           "question","reason",
         ]);
-        
+
         this.CapabilityNeed = this.tb.classViewer("CapabilityNeed", [
           "actions","targets","inputs","outputs","evidence","effects",
         ]);
-        
+
         this.DiscoverToolsActionPayload = this.tb.classViewer("DiscoverToolsActionPayload", [
           "queries","needs",
         ]);
-        
+
         this.EvidenceSlot = this.tb.classViewer("EvidenceSlot", [
           "name","value",
         ]);
-        
+
         this.PlannerEvidenceMemoryItem = this.tb.classViewer("PlannerEvidenceMemoryItem", [
           "evidenceRef","kind","locator","display","label","confidence","toolName","artifactUri","facts","artifactRefs",
         ]);
-        
+
         this.PlannerJournalItem = this.tb.classViewer("PlannerJournalItem", [
           "requestId","step","selectedAction","evidenceRefs","artifactUris","loadedTools","outcome",
         ]);
-        
+
         this.PlannerTimelineTurn = this.tb.classViewer("PlannerTimelineTurn", [
           "index","role","kind","step","content","evidenceRefs","artifactUris",
         ]);
-        
+
         this.ProgressSignals = this.tb.classViewer("ProgressSignals", [
           "totalToolCalls","totalEvidence","lastNewEvidenceStep","repeatedCallCount","stalled",
         ]);
-        
+
         this.RepeatedCallWarning = this.tb.classViewer("RepeatedCallWarning", [
           "toolName","argsHash","count","lastStep",
         ]);
-        
+
         this.ToolCapabilityFacets = this.tb.classViewer("ToolCapabilityFacets", [
           "Actions","Targets","Inputs","Outputs","Evidence","Effects",
         ]);
-        
+
         this.ToolCapabilityItem = this.tb.classViewer("ToolCapabilityItem", [
           "id","title","description","facets","risk",
         ]);
-        
+
         this.ToolCapabilityRisk = this.tb.classViewer("ToolCapabilityRisk", [
           "sideEffect","permission",
         ]);
-        
+
         this.ToolCatalogItem = this.tb.classViewer("ToolCatalogItem", [
           "name","title","summary","capabilities","tags","useCases","examples","avoid","permissions","loaded",
         ]);
-        
+
         this.UseToolsActionPayload = this.tb.classViewer("UseToolsActionPayload", [
           "preferredTools","instruction",
         ]);
-        
-        
+
+
         this.ActionKind = this.tb.enumViewer("ActionKind", [
           "Answer","AskUser","DiscoverTools","UseTools",
         ]);
-        
+
         this.ExecutionDeltaOp = this.tb.enumViewer("ExecutionDeltaOp", [
           "AddCall","AddEvidence","AddWarning",
         ]);
-        
+
         this.ToolCallStatus = this.tb.enumViewer("ToolCallStatus", [
           "Success","Failure","Empty",
         ]);
-        
+
     }
 
     reset(): void {
@@ -184,7 +178,7 @@ export default class TypeBuilder {
         // wraps over the Rust type builder, so we only need to call tb.reset().
         // In JS it's not possible unless we refactor the way class builders are
         // accessed.
-        
+
     }
 
     __tb() {
@@ -246,4 +240,4 @@ export default class TypeBuilder {
     addBaml(baml: string): void {
         this.tb.addBaml(baml);
     }
-}
+}

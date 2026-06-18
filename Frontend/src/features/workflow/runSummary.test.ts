@@ -14,6 +14,7 @@ describe("summarizeRun", () => {
       streamingRaw: "",
       xmlPreview: "",
       visibleText: "",
+      displayText: "",
       visibleKind: "unknown",
       expectedOutputMode: "unknown",
       decisionMode: "none",

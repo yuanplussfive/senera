@@ -70,5 +70,18 @@ async function main(): Promise<void> {
   assert.doesNotMatch(directiveText, /<required_capabilities>/);
   assert.doesNotMatch(directiveText, /<tags>/);
 
+  const answer: AgentActionDecision = {
+    action: "answer",
+  };
+  const answerContext = new AgentPromptContextBuilder(registry, config).buildBaseContext({
+    loadedToolNames: ["ToolSearchTool"],
+    actionDirective: answer,
+  });
+  const answerDirectiveText = await promptRenderer.renderFile(template.path, {
+    ...answerContext,
+  });
+  assert.match(answerDirectiveText, /<action>answer<\/action>/);
+  assert.doesNotMatch(answerDirectiveText, /<instruction>/);
+
   console.log("Action planner branch payload verification passed.");
 }

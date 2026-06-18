@@ -34,9 +34,6 @@ export function createActionPlanInputFixture(
 export function createActionDecisionFixture(): string {
   return JSON.stringify({
     action: "Answer",
-    answer: {
-      content: "Direct fixture answer.",
-    },
     askUser: null,
     useTools: null,
     discoverTools: null,

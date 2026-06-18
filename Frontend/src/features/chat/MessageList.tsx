@@ -7,10 +7,15 @@ import { useMotionLevel } from "../../shared/motion";
 import { DeleteMessageDialog } from "./DeleteMessageDialog";
 import { EditMessageDialog } from "./EditMessageDialog";
 import { MessageRow } from "./MessageRow";
+import { isTerminalAssistantMessageForRun } from "./messagePresentation";
 import { MotionMessageItem } from "./MotionMessageItem";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { StreamingRow } from "./StreamingRow";
 import { useMessageHeightObserver } from "./useMessageHeightObserver";
+import {
+  readStreamingDisplayActivityRevision,
+  useStreamingDisplayTicker,
+} from "./useStreamingDisplayTicker";
 import { useVirtuosoAutoStickToBottom } from "./useVirtuosoAutoStickToBottom";
 
 interface MessageListProps {
@@ -79,17 +84,25 @@ export function MessageList({
     for (const run of runs) map.set(run.requestId, run);
     return map;
   }, [runs]);
+  const hasTerminalAssistantMessage = useMemo(
+    () => messages.some((message) => isTerminalAssistantMessageForRun(message, currentRun)),
+    [currentRun, messages],
+  );
+  const streamingRun = currentRun && !hasTerminalAssistantMessage ? currentRun : undefined;
   const items = useMemo(
-    () => (currentRun ? [...messages, { __streaming: true as const, run: currentRun }] : messages),
-    [messages, currentRun],
+    () => (streamingRun ? [...messages, { __streaming: true as const, run: streamingRun }] : messages),
+    [messages, streamingRun],
   );
   const lastItemKey = items.length > 0 ? readMessageListItemKey(items[items.length - 1]) : "";
+  const displayActivityRevision = readStreamingDisplayActivityRevision(runs, currentRun);
   const autoScroll = useVirtuosoAutoStickToBottom({
     itemCount: items.length,
     resetKey: sessionId,
-    activityKey: `${lastItemKey}:${currentRun?.revision ?? 0}`,
+    activityKey: `${lastItemKey}:${displayActivityRevision}`,
     bottomThreshold: MESSAGE_LIST_BOTTOM_THRESHOLD,
   });
+
+  useStreamingDisplayTicker(sessionId, runs);
 
   // 清理旧会话的高度缓存
   useEffect(() => {

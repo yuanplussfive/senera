@@ -24,7 +24,7 @@ import { toBamlError, BamlStream, BamlAbortError, Collector, ClientRegistry } fr
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types"
 import type { partial_types } from "./partial_types"
 import type * as types from "./types"
-import type {ActionDecision, ActionKind, ActionPlanInput, ActionRunState, ActionSelection, AnswerActionPayload, AskUserActionPayload, CapabilityNeed, DiscoverToolsActionPayload, EvidenceSlot, ExecutionDeltaOp, PlannerEvidenceMemoryItem, PlannerJournalItem, PlannerTimelineTurn, ProgressSignals, RepeatedCallWarning, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, UseToolsActionPayload} from "./types"
+import type {ActionDecision, ActionKind, ActionPlanInput, ActionRunState, ActionSelection, AskUserActionPayload, CapabilityNeed, DiscoverToolsActionPayload, EvidenceSlot, ExecutionDeltaOp, PlannerEvidenceMemoryItem, PlannerJournalItem, PlannerTimelineTurn, ProgressSignals, RepeatedCallWarning, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, UseToolsActionPayload} from "./types"
 import type TypeBuilder from "./type_builder"
 import { AsyncHttpRequest, AsyncHttpStreamRequest } from "./async_request"
 import { LlmResponseParser, LlmStreamParser } from "./parser"
@@ -96,7 +96,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
         return this.llmStreamParser
         }
 
-        
+
         async BuildActionPayload(
         promptJson: string,
         __baml_options__?: BamlCallOptions<never>
@@ -152,7 +152,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             throw toBamlError(error);
             }
             }
-            
+
         async RepairActionPayload(
         promptJson: string,
         __baml_options__?: BamlCallOptions<never>
@@ -208,7 +208,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             throw toBamlError(error);
             }
             }
-            
+
         async RepairActionSelection(
         promptJson: string,
         __baml_options__?: BamlCallOptions<never>
@@ -264,7 +264,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             throw toBamlError(error);
             }
             }
-            
+
         async SelectAction(
         promptJson: string,
         __baml_options__?: BamlCallOptions<never>
@@ -320,7 +320,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             throw toBamlError(error);
             }
             }
-            
+
             }
 
             class BamlStreamClient {
@@ -334,7 +334,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             this.bamlOptions = bamlOptions || {}
             }
 
-            
+
             BuildActionPayload(
             promptJson: string,
             __baml_options__?: BamlCallOptions<never>
@@ -408,7 +408,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   throw toBamlError(error);
                   }
                   }
-                  
+
             RepairActionPayload(
             promptJson: string,
             __baml_options__?: BamlCallOptions<never>
@@ -482,7 +482,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   throw toBamlError(error);
                   }
                   }
-                  
+
             RepairActionSelection(
             promptJson: string,
             __baml_options__?: BamlCallOptions<never>
@@ -556,7 +556,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   throw toBamlError(error);
                   }
                   }
-                  
+
             SelectAction(
             promptJson: string,
             __baml_options__?: BamlCallOptions<never>
@@ -630,8 +630,8 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   throw toBamlError(error);
                   }
                   }
-                  
+
                   }
 
                   export const b = new BamlAsyncClient(DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME,
-                  DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_CTX)
+                  DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_CTX)

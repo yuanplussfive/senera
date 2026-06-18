@@ -196,6 +196,7 @@ function generateMockRuns(messages: ChatMessage[], now: number): RunRecord[] {
       streamingRaw: "",
       xmlPreview: "",
       visibleText: "",
+      displayText: "",
       visibleKind: "final_answer",
       expectedOutputMode: "final_text",
       decisionMode: "none",

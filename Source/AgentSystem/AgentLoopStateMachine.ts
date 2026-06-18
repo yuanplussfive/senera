@@ -14,7 +14,6 @@ import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "./AgentModelMetadata.js";
 import { AgentEventKinds } from "./AgentEvent.js";
 import {
-  agentActionDirectAnswer,
   type AgentActionDecision,
   type AgentActionPlanResult,
 } from "./AgentActionPlanner.js";
@@ -293,43 +292,6 @@ export class AgentLoopStateMachine {
           entry.plan,
           entry.loadedToolNames,
         );
-        const directAnswer = agentActionDirectAnswer(entry.actionDirective);
-        if (directAnswer) {
-          const terminal = {
-            kind: "FinalAnswer" as const,
-            content: directAnswer,
-          };
-          return {
-            state: {
-              kind: "completed",
-              requestId: entry.requestId,
-            result: {
-              terminal,
-              decisionXml: directAnswer,
-              conversationEntries: nextState.conversationEntries,
-              stepTraces: [
-                ...nextState.stepTraces,
-                buildAnswerTrace(entry.step, nextState.stepTraces.length, "final_answer"),
-              ],
-            },
-            },
-            events: [
-              ...actionEvents,
-              ...this.eventFactory.terminal({
-                event: {
-                  kind: AgentEventKinds.FinalAnswer,
-                  context: {
-                  requestId: entry.requestId,
-                },
-                data: {
-                  content: directAnswer,
-                },
-              },
-              result: terminal,
-              }, entry.requestId),
-            ],
-          };
-        }
 
         return {
           state: nextState,

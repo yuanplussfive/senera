@@ -34,6 +34,7 @@ function createRun(stepCount: number): RunRecord {
     streamingRaw: "",
     xmlPreview: "",
     visibleText: "",
+    displayText: "",
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",

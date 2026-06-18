@@ -4,6 +4,7 @@ import { immer } from "zustand/middleware/immer";
 import { DEFAULT_SESSION_TITLE } from "./session/defaults";
 import { clearPersistedStore, sessionPersistOptions } from "./session/persistence";
 import {
+  advanceRunDisplayText,
   applyEvent,
   bumpSessionMessageCount,
   createRunRecord,
@@ -102,8 +103,10 @@ export interface RunRecord {
   streamingRaw: string;
   /** decision.xml.progress 累积（清洗后的 XML） */
   xmlPreview: string;
-  /** 后端实时解析出的"用户可见文本"——直接用于打字机效果 */
+  /** 后端实时解析出的用户可见文本目标 */
   visibleText: string;
+  /** 前端平滑消费 visibleText 后真正展示的文本，不影响 streamingRaw 准确性 */
+  displayText: string;
   visibleKind: "final_answer" | "ask_user" | "tool_calls" | "unknown";
   expectedOutputMode: "unknown" | "final_text" | "tool_call_xml";
   decisionMode: "none" | "tool_candidate" | "final_text";
@@ -176,6 +179,7 @@ export interface StoreState {
     input: string,
     attachments?: UploadAttachmentData[],
   ) => void;
+  advanceStreamingDisplay: (sessionId: string, requestId: string) => boolean;
   ingest: (env: EventEnvelope) => void;
   removeSession: (sessionId: string) => void;
   clearAllSessions: (sessionIds?: string[]) => void;
@@ -404,6 +408,16 @@ export const useStore = create<StoreState>()(
         session.activeRequestId = requestId;
         session.runs.push(createRunRecord({ requestId, startedAt: nowIso(), input }));
       }),
+
+      advanceStreamingDisplay: (sessionId, requestId) => {
+        let pending = false;
+        set((state) => {
+          const run = state.sessions[sessionId]?.runs.find((item) => item.requestId === requestId);
+          if (!run) return;
+          pending = advanceRunDisplayText(run, state.motionLevel);
+        });
+        return pending;
+      },
 
       ingest: (env) =>
         set((state) => {

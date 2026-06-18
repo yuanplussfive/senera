@@ -12,7 +12,6 @@ import type { SanitizedDecisionXml } from "./AgentDecisionXmlSanitizer.js";
 import type { AgentDecision } from "./Types.js";
 import {
   agentActionCapabilityNeeds,
-  agentActionDirectAnswer,
   agentActionInstruction,
   agentActionPreferredTools,
   agentActionToolSearchQueries,
@@ -83,7 +82,6 @@ export class AgentLoopEventFactory {
               action: plan.decision.action,
               expectedOutputMode: agentDecisionOutputContractForAction(plan.decision.action),
               instruction: agentActionInstruction(plan.decision),
-              answerPreview: truncateEventText(agentActionDirectAnswer(plan.decision) ?? "", 160),
               askUserQuestion: plan.decision.action === "ask_user" ? plan.decision.askUser.question : undefined,
               capabilityNeeds: agentActionCapabilityNeeds(plan.decision),
               preferredTools: agentActionPreferredTools(plan.decision),
@@ -416,31 +414,4 @@ export class AgentLoopEventFactory {
       },
     ];
   }
-}
-
-function truncateEventText(value: string, maxLength: number): string | undefined {
-  const normalized = collapseWhitespace(value);
-  if (normalized.length === 0) {
-    return undefined;
-  }
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
-}
-
-function collapseWhitespace(value: string): string {
-  const parts: string[] = [];
-  let current = "";
-  for (const char of value) {
-    if (char.trim().length === 0) {
-      if (current.length > 0) {
-        parts.push(current);
-        current = "";
-      }
-      continue;
-    }
-    current += char;
-  }
-  if (current.length > 0) {
-    parts.push(current);
-  }
-  return parts.join(" ");
 }

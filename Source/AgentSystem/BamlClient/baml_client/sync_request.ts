@@ -22,7 +22,7 @@ import type { BamlRuntime, BamlCtxManager, Image, Audio, Pdf, Video } from "@bou
 import { toBamlError, HTTPRequest, ClientRegistry } from "@boundaryml/baml"
 import type { Checked, Check } from "./types"
 import type * as types from "./types"
-import type {ActionDecision, ActionKind, ActionPlanInput, ActionRunState, ActionSelection, AnswerActionPayload, AskUserActionPayload, CapabilityNeed, DiscoverToolsActionPayload, EvidenceSlot, ExecutionDeltaOp, PlannerEvidenceMemoryItem, PlannerJournalItem, PlannerTimelineTurn, ProgressSignals, RepeatedCallWarning, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, UseToolsActionPayload} from "./types"
+import type {ActionDecision, ActionKind, ActionPlanInput, ActionRunState, ActionSelection, AskUserActionPayload, CapabilityNeed, DiscoverToolsActionPayload, EvidenceSlot, ExecutionDeltaOp, PlannerEvidenceMemoryItem, PlannerJournalItem, PlannerTimelineTurn, ProgressSignals, RepeatedCallWarning, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, UseToolsActionPayload} from "./types"
 import type TypeBuilder from "./type_builder"
 import type * as events from "./events"
 
@@ -37,7 +37,7 @@ type BamlCallOptions<EventsT = never> = {
 export class HttpRequest {
   constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
-  
+
   BuildActionPayload(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -70,7 +70,7 @@ export class HttpRequest {
       throw toBamlError(error);
     }
   }
-  
+
   RepairActionPayload(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -103,7 +103,7 @@ export class HttpRequest {
       throw toBamlError(error);
     }
   }
-  
+
   RepairActionSelection(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -136,7 +136,7 @@ export class HttpRequest {
       throw toBamlError(error);
     }
   }
-  
+
   SelectAction(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -169,13 +169,13 @@ export class HttpRequest {
       throw toBamlError(error);
     }
   }
-  
+
 }
 
 export class HttpStreamRequest {
   constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
-  
+
   BuildActionPayload(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -208,7 +208,7 @@ export class HttpStreamRequest {
       throw toBamlError(error);
     }
   }
-  
+
   RepairActionPayload(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -241,7 +241,7 @@ export class HttpStreamRequest {
       throw toBamlError(error);
     }
   }
-  
+
   RepairActionSelection(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -274,7 +274,7 @@ export class HttpStreamRequest {
       throw toBamlError(error);
     }
   }
-  
+
   SelectAction(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -307,5 +307,5 @@ export class HttpStreamRequest {
       throw toBamlError(error);
     }
   }
-  
-}
+
+}

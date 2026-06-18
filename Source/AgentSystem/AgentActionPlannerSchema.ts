@@ -20,9 +20,6 @@ const ActionSelectionSchema = z
 const ActionDecisionSchema = z
   .object({
     action: z.enum(ActionKind),
-    answer: z.object({
-      content: z.string(),
-    }).nullish(),
     askUser: z.object({
       question: z.string(),
       reason: z.string().nullish(),
@@ -46,9 +43,6 @@ const ActionDecisionSchema = z
   .strict()
   .superRefine((decision, context) => {
     const payloadKeys = ([{
-      name: "answer",
-      value: decision.answer,
-    }, {
       name: "askUser",
       value: decision.askUser,
     }, {
@@ -59,19 +53,23 @@ const ActionDecisionSchema = z
       value: decision.discoverTools,
     }] as const).filter((entry) => entry.value !== null && entry.value !== undefined);
     const expectedPayload = ActionPayloadByKind[decision.action];
+
+    if (!expectedPayload) {
+      if (payloadKeys.length !== 0) {
+        context.addIssue({
+          code: "custom",
+          path: [],
+          message: `Action ${decision.action} 不需要 payload。`,
+        });
+      }
+      return;
+    }
+
     if (payloadKeys.length !== 1 || payloadKeys[0]?.name !== expectedPayload) {
       context.addIssue({
         code: "custom",
         path: [expectedPayload],
         message: `Action ${decision.action} 必须且只能提供 ${expectedPayload} payload。`,
-      });
-    }
-
-    if (decision.action === ActionKind.Answer && !readNonEmptyString(decision.answer?.content)) {
-      context.addIssue({
-        code: "custom",
-        path: ["answer", "content"],
-        message: "Answer 需要 answer.content 提供最终回复内容。",
       });
     }
 
@@ -139,9 +137,6 @@ export function parseActionDecision(
     case ActionKind.Answer:
       return {
         action: "answer",
-        answer: {
-          content: readNonEmptyString(parsed.answer?.content) ?? "",
-        },
       };
     case ActionKind.AskUser:
       return {
@@ -189,12 +184,11 @@ export class AgentActionPlannerValidationError extends Error {
   }
 }
 
-const ActionPayloadByKind = {
-  [ActionKind.Answer]: "answer",
+const ActionPayloadByKind: Partial<Record<ActionKind, "askUser" | "discoverTools" | "useTools">> = {
   [ActionKind.AskUser]: "askUser",
   [ActionKind.DiscoverTools]: "discoverTools",
   [ActionKind.UseTools]: "useTools",
-} as const satisfies Record<ActionKind, "answer" | "askUser" | "discoverTools" | "useTools">;
+};
 
 function normalizeCapabilityNeed(value: {
   actions?: string[] | null;

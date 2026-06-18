@@ -17,6 +17,7 @@ function buildRun(overrides: Partial<RunRecord> = {}): RunRecord {
     streamingRaw: "",
     xmlPreview: "",
     visibleText: "",
+    displayText: "",
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",
@@ -111,6 +112,18 @@ describe("deriveFeedModel", () => {
       title: "生成回复",
     });
     expect(model.placeholder).toBe("正在生成回复");
+  });
+
+  it("uses display text as the rendered body while visible text remains the target", () => {
+    const model = deriveFeedModel(
+      buildRun({
+        visibleKind: "final_answer",
+        visibleText: "完整回复",
+        displayText: "完整",
+      }),
+    );
+
+    expect(model.bodyText).toBe("完整");
   });
 });
 

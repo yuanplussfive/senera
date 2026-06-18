@@ -2,7 +2,7 @@ import type { ModelProviderListItem } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { MessageAvatar, MessageMeta } from "./MessageChrome";
 import { MessageActions } from "./MessageActions";
-import { readAssistantDisplayName } from "./messagePresentation";
+import { readAssistantDisplayContent, readAssistantDisplayName } from "./messagePresentation";
 import { AssistantMessageBody } from "./AssistantMessageBody";
 import { SystemMessageRow } from "./SystemMessageRow";
 import { UserMessageRow } from "./UserMessageRow";
@@ -51,6 +51,8 @@ export function MessageRow({
     return <SystemMessageRow message={message} />;
   }
 
+  const displayContent = readAssistantDisplayContent(message, run);
+
   return (
     <div className="group/msg flex items-start gap-3">
       <MessageAvatar role="assistant" icon={assistantAvatarIcon} />
@@ -60,7 +62,7 @@ export function MessageRow({
           timestamp={message.createdAt}
         />
         <AssistantMessageBody
-          message={message}
+          message={{ ...message, content: displayContent }}
           run={run}
           onViewWorkflow={onViewWorkflow}
         />

@@ -37,7 +37,6 @@ export type {
 } from "./AgentActionPlannerTypes.js";
 export {
   agentActionCapabilityNeeds,
-  agentActionDirectAnswer,
   agentActionInstruction,
   agentActionPreferredTools,
   agentActionToolSearchQueries,
@@ -83,6 +82,19 @@ export class AgentActionPlanner {
         }),
       );
       throwIfAborted(options.signal);
+      if (selection.action === ActionKind.Answer) {
+        return {
+          kind: "planned",
+          decision: {
+            action: "answer",
+          },
+          input,
+          selectedAction: ActionKindMap[selection.action],
+          selectionRepaired: selection.repaired,
+          payloadRepaired: false,
+        };
+      }
+
       const payload = await this.runStage(
         AgentActionPlannerStageNames.BuildActionPayload,
         options.onStage,

@@ -22,7 +22,7 @@ import type { BamlRuntime, FunctionResult, BamlCtxManager, Image, Audio, Pdf, Vi
 import { toBamlError, BamlAbortError, ClientRegistry, type HTTPRequest } from "@boundaryml/baml"
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types"
 import type * as types from "./types"
-import type {ActionDecision, ActionKind, ActionPlanInput, ActionRunState, ActionSelection, AnswerActionPayload, AskUserActionPayload, CapabilityNeed, DiscoverToolsActionPayload, EvidenceSlot, ExecutionDeltaOp, PlannerEvidenceMemoryItem, PlannerJournalItem, PlannerTimelineTurn, ProgressSignals, RepeatedCallWarning, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, UseToolsActionPayload} from "./types"
+import type {ActionDecision, ActionKind, ActionPlanInput, ActionRunState, ActionSelection, AskUserActionPayload, CapabilityNeed, DiscoverToolsActionPayload, EvidenceSlot, ExecutionDeltaOp, PlannerEvidenceMemoryItem, PlannerJournalItem, PlannerTimelineTurn, ProgressSignals, RepeatedCallWarning, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, UseToolsActionPayload} from "./types"
 import type TypeBuilder from "./type_builder"
 import { HttpRequest, HttpStreamRequest } from "./sync_request"
 import { LlmResponseParser, LlmStreamParser } from "./parser"
@@ -96,7 +96,7 @@ export class BamlSyncClient {
     return this.llmStreamParser
   }
 
-  
+
   BuildActionPayload(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -146,7 +146,7 @@ export class BamlSyncClient {
       throw toBamlError(error);
     }
   }
-  
+
   RepairActionPayload(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -196,7 +196,7 @@ export class BamlSyncClient {
       throw toBamlError(error);
     }
   }
-  
+
   RepairActionSelection(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -246,7 +246,7 @@ export class BamlSyncClient {
       throw toBamlError(error);
     }
   }
-  
+
   SelectAction(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -296,7 +296,7 @@ export class BamlSyncClient {
       throw toBamlError(error);
     }
   }
-  
+
 }
 
-export const b = new BamlSyncClient(DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME, DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_CTX)
+export const b = new BamlSyncClient(DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME, DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_CTX)

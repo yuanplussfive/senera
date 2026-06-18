@@ -9,9 +9,6 @@ export type AgentActionKind =
 export type AgentActionDecision =
   | {
       action: "answer";
-      answer: {
-        content: string;
-      };
     }
   | {
       action: "ask_user";
@@ -58,10 +55,6 @@ export type AgentActionPlanResult =
       reason: string;
       input?: ActionPlanInput;
     };
-
-export function agentActionDirectAnswer(decision: AgentActionDecision | undefined): string | null {
-  return decision?.action === "answer" ? decision.answer.content : null;
-}
 
 export function agentActionPreferredTools(decision: AgentActionDecision | undefined): string[] {
   return decision?.action === "use_tools" ? decision.useTools.preferredTools : [];

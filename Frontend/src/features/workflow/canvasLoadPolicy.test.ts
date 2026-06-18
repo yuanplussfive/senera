@@ -12,6 +12,7 @@ function buildRun(steps: RunRecord["steps"]): RunRecord {
     streamingRaw: "",
     xmlPreview: "",
     visibleText: "",
+    displayText: "",
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",

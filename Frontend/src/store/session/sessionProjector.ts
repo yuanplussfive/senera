@@ -1,5 +1,6 @@
 import { DEFAULT_SESSION_TITLE } from "./defaults";
 import { normalizeUserProfile } from "./userProfile";
+import type { MotionLevel } from "../../shared/motion";
 import {
   DecisionXmlRoots,
   EventKinds,
@@ -45,6 +46,10 @@ import {
   type StepTraceDto,
   type UserProfileData,
 } from "../../api/eventTypes";
+import {
+  advanceStreamingDisplayText,
+  alignStreamingDisplayTarget,
+} from "./streamingDisplay";
 import type {
   ChatMessage,
   RunRecord,
@@ -91,16 +96,21 @@ function summarizeActionPlan(data: ActionPlannedData): string {
       : "规划失败，已回退动态工具检索";
   }
 
-  const intent = data.intent ? truncate(data.intent, 96) : "";
-  const progress = data.progressAssessment ? truncate(data.progressAssessment, 96) : "";
-  const nextGoal = data.nextStepGoal ? truncate(data.nextStepGoal, 96) : "";
+  const question = data.askUserQuestion ? truncate(data.askUserQuestion, 96) : "";
+  const instruction = data.instruction ? truncate(data.instruction, 96) : "";
   const toolSummary = data.preferredTools.length > 0
     ? `${data.preferredTools.length} 个候选工具`
     : "";
-  const stateSummary = data.executionState
-    ? `${data.executionState.totalToolCalls} 次工具 · ${data.executionState.totalEvidence} 条证据`
+  const searchSummary = data.toolSearchQueries.length > 0
+    ? `${data.toolSearchQueries.length} 个检索意图`
     : "";
-  return [progress, nextGoal, intent, toolSummary, stateSummary]
+  const capabilitySummary = (data.capabilityNeeds?.length ?? 0) > 0
+    ? `${data.capabilityNeeds?.length ?? 0} 组能力需求`
+    : "";
+  const stateSummary = data.runState
+    ? `${data.runState.totalToolCalls} 次工具 · ${data.runState.totalEvidence} 条证据`
+    : "";
+  return [question, instruction, toolSummary, searchSummary, capabilitySummary, stateSummary]
     .filter(Boolean)
     .join(" · ");
 }
@@ -238,6 +248,14 @@ function projectStreamingVisibility(run: RunRecord): void {
   run.visibleKind = "final_answer";
 }
 
+function alignRunDisplayTarget(run: RunRecord): void {
+  const aligned = alignStreamingDisplayTarget({
+    displayText: run.displayText,
+    targetText: run.visibleText,
+  });
+  run.displayText = aligned.displayText;
+}
+
 export function createRunRecord(input: {
   requestId: string;
   startedAt: string;
@@ -253,6 +271,7 @@ export function createRunRecord(input: {
     streamingRaw: "",
     xmlPreview: "",
     visibleText: "",
+    displayText: "",
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",
@@ -262,6 +281,21 @@ export function createRunRecord(input: {
 
 function touchRun(run: RunRecord): void {
   run.revision = (run.revision ?? 0) + 1;
+}
+
+export function advanceRunDisplayText(run: RunRecord, motionLevel: MotionLevel): boolean {
+  const next = advanceStreamingDisplayText(
+    {
+      displayText: run.displayText,
+      targetText: run.visibleText,
+    },
+    motionLevel,
+  );
+  if (next.changed) {
+    run.displayText = next.displayText;
+    touchRun(run);
+  }
+  return next.pending;
 }
 
 function ensureSession(state: StoreState, sessionId: string): SessionRecord {
@@ -362,6 +396,7 @@ function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][number]): Ru
     streamingRaw: "",
     xmlPreview: "",
     visibleText: "",
+    displayText: "",
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",
@@ -635,6 +670,8 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
         run.streamingRaw = "";
         run.xmlPreview = "";
         run.visibleText = "";
+        run.displayText = "";
+        run.visibleKind = "unknown";
         run.decisionMode = "none";
         upsertStep(run, {
           id: `${run.requestId}-cancelled`,
@@ -743,7 +780,9 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (run.expectedOutputMode === "tool_call_xml") {
         run.decisionMode = "tool_candidate";
         run.visibleText = "";
+        run.displayText = "";
         run.visibleKind = "tool_calls";
+        touchRun(run);
       }
       if (hasPlannerStageForStep(run, env.step)) {
         return;
@@ -775,6 +814,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       run.streamingRaw = "";
       run.xmlPreview = "";
       run.visibleText = "";
+      run.displayText = "";
       run.visibleKind = run.expectedOutputMode === "tool_call_xml" ? "tool_calls" : "unknown";
       run.decisionMode = run.expectedOutputMode === "tool_call_xml" ? "tool_candidate" : "none";
       upsertStep(run, {
@@ -797,6 +837,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       const data = env.data as ModelDeltaData;
       run.streamingRaw += data.text;
       projectStreamingVisibility(run);
+      alignRunDisplayTarget(run);
       touchRun(run);
       return;
     }
@@ -826,6 +867,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       if (run.expectedOutputMode === "tool_call_xml" || data.kind === "tool_calls") {
         run.decisionMode = "tool_candidate";
         run.visibleText = "";
+        run.displayText = "";
         run.visibleKind = "tool_calls";
         touchRun(run);
         return;
@@ -835,6 +877,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
         classifyToolCallStream(run.streamingRaw) === "tool_prefix"
       ) {
         run.visibleText = "";
+        run.displayText = "";
         run.visibleKind = "unknown";
         touchRun(run);
         return;
@@ -842,6 +885,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       run.decisionMode = "none";
       run.visibleText = data.text || run.streamingRaw;
       run.visibleKind = data.kind;
+      alignRunDisplayTarget(run);
       touchRun(run);
       return;
     }
@@ -1058,10 +1102,12 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
           startedAt: env.timestamp,
           endedAt: env.timestamp,
         });
-        run.streamingRaw = "";
         run.xmlPreview = "";
-        run.visibleText = "";
-        run.decisionMode = "none";
+        run.visibleText = data.content;
+        run.visibleKind = "final_answer";
+        run.decisionMode = "final_text";
+        run.expectedOutputMode = "final_text";
+        alignRunDisplayTarget(run);
       }
       session.updatedAt = env.timestamp;
       // 这个会话挪到列表顶部
@@ -1096,10 +1142,12 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
           startedAt: env.timestamp,
           endedAt: env.timestamp,
         });
-        run.streamingRaw = "";
         run.xmlPreview = "";
-        run.visibleText = "";
-        run.decisionMode = "none";
+        run.visibleText = data.question;
+        run.visibleKind = "ask_user";
+        run.decisionMode = "final_text";
+        run.expectedOutputMode = "final_text";
+        alignRunDisplayTarget(run);
       }
       return;
     }

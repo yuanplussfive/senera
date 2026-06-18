@@ -1275,6 +1275,98 @@ describe("sessionStore history recovery", () => {
   });
 });
 
+describe("sessionStore streaming display", () => {
+  beforeEach(() => {
+    resetStore();
+  });
+
+  it("keeps raw stream exact while display text advances separately", () => {
+    const sessionId = "stream-session";
+    const requestId = "req-stream";
+    useStore.getState().registerCreatingSession(sessionId, "流式测试");
+    useStore.getState().appendUserMessage(sessionId, requestId, "写一段话");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.ModelStarted,
+      { model: "test-model" },
+      sessionId,
+      requestId,
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.ModelDelta,
+      { text: "abcdef" },
+      sessionId,
+      requestId,
+    ));
+
+    let run = useStore.getState().sessions[sessionId].runs[0];
+    expect(run.streamingRaw).toBe("abcdef");
+    expect(run.visibleText).toBe("abcdef");
+    expect(run.displayText).toBe("");
+
+    const pending = useStore.getState().advanceStreamingDisplay(sessionId, requestId);
+
+    run = useStore.getState().sessions[sessionId].runs[0];
+    expect(pending).toBe(true);
+    expect(run.streamingRaw).toBe("abcdef");
+    expect(run.visibleText).toBe("abcdef");
+    expect(run.displayText.length).toBeGreaterThan(0);
+    expect(run.displayText.length).toBeLessThan(run.visibleText.length);
+  });
+
+  it("keeps final answer as display target instead of clearing runtime text", () => {
+    const sessionId = "final-session";
+    const requestId = "req-final";
+    useStore.getState().registerCreatingSession(sessionId, "最终回复测试");
+    useStore.getState().appendUserMessage(sessionId, requestId, "继续");
+    useStore.getState().ingest(envelope(
+      EventKinds.ModelStarted,
+      { model: "test-model" },
+      sessionId,
+      requestId,
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.ModelDelta,
+      { text: "Hello " },
+      sessionId,
+      requestId,
+    ));
+    useStore.getState().advanceStreamingDisplay(sessionId, requestId);
+
+    useStore.getState().ingest(envelope(
+      EventKinds.FinalAnswer,
+      { content: "Hello world" },
+      sessionId,
+      requestId,
+    ));
+
+    const run = useStore.getState().sessions[sessionId].runs[0];
+    expect(run.streamingRaw).toBe("Hello ");
+    expect(run.visibleText).toBe("Hello world");
+    expect(run.displayText).toBe("He");
+    expect(useStore.getState().sessions[sessionId].messages.at(-1)?.content).toBe("Hello world");
+  });
+
+  it("syncs display text in one step when motion is disabled", () => {
+    const sessionId = "no-motion-session";
+    const requestId = "req-no-motion";
+    useStore.getState().registerCreatingSession(sessionId, "关闭动效测试");
+    useStore.getState().setMotionLevel("none");
+    useStore.getState().appendUserMessage(sessionId, requestId, "直接显示");
+    useStore.getState().ingest(envelope(
+      EventKinds.ModelDelta,
+      { text: "完整文本" },
+      sessionId,
+      requestId,
+    ));
+
+    const pending = useStore.getState().advanceStreamingDisplay(sessionId, requestId);
+    const run = useStore.getState().sessions[sessionId].runs[0];
+    expect(pending).toBe(false);
+    expect(run.displayText).toBe("完整文本");
+  });
+});
+
 describe("session persistence migration", () => {
   it("returns only persisted UI preferences when migrating legacy state", () => {
     const migrate = sessionPersistOptions.migrate;

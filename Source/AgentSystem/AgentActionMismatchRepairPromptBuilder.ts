@@ -37,6 +37,10 @@ export class AgentActionMismatchRepairPromptBuilder {
       throw new Error("ActionMismatchRepairPrompt 模板没有注册。");
     }
 
+    const instruction = input.actionDirective
+      ? agentActionInstruction(input.actionDirective).trim()
+      : "";
+
     return this.deps.promptRenderer.renderFileSync(template.path, {
       code: input.code,
       expected: input.expected,
@@ -46,7 +50,7 @@ export class AgentActionMismatchRepairPromptBuilder {
       action: input.actionDirective
         ? {
             action: input.actionDirective.action,
-            instruction: agentActionInstruction(input.actionDirective),
+            instruction: instruction.length > 0 ? instruction : null,
             preferredTools: agentActionPreferredTools(input.actionDirective),
             toolSearchQueries: agentActionToolSearchQueries(input.actionDirective),
           }

@@ -59,7 +59,6 @@ export type AgentExecutionDomainEvent =
         action?: string;
         expectedOutputMode?: "tool_call_xml" | "final_text" | "open";
         instruction?: string;
-        answerPreview?: string;
         askUserQuestion?: string;
         capabilityNeeds?: Array<{
           actions: string[];

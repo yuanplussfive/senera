@@ -127,14 +127,9 @@ class ActionSelection {
 
 class ActionDecision {
   action ActionKind
-  answer AnswerActionPayload?
   askUser AskUserActionPayload?
   useTools UseToolsActionPayload?
   discoverTools DiscoverToolsActionPayload?
-}
-
-class AnswerActionPayload {
-  content string
 }
 
 class AskUserActionPayload {
@@ -183,7 +178,7 @@ function SelectAction(promptJson: string) -> ActionSelection {
     - If the task needs hidden capabilities, choose DiscoverTools and describe the needed capabilities.
 
     Action semantics:
-    - Answer: answer directly from the timeline without tools.
+    - Answer: let the main agent respond from the timeline without tools.
     - AskUser: blocked by missing essential user information.
     - DiscoverTools: current loaded tools are insufficient and dynamic tools can search the catalog.
     - UseTools: suitable loaded tools are already available and should be used by the main agent.
@@ -249,8 +244,8 @@ function BuildActionPayload(promptJson: string) -> ActionDecision {
     Requirements:
     - Return exactly one valid ActionDecision.
     - Keep action exactly equal to selectedAction.
-    - Provide exactly one payload field and it must match selectedAction.
-    - If selectedAction is Answer, set only answer.content with the final user-facing answer.
+    - Answer does not need this payload-building stage; if selectedAction is Answer, return only action Answer and no payload fields.
+    - For AskUser, UseTools, and DiscoverTools, provide exactly one payload field and it must match selectedAction.
     - If selectedAction is AskUser, set only askUser.question and optional askUser.reason.
     - If selectedAction is UseTools, set only useTools.preferredTools and useTools.instruction.
     - If selectedAction is DiscoverTools, set only discoverTools.queries and discoverTools.needs.
@@ -280,8 +275,8 @@ function RepairActionPayload(promptJson: string) -> ActionDecision {
     Requirements:
     - Keep action exactly equal to directive.selectedAction.
     - Fix all validation issues.
-    - Provide exactly one payload field and it must match selectedAction.
-    - If selectedAction is Answer, answer.content must contain the final user-facing answer.
+    - Answer does not need a payload; if selectedAction is Answer, return only action Answer and no payload fields.
+    - For AskUser, UseTools, and DiscoverTools, provide exactly one payload field and it must match selectedAction.
     - If selectedAction is AskUser, askUser.question must contain the user-visible question.
     - If selectedAction is UseTools, useTools.preferredTools and useTools.instruction must be present.
     - If selectedAction is DiscoverTools, discoverTools.queries and discoverTools.needs must be present.

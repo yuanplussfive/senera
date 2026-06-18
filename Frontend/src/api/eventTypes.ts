@@ -416,23 +416,30 @@ export interface ActionPlannedData {
   status: "planned" | "fallback";
   action?: string;
   expectedOutputMode?: "tool_call_xml" | "final_text" | "open";
-  intent?: string;
-  progressAssessment?: string;
-  nextStepGoal?: string;
-  requiredCapabilities?: string[];
-  tags?: string[];
+  instruction?: string;
+  askUserQuestion?: string;
+  capabilityNeeds?: Array<{
+    actions: string[];
+    targets: string[];
+    inputs: string[];
+    outputs: string[];
+    evidence: string[];
+    effects: string[];
+  }>;
   preferredTools: string[];
   toolSearchQueries: string[];
   loadedTools: string[] | "all";
   currentStep?: number;
-  executionState?: {
+  runState?: {
     totalToolCalls: number;
     totalEvidence: number;
     repeatedCallCount: number;
     stalled: boolean;
-    recentDeltaCount: number;
+    timelineTurnCount: number;
   };
-  repaired?: boolean;
+  selectedAction?: string;
+  selectionRepaired?: boolean;
+  payloadRepaired?: boolean;
   reason?: string;
 }
 
