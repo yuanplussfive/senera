@@ -23,8 +23,19 @@ const baseProvider: ResolvedAgentModelProviderConfig = {
   Headers: {},
 };
 
-const actionSelection = JSON.stringify({
-  action: "Answer",
+const taskFrame = JSON.stringify({
+  taskType: "answer",
+  answerGoal: "Answer the user directly.",
+  intentTags: ["direct-answer"],
+  targetRefs: [],
+  candidateTools: [],
+  discoveryQueries: [],
+  requiredEffects: [],
+  requiredEvidence: [],
+  userInputNeeds: [],
+  nextStepPurpose: "Answer from the current conversation.",
+  completionCriteria: ["The response addresses the latest user request."],
+  notes: [],
 });
 
 main().catch((error: unknown) => {
@@ -61,7 +72,7 @@ async function main(): Promise<void> {
   assert.ok("context" in googlePrompt);
   assert.ok("timeline" in googlePrompt.context);
   assert.ok("directive" in googlePrompt);
-  assert.equal(googlePrompt.directive.stage, "selectAction");
+  assert.equal(googlePrompt.directive.stage, "buildTaskFrame");
   assert.doesNotMatch(JSON.stringify(googleUnlimited.contents), /Timeline turn/);
   assert.doesNotMatch(JSON.stringify(googleUnlimited.contents), /Produce the ActionDecision JSON now/);
   assert.match(String(googleUnlimited.__url), /alt=sse/);
@@ -138,7 +149,7 @@ async function capturePayload(
         MaxTokens: maxTokens,
       },
     );
-    await client.selectAction(createActionPlanInputFixture("test"));
+    await client.buildTaskFrame(createActionPlanInputFixture("test"));
     assert.ok(payload);
     return payload;
   } finally {
@@ -150,25 +161,25 @@ function responseBody(endpoint: ResolvedAgentModelProviderConfig["Endpoint"]): s
   const responseByEndpoint = {
     Responses: sseEvent({
       type: "response.output_text.delta",
-      delta: actionSelection,
+      delta: taskFrame,
     }),
     ChatCompletions: sseEvent({
       choices: [{
         delta: {
-          content: actionSelection,
+          content: taskFrame,
         },
       }],
     }),
     ClaudeMessages: sseEvent({
       type: "content_block_delta",
       delta: {
-        text: actionSelection,
+        text: taskFrame,
       },
     }),
     GoogleGenerateContent: sseEvent({
       candidates: [{
         content: {
-          parts: [{ text: actionSelection }],
+          parts: [{ text: taskFrame }],
         },
       }],
     }),

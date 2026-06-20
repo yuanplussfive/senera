@@ -36,7 +36,7 @@ const ConfigSchema = import_zod.z.object({
   tavily: import_zod.z.object({
     api_keys: import_zod.z.array(import_zod.z.string().trim().min(1)).min(1),
     base_url: import_zod.z.string().trim().url().default(DefaultBaseUrl),
-    timeout_ms: import_zod.z.coerce.number().int().min(1e3).max(3e5).default(DefaultTimeoutMs),
+    timeout_seconds: import_zod.z.coerce.number().positive().max(300).default(DefaultTimeoutMs / 1e3),
     state_dir: import_zod.z.string().trim().min(1).default(DefaultStateDir)
   }).strict()
 }).strict();
@@ -82,7 +82,16 @@ function readConfig() {
   if (!result.success) {
     throw new Error(`Tavily 插件配置无效：${import_node_path.default.resolve(process.cwd(), ConfigFileName)}：${result.error.message}`);
   }
-  return result.data.tavily;
+  return normalizeConfigUnits(result.data.tavily);
+}
+function normalizeConfigUnits(config) {
+  return {
+    ...config,
+    timeoutMs: readSecondsAsMilliseconds(config.timeout_seconds)
+  };
+}
+function readSecondsAsMilliseconds(valueSeconds) {
+  return Math.round(valueSeconds * 1e3);
 }
 async function claimNextApiKey(config) {
   const keys = config.api_keys;
@@ -176,7 +185,7 @@ function isNodeErrorCode(error, code) {
 }
 async function searchTavily(options) {
   const controller = new AbortController();
-  const timeoutMs = options.args.timeoutMs ?? options.config.timeout_ms;
+  const timeoutMs = options.args.timeoutMs ?? options.config.timeoutMs;
   const timer = setTimeout(() => {
     controller.abort();
   }, timeoutMs);
@@ -197,12 +206,16 @@ async function searchTavily(options) {
     return responseText.length > 0 ? JSON.parse(responseText) : {};
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Tavily \u641C\u7D22\u8BF7\u6C42\u8D85\u65F6\uFF0C\u8D85\u8FC7 ${timeoutMs}ms\u3002`);
+      throw new Error(`Tavily \u641C\u7D22\u8BF7\u6C42\u8D85\u65F6\uFF0C\u8D85\u8FC7 ${formatMillisecondsAsSeconds(timeoutMs)} \u79D2\u3002`);
     }
     throw error;
   } finally {
     clearTimeout(timer);
   }
+}
+
+function formatMillisecondsAsSeconds(valueMs) {
+  return Number((valueMs / 1e3).toFixed(3));
 }
 function toTavilyPayload(args) {
   return omitUndefined({

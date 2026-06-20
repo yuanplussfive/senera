@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types"
-import type {  ActionDecision,  ActionKind,  ActionPlanInput,  ActionRunState,  ActionSelection,  AskUserActionPayload,  CapabilityNeed,  DiscoverToolsActionPayload,  EvidenceSlot,  ExecutionDeltaOp,  PlannerEvidenceMemoryItem,  PlannerJournalItem,  PlannerTimelineTurn,  ProgressSignals,  RepeatedCallWarning,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  UseToolsActionPayload } from "./types"
+import type {  ActionPlanInput,  ActionRunState,  EvidenceRequirementVerification,  EvidenceSlot,  EvidenceVerification,  EvidenceVerificationStatus,  ExecutionDeltaOp,  PlannerActiveSkill,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  TaskCandidateTool,  TaskFrame,  TaskRequiredEffect,  TaskRequiredEvidence,  TaskTargetRef,  TaskUserInputNeed,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem } from "./types"
 import type * as types from "./types"
 
 /******************************************************************************
@@ -36,18 +36,15 @@ export interface StreamState<T> {
 }
 
 export namespace partial_types {
-    export interface ActionDecision {
-      action?: types.ActionKind | null
-      askUser?: AskUserActionPayload | null
-      useTools?: UseToolsActionPayload | null
-      discoverTools?: DiscoverToolsActionPayload | null
-    }
     export interface ActionPlanInput {
       runState?: ActionRunState | null
       timeline: PlannerTimelineTurn[]
       evidenceMemory: PlannerEvidenceMemoryItem[]
+      evidenceState: PlannerEvidenceStateItem[]
       plannerJournal: PlannerJournalItem[]
+      compactToolCatalog: ToolCatalogSummaryItem[]
       toolCatalog: ToolCatalogItem[]
+      activeSkills: PlannerActiveSkill[]
     }
     export interface ActionRunState {
       currentStep?: number | null
@@ -55,29 +52,35 @@ export namespace partial_types {
       loadedTools: string[]
       progress?: ProgressSignals | null
       warnings: RepeatedCallWarning[]
+      calls: PlannerToolCallStateItem[]
     }
-    export interface ActionSelection {
-      action?: types.ActionKind | null
-    }
-    export interface AskUserActionPayload {
-      question?: string | null
+    export interface EvidenceRequirementVerification {
+      requirementId?: string | null
+      need?: string | null
+      status?: types.EvidenceVerificationStatus | null
+      evidenceRefs: string[]
+      artifactUris: string[]
       reason?: string | null
-    }
-    export interface CapabilityNeed {
-      actions?: string[] | null
-      targets?: string[] | null
-      inputs?: string[] | null
-      outputs?: string[] | null
-      evidence?: string[] | null
-      effects?: string[] | null
-    }
-    export interface DiscoverToolsActionPayload {
-      queries: string[]
-      needs: CapabilityNeed[]
+      missingFacts: string[]
+      unsupportedClaims: string[]
     }
     export interface EvidenceSlot {
       name?: string | null
       value?: string | null
+    }
+    export interface EvidenceVerification {
+      ready?: boolean | null
+      requirements: EvidenceRequirementVerification[]
+      summary?: string | null
+    }
+    export interface PlannerActiveSkill {
+      name?: string | null
+      title?: string | null
+      summary?: string | null
+      useCases: string[]
+      avoid: string[]
+      recommendedTools: string[]
+      evidenceRequirements: PlannerEvidenceRequirement[]
     }
     export interface PlannerEvidenceMemoryItem {
       evidenceRef?: string | null
@@ -85,9 +88,28 @@ export namespace partial_types {
       locator?: string | null
       display?: string | null
       label?: string | null
-      confidence?: number | null
       toolName?: string | null
       artifactUri?: string | null
+      facts: EvidenceSlot[]
+      artifactRefs: string[]
+    }
+    export interface PlannerEvidenceRequirement {
+      need?: string | null
+      accepts: string[]
+      minimumQuality: string[]
+      minimum?: number | null
+      purpose?: string | null
+    }
+    export interface PlannerEvidenceStateItem {
+      evidenceRef?: string | null
+      kind?: string | null
+      toolName?: string | null
+      artifactUri?: string | null
+      locator?: string | null
+      display?: string | null
+      label?: string | null
+      source?: string | null
+      confidence?: number | null
       facts: EvidenceSlot[]
       artifactRefs: string[]
     }
@@ -109,6 +131,16 @@ export namespace partial_types {
       evidenceRefs: string[]
       artifactUris: string[]
     }
+    export interface PlannerToolCallStateItem {
+      step?: number | null
+      toolName?: string | null
+      status?: types.ToolCallStatus | null
+      artifactUri?: string | null
+      evidenceRefs: string[]
+      resultKind?: string | null
+      argumentsPreview?: string | null
+      error?: string | null
+    }
     export interface ProgressSignals {
       totalToolCalls?: number | null
       totalEvidence?: number | null
@@ -121,6 +153,47 @@ export namespace partial_types {
       argsHash?: string | null
       count?: number | null
       lastStep?: number | null
+    }
+    export interface TaskCandidateTool {
+      name?: string | null
+      purpose?: string | null
+      supports: string[]
+    }
+    export interface TaskFrame {
+      taskType?: string | null
+      answerGoal?: string | null
+      intentTags: string[]
+      targetRefs: TaskTargetRef[]
+      candidateTools: TaskCandidateTool[]
+      discoveryQueries: string[]
+      requiredEffects: TaskRequiredEffect[]
+      requiredEvidence: TaskRequiredEvidence[]
+      userInputNeeds: TaskUserInputNeed[]
+      nextStepPurpose?: string | null
+      completionCriteria: string[]
+      notes: string[]
+    }
+    export interface TaskRequiredEffect {
+      id?: string | null
+      effect?: string | null
+      target?: string | null
+      proof?: string | null
+      reason?: string | null
+    }
+    export interface TaskRequiredEvidence {
+      id?: string | null
+      need?: string | null
+      minimum?: number | null
+      reason?: string | null
+    }
+    export interface TaskTargetRef {
+      kind?: string | null
+      value?: string | null
+      status?: string | null
+    }
+    export interface TaskUserInputNeed {
+      question?: string | null
+      reason?: string | null
     }
     export interface ToolCapabilityFacets {
       Actions?: string[] | null
@@ -151,10 +224,26 @@ export namespace partial_types {
       examples: string[]
       avoid: string[]
       permissions: string[]
+      evidenceCapabilities: ToolEvidenceCapabilityItem[]
       loaded?: boolean | null
     }
-    export interface UseToolsActionPayload {
-      preferredTools: string[]
-      instruction?: string | null
+    export interface ToolCatalogSummaryItem {
+      name?: string | null
+      title?: string | null
+      summary?: string | null
+      capabilities: string[]
+      evidence: string[]
+      effects: string[]
+      outputs: string[]
+      permissions: string[]
+      loaded?: boolean | null
+      rootKind?: string | null
+    }
+    export interface ToolEvidenceCapabilityItem {
+      produces?: string | null
+      quality?: string | null
+      satisfies: string[]
+      kinds: string[]
+      capabilityIds: string[]
     }
 }

@@ -16,6 +16,7 @@ export type {
   AgentEventContext,
   AgentEventEnvelope,
   AgentEventSpec,
+  AgentEventScope,
 } from "./AgentEventBase.js";
 export type {
   AgentDomainEvent,

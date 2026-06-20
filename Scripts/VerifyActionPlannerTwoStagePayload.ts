@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
 import type { AgentToolCatalogItem } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
-import type { ResolvedAgentActionPlannerConfig, ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
-import { createActionPlanInputFixture } from "./ActionPlannerFixture.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
+import {
+  createActionPlannerConfigFixture,
+  createActionPlanInputFixture,
+} from "./ActionPlannerFixture.js";
 
 const provider: ResolvedAgentModelProviderConfig = {
   Id: "test",
@@ -22,23 +25,23 @@ const provider: ResolvedAgentModelProviderConfig = {
   Headers: {},
 };
 
-const config: ResolvedAgentActionPlannerConfig = {
-  Enabled: true,
-  MaxRepairAttempts: 0,
-  Client: {
-    Provider: "auto",
+const config = createActionPlannerConfigFixture({
+  maxRepairAttempts: 0,
+  client: {
+    Provider: "openai-generic",
     BaseUrl: "https://example.test/v1",
     ApiKey: "test-key",
     Model: "test-model",
     Temperature: 0.1,
     MaxTokens: -1,
   },
-};
+});
 
 const catalogTool: AgentToolCatalogItem = {
   name: "ApplyPatchTool",
   title: "Apply Patch Tool",
   summary: "Edit workspace files.",
+  rootKind: "System",
   capabilities: [{
     id: "workspace.patch-edit",
     title: "Workspace patch edit",
@@ -58,6 +61,13 @@ const catalogTool: AgentToolCatalogItem = {
   examples: [],
   avoid: [],
   permissions: ["filesystem:write:workspace"],
+  evidenceCapabilities: [{
+    produces: "workspace patch target",
+    quality: "observed",
+    satisfies: ["workspace edit"],
+    kinds: ["workspace_patch_target"],
+    capabilityIds: ["workspace.patch-edit"],
+  }],
 };
 
 void main();
@@ -67,17 +77,37 @@ async function main(): Promise<void> {
   const requests: string[] = [];
   const responses = [
     {
-      action: "UseTools",
-    },
-    {
-      action: "UseTools",
-      answer: null,
-      askUser: null,
-      useTools: {
-        preferredTools: ["ApplyPatchTool"],
-        instruction: "Apply a structured patch only to the requested workspace file.",
-      },
-      discoverTools: null,
+      taskType: "workspace edit",
+      answerGoal: "Apply a structured patch only to the requested workspace file.",
+      intentTags: ["workspace-edit"],
+      targetRefs: [{
+        kind: "workspace-file",
+        value: "latest requested file",
+        status: "needs-edit",
+      }],
+      candidateTools: [{
+        name: "ApplyPatchTool",
+        purpose: "Apply the requested workspace edit.",
+        supports: ["workspace patch target"],
+      }],
+      discoveryQueries: ["workspace patch apply requested file"],
+      requiredEffects: [{
+        id: "workspace-write-effect",
+        effect: "write-workspace",
+        target: "latest requested file",
+        proof: "workspace patch target",
+        reason: "The latest user requested a workspace file modification.",
+      }],
+      requiredEvidence: [{
+        id: "workspace-edit-evidence",
+        need: "workspace edit",
+        minimum: 1,
+        reason: "The latest user requested a workspace file modification.",
+      }],
+      userInputNeeds: [],
+      nextStepPurpose: "Apply a structured workspace patch.",
+      completionCriteria: ["Workspace patch target evidence is produced."],
+      notes: [],
     },
   ];
 
@@ -103,9 +133,32 @@ async function main(): Promise<void> {
     const planner = new AgentActionPlanner(config, provider, {
       list: () => [catalogTool],
     });
+    const fixture = createActionPlanInputFixture("修改文件");
     const result = await planner.plan({
       requestId: "verify-two-stage-payload",
-      input: createActionPlanInputFixture("修改文件"),
+      input: {
+        ...fixture,
+        runState: {
+          ...fixture.runState,
+          loadedTools: ["ApplyPatchTool"],
+        },
+        compactToolCatalog: [{
+          name: "ApplyPatchTool",
+          title: "Apply Patch Tool",
+          summary: "Edit workspace files.",
+          capabilities: ["workspace.patch-edit", "Workspace patch edit", "Apply structured file edits."],
+          evidence: ["workspace patch target"],
+          effects: ["write-workspace"],
+          outputs: [],
+          permissions: ["filesystem:write:workspace"],
+          loaded: true,
+          rootKind: "System",
+        }],
+        toolCatalog: [{
+          ...catalogTool,
+          loaded: true,
+        }],
+      },
     });
     assert.equal(result.kind, "planned");
     if (result.kind !== "planned") {
@@ -118,26 +171,25 @@ async function main(): Promise<void> {
     if (result.decision.action !== "use_tools") {
       throw new Error("Expected use_tools decision.");
     }
-    assert.equal(
-      result.decision.useTools.instruction,
-      "Apply a structured patch only to the requested workspace file.",
-    );
-    assert.equal(requests.length, 2, "planner should always perform action selection and payload construction");
-    assert.match(requests[0] ?? "", /action selector/i);
-    assert.match(requests[1] ?? "", /Build Senera's payload/);
-    const payloadPrompt = readPlannerPromptFromHttpBody(requests[1] ?? "");
-    assert.equal(payloadPrompt.directive.stage, "buildActionPayload");
-    assert.equal(payloadPrompt.directive.selectedAction, "UseTools");
-    assert.doesNotMatch(requests[1] ?? "", /Payload directive/);
-    assert.doesNotMatch(requests[1] ?? "", /selectedAction=UseTools/);
-    assert.doesNotMatch(requests[1] ?? "", /primaryContext|safetyContext|fallbackContext/);
-    console.log("Action planner two-stage payload verification passed.");
+    assert.match(result.decision.useTools.instruction, /workspace edit/);
+    assert.equal(requests.length, 1, "planner should build a task frame and let evidence broker choose action");
+    const taskFramePrompt = readPlannerPromptFromHttpBody(requests[0] ?? "");
+    assert.equal(taskFramePrompt.directive.stage, "buildTaskFrame");
+    assert.equal("selectedAction" in taskFramePrompt.directive, false);
+    assert.equal(Array.isArray(taskFramePrompt.context.compactToolCatalog), true);
+    assert.equal(taskFramePrompt.context.compactToolCatalog[0]?.name, "ApplyPatchTool");
+    console.log("Action planner task-frame payload verification passed.");
   } finally {
     globalThis.fetch = originalFetch;
   }
 }
 
 function readPlannerPromptFromHttpBody(body: string): {
+  context: {
+    compactToolCatalog: Array<{
+      name: string;
+    }>;
+  };
   directive: {
     stage: string;
     selectedAction?: string;
@@ -154,6 +206,11 @@ function readPlannerPromptFromHttpBody(body: string): {
   );
   assert.ok(message?.content, "planner HTTP body should contain JSON prompt content");
   return JSON.parse(message.content) as {
+    context: {
+      compactToolCatalog: Array<{
+        name: string;
+      }>;
+    };
     directive: {
       stage: string;
       selectedAction?: string;

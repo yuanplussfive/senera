@@ -947,7 +947,6 @@ function readEvidenceMemoryItem(
     locator: readStringField(record.locator),
     display: readStringField(record.display),
     label: readStringField(record.label),
-    confidence: readNumberField(record.confidence),
     toolName: readStringField(record.toolName),
     artifactUri: readStringField(record.artifactUri),
     facts: readEvidenceFacts(record.facts),

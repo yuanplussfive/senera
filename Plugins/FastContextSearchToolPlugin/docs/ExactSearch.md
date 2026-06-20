@@ -14,7 +14,7 @@
 
 ## 配置
 
-读取 `PluginConfig.toml` 的 roots、exclude、默认结果数、上下文行数和文件大小限制。
+读取 `PluginConfig.toml` 的 roots、exclude、默认结果数、上下文行数、文件大小限制和 ripgrep 超时设置。
 
 ## 输入
 
@@ -22,7 +22,7 @@
 
 ## 输出
 
-返回精确命中的 path、line、snippet、score、warnings 和 availableRoots。
+返回精确命中的 path、line、snippet、score、focus、warnings 和 availableRoots。`focus` 来自 ripgrep submatches，表示命中行里的关键片段。
 
 ## 调用示例
 

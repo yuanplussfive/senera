@@ -9,7 +9,7 @@ api_keys = [
 ]
 
 base_url = "https://api.tavily.com"
-timeout_ms = 300000
+timeout_seconds = 300
 state_dir = ".state"
 
 [senera.fields.senera.enabled]
@@ -29,12 +29,13 @@ label = "服务地址"
 description = "网页搜索服务地址。"
 type = "string"
 
-[senera.fields.tavily.timeout_ms]
+[senera.fields.tavily.timeout_seconds]
 label = "请求超时"
-description = "搜索请求超时时间，单位毫秒。"
+description = "搜索请求超时时间，单位秒。"
 type = "number"
-min = 1000
-step = 1000
+min = 1
+max = 300
+step = 1
 
 [senera.fields.tavily.state_dir]
 label = "状态目录"

@@ -1,9 +1,3 @@
-import type { AgentActionDecision } from "./AgentActionPlanner.js";
-import {
-  agentActionInstruction,
-  agentActionPreferredTools,
-  agentActionToolSearchQueries,
-} from "./AgentActionPlanner.js";
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
 import type { AgentPromptRenderer } from "./AgentPromptRenderer.js";
 import type { AgentToolCatalogProjector } from "./AgentToolCatalogProjector.js";
@@ -12,13 +6,13 @@ import type {
   AgentDecisionOutputContract,
   AgentDecisionOutputShape,
 } from "./AgentDecisionOutputResolver.js";
+import type { AgentRootCommand } from "./AgentRootCommand.js";
 
 export interface AgentActionMismatchRepairPromptInput {
   code: string;
   expected: AgentDecisionOutputContract;
   actual: AgentDecisionOutputShape["kind"];
-  actionDirective?: AgentActionDecision;
-  loadedToolNames: "all" | readonly string[];
+  rootCommand?: AgentRootCommand;
 }
 
 export class AgentActionMismatchRepairPromptBuilder {
@@ -37,25 +31,16 @@ export class AgentActionMismatchRepairPromptBuilder {
       throw new Error("ActionMismatchRepairPrompt 模板没有注册。");
     }
 
-    const instruction = input.actionDirective
-      ? agentActionInstruction(input.actionDirective).trim()
-      : "";
+    const visibleToolNames = input.rootCommand
+      ? input.rootCommand.allowedTools
+      : [];
 
     return this.deps.promptRenderer.renderFileSync(template.path, {
       code: input.code,
       expected: input.expected,
       actual: input.actual,
-      expectedLabel: OutputContractLabels[input.expected],
-      actualLabel: OutputShapeLabels[input.actual],
-      action: input.actionDirective
-        ? {
-            action: input.actionDirective.action,
-            instruction: instruction.length > 0 ? instruction : null,
-            preferredTools: agentActionPreferredTools(input.actionDirective),
-            toolSearchQueries: agentActionToolSearchQueries(input.actionDirective),
-          }
-        : null,
-      tools: this.deps.toolCatalog.listVisible(input.loadedToolNames),
+      RootCommand: input.rootCommand ?? null,
+      tools: this.deps.toolCatalog.listVisible(visibleToolNames),
       ToolCallProtocol: {
         root: this.deps.protocol.roots.toolCalls,
         callTag: this.deps.protocol.items.toolCall,
@@ -66,16 +51,3 @@ export class AgentActionMismatchRepairPromptBuilder {
     }).trim();
   }
 }
-
-const OutputContractLabels = {
-  tool_call_xml: "工具调用 XML",
-  final_text: "自然语言回复",
-  open: "自然语言回复或工具调用 XML",
-} as const satisfies Record<AgentDecisionOutputContract, string>;
-
-const OutputShapeLabels = {
-  plain_text: "自然语言回复",
-  pure_tool_envelope: "纯工具调用 XML",
-  mixed_tool_envelope: "自然语言混合工具调用 XML",
-  tool_envelope_fragment: "未完整闭合的工具调用 XML",
-} as const satisfies Record<AgentDecisionOutputShape["kind"], string>;

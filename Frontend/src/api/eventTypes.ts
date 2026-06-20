@@ -92,8 +92,17 @@ export interface EventEnvelope<TKind extends string = EventKind, TData = unknown
   sessionId?: string;
   requestId?: string;
   step?: number;
+  scope?: EventScope;
   detailId?: string;
   data: TData;
+}
+
+export interface EventScope {
+  parentRequestId?: string;
+  workflowName?: string;
+  jobId?: string;
+  agentName?: string;
+  role?: "childAgent" | "merge";
 }
 
 // --- 各 kind 的 data 形状（只列前端会读的字段） ---
@@ -412,6 +421,133 @@ export interface PromptSummaryData {
   tokenCount: number;
 }
 
+export interface ActionTaskFrameData {
+  taskType: string;
+  answerGoal: string;
+  intentTags: string[];
+  targetRefs: Array<{
+    kind: string;
+    value: string;
+    status: string;
+  }>;
+  candidateTools: Array<{
+    name: string;
+    purpose: string;
+    supports: string[];
+  }>;
+  discoveryQueries: string[];
+  requiredEffects: Array<{
+    id: string;
+    effect: string;
+    target: string;
+    proof: string;
+    reason: string;
+  }>;
+  requiredEvidence: Array<{
+    id: string;
+    need: string;
+    minimum: number;
+    reason: string;
+  }>;
+  userInputNeeds: Array<{
+    question: string;
+    reason: string;
+  }>;
+  nextStepPurpose: string;
+  completionCriteria: string[];
+  notes: string[];
+}
+
+export interface ActionEvidenceDecisionData {
+  ready: boolean;
+  missingNeeds: Array<{
+    id: string;
+    need: string;
+    reason: string;
+    status: "partial" | "missing" | "stalled" | "blocked";
+    observed: number;
+    required: number;
+    missingFacts: string[];
+    unsupportedClaims: string[];
+    blockers: string[];
+  }>;
+  satisfiedNeeds: Array<{
+    id: string;
+    need: string;
+    evidence: ActionEvidenceMatchData[];
+  }>;
+  requirementStates: Array<{
+    id: string;
+    need: string;
+    status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
+    reason: string;
+    observed: number;
+    required: number;
+    evidence: ActionEvidenceMatchData[];
+    missingFacts: string[];
+    unsupportedClaims: string[];
+    blockers: string[];
+  }>;
+  progress: {
+    stalled: boolean;
+    repeatedCalls: Array<{
+      toolName: string;
+      argsHash: string;
+      count: number;
+      lastStep: number;
+    }>;
+    nonEvidenceCalls: ActionEvidenceProgressCallData[];
+    failedCalls: ActionEvidenceProgressCallData[];
+  };
+  verification?: {
+    ready: boolean;
+    requirements: Array<{
+      requirementId: string;
+      need: string;
+      status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
+      evidenceRefs: string[];
+      artifactUris: string[];
+      reason: string;
+      missingFacts: string[];
+      unsupportedClaims: string[];
+    }>;
+    summary: string;
+  };
+  recommendedTools: string[];
+  searchQueries: string[];
+}
+
+export interface ActionEvidenceMatchData {
+  ref: string;
+  kind: string;
+  toolName: string;
+  artifactUri: string;
+  locator: string;
+  display: string;
+  label: string;
+  source?: string | null;
+  confidence?: number | null;
+  facts: Array<{
+    name: string;
+    value: string;
+  }>;
+  produces: string;
+  satisfies: string[];
+  quality: string;
+  supportingSignals: string[];
+}
+
+export interface ActionEvidenceProgressCallData {
+  step: number;
+  toolName: string;
+  status: string;
+  resultKind: string;
+  artifactUri: string;
+  evidenceRefs: string[];
+  argumentsPreview: string;
+  error: string;
+}
+
 export interface ActionPlannedData {
   status: "planned" | "fallback";
   action?: string;
@@ -440,10 +576,12 @@ export interface ActionPlannedData {
   selectedAction?: string;
   selectionRepaired?: boolean;
   payloadRepaired?: boolean;
+  taskFrame?: ActionTaskFrameData;
+  evidenceDecision?: ActionEvidenceDecisionData;
   reason?: string;
 }
 
-export type ActionPlannerStageName = "selectAction" | "buildActionPayload";
+export type ActionPlannerStageName = "buildTaskFrame" | "evaluateEvidence";
 
 export interface ActionPlannerStageStartedData {
   stage: ActionPlannerStageName;
@@ -453,6 +591,8 @@ export interface ActionPlannerStageCompletedData {
   stage: ActionPlannerStageName;
   selectedAction?: string;
   repaired?: boolean;
+  taskFrame?: ActionTaskFrameData;
+  evidenceDecision?: ActionEvidenceDecisionData;
 }
 
 export interface ActionPlannerStageFailedData {

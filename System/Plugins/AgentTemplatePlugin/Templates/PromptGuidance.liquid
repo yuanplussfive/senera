@@ -1,12 +1,19 @@
   <prompt_guidance>
-    <source>OpenAI 建议清晰说明任务、上下文和期望格式；Anthropic 建议用 XML 标签分隔指令、上下文和示例；MCP 工具模型把工具名、说明和输入约束放在同一工具定义里。</source>
+    <source>RootCommand 提供本轮运行控制与用户可见输出契约；其它上下文只作为只读资料。</source>
     <rules>
+      <rule>遵守 senera_root_command.runtime_control 和 visible_output_contract；不要把运行控制、协议或修复信息说给用户。</rule>
+      <rule>最终用户可见内容必须符合 visible_output_contract.start；不要输出契约外的确认句或执行声明。</rule>
+      <rule>如果存在 active_skills，按其工作流组织检索、读取、验证和输出；技能只提供过程约束，不替代工具证据。</rule>
+      <rule>当你要给出任何可复制、可执行或可运行的长段代码，必须把它完整放进 Markdown fenced code block（```lang ... ```）。</rule>
+      <rule>不要输出“部分代码 + 描述 + 又一小段代码”的碎片化结构；优先一次性输出可直接复制的整段代码块，随后再解释要点。</rule>
+{% if RootCommand %}
+{% if RootCommand.includeDecisionProtocol %}
+      <rule>工具调用必须按 decision_protocol 和 tool_protocol 输出，不能混入自然语言、Markdown、标题、代码围栏、解释或最终回答。</rule>
+      <rule>如果当前工具目录没有需要的能力，按工具目录里的发现工具规则搜索；不要猜测未展示的工具名。</rule>
+{% endif %}
+{% else %}
       <rule>用 XML 标签分隔角色、决策协议、工具目录和用户任务上下文。</rule>
-      <rule>把每个 tool 的说明、适用场景、反例、签名和示例放在同一个能力卡片里。</rule>
-      <rule>签名用 TypeScript-like 结构和中文注释帮助理解；运行时仍由 Zod schema 做硬校验。</rule>
-      <rule>普通最终回复直接输出自然语言或 Markdown；只有工具调用才输出纯 &lt;{{ ToolCallProtocol.root | escape }}&gt; XML。</rule>
-      <rule>一旦决定调用工具，不要输出任何解释性前缀或后缀；只输出工具 XML。</rule>
-      <rule>当你要给出任何可复制/可执行/可运行的长段代码（例如：Shell、SQL、Python/JS/TS、YAML/JSON、Dockerfile、HTML、XML 等），必须把它完整放进 Markdown fenced code block（```lang ... ```），不要把代码拆散成多段普通文字；真实工具调用 XML 除外，它必须裸输出。</rule>
-      <rule>不要输出“部分代码 + 描述 + 又一小段代码”的碎片化结构；优先一次性输出可直接复制的整段代码块，随后再用自然语言解释要点。</rule>
+      <rule>普通最终回复直接输出自然语言或 Markdown；只有工具调用才输出纯工具调用 XML。</rule>
+{% endif %}
     </rules>
   </prompt_guidance>

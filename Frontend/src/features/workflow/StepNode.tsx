@@ -11,6 +11,7 @@ import {
   MessageSquareText,
   Cpu,
   FileCode2,
+  GitBranch,
   X,
 } from "lucide-react";
 import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
@@ -38,6 +39,10 @@ const KindIcon: Record<TimelineStepKind, React.ComponentType<{ className?: strin
 type WorkflowStepNode = Node<StepNodeData>;
 
 function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Element {
+  if (data.kind === "scope") {
+    return <ScopeNode group={data.group} selected={selected} />;
+  }
+
   const step = data.step;
   const Icon = KindIcon[step.kind];
 
@@ -119,6 +124,58 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
 }
 
 export const StepNode = memo(StepNodeBase);
+
+function ScopeNode({
+  group,
+  selected,
+}: {
+  group: Extract<StepNodeData, { kind: "scope" }>["group"];
+  selected: boolean;
+}): JSX.Element {
+  const accent = group.status === "failed"
+    ? "border-brick-200 bg-brick-50/70 text-brick-600"
+    : group.status === "running"
+      ? "border-umber-200 bg-umber-50/80 text-umber-600"
+      : "border-moss-100 bg-moss-50/70 text-moss-600";
+
+  return (
+    <div
+      className={cn(
+        "group relative w-[240px] cursor-default rounded-xl border px-3 py-2.5 transition-all",
+        "shadow-[0_1px_2px_rgba(28,26,23,0.04)]",
+        accent,
+        selected ? "ring-2 ring-terra-400 ring-offset-2 ring-offset-paper-100" : "",
+      )}
+    >
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!h-2 !w-2 !border-paper-50 !bg-ink-300"
+      />
+      <div className="flex items-center gap-2">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-paper-50/75">
+          <GitBranch className="h-3.5 w-3.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[12.5px] font-medium text-ink-900">
+            {group.label}
+          </div>
+          {group.description ? (
+            <div className="mt-0.5 truncate text-[11.5px] text-ink-500">
+              {group.description}
+            </div>
+          ) : null}
+        </div>
+        <StatusDot status={group.status} motionLevel="none" />
+      </div>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!h-2 !w-2 !border-paper-50 !bg-ink-300"
+      />
+    </div>
+  );
+}
 
 function StatusIcon({
   status,

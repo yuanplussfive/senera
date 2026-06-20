@@ -56,7 +56,8 @@
               "snippet": "$.snippet",
               "score": "$.score",
               "engine": "$.source",
-              "reason": "$.reason"
+              "reason": "$.reason",
+              "focus": "$.focusSummary"
             },
             "Identity": {
               "Parts": [
@@ -87,6 +88,7 @@
                 "startLine",
                 "endLine",
                 "snippet",
+                "focus",
                 "engine",
                 "score",
                 "reason"
@@ -100,7 +102,8 @@
                 "endLine",
                 "engine",
                 "score",
-                "reason"
+                "reason",
+                "focus"
               ],
               "ArtifactRefs": [
                 "evidence",
@@ -108,8 +111,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }} - {{ e.slots.snippet }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }}{% if e.slots.focus %} focus: {{ e.slots.focus }}{% endif %} - {{ e.slots.snippet }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}{% if e.slots.focus %}\n  focus: {{ e.slots.focus }}{% endif %}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
             }
           }
         ],
@@ -205,7 +208,23 @@
         "Avoid": [
           "已知道精确符号名时优先用符号搜索；已知道路径时用读取工具。"
         ]
-      }
+      },
+      "EvidenceCapabilities": [
+        {
+          "Produces": "workspace candidate",
+          "Quality": "candidate",
+          "Satisfies": [
+            "candidate location",
+            "workspace candidate location"
+          ],
+          "Kinds": [
+            "workspace_search_match"
+          ],
+          "CapabilityIds": [
+            "workspace.hybrid-search"
+          ]
+        }
+      ]
     },
     {
       "Name": "FastContextSymbolSearchTool",
@@ -375,7 +394,25 @@
         "Avoid": [
           "自然语言问题或错误文本定位优先用混合搜索。"
         ]
-      }
+      },
+      "EvidenceCapabilities": [
+        {
+          "Produces": "workspace symbol",
+          "Quality": "observed",
+          "Satisfies": [
+            "symbol definition",
+            "implementation detail",
+            "workspace source-of-truth",
+            "workspace investigation"
+          ],
+          "Kinds": [
+            "workspace_symbol"
+          ],
+          "CapabilityIds": [
+            "workspace.symbol-search"
+          ]
+        }
+      ]
     },
     {
       "Name": "FastContextSearchTool",
@@ -398,7 +435,8 @@
               "snippet": "$.snippet",
               "score": "$.score",
               "engine": "$.source",
-              "reason": "$.reason"
+              "reason": "$.reason",
+              "focus": "$.focusSummary"
             },
             "Identity": {
               "Parts": [
@@ -429,6 +467,7 @@
                 "startLine",
                 "endLine",
                 "snippet",
+                "focus",
                 "engine",
                 "score",
                 "reason"
@@ -442,7 +481,8 @@
                 "endLine",
                 "engine",
                 "score",
-                "reason"
+                "reason",
+                "focus"
               ],
               "ArtifactRefs": [
                 "evidence",
@@ -450,8 +490,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }} - {{ e.slots.snippet }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }}{% if e.slots.focus %} focus: {{ e.slots.focus }}{% endif %} - {{ e.slots.snippet }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}{% if e.slots.focus %}\n  focus: {{ e.slots.focus }}{% endif %}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
             }
           }
         ],
@@ -543,7 +583,23 @@
         "Avoid": [
           "抽象代码定位优先用混合搜索；符号定义优先用符号搜索。"
         ]
-      }
+      },
+      "EvidenceCapabilities": [
+        {
+          "Produces": "workspace candidate",
+          "Quality": "candidate",
+          "Satisfies": [
+            "candidate location",
+            "workspace candidate location"
+          ],
+          "Kinds": [
+            "workspace_search_match"
+          ],
+          "CapabilityIds": [
+            "workspace.exact-search"
+          ]
+        }
+      ]
     }
   ],
   "Security": {

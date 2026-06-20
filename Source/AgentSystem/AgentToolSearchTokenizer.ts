@@ -31,6 +31,9 @@ export class AgentToolSearchTokenizer {
     "如何",
     "要",
     "不要",
+    "看看",
+    "我们",
+    "我们的",
   ]);
   private readonly segmenter = typeof Intl.Segmenter === "function"
     ? new Intl.Segmenter(["zh", "en"], { granularity: "word" })

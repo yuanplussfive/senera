@@ -3,6 +3,7 @@ import { AgentConfigLoader } from "./AgentConfigLoader.js";
 import { AgentModelTextBudget, AgentModelTokenEstimator } from "./AgentTextBudget.js";
 import {
   resolveActionPlannerConfig,
+  resolveAgentDelegationConfig,
   resolveAgentLoopConfig,
   resolveArtifactsConfig,
   resolveModelProviderConfig,
@@ -29,6 +30,7 @@ import { AgentActionPlanner } from "./AgentActionPlanner.js";
 import { AgentToolCatalogProjector } from "./AgentToolCatalogProjector.js";
 import { AgentActionMismatchRepairPromptBuilder } from "./AgentActionMismatchRepairPromptBuilder.js";
 import { AgentToolExecutionArtifactRecorder } from "./Artifacts/AgentToolExecutionArtifactRecorder.js";
+import { AgentSkillActivationService } from "./AgentSkillActivation.js";
 
 export class AgentSystemRuntime {
   readonly registry = new AgentPluginRegistry();
@@ -40,6 +42,7 @@ export class AgentSystemRuntime {
   readonly conversationProjector = new AgentConversationProjector();
   readonly modelProviderConfig;
   readonly agentLoopConfig;
+  readonly agentDelegationConfig;
   readonly toolSearchConfig;
   readonly artifactsConfig;
   readonly actionPlannerConfig;
@@ -55,6 +58,7 @@ export class AgentSystemRuntime {
   readonly artifactRecorder: AgentToolExecutionArtifactRecorder;
   readonly actionPlanner: AgentActionPlanner;
   readonly actionMismatchRepairPromptBuilder: AgentActionMismatchRepairPromptBuilder;
+  readonly skillActivation: AgentSkillActivationService;
 
   private constructor(
     readonly workspaceRoot: string,
@@ -64,6 +68,7 @@ export class AgentSystemRuntime {
   ) {
     this.modelProviderConfig = resolveModelProviderConfig(config, modelProviderId);
     this.agentLoopConfig = resolveAgentLoopConfig(config);
+    this.agentDelegationConfig = resolveAgentDelegationConfig(config);
     this.toolSearchConfig = resolveToolSearchConfig(config);
     this.artifactsConfig = resolveArtifactsConfig(config);
     this.actionPlannerConfig = resolveActionPlannerConfig(config, modelProviderId);
@@ -76,6 +81,7 @@ export class AgentSystemRuntime {
       model: this.modelProviderConfig.Model,
     });
     this.promptContextBuilder = new AgentPromptContextBuilder(this.registry, config);
+    this.skillActivation = new AgentSkillActivationService(this.registry);
     this.toolSearch = new AgentToolSearchRuntime(
       this.registry,
       this.toolSearchConfig,
@@ -134,6 +140,7 @@ export class AgentSystemRuntime {
       this.workspaceRoot,
       undefined,
       this.toolSearch,
+      this.configPath,
     );
   }
 
@@ -170,6 +177,7 @@ export class AgentSystemRuntime {
     for (const plugin of scanner.scan()) {
       runtime.registry.registerPlugin(plugin);
     }
+    runtime.registry.validateAgentReferences();
 
     return runtime;
   }
@@ -196,6 +204,7 @@ export class AgentSystemRuntime {
     for (const plugin of scanner.scan()) {
       runtime.registry.registerPlugin(plugin);
     }
+    runtime.registry.validateAgentReferences();
 
     return runtime;
   }

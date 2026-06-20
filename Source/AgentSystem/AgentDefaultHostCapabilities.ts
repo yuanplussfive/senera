@@ -1,5 +1,6 @@
 import { applyPatchHostTool } from "./AgentPatchApplyRuntime.js";
 import { readArtifactMemoryHostTool } from "./AgentArtifactMemoryRuntime.js";
+import { delegateAgentHostTool } from "./AgentDelegateRuntime.js";
 import { documentHostTool } from "./AgentDocumentRuntime.js";
 import { imageVisionHostTool } from "./AgentImageVisionRuntime.js";
 import { runShellCommandHostTool } from "./AgentShellCommandRuntime.js";
@@ -13,6 +14,7 @@ export const AgentHostCapabilityNames = {
   ArtifactMemoryRead: "artifact.memory.read",
   Document: "document",
   ImageVision: "image.vision",
+  AgentDelegate: "agent.delegate",
 } as const;
 
 export function createDefaultHostCapabilityRegistry(options: {
@@ -23,7 +25,8 @@ export function createDefaultHostCapabilityRegistry(options: {
     .register(AgentHostCapabilityNames.ShellRun, runShellCommandHostTool)
     .register(AgentHostCapabilityNames.ArtifactMemoryRead, readArtifactMemoryHostTool)
     .register(AgentHostCapabilityNames.Document, documentHostTool)
-    .register(AgentHostCapabilityNames.ImageVision, imageVisionHostTool);
+    .register(AgentHostCapabilityNames.ImageVision, imageVisionHostTool)
+    .register(AgentHostCapabilityNames.AgentDelegate, delegateAgentHostTool);
 
   return options.toolSearch
     ? registry.register(AgentHostCapabilityNames.ToolSearch, options.toolSearch.createHostHandler())

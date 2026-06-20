@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
+import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
 import { AgentDecisionXmlCollector, AgentDecisionXmlCollectionRetryableError } from "../Source/AgentSystem/AgentDecisionXmlCollector.js";
 import { createXmlProtocolPolicy } from "../Source/AgentSystem/AgentXmlPolicy.js";
 import type { AgentLanguageModel, AgentLanguageModelStream } from "../Source/AgentSystem/AgentLanguageModel.js";
@@ -9,10 +10,19 @@ import type { AgentModelProviderMetadata } from "../Source/AgentSystem/AgentMode
 import { AgentRetryPlanner } from "../Source/AgentSystem/AgentRetryPlanner.js";
 import { AgentActionMismatchRepairPromptBuilder } from "../Source/AgentSystem/AgentActionMismatchRepairPromptBuilder.js";
 import { AgentPromptRenderer } from "../Source/AgentSystem/AgentPromptRenderer.js";
-import type { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
 import type { AgentToolCatalogProjector } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
+import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
 
 async function main(): Promise<void> {
+  const workspaceRoot = process.cwd();
+  const config = AgentConfigLoader.load(path.join(workspaceRoot, "senera.config.json"));
+  const registry = new AgentPluginRegistry();
+  for (const plugin of new AgentPluginScanner(workspaceRoot, config).scan()) {
+    registry.registerPlugin(plugin);
+  }
+  const promptContextBuilder = new AgentPromptContextBuilder(registry, config);
   const policy = createXmlProtocolPolicy({
     ModelProviders: [],
     PluginRoots: {
@@ -40,19 +50,21 @@ async function main(): Promise<void> {
   const useTools = action("use_tools");
   const answer = action("answer");
 
-  const recovered = await collect(mixed, useTools, policy);
+  const recovered = await collect(mixed, useTools, policy, registry, promptContextBuilder);
   assert.equal(recovered.kind, "tool_calls");
   assert.equal(recovered.toolCallsXml, toolXml);
   assert.equal(recovered.text, mixed);
 
-  const finalText = await collect(mixed, answer, policy);
+  const finalText = await collect(mixed, answer, policy, registry, promptContextBuilder);
   assert.equal(finalText.kind, "final_text");
   assert.equal(finalText.text, mixed);
 
-  const mismatch = await collectError("我可以直接解释这个项目。", useTools, policy);
+  const mismatch = await collectError("我可以直接解释这个项目。", useTools, policy, registry, promptContextBuilder);
   assert.equal(mismatch.instruction.code, "MixedXmlContent");
-  assert.match(mismatch.instruction.repairPrompt ?? "", /<senera_tool_calls>/);
-  assert.match(mismatch.instruction.repairPrompt ?? "", /第一个非空字符必须是 </);
+  assert.match(mismatch.instruction.repairPrompt ?? "", /<visible_output_contract>/);
+  assert.match(mismatch.instruction.repairPrompt ?? "", /<repair_contract>/);
+  assert.match(mismatch.instruction.repairPrompt ?? "", /<tool_call_root>senera_tool_calls<\/tool_call_root>/);
+  assert.match(mismatch.instruction.repairPrompt ?? "", /第一个非空字符必须是 &lt;/);
   assert.match(mismatch.instruction.repairPrompt ?? "", /FastContextWorkspaceMapTool/);
 
   const repairedMessages = new AgentRetryPlanner().buildRepairConversation(
@@ -64,7 +76,7 @@ async function main(): Promise<void> {
   assert.doesNotMatch(repairedMessages.at(-2)?.content ?? "", /我可以直接解释这个项目/);
   assert.match(repairedMessages.at(-2)?.content ?? "", /上一条输出已丢弃/);
 
-  const pureTool = await collect(toolXml, useTools, policy);
+  const pureTool = await collect(toolXml, useTools, policy, registry, promptContextBuilder);
   assert.equal(pureTool.kind, "tool_calls");
   assert.equal(pureTool.toolCallsXml, toolXml);
 
@@ -73,11 +85,13 @@ async function main(): Promise<void> {
 
 async function collectError(
   output: string,
-  actionDirective: AgentActionDecision,
+  decision: AgentActionDecision,
   policy: ReturnType<typeof createXmlProtocolPolicy>,
+  registry: AgentPluginRegistry,
+  promptContextBuilder: AgentPromptContextBuilder,
 ): Promise<AgentDecisionXmlCollectionRetryableError> {
   try {
-    await collect(output, actionDirective, policy);
+    await collect(output, decision, policy, registry, promptContextBuilder);
   } catch (error) {
     if (error instanceof AgentDecisionXmlCollectionRetryableError) {
       return error;
@@ -90,9 +104,15 @@ async function collectError(
 
 async function collect(
   output: string,
-  actionDirective: AgentActionDecision,
+  decision: AgentActionDecision,
   policy: ReturnType<typeof createXmlProtocolPolicy>,
+  registry: AgentPluginRegistry,
+  promptContextBuilder: AgentPromptContextBuilder,
 ) {
+  const rootCommand = promptContextBuilder.buildRootCommand({
+    decision,
+    loadedToolNames: ["FastContextWorkspaceMapTool"],
+  });
   const collector = new AgentDecisionXmlCollector({
     model: new StaticTextModel(output),
     policy,
@@ -117,16 +137,7 @@ async function collect(
       xmlRoot: policy.protocol.roots.toolCalls,
     }],
     actionMismatchRepairPromptBuilder: new AgentActionMismatchRepairPromptBuilder({
-      registry: {
-        getTemplate: (name: string) => name === "ActionMismatchRepairPrompt"
-          ? {
-              name,
-              path: path.resolve(
-                "System/Plugins/AgentTemplatePlugin/Templates/ActionMismatchRepairPrompt.liquid",
-              ),
-            }
-          : undefined,
-      } as AgentPluginRegistry,
+      registry,
       promptRenderer: new AgentPromptRenderer(),
       toolCatalog: {
         listVisible: () => [{
@@ -138,6 +149,7 @@ async function collect(
           examples: ["查看项目结构"],
           avoid: [],
           permissions: [],
+          evidenceCapabilities: [],
         }],
       } as unknown as AgentToolCatalogProjector,
       protocol: policy.protocol,
@@ -149,7 +161,7 @@ async function collect(
     step: 1,
     systemPrompt: "",
     messages: [],
-    actionDirective,
+    rootCommand,
   });
 }
 
@@ -192,6 +204,7 @@ function action(kind: AgentActionDecision["action"]): AgentActionDecision {
     useTools: {
       preferredTools: ["FastContextWorkspaceMapTool"],
       instruction: "Call FastContextWorkspaceMapTool.",
+      needs: [],
     },
   };
 }

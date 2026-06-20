@@ -47,11 +47,11 @@ export function all_succeeded<CheckName extends string>(checks: Record<CheckName
 export function get_checks<CheckName extends string>(checks: Record<CheckName, Check>): Check[] {
     return Object.values(checks)
 }
-export enum ActionKind {
-  Answer = "Answer",
-  AskUser = "AskUser",
-  DiscoverTools = "DiscoverTools",
-  UseTools = "UseTools",
+export enum EvidenceVerificationStatus {
+  Satisfied = "Satisfied",
+  Partial = "Partial",
+  Missing = "Missing",
+  Blocked = "Blocked",
 }
 
 export enum ExecutionDeltaOp {
@@ -66,20 +66,15 @@ export enum ToolCallStatus {
   Empty = "Empty",
 }
 
-export interface ActionDecision {
-  action: ActionKind
-  askUser?: AskUserActionPayload | null
-  useTools?: UseToolsActionPayload | null
-  discoverTools?: DiscoverToolsActionPayload | null
-  
-}
-
 export interface ActionPlanInput {
   runState: ActionRunState
   timeline: PlannerTimelineTurn[]
   evidenceMemory: PlannerEvidenceMemoryItem[]
+  evidenceState: PlannerEvidenceStateItem[]
   plannerJournal: PlannerJournalItem[]
+  compactToolCatalog: ToolCatalogSummaryItem[]
   toolCatalog: ToolCatalogItem[]
+  activeSkills: PlannerActiveSkill[]
   
 }
 
@@ -89,33 +84,19 @@ export interface ActionRunState {
   loadedTools: string[]
   progress: ProgressSignals
   warnings: RepeatedCallWarning[]
+  calls: PlannerToolCallStateItem[]
   
 }
 
-export interface ActionSelection {
-  action: ActionKind
-  
-}
-
-export interface AskUserActionPayload {
-  question: string
-  reason?: string | null
-  
-}
-
-export interface CapabilityNeed {
-  actions?: string[] | null
-  targets?: string[] | null
-  inputs?: string[] | null
-  outputs?: string[] | null
-  evidence?: string[] | null
-  effects?: string[] | null
-  
-}
-
-export interface DiscoverToolsActionPayload {
-  queries: string[]
-  needs: CapabilityNeed[]
+export interface EvidenceRequirementVerification {
+  requirementId: string
+  need: string
+  status: EvidenceVerificationStatus
+  evidenceRefs: string[]
+  artifactUris: string[]
+  reason: string
+  missingFacts: string[]
+  unsupportedClaims: string[]
   
 }
 
@@ -125,15 +106,56 @@ export interface EvidenceSlot {
   
 }
 
+export interface EvidenceVerification {
+  ready: boolean
+  requirements: EvidenceRequirementVerification[]
+  summary: string
+  
+}
+
+export interface PlannerActiveSkill {
+  name: string
+  title: string
+  summary: string
+  useCases: string[]
+  avoid: string[]
+  recommendedTools: string[]
+  evidenceRequirements: PlannerEvidenceRequirement[]
+  
+}
+
 export interface PlannerEvidenceMemoryItem {
   evidenceRef: string
   kind: string
   locator: string
   display: string
   label: string
-  confidence: number
   toolName: string
   artifactUri: string
+  facts: EvidenceSlot[]
+  artifactRefs: string[]
+  
+}
+
+export interface PlannerEvidenceRequirement {
+  need: string
+  accepts: string[]
+  minimumQuality: string[]
+  minimum: number
+  purpose: string
+  
+}
+
+export interface PlannerEvidenceStateItem {
+  evidenceRef: string
+  kind: string
+  toolName: string
+  artifactUri: string
+  locator: string
+  display: string
+  label: string
+  source?: string | null
+  confidence?: number | null
   facts: EvidenceSlot[]
   artifactRefs: string[]
   
@@ -161,6 +183,18 @@ export interface PlannerTimelineTurn {
   
 }
 
+export interface PlannerToolCallStateItem {
+  step: number
+  toolName: string
+  status: ToolCallStatus
+  artifactUri: string
+  evidenceRefs: string[]
+  resultKind: string
+  argumentsPreview: string
+  error: string
+  
+}
+
 export interface ProgressSignals {
   totalToolCalls: number
   totalEvidence: number
@@ -175,6 +209,59 @@ export interface RepeatedCallWarning {
   argsHash: string
   count: number
   lastStep: number
+  
+}
+
+export interface TaskCandidateTool {
+  name: string
+  purpose: string
+  supports: string[]
+  
+}
+
+export interface TaskFrame {
+  taskType: string
+  answerGoal: string
+  intentTags: string[]
+  targetRefs: TaskTargetRef[]
+  candidateTools: TaskCandidateTool[]
+  discoveryQueries: string[]
+  requiredEffects: TaskRequiredEffect[]
+  requiredEvidence: TaskRequiredEvidence[]
+  userInputNeeds: TaskUserInputNeed[]
+  nextStepPurpose: string
+  completionCriteria: string[]
+  notes: string[]
+  
+}
+
+export interface TaskRequiredEffect {
+  id: string
+  effect: string
+  target: string
+  proof: string
+  reason: string
+  
+}
+
+export interface TaskRequiredEvidence {
+  id: string
+  need: string
+  minimum: number
+  reason: string
+  
+}
+
+export interface TaskTargetRef {
+  kind: string
+  value: string
+  status: string
+  
+}
+
+export interface TaskUserInputNeed {
+  question: string
+  reason: string
   
 }
 
@@ -213,12 +300,30 @@ export interface ToolCatalogItem {
   examples: string[]
   avoid: string[]
   permissions: string[]
+  evidenceCapabilities: ToolEvidenceCapabilityItem[]
   loaded: boolean
   
 }
 
-export interface UseToolsActionPayload {
-  preferredTools: string[]
-  instruction: string
+export interface ToolCatalogSummaryItem {
+  name: string
+  title: string
+  summary: string
+  capabilities: string[]
+  evidence: string[]
+  effects: string[]
+  outputs: string[]
+  permissions: string[]
+  loaded: boolean
+  rootKind: string
+  
+}
+
+export interface ToolEvidenceCapabilityItem {
+  produces: string
+  quality: string
+  satisfies: string[]
+  kinds: string[]
+  capabilityIds: string[]
   
 }

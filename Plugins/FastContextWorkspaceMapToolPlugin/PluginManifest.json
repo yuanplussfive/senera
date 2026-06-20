@@ -210,7 +210,26 @@
         "Avoid": [
           "不要用于读取完整文件内容或精确搜索代码。"
         ]
-      }
+      },
+      "EvidenceCapabilities": [
+        {
+          "Produces": "workspace map",
+          "Quality": "observed",
+          "Satisfies": [
+            "project orientation",
+            "project structure",
+            "workspace orientation",
+            "workspace investigation entrypoint"
+          ],
+          "Kinds": [
+            "workspace_map_path",
+            "workspace_recommended_root"
+          ],
+          "CapabilityIds": [
+            "workspace.map"
+          ]
+        }
+      ]
     }
   ],
   "Security": {

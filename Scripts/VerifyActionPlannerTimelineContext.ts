@@ -78,15 +78,15 @@ async function main(): Promise<void> {
   assert.equal(input.timeline[2].content.includes("slots:"), true);
   assert.equal(JSON.stringify(input.runState).includes("WTH1"), false);
 
-  const request = await baml.request.SelectAction(buildActionPlannerPromptJson(input, {
-    stage: "selectAction",
+  const request = await baml.request.BuildTaskFrame(buildActionPlannerPromptJson(input, {
+    stage: "buildTaskFrame",
   }), {});
   const body = request.body.json() as Record<string, unknown>;
   const messages = readMessages(body);
   assert.ok(messages.length >= 2);
   assert.equal(messages[0]?.role, "system");
   const plannerJson = readPlannerJson(messages);
-  assert.equal(plannerJson.directive.stage, "selectAction");
+  assert.equal(plannerJson.directive.stage, "buildTaskFrame");
   assert.deepEqual(plannerJson.context.timeline.map((turn) => turn.role), ["user", "assistant", "user"]);
   assert.equal(plannerJson.context.timeline[1]?.kind, "tool_call");
   assert.equal(plannerJson.context.timeline[1]?.content.includes("WeatherTool"), true);
@@ -100,17 +100,17 @@ async function main(): Promise<void> {
   assert.equal(promptText.includes("Execution state:"), false);
   assert.equal(promptText.includes("Recent state deltas:"), false);
 
-  const repairRequest = await baml.request.RepairActionSelection(buildActionPlannerPromptJson(input, {
-    stage: "repairActionSelection",
-    invalidSelection: "{\"action\":\"UseTools\",\"reason\":\"extra\"}",
+  const repairRequest = await baml.request.RepairTaskFrame(buildActionPlannerPromptJson(input, {
+    stage: "repairTaskFrame",
+    invalidTaskFrame: "{\"taskType\":\"inspect\",\"reason\":\"extra\"}",
     issues: ["unexpected field: reason"],
   }), {});
   const repairMessages = readMessages(repairRequest.body.json() as Record<string, unknown>);
   assert.equal(repairMessages[0]?.role, "system");
   assert.equal(repairMessages.at(-1)?.role, "user");
   const repairJson = readPlannerJson(repairMessages);
-  assert.equal(repairJson.directive.stage, "repairActionSelection");
-  assert.equal(repairJson.directive.invalidSelection?.includes("reason"), true);
+  assert.equal(repairJson.directive.stage, "repairTaskFrame");
+  assert.equal(repairJson.directive.invalidTaskFrame?.includes("reason"), true);
   assert.deepEqual(repairJson.directive.issues, ["unexpected field: reason"]);
   assert.equal(repairJson.context.timeline[1]?.kind, "tool_call");
   assert.equal(repairJson.context.timeline[1]?.content.includes("WeatherTool"), true);
@@ -139,7 +139,7 @@ function readPlannerJson(messages: Array<{
   };
   directive: {
     stage: string;
-    invalidSelection?: string;
+    invalidTaskFrame?: string;
     issues?: string[];
   };
 } {
@@ -157,7 +157,7 @@ function readPlannerJson(messages: Array<{
     };
     directive: {
       stage: string;
-      invalidSelection?: string;
+      invalidTaskFrame?: string;
       issues?: string[];
     };
   };

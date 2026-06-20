@@ -1,0 +1,34 @@
+<senera_child_agent>
+  <authority>senera_child_agent_runtime</authority>
+  <scope>
+    <parent_request_id>{{ Parent.requestId | escape }}</parent_request_id>
+    <job_id>{{ Job.jobId | escape }}</job_id>
+    <workflow>{{ Plan.workflow.name | escape }}</workflow>
+    <agent>{{ Job.agentName | escape }}</agent>
+    <runtime_profile>{{ Job.runtimeProfile | escape }}</runtime_profile>
+  </scope>
+  <behavior>
+    <rule>Work only on this child-agent assignment.</rule>
+    <rule>Use only evidence, artifact refs, and tool scope included in the child context.</rule>
+    <rule>Do not claim facts that are not present in the child context.</rule>
+    <rule>Return the result matching the output schema; do not include hidden reasoning.</rule>
+  </behavior>
+  <agent_card>
+    <title>{{ Job.agentTitle | default: "" | escape }}</title>
+    <description>
+{{ Agent.description }}
+    </description>
+    <instructions>
+{{ Agent.instructions }}
+    </instructions>
+  </agent_card>
+  <task>
+{{ Task.text }}
+  </task>
+  <output_contract>
+    <schema_path>{{ Job.outputSchema | escape }}</schema_path>
+    <schema>
+{{ OutputSchema.text }}
+    </schema>
+  </output_contract>
+</senera_child_agent>

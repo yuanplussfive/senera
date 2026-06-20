@@ -1,27 +1,27 @@
 "use strict";
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-var FastContextSearchToolResultSchema_exports = {};
-__export(FastContextSearchToolResultSchema_exports, {
-  Schema: () => Schema
-});
-module.exports = __toCommonJS(FastContextSearchToolResultSchema_exports);
-var pluginSdk = require("@senera/tool-plugin-sdk");
+
+const pluginSdk = require("@senera/tool-plugin-sdk");
+
+const FocusSpanSchema = pluginSdk.z.object({
+  start: pluginSdk.z.number().int(),
+  end: pluginSdk.z.number().int(),
+  text: pluginSdk.z.string()
+}).strict();
+
+const FocusItemSchema = pluginSdk.z.object({
+  target: pluginSdk.z.string(),
+  query: pluginSdk.z.string(),
+  value: pluginSdk.z.string(),
+  matchedText: pluginSdk.z.string(),
+  indices: pluginSdk.z.object({
+    item: pluginSdk.z.array(pluginSdk.z.number().int())
+  }).strict(),
+  spans: pluginSdk.z.object({
+    item: pluginSdk.z.array(FocusSpanSchema)
+  }).strict(),
+  summary: pluginSdk.z.string()
+}).strict();
+
 const SearchResultItemSchema = pluginSdk.z.object({
   path: pluginSdk.z.string(),
   startLine: pluginSdk.z.number().int(),
@@ -29,12 +29,44 @@ const SearchResultItemSchema = pluginSdk.z.object({
   line: pluginSdk.z.number().int(),
   snippet: pluginSdk.z.string(),
   score: pluginSdk.z.number(),
-  source: pluginSdk.z.enum(["ripgrep", "flexsearch", "index", "scan", "path", "symbol", "combined"]),
+  source: pluginSdk.z.enum([
+    "ripgrep",
+    "sqlite_fts",
+    "sqlite_trigram",
+    "index",
+    "scan",
+    "path",
+    "path_fuzzy",
+    "symbol",
+    "combined"
+  ]),
   matches: pluginSdk.z.object({
     item: pluginSdk.z.array(pluginSdk.z.string())
   }).strict(),
-  reason: pluginSdk.z.string()
+  reason: pluginSdk.z.string(),
+  focus: pluginSdk.z.object({
+    item: pluginSdk.z.array(FocusItemSchema)
+  }).strict().optional(),
+  focusSummary: pluginSdk.z.string().optional()
 }).strict();
+
+const StatsSchema = pluginSdk.z.object({
+  resultCount: pluginSdk.z.number().int(),
+  ripgrepMatchCount: pluginSdk.z.number().int(),
+  pathFuzzyMatchCount: pluginSdk.z.number().int(),
+  pathFuzzyScanned: pluginSdk.z.number().int(),
+  pathFuzzyCapped: pluginSdk.z.boolean(),
+  indexDocumentCount: pluginSdk.z.number().int(),
+  indexedFiles: pluginSdk.z.number().int(),
+  indexedSymbols: pluginSdk.z.number().int(),
+  engines: pluginSdk.z.object({
+    item: pluginSdk.z.array(pluginSdk.z.string())
+  }).strict(),
+  refreshedIndex: pluginSdk.z.boolean(),
+  stateFile: pluginSdk.z.string(),
+  elapsedMs: pluginSdk.z.number().int()
+}).strict();
+
 const Schema = pluginSdk.z.object({
   query: pluginSdk.z.string(),
   workspaceRoot: pluginSdk.z.string(),
@@ -47,15 +79,9 @@ const Schema = pluginSdk.z.object({
   availableRoots: pluginSdk.z.object({
     item: pluginSdk.z.array(pluginSdk.z.string())
   }).strict(),
-  stats: pluginSdk.z.object({
-    resultCount: pluginSdk.z.number().int(),
-    ripgrepMatchCount: pluginSdk.z.number().int(),
-    queryPatternCount: pluginSdk.z.number().int(),
-    indexDocumentCount: pluginSdk.z.number().int(),
-    refreshedIndex: pluginSdk.z.boolean(),
-    elapsedMs: pluginSdk.z.number().int()
-  }).strict()
+  stats: StatsSchema
 }).strict();
-0 && (module.exports = {
+
+module.exports = {
   Schema
-});
+};

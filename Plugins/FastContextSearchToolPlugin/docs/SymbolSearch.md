@@ -2,7 +2,7 @@
 
 ## 简述
 
-按符号查找函数、类、类型、组件、常量和 import/export 定义。
+按 SQLite 符号索引查找函数、类、类型、组件、常量和 import/export 定义；TS/JS 使用 TypeScript AST 分析。
 
 ## 何时使用
 
@@ -14,7 +14,7 @@
 
 ## 配置
 
-读取 `PluginConfig.toml` 的 roots、exclude、索引文件数、结果数和 `.state` 符号索引设置。
+读取 `PluginConfig.toml` 的 roots、exclude、analyzers、symbol_scope、结果数和 `.state` 符号索引设置。
 
 ## 输入
 

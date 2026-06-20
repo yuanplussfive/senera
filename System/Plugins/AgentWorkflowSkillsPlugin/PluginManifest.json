@@ -1,0 +1,1134 @@
+{
+  "Plugin": {
+    "Name": "AgentWorkflowSkillsPlugin",
+    "Title": "工作流技能",
+    "Version": "0.1.0",
+    "Kind": "Skill",
+    "Description": "提供面向模型的可复用工作流技能，指导复杂任务的检索、取证、验证和输出。"
+  },
+  "Discovery": {
+    "Tags": [
+      "skill",
+      "workflow",
+      "技能",
+      "工作流",
+      "调查",
+      "审查",
+      "记忆",
+      "文档"
+    ]
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 45
+  },
+  "Skills": [
+    {
+      "Name": "WorkspaceInvestigationSkill",
+      "Title": "工作区调查",
+      "DescriptionFile": "./docs/WorkspaceInvestigation.md",
+      "RecommendedTools": [
+        "AgentDelegateTool",
+        "FastContextWorkspaceMapTool",
+        "FastContextHybridSearchTool",
+        "FastContextSearchTool",
+        "FastContextSymbolSearchTool",
+        "FastContextReadTool"
+      ],
+      "RecommendedAgents": [
+        "WorkspaceExplorer",
+        "SymbolTracer"
+      ],
+      "RecommendedWorkflows": [
+        "WorkspaceInvestigationWorkflow"
+      ],
+      "Search": {
+        "Summary": "定位代码、配置、提示词、UI 文案、错误处理或跨文件实现时，按搜索、读取、再搜索、取证的闭环工作。",
+        "Keywords": [
+          "workspace",
+          "code",
+          "search",
+          "read",
+          "investigate",
+          "debug",
+          "工作区",
+          "代码",
+          "检索",
+          "读取",
+          "定位",
+          "调查",
+          "排查",
+          "project",
+          "codebase",
+          "repository",
+          "repo",
+          "README",
+          "package",
+          "项目",
+          "用途",
+          "代码库",
+          "仓库",
+          "说明",
+          "入口",
+          "结构"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workflow.workspace-investigation",
+            "Title": "Workspace investigation workflow",
+            "Description": "Guide local code investigation through search, candidate reading, query refinement, and evidence-backed conclusions.",
+            "Facets": {
+              "Actions": [
+                "investigate",
+                "search",
+                "read",
+                "verify"
+              ],
+              "Targets": [
+                "workspace",
+                "source-code",
+                "configuration",
+                "prompt-template",
+                "ui-code"
+              ],
+              "Inputs": [
+                "natural-language",
+                "identifier",
+                "path",
+                "error-text",
+                "ui-description"
+              ],
+              "Outputs": [
+                "source-location",
+                "evidence-backed-summary",
+                "next-edit-target"
+              ],
+              "Evidence": [
+                "workspace-search-match",
+                "workspace-read"
+              ],
+              "Effects": [
+                "read-only",
+                "index-cache"
+              ]
+            },
+            "Aliases": [
+              "代码调查",
+              "搜索读取闭环",
+              "find code and verify",
+              "search read refine"
+            ],
+            "Examples": [
+              "分析某个 UI 变化在哪里实现",
+              "找模型输出 XML 修复逻辑",
+              "where is streaming preview buffered"
+            ],
+            "Avoid": [
+              "用户只要常识性回答、无需检查工作区时不要激活"
+            ],
+            "Risk": {
+              "SideEffect": "index-cache",
+              "Permission": "read"
+            }
+          }
+        ],
+        "UseCases": [
+          "用户问某段功能、错误、UI、配置或提示词在代码中怎么实现，且需要本地证据。",
+          "搜索结果不确定，需要读取候选文件并根据 imports、符号、路径继续追踪。",
+          "用户询问当前项目、代码库或仓库是做什么的、有什么用途、入口和主要模块时，需要读取本地项目证据。",
+          "用户要求概览项目用途或框架作用时，先查看项目地图并读取 README、package、配置或入口文件。"
+        ],
+        "Examples": [
+          "看看插件工作区索引，找代码是怎么写的",
+          "为什么停止按钮有时候不生效，查一下逻辑",
+          "分析 planner 上下文实际怎么构建",
+          "看看我们的项目是干嘛的，有什么用",
+          "这个代码库主要做什么",
+          "读取 README 和 package 后总结项目用途"
+        ],
+        "Avoid": [
+          "无需本地工作区事实的闲聊、解释或纯设计讨论。"
+        ]
+      },
+      "EvidenceRequirements": [
+        {
+          "Need": "workspace read source-of-truth evidence",
+          "Accepts": [
+            "workspace read",
+            "project identity",
+            "project purpose",
+            "implementation detail",
+            "source behavior"
+          ],
+          "MinimumQuality": [
+            "observed"
+          ],
+          "Minimum": 1,
+          "Purpose": "本地工作区结论需要来自已读取的文件、目录读取或源码片段；项目地图和搜索候选只用于定位，不满足最终回答。"
+        }
+      ]
+    },
+    {
+      "Name": "PullRequestReviewSkill",
+      "Title": "变更审查",
+      "DescriptionFile": "./docs/PullRequestReview.md",
+      "RecommendedTools": [
+        "AgentDelegateTool",
+        "FastContextReadTool",
+        "FastContextHybridSearchTool",
+        "FastContextSearchTool",
+        "ApplyPatchTool"
+      ],
+      "RecommendedAgents": [
+        "SecurityReviewer",
+        "TestGapReviewer",
+        "MaintainabilityReviewer"
+      ],
+      "RecommendedWorkflows": [
+        "ParallelPullRequestReview"
+      ],
+      "Search": {
+        "Summary": "审查 PR、diff 或未提交变更时，优先找风险、回归、测试缺口和框架影响。",
+        "Keywords": [
+          "review",
+          "diff",
+          "pull request",
+          "pr",
+          "change",
+          "risk",
+          "审查",
+          "变更",
+          "风险",
+          "回归",
+          "测试"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workflow.change-review",
+            "Title": "Change review workflow",
+            "Description": "Guide review of local or PR changes with risk-first findings, source references, and verification gaps.",
+            "Facets": {
+              "Actions": [
+                "review",
+                "inspect",
+                "verify"
+              ],
+              "Targets": [
+                "diff",
+                "pull-request",
+                "workspace-change",
+                "test-coverage"
+              ],
+              "Inputs": [
+                "diff",
+                "commit",
+                "changed-files",
+                "user-claim"
+              ],
+              "Outputs": [
+                "findings",
+                "risk-summary",
+                "test-gap"
+              ],
+              "Evidence": [
+                "workspace-read",
+                "workspace-search-match"
+              ],
+              "Effects": [
+                "read-only"
+              ]
+            },
+            "Aliases": [
+              "PR 审查",
+              "代码审查",
+              "review changes",
+              "diff review"
+            ],
+            "Examples": [
+              "有人提交了 PR，看看有没有害",
+              "审查这次改动是否影响框架"
+            ],
+            "Avoid": [
+              "用户明确要求直接实现新功能时不要只做审查"
+            ],
+            "Risk": {
+              "SideEffect": "none",
+              "Permission": "read"
+            }
+          }
+        ],
+        "UseCases": [
+          "用户要求查看 PR、合并变更、未提交 diff、是否有风险或是否影响框架。"
+        ],
+        "Examples": [
+          "看看这个 PR 是干嘛的，有没有害",
+          "合并后这些改动会不会影响我们的框架"
+        ],
+        "Avoid": [
+          "纯需求分析或无需检查实际变更时不要激活。"
+        ]
+      }
+    },
+    {
+      "Name": "FrontendExperienceInspectionSkill",
+      "Title": "前端体验检查",
+      "DescriptionFile": "./docs/FrontendExperienceInspection.md",
+      "RecommendedTools": [
+        "AgentDelegateTool",
+        "FastContextHybridSearchTool",
+        "FastContextReadTool",
+        "FastContextSearchTool"
+      ],
+      "RecommendedAgents": [
+        "FrontendInspector",
+        "LayoutReviewer"
+      ],
+      "RecommendedWorkflows": [
+        "FrontendInspectionWorkflow"
+      ],
+      "Search": {
+        "Summary": "处理前端 UI、交互、布局、视觉抖动、文件图标、上传进度和体验问题时，按状态、布局、样式、事件流检查。",
+        "Keywords": [
+          "frontend",
+          "ui",
+          "layout",
+          "interaction",
+          "react",
+          "css",
+          "前端",
+          "界面",
+          "交互",
+          "布局",
+          "样式",
+          "抖动"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workflow.frontend-experience-inspection",
+            "Title": "Frontend experience inspection workflow",
+            "Description": "Guide UI investigation through component state, event flow, layout constraints, and visual verification.",
+            "Facets": {
+              "Actions": [
+                "inspect",
+                "debug",
+                "verify"
+              ],
+              "Targets": [
+                "frontend",
+                "component",
+                "layout",
+                "interaction",
+                "visual-state"
+              ],
+              "Inputs": [
+                "ui-description",
+                "screenshot",
+                "component-name",
+                "css-class"
+              ],
+              "Outputs": [
+                "ui-cause",
+                "implementation-target",
+                "verification-plan"
+              ],
+              "Evidence": [
+                "workspace-read",
+                "workspace-search-match"
+              ],
+              "Effects": [
+                "read-only"
+              ]
+            },
+            "Aliases": [
+              "UI 排查",
+              "前端体验",
+              "layout investigation",
+              "visual regression"
+            ],
+            "Examples": [
+              "思考过程展开导致对话抖动",
+              "上传进度没有百分比",
+              "文件图标显示不准确"
+            ],
+            "Avoid": [
+              "后端协议、数据库或无界面问题优先使用其它工作流"
+            ],
+            "Risk": {
+              "SideEffect": "none",
+              "Permission": "read"
+            }
+          }
+        ],
+        "UseCases": [
+          "用户描述前端 UI 不好看、交互卡顿、布局抖动、状态显示异常或视觉验证问题。"
+        ],
+        "Examples": [
+          "这个思考过程折叠太难看了",
+          "为什么上传只有 uploading 没有百分比"
+        ],
+        "Avoid": [
+          "与界面无关的纯服务端问题。"
+        ]
+      }
+    },
+    {
+      "Name": "DocumentUnderstandingSkill",
+      "Title": "文件理解",
+      "DescriptionFile": "./docs/DocumentUnderstanding.md",
+      "RecommendedTools": [
+        "AgentDelegateTool",
+        "DocumentTool",
+        "ArtifactMemoryReadTool",
+        "ImageVisionTool"
+      ],
+      "RecommendedAgents": [
+        "DocumentInspector",
+        "VisionInspector"
+      ],
+      "RecommendedWorkflows": [
+        "DocumentUnderstandingWorkflow"
+      ],
+      "Search": {
+        "Summary": "处理上传文件、文档解析、预览、切片、视觉识别和按需读取时，先登记文件，再按任务选择文本、结构或视觉路径。",
+        "Keywords": [
+          "document",
+          "upload",
+          "pdf",
+          "docx",
+          "ppt",
+          "excel",
+          "image",
+          "vision",
+          "文件",
+          "上传",
+          "文档",
+          "图片",
+          "识图",
+          "预览"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workflow.document-understanding",
+            "Title": "Document understanding workflow",
+            "Description": "Guide uploaded document handling through registration, media detection, preview projection, extraction, and evidence reading.",
+            "Facets": {
+              "Actions": [
+                "register",
+                "extract",
+                "read",
+                "inspect"
+              ],
+              "Targets": [
+                "upload",
+                "document",
+                "pdf",
+                "office-file",
+                "image"
+              ],
+              "Inputs": [
+                "upload-uri",
+                "absolute-path",
+                "question",
+                "file-metadata"
+              ],
+              "Outputs": [
+                "document-preview",
+                "content-evidence",
+                "artifact-reference"
+              ],
+              "Evidence": [
+                "document-summary",
+                "artifact-memory"
+              ],
+              "Effects": [
+                "read-only",
+                "artifact-write"
+              ]
+            },
+            "Aliases": [
+              "文档解析",
+              "上传文件理解",
+              "PDF 阅读",
+              "image vision"
+            ],
+            "Examples": [
+              "上传 pdf 后让模型按需读取",
+              "识别图片内容并回答问题"
+            ],
+            "Avoid": [
+              "用户只讨论代码库而没有上传文件时不要激活"
+            ],
+            "Risk": {
+              "SideEffect": "artifact-write",
+              "Permission": "read"
+            }
+          }
+        ],
+        "UseCases": [
+          "用户上传文件，或询问 docx、ppt、pdf、excel、图片如何解析、索引、预览和读取。"
+        ],
+        "Examples": [
+          "文件上传后怎么让模型知道它是什么",
+          "图片不要 sharp，走识图插件"
+        ],
+        "Avoid": [
+          "没有文件、上传 URI 或文档处理需求时不要激活。"
+        ]
+      }
+    },
+    {
+      "Name": "MemoryFormationSkill",
+      "Title": "长期记忆形成",
+      "DescriptionFile": "./docs/MemoryFormation.md",
+      "RecommendedTools": [
+        "AgentDelegateTool",
+        "ArtifactMemoryReadTool"
+      ],
+      "RecommendedAgents": [
+        "MemoryCandidateExtractor",
+        "KnowledgeLinker"
+      ],
+      "RecommendedWorkflows": [
+        "MemoryFormationWorkflow"
+      ],
+      "Search": {
+        "Summary": "设计长期记忆、用户画像、偏好、知识点和关系网络时，区分事实、偏好、项目规则、候选记忆和证据来源。",
+        "Keywords": [
+          "memory",
+          "profile",
+          "preference",
+          "knowledge",
+          "relationship",
+          "长期记忆",
+          "用户画像",
+          "偏好",
+          "知识",
+          "关系网络"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workflow.memory-formation",
+            "Title": "Memory formation workflow",
+            "Description": "Guide durable memory design through candidate extraction, evidence linking, consolidation, conflict handling, and recall projection.",
+            "Facets": {
+              "Actions": [
+                "extract",
+                "classify",
+                "consolidate",
+                "link"
+              ],
+              "Targets": [
+                "long-term-memory",
+                "user-profile",
+                "preference",
+                "knowledge-graph",
+                "project-convention"
+              ],
+              "Inputs": [
+                "conversation",
+                "tool-evidence",
+                "user-correction",
+                "repeated-behavior"
+              ],
+              "Outputs": [
+                "candidate-memory",
+                "memory-policy",
+                "relationship-edge",
+                "recall-projection"
+              ],
+              "Evidence": [
+                "conversation-evidence",
+                "artifact-reference"
+              ],
+              "Effects": [
+                "memory-write"
+              ]
+            },
+            "Aliases": [
+              "记忆系统",
+              "用户偏好",
+              "知识网络",
+              "memory extraction"
+            ],
+            "Examples": [
+              "用户多次说不要硬编码，怎么形成偏好记忆",
+              "香蕉和苹果都是水果这种关系怎么自发形成"
+            ],
+            "Avoid": [
+              "短期任务执行不需要形成长期记忆时不要激活"
+            ],
+            "Risk": {
+              "SideEffect": "memory-write",
+              "Permission": "internal"
+            }
+          }
+        ],
+        "UseCases": [
+          "用户讨论长期记忆、用户画像、偏好学习、候选记忆、知识图谱或记忆压缩策略。"
+        ],
+        "Examples": [
+          "多次说不要硬编码这种记忆怎么形成",
+          "知识网络怎么样形成最好"
+        ],
+        "Avoid": [
+          "普通代码修改、无需跨会话持久化时不要激活。"
+        ]
+      }
+    }
+  ],
+  "ContextPacks": [
+    {
+      "Name": "WorkspaceReadOnlyEvidence",
+      "Description": "只给子代理当前目标、激活技能、相关工作区路径、证据引用和只读工具范围。",
+      "TemplateFile": "./contexts/WorkspaceReadOnlyEvidence.liquid",
+      "Inputs": [
+        "latestUserRequest",
+        "activeSkill",
+        "workspaceHints",
+        "evidenceRefs",
+        "artifactRefs"
+      ],
+      "ToolScope": "agentRecommendedTools",
+      "History": "none",
+      "Artifacts": "referencesOnly",
+      "Evidence": "compact"
+    },
+    {
+      "Name": "DiffFocusedReadOnly",
+      "Description": "只给子代理当前变更、diff 证据、相关文件和审查目标。",
+      "TemplateFile": "./contexts/DiffFocusedReadOnly.liquid",
+      "Inputs": [
+        "latestUserRequest",
+        "activeSkill",
+        "workspaceDiff",
+        "evidenceRefs",
+        "artifactRefs"
+      ],
+      "ToolScope": "agentRecommendedTools",
+      "History": "none",
+      "Artifacts": "referencesOnly",
+      "Evidence": "compact"
+    },
+    {
+      "Name": "DocumentFocusedEvidence",
+      "Description": "只给子代理上传文件引用、文档摘要、问题和必要 artifact 读取入口。",
+      "TemplateFile": "./contexts/DocumentFocusedEvidence.liquid",
+      "Inputs": [
+        "latestUserRequest",
+        "activeSkill",
+        "uploadRefs",
+        "documentPreview",
+        "artifactRefs"
+      ],
+      "ToolScope": "agentRecommendedTools",
+      "History": "none",
+      "Artifacts": "referencesOnly",
+      "Evidence": "compact"
+    },
+    {
+      "Name": "MemoryDesignEvidence",
+      "Description": "只给子代理用户明确偏好、候选记忆证据、冲突记录和项目约定引用。",
+      "TemplateFile": "./contexts/MemoryDesignEvidence.liquid",
+      "Inputs": [
+        "latestUserRequest",
+        "activeSkill",
+        "conversationEvidence",
+        "artifactRefs",
+        "existingMemoryRefs"
+      ],
+      "ToolScope": "agentRecommendedTools",
+      "History": "evidenceOnly",
+      "Artifacts": "referencesOnly",
+      "Evidence": "compact"
+    }
+  ],
+  "MergePolicies": [
+    {
+      "Name": "FindingsBySeverity",
+      "Description": "将多个审查代理的发现按严重度、证据和文件位置合并。",
+      "Strategy": "findings.bySeverity",
+      "TemplateFile": "./merges/FindingsBySeverity.liquid",
+      "OutputSchema": "./schemas/FindingList.schema.json"
+    },
+    {
+      "Name": "EvidenceSummaryMerge",
+      "Description": "合并多个调查代理的证据摘要、未确认点和后续读取建议。",
+      "Strategy": "evidence.summary",
+      "TemplateFile": "./merges/EvidenceSummaryMerge.liquid",
+      "OutputSchema": "./schemas/EvidenceSummary.schema.json"
+    },
+    {
+      "Name": "MemoryGraphMerge",
+      "Description": "合并候选记忆、偏好、概念节点和关系边。",
+      "Strategy": "memory.graph",
+      "TemplateFile": "./merges/MemoryGraphMerge.liquid",
+      "OutputSchema": "./schemas/MemoryGraph.schema.json"
+    }
+  ],
+  "Agents": [
+    {
+      "Name": "WorkspaceExplorer",
+      "Title": "工作区探索代理",
+      "DescriptionFile": "./agents/WorkspaceExplorer.md",
+      "InstructionsFile": "./agents/WorkspaceExplorer.instructions.md",
+      "RecommendedTools": [
+        "FastContextWorkspaceMapTool",
+        "FastContextHybridSearchTool",
+        "FastContextReadTool"
+      ],
+      "ContextPack": "WorkspaceReadOnlyEvidence",
+      "OutputSchema": "./schemas/EvidenceSummary.schema.json",
+      "RuntimeProfile": "ReadOnlyExplorer",
+      "Search": {
+        "Summary": "并行探索代码位置、候选文件、配置和实现入口。",
+        "Keywords": [
+          "workspace",
+          "explore",
+          "search",
+          "工作区",
+          "探索",
+          "检索"
+        ]
+      }
+    },
+    {
+      "Name": "SymbolTracer",
+      "Title": "符号追踪代理",
+      "DescriptionFile": "./agents/SymbolTracer.md",
+      "InstructionsFile": "./agents/SymbolTracer.instructions.md",
+      "RecommendedTools": [
+        "FastContextSymbolSearchTool",
+        "FastContextHybridSearchTool",
+        "FastContextReadTool"
+      ],
+      "ContextPack": "WorkspaceReadOnlyEvidence",
+      "OutputSchema": "./schemas/EvidenceSummary.schema.json",
+      "RuntimeProfile": "ReadOnlyExplorer",
+      "Search": {
+        "Summary": "追踪函数、类型、组件、调用链和跨文件依赖。",
+        "Keywords": [
+          "symbol",
+          "call graph",
+          "component",
+          "符号",
+          "调用链",
+          "组件"
+        ]
+      }
+    },
+    {
+      "Name": "SecurityReviewer",
+      "Title": "安全审查代理",
+      "DescriptionFile": "./agents/SecurityReviewer.md",
+      "InstructionsFile": "./agents/SecurityReviewer.instructions.md",
+      "RecommendedTools": [
+        "FastContextHybridSearchTool",
+        "FastContextReadTool"
+      ],
+      "ContextPack": "DiffFocusedReadOnly",
+      "OutputSchema": "./schemas/FindingList.schema.json",
+      "RuntimeProfile": "ReadOnlyReview",
+      "Search": {
+        "Summary": "审查 diff 中的权限、注入、敏感信息、外部输入和边界风险。",
+        "Keywords": [
+          "security",
+          "permission",
+          "secret",
+          "安全",
+          "权限",
+          "敏感"
+        ]
+      }
+    },
+    {
+      "Name": "TestGapReviewer",
+      "Title": "测试缺口代理",
+      "DescriptionFile": "./agents/TestGapReviewer.md",
+      "InstructionsFile": "./agents/TestGapReviewer.instructions.md",
+      "RecommendedTools": [
+        "FastContextHybridSearchTool",
+        "FastContextReadTool"
+      ],
+      "ContextPack": "DiffFocusedReadOnly",
+      "OutputSchema": "./schemas/FindingList.schema.json",
+      "RuntimeProfile": "ReadOnlyReview",
+      "Search": {
+        "Summary": "审查变更是否缺少单测、集成测试、回归验证或边界测试。",
+        "Keywords": [
+          "test",
+          "coverage",
+          "flaky",
+          "测试",
+          "覆盖",
+          "回归"
+        ]
+      }
+    },
+    {
+      "Name": "MaintainabilityReviewer",
+      "Title": "可维护性审查代理",
+      "DescriptionFile": "./agents/MaintainabilityReviewer.md",
+      "InstructionsFile": "./agents/MaintainabilityReviewer.instructions.md",
+      "RecommendedTools": [
+        "FastContextHybridSearchTool",
+        "FastContextReadTool"
+      ],
+      "ContextPack": "DiffFocusedReadOnly",
+      "OutputSchema": "./schemas/FindingList.schema.json",
+      "RuntimeProfile": "ReadOnlyReview",
+      "Search": {
+        "Summary": "审查抽象边界、重复逻辑、配置耦合和长期维护风险。",
+        "Keywords": [
+          "maintainability",
+          "architecture",
+          "coupling",
+          "维护",
+          "架构",
+          "耦合"
+        ]
+      }
+    },
+    {
+      "Name": "FrontendInspector",
+      "Title": "前端状态代理",
+      "DescriptionFile": "./agents/FrontendInspector.md",
+      "InstructionsFile": "./agents/FrontendInspector.instructions.md",
+      "RecommendedTools": [
+        "FastContextHybridSearchTool",
+        "FastContextReadTool"
+      ],
+      "ContextPack": "WorkspaceReadOnlyEvidence",
+      "OutputSchema": "./schemas/EvidenceSummary.schema.json",
+      "RuntimeProfile": "ReadOnlyExplorer",
+      "Search": {
+        "Summary": "调查 UI 状态、事件流、组件边界和前端交互问题。",
+        "Keywords": [
+          "frontend",
+          "state",
+          "component",
+          "前端",
+          "状态",
+          "组件"
+        ]
+      }
+    },
+    {
+      "Name": "LayoutReviewer",
+      "Title": "布局体验代理",
+      "DescriptionFile": "./agents/LayoutReviewer.md",
+      "InstructionsFile": "./agents/LayoutReviewer.instructions.md",
+      "RecommendedTools": [
+        "FastContextHybridSearchTool",
+        "FastContextReadTool"
+      ],
+      "ContextPack": "WorkspaceReadOnlyEvidence",
+      "OutputSchema": "./schemas/EvidenceSummary.schema.json",
+      "RuntimeProfile": "ReadOnlyExplorer",
+      "Search": {
+        "Summary": "调查布局抖动、浮层、滚动、响应式和视觉层级问题。",
+        "Keywords": [
+          "layout",
+          "overlay",
+          "responsive",
+          "布局",
+          "浮层",
+          "响应式"
+        ]
+      }
+    },
+    {
+      "Name": "DocumentInspector",
+      "Title": "文档检查代理",
+      "DescriptionFile": "./agents/DocumentInspector.md",
+      "InstructionsFile": "./agents/DocumentInspector.instructions.md",
+      "RecommendedTools": [
+        "DocumentTool",
+        "ArtifactMemoryReadTool"
+      ],
+      "ContextPack": "DocumentFocusedEvidence",
+      "OutputSchema": "./schemas/EvidenceSummary.schema.json",
+      "RuntimeProfile": "ReadOnlyExplorer",
+      "Search": {
+        "Summary": "检查上传文档的结构、预览、切片和证据读取路径。",
+        "Keywords": [
+          "document",
+          "upload",
+          "preview",
+          "文档",
+          "上传",
+          "预览"
+        ]
+      }
+    },
+    {
+      "Name": "VisionInspector",
+      "Title": "视觉检查代理",
+      "DescriptionFile": "./agents/VisionInspector.md",
+      "InstructionsFile": "./agents/VisionInspector.instructions.md",
+      "RecommendedTools": [
+        "ImageVisionTool",
+        "ArtifactMemoryReadTool"
+      ],
+      "ContextPack": "DocumentFocusedEvidence",
+      "OutputSchema": "./schemas/EvidenceSummary.schema.json",
+      "RuntimeProfile": "VisionReview",
+      "Search": {
+        "Summary": "检查图片、截图、视觉 OCR 和图像问答路径。",
+        "Keywords": [
+          "vision",
+          "image",
+          "ocr",
+          "视觉",
+          "图片",
+          "识图"
+        ]
+      }
+    },
+    {
+      "Name": "MemoryCandidateExtractor",
+      "Title": "候选记忆提取代理",
+      "DescriptionFile": "./agents/MemoryCandidateExtractor.md",
+      "InstructionsFile": "./agents/MemoryCandidateExtractor.instructions.md",
+      "RecommendedTools": [
+        "ArtifactMemoryReadTool"
+      ],
+      "ContextPack": "MemoryDesignEvidence",
+      "OutputSchema": "./schemas/MemoryGraph.schema.json",
+      "RuntimeProfile": "ReadOnlyMemoryDesign",
+      "Search": {
+        "Summary": "从对话和证据中提取候选偏好、用户画像、项目规则和长期事实。",
+        "Keywords": [
+          "memory",
+          "candidate",
+          "preference",
+          "记忆",
+          "候选",
+          "偏好"
+        ]
+      }
+    },
+    {
+      "Name": "KnowledgeLinker",
+      "Title": "知识关系代理",
+      "DescriptionFile": "./agents/KnowledgeLinker.md",
+      "InstructionsFile": "./agents/KnowledgeLinker.instructions.md",
+      "RecommendedTools": [
+        "ArtifactMemoryReadTool"
+      ],
+      "ContextPack": "MemoryDesignEvidence",
+      "OutputSchema": "./schemas/MemoryGraph.schema.json",
+      "RuntimeProfile": "ReadOnlyMemoryDesign",
+      "Search": {
+        "Summary": "为候选记忆和知识点建立概念节点、关系边、冲突和证据链接。",
+        "Keywords": [
+          "knowledge graph",
+          "relationship",
+          "concept",
+          "知识图谱",
+          "关系",
+          "概念"
+        ]
+      }
+    }
+  ],
+  "Workflows": [
+    {
+      "Name": "WorkspaceInvestigationWorkflow",
+      "Title": "工作区并行调查",
+      "Description": "并行定位代码入口和符号链路，再合并证据摘要。",
+      "Trigger": {
+        "Skills": [
+          "WorkspaceInvestigationSkill"
+        ],
+        "Agents": [
+          "WorkspaceExplorer",
+          "SymbolTracer"
+        ],
+        "Keywords": [
+          "workspace",
+          "code",
+          "investigate",
+          "工作区",
+          "代码",
+          "调查"
+        ]
+      },
+      "Execution": {
+        "Strategy": "parallel",
+        "MaxConcurrency": 2
+      },
+      "Jobs": [
+        {
+          "Agent": "WorkspaceExplorer",
+          "TaskFile": "./tasks/workspace-explore.md"
+        },
+        {
+          "Agent": "SymbolTracer",
+          "TaskFile": "./tasks/symbol-trace.md"
+        }
+      ],
+      "MergePolicy": "EvidenceSummaryMerge"
+    },
+    {
+      "Name": "ParallelPullRequestReview",
+      "Title": "并行变更审查",
+      "Description": "按安全、测试缺口和可维护性并行审查变更。",
+      "Trigger": {
+        "Skills": [
+          "PullRequestReviewSkill"
+        ],
+        "Agents": [
+          "SecurityReviewer",
+          "TestGapReviewer",
+          "MaintainabilityReviewer"
+        ],
+        "Keywords": [
+          "review",
+          "pull request",
+          "diff",
+          "审查",
+          "变更"
+        ]
+      },
+      "Execution": {
+        "Strategy": "parallel",
+        "MaxConcurrency": 3
+      },
+      "Jobs": [
+        {
+          "Agent": "SecurityReviewer",
+          "TaskFile": "./tasks/security-review.md"
+        },
+        {
+          "Agent": "TestGapReviewer",
+          "TaskFile": "./tasks/test-gap-review.md"
+        },
+        {
+          "Agent": "MaintainabilityReviewer",
+          "TaskFile": "./tasks/maintainability-review.md"
+        }
+      ],
+      "MergePolicy": "FindingsBySeverity"
+    },
+    {
+      "Name": "FrontendInspectionWorkflow",
+      "Title": "前端体验调查",
+      "Description": "并行调查前端状态和布局体验问题。",
+      "Trigger": {
+        "Skills": [
+          "FrontendExperienceInspectionSkill"
+        ],
+        "Agents": [
+          "FrontendInspector",
+          "LayoutReviewer"
+        ],
+        "Keywords": [
+          "frontend",
+          "ui",
+          "layout",
+          "前端",
+          "界面",
+          "布局"
+        ]
+      },
+      "Execution": {
+        "Strategy": "parallel",
+        "MaxConcurrency": 2
+      },
+      "Jobs": [
+        {
+          "Agent": "FrontendInspector",
+          "TaskFile": "./tasks/frontend-state.md"
+        },
+        {
+          "Agent": "LayoutReviewer",
+          "TaskFile": "./tasks/layout-review.md"
+        }
+      ],
+      "MergePolicy": "EvidenceSummaryMerge"
+    },
+    {
+      "Name": "DocumentUnderstandingWorkflow",
+      "Title": "文档理解调查",
+      "Description": "并行调查文档结构和视觉理解路径。",
+      "Trigger": {
+        "Skills": [
+          "DocumentUnderstandingSkill"
+        ],
+        "Agents": [
+          "DocumentInspector",
+          "VisionInspector"
+        ],
+        "Keywords": [
+          "document",
+          "upload",
+          "vision",
+          "文档",
+          "上传",
+          "识图"
+        ]
+      },
+      "Execution": {
+        "Strategy": "parallel",
+        "MaxConcurrency": 2
+      },
+      "Jobs": [
+        {
+          "Agent": "DocumentInspector",
+          "TaskFile": "./tasks/document-inspect.md"
+        },
+        {
+          "Agent": "VisionInspector",
+          "TaskFile": "./tasks/vision-inspect.md"
+        }
+      ],
+      "MergePolicy": "EvidenceSummaryMerge"
+    },
+    {
+      "Name": "MemoryFormationWorkflow",
+      "Title": "长期记忆建模",
+      "Description": "并行提取候选记忆并建立知识关系。",
+      "Trigger": {
+        "Skills": [
+          "MemoryFormationSkill"
+        ],
+        "Agents": [
+          "MemoryCandidateExtractor",
+          "KnowledgeLinker"
+        ],
+        "Keywords": [
+          "memory",
+          "profile",
+          "knowledge graph",
+          "记忆",
+          "画像",
+          "知识图谱"
+        ]
+      },
+      "Execution": {
+        "Strategy": "parallel",
+        "MaxConcurrency": 2
+      },
+      "Jobs": [
+        {
+          "Agent": "MemoryCandidateExtractor",
+          "TaskFile": "./tasks/memory-candidates.md"
+        },
+        {
+          "Agent": "KnowledgeLinker",
+          "TaskFile": "./tasks/knowledge-linking.md"
+        }
+      ],
+      "MergePolicy": "MemoryGraphMerge"
+    }
+  ],
+  "Security": {
+    "TrustLevel": "System",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [],
+      "Write": []
+    },
+    "RequiresApproval": false
+  }
+}

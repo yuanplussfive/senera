@@ -3,5 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
-  "main": "index.js"
+  "main": "index.js",
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "chardet": "^2.1.1",
+    "fast-glob": "^3.3.3",
+    "fuzzysort": "^3.1.0",
+    "iconv-lite": "^0.7.2",
+    "ignore": "^7.0.5",
+    "istextorbinary": "^9.5.0",
+    "typescript": "^6.0.3"
+  }
 }

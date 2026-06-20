@@ -41,6 +41,154 @@ export type AgentExecutionDomainEvent =
         stage: AgentActionPlannerStageName;
         selectedAction?: string;
         repaired?: boolean;
+        taskFrame?: {
+          taskType: string;
+          answerGoal: string;
+          intentTags: string[];
+          targetRefs: Array<{
+            kind: string;
+            value: string;
+            status: string;
+          }>;
+          candidateTools: Array<{
+            name: string;
+            purpose: string;
+            supports: string[];
+          }>;
+          discoveryQueries: string[];
+          requiredEffects: Array<{
+            id: string;
+            effect: string;
+            target: string;
+            proof: string;
+            reason: string;
+          }>;
+          requiredEvidence: Array<{
+            id: string;
+            need: string;
+            minimum: number;
+            reason: string;
+          }>;
+          userInputNeeds: Array<{
+            question: string;
+            reason: string;
+          }>;
+          nextStepPurpose: string;
+          completionCriteria: string[];
+          notes: string[];
+        };
+        evidenceDecision?: {
+          ready: boolean;
+          missingNeeds: Array<{
+            id: string;
+            need: string;
+            reason: string;
+            status: "partial" | "missing" | "stalled" | "blocked";
+            observed: number;
+            required: number;
+            missingFacts: string[];
+            unsupportedClaims: string[];
+            blockers: string[];
+          }>;
+          satisfiedNeeds: Array<{
+            id: string;
+            need: string;
+            evidence: Array<{
+              ref: string;
+              kind: string;
+              toolName: string;
+              artifactUri: string;
+              locator: string;
+              display: string;
+              label: string;
+              source?: string | null;
+              confidence?: number | null;
+              facts: Array<{
+                name: string;
+                value: string;
+              }>;
+              produces: string;
+              satisfies: string[];
+              quality: string;
+              supportingSignals: string[];
+            }>;
+          }>;
+          requirementStates: Array<{
+            id: string;
+            need: string;
+            status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
+            reason: string;
+            observed: number;
+            required: number;
+            evidence: Array<{
+              ref: string;
+              kind: string;
+              toolName: string;
+              artifactUri: string;
+              locator: string;
+              display: string;
+              label: string;
+              source?: string | null;
+              confidence?: number | null;
+              facts: Array<{
+                name: string;
+                value: string;
+              }>;
+              produces: string;
+              satisfies: string[];
+              quality: string;
+              supportingSignals: string[];
+            }>;
+            missingFacts: string[];
+            unsupportedClaims: string[];
+            blockers: string[];
+          }>;
+          progress: {
+            stalled: boolean;
+            repeatedCalls: Array<{
+              toolName: string;
+              argsHash: string;
+              count: number;
+              lastStep: number;
+            }>;
+            nonEvidenceCalls: Array<{
+              step: number;
+              toolName: string;
+              status: string;
+              resultKind: string;
+              artifactUri: string;
+              evidenceRefs: string[];
+              argumentsPreview: string;
+              error: string;
+            }>;
+            failedCalls: Array<{
+              step: number;
+              toolName: string;
+              status: string;
+              resultKind: string;
+              artifactUri: string;
+              evidenceRefs: string[];
+              argumentsPreview: string;
+              error: string;
+            }>;
+          };
+          verification?: {
+            ready: boolean;
+            requirements: Array<{
+              requirementId: string;
+              need: string;
+              status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
+              evidenceRefs: string[];
+              artifactUris: string[];
+              reason: string;
+              missingFacts: string[];
+              unsupportedClaims: string[];
+            }>;
+            summary: string;
+          };
+          recommendedTools: string[];
+          searchQueries: string[];
+        };
       };
     }
   | {
@@ -55,8 +203,8 @@ export type AgentExecutionDomainEvent =
       kind: typeof AgentEventKinds.ActionPlanned;
       context: Required<Pick<AgentEventContext, "requestId" | "step">>;
       data: {
-        status: "planned" | "fallback";
-        action?: string;
+        status: "planned";
+        action: string;
         expectedOutputMode?: "tool_call_xml" | "final_text" | "open";
         instruction?: string;
         askUserQuestion?: string;
@@ -82,7 +230,167 @@ export type AgentExecutionDomainEvent =
         selectedAction?: string;
         selectionRepaired?: boolean;
         payloadRepaired?: boolean;
-        reason?: string;
+        taskFrame?: {
+          taskType: string;
+          answerGoal: string;
+          intentTags: string[];
+          targetRefs: Array<{
+            kind: string;
+            value: string;
+            status: string;
+          }>;
+          candidateTools: Array<{
+            name: string;
+            purpose: string;
+            supports: string[];
+          }>;
+          discoveryQueries: string[];
+          requiredEffects: Array<{
+            id: string;
+            effect: string;
+            target: string;
+            proof: string;
+            reason: string;
+          }>;
+          requiredEvidence: Array<{
+            id: string;
+            need: string;
+            minimum: number;
+            reason: string;
+          }>;
+          userInputNeeds: Array<{
+            question: string;
+            reason: string;
+          }>;
+          nextStepPurpose: string;
+          completionCriteria: string[];
+          notes: string[];
+        };
+        evidenceDecision?: {
+          ready: boolean;
+          missingNeeds: Array<{
+            id: string;
+            need: string;
+            reason: string;
+            status: "partial" | "missing" | "stalled" | "blocked";
+            observed: number;
+            required: number;
+            missingFacts: string[];
+            unsupportedClaims: string[];
+            blockers: string[];
+          }>;
+          satisfiedNeeds: Array<{
+            id: string;
+            need: string;
+            evidence: Array<{
+              ref: string;
+              kind: string;
+              toolName: string;
+              artifactUri: string;
+              locator: string;
+              display: string;
+              label: string;
+              source?: string | null;
+              confidence?: number | null;
+              facts: Array<{
+                name: string;
+                value: string;
+              }>;
+              produces: string;
+              satisfies: string[];
+              quality: string;
+              supportingSignals: string[];
+            }>;
+          }>;
+          requirementStates: Array<{
+            id: string;
+            need: string;
+            status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
+            reason: string;
+            observed: number;
+            required: number;
+            evidence: Array<{
+              ref: string;
+              kind: string;
+              toolName: string;
+              artifactUri: string;
+              locator: string;
+              display: string;
+              label: string;
+              source?: string | null;
+              confidence?: number | null;
+              facts: Array<{
+                name: string;
+                value: string;
+              }>;
+              produces: string;
+              satisfies: string[];
+              quality: string;
+              supportingSignals: string[];
+            }>;
+            missingFacts: string[];
+            unsupportedClaims: string[];
+            blockers: string[];
+          }>;
+          progress: {
+            stalled: boolean;
+            repeatedCalls: Array<{
+              toolName: string;
+              argsHash: string;
+              count: number;
+              lastStep: number;
+            }>;
+            nonEvidenceCalls: Array<{
+              step: number;
+              toolName: string;
+              status: string;
+              resultKind: string;
+              artifactUri: string;
+              evidenceRefs: string[];
+              argumentsPreview: string;
+              error: string;
+            }>;
+            failedCalls: Array<{
+              step: number;
+              toolName: string;
+              status: string;
+              resultKind: string;
+              artifactUri: string;
+              evidenceRefs: string[];
+              argumentsPreview: string;
+              error: string;
+            }>;
+          };
+          verification?: {
+            ready: boolean;
+            requirements: Array<{
+              requirementId: string;
+              need: string;
+              status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
+              evidenceRefs: string[];
+              artifactUris: string[];
+              reason: string;
+              missingFacts: string[];
+              unsupportedClaims: string[];
+            }>;
+            summary: string;
+          };
+          recommendedTools: string[];
+          searchQueries: string[];
+        };
+        activeSkills?: Array<{
+          name: string;
+          title: string;
+          score: number;
+          matchedTerms: string[];
+          matchedFields: Array<{
+            term: string;
+            fields: string[];
+          }>;
+          recommendedTools: string[];
+          recommendedAgents: string[];
+          recommendedWorkflows: string[];
+        }>;
       };
     }
   | {

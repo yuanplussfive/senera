@@ -20,8 +20,10 @@ const input = new AgentActionPlannerContextBuilder().buildInput({
 });
 
 assert.equal(input.toolCatalog.length, tools.length);
+assert.equal(input.compactToolCatalog.length, tools.length);
 assert.equal(input.toolCatalog.at(-1)?.name, "Tool63");
 assert.equal(input.toolCatalog.find((tool) => tool.name === "Tool63")?.loaded, true);
+assert.equal(input.compactToolCatalog.find((tool) => tool.name === "Tool63")?.loaded, true);
 
 console.log("Action planner full catalog context verification passed.");
 
@@ -30,11 +32,13 @@ function createTool(index: number): AgentToolCatalogItem {
     name: `Tool${index}`,
     title: `Tool ${index}`,
     summary: `Fixture tool ${index}.`,
+    rootKind: "User",
     capabilities: [],
     tags: [],
     useCases: [],
     examples: [],
     avoid: [],
     permissions: [],
+    evidenceCapabilities: [],
   };
 }

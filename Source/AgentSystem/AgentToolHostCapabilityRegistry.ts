@@ -6,14 +6,17 @@ import type {
   AgentPluginRegistryLike,
   RegisteredTool,
 } from "./Types.js";
+import type { AgentEventSink } from "./AgentEvent.js";
 
 export interface AgentHostToolContext {
   tool: RegisteredTool;
   config: AgentSystemConfig;
+  configPath?: string;
   workspaceRoot: string;
   registry: AgentPluginRegistryLike;
   requestId?: string;
   step?: number;
+  onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
   signal?: AbortSignal;
 }

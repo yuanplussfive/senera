@@ -71,6 +71,7 @@ export class AgentDecisionExecutor {
     workspaceRoot?: string,
     hostCapabilities?: AgentToolHostCapabilityRegistry,
     toolSearch?: AgentToolSearchRuntime,
+    private readonly configPath?: string,
   ) {
     const resolvedWorkspaceRoot = workspaceRoot ?? process.cwd();
     this.workspaceCapture = new AgentWorkspaceChangeCapture({
@@ -95,7 +96,7 @@ export class AgentDecisionExecutor {
     const plannedCalls = decision.payload.tool_call.map((call, index) => ({
       call,
       index,
-      tool: this.resolveTool(decision, call, index),
+      tool: this.resolveTool(decision, call, index, context),
     }));
     const shouldRunSequentially = plannedCalls.some((entry) =>
       entry.tool.artifactPolicy?.Workspace?.Capture
@@ -186,20 +187,32 @@ export class AgentDecisionExecutor {
     decision: Extract<AgentDecision, { kind: "ToolCalls" }>,
     call: ToolCallDecision,
     callIndex: number,
+    context: AgentDecisionExecutionContext,
   ): RegisteredTool {
     const tool = this.registry.getTool(call.name);
-    if (!tool) {
+    const allowedTools = this.allowedToolNames(context.loadedToolNames);
+    if (!tool || !allowedTools.has(call.name)) {
       throw this.errors.unknownToolName({
         rootName: decision.root,
         source: new AgentXmlSourceHelper(decision.source.xml),
         protocol: this.protocol,
         callIndex,
         toolName: call.name,
-        allowedTools: this.registry.listTools().map((item) => item.name),
+        allowedTools: [...allowedTools],
       });
     }
 
     return tool;
+  }
+
+  private allowedToolNames(loadedToolNames: AgentDecisionExecutionContext["loadedToolNames"]): Set<string> {
+    const tools = this.registry.listTools();
+    if (!loadedToolNames || loadedToolNames === "all") {
+      return new Set(tools.map((tool) => tool.name));
+    }
+
+    const registered = new Set(tools.map((tool) => tool.name));
+    return new Set(loadedToolNames.filter((toolName) => registered.has(toolName)));
   }
 
   private async runTool(
@@ -215,6 +228,8 @@ export class AgentDecisionExecutor {
     const execution = await this.toolRunner.run(tool, args, {
       requestId: context.requestId,
       step: context.step,
+      configPath: this.configPath,
+      onEvent: context.onEvent,
       visibleToolNames: context.loadedToolNames === "all" ? undefined : context.loadedToolNames,
       signal: context.signal,
     });

@@ -27,9 +27,20 @@ const DirectoryResultSchema = pluginSdk.z.object({
   guidance: StringArrayObjectSchema
 }).strict();
 
+const MissingPathResultSchema = pluginSdk.z.object({
+  kind: pluginSdk.z.literal("missing_path"),
+  requestedPath: pluginSdk.z.string(),
+  nearestExistingParent: pluginSdk.z.string(),
+  parentChildren: StringArrayObjectSchema,
+  suggestions: StringArrayObjectSchema,
+  availableRoots: StringArrayObjectSchema,
+  guidance: StringArrayObjectSchema
+}).strict();
+
 const Schema = pluginSdk.z.discriminatedUnion("kind", [
   FileResultSchema,
-  DirectoryResultSchema
+  DirectoryResultSchema,
+  MissingPathResultSchema
 ]);
 
 module.exports = {

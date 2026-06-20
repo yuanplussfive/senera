@@ -15,10 +15,12 @@ import {
 import type { AgentSystemRuntime } from "./AgentSystemRuntime.js";
 import type { AgentCompletedRunResult } from "./AgentExecutionProjector.js";
 import { AgentCancellationError, throwIfAborted } from "./AgentCancellation.js";
+import type { ResolvedAgentLoopConfig } from "./Types.js";
 
 export interface AgentLoopOptions extends AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
   model: AgentLanguageModel;
+  agentLoopConfig?: ResolvedAgentLoopConfig;
 }
 
 export interface AgentRunRequest {
@@ -26,21 +28,28 @@ export interface AgentRunRequest {
   input: string;
   messages?: AgentLanguageModelMessage[];
   conversationEntries?: AgentConversationEntry[];
+  loadedToolNames?: "all" | string[];
+  systemPromptPreamble?: string;
   onEvent?: AgentEventSink;
   signal?: AbortSignal;
 }
 
 export class AgentLoop {
+  private readonly agentLoopConfig: ResolvedAgentLoopConfig;
   private readonly stateMachine: AgentLoopStateMachine;
   private readonly commandExecutor: AgentLoopCommandExecutor;
 
   constructor(private readonly options: AgentLoopOptions) {
+    this.agentLoopConfig = options.agentLoopConfig ?? options.runtime.agentLoopConfig;
     this.stateMachine = new AgentLoopStateMachine({
-      maxSteps: options.runtime.agentLoopConfig.MaxSteps,
-      maxRepairAttempts: options.runtime.agentLoopConfig.MaxRepairAttempts,
-      dynamicTools: options.runtime.agentLoopConfig.LoadedTools === "dynamic",
+      maxSteps: this.agentLoopConfig.MaxSteps,
+      maxRepairAttempts: this.agentLoopConfig.MaxRepairAttempts,
+      dynamicTools: this.agentLoopConfig.LoadedTools === "dynamic",
     });
-    this.commandExecutor = new AgentLoopCommandExecutor(options);
+    this.commandExecutor = new AgentLoopCommandExecutor({
+      ...options,
+      agentLoopConfig: this.agentLoopConfig,
+    });
   }
 
   async run(request: AgentRunRequest): Promise<AgentCompletedRunResult> {
@@ -54,16 +63,18 @@ export class AgentLoop {
       },
     });
 
-    const loadedToolNames = this.options.runtime.toolSearch.resolveInitialLoadedTools(
-      request.input,
-      this.options.runtime.agentLoopConfig.LoadedTools,
-    );
+    const loadedToolNames = request.loadedToolNames
+      ?? this.options.runtime.toolSearch.resolveInitialLoadedTools(
+        request.input,
+        this.agentLoopConfig.LoadedTools,
+      );
     let transition = this.stateMachine.start({
       requestId: request.requestId,
       input: request.input,
       messages: request.messages,
       conversationEntries: request.conversationEntries,
       loadedToolNames,
+      systemPromptPreamble: request.systemPromptPreamble,
       emitRunStarted: false,
     });
 

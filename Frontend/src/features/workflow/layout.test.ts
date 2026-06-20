@@ -65,4 +65,146 @@ describe("layoutSteps", () => {
       ]),
     );
   });
+
+  it("fans out consecutive root tool calls and converges into the next root step", () => {
+    const steps = [
+      {
+        id: "decision",
+        kind: "decision",
+        title: "Choose tools",
+        status: "done",
+        startedAt: "2026-06-09T00:00:00.000Z",
+      },
+      {
+        id: "tool-a",
+        kind: "tool",
+        title: "Call A",
+        status: "done",
+        startedAt: "2026-06-09T00:00:01.000Z",
+        callId: "a",
+        toolBatch: { id: "request:1", index: 0, size: 2 },
+      },
+      {
+        id: "tool-b",
+        kind: "tool",
+        title: "Call B",
+        status: "done",
+        startedAt: "2026-06-09T00:00:01.000Z",
+        callId: "b",
+        toolBatch: { id: "request:1", index: 1, size: 2 },
+      },
+      {
+        id: "answer",
+        kind: "answer",
+        title: "Answer",
+        status: "done",
+        startedAt: "2026-06-09T00:00:02.000Z",
+      },
+    ] satisfies TimelineStep[];
+
+    const { edges } = layoutSteps(steps);
+
+    expect(edgePairs(edges)).toEqual(expect.arrayContaining([
+      "decision->tool-a",
+      "decision->tool-b",
+      "tool-a->answer",
+      "tool-b->answer",
+    ]));
+    expect(edgePairs(edges)).not.toContain("tool-a->tool-b");
+  });
+
+  it("keeps adjacent tool calls sequential when no execution batch is declared", () => {
+    const steps = [
+      {
+        id: "decision",
+        kind: "decision",
+        title: "Choose tools",
+        status: "done",
+        startedAt: "2026-06-09T00:00:00.000Z",
+      },
+      {
+        id: "tool-a",
+        kind: "tool",
+        title: "Call A",
+        status: "done",
+        startedAt: "2026-06-09T00:00:01.000Z",
+        callId: "a",
+      },
+      {
+        id: "tool-b",
+        kind: "tool",
+        title: "Call B",
+        status: "done",
+        startedAt: "2026-06-09T00:00:02.000Z",
+        callId: "b",
+      },
+    ] satisfies TimelineStep[];
+
+    const { edges } = layoutSteps(steps);
+
+    expect(edgePairs(edges)).toEqual(expect.arrayContaining([
+      "decision->tool-a",
+      "tool-a->tool-b",
+    ]));
+  });
+
+  it("groups child-agent steps in parallel and converges through merge", () => {
+    const steps = [
+      {
+        id: "delegate-tool",
+        kind: "tool",
+        title: "Delegate",
+        status: "done",
+        startedAt: "2026-06-09T00:00:00.000Z",
+        callId: "delegate",
+      },
+      scopedStep("child-a-model", "ReviewerA", "job-a", "childAgent"),
+      scopedStep("child-b-model", "ReviewerB", "job-b", "childAgent"),
+      scopedStep("merge-model", undefined, undefined, "merge"),
+      {
+        id: "answer",
+        kind: "answer",
+        title: "Answer",
+        status: "done",
+        startedAt: "2026-06-09T00:00:03.000Z",
+      },
+    ] satisfies TimelineStep[];
+
+    const { nodes, edges } = layoutSteps(steps);
+    const pairs = edgePairs(edges);
+
+    expect(nodes.some((node) => node.id.includes("ReviewerA") && node.data.kind === "scope")).toBe(true);
+    expect(nodes.some((node) => node.id.includes("ReviewerB") && node.data.kind === "scope")).toBe(true);
+    expect(nodes.some((node) => node.id.includes("merge") && node.data.kind === "scope")).toBe(true);
+    expect(pairs.some((pair) => pair.startsWith("delegate-tool->scope:ReviewWorkflow:childAgent:job-a"))).toBe(true);
+    expect(pairs.some((pair) => pair.startsWith("delegate-tool->scope:ReviewWorkflow:childAgent:job-b"))).toBe(true);
+    expect(pairs.some((pair) => pair.endsWith("->scope:ReviewWorkflow:merge"))).toBe(true);
+    expect(pairs).toContain("merge-model->answer");
+  });
 });
+
+function edgePairs(edges: ReturnType<typeof layoutSteps>["edges"]): string[] {
+  return edges.map((edge) => `${edge.source}->${edge.target}`);
+}
+
+function scopedStep(
+  id: string,
+  agentName: string | undefined,
+  jobId: string | undefined,
+  role: NonNullable<TimelineStep["scope"]>["role"],
+): TimelineStep {
+  return {
+    id,
+    kind: "model",
+    title: "Model",
+    status: "done",
+    startedAt: "2026-06-09T00:00:01.000Z",
+    scope: {
+      parentRequestId: "parent",
+      workflowName: "ReviewWorkflow",
+      agentName,
+      jobId,
+      role,
+    },
+  };
+}

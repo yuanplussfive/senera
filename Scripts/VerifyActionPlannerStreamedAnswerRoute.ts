@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { AgentEventKinds } from "../Source/AgentSystem/AgentEvent.js";
 import { AgentLoopStateMachine } from "../Source/AgentSystem/AgentLoopStateMachine.js";
 import type { AgentActionPlanResult } from "../Source/AgentSystem/AgentActionPlanner.js";
 import { EmptyActionPlannerLedger } from "../Source/AgentSystem/AgentActionPlannerContext.js";
+import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
+import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
+
+const workspaceRoot = process.cwd();
+const config = AgentConfigLoader.load(path.join(workspaceRoot, "senera.config.json"));
+const registry = new AgentPluginRegistry();
+for (const plugin of new AgentPluginScanner(workspaceRoot, config).scan()) {
+  registry.registerPlugin(plugin);
+}
+const promptContextBuilder = new AgentPromptContextBuilder(registry, config);
 
 const machine = new AgentLoopStateMachine({
   maxSteps: 4,
@@ -38,6 +51,7 @@ const plan: AgentActionPlanResult = {
         stalled: false,
       },
       warnings: [],
+      calls: [],
     },
     timeline: [{
       index: 0,
@@ -48,13 +62,20 @@ const plan: AgentActionPlanResult = {
       artifactUris: [],
     }],
     evidenceMemory: [],
+    evidenceState: [],
     plannerJournal: [],
+    compactToolCatalog: [],
     toolCatalog: [],
+    activeSkills: [],
   },
   decision: {
     action: "answer",
   },
 };
+const rootCommand = promptContextBuilder.buildRootCommand({
+  decision: plan.decision,
+  loadedToolNames: [],
+});
 
 const routed = machine.consume(started.state, {
   kind: "succeeded",
@@ -66,7 +87,8 @@ const routed = machine.consume(started.state, {
     loadedToolNames: [],
     plannerLedger: EmptyActionPlannerLedger,
     conversationEntries: [],
-    actionDirective: plan.decision,
+    rootCommand,
+    activeSkills: [],
   },
 });
 
@@ -92,7 +114,7 @@ assert.equal(collecting.command?.kind, "collect_decision_xml");
 if (collecting.command?.kind !== "collect_decision_xml") {
   throw new Error("Expected collect_decision_xml command.");
 }
-assert.equal(collecting.command.actionDirective, plan.decision);
+assert.equal(collecting.command.rootCommand, rootCommand);
 
 const completed = machine.consume(collecting.state, {
   kind: "succeeded",

@@ -1,0 +1,35 @@
+<delegation_context>
+  <objective>{{ Objective | default: "" | escape }}</objective>
+  <latest_user_request>{{ LatestUserRequest | escape }}</latest_user_request>
+  <workflow>
+    <name>{{ Plan.workflow.name | escape }}</name>
+    <title>{{ Plan.workflow.title | default: "" | escape }}</title>
+    <description>{{ Plan.workflow.description | default: "" | escape }}</description>
+  </workflow>
+  <job>
+    <id>{{ Job.jobId | escape }}</id>
+    <agent>{{ Job.agentName | escape }}</agent>
+    <title>{{ Job.agentTitle | default: "" | escape }}</title>
+    <task_file>{{ Job.taskFile | escape }}</task_file>
+    <context_pack>{{ Job.contextPack | escape }}</context_pack>
+    <history_policy>{{ Job.historyPolicy | escape }}</history_policy>
+    <artifact_policy>{{ Job.artifactPolicy | escape }}</artifact_policy>
+    <evidence_policy>{{ Job.evidencePolicy | default: "" | escape }}</evidence_policy>
+    <tool_scope>{{ Job.toolScope | escape }}</tool_scope>
+    <recommended_tools>
+{% for tool in Job.recommendedTools.item %}
+      <tool>{{ tool | escape }}</tool>
+{% endfor %}
+    </recommended_tools>
+  </job>
+  <available_evidence_refs>
+{% for ref in EvidenceRefs %}
+    <ref>{{ ref | escape }}</ref>
+{% endfor %}
+  </available_evidence_refs>
+  <available_artifact_uris>
+{% for uri in ArtifactUris %}
+    <uri>{{ uri | escape }}</uri>
+{% endfor %}
+  </available_artifact_uris>
+</delegation_context>

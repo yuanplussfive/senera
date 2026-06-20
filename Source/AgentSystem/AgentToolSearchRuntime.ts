@@ -60,7 +60,7 @@ export class AgentToolSearchRuntime {
       return loadedTools;
     }
 
-    const bootstrap = this.existingToolNames(this.config.Dynamic.BootstrapTools);
+    const bootstrap = this.bootstrapToolNames();
     const discovered = this.search({
       query: input,
       includeLoaded: false,
@@ -83,7 +83,7 @@ export class AgentToolSearchRuntime {
       return options.loadedTools;
     }
 
-    const bootstrap = this.existingToolNames(this.config.Dynamic.BootstrapTools);
+    const bootstrap = this.bootstrapToolNames();
     const current = options.currentLoadedTools === "all"
       ? this.registry.listTools().map((tool) => tool.name)
       : options.currentLoadedTools ?? [];
@@ -209,10 +209,22 @@ export class AgentToolSearchRuntime {
 
   private capVisibleTools(toolNames: readonly string[]): string[] {
     const unique = [...new Set(toolNames)].filter((name) => Boolean(this.registry.getTool(name)));
-    const required = this.existingToolNames(this.config.Dynamic.BootstrapTools);
+    const required = this.bootstrapToolNames();
     return [
       ...required,
       ...unique.filter((name) => !required.includes(name)),
+    ];
+  }
+
+  private bootstrapToolNames(): string[] {
+    return [
+      ...new Set([
+        ...this.registry
+          .listTools()
+          .filter((tool) => tool.plugin.rootKind === "System")
+          .map((tool) => tool.name),
+        ...this.existingToolNames(this.config.Dynamic.BootstrapTools),
+      ]),
     ];
   }
 

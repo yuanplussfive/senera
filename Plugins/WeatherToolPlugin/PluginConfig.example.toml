@@ -20,13 +20,13 @@ api_host = "your-id.re.qweatherapi.com"
 # qweather -> https://devapi.qweather.com
 # visual_crossing -> https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline
 # base_url = "https://api.weatherapi.com/v1"
-# 和风天气城市查询默认使用 api_host；只有兼容旧地理接口时才需要覆盖。
+# 和风天气城市查询默认使用 api_host；只有单独指定城市查询接口时才需要覆盖。
 # geo_base_url = "https://geoapi.qweather.com"
 
 # 也可以通过 WEATHER_LANG 设置语言。
 language = "zh"
 unit = "metric"
-timeout_ms = 15000
+timeout_seconds = 15
 state_dir = ".state"
 
 [senera.fields.senera.enabled]
@@ -66,12 +66,13 @@ type = "string"
 options = ["metric", "imperial"]
 optionLabels = { metric = "公制", imperial = "英制" }
 
-[senera.fields.weather.timeout_ms]
+[senera.fields.weather.timeout_seconds]
 label = "请求超时"
-description = "天气服务请求超时时间，单位毫秒。"
+description = "天气服务请求超时时间，单位秒。"
 type = "number"
-min = 1000
-step = 1000
+min = 1
+max = 300
+step = 1
 
 [senera.fields.weather.state_dir]
 label = "状态目录"

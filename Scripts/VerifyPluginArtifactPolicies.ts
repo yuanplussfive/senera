@@ -480,6 +480,40 @@ const fixtures: Record<string, ToolPolicyFixture> = {
       guidance: "Use returned memories as evidence for the current turn.",
     },
   },
+  AgentDelegateTool: {
+    expectedKinds: [
+      "agent_delegation_job",
+    ],
+    expectedEvidenceCount: 3,
+    result: {
+      workflow: {
+        name: "ParallelPullRequestReview",
+        title: "并行变更审查",
+        description: "按安全、测试缺口和可维护性并行审查变更。",
+        pluginName: "AgentWorkflowSkillsPlugin",
+      },
+      objective: "并行审查当前 PR。",
+      execution: {
+        mode: "plan",
+        status: "readyForRuntime",
+      },
+      jobs: {
+        item: [
+          agentDelegationJobFixture("job_security", "SecurityReviewer", "安全审查代理"),
+          agentDelegationJobFixture("job_test", "TestGapReviewer", "测试缺口代理"),
+          agentDelegationJobFixture("job_maintainability", "MaintainabilityReviewer", "可维护性审查代理"),
+        ],
+      },
+      jobCount: 3,
+      mergePolicy: {
+        name: "FindingsBySeverity",
+        description: "将多个审查代理的发现按严重度、证据和文件位置合并。",
+        strategy: "findings.bySeverity",
+        templateFile: "System/Plugins/AgentWorkflowSkillsPlugin/merges/FindingsBySeverity.liquid",
+        outputSchema: "System/Plugins/AgentWorkflowSkillsPlugin/schemas/FindingList.schema.json",
+      },
+    },
+  },
   AskUserTool: {
     expectedKinds: [
       "clarification_request",
@@ -767,6 +801,60 @@ function sampleArguments(toolName: string): Record<string, unknown> {
   return {
     toolName,
     verification: true,
+  };
+}
+
+function agentDelegationJobFixture(
+  jobId: string,
+  agentName: string,
+  agentTitle: string,
+): Record<string, unknown> {
+  return {
+    jobId,
+    index: 0,
+    status: "planned",
+    workflowName: "ParallelPullRequestReview",
+    agentName,
+    agentTitle,
+    agentPluginName: "AgentWorkflowSkillsPlugin",
+    agentDescriptionFile: `System/Plugins/AgentWorkflowSkillsPlugin/agents/${agentName}.md`,
+    agentInstructionsFile: `System/Plugins/AgentWorkflowSkillsPlugin/agents/${agentName}.instructions.md`,
+    taskFile: `System/Plugins/AgentWorkflowSkillsPlugin/tasks/${agentName}.md`,
+    contextPack: "DiffFocusedReadOnly",
+    contextPackDescription: "只给子代理当前变更、diff 证据、相关文件和审查目标。",
+    contextTemplateFile: "System/Plugins/AgentWorkflowSkillsPlugin/contexts/DiffFocusedReadOnly.liquid",
+    contextInputs: {
+      item: [
+        "latestUserRequest",
+        "activeSkill",
+        "workspaceDiff",
+        "evidenceRefs",
+        "artifactRefs",
+      ],
+    },
+    toolScope: "agentRecommendedTools",
+    historyPolicy: "none",
+    artifactPolicy: "referencesOnly",
+    evidencePolicy: "compact",
+    recommendedTools: {
+      item: [
+        "FastContextHybridSearchTool",
+        "FastContextReadTool",
+      ],
+    },
+    runtimeProfile: "ReadOnlyReview",
+    outputSchema: "System/Plugins/AgentWorkflowSkillsPlugin/schemas/FindingList.schema.json",
+    required: true,
+    suppliedEvidenceRefs: {
+      item: [
+        "DIFF1",
+      ],
+    },
+    suppliedArtifactUris: {
+      item: [
+        "senera://artifact/art_1234567890abcdef12345678",
+      ],
+    },
   };
 }
 

@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   GitBranch,
+  Workflow,
   Wrench,
 } from "lucide-react";
 import { cn } from "../../lib/util";
@@ -20,29 +21,42 @@ import { motionTimings, readFeedItemVariants, useMotionLevel, type MotionLevel }
 
 export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
   const model = useMemo(() => deriveFeedModel(run), [run]);
-  const toolGroup = model.groups.find((group) => group.id === "tools");
-  const traceGroups = model.groups.filter((group) => group.id !== "tools");
-  const [toolsExpanded, setToolsExpanded] = useState(toolGroup?.defaultExpanded ?? true);
+  const groupSignature = useMemo(
+    () => model.groups.map((group) => `${group.id}:${group.items.length}:${group.defaultExpanded ? 1 : 0}`).join("|"),
+    [model.groups],
+  );
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
 
   useEffect(() => {
-    setToolsExpanded(toolGroup?.defaultExpanded ?? true);
-  }, [run.requestId, toolGroup?.items.length, toolGroup?.defaultExpanded]);
+    setExpandedGroups((current) => {
+      const next: Record<string, boolean> = {};
+      for (const group of model.groups) {
+        if (!group.collapsible) continue;
+        next[group.id] = current[group.id] ?? group.defaultExpanded ?? true;
+      }
+      return next;
+    });
+  }, [run.requestId, groupSignature, model.groups]);
 
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
       <FeedHeadline item={model.headline} stepCount={run.steps.length} />
       <div className="relative ml-1 pl-5 before:absolute before:left-[5px] before:top-1 before:bottom-0 before:w-px before:bg-ink-200/70">
-        {toolGroup ? (
-          <ToolGroup
-            group={toolGroup}
-            expanded={toolsExpanded}
-            onToggle={() => setToolsExpanded((value) => !value)}
+        {model.groups.map((group) => group.collapsible ? (
+          <FeedGroupBlock
+            key={group.id}
+            group={group}
+            expanded={expandedGroups[group.id] ?? group.defaultExpanded ?? true}
+            onToggle={() =>
+              setExpandedGroups((current) => ({
+                ...current,
+                [group.id]: !(current[group.id] ?? group.defaultExpanded ?? true),
+              }))}
             motionLevel={effectiveLevel}
           />
-        ) : null}
-        {traceGroups.map((group) => (
+        ) : (
           <div key={group.id} className="mt-1 flex flex-col gap-1">
             <AnimatePresence initial={false}>
               {group.items.map((item) => (
@@ -101,7 +115,7 @@ function FeedHeadline({
   );
 }
 
-function ToolGroup({
+function FeedGroupBlock({
   group,
   expanded,
   onToggle,
@@ -112,14 +126,15 @@ function ToolGroup({
   onToggle: () => void;
   motionLevel: MotionLevel;
 }): JSX.Element {
+  const Icon = group.variant === "delegation" ? Workflow : group.variant === "tools" ? Wrench : GitBranch;
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5 py-0.5">
       <button
         type="button"
         onClick={onToggle}
         className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-paper-100/80"
       >
-        <Wrench className="h-3.5 w-3.5 shrink-0 text-ink-500" />
+        <Icon className="h-3.5 w-3.5 shrink-0 text-ink-500" />
         <span className="min-w-0 flex-1 text-[12.75px] text-ink-900">{group.label}</span>
         {group.meta ? <span className="font-mono text-[10.5px] text-ink-400">{group.meta}</span> : null}
         {expanded ? (

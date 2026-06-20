@@ -69,6 +69,44 @@ const LoadedToolsSchema = z.union([
   z.array(z.string().min(1)),
 ]);
 
+const AgentLoopSchema = z
+  .object({
+    MaxSteps: z.number().int().refine((value) => value === -1 || value >= 1, {
+      message: "AgentLoop.MaxSteps 必须是 -1 或大于等于 1 的整数。",
+    }).optional(),
+    MaxRepairAttempts: z.number().int().min(0).optional(),
+    LoadedTools: LoadedToolsSchema.optional(),
+  })
+  .strict();
+
+const AgentDelegationRuntimeProfileSchema = z
+  .object({
+    Mode: z.enum(["directModel", "agentLoop"]).optional(),
+    ModelProviderId: z.string().min(1).optional(),
+    AgentLoop: AgentLoopSchema.optional(),
+  })
+  .strict();
+
+const AgentDelegationSchema = z
+  .object({
+    RuntimeProfileDefaults: AgentDelegationRuntimeProfileSchema.optional(),
+    RuntimeProfiles: z.record(z.string(), AgentDelegationRuntimeProfileSchema).optional(),
+    Templates: z
+      .object({
+        ChildSystemPrompt: z.string().min(1).optional(),
+        MergeSystemPrompt: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    Merge: z
+      .object({
+        ModelProviderId: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 const ToolSearchSchema = z
   .object({
     Dynamic: z
@@ -107,27 +145,37 @@ const ToolSearchSchema = z
   })
   .strict();
 
+const ActionPlannerClientSchema = (path: string) => z
+  .object({
+    ModelProviderId: z.string().min(1).optional(),
+    Provider: z.enum([
+      "auto",
+      "openai-generic",
+      "openai-responses",
+      "anthropic",
+      "google-ai",
+    ]).optional(),
+    BaseUrl: z.string().url().optional(),
+    ApiKey: z.string().min(1).optional(),
+    Model: z.string().min(1).optional(),
+    Temperature: z.number().min(0).max(2).optional(),
+    MaxTokens: disabledOrPositiveInteger(`${path}.MaxTokens`).optional(),
+  })
+  .strict();
+
 const ActionPlannerSchema = z
   .object({
     Enabled: z.boolean().optional(),
     MaxRepairAttempts: z.number().int().min(0).optional(),
-    Client: z
+    Evidence: z
       .object({
-        Provider: z.enum([
-          "auto",
-          "openai-generic",
-          "openai-responses",
-          "anthropic",
-          "google-ai",
-        ]).optional(),
-        BaseUrl: z.string().url().optional(),
-        ApiKey: z.string().min(1).optional(),
-        Model: z.string().min(1).optional(),
-        Temperature: z.number().min(0).max(2).optional(),
-        MaxTokens: disabledOrPositiveInteger("ActionPlanner.Client.MaxTokens").optional(),
+        StalledStepLag: z.number().int().min(1).optional(),
       })
       .strict()
       .optional(),
+    Client: ActionPlannerClientSchema("ActionPlanner.Client").optional(),
+    TaskFrameClient: ActionPlannerClientSchema("ActionPlanner.TaskFrameClient").optional(),
+    EvidenceClient: ActionPlannerClientSchema("ActionPlanner.EvidenceClient").optional(),
   })
   .strict();
 
@@ -204,16 +252,8 @@ const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
-    AgentLoop: z
-      .object({
-        MaxSteps: z.number().int().refine((value) => value === -1 || value >= 1, {
-          message: "Defaults.AgentLoop.MaxSteps 必须是 -1 或大于等于 1 的整数。",
-        }).optional(),
-        MaxRepairAttempts: z.number().int().min(0).optional(),
-        LoadedTools: LoadedToolsSchema.optional(),
-      })
-      .strict()
-      .optional(),
+    AgentLoop: AgentLoopSchema.optional(),
+    AgentDelegation: AgentDelegationSchema.optional(),
     ToolSearch: ToolSearchSchema.optional(),
     Artifacts: ArtifactsSchema.optional(),
     Uploads: UploadsSchema.optional(),
@@ -317,16 +357,8 @@ export const AgentSystemConfigSchema = z
     ModelProviderDefaults: ModelProviderDefaultsSchema.optional(),
     ModelProviders: z.array(ModelProviderSchema).min(1),
     Cli: AgentCliConfigSchema.optional(),
-    AgentLoop: z
-      .object({
-        MaxSteps: z.number().int().refine((value) => value === -1 || value >= 1, {
-          message: "MaxSteps 必须是 -1 或大于等于 1 的整数。",
-        }).optional(),
-        MaxRepairAttempts: z.number().int().min(0).optional(),
-        LoadedTools: LoadedToolsSchema.optional(),
-      })
-      .strict()
-      .optional(),
+    AgentLoop: AgentLoopSchema.optional(),
+    AgentDelegation: AgentDelegationSchema.optional(),
     ToolSearch: ToolSearchSchema.optional(),
     Artifacts: ArtifactsSchema.optional(),
     Uploads: UploadsSchema.optional(),

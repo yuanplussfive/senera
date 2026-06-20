@@ -1,4 +1,9 @@
 import type { ActionPlanInput } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
+import { AgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
+import type {
+  ResolvedAgentActionPlannerClientConfig,
+  ResolvedAgentActionPlannerConfig,
+} from "../Source/AgentSystem/Types.js";
 
 export function createActionPlanInputFixture(
   userMessage = "inspect project",
@@ -16,6 +21,7 @@ export function createActionPlanInputFixture(
         stalled: false,
       },
       warnings: [],
+      calls: [],
     },
     timeline: [{
       index: 0,
@@ -26,8 +32,11 @@ export function createActionPlanInputFixture(
       artifactUris: [],
     }],
     evidenceMemory: [],
+    evidenceState: [],
     plannerJournal: [],
+    compactToolCatalog: [],
     toolCatalog: [],
+    activeSkills: [],
   };
 }
 
@@ -38,4 +47,18 @@ export function createActionDecisionFixture(): string {
     useTools: null,
     discoverTools: null,
   });
+}
+
+export function createActionPlannerConfigFixture(options: {
+  client: ResolvedAgentActionPlannerClientConfig;
+  maxRepairAttempts?: number;
+}): ResolvedAgentActionPlannerConfig {
+  return {
+    Enabled: true,
+    MaxRepairAttempts: options.maxRepairAttempts ?? 0,
+    Evidence: AgentDefaults.ActionPlanner.Evidence,
+    Client: options.client,
+    TaskFrameClient: options.client,
+    EvidenceClient: options.client,
+  };
 }

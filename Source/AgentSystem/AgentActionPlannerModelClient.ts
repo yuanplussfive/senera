@@ -1,9 +1,9 @@
 import { ClientRegistry } from "@boundaryml/baml";
-import { ActionKind, b as baml } from "./BamlClient/baml_client/index.js";
+import { b as baml } from "./BamlClient/baml_client/index.js";
 import type {
-  ActionDecision as BamlActionDecision,
   ActionPlanInput,
-  ActionSelection as BamlActionSelection,
+  EvidenceVerification as BamlEvidenceVerification,
+  TaskFrame as BamlTaskFrame,
 } from "./BamlClient/baml_client/types.js";
 import { createModelProviderMetadata } from "./AgentModelMetadata.js";
 import { createModelEndpoint } from "./ModelEndpoints/ModelEndpointTypes.js";
@@ -14,7 +14,10 @@ import type {
   ResolvedAgentModelProviderConfig,
 } from "./Types.js";
 import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
-import { buildActionPlannerPromptJson } from "./AgentActionPlannerPromptJson.js";
+import {
+  buildActionPlannerPromptJson,
+  buildEvidenceVerificationPromptJson,
+} from "./AgentActionPlannerPromptJson.js";
 import { throwIfAborted } from "./AgentCancellation.js";
 
 interface PlannerModelRequest {
@@ -27,26 +30,19 @@ interface PlannerModelRequest {
 
 type PlannerBamlFunctionArgs =
   | {
-      functionName: "SelectAction";
+      functionName: "BuildTaskFrame";
       input: ActionPlanInput;
     }
   | {
-      functionName: "RepairActionSelection";
+      functionName: "RepairTaskFrame";
       input: ActionPlanInput;
-      invalidSelection: string;
+      invalidTaskFrame: string;
       issues: string[];
     }
   | {
-      functionName: "BuildActionPayload";
+      functionName: "VerifyTaskEvidence";
       input: ActionPlanInput;
-      selectedAction: ActionKind;
-    }
-  | {
-      functionName: "RepairActionPayload";
-      input: ActionPlanInput;
-      selectedAction: ActionKind;
-      invalidDecision: string;
-      issues: string[];
+      taskFrame: BamlTaskFrame;
     };
 
 export class AgentActionPlannerModelClient {
@@ -70,51 +66,38 @@ export class AgentActionPlannerModelClient {
     });
   }
 
-  async selectAction(
+  async buildTaskFrame(
     input: ActionPlanInput,
     options: { signal?: AbortSignal } = {},
-  ): Promise<BamlActionSelection> {
+  ): Promise<BamlTaskFrame> {
     const prompt = await this.buildPrompt({
-      functionName: "SelectAction",
+      functionName: "BuildTaskFrame",
       input,
     });
-    return baml.parse.SelectAction(await this.complete(prompt, options.signal));
+    return baml.parse.BuildTaskFrame(await this.complete(prompt, options.signal));
   }
 
-  async repairActionSelection(options: {
+  async verifyTaskEvidence(options: {
     input: ActionPlanInput;
-    invalidSelection: string;
+    taskFrame: BamlTaskFrame;
+  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlEvidenceVerification> {
+    const prompt = await this.buildPrompt({
+      functionName: "VerifyTaskEvidence",
+      ...options,
+    });
+    return baml.parse.VerifyTaskEvidence(await this.complete(prompt, requestOptions.signal));
+  }
+
+  async repairTaskFrame(options: {
+    input: ActionPlanInput;
+    invalidTaskFrame: string;
     issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlActionSelection> {
+  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlTaskFrame> {
     const prompt = await this.buildPrompt({
-      functionName: "RepairActionSelection",
+      functionName: "RepairTaskFrame",
       ...options,
     });
-    return baml.parse.RepairActionSelection(await this.complete(prompt, requestOptions.signal));
-  }
-
-  async buildPayload(options: {
-    input: ActionPlanInput;
-    selectedAction: ActionKind;
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlActionDecision> {
-    const prompt = await this.buildPrompt({
-      functionName: "BuildActionPayload",
-      ...options,
-    });
-    return baml.parse.BuildActionPayload(await this.complete(prompt, requestOptions.signal));
-  }
-
-  async repairPayload(options: {
-    input: ActionPlanInput;
-    selectedAction: ActionKind;
-    invalidDecision: string;
-    issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlActionDecision> {
-    const prompt = await this.buildPrompt({
-      functionName: "RepairActionPayload",
-      ...options,
-    });
-    return baml.parse.RepairActionPayload(await this.complete(prompt, requestOptions.signal));
+    return baml.parse.RepairTaskFrame(await this.complete(prompt, requestOptions.signal));
   }
 
   private async complete(request: PlannerModelRequest, signal?: AbortSignal): Promise<string> {
@@ -155,38 +138,25 @@ export class AgentActionPlannerModelClient {
     };
 
     switch (args.functionName) {
-      case "SelectAction":
-        return baml.request.SelectAction(
+      case "BuildTaskFrame":
+        return baml.request.BuildTaskFrame(
           buildActionPlannerPromptJson(args.input, {
-            stage: "selectAction",
+            stage: "buildTaskFrame",
           }),
           options,
         );
-      case "RepairActionSelection":
-        return baml.request.RepairActionSelection(
+      case "RepairTaskFrame":
+        return baml.request.RepairTaskFrame(
           buildActionPlannerPromptJson(args.input, {
-            stage: "repairActionSelection",
-            invalidSelection: args.invalidSelection,
+            stage: "repairTaskFrame",
+            invalidTaskFrame: args.invalidTaskFrame,
             issues: args.issues,
           }),
           options,
         );
-      case "BuildActionPayload":
-        return baml.request.BuildActionPayload(
-          buildActionPlannerPromptJson(args.input, {
-            stage: "buildActionPayload",
-            selectedAction: args.selectedAction,
-          }),
-          options,
-        );
-      case "RepairActionPayload":
-        return baml.request.RepairActionPayload(
-          buildActionPlannerPromptJson(args.input, {
-            stage: "repairActionPayload",
-            selectedAction: args.selectedAction,
-            invalidDecision: args.invalidDecision,
-            issues: args.issues,
-          }),
+      case "VerifyTaskEvidence":
+        return baml.request.VerifyTaskEvidence(
+          buildEvidenceVerificationPromptJson(args.input, args.taskFrame),
           options,
         );
     }

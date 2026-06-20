@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
 import { AgentActionPlannerStageNames, type AgentActionPlannerStageEvent } from "../Source/AgentSystem/AgentActionPlannerTelemetry.js";
 import type { AgentToolCatalogItem } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
-import type { ResolvedAgentActionPlannerConfig, ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
-import { createActionPlanInputFixture } from "./ActionPlannerFixture.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
+import {
+  createActionPlannerConfigFixture,
+  createActionPlanInputFixture,
+} from "./ActionPlannerFixture.js";
 
 const provider: ResolvedAgentModelProviderConfig = {
   Id: "test",
@@ -23,29 +26,36 @@ const provider: ResolvedAgentModelProviderConfig = {
   Headers: {},
 };
 
-const config: ResolvedAgentActionPlannerConfig = {
-  Enabled: true,
-  MaxRepairAttempts: 0,
-  Client: {
-    Provider: "auto",
+const config = createActionPlannerConfigFixture({
+  maxRepairAttempts: 0,
+  client: {
+    Provider: "openai-generic",
     BaseUrl: "https://example.test/v1",
     ApiKey: "test-key",
     Model: "test-model",
     Temperature: 0.1,
     MaxTokens: -1,
   },
-};
+});
 
 const catalogTool: AgentToolCatalogItem = {
   name: "WeatherTool",
   title: "Weather Tool",
   summary: "Read current weather and forecasts.",
+  rootKind: "User",
   capabilities: [],
   tags: [],
   useCases: [],
   examples: [],
   avoid: [],
   permissions: [],
+  evidenceCapabilities: [{
+    produces: "weather forecast",
+    quality: "observed",
+    satisfies: ["weather forecast"],
+    kinds: ["weather_forecast_day"],
+    capabilityIds: [],
+  }],
 };
 
 void main();
@@ -54,17 +64,31 @@ async function main(): Promise<void> {
   const originalFetch = globalThis.fetch;
   const responses = [
     {
-      action: "UseTools",
-    },
-    {
-      action: "UseTools",
-      answer: null,
-      askUser: null,
-      useTools: {
-        preferredTools: ["WeatherTool"],
-        instruction: "Query the weather forecast requested by the user.",
-      },
-      discoverTools: null,
+      taskType: "weather lookup",
+      answerGoal: "Query the weather forecast requested by the user.",
+      intentTags: ["weather"],
+      targetRefs: [{
+        kind: "location-date",
+        value: "latest user weather request",
+        status: "needs-forecast",
+      }],
+      candidateTools: [{
+        name: "WeatherTool",
+        purpose: "Read requested forecast evidence.",
+        supports: ["weather forecast"],
+      }],
+      discoveryQueries: ["weather forecast"],
+      requiredEffects: [],
+      requiredEvidence: [{
+        id: "weather-forecast-evidence",
+        need: "weather forecast",
+        minimum: 1,
+        reason: "The user asked for weather facts.",
+      }],
+      userInputNeeds: [],
+      nextStepPurpose: "Fetch weather forecast evidence.",
+      completionCriteria: ["Forecast evidence is available."],
+      notes: [],
     },
   ];
   const telemetry: AgentActionPlannerStageEvent[] = [];
@@ -90,9 +114,32 @@ async function main(): Promise<void> {
     const planner = new AgentActionPlanner(config, provider, {
       list: () => [catalogTool],
     });
+    const fixture = createActionPlanInputFixture("查天气");
     const result = await planner.plan({
       requestId: "verify-stage-telemetry",
-      input: createActionPlanInputFixture("查天气"),
+      input: {
+        ...fixture,
+        runState: {
+          ...fixture.runState,
+          loadedTools: ["WeatherTool"],
+        },
+        compactToolCatalog: [{
+          name: "WeatherTool",
+          title: "Weather Tool",
+          summary: "Read current weather and forecasts.",
+          capabilities: [],
+          evidence: ["weather forecast"],
+          effects: [],
+          outputs: [],
+          permissions: [],
+          loaded: true,
+          rootKind: "User",
+        }],
+        toolCatalog: [{
+          ...catalogTool,
+          loaded: true,
+        }],
+      },
       onStage: (event) => {
         telemetry.push(event);
       },
@@ -100,21 +147,23 @@ async function main(): Promise<void> {
 
     assert.equal(result.kind, "planned");
     assert.deepEqual(telemetry.map((event) => `${event.stage}:${event.status}`), [
-      `${AgentActionPlannerStageNames.SelectAction}:started`,
-      `${AgentActionPlannerStageNames.SelectAction}:completed`,
-      `${AgentActionPlannerStageNames.BuildActionPayload}:started`,
-      `${AgentActionPlannerStageNames.BuildActionPayload}:completed`,
+      `${AgentActionPlannerStageNames.BuildTaskFrame}:started`,
+      `${AgentActionPlannerStageNames.BuildTaskFrame}:completed`,
+      `${AgentActionPlannerStageNames.EvaluateEvidence}:started`,
+      `${AgentActionPlannerStageNames.EvaluateEvidence}:completed`,
     ]);
-    const selectionCompleted = telemetry.find((event) =>
-      event.stage === AgentActionPlannerStageNames.SelectAction && event.status === "completed"
+    const taskFrameCompleted = telemetry.find((event) =>
+      event.stage === AgentActionPlannerStageNames.BuildTaskFrame && event.status === "completed"
     );
-    const payloadCompleted = telemetry.find((event) =>
-      event.stage === AgentActionPlannerStageNames.BuildActionPayload && event.status === "completed"
+    assert.equal(taskFrameCompleted?.status, "completed");
+    assert.equal(taskFrameCompleted?.taskFrame?.answerGoal, "Query the weather forecast requested by the user.");
+    const evidenceCompleted = telemetry.find((event) =>
+      event.stage === AgentActionPlannerStageNames.EvaluateEvidence && event.status === "completed"
     );
-    assert.equal(selectionCompleted?.status, "completed");
-    assert.equal(payloadCompleted?.status, "completed");
-    assert.equal(selectionCompleted.selectedAction, "use_tools");
-    assert.equal(payloadCompleted.selectedAction, "use_tools");
+    assert.equal(evidenceCompleted?.status, "completed");
+    assert.equal(evidenceCompleted?.status === "completed" ? evidenceCompleted.selectedAction : undefined, "use_tools");
+    assert.equal(evidenceCompleted?.status === "completed" ? evidenceCompleted.evidenceDecision?.ready : undefined, false);
+    assert.equal(result.decision.action, "use_tools");
     console.log("Action planner stage telemetry verification passed.");
   } finally {
     globalThis.fetch = originalFetch;

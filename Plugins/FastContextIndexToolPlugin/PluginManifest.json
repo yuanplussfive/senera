@@ -19,7 +19,9 @@
       "上下文",
       "index",
       "索引",
-      "minisearch",
+      "sqlite",
+      "fts5",
+      "trigram",
       "symbol",
       "workspace",
       "工作区",
@@ -53,7 +55,8 @@
               "snippet": "$.snippet",
               "score": "$.score",
               "engine": "$.source",
-              "reason": "$.reason"
+              "reason": "$.reason",
+              "focus": "$.focusSummary"
             },
             "Identity": {
               "Parts": [
@@ -84,6 +87,7 @@
                 "startLine",
                 "endLine",
                 "snippet",
+                "focus",
                 "engine",
                 "score",
                 "reason"
@@ -97,7 +101,8 @@
                 "endLine",
                 "engine",
                 "score",
-                "reason"
+                "reason",
+                "focus"
               ],
               "ArtifactRefs": [
                 "evidence",
@@ -105,8 +110,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }} - {{ e.slots.snippet }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} indexed match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }}{% if e.slots.focus %} focus: {{ e.slots.focus }}{% endif %} - {{ e.slots.snippet }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} indexed match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}{% if e.slots.focus %}\n  focus: {{ e.slots.focus }}{% endif %}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
             }
           }
         ],
@@ -116,10 +121,12 @@
         }
       },
       "Search": {
-        "Summary": "使用本地轻量索引快速搜索代码、路径和文本片段。",
+        "Summary": "使用本地 SQLite FTS5/trigram 索引快速搜索代码、路径和文本片段。",
         "Keywords": [
           "index",
-          "minisearch",
+          "sqlite",
+          "fts5",
+          "trigram",
           "code",
           "workspace",
           "cached",
@@ -195,7 +202,23 @@
         "Avoid": [
           "需要最新未索引内容时先刷新索引或使用精确搜索。"
         ]
-      }
+      },
+      "EvidenceCapabilities": [
+        {
+          "Produces": "workspace candidate",
+          "Quality": "candidate",
+          "Satisfies": [
+            "candidate location",
+            "workspace candidate location"
+          ],
+          "Kinds": [
+            "workspace_search_match"
+          ],
+          "CapabilityIds": [
+            "workspace.index-search"
+          ]
+        }
+      ]
     },
     {
       "Name": "FastContextRefreshIndexTool",
@@ -353,7 +376,22 @@
         "Avoid": [
           "只是读取文件或搜索一个字符串时不需要刷新索引。"
         ]
-      }
+      },
+      "EvidenceCapabilities": [
+        {
+          "Produces": "workspace index",
+          "Quality": "observed",
+          "Satisfies": [
+            "index freshness"
+          ],
+          "Kinds": [
+            "workspace_index"
+          ],
+          "CapabilityIds": [
+            "workspace.index-refresh"
+          ]
+        }
+      ]
     }
   ],
   "Security": {

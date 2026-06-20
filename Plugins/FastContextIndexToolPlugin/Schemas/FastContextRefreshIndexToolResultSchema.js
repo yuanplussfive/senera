@@ -27,6 +27,8 @@ const Schema = pluginSdk.z.object({
   indexedFiles: pluginSdk.z.number().int(),
   indexedDocuments: pluginSdk.z.number().int(),
   indexedSymbols: pluginSdk.z.number().int(),
+  changedFiles: pluginSdk.z.number().int(),
+  unchangedFiles: pluginSdk.z.number().int(),
   skippedFiles: pluginSdk.z.number().int(),
   stateFile: pluginSdk.z.string(),
   warnings: pluginSdk.z.object({

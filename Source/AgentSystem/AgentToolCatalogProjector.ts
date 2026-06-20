@@ -1,6 +1,7 @@
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
 import type {
   RegisteredTool,
+  ToolEvidenceCapabilityManifest,
   ToolSearchCapabilityFacetsManifest,
 } from "./Types.js";
 
@@ -8,12 +9,22 @@ export interface AgentToolCatalogItem {
   name: string;
   title: string;
   summary: string;
+  rootKind: "System" | "User";
   capabilities: AgentToolCatalogCapabilityItem[];
   tags: string[];
   useCases: string[];
   examples: string[];
   avoid: string[];
   permissions: string[];
+  evidenceCapabilities: AgentToolCatalogEvidenceCapability[];
+}
+
+export interface AgentToolCatalogEvidenceCapability {
+  produces: string;
+  quality: string;
+  satisfies: string[];
+  kinds: string[];
+  capabilityIds: string[];
 }
 
 export interface AgentToolCatalogCapabilityItem {
@@ -51,6 +62,7 @@ export class AgentToolCatalogProjector {
       name: tool.name,
       title: tool.plugin.manifest.Plugin.Title ?? tool.name,
       summary: search?.Summary ?? tool.plugin.manifest.Plugin.Description ?? "",
+      rootKind: tool.plugin.rootKind,
       capabilities: (search?.Capabilities ?? []).map((capability) => ({
         id: capability.Id,
         title: capability.Title ?? capability.Id,
@@ -71,6 +83,47 @@ export class AgentToolCatalogProjector {
       examples: search?.Examples ?? [],
       avoid: search?.Avoid ?? [],
       permissions: tool.permissions,
+      evidenceCapabilities: [
+        ...tool.evidenceCapabilities.map(projectEvidenceCapability),
+        ...projectArtifactEvidenceCapabilities(tool),
+      ],
     };
   }
+}
+
+function projectEvidenceCapability(
+  capability: ToolEvidenceCapabilityManifest,
+): AgentToolCatalogEvidenceCapability {
+  return {
+    produces: capability.Produces,
+    quality: capability.Quality,
+    satisfies: capability.Satisfies ?? [],
+    kinds: capability.Kinds ?? [],
+    capabilityIds: capability.CapabilityIds ?? [],
+  };
+}
+
+function projectArtifactEvidenceCapabilities(tool: RegisteredTool): AgentToolCatalogEvidenceCapability[] {
+  return (tool.artifactPolicy?.Evidence ?? []).map((evidence) => {
+    const capabilityIds = (tool.search?.Capabilities ?? [])
+      .filter((capability) => {
+        const facets = capability.Facets ?? {};
+        return [
+          ...(facets.Evidence ?? []),
+          ...(facets.Outputs ?? []),
+        ].includes(evidence.Kind);
+      })
+      .map((capability) => capability.Id);
+
+    return {
+      produces: evidence.Kind,
+      quality: "observed",
+      satisfies: [
+        evidence.Kind,
+        ...capabilityIds,
+      ],
+      kinds: [evidence.Kind],
+      capabilityIds,
+    };
+  });
 }

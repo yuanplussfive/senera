@@ -41,6 +41,12 @@ const Schema = pluginSdk.z.object({
   stats: pluginSdk.z.object({
     resultCount: pluginSdk.z.number().int(),
     symbolCount: pluginSdk.z.number().int(),
+    indexedFiles: pluginSdk.z.number().int(),
+    indexDocumentCount: pluginSdk.z.number().int(),
+    engines: pluginSdk.z.object({
+      item: pluginSdk.z.array(pluginSdk.z.string())
+    }).strict(),
+    stateFile: pluginSdk.z.string(),
     refreshedIndex: pluginSdk.z.boolean(),
     elapsedMs: pluginSdk.z.number().int()
   }).strict()

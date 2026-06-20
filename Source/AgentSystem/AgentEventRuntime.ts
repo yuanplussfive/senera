@@ -54,6 +54,7 @@ export function toEventEnvelope(
     sessionId: context.sessionId,
     requestId: context.requestId,
     step,
+    scope: context.scope,
     detailId,
     data: event.data,
   };
@@ -70,11 +71,18 @@ export function withEventContext(
   event: AgentDomainEvent,
   context: Partial<AgentEventContext>,
 ): AgentDomainEvent {
+  const existingContext = event.context as AgentEventContext;
   return {
     ...event,
     context: {
-      ...event.context,
+      ...existingContext,
       ...context,
+      scope: context.scope || existingContext.scope
+        ? {
+          ...existingContext.scope,
+          ...context.scope,
+        }
+        : undefined,
     },
   } as AgentDomainEvent;
 }

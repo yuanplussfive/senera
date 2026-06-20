@@ -364,8 +364,8 @@ function formatPlannerStageToken(value: unknown): string | undefined {
   }
 
   const catalog: Record<string, string> = {
-    selectAction: "选择行动",
-    buildActionPayload: "构建参数",
+    buildTaskFrame: "构建任务合约",
+    evaluateEvidence: "判断完成状态",
   };
   return catalog[stage] ?? stage;
 }

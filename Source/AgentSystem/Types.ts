@@ -31,6 +31,7 @@ export interface AgentDefaultsConfig {
     MaxRepairAttempts?: number;
     LoadedTools?: AgentLoadedToolsConfig;
   };
+  AgentDelegation?: AgentDelegationConfig;
   ToolSearch?: AgentToolSearchConfig;
   Artifacts?: AgentArtifactsConfig;
   Uploads?: AgentUploadsConfig;
@@ -105,6 +106,7 @@ export interface AgentSystemConfig {
     MaxRepairAttempts?: number;
     LoadedTools?: AgentLoadedToolsConfig;
   };
+  AgentDelegation?: AgentDelegationConfig;
   ToolSearch?: AgentToolSearchConfig;
   Artifacts?: AgentArtifactsConfig;
   Uploads?: AgentUploadsConfig;
@@ -123,6 +125,50 @@ export interface AgentSystemConfig {
 }
 
 export type AgentLoadedToolsConfig = "all" | "dynamic" | string[];
+
+export type ResolvedAgentLoopConfig = Required<NonNullable<AgentSystemConfig["AgentLoop"]>>;
+
+export type AgentDelegationRuntimeMode = "directModel" | "agentLoop";
+
+export interface AgentDelegationRuntimeProfileConfig {
+  Mode?: AgentDelegationRuntimeMode;
+  ModelProviderId?: string;
+  AgentLoop?: {
+    MaxSteps?: number;
+    MaxRepairAttempts?: number;
+    LoadedTools?: AgentLoadedToolsConfig;
+  };
+}
+
+export interface AgentDelegationMergeConfig {
+  ModelProviderId?: string;
+}
+
+export interface AgentDelegationTemplateConfig {
+  ChildSystemPrompt?: string;
+  MergeSystemPrompt?: string;
+}
+
+export interface AgentDelegationConfig {
+  RuntimeProfileDefaults?: AgentDelegationRuntimeProfileConfig;
+  RuntimeProfiles?: Record<string, AgentDelegationRuntimeProfileConfig>;
+  Templates?: AgentDelegationTemplateConfig;
+  Merge?: AgentDelegationMergeConfig;
+}
+
+export interface ResolvedAgentDelegationRuntimeProfileConfig {
+  Name: string;
+  Mode: AgentDelegationRuntimeMode;
+  ModelProviderId?: string;
+  AgentLoop: ResolvedAgentLoopConfig;
+}
+
+export interface ResolvedAgentDelegationConfig {
+  RuntimeProfileDefaults?: Omit<ResolvedAgentDelegationRuntimeProfileConfig, "Name">;
+  RuntimeProfiles: Record<string, ResolvedAgentDelegationRuntimeProfileConfig>;
+  Templates: Required<AgentDelegationTemplateConfig>;
+  Merge: AgentDelegationMergeConfig;
+}
 
 export interface ResolvedAgentPluginRootsConfig {
   System: string[];
@@ -216,7 +262,14 @@ export interface ResolvedAgentUploadsConfig {
 export interface AgentActionPlannerConfig {
   Enabled?: boolean;
   MaxRepairAttempts?: number;
+  Evidence?: AgentActionPlannerEvidenceConfig;
   Client?: AgentActionPlannerClientConfig;
+  TaskFrameClient?: AgentActionPlannerClientConfig;
+  EvidenceClient?: AgentActionPlannerClientConfig;
+}
+
+export interface AgentActionPlannerEvidenceConfig {
+  StalledStepLag?: number;
 }
 
 export type AgentActionPlannerClientProvider =
@@ -227,6 +280,7 @@ export type AgentActionPlannerClientProvider =
   | "google-ai";
 
 export interface AgentActionPlannerClientConfig {
+  ModelProviderId?: string;
   Provider?: AgentActionPlannerClientProvider;
   BaseUrl?: string;
   ApiKey?: string;
@@ -239,7 +293,15 @@ export interface AgentActionPlannerClientConfig {
 export interface ResolvedAgentActionPlannerConfig {
   Enabled: boolean;
   MaxRepairAttempts: number;
-  Client: Required<AgentActionPlannerClientConfig>;
+  Evidence: Required<AgentActionPlannerEvidenceConfig>;
+  Client: ResolvedAgentActionPlannerClientConfig;
+  TaskFrameClient: ResolvedAgentActionPlannerClientConfig;
+  EvidenceClient: ResolvedAgentActionPlannerClientConfig;
+}
+
+export interface ResolvedAgentActionPlannerClientConfig
+  extends Required<Omit<AgentActionPlannerClientConfig, "ModelProviderId">> {
+  ModelProviderId?: string;
 }
 
 export interface AgentFrontendServerConfig {
@@ -378,9 +440,15 @@ export interface PluginManifest {
   };
   DecisionActions?: DecisionActionManifest[];
   Tools?: ToolManifest[];
+  Skills?: SkillManifest[];
+  Agents?: AgentManifest[];
+  ContextPacks?: AgentContextPackManifest[];
+  Workflows?: AgentWorkflowManifest[];
+  MergePolicies?: AgentMergePolicyManifest[];
   Resources?: unknown[];
   Prompts?: PromptManifest[];
   Templates?: TemplateManifest[];
+  RootCommands?: RootCommandManifest[];
   Security?: PluginSecurityManifest;
   Prompting?: PluginPromptingManifest;
 }
@@ -414,8 +482,17 @@ export interface ToolManifest {
   Permissions?: string[];
   Handler?: ToolHandlerManifest;
   Search?: ToolSearchManifest;
+  EvidenceCapabilities?: ToolEvidenceCapabilityManifest[];
   Artifacts?: ToolArtifactPolicyManifest;
   ArtifactPolicyFile?: string;
+}
+
+export interface ToolEvidenceCapabilityManifest {
+  Produces: string;
+  Quality: string;
+  Satisfies?: string[];
+  Kinds?: string[];
+  CapabilityIds?: string[];
 }
 
 export interface ToolSearchManifest {
@@ -452,6 +529,87 @@ export interface ToolSearchCapabilityRiskManifest {
   SideEffect?: string;
   Permission?: string;
   Notes?: string[];
+}
+
+export interface SkillManifest {
+  Name: string;
+  Title?: string;
+  DescriptionFile: string;
+  WorkflowFile?: string;
+  RecommendedTools?: string[];
+  RecommendedAgents?: string[];
+  RecommendedWorkflows?: string[];
+  EvidenceRequirements?: SkillEvidenceRequirementManifest[];
+  Search?: ToolSearchManifest;
+}
+
+export interface SkillEvidenceRequirementManifest {
+  Need: string;
+  Accepts: string[];
+  MinimumQuality?: string[];
+  Minimum?: number;
+  Purpose?: string;
+}
+
+export interface AgentManifest {
+  Name: string;
+  Title?: string;
+  DescriptionFile: string;
+  InstructionsFile: string;
+  RecommendedTools?: string[];
+  ContextPack: string;
+  OutputSchema: string;
+  RuntimeProfile: string;
+  Search?: ToolSearchManifest;
+}
+
+export interface AgentContextPackManifest {
+  Name: string;
+  Description?: string;
+  TemplateFile: string;
+  Inputs: string[];
+  ToolScope: string;
+  History: string;
+  Artifacts: string;
+  Evidence?: string;
+}
+
+export interface AgentMergePolicyManifest {
+  Name: string;
+  Description?: string;
+  Strategy: string;
+  TemplateFile: string;
+  OutputSchema?: string;
+}
+
+export interface AgentWorkflowManifest {
+  Name: string;
+  Title?: string;
+  Description?: string;
+  Trigger: AgentWorkflowTriggerManifest;
+  Execution: AgentWorkflowExecutionManifest;
+  Jobs: AgentWorkflowJobManifest[];
+  MergePolicy: string;
+  Search?: ToolSearchManifest;
+}
+
+export interface AgentWorkflowExecutionManifest {
+  Strategy: "sequential" | "parallel";
+  MaxConcurrency?: number;
+}
+
+export interface AgentWorkflowTriggerManifest {
+  Skills?: string[];
+  Agents?: string[];
+  Keywords?: string[];
+  Capabilities?: ToolSearchCapabilityManifest[];
+}
+
+export interface AgentWorkflowJobManifest {
+  Agent: string;
+  TaskFile: string;
+  ContextPack?: string;
+  Required?: boolean;
 }
 
 export interface ToolArtifactPolicyManifest {
@@ -576,6 +734,60 @@ export interface TemplateManifest {
   Name: string;
   Path: string;
 }
+
+export interface RootCommandManifest {
+  Action: string;
+  OutputMode: "tool_call_xml" | "final_text" | "open";
+  ToolAccess: "disabled" | "restricted" | "discovery_only";
+  Objective: string;
+  InsufficiencyPolicy: string;
+  AllowedTools: RootCommandToolSelectorManifest[];
+  ForbiddenOutputs: string[];
+  VisibleOutput: RootCommandVisibleOutputManifest;
+  IncludeDecisionProtocol: boolean;
+  IncludeToolCatalog: boolean;
+}
+
+export interface RootCommandVisibleOutputManifest {
+  Audience: string;
+  Start: string;
+  Format: string;
+  Rules: RootCommandVisibleOutputRuleManifest[];
+  Repair: RootCommandVisibleOutputRepairManifest;
+}
+
+export interface RootCommandVisibleOutputRuleManifest {
+  Name: string;
+  Value: string;
+  Instruction?: string;
+}
+
+export interface RootCommandVisibleOutputRepairManifest {
+  Instruction: string;
+  Rules: RootCommandVisibleOutputRuleManifest[];
+}
+
+export type RootCommandToolSelectorManifest =
+  | {
+      Source: "None";
+    }
+  | {
+      Source: "Loaded";
+    }
+  | {
+      Source: "NamedLoaded";
+      Names: string[];
+    }
+  | {
+      Source: "HostCapability";
+      Capability: string;
+    }
+  | {
+      Source: "PreferredLoaded";
+    }
+  | {
+      Source: "PreferredLoadedOrLoaded";
+    };
 
 export interface PluginSecurityManifest {
   TrustLevel?: "System" | "Local" | "External" | "Untrusted";
@@ -709,7 +921,74 @@ export interface RegisteredTool {
   permissions: string[];
   handler: RegisteredToolHandler;
   search?: ToolSearchManifest;
+  evidenceCapabilities: ToolEvidenceCapabilityManifest[];
   artifactPolicy?: ToolArtifactPolicyManifest;
+}
+
+export interface RegisteredSkill {
+  plugin: LoadedPlugin;
+  name: string;
+  title?: string;
+  descriptionFile: string;
+  workflowFile?: string;
+  recommendedTools: string[];
+  recommendedAgents: string[];
+  recommendedWorkflows: string[];
+  evidenceRequirements: SkillEvidenceRequirementManifest[];
+  search?: ToolSearchManifest;
+}
+
+export interface RegisteredAgent {
+  plugin: LoadedPlugin;
+  name: string;
+  title?: string;
+  descriptionFile: string;
+  instructionsFile: string;
+  recommendedTools: string[];
+  contextPack: string;
+  outputSchemaPath: string;
+  runtimeProfile: string;
+  search?: ToolSearchManifest;
+}
+
+export interface RegisteredAgentContextPack {
+  plugin: LoadedPlugin;
+  name: string;
+  description?: string;
+  templateFile: string;
+  inputs: string[];
+  toolScope: string;
+  history: string;
+  artifacts: string;
+  evidence?: string;
+}
+
+export interface RegisteredAgentMergePolicy {
+  plugin: LoadedPlugin;
+  name: string;
+  description?: string;
+  strategy: string;
+  templateFile: string;
+  outputSchemaPath?: string;
+}
+
+export interface RegisteredAgentWorkflow {
+  plugin: LoadedPlugin;
+  name: string;
+  title?: string;
+  description?: string;
+  trigger: AgentWorkflowTriggerManifest;
+  execution: AgentWorkflowExecutionManifest;
+  jobs: RegisteredAgentWorkflowJob[];
+  mergePolicy: string;
+  search?: ToolSearchManifest;
+}
+
+export interface RegisteredAgentWorkflowJob {
+  agent: string;
+  taskFile: string;
+  contextPack?: string;
+  required?: boolean;
 }
 
 export interface RegisteredTemplate {
@@ -868,6 +1147,11 @@ export interface ToolExecutionContext {
 
 export interface AgentPluginRegistryLike {
   getTool(name: string): RegisteredTool | undefined;
+  getAgent?(name: string): RegisteredAgent | undefined;
+  getAgentWorkflow?(name: string): RegisteredAgentWorkflow | undefined;
+  getAgentContextPack?(name: string): RegisteredAgentContextPack | undefined;
+  getAgentMergePolicy?(name: string): RegisteredAgentMergePolicy | undefined;
+  listAgentWorkflows?(): RegisteredAgentWorkflow[];
 }
 
 export interface AgentToolProcessRequest {

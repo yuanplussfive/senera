@@ -15,14 +15,24 @@ export interface AgentEventEnvelope<TKind extends string = AgentEventKind, TData
   sessionId?: string;
   requestId?: string;
   step?: number;
+  scope?: AgentEventScope;
   detailId?: string;
   data: TData;
+}
+
+export interface AgentEventScope {
+  parentRequestId?: string;
+  workflowName?: string;
+  jobId?: string;
+  agentName?: string;
+  role?: "childAgent" | "merge";
 }
 
 export interface AgentEventContext {
   sessionId?: string;
   requestId?: string;
   step?: number;
+  scope?: AgentEventScope;
 }
 
 export type AgentEventSpec<TKind extends AgentEventKind, TData> = {

@@ -27,7 +27,9 @@ export interface PlannerToolCallRecord {
   step: number;
   toolName: string;
   argsHash: string;
+  argumentsPreview: string;
   status: ToolCallStatus;
+  resultKind: string;
   artifactId: string;
   artifactUri: string;
   artifactPath: string;
@@ -127,6 +129,7 @@ export class AgentActionPlannerLedgerUpdater {
         resultHash,
       });
     const status = readToolStatus(result.result);
+    const resultKind = readResultKind(result.result);
     const artifactReference = {
       artifactId: locator.artifactId,
       artifactUri: locator.artifactUri,
@@ -151,7 +154,9 @@ export class AgentActionPlannerLedgerUpdater {
       step,
       toolName: result.name,
       argsHash,
+      argumentsPreview: stringifyPreview(result.arguments),
       status,
+      resultKind,
       ...artifactReference,
       evidenceRefs,
       error: status === "Failure" ? readErrorMessage(result.result) : "",
@@ -211,10 +216,19 @@ export function cloneActionPlannerLedger(ledger: AgentActionPlannerLedger): Agen
 export function isActionPlannerLedgerStalled(
   currentStep: number,
   ledger: AgentActionPlannerLedger,
+  options: {
+    stalledStepLag: number;
+  },
 ): boolean {
-  return ledger.calls.length > 0
-    && ledger.lastNewEvidenceStep > 0
-    && currentStep - ledger.lastNewEvidenceStep >= 2;
+  if (ledger.calls.length === 0) {
+    return false;
+  }
+
+  const firstCallStep = Math.min(...ledger.calls.map((call) => call.step));
+  const progressAnchor = ledger.lastNewEvidenceStep > 0
+    ? ledger.lastNewEvidenceStep
+    : firstCallStep;
+  return currentStep - progressAnchor >= options.stalledStepLag;
 }
 
 function collectRepeatedWarnings(
@@ -272,6 +286,15 @@ function readErrorMessage(value: unknown): string {
   return error && typeof error === "object" && !Array.isArray(error)
     ? readString((error as Record<string, unknown>).message) ?? stringifyPreview(error)
     : stringifyPreview(error);
+}
+
+function readResultKind(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "";
+  }
+
+  const kind = (value as Record<string, unknown>).kind;
+  return typeof kind === "string" ? kind.trim() : "";
 }
 
 function stableHash(value: unknown): string {

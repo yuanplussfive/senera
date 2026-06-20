@@ -1,10 +1,3 @@
-enum ActionKind {
-  Answer
-  AskUser
-  DiscoverTools
-  UseTools
-}
-
 enum ToolCallStatus {
   Success
   Failure
@@ -17,6 +10,13 @@ enum ExecutionDeltaOp {
   AddWarning
 }
 
+enum EvidenceVerificationStatus {
+  Satisfied
+  Partial
+  Missing
+  Blocked
+}
+
 class ToolCatalogItem {
   name string
   title string
@@ -27,7 +27,16 @@ class ToolCatalogItem {
   examples string[]
   avoid string[]
   permissions string[]
+  evidenceCapabilities ToolEvidenceCapabilityItem[]
   loaded bool
+}
+
+class ToolEvidenceCapabilityItem {
+  produces string
+  quality string
+  satisfies string[]
+  kinds string[]
+  capabilityIds string[]
 }
 
 class ToolCapabilityItem {
@@ -58,6 +67,7 @@ class ActionRunState {
   loadedTools string[]
   progress ProgressSignals
   warnings RepeatedCallWarning[]
+  calls PlannerToolCallStateItem[]
 }
 
 class PlannerTimelineTurn {
@@ -76,9 +86,22 @@ class PlannerEvidenceMemoryItem {
   locator string
   display string
   label string
-  confidence float
   toolName string
   artifactUri string
+  facts EvidenceSlot[]
+  artifactRefs string[]
+}
+
+class PlannerEvidenceStateItem {
+  evidenceRef string
+  kind string
+  toolName string
+  artifactUri string
+  locator string
+  display string
+  label string
+  source string?
+  confidence float?
   facts EvidenceSlot[]
   artifactRefs string[]
 }
@@ -105,6 +128,17 @@ class RepeatedCallWarning {
   lastStep int
 }
 
+class PlannerToolCallStateItem {
+  step int
+  toolName string
+  status ToolCallStatus
+  artifactUri string
+  evidenceRefs string[]
+  resultKind string
+  argumentsPreview string
+  error string
+}
+
 class ProgressSignals {
   totalToolCalls int
   totalEvidence int
@@ -117,43 +151,106 @@ class ActionPlanInput {
   runState ActionRunState
   timeline PlannerTimelineTurn[]
   evidenceMemory PlannerEvidenceMemoryItem[]
+  evidenceState PlannerEvidenceStateItem[]
   plannerJournal PlannerJournalItem[]
+  compactToolCatalog ToolCatalogSummaryItem[]
   toolCatalog ToolCatalogItem[]
+  activeSkills PlannerActiveSkill[]
 }
 
-class ActionSelection {
-  action ActionKind
+class ToolCatalogSummaryItem {
+  name string
+  title string
+  summary string
+  capabilities string[]
+  evidence string[]
+  effects string[]
+  outputs string[]
+  permissions string[]
+  loaded bool
+  rootKind string
 }
 
-class ActionDecision {
-  action ActionKind
-  askUser AskUserActionPayload?
-  useTools UseToolsActionPayload?
-  discoverTools DiscoverToolsActionPayload?
+class PlannerActiveSkill {
+  name string
+  title string
+  summary string
+  useCases string[]
+  avoid string[]
+  recommendedTools string[]
+  evidenceRequirements PlannerEvidenceRequirement[]
 }
 
-class AskUserActionPayload {
+class PlannerEvidenceRequirement {
+  need string
+  accepts string[]
+  minimumQuality string[]
+  minimum int
+  purpose string
+}
+
+class TaskFrame {
+  taskType string
+  answerGoal string
+  intentTags string[]
+  targetRefs TaskTargetRef[]
+  candidateTools TaskCandidateTool[]
+  discoveryQueries string[]
+  requiredEffects TaskRequiredEffect[]
+  requiredEvidence TaskRequiredEvidence[]
+  userInputNeeds TaskUserInputNeed[]
+  nextStepPurpose string
+  completionCriteria string[]
+  notes string[]
+}
+
+class TaskCandidateTool {
+  name string
+  purpose string
+  supports string[]
+}
+
+class TaskTargetRef {
+  kind string
+  value string
+  status string
+}
+
+class TaskRequiredEffect {
+  id string
+  effect string
+  target string
+  proof string
+  reason string
+}
+
+class TaskRequiredEvidence {
+  id string
+  need string
+  minimum int
+  reason string
+}
+
+class EvidenceVerification {
+  ready bool
+  requirements EvidenceRequirementVerification[]
+  summary string
+}
+
+class EvidenceRequirementVerification {
+  requirementId string
+  need string
+  status EvidenceVerificationStatus
+  evidenceRefs string[]
+  artifactUris string[]
+  reason string
+  missingFacts string[]
+  unsupportedClaims string[]
+}
+
+class TaskUserInputNeed {
   question string
-  reason string?
-}
-
-class UseToolsActionPayload {
-  preferredTools string[]
-  instruction string
-}
-
-class DiscoverToolsActionPayload {
-  queries string[]
-  needs CapabilityNeed[]
-}
-
-class CapabilityNeed {
-  actions string[]?
-  targets string[]?
-  inputs string[]?
-  outputs string[]?
-  evidence string[]?
-  effects string[]?
+  reason string
 }
 
 client<llm> SeneraActionPlannerPromptBuilder {
@@ -165,45 +262,38 @@ client<llm> SeneraActionPlannerPromptBuilder {
   }
 }
 
-function SelectAction(promptJson: string) -> ActionSelection {
+function BuildTaskFrame(promptJson: string) -> TaskFrame {
   client SeneraActionPlannerPromptBuilder
   prompt #"
     {{ _.role("system") }}
-    You are Senera's action selector. Decide only the next execution action before the main agent runs.
+    Build Senera's task contract before the main agent runs.
 
-    Authority:
-    - Return only ActionSelection.action.
-    - Do not produce action payload, explanation, confidence, tags, tool arguments, or final answer text.
-    - Current visible tools may be only a subset of all registered tools.
-    - If the task needs hidden capabilities, choose DiscoverTools and describe the needed capabilities.
-
-    Action semantics:
-    - Answer: let the main agent respond from the timeline without tools.
-    - AskUser: blocked by missing essential user information.
-    - DiscoverTools: current loaded tools are insufficient and dynamic tools can search the catalog.
-    - UseTools: suitable loaded tools are already available and should be used by the main agent.
-
-    Decision rules:
-    - Treat the timeline below as the chronological conversation and observation stream.
-    - Use user turns for the user's actual requests and constraints.
-    - Use assistant turns for prior assistant decisions or answers.
-    - Use tool_observation/read_only_evidence turns as completed evidence from tools.
-    - Use evidenceMemory as the compact cross-request evidence card store.
-    - Use plannerJournal as planner control history, not as user-provided facts.
-    - Use runState only for execution control signals such as step, loaded tools, progress, and repeated-call warnings.
-    - Do not treat runState as factual evidence beyond those control signals.
-    - If timeline or evidenceMemory already contains enough fresh evidence facts to answer the latest user_message turn, choose Answer.
-    - Prefer evidenceMemory over new tools when its display, locator, and facts contain the same factual target requested by the user.
-    - If runState shows repeated calls or stalled progress, avoid more tools unless the selected payload names a concrete missing fact.
-    - Do not claim a file, URL, fact, or tool result was observed unless it appears in the timeline.
-    - Choose UseTools only when the current catalog and timeline show that a concrete missing fact requires a tool.
-    - For vague requests that still require inspection, prefer DiscoverTools only when current loaded tools cannot perform the next concrete step.
-    - For normal conversation or explanation that does not require external state, use Answer.
-    - When a task needs evidence, choose tools by matching the task to toolCatalog capabilities first, then summary/useCases/examples.
-    - Use PascalCase enum values exactly as defined.
+    Requirements:
+    - Return only TaskFrame.
+    - Describe what the latest user_message is trying to accomplish as a completion contract.
+    - intentTags are compact semantic tags for the task class, not tool names.
+    - targetRefs identify concrete targets mentioned or implied by the latest request, such as workspace paths, uploads, URLs, entities, dates, or topics.
+    - candidateTools lists possible tools that may help complete the contract; use only exact names from context.compactToolCatalog.
+    - candidateTools is advisory, not permission to call a tool; runtime will validate availability and evidence/effect fit.
+    - For candidateTools.supports, reuse vocabulary from compactToolCatalog capabilities/evidence/effects/outputs when it fits.
+    - discoveryQueries lists concise natural-language or capability-oriented queries for dynamic tool discovery when selected candidate tools are not currently loaded.
+    - Keep discoveryQueries empty only when no external tool discovery may be needed.
+    - requiredEffects lists side effects that must really happen before the task may be called complete.
+    - requiredEvidence lists user-facing claims or observations that must be verified before answering or proving effects happened.
+    - Every requiredEffects item and requiredEvidence item must have a stable id that is unique within the TaskFrame.
+    - Preserve requirement ids during repair unless an id is empty or duplicated.
+    - Do not invent evidence type names, proof strings, source labels, or tool-specific acceptance vocabulary.
+    - Use compactToolCatalog for possible tool planning; use toolCatalog only for precise evidence/effect vocabulary.
+    - Use activeSkills only as workflow guidance, not as a source of tool availability.
+    - nextStepPurpose states the next runtime purpose in one concise sentence.
+    - completionCriteria are user-visible completion checks the runtime can compare with evidence.
+    - If essential user information is missing and cannot be inferred from the latest request, put concise user-facing questions in userInputNeeds.
+    - If no external evidence or side effect is needed, requiredEvidence and requiredEffects may be empty.
+    - Search matches, snippets, and cached candidates are not enough for source-of-truth conclusions unless an active skill explicitly accepts that evidence type.
+    - Do not produce action, tool names, final answer text, confidence, or chain-of-thought.
     - Read the planner input from the JSON object in the user message.
-    - The JSON object has context.timeline, context.runState, context.toolCatalog, context.evidenceMemory, context.plannerJournal, and directive.
-    - The directive.stage is selectAction for this function.
+    - The JSON object has context.timeline, context.runState, context.compactToolCatalog, context.toolCatalog, context.evidenceMemory, context.evidenceState, context.plannerJournal, context.activeSkills, and directive.
+    - The directive.stage is buildTaskFrame.
 
     {{ ctx.output_format }}
 
@@ -212,21 +302,53 @@ function SelectAction(promptJson: string) -> ActionSelection {
   "#
 }
 
-function RepairActionSelection(promptJson: string) -> ActionSelection {
+function VerifyTaskEvidence(promptJson: string) -> EvidenceVerification {
   client SeneraActionPlannerPromptBuilder
   prompt #"
     {{ _.role("system") }}
-    Repair Senera's action selector output. Return exactly one valid ActionSelection.
+    Verify whether Senera's available evidence satisfies the task contract.
 
     Requirements:
-    - Preserve the original user intent.
+    - Return only EvidenceVerification.
+    - Verify every item in context.verificationRequirements.
+    - Copy requirementId exactly from context.verificationRequirements[].id.
+    - Treat evidence requirements as claims that must be supported by evidence cards.
+    - Treat effect requirements as completed only when evidence cards show the effect happened.
+    - Use only evidence cards in evidenceState as factual observations.
+    - Use evidenceCatalog only to understand what each evidence kind means; do not treat catalog entries as observed facts.
+    - Search candidates, workspace maps, and cached candidates are navigation evidence unless an evidence card's facts directly support the required claim.
+    - A requirement is Satisfied only when the cited evidenceRefs directly support the claim and target.
+    - A requirement is Partial when cited evidence helps but does not fully answer the claim.
+    - A requirement is Missing when no cited evidence supports the claim.
+    - A requirement is Blocked when recent tool calls show the same target cannot currently produce evidence.
+    - Do not cite evidenceRefs or artifactUris that are absent from evidenceState.
+    - Keep reason concise and user-visible.
+    - Put missing concrete facts in missingFacts.
+    - Put unsupported proposed conclusions in unsupportedClaims.
+    - ready is true only if every verification requirement is Satisfied.
+    - Read verifier input from the JSON object in the user message.
+    - The directive.stage is verifyTaskEvidence.
+
+    {{ ctx.output_format }}
+
+    {{ _.role("user") }}
+    {{ promptJson }}
+  "#
+}
+
+function RepairTaskFrame(promptJson: string) -> TaskFrame {
+  client SeneraActionPlannerPromptBuilder
+  prompt #"
+    {{ _.role("system") }}
+    Repair Senera's task contract. Return exactly one valid TaskFrame.
+
+    Requirements:
+    - Preserve the latest user intent.
     - Fix all validation issues.
-    - Return only action.
+    - Return only TaskFrame.
     - Do not explain the repair.
-    - Use PascalCase enum values exactly as defined.
     - Read the planner input from the JSON object in the user message.
-    - The JSON object has context.timeline, context.runState, context.toolCatalog, context.evidenceMemory, context.plannerJournal, and directive.
-    - The directive.stage is repairActionSelection and contains the invalid output plus validation issues.
+    - The directive.stage is repairTaskFrame and contains invalid output plus validation issues.
 
     {{ ctx.output_format }}
 
@@ -235,61 +357,3 @@ function RepairActionSelection(promptJson: string) -> ActionSelection {
   "#
 }
 
-function BuildActionPayload(promptJson: string) -> ActionDecision {
-  client SeneraActionPlannerPromptBuilder
-  prompt #"
-    {{ _.role("system") }}
-    Build Senera's payload for one already-selected action from the same chronological context used by action selection.
-
-    Requirements:
-    - Return exactly one valid ActionDecision.
-    - Keep action exactly equal to selectedAction.
-    - Answer does not need this payload-building stage; if selectedAction is Answer, return only action Answer and no payload fields.
-    - For AskUser, UseTools, and DiscoverTools, provide exactly one payload field and it must match selectedAction.
-    - If selectedAction is AskUser, set only askUser.question and optional askUser.reason.
-    - If selectedAction is UseTools, set only useTools.preferredTools and useTools.instruction.
-    - If selectedAction is DiscoverTools, set only discoverTools.queries and discoverTools.needs.
-    - Read selectedAction from directive.selectedAction.
-    - For UseTools, use only currently loaded tool names from context.runState.loadedTools.
-    - For DiscoverTools, describe capability needs using compact facets from context.toolCatalog when useful.
-    - Treat plannerJournal as planner control history, not as user-provided facts.
-    - Do not put debug text, confidence, progress assessment, or chain-of-thought in the payload.
-    - Use PascalCase enum values exactly as defined.
-    - Read the planner input from the JSON object in the user message.
-    - The JSON object has context.timeline, context.runState, context.toolCatalog, context.evidenceMemory, context.plannerJournal, and directive.
-    - The directive.stage is buildActionPayload for this function.
-
-    {{ ctx.output_format }}
-
-    {{ _.role("user") }}
-    {{ promptJson }}
-  "#
-}
-
-function RepairActionPayload(promptJson: string) -> ActionDecision {
-  client SeneraActionPlannerPromptBuilder
-  prompt #"
-    {{ _.role("system") }}
-    Repair Senera's action payload. Return exactly one valid ActionDecision.
-
-    Requirements:
-    - Keep action exactly equal to directive.selectedAction.
-    - Fix all validation issues.
-    - Answer does not need a payload; if selectedAction is Answer, return only action Answer and no payload fields.
-    - For AskUser, UseTools, and DiscoverTools, provide exactly one payload field and it must match selectedAction.
-    - If selectedAction is AskUser, askUser.question must contain the user-visible question.
-    - If selectedAction is UseTools, useTools.preferredTools and useTools.instruction must be present.
-    - If selectedAction is DiscoverTools, discoverTools.queries and discoverTools.needs must be present.
-    - Do not explain the repair.
-    - For UseTools, use only currently loaded tool names from context.runState.loadedTools.
-    - Use PascalCase enum values exactly as defined.
-    - Read the planner input from the JSON object in the user message.
-    - The JSON object has context.timeline, context.runState, context.toolCatalog, context.evidenceMemory, context.plannerJournal, and directive.
-    - The directive.stage is repairActionPayload and contains selectedAction, invalid output, and validation issues.
-
-    {{ ctx.output_format }}
-
-    {{ _.role("user") }}
-    {{ promptJson }}
-  "#
-}

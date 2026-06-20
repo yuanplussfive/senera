@@ -23,7 +23,6 @@ export function buildPlannedToolSearchQueries(
   return uniqueNonEmpty([
     ...(options.queries ?? []),
     ...needTexts,
-    ...(options.discover ? [options.input] : []),
   ]).map((text) => ({
     text,
     facets,

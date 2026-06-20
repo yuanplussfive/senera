@@ -28,7 +28,7 @@ const ImageVisionPluginConfigSchema = z
   .object({
     vision: z
       .object({
-        maxImageBytes: z.number().int().positive(),
+        maxImageMb: z.number().positive(),
         allowedMimes: z.array(z.string().trim().min(1)).min(1),
         systemTemplate: z.string().min(1),
         promptTemplate: z.string().min(1),
@@ -51,13 +51,13 @@ const ImageVisionPluginConfigSchema = z
             maxOutputTokens: z.number().int().refine((value) => value === -1 || value >= 1, {
               message: "maxOutputTokens 必须为 -1，或大于等于 1。",
             }),
-            timeoutMs: z.number().int().min(1),
-            firstTokenTimeoutMs: z.number().int().refine((value) => value === -1 || value >= 1, {
-              message: "firstTokenTimeoutMs 必须为 -1，或大于等于 1。",
+            timeoutSeconds: z.number().positive(),
+            firstTokenTimeoutSeconds: z.number().refine((value) => value === -1 || value > 0, {
+              message: "firstTokenTimeoutSeconds 必须为 -1，或大于 0。",
             }),
-            maxRequestMs: z.number().int().refine((value) => value === -1 || value >= 1, {
-              message: "maxRequestMs 必须为 -1，或大于等于 1。",
-            }),
+            maxRequestSeconds: z.number().refine((value) => value === -1 || value > 0, {
+              message: "maxRequestSeconds 必须为 -1，或大于 0。",
+            }).optional(),
             maxNetworkRetries: z.number().int().min(0),
             headers: z.record(z.string(), z.string()),
           })
@@ -68,7 +68,23 @@ const ImageVisionPluginConfigSchema = z
   .passthrough();
 
 type ImageVisionArguments = z.infer<typeof ImageVisionArgumentsSchema>;
-type ImageVisionPluginConfig = z.infer<typeof ImageVisionPluginConfigSchema>;
+type RawImageVisionPluginConfig = z.infer<typeof ImageVisionPluginConfigSchema>;
+
+interface ImageVisionPluginConfig {
+  vision: Omit<RawImageVisionPluginConfig["vision"], "maxImageMb" | "provider"> & {
+    maxImageBytes: number;
+    provider: Omit<
+      RawImageVisionPluginConfig["vision"]["provider"],
+      | "timeoutSeconds"
+      | "firstTokenTimeoutSeconds"
+      | "maxRequestSeconds"
+    > & {
+      timeoutMs: number;
+      firstTokenTimeoutMs: number;
+      maxRequestMs: number;
+    };
+  };
+}
 
 export const imageVisionHostTool: AgentHostToolHandler = async (args, context) => {
   const parsed = ImageVisionArgumentsSchema.safeParse(args);
@@ -201,7 +217,63 @@ function ensureImageAllowed(
 }
 
 function readImageVisionPluginConfig(toml: string): ImageVisionPluginConfig {
-  return ImageVisionPluginConfigSchema.parse(parseToml(toml));
+  const parsed = ImageVisionPluginConfigSchema.parse(parseToml(toml));
+  return normalizeImageVisionPluginConfig(parsed);
+}
+
+function normalizeImageVisionPluginConfig(config: RawImageVisionPluginConfig): ImageVisionPluginConfig {
+  const provider = config.vision.provider;
+  return {
+    ...config,
+    vision: {
+      ...config.vision,
+      maxImageBytes: readMegabytesAsBytes(config.vision.maxImageMb, "vision.maxImageMb"),
+      provider: {
+        ...provider,
+        timeoutMs: readSecondsAsMilliseconds(provider.timeoutSeconds, "vision.provider.timeoutSeconds"),
+        firstTokenTimeoutMs: readOptionalSecondsAsMilliseconds(
+          provider.firstTokenTimeoutSeconds,
+          "vision.provider.firstTokenTimeoutSeconds",
+        ),
+        maxRequestMs: readOptionalSecondsAsMilliseconds(
+          provider.maxRequestSeconds,
+          "vision.provider.maxRequestSeconds",
+        ),
+      },
+    },
+  };
+}
+
+function readMegabytesAsBytes(valueMb: number, fieldName: string): number {
+  const value = Math.round(valueMb * 1024 * 1024);
+  if (value < 1) {
+    throw new Error(`ImageVisionTool 配置缺失或无效：${fieldName}`);
+  }
+  return value;
+}
+
+function readSecondsAsMilliseconds(
+  valueSeconds: number,
+  fieldName: string,
+): number {
+  const value = Math.round(valueSeconds * 1000);
+  if (value < 1) {
+    throw new Error(`ImageVisionTool 配置缺失或无效：${fieldName}`);
+  }
+  return value;
+}
+
+function readOptionalSecondsAsMilliseconds(
+  valueSeconds: number | undefined,
+  fieldName: string,
+): number {
+  const value = valueSeconds === undefined || valueSeconds === -1
+    ? -1
+    : Math.round(valueSeconds * 1000);
+  if (value === undefined || (value !== -1 && value < 1)) {
+    throw new Error(`ImageVisionTool 配置缺失或无效：${fieldName}`);
+  }
+  return value;
 }
 
 function resolveImageVisionProvider(

@@ -66,6 +66,6 @@ export type TavilySearchToolArguments = {
   // 企业版安全搜索过滤；默认 false。不支持 fast 或 ultra-fast。
   safeSearch?: boolean
 
-  // 本次 Tavily HTTP 请求超时，范围 1000..300000；默认使用插件配置 timeout_ms。
+  // 本次 Tavily HTTP 请求超时，范围 1000..300000；默认使用插件配置 timeout_seconds。
   timeoutMs?: number
 }

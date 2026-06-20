@@ -2,7 +2,7 @@
 
 ## 简述
 
-刷新或强制重建本地全文/符号索引。
+刷新或强制重建本地 SQLite FTS5/trigram 全文、路径和符号索引。
 
 ## 何时使用
 
@@ -14,7 +14,7 @@
 
 ## 配置
 
-读取 `PluginConfig.toml` 的 roots、exclude、索引文件数、文件大小和 `.state` 路径。
+读取 `PluginConfig.toml` 的 roots、exclude、文件发现、SQLite tokenizer、分块策略和 analyzer 声明。
 
 ## 输入
 
@@ -22,7 +22,7 @@
 
 ## 输出
 
-返回文件数、文档数、符号数、warnings、stateFile 和刷新统计。
+返回文件数、文档数、符号数、changed/unchanged/skipped、warnings、stateFile 和刷新统计。
 
 ## 调用示例
 

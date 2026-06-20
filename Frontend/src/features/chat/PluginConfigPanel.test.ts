@@ -24,23 +24,36 @@ describe("readNumberDraftCommitValue", () => {
 });
 
 describe("validatePluginConfigDraft", () => {
-  it("rejects number values outside metadata constraints", () => {
+  it("rejects number values outside metadata min/max constraints", () => {
     const field = configField({
-      key: "timeout_ms",
-      path: ["weather", "timeout_ms"],
+      key: "timeout_seconds",
+      path: ["weather", "timeout_seconds"],
       type: "number",
       label: "请求超时",
-      min: 1000,
-      max: 300000,
-      step: 1000,
+      min: 1,
+      max: 300,
+      step: 1,
     });
     const sections = [configSection("weather", [field])];
 
-    expect(validatePluginConfigDraft(sections, parseDraft("[weather]\ntimeout_ms = 1\n"))).toEqual([
-      "请求超时 不能小于 1000",
-      "请求超时 必须按 1000 递增",
+    expect(validatePluginConfigDraft(sections, parseDraft("[weather]\ntimeout_seconds = 0.5\n"))).toEqual([
+      "请求超时 不能小于 1",
     ]);
-    expect(validatePluginConfigDraft(sections, parseDraft("[weather]\ntimeout_ms = 15000\n"))).toEqual([]);
+    expect(validatePluginConfigDraft(sections, parseDraft("[weather]\ntimeout_seconds = 15\n"))).toEqual([]);
+  });
+
+  it("treats step as an input hint instead of a save blocker", () => {
+    const field = configField({
+      key: "timeoutSeconds",
+      path: ["vision", "provider", "timeoutSeconds"],
+      type: "number",
+      label: "请求超时",
+      min: 1,
+      step: 1,
+    });
+    const sections = [configSection("vision.provider", [field])];
+
+    expect(validatePluginConfigDraft(sections, parseDraft("[vision.provider]\ntimeoutSeconds = 120.5\n"))).toEqual([]);
   });
 
   it("rejects option values outside the declared list", () => {
@@ -65,7 +78,7 @@ describe("writeDraftFieldValue", () => {
       "[weather]",
       "# qweather: 默认服务，更适合中文城市名和国内天气。",
       "provider = \"qweather\"",
-      "timeout_ms = 15000",
+      "timeout_seconds = 15",
       "",
     ].join("\n");
     const field = configField({

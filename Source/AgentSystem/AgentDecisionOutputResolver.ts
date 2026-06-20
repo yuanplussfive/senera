@@ -1,9 +1,9 @@
-import type { AgentActionDecision } from "./AgentActionPlanner.js";
 import { AgentDecisionXmlEnvelopeAnalyzer } from "./AgentDecisionXmlEnvelopeAnalyzer.js";
 import type { AgentXmlProtocolPolicy } from "./AgentXmlPolicy.js";
 import type { AgentXmlCandidateNormalizer } from "./AgentToolCallsXmlNormalizer.js";
 import { AgentXmlLexicalScanner } from "./AgentXmlLexicalScanner.js";
 import { matchByKind } from "./AgentMatch.js";
+import type { AgentRootCommand } from "./AgentRootCommand.js";
 
 export type AgentDecisionOutputShape =
   | {
@@ -74,11 +74,11 @@ export class AgentDecisionOutputResolver {
 
   resolve(options: {
     text: string;
-    actionDirective?: AgentActionDecision;
+    rootCommand?: AgentRootCommand;
     pureToolXml?: string;
   }): AgentDecisionOutputResolution {
     const shape = this.classify(options.text, options.pureToolXml);
-    const contract = this.contractFor(options.actionDirective);
+    const contract = this.contractFor(options.rootCommand);
 
     return ({
       open: () => this.resolveOpen(shape),
@@ -213,28 +213,15 @@ export class AgentDecisionOutputResolver {
     };
   }
 
-  private contractFor(actionDirective: AgentActionDecision | undefined): AgentDecisionOutputContract {
-    if (!actionDirective) {
+  private contractFor(rootCommand: AgentRootCommand | undefined): AgentDecisionOutputContract {
+    if (!rootCommand) {
       return "open";
     }
 
-    return agentDecisionOutputContractForAction(actionDirective.action);
+    return rootCommand.outputMode;
   }
 
   private startsWithRootName(text: string, rootName: string): boolean {
     return this.scanner.readLeadingTag(text)?.name.toLowerCase() === rootName.toLowerCase();
   }
-}
-
-const ActionOutputContracts = {
-  answer: "final_text",
-  ask_user: "tool_call_xml",
-  discover_tools: "tool_call_xml",
-  use_tools: "tool_call_xml",
-} as const satisfies Record<AgentActionDecision["action"], AgentDecisionOutputContract>;
-
-export function agentDecisionOutputContractForAction(
-  action: AgentActionDecision["action"],
-): AgentDecisionOutputContract {
-  return ActionOutputContracts[action];
 }

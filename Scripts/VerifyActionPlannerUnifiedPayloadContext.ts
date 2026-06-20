@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { ActionKind, b as baml } from "../Source/AgentSystem/BamlClient/baml_client/index.js";
-import { buildActionPlannerPromptJson } from "../Source/AgentSystem/AgentActionPlannerPromptJson.js";
+import { b as baml } from "../Source/AgentSystem/BamlClient/baml_client/index.js";
+import type { TaskFrame } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
+import { buildEvidenceVerificationPromptJson } from "../Source/AgentSystem/AgentActionPlannerPromptJson.js";
 import { createActionPlanInputFixture } from "./ActionPlannerFixture.js";
 
 void main();
@@ -32,7 +33,6 @@ async function main(): Promise<void> {
     locator: "Shanghai, China @ 2026-06-12",
     display: "forecast for Shanghai, China on 2026-06-12: Cloudy",
     label: "Shanghai forecast",
-    confidence: 0.8,
     toolName: "WeatherTool",
     artifactUri: "senera://artifact/art_444444444444444444444444",
     facts: [
@@ -43,32 +43,69 @@ async function main(): Promise<void> {
       "projection",
     ],
   });
+  input.evidenceState.push({
+    evidenceRef: "WTH1",
+    kind: "weather_forecast_day",
+    toolName: "WeatherTool",
+    artifactUri: "senera://artifact/art_444444444444444444444444",
+    locator: "Shanghai, China @ 2026-06-12",
+    display: "forecast for Shanghai, China on 2026-06-12: Cloudy",
+    label: "Shanghai forecast",
+    source: "WeatherAPI",
+    confidence: 0.8,
+    facts: [
+      { name: "condition", value: "Cloudy" },
+    ],
+    artifactRefs: [
+      "evidence",
+      "projection",
+    ],
+  });
 
-  const request = await baml.request.BuildActionPayload(buildActionPlannerPromptJson(input, {
-    stage: "buildActionPayload",
-    selectedAction: ActionKind.UseTools,
-  }), {});
+  const taskFrame: TaskFrame = {
+    taskType: "weather",
+    answerGoal: "Answer the requested Shanghai weather forecast.",
+    intentTags: ["weather", "forecast"],
+    targetRefs: [{
+      kind: "location",
+      value: "Shanghai, China",
+      status: "resolved",
+    }],
+    candidateTools: [{
+      name: "WeatherTool",
+      purpose: "Fetch weather forecast evidence.",
+      supports: ["weather_forecast_day"],
+    }],
+    discoveryQueries: [],
+    requiredEffects: [],
+    requiredEvidence: [{
+      id: "weather-forecast",
+      need: "Forecast for Shanghai, China on 2026-06-12",
+      minimum: 1,
+      reason: "The final answer depends on weather forecast evidence.",
+    }],
+    userInputNeeds: [],
+    nextStepPurpose: "Verify whether existing forecast evidence is enough.",
+    completionCriteria: ["Weather forecast evidence supports the answer."],
+    notes: [],
+  };
+
+  const request = await baml.request.VerifyTaskEvidence(
+    buildEvidenceVerificationPromptJson(input, taskFrame),
+    {},
+  );
   const body = request.body.json() as Record<string, unknown>;
   const messages = readMessages(body);
-  const promptText = messages.map((message) => message.content).join("\n");
   const plannerJson = readPlannerJson(messages);
 
   assert.equal(messages[0]?.role, "system");
   assert.equal(messages.at(-1)?.role, "user");
-  assert.equal(plannerJson.directive.stage, "buildActionPayload");
-  assert.equal(plannerJson.directive.selectedAction, "UseTools");
-  assert.equal(plannerJson.context.runState.loadedTools.includes("WeatherTool"), true);
-  assert.equal(plannerJson.context.timeline[0]?.content.includes("请查询上海明天天气"), true);
-  assert.equal(plannerJson.context.timeline[1]?.content.includes("WeatherTool"), true);
-  assert.equal(plannerJson.context.timeline[2]?.content.includes("WTH1 forecast"), true);
-  assert.equal(promptText.includes("Payload directive:"), false);
-  assert.equal(promptText.includes("selectedAction=UseTools"), false);
-  assert.equal(promptText.includes("primaryContext"), false);
-  assert.equal(promptText.includes("safetyContext"), false);
-  assert.equal(promptText.includes("fallbackContext"), false);
-  assert.equal(promptText.includes("Projection observability"), false);
+  assert.equal(plannerJson.directive.stage, "verifyTaskEvidence");
+  assert.equal(plannerJson.context.task.answerGoal.includes("Shanghai weather"), true);
+  assert.equal(plannerJson.context.verificationRequirements[0]?.id, "weather-forecast");
+  assert.equal(plannerJson.context.evidenceState[0]?.evidenceRef, "WTH1");
 
-  console.log("Action planner unified payload context verification passed.");
+  console.log("Action planner evidence verification context verification passed.");
 }
 
 function readPlannerJson(messages: Array<{
@@ -76,16 +113,18 @@ function readPlannerJson(messages: Array<{
   content: string;
 }>): {
   context: {
-    runState: {
-      loadedTools: string[];
+    task: {
+      answerGoal: string;
     };
-    timeline: Array<{
-      content: string;
+    verificationRequirements: Array<{
+      id: string;
+    }>;
+    evidenceState: Array<{
+      evidenceRef: string;
     }>;
   };
   directive: {
     stage: string;
-    selectedAction?: string;
   };
 } {
   const userMessage = messages.find((message) =>
@@ -94,16 +133,18 @@ function readPlannerJson(messages: Array<{
   assert.ok(userMessage, "planner request should contain a JSON user message");
   return JSON.parse(userMessage.content) as {
     context: {
-      runState: {
-        loadedTools: string[];
+      task: {
+        answerGoal: string;
       };
-      timeline: Array<{
-        content: string;
+      verificationRequirements: Array<{
+        id: string;
+      }>;
+      evidenceState: Array<{
+        evidenceRef: string;
       }>;
     };
     directive: {
       stage: string;
-      selectedAction?: string;
     };
   };
 }

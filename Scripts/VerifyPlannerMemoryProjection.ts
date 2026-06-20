@@ -83,6 +83,7 @@ const plannerInputFixture = {
       stalled: false,
     },
     warnings: [],
+    calls: [],
   },
   timeline: [{
     index: 0,
@@ -93,8 +94,11 @@ const plannerInputFixture = {
     artifactUris: [],
   }],
   evidenceMemory: [],
+  evidenceState: [],
   plannerJournal: [],
+  compactToolCatalog: [],
   toolCatalog: [],
+  activeSkills: [],
 };
 
 const historyEntries = [
@@ -129,6 +133,7 @@ const historyEntries = [
         useTools: {
           preferredTools: ["WeatherTool"],
           instruction: "Get Shanghai weather forecast for tomorrow.",
+          needs: [],
         },
       },
     },
@@ -179,6 +184,7 @@ assert.equal(input.evidenceMemory[0]?.kind, "weather_forecast_day");
 assert.equal(input.evidenceMemory[0]?.locator, "Shanghai, China @ 2026-06-12");
 assert.equal(input.evidenceMemory[0]?.facts.some((fact) => fact.name === "date" && fact.value === "2026-06-12"), true);
 assert.equal(JSON.stringify(input.evidenceMemory).includes("\"source\""), false);
+assert.equal(JSON.stringify(input.evidenceMemory).includes("\"confidence\""), false);
 assert.equal(JSON.stringify(input.evidenceMemory).includes("\"summary\""), false);
 assert.equal(JSON.stringify(input.evidenceMemory).includes("\"slots\""), false);
 assert.equal(JSON.stringify(input.evidenceMemory).includes("\"key\""), false);

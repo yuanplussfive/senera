@@ -75,8 +75,8 @@ async function main(): Promise<void> {
       },
     );
 
-    const request = await baml.request.SelectAction(buildActionPlannerPromptJson(input, {
-      stage: "selectAction",
+    const request = await baml.request.BuildTaskFrame(buildActionPlannerPromptJson(input, {
+      stage: "buildTaskFrame",
     }), {
       clientRegistry: client.registry,
     });
@@ -97,8 +97,8 @@ async function main(): Promise<void> {
     Temperature: 0.1,
     MaxTokens: 321,
   });
-  const limitedRequest = await baml.request.SelectAction(buildActionPlannerPromptJson(input, {
-    stage: "selectAction",
+  const limitedRequest = await baml.request.BuildTaskFrame(buildActionPlannerPromptJson(input, {
+    stage: "buildTaskFrame",
   }), {
     clientRegistry: limitedClient.registry,
   });

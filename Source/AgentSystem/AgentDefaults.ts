@@ -1,14 +1,20 @@
 import type {
+  AgentDelegationRuntimeProfileConfig,
+  AgentActionPlannerClientConfig,
   ResolvedAgentModelProviderConfig,
   AgentSystemConfig,
   AgentCliConfig,
   ResolvedAgentActionPlannerConfig,
+  ResolvedAgentActionPlannerClientConfig,
   ResolvedAgentArtifactsConfig,
   ResolvedAgentUploadsConfig,
   ResolvedAgentFrontendConfig,
+  ResolvedAgentDelegationConfig,
+  ResolvedAgentDelegationRuntimeProfileConfig,
   ResolvedAgentPersistenceConfig,
   ResolvedAgentPluginDiscoveryConfig,
   ResolvedAgentPluginRootsConfig,
+  ResolvedAgentLoopConfig,
   ResolvedAgentToolExecutionConfig,
   ResolvedAgentToolSearchConfig,
 } from "./Types.js";
@@ -36,7 +42,8 @@ export interface ResolvedAgentDefaultsConfig {
   ModelProviderDefaults: ResolvedAgentModelProviderConfig;
   Cli: ResolvedAgentCliDefaultsConfig;
   ToolExecution: ResolvedAgentToolExecutionConfig;
-  AgentLoop: Required<NonNullable<AgentSystemConfig["AgentLoop"]>>;
+  AgentLoop: ResolvedAgentLoopConfig;
+  AgentDelegation: ResolvedAgentDelegationConfig;
   ToolSearch: ResolvedAgentToolSearchConfig;
   ActionPlanner: ResolvedAgentActionPlannerConfig;
   Artifacts: ResolvedAgentArtifactsConfig;
@@ -97,6 +104,14 @@ export const AgentDefaults = {
     MaxRepairAttempts: 2,
     LoadedTools: "dynamic",
   },
+  AgentDelegation: {
+    RuntimeProfiles: {},
+    Templates: {
+      ChildSystemPrompt: "ChildAgentSystemPrompt",
+      MergeSystemPrompt: "AgentMergeSystemPrompt",
+    },
+    Merge: {},
+  },
   ToolSearch: {
     Dynamic: {
       BootstrapTools: [
@@ -127,7 +142,26 @@ export const AgentDefaults = {
   ActionPlanner: {
     Enabled: true,
     MaxRepairAttempts: 1,
+    Evidence: {
+      StalledStepLag: 2,
+    },
     Client: {
+      Provider: "auto",
+      BaseUrl: "",
+      ApiKey: "",
+      Model: "",
+      Temperature: 0.1,
+      MaxTokens: -1,
+    },
+    TaskFrameClient: {
+      Provider: "auto",
+      BaseUrl: "",
+      ApiKey: "",
+      Model: "",
+      Temperature: 0.1,
+      MaxTokens: -1,
+    },
+    EvidenceClient: {
       Provider: "auto",
       BaseUrl: "",
       ApiKey: "",
@@ -220,6 +254,10 @@ export function resolveAgentDefaults(
       ...AgentDefaults.AgentLoop,
       ...defaults?.AgentLoop,
     },
+    AgentDelegation: resolveAgentDelegationDefaults(defaults?.AgentDelegation, {
+      ...AgentDefaults.AgentLoop,
+      ...defaults?.AgentLoop,
+    }),
     ToolSearch: {
       Dynamic: {
         ...AgentDefaults.ToolSearch.Dynamic,
@@ -245,9 +283,21 @@ export function resolveAgentDefaults(
     ActionPlanner: {
       ...AgentDefaults.ActionPlanner,
       ...defaults?.ActionPlanner,
+      Evidence: {
+        ...AgentDefaults.ActionPlanner.Evidence,
+        ...defaults?.ActionPlanner?.Evidence,
+      },
       Client: {
         ...AgentDefaults.ActionPlanner.Client,
         ...defaults?.ActionPlanner?.Client,
+      },
+      TaskFrameClient: {
+        ...AgentDefaults.ActionPlanner.TaskFrameClient,
+        ...defaults?.ActionPlanner?.TaskFrameClient,
+      },
+      EvidenceClient: {
+        ...AgentDefaults.ActionPlanner.EvidenceClient,
+        ...defaults?.ActionPlanner?.EvidenceClient,
       },
     },
     Artifacts: {
@@ -402,6 +452,132 @@ export function resolveAgentLoopConfig(config: AgentSystemConfig) {
   };
 }
 
+export function resolveAgentDelegationConfig(
+  config: AgentSystemConfig,
+): ResolvedAgentDelegationConfig {
+  const baseLoop = resolveAgentLoopConfig(config);
+  const defaults = resolveAgentDefaults(config).AgentDelegation;
+  const configured = config.AgentDelegation;
+  const runtimeProfileDefaults = resolveRuntimeProfileDefaults(
+    baseLoop,
+    defaults.RuntimeProfileDefaults,
+    configured?.RuntimeProfileDefaults,
+  );
+  const profileEntries = Object.entries({
+    ...defaults.RuntimeProfiles,
+    ...(configured?.RuntimeProfiles ?? {}),
+  });
+
+  return {
+    RuntimeProfileDefaults: runtimeProfileDefaults,
+    RuntimeProfiles: Object.fromEntries(profileEntries.map(([name, profile]) => [
+      name,
+      resolveRuntimeProfile(name, baseLoop, runtimeProfileDefaults, profile),
+    ])),
+    Templates: {
+      ...defaults.Templates,
+      ...configured?.Templates,
+    },
+    Merge: {
+      ...defaults.Merge,
+      ...configured?.Merge,
+    },
+  };
+}
+
+export function resolveAgentDelegationRuntimeProfile(
+  config: AgentSystemConfig,
+  profileName: string,
+): ResolvedAgentDelegationRuntimeProfileConfig {
+  const delegation = resolveAgentDelegationConfig(config);
+  const profile = delegation.RuntimeProfiles[profileName];
+  if (profile) {
+    return profile;
+  }
+
+  if (delegation.RuntimeProfileDefaults) {
+    return {
+      Name: profileName,
+      ...delegation.RuntimeProfileDefaults,
+    };
+  }
+
+  throw new Error(`子代理 RuntimeProfile 没有配置：${profileName}`);
+}
+
+function resolveAgentDelegationDefaults(
+  configured: AgentSystemConfig["AgentDelegation"] | undefined,
+  baseLoop: ResolvedAgentLoopConfig,
+): ResolvedAgentDelegationConfig {
+  const runtimeProfileDefaults = resolveRuntimeProfileDefaults(
+    baseLoop,
+    undefined,
+    configured?.RuntimeProfileDefaults,
+  );
+  const runtimeProfiles = Object.fromEntries(
+    Object.entries(configured?.RuntimeProfiles ?? {}).map(([name, profile]) => [
+      name,
+      resolveRuntimeProfile(name, baseLoop, runtimeProfileDefaults, profile),
+    ]),
+  );
+
+  return {
+    RuntimeProfileDefaults: runtimeProfileDefaults,
+    RuntimeProfiles: runtimeProfiles,
+    Templates: {
+      ...AgentDefaults.AgentDelegation.Templates,
+      ...configured?.Templates,
+    },
+    Merge: {
+      ...configured?.Merge,
+    },
+  };
+}
+
+function resolveRuntimeProfileDefaults(
+  baseLoop: ResolvedAgentLoopConfig,
+  base: Omit<ResolvedAgentDelegationRuntimeProfileConfig, "Name"> | undefined,
+  configured: AgentDelegationRuntimeProfileConfig | undefined,
+) {
+  if (!base && !configured) {
+    return undefined;
+  }
+
+  return {
+    Mode: configured?.Mode ?? base?.Mode ?? "directModel",
+    ModelProviderId: readOptionalConfiguredString(
+      configured?.ModelProviderId,
+      base?.ModelProviderId,
+    ),
+    AgentLoop: {
+      ...baseLoop,
+      ...base?.AgentLoop,
+      ...configured?.AgentLoop,
+    },
+  };
+}
+
+function resolveRuntimeProfile(
+  name: string,
+  baseLoop: ResolvedAgentLoopConfig,
+  defaults: Omit<ResolvedAgentDelegationRuntimeProfileConfig, "Name"> | undefined,
+  configured: AgentDelegationRuntimeProfileConfig,
+): ResolvedAgentDelegationRuntimeProfileConfig {
+  return {
+    Name: name,
+    Mode: configured.Mode ?? defaults?.Mode ?? "directModel",
+    ModelProviderId: readOptionalConfiguredString(
+      configured.ModelProviderId,
+      defaults?.ModelProviderId,
+    ),
+    AgentLoop: {
+      ...baseLoop,
+      ...defaults?.AgentLoop,
+      ...configured.AgentLoop,
+    },
+  };
+}
+
 export function resolveToolExecutionConfig(
   config: AgentSystemConfig,
 ): ResolvedAgentToolExecutionConfig {
@@ -445,22 +621,93 @@ export function resolveActionPlannerConfig(
   const defaults = resolveAgentDefaults(config);
   const provider = resolveModelProviderConfig(config, providerId);
   const configured = config.ActionPlanner;
-  const client = configured?.Client;
-  const defaultClient = defaults.ActionPlanner.Client;
+  const sharedClientConfig = mergeActionPlannerClientConfig(
+    defaults.ActionPlanner.Client,
+    configured?.Client,
+  );
+  const sharedClient = resolveActionPlannerClientConfig({
+    config,
+    baseProvider: provider,
+    configuredClient: sharedClientConfig,
+  });
 
   return {
     ...defaults.ActionPlanner,
     ...configured,
-    Client: {
-      Provider: client?.Provider ?? defaultClient.Provider,
-      BaseUrl: client?.BaseUrl ?? readConfiguredString(defaultClient.BaseUrl, provider.BaseUrl),
-      ApiKey: client?.ApiKey ?? readConfiguredString(defaultClient.ApiKey, provider.ApiKey),
-      Model: client?.Model ?? readConfiguredString(defaultClient.Model, provider.Model),
-      Temperature: client?.Temperature ?? defaultClient.Temperature,
-      MaxTokens: client?.MaxTokens ?? defaultClient.MaxTokens,
+    Evidence: {
+      ...defaults.ActionPlanner.Evidence,
+      ...configured?.Evidence,
     },
+    Client: sharedClient,
+    TaskFrameClient: resolveActionPlannerClientConfig({
+      config,
+      baseProvider: provider,
+      configuredClient: mergeActionPlannerClientConfig(
+        sharedClientConfig,
+        configured?.TaskFrameClient,
+      ),
+    }),
+    EvidenceClient: resolveActionPlannerClientConfig({
+      config,
+      baseProvider: provider,
+      configuredClient: mergeActionPlannerClientConfig(
+        sharedClientConfig,
+        configured?.EvidenceClient,
+      ),
+    }),
   };
 }
+
+function resolveActionPlannerClientConfig(options: {
+  config: AgentSystemConfig;
+  baseProvider: ResolvedAgentModelProviderConfig;
+  configuredClient: AgentActionPlannerClientConfig;
+}): ResolvedAgentActionPlannerClientConfig {
+  const configured = options.configuredClient;
+  const modelProviderId = configured.ModelProviderId;
+  const provider = modelProviderId
+    ? resolveModelProviderConfig(options.config, modelProviderId)
+    : options.baseProvider;
+  const configuredProvider = configured.Provider;
+
+  return {
+    ModelProviderId: modelProviderId,
+    Provider: configuredProvider && configuredProvider !== "auto"
+      ? configuredProvider
+      : actionPlannerClientProviderForEndpoint(provider.Endpoint),
+    BaseUrl: readConfiguredString(configured.BaseUrl, provider.BaseUrl),
+    ApiKey: readConfiguredString(configured.ApiKey, provider.ApiKey),
+    Model: readConfiguredString(configured.Model, provider.Model),
+    Temperature: configured.Temperature ?? AgentDefaults.ActionPlanner.Client.Temperature,
+    MaxTokens: configured.MaxTokens ?? AgentDefaults.ActionPlanner.Client.MaxTokens,
+  };
+}
+
+function mergeActionPlannerClientConfig(
+  base: AgentActionPlannerClientConfig,
+  patch: AgentActionPlannerClientConfig | undefined,
+): AgentActionPlannerClientConfig {
+  return {
+    ...base,
+    ...patch,
+  };
+}
+
+function actionPlannerClientProviderForEndpoint(
+  endpoint: ResolvedAgentModelProviderConfig["Endpoint"],
+): Exclude<AgentActionPlannerClientConfig["Provider"], "auto" | undefined> {
+  return ActionPlannerClientProviderByEndpoint[endpoint];
+}
+
+const ActionPlannerClientProviderByEndpoint = {
+  Responses: "openai-responses",
+  ChatCompletions: "openai-generic",
+  ClaudeMessages: "anthropic",
+  GoogleGenerateContent: "google-ai",
+} as const satisfies Record<
+  ResolvedAgentModelProviderConfig["Endpoint"],
+  Exclude<AgentActionPlannerClientConfig["Provider"], "auto" | undefined>
+>;
 
 export function resolveArtifactsConfig(config: AgentSystemConfig): ResolvedAgentArtifactsConfig {
   const defaults = resolveAgentDefaults(config);
@@ -520,6 +767,13 @@ export function resolvePersistenceConfig(config: AgentSystemConfig): ResolvedAge
 
 function readConfiguredString(value: string | undefined, fallback: string): string {
   return value?.trim() ? value : fallback;
+}
+
+function readOptionalConfiguredString(
+  value: string | undefined,
+  fallback: string | undefined,
+): string | undefined {
+  return value?.trim() ? value : fallback?.trim() ? fallback : undefined;
 }
 
 function buildWebSocketUrl(server: Required<NonNullable<AgentSystemConfig["Server"]>>): string {

@@ -1,6 +1,7 @@
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
 import { AgentToolProcessRunner } from "./AgentToolProcessRunner.js";
 import type { AgentToolHostCapabilityRegistry } from "./AgentToolHostCapabilityRegistry.js";
+import type { AgentEventSink } from "./AgentEvent.js";
 import type {
   AgentSystemConfig,
   AgentPluginRegistryLike,
@@ -24,6 +25,8 @@ export interface AgentToolRunnerLike {
 export interface AgentToolRunnerContext {
   requestId?: string;
   step?: number;
+  configPath?: string;
+  onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
   signal?: AbortSignal;
 }
@@ -85,10 +88,12 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     return handler(args, {
       tool,
       config: this.config,
+      configPath: context.configPath,
       workspaceRoot: this.workspaceRoot,
       registry: this.registry,
       requestId: context.requestId,
       step: context.step,
+      onEvent: context.onEvent,
       visibleToolNames: context.visibleToolNames,
       signal: context.signal,
     });

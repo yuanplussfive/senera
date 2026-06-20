@@ -144,23 +144,18 @@ function readExpectedOutputMode(data: ActionPlannedData): RunRecord["expectedOut
 
 function plannerStageBaseTitle(stage: ActionPlannerStageName): string {
   switch (stage) {
-    case "selectAction":
-      return "选择行动";
-    case "buildActionPayload":
-      return "构建行动参数";
-    default:
-      return stage;
+    case "buildTaskFrame":
+      return "构建任务合约";
+    case "evaluateEvidence":
+      return "判断完成状态";
   }
 }
 
 function plannerStageTitle(
   stage: ActionPlannerStageName,
-  selectedAction?: string,
+  _selectedAction?: string,
 ): string {
-  const base = plannerStageBaseTitle(stage);
-  return stage === "buildActionPayload" && selectedAction
-    ? `${base} · ${friendlyDecisionKind(selectedAction)}`
-    : base;
+  return plannerStageBaseTitle(stage);
 }
 
 function plannerStageStepId(
@@ -181,7 +176,443 @@ function currentRun(session: SessionRecord, requestId?: string): RunRecord | und
   return session.runs.find((r) => r.requestId === requestId);
 }
 
-function isBufferedHistoryRun(state: StoreState, sessionId: string, requestId?: string): boolean {
+function summarizePlannerStage(data: ActionPlannerStageCompletedData): string | undefined {
+  if (data.taskFrame) {
+    return [
+      data.taskFrame.answerGoal ? truncate(data.taskFrame.answerGoal, 96) : undefined,
+      data.taskFrame.requiredEffects.length > 0
+        ? `${data.taskFrame.requiredEffects.length} 项真实变更`
+        : undefined,
+      data.taskFrame.requiredEvidence.length > 0
+        ? `${data.taskFrame.requiredEvidence.length} 项完成证据`
+        : undefined,
+      data.taskFrame.candidateTools.length > 0
+        ? `${data.taskFrame.candidateTools.length} 个候选技能`
+        : undefined,
+      data.taskFrame.userInputNeeds.length > 0
+        ? `${data.taskFrame.userInputNeeds.length} 项待确认信息`
+        : undefined,
+    ].filter(Boolean).join(" · ");
+  }
+
+  if (data.evidenceDecision) {
+    const decision = data.evidenceDecision;
+    return [
+      decision.ready ? "可以完成" : "还缺完成证据",
+      decision.missingNeeds.length > 0 ? `${decision.missingNeeds.length} 项缺失` : undefined,
+      decision.satisfiedNeeds.length > 0 ? `${decision.satisfiedNeeds.length} 项满足` : undefined,
+      decision.recommendedTools.length > 0 ? `${decision.recommendedTools.length} 个推荐工具` : undefined,
+    ].filter(Boolean).join(" · ");
+  }
+
+  return undefined;
+}
+
+function timelineScopeFromEvent(env: EventEnvelope): TimelineStep["scope"] | undefined {
+  if (!env.scope) return undefined;
+  return {
+    parentRequestId: env.scope.parentRequestId,
+    workflowName: env.scope.workflowName,
+    jobId: env.scope.jobId,
+    agentName: env.scope.agentName,
+    role: env.scope.role,
+  };
+}
+
+function toolBatchFromEvent(
+  env: EventEnvelope,
+  data?: Pick<ToolCallStartedData, "index">,
+  size?: number,
+): TimelineStep["toolBatch"] {
+  return {
+    id: [
+      env.scope?.parentRequestId,
+      env.scope?.workflowName,
+      env.scope?.role,
+      env.scope?.jobId,
+      env.requestId,
+      env.step ?? 0,
+    ]
+      .filter((value) => value !== undefined && value !== "")
+      .join(":"),
+    index: data?.index,
+    size,
+  };
+}
+
+function toolBatchForTrace(requestId: string, trace: StepTraceDto): TimelineStep["toolBatch"] {
+  return {
+    id: [requestId, trace.step].join(":"),
+    index: trace.seq,
+  };
+}
+
+function scopedStepId(
+  env: EventEnvelope,
+  slot: string,
+  detail?: string | number,
+): string {
+  return [
+    env.scope?.workflowName,
+    env.scope?.role,
+    env.scope?.jobId,
+    env.requestId,
+    env.step ?? 0,
+    slot,
+    detail,
+  ]
+    .filter((value) => value !== undefined && value !== "")
+    .join(":");
+}
+
+function scopedStepTitle(env: EventEnvelope, title: string): string {
+  const owner = env.scope?.role === "merge"
+    ? "合并"
+    : env.scope?.agentName;
+  return owner ? `${owner} · ${title}` : title;
+}
+
+function scopedStepDescription(env: EventEnvelope, description?: string): string | undefined {
+  const workflowName = env.scope?.workflowName;
+  if (!workflowName) return description;
+  return description ? `${workflowName} · ${description}` : workflowName;
+}
+
+function applyScopedRunEvent(state: StoreState, env: EventEnvelope): boolean {
+  const parentRequestId = env.scope?.parentRequestId;
+  if (!parentRequestId) return false;
+
+  const sessionId = env.sessionId;
+  if (!sessionId) return true;
+
+  const session = ensureSession(state, sessionId);
+  const run = currentRun(session, parentRequestId);
+  if (!run) return true;
+
+  const scope = timelineScopeFromEvent(env);
+
+  switch (env.kind) {
+    case EventKinds.PromptSummary: {
+      const data = env.data as PromptSummaryData;
+      upsertStep(run, {
+        id: scopedStepId(env, "prompt"),
+        kind: "prompt",
+        title: scopedStepTitle(env, "渲染 Prompt"),
+        description: scopedStepDescription(env, `${data.chars} 字 · ${data.lines} 行`),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        promptChars: data.chars,
+        promptLines: data.lines,
+        promptTokenCount: data.tokenCount,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ActionPlannerStageStarted: {
+      const data = env.data as ActionPlannerStageStartedData;
+      upsertStep(run, {
+        id: scopedStepId(env, "planner", data.stage),
+        kind: "decision",
+        title: scopedStepTitle(env, plannerStageTitle(data.stage)),
+        status: "running",
+        startedAt: env.timestamp,
+        decisionKind: data.stage,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ActionPlannerStageCompleted: {
+      const data = env.data as ActionPlannerStageCompletedData;
+      const id = scopedStepId(env, "planner", data.stage);
+      upsertStep(run, {
+        id,
+        kind: "decision",
+        title: scopedStepTitle(env, plannerStageTitle(data.stage, data.selectedAction)),
+        description: scopedStepDescription(env, summarizePlannerStage(data)),
+        status: "done",
+        startedAt: run.steps.find((step) => step.id === id)?.startedAt ?? env.timestamp,
+        endedAt: env.timestamp,
+        decisionKind: data.selectedAction,
+        taskFrame: data.taskFrame,
+        evidenceDecision: data.evidenceDecision,
+        detailJson: data,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ActionPlannerStageFailed: {
+      const data = env.data as ActionPlannerStageFailedData;
+      const id = scopedStepId(env, "planner", data.stage);
+      upsertStep(run, {
+        id,
+        kind: "decision",
+        title: scopedStepTitle(env, plannerStageTitle(data.stage)),
+        description: scopedStepDescription(env, data.message),
+        status: "failed",
+        startedAt: run.steps.find((step) => step.id === id)?.startedAt ?? env.timestamp,
+        endedAt: env.timestamp,
+        errorMessage: data.message,
+        detailJson: data,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ActionPlanned: {
+      const data = env.data as ActionPlannedData;
+      upsertStep(run, {
+        id: scopedStepId(env, "action-plan"),
+        kind: "decision",
+        title: scopedStepTitle(env, data.status === "planned"
+          ? `规划行动 · ${friendlyDecisionKind(data.action ?? "")}`
+          : "规划行动 · 回退"),
+        description: scopedStepDescription(env, summarizeActionPlan(data)),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        decisionKind: data.action,
+        detailJson: data,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ModelStarted: {
+      const data = env.data as ModelStartedData;
+      const modelName = data.provider?.title ?? data.model;
+      upsertStep(run, {
+        id: scopedStepId(env, "model"),
+        kind: "model",
+        title: scopedStepTitle(env, "调用模型"),
+        description: scopedStepDescription(env, modelName),
+        status: "running",
+        startedAt: env.timestamp,
+        modelName,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ModelCompleted: {
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "model"));
+      if (step) {
+        step.status = "done";
+        step.endedAt = env.timestamp;
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.DecisionXmlSummary: {
+      const data = env.data as DecisionXmlSummaryData;
+      upsertStep(run, {
+        id: scopedStepId(env, "decision-xml"),
+        kind: "decision",
+        title: scopedStepTitle(env, "行动决策"),
+        description: scopedStepDescription(env, `${data.root ?? "?"} · ${data.chars} 字符${data.sanitized ? " · 已清洗" : ""}`),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        xmlRoot: data.root,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.DecisionParsed: {
+      const data = env.data as DecisionParsedData;
+      upsertStep(run, {
+        id: scopedStepId(env, "decision"),
+        kind: "decision",
+        title: scopedStepTitle(env, "确定行动"),
+        description: scopedStepDescription(env, friendlyDecisionKind(data.decisionKind)),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        decisionKind: data.decisionKind,
+        xmlRoot: data.root,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.DecisionParsedDetail: {
+      const data = env.data as DecisionParsedDetailData;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "decision"));
+      if (step) {
+        step.detailJson = data.payload;
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.ToolCallsPlanned: {
+      const data = env.data as ToolCallsPlannedData;
+      upsertStep(run, {
+        id: scopedStepId(env, "tool-plan"),
+        kind: "tool",
+        title: scopedStepTitle(env, `工具计划 · ${data.toolCount} 个`),
+        description: scopedStepDescription(env, data.tools.join(", ")),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        toolBatch: toolBatchFromEvent(env, undefined, data.toolCount),
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ToolCallStarted: {
+      const data = env.data as ToolCallStartedData;
+      upsertStep(run, {
+        id: scopedStepId(env, "tool", data.callId),
+        kind: "tool",
+        title: scopedStepTitle(env, `调用 ${data.toolName}`),
+        status: "running",
+        startedAt: env.timestamp,
+        toolName: data.toolName,
+        callId: data.callId,
+        toolBatch: toolBatchFromEvent(env, data),
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ToolCallCompleted: {
+      const data = env.data as ToolCallCompletedData;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.callId));
+      if (step) {
+        step.status = "done";
+        step.endedAt = env.timestamp;
+        step.toolPreview = data.preview;
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.ToolCallFailed: {
+      const data = env.data as ToolCallFailedData;
+      const id = scopedStepId(env, "tool", data.callId);
+      const step = run.steps.find((entry) => entry.id === id);
+      if (step) {
+        step.status = "failed";
+        step.endedAt = env.timestamp;
+        step.toolErrorMessage = data.message;
+        touchRun(run);
+      } else {
+        upsertStep(run, {
+          id,
+          kind: "tool",
+          title: scopedStepTitle(env, `调用 ${data.toolName} 失败`),
+          status: "failed",
+          startedAt: env.timestamp,
+          endedAt: env.timestamp,
+          toolName: data.toolName,
+          callId: data.callId,
+          toolBatch: toolBatchFromEvent(env, data),
+          toolErrorMessage: data.message,
+          scope,
+        });
+      }
+      return true;
+    }
+
+    case EventKinds.ToolResultsDetail: {
+      const data = env.data as ToolResultsDetailData;
+      if (Array.isArray(data.value)) {
+        for (const entry of data.value) {
+          const callId = (entry as { callId?: string })?.callId;
+          if (!callId) continue;
+          const step = run.steps.find((item) => item.id === scopedStepId(env, "tool", callId));
+          if (step) {
+            step.toolResult = entry;
+            touchRun(run);
+          }
+        }
+      }
+      return true;
+    }
+
+    case EventKinds.RetryPlanned: {
+      const data = env.data as RetryPlannedData;
+      upsertStep(run, {
+        id: scopedStepId(env, "retry", data.attempt),
+        kind: "retry",
+        title: scopedStepTitle(env, `重试 · 第 ${data.attempt} 次`),
+        description: scopedStepDescription(env, `${data.code} · ${data.message}`),
+        status: data.retryable ? "done" : "failed",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        retryAttempt: data.attempt,
+        retryCode: data.code,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.FinalAnswer: {
+      const data = env.data as FinalAnswerData;
+      upsertStep(run, {
+        id: scopedStepId(env, "answer"),
+        kind: "answer",
+        title: scopedStepTitle(env, "生成回复"),
+        description: truncate(data.content, 60),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.AskUser: {
+      const data = env.data as AskUserData;
+      upsertStep(run, {
+        id: scopedStepId(env, "ask"),
+        kind: "answer",
+        title: scopedStepTitle(env, "提出问题"),
+        description: truncate(data.question, 60),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.RunFailed: {
+      const data = env.data as RunFailedData;
+      upsertStep(run, {
+        id: scopedStepId(env, "error"),
+        kind: "error",
+        title: scopedStepTitle(env, "运行失败"),
+        description: scopedStepDescription(env, data.message),
+        status: "failed",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        errorMessage: data.message,
+        scope,
+      });
+      return true;
+    }
+
+    case EventKinds.ModelDelta:
+    case EventKinds.DecisionXmlProgress:
+    case EventKinds.RunStarted:
+    case EventKinds.RunCompleted:
+    case EventKinds.RunCancelled:
+      return true;
+
+    default:
+      return true;
+  }
+}
+
+function hasHistoryTraceRun(state: StoreState, sessionId: string, requestId?: string): boolean {
   if (!requestId) return false;
   return (state.historyStepBuffers[sessionId] ?? []).some((run) => run.requestId === requestId);
 }
@@ -254,6 +685,19 @@ function alignRunDisplayTarget(run: RunRecord): void {
     targetText: run.visibleText,
   });
   run.displayText = aligned.displayText;
+}
+
+function projectTerminalDisplayText(
+  run: RunRecord,
+  text: string,
+  replayingHistory: boolean,
+): void {
+  run.visibleText = text;
+  if (replayingHistory) {
+    run.displayText = text;
+    return;
+  }
+  alignRunDisplayTarget(run);
 }
 
 export function createRunRecord(input: {
@@ -329,7 +773,11 @@ function upsertStep(run: RunRecord, step: TimelineStep): void {
 }
 
 /** 把持久化的精简档 StepTrace 还原成与实时态一致的 TimelineStep（id 约定对齐 ingest case） */
-function stepTraceToTimelineStep(trace: StepTraceDto, fallbackTime: string): TimelineStep {
+function stepTraceToTimelineStep(
+  requestId: string,
+  trace: StepTraceDto,
+  fallbackTime: string,
+): TimelineStep {
   const startedAt = trace.startedAt ?? fallbackTime;
   const endedAt = trace.endedAt ?? startedAt;
   if (trace.kind === "tool") {
@@ -342,6 +790,7 @@ function stepTraceToTimelineStep(trace: StepTraceDto, fallbackTime: string): Tim
       endedAt,
       toolName: trace.toolName,
       callId: trace.callId,
+      toolBatch: toolBatchForTrace(requestId, trace),
       toolArgs: trace.toolArgs,
       toolPreview: trace.toolPreview,
       toolResult: trace.toolResult,
@@ -392,7 +841,7 @@ function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][number]): Ru
     endedAt: run.endedAt,
     status: run.status,
     input: run.input,
-    steps: run.traces.map((trace) => stepTraceToTimelineStep(trace, run.startedAt)),
+    steps: run.traces.map((trace) => stepTraceToTimelineStep(run.requestId, trace, run.startedAt)),
     streamingRaw: "",
     xmlPreview: "",
     visibleText: "",
@@ -460,6 +909,10 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
     state.pendingDeletedSessionIds[sessionId] &&
     !isPendingDeleteResolutionEvent(env.kind)
   ) {
+    return;
+  }
+
+  if (applyScopedRunEvent(state, env)) {
     return;
   }
 
@@ -535,6 +988,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       delete state.historyLoadingIds[sessionId];
       delete state.viewedRunIdBySession[sessionId];
       delete state.missingOnServerIds[sessionId];
+      delete state.historyEventRunIds[sessionId];
       if (state.activeSessionId === sessionId) {
         state.activeSessionId = state.sessionOrder[0] ?? null;
       }
@@ -594,7 +1048,10 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       const data = env.data as RunFailedData;
       const run = currentRun(session, env.requestId);
       if (!run && state.historyLoadingIds[sessionId]) {
-        if (isBufferedHistoryRun(state, sessionId, env.requestId)) {
+        if (
+          (env.requestId && state.historyEventRunIds[sessionId]?.[env.requestId])
+          || hasHistoryTraceRun(state, sessionId, env.requestId)
+        ) {
           return;
         }
         session.messages = [];
@@ -603,6 +1060,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
         state.historyFailedIds[sessionId] = true;
         delete state.historyReplayBuffers[sessionId];
         delete state.historyStepBuffers[sessionId];
+        delete state.historyEventRunIds[sessionId];
         return;
       }
       if (run) {
@@ -736,11 +1194,14 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
         id: plannerStageStepId(run.requestId, env.step, data.stage),
         kind: "decision",
         title: plannerStageTitle(data.stage, data.selectedAction),
+        description: summarizePlannerStage(data),
         status: "done",
         startedAt: run.steps.find((step) =>
           step.id === plannerStageStepId(run.requestId, env.step, data.stage))?.startedAt ?? env.timestamp,
         endedAt: env.timestamp,
         decisionKind: data.selectedAction,
+        taskFrame: data.taskFrame,
+        evidenceDecision: data.evidenceDecision,
         detailJson: data,
       });
       return;
@@ -968,6 +1429,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
         status: "done",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
+        toolBatch: toolBatchFromEvent(env, undefined, data.toolCount),
       });
       return;
     }
@@ -986,6 +1448,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
         startedAt: env.timestamp,
         toolName: data.toolName,
         callId: data.callId,
+        toolBatch: toolBatchFromEvent(env, data),
         toolArgs: run.pendingToolArgsByName[data.toolName],
       });
       return;
@@ -1029,6 +1492,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
           endedAt: env.timestamp,
           toolName: data.toolName,
           callId: data.callId,
+          toolBatch: toolBatchFromEvent(env, data),
           toolErrorMessage: data.message,
         });
       }
@@ -1103,11 +1567,10 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
           endedAt: env.timestamp,
         });
         run.xmlPreview = "";
-        run.visibleText = data.content;
         run.visibleKind = "final_answer";
         run.decisionMode = "final_text";
         run.expectedOutputMode = "final_text";
-        alignRunDisplayTarget(run);
+        projectTerminalDisplayText(run, data.content, Boolean(state.historyLoadingIds[sessionId]));
       }
       session.updatedAt = env.timestamp;
       // 这个会话挪到列表顶部
@@ -1143,11 +1606,10 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
           endedAt: env.timestamp,
         });
         run.xmlPreview = "";
-        run.visibleText = data.question;
         run.visibleKind = "ask_user";
         run.decisionMode = "final_text";
         run.expectedOutputMode = "final_text";
-        alignRunDisplayTarget(run);
+        projectTerminalDisplayText(run, data.question, Boolean(state.historyLoadingIds[sessionId]));
       }
       return;
     }
@@ -1172,6 +1634,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       state.historyLoadedIds[sessionId] = true;
       delete state.historyReplayBuffers[sessionId];
       delete state.historyStepBuffers[sessionId];
+      delete state.historyEventRunIds[sessionId];
       delete state.historyFailedIds[sessionId];
       delete state.missingOnServerIds[sessionId];
       return;
@@ -1190,6 +1653,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       session.messageCount = data.messageCount;
       state.historyReplayBuffers[sessionId] = [];
       state.historyStepBuffers[sessionId] = [];
+      state.historyEventRunIds[sessionId] = {};
       state.historyLoadingIds[sessionId] = true;
       if (!data.refresh) {
         delete state.historyLoadedIds[sessionId];
@@ -1241,10 +1705,14 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       const session = state.sessions[sessionId];
       if (!session) return;
       if (!state.historyLoadingIds[sessionId]) return;
+      const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
+      state.historyEventRunIds[sessionId] = eventRunIds;
       for (const event of data.events) {
-        if (isBufferedHistoryRun(state, sessionId, event.requestId)) {
-          continue;
+        if (event.kind === EventKinds.RunStarted && event.requestId) {
+          eventRunIds[event.requestId] = true;
         }
+        const restoredRequestId = event.scope?.parentRequestId ?? event.requestId;
+        if (restoredRequestId && !eventRunIds[restoredRequestId]) continue;
         applyEvent(state, {
           ...event,
           sessionId: event.sessionId ?? sessionId,
@@ -1265,13 +1733,15 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
         .map((item) => projectEntryToMessage(item.entry, item.visible))
         .filter((message): message is ChatMessage => Boolean(message));
       const stepRuns = state.historyStepBuffers[sessionId] ?? [];
-      const hasStepRuns = stepRuns.length > 0;
-      const nextRuns = hasStepRuns
-        ? stepRuns.map((run) => rebuildRunFromHistory(run))
+      const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
+      const traceOnlyRuns = stepRuns.filter((run) => !eventRunIds[run.requestId]);
+      const hasTraceOnlyRuns = traceOnlyRuns.length > 0;
+      const nextRuns = hasTraceOnlyRuns
+        ? traceOnlyRuns.map((run) => rebuildRunFromHistory(run))
         : session.runs;
       if (data.refresh) {
         mergeHistoryMessages(session, nextMessages);
-        if (hasStepRuns) {
+        if (hasTraceOnlyRuns) {
           mergeHistoryRuns(session, nextRuns);
         }
       } else {
@@ -1282,6 +1752,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       state.historyLoadedIds[sessionId] = true;
       delete state.historyReplayBuffers[sessionId];
       delete state.historyStepBuffers[sessionId];
+      delete state.historyEventRunIds[sessionId];
       delete state.historyFailedIds[sessionId];
       delete state.missingOnServerIds[sessionId];
       syncSessionCountsFromLoadedMessages(session);
@@ -1294,6 +1765,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       state.historyLoadingIds[sessionId] = false;
       delete state.historyReplayBuffers[sessionId];
       delete state.historyStepBuffers[sessionId];
+      delete state.historyEventRunIds[sessionId];
       delete state.historyFailedIds[sessionId];
       if (data.operation === "session.close") {
         delete state.pendingDeletedSessionIds[sessionId];
@@ -1505,6 +1977,7 @@ export function deleteSessionRuntimeState(state: StoreState, sessionId: string):
   delete state.historyFailedIds[sessionId];
   delete state.historyReplayBuffers[sessionId];
   delete state.historyStepBuffers[sessionId];
+  delete state.historyEventRunIds[sessionId];
   delete state.viewedRunIdBySession[sessionId];
   delete state.missingOnServerIds[sessionId];
   state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);

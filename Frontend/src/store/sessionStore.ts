@@ -21,6 +21,8 @@ import {
   type ConversationEntryDto,
   type ConversationEntryMetadata,
   type EventEnvelope,
+  type ActionEvidenceDecisionData,
+  type ActionTaskFrameData,
   type ModelProviderMetadata,
   type ModelProviderListItem,
   type PluginConfigItem,
@@ -64,6 +66,20 @@ export type TimelineStepKind =
 
 export type TimelineStepStatus = "pending" | "running" | "done" | "failed";
 
+export interface TimelineStepScope {
+  parentRequestId?: string;
+  workflowName?: string;
+  jobId?: string;
+  agentName?: string;
+  role?: "childAgent" | "merge";
+}
+
+export interface TimelineToolBatch {
+  id: string;
+  index?: number;
+  size?: number;
+}
+
 export interface TimelineStep {
   id: string;
   kind: TimelineStepKind;
@@ -72,12 +88,16 @@ export interface TimelineStep {
   status: TimelineStepStatus;
   startedAt: string;
   endedAt?: string;
+  scope?: TimelineStepScope;
   toolName?: string;
   callId?: string;
+  toolBatch?: TimelineToolBatch;
   toolArgs?: unknown;
   toolPreview?: string;
   toolResult?: unknown;
   toolErrorMessage?: string;
+  taskFrame?: ActionTaskFrameData;
+  evidenceDecision?: ActionEvidenceDecisionData;
   detailJson?: unknown;
   retryAttempt?: number;
   retryCode?: string;
@@ -153,6 +173,8 @@ export interface StoreState {
   historyReplayBuffers: Record<string, HistoryReplayEntry[]>;
   /** 回放期间暂存的 step 轨迹 run，completed 时据此重建 session.runs */
   historyStepBuffers: Record<string, SessionHistoryStepsData["runs"]>;
+  /** 回放期间已经由 run events 还原过的 requestId，避免再用精简 step traces 覆盖完整图 */
+  historyEventRunIds: Record<string, Record<string, boolean>>;
   /** 已确认不在后端存在、仅本地残留的 sessionId */
   missingOnServerIds: Record<string, boolean>;
   /** 本地刚创建、尚未被 session.list 快照确认的 sessionId */
@@ -216,6 +238,7 @@ export const useStore = create<StoreState>()(
       historyFailedIds: {},
       historyReplayBuffers: {},
       historyStepBuffers: {},
+      historyEventRunIds: {},
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},
@@ -323,6 +346,8 @@ export const useStore = create<StoreState>()(
       set((state) => {
         state.historyLoadingIds[sessionId] = true;
         state.historyReplayBuffers[sessionId] = [];
+        state.historyStepBuffers[sessionId] = [];
+        state.historyEventRunIds[sessionId] = {};
         delete state.historyFailedIds[sessionId];
       }),
 
@@ -332,6 +357,7 @@ export const useStore = create<StoreState>()(
         state.historyFailedIds[sessionId] = true;
         delete state.historyReplayBuffers[sessionId];
         delete state.historyStepBuffers[sessionId];
+        delete state.historyEventRunIds[sessionId];
       }),
 
     selectModelProvider: (id) =>
@@ -374,6 +400,7 @@ export const useStore = create<StoreState>()(
         state.historyFailedIds = {};
         state.historyReplayBuffers = {};
         state.historyStepBuffers = {};
+        state.historyEventRunIds = {};
         state.missingOnServerIds = {};
         state.pendingCreatedSessionIds = {};
         state.pendingDeletedSessionIds = {};

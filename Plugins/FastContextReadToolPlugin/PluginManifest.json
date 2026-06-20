@@ -43,6 +43,13 @@
         "Evidence": [
           {
             "Kind": "workspace_read",
+            "When": {
+              "Selector": "$.kind",
+              "In": [
+                "file",
+                "directory"
+              ]
+            },
             "Records": "$",
             "Slots": {
               "kind": "$.kind",
@@ -206,7 +213,27 @@
         "Avoid": [
           "不知道路径时先用工作区地图或搜索工具定位。"
         ]
-      }
+      },
+      "EvidenceCapabilities": [
+        {
+          "Produces": "workspace read",
+          "Quality": "observed",
+          "Satisfies": [
+            "project identity",
+            "project purpose",
+            "workspace source-of-truth",
+            "implementation detail",
+            "source behavior",
+            "workspace investigation"
+          ],
+          "Kinds": [
+            "workspace_read"
+          ],
+          "CapabilityIds": [
+            "workspace.file-read"
+          ]
+        }
+      ]
     }
   ],
   "Security": {

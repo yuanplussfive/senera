@@ -15,14 +15,19 @@ import {
   type AgentPromptContractView,
 } from "./AgentPromptContractProjector.js";
 import { createXmlProtocolSpec, type AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
+import type { AgentActionDecision } from "./AgentActionPlanner.js";
 import {
-  agentActionCapabilityNeeds,
-  agentActionInstruction,
-  agentActionPreferredTools,
-  agentActionToolSearchQueries,
-  type AgentActionCapabilityNeed,
-  type AgentActionDecision,
-} from "./AgentActionPlanner.js";
+  buildAgentRootCommand,
+  type AgentRootCommand,
+  type AgentRootCommandWorkflowRecommendation,
+} from "./AgentRootCommand.js";
+import type { TaskFrame } from "./BamlClient/baml_client/types.js";
+import { AgentHostCapabilityNames } from "./AgentDefaultHostCapabilities.js";
+import {
+  AgentSkillActivationService,
+  type AgentActivatedSkill,
+} from "./AgentSkillActivation.js";
+import { compareLoadedPluginsForPrompting } from "./AgentPluginOrdering.js";
 
 export interface AgentPromptToolContext {
   name: string;
@@ -31,6 +36,30 @@ export interface AgentPromptToolContext {
   whenNotToUse: string;
   argumentsContract?: AgentPromptContractView;
   documentationXml: string;
+}
+
+export interface AgentPromptSkillCatalogContext {
+  name: string;
+  title: string;
+  summary: string;
+  useCases: string[];
+  avoid: string[];
+  recommendedTools: string[];
+  recommendedAgents: string[];
+  recommendedWorkflows: string[];
+}
+
+export interface AgentPromptSkillContext extends AgentPromptSkillCatalogContext {
+  documentationXml: string;
+  workflowXml: string;
+  matchedTerms: string[];
+  matchedFields: AgentPromptSkillMatchedFieldContext[];
+  score: number;
+}
+
+export interface AgentPromptSkillMatchedFieldContext {
+  term: string;
+  fields: string[];
 }
 
 export interface AgentPromptDecisionActionContext {
@@ -48,8 +77,9 @@ export interface AgentPromptContext {
   ToolCallProtocol: AgentPromptToolCallProtocolContext;
   DecisionActions: AgentPromptDecisionActionContext[];
   ToolCards: AgentPromptToolContext[];
-  ToolDiscoveryToolName?: string;
-  ActionDirective: AgentPromptActionDirectiveContext | null;
+  ActiveSkills: AgentPromptSkillContext[];
+  ToolDiscoveryToolName: string | null;
+  RootCommand: AgentRootCommand | null;
 }
 
 export interface AgentPromptToolCallProtocolContext {
@@ -60,14 +90,6 @@ export interface AgentPromptToolCallProtocolContext {
   arrayItemTag: string;
 }
 
-export interface AgentPromptActionDirectiveContext {
-  action: string;
-  instruction: string | null;
-  preferredTools: string[];
-  toolSearchQueries: string[];
-  needs: AgentActionCapabilityNeed[];
-}
-
 export interface AgentPromptContextOptions {
   loadedToolNames?: string[] | "all";
   toolSections?: AgentPromptSectionOptions;
@@ -75,7 +97,9 @@ export interface AgentPromptContextOptions {
   summarySection?: string;
   triggerSection?: string;
   avoidSection?: string;
-  actionDirective?: AgentActionDecision;
+  rootCommand?: AgentRootCommand;
+  skillQuery?: string;
+  activeSkills?: readonly AgentActivatedSkill[];
 }
 
 export interface AgentPromptSectionOptions {
@@ -88,12 +112,14 @@ export class AgentPromptContextBuilder {
   private readonly markdownRenderer: AgentMarkdownPromptXmlRenderer;
   private readonly contractProjector = new AgentPromptContractProjector();
   private readonly protocol: AgentXmlProtocolSpec;
+  private readonly skillActivation: AgentSkillActivationService;
 
   constructor(
     private readonly registry: AgentPluginRegistry,
     config: AgentSystemConfig,
   ) {
     this.protocol = createXmlProtocolSpec(config);
+    this.skillActivation = new AgentSkillActivationService(registry);
     this.markdownRenderer = new AgentMarkdownPromptXmlRenderer({
       xmlFenceLanguages: config.PluginDocumentation?.PromptXml?.XmlFenceLanguages,
       codeFenceLanguages: config.PluginDocumentation?.PromptXml?.CodeFenceLanguages,
@@ -118,36 +144,73 @@ export class AgentPromptContextBuilder {
       .listDecisionActions()
       .sort((left, right) => this.comparePromptPriority(left.plugin, right.plugin))
       .map((action) => this.buildDecisionActionContext(action, actionSections));
+    const loadedTools = tools.filter((tool) => loadedToolNames.has(tool.name));
+    const toolDiscoveryToolName = loadedTools.find((tool) =>
+      tool.handler.kind === "HostCapability"
+      && tool.handler.capability === AgentHostCapabilityNames.ToolSearch
+    )?.name;
+    const rootCommand = options.rootCommand ?? null;
+    const promptToolNames = rootCommand?.includeToolCatalog
+      ? rootCommand.allowedTools
+      : rootCommand
+        ? []
+        : loadedTools.map((tool) => tool.name);
+    const promptToolNameSet = new Set(promptToolNames);
     const toolCards = tools
-      .filter((tool) => loadedToolNames.has(tool.name))
+      .filter((tool) => promptToolNameSet.has(tool.name))
       .sort((left, right) => this.comparePromptPriority(left.plugin, right.plugin))
       .map((tool) => this.buildToolContext(tool, toolSections));
-    const loadedTools = tools.filter((tool) => loadedToolNames.has(tool.name));
+    const visibleToolDiscoveryToolName = toolDiscoveryToolName && promptToolNameSet.has(toolDiscoveryToolName)
+      ? toolDiscoveryToolName
+      : null;
+    const activeSkills = this.buildActiveSkillContexts(
+      options.activeSkills
+        ?? this.skillActivation.activate({
+          input: options.skillQuery,
+          rootCommand,
+        }),
+    );
 
     return {
       ToolCallProtocol: this.buildToolCallProtocolContext(actions),
       DecisionActions: actions,
       ToolCards: toolCards,
-      ToolDiscoveryToolName: loadedTools.find((tool) =>
-        tool.handler.kind === "HostCapability" && tool.handler.capability === "tool.search"
-      )?.name,
-      ActionDirective: options.actionDirective
-        ? this.buildActionDirectiveContext(options.actionDirective)
-        : null,
+      ActiveSkills: activeSkills,
+      ToolDiscoveryToolName: visibleToolDiscoveryToolName,
+      RootCommand: rootCommand,
     };
   }
 
-  private buildActionDirectiveContext(
-    directive: AgentActionDecision,
-  ): AgentPromptActionDirectiveContext {
-    const instruction = agentActionInstruction(directive).trim();
-    return {
-      action: directive.action,
-      instruction: instruction.length > 0 ? instruction : null,
-      preferredTools: agentActionPreferredTools(directive),
-      toolSearchQueries: agentActionToolSearchQueries(directive),
-      needs: agentActionCapabilityNeeds(directive),
-    };
+  buildRootCommand(options: {
+    decision: AgentActionDecision;
+    loadedToolNames: "all" | readonly string[];
+    taskContract?: TaskFrame;
+    workflowRecommendedTools?: readonly string[];
+    workflowRecommendations?: readonly AgentRootCommandWorkflowRecommendation[];
+  }): AgentRootCommand {
+    const loadedTools = this.resolveLoadedTools(options.loadedToolNames);
+    const policy = this.registry.getRootCommandPolicy(options.decision.action);
+    if (!policy) {
+      throw new Error(`RootCommand policy 没有声明 action：${options.decision.action}`);
+    }
+
+    return buildAgentRootCommand({
+      decision: options.decision,
+      loadedTools,
+      policy,
+      taskContract: options.taskContract,
+      workflowRecommendedTools: options.workflowRecommendedTools,
+      workflowRecommendations: options.workflowRecommendations,
+    });
+  }
+
+  private resolveLoadedTools(loadedToolNames: "all" | readonly string[]): RegisteredTool[] {
+    const tools = this.registry.listTools();
+    if (loadedToolNames === "all") {
+      return tools;
+    }
+    const loadedToolNameSet = new Set(loadedToolNames);
+    return tools.filter((tool) => loadedToolNameSet.has(tool.name));
   }
 
   private buildToolCallProtocolContext(
@@ -221,6 +284,50 @@ export class AgentPromptContextBuilder {
     };
   }
 
+  private buildActiveSkillContexts(
+    activeSkills: readonly AgentActivatedSkill[],
+  ): AgentPromptSkillContext[] {
+    return activeSkills.map((skill) => {
+      return {
+        ...this.toSkillCatalogContext(skill),
+        documentationXml: this.renderSkillMarkdown(skill.descriptionFile),
+        workflowXml: skill.workflowFile
+          ? this.renderSkillMarkdown(skill.workflowFile)
+          : "",
+        matchedTerms: [...new Set(skill.matchedTerms)],
+        matchedFields: skill.matchedFields.map((entry) => ({
+          term: entry.term,
+          fields: [...entry.fields],
+        })),
+        score: Number(skill.score.toFixed(6)),
+      };
+    });
+  }
+
+  private toSkillCatalogContext(skill: Pick<
+    AgentActivatedSkill,
+    "name" | "title" | "summary" | "useCases" | "avoid" | "recommendedTools"
+    | "recommendedAgents" | "recommendedWorkflows"
+  >): AgentPromptSkillCatalogContext {
+    return {
+      name: skill.name,
+      title: skill.title,
+      summary: skill.summary,
+      useCases: skill.useCases,
+      avoid: skill.avoid,
+      recommendedTools: skill.recommendedTools,
+      recommendedAgents: skill.recommendedAgents,
+      recommendedWorkflows: skill.recommendedWorkflows,
+    };
+  }
+
+  private renderSkillMarkdown(filePath: string): string {
+    return this.markdownRenderer.renderOrThrow(
+      fs.readFileSync(filePath, "utf8"),
+      filePath,
+    );
+  }
+
   private readToolDocument(descriptionFile: string | undefined) {
     if (!descriptionFile) {
       return {
@@ -235,14 +342,7 @@ export class AgentPromptContextBuilder {
     left: RegisteredDecisionAction["plugin"],
     right: RegisteredDecisionAction["plugin"],
   ): number {
-    const leftPriority = left.manifest.Prompting?.Priority ?? 100;
-    const rightPriority = right.manifest.Prompting?.Priority ?? 100;
-
-    if (leftPriority !== rightPriority) {
-      return leftPriority - rightPriority;
-    }
-
-    return left.manifest.Plugin.Name.localeCompare(right.manifest.Plugin.Name);
+    return compareLoadedPluginsForPrompting(left, right);
   }
 
   private resolveSections(

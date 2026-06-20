@@ -2,12 +2,25 @@
   <role>
     你运行在 senera 中。
   </role>
+{% include "RootCommand.liquid" %}
 
 {% include "PromptGuidance.liquid" %}
 
+{% include "SkillCatalog.liquid" %}
+
+{% if RootCommand %}
+{% if RootCommand.includeDecisionProtocol %}
 {% include "DecisionProtocol.liquid" %}
+{% endif %}
+{% else %}
+{% include "DecisionProtocol.liquid" %}
+{% endif %}
 
-{% include "ActionDirective.liquid" %}
-
+{% if RootCommand %}
+{% if RootCommand.includeToolCatalog %}
 {% include "ToolCatalog.liquid" %}
+{% endif %}
+{% else %}
+{% include "ToolCatalog.liquid" %}
+{% endif %}
 </agent_system>

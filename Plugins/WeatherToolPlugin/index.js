@@ -35,7 +35,7 @@ const ConfigSchema = z.object({
     geo_base_url: z.string().trim().min(1).optional(),
     language: z.string().trim().min(1).default("zh"),
     unit: z.enum(["metric", "imperial"]).default("metric"),
-    timeout_ms: z.coerce.number().int().min(1000).max(300000).default(DefaultTimeoutMs),
+    timeout_seconds: z.coerce.number().positive().max(300).default(DefaultTimeoutMs / 1000),
     state_dir: z.string().trim().min(1).default(DefaultStateDir)
   }).strict()
 }).strict();
@@ -103,7 +103,7 @@ void runToolPlugin({
       apiKey,
       config: resolveProviderConfig(config, provider),
       language: args.language ?? config.language,
-      timeoutMs: args.timeoutMs ?? config.timeout_ms
+      timeoutMs: args.timeoutMs ?? config.timeoutMs
     });
   }
 });
@@ -114,7 +114,18 @@ function readConfig() {
   if (!result.success) {
     throw new Error(`Weather 插件配置无效：${path.resolve(process.cwd(), ConfigFileName)}：${result.error.message}`);
   }
-  return withEnvironmentConfig(result.data.weather);
+  return withEnvironmentConfig(normalizeConfigUnits(result.data.weather));
+}
+
+function normalizeConfigUnits(config) {
+  return {
+    ...config,
+    timeoutMs: readSecondsAsMilliseconds(config.timeout_seconds)
+  };
+}
+
+function readSecondsAsMilliseconds(valueSeconds) {
+  return Math.round(valueSeconds * 1000);
 }
 
 function readConfigFile() {
@@ -306,12 +317,16 @@ async function fetchJson(url, timeoutMs, headers = undefined) {
     return text.length > 0 ? JSON.parse(text) : {};
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`天气接口请求超时，超过 ${timeoutMs}ms：${url.hostname}`);
+      throw new Error(`天气接口请求超时，超过 ${formatMillisecondsAsSeconds(timeoutMs)} 秒：${url.hostname}`);
     }
     throw error;
   } finally {
     clearTimeout(timer);
   }
+}
+
+function formatMillisecondsAsSeconds(valueMs) {
+  return Number((valueMs / 1000).toFixed(3));
 }
 
 function normalizeWeatherApi(value, originalLocation, unit) {

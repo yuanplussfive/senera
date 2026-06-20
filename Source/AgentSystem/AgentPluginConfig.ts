@@ -372,13 +372,6 @@ function validateNumberConfigField(
   if (typeof field.max === "number" && value > field.max) {
     errors.push(`${label} 不能大于 ${field.max}`);
   }
-  if (typeof field.step === "number" && field.step > 0) {
-    const base = typeof field.min === "number" ? field.min : 0;
-    const quotient = (value - base) / field.step;
-    if (Math.abs(quotient - Math.round(quotient)) > 1e-9) {
-      errors.push(`${label} 必须按 ${field.step} 递增`);
-    }
-  }
   return errors;
 }
 

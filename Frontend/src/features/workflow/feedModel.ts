@@ -19,9 +19,11 @@ export interface FeedItem {
 export interface FeedGroup {
   id: string;
   label: string;
+  variant?: "tools" | "delegation" | "trace";
   meta?: string;
   items: FeedItem[];
   defaultExpanded?: boolean;
+  collapsible?: boolean;
 }
 
 export interface FeedModel {
@@ -37,10 +39,12 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
   const latestDecision = [...run.steps].reverse().find((step) => step.kind === "decision");
   const runningStep = [...run.steps].reverse().find((step) => step.status === "running");
   const activeStep = resolveActiveStep(run, latestStep, runningStep, latestDecision);
-  const toolItems = run.steps
+  const rootSteps = run.steps.filter((step) => !step.scope?.parentRequestId);
+  const scopedGroups = collectScopedGroups(run.steps);
+  const toolItems = rootSteps
     .filter((step) => step.kind === "tool" && !!step.toolName)
     .map((step) => mapToolItem(step));
-  const traceItems = run.steps
+  const traceItems = rootSteps
     .filter((step) => step.id !== activeStep?.id)
     .filter((step) => !(step.kind === "tool" && step.toolName))
     .slice(-3)
@@ -51,15 +55,19 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
     groups.push({
       id: "tools",
       label: `${toolItems.length} 个工具调用`,
+      variant: "tools",
       meta: `${toolItems.filter((item) => item.status === "done").length}/${toolItems.length}`,
       items: toolItems,
       defaultExpanded: true,
+      collapsible: true,
     });
   }
+  groups.push(...scopedGroups);
   if (traceItems.length > 0) {
     groups.push({
       id: "trace",
       label: "执行轨迹",
+      variant: "trace",
       items: traceItems,
     });
   }
@@ -71,6 +79,60 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
     placeholder: derivePendingLabel(run, activeStep, latestDecision),
     footer: deriveFooter(activeStep),
   };
+}
+
+function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
+  const groups = new Map<string, { label: string; workflowName?: string; items: FeedItem[]; firstIndex: number }>();
+  steps.forEach((step, index) => {
+    if (!step.scope?.parentRequestId) return;
+    const key = scopedGroupKey(step);
+    const existing = groups.get(key);
+    const group = existing ?? {
+      label: scopedGroupLabel(step),
+      workflowName: step.scope.workflowName,
+      items: [],
+      firstIndex: index,
+    };
+    group.items.push(mapTraceItem(step));
+    groups.set(key, group);
+  });
+
+  return [...groups.entries()]
+    .sort((a, b) => a[1].firstIndex - b[1].firstIndex)
+    .map(([id, group]) => ({
+      id,
+      label: group.label,
+      variant: "delegation",
+      meta: scopedGroupMeta(group.items, group.workflowName),
+      items: group.items,
+      defaultExpanded: group.items.some((item) => item.status === "running" || item.status === "failed"),
+      collapsible: true,
+    }));
+}
+
+function scopedGroupKey(step: TimelineStep): string {
+  return [
+    "delegation",
+    step.scope?.workflowName,
+    step.scope?.role,
+    step.scope?.jobId,
+    step.scope?.agentName,
+  ]
+    .filter((value) => value !== undefined && value !== "")
+    .join(":");
+}
+
+function scopedGroupLabel(step: TimelineStep): string {
+  if (step.scope?.role === "merge") return "结果合并";
+  return step.scope?.agentName ? `子代理 · ${step.scope.agentName}` : "子代理";
+}
+
+function scopedGroupMeta(items: FeedItem[], workflowName?: string): string | undefined {
+  const done = items.filter((item) => item.status === "done").length;
+  const failed = items.filter((item) => item.status === "failed").length;
+  const progress = `${done}/${items.length}`;
+  if (failed > 0) return workflowName ? `${workflowName} · ${progress} · ${failed} 失败` : `${progress} · ${failed} 失败`;
+  return workflowName ? `${workflowName} · ${progress}` : progress;
 }
 
 function resolveActiveStep(

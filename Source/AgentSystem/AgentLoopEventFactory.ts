@@ -18,7 +18,10 @@ import {
   type AgentActionPlanResult,
 } from "./AgentActionPlanner.js";
 import type { AgentActionPlannerStageEvent } from "./AgentActionPlannerTelemetry.js";
-import { agentDecisionOutputContractForAction } from "./AgentDecisionOutputResolver.js";
+import type { AgentRootCommand } from "./AgentRootCommand.js";
+import type { AgentActivatedSkill } from "./AgentSkillActivation.js";
+import type { AgentCompletionGateDecision } from "./AgentCompletionGate.js";
+import type { TaskFrame } from "./BamlClient/baml_client/types.js";
 
 export class AgentLoopEventFactory {
   runStarted(requestId: string, input: string): AgentDomainEvent {
@@ -68,6 +71,8 @@ export class AgentLoopEventFactory {
     step: number,
     plan: AgentActionPlanResult,
     loadedToolNames: "all" | string[],
+    rootCommand?: AgentRootCommand,
+    activeSkills: readonly AgentActivatedSkill[] = [],
   ): AgentDomainEvent[] {
     return [
       {
@@ -76,36 +81,44 @@ export class AgentLoopEventFactory {
           requestId,
           step,
         },
-        data: plan.kind === "planned"
-          ? {
-              status: "planned",
-              action: plan.decision.action,
-              expectedOutputMode: agentDecisionOutputContractForAction(plan.decision.action),
-              instruction: agentActionInstruction(plan.decision),
-              askUserQuestion: plan.decision.action === "ask_user" ? plan.decision.askUser.question : undefined,
-              capabilityNeeds: agentActionCapabilityNeeds(plan.decision),
-              preferredTools: agentActionPreferredTools(plan.decision),
-              toolSearchQueries: agentActionToolSearchQueries(plan.decision),
-              loadedTools: loadedToolNames,
-              currentStep: plan.input.runState.currentStep,
-              runState: {
-                totalToolCalls: plan.input.runState.progress.totalToolCalls,
-                totalEvidence: plan.input.runState.progress.totalEvidence,
-                repeatedCallCount: plan.input.runState.progress.repeatedCallCount,
-                stalled: plan.input.runState.progress.stalled,
-                timelineTurnCount: plan.input.timeline.length,
-              },
-              selectedAction: plan.selectedAction,
-              selectionRepaired: plan.selectionRepaired,
-              payloadRepaired: plan.payloadRepaired,
-            }
-          : {
-              status: "fallback",
-              preferredTools: [],
-              toolSearchQueries: [],
-              loadedTools: loadedToolNames,
-              reason: plan.reason,
-            },
+        data: {
+          status: "planned",
+          action: plan.decision.action,
+          expectedOutputMode: rootCommand?.outputMode,
+          instruction: agentActionInstruction(plan.decision),
+          askUserQuestion: plan.decision.action === "ask_user" ? plan.decision.askUser.question : undefined,
+          capabilityNeeds: agentActionCapabilityNeeds(plan.decision),
+          preferredTools: agentActionPreferredTools(plan.decision),
+          toolSearchQueries: agentActionToolSearchQueries(plan.decision),
+          loadedTools: loadedToolNames,
+          currentStep: plan.input.runState.currentStep,
+          runState: {
+            totalToolCalls: plan.input.runState.progress.totalToolCalls,
+            totalEvidence: plan.input.runState.progress.totalEvidence,
+            repeatedCallCount: plan.input.runState.progress.repeatedCallCount,
+            stalled: plan.input.runState.progress.stalled,
+            timelineTurnCount: plan.input.timeline.length,
+          },
+          selectedAction: plan.selectedAction,
+          selectionRepaired: plan.selectionRepaired,
+          payloadRepaired: plan.payloadRepaired,
+          taskFrame: plan.taskFrame
+            ? projectTaskFrameForEvent(plan.taskFrame)
+            : undefined,
+          evidenceDecision: plan.evidenceDecision
+            ? projectEvidenceDecisionForEvent(plan.evidenceDecision)
+            : undefined,
+          activeSkills: activeSkills.map((skill) => ({
+            name: skill.name,
+            title: skill.title,
+            score: skill.score,
+            matchedTerms: skill.matchedTerms,
+            matchedFields: skill.matchedFields,
+            recommendedTools: skill.recommendedTools,
+            recommendedAgents: skill.recommendedAgents,
+            recommendedWorkflows: skill.recommendedWorkflows,
+          })),
+        },
       },
     ];
   }
@@ -137,6 +150,12 @@ export class AgentLoopEventFactory {
             stage: event.stage,
             selectedAction: event.selectedAction,
             repaired: event.repaired,
+            taskFrame: event.taskFrame
+              ? projectTaskFrameForEvent(event.taskFrame)
+              : undefined,
+            evidenceDecision: event.evidenceDecision
+              ? projectEvidenceDecisionForEvent(event.evidenceDecision)
+              : undefined,
           },
         };
       case "failed":
@@ -414,4 +433,34 @@ export class AgentLoopEventFactory {
       },
     ];
   }
+}
+
+function projectTaskFrameForEvent(taskFrame: TaskFrame) {
+  return {
+    taskType: taskFrame.taskType,
+    answerGoal: taskFrame.answerGoal,
+    intentTags: taskFrame.intentTags,
+    targetRefs: taskFrame.targetRefs,
+    candidateTools: taskFrame.candidateTools,
+    discoveryQueries: taskFrame.discoveryQueries,
+    requiredEffects: taskFrame.requiredEffects,
+    requiredEvidence: taskFrame.requiredEvidence,
+    userInputNeeds: taskFrame.userInputNeeds,
+    nextStepPurpose: taskFrame.nextStepPurpose,
+    completionCriteria: taskFrame.completionCriteria,
+    notes: taskFrame.notes,
+  };
+}
+
+function projectEvidenceDecisionForEvent(decision: AgentCompletionGateDecision) {
+  return {
+    ready: decision.ready,
+    missingNeeds: decision.missingNeeds,
+    satisfiedNeeds: decision.satisfiedNeeds,
+    requirementStates: decision.requirementStates,
+    progress: decision.progress,
+    verification: decision.verification,
+    recommendedTools: decision.recommendedTools,
+    searchQueries: decision.searchQueries,
+  };
 }

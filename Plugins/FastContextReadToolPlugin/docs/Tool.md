@@ -20,6 +20,7 @@
 
 文件返回 `kind=file`、path、startLine、endLine、totalLines、content 和 truncated。
 目录返回 `kind=directory`、children、childCount、directoryCount、fileCount、truncated 和 guidance。
+路径不存在返回 `kind=missing_path`、requestedPath、nearestExistingParent、parentChildren、suggestions、availableRoots 和 guidance；这种结果只用于修正下一步路径，不算已读取文件证据。
 
 ## 调用示例
 
@@ -37,3 +38,4 @@
 ## 执行约束
 
 只能读取工作区内路径。文件必须是不超过 max_file_bytes 的文本文件；目录只返回直接子路径摘要，不递归读取内容。
+如果返回 `missing_path`，优先从 suggestions 或 parentChildren 选择真实路径再次读取；不要把 requestedPath 当作已确认存在的文件。

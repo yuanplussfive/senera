@@ -1,5 +1,5 @@
-import { ActionKind, type ActionPlanInput } from "./BamlClient/baml_client/index.js";
-import type { AgentToolCatalogItem } from "./AgentToolCatalogProjector.js";
+import type { ActionPlanInput } from "./BamlClient/baml_client/index.js";
+import type { TaskFrame } from "./BamlClient/baml_client/types.js";
 import type {
   ResolvedAgentActionPlannerConfig,
   ResolvedAgentModelProviderConfig,
@@ -13,21 +13,23 @@ import {
   summarizePlannerFailure,
 } from "./AgentActionPlannerFailure.js";
 import {
-  ActionKindMap,
-  assertSelectedAction,
-  parseActionDecision,
-  parseActionSelection,
+  parseEvidenceVerification,
+  parseTaskFrame,
 } from "./AgentActionPlannerSchema.js";
 import {
   AgentActionPlannerStageNames,
   type AgentActionPlannerStageName,
   type AgentActionPlannerStageSink,
 } from "./AgentActionPlannerTelemetry.js";
-import type {
-  AgentActionDecision,
-  AgentActionPlanResult,
-} from "./AgentActionPlannerTypes.js";
+import type { AgentActionPlanResult } from "./AgentActionPlannerTypes.js";
 import { AgentCancellationError, throwIfAborted } from "./AgentCancellation.js";
+import {
+  AgentCompletionGate,
+  type AgentCompletionEvidenceVerification,
+  type AgentCompletionGateDecision,
+  type AgentCompletionRequirementStatus,
+} from "./AgentCompletionGate.js";
+import { EvidenceVerificationStatus } from "./BamlClient/baml_client/types.js";
 
 export type {
   AgentActionCapabilityNeed,
@@ -43,16 +45,24 @@ export {
 } from "./AgentActionPlannerTypes.js";
 
 export class AgentActionPlanner {
-  private readonly client: AgentActionPlannerModelClient;
+  private readonly taskFrameClient: AgentActionPlannerModelClient;
+  private readonly evidenceClient: AgentActionPlannerModelClient;
+  private readonly completionGate: AgentCompletionGate;
 
   constructor(
     private readonly config: ResolvedAgentActionPlannerConfig,
     model: ResolvedAgentModelProviderConfig,
-    private readonly catalog: {
-      list(): AgentToolCatalogItem[];
-    },
+    _catalog: unknown,
   ) {
-    this.client = new AgentActionPlannerModelClient(model, config.Client);
+    this.taskFrameClient = new AgentActionPlannerModelClient(model, config.TaskFrameClient);
+    this.evidenceClient = new AgentActionPlannerModelClient(model, config.EvidenceClient);
+    this.completionGate = new AgentCompletionGate({
+      verify: async ({ input, taskFrame, signal }) =>
+        projectEvidenceVerification(parseEvidenceVerification(await this.evidenceClient.verifyTaskEvidence({
+          input,
+          taskFrame,
+        }, { signal }))),
+    });
   }
 
   async plan(options: {
@@ -62,72 +72,77 @@ export class AgentActionPlanner {
     onStage?: AgentActionPlannerStageSink;
   }): Promise<AgentActionPlanResult> {
     if (!this.isEnabled()) {
-      return {
-        kind: "fallback",
-        reason: "disabled",
-      };
+      throw new Error("Action Planner 未启用或配置不完整。");
     }
 
     const input = options.input;
 
     try {
       throwIfAborted(options.signal);
-      const selection = await this.runStage(
-        AgentActionPlannerStageNames.SelectAction,
+      const taskFrame = await this.runStage(
+        AgentActionPlannerStageNames.BuildTaskFrame,
         options.onStage,
-        () => this.selectActionOrRepair(input, options.signal),
+        () => this.buildTaskFrameOrRepair(input, options.signal),
         (result) => ({
-          selectedAction: ActionKindMap[result.action],
           repaired: result.repaired,
+          taskFrame: result.value,
         }),
       );
       throwIfAborted(options.signal);
-      if (selection.action === ActionKind.Answer) {
+      await options.onStage?.({
+        status: "started",
+        stage: AgentActionPlannerStageNames.EvaluateEvidence,
+      });
+      const evidenceDecision = await this.completionGate.decide({
+        input,
+        taskFrame: taskFrame.value,
+        signal: options.signal,
+      });
+      await options.onStage?.({
+        status: "completed",
+        stage: AgentActionPlannerStageNames.EvaluateEvidence,
+        selectedAction: evidenceDecision.action.action,
+        evidenceDecision,
+      });
+
+      if (evidenceDecision.action.action === "answer") {
         return {
           kind: "planned",
-          decision: {
-            action: "answer",
-          },
+          decision: evidenceDecision.action,
           input,
-          selectedAction: ActionKindMap[selection.action],
-          selectionRepaired: selection.repaired,
+          taskFrame: taskFrame.value,
+          evidenceDecision,
+          selectedAction: "answer",
+          selectionRepaired: taskFrame.repaired,
           payloadRepaired: false,
         };
       }
 
-      const payload = await this.runStage(
-        AgentActionPlannerStageNames.BuildActionPayload,
-        options.onStage,
-        () => this.buildPayloadOrRepair(input, selection.action, options.signal),
-        (result) => ({
-          selectedAction: ActionKindMap[selection.action],
-          repaired: result.repaired,
-        }),
-      );
-
       return {
         kind: "planned",
-        decision: payload.decision,
+        decision: evidenceDecision.action,
         input,
-        selectedAction: ActionKindMap[selection.action],
-        selectionRepaired: selection.repaired,
-        payloadRepaired: payload.repaired,
+        taskFrame: taskFrame.value,
+        evidenceDecision,
+        selectedAction: evidenceDecision.action.action,
+        selectionRepaired: taskFrame.repaired,
+        payloadRepaired: false,
       };
     } catch (error) {
       if (error instanceof AgentCancellationError || options.signal?.aborted) {
         throw error instanceof AgentCancellationError ? error : new AgentCancellationError();
       }
-      return this.fallback(input, error);
+      throw new Error(`Action Planner 生成失败：${summarizePlannerFailure(error)}`);
     }
   }
 
-  private async selectActionOrRepair(input: ActionPlanInput, signal?: AbortSignal): Promise<{
-    action: ActionKind;
+  private async buildTaskFrameOrRepair(input: ActionPlanInput, signal?: AbortSignal): Promise<{
+    value: TaskFrame;
     repaired: boolean;
   }> {
     try {
       return {
-        action: parseActionSelection(await this.client.selectAction(input, { signal })),
+        value: parseTaskFrame(await this.taskFrameClient.buildTaskFrame(input, { signal })),
         repaired: false,
       };
     } catch (error) {
@@ -137,52 +152,13 @@ export class AgentActionPlanner {
         throw error;
       }
 
-      const repaired = await this.client.repairActionSelection({
+      const repaired = await this.taskFrameClient.repairTaskFrame({
         input,
-        invalidSelection: stringifyIssueValue(failure.invalidOutput ?? failure.error),
+        invalidTaskFrame: stringifyIssueValue(failure.invalidOutput ?? failure.error),
         issues: issueMessages(failure.error),
       }, { signal });
       return {
-        action: parseActionSelection(repaired),
-        repaired: true,
-      };
-    }
-  }
-
-  private async buildPayloadOrRepair(
-    input: ActionPlanInput,
-    selectedAction: ActionKind,
-    signal?: AbortSignal,
-  ): Promise<{
-    decision: AgentActionDecision;
-    repaired: boolean;
-  }> {
-    try {
-      const decision = parseActionDecision(await this.client.buildPayload({
-        input,
-        selectedAction,
-      }, { signal }), this.catalog);
-      assertSelectedAction(decision, selectedAction);
-      return {
-        decision,
-        repaired: false,
-      };
-    } catch (error) {
-      throwIfAborted(signal);
-      const failure = normalizePlanningFailure(error);
-      if (this.config.MaxRepairAttempts <= 0 || !isRepairablePlanningFailure(failure.error)) {
-        throw error;
-      }
-
-      const decision = parseActionDecision(await this.client.repairPayload({
-        input,
-        selectedAction,
-        invalidDecision: stringifyIssueValue(failure.invalidOutput ?? failure.error),
-        issues: issueMessages(failure.error),
-      }, { signal }), this.catalog);
-      assertSelectedAction(decision, selectedAction);
-      return {
-        decision,
+        value: parseTaskFrame(repaired),
         repaired: true,
       };
     }
@@ -195,6 +171,8 @@ export class AgentActionPlanner {
     completed: (result: T) => {
       selectedAction?: string;
       repaired?: boolean;
+      taskFrame?: TaskFrame;
+      evidenceDecision?: AgentCompletionGateDecision;
     },
   ): Promise<T> {
     await onStage?.({
@@ -219,18 +197,49 @@ export class AgentActionPlanner {
     }
   }
 
-  private fallback(input: ActionPlanInput, error: unknown): AgentActionPlanResult {
-    return {
-      kind: "fallback",
-      reason: summarizePlannerFailure(error),
-      input,
-    };
-  }
-
   private isEnabled(): boolean {
     return this.config.Enabled
-      && Boolean(this.config.Client.BaseUrl.trim())
-      && Boolean(this.config.Client.ApiKey.trim())
-      && Boolean(this.config.Client.Model.trim());
+      && isPlannerClientReady(this.config.TaskFrameClient)
+      && isPlannerClientReady(this.config.EvidenceClient);
+  }
+}
+
+function isPlannerClientReady(client: ResolvedAgentActionPlannerConfig["TaskFrameClient"]): boolean {
+  return Boolean(client.BaseUrl.trim())
+    && Boolean(client.ApiKey.trim())
+    && Boolean(client.Model.trim());
+}
+
+function projectEvidenceVerification(
+  verification: ReturnType<typeof parseEvidenceVerification>,
+): AgentCompletionEvidenceVerification {
+  return {
+    ready: verification.ready,
+    summary: verification.summary,
+    requirements: verification.requirements.map((requirement) => ({
+      requirementId: requirement.requirementId,
+      need: requirement.need,
+      status: projectEvidenceVerificationStatus(requirement.status),
+      evidenceRefs: requirement.evidenceRefs,
+      artifactUris: requirement.artifactUris,
+      reason: requirement.reason,
+      missingFacts: requirement.missingFacts,
+      unsupportedClaims: requirement.unsupportedClaims,
+    })),
+  };
+}
+
+function projectEvidenceVerificationStatus(
+  status: EvidenceVerificationStatus,
+): AgentCompletionRequirementStatus {
+  switch (status) {
+    case EvidenceVerificationStatus.Satisfied:
+      return "satisfied";
+    case EvidenceVerificationStatus.Partial:
+      return "partial";
+    case EvidenceVerificationStatus.Blocked:
+      return "blocked";
+    case EvidenceVerificationStatus.Missing:
+      return "missing";
   }
 }

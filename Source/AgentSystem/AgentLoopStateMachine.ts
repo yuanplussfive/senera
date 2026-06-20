@@ -14,7 +14,6 @@ import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "./AgentModelMetadata.js";
 import { AgentEventKinds } from "./AgentEvent.js";
 import {
-  type AgentActionDecision,
   type AgentActionPlanResult,
 } from "./AgentActionPlanner.js";
 import {
@@ -28,6 +27,8 @@ import {
   buildToolTraces,
   type StepTrace,
 } from "./AgentStepTrace.js";
+import type { AgentRootCommand } from "./AgentRootCommand.js";
+import type { AgentActivatedSkill } from "./AgentSkillActivation.js";
 
 export interface AgentLoopMachineConfig {
   maxSteps: number;
@@ -48,7 +49,9 @@ export interface RunningAgentLoopMachineState {
   lastUsage?: AgentModelUsage;
   loadedToolNames: "all" | string[];
   plannerLedger: AgentActionPlannerLedger;
-  actionDirective?: AgentActionDecision;
+  rootCommand?: AgentRootCommand;
+  systemPromptPreamble?: string;
+  activeSkills: AgentActivatedSkill[];
   /** 精简档执行轨迹累积；spread 转移天然透传，终态输出供 manager 落盘 */
   stepTraces: StepTrace[];
 }
@@ -86,8 +89,11 @@ export type AgentLoopCommand =
       kind: "render_prompt";
       requestId: string;
       step: number;
+      input: string;
       loadedToolNames: "all" | string[];
-      actionDirective?: AgentActionDecision;
+      rootCommand?: AgentRootCommand;
+      systemPromptPreamble?: string;
+      activeSkills?: readonly AgentActivatedSkill[];
     }
   | {
       kind: "collect_decision_xml";
@@ -95,7 +101,7 @@ export type AgentLoopCommand =
       step: number;
       prompt: string;
       messages: AgentLanguageModelMessage[];
-      actionDirective?: AgentActionDecision;
+      rootCommand?: AgentRootCommand;
       loadedToolNames: "all" | string[];
     }
   | {
@@ -134,7 +140,8 @@ export type AgentLoopCommandSucceeded =
       loadedToolNames: "all" | string[];
       plannerLedger: AgentActionPlannerLedger;
       conversationEntries: AgentConversationEntry[];
-      actionDirective?: AgentActionDecision;
+      rootCommand?: AgentRootCommand;
+      activeSkills: AgentActivatedSkill[];
     }
   | {
       kind: "prompt_rendered";
@@ -227,7 +234,8 @@ export class AgentLoopStateMachine {
     messages?: AgentLanguageModelMessage[];
     conversationEntries?: AgentConversationEntry[];
     loadedToolNames: "all" | string[];
-    actionDirective?: AgentActionDecision;
+    rootCommand?: AgentRootCommand;
+    systemPromptPreamble?: string;
     emitRunStarted?: boolean;
   }): AgentLoopTransition {
     const fallbackMessages: AgentLanguageModelMessage[] = [
@@ -248,7 +256,9 @@ export class AgentLoopStateMachine {
       conversationEntries: [...(request.conversationEntries ?? [])],
       loadedToolNames: request.loadedToolNames,
       plannerLedger: buildInitialActionPlannerLedger(request.messages),
-      actionDirective: request.actionDirective,
+      rootCommand: request.rootCommand,
+      systemPromptPreamble: request.systemPromptPreamble,
+      activeSkills: [],
       stepTraces: [],
     };
 
@@ -284,13 +294,16 @@ export class AgentLoopStateMachine {
           loadedToolNames: entry.loadedToolNames,
           plannerLedger: entry.plannerLedger,
           conversationEntries: entry.conversationEntries,
-          actionDirective: entry.actionDirective,
+          rootCommand: entry.rootCommand,
+          activeSkills: [...entry.activeSkills],
         };
         const actionEvents = this.eventFactory.actionPlanned(
           entry.requestId,
           entry.step,
           entry.plan,
           entry.loadedToolNames,
+          entry.rootCommand,
+          entry.activeSkills,
         );
 
         return {
@@ -307,9 +320,8 @@ export class AgentLoopStateMachine {
           step: entry.step,
           prompt: entry.prompt,
           messages: state.messages,
-          actionDirective: state.actionDirective,
+          rootCommand: state.rootCommand,
           loadedToolNames: state.loadedToolNames,
-          plannerLedger: state.plannerLedger,
         },
         events: this.eventFactory.promptRendered(
           entry.requestId,
@@ -513,7 +525,8 @@ export class AgentLoopStateMachine {
       loadedToolNames: this.config.dynamicTools ? loadedToolNames : state.loadedToolNames,
       plannerLedger,
       lastDecisionXml: responseText,
-      actionDirective: undefined,
+      rootCommand: undefined,
+      activeSkills: [],
       stepTraces: [...state.stepTraces, ...toolTraces],
     };
 
@@ -546,8 +559,11 @@ export class AgentLoopStateMachine {
       kind: "render_prompt",
       requestId: state.requestId,
       step: state.step,
+      input: state.input,
       loadedToolNames: state.loadedToolNames,
-      actionDirective: state.actionDirective,
+      rootCommand: state.rootCommand,
+      systemPromptPreamble: state.systemPromptPreamble,
+      activeSkills: state.activeSkills,
     };
   }
 

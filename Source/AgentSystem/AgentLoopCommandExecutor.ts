@@ -28,10 +28,14 @@ import {
   agentActionToolSearchQueries,
 } from "./AgentActionPlanner.js";
 import { throwIfAborted } from "./AgentCancellation.js";
+import type { ResolvedAgentLoopConfig } from "./Types.js";
+import { AgentWorkflowSelector } from "./AgentWorkflowSelector.js";
+import type { AgentRootCommandWorkflowRecommendation } from "./AgentRootCommand.js";
 
 export interface AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
   model: AgentLanguageModel;
+  agentLoopConfig?: ResolvedAgentLoopConfig;
 }
 
 export class AgentLoopCommandExecutor {
@@ -41,8 +45,11 @@ export class AgentLoopCommandExecutor {
   private readonly resultRenderer: AgentToolResultXmlRenderer;
   private readonly decisionXmlCollector;
   private readonly actionPlannerContextBuilder;
+  private readonly agentLoopConfig: ResolvedAgentLoopConfig;
+  private readonly workflowSelector: AgentWorkflowSelector;
 
   constructor(private readonly options: AgentLoopCommandExecutorOptions) {
+    this.agentLoopConfig = options.agentLoopConfig ?? options.runtime.agentLoopConfig;
     const errorFactory = new AgentDecisionErrorFactory({
       registry: options.runtime.registry,
       promptRenderer: options.runtime.promptRenderer,
@@ -55,7 +62,11 @@ export class AgentLoopCommandExecutor {
     this.actionPlannerContextBuilder = new AgentActionPlannerContextBuilder(
       options.runtime.workspaceRoot,
       options.runtime.artifactsConfig.RootDir,
+      {
+        stalledStepLag: options.runtime.actionPlannerConfig.Evidence.StalledStepLag,
+      },
     );
+    this.workflowSelector = new AgentWorkflowSelector(options.runtime.registry);
   }
 
   async execute(
@@ -78,8 +89,20 @@ export class AgentLoopCommandExecutor {
     onEvent?: AgentEventSink,
     signal?: AbortSignal,
   ): Promise<AgentLoopCommandResult> {
-    const dynamicTools = this.options.runtime.agentLoopConfig.LoadedTools === "dynamic";
+    const dynamicTools = this.agentLoopConfig.LoadedTools === "dynamic";
     const timelineMessages = this.buildActionPlannerTimelineMessages(command);
+    const activeSkills = this.options.runtime.skillActivation.activate({
+      input: command.input,
+    });
+    const plannerLoadedToolNames = this.options.runtime.toolSearch.resolvePlannedLoadedTools({
+      input: command.input,
+      loadedTools: this.agentLoopConfig.LoadedTools,
+      currentLoadedTools: command.loadedToolNames,
+      preferredTools: [],
+      queries: [],
+      needs: [],
+      discover: false,
+    });
     const plan = await this.options.runtime.actionPlanner.plan({
       requestId: command.requestId,
       input: this.actionPlannerContextBuilder.buildInput({
@@ -87,11 +110,12 @@ export class AgentLoopCommandExecutor {
         userMessage: command.input,
         currentStep: command.step,
         dynamicTools,
-        loadedToolNames: command.loadedToolNames,
+        loadedToolNames: plannerLoadedToolNames,
         messages: timelineMessages,
         conversationEntries: command.conversationEntries,
         ledger: command.plannerLedger,
         toolCatalog: this.options.runtime.toolCatalog.list(),
+        activeSkills,
       }),
       signal,
       onStage: async (event) => {
@@ -104,22 +128,33 @@ export class AgentLoopCommandExecutor {
         );
       },
     });
-    const decision = plan.kind === "planned" ? plan.decision : undefined;
-    const loadedToolNames = decision
-      ? this.options.runtime.toolSearch.resolvePlannedLoadedTools({
-          input: command.input,
-          loadedTools: this.options.runtime.agentLoopConfig.LoadedTools,
-          currentLoadedTools: command.loadedToolNames,
-          preferredTools: agentActionPreferredTools(decision),
-          queries: agentActionToolSearchQueries(decision),
-          needs: agentActionCapabilityNeeds(decision),
-          discover: decision.action === "discover_tools",
-        })
-      : this.options.runtime.toolSearch.resolvePlannedLoadedTools({
-          input: command.input,
-          loadedTools: this.options.runtime.agentLoopConfig.LoadedTools,
-          currentLoadedTools: command.loadedToolNames,
-        });
+    const decision = plan.decision;
+    const workflowRecommendations = decision.action === "answer"
+      ? []
+      : this.workflowSelector.select({
+        input: command.input,
+        activeSkills,
+      }).map(projectWorkflowRecommendation);
+    const workflowRecommendedTools: string[] = [];
+    const loadedToolNames = this.options.runtime.toolSearch.resolvePlannedLoadedTools({
+      input: command.input,
+      loadedTools: this.agentLoopConfig.LoadedTools,
+      currentLoadedTools: plannerLoadedToolNames,
+      preferredTools: [
+        ...agentActionPreferredTools(decision),
+        ...workflowRecommendedTools,
+      ],
+      queries: agentActionToolSearchQueries(decision),
+      needs: agentActionCapabilityNeeds(decision),
+      discover: decision.action === "discover_tools",
+    });
+    const rootCommand = this.options.runtime.promptContextBuilder.buildRootCommand({
+      decision,
+      loadedToolNames,
+      taskContract: plan.taskFrame,
+      workflowRecommendedTools,
+      workflowRecommendations,
+    });
 
     this.options.runtime.toolSearch.rememberAutoSearch(
       command.requestId,
@@ -136,6 +171,7 @@ export class AgentLoopCommandExecutor {
         plan,
         loadedToolNames,
         plannerLedger: command.plannerLedger,
+        activeSkills,
         conversationEntries: [
           ...command.conversationEntries,
           createPlannerJournalEntry({
@@ -145,7 +181,7 @@ export class AgentLoopCommandExecutor {
             loadedToolNames,
           }),
         ],
-        actionDirective: decision,
+        rootCommand,
       },
     };
   }
@@ -185,7 +221,9 @@ export class AgentLoopCommandExecutor {
     const prompt = await this.options.runtime.promptRenderer.renderFile(template.path, {
       ...this.options.runtime.promptContextBuilder.buildBaseContext({
         loadedToolNames: command.loadedToolNames,
-        actionDirective: command.actionDirective,
+        rootCommand: command.rootCommand,
+        skillQuery: command.input,
+        activeSkills: command.activeSkills,
         toolSections: {
           summary: toolDescription?.SummarySection,
           trigger: toolDescription?.TriggerSection,
@@ -198,6 +236,9 @@ export class AgentLoopCommandExecutor {
         },
       }),
     });
+    const renderedPrompt = command.systemPromptPreamble
+      ? `${command.systemPromptPreamble}\n\n${prompt}`
+      : prompt;
 
     return {
       kind: "succeeded",
@@ -205,8 +246,8 @@ export class AgentLoopCommandExecutor {
         kind: "prompt_rendered",
         requestId: command.requestId,
         step: command.step,
-        prompt,
-        promptTokenCount: this.options.runtime.tokenEstimator.estimate(prompt).tokenCount,
+        prompt: renderedPrompt,
+        promptTokenCount: this.options.runtime.tokenEstimator.estimate(renderedPrompt).tokenCount,
       },
     };
   }
@@ -223,8 +264,7 @@ export class AgentLoopCommandExecutor {
         step: command.step,
         systemPrompt: command.prompt,
         messages: command.messages,
-        actionDirective: command.actionDirective,
-        loadedToolNames: command.loadedToolNames,
+        rootCommand: command.rootCommand,
         onEvent,
         signal,
       });
@@ -331,7 +371,7 @@ export class AgentLoopCommandExecutor {
       const loadedToolNames = this.options.runtime.toolSearch.afterToolResults({
         requestId: command.requestId,
         loadedTools: command.loadedToolNames,
-        dynamicTools: this.options.runtime.agentLoopConfig.LoadedTools === "dynamic",
+        dynamicTools: this.agentLoopConfig.LoadedTools === "dynamic",
         execution: recordedExecution,
       });
       const plannerLedger = this.actionPlannerContextBuilder.advanceAfterToolResults({
@@ -465,4 +505,18 @@ export class AgentLoopCommandExecutor {
       }),
     ];
   }
+}
+
+function projectWorkflowRecommendation(
+  result: ReturnType<AgentWorkflowSelector["select"]>[number],
+): AgentRootCommandWorkflowRecommendation {
+  return {
+    name: result.workflow.name,
+    title: result.workflow.title,
+    description: result.workflow.description,
+    sources: result.sources,
+    matchedSkills: result.matchedSkills,
+    matchedAgents: result.matchedAgents,
+    matchedTerms: result.matchedTerms,
+  };
 }

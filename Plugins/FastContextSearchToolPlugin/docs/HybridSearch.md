@@ -2,7 +2,7 @@
 
 ## 简述
 
-用混合检索定位本地代码、配置、文档或 UI 文案的候选位置。
+用 ripgrep + 路径/文件名模糊检索 + SQLite FTS5/trigram + 路径索引定位本地代码、配置、文档或 UI 文案的候选位置。
 
 ## 何时使用
 
@@ -14,7 +14,7 @@
 
 ## 配置
 
-读取 `PluginConfig.toml` 的 roots、exclude、结果数、上下文行数、文件大小和 `.state` 索引设置。
+读取 `PluginConfig.toml` 的 roots、exclude、SQLite tokenizer、分块策略、analyzers、引擎列表和权重。
 
 ## 输入
 
@@ -22,7 +22,7 @@
 
 ## 输出
 
-返回候选 path、line、snippet、score、source、warnings 和 availableRoots。结果是定位线索，不是完整上下文。
+返回候选 path、line、snippet、score、source、reason、focus、warnings、availableRoots 和 stats。`focus` 表示本次命中的关键字符或片段，可优先用它判断候选是否真的相关。结果是定位线索，不是完整上下文。
 
 ## 调用示例
 

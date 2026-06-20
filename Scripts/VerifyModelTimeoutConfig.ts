@@ -110,6 +110,8 @@ assert.equal(resolveAgentDefaults(configuredDefaults).Cli.Display.PreviewTokenLi
 assert.equal(resolveModelProviderConfig(configuredDefaults).Temperature, 0.7);
 assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Model, "planner-default-model");
 assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Temperature, 0.3);
+assert.equal(resolveActionPlannerConfig(configuredDefaults).TaskFrameClient.Model, "planner-default-model");
+assert.equal(resolveActionPlannerConfig(configuredDefaults).EvidenceClient.Model, "planner-default-model");
 assert.equal(resolveFrontendConfig(configuredDefaults).DevServer.Port, 5174);
 assert.equal(resolveFrontendConfig(configuredDefaults).PreviewServer.Port, 4174);
 assert.equal(resolveFrontendConfig(configuredDefaults).Client.WebSocketUrl, "ws://127.0.0.1:8787");
@@ -134,6 +136,41 @@ const configured = resolveModelProviderConfig(parseConfig({
 }));
 assert.equal(configured.FirstTokenTimeoutMs, 5000);
 assert.equal(configured.MaxRequestMs, 180000);
+
+const splitPlanner = resolveActionPlannerConfig(parseConfig({
+  ...baseConfig,
+  ModelProviders: [
+    {
+      Id: "gpt-planner",
+      Endpoint: "Responses",
+      Model: "gpt-planner-model",
+    },
+    {
+      Id: "mistral-large-latest",
+      Endpoint: "ChatCompletions",
+      Model: "mistral-large-latest",
+    },
+  ],
+  ActionPlanner: {
+    TaskFrameClient: {
+      ModelProviderId: "gpt-planner",
+      Temperature: 0.1,
+      MaxTokens: 4096,
+    },
+    EvidenceClient: {
+      ModelProviderId: "mistral-large-latest",
+      Temperature: 0,
+      MaxTokens: 2048,
+    },
+  },
+}));
+assert.equal(splitPlanner.TaskFrameClient.Provider, "openai-responses");
+assert.equal(splitPlanner.TaskFrameClient.Model, "gpt-planner-model");
+assert.equal(splitPlanner.TaskFrameClient.MaxTokens, 4096);
+assert.equal(splitPlanner.EvidenceClient.Provider, "openai-generic");
+assert.equal(splitPlanner.EvidenceClient.Model, "mistral-large-latest");
+assert.equal(splitPlanner.EvidenceClient.Temperature, 0);
+assert.equal(splitPlanner.EvidenceClient.MaxTokens, 2048);
 
 assert.throws(() => parseConfig({
   ...baseConfig,

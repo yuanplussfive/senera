@@ -6,6 +6,7 @@ package-lock.json
 Dist/
 Frontend/dist/
 Frontend/.vite-dev*.log
+Frontend/*.log
 Frontend/tsconfig.tsbuildinfo
 node_modules/
 .senera/

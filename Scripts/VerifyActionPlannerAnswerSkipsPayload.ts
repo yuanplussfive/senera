@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
 import { AgentActionPlannerStageNames, type AgentActionPlannerStageEvent } from "../Source/AgentSystem/AgentActionPlannerTelemetry.js";
-import type { ResolvedAgentActionPlannerConfig, ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
-import { createActionPlanInputFixture } from "./ActionPlannerFixture.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
+import {
+  createActionPlannerConfigFixture,
+  createActionPlanInputFixture,
+} from "./ActionPlannerFixture.js";
 
 const provider: ResolvedAgentModelProviderConfig = {
   Id: "test",
@@ -22,18 +25,17 @@ const provider: ResolvedAgentModelProviderConfig = {
   Headers: {},
 };
 
-const config: ResolvedAgentActionPlannerConfig = {
-  Enabled: true,
-  MaxRepairAttempts: 0,
-  Client: {
-    Provider: "auto",
+const config = createActionPlannerConfigFixture({
+  maxRepairAttempts: 0,
+  client: {
+    Provider: "openai-generic",
     BaseUrl: "https://example.test/v1",
     ApiKey: "test-key",
     Model: "test-model",
     Temperature: 0.1,
     MaxTokens: -1,
   },
-};
+});
 
 void main();
 
@@ -49,7 +51,18 @@ async function main(): Promise<void> {
       choices: [{
         delta: {
           content: JSON.stringify({
-            action: "Answer",
+            taskType: "direct answer",
+            answerGoal: "直接回答",
+            intentTags: ["direct-answer"],
+            targetRefs: [],
+            candidateTools: [],
+            discoveryQueries: [],
+            requiredEffects: [],
+            requiredEvidence: [],
+            userInputNeeds: [],
+            nextStepPurpose: "Answer directly from the current conversation.",
+            completionCriteria: ["No external evidence is required."],
+            notes: [],
           }),
         },
       }],
@@ -85,8 +98,10 @@ async function main(): Promise<void> {
     assert.equal(result.payloadRepaired, false);
     assert.equal(requests.length, 1);
     assert.deepEqual(telemetry.map((event) => `${event.stage}:${event.status}`), [
-      `${AgentActionPlannerStageNames.SelectAction}:started`,
-      `${AgentActionPlannerStageNames.SelectAction}:completed`,
+      `${AgentActionPlannerStageNames.BuildTaskFrame}:started`,
+      `${AgentActionPlannerStageNames.BuildTaskFrame}:completed`,
+      `${AgentActionPlannerStageNames.EvaluateEvidence}:started`,
+      `${AgentActionPlannerStageNames.EvaluateEvidence}:completed`,
     ]);
 
     console.log("Action planner answer skip-payload verification passed.");

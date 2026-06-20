@@ -18,6 +18,10 @@ import {
   parseAgentArtifactUri,
   toPosixPath,
 } from "./Artifacts/AgentArtifactLocator.js";
+import {
+  normalizeToolArrayArgument,
+  normalizeToolNumberArgument,
+} from "./AgentToolArgumentNormalization.js";
 
 const ReadableArtifactRefs = [
   "summary",
@@ -67,9 +71,9 @@ const ReadableArtifactRefDefinitions = {
 
 const ArtifactMemoryReadArgumentsSchema = z
   .object({
-    artifactUris: z.preprocess(coerceArrayItems, z.array(z.string().trim().min(1)).min(1)),
-    refs: z.preprocess(coerceArrayItems, z.array(z.enum(ReadableArtifactRefs)).min(1)).optional(),
-    maxBytesPerRef: z.preprocess(coerceNumberLike, z.number().int().positive()).optional(),
+    artifactUris: z.preprocess(normalizeToolArrayArgument, z.array(z.string().trim().min(1)).min(1)),
+    refs: z.preprocess(normalizeToolArrayArgument, z.array(z.enum(ReadableArtifactRefs)).min(1)).optional(),
+    maxBytesPerRef: z.preprocess(normalizeToolNumberArgument, z.number().int().positive()).optional(),
   })
   .strict();
 
@@ -478,27 +482,6 @@ function artifactMemoryFailure(
     exitCode: null,
     signal: null,
   };
-}
-
-function coerceArrayItems(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value;
-  }
-
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const item = (value as Record<string, unknown>).item;
-    return Array.isArray(item) ? item : value;
-  }
-
-  return value;
-}
-
-function coerceNumberLike(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return value;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? Number(trimmed) : value;
 }
 
 const EmptyArtifactInternalRoutingFields = new Set<string>();

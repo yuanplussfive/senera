@@ -2,7 +2,7 @@
 
 ## 简述
 
-查询本地持久化全文/符号索引，用于跨文件宽召回和模糊定位。
+查询本地 SQLite FTS5/trigram 持久索引，并结合路径/文件名模糊检索，用于跨文件宽召回、路径片段和代码子串定位。
 
 ## 何时使用
 
@@ -14,7 +14,7 @@
 
 ## 配置
 
-读取 `PluginConfig.toml` 的 roots、exclude、索引文件数、结果数、文件大小和 `.state` 路径；不按扩展名白名单拦截。
+读取 `PluginConfig.toml` 的 roots、exclude、SQLite tokenizer、分块策略、analyzers、引擎权重和 `.state` 路径。
 
 ## 输入
 
@@ -22,7 +22,7 @@
 
 ## 输出
 
-返回 path、line、snippet、score、stats 和 warnings。
+返回 path、line、snippet、score、source、reason、focus、stats 和 warnings。`focus` 表示路径或文本命中的关键片段，`stats.engines` 会说明使用了哪些索引引擎。
 
 ## 调用示例
 

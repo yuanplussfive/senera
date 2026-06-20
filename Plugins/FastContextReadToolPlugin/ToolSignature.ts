@@ -11,3 +11,33 @@ export type FastContextReadToolArguments = {
   // 最大返回字符数，范围 500..50000；默认 12000。
   maxChars?: number
 }
+
+export type FastContextReadToolResult =
+  | {
+      kind: "file"
+      path: string
+      startLine: number
+      endLine: number
+      totalLines: number
+      content: string
+      truncated: boolean
+    }
+  | {
+      kind: "directory"
+      path: string
+      children: { item: string[] }
+      childCount: number
+      directoryCount: number
+      fileCount: number
+      truncated: boolean
+      guidance: { item: string[] }
+    }
+  | {
+      kind: "missing_path"
+      requestedPath: string
+      nearestExistingParent: string
+      parentChildren: { item: string[] }
+      suggestions: { item: string[] }
+      availableRoots: { item: string[] }
+      guidance: { item: string[] }
+    }

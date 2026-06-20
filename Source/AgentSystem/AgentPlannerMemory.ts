@@ -105,12 +105,10 @@ export class AgentPlannerMemoryProjector {
       record: {
         requestId: options.requestId,
         step: options.step,
-        selectedAction: options.plan.kind === "planned" ? options.plan.decision.action : "fallback",
-        decision: options.plan.kind === "planned"
-          ? options.plan.decision
-          : { reason: options.plan.reason },
-        evidenceRefs: options.plan.input?.timeline.flatMap((turn) => turn.evidenceRefs) ?? [],
-        artifactUris: options.plan.input?.timeline.flatMap((turn) => turn.artifactUris) ?? [],
+        selectedAction: options.plan.decision.action,
+        decision: options.plan.decision,
+        evidenceRefs: options.plan.input.timeline.flatMap((turn) => turn.evidenceRefs),
+        artifactUris: options.plan.input.timeline.flatMap((turn) => turn.artifactUris),
         loadedTools: options.loadedToolNames === "all" ? ["all"] : [...options.loadedToolNames],
         result: options.plan.kind,
         createdAt,
@@ -153,7 +151,6 @@ export class AgentPlannerMemoryProjector {
             locator: entry.locator,
             display: entry.display,
             label: entry.label,
-            confidence: entry.confidence,
             toolName: result.name,
             artifactUri: readArtifactUri(artifact.artifactUri),
             facts: entry.plannerMemory.facts,
@@ -213,7 +210,6 @@ function projectEvidenceMemoryItem(evidence: PlannerEvidenceMemoryItem): Planner
     locator: evidence.locator,
     display: evidence.display,
     label: evidence.label,
-    confidence: evidence.confidence,
     toolName: evidence.toolName,
     artifactUri: readArtifactUri(evidence.artifactUri),
     facts: readEvidenceFacts(evidence),

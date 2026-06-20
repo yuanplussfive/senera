@@ -1,4 +1,5 @@
-import type { ActionPlanInput } from "./BamlClient/baml_client/index.js";
+import type { ActionPlanInput, TaskFrame } from "./BamlClient/baml_client/index.js";
+import type { AgentCompletionGateDecision } from "./AgentCompletionGate.js";
 
 export type AgentActionKind =
   | "answer"
@@ -29,6 +30,7 @@ export type AgentActionDecision =
       useTools: {
         preferredTools: string[];
         instruction: string;
+        needs: AgentActionCapabilityNeed[];
       };
     };
 
@@ -41,20 +43,16 @@ export interface AgentActionCapabilityNeed {
   effects: string[];
 }
 
-export type AgentActionPlanResult =
-  | {
-      kind: "planned";
-      decision: AgentActionDecision;
-      input: ActionPlanInput;
-      selectedAction: AgentActionKind;
-      selectionRepaired: boolean;
-      payloadRepaired: boolean;
-    }
-  | {
-      kind: "fallback";
-      reason: string;
-      input?: ActionPlanInput;
-    };
+export interface AgentActionPlanResult {
+  kind: "planned";
+  decision: AgentActionDecision;
+  input: ActionPlanInput;
+  taskFrame?: TaskFrame;
+  evidenceDecision?: AgentCompletionGateDecision;
+  selectedAction: AgentActionKind;
+  selectionRepaired: boolean;
+  payloadRepaired: boolean;
+}
 
 export function agentActionPreferredTools(decision: AgentActionDecision | undefined): string[] {
   return decision?.action === "use_tools" ? decision.useTools.preferredTools : [];
@@ -65,7 +63,13 @@ export function agentActionToolSearchQueries(decision: AgentActionDecision | und
 }
 
 export function agentActionCapabilityNeeds(decision: AgentActionDecision | undefined): AgentActionCapabilityNeed[] {
-  return decision?.action === "discover_tools" ? decision.discoverTools.needs : [];
+  if (decision?.action === "discover_tools") {
+    return decision.discoverTools.needs;
+  }
+  if (decision?.action === "use_tools") {
+    return decision.useTools.needs;
+  }
+  return [];
 }
 
 export function agentActionInstruction(decision: AgentActionDecision | undefined): string {

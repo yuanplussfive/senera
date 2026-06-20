@@ -80,6 +80,16 @@ const ToolSearchSchema = z
   })
   .strict();
 
+const ToolEvidenceCapabilitySchema = z
+  .object({
+    Produces: z.string().min(1),
+    Quality: z.string().min(1),
+    Satisfies: z.array(z.string().min(1)).optional(),
+    Kinds: z.array(z.string().min(1)).optional(),
+    CapabilityIds: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 const ToolArtifactRedactionSchema = z
   .object({
     Keys: z.array(z.string().min(1)).optional(),
@@ -215,8 +225,108 @@ const ToolSchema = z
     Permissions: z.array(z.string()).optional(),
     Handler: ToolHandlerSchema.optional(),
     Search: ToolSearchSchema.optional(),
+    EvidenceCapabilities: z.array(ToolEvidenceCapabilitySchema).optional(),
     Artifacts: ToolArtifactPolicySchema.optional(),
     ArtifactPolicyFile: z.string().min(1).optional(),
+  })
+  .strict();
+
+const SkillEvidenceRequirementSchema = z
+  .object({
+    Need: z.string().min(1),
+    Accepts: z.array(z.string().min(1)).min(1),
+    MinimumQuality: z.array(z.string().min(1)).optional(),
+    Minimum: z.number().int().min(1).optional(),
+    Purpose: z.string().min(1).optional(),
+  })
+  .strict();
+
+const SkillSchema = z
+  .object({
+    Name: z.string().min(1),
+    Title: z.string().min(1).optional(),
+    DescriptionFile: z.string().min(1),
+    WorkflowFile: z.string().min(1).optional(),
+    RecommendedTools: z.array(z.string().min(1)).optional(),
+    RecommendedAgents: z.array(z.string().min(1)).optional(),
+    RecommendedWorkflows: z.array(z.string().min(1)).optional(),
+    EvidenceRequirements: z.array(SkillEvidenceRequirementSchema).optional(),
+    Search: ToolSearchSchema.optional(),
+  })
+  .strict();
+
+const AgentSchema = z
+  .object({
+    Name: z.string().min(1),
+    Title: z.string().min(1).optional(),
+    DescriptionFile: z.string().min(1),
+    InstructionsFile: z.string().min(1),
+    RecommendedTools: z.array(z.string().min(1)).optional(),
+    ContextPack: z.string().min(1),
+    OutputSchema: z.string().min(1),
+    RuntimeProfile: z.string().min(1),
+    Search: ToolSearchSchema.optional(),
+  })
+  .strict();
+
+const AgentContextPackSchema = z
+  .object({
+    Name: z.string().min(1),
+    Description: z.string().min(1).optional(),
+    TemplateFile: z.string().min(1),
+    Inputs: z.array(z.string().min(1)).min(1),
+    ToolScope: z.string().min(1),
+    History: z.string().min(1),
+    Artifacts: z.string().min(1),
+    Evidence: z.string().min(1).optional(),
+  })
+  .strict();
+
+const AgentMergePolicySchema = z
+  .object({
+    Name: z.string().min(1),
+    Description: z.string().min(1).optional(),
+    Strategy: z.string().min(1),
+    TemplateFile: z.string().min(1),
+    OutputSchema: z.string().min(1).optional(),
+  })
+  .strict();
+
+const AgentWorkflowTriggerSchema = z
+  .object({
+    Skills: z.array(z.string().min(1)).optional(),
+    Agents: z.array(z.string().min(1)).optional(),
+    Keywords: z.array(z.string().min(1)).optional(),
+    Capabilities: z.array(ToolSearchCapabilitySchema).optional(),
+  })
+  .strict();
+
+const AgentWorkflowJobSchema = z
+  .object({
+    Agent: z.string().min(1),
+    TaskFile: z.string().min(1),
+    ContextPack: z.string().min(1).optional(),
+    Required: z.boolean().optional(),
+  })
+  .strict();
+
+const AgentWorkflowExecutionSchema = z
+  .object({
+    Strategy: z.enum(["sequential", "parallel"]),
+    MaxConcurrency: z.number().int().min(1).optional(),
+  })
+  .strict();
+
+const AgentWorkflowSchema = z
+  .object({
+    Name: z.string().min(1),
+    Title: z.string().min(1).optional(),
+    Description: z.string().min(1).optional(),
+    Trigger: AgentWorkflowTriggerSchema,
+    Execution: AgentWorkflowExecutionSchema,
+    Jobs: z.array(AgentWorkflowJobSchema).min(1),
+    MergePolicy: z.string().min(1),
+    Search: ToolSearchSchema.optional(),
   })
   .strict();
 
@@ -235,6 +345,79 @@ const TemplateSchema = z
   .object({
     Name: z.string().min(1),
     Path: z.string().min(1),
+  })
+  .strict();
+
+const RootCommandToolSelectorSchema = z.discriminatedUnion("Source", [
+  z
+    .object({
+      Source: z.literal("None"),
+    })
+    .strict(),
+  z
+    .object({
+      Source: z.literal("Loaded"),
+    })
+    .strict(),
+  z
+    .object({
+      Source: z.literal("NamedLoaded"),
+      Names: z.array(z.string().min(1)).min(1),
+    })
+    .strict(),
+  z
+    .object({
+      Source: z.literal("HostCapability"),
+      Capability: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      Source: z.literal("PreferredLoaded"),
+    })
+    .strict(),
+  z
+    .object({
+      Source: z.literal("PreferredLoadedOrLoaded"),
+    })
+    .strict(),
+]);
+
+const RootCommandVisibleOutputRuleSchema = z
+  .object({
+    Name: z.string().min(1),
+    Value: z.string().min(1),
+    Instruction: z.string().min(1).optional(),
+  })
+  .strict();
+
+const RootCommandVisibleOutputSchema = z
+  .object({
+    Audience: z.string().min(1),
+    Start: z.string().min(1),
+    Format: z.string().min(1),
+    Rules: z.array(RootCommandVisibleOutputRuleSchema),
+    Repair: z
+      .object({
+        Instruction: z.string().min(1),
+        Rules: z.array(RootCommandVisibleOutputRuleSchema),
+      })
+      .strict(),
+  })
+  .strict();
+
+const RootCommandSchema = z
+  .object({
+    Action: z.string().min(1),
+    OutputMode: z.enum(["tool_call_xml", "final_text", "open"]),
+    ToolAccess: z.enum(["disabled", "restricted", "discovery_only"]),
+    Objective: z.string().min(1),
+    InsufficiencyPolicy: z.string().min(1),
+    AllowedTools: z.array(RootCommandToolSelectorSchema),
+    ForbiddenOutputs: z.array(z.string().min(1)),
+    VisibleOutput: RootCommandVisibleOutputSchema,
+    IncludeDecisionProtocol: z.boolean(),
+    IncludeToolCatalog: z.boolean(),
   })
   .strict();
 
@@ -281,9 +464,15 @@ export const PluginManifestSchema = z
       .optional(),
     DecisionActions: z.array(DecisionActionSchema).optional(),
     Tools: z.array(ToolSchema).optional(),
+    Skills: z.array(SkillSchema).optional(),
+    Agents: z.array(AgentSchema).optional(),
+    ContextPacks: z.array(AgentContextPackSchema).optional(),
+    Workflows: z.array(AgentWorkflowSchema).optional(),
+    MergePolicies: z.array(AgentMergePolicySchema).optional(),
     Resources: z.array(z.unknown()).optional(),
     Prompts: z.array(z.unknown()).optional(),
     Templates: z.array(TemplateSchema).optional(),
+    RootCommands: z.array(RootCommandSchema).optional(),
     Security: SecuritySchema.optional(),
     Prompting: PromptingSchema.optional(),
     XmlProtocol: z.record(z.string(), z.unknown()).optional(),

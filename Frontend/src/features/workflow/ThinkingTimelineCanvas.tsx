@@ -110,6 +110,10 @@ function CanvasArea({
 
   const handleNodeClick = useCallback<NodeMouseHandler<Node<StepNodeData>>>(
     (_, node) => {
+      if (node.data.kind !== "step") {
+        startTransition(() => setSelectedStepId(null));
+        return;
+      }
       if (node.id === selectedStepId) return;
       startTransition(() => setSelectedStepId(node.id));
     },

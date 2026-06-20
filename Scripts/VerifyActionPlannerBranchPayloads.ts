@@ -50,38 +50,58 @@ async function main(): Promise<void> {
     useTools: {
       preferredTools: ["FastContextWorkspaceMapTool"],
       instruction: "Inspect the workspace structure.",
+      needs: [],
     },
   };
   const promptRenderer = new AgentPromptRenderer();
-  const promptContext = new AgentPromptContextBuilder(registry, config).buildBaseContext({
+  const promptContextBuilder = new AgentPromptContextBuilder(registry, config);
+  const useToolsRootCommand = promptContextBuilder.buildRootCommand({
+    decision: useTools,
     loadedToolNames: ["ToolSearchTool", "FastContextWorkspaceMapTool"],
-    actionDirective: useTools,
   });
-  const template = registry.getTemplate("ActionDirective");
-  assert.ok(template, "ActionDirective template should be registered");
+  const promptContext = promptContextBuilder.buildBaseContext({
+    loadedToolNames: ["ToolSearchTool", "FastContextWorkspaceMapTool"],
+    rootCommand: useToolsRootCommand,
+  });
+  const template = registry.getTemplate("BaseSystemPrompt");
+  assert.ok(template, "BaseSystemPrompt template should be registered");
   const directiveText = await promptRenderer.renderFile(template.path, {
     ...promptContext,
   });
-  assert.match(directiveText, /<action>use_tools<\/action>/);
-  assert.match(directiveText, /<instruction>Inspect the workspace structure\.<\/instruction>/);
-  assert.match(directiveText, /<tool>FastContextWorkspaceMapTool<\/tool>/);
-  assert.doesNotMatch(directiveText, /<intent>/);
-  assert.doesNotMatch(directiveText, /<confidence>/);
-  assert.doesNotMatch(directiveText, /<required_capabilities>/);
-  assert.doesNotMatch(directiveText, /<tags>/);
+  assert.ok(directiveText.includes("<senera_root_command>"));
+  assert.ok(directiveText.includes("<action>use_tools</action>"));
+  assert.ok(directiveText.includes("<instruction>Inspect the workspace structure.</instruction>"));
+  assert.ok(directiveText.includes("<tool>FastContextWorkspaceMapTool</tool>"));
+  assert.ok(directiveText.includes("<tool_protocol>"));
+  assert.ok(!directiveText.includes("<intent>"));
+  assert.ok(!directiveText.includes("<confidence>"));
+  assert.ok(!directiveText.includes("<required_capabilities>"));
+  assert.ok(!directiveText.includes("<tags>"));
 
   const answer: AgentActionDecision = {
     action: "answer",
   };
-  const answerContext = new AgentPromptContextBuilder(registry, config).buildBaseContext({
+  const answerRootCommand = promptContextBuilder.buildRootCommand({
+    decision: answer,
     loadedToolNames: ["ToolSearchTool"],
-    actionDirective: answer,
+  });
+  const answerContext = promptContextBuilder.buildBaseContext({
+    loadedToolNames: ["ToolSearchTool"],
+    rootCommand: answerRootCommand,
   });
   const answerDirectiveText = await promptRenderer.renderFile(template.path, {
     ...answerContext,
   });
-  assert.match(answerDirectiveText, /<action>answer<\/action>/);
-  assert.doesNotMatch(answerDirectiveText, /<instruction>/);
+  assert.ok(answerDirectiveText.includes("<senera_root_command>"));
+  assert.ok(answerDirectiveText.includes("<action>answer</action>"));
+  assert.ok(answerDirectiveText.includes("<output_mode>final_text</output_mode>"));
+  assert.ok(answerDirectiveText.includes("<visible_output_contract>"));
+  assert.ok(answerDirectiveText.includes("<start>answer_body</start>"));
+  assert.ok(answerDirectiveText.includes("<name>first_sentence</name>"));
+  assert.ok(!answerDirectiveText.includes("<tool_protocol>"));
+  assert.ok(!answerDirectiveText.includes("<tools>"));
+  assert.ok(!answerDirectiveText.includes("一旦决定调用工具"));
+  assert.ok(!answerDirectiveText.includes("<senera_action_directive>"));
 
   console.log("Action planner branch payload verification passed.");
 }

@@ -82,6 +82,7 @@ const artifactMemoryTool: RegisteredTool = {
     kind: "HostCapability",
     capability: "artifact.memory.read",
   },
+  evidenceCapabilities: [],
 };
 
 async function main(): Promise<void> {

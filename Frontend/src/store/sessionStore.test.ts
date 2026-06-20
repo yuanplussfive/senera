@@ -39,6 +39,7 @@ function resetStore(): void {
     historyFailedIds: {},
     historyReplayBuffers: {},
     historyStepBuffers: {},
+    historyEventRunIds: {},
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
@@ -98,6 +99,53 @@ function timedEnvelope<TKind extends string, TData>(
 describe("sessionStore history recovery", () => {
   beforeEach(() => {
     resetStore();
+  });
+
+  it("projects scoped child-agent events into the parent run without touching parent streamed text", () => {
+    useStore.getState().ingest(timedEnvelope(
+      EventKinds.RunStarted,
+      "2026-05-29T08:00:00.000Z",
+      { input: "请用子代理并行审查当前 PR" },
+      "session-1",
+      "parent-run",
+    ));
+
+    const scopedModelStarted = timedEnvelope(
+      EventKinds.ModelStarted,
+      "2026-05-29T08:00:01.000Z",
+      { model: "review-model" },
+      "session-1",
+      "child-job-1",
+      1,
+    );
+    scopedModelStarted.scope = {
+      parentRequestId: "parent-run",
+      workflowName: "ParallelPullRequestReview",
+      jobId: "child-job-1",
+      agentName: "SecurityReviewer",
+      role: "childAgent",
+    };
+    useStore.getState().ingest(scopedModelStarted);
+
+    const scopedDelta = timedEnvelope(
+      EventKinds.ModelDelta,
+      "2026-05-29T08:00:02.000Z",
+      { text: "child-only-token" },
+      "session-1",
+      "child-job-1",
+      1,
+    );
+    scopedDelta.scope = scopedModelStarted.scope;
+    useStore.getState().ingest(scopedDelta);
+
+    const run = useStore.getState().sessions["session-1"]?.runs.find((item) => item.requestId === "parent-run");
+    expect(run?.streamingRaw).toBe("");
+    expect(run?.displayText).toBe("");
+    expect(run?.steps.some((step) =>
+      step.scope?.jobId === "child-job-1" &&
+      step.scope?.agentName === "SecurityReviewer" &&
+      step.kind === "model" &&
+      step.status === "running")).toBe(true);
   });
 
   it("opens the latest session with messages when a refreshed list starts with an empty session", () => {
@@ -508,7 +556,7 @@ describe("sessionStore history recovery", () => {
           timedEnvelope(
             EventKinds.ActionPlannerStageStarted,
             "2026-05-29T08:00:01.000Z",
-            { stage: "selectAction" },
+            { stage: "buildTaskFrame" },
             "history-session",
             "req-1",
             1,
@@ -516,7 +564,7 @@ describe("sessionStore history recovery", () => {
           timedEnvelope(
             EventKinds.ActionPlannerStageCompleted,
             "2026-05-29T08:00:01.250Z",
-            { stage: "selectAction", selectedAction: "use_tools" },
+            { stage: "buildTaskFrame" },
             "history-session",
             "req-1",
             1,
@@ -567,7 +615,7 @@ describe("sessionStore history recovery", () => {
     expect(session.runs[0].status).toBe("completed");
     expect(session.runs[0].steps.map((step) => step.title)).toEqual([
       "理解用户问题",
-      "选择行动",
+      "构建任务合约",
       "调用 WeatherTool",
       "生成回复",
     ]);
@@ -575,6 +623,355 @@ describe("sessionStore history recovery", () => {
       startedAt: "2026-05-29T08:00:01.000Z",
       endedAt: "2026-05-29T08:00:01.250Z",
     });
+    expect(session.runs[0].steps.find((step) => step.callId === "call-1")?.toolBatch).toEqual({
+      id: "req-1:1",
+      index: 1,
+      size: undefined,
+    });
+    expect(session.runs[0]).toMatchObject({
+      visibleText: "有雨",
+      displayText: "有雨",
+    });
+  });
+
+  it("rebuilds compact tool traces with stable execution batch metadata", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 2,
+          messageCount: 2,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 2,
+        messageCount: 2,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-compact:user",
+              requestId: "req-compact",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "查两类信息",
+            },
+          },
+          {
+            entry: {
+              id: "req-compact:assistant",
+              requestId: "req-compact",
+              timestamp: "2026-05-29T08:00:04.000Z",
+              kind: "assistant.decision",
+              xml: "<final_answer>查完了</final_answer>",
+            },
+            visible: { kind: "final_answer", text: "查完了" },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-compact",
+            input: "查两类信息",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            endedAt: "2026-05-29T08:00:04.000Z",
+            status: "completed",
+            traces: [
+              {
+                step: 2,
+                seq: 0,
+                kind: "tool",
+                toolName: "SearchTool",
+                callId: "search-call",
+                status: "done",
+              },
+              {
+                step: 2,
+                seq: 1,
+                kind: "tool",
+                toolName: "WeatherTool",
+                callId: "weather-call",
+                status: "done",
+              },
+            ],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    const toolSteps = useStore.getState().sessions["history-session"]?.runs[0]?.steps
+      .filter((step) => step.kind === "tool");
+
+    expect(toolSteps?.map((step) => step.toolBatch)).toEqual([
+      { id: "req-compact:2", index: 0 },
+      { id: "req-compact:2", index: 1 },
+    ]);
+  });
+
+  it("materializes replayed ask-user text without re-entering the typewriter queue", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 2,
+          messageCount: 2,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 2,
+        messageCount: 2,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-ask:user",
+              requestId: "req-ask",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "帮我查一个东西",
+            },
+          },
+          {
+            entry: {
+              id: "req-ask:assistant",
+              requestId: "req-ask",
+              timestamp: "2026-05-29T08:00:02.000Z",
+              kind: "assistant.decision",
+              xml: "<ask_user>请补充查询目标</ask_user>",
+            },
+            visible: { kind: "ask_user", text: "请补充查询目标" },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: "history-session",
+        events: [
+          timedEnvelope(
+            EventKinds.RunStarted,
+            "2026-05-29T08:00:00.000Z",
+            { input: "帮我查一个东西" },
+            "history-session",
+            "req-ask",
+          ),
+          timedEnvelope(
+            EventKinds.AskUser,
+            "2026-05-29T08:00:02.000Z",
+            { question: "请补充查询目标" },
+            "history-session",
+            "req-ask",
+          ),
+          timedEnvelope(
+            EventKinds.RunCompleted,
+            "2026-05-29T08:00:02.010Z",
+            {},
+            "history-session",
+            "req-ask",
+          ),
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    const run = useStore.getState().sessions["history-session"]?.runs[0];
+
+    expect(run).toMatchObject({
+      visibleText: "请补充查询目标",
+      displayText: "请补充查询目标",
+    });
+  });
+
+  it("keeps full persisted run events instead of replacing them with compact step traces", () => {
+    useStore.getState().ingest(envelope(EventKinds.SessionListSnapshot, {
+      sessions: [
+        sessionItem({
+          sessionId: "history-session",
+          entryCount: 2,
+          messageCount: 2,
+        }),
+      ],
+    }));
+    useStore.getState().markHistoryLoading("history-session");
+
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryStarted,
+      {
+        sessionId: "history-session",
+        totalEntries: 2,
+        messageCount: 2,
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: "history-session",
+        entries: [
+          {
+            entry: {
+              id: "req-rich:user",
+              requestId: "req-rich",
+              timestamp: "2026-05-29T08:00:00.000Z",
+              kind: "user.message",
+              content: "并行审查",
+            },
+          },
+          {
+            entry: {
+              id: "req-rich:assistant",
+              requestId: "req-rich",
+              timestamp: "2026-05-29T08:00:04.000Z",
+              kind: "assistant.decision",
+              xml: "<final_answer>完成</final_answer>",
+            },
+            visible: { kind: "final_answer", text: "完成" },
+          },
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: "history-session",
+        runs: [
+          {
+            requestId: "req-rich",
+            input: "并行审查",
+            startedAt: "2026-05-29T08:00:00.000Z",
+            endedAt: "2026-05-29T08:00:04.000Z",
+            status: "completed",
+            traces: [
+              {
+                step: 1,
+                seq: 0,
+                kind: "tool",
+                toolName: "AgentDelegateTool",
+                callId: "delegate",
+                status: "done",
+              },
+            ],
+          },
+        ],
+      },
+      "history-session",
+    ));
+    const childStarted = timedEnvelope(
+      EventKinds.ModelStarted,
+      "2026-05-29T08:00:02.000Z",
+      { model: "review-model" },
+      "history-session",
+      "job-a",
+      1,
+    );
+    childStarted.scope = {
+      parentRequestId: "req-rich",
+      workflowName: "ReviewWorkflow",
+      jobId: "job-a",
+      agentName: "SecurityReviewer",
+      role: "childAgent",
+    };
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: "history-session",
+        events: [
+          timedEnvelope(
+            EventKinds.RunStarted,
+            "2026-05-29T08:00:00.000Z",
+            { input: "并行审查" },
+            "history-session",
+            "req-rich",
+          ),
+          timedEnvelope(
+            EventKinds.ToolCallStarted,
+            "2026-05-29T08:00:01.000Z",
+            { index: 1, toolName: "AgentDelegateTool", callId: "delegate" },
+            "history-session",
+            "req-rich",
+            1,
+          ),
+          timedEnvelope(
+            EventKinds.ToolCallCompleted,
+            "2026-05-29T08:00:01.500Z",
+            { index: 1, toolName: "AgentDelegateTool", callId: "delegate", preview: "planned" },
+            "history-session",
+            "req-rich",
+            1,
+          ),
+          childStarted,
+          timedEnvelope(
+            EventKinds.FinalAnswer,
+            "2026-05-29T08:00:04.000Z",
+            { content: "完成" },
+            "history-session",
+            "req-rich",
+          ),
+          timedEnvelope(
+            EventKinds.RunCompleted,
+            "2026-05-29T08:00:04.010Z",
+            {},
+            "history-session",
+            "req-rich",
+          ),
+        ],
+      },
+      "history-session",
+    ));
+    useStore.getState().ingest(envelope(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: "history-session" },
+      "history-session",
+    ));
+
+    const run = useStore.getState().sessions["history-session"]?.runs[0];
+    expect(run?.steps.some((step) => step.scope?.agentName === "SecurityReviewer")).toBe(true);
+    expect(run?.steps.map((step) => step.id)).toContain("req-rich-answer");
+    expect(run?.steps).toHaveLength(4);
   });
 
   it("does not treat replayed failed run events as history load failures", () => {
@@ -1457,7 +1854,7 @@ describe("sessionStore planner timeline", () => {
     useStore.getState().ingest(timedEnvelope(
       EventKinds.ActionPlannerStageStarted,
       "2026-05-29T08:00:01.000Z",
-      { stage: "selectAction" },
+      { stage: "buildTaskFrame" },
       sessionId,
       requestId,
       1,
@@ -1465,7 +1862,7 @@ describe("sessionStore planner timeline", () => {
     useStore.getState().ingest(timedEnvelope(
       EventKinds.ActionPlannerStageCompleted,
       "2026-05-29T08:00:01.250Z",
-      { stage: "selectAction", selectedAction: "use_tools", repaired: false },
+      { stage: "buildTaskFrame", repaired: false },
       sessionId,
       requestId,
       1,
@@ -1473,7 +1870,7 @@ describe("sessionStore planner timeline", () => {
     useStore.getState().ingest(timedEnvelope(
       EventKinds.ActionPlannerStageStarted,
       "2026-05-29T08:00:01.300Z",
-      { stage: "buildActionPayload" },
+      { stage: "evaluateEvidence" },
       sessionId,
       requestId,
       1,
@@ -1481,7 +1878,7 @@ describe("sessionStore planner timeline", () => {
     useStore.getState().ingest(timedEnvelope(
       EventKinds.ActionPlannerStageCompleted,
       "2026-05-29T08:00:01.700Z",
-      { stage: "buildActionPayload", selectedAction: "use_tools", repaired: false },
+      { stage: "evaluateEvidence", selectedAction: "use_tools" },
       sessionId,
       requestId,
       1,
@@ -1505,14 +1902,13 @@ describe("sessionStore planner timeline", () => {
     const run = useStore.getState().sessions[sessionId]?.runs[0];
     expect(run?.steps.map((step) => step.title)).toEqual([
       "理解用户问题",
-      "选择行动",
-      "构建行动参数 · 调用工具",
+      "构建任务合约",
+      "判断完成状态",
     ]);
     expect(run?.steps[1]).toMatchObject({
       status: "done",
       startedAt: "2026-05-29T08:00:01.000Z",
       endedAt: "2026-05-29T08:00:01.250Z",
-      decisionKind: "use_tools",
     });
     expect(run?.steps[2]).toMatchObject({
       status: "done",
