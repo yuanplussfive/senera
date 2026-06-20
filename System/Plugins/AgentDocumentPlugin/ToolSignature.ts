@@ -69,7 +69,7 @@ export type DocumentToolResult = {
       contentAvailable: boolean
       textAvailable: boolean
       fileType?: string
-      parser?: "officeparser"
+      parser?: string
       textLength?: number
       markdownLength?: number
       chunkCount?: number

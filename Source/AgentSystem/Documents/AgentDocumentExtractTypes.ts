@@ -1,5 +1,3 @@
-import type { SupportedFileType } from "officeparser";
-
 export interface AgentDocumentExtractOptions {
   parse: {
     ocr: boolean;
@@ -23,8 +21,8 @@ export interface AgentDocumentExtractOptions {
 
 export interface AgentDocumentExtractResult {
   status: "extracted";
-  parser: "officeparser";
-  fileType: SupportedFileType;
+  parser: string;
+  fileType: string;
   textPreview: string;
   markdownPreview: string;
   textLength: number;

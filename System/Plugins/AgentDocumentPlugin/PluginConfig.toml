@@ -87,7 +87,32 @@ maxChunks = 24
 # type: number
 maxChunkChars = 1600
 
-[parser.fileTypes.docx]
+[extractors.officeparser]
+# Office/PDF/富文本文档抽取器。
+# type: table
+type = "officeparser"
+enabled = true
+priority = 100
+
+[extractors.text]
+# 通用可解码文本抽取器；按 probe 信号选择，不绑定具体扩展名。
+# type: table
+type = "text"
+enabled = true
+priority = 10
+
+[extractors.text.match]
+# 文本抽取器匹配条件：任一 probe 信号命中即可。
+# type: table
+mediaTypes = ["text"]
+isText = true
+
+[extractors.text.decode]
+# probe 没有给出编码时使用的默认解码。
+# type: table
+defaultEncoding = "utf8"
+
+[extractors.officeparser.fileTypes.docx]
 # officeparser 的 Word 文档 fileType 映射。
 # type: table
 mimes = [
@@ -96,7 +121,7 @@ mimes = [
 ]
 extensions = [".docx", ".docm"]
 
-[parser.fileTypes.pptx]
+[extractors.officeparser.fileTypes.pptx]
 # officeparser 的 PowerPoint fileType 映射。
 # type: table
 mimes = [
@@ -105,7 +130,7 @@ mimes = [
 ]
 extensions = [".pptx", ".pptm"]
 
-[parser.fileTypes.xlsx]
+[extractors.officeparser.fileTypes.xlsx]
 # officeparser 的 Excel fileType 映射。
 # type: table
 mimes = [
@@ -114,49 +139,49 @@ mimes = [
 ]
 extensions = [".xlsx", ".xlsm"]
 
-[parser.fileTypes.pdf]
+[extractors.officeparser.fileTypes.pdf]
 # officeparser 的 PDF fileType 映射。
 # type: table
 mimes = ["application/pdf"]
 extensions = [".pdf"]
 
-[parser.fileTypes.odt]
+[extractors.officeparser.fileTypes.odt]
 # officeparser 的 OpenDocument Text fileType 映射。
 # type: table
 mimes = ["application/vnd.oasis.opendocument.text"]
 extensions = [".odt"]
 
-[parser.fileTypes.odp]
+[extractors.officeparser.fileTypes.odp]
 # officeparser 的 OpenDocument Presentation fileType 映射。
 # type: table
 mimes = ["application/vnd.oasis.opendocument.presentation"]
 extensions = [".odp"]
 
-[parser.fileTypes.ods]
+[extractors.officeparser.fileTypes.ods]
 # officeparser 的 OpenDocument Spreadsheet fileType 映射。
 # type: table
 mimes = ["application/vnd.oasis.opendocument.spreadsheet"]
 extensions = [".ods"]
 
-[parser.fileTypes.rtf]
+[extractors.officeparser.fileTypes.rtf]
 # officeparser 的 RTF fileType 映射。
 # type: table
 mimes = ["application/rtf", "text/rtf"]
 extensions = [".rtf"]
 
-[parser.fileTypes.csv]
+[extractors.officeparser.fileTypes.csv]
 # officeparser 的 CSV fileType 映射。
 # type: table
 mimes = ["text/csv"]
 extensions = [".csv"]
 
-[parser.fileTypes.md]
+[extractors.officeparser.fileTypes.md]
 # officeparser 的 Markdown fileType 映射。
 # type: table
 mimes = ["text/markdown", "text/x-markdown"]
 extensions = [".md", ".markdown"]
 
-[parser.fileTypes.html]
+[extractors.officeparser.fileTypes.html]
 # officeparser 的 HTML fileType 映射。
 # type: table
 mimes = ["text/html"]

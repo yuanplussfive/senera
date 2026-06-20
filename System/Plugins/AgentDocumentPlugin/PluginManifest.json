@@ -4,7 +4,7 @@
     "Title": "文档处理",
     "Version": "0.1.0",
     "Kind": "Tool",
-    "Description": "按 uploadUri 统一处理上传文档：登记、探测 MIME/容器事实，并按配置自动抽取正文、Markdown 预览和 chunks。"
+    "Description": "按 uploadUri 统一处理上传文档：登记、探测 MIME/容器事实，并按配置选择内容抽取器生成正文、Markdown 预览和 chunks。"
   },
   "Discovery": {
     "Tags": [
@@ -154,7 +154,7 @@
         }
       },
       "Search": {
-        "Summary": "按 uploadUri 统一处理上传文档：探测文件事实，并在可解析时自动抽取文本、Markdown 预览和 chunks。",
+        "Summary": "按 uploadUri 统一处理上传文档：探测文件事实，并通过配置化内容抽取器生成文本、Markdown 预览和 chunks。",
         "Keywords": [
           "document",
           "uploadUri",
@@ -175,7 +175,7 @@
           {
             "Id": "document.process",
             "Title": "Document processing",
-            "Description": "Resolve an uploadUri, probe file facts, and optionally extract document text and chunks using plugin configuration.",
+            "Description": "Resolve an uploadUri, probe file facts, and optionally extract content text and chunks through configured extractors.",
             "Facets": {
               "Actions": [
                 "probe",
@@ -187,6 +187,10 @@
               "Targets": [
                 "uploaded-document",
                 "office-document",
+                "text-document",
+                "source-code",
+                "log-file",
+                "config-file",
                 "pdf",
                 "spreadsheet",
                 "presentation",

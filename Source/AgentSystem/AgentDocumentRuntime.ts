@@ -4,7 +4,8 @@ import { resolveUploadsConfig } from "./AgentDefaults.js";
 import { throwIfAborted } from "./AgentCancellation.js";
 import {
   extractAgentDocument,
-  selectOfficeParserFileType,
+  selectAgentDocumentExtractor,
+  type AgentDocumentExtractorConfig,
 } from "./Documents/AgentDocumentExtract.js";
 import { probeAgentDocument } from "./Documents/AgentDocumentProbe.js";
 import type { AgentDocumentProbeResult } from "./Documents/AgentDocumentProbeTypes.js";
@@ -25,12 +26,13 @@ const DocumentArgumentsSchema = z
   })
   .strict();
 
-const FileTypeSelectorSchema = z
+const ExtractorSchema: z.ZodType<AgentDocumentExtractorConfig> = z
   .object({
-    mimes: z.array(z.string().trim().min(1)).optional(),
-    extensions: z.array(z.string().trim().min(1)).optional(),
+    type: z.string().trim().min(1),
+    enabled: z.boolean(),
+    priority: z.number().finite(),
   })
-  .strict();
+  .catchall(z.unknown());
 
 const DocumentPluginConfigSchema = z
   .object({
@@ -40,11 +42,10 @@ const DocumentPluginConfigSchema = z
         modes: z.array(z.string().trim().min(1)).min(1),
       })
       .strict(),
-    parser: z
-      .object({
-        fileTypes: z.record(z.string().trim().min(1), FileTypeSelectorSchema),
-      })
-      .strict(),
+    extractors: z.record(z.string().trim().min(1), ExtractorSchema)
+      .refine((value) => Object.keys(value).length > 0, {
+        message: "DocumentTool 至少需要配置一个 extractor。",
+      }),
     probe: z
       .object({
         sampleBytes: z.number().int().positive(),
@@ -186,7 +187,7 @@ async function handleUploadedDocument(
           {
             ...base,
             status: "probed",
-            message: "Document was probed. No configured text extractor matched this file.",
+            message: "Document was probed. No configured content extractor matched this file.",
           },
         ],
       },
@@ -200,7 +201,7 @@ async function handleUploadedDocument(
     declaredMime: resolved.manifest.declaredMime,
     size: resolved.manifest.size,
     sha256: resolved.manifest.sha256,
-    fileTypes: pluginConfig.parser.fileTypes,
+    extractors: pluginConfig.extractors,
     probe: toProbeOptions(pluginConfig),
     signal: context.signal,
   }, {
@@ -231,7 +232,7 @@ async function handleUploadedDocument(
           warnings: {
             item: extracted.warnings,
           },
-          message: "Document was probed and text was extracted by the configured parser.",
+          message: "Document was probed and text was extracted by the configured extractor.",
         },
       ],
     },
@@ -292,12 +293,7 @@ function canExtractDocument(
   probe: AgentDocumentProbeResult,
   config: DocumentPluginConfig,
 ): boolean {
-  try {
-    selectOfficeParserFileType(probe, config.parser.fileTypes);
-    return true;
-  } catch {
-    return false;
-  }
+  return Boolean(selectAgentDocumentExtractor(probe, config.extractors));
 }
 
 function resolveDocumentMode(value: string | undefined, config: DocumentPluginConfig): string {
