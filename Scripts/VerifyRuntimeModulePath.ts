@@ -4,7 +4,7 @@ import path from "node:path";
 import { toRuntimeModulePath } from "../Source/AgentSystem/AgentPath.js";
 import { AgentSchemaValidator } from "../Source/AgentSystem/AgentSchemaValidator.js";
 
-const workspaceRoot = process.cwd();
+const runtimeAppRoot = path.resolve(__dirname, "..", "..");
 const desktopRuntimeSchemaPath = path.join(
   os.homedir(),
   "AppData",
@@ -18,7 +18,7 @@ const desktopRuntimeSchemaPath = path.join(
   "ToolCallsDecisionSchema.ts",
 );
 const expectedModulePath = path.join(
-  workspaceRoot,
+  runtimeAppRoot,
   "Dist",
   "System",
   "Plugins",

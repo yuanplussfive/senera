@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
-import { loadVerificationConfig } from "./VerificationConfig.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
+import { AgentPromptContractProjector } from "../Source/AgentSystem/AgentPromptContractProjector.js";
+import type { AgentPromptToolContext } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
+import type { AgentRootCommand } from "../Source/AgentSystem/AgentRootCommand.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
   createActionPlannerConfigFixture,
@@ -46,35 +45,14 @@ void main();
 
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();
-  const systemConfig = loadVerificationConfig(workspaceRoot);
-  const registry = new AgentPluginRegistry();
-  for (const plugin of new AgentPluginScanner(workspaceRoot, systemConfig).scan()) {
-    registry.registerPlugin(plugin);
-  }
-
-  const promptContextBuilder = new AgentPromptContextBuilder(registry, systemConfig);
   const loadedToolNames = [
     "FastContextScoutTool",
     "FastContextHybridSearchTool",
   ];
-  const rootCommand = promptContextBuilder.buildRootCommand({
-    decision: {
-      action: "use_tools",
-      useTools: {
-        preferredTools: loadedToolNames,
-        instruction: "定位项目主模型配置文件。",
-        needs: [],
-      },
-    },
-    loadedToolNames,
-  });
-  const promptContext = promptContextBuilder.buildBaseContext({
-    loadedToolNames,
-    skillQuery: "项目主模型配置文件怎么写",
-  });
-
-  const scout = promptContext.ToolCards.find((tool) => tool.name === "FastContextScoutTool");
-  const hybrid = promptContext.ToolCards.find((tool) => tool.name === "FastContextHybridSearchTool");
+  const rootCommand = createRootCommandFixture(loadedToolNames);
+  const toolContracts = createToolContractFixtures(workspaceRoot);
+  const scout = toolContracts.find((tool) => tool.name === "FastContextScoutTool");
+  const hybrid = toolContracts.find((tool) => tool.name === "FastContextHybridSearchTool");
   assert.ok(scout?.argumentsContract, "Scout contract should be loaded.");
   assert.ok(hybrid?.argumentsContract, "Hybrid contract should be loaded.");
   assert.deepEqual(contractFieldNames(scout.argumentsContract), [
@@ -158,7 +136,7 @@ async function main(): Promise<void> {
       input: {
         actionInput: input,
         rootCommand,
-        toolContracts: promptContext.ToolCards,
+        toolContracts,
       },
     });
 
@@ -184,6 +162,78 @@ async function main(): Promise<void> {
   } finally {
     globalThis.fetch = originalFetch;
   }
+}
+
+function createToolContractFixtures(workspaceRoot: string): AgentPromptToolContext[] {
+  const projector = new AgentPromptContractProjector();
+  const signatureFile = path.join(
+    workspaceRoot,
+    "Plugins",
+    "FastContextSearchToolPlugin",
+    "ToolSignature.ts",
+  );
+
+  return [
+    {
+      name: "FastContextScoutTool",
+      description: "Scout workspace context.",
+      whenToUse: "Use when locating project files from a natural-language question.",
+      whenNotToUse: "",
+      documentationXml: "",
+      argumentsContract: projector.projectFromFile(
+        signatureFile,
+        "arguments",
+        "FastContextScoutToolArguments",
+      ),
+    },
+    {
+      name: "FastContextHybridSearchTool",
+      description: "Search workspace context.",
+      whenToUse: "Use when searching workspace text and paths.",
+      whenNotToUse: "",
+      documentationXml: "",
+      argumentsContract: projector.projectFromFile(
+        signatureFile,
+        "arguments",
+        "FastContextHybridSearchToolArguments",
+      ),
+    },
+  ];
+}
+
+function createRootCommandFixture(allowedTools: string[]): AgentRootCommand {
+  return {
+    authority: "senera_runtime_root",
+    action: "use_tools",
+    outputMode: "tool_call_xml",
+    toolAccess: "restricted",
+    objective: "调用允许的工具取得完成当前任务所需的事实或执行结果。",
+    instruction: "定位项目主模型配置文件。",
+    allowedTools,
+    forbiddenOutputs: [
+      "final_answer",
+      "unregistered_tools",
+    ],
+    insufficiencyPolicy: "如果允许工具不足以完成任务，停止并说明阻塞。",
+    preferredTools: allowedTools,
+    workflowRecommendedTools: [],
+    workflowRecommendations: [],
+    toolSearchQueries: [],
+    needs: [],
+    taskContract: null,
+    includeDecisionProtocol: true,
+    includeToolCatalog: true,
+    visibleOutput: {
+      audience: "runtime",
+      start: "tool_call_xml_root",
+      format: "tool_call_xml",
+      rules: [],
+      repair: {
+        instruction: "只输出完整工具调用 XML。",
+        rules: [],
+      },
+    },
+  };
 }
 
 function contractFieldNames(contract: {
