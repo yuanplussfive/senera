@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
-import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
+import { loadVerificationConfig } from "./VerificationConfig.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
 import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
 import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
@@ -91,7 +91,7 @@ function createPlannerFixture(maxRepairAttempts: number): {
   input: Parameters<AgentActionPlanner["planToolCalls"]>[0]["input"];
 } {
   const workspaceRoot = process.cwd();
-  const systemConfig = AgentConfigLoader.load(path.join(workspaceRoot, "senera.config.json"));
+  const systemConfig = loadVerificationConfig(workspaceRoot);
   const registry = new AgentPluginRegistry();
   for (const plugin of new AgentPluginScanner(workspaceRoot, systemConfig).scan()) {
     registry.registerPlugin(plugin);

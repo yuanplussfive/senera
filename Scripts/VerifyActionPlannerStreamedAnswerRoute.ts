@@ -4,7 +4,7 @@ import { AgentEventKinds } from "../Source/AgentSystem/AgentEvent.js";
 import { AgentLoopStateMachine } from "../Source/AgentSystem/AgentLoopStateMachine.js";
 import type { AgentActionPlanResult } from "../Source/AgentSystem/AgentActionPlanner.js";
 import { EmptyActionPlannerLedger } from "../Source/AgentSystem/AgentActionPlannerContext.js";
-import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
+import { loadVerificationConfig } from "./VerificationConfig.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
 import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
 import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
@@ -15,7 +15,7 @@ import {
 import { InteractionRunMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 
 const workspaceRoot = process.cwd();
-const config = AgentConfigLoader.load(path.join(workspaceRoot, "senera.config.json"));
+const config = loadVerificationConfig(workspaceRoot);
 const registry = new AgentPluginRegistry();
 for (const plugin of new AgentPluginScanner(workspaceRoot, config).scan()) {
   registry.registerPlugin(plugin);

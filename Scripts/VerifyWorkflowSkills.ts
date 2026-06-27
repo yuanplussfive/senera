@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
+import { loadVerificationConfig } from "./VerificationConfig.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
 import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
 import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
@@ -13,7 +13,7 @@ void main();
 
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();
-  const config = AgentConfigLoader.load(path.join(workspaceRoot, "senera.config.json"));
+  const config = loadVerificationConfig(workspaceRoot);
   const registry = new AgentPluginRegistry();
   for (const plugin of new AgentPluginScanner(workspaceRoot, config).scan()) {
     registry.registerPlugin(plugin);

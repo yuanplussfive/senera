@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/AgentActionPlannerContext.js";
 import { EmptyActionPlannerLedger } from "../Source/AgentSystem/AgentActionPlannerLedger.js";
-import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
+import { loadVerificationConfig } from "./VerificationConfig.js";
 import { AgentEvidenceBroker } from "../Source/AgentSystem/AgentEvidenceBroker.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
 import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
@@ -26,7 +26,7 @@ const workspaceRoot = process.cwd();
 void main();
 
 async function main(): Promise<void> {
-const config = AgentConfigLoader.load(path.join(workspaceRoot, "senera.config.json"));
+const config = loadVerificationConfig(workspaceRoot);
 const registry = new AgentPluginRegistry();
 for (const plugin of new AgentPluginScanner(workspaceRoot, config).scan()) {
   registry.registerPlugin(plugin);

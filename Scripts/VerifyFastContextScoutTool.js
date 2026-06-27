@@ -19,14 +19,20 @@ async function main() {
     planningMode: "deterministic",
     hints: {
       item: [
+        "senera.config.example.json",
         "DefaultModelProviderId",
         "ModelProviders",
         "ModelProviderEndpoints"
       ]
     },
+    exclude: {
+      item: [
+        "senera.config.json"
+      ]
+    },
     maxFiles: 6,
     maxResults: 8,
-    readLineWindow: 120
+    readLineWindow: 180
   }, { rgPath });
 
   ResultSchema.parse(result);
@@ -35,9 +41,14 @@ async function main() {
   const naturalLanguageResult = await core.scoutWorkspace(context, config, {
     question: "我的意思不是插件的配置，是我们的这个项目的主模型配置文件怎么写？",
     planningMode: "deterministic",
+    exclude: {
+      item: [
+        "senera.config.json"
+      ]
+    },
     maxFiles: 8,
     maxResults: 10,
-    readLineWindow: 90
+    readLineWindow: 180
   }, { rgPath });
 
   ResultSchema.parse(naturalLanguageResult);
@@ -55,7 +66,7 @@ async function main() {
           type: "rg",
           pattern: "DefaultModelProviderId",
           path: ".",
-          include: ["senera.config.json"]
+          include: ["senera.config.example.json"]
         }
       ],
       reason: "Locate the main model provider setting."
@@ -64,7 +75,7 @@ async function main() {
       action: "final",
       files: [
         {
-          path: "senera.config.json",
+          path: "senera.config.example.json",
           startLine: 1,
           endLine: 80,
           reason: "Contains DefaultModelProviderId and ModelProviders."
@@ -77,7 +88,7 @@ async function main() {
     question: "主模型配置文件怎么写？",
     maxFiles: 6,
     maxResults: 8,
-    readLineWindow: 120
+    readLineWindow: 180
   }, {
     rgPath,
     llmScoutPlanner: fakePlanner
@@ -94,8 +105,8 @@ async function main() {
 
 function assertConfigFileEvidence(result) {
   const files = result.files.item;
-  const configFile = files.find((file) => file.path === "senera.config.json");
-  assert.ok(configFile, "Scout should return senera.config.json.");
+  const configFile = files.find((file) => file.path === "senera.config.example.json");
+  assert.ok(configFile, "Scout should return senera.config.example.json.");
   assert.match(configFile.content, /DefaultModelProviderId/);
   assert.match(configFile.content, /ModelProviders/);
 }

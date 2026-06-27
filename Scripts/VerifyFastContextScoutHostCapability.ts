@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
 import { fastContextScoutHostTool } from "../Source/AgentSystem/AgentFastContextScoutRuntime.js";
+import { VerificationConfigFileName, verificationConfigPath } from "./VerificationConfig.js";
 
 async function main(): Promise<void> {
+  const workspaceRoot = process.cwd();
   const runtime = AgentSystemRuntime.load({
-    workspaceRoot: process.cwd(),
+    workspaceRoot,
+    configPath: verificationConfigPath(workspaceRoot),
   });
   const tool = runtime.registry.getTool("FastContextScoutTool");
   assert.ok(tool, "FastContextScoutTool should be registered.");
@@ -18,13 +21,19 @@ async function main(): Promise<void> {
     planningMode: "deterministic",
     hints: {
       item: [
+        VerificationConfigFileName,
         "DefaultModelProviderId",
         "ModelProviders",
       ],
     },
+    exclude: {
+      item: [
+        "senera.config.json",
+      ],
+    },
     maxFiles: 6,
     maxResults: 8,
-    readLineWindow: 100,
+    readLineWindow: 180,
   }, {
     tool,
     config: runtime.config,
@@ -46,8 +55,8 @@ async function main(): Promise<void> {
       }>;
     };
   };
-  const configFile = result.files?.item?.find((file) => file.path === "senera.config.json");
-  assert.ok(configFile, "Scout host capability should return senera.config.json.");
+  const configFile = result.files?.item?.find((file) => file.path === VerificationConfigFileName);
+  assert.ok(configFile, `Scout host capability should return ${VerificationConfigFileName}.`);
   assert.match(configFile.content, /DefaultModelProviderId/);
   assert.match(configFile.content, /ModelProviders/);
   console.log("Fast context scout host capability verification passed.");

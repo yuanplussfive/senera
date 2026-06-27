@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
+import { loadVerificationConfig } from "./VerificationConfig.js";
 import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
 import { AgentToolProcessRunner } from "../Source/AgentSystem/AgentToolProcessRunner.js";
@@ -8,7 +8,7 @@ import { createXmlProtocolSpec } from "../Source/AgentSystem/AgentXmlPolicy.js";
 
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();
-  const config = AgentConfigLoader.load(path.join(workspaceRoot, "senera.config.json"));
+  const config = loadVerificationConfig(workspaceRoot);
   const protocol = createXmlProtocolSpec(config);
   const registry = new AgentPluginRegistry();
   for (const plugin of new AgentPluginScanner(workspaceRoot, config).scan()) {
