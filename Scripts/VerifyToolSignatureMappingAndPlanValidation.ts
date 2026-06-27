@@ -70,7 +70,6 @@ async function main(): Promise<void> {
   });
   const promptContext = promptContextBuilder.buildBaseContext({
     loadedToolNames,
-    rootCommand,
     skillQuery: "项目主模型配置文件怎么写",
   });
 
