@@ -37,10 +37,17 @@ type BamlProvider =
 
 function resolveBamlProvider(
   model: ResolvedAgentModelProviderConfig,
-  provider: ResolvedAgentActionPlannerClientConfig["Provider"],
+  _provider: ResolvedAgentActionPlannerClientConfig["Provider"],
 ): BamlProvider {
-  return provider;
+  return BamlProviderByEndpoint[model.Endpoint];
 }
+
+const BamlProviderByEndpoint = {
+  ChatCompletions: "openai-generic",
+  Responses: "openai-responses",
+  ClaudeMessages: "anthropic",
+  GoogleGenerateContent: "google-ai",
+} as const satisfies Record<ResolvedAgentModelProviderConfig["Endpoint"], BamlProvider>;
 
 function buildProviderOptions(
   provider: BamlProvider,

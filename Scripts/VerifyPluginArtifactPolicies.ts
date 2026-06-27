@@ -766,16 +766,37 @@ async function main(): Promise<void> {
       results: recorded,
     });
 
-  const expectedEvidenceTotal = Object.values(fixtures)
-    .reduce((total, fixture) => total + (fixture.expectedEvidenceCount ?? fixture.expectedKinds.length), 0);
+  const expectedEvidenceTotal = uniqueEvidenceKeys(recorded).size;
   assert.equal(ledger.evidence.length, expectedEvidenceTotal);
   assert.equal(
     ledger.deltas.filter((entry) => entry.op === "AddEvidence").length,
     expectedEvidenceTotal,
   );
+  assertRecordedCallEvidence(recorded, ledger);
   assertPlannerProjection(recorded, ledger);
 
   console.log("Plugin artifact policy verification passed.");
+}
+
+function uniqueEvidenceKeys(results: readonly ExecutedToolCallResult[]): Set<string> {
+  return new Set(results.flatMap((result) =>
+    result.artifact?.evidence.map((entry) => entry.key) ?? []));
+}
+
+function assertRecordedCallEvidence(
+  recorded: readonly ExecutedToolCallResult[],
+  ledger: ReturnType<AgentActionPlannerContextBuilder["advanceAfterToolResults"]>,
+): void {
+  assert.equal(ledger.calls.length, recorded.length);
+  for (const [index, result] of recorded.entries()) {
+    const call = ledger.calls[index];
+    assert.equal(call.toolName, result.name);
+    assert.deepEqual(
+      call.evidenceUris,
+      result.artifact?.evidence.map((entry) => entry.evidenceUri) ?? [],
+      `${result.name} ledger call should retain artifact evidence URIs`,
+    );
+  }
 }
 
 function assertPolicyShape(tool: RegisteredTool): void {

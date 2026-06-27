@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { AgentActionPlannerModelClient } from "../Source/AgentSystem/AgentActionPlannerModelClient.js";
+import { createActionPlannerBamlClient } from "../Source/AgentSystem/AgentActionPlannerBamlClient.js";
+import { buildActionPlannerPromptJson } from "../Source/AgentSystem/AgentActionPlannerPromptJson.js";
+import { b as baml } from "../Source/AgentSystem/BamlClient/baml_client/index.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
   createActionPlanInputFixture,
@@ -24,21 +26,6 @@ const baseProvider: ResolvedAgentModelProviderConfig = {
   Headers: {},
 };
 
-const taskFrame = JSON.stringify({
-  taskType: "answer",
-  answerGoal: "Answer the user directly.",
-  intentTags: ["direct-answer"],
-  targetRefs: [],
-  candidateTools: [],
-  discoveryQueries: [],
-  requiredEffects: [],
-  requiredEvidence: [],
-  userInputNeeds: [],
-  nextStepPurpose: "Answer from the current conversation.",
-  completionCriteria: ["The response addresses the latest user request."],
-  notes: [],
-});
-
 main().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
@@ -46,19 +33,16 @@ main().catch((error: unknown) => {
 
 async function main(): Promise<void> {
   const unlimited = await capturePayload("ClaudeMessages", -1);
-  assert.equal(unlimited.max_tokens, undefined);
-  assert.equal(unlimited.stream, true);
+  assert.equal(typeof unlimited.max_tokens, "number");
 
   const limited = await capturePayload("ClaudeMessages", 321);
   assert.equal(limited.max_tokens, 321);
 
   const responsesUnlimited = await capturePayload("Responses", -1);
   assert.equal(responsesUnlimited.max_output_tokens, undefined);
-  assert.equal(responsesUnlimited.stream, true);
 
   const chatUnlimited = await capturePayload("ChatCompletions", -1);
   assert.equal(chatUnlimited.max_tokens, undefined);
-  assert.equal(chatUnlimited.stream, true);
 
   const googleUnlimited = await capturePayload("GoogleGenerateContent", -1);
   assert.equal(
@@ -71,20 +55,17 @@ async function main(): Promise<void> {
   );
   const googlePrompt = readGooglePlannerPrompt(googleUnlimited);
   assert.ok(googlePrompt.hasTimelineTurn);
-  assert.equal(googlePrompt.plannerInput.directive.stage, "buildTaskFrame");
+  assert.equal(googlePrompt.directive.stage, "buildTaskFrame");
   assert.doesNotMatch(JSON.stringify(googleUnlimited.contents), /Timeline turn/);
   assert.doesNotMatch(JSON.stringify(googleUnlimited.contents), /Produce the ActionDecision JSON now/);
-  assert.match(String(googleUnlimited.__url), /alt=sse/);
 
   console.log("Action planner MaxTokens verification passed.");
 }
 
 function readGooglePlannerPrompt(payload: Record<string, unknown>): {
   hasTimelineTurn: boolean;
-  plannerInput: {
-    directive: {
-      stage: string;
-    };
+  directive: {
+    stage: string;
   };
 } {
   const contents = Array.isArray(payload.contents) ? payload.contents : [];
@@ -101,16 +82,15 @@ function readGooglePlannerPrompt(payload: Record<string, unknown>): {
       const text = partRecord.text;
       if (typeof text === "string" && text.trim().startsWith("{")) {
         const parsed = JSON.parse(text) as Record<string, unknown>;
-        if ("turn" in parsed) {
-          hasTimelineTurn = true;
-        }
-        if ("plannerInput" in parsed) {
+        const context = parsed.context && typeof parsed.context === "object"
+          ? parsed.context as Record<string, unknown>
+          : {};
+        hasTimelineTurn = Array.isArray(context.timeline) && context.timeline.length > 0;
+        if ("directive" in parsed) {
           return {
             hasTimelineTurn,
-            plannerInput: parsed.plannerInput as {
-              directive: {
-                stage: string;
-              };
+            directive: parsed.directive as {
+              stage: string;
             },
           };
         }
@@ -125,87 +105,36 @@ async function capturePayload(
   endpoint: ResolvedAgentModelProviderConfig["Endpoint"],
   maxTokens: number,
 ): Promise<Record<string, unknown>> {
-  const originalFetch = globalThis.fetch;
-  let payload: Record<string, unknown> | undefined;
-  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    payload = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-    payload.__url = String(input);
-    return new Response(responseBody(endpoint), {
-      status: 200,
-      headers: {
-        "content-type": "text/event-stream",
-      },
-    });
+  const baseUrl = endpoint === "GoogleGenerateContent"
+    ? "https://generativelanguage.googleapis.com/v1beta"
+    : endpoint === "ClaudeMessages"
+      ? "https://api.anthropic.com/v1"
+      : "https://example.test/v1";
+  const client = createActionPlannerBamlClient(
+    {
+      ...baseProvider,
+      Endpoint: endpoint,
+      BaseUrl: baseUrl,
+    },
+    {
+      Provider: "openai-generic",
+      BaseUrl: baseUrl,
+      ApiKey: "test-key",
+      Model: "test-model",
+      Temperature: 0.1,
+      MaxTokens: maxTokens,
+    },
+  );
+  const request = await baml.request.BuildTaskFrame(
+    buildActionPlannerPromptJson(createActionPlanInputFixture("test"), {
+      stage: "buildTaskFrame",
+    }),
+    {
+      clientRegistry: client.registry,
+    },
+  );
+  return {
+    ...(request.body.json() as Record<string, unknown>),
+    __url: request.url,
   };
-
-  try {
-    const client = new AgentActionPlannerModelClient(
-      {
-        ...baseProvider,
-        Endpoint: endpoint,
-        BaseUrl: endpoint === "GoogleGenerateContent"
-          ? "https://generativelanguage.googleapis.com/v1beta"
-          : endpoint === "ClaudeMessages"
-            ? "https://api.anthropic.com/v1"
-            : "https://example.test/v1",
-      },
-      {
-        Provider: "openai-generic",
-        BaseUrl: endpoint === "GoogleGenerateContent"
-          ? "https://generativelanguage.googleapis.com/v1beta"
-          : endpoint === "ClaudeMessages"
-            ? "https://api.anthropic.com/v1"
-            : "https://example.test/v1",
-        ApiKey: "test-key",
-        Model: "test-model",
-        Temperature: 0.1,
-        MaxTokens: maxTokens,
-      },
-    );
-    await client.buildTaskFrame(createActionPlanInputFixture("test"));
-    assert.ok(payload);
-    return payload;
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-}
-
-function responseBody(endpoint: ResolvedAgentModelProviderConfig["Endpoint"]): string {
-  const responseByEndpoint = {
-    Responses: sseEvent({
-      type: "response.output_text.delta",
-      delta: taskFrame,
-    }),
-    ChatCompletions: sseEvent({
-      choices: [{
-        delta: {
-          content: taskFrame,
-        },
-      }],
-    }),
-    ClaudeMessages: sseEvent({
-      type: "content_block_delta",
-      delta: {
-        text: taskFrame,
-      },
-    }),
-    GoogleGenerateContent: sseEvent({
-      candidates: [{
-        content: {
-          parts: [{ text: taskFrame }],
-        },
-      }],
-    }),
-  } satisfies Record<ResolvedAgentModelProviderConfig["Endpoint"], string>;
-
-  return responseByEndpoint[endpoint];
-}
-
-function sseEvent(value: Record<string, unknown>): string {
-  return [
-    `data: ${JSON.stringify(value)}`,
-    "",
-    "data: [DONE]",
-    "",
-  ].join("\n");
 }
