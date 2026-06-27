@@ -32,6 +32,7 @@ const EventMessageCatalog: Record<string, string> = {
   "action.planner.stage.started": "行动规划阶段开始",
   "action.planner.stage.completed": "行动规划阶段完成",
   "action.planner.stage.failed": "行动规划阶段失败",
+  "interaction.routed": "运行路径已选择",
   "action.planned": "行动规划完成",
   "model.started": "模型开始输出",
   "model.stream.opened": "模型流已打开",
@@ -115,6 +116,17 @@ const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormatter>> =
         formatStepToken(event.step),
         formatPlannerStageToken(data.stage),
         readStringToken(data.message),
+      ],
+    };
+  },
+  "interaction.routed": (event) => {
+    const data = normalizeRecord(event.data);
+    return {
+      message: "运行路径已选择",
+      tokens: [
+        formatStepToken(event.step),
+        formatInteractionModeToken(data.mode),
+        readStringToken(data.expectedOutputMode),
       ],
     };
   },
@@ -364,10 +376,25 @@ function formatPlannerStageToken(value: unknown): string | undefined {
   }
 
   const catalog: Record<string, string> = {
+    understandUserTurn: "理解当前请求",
     buildTaskFrame: "构建任务合约",
     evaluateEvidence: "判断完成状态",
   };
   return catalog[stage] ?? stage;
+}
+
+function formatInteractionModeToken(value: unknown): string | undefined {
+  const mode = readNonEmptyString(value);
+  if (!mode) {
+    return undefined;
+  }
+
+  const catalog: Record<string, string> = {
+    direct_response: "直接回复",
+    tool_agent_loop: "工具循环",
+    deliberate_task_loop: "深度任务",
+  };
+  return catalog[mode] ?? mode;
 }
 
 function formatActiveRequestToken(value: unknown): string | undefined {

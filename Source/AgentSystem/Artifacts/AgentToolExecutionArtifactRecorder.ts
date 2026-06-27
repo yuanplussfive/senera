@@ -3,20 +3,25 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { Liquid } from "liquidjs";
 import type {
-  ExecutedToolCallArtifact,
-  ExecutedToolCallResult,
   ResolvedAgentArtifactsConfig,
+} from "../Types/AgentConfigTypes.js";
+import type {
   ToolArtifactConditionManifest,
   ToolArtifactEvidenceManifest,
   ToolArtifactEvidenceSlotManifest,
   ToolArtifactPolicyManifest,
   ToolArtifactWorkspaceManifest,
+} from "../Types/PluginManifestTypes.js";
+import type {
+  ExecutedToolCallArtifact,
+  ExecutedToolCallResult,
   ToolArtifactDeltaRecord,
   ToolArtifactEvidenceRecord,
-} from "../Types.js";
+} from "../Types/ToolRuntimeTypes.js";
 import {
   createAgentArtifactLocator,
 } from "./AgentArtifactLocator.js";
+import { createAgentEvidenceUri } from "./AgentEvidenceUri.js";
 import { selectJsonValues } from "./AgentArtifactJsonSelector.js";
 import { AgentWorkspaceArtifactWriter } from "./AgentWorkspaceArtifactWriter.js";
 
@@ -87,7 +92,7 @@ export class AgentToolExecutionArtifactRecorder {
     const policy = input.result.artifactPolicy;
     const redactedInput = redactSecrets(input.result.arguments, policy);
     const redactedRaw = redactSecrets(input.result.result, policy);
-    const evidence = collectEvidence(redactedRaw, policy);
+    const evidence = collectEvidence(redactedRaw, policy, locator.artifactId);
     const workspaceArtifacts = input.result.workspaceCapture
       ? await writeWorkspaceArtifacts({
           workspaceRoot: this.options.workspaceRoot,
@@ -291,7 +296,7 @@ function buildProjection(input: {
 
 function projectEvidenceForTemplate(entry: ToolArtifactEvidenceRecord): Record<string, unknown> {
   return {
-    ref: entry.ref,
+    evidenceUri: entry.evidenceUri,
     kind: entry.kind,
     locator: entry.locator,
     display: entry.display,
@@ -368,16 +373,16 @@ function buildEvidenceProjectionBlocks(
 function collectEvidence(
   value: unknown,
   policy: ToolArtifactPolicyManifest | undefined,
+  artifactId: string,
 ): ToolArtifactEvidenceRecord[] {
   const evidence = new Map<string, ToolArtifactEvidenceRecord>();
-  let ordinal = 1;
-  for (const rule of policy?.Evidence ?? []) {
+    for (const rule of policy?.Evidence ?? []) {
     for (const record of projectEvidenceRule(value, rule)) {
-      if (!record.ref) {
-        record.ref = `${rule.Presentation.RefPrefix}${ordinal}`;
-      }
+      record.evidenceUri = createAgentEvidenceUri({
+        artifactId,
+        evidenceKey: record.key,
+      });
       evidence.set(record.key, record);
-      ordinal += 1;
     }
   }
 
@@ -434,7 +439,7 @@ function projectScopedEvidenceRule(
 
     projected.push({
       key,
-      ref: "",
+      evidenceUri: "",
       kind: rule.Kind,
       locator,
       display,

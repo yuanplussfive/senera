@@ -6,20 +6,6 @@
     "Kind": "Tool",
     "Description": "Searches the registered tool catalog and loads matching tool cards."
   },
-  "Discovery": {
-    "Tags": [
-      "tool",
-      "工具",
-      "search",
-      "检索",
-      "catalog",
-      "目录",
-      "planning",
-      "dynamic",
-      "动态加载",
-      "能力发现"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 10
@@ -52,7 +38,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "T",
               "Locator": "tool:{{ name }}",
               "Display": "tool candidate: {{ title }}",
               "Label": "{{ title }}",
@@ -85,8 +70,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} tool: {{ e.slots.name }} - {{ e.slots.title }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} tool: {{ e.slots.name }}\n  title: {{ e.slots.title }}\n  summary: {{ e.slots.summary }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} tool: {{ e.slots.name }} - {{ e.slots.title }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} tool: {{ e.slots.name }}\n  title: {{ e.slots.title }}\n  summary: {{ e.slots.summary }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}\n{% endfor %}"
             }
           }
         ],
@@ -97,18 +82,6 @@
       },
       "Search": {
         "Summary": "搜索当前工作区已注册工具，返回适合任务的工具名和用途。",
-        "Keywords": [
-          "tool",
-          "search",
-          "catalog",
-          "discover",
-          "dynamic",
-          "工具",
-          "检索",
-          "查找能力",
-          "能力发现",
-          "动态加载"
-        ],
         "Capabilities": [
           {
             "Id": "tool.catalog-search",
@@ -149,13 +122,6 @@
               "load matching tools",
               "discover available tool"
             ],
-            "Examples": [
-              "查找能搜索网页的工具",
-              "find tool for workspace code search"
-            ],
-            "Avoid": [
-              "工具已经明确且已经加载时不要重复搜索"
-            ],
             "Risk": {
               "SideEffect": "context-load",
               "Permission": "none",
@@ -170,9 +136,16 @@
           "需要把隐藏工具加载进下一轮提示词。"
         ],
         "Examples": [
-          "查找能搜索网页的工具",
-          "我需要编辑文件应该用哪个工具",
-          "find tool for workspace code search"
+          "网页搜索工具发现",
+          "文件编辑工具发现",
+          "workspace code search tool",
+          "动态工具能力检索"
+        ],
+        "Tags": [
+          "能力发现",
+          "工具检索",
+          "动态加载",
+          "插件选择"
         ]
       }
     }

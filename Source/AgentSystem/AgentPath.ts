@@ -20,6 +20,37 @@ export function toRuntimeModulePath(filePath: string): string {
     return absolute;
   }
 
-  const relative = path.relative(process.cwd(), absolute);
-  return path.resolve(process.cwd(), "Dist", relative).replace(/\.ts$/i, ".js");
+  const pluginRelativePath = runtimePluginRelativePath(absolute);
+  if (pluginRelativePath) {
+    return path.resolve(runtimeAppRoot(), "Dist", pluginRelativePath).replace(/\.ts$/i, ".js");
+  }
+
+  const relative = path.relative(runtimeAppRoot(), absolute);
+  return path.resolve(runtimeAppRoot(), "Dist", relative).replace(/\.ts$/i, ".js");
+}
+
+function runtimePluginRelativePath(filePath: string): string | undefined {
+  const normalized = path.normalize(filePath);
+  for (const marker of [
+    `${path.sep}System${path.sep}Plugins${path.sep}`,
+    `${path.sep}Plugins${path.sep}`,
+  ]) {
+    const index = normalized.lastIndexOf(marker);
+    if (index >= 0) {
+      return normalized.slice(index + path.sep.length);
+    }
+  }
+
+  return undefined;
+}
+
+function runtimeAppRoot(): string {
+  const currentDir = path.resolve(__dirname);
+  const distSegment = `${path.sep}Dist${path.sep}`;
+  const distIndex = currentDir.lastIndexOf(distSegment);
+  if (distIndex >= 0) {
+    return currentDir.slice(0, distIndex);
+  }
+
+  return process.cwd();
 }

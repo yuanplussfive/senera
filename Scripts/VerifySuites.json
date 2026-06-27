@@ -1,0 +1,43 @@
+{
+  "defaultSuite": "core",
+  "suites": {
+    "workspace": {
+      "description": "Root workspace dependency and install-boundary governance.",
+      "patterns": [
+        "VerifyWorkspaceDependencyGovernance.js"
+      ]
+    },
+    "contracts": {
+      "description": "Static architecture contracts that should fail before runtime tests.",
+      "patterns": [
+        "VerifyAgentTypeContractBoundaries.js"
+      ]
+    },
+    "core": {
+      "description": "Fast local runtime gates for agent/plugin contracts.",
+      "patterns": [
+        "VerifyAgentTypeContractBoundaries.js",
+        "VerifyPluginConfigSchema.js",
+        "VerifyPluginArtifactPolicies.js",
+        "VerifyToolSignatureMappingAndPlanValidation.js",
+        "VerifyModelProviderEndpointConfig.js",
+        "VerifyAgentConfigFormProjection.js",
+        "VerifyModelTimeoutConfig.js",
+        "VerifyVectorModelClient.js",
+        "VerifyAgentRuntimeServices.js",
+        "VerifyRuntimeModulePath.js",
+        "VerifyDesktopRuntimeConfigProjection.js",
+        "VerifyConfigServiceSqliteSource.js",
+        "VerifyAgentChildAgentRuntime.js"
+      ]
+    },
+    "all-local": {
+      "description": "Every local verification script except the suite runner and real external API probes.",
+      "patterns": [
+        "Verify*.js",
+        "!VerifySuite.js",
+        "!VerifyVectorModelRealApi.js"
+      ]
+    }
+  }
+}

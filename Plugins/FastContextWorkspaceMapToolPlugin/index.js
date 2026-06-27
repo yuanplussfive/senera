@@ -9,8 +9,8 @@ void pluginSdk.runToolPlugin({
   toolName: "FastContextWorkspaceMapTool",
   argumentSchema: ArgumentsSchema,
   resultSchema: ResultSchema,
-  async execute(args) {
-    const context = core.createContext();
+  async execute(args, runtimeContext) {
+    const context = core.createContext(runtimeContext);
     const config = core.readConfig(context, pluginSdk.parsePluginTomlConfig);
     return core.getWorkspaceMap(context, config, args);
   }

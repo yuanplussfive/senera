@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveFrom } from "./AgentPath.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
 import type {
-  AgentSystemConfig,
-  LoadedPlugin,
   PluginManifest,
   PluginRootKind,
-} from "./Types.js";
+} from "./Types/PluginManifestTypes.js";
+import type {
+  LoadedPlugin,
+} from "./Types/PluginRuntimeTypes.js";
 import { AgentJsonFileLoader } from "./AgentJsonFileLoader.js";
 import { PluginManifestSchema } from "./Schemas/PluginManifestSchema.js";
 import { readLoadedPluginConfig } from "./AgentPluginConfig.js";

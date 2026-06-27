@@ -2,16 +2,14 @@ import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
 import { AgentToolProcessRunner } from "./AgentToolProcessRunner.js";
 import type { AgentToolHostCapabilityRegistry } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentEventSink } from "./AgentEvent.js";
-import type {
-  AgentSystemConfig,
-  AgentPluginRegistryLike,
-  RegisteredTool,
-} from "./Types.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
+import type { RegisteredTool } from "./Types/PluginRuntimeTypes.js";
+import type { AgentPluginRegistryLike } from "./Types/ToolRuntimeTypes.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
 } from "./AgentXmlStatus.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
+import { toolProcessFailureResult } from "./AgentToolProcessEnvelope.js";
 import type { AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
 
 export interface AgentToolRunnerLike {
@@ -103,23 +101,13 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     message: string,
     details: Record<string, unknown>,
   ): AgentToolProcessRunResult {
-    return {
-      response: {
-        protocol: AgentToolProcessProtocol,
-        ok: false,
-        error: {
-          code: AgentExecutionErrorCodes.ToolProcessConfigurationInvalid,
-          message,
-          details: {
-            phase: AgentToolProcessErrorPhases.ConfigurationValidation,
-            ...details,
-          },
-        },
+    return toolProcessFailureResult({
+      code: AgentExecutionErrorCodes.ToolProcessConfigurationInvalid,
+      message,
+      details: {
+        phase: AgentToolProcessErrorPhases.ConfigurationValidation,
+        ...details,
       },
-      stdout: "",
-      stderr: "",
-      exitCode: null,
-      signal: null,
-    };
+    });
   }
 }

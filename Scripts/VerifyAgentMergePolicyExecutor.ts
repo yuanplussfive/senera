@@ -18,7 +18,7 @@ import type {
 } from "../Source/AgentSystem/AgentLanguageModel.js";
 import type { AgentModelProviderMetadata } from "../Source/AgentSystem/AgentModelMetadata.js";
 import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
-import type { AgentSystemConfig } from "../Source/AgentSystem/Types.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const workspaceRoot = path.resolve(process.cwd());
 
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     const plan = buildAgentDelegationPlan({
       workflow: "ParallelPullRequestReview",
       objective: "并行审查当前 PR 的安全、测试缺口和可维护性风险。",
-      evidenceRefs: ["DIFF1"],
+      evidenceUris: ["DIFF1"],
     }, {
       registry: runtime.registry,
       workspaceRoot,
@@ -189,17 +189,20 @@ function verificationConfig(): AgentSystemConfig {
     PluginDiscovery: {
       ManifestFileName: "PluginManifest.json",
     },
-    ModelProviders: [{
+    ModelProviderEndpoints: [{
       Id: "test",
-      Kind: "OpenAICompatible",
-      Endpoint: "Responses",
       BaseUrl: "https://example.invalid/v1",
       ApiKey: "test",
+    }],
+    ModelProviders: [{
+      Id: "test",
+      ProviderId: "test",
+      Endpoint: "Responses",
       Model: "test",
       Temperature: 0,
       MaxOutputTokens: -1,
       Stream: true,
-      TimeoutMs: 1,
+      TimeoutSeconds: 0.001,
       MaxNetworkRetries: 0,
     }],
   };

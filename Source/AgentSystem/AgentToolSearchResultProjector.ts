@@ -33,6 +33,15 @@ export function buildToolSearchResultProjection(
             risk: capability.risk,
           })),
         },
+        learningSignals: {
+          item: result.learningSignals.map((signal) => ({
+            term: signal.term,
+            source: signal.source,
+            support: signal.support,
+            confidence: signal.confidence,
+            score: signal.score,
+          })),
+        },
         reason: renderSearchReason(result),
       })),
     },
@@ -78,5 +87,8 @@ function renderSearchReason(result: AgentToolSearchResult): string {
   return [
     capabilities.length > 0 ? `capabilities: ${capabilities.join("; ")}` : "",
     terms,
+    result.learningSignals.length > 0
+      ? `learning: ${result.learningSignals.map((signal) => signal.term).join(", ")}`
+      : "",
   ].filter(Boolean).join("; ");
 }

@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { AgentToolResultXmlRenderer } from "../Source/AgentSystem/AgentToolResultXmlRenderer.js";
-import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types.js";
+import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 
 const workspaceRoot = process.cwd();
+const documentEvidenceUri = "senera://evidence/ev_444444444444444444444444";
 const manifestPath = path.join(
   workspaceRoot,
-  "System",
   "Plugins",
   "AgentDocumentPlugin",
   "PluginManifest.json",
@@ -85,10 +85,10 @@ const toolResult: ExecutedToolCallResult = {
     relativePath: ".senera/artifacts/runs/request/steps/001",
     manifestPath: path.join(workspaceRoot, ".senera", "artifacts", "runs", "request", "steps", "001", "manifest.json"),
     files: {},
-    summary: "DOC1 extracted uploaded.md mode=auto text=128 chunks=1",
+    summary: "extracted uploaded.md mode=auto text=128 chunks=1",
     evidence: [{
       key: "uploaded_document:senera://upload/upl_document:auto:extracted",
-      ref: "DOC1",
+      evidenceUri: documentEvidenceUri,
       kind: "uploaded_document",
       locator: "senera://upload/upl_document",
       display: "document extracted: uploaded.md",

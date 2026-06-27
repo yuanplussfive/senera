@@ -8,7 +8,7 @@ import {
 
 export function projectLedgerEvidenceForTimeline(record: PlannerEvidenceRecord): Record<string, unknown> {
   return compactObject({
-    ref: record.evidenceRef,
+    evidenceUri: record.evidenceUri,
     kind: record.kind,
     locator: record.locator,
     display: record.display,
@@ -67,7 +67,7 @@ function renderEvidenceBlock(value: unknown): string[] {
   }
 
   const lines = [
-    `- ref: ${String(record.ref ?? "")}`,
+    `- evidenceUri: ${String(record.evidenceUri ?? "")}`,
     ...renderOptionalLine("  kind", record.kind),
     ...renderOptionalLine("  locator", record.locator),
     ...renderOptionalLine("  display", record.display),

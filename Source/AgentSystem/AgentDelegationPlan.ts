@@ -4,15 +4,13 @@ import {
   AgentWorkflowProjector,
   type AgentWorkflowProjectionRegistry,
 } from "./AgentWorkflowProjector.js";
-import type {
-  AgentPluginRegistryLike,
-  RegisteredAgentWorkflow,
-} from "./Types.js";
+import type { AgentPluginRegistryLike } from "./Types/ToolRuntimeTypes.js";
+import type { RegisteredAgentWorkflow } from "./Types/PluginRuntimeTypes.js";
 
 export interface AgentDelegationPlanInput {
   workflow: string;
   objective?: string;
-  evidenceRefs?: readonly string[];
+  evidenceUris?: readonly string[];
   artifactUris?: readonly string[];
 }
 
@@ -79,7 +77,7 @@ export interface AgentDelegationJob {
   runtimeProfile: string;
   outputSchema: string;
   required: boolean;
-  suppliedEvidenceRefs: {
+  suppliedEvidenceUris: {
     item: string[];
   };
   suppliedArtifactUris: {
@@ -130,8 +128,8 @@ export function buildAgentDelegationPlan(
     runtimeProfile: job.agent.runtimeProfile,
     outputSchema: projectWorkspacePath(job.agent.outputSchemaPath, options.workspaceRoot),
     required: job.required === true,
-    suppliedEvidenceRefs: {
-      item: [...(input.evidenceRefs ?? [])],
+    suppliedEvidenceUris: {
+      item: [...(input.evidenceUris ?? [])],
     },
     suppliedArtifactUris: {
       item: [...(input.artifactUris ?? [])],

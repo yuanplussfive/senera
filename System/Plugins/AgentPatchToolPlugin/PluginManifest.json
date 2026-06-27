@@ -5,19 +5,6 @@
     "Version": "0.1.0",
     "Kind": "Tool"
   },
-  "Discovery": {
-    "Tags": [
-      "patch",
-      "补丁",
-      "edit",
-      "编辑",
-      "workspace",
-      "工作区",
-      "filesystem",
-      "文件",
-      "修改"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 95
@@ -52,7 +39,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "F",
               "Locator": "{{ path }}",
               "Display": "workspace file {{ status }}: {{ path }}",
               "Label": "{{ path }}",
@@ -87,8 +73,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.status }} {{ e.slots.path }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.status }} {{ e.slots.path }} (+{{ e.slots.additions }}, -{{ e.slots.deletions }})\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.path }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.path }} (+{{ e.slots.additions }}, -{{ e.slots.deletions }})\n{% endfor %}"
             }
           }
         ],
@@ -116,21 +102,6 @@
       },
       "Search": {
         "Summary": "按结构化编辑操作创建、替换、插入、删除或修改工作区文件。",
-        "Keywords": [
-          "patch",
-          "edit",
-          "apply",
-          "file",
-          "modify",
-          "create",
-          "delete",
-          "补丁",
-          "编辑",
-          "修改",
-          "写入",
-          "创建文件",
-          "删除文件"
-        ],
         "Capabilities": [
           {
             "Id": "workspace.patch-edit",
@@ -176,13 +147,6 @@
               "modify file",
               "apply patch"
             ],
-            "Examples": [
-              "修改 AgentToolSearchIndex.ts",
-              "create a new config example"
-            ],
-            "Avoid": [
-              "只想查看文件内容时使用读取工具；只想运行命令时使用 ShellCommandTool"
-            ],
             "Risk": {
               "SideEffect": "write-workspace",
               "Permission": "write",
@@ -196,13 +160,20 @@
           "需要实际修改代码、配置、文档或批量应用文件变更时使用。"
         ],
         "Examples": [
-          "修改 AgentToolSearchIndex.ts",
-          "给 PluginManifest.json 增加 Search 字段",
-          "create a new config example",
-          "replace lines 20 to 35"
+          "AgentToolSearchIndex.ts 修改",
+          "PluginManifest.json Search 字段",
+          "new config example file",
+          "replace lines 20 35"
         ],
         "Avoid": [
           "只想查看文件内容时使用读取工具；只想运行命令时使用 ShellCommandTool。"
+        ],
+        "Tags": [
+          "文件编辑",
+          "代码修改",
+          "补丁应用",
+          "创建删除",
+          "工作区写入"
         ]
       }
     }

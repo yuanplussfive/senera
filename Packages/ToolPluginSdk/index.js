@@ -6,7 +6,10 @@ const { XMLParser } = require("fast-xml-parser");
 const { parse: parseToml } = require("smol-toml");
 const { z, ZodError } = require("zod");
 
-const AgentToolProcessProtocol = "AgentToolProcess.v1";
+const ToolProcessResponseEnvelope = Object.freeze({
+  Type: "tool_result",
+  Version: 1
+});
 const AgentExecutionErrorCodes = {
   InvalidToolArguments: "InvalidToolArguments",
   PluginExecutionError: "PluginExecutionError"
@@ -43,20 +46,12 @@ async function runToolPluginSuite(definitions, options = {}) {
     }
 
     const args = definition.argumentSchema.parse(request.arguments);
-    const rawResult = await definition.execute(args);
+    const rawResult = await definition.execute(args, request.context);
     const result = definition.resultSchema.parse(rawResult);
 
-    writeResponse({
-      protocol: AgentToolProcessProtocol,
-      ok: true,
-      result
-    });
+    writeResponse(createToolProcessSuccessResponse(result));
   } catch (error) {
-    writeResponse({
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error: normalizeToolPluginError(error)
-    });
+    writeResponse(createToolProcessFailureResponse(normalizeToolPluginError(error)));
     process.exitCode = 1;
   }
 }
@@ -103,8 +98,15 @@ function parseToolCallRequest(input, options) {
     arguments:
       args && typeof args === "object" && !Array.isArray(args)
         ? args
-        : {}
+        : {},
+    context: normalizeToolProcessContext(call.context)
   };
+}
+
+function normalizeToolProcessContext(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
 }
 
 function normalizeXmlValue(value) {
@@ -135,6 +137,24 @@ function isArrayElementName(name, protocol, options) {
 
 function writeResponse(response) {
   process.stdout.write(`${JSON.stringify(response)}\n`);
+}
+
+function createToolProcessSuccessResponse(result) {
+  return {
+    type: ToolProcessResponseEnvelope.Type,
+    version: ToolProcessResponseEnvelope.Version,
+    ok: true,
+    result
+  };
+}
+
+function createToolProcessFailureResponse(error) {
+  return {
+    type: ToolProcessResponseEnvelope.Type,
+    version: ToolProcessResponseEnvelope.Version,
+    ok: false,
+    error
+  };
 }
 
 function normalizeToolPluginError(error) {
@@ -214,6 +234,9 @@ function parsePluginTomlConfig(content) {
 module.exports = {
   runToolPlugin,
   runToolPluginSuite,
+  ToolProcessResponseEnvelope,
+  createToolProcessSuccessResponse,
+  createToolProcessFailureResponse,
   parsePluginTomlConfig,
   readPluginTomlConfig,
   resolvePluginConfigPath,

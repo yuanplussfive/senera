@@ -8,11 +8,11 @@ import {
 } from "./presets";
 
 describe("dialog motion presets", () => {
-  it("scales modal dialogs in and out from the center", () => {
+  it("uses lightweight modal scale motion", () => {
     expect(readDialogPanelVariants("full", "modal")).toMatchObject({
-      hidden: { opacity: 0, scale: 0.96 },
+      hidden: { opacity: 0, scale: 0.985 },
       show: { opacity: 1, scale: 1 },
-      exit: { opacity: 0, scale: 0.96 },
+      exit: { opacity: 0, scale: 0.99 },
     });
   });
 
@@ -38,8 +38,8 @@ describe("dialog motion presets", () => {
   });
 
   it("keeps modal close motion shorter than open motion", () => {
-    expect(readDialogPanelTransition("full", "modal", "show")).toMatchObject({ duration: 0.25 });
-    expect(readDialogPanelTransition("full", "modal", "exit")).toMatchObject({ duration: 0.15 });
+    expect(readDialogPanelTransition("full", "modal", "show")).toMatchObject({ duration: 0.16 });
+    expect(readDialogPanelTransition("full", "modal", "exit")).toMatchObject({ duration: 0.1 });
   });
 
   it("fades overlays in before fading them out", () => {
@@ -48,8 +48,8 @@ describe("dialog motion presets", () => {
       show: { opacity: 1 },
       exit: { opacity: 0 },
     });
-    expect(readOverlayTransition("full", "show")).toMatchObject({ duration: 0.25 });
-    expect(readOverlayTransition("full", "exit")).toMatchObject({ duration: 0.15 });
+    expect(readOverlayTransition("full", "show")).toMatchObject({ duration: 0.16 });
+    expect(readOverlayTransition("full", "exit")).toMatchObject({ duration: 0.1 });
   });
 });
 

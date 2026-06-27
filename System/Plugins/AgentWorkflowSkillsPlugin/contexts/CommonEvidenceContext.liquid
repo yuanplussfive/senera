@@ -22,11 +22,11 @@
 {% endfor %}
     </recommended_tools>
   </job>
-  <available_evidence_refs>
-{% for ref in EvidenceRefs %}
-    <ref>{{ ref | escape }}</ref>
+  <available_evidence_uris>
+{% for uri in EvidenceUris %}
+    <uri>{{ uri | escape }}</uri>
 {% endfor %}
-  </available_evidence_refs>
+  </available_evidence_uris>
   <available_artifact_uris>
 {% for uri in ArtifactUris %}
     <uri>{{ uri | escape }}</uri>

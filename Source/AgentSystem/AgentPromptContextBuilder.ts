@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
 import type {
-  AgentSystemConfig,
   RegisteredDecisionAction,
   RegisteredTool,
-} from "./Types.js";
+} from "./Types/PluginRuntimeTypes.js";
 import {
   normalizeMarkdownSectionText,
   parseMarkdownSections,
@@ -28,6 +28,10 @@ import {
   type AgentActivatedSkill,
 } from "./AgentSkillActivation.js";
 import { compareLoadedPluginsForPrompting } from "./AgentPluginOrdering.js";
+import {
+  EmptyAgentRoleplayPresetContext,
+  type AgentRoleplayPresetContext,
+} from "./Presets/AgentPresetTypes.js";
 
 export interface AgentPromptToolContext {
   name: string;
@@ -80,6 +84,7 @@ export interface AgentPromptContext {
   ActiveSkills: AgentPromptSkillContext[];
   ToolDiscoveryToolName: string | null;
   RootCommand: AgentRootCommand | null;
+  RoleplayPreset: AgentRoleplayPresetContext;
 }
 
 export interface AgentPromptToolCallProtocolContext {
@@ -98,6 +103,7 @@ export interface AgentPromptContextOptions {
   triggerSection?: string;
   avoidSection?: string;
   rootCommand?: AgentRootCommand;
+  roleplayPreset?: AgentRoleplayPresetContext;
   skillQuery?: string;
   activeSkills?: readonly AgentActivatedSkill[];
 }
@@ -178,6 +184,7 @@ export class AgentPromptContextBuilder {
       ActiveSkills: activeSkills,
       ToolDiscoveryToolName: visibleToolDiscoveryToolName,
       RootCommand: rootCommand,
+      RoleplayPreset: options.roleplayPreset ?? EmptyAgentRoleplayPresetContext,
     };
   }
 
@@ -248,7 +255,11 @@ export class AgentPromptContextBuilder {
         normalizeMarkdownSectionText(document.sections.get(sections.trigger)) ||
         fallbackDescription,
       whenNotToUse: normalizeMarkdownSectionText(document.sections.get(sections.avoid)),
-      outputContract: this.contractProjector.projectFromFile(action.signatureFile, action.xmlRoot),
+      outputContract: this.contractProjector.projectFromFile(
+        action.signatureFile,
+        action.xmlRoot,
+        action.signatureType,
+      ),
       documentationXml: action.descriptionFile
         ? this.markdownRenderer.renderOrThrow(
             fs.readFileSync(action.descriptionFile, "utf8"),
@@ -274,7 +285,11 @@ export class AgentPromptContextBuilder {
         normalizeMarkdownSectionText(document.sections.get(sections.trigger)) ||
         fallbackDescription,
       whenNotToUse: normalizeMarkdownSectionText(document.sections.get(sections.avoid)),
-      argumentsContract: this.contractProjector.projectFromFile(tool.signatureFile, "arguments"),
+      argumentsContract: this.contractProjector.projectFromFile(
+        tool.signatureFile,
+        "arguments",
+        tool.signatureType,
+      ),
       documentationXml: tool.descriptionFile
         ? this.markdownRenderer.renderOrThrow(
             fs.readFileSync(tool.descriptionFile, "utf8"),

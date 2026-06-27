@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import type { ActionPlanInput, TaskFrame } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
-import { ToolCallStatus } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
+import {
+  TaskEvidenceScope,
+  ToolCallStatus,
+} from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { AgentEvidenceBroker } from "../Source/AgentSystem/AgentEvidenceBroker.js";
 
 const taskFrame: TaskFrame = {
   taskType: "workspace investigation",
   answerGoal: "说明项目用途",
   intentTags: ["workspace-investigation"],
+  taskTags: ["workspace", "文件"],
   targetRefs: [{
     kind: "workspace",
     value: ".",
@@ -25,6 +29,7 @@ const taskFrame: TaskFrame = {
   requiredEvidence: [{
     id: "workspace-source-evidence",
     need: "workspace read source-of-truth evidence",
+    scope: TaskEvidenceScope.CurrentRun,
     minimum: 1,
     reason: "最终回答需要真实文件读取证据。",
   }],
@@ -37,6 +42,9 @@ const taskFrame: TaskFrame = {
 };
 
 const input: ActionPlanInput = {
+  currentUserTurn: {
+    content: "看看我们的项目是干嘛的啊，有什么用",
+  },
   runState: {
     currentStep: 4,
     dynamicTools: true,
@@ -54,7 +62,7 @@ const input: ActionPlanInput = {
       toolName: "FastContextReadTool",
       status: ToolCallStatus.Success,
       artifactUri: "senera://artifact/art_missing",
-      evidenceRefs: [],
+      evidenceUris: [],
       resultKind: "missing_path",
       argumentsPreview: "{\"path\":\"Source/package.json\"}",
       error: "",
@@ -65,12 +73,13 @@ const input: ActionPlanInput = {
     role: "user",
     kind: "user_message",
     content: "看看我们的项目是干嘛的啊，有什么用",
-    evidenceRefs: [],
+    evidenceUris: [],
     artifactUris: [],
   }],
   evidenceMemory: [],
   evidenceState: [],
   plannerJournal: [],
+  toolTagCatalog: ["workspace", "文件"],
   compactToolCatalog: [],
   toolCatalog: [{
     name: "FastContextReadTool",

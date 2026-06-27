@@ -1,4 +1,4 @@
-import type { RegisteredDecisionAction } from "./Types.js";
+import type { RegisteredDecisionAction } from "./Types/PluginRuntimeTypes.js";
 import {
   AgentDefaultXmlProtocolSpec,
   type AgentXmlProtocolPolicy,

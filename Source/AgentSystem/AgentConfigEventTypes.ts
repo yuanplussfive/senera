@@ -1,12 +1,20 @@
 import { AgentEventKinds } from "./AgentEventCatalog.js";
 import type { AgentEventContext } from "./AgentEventBase.js";
-import type {
-  AgentModelProviderListItem,
-  AgentPluginConfigSnapshotItem,
-} from "./Types.js";
+import type { AgentModelProviderListItem } from "./Types/AgentConfigTypes.js";
+import type { AgentPluginConfigSnapshotItem } from "./Types/PluginConfigTypes.js";
 import type { AgentUserProfile } from "./AgentUserProfile.js";
+import type {
+  AgentPresetOperationResult,
+  AgentPresetSnapshot,
+} from "./Presets/AgentPresetTypes.js";
+import type {
+  AgentConfigDiagnostic,
+  AgentConfigSnapshot,
+  AgentConfigSnapshotSource,
+} from "./Config/AgentConfigService.js";
+import type { AgentProviderModelSnapshot } from "./Config/AgentProviderModelDiscovery.js";
 
-export type AgentPluginConfigOperationKind = "list" | "update" | "set_enabled";
+export type AgentPluginConfigOperationKind = "list" | "update" | "set_enabled" | "config_update";
 
 export interface AgentPluginConfigOperationResult {
   requestId?: string;
@@ -20,6 +28,10 @@ export type AgentConfigDomainEvent =
       context: AgentEventContext;
       data: {
         configPath: string;
+        source?: AgentConfigSnapshotSource;
+        revision?: number;
+        databasePath?: string;
+        diagnostics?: AgentConfigDiagnostic[];
       };
     }
   | {
@@ -41,6 +53,20 @@ export type AgentConfigDomainEvent =
       };
     }
   | {
+      kind: typeof AgentEventKinds.ProviderModelsSnapshot;
+      context: AgentEventContext;
+      data: AgentProviderModelSnapshot;
+    }
+  | {
+      kind: typeof AgentEventKinds.ProviderModelsFailed;
+      context: AgentEventContext;
+      data: {
+        providerId: string;
+        message: string;
+        details?: unknown;
+      };
+    }
+  | {
       kind: typeof AgentEventKinds.PluginConfigSnapshot;
       context: AgentEventContext;
       data: {
@@ -52,4 +78,25 @@ export type AgentConfigDomainEvent =
       kind: typeof AgentEventKinds.ProfileSnapshot;
       context: AgentEventContext;
       data: AgentUserProfile;
+    }
+  | {
+      kind: typeof AgentEventKinds.ConfigSnapshot;
+      context: AgentEventContext;
+      data: AgentConfigSnapshot & {
+        operation?: AgentPluginConfigOperationResult;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.PresetSnapshot;
+      context: AgentEventContext;
+      data: AgentPresetSnapshot;
+    }
+  | {
+      kind: typeof AgentEventKinds.PresetFailed;
+      context: AgentEventContext;
+      data: {
+        message: string;
+        details?: unknown;
+        operation?: AgentPresetOperationResult;
+      };
     };

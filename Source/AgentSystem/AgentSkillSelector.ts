@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import MiniSearch from "minisearch";
 import type {
   RegisteredSkill,
-} from "./Types.js";
+} from "./Types/PluginRuntimeTypes.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import {
   capabilityFacetEntries,
@@ -108,7 +108,6 @@ export class AgentSkillSelector {
     const capabilities = search?.Capabilities ?? [];
     const capabilityText = capabilities
       .map((capability) => capabilitySearchText(capability, {
-        includeAvoid: true,
         includeRisk: false,
       }))
       .join(" ");
@@ -119,10 +118,7 @@ export class AgentSkillSelector {
     const capabilityRiskDocumentText = capabilities
       .map((capability) => capabilityRiskText(capability.Risk))
       .join(" ");
-    const tags = [
-      ...(skill.plugin.manifest.Discovery?.Tags ?? []),
-      ...(search?.Keywords ?? []),
-    ].join(" ");
+    const tags = (search?.Tags ?? []).join(" ");
     const summary = search?.Summary ?? skill.plugin.manifest.Plugin.Description ?? "";
     const useCases = (search?.UseCases ?? []).join(" ");
     const examples = (search?.Examples ?? []).join(" ");

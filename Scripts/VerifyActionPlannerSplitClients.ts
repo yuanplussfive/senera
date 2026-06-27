@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
 import { AgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
+import { TaskEvidenceScope } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import type { AgentToolCatalogItem } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
-import type {
-  ResolvedAgentActionPlannerConfig,
-  ResolvedAgentModelProviderConfig,
-} from "../Source/AgentSystem/Types.js";
+import type { ResolvedAgentActionPlannerConfig, ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createActionPlanInputFixture } from "./ActionPlannerFixture.js";
 
 const provider: ResolvedAgentModelProviderConfig = {
   Id: "main",
+  ProviderId: "main",
   Kind: "OpenAICompatible",
   Endpoint: "Responses",
   BaseUrl: "https://main.test/v1",
@@ -37,6 +36,14 @@ const config: ResolvedAgentActionPlannerConfig = {
     Model: "main-model",
     Temperature: 0.1,
     MaxTokens: -1,
+  },
+  TurnUnderstandingClient: {
+    Provider: "openai-responses",
+    BaseUrl: "https://turn.test/v1",
+    ApiKey: "turn-key",
+    Model: "turn-model",
+    Temperature: 0.1,
+    MaxTokens: 2048,
   },
   TaskFrameClient: {
     Provider: "openai-responses",
@@ -126,7 +133,7 @@ async function main(): Promise<void> {
       input: {
         ...fixture,
         evidenceState: [{
-          evidenceRef: "EV1",
+          evidenceUri: "EV1",
           kind: "workspace_observation",
           toolName: "EvidenceTool",
           artifactUri: "senera://artifact/art_111111111111111111111111",
@@ -192,6 +199,7 @@ function taskFrameResponse() {
     requiredEvidence: [{
       id: "workspace-fact",
       need: "workspace fact",
+      scope: TaskEvidenceScope.CurrentRun,
       minimum: 1,
       reason: "The final answer needs verified workspace evidence.",
     }],
@@ -209,7 +217,7 @@ function evidenceVerificationResponse() {
       requirementId: "workspace-fact",
       need: "workspace fact",
       status: "Satisfied",
-      evidenceRefs: ["EV1"],
+      evidenceUris: ["EV1"],
       artifactUris: ["senera://artifact/art_111111111111111111111111"],
       reason: "EV1 directly supports the workspace fact.",
       missingFacts: [],

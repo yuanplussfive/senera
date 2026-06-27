@@ -4,10 +4,13 @@ import { parse as parseToml } from "smol-toml";
 import { resolveUploadsConfig } from "./AgentDefaults.js";
 import { throwIfAborted } from "./AgentCancellation.js";
 import { AgentPromptRenderer } from "./AgentPromptRenderer.js";
-import type { ResolvedAgentModelProviderConfig } from "./Types.js";
+import type { ResolvedAgentModelProviderConfig } from "./Types/AgentConfigTypes.js";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import {
+  toolProcessFailureResult,
+  toolProcessSuccessResult,
+} from "./AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -35,7 +38,6 @@ const ImageVisionPluginConfigSchema = z
         provider: z
           .object({
             id: z.string().trim(),
-            title: z.string().trim().optional(),
             kind: z.literal("OpenAICompatible"),
             endpoint: z.enum([
               "Responses",
@@ -108,17 +110,7 @@ export const imageVisionHostTool: AgentHostToolHandler = async (args, context) =
   try {
     throwIfAborted(context.signal);
     const result = await inspectImage(parsed.data, context);
-    return {
-      response: {
-        protocol: AgentToolProcessProtocol,
-        ok: true,
-        result,
-      },
-      stdout: "",
-      stderr: "",
-      exitCode: null,
-      signal: null,
-    };
+    return toolProcessSuccessResult(result);
   } catch (error) {
     return imageVisionFailure({
       code: AgentExecutionErrorCodes.PluginExecutionError,
@@ -283,7 +275,7 @@ function resolveImageVisionProvider(
   assertConfiguredProvider(provider);
   return {
     Id: provider.id,
-    Title: provider.title || undefined,
+    ProviderId: provider.id,
     Kind: provider.kind,
     Endpoint: provider.endpoint,
     BaseUrl: provider.baseUrl,
@@ -322,15 +314,5 @@ function assertConfiguredProvider(
 function imageVisionFailure(
   error: NonNullable<AgentToolProcessRunResult["response"]["error"]>,
 ): AgentToolProcessRunResult {
-  return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error,
-    },
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    signal: null,
-  };
+  return toolProcessFailureResult(error);
 }

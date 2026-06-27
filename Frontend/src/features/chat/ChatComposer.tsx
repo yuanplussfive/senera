@@ -3,6 +3,14 @@ import { AlertCircle, ArrowUp, Check, ChevronDown, Loader2, Paperclip, Square, X
 import { toast } from "sonner";
 import type {
   ModelProviderListItem,
+  ConfigMutationState,
+  ConfigSnapshotData,
+  PresetItem,
+  PresetFormat,
+  PresetMutationState,
+  ProviderModelEndpointInput,
+  ProviderModelsFailedData,
+  ProviderModelsSnapshotData,
   PluginConfigItem,
   PluginConfigMutationState,
   UploadAttachmentData,
@@ -23,8 +31,13 @@ import {
 } from "../../shared/ui";
 import { FilePreviewIcon } from "./FilePreviewIcon";
 import { PluginConfigControl } from "./PluginConfigPanel";
+import { PresetControl } from "./PresetPanel";
+import { SystemConfigControl } from "./SystemConfigPanel";
 import { ModelProviderIcon } from "./ModelProviderIcon";
-import { readSelectedModelProvider } from "./modelProvider";
+import {
+  readChatModelProviders,
+  readSelectedModelProvider,
+} from "./modelProvider";
 
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
@@ -37,9 +50,31 @@ interface ChatComposerProps {
   onSelectModelProvider: (id: string) => void;
   pluginConfigs: PluginConfigItem[];
   pluginConfigOperations: Record<string, PluginConfigMutationState>;
+  configSnapshot: ConfigSnapshotData | null;
+  configOperation: ConfigMutationState | null;
+  providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
+  providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
+  providerModelLoadingIds: Record<string, boolean>;
+  presets: PresetItem[];
+  activePresetName: string | null;
+  presetsEnabled: boolean;
+  presetRootDir: string;
+  presetOperations: Record<string, PresetMutationState>;
   onRefreshPluginConfigs: () => void;
   onSavePluginConfig: (pluginName: string, toml: string) => string | null;
   onSetPluginEnabled: (pluginName: string, enabled: boolean, toolName?: string) => string | null;
+  onRefreshConfig: () => void;
+  onSaveConfig: (config: Record<string, unknown>) => string | null;
+  onFetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
+  onRefreshPresets: () => void;
+  onSavePreset: (input: {
+    name: string;
+    format: PresetFormat;
+    content: string;
+    activate?: boolean;
+  }) => string | null;
+  onDeletePreset: (name: string) => string | null;
+  onSetActivePreset: (name: string | null) => string | null;
   socketStatus: string;
   uploadUrl: string;
   onSend: (input: string, attachments?: UploadAttachmentData[]) => void;
@@ -65,9 +100,26 @@ export function ChatComposer({
   onSelectModelProvider,
   pluginConfigs,
   pluginConfigOperations,
+  configSnapshot,
+  configOperation,
+  providerModelCatalogs,
+  providerModelErrors,
+  providerModelLoadingIds,
+  presets,
+  activePresetName,
+  presetsEnabled,
+  presetRootDir,
+  presetOperations,
   onRefreshPluginConfigs,
   onSavePluginConfig,
   onSetPluginEnabled,
+  onRefreshConfig,
+  onSaveConfig,
+  onFetchProviderModels,
+  onRefreshPresets,
+  onSavePreset,
+  onDeletePreset,
+  onSetActivePreset,
   socketStatus,
   uploadUrl,
   onSend,
@@ -331,6 +383,17 @@ export function ChatComposer({
             )}
           </span>
           <span className="flex min-w-0 items-center gap-1">
+            <SystemConfigControl
+              disabled={disabled || running}
+              snapshot={configSnapshot}
+              operation={configOperation}
+              providerModelCatalogs={providerModelCatalogs}
+              providerModelErrors={providerModelErrors}
+              providerModelLoadingIds={providerModelLoadingIds}
+              onRefresh={onRefreshConfig}
+              onSave={onSaveConfig}
+              onFetchProviderModels={onFetchProviderModels}
+            />
             <PluginConfigControl
               disabled={disabled || running}
               plugins={pluginConfigs}
@@ -338,6 +401,18 @@ export function ChatComposer({
               onRefresh={onRefreshPluginConfigs}
               onSave={onSavePluginConfig}
               onSetEnabled={onSetPluginEnabled}
+            />
+            <PresetControl
+              disabled={disabled || running}
+              enabled={presetsEnabled}
+              rootDir={presetRootDir}
+              presets={presets}
+              activePresetName={activePresetName}
+              operations={presetOperations}
+              onRefresh={onRefreshPresets}
+              onSave={onSavePreset}
+              onDelete={onDeletePreset}
+              onSetActive={onSetActivePreset}
             />
             <ModelSelector
               disabled={disabled || running}
@@ -474,22 +549,26 @@ function ModelSelector({
   onSelect: (id: string) => void;
   prefersCompactControls: boolean;
 }): JSX.Element {
-  const selected = useMemo(
-    () => readSelectedModelProvider(models, selectedId) ?? null,
-    [models, selectedId],
+  const chatModels = useMemo(
+    () => readChatModelProviders(models),
+    [models],
   );
-  const label = selected?.title ?? selected?.model ?? "...";
+  const selected = useMemo(
+    () => readSelectedModelProvider(chatModels, selectedId) ?? null,
+    [chatModels, selectedId],
+  );
+  const label = readModelSelectorLabel(selected);
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={disabled || models.length === 0}>
+      <DropdownMenuTrigger asChild disabled={disabled || chatModels.length === 0}>
         <MotionButton
           className={cn(
             "inline-flex h-9 min-w-0 max-w-[180px] items-center gap-1.5 rounded-md px-2 text-[11px] sm:h-7 sm:max-w-[230px]",
             prefersCompactControls && "min-h-11 min-w-11",
             "text-ink-500 transition hover:bg-ink-900/[0.045] hover:text-ink-800",
             "focus:outline-none focus:ring-2 focus:ring-terra-200/60",
-            (disabled || models.length === 0) && "pointer-events-none opacity-55",
+            (disabled || chatModels.length === 0) && "pointer-events-none opacity-55",
           )}
           aria-label="选择模型"
         >
@@ -505,13 +584,13 @@ function ModelSelector({
       <DropdownMenuContent align="end" side="top" className="w-[min(280px,calc(100vw-24px))]">
         <DropdownMenuLabel>模型</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {models.map((model) => {
+        {chatModels.map((model) => {
           const active = model.id === selected?.id;
           return (
             <DropdownMenuItem
               key={model.id}
               onSelect={() => onSelect(model.id)}
-              className="h-auto items-start py-2"
+              className="h-10 py-2"
               icon={active
                 ? <Check className="h-3.5 w-3.5 text-terra-500" />
                 : (
@@ -521,11 +600,8 @@ function ModelSelector({
                   />
                 )}
             >
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-[13px] text-ink-850">{model.title}</span>
-                <span className="truncate font-mono text-[10.5px] text-ink-400">
-                  {model.endpoint} · {model.model}
-                </span>
+              <span className="min-w-0 truncate text-[13px] text-ink-850">
+                {readModelSelectorLabel(model)}
               </span>
             </DropdownMenuItem>
           );
@@ -533,4 +609,8 @@ function ModelSelector({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function readModelSelectorLabel(model: ModelProviderListItem | null | undefined): string {
+  return model?.model.trim() || "...";
 }

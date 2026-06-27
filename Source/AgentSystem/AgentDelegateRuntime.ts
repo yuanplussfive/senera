@@ -1,7 +1,10 @@
 import { z } from "zod";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
+import {
+  toolProcessFailureResult,
+  toolProcessSuccessResult,
+} from "./AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -22,7 +25,7 @@ const AgentDelegateArgumentsSchema = z
       normalizeToolStringArgument,
       z.enum(["plan", "run"]).optional(),
     ),
-    evidenceRefs: z.preprocess(normalizeToolArrayArgument, z.array(z.string().trim().min(1))).optional(),
+    evidenceUris: z.preprocess(normalizeToolArrayArgument, z.array(z.string().trim().min(1))).optional(),
     artifactUris: z.preprocess(normalizeToolArrayArgument, z.array(z.string().trim().min(1))).optional(),
   })
   .strict();
@@ -71,7 +74,7 @@ export const delegateAgentHostTool: AgentHostToolHandler = async (args, context)
       step: context.step ?? 1,
       plan,
       latestUserRequest: parsed.data.objective ?? plan.objective ?? plan.workflow.description ?? plan.workflow.name,
-      evidenceRefs: parsed.data.evidenceRefs,
+      evidenceUris: parsed.data.evidenceUris,
       artifactUris: parsed.data.artifactUris,
       onEvent: context.onEvent,
       signal: context.signal,
@@ -98,31 +101,11 @@ export const delegateAgentHostTool: AgentHostToolHandler = async (args, context)
 };
 
 function delegateSuccess(result: unknown): AgentToolProcessRunResult {
-  return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: true,
-      result,
-    },
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    signal: null,
-  };
+  return toolProcessSuccessResult(result);
 }
 
 function delegateFailure(
   error: NonNullable<AgentToolProcessRunResult["response"]["error"]>,
 ): AgentToolProcessRunResult {
-  return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error,
-    },
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    signal: null,
-  };
+  return toolProcessFailureResult(error);
 }

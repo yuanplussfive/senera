@@ -11,7 +11,7 @@ import {
   createModelProviderMetadata,
   type AgentModelProviderMetadata,
 } from "./AgentModelMetadata.js";
-import type { AgentSystemConfig } from "./Types.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
 import { ModelHttpClient } from "./ModelEndpoints/ModelHttpClient.js";
 import type {
   TextGenerationEndpoint,

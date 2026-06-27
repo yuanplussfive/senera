@@ -43,6 +43,7 @@ export const AgentEventKinds = {
   ActionPlannerStageStarted: "action.planner.stage.started",
   ActionPlannerStageCompleted: "action.planner.stage.completed",
   ActionPlannerStageFailed: "action.planner.stage.failed",
+  InteractionRouted: "interaction.routed",
   ActionPlanned: "action.planned",
   ModelStarted: "model.started",
   ModelStreamOpened: "model.stream.opened",
@@ -72,9 +73,14 @@ export const AgentEventKinds = {
   RequestInvalid: "request.invalid",
   ConfigReloaded: "config.reloaded",
   ConfigFailed: "config.failed",
+  ConfigSnapshot: "config.snapshot",
   ModelListSnapshot: "model.list.snapshot",
+  ProviderModelsSnapshot: "provider.models.snapshot",
+  ProviderModelsFailed: "provider.models.failed",
   PluginConfigSnapshot: "plugin.config.snapshot",
   ProfileSnapshot: "profile.snapshot",
+  PresetSnapshot: "preset.snapshot",
+  PresetFailed: "preset.failed",
 } as const;
 
 export type AgentEventKind =
@@ -167,6 +173,10 @@ export const AgentEventSpecTable: {
   },
   [AgentEventKinds.ActionPlannerStageFailed]: {
     layer: AgentEventLayers.Error,
+    phase: AgentEventPhases.Decision,
+  },
+  [AgentEventKinds.InteractionRouted]: {
+    layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Decision,
   },
   [AgentEventKinds.ActionPlanned]: {
@@ -285,8 +295,20 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Error,
     phase: AgentEventPhases.Config,
   },
+  [AgentEventKinds.ConfigSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Config,
+  },
   [AgentEventKinds.ModelListSnapshot]: {
     layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.ProviderModelsSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.ProviderModelsFailed]: {
+    layer: AgentEventLayers.Error,
     phase: AgentEventPhases.Config,
   },
   [AgentEventKinds.PluginConfigSnapshot]: {
@@ -295,6 +317,14 @@ export const AgentEventSpecTable: {
   },
   [AgentEventKinds.ProfileSnapshot]: {
     layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.PresetSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.PresetFailed]: {
+    layer: AgentEventLayers.Error,
     phase: AgentEventPhases.Config,
   },
 };

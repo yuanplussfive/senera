@@ -78,17 +78,20 @@ async function main(): Promise<void> {
         System: [],
         User: [],
       },
-      ModelProviders: [{
+      ModelProviderEndpoints: [{
         Id: "test",
-        Kind: "OpenAICompatible",
-        Endpoint: "Responses",
         BaseUrl: "https://example.invalid/v1",
         ApiKey: "test",
+      }],
+      ModelProviders: [{
+        Id: "test",
+        ProviderId: "test",
+        Endpoint: "Responses",
         Model: "test",
         Temperature: 0,
         MaxOutputTokens: -1,
         Stream: true,
-        TimeoutMs: 1,
+        TimeoutSeconds: 0.001,
         MaxNetworkRetries: 0,
       }],
       Artifacts: {
@@ -145,7 +148,6 @@ async function main(): Promise<void> {
             ],
           },
           Presentation: {
-            RefPrefix: "T",
             Locator: "tool:{{ name }}",
             Display: "tool candidate: {{ title }}",
             Label: "{{ title }}",
@@ -171,8 +173,8 @@ async function main(): Promise<void> {
             ],
           },
           Projection: {
-            SummaryTemplate: "{% for e in evidence %}- {{ e.ref }} tool: {{ e.slots.name }} — {{ e.slots.title }}{% endfor %}",
-            ArtifactTemplate: "{% for e in evidence %}- {{ e.ref }} tool: {{ e.slots.name }}\n  title: {{ e.slots.title }}\n  summary: {{ e.slots.summary }}\n  score: {{ e.slots.score }}{% endfor %}",
+            SummaryTemplate: "{% for e in evidence %}- {{ e.evidenceUri }} tool: {{ e.slots.name }} — {{ e.slots.title }}{% endfor %}",
+            ArtifactTemplate: "{% for e in evidence %}- {{ e.evidenceUri }} tool: {{ e.slots.name }}\n  title: {{ e.slots.title }}\n  summary: {{ e.slots.summary }}\n  score: {{ e.slots.score }}{% endfor %}",
           },
           Confidence: 0.8,
           Metadata: {
@@ -180,8 +182,8 @@ async function main(): Promise<void> {
           },
         }],
         Summary: {
-          Template: "{% for e in evidence %}- {{ e.ref }} {{ e.display }}{% endfor %}",
-          ArtifactTemplate: "{% for e in evidence %}- {{ e.ref }} {{ e.display }}\n  locator: {{ e.locator }}{% endfor %}",
+          Template: "{% for e in evidence %}- {{ e.evidenceUri }} {{ e.display }}{% endfor %}",
+          ArtifactTemplate: "{% for e in evidence %}- {{ e.evidenceUri }} {{ e.display }}\n  locator: {{ e.locator }}{% endfor %}",
         },
         Workspace: {
           Capture: "declared",
@@ -284,8 +286,8 @@ async function main(): Promise<void> {
       },
       artifactPolicy: {
         Summary: {
-          Template: "{% for e in evidence %}{{ e.ref }}{% endfor %}",
-          ArtifactTemplate: "{% for e in evidence %}{{ e.ref }}{% endfor %}",
+          Template: "{% for e in evidence %}{{ e.evidenceUri }}{% endfor %}",
+          ArtifactTemplate: "{% for e in evidence %}{{ e.evidenceUri }}{% endfor %}",
         },
       },
     }],
@@ -303,7 +305,7 @@ async function main(): Promise<void> {
     step: 4,
     results: noEvidenceResults,
   });
-  assert.equal(noEvidenceLedger.calls[0]?.evidenceRefs.length, 0);
+  assert.equal(noEvidenceLedger.calls[0]?.evidenceUris.length, 0);
   assert.equal(noEvidenceLedger.evidence.length, 0);
   assert.equal(noEvidenceLedger.deltas.some((entry) => entry.op === "AddEvidence"), false);
 

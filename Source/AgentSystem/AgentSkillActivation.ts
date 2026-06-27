@@ -1,5 +1,5 @@
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
-import type { SkillEvidenceRequirementManifest } from "./Types.js";
+import type { SkillEvidenceRequirementManifest } from "./Types/PluginManifestTypes.js";
 import {
   agentActionCapabilityNeeds,
   agentActionInstruction,

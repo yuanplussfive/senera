@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
 import { AgentActionPlannerStageNames, type AgentActionPlannerStageEvent } from "../Source/AgentSystem/AgentActionPlannerTelemetry.js";
-import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
   createActionPlannerConfigFixture,
   createActionPlanInputFixture,
@@ -9,6 +9,7 @@ import {
 
 const provider: ResolvedAgentModelProviderConfig = {
   Id: "test",
+  ProviderId: "test",
   Kind: "OpenAICompatible",
   Endpoint: "ChatCompletions",
   BaseUrl: "https://example.test/v1",

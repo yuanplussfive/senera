@@ -8,7 +8,7 @@ import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
 import { matchByKind } from "./AgentMatch.js";
 import type { AgentRetryInstruction, AgentRetryableError } from "./AgentRetryableError.js";
 import type { SanitizedDecisionXml } from "./AgentDecisionXmlSanitizer.js";
-import type { AgentDecision } from "./Types.js";
+import type { AgentDecision } from "./Types/ToolRuntimeTypes.js";
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "./AgentModelMetadata.js";
@@ -29,6 +29,11 @@ import {
 } from "./AgentStepTrace.js";
 import type { AgentRootCommand } from "./AgentRootCommand.js";
 import type { AgentActivatedSkill } from "./AgentSkillActivation.js";
+import {
+  AgentInteractionRunModes,
+  type AgentInteractionRouteResult,
+} from "./AgentInteractionRouter.js";
+import type { TurnUnderstanding } from "./BamlClient/baml_client/types.js";
 
 export interface AgentLoopMachineConfig {
   maxSteps: number;
@@ -50,6 +55,8 @@ export interface RunningAgentLoopMachineState {
   loadedToolNames: "all" | string[];
   plannerLedger: AgentActionPlannerLedger;
   rootCommand?: AgentRootCommand;
+  turnUnderstanding?: TurnUnderstanding;
+  toolPlanDiscoveryEscalated: boolean;
   systemPromptPreamble?: string;
   activeSkills: AgentActivatedSkill[];
   /** 精简档执行轨迹累积；spread 转移天然透传，终态输出供 manager 落盘 */
@@ -76,6 +83,17 @@ export type AgentLoopMachineState =
 
 export type AgentLoopCommand =
   | {
+      kind: "route_interaction";
+      requestId: string;
+      step: number;
+      input: string;
+      messages: AgentLanguageModelMessage[];
+      conversationEntries: AgentConversationEntry[];
+      loadedToolNames: "all" | string[];
+      plannerLedger: AgentActionPlannerLedger;
+      turnUnderstanding?: TurnUnderstanding;
+    }
+  | {
       kind: "plan_action";
       requestId: string;
       step: number;
@@ -84,6 +102,7 @@ export type AgentLoopCommand =
       conversationEntries: AgentConversationEntry[];
       loadedToolNames: "all" | string[];
       plannerLedger: AgentActionPlannerLedger;
+      turnUnderstanding?: TurnUnderstanding;
     }
   | {
       kind: "render_prompt";
@@ -105,6 +124,20 @@ export type AgentLoopCommand =
       loadedToolNames: "all" | string[];
     }
   | {
+      kind: "collect_tool_call_plan";
+      requestId: string;
+      step: number;
+      input: string;
+      messages: AgentLanguageModelMessage[];
+      conversationEntries: AgentConversationEntry[];
+      rootCommand: AgentRootCommand;
+      loadedToolNames: "all" | string[];
+      plannerLedger: AgentActionPlannerLedger;
+      turnUnderstanding?: TurnUnderstanding;
+      activeSkills: AgentActivatedSkill[];
+      toolPlanDiscoveryEscalated?: boolean;
+    }
+  | {
       kind: "parse_decision";
       requestId: string;
       step: number;
@@ -120,6 +153,7 @@ export type AgentLoopCommand =
       conversationEntries: AgentConversationEntry[];
       loadedToolNames: "all" | string[];
       plannerLedger: AgentActionPlannerLedger;
+      turnUnderstanding?: TurnUnderstanding;
     }
   | {
       kind: "plan_retry";
@@ -133,6 +167,16 @@ export type AgentLoopCommand =
 
 export type AgentLoopCommandSucceeded =
   | {
+      kind: "interaction_routed";
+      requestId: string;
+      step: number;
+      route: AgentInteractionRouteResult;
+      loadedToolNames: "all" | string[];
+      rootCommand?: AgentRootCommand;
+      turnUnderstanding?: TurnUnderstanding;
+      activeSkills: AgentActivatedSkill[];
+    }
+  | {
       kind: "action_planned";
       requestId: string;
       step: number;
@@ -141,6 +185,7 @@ export type AgentLoopCommandSucceeded =
       plannerLedger: AgentActionPlannerLedger;
       conversationEntries: AgentConversationEntry[];
       rootCommand?: AgentRootCommand;
+      turnUnderstanding?: TurnUnderstanding;
       activeSkills: AgentActivatedSkill[];
     }
   | {
@@ -156,8 +201,27 @@ export type AgentLoopCommandSucceeded =
       step: number;
       responseText: string;
       toolCallsXml: string;
-      modelProvider: AgentModelProviderMetadata;
-      usage: AgentModelUsage;
+      modelProvider?: AgentModelProviderMetadata;
+      usage?: AgentModelUsage;
+    }
+  | {
+      kind: "tool_call_discovery_planned";
+      requestId: string;
+      step: number;
+      reason: string;
+      issues: string[];
+      loadedToolNames: "all" | string[];
+      rootCommand: AgentRootCommand;
+      activeSkills: AgentActivatedSkill[];
+    }
+  | {
+      kind: "tool_call_planning_blocked";
+      requestId: string;
+      step: number;
+      reason: string;
+      issues: string[];
+      rootCommand: AgentRootCommand;
+      systemPromptPreamble?: string;
     }
   | {
       kind: "final_text_collected";
@@ -257,6 +321,7 @@ export class AgentLoopStateMachine {
       loadedToolNames: request.loadedToolNames,
       plannerLedger: buildInitialActionPlannerLedger(request.messages),
       rootCommand: request.rootCommand,
+      toolPlanDiscoveryEscalated: false,
       systemPromptPreamble: request.systemPromptPreamble,
       activeSkills: [],
       stepTraces: [],
@@ -264,7 +329,7 @@ export class AgentLoopStateMachine {
 
     return {
       state,
-      command: this.planActionCommand(state),
+      command: this.routeInteractionCommand(state),
       events: request.emitRunStarted === false
         ? []
         : [
@@ -288,6 +353,36 @@ export class AgentLoopStateMachine {
     output: AgentLoopCommandSucceeded,
   ): AgentLoopTransition {
     return matchByKind(output, {
+      interaction_routed: (entry) => {
+        const nextState: RunningAgentLoopMachineState = {
+          ...state,
+          loadedToolNames: entry.loadedToolNames,
+          rootCommand: entry.rootCommand,
+          turnUnderstanding: entry.turnUnderstanding,
+          activeSkills: [...entry.activeSkills],
+        };
+        const routeEvents = this.eventFactory.interactionRouted(
+          entry.requestId,
+          entry.step,
+          entry.route,
+          entry.loadedToolNames,
+          entry.rootCommand,
+        );
+
+        if (entry.route.mode === AgentInteractionRunModes.DeliberateTaskLoop) {
+          return {
+            state: nextState,
+            command: this.planActionCommand(nextState),
+            events: routeEvents,
+          };
+        }
+
+        return {
+          state: nextState,
+          command: this.nextDecisionCommand(nextState),
+          events: routeEvents,
+        };
+      },
       action_planned: (entry) => {
         const nextState: RunningAgentLoopMachineState = {
           ...state,
@@ -295,6 +390,7 @@ export class AgentLoopStateMachine {
           plannerLedger: entry.plannerLedger,
           conversationEntries: entry.conversationEntries,
           rootCommand: entry.rootCommand,
+          turnUnderstanding: entry.turnUnderstanding,
           activeSkills: [...entry.activeSkills],
         };
         const actionEvents = this.eventFactory.actionPlanned(
@@ -308,21 +404,35 @@ export class AgentLoopStateMachine {
 
         return {
           state: nextState,
-          command: this.renderPromptCommand(nextState),
+          command: this.nextDecisionCommand(nextState),
           events: actionEvents,
         };
       },
       prompt_rendered: (entry) => ({
         state,
-        command: {
-          kind: "collect_decision_xml",
-          requestId: entry.requestId,
-          step: entry.step,
-          prompt: entry.prompt,
-          messages: state.messages,
-          rootCommand: state.rootCommand,
-          loadedToolNames: state.loadedToolNames,
-        },
+        command: state.rootCommand?.outputMode === "tool_call_xml"
+          ? {
+              kind: "collect_tool_call_plan",
+              requestId: entry.requestId,
+              step: entry.step,
+              input: state.input,
+              messages: state.messages,
+              conversationEntries: state.conversationEntries,
+              rootCommand: state.rootCommand,
+              loadedToolNames: state.loadedToolNames,
+              plannerLedger: state.plannerLedger,
+              turnUnderstanding: state.turnUnderstanding,
+              activeSkills: state.activeSkills,
+            }
+          : {
+              kind: "collect_decision_xml",
+              requestId: entry.requestId,
+              step: entry.step,
+              prompt: entry.prompt,
+              messages: state.messages,
+              rootCommand: state.rootCommand,
+              loadedToolNames: state.loadedToolNames,
+            },
         events: this.eventFactory.promptRendered(
           entry.requestId,
           entry.step,
@@ -345,6 +455,61 @@ export class AgentLoopStateMachine {
         },
         events: [],
       }),
+      tool_call_discovery_planned: (entry) => {
+        const nextState: RunningAgentLoopMachineState = {
+          ...state,
+          loadedToolNames: entry.loadedToolNames,
+          rootCommand: entry.rootCommand,
+          activeSkills: [...entry.activeSkills],
+          toolPlanDiscoveryEscalated: true,
+          repairAttempts: 0,
+        };
+
+        return {
+          state: nextState,
+          command: this.collectToolCallPlanCommand(nextState),
+          events: [
+            this.eventFactory.toolCallsPlanned(
+              entry.requestId,
+              entry.step,
+              entry.rootCommand.allowedTools,
+              {
+                status: "discovery_escalated",
+                reason: entry.reason,
+                issues: entry.issues,
+              },
+            ),
+          ],
+        };
+      },
+      tool_call_planning_blocked: (entry) => {
+        const nextState: RunningAgentLoopMachineState = {
+          ...state,
+          rootCommand: entry.rootCommand,
+          systemPromptPreamble: appendSystemPromptPreamble(
+            state.systemPromptPreamble,
+            entry.systemPromptPreamble,
+          ),
+          repairAttempts: 0,
+        };
+
+        return {
+          state: nextState,
+          command: this.renderPromptCommand(nextState),
+          events: [
+            this.eventFactory.toolCallsPlanned(
+              entry.requestId,
+              entry.step,
+              [],
+              {
+                status: "blocked",
+                reason: entry.reason,
+                issues: entry.issues,
+              },
+            ),
+          ],
+        };
+      },
       final_text_collected: (entry) => ({
         state: {
           kind: "completed",
@@ -358,6 +523,7 @@ export class AgentLoopStateMachine {
             modelProvider: entry.modelProvider,
             usage: entry.usage,
             conversationEntries: state.conversationEntries,
+            turnUnderstanding: state.turnUnderstanding,
             stepTraces: [
               ...state.stepTraces,
               buildAnswerTrace(entry.step, state.stepTraces.length, "final_answer"),
@@ -402,6 +568,7 @@ export class AgentLoopStateMachine {
           conversationEntries: state.conversationEntries,
           loadedToolNames: state.loadedToolNames,
           plannerLedger: state.plannerLedger,
+          turnUnderstanding: state.turnUnderstanding,
         },
         events: [
           ...this.eventFactory.sanitizedDecisionXml(entry.requestId, entry.step, entry.sanitized),
@@ -434,6 +601,7 @@ export class AgentLoopStateMachine {
             modelProvider: state.lastModelProvider,
             usage: state.lastUsage,
             conversationEntries: state.conversationEntries,
+            turnUnderstanding: state.turnUnderstanding,
             stepTraces: [
               ...state.stepTraces,
               buildAnswerTrace(
@@ -526,6 +694,7 @@ export class AgentLoopStateMachine {
       plannerLedger,
       lastDecisionXml: responseText,
       rootCommand: undefined,
+      turnUnderstanding: state.turnUnderstanding,
       activeSkills: [],
       stepTraces: [...state.stepTraces, ...toolTraces],
     };
@@ -539,7 +708,7 @@ export class AgentLoopStateMachine {
         )
       : {
           state: nextState,
-          command: this.planActionCommand(nextState),
+          command: this.routeInteractionCommand(nextState),
           events,
         };
   }
@@ -567,6 +736,33 @@ export class AgentLoopStateMachine {
     };
   }
 
+  private nextDecisionCommand(state: RunningAgentLoopMachineState): AgentLoopCommand {
+    return state.rootCommand?.outputMode === "tool_call_xml"
+      ? this.collectToolCallPlanCommand(state)
+      : this.renderPromptCommand(state);
+  }
+
+  private collectToolCallPlanCommand(state: RunningAgentLoopMachineState): AgentLoopCommand {
+    if (!state.rootCommand) {
+      throw new Error("ToolCall Planner 需要 RootCommand。");
+    }
+
+    return {
+      kind: "collect_tool_call_plan",
+      requestId: state.requestId,
+      step: state.step,
+      input: state.input,
+      messages: state.messages,
+      conversationEntries: state.conversationEntries,
+      rootCommand: state.rootCommand,
+      loadedToolNames: state.loadedToolNames,
+      plannerLedger: state.plannerLedger,
+      activeSkills: state.activeSkills,
+      toolPlanDiscoveryEscalated: state.toolPlanDiscoveryEscalated,
+      turnUnderstanding: state.turnUnderstanding,
+    };
+  }
+
   private planActionCommand(state: RunningAgentLoopMachineState): AgentLoopCommand {
     return {
       kind: "plan_action",
@@ -577,6 +773,21 @@ export class AgentLoopStateMachine {
       conversationEntries: state.conversationEntries,
       loadedToolNames: state.loadedToolNames,
       plannerLedger: state.plannerLedger,
+      turnUnderstanding: state.turnUnderstanding,
+    };
+  }
+
+  private routeInteractionCommand(state: RunningAgentLoopMachineState): AgentLoopCommand {
+    return {
+      kind: "route_interaction",
+      requestId: state.requestId,
+      step: state.step,
+      input: state.input,
+      messages: state.messages,
+      conversationEntries: state.conversationEntries,
+      loadedToolNames: state.loadedToolNames,
+      plannerLedger: state.plannerLedger,
+      turnUnderstanding: state.turnUnderstanding,
     };
   }
 
@@ -596,4 +807,18 @@ export class AgentLoopStateMachine {
       events,
     };
   }
+}
+
+function appendSystemPromptPreamble(
+  current: string | undefined,
+  addition: string | undefined,
+): string | undefined {
+  if (!current?.trim()) {
+    return addition;
+  }
+  if (!addition?.trim()) {
+    return current;
+  }
+
+  return `${current}\n\n${addition}`;
 }

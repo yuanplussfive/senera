@@ -14,7 +14,7 @@ export interface AgentEvidenceRequirementProfile {
 }
 
 export interface AgentEvidenceCandidateProfile {
-  ref: string;
+  evidenceUri: string;
   kind: string;
   toolName: string;
   artifactUri: string;
@@ -28,7 +28,7 @@ export interface AgentEvidenceCandidateProfile {
 }
 
 export interface AgentEvidenceCapabilityMatch {
-  ref: string;
+  evidenceUri: string;
   kind: string;
   toolName: string;
   artifactUri: string;
@@ -94,7 +94,7 @@ export class AgentEvidenceCapabilityIndex {
       const tool = this.toolsByName.get(doc.toolName);
       const capability = tool?.evidenceCapabilities[doc.capabilityIndex];
       return {
-        ref: evidence.ref,
+        evidenceUri: evidence.evidenceUri,
         kind: evidence.kind,
         toolName: evidence.toolName,
         artifactUri: evidence.artifactUri,

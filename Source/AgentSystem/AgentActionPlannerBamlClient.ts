@@ -1,8 +1,8 @@
 import { ClientRegistry } from "@boundaryml/baml";
 import type {
-  AgentActionPlannerClientConfig,
+  ResolvedAgentActionPlannerClientConfig,
   ResolvedAgentModelProviderConfig,
-} from "./Types.js";
+} from "./Types/AgentConfigTypes.js";
 
 export const AgentActionPlannerBamlClientName = "SeneraRuntimeActionPlanner";
 
@@ -14,7 +14,7 @@ export interface AgentActionPlannerBamlClient {
 
 export function createActionPlannerBamlClient(
   model: ResolvedAgentModelProviderConfig,
-  overrides: AgentActionPlannerClientConfig,
+  overrides: ResolvedAgentActionPlannerClientConfig,
 ): AgentActionPlannerBamlClient {
   const provider = resolveBamlProvider(model, overrides.Provider);
   const options = buildProviderOptions(provider, model, overrides);
@@ -37,29 +37,20 @@ type BamlProvider =
 
 function resolveBamlProvider(
   model: ResolvedAgentModelProviderConfig,
-  provider: AgentActionPlannerClientConfig["Provider"],
+  provider: ResolvedAgentActionPlannerClientConfig["Provider"],
 ): BamlProvider {
-  return provider && provider !== "auto"
-    ? provider
-    : EndpointProviderMap[model.Endpoint];
+  return provider;
 }
-
-const EndpointProviderMap = {
-  Responses: "openai-responses",
-  ChatCompletions: "openai-generic",
-  ClaudeMessages: "anthropic",
-  GoogleGenerateContent: "google-ai",
-} as const satisfies Record<ResolvedAgentModelProviderConfig["Endpoint"], BamlProvider>;
 
 function buildProviderOptions(
   provider: BamlProvider,
   model: ResolvedAgentModelProviderConfig,
-  overrides: AgentActionPlannerClientConfig,
+  overrides: ResolvedAgentActionPlannerClientConfig,
 ): Record<string, unknown> {
   const base = {
-    base_url: normalizeBaseUrl(provider, overrides.BaseUrl ?? model.BaseUrl),
-    api_key: overrides.ApiKey ?? model.ApiKey,
-    model: overrides.Model ?? model.Model,
+    base_url: normalizeBaseUrl(provider, overrides.BaseUrl),
+    api_key: overrides.ApiKey,
+    model: overrides.Model,
   };
 
   return ProviderOptions[provider](base, {

@@ -22,7 +22,7 @@ export interface AgentChildPromptBuilderInput {
   plan: AgentDelegationPlan;
   job: AgentDelegationJob;
   latestUserRequest: string;
-  evidenceRefs?: readonly string[];
+  evidenceUris?: readonly string[];
   artifactUris?: readonly string[];
 }
 

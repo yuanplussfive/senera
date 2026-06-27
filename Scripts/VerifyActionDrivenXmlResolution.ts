@@ -4,7 +4,7 @@ import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
 import { AgentDecisionXmlCollector, AgentDecisionXmlCollectionRetryableError } from "../Source/AgentSystem/AgentDecisionXmlCollector.js";
 import { createXmlProtocolPolicy } from "../Source/AgentSystem/AgentXmlPolicy.js";
 import type { AgentLanguageModel, AgentLanguageModelStream } from "../Source/AgentSystem/AgentLanguageModel.js";
-import type { AgentSystemConfig } from "../Source/AgentSystem/Types.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentActionDecision } from "../Source/AgentSystem/AgentActionPlanner.js";
 import type { AgentModelProviderMetadata } from "../Source/AgentSystem/AgentModelMetadata.js";
 import { AgentRetryPlanner } from "../Source/AgentSystem/AgentRetryPlanner.js";
@@ -50,10 +50,9 @@ async function main(): Promise<void> {
   const useTools = action("use_tools");
   const answer = action("answer");
 
-  const recovered = await collect(mixed, useTools, policy, registry, promptContextBuilder);
-  assert.equal(recovered.kind, "tool_calls");
-  assert.equal(recovered.toolCallsXml, toolXml);
-  assert.equal(recovered.text, mixed);
+  const mixedMismatch = await collectError(mixed, useTools, policy, registry, promptContextBuilder);
+  assert.equal(mixedMismatch.instruction.code, "MixedXmlContent");
+  assert.match(mixedMismatch.instruction.repairPrompt ?? "", /第一个非空字符必须是 &lt;/);
 
   const finalText = await collect(mixed, answer, policy, registry, promptContextBuilder);
   assert.equal(finalText.kind, "final_text");

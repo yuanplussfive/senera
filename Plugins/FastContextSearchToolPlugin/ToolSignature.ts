@@ -1,3 +1,44 @@
+export type FastContextScoutToolArguments = {
+  // 本地工作区问题；工具会自己组合 marker、路径和文本检索并读取候选文件片段。
+  question: string
+
+  // 可选提示词、字段名、文件名片段或用户已知线索。
+  hints?: {
+    item: string[]
+  }
+
+  // 搜索根目录，路径相对工作区根目录；不确定时省略。
+  roots?: {
+    item: string[]
+  }
+
+  // 额外排除路径片段或 glob 名称。
+  exclude?: {
+    item: string[]
+  }
+
+  // 最多派生并执行的检索查询数量。
+  maxQueries?: number
+
+  // 每个查询返回的候选数量。
+  maxResults?: number
+
+  // 最终返回的文件数量。
+  maxFiles?: number
+
+  // 搜索命中上下文行数。
+  contextLines?: number
+
+  // 每个最终文件读取的行窗口大小。
+  readLineWindow?: number
+
+  // 是否刷新本地索引后搜索。
+  refreshIndex?: boolean
+
+  // 侦察模式。默认 llm；传 deterministic 时只使用本地确定性检索。
+  planningMode?: "deterministic" | "llm"
+}
+
 export type FastContextHybridSearchToolArguments = {
   // 自然语言、路径片段、标识符或错误文本；默认使用混合检索。
   query: string

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
-import type { RegisteredTool } from "./Types.js";
+import type { RegisteredTool } from "./Types/PluginRuntimeTypes.js";
 import { AgentPromptContractProjector } from "./AgentPromptContractProjector.js";
 import type { ToolSearchDocument } from "./AgentToolSearchTypes.js";
 import {
@@ -20,7 +20,6 @@ export const ToolSearchDocumentSearchFields = [
   "examples",
   "capabilityText",
   "capabilityFacets",
-  "capabilityAvoid",
   "capabilityRiskText",
   "params",
   "permissions",
@@ -47,23 +46,16 @@ export class AgentToolSearchDocumentBuilder {
     const whenToUse = (search?.UseCases ?? []).join(" ");
     const examples = (search?.Examples ?? []).join(" ");
     const avoid = (search?.Avoid ?? []).join(" ");
-    const tags = [
-      ...(tool.plugin.manifest.Discovery?.Tags ?? []),
-      ...(search?.Keywords ?? []),
-    ].join(" ");
+    const tags = (search?.Tags ?? []).join(" ");
     const capabilities = search?.Capabilities ?? [];
     const capabilityText = capabilities
       .map((capability) => capabilitySearchText(capability, {
-        includeAvoid: false,
         includeRisk: false,
       }))
       .join(" ");
     const capabilityFacets = capabilities
       .flatMap((capability) =>
         capabilityFacetEntries(capability.Facets).flatMap((entry) => entry.values))
-      .join(" ");
-    const capabilityAvoid = capabilities
-      .flatMap((capability) => capability.Avoid ?? [])
       .join(" ");
     const capabilityRiskDocumentText = capabilities
       .map((capability) => capabilityRiskText(capability.Risk))
@@ -98,7 +90,6 @@ export class AgentToolSearchDocumentBuilder {
       avoid,
       capabilityText,
       capabilityFacets,
-      capabilityAvoid,
       capabilityRiskText: capabilityRiskDocumentText,
       params,
       permissions,
@@ -114,7 +105,11 @@ export class AgentToolSearchDocumentBuilder {
     }
 
     try {
-      const contract = this.contractProjector.projectFromFile(tool.signatureFile, "arguments");
+      const contract = this.contractProjector.projectFromFile(
+        tool.signatureFile,
+        "arguments",
+        tool.signatureType,
+      );
       const fields = contract?.properties.flatMap(readContractPropertyTokens) ?? [];
       return fields.map((field) => field.name).join(" ");
     } catch {

@@ -6,17 +6,6 @@
     "Kind": "Tool",
     "Description": "按 uploadUri 读取用户上传图片，并通过插件配置的视觉模型进行识别、OCR 或问答。"
   },
-  "Discovery": {
-    "Tags": [
-      "image",
-      "vision",
-      "ocr",
-      "upload",
-      "图片",
-      "截图",
-      "识图"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 8
@@ -64,7 +53,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "IMG",
               "Locator": "{{ uploadUri }}",
               "Display": "image vision {{ status }}: {{ name }}",
               "Label": "{{ name }}",
@@ -106,8 +94,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.status }} {{ e.slots.name }} task={{ e.slots.task }}\n  answer: {{ e.slots.answer }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} image vision\n  uri: {{ e.slots.uploadUri }}\n  status: {{ e.slots.status }}\n  task: {{ e.slots.task }}\n  question: {{ e.slots.question }}\n  name: {{ e.slots.name }}\n  mime: {{ e.slots.mime }}\n  provider: {{ e.slots.providerModel }}\n  answer: {{ e.slots.answer }}\n  message: {{ e.slots.message }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.name }} task={{ e.slots.task }}\n  answer: {{ e.slots.answer }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} image vision\n  uri: {{ e.slots.uploadUri }}\n  status: {{ e.slots.status }}\n  task: {{ e.slots.task }}\n  question: {{ e.slots.question }}\n  name: {{ e.slots.name }}\n  mime: {{ e.slots.mime }}\n  provider: {{ e.slots.providerModel }}\n  answer: {{ e.slots.answer }}\n  message: {{ e.slots.message }}\n{% endfor %}"
             }
           }
         ],
@@ -118,16 +106,12 @@
       },
       "Search": {
         "Summary": "按 uploadUri 对用户上传图片、截图进行视觉识别、OCR 或问答。",
-        "Keywords": [
-          "image",
-          "vision",
-          "screenshot",
-          "ocr",
-          "uploadUri",
-          "图片",
-          "截图",
-          "识图",
-          "看图"
+        "Tags": [
+          "图片理解",
+          "视觉识别",
+          "截图分析",
+          "文字识别",
+          "附件处理"
         ],
         "Capabilities": [
           {
@@ -169,15 +153,6 @@
               "image OCR",
               "answer about this image"
             ],
-            "Examples": [
-              "看看这张截图里报错是什么",
-              "识别这张图片里的文字",
-              "What is shown in this uploaded image?"
-            ],
-            "Avoid": [
-              "没有 uploadUri 时不要调用。",
-              "非图片文件先用 DocumentTool 处理。"
-            ],
             "Risk": {
               "SideEffect": "model-call",
               "Permission": "upload-read"
@@ -185,14 +160,14 @@
           }
         ],
         "UseCases": [
-          "用户上传截图、照片、UI 图片并要求描述、读取文字或回答图中问题。",
-          "DocumentTool 探测到 mediaType=image 后，需要进一步理解图片内容。",
-          "用户明确说“看图”“识别截图”“图里是什么”。"
+          "上传图片视觉描述、OCR、截图错误识别。",
+          "UI 截图结构、文字、异常状态分析。"
         ],
         "Examples": [
-          "看一下我上传的截图",
-          "识别图片里的文字",
-          "这张图里的 UI 有什么问题"
+          "上传图片 OCR",
+          "截图错误识别",
+          "界面截图视觉检查",
+          "image upload vision analysis"
         ],
         "Avoid": [
           "不要对非图片附件直接调用；先探测文件类型。",

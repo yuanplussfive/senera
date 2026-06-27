@@ -7,6 +7,8 @@ import {
   resolveAgentLoopConfig,
   resolveArtifactsConfig,
   resolveModelProviderConfig,
+  resolvePresetsConfig,
+  resolveToolLearningConfig,
   resolveToolSearchConfig,
 } from "./AgentDefaults.js";
 import { AgentDecisionXmlCollector } from "./AgentDecisionXmlCollector.js";
@@ -21,7 +23,7 @@ import { AgentSchemaValidator } from "./AgentSchemaValidator.js";
 import { AgentConversationPolicy } from "./AgentConversationPolicy.js";
 import { AgentConversationProjector } from "./AgentConversationProjector.js";
 import { AgentXmlParser } from "./AgentXmlParser.js";
-import type { AgentSystemConfig } from "./Types.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
 import { createXmlProtocolPolicy } from "./AgentXmlPolicy.js";
 import { AgentDecisionErrorFactory } from "./AgentDecisionErrorFactory.js";
 import { AgentToolCallsXmlNormalizer } from "./AgentToolCallsXmlNormalizer.js";
@@ -31,6 +33,12 @@ import { AgentToolCatalogProjector } from "./AgentToolCatalogProjector.js";
 import { AgentActionMismatchRepairPromptBuilder } from "./AgentActionMismatchRepairPromptBuilder.js";
 import { AgentToolExecutionArtifactRecorder } from "./Artifacts/AgentToolExecutionArtifactRecorder.js";
 import { AgentSkillActivationService } from "./AgentSkillActivation.js";
+import { AgentPresetManager } from "./Presets/AgentPresetManager.js";
+import { AgentRuntimeModuleComposer, type AgentRuntimeModule } from "./AgentRuntimeModule.js";
+import {
+  createDefaultAgentRuntimeServices,
+  type AgentRuntimeServices,
+} from "./AgentRuntimeServices.js";
 
 export class AgentSystemRuntime {
   readonly registry = new AgentPluginRegistry();
@@ -44,6 +52,8 @@ export class AgentSystemRuntime {
   readonly agentLoopConfig;
   readonly agentDelegationConfig;
   readonly toolSearchConfig;
+  readonly toolLearningConfig;
+  readonly presetsConfig;
   readonly artifactsConfig;
   readonly actionPlannerConfig;
   readonly xmlPolicy;
@@ -56,20 +66,25 @@ export class AgentSystemRuntime {
   readonly toolSearch: AgentToolSearchRuntime;
   readonly toolCatalog: AgentToolCatalogProjector;
   readonly artifactRecorder: AgentToolExecutionArtifactRecorder;
+  readonly presetManager: AgentPresetManager;
   readonly actionPlanner: AgentActionPlanner;
   readonly actionMismatchRepairPromptBuilder: AgentActionMismatchRepairPromptBuilder;
   readonly skillActivation: AgentSkillActivationService;
+  readonly services: AgentRuntimeServices;
 
   private constructor(
     readonly workspaceRoot: string,
     readonly configPath: string,
     readonly config = AgentConfigLoader.load(configPath),
     readonly modelProviderId?: string,
+    readonly runtimeModules: readonly AgentRuntimeModule[] = [],
   ) {
     this.modelProviderConfig = resolveModelProviderConfig(config, modelProviderId);
     this.agentLoopConfig = resolveAgentLoopConfig(config);
     this.agentDelegationConfig = resolveAgentDelegationConfig(config);
     this.toolSearchConfig = resolveToolSearchConfig(config);
+    this.toolLearningConfig = resolveToolLearningConfig(config);
+    this.presetsConfig = resolvePresetsConfig(config);
     this.artifactsConfig = resolveArtifactsConfig(config);
     this.actionPlannerConfig = resolveActionPlannerConfig(config, modelProviderId);
     this.xmlPolicy = createXmlProtocolPolicy(config);
@@ -85,12 +100,18 @@ export class AgentSystemRuntime {
     this.toolSearch = new AgentToolSearchRuntime(
       this.registry,
       this.toolSearchConfig,
+      this.toolLearningConfig,
       this.workspaceRoot,
+      this.modelProviderConfig,
     );
     this.toolCatalog = new AgentToolCatalogProjector(this.registry);
     this.artifactRecorder = new AgentToolExecutionArtifactRecorder({
       workspaceRoot: this.workspaceRoot,
       config: this.artifactsConfig,
+    });
+    this.presetManager = new AgentPresetManager({
+      workspaceRoot: this.workspaceRoot,
+      config: this.presetsConfig,
     });
     this.actionPlanner = new AgentActionPlanner(
       this.actionPlannerConfig,
@@ -142,6 +163,20 @@ export class AgentSystemRuntime {
       this.toolSearch,
       this.configPath,
     );
+    this.services = new AgentRuntimeModuleComposer().compose(
+      createDefaultAgentRuntimeServices({
+        actionPlanner: this.actionPlanner,
+        artifactRecorder: this.artifactRecorder,
+        decisionExecutor: this.decisionExecutor,
+        presetManager: this.presetManager,
+        promptContextBuilder: this.promptContextBuilder,
+        registry: this.registry,
+        skillActivation: this.skillActivation,
+        toolCatalog: this.toolCatalog,
+        toolSearch: this.toolSearch,
+      }),
+      this.runtimeModules,
+    );
   }
 
   createDecisionXmlCollector(model: AgentLanguageModel): AgentDecisionXmlCollector {
@@ -160,6 +195,7 @@ export class AgentSystemRuntime {
     workspaceRoot?: string;
     configPath?: string;
     modelProviderId?: string;
+    runtimeModules?: readonly AgentRuntimeModule[];
   } = {}): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
     const configPath = path.resolve(
@@ -172,6 +208,7 @@ export class AgentSystemRuntime {
       configPath,
       undefined,
       options.modelProviderId,
+      options.runtimeModules,
     );
     const scanner = new AgentPluginScanner(workspaceRoot, runtime.config);
     for (const plugin of scanner.scan()) {
@@ -187,6 +224,7 @@ export class AgentSystemRuntime {
     configPath?: string;
     config: AgentSystemConfig;
     modelProviderId?: string;
+    runtimeModules?: readonly AgentRuntimeModule[];
   }): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
     const configPath = path.resolve(
@@ -199,6 +237,7 @@ export class AgentSystemRuntime {
       configPath,
       options.config,
       options.modelProviderId,
+      options.runtimeModules,
     );
     const scanner = new AgentPluginScanner(workspaceRoot, runtime.config);
     for (const plugin of scanner.scan()) {

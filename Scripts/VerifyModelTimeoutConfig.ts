@@ -11,13 +11,14 @@ import {
   resolvePluginRootsConfig,
   resolveToolExecutionConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
-import type { AgentSystemConfig } from "../Source/AgentSystem/Types.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const baseConfig = {
-  ModelProviderDefaults: {
+  ModelProviderEndpoints: [{
+    Id: "test-endpoint",
     BaseUrl: "https://example.test/v1",
     ApiKey: "test",
-  },
+  }],
   Cli: {
     Display: {
       DetailMode: "tools",
@@ -25,6 +26,7 @@ const baseConfig = {
   },
   ModelProviders: [{
     Id: "test",
+    ProviderId: "test-endpoint",
     Endpoint: "Responses",
     Model: "test-model",
   }],
@@ -66,16 +68,12 @@ const configuredDefaults = parseConfig({
         PreviewTokenLimit: 80,
       },
     },
-    ModelProviderDefaults: {
-      Temperature: 0.7,
-    },
     ToolExecution: {
-      TimeoutMs: 90000,
+      TimeoutSeconds: 90,
     },
     ActionPlanner: {
       Client: {
         Temperature: 0.3,
-        Model: "planner-default-model",
       },
     },
     Frontend: {
@@ -92,6 +90,10 @@ const configuredDefaults = parseConfig({
       DetailMode: "all",
     },
   },
+  ModelProviders: [{
+    ...baseConfig.ModelProviders[0],
+    Temperature: 0.7,
+  }],
   Frontend: {
     PreviewServer: {
       Port: 4174,
@@ -108,32 +110,37 @@ assert.equal(resolveCliConfig(configuredDefaults).Display?.PreviewTokenLimit, 80
 assert.equal(resolveToolExecutionConfig(configuredDefaults).TimeoutMs, 90000);
 assert.equal(resolveAgentDefaults(configuredDefaults).Cli.Display.PreviewTokenLimit, 80);
 assert.equal(resolveModelProviderConfig(configuredDefaults).Temperature, 0.7);
-assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Model, "planner-default-model");
+assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Model, "test-model");
+assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Provider, "openai-generic");
 assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Temperature, 0.3);
-assert.equal(resolveActionPlannerConfig(configuredDefaults).TaskFrameClient.Model, "planner-default-model");
-assert.equal(resolveActionPlannerConfig(configuredDefaults).EvidenceClient.Model, "planner-default-model");
+assert.equal(resolveActionPlannerConfig(configuredDefaults).TaskFrameClient.Model, "test-model");
+assert.equal(resolveActionPlannerConfig(configuredDefaults).EvidenceClient.Model, "test-model");
 assert.equal(resolveFrontendConfig(configuredDefaults).DevServer.Port, 5174);
 assert.equal(resolveFrontendConfig(configuredDefaults).PreviewServer.Port, 4174);
 assert.equal(resolveFrontendConfig(configuredDefaults).Client.WebSocketUrl, "ws://127.0.0.1:8787");
 assert.deepEqual(resolveFrontendConfig(configuredDefaults).Client.EmptySuggestions, ["查天气", "看代码"]);
 
 const defaulted = resolveModelProviderConfig(parseConfig(baseConfig));
+assert.equal(defaulted.ProviderId, "test-endpoint");
 assert.equal(defaulted.ApiKey, "test");
 assert.equal(defaulted.Kind, "OpenAICompatible");
-assert.equal(defaulted.Temperature, 0.2);
+assert.equal(defaulted.Temperature, 0);
 assert.equal(defaulted.MaxOutputTokens, -1);
 assert.equal(defaulted.Stream, true);
-assert.equal(defaulted.FirstTokenTimeoutMs, -1);
+assert.equal(defaulted.TimeoutMs, 480000);
+assert.equal(defaulted.FirstTokenTimeoutMs, 240000);
 assert.equal(defaulted.MaxRequestMs, -1);
 
 const configured = resolveModelProviderConfig(parseConfig({
   ...baseConfig,
   ModelProviders: [{
     ...baseConfig.ModelProviders[0],
-    FirstTokenTimeoutMs: 5000,
-    MaxRequestMs: 180000,
+    TimeoutSeconds: 30,
+    FirstTokenTimeoutSeconds: 5,
+    MaxRequestSeconds: 180,
   }],
 }));
+assert.equal(configured.TimeoutMs, 30000);
 assert.equal(configured.FirstTokenTimeoutMs, 5000);
 assert.equal(configured.MaxRequestMs, 180000);
 
@@ -142,11 +149,13 @@ const splitPlanner = resolveActionPlannerConfig(parseConfig({
   ModelProviders: [
     {
       Id: "gpt-planner",
+      ProviderId: "test-endpoint",
       Endpoint: "Responses",
       Model: "gpt-planner-model",
     },
     {
       Id: "mistral-large-latest",
+      ProviderId: "test-endpoint",
       Endpoint: "ChatCompletions",
       Model: "mistral-large-latest",
     },
@@ -154,11 +163,13 @@ const splitPlanner = resolveActionPlannerConfig(parseConfig({
   ActionPlanner: {
     TaskFrameClient: {
       ModelProviderId: "gpt-planner",
+      Provider: "openai-responses",
       Temperature: 0.1,
       MaxTokens: 4096,
     },
     EvidenceClient: {
       ModelProviderId: "mistral-large-latest",
+      Provider: "openai-generic",
       Temperature: 0,
       MaxTokens: 2048,
     },
@@ -176,7 +187,7 @@ assert.throws(() => parseConfig({
   ...baseConfig,
   ModelProviders: [{
     ...baseConfig.ModelProviders[0],
-    FirstTokenTimeoutMs: 0,
+    FirstTokenTimeoutSeconds: 0,
   }],
 }));
 
@@ -184,7 +195,7 @@ assert.throws(() => parseConfig({
   ...baseConfig,
   ModelProviders: [{
     ...baseConfig.ModelProviders[0],
-    MaxRequestMs: 0,
+    MaxRequestSeconds: 0,
   }],
 }));
 

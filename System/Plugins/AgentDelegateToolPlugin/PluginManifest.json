@@ -6,20 +6,6 @@
     "Kind": "Tool",
     "Description": "根据插件声明的 workflow 生成子代理委派计划，并可启动子代理循环。"
   },
-  "Discovery": {
-    "Tags": [
-      "agent",
-      "delegate",
-      "workflow",
-      "subagent",
-      "plan",
-      "代理",
-      "子代理",
-      "工作流",
-      "委派",
-      "规划"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 9
@@ -62,7 +48,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "AGT",
               "Locator": "{{ workflowName }}#{{ jobId }}",
               "Display": "{{ agentName }} planned for {{ workflowName }}",
               "Label": "{{ agentTitle }}",
@@ -110,8 +95,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.agentName }} planned for {{ e.slots.workflowName }} using {{ e.slots.contextPack }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} agent delegation job\n  workflow: {{ e.slots.workflowName }}\n  agent: {{ e.slots.agentName }}\n  title: {{ e.slots.agentTitle }}\n  status: {{ e.slots.status }}\n  task: {{ e.slots.taskFile }}\n  contextPack: {{ e.slots.contextPack }}\n  contextTemplate: {{ e.slots.contextTemplateFile }}\n  toolScope: {{ e.slots.toolScope }}\n  history: {{ e.slots.historyPolicy }}\n  artifacts: {{ e.slots.artifactPolicy }}\n  evidence: {{ e.slots.evidencePolicy }}\n  runtimeProfile: {{ e.slots.runtimeProfile }}\n  outputSchema: {{ e.slots.outputSchema }}\n  recommendedTools: {{ e.slots.recommendedTools }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.agentName }} planned for {{ e.slots.workflowName }} using {{ e.slots.contextPack }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} agent delegation job\n  workflow: {{ e.slots.workflowName }}\n  agent: {{ e.slots.agentName }}\n  title: {{ e.slots.agentTitle }}\n  status: {{ e.slots.status }}\n  task: {{ e.slots.taskFile }}\n  contextPack: {{ e.slots.contextPack }}\n  contextTemplate: {{ e.slots.contextTemplateFile }}\n  toolScope: {{ e.slots.toolScope }}\n  history: {{ e.slots.historyPolicy }}\n  artifacts: {{ e.slots.artifactPolicy }}\n  evidence: {{ e.slots.evidencePolicy }}\n  runtimeProfile: {{ e.slots.runtimeProfile }}\n  outputSchema: {{ e.slots.outputSchema }}\n  recommendedTools: {{ e.slots.recommendedTools }}\n{% endfor %}"
             }
           },
           {
@@ -133,7 +118,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "ACR",
               "Locator": "{{ workflowName }}#{{ jobId }}",
               "Display": "{{ agentName }} completed via {{ mode }}",
               "Label": "{{ agentName }} result",
@@ -171,8 +155,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.agentName }} completed via {{ e.slots.mode }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} child agent result\n  workflow: {{ e.slots.workflowName }}\n  agent: {{ e.slots.agentName }}\n  status: {{ e.slots.status }}\n  mode: {{ e.slots.mode }}\n  terminal: {{ e.slots.terminalKind }}\n  text: {{ e.slots.text }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.agentName }} completed via {{ e.slots.mode }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} child agent result\n  workflow: {{ e.slots.workflowName }}\n  agent: {{ e.slots.agentName }}\n  status: {{ e.slots.status }}\n  mode: {{ e.slots.mode }}\n  terminal: {{ e.slots.terminalKind }}\n  text: {{ e.slots.text }}\n{% endfor %}"
             }
           },
           {
@@ -192,7 +176,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "AMR",
               "Locator": "{{ workflowName }}#{{ mergePolicyName }}",
               "Display": "{{ mergePolicyName }} merged {{ workflowName }}",
               "Label": "{{ mergePolicyName }} merge",
@@ -227,8 +210,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.mergePolicyName }} merged {{ e.slots.workflowName }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} merge result\n  workflow: {{ e.slots.workflowName }}\n  mergePolicy: {{ e.slots.mergePolicyName }}\n  status: {{ e.slots.status }}\n  mode: {{ e.slots.mode }}\n  text: {{ e.slots.text }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.mergePolicyName }} merged {{ e.slots.workflowName }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} merge result\n  workflow: {{ e.slots.workflowName }}\n  mergePolicy: {{ e.slots.mergePolicyName }}\n  status: {{ e.slots.status }}\n  mode: {{ e.slots.mode }}\n  text: {{ e.slots.text }}\n{% endfor %}"
             }
           }
         ],
@@ -239,24 +222,6 @@
       },
       "Search": {
         "Summary": "根据插件声明的 workflow 生成子代理委派计划，或启动子代理循环并合并结果，适用于并行审查、分工调查、记忆建模和文档理解等多代理任务。",
-        "Keywords": [
-          "agent",
-          "delegate",
-          "subagent",
-          "workflow",
-          "parallel",
-          "review",
-          "investigation",
-          "memory",
-          "document",
-          "代理",
-          "子代理",
-          "委派",
-          "并行",
-          "工作流",
-          "审查",
-          "调查"
-        ],
         "Capabilities": [
           {
             "Id": "agent.workflow-delegation-plan",
@@ -302,15 +267,6 @@
               "delegate to agents",
               "subagent plan"
             ],
-            "Examples": [
-              "为当前 PR 生成并行审查子代理计划",
-              "按推荐 workflow 规划多个调查代理",
-              "plan subagents for memory formation"
-            ],
-            "Avoid": [
-              "只需要直接回答或单个普通工具调用时不要使用。",
-              "没有已注册 workflow 名时不要猜测。"
-            ],
             "Risk": {
               "SideEffect": "artifact-write",
               "Permission": "none"
@@ -318,19 +274,25 @@
           }
         ],
         "UseCases": [
-          "active skill 暴露了 recommended_workflows，且用户需要多角色或并行处理。",
-          "需要把插件声明的 agents/context packs/merge policy 投影成可保存、可观察的计划。",
-          "准备进入后续真正 agent runtime 前，先确认子任务拆分和证据输入。",
-          "用户明确要求实际使用子代理处理任务时，使用 executionMode=run。"
+          "active skill recommended_workflows 多角色、多路径、并行处理。",
+          "子任务拆分、证据输入确认、subagent workflow 执行。"
         ],
         "Examples": [
-          "使用 ParallelPullRequestReview 规划并行审查",
-          "为长期记忆建模生成候选记忆和知识关系两个子任务",
-          "把 DocumentUnderstandingWorkflow 展开成文档检查和视觉检查任务"
+          "ParallelPullRequestReview 并行审查",
+          "长期记忆 子任务拆分",
+          "DocumentUnderstandingWorkflow 文档检查",
+          "delegated subagent workflow"
         ],
         "Avoid": [
           "executionMode=plan 的结果不是已经执行了子代理。",
           "不要在 workflow 未注册时调用。"
+        ],
+        "Tags": [
+          "子代理",
+          "任务委派",
+          "并行分析",
+          "工作流执行",
+          "审查调查"
         ]
       }
     }

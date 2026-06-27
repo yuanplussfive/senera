@@ -7,17 +7,19 @@ import {
 } from "smol-toml";
 import { z } from "zod";
 import { resolvePluginDiscoveryConfig } from "./AgentDefaults.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
 import type {
   AgentPluginConfigSnapshotItem,
-  AgentSystemConfig,
-  LoadedPlugin,
   LoadedPluginConfig,
   LoadedPluginConfigDiagnostic,
   LoadedPluginConfigField,
   LoadedPluginConfigFieldType,
   LoadedPluginConfigSection,
   LoadedPluginRuntimeConfig,
-} from "./Types.js";
+} from "./Types/PluginConfigTypes.js";
+import type {
+  LoadedPlugin,
+} from "./Types/PluginRuntimeTypes.js";
 
 export const AgentPluginConfigDefaults = {
   FrameworkSection: "senera",
@@ -48,7 +50,6 @@ const ConfigFieldTypeSchema = z.enum([
   "number",
   "array",
   "table",
-  "unknown",
 ]);
 
 const ConfigFieldOptionValueSchema = z.union([
@@ -57,12 +58,19 @@ const ConfigFieldOptionValueSchema = z.union([
   z.boolean(),
 ]);
 
-const ConfigFieldMetadataSchema = z
+const ConfigFieldLevelSchema = z.enum([
+  "basic",
+  "advanced",
+  "internal",
+]);
+
+const ConfigSchemaFieldSchema = z
   .object({
-    label: z.string().min(1).optional(),
+    path: z.array(z.string().min(1)).min(1),
+    label: z.string().min(1),
     description: z.string().min(1).optional(),
     placeholder: z.string().min(1).optional(),
-    type: ConfigFieldTypeSchema.optional(),
+    type: ConfigFieldTypeSchema,
     itemType: ConfigFieldTypeSchema.optional(),
     options: z.array(ConfigFieldOptionValueSchema).optional(),
     optionLabels: z.record(z.string(), z.string()).optional(),
@@ -71,19 +79,55 @@ const ConfigFieldMetadataSchema = z
     step: z.number().optional(),
     secret: z.boolean().optional(),
     multiline: z.boolean().optional(),
+    required: z.boolean().optional(),
+    level: ConfigFieldLevelSchema.optional(),
   })
-  .passthrough();
+  .strict();
 
-type ConfigFieldMetadata = z.infer<typeof ConfigFieldMetadataSchema>;
-
-const ConfigSectionMetadataSchema = z
+const ConfigSchemaSectionSchema = z
   .object({
-    label: z.string().min(1).optional(),
+    id: z.string().min(1),
+    label: z.string().min(1),
     description: z.string().min(1).optional(),
+    level: ConfigFieldLevelSchema.optional(),
+    fields: z.array(ConfigSchemaFieldSchema).optional(),
   })
-  .passthrough();
+  .strict();
 
-type ConfigSectionMetadata = z.infer<typeof ConfigSectionMetadataSchema>;
+const ConfigSchemaAllowedPathSchema = z
+  .object({
+    path: z.array(z.string().min(1)).min(1),
+    recursive: z.boolean().optional(),
+    reason: z.string().min(1).optional(),
+  })
+  .strict();
+
+const PluginConfigFormSchema = z
+  .object({
+    version: z.literal(1),
+    strict: z.boolean().optional(),
+    sections: z.array(ConfigSchemaSectionSchema).optional(),
+    allowedPaths: z.array(ConfigSchemaAllowedPathSchema).optional(),
+  })
+  .strict();
+
+const PluginConfigSchemaDocumentSchema = z
+  .object({
+    form: PluginConfigFormSchema,
+  })
+  .strict();
+
+type PluginConfigSchemaDocument = z.infer<typeof PluginConfigSchemaDocumentSchema>;
+type PluginConfigSchemaField = z.infer<typeof ConfigSchemaFieldSchema>;
+type PluginConfigSchemaAllowedPath = z.infer<typeof ConfigSchemaAllowedPathSchema>;
+
+interface ParseLoadedPluginConfigTomlOptions {
+  schemaToml?: string;
+  schemaPath?: string;
+  requireSchema?: boolean;
+}
+
+type EditableTomlTable = Record<string, unknown>;
 
 export function resolvePluginConfigFileName(config: AgentSystemConfig): string {
   return resolvePluginDiscoveryConfig(config).ConfigFileName;
@@ -96,15 +140,21 @@ export function readLoadedPluginConfig(
   const fileName = resolvePluginConfigFileName(config);
   const configPath = path.join(pluginRootPath, fileName);
   const templatePath = resolvePluginConfigTemplatePath(pluginRootPath, fileName);
+  const schemaPath = resolvePluginConfigSchemaPath(pluginRootPath, fileName);
   const exists = fs.existsSync(configPath);
   const templateExists = fs.existsSync(templatePath);
+  const schemaExists = fs.existsSync(schemaPath);
   const source = exists ? "file" : templateExists ? "example" : "default";
   const toml = exists
     ? fs.readFileSync(configPath, "utf8")
     : templateExists
       ? fs.readFileSync(templatePath, "utf8")
       : defaultPluginConfigToml();
-  const parsed = parseLoadedPluginConfigToml(toml);
+  const parsed = parseLoadedPluginConfigToml(toml, {
+    schemaPath,
+    schemaToml: schemaExists ? fs.readFileSync(schemaPath, "utf8") : undefined,
+    requireSchema: source !== "default",
+  });
 
   return {
     fileName,
@@ -119,18 +169,24 @@ export function readLoadedPluginConfig(
   };
 }
 
-export function parseLoadedPluginConfigToml(toml: string): Pick<
+export function parseLoadedPluginConfigToml(
+  toml: string,
+  options: ParseLoadedPluginConfigTomlOptions = {},
+): Pick<
   LoadedPluginConfig,
   "runtime" | "sections" | "diagnostics"
 > {
+  const schemaResult = parsePluginConfigSchema(options);
   let parsed: TomlTableWithoutBigInt;
+
   try {
     parsed = parseToml(toml || defaultPluginConfigToml()) as TomlTableWithoutBigInt;
   } catch (error) {
     return {
       runtime: disabledRuntimeConfig(),
-      sections: projectTomlSections(toml, {}),
+      sections: [],
       diagnostics: [
+        ...schemaResult.diagnostics,
         {
           severity: "error",
           message: error instanceof Error ? error.message : String(error),
@@ -143,8 +199,9 @@ export function parseLoadedPluginConfigToml(toml: string): Pick<
   if (!root.success) {
     return {
       runtime: disabledRuntimeConfig(),
-      sections: projectTomlSections(toml, parsed),
+      sections: [],
       diagnostics: [
+        ...schemaResult.diagnostics,
         {
           severity: "error",
           message: root.error.issues.map(formatZodIssue).join("; "),
@@ -153,10 +210,22 @@ export function parseLoadedPluginConfigToml(toml: string): Pick<
     };
   }
 
+  const sections = schemaResult.schema
+    ? projectSchemaSections(parsed, schemaResult.schema)
+    : [];
+  const diagnostics: LoadedPluginConfigDiagnostic[] = [
+    ...schemaResult.diagnostics,
+    ...projectStrictPathDiagnostics(parsed, schemaResult.schema),
+    ...validatePluginConfigFields(sections).map((message) => ({
+      severity: "error" as const,
+      message,
+    })),
+  ];
+
   return {
     runtime: projectRuntimeConfig(root.data[AgentPluginConfigDefaults.FrameworkSection]),
-    sections: projectTomlSections(toml, parsed),
-    diagnostics: [],
+    sections,
+    diagnostics,
   };
 }
 
@@ -216,20 +285,29 @@ export function isLoadedPluginToolEnabled(
   return plugin.config.runtime.tools[toolName]?.enabled !== false;
 }
 
-export function validatePluginConfigTomlForWrite(toml: string): void {
-  const parsed = parseLoadedPluginConfigToml(toml);
+export function validatePluginConfigTomlForWrite(toml: string, configPath?: string): void {
+  const schemaPath = configPath
+    ? resolvePluginConfigSchemaPath(path.dirname(configPath), path.basename(configPath))
+    : undefined;
+  const schemaToml = schemaPath && fs.existsSync(schemaPath)
+    ? fs.readFileSync(schemaPath, "utf8")
+    : undefined;
+  if (configPath && !schemaToml) {
+    throw new Error(`插件配置 TOML 无效：缺少插件配置 schema：${schemaPath ?? configPath}`);
+  }
+  const parsed = parseLoadedPluginConfigToml(toml, {
+    schemaPath,
+    schemaToml,
+    requireSchema: Boolean(configPath),
+  });
   const error = parsed.diagnostics.find((diagnostic) => diagnostic.severity === "error");
   if (error) {
     throw new Error(`插件配置 TOML 无效：${error.message}`);
   }
-  const fieldErrors = validatePluginConfigFields(parsed.sections);
-  if (fieldErrors.length > 0) {
-    throw new Error(`插件配置字段无效：${fieldErrors.join("; ")}`);
-  }
 }
 
 export function writePluginConfigToml(configPath: string, toml: string): void {
-  validatePluginConfigTomlForWrite(toml);
+  validatePluginConfigTomlForWrite(toml, configPath);
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, ensureFinalNewline(toml), "utf8");
 }
@@ -238,35 +316,22 @@ export function setPluginConfigEnabled(
   pluginConfig: LoadedPluginConfig,
   target: { enabled: boolean; toolName?: string },
 ): string {
-  const source = ensureFinalNewline(pluginConfig.toml || defaultPluginConfigToml());
-  parseToml(source);
+  const source = pluginConfig.toml || defaultPluginConfigToml();
+  const document = parseToml(source) as EditableTomlTable;
+  const configPath = target.toolName
+    ? [AgentPluginConfigDefaults.FrameworkSection, "tools", target.toolName, "enabled"]
+    : [AgentPluginConfigDefaults.FrameworkSection, "enabled"];
+  setValueAtPath(document, configPath, target.enabled);
 
-  const sectionPath = target.toolName
-    ? [AgentPluginConfigDefaults.FrameworkSection, "tools", target.toolName]
-    : [AgentPluginConfigDefaults.FrameworkSection];
-  const nextToml = writeTomlBooleanValue(source, {
-    sectionPath,
-    key: "enabled",
-    value: target.enabled,
-  });
-  validatePluginConfigTomlForWrite(nextToml);
+  const nextToml = ensureFinalNewline(stringifyToml(document as TomlTableWithoutBigInt));
+  validatePluginConfigTomlForWrite(nextToml, pluginConfig.path);
   return nextToml;
 }
 
 export function defaultPluginConfigToml(): string {
   return [
     "[senera]",
-    "# 是否启用这个插件。",
     "enabled = true",
-    "",
-    "[senera.fields.senera.enabled]",
-    'label = "启用插件"',
-    'description = "关闭后该插件不会参与外部工具集。"',
-    'type = "boolean"',
-    "",
-    "[senera.sections.senera]",
-    'label = "启用状态"',
-    'description = "控制该插件是否参与外部工具集。"',
     "",
   ].join("\n");
 }
@@ -275,6 +340,59 @@ function resolvePluginConfigTemplatePath(pluginRootPath: string, fileName: strin
   const extension = path.extname(fileName);
   const baseName = extension ? fileName.slice(0, -extension.length) : fileName;
   return path.join(pluginRootPath, `${baseName}.example${extension}`);
+}
+
+function resolvePluginConfigSchemaPath(pluginRootPath: string, fileName: string): string {
+  const extension = path.extname(fileName);
+  const baseName = extension ? fileName.slice(0, -extension.length) : fileName;
+  return path.join(pluginRootPath, `${baseName}.schema${extension}`);
+}
+
+function parsePluginConfigSchema(
+  options: ParseLoadedPluginConfigTomlOptions,
+): {
+  schema?: PluginConfigSchemaDocument;
+  diagnostics: LoadedPluginConfigDiagnostic[];
+} {
+  if (!options.schemaToml) {
+    return {
+      diagnostics: options.requireSchema
+        ? [{
+          severity: "warning",
+          message: options.schemaPath
+            ? `缺少插件配置 schema：${options.schemaPath}`
+            : "缺少插件配置 schema。",
+        }]
+        : [],
+    };
+  }
+
+  let parsed: TomlTableWithoutBigInt;
+  try {
+    parsed = parseToml(options.schemaToml) as TomlTableWithoutBigInt;
+  } catch (error) {
+    return {
+      diagnostics: [{
+        severity: "error",
+        message: `插件配置 schema TOML 无效：${error instanceof Error ? error.message : String(error)}`,
+      }],
+    };
+  }
+
+  const result = PluginConfigSchemaDocumentSchema.safeParse(parsed);
+  if (!result.success) {
+    return {
+      diagnostics: [{
+        severity: "error",
+        message: `插件配置 schema 结构无效：${result.error.issues.map(formatZodIssue).join("; ")}`,
+      }],
+    };
+  }
+
+  return {
+    schema: result.data,
+    diagnostics: [],
+  };
 }
 
 function projectRuntimeConfig(value: unknown): LoadedPluginRuntimeConfig {
@@ -303,6 +421,90 @@ function hasErrorDiagnostics(diagnostics: readonly LoadedPluginConfigDiagnostic[
   return diagnostics.some((diagnostic) => diagnostic.severity === "error");
 }
 
+function projectSchemaSections(
+  parsed: TomlTableWithoutBigInt,
+  schema: PluginConfigSchemaDocument,
+): LoadedPluginConfigSection[] {
+  return (schema.form.sections ?? [])
+    .filter((section) => section.level !== "internal")
+    .map((section) => {
+      const fields = (section.fields ?? [])
+        .filter((field) => field.level !== "internal")
+        .map((field) => projectSchemaField(parsed, section.id, field));
+      return {
+        name: section.id,
+        label: section.label,
+        description: section.description,
+        keyCount: fields.length,
+        toml: "",
+        fields,
+      };
+    });
+}
+
+function projectSchemaField(
+  parsed: TomlTableWithoutBigInt,
+  sectionName: string,
+  schemaField: PluginConfigSchemaField,
+): LoadedPluginConfigField {
+  const key = schemaField.path[schemaField.path.length - 1] ?? "";
+  return {
+    label: schemaField.label,
+    section: sectionName,
+    key,
+    path: schemaField.path,
+    type: schemaField.type,
+    itemType: schemaField.itemType,
+    value: readValueAtPath(parsed, schemaField.path),
+    description: schemaField.description,
+    placeholder: schemaField.placeholder,
+    options: schemaField.options,
+    optionLabels: schemaField.optionLabels,
+    min: schemaField.min,
+    max: schemaField.max,
+    step: schemaField.step,
+    secret: schemaField.secret,
+    multiline: schemaField.multiline,
+    required: schemaField.required ?? true,
+  };
+}
+
+function projectStrictPathDiagnostics(
+  parsed: TomlTableWithoutBigInt,
+  schema: PluginConfigSchemaDocument | undefined,
+): LoadedPluginConfigDiagnostic[] {
+  if (!schema?.form.strict) {
+    return [];
+  }
+
+  const allowedPaths = [
+    ...(schema.form.sections ?? []).flatMap((section) =>
+      (section.fields ?? []).map((field) => ({
+        path: field.path,
+        recursive: false,
+      }))
+    ),
+    ...(schema.form.allowedPaths ?? []),
+    {
+      path: [AgentPluginConfigDefaults.FrameworkSection, "enabled"],
+      recursive: false,
+    },
+    {
+      path: [AgentPluginConfigDefaults.FrameworkSection, "tools"],
+      recursive: true,
+    },
+  ];
+  const unknownPaths = collectTomlLeafPaths(parsed)
+    .filter((leafPath) => !allowedPaths.some((allowedPath) =>
+      pathMatchesAllowedPath(leafPath, allowedPath)
+    ));
+
+  return unknownPaths.map((unknownPath) => ({
+    severity: "error" as const,
+    message: `配置项未在 schema 中声明：${unknownPath.join(".")}`,
+  }));
+}
+
 function validatePluginConfigFields(
   sections: readonly LoadedPluginConfigSection[],
 ): string[] {
@@ -320,6 +522,10 @@ function validatePluginConfigFields(
 function validatePluginConfigField(field: LoadedPluginConfigField): string[] {
   const errors: string[] = [];
   const label = configFieldDisplayName(field);
+
+  if (field.value === undefined) {
+    return field.required === false ? [] : [`${label} 缺少必填配置`];
+  }
 
   if (field.type === "boolean" && typeof field.value !== "boolean") {
     errors.push(`${label} 必须是布尔值`);
@@ -345,6 +551,10 @@ function validatePluginConfigField(field: LoadedPluginConfigField): string[] {
         errors.push(...validateArrayConfigItem(field, item, index, label));
       });
     }
+  }
+
+  if (field.type === "table" && !isPlainTomlTable(field.value)) {
+    errors.push(`${label} 必须是表格对象`);
   }
 
   if (field.options && field.options.length > 0) {
@@ -382,23 +592,28 @@ function validateArrayConfigItem(
   label: string,
 ): string[] {
   const itemLabel = `${label} 第 ${index + 1} 项`;
-  if (field.itemType === "boolean" && typeof item !== "boolean") {
+  const itemType = field.itemType ?? "string";
+
+  if (itemType === "boolean" && typeof item !== "boolean") {
     return [`${itemLabel} 必须是布尔值`];
   }
-  if (field.itemType === "number") {
+  if (itemType === "number") {
     if (typeof item !== "number" || !Number.isFinite(item)) {
       return [`${itemLabel} 必须是数字`];
     }
     return validateNumberConfigField(field, item, itemLabel);
   }
-  if ((field.itemType === "string" || !field.itemType) && typeof item !== "string") {
+  if (itemType === "string" && typeof item !== "string") {
     return [`${itemLabel} 必须是字符串`];
+  }
+  if (itemType === "table" && !isPlainTomlTable(item)) {
+    return [`${itemLabel} 必须是表格对象`];
   }
   return [];
 }
 
 function configFieldDisplayName(field: LoadedPluginConfigField): string {
-  return field.label ?? field.path.join(".");
+  return field.label;
 }
 
 function sameConfigOptionValue(
@@ -408,8 +623,67 @@ function sameConfigOptionValue(
   return String(left) === String(right);
 }
 
-function asTomlTable(value: unknown): TomlTableWithoutBigInt {
-  return isPlainTomlTable(value) ? value : {};
+function collectTomlLeafPaths(value: unknown, prefix: readonly string[] = []): string[][] {
+  if (!isPlainTomlTable(value)) {
+    return prefix.length > 0 ? [Array.from(prefix)] : [];
+  }
+
+  const entries = Object.entries(value);
+  if (entries.length === 0) {
+    return prefix.length > 0 ? [Array.from(prefix)] : [];
+  }
+
+  return entries.flatMap(([key, child]) => {
+    const pathParts = [...prefix, key];
+    return isPlainTomlTable(child)
+      ? collectTomlLeafPaths(child, pathParts)
+      : [pathParts];
+  });
+}
+
+function pathMatchesAllowedPath(
+  pathParts: readonly string[],
+  allowedPath: Pick<PluginConfigSchemaAllowedPath, "path" | "recursive">,
+): boolean {
+  if (allowedPath.recursive) {
+    return pathStartsWith(pathParts, allowedPath.path);
+  }
+
+  return sameStringArray(pathParts, allowedPath.path);
+}
+
+function pathStartsWith(pathParts: readonly string[], prefix: readonly string[]): boolean {
+  return pathParts.length >= prefix.length
+    && prefix.every((part, index) => pathParts[index] === part);
+}
+
+function readValueAtPath(root: unknown, pathParts: readonly string[]): unknown {
+  let current: unknown = root;
+  for (const part of pathParts) {
+    current = isPlainTomlTable(current) ? current[part] : undefined;
+  }
+  return current;
+}
+
+function setValueAtPath(
+  document: EditableTomlTable,
+  pathParts: readonly string[],
+  value: unknown,
+): void {
+  const [lastKey] = pathParts.slice(-1);
+  if (!lastKey) {
+    return;
+  }
+
+  let current: EditableTomlTable = document;
+  for (const part of pathParts.slice(0, -1)) {
+    const next = current[part];
+    if (!isPlainTomlTable(next)) {
+      current[part] = {};
+    }
+    current = current[part] as EditableTomlTable;
+  }
+  current[lastKey] = value;
 }
 
 function isPlainTomlTable(value: unknown): value is TomlTableWithoutBigInt {
@@ -425,329 +699,6 @@ function formatZodIssue(issue: z.core.$ZodIssue): string {
   return `${pathText}: ${issue.message}`;
 }
 
-function projectTomlSections(
-  toml: string,
-  parsed: TomlTableWithoutBigInt,
-): LoadedPluginConfigSection[] {
-  const lines = splitTomlLines(toml);
-  const explicitSections = findTomlSections(lines)
-    .filter((section) => !isConfigMetadataSection(section.path));
-  if (explicitSections.length > 0) {
-    return explicitSections.map((section) => {
-      const fields = projectTomlFields(
-        lines,
-        section,
-        readTomlTableAtPath(parsed, section.path),
-        parsed,
-      );
-      const metadata = readSectionMetadata(parsed, section.path);
-      return {
-        name: section.path.join("."),
-        label: metadata?.label,
-        description: metadata?.description,
-        keyCount: fields.length,
-        toml: ensureFinalNewline(lines.slice(section.startLine, section.endLine).join("\n")),
-        fields,
-      };
-    });
-  }
-
-  return Object.entries(parsed)
-    .filter((entry): entry is [string, TomlTableWithoutBigInt] => isPlainTomlTable(entry[1]))
-    .map(([name, value]) => {
-      const sectionPath = [name];
-      const metadata = readSectionMetadata(parsed, sectionPath);
-      const fields = Object.entries(value)
-        .filter(([key]) => !isConfigMetadataField(sectionPath, key))
-        .map(([key, fieldValue]) => toTomlConfigField({
-          sectionName: name,
-          sectionPath,
-          key,
-          value: fieldValue,
-          metadata: readFieldMetadata(parsed, sectionPath, key),
-        }));
-      return {
-        name,
-        label: metadata?.label,
-        description: metadata?.description,
-        keyCount: fields.length,
-        toml: ensureFinalNewline(stringifyToml({ [name]: value })),
-        fields,
-      };
-    });
-}
-
-function projectTomlFields(
-  lines: readonly string[],
-  section: TomlSectionRange,
-  table: TomlTableWithoutBigInt,
-  parsed: TomlTableWithoutBigInt,
-): LoadedPluginConfigField[] {
-  const fields: LoadedPluginConfigField[] = [];
-  for (let index = section.startLine + 1; index < section.endLine; index += 1) {
-    const key = readTomlAssignmentKey(lines[index]);
-    if (!key) {
-      continue;
-    }
-
-    fields.push(toTomlConfigField({
-      sectionName: section.path.join("."),
-      sectionPath: section.path,
-      key,
-      value: table[key],
-      metadata: readFieldMetadata(parsed, section.path, key),
-    }));
-  }
-  return fields;
-}
-
-function toTomlConfigField(input: {
-  sectionName: string;
-  sectionPath: string[];
-  key: string;
-  value: unknown;
-  metadata?: ConfigFieldMetadata;
-}): LoadedPluginConfigField {
-  const metadata = input.metadata;
-  const type = metadata?.type ?? inferTomlFieldType(input.value);
-  return {
-    label: metadata?.label,
-    section: input.sectionName,
-    key: input.key,
-    path: [...input.sectionPath, input.key],
-    type,
-    itemType: metadata?.itemType ?? (type === "array" && Array.isArray(input.value)
-      ? inferArrayItemType(input.value)
-      : undefined),
-    value: input.value,
-    description: metadata?.description,
-    placeholder: metadata?.placeholder,
-    options: metadata?.options,
-    optionLabels: metadata?.optionLabels,
-    min: metadata?.min,
-    max: metadata?.max,
-    step: metadata?.step,
-    secret: metadata?.secret,
-    multiline: metadata?.multiline,
-  };
-}
-
-function readFieldMetadata(
-  parsed: TomlTableWithoutBigInt,
-  sectionPath: readonly string[],
-  key: string,
-): ConfigFieldMetadata | undefined {
-  let current: unknown = asTomlTable(
-    asTomlTable(parsed[AgentPluginConfigDefaults.FrameworkSection]).fields,
-  );
-
-  for (const part of [...sectionPath, key]) {
-    current = isPlainTomlTable(current) ? current[part] : undefined;
-  }
-
-  const result = ConfigFieldMetadataSchema.safeParse(current);
-  return result.success ? result.data : undefined;
-}
-
-function readSectionMetadata(
-  parsed: TomlTableWithoutBigInt,
-  sectionPath: readonly string[],
-): ConfigSectionMetadata | undefined {
-  let current: unknown = asTomlTable(
-    asTomlTable(parsed[AgentPluginConfigDefaults.FrameworkSection]).sections,
-  );
-
-  for (const part of sectionPath) {
-    current = isPlainTomlTable(current) ? current[part] : undefined;
-  }
-
-  const result = ConfigSectionMetadataSchema.safeParse(current);
-  return result.success ? result.data : undefined;
-}
-
-function isConfigMetadataSection(sectionPath: readonly string[]): boolean {
-  return sectionPath[0] === AgentPluginConfigDefaults.FrameworkSection
-    && (sectionPath[1] === "fields" || sectionPath[1] === "sections");
-}
-
-function isConfigMetadataField(sectionPath: readonly string[], key: string): boolean {
-  return sectionPath.length === 1
-    && sectionPath[0] === AgentPluginConfigDefaults.FrameworkSection
-    && (key === "fields" || key === "sections");
-}
-
-function readTomlTableAtPath(
-  parsed: TomlTableWithoutBigInt,
-  pathParts: readonly string[],
-): TomlTableWithoutBigInt {
-  let current: unknown = parsed;
-  for (const part of pathParts) {
-    current = isPlainTomlTable(current) ? current[part] : undefined;
-  }
-  return isPlainTomlTable(current) ? current : {};
-}
-
-function readTomlAssignmentKey(line: string): string | undefined {
-  const trimmed = line.trimStart();
-  if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("[")) {
-    return undefined;
-  }
-
-  const equalsIndex = trimmed.indexOf("=");
-  if (equalsIndex < 1) {
-    return undefined;
-  }
-
-  const key = trimmed.slice(0, equalsIndex).trim();
-  return key && !key.includes(".") ? key : undefined;
-}
-
-function inferTomlFieldType(value: unknown): LoadedPluginConfigFieldType {
-  if (typeof value === "boolean") {
-    return "boolean";
-  }
-  if (typeof value === "string") {
-    return "string";
-  }
-  if (typeof value === "number") {
-    return "number";
-  }
-  if (Array.isArray(value)) {
-    return "array";
-  }
-  if (isPlainTomlTable(value)) {
-    return "table";
-  }
-  return "unknown";
-}
-
-function inferArrayItemType(values: readonly unknown[]): LoadedPluginConfigFieldType {
-  const types = values.map(inferTomlFieldType).filter((type) => type !== "unknown");
-  const [first] = types;
-  return first && types.every((type) => type === first) ? first : "unknown";
-}
-
-interface TomlSectionRange {
-  path: string[];
-  startLine: number;
-  endLine: number;
-}
-
-function writeTomlBooleanValue(
-  toml: string,
-  input: {
-    sectionPath: string[];
-    key: string;
-    value: boolean;
-  },
-): string {
-  const lines = splitTomlLines(toml);
-  const sections = findTomlSections(lines);
-  const section = sections.find((item) => sameStringArray(item.path, input.sectionPath));
-  const nextLine = `${input.key} = ${input.value ? "true" : "false"}`;
-
-  if (!section) {
-    const needsBlank = lines.length > 0 && lines[lines.length - 1]?.trim() !== "";
-    return ensureFinalNewline([
-      ...lines,
-      ...(needsBlank ? [""] : []),
-      formatTomlSectionHeader(input.sectionPath),
-      nextLine,
-    ].join("\n"));
-  }
-
-  const keyLine = findTomlKeyLine(lines, section, input.key);
-  if (keyLine >= 0) {
-    lines[keyLine] = `${readLeadingWhitespace(lines[keyLine])}${nextLine}`;
-  } else {
-    lines.splice(section.startLine + 1, 0, nextLine);
-  }
-
-  return ensureFinalNewline(lines.join("\n"));
-}
-
-function splitTomlLines(toml: string): string[] {
-  const normalized = toml.split("\r\n").join("\n").split("\r").join("\n");
-  const body = normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
-  return body.length > 0 ? body.split("\n") : [];
-}
-
-function findTomlSections(lines: readonly string[]): TomlSectionRange[] {
-  const sections: TomlSectionRange[] = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const sectionPath = readTomlSectionPath(lines[index]);
-    if (!sectionPath) {
-      continue;
-    }
-
-    const previous = sections[sections.length - 1];
-    if (previous) {
-      previous.endLine = index;
-    }
-
-    sections.push({
-      path: sectionPath,
-      startLine: index,
-      endLine: lines.length,
-    });
-  }
-
-  return sections;
-}
-
-function readTomlSectionPath(line: string): string[] | undefined {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("[") || !trimmed.endsWith("]") || trimmed.startsWith("[[")) {
-    return undefined;
-  }
-
-  const body = trimmed.slice(1, -1).trim();
-  const parts = body.split(".").map((part) => part.trim()).filter(Boolean);
-  return parts.length > 0 ? parts : undefined;
-}
-
-function findTomlKeyLine(
-  lines: readonly string[],
-  section: TomlSectionRange,
-  key: string,
-): number {
-  for (let index = section.startLine + 1; index < section.endLine; index += 1) {
-    if (tomlLineDefinesKey(lines[index], key)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function tomlLineDefinesKey(line: string, key: string): boolean {
-  const trimmed = line.trimStart();
-  if (trimmed.length === 0 || trimmed.startsWith("#")) {
-    return false;
-  }
-
-  if (!trimmed.startsWith(key)) {
-    return false;
-  }
-
-  let index = key.length;
-  while (trimmed[index] === " " || trimmed[index] === "\t") {
-    index += 1;
-  }
-  return trimmed[index] === "=";
-}
-
-function formatTomlSectionHeader(path: readonly string[]): string {
-  return `[${path.join(".")}]`;
-}
-
 function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function readLeadingWhitespace(value: string): string {
-  let index = 0;
-  while (value[index] === " " || value[index] === "\t") {
-    index += 1;
-  }
-  return value.slice(0, index);
 }

@@ -1,4 +1,4 @@
-import type { LoadedPlugin } from "./Types.js";
+import type { LoadedPlugin } from "./Types/PluginRuntimeTypes.js";
 
 export function compareLoadedPluginsForPrompting(
   left: LoadedPlugin,

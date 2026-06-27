@@ -70,7 +70,7 @@ export function ThinkingSummaryBar({
         sideOffset={8}
         collisionPadding={12}
         onCloseAutoFocus={(event) => event.preventDefault()}
-        className="w-[min(680px,calc(100vw-32px))] max-h-[min(520px,calc(100vh-96px))] overflow-y-auto rounded-xl p-0 shadow-soft"
+        className="scrollbar-thin w-[min(680px,calc(100vw-32px))] max-h-[min(520px,calc(100vh-96px))] overflow-y-auto rounded-xl p-0 shadow-soft"
       >
         <SummaryDetail
           run={run}

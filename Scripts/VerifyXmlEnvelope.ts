@@ -7,7 +7,7 @@ import type { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegis
 import { AgentSchemaValidator } from "../Source/AgentSystem/AgentSchemaValidator.js";
 import { AgentDecisionXmlStreamAssembler } from "../Source/AgentSystem/AgentDecisionXmlStreamAssembler.js";
 import { AgentXmlStreamStates } from "../Source/AgentSystem/AgentXmlStatus.js";
-import type { AgentSystemConfig } from "../Source/AgentSystem/Types.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 async function main(): Promise<void> {
   const policy = createXmlProtocolPolicy({

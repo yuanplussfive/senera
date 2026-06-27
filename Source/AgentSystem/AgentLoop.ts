@@ -15,7 +15,7 @@ import {
 import type { AgentSystemRuntime } from "./AgentSystemRuntime.js";
 import type { AgentCompletedRunResult } from "./AgentExecutionProjector.js";
 import { AgentCancellationError, throwIfAborted } from "./AgentCancellation.js";
-import type { ResolvedAgentLoopConfig } from "./Types.js";
+import type { ResolvedAgentLoopConfig } from "./Types/AgentConfigTypes.js";
 
 export interface AgentLoopOptions extends AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
@@ -64,7 +64,7 @@ export class AgentLoop {
     });
 
     const loadedToolNames = request.loadedToolNames
-      ?? this.options.runtime.toolSearch.resolveInitialLoadedTools(
+      ?? this.options.runtime.services.retrieval.resolveInitialLoadedTools(
         request.input,
         this.agentLoopConfig.LoadedTools,
       );

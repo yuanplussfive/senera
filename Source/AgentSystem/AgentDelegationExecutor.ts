@@ -19,7 +19,7 @@ export interface AgentDelegationRunInput {
   plan: AgentDelegationPlan;
   latestUserRequest: string;
   jobs?: readonly AgentDelegationJob[];
-  evidenceRefs?: readonly string[];
+  evidenceUris?: readonly string[];
   artifactUris?: readonly string[];
   onEvent?: AgentEventSink;
   signal?: AbortSignal;
@@ -55,7 +55,7 @@ export class AgentDelegationExecutor {
         plan: input.plan,
         job,
         latestUserRequest: input.latestUserRequest,
-        evidenceRefs: input.evidenceRefs,
+        evidenceUris: input.evidenceUris,
         artifactUris: input.artifactUris,
         onEvent: input.onEvent,
         signal: input.signal,

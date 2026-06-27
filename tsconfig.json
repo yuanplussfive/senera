@@ -12,6 +12,7 @@
     "rootDir": "."
   },
   "include": [
+    "Apps/**/*.ts",
     "Source/**/*.ts",
     "Scripts/**/*.ts",
     "System/**/*.ts"

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { b as baml } from "../Source/AgentSystem/BamlClient/baml_client/index.js";
 import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/AgentActionPlannerContext.js";
 import { buildActionPlannerPromptJson } from "../Source/AgentSystem/AgentActionPlannerPromptJson.js";
+import { projectActionPlannerBamlRequestBody } from "../Source/AgentSystem/AgentActionPlannerPromptProjector.js";
 import { createActionPlanInputFixture } from "./ActionPlannerFixture.js";
+
+const weatherEvidenceUri = "senera://evidence/ev_111111111111111111111111";
 
 void main();
 
@@ -34,10 +37,10 @@ async function main(): Promise<void> {
           "<response>",
           "<artifact>",
           "<artifactUri>senera://artifact/art_333333333333333333333333</artifactUri>",
-          "<summary>WTH1 current Shanghai, China: Cloudy, 27C</summary>",
+          "<summary>weather current Shanghai, China: Cloudy, 27C</summary>",
           "<evidence>",
           "<item>",
-          "<ref>WTH1</ref>",
+          `<evidenceUri>${weatherEvidenceUri}</evidenceUri>`,
           "<kind>weather_observation</kind>",
           "<locator>Shanghai, China</locator>",
           "<display>current Shanghai, China: Cloudy, 27C</display>",
@@ -73,10 +76,15 @@ async function main(): Promise<void> {
   assert.equal("recentDeltas" in input, false);
   assert.equal(input.timeline.length, 3);
   assert.deepEqual(input.timeline.map((turn) => turn.role), ["user", "assistant", "user"]);
-  assert.equal(input.timeline[2].evidenceRefs.includes("WTH1"), true);
-  assert.equal(input.timeline[2].content.includes("ref: WTH1"), true);
+  assert.equal(input.timeline[2].evidenceUris.includes(weatherEvidenceUri), true);
+  assert.equal(input.timeline[2].content.includes(`evidenceUri: ${weatherEvidenceUri}`), true);
   assert.equal(input.timeline[2].content.includes("slots:"), true);
-  assert.equal(JSON.stringify(input.runState).includes("WTH1"), false);
+  assert.equal(JSON.parse(input.timeline[1]?.payloadJson ?? "{}").calls[0].name, "WeatherTool");
+  assert.equal(
+    JSON.parse(input.timeline[2]?.payloadJson ?? "{}").observations[0].artifact.evidence[0].evidenceUri,
+    weatherEvidenceUri,
+  );
+  assert.equal(JSON.stringify(input.runState).includes(weatherEvidenceUri), false);
 
   const request = await baml.request.BuildTaskFrame(buildActionPlannerPromptJson(input, {
     stage: "buildTaskFrame",
@@ -87,10 +95,24 @@ async function main(): Promise<void> {
   assert.equal(messages[0]?.role, "system");
   const plannerJson = readPlannerJson(messages);
   assert.equal(plannerJson.directive.stage, "buildTaskFrame");
+  assert.equal(plannerJson.context.currentUserTurn.content, "下一步做什么？");
   assert.deepEqual(plannerJson.context.timeline.map((turn) => turn.role), ["user", "assistant", "user"]);
   assert.equal(plannerJson.context.timeline[1]?.kind, "tool_call");
   assert.equal(plannerJson.context.timeline[1]?.content.includes("WeatherTool"), true);
-  assert.equal(plannerJson.context.timeline[2]?.content.includes("ref: WTH1"), true);
+  assert.equal(plannerJson.context.timeline[2]?.content.includes(`evidenceUri: ${weatherEvidenceUri}`), true);
+
+  const projected = projectActionPlannerBamlRequestBody(body);
+  const projectedText = JSON.stringify(projected.messages);
+  const projectedToolTurn = JSON.parse(projected.messages[2]?.content ?? "{}");
+  assert.equal(projectedToolTurn.turn.kind, "tool_observation");
+  assert.equal(projectedToolTurn.turn.payload.observations[0].artifact.evidence[0].evidenceUri, weatherEvidenceUri);
+  assert.equal(projectedText.includes("payloadJson"), false);
+  assert.equal(projectedText.includes("read_only_evidence"), false);
+  assert.equal(projectedText.includes(`evidenceUri: ${weatherEvidenceUri}`), false);
+  const projectedPlannerInput = JSON.parse(projected.messages.at(-1)?.content ?? "{}");
+  assert.equal(projectedPlannerInput.plannerInput.currentUserTurn.content, "下一步做什么？");
+  assert.equal("timeline" in projectedPlannerInput.plannerInput, false);
+
   const promptText = JSON.stringify(messages);
   assert.equal(promptText.includes("Timeline turn:"), false);
   assert.equal(promptText.includes("Run state:"), false);
@@ -114,7 +136,7 @@ async function main(): Promise<void> {
   assert.deepEqual(repairJson.directive.issues, ["unexpected field: reason"]);
   assert.equal(repairJson.context.timeline[1]?.kind, "tool_call");
   assert.equal(repairJson.context.timeline[1]?.content.includes("WeatherTool"), true);
-  assert.equal(repairJson.context.timeline[2]?.content.includes("ref: WTH1"), true);
+  assert.equal(repairJson.context.timeline[2]?.content.includes(`evidenceUri: ${weatherEvidenceUri}`), true);
   const repairText = JSON.stringify(repairMessages);
   assert.equal(repairText.includes("Action selector repair directive:"), false);
   assert.equal(repairText.includes("Invalid selection:"), false);
@@ -131,6 +153,9 @@ function readPlannerJson(messages: Array<{
   content: string;
 }>): {
   context: {
+    currentUserTurn: {
+      content: string;
+    };
     timeline: Array<{
       kind?: string;
       role: string;
@@ -149,6 +174,9 @@ function readPlannerJson(messages: Array<{
   assert.ok(userMessage, "planner request should contain a JSON user message");
   return JSON.parse(userMessage.content) as {
     context: {
+      currentUserTurn: {
+        content: string;
+      };
       timeline: Array<{
         kind?: string;
         role: string;

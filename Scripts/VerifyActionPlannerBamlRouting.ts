@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { createActionPlannerBamlClient } from "../Source/AgentSystem/AgentActionPlannerBamlClient.js";
 import { b as baml } from "../Source/AgentSystem/BamlClient/baml_client/index.js";
 import { buildActionPlannerPromptJson } from "../Source/AgentSystem/AgentActionPlannerPromptJson.js";
-import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createActionPlanInputFixture } from "./ActionPlannerFixture.js";
 
 const baseProvider: ResolvedAgentModelProviderConfig = {
   Id: "test",
+  ProviderId: "test",
   Kind: "OpenAICompatible",
   Endpoint: "ChatCompletions",
   BaseUrl: "https://example.test/v1",
@@ -66,7 +67,7 @@ async function main(): Promise<void> {
         BaseUrl: testCase.baseUrl,
       },
       {
-        Provider: "auto",
+        Provider: "openai-generic",
         BaseUrl: testCase.baseUrl,
         ApiKey: "test-key",
         Model: "test-model",
@@ -90,7 +91,7 @@ async function main(): Promise<void> {
   }
 
   const limitedClient = createActionPlannerBamlClient(baseProvider, {
-    Provider: "auto",
+    Provider: "openai-generic",
     BaseUrl: baseProvider.BaseUrl,
     ApiKey: "test-key",
     Model: "test-model",

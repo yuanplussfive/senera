@@ -8,6 +8,11 @@ import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
 import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
 import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
+import {
+  AgentInteractionRunModes,
+  type AgentInteractionRouteResult,
+} from "../Source/AgentSystem/AgentInteractionRouter.js";
+import { InteractionRunMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 
 const workspaceRoot = process.cwd();
 const config = AgentConfigLoader.load(path.join(workspaceRoot, "senera.config.json"));
@@ -31,7 +36,52 @@ const started = machine.start({
 });
 
 assert.equal(started.state.kind, "running");
-assert.equal(started.command?.kind, "plan_action");
+assert.equal(started.command?.kind, "route_interaction");
+
+const directRoute: AgentInteractionRouteResult = {
+  mode: AgentInteractionRunModes.DirectResponse,
+  objective: "直接回答",
+  needsFreshEvidence: false,
+  needsWorkspaceRead: false,
+  needsSideEffect: false,
+  risk: "none",
+  preferredTools: [],
+  discoveryQueries: [],
+  reason: "Conversation answer is sufficient.",
+  raw: {
+    mode: InteractionRunMode.DirectResponse,
+    objective: "直接回答",
+    needsFreshEvidence: false,
+    needsWorkspaceRead: false,
+    needsSideEffect: false,
+    risk: "none",
+    preferredTools: [],
+    discoveryQueries: [],
+    reason: "Conversation answer is sufficient.",
+  },
+};
+
+const directRouted = machine.consume(started.state, {
+  kind: "succeeded",
+  output: {
+    kind: "interaction_routed",
+    requestId: "verify-streamed-answer-route",
+    step: 1,
+    route: directRoute,
+    loadedToolNames: [],
+    rootCommand: promptContextBuilder.buildRootCommand({
+      decision: {
+        action: "answer",
+      },
+      loadedToolNames: [],
+    }),
+    activeSkills: [],
+  },
+});
+
+assert.equal(directRouted.state.kind, "running");
+assert.equal(directRouted.command?.kind, "render_prompt");
+assert.equal(directRouted.events.some((event) => event.kind === AgentEventKinds.ActionPlanned), false);
 
 const plan: AgentActionPlanResult = {
   kind: "planned",
@@ -39,6 +89,9 @@ const plan: AgentActionPlanResult = {
   selectionRepaired: false,
   payloadRepaired: false,
   input: {
+    currentUserTurn: {
+      content: "直接回答",
+    },
     runState: {
       currentStep: 1,
       dynamicTools: true,
@@ -58,12 +111,13 @@ const plan: AgentActionPlanResult = {
       role: "user",
       kind: "user_message",
       content: "直接回答",
-      evidenceRefs: [],
+      evidenceUris: [],
       artifactUris: [],
     }],
     evidenceMemory: [],
     evidenceState: [],
     plannerJournal: [],
+    toolTagCatalog: [],
     compactToolCatalog: [],
     toolCatalog: [],
     activeSkills: [],
@@ -77,11 +131,45 @@ const rootCommand = promptContextBuilder.buildRootCommand({
   loadedToolNames: [],
 });
 
-const routed = machine.consume(started.state, {
+const secondStarted = machine.start({
+  requestId: "verify-streamed-answer-route-planner",
+  input: "直接回答",
+  loadedToolNames: [],
+  emitRunStarted: false,
+});
+
+assert.equal(secondStarted.state.kind, "running");
+assert.equal(secondStarted.command?.kind, "route_interaction");
+
+const plannerRoute: AgentInteractionRouteResult = {
+  ...directRoute,
+  mode: AgentInteractionRunModes.DeliberateTaskLoop,
+  raw: {
+    ...directRoute.raw,
+    mode: InteractionRunMode.DeliberateTaskLoop,
+  },
+};
+
+const plannedStart = machine.consume(secondStarted.state, {
+  kind: "succeeded",
+  output: {
+    kind: "interaction_routed",
+    requestId: "verify-streamed-answer-route-planner",
+    step: 1,
+    route: plannerRoute,
+    loadedToolNames: [],
+    activeSkills: [],
+  },
+});
+
+assert.equal(plannedStart.state.kind, "running");
+assert.equal(plannedStart.command?.kind, "plan_action");
+
+const routed = machine.consume(plannedStart.state, {
   kind: "succeeded",
   output: {
     kind: "action_planned",
-    requestId: "verify-streamed-answer-route",
+    requestId: "verify-streamed-answer-route-planner",
     step: 1,
     plan,
     loadedToolNames: [],

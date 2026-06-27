@@ -6,7 +6,7 @@ export type DialogMotionPreset = "modal" | "focus";
 export type DialogPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export type DrawerPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export type OverlayVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
-export const dialogPresenceExitMs = 320;
+export const dialogPresenceExitMs = 180;
 
 export const motionSprings = {
   snappy: { type: "spring", stiffness: 520, damping: 42 } satisfies Transition,
@@ -16,11 +16,11 @@ export const motionSprings = {
 
 export const motionTimings = {
   fast: { duration: 0.12, ease: easeOut } satisfies Transition,
-  base: { duration: 0.18, ease: easeOut } satisfies Transition,
-  dialog: { duration: 0.22, ease: easeOut } satisfies Transition,
-  modalOpen: { duration: 0.25, ease: easeOut } satisfies Transition,
-  modalClose: { duration: 0.15, ease: easeOut } satisfies Transition,
-  slow: { duration: 0.28, ease: easeOut } satisfies Transition,
+  base: { duration: 0.16, ease: easeOut } satisfies Transition,
+  dialog: { duration: 0.16, ease: easeOut } satisfies Transition,
+  modalOpen: { duration: 0.16, ease: easeOut } satisfies Transition,
+  modalClose: { duration: 0.1, ease: easeOut } satisfies Transition,
+  slow: { duration: 0.18, ease: easeOut } satisfies Transition,
 };
 
 export const motionRules = {
@@ -145,15 +145,15 @@ export function readDialogPanelVariants(level: MotionLevel, preset: DialogMotion
   }
   if (preset === "focus") {
     return {
-      hidden: { opacity: 0, y: 10, scale: 0.985 },
-      show: { opacity: 1, y: 0, scale: 1 },
-      exit: { opacity: 0, y: 8, scale: 0.99 },
+      hidden: { opacity: 0, y: 4 },
+      show: { opacity: 1, y: 0 },
+      exit: { opacity: 0, y: 3 },
     };
   }
   return {
-    hidden: { opacity: 0, scale: 0.96 },
+    hidden: { opacity: 0, scale: 0.985 },
     show: { opacity: 1, scale: 1 },
-    exit: { opacity: 0, scale: 0.96 },
+    exit: { opacity: 0, scale: 0.99 },
   };
 }
 
@@ -170,7 +170,7 @@ export function readDialogPanelTransition(
   if (level === "none") return { duration: 0 };
   if (level === "reduced") return motionTimings.base;
   if (preset === "modal") return state === "exit" ? motionTimings.modalClose : motionTimings.modalOpen;
-  return preset === "focus" ? motionTimings.slow : motionTimings.dialog;
+  return preset === "focus" ? motionTimings.dialog : motionTimings.dialog;
 }
 
 export function readDrawerVariants(level: MotionLevel, side: "left" | "right" = "right"): DrawerPanelVariants {

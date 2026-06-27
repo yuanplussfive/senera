@@ -20,11 +20,15 @@ import type { MotionLevel } from "../shared/motion";
 import {
   type ConversationEntryDto,
   type ConversationEntryMetadata,
+  type ConfigSnapshotData,
   type EventEnvelope,
   type ActionEvidenceDecisionData,
   type ActionTaskFrameData,
   type ModelProviderMetadata,
   type ModelProviderListItem,
+  type PresetItem,
+  type ProviderModelsFailedData,
+  type ProviderModelsSnapshotData,
   type PluginConfigItem,
   type SessionHistoryStepsData,
   type UploadAttachmentData,
@@ -182,8 +186,15 @@ export interface StoreState {
   /** 本地已请求删除、尚未被 session.list 快照确认消失的 sessionId */
   pendingDeletedSessionIds: Record<string, boolean>;
   modelProviders: ModelProviderListItem[];
+  providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
+  providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
   selectedModelProviderId: string | null;
   pluginConfigs: PluginConfigItem[];
+  presets: PresetItem[];
+  activePresetName: string | null;
+  presetsEnabled: boolean;
+  presetRootDir: string;
+  configSnapshot: ConfigSnapshotData | null;
   userProfile: UserProfile;
 
   selectSession: (id: string) => void;
@@ -243,8 +254,15 @@ export const useStore = create<StoreState>()(
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},
       modelProviders: [],
+      providerModelCatalogs: {},
+      providerModelErrors: {},
       selectedModelProviderId: null,
       pluginConfigs: [],
+      presets: [],
+      activePresetName: null,
+      presetsEnabled: true,
+      presetRootDir: "",
+      configSnapshot: null,
       userProfile: DEFAULT_USER_PROFILE,
 
     selectSession: (id) =>

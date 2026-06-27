@@ -9,18 +9,17 @@ import {
 
 const selectedProvider = {
   id: "selected",
-  title: "Selected Model",
   icon: "selected.svg",
   kind: "openai",
   endpoint: "selected",
   baseUrl: "https://example.test",
   model: "selected-1",
+  capabilities: { Chat: true },
   isDefault: true,
 } satisfies ModelProviderListItem;
 
 const runProvider = {
   id: "run",
-  title: "Run Model",
   kind: "openai",
   endpoint: "run",
   baseUrl: "https://example.test",
@@ -30,12 +29,12 @@ const runProvider = {
 describe("readAssistantDisplayName", () => {
   it("prefers the provider captured in message metadata", () => {
     expect(readAssistantDisplayName({ metadata: { run: { modelProvider: runProvider } } }, selectedProvider)).toBe(
-      "Run Model · run-1",
+      "run-1",
     );
   });
 
   it("falls back to the selected provider when message metadata has no provider", () => {
-    expect(readAssistantDisplayName({}, selectedProvider)).toBe("Selected Model · selected-1");
+    expect(readAssistantDisplayName({}, selectedProvider)).toBe("selected-1");
   });
 
   it("uses the assistant fallback when no provider is available", () => {
@@ -45,11 +44,11 @@ describe("readAssistantDisplayName", () => {
 
 describe("readRunDisplayName", () => {
   it("prefers the provider captured on the run", () => {
-    expect(readRunDisplayName({ modelProvider: runProvider }, selectedProvider)).toBe("Run Model · run-1");
+    expect(readRunDisplayName({ modelProvider: runProvider }, selectedProvider)).toBe("run-1");
   });
 
   it("falls back to the selected provider when the run has no provider", () => {
-    expect(readRunDisplayName({}, selectedProvider)).toBe("Selected Model · selected-1");
+    expect(readRunDisplayName({}, selectedProvider)).toBe("selected-1");
   });
 
   it("uses the assistant fallback when no provider is available", () => {

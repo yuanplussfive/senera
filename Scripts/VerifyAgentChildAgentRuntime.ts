@@ -12,6 +12,9 @@ import { resolveAgentDelegationRuntimeProfile } from "../Source/AgentSystem/Agen
 import { buildAgentDelegationPlan } from "../Source/AgentSystem/AgentDelegationPlan.js";
 import { AgentChildAgentRuntime } from "../Source/AgentSystem/AgentChildAgentRuntime.js";
 import { AgentDelegationExecutor } from "../Source/AgentSystem/AgentDelegationExecutor.js";
+import type { AgentRuntimeModule } from "../Source/AgentSystem/AgentRuntimeModule.js";
+import { AgentInteractionRunModes } from "../Source/AgentSystem/AgentInteractionRouter.js";
+import { InteractionRunMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import type {
   AgentLanguageModel,
   AgentLanguageModelRequest,
@@ -20,7 +23,7 @@ import type {
 } from "../Source/AgentSystem/AgentLanguageModel.js";
 import type { AgentModelProviderMetadata } from "../Source/AgentSystem/AgentModelMetadata.js";
 import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
-import type { AgentSystemConfig } from "../Source/AgentSystem/Types.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const workspaceRoot = path.resolve(process.cwd());
 const artifactRoot = ".senera/artifacts/child-loop-verification";
@@ -47,7 +50,7 @@ async function main(): Promise<void> {
     const plan = buildAgentDelegationPlan({
       workflow: "ParallelPullRequestReview",
       objective: "并行审查当前 PR 的安全、测试缺口和可维护性风险。",
-      evidenceRefs: ["DIFF1"],
+      evidenceUris: ["DIFF1"],
       artifactUris: ["senera://artifact/art_1234567890abcdef12345678"],
     }, {
       registry: runtime.registry,
@@ -155,7 +158,6 @@ async function main(): Promise<void> {
     assert.equal(executorModel.requests.length, 3);
 
     const streamedModel = new QueuedStreamModel("delegate-review-model", [
-      "<senera_tool_calls><tool_call><name>ToolSearchTool</name><arguments><query>workspace search capability</query></arguments></tool_call></senera_tool_calls>",
       "{\"findings\":[{\"title\":\"child loop used tools\",\"evidence\":[\"T1\"]}]}",
     ]);
     const providerIds: string[] = [];
@@ -180,8 +182,8 @@ async function main(): Promise<void> {
           workspaceRoot,
           config,
           modelProviderId,
+          runtimeModules: [createPlannerModule()],
         });
-        installPlanner(childRuntime);
         childLoopRuntimes.push(childRuntime);
         return new AgentLoop({
           runtime: childRuntime,
@@ -202,14 +204,14 @@ async function main(): Promise<void> {
     assert.equal(loopResult.mode, "agentLoop");
     assert.equal(loopResult.text, "{\"findings\":[{\"title\":\"child loop used tools\",\"evidence\":[\"T1\"]}]}");
     assert.equal(loopResult.loopResult?.terminal.kind, "FinalAnswer");
-    assert.equal(streamedModel.requests.length, 2);
+    assert.equal(streamedModel.requests.length, 1);
     assert.deepEqual(providerIds, ["delegate-review-model"]);
     assert.equal(streamedModel.requests[0]?.systemPrompt.includes("<senera_child_agent>"), true);
-    assert.equal(streamedModel.requests[0]?.systemPrompt.includes("<decision_protocol>"), true);
-    assert.equal(streamedModel.requests[0]?.systemPrompt.includes("ToolSearchTool"), true);
+    assert.equal(streamedModel.requests[0]?.systemPrompt.includes("tool_call_planning_blocked"), true);
     assert.equal(streamedModel.requests[0]?.messages[0]?.content.includes("DiffFocusedReadOnly"), true);
     assert.equal(
-      loopResult.loopResult?.conversationEntries.some((entry) => entry.kind === "context.tool_results"),
+      loopResult.loopResult?.conversationEntries.some((entry) =>
+        entry.kind === "context.tool_results" && entry.xml.includes("ToolSearchTool")),
       true,
     );
 
@@ -320,14 +322,74 @@ class QueuedStreamModel implements AgentLanguageModel {
   }
 }
 
-function installPlanner(runtime: AgentSystemRuntime): void {
+function createPlannerModule(): AgentRuntimeModule {
+  return {
+    id: "verify.child-agent-runtime.planner",
+    services: () => [{
+      service: "planning",
+      create: () => createVerificationPlanner(),
+    }],
+  };
+}
+
+function createVerificationPlanner() {
   let calls = 0;
-  (runtime as unknown as { actionPlanner: VerificationPlanner }).actionPlanner = {
+  let toolCallOutcomeCalls = 0;
+  const planner: VerificationPlanner = {
     plan: async ({ input }) => {
       calls += 1;
       return calls === 1
         ? useToolsPlan(input)
         : answerPlan(input);
+    },
+  };
+
+  return {
+    plan: planner.plan,
+    routeWithInput: async ({ input }: { input: PlannerInput }) => ({
+      input,
+      route: {
+        mode: AgentInteractionRunModes.ToolAgentLoop,
+        objective: input.currentUserTurn.content,
+        needsFreshEvidence: true,
+        needsWorkspaceRead: false,
+        needsSideEffect: false,
+        risk: "read",
+        preferredTools: ["ToolSearchTool"],
+        discoveryQueries: [],
+        reason: "Verification route uses the tool loop.",
+        raw: {
+          mode: InteractionRunMode.ToolAgentLoop,
+          objective: input.currentUserTurn.content,
+          needsFreshEvidence: true,
+          needsWorkspaceRead: false,
+          needsSideEffect: false,
+          risk: "read",
+          preferredTools: ["ToolSearchTool"],
+          discoveryQueries: [],
+          reason: "Verification route uses the tool loop.",
+        },
+      },
+    }),
+    planToolCallOutcome: async () => {
+      toolCallOutcomeCalls += 1;
+      return toolCallOutcomeCalls === 1
+        ? {
+          kind: "calls" as const,
+          calls: [{
+            name: "ToolSearchTool",
+            arguments: {
+              query: "workspace search capability",
+            },
+          }],
+          repaired: false,
+        }
+        : {
+          kind: "blocked" as const,
+          reason: "Verification planner has no further tool calls.",
+          issues: [],
+          repaired: false,
+        };
     },
   };
 }
@@ -376,29 +438,30 @@ function verificationConfig(): AgentSystemConfig {
     PluginDiscovery: {
       ManifestFileName: "PluginManifest.json",
     },
-    ModelProviders: [{
-      Id: "delegate-default-model",
-      Kind: "OpenAICompatible",
-      Endpoint: "Responses",
+    ModelProviderEndpoints: [{
+      Id: "delegate-endpoint",
       BaseUrl: "https://example.invalid/v1",
       ApiKey: "test",
+    }],
+    ModelProviders: [{
+      Id: "delegate-default-model",
+      ProviderId: "delegate-endpoint",
+      Endpoint: "Responses",
       Model: "test",
       Temperature: 0,
       MaxOutputTokens: -1,
       Stream: true,
-      TimeoutMs: 1,
+      TimeoutSeconds: 0.001,
       MaxNetworkRetries: 0,
     }, {
       Id: "delegate-review-model",
-      Kind: "OpenAICompatible",
+      ProviderId: "delegate-endpoint",
       Endpoint: "Responses",
-      BaseUrl: "https://example.invalid/v1",
-      ApiKey: "test",
       Model: "delegate-review-model",
       Temperature: 0,
       MaxOutputTokens: -1,
       Stream: true,
-      TimeoutMs: 1,
+      TimeoutSeconds: 0.001,
       MaxNetworkRetries: 0,
     }],
     AgentDelegation: {

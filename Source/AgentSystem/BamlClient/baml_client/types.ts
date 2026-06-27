@@ -60,18 +60,41 @@ export enum ExecutionDeltaOp {
   AddWarning = "AddWarning",
 }
 
+export enum InteractionRunMode {
+  DirectResponse = "DirectResponse",
+  ToolAgentLoop = "ToolAgentLoop",
+  DeliberateTaskLoop = "DeliberateTaskLoop",
+}
+
+export enum TaskEvidenceScope {
+  CurrentRun = "CurrentRun",
+  Memory = "Memory",
+  Conversation = "Conversation",
+}
+
 export enum ToolCallStatus {
   Success = "Success",
   Failure = "Failure",
   Empty = "Empty",
 }
 
+export enum TurnContextMode {
+  None = "None",
+  Used = "Used",
+  Insufficient = "Insufficient",
+}
+
 export interface ActionPlanInput {
+  currentUserTurn: PlannerCurrentUserTurn
+  turnUnderstanding?: TurnUnderstanding | null
+  roleplayPreset?: PlannerRoleplayPreset | null
   runState: ActionRunState
   timeline: PlannerTimelineTurn[]
   evidenceMemory: PlannerEvidenceMemoryItem[]
   evidenceState: PlannerEvidenceStateItem[]
   plannerJournal: PlannerJournalItem[]
+  plannerState?: PlannerStateSnapshot | null
+  toolTagCatalog: string[]
   compactToolCatalog: ToolCatalogSummaryItem[]
   toolCatalog: ToolCatalogItem[]
   activeSkills: PlannerActiveSkill[]
@@ -92,7 +115,7 @@ export interface EvidenceRequirementVerification {
   requirementId: string
   need: string
   status: EvidenceVerificationStatus
-  evidenceRefs: string[]
+  evidenceUris: string[]
   artifactUris: string[]
   reason: string
   missingFacts: string[]
@@ -113,6 +136,115 @@ export interface EvidenceVerification {
   
 }
 
+export interface FastContextScoutCommand {
+  type: string
+  pattern?: string | null
+  path?: string | null
+  include?: string[] | null
+  exclude?: string[] | null
+  regex?: boolean | null
+  caseSensitive?: boolean | null
+  startLine?: number | null
+  endLine?: number | null
+  depth?: number | null
+  
+}
+
+export interface FastContextScoutFileSelection {
+  path: string
+  startLine: number
+  endLine: number
+  reason: string
+  
+}
+
+export interface FastContextScoutPlannerDecision {
+  action: string
+  commands: FastContextScoutCommand[]
+  files: FastContextScoutFileSelection[]
+  reason: string
+  
+}
+
+export interface InteractionRoute {
+  mode: InteractionRunMode
+  objective: string
+  needsFreshEvidence: boolean
+  needsWorkspaceRead: boolean
+  needsSideEffect: boolean
+  risk: string
+  preferredTools: string[]
+  discoveryQueries: string[]
+  reason: string
+  
+}
+
+export interface MemoryCandidate {
+  type: string
+  subject: string
+  claim: string
+  howToApply: string
+  tags: string[]
+  triggers: string[]
+  sourceRefs: string[]
+  reason: string
+  confidence: number
+  
+}
+
+export interface MemoryConsolidationAction {
+  operation: string
+  type: string
+  subject: string
+  claim: string
+  howToApply: string
+  tags: string[]
+  triggers: string[]
+  sourceRefs: string[]
+  candidateUris: string[]
+  targetMemoryUri?: string | null
+  reason: string
+  confidence: number
+  
+}
+
+export interface MemoryConsolidationResult {
+  actions: MemoryConsolidationAction[]
+  
+}
+
+export interface MemoryLearningResult {
+  candidates: MemoryCandidate[]
+  
+}
+
+export interface MemoryWriteDecision {
+  operation: string
+  type: string
+  subject: string
+  claim: string
+  howToApply: string
+  tags: string[]
+  triggers: string[]
+  sourceRefs: string[]
+  candidateUris: string[]
+  targetMemoryUri?: string | null
+  reason: string
+  confidence: number
+  
+}
+
+export interface MemoryWriteResolutionResult {
+  decision: MemoryWriteDecision
+  
+}
+
+export interface PlannedToolCall {
+  name: string
+  arguments: Record<string, ToolCallArgumentValue>
+  
+}
+
 export interface PlannerActiveSkill {
   name: string
   title: string
@@ -124,8 +256,14 @@ export interface PlannerActiveSkill {
   
 }
 
+export interface PlannerCurrentUserTurn {
+  requestId?: string | null
+  content: string
+  
+}
+
 export interface PlannerEvidenceMemoryItem {
-  evidenceRef: string
+  evidenceUri: string
   kind: string
   locator: string
   display: string
@@ -147,7 +285,7 @@ export interface PlannerEvidenceRequirement {
 }
 
 export interface PlannerEvidenceStateItem {
-  evidenceRef: string
+  evidenceUri: string
   kind: string
   toolName: string
   artifactUri: string
@@ -165,10 +303,100 @@ export interface PlannerJournalItem {
   requestId: string
   step: number
   selectedAction: string
-  evidenceRefs: string[]
+  evidenceUris: string[]
   artifactUris: string[]
   loadedTools: string[]
   outcome: string
+  
+}
+
+export interface PlannerRoleplayPreset {
+  enabled: boolean
+  activePresetName?: string | null
+  documents: PlannerRoleplayPresetDocument[]
+  
+}
+
+export interface PlannerRoleplayPresetDocument {
+  name: string
+  format: string
+  title: string
+  updatedAt: string
+  content: string
+  
+}
+
+export interface PlannerStateCandidateTool {
+  name: string
+  purpose: string
+  supports: string[]
+  
+}
+
+export interface PlannerStateEffect {
+  id: string
+  effect: string
+  target: string
+  reason: string
+  
+}
+
+export interface PlannerStateEvidence {
+  evidenceUri: string
+  kind: string
+  toolName: string
+  artifactUri: string
+  locator: string
+  display: string
+  label: string
+  
+}
+
+export interface PlannerStateEvidenceNeed {
+  id: string
+  need: string
+  scope: string
+  minimum: number
+  reason: string
+  
+}
+
+export interface PlannerStateOpenQuestion {
+  question: string
+  reason: string
+  
+}
+
+export interface PlannerStateSnapshot {
+  taskId: string
+  requestId: string
+  step: number
+  status: string
+  userGoal: string
+  currentIntent: string
+  intentTags: string[]
+  taskTags: string[]
+  targetRefs: PlannerStateTargetRef[]
+  requiredEffects: PlannerStateEffect[]
+  evidenceNeeds: PlannerStateEvidenceNeed[]
+  completedEvidence: PlannerStateEvidence[]
+  completedEffects: PlannerStateEffect[]
+  openQuestions: PlannerStateOpenQuestion[]
+  candidateTools: PlannerStateCandidateTool[]
+  discoveryQueries: string[]
+  nextStepPurpose: string
+  completionCriteria: string[]
+  lastAction: string
+  loadedTools: string[]
+  recentCalls: PlannerToolCallStateItem[]
+  updatedAt: string
+  
+}
+
+export interface PlannerStateTargetRef {
+  kind: string
+  value: string
+  status: string
   
 }
 
@@ -178,7 +406,8 @@ export interface PlannerTimelineTurn {
   kind: string
   step?: number | null
   content: string
-  evidenceRefs: string[]
+  payloadJson?: string | null
+  evidenceUris: string[]
   artifactUris: string[]
   
 }
@@ -188,7 +417,7 @@ export interface PlannerToolCallStateItem {
   toolName: string
   status: ToolCallStatus
   artifactUri: string
-  evidenceRefs: string[]
+  evidenceUris: string[]
   resultKind: string
   argumentsPreview: string
   error: string
@@ -223,6 +452,7 @@ export interface TaskFrame {
   taskType: string
   answerGoal: string
   intentTags: string[]
+  taskTags: string[]
   targetRefs: TaskTargetRef[]
   candidateTools: TaskCandidateTool[]
   discoveryQueries: string[]
@@ -247,6 +477,7 @@ export interface TaskRequiredEffect {
 export interface TaskRequiredEvidence {
   id: string
   need: string
+  scope: TaskEvidenceScope
   minimum: number
   reason: string
   
@@ -262,6 +493,11 @@ export interface TaskTargetRef {
 export interface TaskUserInputNeed {
   question: string
   reason: string
+  
+}
+
+export interface ToolCallPlan {
+  calls: PlannedToolCall[]
   
 }
 
@@ -326,4 +562,32 @@ export interface ToolEvidenceCapabilityItem {
   kinds: string[]
   capabilityIds: string[]
   
+}
+
+export interface ToolLearningRecord {
+  toolName: string
+  tags: string[]
+  sourceTerms: string[]
+  triggers: string[]
+  reason: string
+  confidence: number
+  
+}
+
+export interface ToolLearningResult {
+  records: ToolLearningRecord[]
+  
+}
+
+export interface TurnUnderstanding {
+  rawUserTurn: string
+  standaloneRequest: string
+  contextMode: TurnContextMode
+  contextBasis: string
+  missingContext: string
+  
+}
+
+export interface ToolCallArgumentValue {
+  [key: string]: ToolCallArgumentValue
 }

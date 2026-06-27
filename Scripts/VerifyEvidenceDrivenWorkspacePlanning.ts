@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import type { ActionPlanInput } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
+import { TaskEvidenceScope } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { AgentEvidenceBroker } from "../Source/AgentSystem/AgentEvidenceBroker.js";
 
 const workspaceTaskFrame = {
   taskType: "workspace investigation",
   answerGoal: "说明当前项目是干嘛的，有什么用",
   intentTags: ["workspace-investigation", "source-of-truth"],
+  taskTags: ["workspace", "文件"],
   targetRefs: [{
     kind: "workspace",
     value: ".",
@@ -26,6 +28,7 @@ const workspaceTaskFrame = {
   requiredEvidence: [{
     id: "workspace-source-evidence",
     need: "workspace read source-of-truth evidence",
+    scope: TaskEvidenceScope.CurrentRun,
     minimum: 1,
     reason: "项目地图和搜索候选只用于定位，最终回答需要读取到真实文件内容。",
   }],
@@ -149,7 +152,7 @@ const evidenceBroker = new AgentEvidenceBroker({
   verify: async ({ input, taskFrame }) => {
     const verifiedRefs = input.evidenceState
       .filter((entry) => entry.kind === "workspace_read")
-      .map((entry) => entry.evidenceRef);
+      .map((entry) => entry.evidenceUri);
     return {
       ready: verifiedRefs.length > 0,
       summary: verifiedRefs.length > 0 ? "workspace read evidence verifies the claim" : "no source evidence",
@@ -157,9 +160,9 @@ const evidenceBroker = new AgentEvidenceBroker({
         requirementId: requirement.id,
         need: requirement.need,
         status: verifiedRefs.length > 0 ? "satisfied" : "missing",
-        evidenceRefs: verifiedRefs,
+        evidenceUris: verifiedRefs,
         artifactUris: input.evidenceState
-          .filter((entry) => verifiedRefs.includes(entry.evidenceRef))
+          .filter((entry) => verifiedRefs.includes(entry.evidenceUri))
           .map((entry) => entry.artifactUri),
         reason: verifiedRefs.length > 0
           ? "A workspace read evidence card supports the required claim."
@@ -176,7 +179,7 @@ void main();
 async function main(): Promise<void> {
 const input = createInput({
   evidenceState: [createEvidenceState({
-    evidenceRef: "S1",
+    evidenceUri: "S1",
     kind: "workspace_search_match",
     toolName: "FastContextHybridSearchTool",
     artifactUri: "senera-artifact://runs/search",
@@ -195,7 +198,7 @@ await assertMissingReadEvidence(input, "search candidates are not final evidence
 
 const mapOnlyInput = createInput({
   evidenceState: [createEvidenceState({
-    evidenceRef: "M1",
+    evidenceUri: "M1",
     kind: "workspace_map_path",
     toolName: "FastContextWorkspaceMapTool",
     artifactUri: "senera-artifact://runs/map",
@@ -214,7 +217,7 @@ await assertMissingReadEvidence(mapOnlyInput, "workspace map is only orientation
 
 const readInput = createInput({
   evidenceState: [createEvidenceState({
-    evidenceRef: "R1",
+    evidenceUri: "R1",
     kind: "workspace_read",
     toolName: "FastContextReadTool",
     artifactUri: "senera-artifact://runs/read",
@@ -262,6 +265,9 @@ function createInput(options: {
   evidenceState: ActionPlanInput["evidenceState"];
 }): ActionPlanInput {
   return {
+    currentUserTurn: {
+      content: "看看我们的项目是干嘛的啊，有什么用",
+    },
     runState: {
       currentStep: 1,
       dynamicTools: true,
@@ -285,12 +291,13 @@ function createInput(options: {
       role: "user",
       kind: "user_message",
       content: "看看我们的项目是干嘛的啊，有什么用",
-      evidenceRefs: [],
+      evidenceUris: [],
       artifactUris: [],
     }],
     evidenceMemory: [],
     evidenceState: options.evidenceState,
     plannerJournal: [],
+    toolTagCatalog: ["workspace", "文件"],
     compactToolCatalog: toolCatalog.map((tool) => ({
       name: tool.name,
       title: tool.title,
@@ -336,7 +343,7 @@ function createInput(options: {
 }
 
 function createEvidenceState(options: {
-  evidenceRef: string;
+  evidenceUri: string;
   kind: string;
   toolName: string;
   artifactUri: string;

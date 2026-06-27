@@ -6,7 +6,7 @@ export const AgentCliConfigSchema = z
       .object({
         Url: z.string().min(1).optional(),
         SessionId: z.string().min(1).optional(),
-        TimeoutMs: z.number().int().min(1).optional(),
+        TimeoutSeconds: z.number().positive().optional(),
       })
       .strict()
       .optional(),

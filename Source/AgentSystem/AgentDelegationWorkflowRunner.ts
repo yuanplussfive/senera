@@ -21,7 +21,7 @@ export interface AgentDelegationWorkflowRunInput {
   plan: AgentDelegationPlan;
   latestUserRequest: string;
   jobs?: readonly AgentDelegationJob[];
-  evidenceRefs?: readonly string[];
+  evidenceUris?: readonly string[];
   artifactUris?: readonly string[];
   onEvent?: AgentEventSink;
   signal?: AbortSignal;

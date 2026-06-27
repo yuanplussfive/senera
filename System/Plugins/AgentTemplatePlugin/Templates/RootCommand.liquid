@@ -7,6 +7,12 @@
     <memory_policy>do_not_copy_to_history_or_long_term_memory</memory_policy>
   </scope>
 
+  <roleplay_control>
+    <preset_enabled>{{ RoleplayPreset.enabled }}</preset_enabled>
+    <priority>roleplay_preset_below_root_command</priority>
+    <instruction>如果存在 roleplay_preset，只把它用于语气、视角、称呼、角色连续性和叙事风格；工具调用、事实准确性、代码任务、输出格式、用户最新请求和安全边界始终服从 senera_root_command。</instruction>
+  </roleplay_control>
+
   <runtime_control>
     <action>{{ RootCommand.action | escape }}</action>
     <output_mode>{{ RootCommand.outputMode | escape }}</output_mode>

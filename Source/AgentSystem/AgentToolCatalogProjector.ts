@@ -1,9 +1,9 @@
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
+import type { RegisteredTool } from "./Types/PluginRuntimeTypes.js";
 import type {
-  RegisteredTool,
   ToolEvidenceCapabilityManifest,
   ToolSearchCapabilityFacetsManifest,
-} from "./Types.js";
+} from "./Types/PluginManifestTypes.js";
 
 export interface AgentToolCatalogItem {
   name: string;
@@ -68,17 +68,14 @@ export class AgentToolCatalogProjector {
         title: capability.Title ?? capability.Id,
         description: capability.Description ?? "",
         facets: capability.Facets ?? {},
-            risk: capability.Risk
+        risk: capability.Risk
           ? {
               sideEffect: capability.Risk.SideEffect,
               permission: capability.Risk.Permission,
             }
           : undefined,
       })),
-      tags: [
-        ...(tool.plugin.manifest.Discovery?.Tags ?? []),
-        ...(search?.Keywords ?? []),
-      ],
+      tags: search?.Tags ?? [],
       useCases: search?.UseCases ?? [],
       examples: search?.Examples ?? [],
       avoid: search?.Avoid ?? [],

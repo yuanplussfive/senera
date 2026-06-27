@@ -1,0 +1,883 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "models",
+        "label": "模型",
+        "description": "配置主模型、供应商端点和默认模型。",
+        "icon": "brain-circuit",
+        "fields": [
+          {
+            "path": ["DefaultModelProviderId"],
+            "label": "默认模型",
+            "description": "启动和未指定模型时使用的 ModelProviders[].Id。",
+            "type": "string",
+            "placeholder": "选择一个已启用模型"
+          },
+          {
+            "path": ["ModelProviderEndpoints"],
+            "label": "供应商端点",
+            "description": "保存接口地址、密钥和额外请求头。模型配置通过供应商 ID 引用这里。",
+            "type": "array",
+            "itemType": "table",
+            "addLabel": "添加供应商",
+            "itemLabelPath": ["Id"],
+            "defaultItem": {
+              "Id": "",
+              "Icon": "",
+              "Enabled": true,
+              "BaseUrl": "",
+              "Headers": {}
+            },
+            "itemFields": [
+              {
+                "path": ["Enabled"],
+                "label": "启用供应商",
+                "type": "boolean",
+                "required": false
+              },
+              {
+                "path": ["Icon"],
+                "label": "图标",
+                "description": "供应商列表里显示的图标名称。",
+                "type": "string",
+                "placeholder": "选择图标",
+                "required": false
+              },
+              {
+                "path": ["Id"],
+                "label": "供应商 ID",
+                "description": "供模型、向量模型和学习模型引用。",
+                "type": "string",
+                "placeholder": "自定义唯一 ID",
+                "minLength": 1
+              },
+              {
+                "path": ["BaseUrl"],
+                "label": "Base URL",
+                "description": "供应商 API 地址，通常以 /v1 结尾。",
+                "type": "string",
+                "placeholder": "https://.../v1",
+                "minLength": 1
+              },
+              {
+                "path": ["ApiKey"],
+                "label": "API Key",
+                "description": "供应商访问密钥。",
+                "type": "string",
+                "secret": true,
+                "placeholder": "sk-...",
+                "required": false
+              },
+              {
+                "path": ["ApiVersion"],
+                "label": "API Version",
+                "description": "需要版本参数的供应商可填写。",
+                "type": "string",
+                "placeholder": "2023-06-01",
+                "required": false
+              },
+              {
+                "path": ["Headers"],
+                "label": "请求头",
+                "description": "额外 HTTP 请求头，按键值保存。",
+                "type": "record",
+                "itemType": "string",
+                "keyPlaceholder": "Header-Name",
+                "valuePlaceholder": "value",
+                "required": false
+              }
+            ]
+          },
+          {
+            "path": ["ModelProviders"],
+            "label": "模型列表",
+            "description": "每个模型配置引用一个供应商端点，并声明请求协议、模型名和运行参数。",
+            "type": "array",
+            "itemType": "table",
+            "addLabel": "添加模型",
+            "itemLabelPath": ["Model"],
+            "defaultItem": {
+              "Id": "",
+              "ProviderId": "",
+              "Icon": "",
+              "Capabilities": {
+                "Chat": true,
+                "Embedding": false,
+                "Rerank": false,
+                "Vision": false,
+                "ImageOutput": false,
+                "Reasoning": false,
+                "ToolCalling": true
+              },
+              "ContextWindowTokens": -1,
+              "MaxModelOutputTokens": -1,
+              "Endpoint": "ChatCompletions",
+              "Model": "",
+              "Temperature": 0,
+              "TimeoutSeconds": 480,
+              "FirstTokenTimeoutSeconds": 240,
+              "MaxRequestSeconds": -1,
+              "MaxNetworkRetries": 1,
+              "Stream": true,
+              "MaxOutputTokens": -1
+            },
+            "itemFields": [
+              {
+                "path": ["ProviderId"],
+                "label": "供应商 ID",
+                "description": "填写上方供应商端点中的供应商 ID。",
+                "type": "string",
+                "placeholder": "选择供应商",
+                "minLength": 1
+              },
+              {
+                "path": ["Icon"],
+                "label": "图标",
+                "description": "模型列表里显示的图标名称。",
+                "type": "string",
+                "placeholder": "选择图标",
+                "required": false
+              },
+              {
+                "path": ["Capabilities", "Chat"],
+                "label": "对话",
+                "type": "boolean",
+                "required": false
+              },
+              {
+                "path": ["Capabilities", "Embedding"],
+                "label": "向量嵌入",
+                "type": "boolean",
+                "required": false
+              },
+              {
+                "path": ["Capabilities", "Rerank"],
+                "label": "重排序",
+                "type": "boolean",
+                "required": false
+              },
+              {
+                "path": ["Capabilities", "Vision"],
+                "label": "识图",
+                "type": "boolean",
+                "required": false
+              },
+              {
+                "path": ["Capabilities", "ImageOutput"],
+                "label": "图像输出",
+                "type": "boolean",
+                "required": false
+              },
+              {
+                "path": ["Capabilities", "Reasoning"],
+                "label": "推理",
+                "type": "boolean",
+                "required": false
+              },
+              {
+                "path": ["Capabilities", "ToolCalling"],
+                "label": "工具调用",
+                "type": "boolean",
+                "required": false
+              },
+              {
+                "path": ["ContextWindowTokens"],
+                "label": "上下文窗口",
+                "description": "-1 表示未知或不声明。",
+                "type": "number",
+                "min": -1,
+                "step": 1,
+                "required": false
+              },
+              {
+                "path": ["MaxModelOutputTokens"],
+                "label": "模型最大输出",
+                "description": "-1 表示未知或不声明。",
+                "type": "number",
+                "min": -1,
+                "step": 1,
+                "required": false
+              },
+              {
+                "path": ["Endpoint"],
+                "label": "请求协议",
+                "description": "选择模型请求使用的接口协议。",
+                "type": "string",
+                "options": ["ChatCompletions", "Responses", "ClaudeMessages", "GoogleGenerateContent"],
+                "optionLabels": {
+                  "ChatCompletions": "Chat Completions",
+                  "Responses": "Responses",
+                  "ClaudeMessages": "Claude Messages",
+                  "GoogleGenerateContent": "Google Generate Content"
+                }
+              },
+              {
+                "path": ["Model"],
+                "label": "模型名",
+                "type": "string",
+                "placeholder": "从供应商模型列表选择",
+                "minLength": 1
+              },
+              {
+                "path": ["Temperature"],
+                "label": "温度",
+                "description": "0 到 2，越高越发散。",
+                "type": "number",
+                "min": 0,
+                "max": 2,
+                "step": 0.1,
+                "required": false
+              },
+              {
+                "path": ["MaxOutputTokens"],
+                "label": "最大输出 Tokens",
+                "description": "-1 表示不发送限制字段。",
+                "type": "number",
+                "min": -1,
+                "step": 1,
+                "required": false
+              },
+              {
+                "path": ["Stream"],
+                "label": "流式输出",
+                "type": "boolean",
+                "required": false
+              },
+              {
+                "path": ["TimeoutSeconds"],
+                "label": "请求超时",
+                "description": "单位秒。",
+                "type": "number",
+                "min": 1,
+                "step": 1,
+                "required": false
+              },
+              {
+                "path": ["FirstTokenTimeoutSeconds"],
+                "label": "首 token 超时",
+                "description": "单位秒，-1 表示关闭该检查。",
+                "type": "number",
+                "min": -1,
+                "step": 1,
+                "required": false
+              },
+              {
+                "path": ["MaxRequestSeconds"],
+                "label": "最大请求时长",
+                "description": "单位秒，-1 表示不限制。",
+                "type": "number",
+                "min": -1,
+                "step": 1,
+                "required": false
+              },
+              {
+                "path": ["MaxNetworkRetries"],
+                "label": "网络重试次数",
+                "type": "number",
+                "min": 0,
+                "step": 1,
+                "required": false
+              }
+            ]
+          },
+          {
+            "path": ["ModelGroups"],
+            "label": "模型分组",
+            "description": "模型列表里的可编辑自动分组规则。默认规则来自模型图标规则。",
+            "type": "array",
+            "itemType": "table",
+            "addLabel": "添加分组",
+            "itemLabelPath": ["Label"],
+            "required": false,
+            "defaultItem": {
+              "Id": "",
+              "Label": "",
+              "Icon": "",
+              "Strategies": [
+                {
+                  "Match": "prefix",
+                  "Values": []
+                }
+              ]
+            },
+            "itemFields": [
+              {
+                "path": ["Id"],
+                "label": "分组 ID",
+                "type": "string",
+                "placeholder": "唯一 ID",
+                "minLength": 1
+              },
+              {
+                "path": ["Label"],
+                "label": "名称",
+                "type": "string",
+                "placeholder": "分组名称",
+                "minLength": 1
+              },
+              {
+                "path": ["Icon"],
+                "label": "图标",
+                "type": "string",
+                "placeholder": "选择图标",
+                "required": false
+              },
+              {
+                "path": ["Strategies"],
+                "label": "匹配策略",
+                "type": "array",
+                "itemType": "table",
+                "addLabel": "添加策略",
+                "required": false,
+                "defaultItem": {
+                  "Match": "prefix",
+                  "Values": []
+                },
+                "itemFields": [
+                  {
+                    "path": ["Match"],
+                    "label": "匹配方式",
+                    "type": "string",
+                    "options": ["prefix", "includes", "exact", "suffix"],
+                    "optionLabels": {
+                      "prefix": "前缀",
+                      "includes": "包含",
+                      "exact": "精确",
+                      "suffix": "后缀"
+                    }
+                  },
+                  {
+                    "path": ["Values"],
+                    "label": "匹配词",
+                    "type": "array",
+                    "itemType": "string",
+                    "placeholder": "例如 claude-",
+                    "required": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "runtime",
+        "label": "运行",
+        "description": "控制主循环、工具执行、服务端和持久化。",
+        "icon": "sliders-horizontal",
+        "fields": [
+          {
+            "path": ["AgentLoop", "MaxSteps"],
+            "label": "最大步骤数",
+            "description": "-1 表示不限制。",
+            "type": "number",
+            "min": -1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["AgentLoop", "MaxRepairAttempts"],
+            "label": "修复重试次数",
+            "type": "number",
+            "min": 0,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["AgentLoop", "LoadedTools"],
+            "label": "工具加载策略",
+            "description": "dynamic 表示按需发现工具，all 表示加载全部工具。",
+            "type": "string",
+            "options": ["dynamic", "all"],
+            "optionLabels": {
+              "dynamic": "按需发现",
+              "all": "全部加载"
+            },
+            "required": false
+          },
+          {
+            "path": ["ToolExecution", "TimeoutSeconds"],
+            "label": "工具超时",
+            "description": "单次工具进程最长运行时间，单位秒。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["ToolExecution", "MaxStdoutBytes"],
+            "label": "工具 stdout 上限",
+            "type": "number",
+            "min": 1,
+            "step": 1024,
+            "required": false
+          },
+          {
+            "path": ["ToolExecution", "MaxStderrBytes"],
+            "label": "工具 stderr 上限",
+            "type": "number",
+            "min": 1,
+            "step": 1024,
+            "required": false
+          },
+          {
+            "path": ["Server", "Host"],
+            "label": "服务 Host",
+            "type": "string",
+            "placeholder": "127.0.0.1",
+            "required": false
+          },
+          {
+            "path": ["Server", "Port"],
+            "label": "服务端口",
+            "type": "number",
+            "min": 1,
+            "max": 65535,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["Server", "HotReload"],
+            "label": "热重载",
+            "type": "boolean",
+            "required": false
+          },
+          {
+            "path": ["Server", "RequestMaxBytes"],
+            "label": "请求体上限",
+            "type": "number",
+            "min": 1,
+            "step": 1024,
+            "required": false
+          },
+          {
+            "path": ["Persistence", "Kind"],
+            "label": "会话存储",
+            "type": "string",
+            "options": ["sqlite", "memory"],
+            "optionLabels": {
+              "sqlite": "SQLite",
+              "memory": "内存"
+            },
+            "required": false
+          },
+          {
+            "path": ["Persistence", "DatabasePath"],
+            "label": "会话数据库",
+            "type": "string",
+            "placeholder": ".senera/senera.db",
+            "required": false
+          },
+          {
+            "path": ["ConfigStore", "Enabled"],
+            "label": "配置数据库",
+            "type": "boolean",
+            "required": false
+          },
+          {
+            "path": ["ConfigStore", "DatabasePath"],
+            "label": "配置数据库路径",
+            "type": "string",
+            "placeholder": ".senera/Config.sqlite",
+            "required": false
+          },
+          {
+            "path": ["ConfigStore", "MirrorJson"],
+            "label": "同步 JSON 镜像",
+            "description": "保存数据库配置时同步写回 senera.config.json。",
+            "type": "boolean",
+            "required": false
+          }
+        ]
+      },
+      {
+        "id": "planning",
+        "label": "规划与学习",
+        "description": "配置 BAML planner、工具学习和长期记忆晋升。",
+        "icon": "route",
+        "fields": [
+          {
+            "path": ["ActionPlanner", "Enabled"],
+            "label": "启用 Planner",
+            "type": "boolean",
+            "required": false
+          },
+          {
+            "path": ["ActionPlanner", "MaxRepairAttempts"],
+            "label": "Planner 修复次数",
+            "type": "number",
+            "min": 0,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["ActionPlanner", "Evidence", "StalledStepLag"],
+            "label": "证据停滞步距",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["ActionPlanner", "Client", "Provider"],
+            "label": "Planner 协议",
+            "type": "string",
+            "options": ["openai-generic", "openai-responses", "anthropic", "google-ai"],
+            "optionLabels": {
+              "openai-generic": "Chat Completions",
+              "openai-responses": "Responses",
+              "anthropic": "Claude Messages",
+              "google-ai": "Google Generate Content"
+            },
+            "required": false
+          },
+          {
+            "path": ["ActionPlanner", "Client", "ModelProviderId"],
+            "label": "Planner 模型",
+            "description": "为空时继承当前主模型。",
+            "type": "string",
+            "placeholder": "选择已启用模型",
+            "required": false
+          },
+          {
+            "path": ["ActionPlanner", "Client", "Temperature"],
+            "label": "Planner 温度",
+            "type": "number",
+            "min": 0,
+            "max": 2,
+            "step": 0.1,
+            "required": false
+          },
+          {
+            "path": ["ActionPlanner", "Client", "MaxTokens"],
+            "label": "Planner MaxTokens",
+            "description": "-1 表示不发送限制字段。",
+            "type": "number",
+            "min": -1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["ToolLearning", "Enabled"],
+            "label": "启用工具学习",
+            "type": "boolean",
+            "required": false
+          },
+          {
+            "path": ["ToolLearning", "MaxRepairAttempts"],
+            "label": "工具学习修复次数",
+            "type": "number",
+            "min": 0,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["ToolLearning", "Patterns", "MinSupport"],
+            "label": "参数模式最少支持",
+            "description": "聚合同类成功样本时需要的最少样本数。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["ToolLearning", "Patterns", "MaxPromptPatterns"],
+            "label": "注入模式上限",
+            "description": "ToolCallPlanner 最多读取的相关工具使用经验数量。",
+            "type": "number",
+            "min": 0,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["MemoryLearning", "Promotion", "MinSupport"],
+            "label": "记忆晋升最少支持",
+            "description": "至少多少条相似候选才晋升为长期记忆。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["MemoryLearning", "Promotion", "MaxClusterSize"],
+            "label": "记忆聚类上限",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["MemoryLearning", "Promotion", "MinSimilarity"],
+            "label": "记忆相似度阈值",
+            "type": "number",
+            "min": -1,
+            "max": 1,
+            "step": 0.01,
+            "required": false
+          }
+        ]
+      },
+      {
+        "id": "retrieval",
+        "label": "检索与向量",
+        "description": "控制工具检索、向量模型和重排序。",
+        "icon": "search",
+        "fields": [
+          {
+            "path": ["ToolSearch", "Memory", "Kind"],
+            "label": "工具学习存储",
+            "type": "string",
+            "options": ["sqlite", "memory"],
+            "optionLabels": {
+              "sqlite": "SQLite",
+              "memory": "内存"
+            },
+            "required": false
+          },
+          {
+            "path": ["ToolSearch", "Memory", "DatabasePath"],
+            "label": "工具学习数据库",
+            "type": "string",
+            "placeholder": ".senera/ToolSearch.sqlite",
+            "required": false
+          },
+          {
+            "path": ["ToolSearch", "Memory", "MaxEpisodes"],
+            "label": "工具样本上限",
+            "type": "number",
+            "min": 1,
+            "step": 100,
+            "required": false
+          },
+          {
+            "path": ["ToolSearch", "Memory", "HalfLifeDays"],
+            "label": "工具学习半衰期",
+            "description": "单位天。",
+            "type": "number",
+            "min": 0,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["ToolSearch", "Rerank", "Enabled"],
+            "label": "工具重排序",
+            "type": "boolean",
+            "required": false
+          },
+          {
+            "path": ["ToolSearch", "Rerank", "CandidateLimit"],
+            "label": "重排序候选数",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["ToolSearch", "Rerank", "ScoreScale"],
+            "label": "重排序分数缩放",
+            "type": "number",
+            "min": 0,
+            "step": 0.001,
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Embedding", "Enabled"],
+            "label": "启用嵌入模型",
+            "type": "boolean",
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Embedding", "ProviderId"],
+            "label": "嵌入供应商 ID",
+            "type": "string",
+            "placeholder": "选择供应商",
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Embedding", "Model"],
+            "label": "嵌入模型",
+            "type": "string",
+            "placeholder": "选择嵌入模型",
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Embedding", "Dimensions"],
+            "label": "嵌入维度",
+            "description": "-1 表示由供应商默认决定。",
+            "type": "number",
+            "min": -1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Embedding", "BatchSize"],
+            "label": "嵌入批量",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Embedding", "InputMaxChars"],
+            "label": "嵌入输入上限",
+            "description": "-1 表示不裁剪。",
+            "type": "number",
+            "min": -1,
+            "step": 1000,
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Rerank", "Enabled"],
+            "label": "启用向量重排",
+            "type": "boolean",
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Rerank", "ProviderId"],
+            "label": "重排供应商 ID",
+            "type": "string",
+            "placeholder": "选择供应商",
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Rerank", "Model"],
+            "label": "重排模型",
+            "type": "string",
+            "placeholder": "选择重排模型",
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Rerank", "EndpointPath"],
+            "label": "重排接口路径",
+            "type": "string",
+            "placeholder": "/rerank",
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Rerank", "CandidateLimit"],
+            "label": "重排候选上限",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["VectorModels", "Rerank", "TopK"],
+            "label": "重排 TopK",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          }
+        ]
+      },
+      {
+        "id": "storage",
+        "label": "文件与界面",
+        "description": "配置上传、产物、预设和前端默认显示。",
+        "icon": "folder-cog",
+        "fields": [
+          {
+            "path": ["Presets", "Enabled"],
+            "label": "启用预设",
+            "type": "boolean",
+            "required": false
+          },
+          {
+            "path": ["Presets", "RootDir"],
+            "label": "预设目录",
+            "type": "string",
+            "placeholder": ".senera/presets",
+            "required": false
+          },
+          {
+            "path": ["Presets", "StateFile"],
+            "label": "预设状态文件",
+            "type": "string",
+            "placeholder": ".senera/presets-state.json",
+            "required": false
+          },
+          {
+            "path": ["Artifacts", "RootDir"],
+            "label": "产物目录",
+            "type": "string",
+            "placeholder": ".senera/artifacts/runs",
+            "required": false
+          },
+          {
+            "path": ["Artifacts", "SummaryMaxChars"],
+            "label": "产物摘要字符上限",
+            "type": "number",
+            "min": 256,
+            "step": 100,
+            "required": false
+          },
+          {
+            "path": ["Artifacts", "RawJsonMaxBytes"],
+            "label": "原始 JSON 上限",
+            "type": "number",
+            "min": 1024,
+            "step": 1024,
+            "required": false
+          },
+          {
+            "path": ["Artifacts", "TextFileMaxBytes"],
+            "label": "文本文件读取上限",
+            "type": "number",
+            "min": 1024,
+            "step": 1024,
+            "required": false
+          },
+          {
+            "path": ["Uploads", "RootDir"],
+            "label": "上传目录",
+            "type": "string",
+            "placeholder": ".senera/uploads",
+            "required": false
+          },
+          {
+            "path": ["Uploads", "MaxFileBytes"],
+            "label": "上传文件上限",
+            "type": "number",
+            "min": 1,
+            "step": 1024,
+            "required": false
+          },
+          {
+            "path": ["Frontend", "Client", "WebSocketUrl"],
+            "label": "前端 WebSocket",
+            "description": "为空时根据服务端 Host/Port 推导。",
+            "type": "string",
+            "placeholder": "ws://127.0.0.1:8787",
+            "required": false
+          },
+          {
+            "path": ["Frontend", "Client", "ModelLabel"],
+            "label": "前端模型标签",
+            "type": "string",
+            "placeholder": "senera",
+            "required": false
+          },
+          {
+            "path": ["Frontend", "Client", "UserName"],
+            "label": "默认用户名",
+            "type": "string",
+            "placeholder": "you",
+            "required": false
+          },
+          {
+            "path": ["Frontend", "Client", "EmptySuggestions"],
+            "label": "空会话建议",
+            "type": "array",
+            "itemType": "string",
+            "addLabel": "添加建议",
+            "required": false
+          }
+        ]
+      }
+    ]
+  }
+}
+

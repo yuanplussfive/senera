@@ -1,5 +1,5 @@
 import type { AgentExecutionResult } from "./AgentDecisionExecutor.js";
-import type { AgentDecision, ExecutedToolCallResult } from "./Types.js";
+import type { AgentDecision, ExecutedToolCallResult } from "./Types/ToolRuntimeTypes.js";
 
 /**
  * 精简档执行步骤轨迹：持久化后用于历史回放时重建前端执行图。

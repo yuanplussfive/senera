@@ -1,4 +1,4 @@
-import type { AgentSystemConfig } from "./Types.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
 
 export interface AgentXmlForbiddenSyntaxRule {
   pattern: RegExp;
@@ -23,12 +23,24 @@ export interface AgentXmlProtocolSpec {
   roots: {
     contextUserMessage: string;
     contextToolResults: string;
+    readOnlyEvidence: string;
+    currentUserMessage: string;
+    historicalUserTurn: string;
     toolCalls: string;
     toolResults: string;
     agentResult: string;
   };
   context: {
+    requestId: string;
+    timestamp: string;
+    kind: string;
+    instruction: string;
+    payload: string;
+    userMessage: string;
     userMessageContent: string;
+    attachments: string;
+    toolEvidenceMemory: string;
+    toolResults: string;
   };
   items: {
     toolCall: string;
@@ -74,12 +86,24 @@ export const AgentDefaultXmlProtocolSpec = {
   roots: {
     contextUserMessage: "context_user_message",
     contextToolResults: "context_tool_results",
+    readOnlyEvidence: "read_only_evidence",
+    currentUserMessage: "current_user_message",
+    historicalUserTurn: "historical_user_turn",
     toolCalls: "senera_tool_calls",
     toolResults: "tool_results",
     agentResult: "agent_result",
   },
   context: {
+    requestId: "request_id",
+    timestamp: "timestamp",
+    kind: "kind",
+    instruction: "instruction",
+    payload: "payload",
+    userMessage: "user_message",
     userMessageContent: "content",
+    attachments: "attachments",
+    toolEvidenceMemory: "tool_evidence_memory",
+    toolResults: "tool_results",
   },
   items: {
     toolCall: "tool_call",

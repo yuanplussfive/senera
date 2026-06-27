@@ -1,7 +1,8 @@
-import type { TaskFrame } from "./BamlClient/baml_client/types.js";
+import type { TaskFrame, TurnUnderstanding } from "./BamlClient/baml_client/types.js";
 import type { AgentCompletionGateDecision } from "./AgentCompletionGate.js";
 
 export const AgentActionPlannerStageNames = {
+  UnderstandUserTurn: "understandUserTurn",
   BuildTaskFrame: "buildTaskFrame",
   EvaluateEvidence: "evaluateEvidence",
 } as const;
@@ -17,6 +18,7 @@ export interface AgentActionPlannerStageCompleted {
   stage: AgentActionPlannerStageName;
   selectedAction?: string;
   repaired?: boolean;
+  turnUnderstanding?: TurnUnderstanding;
   taskFrame?: TaskFrame;
   evidenceDecision?: AgentCompletionGateDecision;
 }

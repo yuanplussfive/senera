@@ -11,16 +11,18 @@ import { renderToolObservationContent } from "./AgentToolObservationRenderer.js"
 import {
   normalizeAgentArtifactUri,
 } from "./Artifacts/AgentArtifactLocator.js";
+import { AgentPlannerTimelinePayloadKeys } from "./AgentPlannerTimelinePayload.js";
 
 export interface ToolObservationProjection {
   content: string;
-  evidenceRefs: string[];
+  payload: Record<string, unknown>;
+  evidenceUris: string[];
   artifactUris: string[];
 }
 
 interface ProjectedToolResultItem {
   value: Record<string, unknown>;
-  evidenceRefs: string[];
+  evidenceUris: string[];
   artifactUris: string[];
 }
 
@@ -48,7 +50,10 @@ export class AgentToolObservationProjector {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return {
         content: stringifyPreview(value),
-        evidenceRefs: [],
+        payload: {
+          [AgentPlannerTimelinePayloadKeys.Value]: value,
+        },
+        evidenceUris: [],
         artifactUris: [],
       };
     }
@@ -61,16 +66,23 @@ export class AgentToolObservationProjector {
       ? this.renderToolResultItems(items)
       : {
           content: stringifyPreview(result),
-          evidenceRefs: [],
+          payload: {
+            [AgentPlannerTimelinePayloadKeys.Value]: result,
+          },
+          evidenceUris: [],
           artifactUris: [],
         };
   }
 
   private renderToolResultItems(values: readonly unknown[]): ToolObservationProjection {
     const items = values.map((entry) => this.projectToolResultItem(entry));
+    const observations = items.map((item) => item.value);
     return {
-      content: renderToolObservationContent(items.map((item) => item.value)),
-      evidenceRefs: uniqueStrings(items.flatMap((item) => item.evidenceRefs)),
+      content: renderToolObservationContent(observations),
+      payload: {
+        [AgentPlannerTimelinePayloadKeys.Observations]: observations,
+      },
+      evidenceUris: uniqueStrings(items.flatMap((item) => item.evidenceUris)),
       artifactUris: uniqueStrings(items.flatMap((item) => item.artifactUris)),
     };
   }
@@ -79,7 +91,7 @@ export class AgentToolObservationProjector {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return {
         value: value === undefined ? {} : { value },
-        evidenceRefs: [],
+        evidenceUris: [],
         artifactUris: [],
       };
     }
@@ -111,8 +123,8 @@ export class AgentToolObservationProjector {
 
     return {
       value: projected,
-      evidenceRefs: evidence
-        .map((entry) => readString(entry.ref))
+      evidenceUris: evidence
+        .map((entry) => readString(entry.evidenceUri))
         .filter((entry): entry is string => Boolean(entry)),
       artifactUris: artifactUri ? [artifactUri] : [],
     };
@@ -140,7 +152,7 @@ export class AgentToolObservationProjector {
 
       const record = entry as Record<string, unknown>;
       return compactObject({
-        ref: record.ref,
+        evidenceUri: record.evidenceUri,
         kind: record.kind,
         locator: record.locator,
         display: record.display,

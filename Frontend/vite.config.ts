@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readVendorChunkName } from "./src/build/viteManualChunks";
 import { resolveFrontendConfig } from "../Source/AgentSystem/AgentDefaults";
-import type { AgentSystemConfig } from "../Source/AgentSystem/Types";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes";
 
 const WorkspaceRoot = path.resolve(__dirname, "..");
 const DefaultConfigFileName = "senera.config.json";
@@ -12,6 +12,7 @@ const DefaultConfigFileName = "senera.config.json";
 const frontendConfig = resolveFrontendConfig(readRootConfig());
 
 export default defineConfig({
+  base: "./",
   plugins: [react()],
   define: {
     __SENERA_DEFAULT_WS_URL__: JSON.stringify(frontendConfig.Client.WebSocketUrl),

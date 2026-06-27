@@ -13,22 +13,6 @@
       "Cwd": "."
     }
   },
-  "Discovery": {
-    "Tags": [
-      "context",
-      "上下文",
-      "index",
-      "索引",
-      "sqlite",
-      "fts5",
-      "trigram",
-      "symbol",
-      "workspace",
-      "工作区",
-      "代码",
-      "缓存"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 71
@@ -38,6 +22,7 @@
       "Name": "FastContextIndexSearchTool",
       "DescriptionFile": "./docs/IndexSearch.md",
       "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "FastContextIndexSearchToolArguments",
       "Permissions": [
         "filesystem:read:workspace",
         "filesystem:write:.state"
@@ -66,7 +51,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "S",
               "Locator": "{{ path }}:{{ line }}",
               "Display": "{{ engine }} match in {{ path }}:{{ line }}",
               "Label": "{{ path }}",
@@ -110,8 +94,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }}{% if e.slots.focus %} focus: {{ e.slots.focus }}{% endif %} - {{ e.slots.snippet }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} indexed match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}{% if e.slots.focus %}\n  focus: {{ e.slots.focus }}{% endif %}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }}{% if e.slots.focus %} focus: {{ e.slots.focus }}{% endif %} - {{ e.slots.snippet }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} indexed match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}{% if e.slots.focus %}\n  focus: {{ e.slots.focus }}{% endif %}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
             }
           }
         ],
@@ -122,19 +106,11 @@
       },
       "Search": {
         "Summary": "使用本地 SQLite FTS5/trigram 索引快速搜索代码、路径和文本片段。",
-        "Keywords": [
-          "index",
-          "sqlite",
-          "fts5",
-          "trigram",
-          "code",
-          "workspace",
-          "cached",
-          "索引",
-          "本地检索",
+        "Tags": [
+          "工作区检索",
           "代码搜索",
-          "缓存",
-          "快速搜索"
+          "索引查询",
+          "本地缓存"
         ],
         "Capabilities": [
           {
@@ -178,13 +154,6 @@
               "cached workspace search",
               "fast code search"
             ],
-            "Examples": [
-              "用索引搜索 AgentLoop",
-              "search indexed workspace for tool registry"
-            ],
-            "Avoid": [
-              "需要最新未索引内容时先刷新索引或使用精确搜索"
-            ],
             "Risk": {
               "SideEffect": "none",
               "Permission": "read"
@@ -195,9 +164,10 @@
           "需要低成本、快速地从已索引工作区里查找相关代码或文件时使用。"
         ],
         "Examples": [
-          "用索引搜索 AgentLoop",
-          "快速找前端删除会话逻辑",
-          "search indexed workspace for tool registry"
+          "索引检索 AgentLoop",
+          "前端删除会话逻辑 索引",
+          "tool registry indexed workspace search",
+          "cached code search"
         ],
         "Avoid": [
           "需要最新未索引内容时先刷新索引或使用精确搜索。"
@@ -224,6 +194,7 @@
       "Name": "FastContextRefreshIndexTool",
       "DescriptionFile": "./docs/RefreshIndex.md",
       "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "FastContextRefreshIndexToolArguments",
       "Permissions": [
         "filesystem:read:workspace",
         "filesystem:write:.state"
@@ -249,7 +220,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "IDX",
               "Locator": "{{ stateFile }}",
               "Display": "workspace index refreshed: {{ indexedFiles }} files, {{ indexedSymbols }} symbols",
               "Label": "{{ workspaceRoot }}",
@@ -290,8 +260,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} index refreshed: {{ e.slots.indexedFiles }} files, {{ e.slots.indexedSymbols }} symbols\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace index\n  root: {{ e.slots.workspaceRoot }}\n  state: {{ e.slots.stateFile }}\n  files: {{ e.slots.indexedFiles }}\n  documents: {{ e.slots.indexedDocuments }}\n  symbols: {{ e.slots.indexedSymbols }}\n  skipped: {{ e.slots.skippedFiles }}\n  elapsedMs: {{ e.slots.elapsedMs }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} index refreshed: {{ e.slots.indexedFiles }} files, {{ e.slots.indexedSymbols }} symbols\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace index\n  root: {{ e.slots.workspaceRoot }}\n  state: {{ e.slots.stateFile }}\n  files: {{ e.slots.indexedFiles }}\n  documents: {{ e.slots.indexedDocuments }}\n  symbols: {{ e.slots.indexedSymbols }}\n  skipped: {{ e.slots.skippedFiles }}\n  elapsedMs: {{ e.slots.elapsedMs }}\n{% endfor %}"
             }
           }
         ],
@@ -302,17 +272,11 @@
       },
       "Search": {
         "Summary": "刷新或重建本地代码检索索引。",
-        "Keywords": [
-          "refresh",
-          "reindex",
-          "index",
-          "cache",
-          "workspace",
-          "刷新",
-          "重建",
-          "索引",
-          "缓存",
-          "重新扫描"
+        "Tags": [
+          "工作区索引",
+          "缓存刷新",
+          "项目扫描",
+          "代码检索"
         ],
         "Capabilities": [
           {
@@ -352,13 +316,6 @@
               "refresh index",
               "reindex workspace"
             ],
-            "Examples": [
-              "刷新代码索引",
-              "refresh fast context index"
-            ],
-            "Avoid": [
-              "只是读取文件或搜索一个字符串时不需要刷新索引"
-            ],
             "Risk": {
               "SideEffect": "write-cache",
               "Permission": "read-write-cache"
@@ -369,9 +326,10 @@
           "代码刚改动、索引结果过期或需要强制重建检索缓存时使用。"
         ],
         "Examples": [
-          "刷新代码索引",
-          "重建工作区检索缓存",
-          "refresh fast context index"
+          "刷新工作区代码索引",
+          "重建本地检索缓存",
+          "refresh fast context index",
+          "reindex workspace files"
         ],
         "Avoid": [
           "只是读取文件或搜索一个字符串时不需要刷新索引。"

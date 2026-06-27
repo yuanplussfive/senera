@@ -40,6 +40,9 @@ export class AgentForbiddenOutputXmlGuard {
     this.forbiddenRoots = new Set([
       protocol.roots.contextUserMessage,
       protocol.roots.contextToolResults,
+      protocol.roots.readOnlyEvidence,
+      protocol.roots.currentUserMessage,
+      protocol.roots.historicalUserTurn,
       protocol.roots.toolResults,
       protocol.roots.agentResult,
     ]);

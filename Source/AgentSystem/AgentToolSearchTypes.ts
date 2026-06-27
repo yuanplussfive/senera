@@ -1,6 +1,6 @@
 import type {
   ToolSearchCapabilityManifest,
-} from "./Types.js";
+} from "./Types/PluginManifestTypes.js";
 import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
 import type { AgentToolSearchRerankDocument } from "./AgentToolSearchReranker.js";
 
@@ -23,6 +23,15 @@ export interface AgentToolSearchResult {
   ranks: Record<string, number>;
   matchedTerms: string[];
   matchedCapabilities: AgentToolSearchCapabilityMatch[];
+  learningSignals: AgentToolSearchLearningSignal[];
+}
+
+export interface AgentToolSearchLearningSignal {
+  term: string;
+  source: string;
+  support: number;
+  confidence: number;
+  score: number;
 }
 
 export interface AgentToolSearchCapabilityMatch {

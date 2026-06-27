@@ -54,6 +54,8 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       selectedModelProviderId: p.selectedModelProviderId ?? null,
       userProfile: normalizeUserProfile(p.userProfile),
       modelProviders: [],
+      providerModelCatalogs: {},
+      providerModelErrors: {},
       sessions: {},
       sessionOrder: [],
       activeSessionId: null,

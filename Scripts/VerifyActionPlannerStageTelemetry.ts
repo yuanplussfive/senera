@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
 import { AgentActionPlannerStageNames, type AgentActionPlannerStageEvent } from "../Source/AgentSystem/AgentActionPlannerTelemetry.js";
 import type { AgentToolCatalogItem } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
-import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
+import { TaskEvidenceScope } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
   createActionPlannerConfigFixture,
   createActionPlanInputFixture,
@@ -10,6 +11,7 @@ import {
 
 const provider: ResolvedAgentModelProviderConfig = {
   Id: "test",
+  ProviderId: "test",
   Kind: "OpenAICompatible",
   Endpoint: "ChatCompletions",
   BaseUrl: "https://example.test/v1",
@@ -82,6 +84,7 @@ async function main(): Promise<void> {
       requiredEvidence: [{
         id: "weather-forecast-evidence",
         need: "weather forecast",
+        scope: TaskEvidenceScope.CurrentRun,
         minimum: 1,
         reason: "The user asked for weather facts.",
       }],

@@ -23,6 +23,8 @@ import type { StepTrace } from "./AgentStepTrace.js";
 import { AgentRunEventHistoryReplayChunkSize } from "./AgentRunEventHistoryPolicy.js";
 import type { AgentUploadAttachment } from "./Uploads/AgentUploadTypes.js";
 import type { StoredRunSnapshot } from "./AgentSqliteSessionRepository.js";
+import { AgentMemoryService, type AgentMemoryLearningSink } from "./AgentMemoryService.js";
+import type { AgentMemorySourceRepository } from "./Memory/AgentMemorySourceRepository.js";
 
 const HISTORY_REPLAY_CHUNK_SIZE = 50;
 
@@ -58,12 +60,18 @@ export interface AgentSessionManagerOptions {
   store?: AgentSessionStore;
   conversationPolicy?: AgentConversationPolicy;
   conversationProjector?: AgentConversationProjector;
+  memoryService?: AgentMemoryService;
+  memorySourceRepository?: AgentMemorySourceRepository;
+  memoryLearning?: AgentMemoryLearningSink;
 }
+
+export type { AgentMemoryLearningSink } from "./AgentMemoryService.js";
 
 export class AgentSessionManager {
   private readonly store: AgentSessionStore;
   private readonly conversationPolicy: AgentConversationPolicy;
   private readonly conversationProjector: AgentConversationProjector;
+  private readonly memory: AgentMemoryService;
   private readonly eventFactory: AgentSessionEventFactory;
   private readonly activeRuns = new Map<string, ActiveSessionRun>();
 
@@ -71,6 +79,10 @@ export class AgentSessionManager {
     this.store = options.store ?? new AgentSessionStore();
     this.conversationPolicy = options.conversationPolicy ?? new AgentConversationPolicy();
     this.conversationProjector = options.conversationProjector ?? new AgentConversationProjector();
+    this.memory = options.memoryService ?? new AgentMemoryService({
+      learning: options.memoryLearning,
+      sourceRepository: options.memorySourceRepository,
+    });
     this.eventFactory = new AgentSessionEventFactory(this.conversationPolicy);
     this.cleanupOrphanedRunningSnapshots();
   }
@@ -106,6 +118,7 @@ export class AgentSessionManager {
       found: async ({ session }) => {
         this.discardActiveRun(session);
         const closed = this.store.close(session.id);
+        this.memory.deleteSession(session.id);
         await emitAgentEvent(
           request.onEvent,
           matchByKind(closed, {
@@ -393,6 +406,7 @@ export class AgentSessionManager {
     });
 
     const removedEntries = this.store.truncateFromRequest(request.sessionId, run.requestId);
+    this.memory.deleteFromSessionRequest(request.sessionId, run.requestId);
     if (lookup.kind === "found") {
       lookup.session.updatedAt = new Date().toISOString();
       this.store.persistMetadata(lookup.session);
@@ -462,6 +476,7 @@ export class AgentSessionManager {
     }
 
     const removed = this.store.truncateFromRequest(request.sessionId, request.requestId);
+    this.memory.deleteFromSessionRequest(request.sessionId, request.requestId);
     if (lookup.kind === "found") {
       lookup.session.updatedAt = new Date().toISOString();
       this.store.persistMetadata(lookup.session);
@@ -634,6 +649,21 @@ export class AgentSessionManager {
         startedAt: timestamp,
         updatedAt: assistantEntry.timestamp,
         endedAt: assistantEntry.timestamp,
+        modelProvider: result.modelProvider,
+      });
+      this.memory.recordCompletedTurn({
+        sessionId: session.id,
+        requestId,
+        startedAt: timestamp,
+        completedAt: assistantEntry.timestamp,
+        userEntry,
+        assistantEntry,
+        terminal: result.terminal,
+        turnUnderstanding: result.turnUnderstanding,
+        conversationEntries: [
+          ...result.conversationEntries,
+          assistantEntry,
+        ],
         modelProvider: result.modelProvider,
       });
 

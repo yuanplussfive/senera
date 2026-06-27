@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
-import { resolveToolSearchConfig } from "../Source/AgentSystem/AgentDefaults.js";
+import {
+  resolveModelProviderConfig,
+  resolveToolLearningConfig,
+  resolveToolSearchConfig,
+} from "../Source/AgentSystem/AgentDefaults.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
 import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
 import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
@@ -22,7 +26,9 @@ async function main(): Promise<void> {
   const search = new AgentToolSearchRuntime(
     registry,
     resolveToolSearchConfig(config),
+    resolveToolLearningConfig(config),
     workspaceRoot,
+    resolveModelProviderConfig(config),
   );
 
   const discovered = search.resolvePlannedLoadedTools({

@@ -62,8 +62,6 @@ const ToolSearchCapabilitySchema = z
     Description: z.string().min(1).optional(),
     Facets: ToolSearchCapabilityFacetsSchema.optional(),
     Aliases: z.array(z.string().min(1)).optional(),
-    Examples: z.array(z.string().min(1)).optional(),
-    Avoid: z.array(z.string().min(1)).optional(),
     Risk: ToolSearchCapabilityRiskSchema.optional(),
     Metadata: z.record(z.string(), z.unknown()).optional(),
   })
@@ -72,7 +70,7 @@ const ToolSearchCapabilitySchema = z
 const ToolSearchSchema = z
   .object({
     Summary: z.string().min(1).optional(),
-    Keywords: z.array(z.string().min(1)).optional(),
+    Tags: z.array(z.string().min(1)).optional(),
     Capabilities: z.array(ToolSearchCapabilitySchema).optional(),
     UseCases: z.array(z.string().min(1)).optional(),
     Examples: z.array(z.string().min(1)).optional(),
@@ -138,7 +136,6 @@ const ToolArtifactEvidenceSlotSchema = z.union([
 
 const ToolArtifactEvidencePresentationSchema = z
   .object({
-    RefPrefix: z.string().min(1),
     Locator: z.string().min(1),
     Display: z.string().min(1),
     Label: z.string().min(1),
@@ -222,6 +219,7 @@ const ToolSchema = z
     Name: z.string().min(1),
     DescriptionFile: z.string().min(1).optional(),
     SignatureFile: z.string().min(1).optional(),
+    SignatureType: z.string().min(1).optional(),
     Permissions: z.array(z.string()).optional(),
     Handler: ToolHandlerSchema.optional(),
     Search: ToolSearchSchema.optional(),
@@ -296,7 +294,6 @@ const AgentWorkflowTriggerSchema = z
   .object({
     Skills: z.array(z.string().min(1)).optional(),
     Agents: z.array(z.string().min(1)).optional(),
-    Keywords: z.array(z.string().min(1)).optional(),
     Capabilities: z.array(ToolSearchCapabilitySchema).optional(),
   })
   .strict();
@@ -338,6 +335,7 @@ const DecisionActionSchema = z
     Schema: z.string().min(1),
     DescriptionFile: z.string().min(1).optional(),
     SignatureFile: z.string().min(1).optional(),
+    SignatureType: z.string().min(1).optional(),
   })
   .strict();
 
@@ -456,12 +454,6 @@ export const PluginManifestSchema = z
       })
       .strict(),
     Compatibility: z.record(z.string(), z.unknown()).optional(),
-    Discovery: z
-      .object({
-        Tags: z.array(z.string()).optional(),
-      })
-      .strict()
-      .optional(),
     DecisionActions: z.array(DecisionActionSchema).optional(),
     Tools: z.array(ToolSchema).optional(),
     Skills: z.array(SkillSchema).optional(),

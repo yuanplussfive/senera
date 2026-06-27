@@ -3,6 +3,7 @@ import type {
   TaskFrame,
   TaskTargetRef,
 } from "./BamlClient/baml_client/types.js";
+import { TaskEvidenceScope } from "./BamlClient/baml_client/types.js";
 import type { AgentActionDecision } from "./AgentActionPlannerTypes.js";
 import {
   AgentEvidenceCapabilityIndex,
@@ -29,7 +30,7 @@ export interface AgentCompletionEvidenceVerificationRequirement {
   requirementId: string;
   need: string;
   status: AgentCompletionRequirementStatus;
-  evidenceRefs: string[];
+  evidenceUris: string[];
   artifactUris: string[];
   reason: string;
   missingFacts: string[];
@@ -99,7 +100,7 @@ export interface AgentCompletionProgressCall {
   status: string;
   resultKind: string;
   artifactUri: string;
-  evidenceRefs: string[];
+  evidenceUris: string[];
   argumentsPreview: string;
   error: string;
 }
@@ -112,6 +113,7 @@ interface CompletionRequirement {
   minimum: number;
   reason: string;
   targets: TaskTargetRef[];
+  verifiable: boolean;
 }
 
 interface CandidateToolRecommendation {
@@ -167,10 +169,13 @@ export class AgentCompletionGate {
 
     const evidence = collectEvidence(options.input);
     const capabilityIndex = new AgentEvidenceCapabilityIndex(options.input.toolCatalog);
-    const verification = this.verifier && evidence.length > 0
+    const verifiableTaskFrame = projectVerifiableTaskFrame(options.taskFrame);
+    const verification = this.verifier
+      && evidence.length > 0
+      && (verifiableTaskFrame.requiredEvidence.length > 0 || verifiableTaskFrame.requiredEffects.length > 0)
       ? await this.verifier.verify({
           input: options.input,
-          taskFrame: options.taskFrame,
+          taskFrame: verifiableTaskFrame,
           signal: options.signal,
         })
       : undefined;
@@ -279,6 +284,7 @@ function collectRequirements(taskFrame: TaskFrame): CompletionRequirement[] {
       minimum: need.minimum,
       reason: need.reason,
       targets: taskFrame.targetRefs,
+      verifiable: need.scope === TaskEvidenceScope.CurrentRun,
     })),
     ...taskFrame.requiredEffects.map((effect) => ({
       id: effect.id,
@@ -288,6 +294,7 @@ function collectRequirements(taskFrame: TaskFrame): CompletionRequirement[] {
       minimum: 1,
       reason: uniqueStrings([effect.reason, effect.proof]).join("\n"),
       targets: taskFrame.targetRefs,
+      verifiable: true,
     })),
   ]);
 }
@@ -299,20 +306,35 @@ function evaluateRequirement(options: {
   capabilityIndex: AgentEvidenceCapabilityIndex;
   verification?: AgentCompletionEvidenceVerification;
 }): AgentCompletionRequirementState {
+  if (!options.requirement.verifiable) {
+    return {
+      id: options.requirement.id,
+      need: options.requirement.need,
+      status: "satisfied",
+      reason: options.requirement.reason,
+      observed: options.requirement.minimum,
+      required: options.requirement.minimum,
+      evidence: [],
+      missingFacts: [],
+      unsupportedClaims: [],
+      blockers: [],
+    };
+  }
+
   const verification = findVerificationRequirement(options.verification, options.requirement);
   const citation = verification
     ? collectVerifiedEvidence(options.evidence, verification)
     : {
         evidence: [],
-        invalidEvidenceRefs: [],
+        invalidEvidenceUris: [],
         invalidArtifactUris: [],
       };
   const matches = citation.evidence.flatMap((candidate) =>
     options.capabilityIndex.describeEvidence(candidate, options.requirement));
-  const observed = new Set(citation.evidence.map((entry) => entry.ref)).size;
+  const observed = new Set(citation.evidence.map((entry) => entry.evidenceUri)).size;
   const blockers = uniqueStrings([
     ...(verification?.status === "blocked" ? [verification.reason] : []),
-    ...citation.invalidEvidenceRefs.map((ref) => `verifier cited unknown evidence ref: ${ref}`),
+    ...citation.invalidEvidenceUris.map((uri) => `verifier cited unknown evidence URI: ${uri}`),
     ...citation.invalidArtifactUris.map((uri) => `verifier cited unknown artifact uri: ${uri}`),
     ...requirementBlockers(options.progress),
   ]);
@@ -369,6 +391,7 @@ function dedupeRequirements(requirements: readonly CompletionRequirement[]): Com
           minimum: Math.max(current.minimum, requirement.minimum),
           reason: uniqueStrings([current.reason, requirement.reason]).join("\n"),
           targets: dedupeTargets([...current.targets, ...requirement.targets]),
+          verifiable: current.verifiable || requirement.verifiable,
         }
       : {
           ...requirement,
@@ -378,9 +401,17 @@ function dedupeRequirements(requirements: readonly CompletionRequirement[]): Com
   return [...byId.values()];
 }
 
+function projectVerifiableTaskFrame(taskFrame: TaskFrame): TaskFrame {
+  return {
+    ...taskFrame,
+    requiredEvidence: taskFrame.requiredEvidence.filter((need) =>
+      need.scope === TaskEvidenceScope.CurrentRun),
+  };
+}
+
 function collectEvidence(input: ActionPlanInput): AgentEvidenceCandidateProfile[] {
   return input.evidenceState.map((entry) => ({
-    ref: entry.evidenceRef,
+    evidenceUri: entry.evidenceUri,
     kind: entry.kind,
     toolName: entry.toolName,
     artifactUri: entry.artifactUri,
@@ -431,18 +462,27 @@ function buildToolInstruction(
   missing: readonly AgentCompletionMissingNeed[],
   progress: AgentCompletionProgressAssessment,
 ): string {
-  return [
-    taskFrame.nextStepPurpose || taskFrame.answerGoal,
-    ...missing.map((need) =>
-      `Need ${need.observed}/${need.required} verified evidence for ${need.need}: ${need.reason}`),
-    ...missing.flatMap((need) => need.missingFacts.map((fact) => `Missing fact: ${fact}`)),
-    ...missing.flatMap((need) => need.unsupportedClaims.map((claim) => `Unsupported claim: ${claim}`)),
-    ...taskFrame.completionCriteria.map((criterion) => `Completion check: ${criterion}`),
-    ...progress.nonEvidenceCalls.map((call) =>
-      `Previous ${call.toolName} call produced no verified evidence: status=${call.status}; kind=${call.resultKind}; args=${call.argumentsPreview}`),
-    ...progress.failedCalls.map((call) =>
-      `Previous ${call.toolName} call failed: ${call.error || call.status}`),
-  ].filter(Boolean).join("\n");
+  return JSON.stringify({
+    purpose: taskFrame.nextStepPurpose || taskFrame.answerGoal,
+    missingNeeds: missing.map((need) => ({
+      id: need.id,
+      need: need.need,
+      status: need.status,
+      observed: need.observed,
+      required: need.required,
+      reason: need.reason,
+      missingFacts: need.missingFacts,
+      unsupportedClaims: need.unsupportedClaims,
+      blockers: need.blockers,
+    })),
+    completionCriteria: taskFrame.completionCriteria,
+    progressSignals: {
+      stalled: progress.stalled,
+      repeatedCalls: progress.repeatedCalls,
+      nonEvidenceCalls: progress.nonEvidenceCalls,
+      failedCalls: progress.failedCalls,
+    },
+  });
 }
 
 function assessProgress(input: ActionPlanInput): AgentCompletionProgressAssessment {
@@ -452,14 +492,14 @@ function assessProgress(input: ActionPlanInput): AgentCompletionProgressAssessme
     status: call.status,
     resultKind: call.resultKind,
     artifactUri: call.artifactUri,
-    evidenceRefs: call.evidenceRefs,
+    evidenceUris: call.evidenceUris,
     argumentsPreview: call.argumentsPreview,
     error: call.error,
   }));
   return {
     stalled: input.runState.progress.stalled,
     repeatedCalls: input.runState.warnings,
-    nonEvidenceCalls: calls.filter((call) => call.evidenceRefs.length === 0),
+    nonEvidenceCalls: calls.filter((call) => call.evidenceUris.length === 0),
     failedCalls: calls.filter((call) => call.status === "Failure"),
   };
 }
@@ -488,18 +528,18 @@ function collectVerifiedEvidence(
   verification: AgentCompletionEvidenceVerificationRequirement,
 ): {
   evidence: AgentEvidenceCandidateProfile[];
-  invalidEvidenceRefs: string[];
+  invalidEvidenceUris: string[];
   invalidArtifactUris: string[];
 } {
-  const byRef = new Map(evidence.map((entry) => [entry.ref, entry]));
+  const byEvidenceUri = new Map(evidence.map((entry) => [entry.evidenceUri, entry]));
   const byArtifactUri = new Set(evidence.map((entry) => entry.artifactUri));
-  const invalidEvidenceRefs: string[] = [];
+  const invalidEvidenceUris: string[] = [];
   const invalidArtifactUris = uniqueStrings(verification.artifactUris)
     .filter((uri) => !byArtifactUri.has(uri));
-  const citedEvidence = uniqueStrings(verification.evidenceRefs).flatMap((ref) => {
-    const entry = byRef.get(ref);
+  const citedEvidence = uniqueStrings(verification.evidenceUris).flatMap((evidenceUri) => {
+    const entry = byEvidenceUri.get(evidenceUri);
     if (!entry) {
-      invalidEvidenceRefs.push(ref);
+      invalidEvidenceUris.push(evidenceUri);
       return [];
     }
     return [entry];
@@ -507,7 +547,7 @@ function collectVerifiedEvidence(
 
   return {
     evidence: citedEvidence,
-    invalidEvidenceRefs,
+    invalidEvidenceUris,
     invalidArtifactUris,
   };
 }

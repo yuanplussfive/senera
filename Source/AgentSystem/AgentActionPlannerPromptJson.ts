@@ -1,6 +1,21 @@
-import type { ActionPlanInput, TaskFrame } from "./BamlClient/baml_client/index.js";
+import {
+  TaskEvidenceScope,
+  type ActionPlanInput,
+  type TaskFrame,
+} from "./BamlClient/baml_client/index.js";
 
 export type AgentActionPlannerPromptStage =
+  | {
+      stage: "understandUserTurn";
+    }
+  | {
+      stage: "repairTurnUnderstanding";
+      invalidUnderstanding: string;
+      issues: readonly string[];
+    }
+  | {
+      stage: "routeInteraction";
+    }
   | {
       stage: "buildTaskFrame";
     }
@@ -10,7 +25,17 @@ export type AgentActionPlannerPromptStage =
       issues: readonly string[];
     }
   | {
+      stage: "repairInteractionRoute";
+      invalidRoute: string;
+      issues: readonly string[];
+    }
+  | {
       stage: "verifyTaskEvidence";
+    }
+  | {
+      stage: "repairEvidenceVerification";
+      invalidVerification: string;
+      issues: readonly string[];
     };
 
 export interface AgentActionPlannerPromptEnvelope {
@@ -19,13 +44,18 @@ export interface AgentActionPlannerPromptEnvelope {
 }
 
 export interface AgentActionPlannerPromptContext {
+  currentUserTurn: ActionPlanInput["currentUserTurn"];
+  turnUnderstanding: ActionPlanInput["turnUnderstanding"];
+  roleplayPreset?: ActionPlanInput["roleplayPreset"];
   timeline: ActionPlanInput["timeline"];
   runState: ActionPlanInput["runState"];
+  toolTagCatalog: ActionPlanInput["toolTagCatalog"];
   compactToolCatalog: ActionPlanInput["compactToolCatalog"];
-  toolCatalog: ActionPlanInput["toolCatalog"];
+  toolCatalog?: ActionPlanInput["toolCatalog"];
   evidenceMemory: ActionPlanInput["evidenceMemory"];
   evidenceState: ActionPlanInput["evidenceState"];
   plannerJournal: ActionPlanInput["plannerJournal"];
+  plannerState: ActionPlanInput["plannerState"];
   activeSkills: ActionPlanInput["activeSkills"];
 }
 
@@ -40,15 +70,21 @@ export function buildActionPlannerPromptEnvelope(
   input: ActionPlanInput,
   directive: AgentActionPlannerPromptStage,
 ): AgentActionPlannerPromptEnvelope {
+  const includeRoleplayPreset = directive.stage === "understandUserTurn"
+    || directive.stage === "repairTurnUnderstanding";
   return {
     context: {
+      currentUserTurn: input.currentUserTurn,
+      turnUnderstanding: input.turnUnderstanding,
+      ...(includeRoleplayPreset ? { roleplayPreset: input.roleplayPreset } : {}),
       timeline: input.timeline,
       runState: input.runState,
+      toolTagCatalog: input.toolTagCatalog,
       compactToolCatalog: input.compactToolCatalog,
-      toolCatalog: input.toolCatalog,
       evidenceMemory: input.evidenceMemory,
       evidenceState: input.evidenceState,
       plannerJournal: input.plannerJournal,
+      plannerState: input.plannerState,
       activeSkills: input.activeSkills,
     },
     directive,
@@ -58,6 +94,11 @@ export function buildActionPlannerPromptEnvelope(
 export function buildEvidenceVerificationPromptJson(
   input: ActionPlanInput,
   taskFrame: TaskFrame,
+  directive: Extract<AgentActionPlannerPromptStage, {
+    stage: "verifyTaskEvidence" | "repairEvidenceVerification";
+  }> = {
+    stage: "verifyTaskEvidence",
+  },
 ): string {
   return JSON.stringify({
     context: {
@@ -65,6 +106,7 @@ export function buildEvidenceVerificationPromptJson(
         taskType: taskFrame.taskType,
         answerGoal: taskFrame.answerGoal,
         intentTags: taskFrame.intentTags,
+        taskTags: taskFrame.taskTags,
         targetRefs: taskFrame.targetRefs,
         discoveryQueries: taskFrame.discoveryQueries,
         requiredEffects: taskFrame.requiredEffects,
@@ -75,10 +117,11 @@ export function buildEvidenceVerificationPromptJson(
         notes: taskFrame.notes,
       },
       verificationRequirements: [
-        ...taskFrame.requiredEvidence.map((requirement) => ({
+        ...taskFrame.requiredEvidence.filter(isCurrentRunEvidenceRequirement).map((requirement) => ({
           id: requirement.id,
           kind: "evidence",
           need: requirement.need,
+          scope: requirement.scope,
           minimum: requirement.minimum,
           reason: requirement.reason,
         })),
@@ -106,8 +149,12 @@ export function buildEvidenceVerificationPromptJson(
         calls: input.runState.calls,
       },
     },
-    directive: {
-      stage: "verifyTaskEvidence",
-    },
+    directive,
   }, null, 2);
+}
+
+function isCurrentRunEvidenceRequirement(
+  requirement: TaskFrame["requiredEvidence"][number],
+): boolean {
+  return requirement.scope === TaskEvidenceScope.CurrentRun;
 }

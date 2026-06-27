@@ -17,8 +17,10 @@ export interface SessionCatalogSyncHandle {
 export function buildConnectionOpenSyncRequests(userProfile: UserProfile): WsRequest[] {
   const requests: WsRequest[] = [
     { type: "session.list" },
+    { type: "config.get" },
     { type: "model.list" },
     { type: "plugin.config.list" },
+    { type: "preset.list" },
   ];
 
   if (userProfile.syncState === "pending") {
@@ -34,8 +36,10 @@ export function buildConnectionOpenSyncRequests(userProfile: UserProfile): WsReq
 export function buildManualRefreshRequests(): WsRequest[] {
   return [
     { type: "session.list" },
+    { type: "config.get" },
     { type: "model.list" },
     { type: "plugin.config.list" },
+    { type: "preset.list" },
     { type: "profile.get" },
   ];
 }

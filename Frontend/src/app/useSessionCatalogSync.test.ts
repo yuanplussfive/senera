@@ -16,8 +16,10 @@ describe("buildConnectionOpenSyncRequests", () => {
   it("requests the catalog, models, and remote profile snapshot for synced profiles", () => {
     expect(buildConnectionOpenSyncRequests(syncedProfile)).toEqual([
       { type: "session.list" },
+      { type: "config.get" },
       { type: "model.list" },
       { type: "plugin.config.list" },
+      { type: "preset.list" },
       { type: "profile.get" },
     ]);
   });
@@ -30,8 +32,10 @@ describe("buildConnectionOpenSyncRequests", () => {
       syncState: "pending",
     })).toEqual([
       { type: "session.list" },
+      { type: "config.get" },
       { type: "model.list" },
       { type: "plugin.config.list" },
+      { type: "preset.list" },
       {
         type: "profile.update",
         profile: {
@@ -47,8 +51,10 @@ describe("buildManualRefreshRequests", () => {
   it("always refreshes catalog, models, and profile snapshot without pushing local profile edits", () => {
     expect(buildManualRefreshRequests()).toEqual([
       { type: "session.list" },
+      { type: "config.get" },
       { type: "model.list" },
       { type: "plugin.config.list" },
+      { type: "preset.list" },
       { type: "profile.get" },
     ]);
   });

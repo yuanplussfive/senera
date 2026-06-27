@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
+import { TaskEvidenceScope } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import type { AgentToolCatalogItem } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
-import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
   createActionPlannerConfigFixture,
   createActionPlanInputFixture,
@@ -9,6 +10,7 @@ import {
 
 const provider: ResolvedAgentModelProviderConfig = {
   Id: "test",
+  ProviderId: "test",
   Kind: "OpenAICompatible",
   Endpoint: "ChatCompletions",
   BaseUrl: "https://example.test/v1",
@@ -101,6 +103,7 @@ async function main(): Promise<void> {
       requiredEvidence: [{
         id: "workspace-edit-evidence",
         need: "workspace edit",
+        scope: TaskEvidenceScope.CurrentRun,
         minimum: 1,
         reason: "The latest user requested a workspace file modification.",
       }],
@@ -176,8 +179,9 @@ async function main(): Promise<void> {
     const taskFramePrompt = readPlannerPromptFromHttpBody(requests[0] ?? "");
     assert.equal(taskFramePrompt.directive.stage, "buildTaskFrame");
     assert.equal("selectedAction" in taskFramePrompt.directive, false);
-    assert.equal(Array.isArray(taskFramePrompt.context.compactToolCatalog), true);
-    assert.equal(taskFramePrompt.context.compactToolCatalog[0]?.name, "ApplyPatchTool");
+    assert.equal(Array.isArray(taskFramePrompt.plannerInput.compactToolCatalog), true);
+    assert.equal(taskFramePrompt.plannerInput.compactToolCatalog[0]?.name, "ApplyPatchTool");
+    assert.equal("toolCatalog" in taskFramePrompt.plannerInput, false);
     console.log("Action planner task-frame payload verification passed.");
   } finally {
     globalThis.fetch = originalFetch;
@@ -185,10 +189,12 @@ async function main(): Promise<void> {
 }
 
 function readPlannerPromptFromHttpBody(body: string): {
-  context: {
+  plannerInput: {
+    runState: unknown;
     compactToolCatalog: Array<{
       name: string;
     }>;
+    toolCatalog?: unknown;
   };
   directive: {
     stage: string;
@@ -202,19 +208,27 @@ function readPlannerPromptFromHttpBody(body: string): {
     }>;
   };
   const message = payload.messages?.find((entry) =>
-    entry.role === "user" && typeof entry.content === "string" && entry.content.trim().startsWith("{")
+    entry.role === "user"
+    && typeof entry.content === "string"
+    && entry.content.includes("\"plannerInput\"")
   );
   assert.ok(message?.content, "planner HTTP body should contain JSON prompt content");
-  return JSON.parse(message.content) as {
-    context: {
+  const parsed = JSON.parse(message.content) as {
+    plannerInput: {
+      directive: {
+        stage: string;
+        selectedAction?: string;
+      };
+      runState: unknown;
       compactToolCatalog: Array<{
         name: string;
       }>;
+      toolCatalog?: unknown;
     };
-    directive: {
-      stage: string;
-      selectedAction?: string;
-    };
+  };
+  return {
+    plannerInput: parsed.plannerInput,
+    directive: parsed.plannerInput.directive,
   };
 }
 

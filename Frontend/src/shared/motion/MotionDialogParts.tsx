@@ -43,7 +43,7 @@ export const MotionDialogOverlay = forwardRef<HTMLDivElement, MotionDialogOverla
         initial={variants.hidden}
         animate={variants[animationState]}
         transition={readOverlayTransition(effectiveLevel, animationState)}
-        style={{ ...style, pointerEvents }}
+        style={{ ...style, pointerEvents, willChange: "opacity" }}
         {...props}
       />
     );
@@ -67,7 +67,7 @@ export const MotionDialogContent = forwardRef<HTMLDivElement, MotionDialogConten
         initial={usesCustomVariants ? initial : initial === false ? false : defaultVariants.hidden}
         animate={usesCustomVariants ? animationState : defaultVariants[animationState]}
         transition={transition ?? readDialogPanelTransition(effectiveLevel, motionPreset, animationState)}
-        style={{ ...style, pointerEvents }}
+        style={{ ...style, pointerEvents, willChange: "opacity, transform" }}
         {...props}
       />
     );

@@ -10,8 +10,11 @@ import {
 import { probeAgentDocument } from "./Documents/AgentDocumentProbe.js";
 import type { AgentDocumentProbeResult } from "./Documents/AgentDocumentProbeTypes.js";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import {
+  toolProcessFailureResult,
+  toolProcessSuccessResult,
+} from "./AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -105,17 +108,7 @@ export const documentHostTool: AgentHostToolHandler = async (args, context) => {
   try {
     throwIfAborted(context.signal);
     const result = await handleUploadedDocument(parsed.data, context);
-    return {
-      response: {
-        protocol: AgentToolProcessProtocol,
-        ok: true,
-        result,
-      },
-      stdout: "",
-      stderr: "",
-      exitCode: null,
-      signal: null,
-    };
+    return toolProcessSuccessResult(result);
   } catch (error) {
     return documentFailure({
       code: AgentExecutionErrorCodes.PluginExecutionError,
@@ -322,15 +315,5 @@ function readDocumentPluginConfig(toml: string): DocumentPluginConfig {
 function documentFailure(
   error: NonNullable<AgentToolProcessRunResult["response"]["error"]>,
 ): AgentToolProcessRunResult {
-  return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error,
-    },
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    signal: null,
-  };
+  return toolProcessFailureResult(error);
 }

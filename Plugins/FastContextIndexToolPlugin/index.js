@@ -14,8 +14,8 @@ void pluginSdk.runToolPluginSuite([
     toolName: "FastContextIndexSearchTool",
     argumentSchema: SearchArgumentsSchema,
     resultSchema: SearchResultSchema,
-    async execute(args) {
-      const context = core.createContext();
+    async execute(args, runtimeContext) {
+      const context = core.createContext(runtimeContext);
       const config = core.readConfig(context, pluginSdk.parsePluginTomlConfig);
       return core.searchIndex(context, config, args, {
         ...deps,
@@ -27,8 +27,8 @@ void pluginSdk.runToolPluginSuite([
     toolName: "FastContextRefreshIndexTool",
     argumentSchema: RefreshArgumentsSchema,
     resultSchema: RefreshResultSchema,
-    async execute(args) {
-      const context = core.createContext();
+    async execute(args, runtimeContext) {
+      const context = core.createContext(runtimeContext);
       const config = core.readConfig(context, pluginSdk.parsePluginTomlConfig);
       return core.refreshIndex(context, config, args, {
         ...deps,

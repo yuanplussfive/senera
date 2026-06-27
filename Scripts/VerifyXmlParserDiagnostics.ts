@@ -5,7 +5,7 @@ import {
 } from "../Source/AgentSystem/AgentXmlParser.js";
 import { createXmlProtocolPolicy } from "../Source/AgentSystem/AgentXmlPolicy.js";
 import { AgentXmlErrorCodes } from "../Source/AgentSystem/AgentXmlStatus.js";
-import type { AgentSystemConfig } from "../Source/AgentSystem/Types.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const policy = createXmlProtocolPolicy({
   ModelProviders: [],

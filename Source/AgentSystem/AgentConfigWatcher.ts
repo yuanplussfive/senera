@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { AgentConfigLoader } from "./AgentConfigLoader.js";
-import type { AgentSystemConfig } from "./Types.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
 import { AgentEventKinds, type AgentEventSink } from "./AgentEvent.js";
 import { emitAgentEvent } from "./AgentEvent.js";
 import { serializeError } from "./AgentErrorSerializer.js";

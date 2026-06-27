@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types"
-import type {  ActionPlanInput,  ActionRunState,  EvidenceRequirementVerification,  EvidenceSlot,  EvidenceVerification,  EvidenceVerificationStatus,  ExecutionDeltaOp,  PlannerActiveSkill,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  TaskCandidateTool,  TaskFrame,  TaskRequiredEffect,  TaskRequiredEvidence,  TaskTargetRef,  TaskUserInputNeed,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem } from "./types"
+import type {  ActionPlanInput,  ActionRunState,  EvidenceRequirementVerification,  EvidenceSlot,  EvidenceVerification,  EvidenceVerificationStatus,  ExecutionDeltaOp,  FastContextScoutCommand,  FastContextScoutFileSelection,  FastContextScoutPlannerDecision,  InteractionRoute,  InteractionRunMode,  MemoryCandidate,  MemoryConsolidationAction,  MemoryConsolidationResult,  MemoryLearningResult,  MemoryWriteDecision,  MemoryWriteResolutionResult,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerRoleplayPreset,  PlannerRoleplayPresetDocument,  PlannerStateCandidateTool,  PlannerStateEffect,  PlannerStateEvidence,  PlannerStateEvidenceNeed,  PlannerStateOpenQuestion,  PlannerStateSnapshot,  PlannerStateTargetRef,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  TaskCandidateTool,  TaskEvidenceScope,  TaskFrame,  TaskRequiredEffect,  TaskRequiredEvidence,  TaskTargetRef,  TaskUserInputNeed,  ToolCallArgumentValue,  ToolCallPlan,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  TurnContextMode,  TurnUnderstanding } from "./types"
 import type * as types from "./types"
 
 /******************************************************************************
@@ -37,11 +37,16 @@ export interface StreamState<T> {
 
 export namespace partial_types {
     export interface ActionPlanInput {
+      currentUserTurn?: PlannerCurrentUserTurn | null
+      turnUnderstanding?: TurnUnderstanding | null
+      roleplayPreset?: PlannerRoleplayPreset | null
       runState?: ActionRunState | null
       timeline: PlannerTimelineTurn[]
       evidenceMemory: PlannerEvidenceMemoryItem[]
       evidenceState: PlannerEvidenceStateItem[]
       plannerJournal: PlannerJournalItem[]
+      plannerState?: PlannerStateSnapshot | null
+      toolTagCatalog: string[]
       compactToolCatalog: ToolCatalogSummaryItem[]
       toolCatalog: ToolCatalogItem[]
       activeSkills: PlannerActiveSkill[]
@@ -58,7 +63,7 @@ export namespace partial_types {
       requirementId?: string | null
       need?: string | null
       status?: types.EvidenceVerificationStatus | null
-      evidenceRefs: string[]
+      evidenceUris: string[]
       artifactUris: string[]
       reason?: string | null
       missingFacts: string[]
@@ -73,6 +78,93 @@ export namespace partial_types {
       requirements: EvidenceRequirementVerification[]
       summary?: string | null
     }
+    export interface FastContextScoutCommand {
+      type?: string | null
+      pattern?: string | null
+      path?: string | null
+      include?: string[] | null
+      exclude?: string[] | null
+      regex?: boolean | null
+      caseSensitive?: boolean | null
+      startLine?: number | null
+      endLine?: number | null
+      depth?: number | null
+    }
+    export interface FastContextScoutFileSelection {
+      path?: string | null
+      startLine?: number | null
+      endLine?: number | null
+      reason?: string | null
+    }
+    export interface FastContextScoutPlannerDecision {
+      action?: string | null
+      commands: FastContextScoutCommand[]
+      files: FastContextScoutFileSelection[]
+      reason?: string | null
+    }
+    export interface InteractionRoute {
+      mode?: types.InteractionRunMode | null
+      objective?: string | null
+      needsFreshEvidence?: boolean | null
+      needsWorkspaceRead?: boolean | null
+      needsSideEffect?: boolean | null
+      risk?: string | null
+      preferredTools: string[]
+      discoveryQueries: string[]
+      reason?: string | null
+    }
+    export interface MemoryCandidate {
+      type?: string | null
+      subject?: string | null
+      claim?: string | null
+      howToApply?: string | null
+      tags: string[]
+      triggers: string[]
+      sourceRefs: string[]
+      reason?: string | null
+      confidence?: number | null
+    }
+    export interface MemoryConsolidationAction {
+      operation?: string | null
+      type?: string | null
+      subject?: string | null
+      claim?: string | null
+      howToApply?: string | null
+      tags: string[]
+      triggers: string[]
+      sourceRefs: string[]
+      candidateUris: string[]
+      targetMemoryUri?: string | null
+      reason?: string | null
+      confidence?: number | null
+    }
+    export interface MemoryConsolidationResult {
+      actions: MemoryConsolidationAction[]
+    }
+    export interface MemoryLearningResult {
+      candidates: MemoryCandidate[]
+    }
+    export interface MemoryWriteDecision {
+      operation?: string | null
+      type?: string | null
+      subject?: string | null
+      claim?: string | null
+      howToApply?: string | null
+      tags: string[]
+      triggers: string[]
+      sourceRefs: string[]
+      candidateUris: string[]
+      targetMemoryUri?: string | null
+      reason?: string | null
+      confidence?: number | null
+    }
+    export interface MemoryWriteResolutionResult {
+      decision?: MemoryWriteDecision | null
+    }
+    export interface PlannedToolCall {
+      name?: string | null
+      arguments: Record<string, ToolCallArgumentValue>
+    }
     export interface PlannerActiveSkill {
       name?: string | null
       title?: string | null
@@ -82,8 +174,12 @@ export namespace partial_types {
       recommendedTools: string[]
       evidenceRequirements: PlannerEvidenceRequirement[]
     }
+    export interface PlannerCurrentUserTurn {
+      requestId?: string | null
+      content?: string | null
+    }
     export interface PlannerEvidenceMemoryItem {
-      evidenceRef?: string | null
+      evidenceUri?: string | null
       kind?: string | null
       locator?: string | null
       display?: string | null
@@ -101,7 +197,7 @@ export namespace partial_types {
       purpose?: string | null
     }
     export interface PlannerEvidenceStateItem {
-      evidenceRef?: string | null
+      evidenceUri?: string | null
       kind?: string | null
       toolName?: string | null
       artifactUri?: string | null
@@ -117,10 +213,82 @@ export namespace partial_types {
       requestId?: string | null
       step?: number | null
       selectedAction?: string | null
-      evidenceRefs: string[]
+      evidenceUris: string[]
       artifactUris: string[]
       loadedTools: string[]
       outcome?: string | null
+    }
+    export interface PlannerRoleplayPreset {
+      enabled?: boolean | null
+      activePresetName?: string | null
+      documents: PlannerRoleplayPresetDocument[]
+    }
+    export interface PlannerRoleplayPresetDocument {
+      name?: string | null
+      format?: string | null
+      title?: string | null
+      updatedAt?: string | null
+      content?: string | null
+    }
+    export interface PlannerStateCandidateTool {
+      name?: string | null
+      purpose?: string | null
+      supports: string[]
+    }
+    export interface PlannerStateEffect {
+      id?: string | null
+      effect?: string | null
+      target?: string | null
+      reason?: string | null
+    }
+    export interface PlannerStateEvidence {
+      evidenceUri?: string | null
+      kind?: string | null
+      toolName?: string | null
+      artifactUri?: string | null
+      locator?: string | null
+      display?: string | null
+      label?: string | null
+    }
+    export interface PlannerStateEvidenceNeed {
+      id?: string | null
+      need?: string | null
+      scope?: string | null
+      minimum?: number | null
+      reason?: string | null
+    }
+    export interface PlannerStateOpenQuestion {
+      question?: string | null
+      reason?: string | null
+    }
+    export interface PlannerStateSnapshot {
+      taskId?: string | null
+      requestId?: string | null
+      step?: number | null
+      status?: string | null
+      userGoal?: string | null
+      currentIntent?: string | null
+      intentTags: string[]
+      taskTags: string[]
+      targetRefs: PlannerStateTargetRef[]
+      requiredEffects: PlannerStateEffect[]
+      evidenceNeeds: PlannerStateEvidenceNeed[]
+      completedEvidence: PlannerStateEvidence[]
+      completedEffects: PlannerStateEffect[]
+      openQuestions: PlannerStateOpenQuestion[]
+      candidateTools: PlannerStateCandidateTool[]
+      discoveryQueries: string[]
+      nextStepPurpose?: string | null
+      completionCriteria: string[]
+      lastAction?: string | null
+      loadedTools: string[]
+      recentCalls: PlannerToolCallStateItem[]
+      updatedAt?: string | null
+    }
+    export interface PlannerStateTargetRef {
+      kind?: string | null
+      value?: string | null
+      status?: string | null
     }
     export interface PlannerTimelineTurn {
       index?: number | null
@@ -128,7 +296,8 @@ export namespace partial_types {
       kind?: string | null
       step?: number | null
       content?: string | null
-      evidenceRefs: string[]
+      payloadJson?: string | null
+      evidenceUris: string[]
       artifactUris: string[]
     }
     export interface PlannerToolCallStateItem {
@@ -136,7 +305,7 @@ export namespace partial_types {
       toolName?: string | null
       status?: types.ToolCallStatus | null
       artifactUri?: string | null
-      evidenceRefs: string[]
+      evidenceUris: string[]
       resultKind?: string | null
       argumentsPreview?: string | null
       error?: string | null
@@ -163,6 +332,7 @@ export namespace partial_types {
       taskType?: string | null
       answerGoal?: string | null
       intentTags: string[]
+      taskTags: string[]
       targetRefs: TaskTargetRef[]
       candidateTools: TaskCandidateTool[]
       discoveryQueries: string[]
@@ -183,6 +353,7 @@ export namespace partial_types {
     export interface TaskRequiredEvidence {
       id?: string | null
       need?: string | null
+      scope?: types.TaskEvidenceScope | null
       minimum?: number | null
       reason?: string | null
     }
@@ -194,6 +365,9 @@ export namespace partial_types {
     export interface TaskUserInputNeed {
       question?: string | null
       reason?: string | null
+    }
+    export interface ToolCallPlan {
+      calls: PlannedToolCall[]
     }
     export interface ToolCapabilityFacets {
       Actions?: string[] | null
@@ -246,4 +420,26 @@ export namespace partial_types {
       kinds: string[]
       capabilityIds: string[]
     }
+    export interface ToolLearningRecord {
+      toolName?: string | null
+      tags: string[]
+      sourceTerms: string[]
+      triggers: string[]
+      reason?: string | null
+      confidence?: number | null
+    }
+    export interface ToolLearningResult {
+      records: ToolLearningRecord[]
+    }
+    export interface TurnUnderstanding {
+      rawUserTurn?: string | null
+      standaloneRequest?: string | null
+      contextMode?: types.TurnContextMode | null
+      contextBasis?: string | null
+      missingContext?: string | null
+    }
+export interface ToolCallArgumentValue {
+  [key: string]: string | number | boolean | ToolCallArgumentValue[] | Record<string, ToolCallArgumentValue> | null
+}
+
 }

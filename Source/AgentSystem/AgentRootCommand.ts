@@ -8,13 +8,13 @@ import {
 } from "./AgentActionPlanner.js";
 import type { TaskFrame } from "./BamlClient/baml_client/types.js";
 import type { AgentDecisionOutputContract } from "./AgentDecisionOutputResolver.js";
+import type { RegisteredTool } from "./Types/PluginRuntimeTypes.js";
 import type {
-  RegisteredTool,
   RootCommandManifest,
   RootCommandToolSelectorManifest,
   RootCommandVisibleOutputManifest,
   RootCommandVisibleOutputRuleManifest,
-} from "./Types.js";
+} from "./Types/PluginManifestTypes.js";
 
 export type AgentRootCommandToolAccess = RootCommandManifest["ToolAccess"];
 
@@ -43,6 +43,7 @@ export interface AgentRootTaskContract {
   taskType: string;
   answerGoal: string;
   intentTags: string[];
+  taskTags: string[];
   targetRefs: Array<{
     kind: string;
     value: string;
@@ -64,6 +65,7 @@ export interface AgentRootTaskContract {
   requiredEvidence: Array<{
     id: string;
     need: string;
+    scope: string;
     minimum: number;
     reason: string;
   }>;
@@ -152,6 +154,7 @@ function projectTaskContract(taskFrame: TaskFrame): AgentRootTaskContract {
     taskType: taskFrame.taskType,
     answerGoal: taskFrame.answerGoal,
     intentTags: taskFrame.intentTags,
+    taskTags: taskFrame.taskTags,
     targetRefs: taskFrame.targetRefs.map((target) => ({
       kind: target.kind,
       value: target.value,
@@ -173,6 +176,7 @@ function projectTaskContract(taskFrame: TaskFrame): AgentRootTaskContract {
     requiredEvidence: taskFrame.requiredEvidence.map((need) => ({
       id: need.id,
       need: need.need,
+      scope: need.scope,
       minimum: need.minimum,
       reason: need.reason,
     })),

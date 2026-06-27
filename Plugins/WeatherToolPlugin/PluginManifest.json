@@ -13,19 +13,6 @@
       "Cwd": "."
     }
   },
-  "Discovery": {
-    "Tags": [
-      "weather",
-      "天气",
-      "weatherapi",
-      "qweather",
-      "visual-crossing",
-      "real-world",
-      "forecast",
-      "预报",
-      "温度"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 50
@@ -75,7 +62,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "WTH",
               "Locator": "{{ resolvedLocation }}",
               "Display": "current weather in {{ resolvedLocation }}: {{ condition }}, {{ temperature }}{{ temperatureUnit }}",
               "Label": "{{ resolvedLocation }}",
@@ -121,8 +107,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} current {{ e.slots.resolvedLocation }}: {{ e.slots.condition }}, {{ e.slots.temperature }}{{ e.slots.temperatureUnit }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} current weather\n  location: {{ e.slots.resolvedLocation }}\n  localTime: {{ e.slots.localTime }}\n  condition: {{ e.slots.condition }}\n  temperature: {{ e.slots.temperature }}{{ e.slots.temperatureUnit }}\n  humidity: {{ e.slots.humidity }}\n  windSpeed: {{ e.slots.windSpeed }}\n  source: {{ e.slots.sourceName }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} current {{ e.slots.resolvedLocation }}: {{ e.slots.condition }}, {{ e.slots.temperature }}{{ e.slots.temperatureUnit }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} current weather\n  location: {{ e.slots.resolvedLocation }}\n  localTime: {{ e.slots.localTime }}\n  condition: {{ e.slots.condition }}\n  temperature: {{ e.slots.temperature }}{{ e.slots.temperatureUnit }}\n  humidity: {{ e.slots.humidity }}\n  windSpeed: {{ e.slots.windSpeed }}\n  source: {{ e.slots.sourceName }}\n{% endfor %}"
             }
           },
           {
@@ -154,7 +140,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "FC",
               "Locator": "{{ resolvedLocation }} @ {{ date }}",
               "Display": "forecast for {{ resolvedLocation }} on {{ date }}: {{ condition }}",
               "Label": "{{ date }}",
@@ -200,8 +185,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.date }} {{ e.slots.resolvedLocation }}: {{ e.slots.condition }}, {{ e.slots.minTemperature }}-{{ e.slots.maxTemperature }}{{ e.slots.temperatureUnit }}, rain {{ e.slots.chanceOfRain }}%\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} forecast day\n  location: {{ e.slots.resolvedLocation }}\n  date: {{ e.slots.date }}\n  condition: {{ e.slots.condition }}\n  temp: {{ e.slots.minTemperature }}-{{ e.slots.maxTemperature }}{{ e.slots.temperatureUnit }}\n  avg: {{ e.slots.avgTemperature }}{{ e.slots.temperatureUnit }}\n  rain: {{ e.slots.chanceOfRain }}%\n  source: {{ e.slots.sourceName }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.date }} {{ e.slots.resolvedLocation }}: {{ e.slots.condition }}, {{ e.slots.minTemperature }}-{{ e.slots.maxTemperature }}{{ e.slots.temperatureUnit }}, rain {{ e.slots.chanceOfRain }}%\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} forecast day\n  location: {{ e.slots.resolvedLocation }}\n  date: {{ e.slots.date }}\n  condition: {{ e.slots.condition }}\n  temp: {{ e.slots.minTemperature }}-{{ e.slots.maxTemperature }}{{ e.slots.temperatureUnit }}\n  avg: {{ e.slots.avgTemperature }}{{ e.slots.temperatureUnit }}\n  rain: {{ e.slots.chanceOfRain }}%\n  source: {{ e.slots.sourceName }}\n{% endfor %}"
             }
           }
         ],
@@ -212,20 +197,11 @@
       },
       "Search": {
         "Summary": "按城市、地区、地址或邮编查询当前天气和未来几天天气预报。",
-        "Keywords": [
-          "weather",
-          "forecast",
-          "temperature",
-          "rain",
-          "weatherapi",
-          "qweather",
-          "visual crossing",
-          "天气",
-          "气温",
-          "温度",
-          "下雨",
-          "预报",
-          "城市"
+        "Tags": [
+          "天气查询",
+          "天气预报",
+          "气温降雨",
+          "城市天气"
         ],
         "Capabilities": [
           {
@@ -273,13 +249,6 @@
               "weather",
               "will it rain"
             ],
-            "Examples": [
-              "上海今天的天气怎么样",
-              "东京未来三天天气"
-            ],
-            "Avoid": [
-              "不要用于查询新闻、网页或本地代码"
-            ],
             "Risk": {
               "SideEffect": "network",
               "Permission": "external-api",
@@ -290,13 +259,13 @@
           }
         ],
         "UseCases": [
-          "用户询问天气、气温、降雨、城市预报或经纬度天气时使用。"
+          "天气、气温、降雨、城市预报、经纬度天气查询。"
         ],
         "Examples": [
-          "上海今天的天气怎么样",
-          "北京明天会下雨吗",
-          "weather in New York",
-          "东京未来三天天气"
+          "上海 天气 预报",
+          "北京 明天 降雨",
+          "New York weather",
+          "东京 三天 天气"
         ],
         "Avoid": [
           "不要用于查询新闻、网页或本地代码。"

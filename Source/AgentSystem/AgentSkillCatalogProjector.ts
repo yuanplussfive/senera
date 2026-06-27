@@ -1,8 +1,8 @@
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
+import type { RegisteredSkill } from "./Types/PluginRuntimeTypes.js";
 import type {
-  RegisteredSkill,
   ToolSearchCapabilityFacetsManifest,
-} from "./Types.js";
+} from "./Types/PluginManifestTypes.js";
 
 export interface AgentSkillCatalogItem {
   name: string;
@@ -57,10 +57,7 @@ export class AgentSkillCatalogProjector {
             }
           : undefined,
       })),
-      tags: [
-        ...(skill.plugin.manifest.Discovery?.Tags ?? []),
-        ...(search?.Keywords ?? []),
-      ],
+      tags: search?.Tags ?? [],
       useCases: search?.UseCases ?? [],
       examples: search?.Examples ?? [],
       avoid: search?.Avoid ?? [],

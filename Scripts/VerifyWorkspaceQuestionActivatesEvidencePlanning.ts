@@ -8,8 +8,13 @@ import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.j
 import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
 import { AgentSkillActivationService } from "../Source/AgentSystem/AgentSkillActivation.js";
 import { AgentToolSearchRuntime } from "../Source/AgentSystem/AgentToolSearchRuntime.js";
-import { resolveToolSearchConfig } from "../Source/AgentSystem/AgentDefaults.js";
+import {
+  resolveModelProviderConfig,
+  resolveToolLearningConfig,
+  resolveToolSearchConfig,
+} from "../Source/AgentSystem/AgentDefaults.js";
 import { AgentToolCatalogProjector } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
+import { TaskEvidenceScope } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import {
   agentActionCapabilityNeeds,
   agentActionPreferredTools,
@@ -37,7 +42,9 @@ assert.equal(skills.some((skill) => skill.name === "WorkspaceInvestigationSkill"
 const toolSearch = new AgentToolSearchRuntime(
   registry,
   resolveToolSearchConfig(config),
+  resolveToolLearningConfig(config),
   workspaceRoot,
+  resolveModelProviderConfig(config),
 );
 const loadedTools = toolSearch.resolvePlannedLoadedTools({
   input: "看看我们的项目是干嘛的啊，有什么用",
@@ -73,6 +80,7 @@ const decision = await new AgentEvidenceBroker().decide({
     taskType: "workspace investigation",
     answerGoal: "说明项目用途",
     intentTags: ["workspace-investigation", "source-of-truth"],
+    taskTags: ["workspace", "文件"],
     targetRefs: [{
       kind: "workspace",
       value: ".",
@@ -93,6 +101,7 @@ const decision = await new AgentEvidenceBroker().decide({
     requiredEvidence: [{
       id: "workspace-source-evidence",
       need: "workspace read source-of-truth evidence",
+      scope: TaskEvidenceScope.CurrentRun,
       minimum: 1,
       reason: "需要读取真实工作区文件后才能说明项目用途。",
     }],

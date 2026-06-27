@@ -1,0 +1,53 @@
+{
+  "defaultIcon": "openai",
+  "icons": [
+    "anthropic",
+    "azure",
+    "azureai",
+    "baichuan",
+    "claude",
+    "cohere",
+    "deepseek",
+    "doubao",
+    "gemini",
+    "google",
+    "grok",
+    "huggingface",
+    "kimi",
+    "meta",
+    "minimax",
+    "mistral",
+    "moonshot",
+    "ollama",
+    "openai",
+    "openrouter",
+    "perplexity",
+    "qwen",
+    "xai",
+    "yi",
+    "zhipu"
+  ],
+  "rules": [
+    { "icon": "openai", "match": "prefix", "values": ["gpt-", "o1", "o3", "o4"] },
+    { "icon": "anthropic", "match": "prefix", "values": ["claude-"] },
+    { "icon": "anthropic", "match": "includes", "values": ["sonnet", "opus", "haiku"] },
+    { "icon": "deepseek", "match": "prefix", "values": ["deepseek"] },
+    { "icon": "doubao", "match": "prefix", "values": ["doubao"] },
+    { "icon": "mistral", "match": "prefix", "values": ["mistral", "devstral"] },
+    { "icon": "qwen", "match": "prefix", "values": ["qwen", "qwq"] },
+    { "icon": "gemini", "match": "prefix", "values": ["gemini"] },
+    { "icon": "meta", "match": "includes", "values": ["llama"] },
+    { "icon": "moonshot", "match": "includes", "values": ["moonshot"] }
+  ],
+  "modelGroups": [
+    { "id": "anthropic", "label": "Claude", "icon": "anthropic", "match": "prefix", "values": ["claude-"] },
+    { "id": "openai", "label": "OpenAI", "icon": "openai", "match": "prefix", "values": ["gpt-", "o1", "o3", "o4"] },
+    { "id": "qwen", "label": "Qwen", "icon": "qwen", "match": "prefix", "values": ["qwen", "qwq"] },
+    { "id": "gemini", "label": "Gemini", "icon": "gemini", "match": "prefix", "values": ["gemini"] },
+    { "id": "deepseek", "label": "DeepSeek", "icon": "deepseek", "match": "prefix", "values": ["deepseek"] },
+    { "id": "mistral", "label": "Mistral", "icon": "mistral", "match": "prefix", "values": ["mistral", "devstral"] },
+    { "id": "llama", "label": "Llama", "icon": "meta", "match": "includes", "values": ["llama"] },
+    { "id": "moonshot", "label": "Moonshot", "icon": "moonshot", "match": "includes", "values": ["moonshot"] }
+  ],
+  "defaultModelGroup": { "id": "other", "label": "其他模型", "icon": "openai" }
+}

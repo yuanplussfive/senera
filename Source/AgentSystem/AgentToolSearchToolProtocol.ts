@@ -1,6 +1,9 @@
 import { z } from "zod";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import {
+  toolProcessFailureResult,
+  toolProcessSuccessResult,
+} from "./AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -36,33 +39,13 @@ export function invalidToolSearchArgumentsResult(
 }
 
 export function okToolSearchResult(result: unknown): AgentToolProcessRunResult {
-  return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: true,
-      result,
-    },
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    signal: null,
-  };
+  return toolProcessSuccessResult(result);
 }
 
 function toolSearchFailure(
   error: NonNullable<AgentToolProcessRunResult["response"]["error"]>,
 ): AgentToolProcessRunResult {
-  return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error,
-    },
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    signal: null,
-  };
+  return toolProcessFailureResult(error);
 }
 
 function coerceStringLike(value: unknown): unknown {

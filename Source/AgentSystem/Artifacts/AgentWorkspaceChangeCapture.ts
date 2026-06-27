@@ -6,12 +6,14 @@ import type {
   ToolArtifactPolicyManifest,
   ToolArtifactWorkspaceManifest,
   ToolArtifactWorkspacePathManifest,
+} from "../Types/PluginManifestTypes.js";
+import type {
   ToolWorkspaceCaptureResult,
   ToolWorkspaceChange,
   ToolWorkspaceFileContentSnapshot,
   ToolWorkspaceFileSnapshot,
   ToolWorkspaceSnapshot,
-} from "../Types.js";
+} from "../Types/ToolRuntimeTypes.js";
 import {
   assertInsideRoot,
   toPosixPath,

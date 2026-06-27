@@ -214,13 +214,21 @@ const ActivityProjectors: Partial<Record<string, Projector>> = {
     const tools = Array.isArray(data.tools)
       ? data.tools.filter((entry): entry is string => typeof entry === "string")
       : [];
+    const status = typeof data.status === "string" ? data.status : "planned";
+    const reason = typeof data.reason === "string" ? data.reason : undefined;
+    const title = status === "discovery_escalated"
+      ? "自动发现工具"
+      : status === "blocked"
+        ? "工具计划受阻"
+        : "准备调用工具";
 
     return patchWithStepActivity(event, statefulStepGroup(event), {
       slot: "tools",
-      title: "准备调用工具",
+      title,
       summary: compactSummary(
         formatStep(event.step),
         formatCount(data.toolCount, "个工具"),
+        reason,
         tools.join(", "),
       ),
       detail: shouldRenderDetails(detailMode, "tools") ? tools : undefined,

@@ -4,7 +4,7 @@ import { OpenAiChatCompletionsEndpoint } from "../Source/AgentSystem/ModelEndpoi
 import { GoogleGenerateContentEndpoint } from "../Source/AgentSystem/ModelEndpoints/GoogleGenerateContentEndpoint.js";
 import { ClaudeMessagesEndpoint } from "../Source/AgentSystem/ModelEndpoints/ClaudeMessagesEndpoint.js";
 import type { AgentLanguageModelRequest } from "../Source/AgentSystem/AgentLanguageModel.js";
-import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { EndpointRuntime, JsonObject, ModelHttpPathSegment } from "../Source/AgentSystem/ModelEndpoints/ModelEndpointTypes.js";
 
 type CapturedRequest = {
@@ -55,6 +55,7 @@ const request: AgentLanguageModelRequest = {
 
 const baseConfig: ResolvedAgentModelProviderConfig = {
   Id: "test",
+  ProviderId: "test",
   Kind: "OpenAICompatible",
   Endpoint: "Responses",
   BaseUrl: "https://example.test/v1",

@@ -124,7 +124,7 @@ export const DialogOverlay = forwardRef<
   >
     <MotionDialogOverlay
     className={cn(
-      "dialog-presence fixed inset-0 z-50 bg-ink-950/40 backdrop-blur-[1px]",
+      "dialog-presence fixed inset-0 z-50 bg-ink-950/34 [will-change:opacity]",
       className,
     )}
     style={mergeDialogPresenceStyle(style)}
@@ -309,9 +309,8 @@ const DialogContentFrame = forwardRef<
             onPointerDown={(event) => event.stopPropagation()}
             className={cn(
               "grid h-8 w-8 flex-shrink-0 place-items-center rounded-md text-ink-400",
-              "transition-all duration-150",
-              "hover:bg-ink-900/[0.08] hover:text-ink-900 hover:scale-105",
-              "active:scale-95",
+              "transition-colors duration-100",
+              "hover:bg-ink-900/[0.08] hover:text-ink-900",
               "focus:outline-none focus:ring-2 focus:ring-terra-300/60",
             )}
             aria-label="关闭"
@@ -361,7 +360,7 @@ export const DialogContent = forwardRef<
         )}
         panelClassName={cn(
           "w-[min(720px,calc(100vw-28px))] max-h-[min(720px,calc(100vh-28px))]",
-          "flex flex-col overflow-hidden rounded-xl border border-ink-200/80 bg-paper-50 shadow-soft",
+          "flex flex-col overflow-hidden rounded-xl border border-ink-200/80 bg-paper-50 shadow-soft [contain:layout_paint] [will-change:opacity,transform]",
           placement === "inset" && "min-h-0 flex-1",
           className,
         )}

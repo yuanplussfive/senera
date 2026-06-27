@@ -4,7 +4,7 @@ import type {
 } from "./BamlClient/baml_client/types.js";
 import { ExecutionDeltaOp, ToolCallStatus } from "./BamlClient/baml_client/types.js";
 import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
-import type { ExecutedToolCallResult } from "./Types.js";
+import type { ExecutedToolCallResult } from "./Types/ToolRuntimeTypes.js";
 import {
   DefaultAgentArtifactRootDir,
   createAgentArtifactLocator,
@@ -33,13 +33,13 @@ export interface PlannerToolCallRecord {
   artifactId: string;
   artifactUri: string;
   artifactPath: string;
-  evidenceRefs: string[];
+  evidenceUris: string[];
   error: string;
 }
 
 export interface PlannerEvidenceRecord {
   key: string;
-  evidenceRef: string;
+  evidenceUri: string;
   kind: string;
   locator: string;
   display: string;
@@ -69,7 +69,7 @@ export interface PlannerExecutionDelta {
   artifactId: string;
   artifactUri: string;
   artifactPath: string;
-  evidenceRefs: string[];
+  evidenceUris: string[];
   note: string;
 }
 
@@ -138,7 +138,7 @@ export class AgentActionPlannerLedgerUpdater {
     const evidence = result.artifact
       ? result.artifact.evidence.map((entry) => ({
           key: entry.key,
-          evidenceRef: entry.ref,
+          evidenceUri: entry.evidenceUri,
           kind: entry.kind,
           locator: entry.locator,
           display: entry.display,
@@ -149,7 +149,7 @@ export class AgentActionPlannerLedgerUpdater {
           modelSlots: entry.modelSlots,
         }))
       : [];
-    const evidenceRefs = evidence.map((item) => item.evidenceRef);
+    const evidenceUris = evidence.map((item) => item.evidenceUri);
     const call: PlannerToolCallRecord = {
       step,
       toolName: result.name,
@@ -158,7 +158,7 @@ export class AgentActionPlannerLedgerUpdater {
       status,
       resultKind,
       ...artifactReference,
-      evidenceRefs,
+      evidenceUris,
       error: status === "Failure" ? readErrorMessage(result.result) : "",
     };
 
@@ -170,7 +170,7 @@ export class AgentActionPlannerLedgerUpdater {
       argsHash,
       status,
       ...artifactReference,
-      evidenceRefs,
+      evidenceUris,
       note: call.error,
     });
 
@@ -190,7 +190,7 @@ export class AgentActionPlannerLedgerUpdater {
         argsHash,
         status,
         ...artifactReference,
-        evidenceRefs: [entry.evidenceRef],
+        evidenceUris: [entry.evidenceUri],
         note: entry.display,
       });
     }

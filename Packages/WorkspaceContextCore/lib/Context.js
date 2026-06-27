@@ -1,13 +1,12 @@
 "use strict";
 
-const fs = require("node:fs");
 const path = require("node:path");
 
 const ConfigFileName = "PluginConfig.toml";
 
 function createContext(options = {}) {
-  const pluginRoot = path.resolve(options.pluginRoot ?? process.env.SENERA_PLUGIN_ROOT ?? process.cwd());
-  const workspaceRoot = path.resolve(options.workspaceRoot ?? process.env.SENERA_WORKSPACE_ROOT ?? findWorkspaceRoot());
+  const pluginRoot = requirePathOption(options, "pluginRoot");
+  const workspaceRoot = requirePathOption(options, "workspaceRoot");
   return {
     pluginRoot,
     workspaceRoot,
@@ -15,18 +14,13 @@ function createContext(options = {}) {
   };
 }
 
-function findWorkspaceRoot() {
-  let current = process.cwd();
-  while (true) {
-    if (fs.existsSync(path.join(current, "senera.config.json"))) {
-      return current;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return process.cwd();
-    }
-    current = parent;
+function requirePathOption(options, key) {
+  const value = options[key];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`缺少工作区插件运行上下文：${key}`);
   }
+
+  return path.resolve(value);
 }
 
 function resolveWorkspacePath(context, value) {

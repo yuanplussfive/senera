@@ -14,7 +14,7 @@ import type {
 import type {
   ResolvedAgentDelegationRuntimeProfileConfig,
   ResolvedAgentLoopConfig,
-} from "./Types.js";
+} from "./Types/AgentConfigTypes.js";
 
 export interface AgentChildAgentLoopFactoryInput {
   runtimeProfile: ResolvedAgentDelegationRuntimeProfileConfig;
@@ -47,7 +47,7 @@ export interface AgentChildAgentRunInput {
   plan: AgentDelegationPlan;
   job: AgentDelegationJob;
   latestUserRequest: string;
-  evidenceRefs?: readonly string[];
+  evidenceUris?: readonly string[];
   artifactUris?: readonly string[];
   onEvent?: AgentEventSink;
   signal?: AbortSignal;
@@ -84,7 +84,7 @@ export class AgentChildAgentRuntime {
       plan: input.plan,
       job: input.job,
       latestUserRequest: input.latestUserRequest,
-      evidenceRefs: input.evidenceRefs,
+      evidenceUris: input.evidenceUris,
       artifactUris: input.artifactUris,
     });
     throwIfAborted(input.signal);

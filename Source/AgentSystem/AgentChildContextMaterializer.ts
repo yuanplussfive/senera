@@ -15,7 +15,7 @@ export interface AgentChildContextMaterializerInput {
   plan: AgentDelegationPlan;
   job: AgentDelegationJob;
   latestUserRequest: string;
-  evidenceRefs?: readonly string[];
+  evidenceUris?: readonly string[];
   artifactUris?: readonly string[];
 }
 
@@ -50,7 +50,7 @@ export class AgentChildContextMaterializer {
       Job: normalizeAgentDelegationJobForPrompt(input.job),
       Objective: input.plan.objective ?? "",
       LatestUserRequest: input.latestUserRequest,
-      EvidenceRefs: [...(input.evidenceRefs ?? input.job.suppliedEvidenceRefs.item)],
+      EvidenceUris: [...(input.evidenceUris ?? input.job.suppliedEvidenceUris.item)],
       ArtifactUris: [...(input.artifactUris ?? input.job.suppliedArtifactUris.item)],
     };
   }

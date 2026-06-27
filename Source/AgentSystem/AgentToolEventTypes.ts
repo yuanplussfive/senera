@@ -8,6 +8,9 @@ export type AgentToolDomainEvent =
       data: {
         toolCount: number;
         tools: string[];
+        status?: "planned" | "discovery_escalated" | "blocked";
+        reason?: string;
+        issues?: string[];
       };
     }
   | {

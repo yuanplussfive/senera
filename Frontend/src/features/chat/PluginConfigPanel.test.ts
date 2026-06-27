@@ -73,7 +73,7 @@ describe("validatePluginConfigDraft", () => {
 });
 
 describe("writeDraftFieldValue", () => {
-  it("updates a visual field without rewriting unrelated comments", () => {
+  it("updates a visual field through the parsed TOML document", () => {
     const draft = [
       "[weather]",
       "# qweather: 默认服务，更适合中文城市名和国内天气。",
@@ -85,11 +85,14 @@ describe("writeDraftFieldValue", () => {
       key: "provider",
       path: ["weather", "provider"],
       type: "string",
+      label: "天气服务",
     });
 
-    expect(writeDraftFieldValue(draft, field, "weatherapi")).toContain(
-      "# qweather: 默认服务，更适合中文城市名和国内天气。\nprovider = \"weatherapi\"",
-    );
+    const parsed = parseDraft(writeDraftFieldValue(draft, field, "weatherapi"));
+    expect(parsed.weather).toMatchObject({
+      provider: "weatherapi",
+      timeout_seconds: 15,
+    });
   });
 });
 
@@ -100,13 +103,14 @@ function parseDraft(toml: string): TomlTableWithoutBigInt {
 function configSection(name: string, fields: PluginConfigField[]): PluginConfigSection {
   return {
     name,
+    label: name,
     keyCount: fields.length,
     toml: "",
     fields,
   };
 }
 
-function configField(input: Partial<PluginConfigField> & Pick<PluginConfigField, "key" | "path" | "type">): PluginConfigField {
+function configField(input: Partial<PluginConfigField> & Pick<PluginConfigField, "key" | "path" | "type" | "label">): PluginConfigField {
   return {
     section: input.path.slice(0, -1).join("."),
     value: undefined,

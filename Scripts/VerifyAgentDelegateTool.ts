@@ -4,7 +4,7 @@ import path from "node:path";
 import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
 import { AgentToolRunner } from "../Source/AgentSystem/AgentToolRunner.js";
 import { createDefaultHostCapabilityRegistry } from "../Source/AgentSystem/AgentDefaultHostCapabilities.js";
-import type { AgentSystemConfig } from "../Source/AgentSystem/Types.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const workspaceRoot = path.resolve(process.cwd());
 const artifactRoot = ".senera/artifacts/delegate-verification";
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
     const args = {
       workflow: "ParallelPullRequestReview",
       objective: "并行审查当前 PR 的安全、测试缺口和可维护性风险。",
-      evidenceRefs: {
+      evidenceUris: {
         item: ["DIFF1"],
       },
       artifactUris: {
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
       "MaintainabilityReviewer",
     ]);
     assert.ok(result.jobs.item.every((job) => job.contextPack === "DiffFocusedReadOnly"));
-    assert.ok(result.jobs.item.every((job) => job.suppliedEvidenceRefs.item.includes("DIFF1")));
+    assert.ok(result.jobs.item.every((job) => job.suppliedEvidenceUris.item.includes("DIFF1")));
     assert.ok(JSON.stringify(result).includes(workspaceRoot) === false);
 
     const recorded = await runtime.artifactRecorder.record({
@@ -187,17 +187,20 @@ function verificationConfig(): AgentSystemConfig {
     PluginDiscovery: {
       ManifestFileName: "PluginManifest.json",
     },
-    ModelProviders: [{
+    ModelProviderEndpoints: [{
       Id: "test",
-      Kind: "OpenAICompatible",
-      Endpoint: "Responses",
       BaseUrl: "https://example.invalid/v1",
       ApiKey: "test",
+    }],
+    ModelProviders: [{
+      Id: "test",
+      ProviderId: "test",
+      Endpoint: "Responses",
       Model: "test",
       Temperature: 0,
       MaxOutputTokens: -1,
       Stream: true,
-      TimeoutMs: 1,
+      TimeoutSeconds: 0.001,
       MaxNetworkRetries: 0,
     }],
     Artifacts: {
@@ -226,7 +229,7 @@ interface AgentDelegateToolResult {
       contextPack: string;
       jobId: string;
       workflowName: string;
-      suppliedEvidenceRefs: {
+      suppliedEvidenceUris: {
         item: string[];
       };
     }>;

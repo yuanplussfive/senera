@@ -1,4 +1,5 @@
-import type { ExecutedToolCallResult } from "./Types.js";
+import type { ResolvedAgentToolLearningConfig } from "./Types/AgentConfigTypes.js";
+import type { ExecutedToolCallResult } from "./Types/ToolRuntimeTypes.js";
 import type {
   AgentToolSearchEpisode,
   AgentToolSearchMemory,
@@ -8,6 +9,13 @@ import {
   ToolSearchToolName,
 } from "./AgentToolSearchRuntimeTypes.js";
 import { readToolNamesFromSearchResult } from "./AgentToolSearchResultProjector.js";
+import { assessToolSearchEpisode } from "./AgentToolSearchEpisodeScorer.js";
+import type { AgentToolLearningEpisodeDraft } from "./AgentToolLearningRuntime.js";
+import type { TurnUnderstanding } from "./BamlClient/baml_client/types.js";
+
+export interface AgentToolLearningSink {
+  enqueue(draft: AgentToolLearningEpisodeDraft): void;
+}
 
 export class AgentToolSearchUsageMemory {
   private readonly pendingSearches = new Map<string, PendingToolSearch[]>();
@@ -15,6 +23,8 @@ export class AgentToolSearchUsageMemory {
   constructor(
     private readonly memory: AgentToolSearchMemory,
     private readonly projectId: string,
+    private readonly learningConfig: ResolvedAgentToolLearningConfig,
+    private readonly learningRuntime?: AgentToolLearningSink,
   ) {}
 
   rememberSearch(requestId: string, search: PendingToolSearch): void {
@@ -25,7 +35,13 @@ export class AgentToolSearchUsageMemory {
   recordToolUsage(
     requestId: string,
     results: ExecutedToolCallResult[],
+    turnUnderstanding?: TurnUnderstanding,
   ): void {
+    if (!this.learningConfig.Enabled) {
+      this.pendingSearches.delete(requestId);
+      return;
+    }
+
     const chosenTools = results
       .map((result) => result.name)
       .filter((name) => name !== ToolSearchToolName);
@@ -45,16 +61,36 @@ export class AgentToolSearchUsageMemory {
       return;
     }
 
-    this.memory.record({
+    const assessment = assessToolSearchEpisode(
+      results.filter((result) => result.name !== ToolSearchToolName),
+    );
+    if (assessment.outcome !== "success") {
+      this.pendingSearches.delete(requestId);
+      return;
+    }
+
+    const episode = {
       query: relevant.query,
       queryTokens: relevant.queryTokens,
       plannerTags: relevant.plannerTags,
       candidates: relevant.candidates,
       chosenTools,
-      outcome: results.some((result) => hasToolError(result.result)) ? "failure" : "success",
+      outcome: assessment.outcome,
+      calls: assessment.calls,
+      finalScore: assessment.finalScore,
+      finalOutcome: assessment.finalOutcome,
       projectId: this.projectId,
       timestamp: Date.now(),
-    } satisfies AgentToolSearchEpisode);
+    } satisfies Omit<AgentToolSearchEpisode, "learnedKeywords">;
+    const rawUserTurn = turnUnderstanding?.rawUserTurn ?? relevant.query;
+    const standaloneRequest = turnUnderstanding?.standaloneRequest ?? relevant.query;
+    this.learningRuntime?.enqueue({
+      episode,
+      rawUserTurn,
+      standaloneRequest,
+      contextMode: turnUnderstanding?.contextMode ?? "None",
+      contextBasis: turnUnderstanding?.contextBasis ?? "",
+    });
     this.pendingSearches.delete(requestId);
   }
 
@@ -63,13 +99,4 @@ export class AgentToolSearchUsageMemory {
       .filter((result) => result.name === ToolSearchToolName)
       .flatMap((result) => readToolNamesFromSearchResult(result.result));
   }
-}
-
-function hasToolError(result: unknown): boolean {
-  return Boolean(
-    result
-      && typeof result === "object"
-      && !Array.isArray(result)
-      && "error" in result,
-  );
 }

@@ -1,6 +1,3 @@
-import type { AgentDecisionExecutor } from "./AgentDecisionExecutor.js";
-import type { AgentExecutionResult } from "./AgentDecisionExecutor.js";
-import { AgentExecutionProjector } from "./AgentExecutionProjector.js";
 import type { AgentEventSink } from "./AgentEvent.js";
 import type { AgentLanguageModel } from "./AgentLanguageModel.js";
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
@@ -12,25 +9,13 @@ import type {
 import { matchByKind } from "./AgentMatch.js";
 import { AgentRetryPlanner } from "./AgentRetryPlanner.js";
 import type { AgentSystemRuntime } from "./AgentSystemRuntime.js";
-import { AgentToolResultXmlRenderer } from "./AgentToolResultXmlRenderer.js";
-import type { AgentConversationEntry } from "./AgentConversation.js";
-import type { ExecutedToolCallResult } from "./Types.js";
 import { AgentRetryableError } from "./AgentRetryableError.js";
 import { AgentDecisionXmlCollectionRetryableError } from "./AgentDecisionXmlCollector.js";
 import { AgentActionPlannerContextBuilder } from "./AgentActionPlannerContext.js";
-import {
-  createPlannerJournalEntry,
-  createToolEvidenceMemoryEntries,
-} from "./AgentPlannerMemory.js";
-import {
-  agentActionCapabilityNeeds,
-  agentActionPreferredTools,
-  agentActionToolSearchQueries,
-} from "./AgentActionPlanner.js";
-import { throwIfAborted } from "./AgentCancellation.js";
-import type { ResolvedAgentLoopConfig } from "./Types.js";
-import { AgentWorkflowSelector } from "./AgentWorkflowSelector.js";
-import type { AgentRootCommandWorkflowRecommendation } from "./AgentRootCommand.js";
+import type { ResolvedAgentLoopConfig } from "./Types/AgentConfigTypes.js";
+import { AgentToolCallPlanningCommandHandler } from "./AgentToolCallPlanningCommandHandler.js";
+import { AgentDecisionExecutionCommandHandler } from "./AgentDecisionExecutionCommandHandler.js";
+import { AgentPlanningCommandHandler } from "./AgentPlanningCommandHandler.js";
 
 export interface AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
@@ -40,13 +25,13 @@ export interface AgentLoopCommandExecutorOptions {
 
 export class AgentLoopCommandExecutor {
   private readonly retryPlanner: AgentRetryPlanner;
-  private readonly executionProjector = new AgentExecutionProjector();
   private readonly eventFactory = new AgentLoopEventFactory();
-  private readonly resultRenderer: AgentToolResultXmlRenderer;
+  private readonly planning: AgentPlanningCommandHandler;
+  private readonly toolCallPlanning: AgentToolCallPlanningCommandHandler;
+  private readonly decisionExecution: AgentDecisionExecutionCommandHandler;
   private readonly decisionXmlCollector;
   private readonly actionPlannerContextBuilder;
   private readonly agentLoopConfig: ResolvedAgentLoopConfig;
-  private readonly workflowSelector: AgentWorkflowSelector;
 
   constructor(private readonly options: AgentLoopCommandExecutorOptions) {
     this.agentLoopConfig = options.agentLoopConfig ?? options.runtime.agentLoopConfig;
@@ -57,7 +42,6 @@ export class AgentLoopCommandExecutor {
       protocol: options.runtime.xmlPolicy.protocol,
     });
     this.retryPlanner = new AgentRetryPlanner(errorFactory);
-    this.resultRenderer = new AgentToolResultXmlRenderer(options.runtime.xmlPolicy.protocol);
     this.decisionXmlCollector = options.runtime.createDecisionXmlCollector(options.model);
     this.actionPlannerContextBuilder = new AgentActionPlannerContextBuilder(
       options.runtime.workspaceRoot,
@@ -66,7 +50,23 @@ export class AgentLoopCommandExecutor {
         stalledStepLag: options.runtime.actionPlannerConfig.Evidence.StalledStepLag,
       },
     );
-    this.workflowSelector = new AgentWorkflowSelector(options.runtime.registry);
+    this.planning = new AgentPlanningCommandHandler({
+      runtime: options.runtime,
+      eventFactory: this.eventFactory,
+      actionPlannerContextBuilder: this.actionPlannerContextBuilder,
+      agentLoopConfig: this.agentLoopConfig,
+    });
+    this.toolCallPlanning = new AgentToolCallPlanningCommandHandler({
+      runtime: options.runtime,
+      eventFactory: this.eventFactory,
+      actionPlannerContextBuilder: this.actionPlannerContextBuilder,
+      agentLoopConfig: this.agentLoopConfig,
+    });
+    this.decisionExecution = new AgentDecisionExecutionCommandHandler({
+      runtime: options.runtime,
+      actionPlannerContextBuilder: this.actionPlannerContextBuilder,
+      agentLoopConfig: this.agentLoopConfig,
+    });
   }
 
   async execute(
@@ -75,135 +75,15 @@ export class AgentLoopCommandExecutor {
     signal?: AbortSignal,
   ): Promise<AgentLoopCommandResult> {
     return matchByKind(command, {
-      plan_action: (entry) => this.planAction(entry, onEvent, signal),
+      route_interaction: (entry) => this.planning.routeInteraction(entry, onEvent, signal),
+      plan_action: (entry) => this.planning.planAction(entry, onEvent, signal),
       render_prompt: (entry) => this.renderPrompt(entry),
+      collect_tool_call_plan: (entry) => this.toolCallPlanning.collect(entry, onEvent, signal),
       collect_decision_xml: (entry) => this.collectDecisionXml(entry, onEvent, signal),
       parse_decision: (entry) => this.parseDecision(entry),
-      execute_decision: (entry) => this.executeDecision(entry, onEvent, signal),
+      execute_decision: (entry) => this.decisionExecution.execute(entry, onEvent, signal),
       plan_retry: (entry) => this.planRetry(entry),
     });
-  }
-
-  private async planAction(
-    command: Extract<AgentLoopCommand, { kind: "plan_action" }>,
-    onEvent?: AgentEventSink,
-    signal?: AbortSignal,
-  ): Promise<AgentLoopCommandResult> {
-    const dynamicTools = this.agentLoopConfig.LoadedTools === "dynamic";
-    const timelineMessages = this.buildActionPlannerTimelineMessages(command);
-    const activeSkills = this.options.runtime.skillActivation.activate({
-      input: command.input,
-    });
-    const plannerLoadedToolNames = this.options.runtime.toolSearch.resolvePlannedLoadedTools({
-      input: command.input,
-      loadedTools: this.agentLoopConfig.LoadedTools,
-      currentLoadedTools: command.loadedToolNames,
-      preferredTools: [],
-      queries: [],
-      needs: [],
-      discover: false,
-    });
-    const plan = await this.options.runtime.actionPlanner.plan({
-      requestId: command.requestId,
-      input: this.actionPlannerContextBuilder.buildInput({
-        requestId: command.requestId,
-        userMessage: command.input,
-        currentStep: command.step,
-        dynamicTools,
-        loadedToolNames: plannerLoadedToolNames,
-        messages: timelineMessages,
-        conversationEntries: command.conversationEntries,
-        ledger: command.plannerLedger,
-        toolCatalog: this.options.runtime.toolCatalog.list(),
-        activeSkills,
-      }),
-      signal,
-      onStage: async (event) => {
-        await onEvent?.(
-          this.eventFactory.actionPlannerStage(
-            command.requestId,
-            command.step,
-            event,
-          ),
-        );
-      },
-    });
-    const decision = plan.decision;
-    const workflowRecommendations = decision.action === "answer"
-      ? []
-      : this.workflowSelector.select({
-        input: command.input,
-        activeSkills,
-      }).map(projectWorkflowRecommendation);
-    const workflowRecommendedTools: string[] = [];
-    const loadedToolNames = this.options.runtime.toolSearch.resolvePlannedLoadedTools({
-      input: command.input,
-      loadedTools: this.agentLoopConfig.LoadedTools,
-      currentLoadedTools: plannerLoadedToolNames,
-      preferredTools: [
-        ...agentActionPreferredTools(decision),
-        ...workflowRecommendedTools,
-      ],
-      queries: agentActionToolSearchQueries(decision),
-      needs: agentActionCapabilityNeeds(decision),
-      discover: decision.action === "discover_tools",
-    });
-    const rootCommand = this.options.runtime.promptContextBuilder.buildRootCommand({
-      decision,
-      loadedToolNames,
-      taskContract: plan.taskFrame,
-      workflowRecommendedTools,
-      workflowRecommendations,
-    });
-
-    this.options.runtime.toolSearch.rememberAutoSearch(
-      command.requestId,
-      command.input,
-      loadedToolNames,
-    );
-
-    return {
-      kind: "succeeded",
-      output: {
-        kind: "action_planned",
-        requestId: command.requestId,
-        step: command.step,
-        plan,
-        loadedToolNames,
-        plannerLedger: command.plannerLedger,
-        activeSkills,
-        conversationEntries: [
-          ...command.conversationEntries,
-          createPlannerJournalEntry({
-            requestId: command.requestId,
-            step: command.step,
-            plan,
-            loadedToolNames,
-          }),
-        ],
-        rootCommand,
-      },
-    };
-  }
-
-  private buildActionPlannerTimelineMessages(
-    command: Extract<AgentLoopCommand, { kind: "plan_action" }>,
-  ) {
-    if (command.conversationEntries.length === 0) {
-      return command.messages;
-    }
-
-    const messages = this.options.runtime.conversationPolicy.materialize(
-      command.conversationEntries,
-      {
-        toolResultsScope: {
-          kind: "request",
-          requestId: command.requestId,
-        },
-      },
-    );
-
-    return messages.length > 0 ? messages : command.messages;
   }
 
   private async renderPrompt(
@@ -217,11 +97,13 @@ export class AgentLoopCommandExecutor {
     const toolDescription = this.options.runtime.config.PluginDocumentation?.ToolDescription;
     const actionDescription =
       this.options.runtime.config.PluginDocumentation?.DecisionActionDescription;
+    const roleplayPreset = await this.options.runtime.services.promptContext.promptRoleplayPreset();
 
     const prompt = await this.options.runtime.promptRenderer.renderFile(template.path, {
-      ...this.options.runtime.promptContextBuilder.buildBaseContext({
+      ...this.options.runtime.services.promptContext.buildBaseContext({
         loadedToolNames: command.loadedToolNames,
         rootCommand: command.rootCommand,
+        roleplayPreset,
         skillQuery: command.input,
         activeSkills: command.activeSkills,
         toolSections: {
@@ -338,85 +220,6 @@ export class AgentLoopCommandExecutor {
     }
   }
 
-  private async executeDecision(
-    command: Extract<AgentLoopCommand, { kind: "execute_decision" }>,
-    onEvent?: AgentEventSink,
-    signal?: AbortSignal,
-  ): Promise<AgentLoopCommandResult> {
-    try {
-      throwIfAborted(signal);
-      const execution = await this.options.runtime.decisionExecutor.execute(command.decision, {
-        requestId: command.requestId,
-        step: command.step,
-        onEvent,
-        loadedToolNames: command.loadedToolNames,
-        signal,
-      });
-      throwIfAborted(signal);
-
-      if (execution.kind !== "ToolResults") {
-        return this.projectTerminal(command.requestId, command.step, execution);
-      }
-      const recordedResults = await this.options.runtime.artifactRecorder.record({
-        requestId: command.requestId,
-        step: command.step,
-        results: execution.value,
-      });
-      const recordedExecution = {
-        ...execution,
-        value: recordedResults,
-      };
-      const resultXml = this.resultRenderer.render(recordedExecution);
-
-      const loadedToolNames = this.options.runtime.toolSearch.afterToolResults({
-        requestId: command.requestId,
-        loadedTools: command.loadedToolNames,
-        dynamicTools: this.agentLoopConfig.LoadedTools === "dynamic",
-        execution: recordedExecution,
-      });
-      const plannerLedger = this.actionPlannerContextBuilder.advanceAfterToolResults({
-        requestId: command.requestId,
-        ledger: command.plannerLedger,
-        step: command.step,
-        results: recordedExecution.value,
-      });
-
-      return {
-        kind: "succeeded",
-        output: {
-          kind: "tool_results_generated",
-          requestId: command.requestId,
-          step: command.step,
-          responseText: command.responseText,
-          execution: recordedExecution,
-          resultXml,
-          messages: [
-            ...command.messages,
-            {
-              role: "assistant",
-              content: command.responseText,
-            },
-            {
-              role: "user",
-              content: this.options.runtime.conversationPolicy.renderContextToolResultsXml(resultXml),
-            },
-          ],
-          conversationEntries: this.buildToolResultConversationEntries(
-            command.requestId,
-            command.step,
-            command.responseText,
-            resultXml,
-            recordedExecution.value,
-          ),
-          loadedToolNames,
-          plannerLedger,
-        },
-      };
-    } catch (error) {
-      return this.retryableFailure(command.requestId, command.step, command.responseText, error);
-    }
-  }
-
   private async planRetry(
     command: Extract<AgentLoopCommand, { kind: "plan_retry" }>,
   ): Promise<AgentLoopCommandResult> {
@@ -434,23 +237,6 @@ export class AgentLoopCommandExecutor {
           command.responseText,
           command.error,
         ),
-      },
-    };
-  }
-
-  private projectTerminal(
-    requestId: string,
-    step: number,
-    execution: Extract<AgentExecutionResult, { kind: "AskUser" }>,
-  ): AgentLoopCommandResult {
-    const projected = this.executionProjector.projectTerminal(requestId, execution);
-    return {
-      kind: "succeeded",
-      output: {
-        kind: "terminal_projected",
-        requestId,
-        step,
-        projected,
       },
     };
   }
@@ -474,49 +260,4 @@ export class AgentLoopCommandExecutor {
     throw error;
   }
 
-  private buildToolResultConversationEntries(
-    requestId: string,
-    step: number,
-    decisionXml: string,
-    resultXml: string,
-    results: readonly ExecutedToolCallResult[],
-  ): AgentConversationEntry[] {
-    const timestamp = new Date().toISOString();
-    return [
-      this.options.runtime.conversationProjector.projectAssistantDecision(
-        requestId,
-        decisionXml,
-        timestamp,
-        undefined,
-        step,
-      ),
-      this.options.runtime.conversationProjector.projectContextToolResults(
-        requestId,
-        resultXml,
-        timestamp,
-        undefined,
-        step,
-      ),
-      ...createToolEvidenceMemoryEntries({
-        requestId,
-        step,
-        results,
-        timestamp,
-      }),
-    ];
-  }
-}
-
-function projectWorkflowRecommendation(
-  result: ReturnType<AgentWorkflowSelector["select"]>[number],
-): AgentRootCommandWorkflowRecommendation {
-  return {
-    name: result.workflow.name,
-    title: result.workflow.title,
-    description: result.workflow.description,
-    sources: result.sources,
-    matchedSkills: result.matchedSkills,
-    matchedAgents: result.matchedAgents,
-    matchedTerms: result.matchedTerms,
-  };
 }

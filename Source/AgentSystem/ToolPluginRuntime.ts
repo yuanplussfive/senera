@@ -5,11 +5,14 @@ import {
   listXmlArrayElementNames,
   type AgentXmlProtocolSpec,
 } from "./AgentXmlPolicy.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
+import {
+  createToolProcessFailureResponse,
+  createToolProcessSuccessResponse,
+} from "./AgentToolProcessEnvelope.js";
 import type {
   AgentSourceDiagnostic,
 } from "./AgentSourceDiagnostic.js";
-import type { AgentToolProcessResponse } from "./Types.js";
+import type { AgentToolProcessResponse } from "./Types/ToolRuntimeTypes.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -57,17 +60,9 @@ export async function runToolPluginSuite(
     const rawResult = await definition.execute(args);
     const result = definition.resultSchema.parse(rawResult);
 
-    writeResponse({
-      protocol: AgentToolProcessProtocol,
-      ok: true,
-      result,
-    });
+    writeResponse(createToolProcessSuccessResponse(result));
   } catch (error: unknown) {
-    writeResponse({
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error: normalizeToolPluginError(error),
-    });
+    writeResponse(createToolProcessFailureResponse(normalizeToolPluginError(error)));
     process.exitCode = 1;
   }
 }

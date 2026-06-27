@@ -43,6 +43,7 @@ export const EventKinds = {
   ActionPlannerStageStarted: "action.planner.stage.started",
   ActionPlannerStageCompleted: "action.planner.stage.completed",
   ActionPlannerStageFailed: "action.planner.stage.failed",
+  InteractionRouted: "interaction.routed",
   ActionPlanned: "action.planned",
   ModelStarted: "model.started",
   ModelStreamOpened: "model.stream.opened",
@@ -72,9 +73,14 @@ export const EventKinds = {
   RequestInvalid: "request.invalid",
   ConfigReloaded: "config.reloaded",
   ConfigFailed: "config.failed",
+  ConfigSnapshot: "config.snapshot",
   ModelListSnapshot: "model.list.snapshot",
+  ProviderModelsSnapshot: "provider.models.snapshot",
+  ProviderModelsFailed: "provider.models.failed",
   PluginConfigSnapshot: "plugin.config.snapshot",
   ProfileSnapshot: "profile.snapshot",
+  PresetSnapshot: "preset.snapshot",
+  PresetFailed: "preset.failed",
 } as const;
 export type EventKind = (typeof EventKinds)[keyof typeof EventKinds];
 
@@ -249,7 +255,6 @@ export interface SessionHistoryStepsData {
 
 export interface ModelProviderMetadata {
   id: string;
-  title?: string;
   kind: string;
   endpoint: string;
   baseUrl: string;
@@ -258,8 +263,8 @@ export interface ModelProviderMetadata {
 
 export interface ModelProviderListItem {
   id: string;
-  title: string;
   icon?: string;
+  capabilities: ModelCapabilitiesData;
   kind: string;
   endpoint: string;
   baseUrl: string;
@@ -267,14 +272,54 @@ export interface ModelProviderListItem {
   isDefault: boolean;
 }
 
+export interface ModelCapabilitiesData {
+  Chat?: boolean;
+  Embedding?: boolean;
+  Rerank?: boolean;
+  Vision?: boolean;
+  ImageOutput?: boolean;
+  Reasoning?: boolean;
+  ToolCalling?: boolean;
+}
+
 export interface ModelListSnapshotData {
   models: ModelProviderListItem[];
   defaultModelProviderId: string;
 }
 
+export interface ProviderModelInfo {
+  id: string;
+  ownedBy?: string;
+}
+
+export interface ProviderModelsSnapshotData {
+  providerId: string;
+  baseUrl: string;
+  fetchedAt: string;
+  source: "cache" | "network";
+  models: ProviderModelInfo[];
+}
+
+export interface ProviderModelsFailedData {
+  providerId: string;
+  message: string;
+  details?: unknown;
+}
+
+export interface ProviderModelEndpointInput {
+  Id: string;
+  Icon?: string;
+  Enabled?: boolean;
+  Kind?: "OpenAICompatible";
+  BaseUrl?: string;
+  ApiKey?: string;
+  ApiVersion?: string;
+  Headers?: Record<string, string>;
+}
+
 export interface PluginConfigSection {
   name: string;
-  label?: string;
+  label: string;
   description?: string;
   keyCount: number;
   toml: string;
@@ -286,13 +331,12 @@ export type PluginConfigFieldType =
   | "string"
   | "number"
   | "array"
-  | "table"
-  | "unknown";
+  | "table";
 
 export type PluginConfigFieldOptionValue = string | number | boolean;
 
 export interface PluginConfigField {
-  label?: string;
+  label: string;
   section: string;
   key: string;
   path: string[];
@@ -308,6 +352,7 @@ export interface PluginConfigField {
   step?: number;
   secret?: boolean;
   multiline?: boolean;
+  required?: boolean;
 }
 
 export interface PluginConfigDiagnostic {
@@ -358,11 +403,133 @@ export interface PluginConfigSnapshotData {
   operation?: PluginConfigOperationResult;
 }
 
+export type PresetFormat = "json" | "markdown" | "text";
+
+export interface PresetDiagnostic {
+  severity: "error" | "warning";
+  message: string;
+}
+
+export interface PresetItem {
+  name: string;
+  format: PresetFormat;
+  title: string;
+  sizeBytes: number;
+  updatedAt: string;
+  active: boolean;
+  content: string;
+  diagnostics: PresetDiagnostic[];
+}
+
+export type PresetOperationKind = "list" | "save" | "delete" | "set_active";
+
+export interface PresetOperationResult {
+  requestId?: string;
+  kind: PresetOperationKind;
+  name?: string | null;
+}
+
+export interface PresetSnapshotData {
+  enabled: boolean;
+  rootDir: string;
+  activePresetName: string | null;
+  presets: PresetItem[];
+  operation?: PresetOperationResult;
+}
+
+export interface PresetFailedData {
+  message: string;
+  details?: unknown;
+  operation?: PresetOperationResult;
+}
+
 export interface ConfigFailedData {
   configPath: string;
   message: string;
   details?: unknown;
-  operation?: PluginConfigOperationResult;
+  operation?: PluginConfigOperationResult | ConfigOperationResult;
+}
+
+export type ConfigSnapshotSource = "sqlite" | "json";
+
+export type ConfigOperationKind = "config_update";
+
+export interface ConfigOperationResult {
+  requestId?: string;
+  kind: ConfigOperationKind;
+}
+
+export interface ConfigDiagnosticData {
+  severity: "warning" | "error";
+  message: string;
+  details?: unknown;
+}
+
+export type ConfigFormFieldType =
+  | "boolean"
+  | "string"
+  | "number"
+  | "array"
+  | "table"
+  | "record";
+
+export type ConfigFormFieldOptionValue = string | number | boolean;
+
+export interface ConfigFormSnapshotData {
+  version: 1;
+  sections: ConfigFormSectionData[];
+}
+
+export interface ConfigFormSectionData {
+  name: string;
+  label: string;
+  description?: string;
+  icon?: string;
+  keyCount: number;
+  fields: ConfigFormFieldData[];
+}
+
+export interface ConfigFormFieldData {
+  label: string;
+  section: string;
+  key: string;
+  path: string[];
+  type: ConfigFormFieldType;
+  itemType?: ConfigFormFieldType;
+  value: unknown;
+  effectiveValue: unknown;
+  configured: boolean;
+  description?: string;
+  placeholder?: string;
+  options?: ConfigFormFieldOptionValue[];
+  optionLabels?: Record<string, string>;
+  min?: number;
+  max?: number;
+  minLength?: number;
+  maxLength?: number;
+  step?: number;
+  secret?: boolean;
+  multiline?: boolean;
+  required?: boolean;
+  addLabel?: string;
+  itemLabelPath?: string[];
+  itemFields?: ConfigFormFieldData[];
+  defaultValue?: unknown;
+  defaultItem?: Record<string, unknown>;
+  keyPlaceholder?: string;
+  valuePlaceholder?: string;
+}
+
+export interface ConfigSnapshotData {
+  path: string;
+  version: number;
+  value: Record<string, unknown>;
+  source: ConfigSnapshotSource;
+  revision?: number;
+  databasePath?: string;
+  diagnostics: ConfigDiagnosticData[];
+  form: ConfigFormSnapshotData;
+  operation?: ConfigOperationResult;
 }
 
 export type PluginConfigMutationStatus = "pending" | "success" | "error";
@@ -371,6 +538,23 @@ export interface PluginConfigMutationState {
   requestId: string;
   pluginName: string;
   kind: PluginConfigOperationKind;
+  status: PluginConfigMutationStatus;
+  message?: string;
+  updatedAt: string;
+}
+
+export interface ConfigMutationState {
+  requestId: string;
+  kind: ConfigOperationKind;
+  status: PluginConfigMutationStatus;
+  message?: string;
+  updatedAt: string;
+}
+
+export interface PresetMutationState {
+  requestId: string;
+  name?: string | null;
+  kind: PresetOperationKind;
   status: PluginConfigMutationStatus;
   message?: string;
   updatedAt: string;
@@ -505,7 +689,7 @@ export interface ActionEvidenceDecisionData {
       requirementId: string;
       need: string;
       status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
-      evidenceRefs: string[];
+      evidenceUris: string[];
       artifactUris: string[];
       reason: string;
       missingFacts: string[];
@@ -518,7 +702,7 @@ export interface ActionEvidenceDecisionData {
 }
 
 export interface ActionEvidenceMatchData {
-  ref: string;
+  evidenceUri: string;
   kind: string;
   toolName: string;
   artifactUri: string;
@@ -543,7 +727,7 @@ export interface ActionEvidenceProgressCallData {
   status: string;
   resultKind: string;
   artifactUri: string;
-  evidenceRefs: string[];
+  evidenceUris: string[];
   argumentsPreview: string;
   error: string;
 }
@@ -581,7 +765,36 @@ export interface ActionPlannedData {
   reason?: string;
 }
 
-export type ActionPlannerStageName = "buildTaskFrame" | "evaluateEvidence";
+export type InteractionRunMode =
+  | "direct_response"
+  | "tool_agent_loop"
+  | "deliberate_task_loop";
+
+export interface InteractionRoutedData {
+  mode: InteractionRunMode;
+  objective: string;
+  needsFreshEvidence: boolean;
+  needsWorkspaceRead: boolean;
+  needsSideEffect: boolean;
+  risk: string;
+  preferredTools: string[];
+  discoveryQueries: string[];
+  reason: string;
+  loadedTools: string[] | "all";
+  expectedOutputMode?: "tool_call_xml" | "final_text" | "open";
+}
+
+export type ActionPlannerStageName = "understandUserTurn" | "buildTaskFrame" | "evaluateEvidence";
+
+export type TurnContextMode = "None" | "Used" | "Insufficient";
+
+export interface TurnUnderstandingData {
+  rawUserTurn: string;
+  standaloneRequest: string;
+  contextMode: TurnContextMode;
+  contextBasis: string;
+  missingContext: string;
+}
 
 export interface ActionPlannerStageStartedData {
   stage: ActionPlannerStageName;
@@ -591,6 +804,7 @@ export interface ActionPlannerStageCompletedData {
   stage: ActionPlannerStageName;
   selectedAction?: string;
   repaired?: boolean;
+  turnUnderstanding?: TurnUnderstandingData;
   taskFrame?: ActionTaskFrameData;
   evidenceDecision?: ActionEvidenceDecisionData;
 }
@@ -651,6 +865,9 @@ export interface DecisionParsedDetailData {
 export interface ToolCallsPlannedData {
   toolCount: number;
   tools: string[];
+  status?: "planned" | "discovery_escalated" | "blocked";
+  reason?: string;
+  issues?: string[];
 }
 
 export interface ToolCallStartedData {
@@ -722,8 +939,15 @@ export type WsRequest =
   | { type: "session.history"; sessionId: string; refresh?: boolean }
   | { type: "session.rename"; sessionId: string; title: string }
   | { type: "model.list" }
+  | { type: "provider.models.fetch"; providerId: string; force?: boolean; endpoint?: ProviderModelEndpointInput }
+  | { type: "config.get" }
+  | { type: "config.update"; requestId?: string; config: Record<string, unknown>; mirrorJson?: boolean }
   | { type: "plugin.config.list" }
   | { type: "plugin.config.update"; requestId?: string; pluginName: string; toml: string }
   | { type: "plugin.config.set_enabled"; requestId?: string; pluginName: string; toolName?: string; enabled: boolean }
+  | { type: "preset.list" }
+  | { type: "preset.save"; requestId?: string; name: string; format: PresetFormat; content: string; activate?: boolean }
+  | { type: "preset.delete"; requestId?: string; name: string }
+  | { type: "preset.set_active"; requestId?: string; name?: string | null }
   | { type: "profile.get" }
   | { type: "profile.update"; profile: Pick<UserProfileData, "name" | "avatarDataUrl"> };

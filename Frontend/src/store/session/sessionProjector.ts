@@ -12,14 +12,20 @@ import {
   type EventEnvelope,
   type AskUserData,
   type ConversationEntryDto,
+  type ConfigSnapshotData,
   type DecisionParsedData,
   type DecisionParsedDetailData,
   type DecisionXmlProgressData,
   type DecisionXmlSummaryData,
   type FinalAnswerData,
+  type InteractionRoutedData,
+  type InteractionRunMode,
   type ModelDeltaData,
   type ModelListSnapshotData,
   type ModelStartedData,
+  type PresetSnapshotData,
+  type ProviderModelsFailedData,
+  type ProviderModelsSnapshotData,
   type PluginConfigSnapshotData,
   type PromptSummaryData,
   type RetryPlannedData,
@@ -50,6 +56,7 @@ import {
   advanceStreamingDisplayText,
   alignStreamingDisplayTarget,
 } from "./streamingDisplay";
+import { readChatModelProviders } from "../../features/chat/modelProvider";
 import type {
   ChatMessage,
   RunRecord,
@@ -73,6 +80,12 @@ export function truncate(text: string, max = 80): string {
 /** 把后端行动/决策枚举翻译成中文用户语。 */
 export function friendlyDecisionKind(decisionKind: string): string {
   switch (decisionKind) {
+    case "direct_response":
+      return "直接回复";
+    case "tool_agent_loop":
+      return "工具循环";
+    case "deliberate_task_loop":
+      return "深度任务";
     case "answer":
     case "FinalAnswer":
       return "生成回复";
@@ -144,11 +157,62 @@ function readExpectedOutputMode(data: ActionPlannedData): RunRecord["expectedOut
 
 function plannerStageBaseTitle(stage: ActionPlannerStageName): string {
   switch (stage) {
+    case "understandUserTurn":
+      return "理解当前请求";
     case "buildTaskFrame":
       return "构建任务合约";
     case "evaluateEvidence":
       return "判断完成状态";
   }
+}
+
+const InteractionModeTitle = {
+  direct_response: "直接回复",
+  tool_agent_loop: "工具循环",
+  deliberate_task_loop: "深度任务",
+} as const satisfies Record<InteractionRunMode, string>;
+
+function summarizeInteractionRoute(data: InteractionRoutedData): string {
+  const objective = data.objective ? truncate(data.objective, 96) : undefined;
+  const reason = data.reason ? truncate(data.reason, 96) : undefined;
+  const evidence = data.needsFreshEvidence ? "需要新证据" : undefined;
+  const workspace = data.needsWorkspaceRead ? "读取工作区" : undefined;
+  const effect = data.needsSideEffect ? "包含真实变更" : undefined;
+  const tools = data.preferredTools.length > 0
+    ? `${data.preferredTools.length} 个候选技能`
+    : undefined;
+  const search = data.discoveryQueries.length > 0
+    ? `${data.discoveryQueries.length} 个发现意图`
+    : undefined;
+  return [objective, reason, evidence, workspace, effect, tools, search]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function toolPlanTitle(data: ToolCallsPlannedData): string {
+  switch (data.status) {
+    case "discovery_escalated":
+      return "自动发现工具";
+    case "blocked":
+      return "工具计划受阻";
+    default:
+      return `工具计划 · ${data.toolCount} 个`;
+  }
+}
+
+function summarizeToolPlan(data: ToolCallsPlannedData): string {
+  return [
+    data.reason ? truncate(data.reason, 96) : undefined,
+    data.tools.length > 0 ? data.tools.join(", ") : undefined,
+  ].filter(Boolean).join(" · ");
+}
+
+function readRouteExpectedOutputMode(
+  data: InteractionRoutedData,
+): RunRecord["expectedOutputMode"] {
+  return data.expectedOutputMode === "tool_call_xml" || data.expectedOutputMode === "final_text"
+    ? data.expectedOutputMode
+    : "unknown";
 }
 
 function plannerStageTitle(
@@ -177,6 +241,21 @@ function currentRun(session: SessionRecord, requestId?: string): RunRecord | und
 }
 
 function summarizePlannerStage(data: ActionPlannerStageCompletedData): string | undefined {
+  if (data.turnUnderstanding) {
+    const understanding = data.turnUnderstanding;
+    return [
+      understanding.standaloneRequest
+        ? `改写为：${truncate(understanding.standaloneRequest, 96)}`
+        : undefined,
+      understanding.contextMode === "Used" && understanding.contextBasis
+        ? truncate(understanding.contextBasis, 96)
+        : undefined,
+      understanding.contextMode === "Insufficient" && understanding.missingContext
+        ? `缺少：${truncate(understanding.missingContext, 96)}`
+        : undefined,
+    ].filter(Boolean).join(" · ");
+  }
+
   if (data.taskFrame) {
     return [
       data.taskFrame.answerGoal ? truncate(data.taskFrame.answerGoal, 96) : undefined,
@@ -362,6 +441,23 @@ function applyScopedRunEvent(state: StoreState, env: EventEnvelope): boolean {
       return true;
     }
 
+    case EventKinds.InteractionRouted: {
+      const data = env.data as InteractionRoutedData;
+      upsertStep(run, {
+        id: scopedStepId(env, "interaction-route"),
+        kind: "decision",
+        title: scopedStepTitle(env, `选择路径 · ${InteractionModeTitle[data.mode]}`),
+        description: scopedStepDescription(env, summarizeInteractionRoute(data)),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        decisionKind: data.mode,
+        detailJson: data,
+        scope,
+      });
+      return true;
+    }
+
     case EventKinds.ActionPlanned: {
       const data = env.data as ActionPlannedData;
       upsertStep(run, {
@@ -383,7 +479,7 @@ function applyScopedRunEvent(state: StoreState, env: EventEnvelope): boolean {
 
     case EventKinds.ModelStarted: {
       const data = env.data as ModelStartedData;
-      const modelName = data.provider?.title ?? data.model;
+      const modelName = data.provider?.model ?? data.model;
       upsertStep(run, {
         id: scopedStepId(env, "model"),
         kind: "model",
@@ -455,8 +551,8 @@ function applyScopedRunEvent(state: StoreState, env: EventEnvelope): boolean {
       upsertStep(run, {
         id: scopedStepId(env, "tool-plan"),
         kind: "tool",
-        title: scopedStepTitle(env, `工具计划 · ${data.toolCount} 个`),
-        description: scopedStepDescription(env, data.tools.join(", ")),
+        title: scopedStepTitle(env, toolPlanTitle(data)),
+        description: scopedStepDescription(env, summarizeToolPlan(data)),
         status: "done",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
@@ -920,13 +1016,38 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
     case EventKinds.ModelListSnapshot: {
       const data = env.data as ModelListSnapshotData;
       state.modelProviders = data.models;
+      const chatModels = readChatModelProviders(data.models);
       const selectedId = state.selectedModelProviderId;
       const selectedStillExists = selectedId
-        ? data.models.some((model) => model.id === selectedId)
+        ? chatModels.some((model) => model.id === selectedId)
         : false;
+      const defaultChatModel = chatModels.find((model) => model.id === data.defaultModelProviderId)
+        ?? chatModels.find((model) => model.isDefault)
+        ?? chatModels[0];
       state.selectedModelProviderId = selectedStillExists
         ? selectedId
-        : data.defaultModelProviderId;
+        : defaultChatModel?.id ?? null;
+      return;
+    }
+
+    case EventKinds.ProviderModelsSnapshot: {
+      const data = env.data as ProviderModelsSnapshotData;
+      state.providerModelCatalogs[data.providerId] = data;
+      delete state.providerModelErrors[data.providerId];
+      return;
+    }
+
+    case EventKinds.ProviderModelsFailed: {
+      const data = env.data as ProviderModelsFailedData;
+      state.providerModelErrors[data.providerId] = {
+        ...data,
+        updatedAt: env.timestamp,
+      };
+      return;
+    }
+
+    case EventKinds.ConfigSnapshot: {
+      state.configSnapshot = env.data as ConfigSnapshotData;
       return;
     }
 
@@ -939,6 +1060,15 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
     case EventKinds.PluginConfigSnapshot: {
       const data = env.data as PluginConfigSnapshotData;
       state.pluginConfigs = data.plugins;
+      return;
+    }
+
+    case EventKinds.PresetSnapshot: {
+      const data = env.data as PresetSnapshotData;
+      state.presets = data.presets;
+      state.activePresetName = data.activePresetName;
+      state.presetsEnabled = data.enabled;
+      state.presetRootDir = data.rootDir;
       return;
     }
 
@@ -1228,6 +1358,34 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
+    case EventKinds.InteractionRouted: {
+      if (!sessionId) return;
+      const session = ensureSession(state, sessionId);
+      const run = currentRun(session, env.requestId);
+      if (!run) return;
+      const data = env.data as InteractionRoutedData;
+      const expectedOutputMode = readRouteExpectedOutputMode(data);
+      run.expectedOutputMode = expectedOutputMode;
+      if (expectedOutputMode === "tool_call_xml") {
+        run.decisionMode = "tool_candidate";
+        run.visibleText = "";
+        run.displayText = "";
+        run.visibleKind = "tool_calls";
+      }
+      upsertStep(run, {
+        id: `${run.requestId}-interaction-route-${env.step ?? 0}`,
+        kind: "decision",
+        title: `选择路径 · ${InteractionModeTitle[data.mode]}`,
+        description: summarizeInteractionRoute(data),
+        status: "done",
+        startedAt: env.timestamp,
+        endedAt: env.timestamp,
+        decisionKind: data.mode,
+        detailJson: data,
+      });
+      return;
+    }
+
     case EventKinds.ActionPlanned: {
       if (!sessionId) return;
       const session = ensureSession(state, sessionId);
@@ -1270,7 +1428,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       const run = currentRun(session, env.requestId);
       if (!run) return;
       const data = env.data as ModelStartedData;
-      const modelName = data.provider?.title ?? data.model;
+      const modelName = data.provider?.model ?? data.model;
       run.modelProvider = data.provider;
       run.streamingRaw = "";
       run.xmlPreview = "";
@@ -1424,8 +1582,8 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       upsertStep(run, {
         id: `${run.requestId}-tool-plan-${env.step ?? 0}`,
         kind: "tool",
-        title: `工具计划 · ${data.toolCount} 个`,
-        description: data.tools.join(", "),
+        title: toolPlanTitle(data),
+        description: summarizeToolPlan(data),
         status: "done",
         startedAt: env.timestamp,
         endedAt: env.timestamp,

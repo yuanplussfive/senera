@@ -13,31 +13,192 @@
       "Cwd": "."
     }
   },
-  "Discovery": {
-    "Tags": [
-      "context",
-      "上下文",
-      "search",
-      "搜索",
-      "ripgrep",
-      "hybrid",
-      "symbol",
-      "workspace",
-      "工作区",
-      "代码",
-      "符号",
-      "定位"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 70
   },
   "Tools": [
     {
+      "Name": "FastContextScoutTool",
+      "DescriptionFile": "./docs/Scout.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "FastContextScoutToolArguments",
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "workspace.context.scout"
+      },
+      "Permissions": [
+        "filesystem:read:workspace",
+        "filesystem:write:.state",
+        "process:ripgrep"
+      ],
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "workspace_scout_file",
+            "Records": "$.files.item[*]",
+            "Slots": {
+              "path": "$.path",
+              "startLine": "$.startLine",
+              "endLine": "$.endLine",
+              "totalLines": "$.totalLines",
+              "score": "$.score",
+              "reason": "$.reason",
+              "focus": "$.focus",
+              "content": "$.content"
+            },
+            "Identity": {
+              "Parts": [
+                "path",
+                "startLine",
+                "endLine"
+              ]
+            },
+            "Presentation": {
+              "Locator": "{{ path }}:{{ startLine }}-{{ endLine }}",
+              "Display": "workspace context: {{ path }}:{{ startLine }}-{{ endLine }}",
+              "Label": "{{ path }}",
+              "Source": "{{ reason }}"
+            },
+            "Confidence": 0.88,
+            "Metadata": {
+              "score": "$.score",
+              "totalLines": "$.totalLines",
+              "reason": "$.reason",
+              "focus": "$.focus"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "path",
+                "startLine",
+                "endLine",
+                "score",
+                "reason",
+                "focus",
+                "content"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "path",
+                "startLine",
+                "endLine",
+                "score",
+                "reason",
+                "focus"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.path }}:{{ e.slots.startLine }}-{{ e.slots.endLine }}{% if e.slots.focus %} focus: {{ e.slots.focus }}{% endif %} - {{ e.slots.reason }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace context\n  path: {{ e.slots.path }}:{{ e.slots.startLine }}-{{ e.slots.endLine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}{% if e.slots.focus %}\n  focus: {{ e.slots.focus }}{% endif %}\n  content:\n{{ e.slots.content }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+        }
+      },
+      "Search": {
+        "Summary": "本地工作区检索子代理：组合项目标记文件、路径匹配、ripgrep、索引和文件读取，返回最相关文件范围。",
+        "Tags": [
+          "项目定位",
+          "上下文侦察",
+          "文件发现",
+          "配置查找",
+          "工作区调查"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.context-scout",
+            "Title": "Workspace context scout",
+            "Description": "Run a local multi-stage workspace investigation and return concise source files with line ranges.",
+            "Facets": {
+              "Actions": [
+                "investigate",
+                "locate",
+                "search",
+                "read"
+              ],
+              "Targets": [
+                "workspace",
+                "source-code",
+                "configuration",
+                "documentation",
+                "file"
+              ],
+              "Inputs": [
+                "question",
+                "hints",
+                "workspace-root"
+              ],
+              "Outputs": [
+                "source-location",
+                "file-content",
+                "context-packet",
+                "line-range"
+              ],
+              "Evidence": [
+                "workspace-scout-file"
+              ],
+              "Effects": [
+                "read-only",
+                "index-cache"
+              ]
+            },
+            "Aliases": [
+              "检索子代理",
+              "上下文侦察",
+              "find relevant files",
+              "workspace scout"
+            ],
+            "Risk": {
+              "SideEffect": "index-cache",
+              "Permission": "read"
+            }
+          }
+        ],
+        "UseCases": [
+          "项目配置、实现位置、关键文件、错误来源、UI 文案的本地定位。"
+        ],
+        "Examples": [
+          "项目主模型配置文件",
+          "模型供应商配置位置",
+          "错误来源本地侦察",
+          "model provider config file"
+        ],
+        "Avoid": [
+          "已知道精确路径时用读取工具；只需要目录结构时用项目地图。"
+        ]
+      },
+      "EvidenceCapabilities": [
+        {
+          "Produces": "workspace context packet",
+          "Quality": "observed",
+          "Satisfies": [
+            "workspace investigation",
+            "configuration source-of-truth",
+            "implementation source-of-truth",
+            "project file location"
+          ],
+          "Kinds": [
+            "workspace_scout_file"
+          ],
+          "CapabilityIds": [
+            "workspace.context-scout"
+          ]
+        }
+      ]
+    },
+    {
       "Name": "FastContextHybridSearchTool",
       "DescriptionFile": "./docs/HybridSearch.md",
       "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "FastContextHybridSearchToolArguments",
       "Permissions": [
         "filesystem:read:workspace",
         "filesystem:write:.state",
@@ -67,7 +228,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "S",
               "Locator": "{{ path }}:{{ line }}",
               "Display": "{{ engine }} match in {{ path }}:{{ line }}",
               "Label": "{{ path }}",
@@ -111,8 +271,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }}{% if e.slots.focus %} focus: {{ e.slots.focus }}{% endif %} - {{ e.slots.snippet }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}{% if e.slots.focus %}\n  focus: {{ e.slots.focus }}{% endif %}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }}{% if e.slots.focus %} focus: {{ e.slots.focus }}{% endif %} - {{ e.slots.snippet }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}{% if e.slots.focus %}\n  focus: {{ e.slots.focus }}{% endif %}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
             }
           }
         ],
@@ -123,21 +283,12 @@
       },
       "Search": {
         "Summary": "混合检索本地代码、路径、错误文本和相关上下文。",
-        "Keywords": [
-          "hybrid",
-          "search",
-          "code",
-          "context",
-          "ripgrep",
-          "index",
-          "workspace",
+        "Tags": [
           "混合检索",
           "代码搜索",
-          "上下文",
-          "定位",
-          "错误文本",
-          "前端",
-          "后端"
+          "文本定位",
+          "错误排查",
+          "工作区调查"
         ],
         "Capabilities": [
           {
@@ -183,13 +334,6 @@
               "find related code",
               "search workspace context"
             ],
-            "Examples": [
-              "定位左侧会话列表消息数量不更新的前端代码",
-              "find code handling streaming preview"
-            ],
-            "Avoid": [
-              "已知道精确符号名时优先用符号搜索；已知道路径时用读取工具"
-            ],
             "Risk": {
               "SideEffect": "index-cache",
               "Permission": "read"
@@ -197,13 +341,13 @@
           }
         ],
         "UseCases": [
-          "用户用自然语言描述代码位置、Bug、UI 逻辑或错误文本，需要在本地项目里定位相关文件时使用。"
+          "自然语言代码位置、Bug、UI 逻辑、错误文本的工作区定位。"
         ],
         "Examples": [
-          "定位左侧会话列表消息数量不更新的前端代码",
-          "找 XML 根标签前存在多余文本的处理逻辑",
-          "搜索 requestId 相关实现",
-          "find code handling streaming preview"
+          "会话列表消息数量 前端代码",
+          "XML 根标签多余文本处理",
+          "requestId 实现定位",
+          "streaming preview handling"
         ],
         "Avoid": [
           "已知道精确符号名时优先用符号搜索；已知道路径时用读取工具。"
@@ -230,6 +374,7 @@
       "Name": "FastContextSymbolSearchTool",
       "DescriptionFile": "./docs/SymbolSearch.md",
       "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "FastContextSymbolSearchToolArguments",
       "Permissions": [
         "filesystem:read:workspace",
         "filesystem:write:.state"
@@ -255,7 +400,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "SYM",
               "Locator": "{{ path }}:{{ line }}",
               "Display": "symbol definition: {{ name }} ({{ kind }})",
               "Label": "{{ name }}",
@@ -297,8 +441,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.kind }} {{ e.slots.name }} @ {{ e.slots.path }}:{{ e.slots.line }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} symbol\n  name: {{ e.slots.name }}\n  kind: {{ e.slots.kind }}\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  signature: {{ e.slots.signature }}\n  exported: {{ e.slots.exported }}\n  score: {{ e.slots.score }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.kind }} {{ e.slots.name }} @ {{ e.slots.path }}:{{ e.slots.line }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} symbol\n  name: {{ e.slots.name }}\n  kind: {{ e.slots.kind }}\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  signature: {{ e.slots.signature }}\n  exported: {{ e.slots.exported }}\n  score: {{ e.slots.score }}\n{% endfor %}"
             }
           }
         ],
@@ -309,20 +453,11 @@
       },
       "Search": {
         "Summary": "按函数、类、类型、组件等符号名查找定义位置。",
-        "Keywords": [
-          "symbol",
-          "definition",
-          "function",
-          "class",
-          "type",
-          "component",
-          "符号",
-          "定义",
-          "函数",
-          "类",
-          "类型",
-          "组件",
-          "声明"
+        "Tags": [
+          "符号查找",
+          "定义定位",
+          "代码结构",
+          "组件查找"
         ],
         "Capabilities": [
           {
@@ -369,13 +504,6 @@
               "definition lookup",
               "where is this function"
             ],
-            "Examples": [
-              "找 AgentToolSearchIndex 类",
-              "where is parseToolCalls defined"
-            ],
-            "Avoid": [
-              "自然语言问题或错误文本定位优先用混合搜索"
-            ],
             "Risk": {
               "SideEffect": "index-cache",
               "Permission": "read"
@@ -386,10 +514,10 @@
           "知道函数名、类名、类型名、组件名或近似符号名，需要找定义时使用。"
         ],
         "Examples": [
-          "函数名 createDecisionStreamingPreviewRules 找定义",
-          "找 AgentToolSearchIndex 类",
-          "查 SessionList 组件定义",
-          "where is parseToolCalls defined"
+          "createDecisionStreamingPreviewRules 定义",
+          "AgentToolSearchIndex 类定义",
+          "SessionList 组件定义",
+          "parseToolCalls definition"
         ],
         "Avoid": [
           "自然语言问题或错误文本定位优先用混合搜索。"
@@ -418,6 +546,7 @@
       "Name": "FastContextSearchTool",
       "DescriptionFile": "./docs/ExactSearch.md",
       "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "FastContextSearchToolArguments",
       "Permissions": [
         "filesystem:read:workspace",
         "process:ripgrep"
@@ -446,7 +575,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "S",
               "Locator": "{{ path }}:{{ line }}",
               "Display": "{{ engine }} match in {{ path }}:{{ line }}",
               "Label": "{{ path }}",
@@ -490,8 +618,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }}{% if e.slots.focus %} focus: {{ e.slots.focus }}{% endif %} - {{ e.slots.snippet }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}{% if e.slots.focus %}\n  focus: {{ e.slots.focus }}{% endif %}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.engine }} {{ e.slots.path }}:{{ e.slots.line }}{% if e.slots.focus %} focus: {{ e.slots.focus }}{% endif %} - {{ e.slots.snippet }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace match\n  path: {{ e.slots.path }}:{{ e.slots.line }}\n  engine: {{ e.slots.engine }}\n  score: {{ e.slots.score }}\n  reason: {{ e.slots.reason }}{% if e.slots.focus %}\n  focus: {{ e.slots.focus }}{% endif %}\n  snippet: {{ e.slots.snippet }}\n{% endfor %}"
             }
           }
         ],
@@ -502,17 +630,11 @@
       },
       "Search": {
         "Summary": "使用 ripgrep 精确搜索本地文本、标识符、路径片段或正则。",
-        "Keywords": [
-          "ripgrep",
-          "grep",
-          "exact",
-          "regex",
-          "text",
-          "identifier",
-          "精确搜索",
+        "Tags": [
+          "精确检索",
           "文本搜索",
-          "正则",
-          "标识符",
+          "正则查找",
+          "标识符定位",
           "代码搜索"
         ],
         "Capabilities": [
@@ -558,13 +680,6 @@
               "ripgrep",
               "grep workspace"
             ],
-            "Examples": [
-              "搜索 IncompleteXmlEnvelope",
-              "find exact string MaxOutputTokens"
-            ],
-            "Avoid": [
-              "抽象代码定位优先用混合搜索；符号定义优先用符号搜索"
-            ],
             "Risk": {
               "SideEffect": "none",
               "Permission": "read"
@@ -572,13 +687,13 @@
           }
         ],
         "UseCases": [
-          "用户给出明确字符串、错误码、XML 标签、变量名或正则表达式，需要快速精确搜索时使用。"
+          "明确字符串、错误码、XML 标签、变量名、正则表达式精确检索。"
         ],
         "Examples": [
-          "搜索 IncompleteXmlEnvelope",
-          "rg senera_tool_calls",
-          "查找 messageCount 字符串",
-          "find exact string MaxOutputTokens"
+          "IncompleteXmlEnvelope",
+          "senera_tool_calls",
+          "messageCount 字符串",
+          "MaxOutputTokens exact string"
         ],
         "Avoid": [
           "抽象代码定位优先用混合搜索；符号定义优先用符号搜索。"

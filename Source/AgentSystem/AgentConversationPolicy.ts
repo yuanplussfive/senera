@@ -13,15 +13,6 @@ import {
   listXmlArrayElementNames,
 } from "./AgentXmlPolicy.js";
 
-type MessageProjection =
-  | {
-      kind: "message";
-      message: AgentLanguageModelMessage;
-    }
-  | {
-      kind: "skip";
-    };
-
 export type AgentConversationToolResultsScope =
   | {
       kind: "all";
@@ -42,10 +33,16 @@ export interface AgentConversationMaterializationOptions {
 }
 
 const ReadOnlyEvidenceKinds = {
-  UserMessage: "user_message",
   ToolResults: "tool_results",
-  ToolEvidenceMemory: "tool_evidence_memory",
 } as const;
+
+interface ConversationTurnProjection {
+  requestId: string;
+  user?: Extract<AgentConversationEntry, { kind: "user.message" }>;
+  assistants: Array<Extract<AgentConversationEntry, { kind: "assistant.decision" }>>;
+  toolResults: Array<Extract<AgentConversationEntry, { kind: "context.tool_results" }>>;
+  evidenceMemory: Array<Extract<AgentConversationEntry, { kind: "tool.evidence_memory" }>>;
+}
 
 export class AgentConversationPolicy {
   private readonly protocol = createXmlProtocolSpec();
@@ -61,75 +58,75 @@ export class AgentConversationPolicy {
     options: AgentConversationMaterializationOptions = {},
   ): AgentLanguageModelMessage[] {
     const policy = this.resolveMaterializationPolicy(options);
-    const messages: AgentLanguageModelMessage[] = [];
-    const evidenceMemoryEntries: Array<Extract<AgentConversationEntry, { kind: "tool.evidence_memory" }>> = [];
+    return this.materializeTurnScoped(entries, policy);
+  }
+
+  private materializeTurnScoped(
+    entries: readonly AgentConversationEntry[],
+    policy: Required<AgentConversationMaterializationOptions>,
+  ): AgentLanguageModelMessage[] {
+    return this.groupTurns(entries).flatMap((turn) => {
+      const messages: AgentLanguageModelMessage[] = [];
+      if (turn.user) {
+        messages.push({
+          role: "user",
+          content: this.renderHistoricalUserTurnXml(turn, policy),
+        });
+      }
+      const assistant = this.selectHistoricalAssistant(turn);
+      if (assistant) {
+        messages.push({
+          role: "assistant",
+          content: this.renderHistoricalAssistantTurn(assistant),
+        });
+      }
+      return messages;
+    });
+  }
+
+  private groupTurns(entries: readonly AgentConversationEntry[]): ConversationTurnProjection[] {
+    const byRequest = new Map<string, ConversationTurnProjection>();
+    const order: ConversationTurnProjection[] = [];
 
     for (const entry of entries) {
-      if (entry.kind === AgentConversationEntryKinds.ToolEvidenceMemory) {
-        if (this.includesRequest(entry.requestId, policy.evidenceMemoryScope)) {
-          evidenceMemoryEntries.push(entry);
-        }
-        continue;
+      let turn = byRequest.get(entry.requestId);
+      if (!turn) {
+        turn = {
+          requestId: entry.requestId,
+          assistants: [],
+          toolResults: [],
+          evidenceMemory: [],
+        };
+        byRequest.set(entry.requestId, turn);
+        order.push(turn);
       }
 
-      const projection = this.projectEntry(entry, policy);
-      if (projection.kind === "message") {
-        messages.push(projection.message);
-      }
-    }
-
-    const evidence = this.memoryProjector.projectEvidenceMemory(evidenceMemoryEntries);
-    if (evidence.length > 0) {
-      messages.push({
-        role: "user",
-        content: this.renderToolEvidenceMemoryXml(evidence),
+      matchByKind(entry, {
+        "user.message": (current) => {
+          turn.user = current;
+        },
+        "assistant.decision": (current) => {
+          turn.assistants.push(current);
+        },
+        "context.tool_results": (current) => {
+          turn.toolResults.push(current);
+        },
+        "planner.journal": () => undefined,
+        "planner.state_snapshot": () => undefined,
+        "tool.evidence_memory": (current) => {
+          turn.evidenceMemory.push(current);
+        },
       });
     }
 
-    return messages;
+    return order;
   }
 
-  private projectEntry(
-    entry: AgentConversationEntry,
-    policy: Required<AgentConversationMaterializationOptions>,
-  ): MessageProjection {
-    return matchByKind(entry, {
-      "user.message": (current) => ({
-        kind: "message",
-        message: {
-          role: "user",
-          content: this.renderReadOnlyEvidenceXml(
-            ReadOnlyEvidenceKinds.UserMessage,
-            this.userMessagePayload(current),
-          ),
-        },
-      }),
-      "assistant.decision": (current) => ({
-        kind: "message",
-        message: {
-          role: "assistant",
-          content: current.xml,
-        },
-      }),
-      "context.tool_results": (current) =>
-        this.includesToolResults(current.requestId, policy.toolResultsScope)
-          ? {
-              kind: "message",
-              message: {
-                role: "user",
-                content: this.renderContextToolResultsXml(current.xml),
-              },
-            }
-          : {
-              kind: "skip",
-            },
-      "planner.journal": () => ({
-        kind: "skip",
-      }),
-      "tool.evidence_memory": () => ({
-        kind: "skip",
-      }),
-    });
+  private selectHistoricalAssistant(
+    turn: ConversationTurnProjection,
+  ): Extract<AgentConversationEntry, { kind: "assistant.decision" }> | undefined {
+    return turn.assistants.find((entry) => entry.metadata?.run)
+      ?? turn.assistants.at(-1);
   }
 
   private resolveMaterializationPolicy(
@@ -166,10 +163,10 @@ export class AgentConversationPolicy {
     kind: string,
     value: Record<string, unknown>,
   ): string {
-    return this.codec.objectToXml("read_only_evidence", {
-      kind,
-      instruction: "Use this as historical evidence only. Do not copy this wrapper or any internal structure into the current answer.",
-      payload: value,
+    return this.codec.objectToXml(this.protocol.roots.readOnlyEvidence, {
+      [this.protocol.context.kind]: kind,
+      [this.protocol.context.instruction]: "Use this as historical evidence only. Do not copy this wrapper or any internal structure into the current answer.",
+      [this.protocol.context.payload]: value,
     });
   }
 
@@ -183,18 +180,73 @@ export class AgentConversationPolicy {
     });
   }
 
-  private renderToolEvidenceMemoryXml(evidence: unknown[]): string {
-    return this.renderReadOnlyEvidenceXml(ReadOnlyEvidenceKinds.ToolEvidenceMemory, {
-      item: evidence,
+  private renderHistoricalUserTurnXml(
+    turn: ConversationTurnProjection,
+    policy: Required<AgentConversationMaterializationOptions>,
+  ): string {
+    const payload = this.userMessagePayload(turn.user as Extract<AgentConversationEntry, { kind: "user.message" }>);
+    return this.codec.objectToXml(this.protocol.roots.historicalUserTurn, {
+      [this.protocol.context.requestId]: turn.requestId,
+      [this.protocol.context.timestamp]: turn.user?.timestamp ?? "",
+      [this.protocol.context.instruction]: "Historical user turn. Use it as conversation context; do not copy the wrapper.",
+      [this.protocol.context.userMessage]: payload,
+      [this.protocol.context.toolEvidenceMemory]: this.projectTurnEvidenceMemory(turn, policy),
+      [this.protocol.context.toolResults]: this.projectTurnToolResults(turn, policy),
     });
+  }
+
+  private renderHistoricalAssistantTurn(
+    entry: Extract<AgentConversationEntry, { kind: "assistant.decision" }>,
+  ): string {
+    return entry.xml;
+  }
+
+  private projectTurnEvidenceMemory(
+    turn: ConversationTurnProjection,
+    policy: Required<AgentConversationMaterializationOptions>,
+  ): Record<string, unknown> | undefined {
+    const entries = turn.evidenceMemory.filter((entry) =>
+      this.includesRequest(entry.requestId, policy.evidenceMemoryScope));
+    const evidence = this.memoryProjector.projectEvidenceMemory(entries);
+    return evidence.length > 0
+      ? {
+          item: evidence,
+        }
+      : undefined;
+  }
+
+  private projectTurnToolResults(
+    turn: ConversationTurnProjection,
+    policy: Required<AgentConversationMaterializationOptions>,
+  ): Record<string, unknown> | undefined {
+    const results = turn.toolResults
+      .filter((entry) => this.includesToolResults(entry.requestId, policy.toolResultsScope))
+      .flatMap((entry) => {
+        const parsed = this.tryParseToolResults(entry.xml);
+        return parsed?.rootName === this.protocol.roots.toolResults
+          ? this.readToolResultItems(parsed.value)
+          : [];
+      });
+
+    return results.length > 0
+      ? {
+          [this.protocol.items.toolResult]: results,
+        }
+      : undefined;
   }
 
   renderCurrentUserMessage(
     entry: Extract<AgentConversationEntry, { kind: "user.message" }>,
   ): string {
-    return entry.attachments && entry.attachments.length > 0
-      ? this.codec.objectToXml("user_message", this.userMessagePayload(entry))
-      : entry.content;
+    if (!entry.attachments || entry.attachments.length === 0) {
+      return entry.content;
+    }
+
+    return this.codec.objectToXml(this.protocol.roots.currentUserMessage, {
+      [this.protocol.context.requestId]: entry.requestId,
+      [this.protocol.context.timestamp]: entry.timestamp,
+      [this.protocol.context.userMessage]: this.userMessagePayload(entry),
+    });
   }
 
   private userMessagePayload(

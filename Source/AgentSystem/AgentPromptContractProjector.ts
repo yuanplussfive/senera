@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import ts from "typescript";
+import { createGenerator } from "ts-json-schema-generator/dist/factory/generator.js";
 import { AgentXmlCodec } from "./AgentXmlCodec.js";
 import { createXmlProtocolSpec } from "./AgentXmlPolicy.js";
 
@@ -22,6 +23,7 @@ export interface AgentPromptContractView {
   tsHintLines: string[];
   xmlPreview: string;
   properties: AgentPromptContractProperty[];
+  jsonSchema: Record<string, unknown>;
 }
 
 interface ContractProjectionNode {
@@ -57,19 +59,24 @@ export class AgentPromptContractProjector {
   private readonly xmlCodec = new AgentXmlCodec(this.protocol);
   private readonly arrayItemName = this.protocol.items.arrayItem;
 
-  projectFromFile(signatureFile: string | undefined, rootName: string): AgentPromptContractView | undefined {
+  projectFromFile(
+    signatureFile: string | undefined,
+    rootName: string,
+    typeName?: string,
+  ): AgentPromptContractView | undefined {
     if (!signatureFile) {
       return undefined;
     }
 
     const sourceText = fs.readFileSync(signatureFile, "utf8");
-    return this.projectFromSource(sourceText, signatureFile, rootName);
+    return this.projectFromSource(sourceText, signatureFile, rootName, typeName);
   }
 
   projectFromSource(
     sourceText: string,
     sourceFilePath: string,
     rootName: string,
+    typeName?: string,
   ): AgentPromptContractView {
     const sourceFile = ts.createSourceFile(
       sourceFilePath,
@@ -78,23 +85,54 @@ export class AgentPromptContractProjector {
       true,
       ts.ScriptKind.TS,
     );
-    const rootType = this.readRootTypeNode(sourceFile);
-    const properties = this.readProperties(rootType, sourceFile, rootName, 0);
+    const rootDeclaration = this.readRootTypeDeclaration(sourceFile, typeName);
+    const properties = this.readProperties(rootDeclaration.type, sourceFile, rootName, 0);
 
     return {
       tsHintLines: this.renderTsHintLines(rootName, properties),
       xmlPreview: this.renderXmlPreview(rootName, properties),
       properties: properties.map((property) => this.toPromptProperty(property)),
+      jsonSchema: this.createJsonSchema(sourceFilePath, rootDeclaration.name.text),
     };
   }
 
-  private readRootTypeNode(sourceFile: ts.SourceFile): ts.TypeNode {
-    const declaration = sourceFile.statements.find(ts.isTypeAliasDeclaration);
+  private readRootTypeDeclaration(sourceFile: ts.SourceFile, typeName?: string): ts.TypeAliasDeclaration {
+    const declarations = sourceFile.statements.filter(ts.isTypeAliasDeclaration);
+    const declaration = typeName
+      ? declarations.find((item) => item.name.text === typeName)
+      : this.selectDefaultTypeDeclaration(declarations, sourceFile);
     if (!declaration) {
-      throw new Error(`签名文件缺少 type alias：${sourceFile.fileName}`);
+      throw new Error(
+        typeName
+          ? `签名文件缺少 type alias ${typeName}：${sourceFile.fileName}`
+          : `签名文件缺少可自动选择的 Arguments type alias：${sourceFile.fileName}`,
+      );
     }
 
-    return declaration.type;
+    return declaration;
+  }
+
+  private selectDefaultTypeDeclaration(
+    declarations: readonly ts.TypeAliasDeclaration[],
+    sourceFile: ts.SourceFile,
+  ): ts.TypeAliasDeclaration | undefined {
+    if (declarations.length === 1) {
+      return declarations[0];
+    }
+
+    const argumentDeclarations = declarations.filter((declaration) =>
+      declaration.name.text.endsWith("Arguments"));
+    if (argumentDeclarations.length === 1) {
+      return argumentDeclarations[0];
+    }
+
+    if (argumentDeclarations.length > 1) {
+      throw new Error(
+        `签名文件包含多个 Arguments type alias，请在插件 manifest 的工具上声明 SignatureType：${sourceFile.fileName}`,
+      );
+    }
+
+    return undefined;
   }
 
   private readProperties(
@@ -454,18 +492,11 @@ export class AgentPromptContractProjector {
 
   private sampleScalar(typeText: string): string | undefined {
     const normalized = typeText.trim();
-    const literalValues = normalized
-      .split("|")
-      .map((part) => part.trim())
-      .filter((part) => /^".*"$/.test(part))
-      .map((part) => part.slice(1, -1));
-
-    return literalValues[0]
-      ?? ({
-          string: "text",
-          number: "0",
-          boolean: "false",
-        } as const)[normalized];
+    return ({
+      string: "text",
+      number: "0",
+      boolean: "false",
+    } as const)[normalized];
   }
 
   private toPromptProperty(property: ContractProjectionNode): AgentPromptContractProperty {
@@ -488,4 +519,39 @@ export class AgentPromptContractProjector {
   private joinPath(parentPath: string, name: string): string {
     return `${parentPath}.${name}`;
   }
+
+  private createJsonSchema(sourceFilePath: string, typeName: string): Record<string, unknown> {
+    try {
+      return createGenerator({
+        path: sourceFilePath,
+        type: typeName,
+        skipTypeCheck: true,
+        expose: "none",
+        topRef: false,
+        jsDoc: "extended",
+        additionalProperties: false,
+        functions: "hide",
+      }).createSchema(typeName) as Record<string, unknown>;
+    } catch (error) {
+      throw new Error(
+        [
+          `ToolSignature JSON Schema 生成失败：${sourceFilePath}`,
+          `type: ${typeName}`,
+          `cause: ${formatContractProjectionError(error)}`,
+        ].join("\n"),
+        { cause: error },
+      );
+    }
+  }
+}
+
+function formatContractProjectionError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  const cause = error.cause instanceof Error
+    ? `; ${error.cause.name}: ${error.cause.message}`
+    : "";
+  return `${error.name}: ${error.message}${cause}`;
 }

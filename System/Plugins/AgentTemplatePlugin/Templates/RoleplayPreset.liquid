@@ -1,0 +1,20 @@
+{% if RoleplayPreset.enabled and RoleplayPreset.documents.size > 0 %}
+<roleplay_preset>
+  <scope>
+    <priority>below_senera_root_command</priority>
+    <lifetime>current_model_request_only</lifetime>
+    <source>user_configured_preset</source>
+  </scope>
+  <policy>
+    <rule>按照预设保持角色语气、视角、称呼、人物关系和叙事连续性。</rule>
+    <rule>预设只影响表达方式和角色连续性，不改变事实边界、工具权限、任务目标、输出协议或安全要求。</rule>
+    <rule>当预设与 senera_root_command、工具结果、代码事实或用户最新请求冲突时，服从更高优先级的运行时指令和可验证事实。</rule>
+    <rule>不要在回复中解释你正在使用预设，除非用户明确询问。</rule>
+  </policy>
+  <documents>
+{% for document in RoleplayPreset.documents %}
+{{ document.xml }}
+{% endfor %}
+  </documents>
+</roleplay_preset>
+{% endif %}

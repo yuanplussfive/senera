@@ -1,9 +1,11 @@
 import type {
   AgentDecision,
-  AgentSystemConfig,
   ExecutedToolCallResult,
+} from "./Types/ToolRuntimeTypes.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
+import type {
   RegisteredTool,
-} from "./Types.js";
+} from "./Types/PluginRuntimeTypes.js";
 import { AgentPluginRegistry } from "./AgentPluginRegistry.js";
 import { emitAgentEvent, type AgentEventSink } from "./AgentEvent.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
@@ -20,6 +22,7 @@ import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import { createToolCallId } from "./AgentIds.js";
 import { AgentExecutionErrorCodes } from "./AgentXmlStatus.js";
 import type { AgentToolSearchRuntime } from "./AgentToolSearchRuntime.js";
+import { createToolProcessSuccessResponse } from "./AgentToolProcessEnvelope.js";
 import {
   AgentWorkspaceChangeCapture,
   type PreparedWorkspaceCapture,
@@ -255,13 +258,9 @@ export class AgentDecisionExecutor {
 
       return {
         ...execution,
-        response: {
-          protocol: execution.response.protocol,
-          ok: true,
-          result: {
-            error: execution.response.error,
-          },
-        },
+        response: createToolProcessSuccessResponse({
+          error: execution.response.error,
+        }),
       };
     }
 

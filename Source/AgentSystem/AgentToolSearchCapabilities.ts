@@ -3,7 +3,7 @@ import type {
   ToolSearchCapabilityFacetsManifest,
   ToolSearchCapabilityManifest,
   ToolSearchCapabilityRiskManifest,
-} from "./Types.js";
+} from "./Types/PluginManifestTypes.js";
 import type {
   AgentToolSearchCapabilityMatch,
   ToolSearchDocument,
@@ -24,7 +24,6 @@ export function matchToolCapabilities(
 export function capabilitySearchText(
   capability: ToolSearchCapabilityManifest,
   options: {
-    includeAvoid: boolean;
     includeRisk: boolean;
   },
 ): string {
@@ -34,8 +33,6 @@ export function capabilitySearchText(
     capability.Description,
     ...capabilityFacetEntries(capability.Facets).flatMap((entry) => entry.values),
     ...(capability.Aliases ?? []),
-    ...(capability.Examples ?? []),
-    ...(options.includeAvoid ? capability.Avoid ?? [] : []),
     ...(options.includeRisk ? [capabilityRiskText(capability.Risk)] : []),
   ].filter(Boolean).join(" ");
 }
@@ -70,7 +67,6 @@ function matchCapability(
     .filter((entry) => facetMatchesQuery(entry.values, queryTokens, tokenizer))
     .map((entry) => entry.name);
   const semanticText = capabilitySearchText(capability, {
-    includeAvoid: false,
     includeRisk: false,
   });
   const semanticMatches = tokenizer.tokenize(semanticText)

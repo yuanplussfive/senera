@@ -3,7 +3,7 @@ import type {
   RegisteredAgentContextPack,
   RegisteredAgentMergePolicy,
   RegisteredAgentWorkflow,
-} from "./Types.js";
+} from "./Types/PluginRuntimeTypes.js";
 import type { AgentWorkflowSelectionResult } from "./AgentWorkflowSelector.js";
 
 export interface AgentWorkflowProjectionRegistry {

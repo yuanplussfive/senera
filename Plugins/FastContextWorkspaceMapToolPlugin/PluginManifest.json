@@ -13,18 +13,6 @@
       "Cwd": "."
     }
   },
-  "Discovery": {
-    "Tags": [
-      "context",
-      "上下文",
-      "workspace",
-      "工作区",
-      "map",
-      "目录",
-      "结构",
-      "项目地图"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 68
@@ -53,7 +41,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "M",
               "Locator": "{{ path }}",
               "Display": "workspace {{ kind }}: {{ path }}",
               "Label": "{{ path }}",
@@ -82,8 +69,119 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.kind }} {{ e.slots.path }} - {{ e.slots.purpose }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace path\n  path: {{ e.slots.path }}\n  kind: {{ e.slots.kind }}\n  purpose: {{ e.slots.purpose }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.kind }} {{ e.slots.path }} - {{ e.slots.purpose }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace path\n  path: {{ e.slots.path }}\n  kind: {{ e.slots.kind }}\n  purpose: {{ e.slots.purpose }}\n{% endfor %}"
+            }
+          },
+          {
+            "Kind": "workspace_marker_file",
+            "Records": "$.project.markers.item[*]",
+            "Slots": {
+              "path": "$"
+            },
+            "Identity": {
+              "Parts": [
+                "path"
+              ]
+            },
+            "Presentation": {
+              "Locator": "{{ path }}",
+              "Display": "workspace marker file: {{ path }}",
+              "Label": "{{ path }}",
+              "Source": "project marker"
+            },
+            "Confidence": 0.84,
+            "ModelProjection": {
+              "Slots": [
+                "path"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "path"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} marker file: {{ e.slots.path }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} marker file\n  path: {{ e.slots.path }}\n{% endfor %}"
+            }
+          },
+          {
+            "Kind": "workspace_source_root",
+            "Records": "$.project.sourceRoots.item[*]",
+            "Slots": {
+              "root": "$"
+            },
+            "Identity": {
+              "Parts": [
+                "root"
+              ]
+            },
+            "Presentation": {
+              "Locator": "{{ root }}",
+              "Display": "workspace source root: {{ root }}",
+              "Label": "{{ root }}",
+              "Source": "source root"
+            },
+            "Confidence": 0.8,
+            "ModelProjection": {
+              "Slots": [
+                "root"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "root"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} source root: {{ e.slots.root }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} source root\n  root: {{ e.slots.root }}\n{% endfor %}"
+            }
+          },
+          {
+            "Kind": "workspace_entry_point",
+            "Records": "$.project.entryPoints.item[*]",
+            "Slots": {
+              "root": "$"
+            },
+            "Identity": {
+              "Parts": [
+                "root"
+              ]
+            },
+            "Presentation": {
+              "Locator": "{{ root }}",
+              "Display": "workspace entry point: {{ root }}",
+              "Label": "{{ root }}",
+              "Source": "entry point"
+            },
+            "Confidence": 0.8,
+            "ModelProjection": {
+              "Slots": [
+                "root"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "root"
+              ],
+              "ArtifactRefs": [
+                "evidence",
+                "projection"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} entry point: {{ e.slots.root }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} entry point\n  root: {{ e.slots.root }}\n{% endfor %}"
             }
           },
           {
@@ -98,7 +196,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "MR",
               "Locator": "{{ root }}",
               "Display": "recommended workspace root: {{ root }}",
               "Label": "{{ root }}",
@@ -120,8 +217,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} recommended root: {{ e.slots.root }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} recommended root: {{ e.slots.root }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} recommended root: {{ e.slots.root }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} recommended root\n  root: {{ e.slots.root }}\n{% endfor %}"
             }
           }
         ],
@@ -131,26 +228,19 @@
         }
       },
       "Search": {
-        "Summary": "快速查看工作区目录结构和主要文件分布。",
-        "Keywords": [
-          "workspace",
-          "map",
-          "tree",
-          "directory",
-          "structure",
-          "project",
-          "工作区",
-          "目录",
-          "结构",
-          "文件树",
+        "Summary": "快速查看工作区目录结构、项目标记文件和主要文件分布。",
+        "Tags": [
           "项目地图",
-          "有哪些文件"
+          "目录结构",
+          "文件树",
+          "配置发现",
+          "工作区概览"
         ],
         "Capabilities": [
           {
             "Id": "workspace.map",
             "Title": "Workspace map",
-            "Description": "Inspect top-level workspace structure, project roots, and likely source areas before selecting files.",
+            "Description": "Inspect top-level workspace structure, project marker files, roots, and likely source areas before selecting files.",
             "Facets": {
               "Actions": [
                 "inspect",
@@ -160,7 +250,9 @@
               "Targets": [
                 "workspace",
                 "directory-tree",
-                "project-structure"
+                "project-structure",
+                "marker-file",
+                "configuration"
               ],
               "Inputs": [
                 "workspace-root",
@@ -168,11 +260,13 @@
               ],
               "Outputs": [
                 "directory-summary",
+                "marker-file",
                 "recommended-root",
                 "path-reference"
               ],
               "Evidence": [
                 "workspace-map-path",
+                "workspace-marker-file",
                 "workspace-recommended-root"
               ],
               "Effects": [
@@ -185,13 +279,6 @@
               "workspace tree",
               "project layout"
             ],
-            "Examples": [
-              "先看看工作区结构",
-              "show workspace tree"
-            ],
-            "Avoid": [
-              "不要用于读取完整文件内容或精确搜索代码"
-            ],
             "Risk": {
               "SideEffect": "none",
               "Permission": "read"
@@ -199,13 +286,13 @@
           }
         ],
         "UseCases": [
-          "不清楚项目结构、需要先看有哪些目录或避免猜路径时使用。"
+          "不清楚项目结构、需要先看有哪些目录或根目录标记文件、避免猜路径时使用。"
         ],
         "Examples": [
-          "项目有哪些目录",
-          "先看看工作区结构",
-          "不要猜 src app web 先列项目地图",
-          "show workspace tree"
+          "工作区目录结构",
+          "项目根目录标记文件",
+          "文件树 项目结构",
+          "workspace tree"
         ],
         "Avoid": [
           "不要用于读取完整文件内容或精确搜索代码。"
@@ -218,11 +305,16 @@
           "Satisfies": [
             "project orientation",
             "project structure",
+            "project marker files",
+            "project configuration location",
             "workspace orientation",
             "workspace investigation entrypoint"
           ],
           "Kinds": [
             "workspace_map_path",
+            "workspace_marker_file",
+            "workspace_source_root",
+            "workspace_entry_point",
             "workspace_recommended_root"
           ],
           "CapabilityIds": [

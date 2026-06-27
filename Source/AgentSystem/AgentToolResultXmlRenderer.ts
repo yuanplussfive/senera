@@ -28,7 +28,7 @@ export class AgentToolResultXmlRenderer {
                 summary: entry.artifact.summary,
                 evidence: {
                   item: entry.artifact.evidence.map((evidence) => ({
-                    ref: evidence.ref,
+                    evidenceUri: evidence.evidenceUri,
                     kind: evidence.kind,
                     locator: evidence.locator,
                     display: evidence.display,

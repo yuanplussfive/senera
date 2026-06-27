@@ -6,18 +6,6 @@
     "Kind": "Tool",
     "Description": "Loads persisted artifact memories by canonical artifact URI."
   },
-  "Discovery": {
-    "Tags": [
-      "artifact",
-      "memory",
-      "evidence",
-      "projection",
-      "记忆",
-      "证据",
-      "产物",
-      "读取"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 8
@@ -54,7 +42,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "ART",
               "Locator": "{{ artifactUri }}",
               "Display": "artifact memory {{ status }}: {{ artifactUri }}",
               "Label": "{{ artifactUri }}",
@@ -90,8 +77,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.status }} {{ e.slots.artifactUri }} (loaded {{ e.slots.memoryCount }} refs)\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} artifact memory\n  uri: {{ e.slots.artifactUri }}\n  status: {{ e.slots.status }}\n  availableRefs: {{ e.slots.availableRefCount }}\n  loadedRefs: {{ e.slots.memoryCount }}\n  message: {{ e.slots.message }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.artifactUri }} (loaded {{ e.slots.memoryCount }} refs)\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} artifact memory\n  uri: {{ e.slots.artifactUri }}\n  status: {{ e.slots.status }}\n  availableRefs: {{ e.slots.availableRefCount }}\n  loadedRefs: {{ e.slots.memoryCount }}\n  message: {{ e.slots.message }}\n{% endfor %}"
             }
           }
         ],
@@ -102,18 +89,6 @@
       },
       "Search": {
         "Summary": "按 artifactUri 读取已经落地的 artifact 记忆和证据投影。",
-        "Keywords": [
-          "artifact",
-          "memory",
-          "evidence",
-          "projection",
-          "read",
-          "hydrate",
-          "记忆",
-          "证据",
-          "读取",
-          "展开"
-        ],
         "Capabilities": [
           {
             "Id": "artifact.memory-read",
@@ -153,13 +128,6 @@
               "load artifact memory",
               "hydrate artifact evidence"
             ],
-            "Examples": [
-              "读取 artifactUri 对应的 projection",
-              "load evidence for two artifact URIs"
-            ],
-            "Avoid": [
-              "当前 timeline 已经包含足够证据时不要重复读取。"
-            ],
             "Risk": {
               "SideEffect": "read-only",
               "Permission": "artifact-read"
@@ -167,18 +135,23 @@
           }
         ],
         "UseCases": [
-          "evidenceMemory 只有轻量 facts，但回答需要完整 projection 或 evidence 时使用。",
-          "用户追问之前搜索、网页或工具结果的具体内容时使用。",
-          "需要按 artifactUri 批量展开多个历史证据包时使用。"
+          "历史工具结果、网页搜索结果、artifact projection、evidence 结构化读取。"
         ],
         "Examples": [
-          "读取 senera://artifact/art_1234567890abcdef12345678",
-          "把这两个 artifactUri 的 projection 取出来",
-          "需要 evidence.json 中的结构化记录"
+          "senera artifact projection",
+          "artifactUri evidence.json",
+          "结构化证据读取",
+          "projection artifact memory"
         ],
         "Avoid": [
           "artifactUri 缺失时先使用当前上下文或检索工具定位证据引用。",
           "只需要轻量 facts 就能回答时不要读取完整 artifact。"
+        ],
+        "Tags": [
+          "证据读取",
+          "产物记忆",
+          "上下文恢复",
+          "历史资料"
         ]
       }
     }

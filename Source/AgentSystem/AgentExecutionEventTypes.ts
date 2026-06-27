@@ -2,6 +2,7 @@ import { AgentEventKinds } from "./AgentEventCatalog.js";
 import type { AgentEventContext } from "./AgentEventBase.js";
 import type { AgentModelProviderMetadata } from "./AgentModelMetadata.js";
 import type { AgentActionPlannerStageName } from "./AgentActionPlannerTelemetry.js";
+import type { AgentInteractionRunMode } from "./AgentInteractionRouter.js";
 
 export type AgentExecutionDomainEvent =
   | {
@@ -41,6 +42,13 @@ export type AgentExecutionDomainEvent =
         stage: AgentActionPlannerStageName;
         selectedAction?: string;
         repaired?: boolean;
+        turnUnderstanding?: {
+          rawUserTurn: string;
+          standaloneRequest: string;
+          contextMode: "None" | "Used" | "Insufficient";
+          contextBasis: string;
+          missingContext: string;
+        };
         taskFrame?: {
           taskType: string;
           answerGoal: string;
@@ -66,6 +74,7 @@ export type AgentExecutionDomainEvent =
           requiredEvidence: Array<{
             id: string;
             need: string;
+            scope: string;
             minimum: number;
             reason: string;
           }>;
@@ -94,7 +103,7 @@ export type AgentExecutionDomainEvent =
             id: string;
             need: string;
             evidence: Array<{
-              ref: string;
+              evidenceUri: string;
               kind: string;
               toolName: string;
               artifactUri: string;
@@ -121,7 +130,7 @@ export type AgentExecutionDomainEvent =
             observed: number;
             required: number;
             evidence: Array<{
-              ref: string;
+              evidenceUri: string;
               kind: string;
               toolName: string;
               artifactUri: string;
@@ -157,7 +166,7 @@ export type AgentExecutionDomainEvent =
               status: string;
               resultKind: string;
               artifactUri: string;
-              evidenceRefs: string[];
+              evidenceUris: string[];
               argumentsPreview: string;
               error: string;
             }>;
@@ -167,7 +176,7 @@ export type AgentExecutionDomainEvent =
               status: string;
               resultKind: string;
               artifactUri: string;
-              evidenceRefs: string[];
+              evidenceUris: string[];
               argumentsPreview: string;
               error: string;
             }>;
@@ -178,7 +187,7 @@ export type AgentExecutionDomainEvent =
               requirementId: string;
               need: string;
               status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
-              evidenceRefs: string[];
+              evidenceUris: string[];
               artifactUris: string[];
               reason: string;
               missingFacts: string[];
@@ -197,6 +206,23 @@ export type AgentExecutionDomainEvent =
       data: {
         stage: AgentActionPlannerStageName;
         message: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.InteractionRouted;
+      context: Required<Pick<AgentEventContext, "requestId" | "step">>;
+      data: {
+        mode: AgentInteractionRunMode;
+        objective: string;
+        needsFreshEvidence: boolean;
+        needsWorkspaceRead: boolean;
+        needsSideEffect: boolean;
+        risk: string;
+        preferredTools: string[];
+        discoveryQueries: string[];
+        reason: string;
+        loadedTools: string[] | "all";
+        expectedOutputMode?: "tool_call_xml" | "final_text" | "open";
       };
     }
   | {
@@ -255,6 +281,7 @@ export type AgentExecutionDomainEvent =
           requiredEvidence: Array<{
             id: string;
             need: string;
+            scope: string;
             minimum: number;
             reason: string;
           }>;
@@ -283,7 +310,7 @@ export type AgentExecutionDomainEvent =
             id: string;
             need: string;
             evidence: Array<{
-              ref: string;
+              evidenceUri: string;
               kind: string;
               toolName: string;
               artifactUri: string;
@@ -310,7 +337,7 @@ export type AgentExecutionDomainEvent =
             observed: number;
             required: number;
             evidence: Array<{
-              ref: string;
+              evidenceUri: string;
               kind: string;
               toolName: string;
               artifactUri: string;
@@ -346,7 +373,7 @@ export type AgentExecutionDomainEvent =
               status: string;
               resultKind: string;
               artifactUri: string;
-              evidenceRefs: string[];
+              evidenceUris: string[];
               argumentsPreview: string;
               error: string;
             }>;
@@ -356,7 +383,7 @@ export type AgentExecutionDomainEvent =
               status: string;
               resultKind: string;
               artifactUri: string;
-              evidenceRefs: string[];
+              evidenceUris: string[];
               argumentsPreview: string;
               error: string;
             }>;
@@ -367,7 +394,7 @@ export type AgentExecutionDomainEvent =
               requirementId: string;
               need: string;
               status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
-              evidenceRefs: string[];
+              evidenceUris: string[];
               artifactUris: string[];
               reason: string;
               missingFacts: string[];

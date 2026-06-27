@@ -1,0 +1,48 @@
+[form]
+version = 1
+strict = true
+
+[[form.sections]]
+id = "senera"
+label = "启用状态"
+description = "控制网页搜索插件是否参与外部技能集。"
+
+[[form.sections.fields]]
+path = ["senera", "enabled"]
+label = "启用插件"
+description = "关闭后网页搜索工具不会参与外部工具集。"
+type = "boolean"
+
+[[form.sections]]
+id = "tavily"
+label = "网页搜索参数"
+description = "配置搜索服务地址、密钥、请求超时和本地状态目录。"
+
+[[form.sections.fields]]
+path = ["tavily", "api_keys"]
+label = "接口密钥"
+description = "支持多个搜索服务密钥轮换调用。"
+type = "array"
+itemType = "string"
+secret = true
+
+[[form.sections.fields]]
+path = ["tavily", "base_url"]
+label = "服务地址"
+description = "网页搜索服务地址。"
+type = "string"
+
+[[form.sections.fields]]
+path = ["tavily", "timeout_seconds"]
+label = "请求超时"
+description = "搜索请求超时时间，单位秒。"
+type = "number"
+min = 1
+max = 300
+step = 1
+
+[[form.sections.fields]]
+path = ["tavily", "state_dir"]
+label = "状态目录"
+description = "路径相对插件目录。"
+type = "string"

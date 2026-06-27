@@ -580,8 +580,8 @@ function SettingsSection({
   );
 }
 
-function sectionDisplayTitle(section: PluginConfigSection, sectionIndex: number): string {
-  return section.label ?? (sectionIndex === 0 ? "基础设置" : "参数设置");
+function sectionDisplayTitle(section: PluginConfigSection, _sectionIndex: number): string {
+  return section.label;
 }
 
 function FieldControl({
@@ -595,7 +595,6 @@ function FieldControl({
   disabled: boolean;
   onChange: (value: unknown) => void;
 }): JSX.Element {
-  const label = field.label ?? "未命名参数";
   return (
     <div
       className={cn(
@@ -604,7 +603,7 @@ function FieldControl({
       )}
     >
       <div className="min-w-0 pr-2">
-        <div className="text-[13px] font-medium text-ink-900">{label}</div>
+        <div className="text-[13px] font-medium text-ink-900">{field.label}</div>
         {field.description ? (
           <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p>
         ) : null}
@@ -1014,55 +1013,9 @@ export function writeDraftFieldValue(
   field: PluginConfigField,
   value: unknown,
 ): string {
-  const patched = patchTomlFieldValue(toml, field, coerceFieldValue(field, value));
-  if (patched) {
-    return patched;
-  }
-
   const document = parseToml(toml || "") as EditableTomlTable;
   setValueAtPath(document, field.path, coerceFieldValue(field, value));
   return ensureFinalNewline(stringifyToml(document as TomlTableWithoutBigInt));
-}
-
-function patchTomlFieldValue(
-  toml: string,
-  field: PluginConfigField,
-  value: unknown,
-): string | null {
-  const [lastKey] = field.path.slice(-1);
-  if (!lastKey) {
-    return null;
-  }
-
-  const sectionPath = field.path.slice(0, -1);
-  if (sectionPath.length === 0) {
-    return null;
-  }
-  const lines = splitTomlLines(toml);
-  const sections = findTomlSections(lines);
-  const nextLine = `${lastKey} = ${serializeTomlValue(value)}`;
-  const section = sections.find((item) => sameStringArray(item.path, sectionPath));
-
-  if (!section) {
-    const needsBlank = lines.length > 0 && lines[lines.length - 1]?.trim() !== "";
-    return ensureFinalNewline([
-      ...lines,
-      ...(needsBlank ? [""] : []),
-      `[${sectionPath.join(".")}]`,
-      nextLine,
-    ].join("\n"));
-  }
-
-  const keyLine = findTomlKeyLine(lines, section, lastKey);
-  if (keyLine < 0) {
-    lines.splice(section.endLine, 0, nextLine);
-    return ensureFinalNewline(lines.join("\n"));
-  }
-
-  const leadingWhitespace = readLeadingWhitespace(lines[keyLine]);
-  const valueEndLine = readTomlAssignmentValueEndLine(lines, section, keyLine);
-  lines.splice(keyLine, valueEndLine - keyLine + 1, `${leadingWhitespace}${nextLine}`);
-  return ensureFinalNewline(lines.join("\n"));
 }
 
 function setValueAtPath(
@@ -1086,149 +1039,6 @@ function setValueAtPath(
   current[lastKey] = value;
 }
 
-function serializeTomlValue(value: unknown): string {
-  const serialized = stringifyToml({ value } as TomlTableWithoutBigInt).trim();
-  const prefix = "value = ";
-  return serialized.startsWith(prefix) ? serialized.slice(prefix.length) : JSON.stringify(value);
-}
-
-function splitTomlLines(toml: string): string[] {
-  const normalized = toml.split("\r\n").join("\n").split("\r").join("\n");
-  const body = normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
-  return body.length > 0 ? body.split("\n") : [];
-}
-
-function findTomlSections(lines: readonly string[]): TomlSectionRange[] {
-  const sections: TomlSectionRange[] = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const sectionPath = readTomlSectionPath(lines[index]);
-    if (!sectionPath) {
-      continue;
-    }
-
-    const previous = sections[sections.length - 1];
-    if (previous) {
-      previous.endLine = index;
-    }
-
-    sections.push({
-      path: sectionPath,
-      startLine: index,
-      endLine: lines.length,
-    });
-  }
-  return sections;
-}
-
-function readTomlSectionPath(line: string): string[] | undefined {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("[") || !trimmed.endsWith("]") || trimmed.startsWith("[[")) {
-    return undefined;
-  }
-
-  const body = trimmed.slice(1, -1).trim();
-  const parts = body.split(".").map((part) => part.trim()).filter(Boolean);
-  return parts.length > 0 ? parts : undefined;
-}
-
-function findTomlKeyLine(
-  lines: readonly string[],
-  section: TomlSectionRange,
-  key: string,
-): number {
-  for (let index = section.startLine + 1; index < section.endLine; index += 1) {
-    if (tomlLineDefinesKey(lines[index], key)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function tomlLineDefinesKey(line: string, key: string): boolean {
-  const trimmed = line.trimStart();
-  if (!trimmed || trimmed.startsWith("#")) {
-    return false;
-  }
-
-  if (!trimmed.startsWith(key)) {
-    return false;
-  }
-
-  let index = key.length;
-  while (trimmed[index] === " " || trimmed[index] === "\t") {
-    index += 1;
-  }
-  return trimmed[index] === "=";
-}
-
-function readTomlAssignmentValueEndLine(
-  lines: readonly string[],
-  section: TomlSectionRange,
-  keyLine: number,
-): number {
-  if (!lines[keyLine]?.includes("[")) {
-    return keyLine;
-  }
-
-  let balance = 0;
-  for (let index = keyLine; index < section.endLine; index += 1) {
-    balance += countTomlArrayBalance(lines[index]);
-    if (balance <= 0) {
-      return index;
-    }
-  }
-  return keyLine;
-}
-
-function countTomlArrayBalance(line: string): number {
-  let balance = 0;
-  let quote: '"' | "'" | null = null;
-  let escaping = false;
-
-  for (const char of line) {
-    if (quote) {
-      if (quote === '"' && char === "\\" && !escaping) {
-        escaping = true;
-        continue;
-      }
-      if (char === quote && !escaping) {
-        quote = null;
-      }
-      escaping = false;
-      continue;
-    }
-
-    if (char === "\"" || char === "'") {
-      quote = char;
-      continue;
-    }
-    if (char === "[") {
-      balance += 1;
-    }
-    if (char === "]") {
-      balance -= 1;
-    }
-  }
-  return balance;
-}
-
-function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function readLeadingWhitespace(value: string): string {
-  let index = 0;
-  while (value[index] === " " || value[index] === "\t") {
-    index += 1;
-  }
-  return value.slice(0, index);
-}
-
-interface TomlSectionRange {
-  path: string[];
-  startLine: number;
-  endLine: number;
-}
 
 function readDraftValue(
   parsedDraft: TomlTableWithoutBigInt | undefined,
@@ -1258,6 +1068,10 @@ function validatePluginConfigField(field: PluginConfigField, value: unknown): st
   const errors: string[] = [];
   const label = settingLabel(field);
 
+  if (value === undefined) {
+    return field.required === false ? [] : [`${label} 缺少必填配置`];
+  }
+
   if (field.type === "boolean" && typeof value !== "boolean") {
     errors.push(`${label} 必须是布尔值`);
   }
@@ -1282,6 +1096,10 @@ function validatePluginConfigField(field: PluginConfigField, value: unknown): st
         errors.push(...validateArrayItem(field, item, index, label));
       });
     }
+  }
+
+  if (field.type === "table" && !isRecord(value)) {
+    errors.push(`${label} 必须是表格对象`);
   }
 
   if (field.options && field.options.length > 0) {
@@ -1319,17 +1137,21 @@ function validateArrayItem(
   label: string,
 ): string[] {
   const itemLabel = `${label} 第 ${index + 1} 项`;
-  if (field.itemType === "boolean" && typeof value !== "boolean") {
+  const itemType = field.itemType ?? "string";
+  if (itemType === "boolean" && typeof value !== "boolean") {
     return [`${itemLabel} 必须是布尔值`];
   }
-  if (field.itemType === "number") {
+  if (itemType === "number") {
     if (typeof value !== "number" || !Number.isFinite(value)) {
       return [`${itemLabel} 必须是数字`];
     }
     return validateNumberField(field, value, itemLabel);
   }
-  if ((field.itemType === "string" || !field.itemType) && typeof value !== "string") {
+  if (itemType === "string" && typeof value !== "string") {
     return [`${itemLabel} 必须是字符串`];
+  }
+  if (itemType === "table" && !isRecord(value)) {
+    return [`${itemLabel} 必须是表格对象`];
   }
   return [];
 }
@@ -1406,7 +1228,7 @@ function sameOptionValue(left: unknown, right: PluginConfigFieldOptionValue): bo
 }
 
 function settingLabel(field: PluginConfigField): string {
-  return field.label ?? "未命名参数";
+  return field.label;
 }
 
 function confirmDiscardDirtyDraft(): boolean {
@@ -1417,11 +1239,11 @@ function pluginSearchText(plugin: PluginConfigItem): string {
   const fieldText = plugin.sections
     .flatMap((section) => [
       section.name,
-      section.label ?? "",
+      section.label,
       section.description ?? "",
       ...section.fields.flatMap((field) => [
         field.key,
-        field.label ?? "",
+        field.label,
         field.description ?? "",
       ]),
     ])

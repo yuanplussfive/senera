@@ -35,7 +35,7 @@ export const AgentExecutionErrorCodes = {
   ToolProcessStderrLimitExceeded: "ToolProcessStderrLimitExceeded",
   ToolProcessResponseMissing: "ToolProcessResponseMissing",
   ToolProcessResponseInvalid: "ToolProcessResponseInvalid",
-  ToolProcessProtocolInvalid: "ToolProcessProtocolInvalid",
+  ToolProcessResponseEnvelopeInvalid: "ToolProcessResponseEnvelopeInvalid",
 } as const;
 
 export const AgentProtocolErrorCodes = {
@@ -66,7 +66,7 @@ export const AgentToolProcessErrorPhases = {
   SchemaValidation: "schema_validation",
   RuntimeExecution: "runtime_execution",
   ResponseParsing: "response_parsing",
-  ProtocolValidation: "protocol_validation",
+  ResponseValidation: "response_validation",
 } as const;
 
 export type AgentToolProcessErrorPhase =

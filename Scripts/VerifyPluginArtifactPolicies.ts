@@ -8,12 +8,9 @@ import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js"
 import { createToolEvidenceMemoryEntries } from "../Source/AgentSystem/AgentPlannerMemory.js";
 import { AgentToolResultXmlRenderer } from "../Source/AgentSystem/AgentToolResultXmlRenderer.js";
 import { AgentToolExecutionArtifactRecorder } from "../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
-import type {
-  AgentSystemConfig,
-  ExecutedToolCallResult,
-  RegisteredTool,
-  ToolArtifactEvidenceRecord,
-} from "../Source/AgentSystem/Types.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
+import type { ExecutedToolCallResult, ToolArtifactEvidenceRecord } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 
 const workspaceRoot = path.resolve(process.cwd());
 const artifactRoot = ".senera/artifacts/policy-verification";
@@ -30,17 +27,20 @@ const config: AgentSystemConfig = {
   PluginDiscovery: {
     ManifestFileName: "PluginManifest.json",
   },
-  ModelProviders: [{
+  ModelProviderEndpoints: [{
     Id: "test",
-    Kind: "OpenAICompatible",
-    Endpoint: "Responses",
     BaseUrl: "https://example.invalid/v1",
     ApiKey: "test",
+  }],
+  ModelProviders: [{
+    Id: "test",
+    ProviderId: "test",
+    Endpoint: "Responses",
     Model: "test",
     Temperature: 0,
     MaxOutputTokens: -1,
     Stream: true,
-    TimeoutMs: 1,
+    TimeoutSeconds: 0.001,
     MaxNetworkRetries: 0,
   }],
   Artifacts: {
@@ -82,7 +82,7 @@ const fixtures: Record<string, ToolPolicyFixture> = {
       dryRun: false,
       changedFiles: {
         item: [{
-          path: "Source/AgentSystem/Types.ts",
+          path: "Source/AgentSystem/Types/AgentConfigTypes.ts",
           status: "modified",
           additions: 4,
           deletions: 1,
@@ -150,6 +150,40 @@ const fixtures: Record<string, ToolPolicyFixture> = {
     ],
     expectedEvidenceCount: 2,
     result: searchResultFixture("hybrid context", "combined"),
+  },
+  FastContextScoutTool: {
+    expectedKinds: [
+      "workspace_scout_file",
+    ],
+    expectedEvidenceCount: 2,
+    result: {
+      question: "项目主模型配置文件在哪里",
+      workspaceRoot,
+      files: {
+        item: [
+          {
+            path: "Source/AgentSystem/AgentDefaults.ts",
+            startLine: 1,
+            endLine: 80,
+            totalLines: 420,
+            score: 0.93,
+            reason: "contains default model provider configuration",
+            focus: "AgentDefaults model provider defaults",
+            content: "export const AgentDefaults = { ModelProviders: [...] }",
+          },
+          {
+            path: "senera.config.json",
+            startLine: 1,
+            endLine: 60,
+            totalLines: 180,
+            score: 0.89,
+            reason: "contains project runtime configuration",
+            focus: "project config",
+            content: "{ \"ModelProviders\": [] }",
+          },
+        ],
+      },
+    },
   },
   FastContextSearchTool: {
     expectedKinds: [
@@ -222,7 +256,7 @@ const fixtures: Record<string, ToolPolicyFixture> = {
     ],
     result: {
       kind: "file",
-      path: "Source/AgentSystem/Types.ts",
+      path: "Source/AgentSystem/Types/AgentConfigTypes.ts",
       startLine: 300,
       endLine: 340,
       totalLines: 620,
@@ -264,7 +298,7 @@ const fixtures: Record<string, ToolPolicyFixture> = {
       "workspace_map_path",
       "workspace_recommended_root",
     ],
-    expectedEvidenceCount: 4,
+    expectedEvidenceCount: 7,
     result: {
       workspaceRoot,
       topLevel: {
@@ -480,6 +514,131 @@ const fixtures: Record<string, ToolPolicyFixture> = {
       guidance: "Use returned memories as evidence for the current turn.",
     },
   },
+  MemoryRecallTool: {
+    expectedKinds: [
+      "memory_recall",
+      "conversation_recall",
+    ],
+    result: {
+      query: "用户代码实现偏好",
+      scope: "preference",
+      limit: 5,
+      refs: {
+        item: [],
+      },
+      memories: {
+        item: [{
+          memoryUri: "senera://memory-item/mem_policy",
+          type: "preference",
+          subject: "assistant_work_style",
+          claim: "用户偏好从源头解决问题，避免硬编码。",
+          howToApply: "实现时优先使用结构化协议、统一模块和成熟库。",
+          tags: {
+            item: ["工作方式", "代码质量"],
+          },
+          triggers: {
+            item: ["不要硬编码", "从源头解决"],
+          },
+          sourceRefs: {
+            item: ["senera://memory-source/src_policy"],
+          },
+          matchedBy: {
+            item: ["keyword"],
+          },
+          score: 0.016393,
+          confidence: 0.92,
+          updatedAt: "2026-06-24T02:00:05.000Z",
+          localDate: "2026-06-24",
+        }],
+      },
+      turns: {
+        item: [{
+          episodeUri: "senera://memory-episode/ep_policy",
+          requestId: "req_policy",
+          userMessage: {
+            sourceRef: "senera://memory-source/src_policy_user",
+            text: "临时口令是蓝色月亮。",
+            summary: "用户提供临时口令。",
+          },
+          assistantMessage: {
+            sourceRef: "senera://memory-source/src_policy_assistant",
+            text: "已了解这个临时口令。",
+            summary: "助手确认临时口令。",
+          },
+          sourceRefs: {
+            item: [
+              "senera://memory-source/src_policy_user",
+              "senera://memory-source/src_policy_assistant",
+            ],
+          },
+          matchedBy: {
+            item: ["keyword"],
+          },
+          score: 0.016129,
+          startedAt: "2026-06-24T02:01:00.000Z",
+          completedAt: "2026-06-24T02:01:03.000Z",
+          localDate: "2026-06-24",
+        }],
+      },
+      sources: {
+        item: [{
+          sourceRef: "senera://memory-source/src_policy",
+          sourceKind: "user_message",
+          role: "user",
+          summary: "用户要求避免硬编码。",
+          evidenceUri: "",
+          artifactUri: "",
+          toolName: "",
+          createdAt: "2026-06-24T02:00:00.000Z",
+          localDate: "2026-06-24",
+        }],
+      },
+      fallback: {
+        used: false,
+        reason: "",
+      },
+      warnings: {
+        item: [],
+      },
+      guidance: "Use recalled memories as durable user/project context.",
+    },
+  },
+  MemoryWriteTool: {
+    expectedKinds: [
+      "memory_write",
+    ],
+    result: {
+      status: "written",
+      memories: {
+        item: [{
+          memoryUri: "senera://memory-item/mem_write_policy",
+          operation: "create",
+          type: "preference",
+          subject: "assistant_work_style",
+          claim: "用户偏好从源头解决问题，避免硬编码。",
+          howToApply: "实现时优先使用结构化协议、统一模块和成熟库。",
+          tags: {
+            item: ["工作方式", "代码质量"],
+          },
+          triggers: {
+            item: ["不要硬编码", "从源头解决"],
+          },
+          sourceRefs: {
+            item: [],
+          },
+          status: "active",
+          confidence: 0.95,
+          targetMemoryUri: "",
+          updatedAt: "2026-06-24T02:02:00.000Z",
+          localDate: "2026-06-24",
+        }],
+      },
+      warnings: {
+        item: [],
+      },
+      guidance: "Memory was written as active long-term memory.",
+    },
+  },
   AgentDelegateTool: {
     expectedKinds: [
       "agent_delegation_job",
@@ -629,7 +788,6 @@ function assertPolicyShape(tool: RegisteredTool): void {
     assert.ok(rule.Records.trim(), `${tool.name} evidence rule needs Records`);
     assert.ok(Object.keys(rule.Slots).length > 0, `${tool.name} evidence rule needs Slots`);
     assert.ok(rule.Identity.Parts.length > 0, `${tool.name} evidence rule needs Identity.Parts`);
-    assert.ok(rule.Presentation.RefPrefix.trim(), `${tool.name} evidence rule needs Presentation.RefPrefix`);
     assert.ok(rule.Presentation.Locator.trim(), `${tool.name} evidence rule needs Presentation.Locator`);
     assert.ok(rule.Presentation.Display.trim(), `${tool.name} evidence rule needs Presentation.Display`);
     assert.ok(rule.Presentation.Label.trim(), `${tool.name} evidence rule needs Presentation.Label`);
@@ -660,7 +818,7 @@ function assertEvidence(
   const refs = new Set<string>();
   for (const entry of evidence) {
     assert.equal(entry.key.startsWith(`${entry.kind}:`), true, `${toolName} evidence key should include kind`);
-    assert.equal(entry.ref.trim().length > 0, true, `${toolName} evidence ref should not be empty`);
+    assert.equal(entry.evidenceUri.trim().length > 0, true, `${toolName} evidence URI should not be empty`);
     assert.equal(entry.locator.trim().length > 0, true, `${toolName} evidence locator should not be empty`);
     assert.equal(entry.display.trim().length > 0, true, `${toolName} evidence display should not be empty`);
     assert.equal(entry.label.trim().length > 0, true, `${toolName} evidence label should not be empty`);
@@ -668,9 +826,9 @@ function assertEvidence(
     assert.equal(entry.modelSlots.length > 0, true, `${toolName} evidence modelSlots should not be empty`);
     assert.equal(entry.plannerMemory.facts.length > 0, true, `${toolName} evidence plannerMemory facts should not be empty`);
     assert.equal(keys.has(entry.key), false, `${toolName} evidence key should be unique: ${entry.key}`);
-    assert.equal(refs.has(entry.ref), false, `${toolName} evidence ref should be unique: ${entry.ref}`);
+    assert.equal(refs.has(entry.evidenceUri), false, `${toolName} evidence URI should be unique: ${entry.evidenceUri}`);
     keys.add(entry.key);
-    refs.add(entry.ref);
+    refs.add(entry.evidenceUri);
   }
 }
 
@@ -684,7 +842,7 @@ function assertArtifactFiles(
   };
   for (const entry of evidenceJson.evidence ?? []) {
     assert.equal(typeof entry.key, "string", `${toolName} evidence.json should retain internal key`);
-    assert.equal(typeof entry.ref, "string", `${toolName} evidence.json should contain ref`);
+    assert.equal(typeof entry.evidenceUri, "string", `${toolName} evidence.json should contain evidenceUri`);
     assert.equal(typeof entry.locator, "string", `${toolName} evidence.json should contain locator`);
     assert.equal(typeof entry.display, "string", `${toolName} evidence.json should contain display`);
     assert.equal(Array.isArray(entry.modelSlots), true, `${toolName} evidence.json should contain modelSlots`);
@@ -696,7 +854,7 @@ function assertArtifactFiles(
   for (const entry of artifact.evidence) {
     assert.equal(summary.includes(entry.key), false, `${toolName} summary should hide internal key`);
     assert.equal(projection.includes(entry.key), false, `${toolName} projection should hide internal key`);
-    assert.equal(summary.includes(entry.ref) || projection.includes(entry.ref), true, `${toolName} visible artifact text should contain evidence ref`);
+    assert.equal(summary.includes(entry.evidenceUri) || projection.includes(entry.evidenceUri), true, `${toolName} visible artifact text should contain evidence URI`);
   }
 }
 
@@ -711,7 +869,7 @@ function assertPlannerProjection(
   assert.equal(xml.includes("<key>"), false, "tool result XML should not expose evidence key");
   assert.equal(xml.includes("<artifactPath>"), false, "tool result XML should not expose artifact absolute path");
   assert.equal(xml.includes("<relativePath>"), false, "tool result XML should not expose artifact relative path");
-  assert.equal(xml.includes("<ref>"), true, "tool result XML should expose evidence ref");
+  assert.equal(xml.includes("<evidenceUri>"), true, "tool result XML should expose evidence URI");
   assert.equal(xml.includes("<locator>"), true, "tool result XML should expose evidence locator");
   assert.equal(xml.includes("<slots>"), true, "tool result XML should expose projected slots");
   assert.equal(xml.includes("<name>"), true, "tool result XML should expose projected slot names");
@@ -734,11 +892,11 @@ function assertPlannerProjection(
   assert.equal(timelineText.includes("key:"), false, "planner timeline should not expose internal key");
   assert.equal(timelineText.includes("artifactPath"), false, "planner timeline should not expose artifact absolute path");
   assert.equal(timelineText.includes("relativePath"), false, "planner timeline should not expose artifact relative path");
-  assert.equal(timelineText.includes("ref:"), true, "planner timeline should expose evidence refs");
+  assert.equal(timelineText.includes("evidenceUri:"), true, "planner timeline should expose evidence URIs");
   assert.equal(timelineText.includes("slots:"), true, "planner timeline should expose projected slots");
   assert.equal(timelineText.includes("confidence:"), true, "planner timeline should expose confidence");
-  assert.equal(timelineJson.includes("evidenceRefs"), true, "planner timeline should expose turn evidenceRefs");
-  assert.equal(runStateJson.includes("\"ref\""), false, "planner runState should not duplicate evidence details");
+  assert.equal(timelineJson.includes("evidenceUris"), true, "planner timeline should expose turn evidenceUris");
+  assert.equal(runStateJson.includes("\"evidenceUri\""), false, "planner runState should not duplicate evidence details");
   assert.equal(runStateJson.includes("\"slots\""), false, "planner runState should not duplicate evidence slots");
 
   const memoryEntries = createToolEvidenceMemoryEntries({
@@ -828,7 +986,7 @@ function agentDelegationJobFixture(
         "latestUserRequest",
         "activeSkill",
         "workspaceDiff",
-        "evidenceRefs",
+        "evidenceUris",
         "artifactRefs",
       ],
     },
@@ -845,7 +1003,7 @@ function agentDelegationJobFixture(
     runtimeProfile: "ReadOnlyReview",
     outputSchema: "System/Plugins/AgentWorkflowSkillsPlugin/schemas/FindingList.schema.json",
     required: true,
-    suppliedEvidenceRefs: {
+    suppliedEvidenceUris: {
       item: [
         "DIFF1",
       ],

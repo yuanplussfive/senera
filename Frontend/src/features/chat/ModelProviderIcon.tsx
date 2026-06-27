@@ -1,4 +1,41 @@
 import { cn } from "../../lib/util";
+import iconRules from "./ModelProviderIconRules.json";
+
+type IconRuleMatchKind = "exact" | "prefix" | "suffix" | "includes";
+
+export type ModelProviderRuleMatchKind = IconRuleMatchKind;
+
+export interface ModelProviderModelGroupRule {
+  id: string;
+  label: string;
+  icon?: string;
+  match: ModelProviderRuleMatchKind;
+  values: string[];
+}
+
+export interface ModelProviderDefaultModelGroup {
+  id: string;
+  label: string;
+  icon?: string;
+}
+
+interface ModelProviderIconRuleDocument {
+  defaultIcon?: string;
+  icons: string[];
+  rules: Array<{
+    icon: string;
+    match: IconRuleMatchKind;
+    values: string[];
+  }>;
+  modelGroups?: ModelProviderModelGroupRule[];
+  defaultModelGroup?: ModelProviderDefaultModelGroup;
+}
+
+const ModelProviderIconRuleConfig = iconRules as ModelProviderIconRuleDocument;
+
+export const ModelProviderIconNames = ModelProviderIconRuleConfig.icons;
+
+export type ModelProviderIconName = string;
 
 interface ModelProviderIconProps {
   icon?: string;
@@ -16,13 +53,62 @@ export function ModelProviderIcon({ icon, className, size = 16 }: ModelProviderI
       alt=""
       aria-hidden="true"
       className={cn("shrink-0", className)}
+      decoding="async"
       draggable={false}
+      loading="lazy"
       style={style}
     />
   );
 }
 
-export function readModelProviderIconSrc(icon: string): string {
+export function readModelProviderIconSrc(
+  icon: string,
+  baseUrl: string = import.meta.env.BASE_URL,
+): string {
   if (icon.startsWith("/")) return icon;
-  return `/icons/model-providers/${icon.endsWith(".svg") ? icon : `${icon}.svg`}`;
+  const assetName = icon.endsWith(".svg") ? icon : `${icon}.svg`;
+  return `${withTrailingSlash(baseUrl)}icons/model-providers/${assetName}`;
+}
+
+export function inferModelProviderIcon(value: string): ModelProviderIconName | undefined {
+  const normalized = value.toLowerCase();
+  return ModelProviderIconRuleConfig.rules.find((rule) =>
+    iconRuleMatches(rule.match, normalized, rule.values)
+  )?.icon ?? ModelProviderIconRuleConfig.defaultIcon;
+}
+
+export function readDefaultModelGroupRules(): ModelProviderModelGroupRule[] {
+  return ModelProviderIconRuleConfig.modelGroups ?? [];
+}
+
+export function readDefaultModelGroup(): ModelProviderDefaultModelGroup {
+  return ModelProviderIconRuleConfig.defaultModelGroup ?? {
+    id: "other",
+    label: "其他模型",
+    icon: ModelProviderIconRuleConfig.defaultIcon,
+  };
+}
+
+function iconRuleMatches(
+  match: IconRuleMatchKind,
+  source: string,
+  values: readonly string[],
+): boolean {
+  return values.some((value) => {
+    const normalized = value.toLowerCase();
+    switch (match) {
+      case "exact":
+        return source === normalized;
+      case "prefix":
+        return source.startsWith(normalized);
+      case "suffix":
+        return source.endsWith(normalized);
+      case "includes":
+        return source.includes(normalized);
+    }
+  });
+}
+
+function withTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value : `${value}/`;
 }

@@ -1764,6 +1764,42 @@ describe("sessionStore streaming display", () => {
   });
 });
 
+describe("sessionStore model provider snapshots", () => {
+  beforeEach(() => {
+    resetStore();
+  });
+
+  it("selects only chat-capable models from model list snapshots", () => {
+    useStore.setState({ selectedModelProviderId: "embedding" });
+
+    useStore.getState().ingest(envelope(EventKinds.ModelListSnapshot, {
+      defaultModelProviderId: "embedding",
+      models: [
+        {
+          id: "embedding",
+          kind: "OpenAICompatible",
+          endpoint: "ChatCompletions",
+          baseUrl: "https://example.test",
+          model: "qwen3-embedding",
+          capabilities: { Chat: false, Embedding: true },
+          isDefault: true,
+        },
+        {
+          id: "chat",
+          kind: "OpenAICompatible",
+          endpoint: "ChatCompletions",
+          baseUrl: "https://example.test",
+          model: "chat-model",
+          capabilities: { Chat: true },
+          isDefault: false,
+        },
+      ],
+    }));
+
+    expect(useStore.getState().selectedModelProviderId).toBe("chat");
+  });
+});
+
 describe("session persistence migration", () => {
   it("returns only persisted UI preferences when migrating legacy state", () => {
     const migrate = sessionPersistOptions.migrate;
@@ -1837,6 +1873,55 @@ describe("session persistence migration", () => {
 describe("sessionStore planner timeline", () => {
   beforeEach(() => {
     resetStore();
+  });
+
+  it("projects interaction route selection as a visible decision step", () => {
+    const sessionId = "route-session";
+    const requestId = "route-request";
+    useStore.getState().registerCreatingSession(sessionId, "路径测试");
+
+    useStore.getState().ingest(timedEnvelope(
+      EventKinds.RunStarted,
+      "2026-05-29T08:00:00.000Z",
+      { input: "看看项目结构" },
+      sessionId,
+      requestId,
+    ));
+    useStore.getState().ingest(timedEnvelope(
+      EventKinds.InteractionRouted,
+      "2026-05-29T08:00:00.300Z",
+      {
+        mode: "tool_agent_loop",
+        objective: "查看项目结构",
+        needsFreshEvidence: true,
+        needsWorkspaceRead: true,
+        needsSideEffect: false,
+        risk: "read",
+        preferredTools: ["FastContextWorkspaceMapTool"],
+        discoveryQueries: [],
+        reason: "需要读取工作区文件后回答。",
+        loadedTools: ["FastContextWorkspaceMapTool"],
+        expectedOutputMode: "tool_call_xml",
+      },
+      sessionId,
+      requestId,
+      1,
+    ));
+
+    const run = useStore.getState().sessions[sessionId]?.runs[0];
+    expect(run?.expectedOutputMode).toBe("tool_call_xml");
+    expect(run?.visibleKind).toBe("tool_calls");
+    expect(run?.steps.map((step) => step.title)).toEqual([
+      "理解用户问题",
+      "选择路径 · 工具循环",
+    ]);
+    expect(run?.steps[1]).toMatchObject({
+      kind: "decision",
+      status: "done",
+      decisionKind: "tool_agent_loop",
+    });
+    expect(run?.steps[1]?.description).toContain("需要新证据");
+    expect(run?.steps[1]?.description).toContain("读取工作区");
   });
 
   it("projects action planning as two measured stages", () => {

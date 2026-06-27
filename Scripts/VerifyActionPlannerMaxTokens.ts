@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { AgentActionPlannerModelClient } from "../Source/AgentSystem/AgentActionPlannerModelClient.js";
-import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types.js";
+import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
   createActionPlanInputFixture,
 } from "./ActionPlannerFixture.js";
 
 const baseProvider: ResolvedAgentModelProviderConfig = {
   Id: "test",
+  ProviderId: "test",
   Kind: "OpenAICompatible",
   Endpoint: "ChatCompletions",
   BaseUrl: "https://example.test/v1",
@@ -69,10 +70,8 @@ async function main(): Promise<void> {
     "Google action planner payload must include non-empty contents.",
   );
   const googlePrompt = readGooglePlannerPrompt(googleUnlimited);
-  assert.ok("context" in googlePrompt);
-  assert.ok("timeline" in googlePrompt.context);
-  assert.ok("directive" in googlePrompt);
-  assert.equal(googlePrompt.directive.stage, "buildTaskFrame");
+  assert.ok(googlePrompt.hasTimelineTurn);
+  assert.equal(googlePrompt.plannerInput.directive.stage, "buildTaskFrame");
   assert.doesNotMatch(JSON.stringify(googleUnlimited.contents), /Timeline turn/);
   assert.doesNotMatch(JSON.stringify(googleUnlimited.contents), /Produce the ActionDecision JSON now/);
   assert.match(String(googleUnlimited.__url), /alt=sse/);
@@ -81,14 +80,15 @@ async function main(): Promise<void> {
 }
 
 function readGooglePlannerPrompt(payload: Record<string, unknown>): {
-  context: {
-    timeline: unknown[];
-  };
-  directive: {
-    stage: string;
+  hasTimelineTurn: boolean;
+  plannerInput: {
+    directive: {
+      stage: string;
+    };
   };
 } {
   const contents = Array.isArray(payload.contents) ? payload.contents : [];
+  let hasTimelineTurn = false;
   for (const content of contents) {
     const contentRecord = content && typeof content === "object"
       ? content as Record<string, unknown>
@@ -100,14 +100,20 @@ function readGooglePlannerPrompt(payload: Record<string, unknown>): {
         : {};
       const text = partRecord.text;
       if (typeof text === "string" && text.trim().startsWith("{")) {
-        return JSON.parse(text) as {
-          context: {
-            timeline: unknown[];
+        const parsed = JSON.parse(text) as Record<string, unknown>;
+        if ("turn" in parsed) {
+          hasTimelineTurn = true;
+        }
+        if ("plannerInput" in parsed) {
+          return {
+            hasTimelineTurn,
+            plannerInput: parsed.plannerInput as {
+              directive: {
+                stage: string;
+              };
+            },
           };
-          directive: {
-            stage: string;
-          };
-        };
+        }
       }
     }
   }
@@ -144,7 +150,14 @@ async function capturePayload(
             : "https://example.test/v1",
       },
       {
-        Provider: "auto",
+        Provider: "openai-generic",
+        BaseUrl: endpoint === "GoogleGenerateContent"
+          ? "https://generativelanguage.googleapis.com/v1beta"
+          : endpoint === "ClaudeMessages"
+            ? "https://api.anthropic.com/v1"
+            : "https://example.test/v1",
+        ApiKey: "test-key",
+        Model: "test-model",
         Temperature: 0.1,
         MaxTokens: maxTokens,
       },

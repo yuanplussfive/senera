@@ -5,6 +5,10 @@ const disabledOrPositiveInteger = (fieldName: string) => z.number().int().refine
   message: `${fieldName} 必须为 -1，或大于等于 1。`,
 });
 
+const disabledOrPositiveNumber = (fieldName: string) => z.number().refine((value) => value === -1 || value > 0, {
+  message: `${fieldName} 必须为 -1，或大于 0。`,
+});
+
 const ModelEndpointSchema = z.union([
   z.literal("Responses"),
   z.literal("ChatCompletions"),
@@ -12,56 +16,70 @@ const ModelEndpointSchema = z.union([
   z.literal("GoogleGenerateContent"),
 ]);
 
+const ModelCapabilitiesSchema = z
+  .object({
+    Chat: z.boolean().optional(),
+    Embedding: z.boolean().optional(),
+    Rerank: z.boolean().optional(),
+    Vision: z.boolean().optional(),
+    ImageOutput: z.boolean().optional(),
+    Reasoning: z.boolean().optional(),
+    ToolCalling: z.boolean().optional(),
+  })
+  .strict();
+
 const ModelProviderSchema = z
   .object({
     Id: z.string().min(1),
-    Title: z.string().min(1).optional(),
+    ProviderId: z.string().min(1),
     Icon: z.string().min(1).optional(),
-    Kind: z.literal("OpenAICompatible").optional(),
+    Capabilities: ModelCapabilitiesSchema.optional(),
+    ContextWindowTokens: disabledOrPositiveInteger("ContextWindowTokens").optional(),
+    MaxModelOutputTokens: disabledOrPositiveInteger("MaxModelOutputTokens").optional(),
     Endpoint: ModelEndpointSchema,
-    BaseUrl: z.string().url().optional(),
-    ApiKey: z.string().min(1).optional(),
-    ApiVersion: z.string().min(1).optional(),
     Model: z.string().min(1),
     Temperature: z.number().min(0).max(2).optional(),
     MaxOutputTokens: z.number().int().refine((value) => value === -1 || value >= 1, {
       message: "MaxOutputTokens 必须为 -1，或大于等于 1。",
     }).optional(),
     Stream: z.boolean().optional(),
-    TimeoutMs: z.number().int().min(1).optional(),
-    FirstTokenTimeoutMs: disabledOrPositiveInteger("FirstTokenTimeoutMs").optional(),
-    MaxRequestMs: disabledOrPositiveInteger("MaxRequestMs").optional(),
+    TimeoutSeconds: z.number().positive().optional(),
+    FirstTokenTimeoutSeconds: disabledOrPositiveNumber("FirstTokenTimeoutSeconds").optional(),
+    MaxRequestSeconds: disabledOrPositiveNumber("MaxRequestSeconds").optional(),
     MaxNetworkRetries: z.number().int().min(0).optional(),
-    Headers: z.record(z.string(), z.string()).optional(),
   })
   .strict();
 
-const ModelProviderDefaultsSchema = z
+const ModelProviderEndpointSchema = z
   .object({
+    Id: z.string().min(1),
+    Icon: z.string().min(1).optional(),
+    Enabled: z.boolean().optional(),
     Kind: z.literal("OpenAICompatible").optional(),
     BaseUrl: z.string().url().optional(),
     ApiKey: z.string().min(1).optional(),
     ApiVersion: z.string().min(1).optional(),
-    Temperature: z.number().min(0).max(2).optional(),
-    MaxOutputTokens: z.number().int().refine((value) => value === -1 || value >= 1, {
-      message: "ModelProviderDefaults.MaxOutputTokens 必须为 -1，或大于等于 1。",
-    }).optional(),
-    Stream: z.boolean().optional(),
-    TimeoutMs: z.number().int().min(1).optional(),
-    FirstTokenTimeoutMs: disabledOrPositiveInteger("ModelProviderDefaults.FirstTokenTimeoutMs").optional(),
-    MaxRequestMs: disabledOrPositiveInteger("ModelProviderDefaults.MaxRequestMs").optional(),
-    MaxNetworkRetries: z.number().int().min(0).optional(),
     Headers: z.record(z.string(), z.string()).optional(),
   })
   .strict();
 
-const ModelProviderRuntimeDefaultsSchema = ModelProviderDefaultsSchema.extend({
-  Id: z.string().min(1).optional(),
-  Title: z.string().min(1).optional(),
-  Icon: z.string().min(1).optional(),
-  Endpoint: ModelEndpointSchema.optional(),
-  Model: z.string().min(1).optional(),
-}).strict();
+const ModelGroupStrategySchema = z
+  .object({
+    Match: z.enum(["exact", "prefix", "suffix", "includes"]),
+    Values: z.array(z.string().min(1)),
+  })
+  .strict();
+
+const ModelGroupSchema = z
+  .object({
+    Id: z.string().min(1),
+    Label: z.string().min(1),
+    Icon: z.string().min(1).optional(),
+    Match: z.enum(["exact", "prefix", "suffix", "includes"]).optional(),
+    Values: z.array(z.string().min(1)).optional(),
+    Strategies: z.array(ModelGroupStrategySchema).optional(),
+  })
+  .strict();
 
 const LoadedToolsSchema = z.union([
   z.literal("all"),
@@ -109,9 +127,19 @@ const AgentDelegationSchema = z
 
 const ToolSearchSchema = z
   .object({
-    Dynamic: z
+    Embedding: z
       .object({
-        BootstrapTools: z.array(z.string().min(1)).optional(),
+        Enabled: z.boolean().optional(),
+        ModelProviderId: z.string().min(1).optional(),
+        Model: z.string().min(1).optional(),
+        Dimensions: z.number().int().refine((value) => value === -1 || value >= 1, {
+          message: "ToolSearch.Embedding.Dimensions 必须为 -1，或大于等于 1。",
+        }).optional(),
+        BatchSize: z.number().int().min(1).optional(),
+        InputMaxChars: z.number().int().refine((value) => value === -1 || value >= 1, {
+          message: "ToolSearch.Embedding.InputMaxChars 必须为 -1，或大于等于 1。",
+        }).optional(),
+        ScoreThreshold: z.number().min(-1).max(1).optional(),
       })
       .strict()
       .optional(),
@@ -149,17 +177,42 @@ const ActionPlannerClientSchema = (path: string) => z
   .object({
     ModelProviderId: z.string().min(1).optional(),
     Provider: z.enum([
-      "auto",
       "openai-generic",
       "openai-responses",
       "anthropic",
       "google-ai",
     ]).optional(),
-    BaseUrl: z.string().url().optional(),
-    ApiKey: z.string().min(1).optional(),
-    Model: z.string().min(1).optional(),
     Temperature: z.number().min(0).max(2).optional(),
     MaxTokens: disabledOrPositiveInteger(`${path}.MaxTokens`).optional(),
+  })
+  .strict();
+
+const VectorModelHttpSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+    ProviderId: z.string().min(1).optional(),
+    Model: z.string().min(1).optional(),
+    TimeoutSeconds: z.number().positive().optional(),
+    MaxNetworkRetries: z.number().int().min(0).optional(),
+  })
+  .strict();
+
+const VectorModelsSchema = z
+  .object({
+    Embedding: VectorModelHttpSchema.extend({
+      Dimensions: z.number().int().refine((value) => value === -1 || value >= 1, {
+        message: "VectorModels.Embedding.Dimensions 必须为 -1，或大于等于 1。",
+      }).optional(),
+      BatchSize: z.number().int().min(1).optional(),
+      InputMaxChars: z.number().int().refine((value) => value === -1 || value >= 1, {
+        message: "VectorModels.Embedding.InputMaxChars 必须为 -1，或大于等于 1。",
+      }).optional(),
+    }).strict().optional(),
+    Rerank: VectorModelHttpSchema.extend({
+      EndpointPath: z.string().min(1).optional(),
+      CandidateLimit: z.number().int().min(1).optional(),
+      TopK: z.number().int().min(1).optional(),
+    }).strict().optional(),
   })
   .strict();
 
@@ -174,8 +227,45 @@ const ActionPlannerSchema = z
       .strict()
       .optional(),
     Client: ActionPlannerClientSchema("ActionPlanner.Client").optional(),
+    TurnUnderstandingClient: ActionPlannerClientSchema("ActionPlanner.TurnUnderstandingClient").optional(),
     TaskFrameClient: ActionPlannerClientSchema("ActionPlanner.TaskFrameClient").optional(),
     EvidenceClient: ActionPlannerClientSchema("ActionPlanner.EvidenceClient").optional(),
+  })
+  .strict();
+
+const ToolLearningSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+    MaxRepairAttempts: z.number().int().min(0).optional(),
+    Client: ActionPlannerClientSchema("ToolLearning.Client").optional(),
+    Patterns: z
+      .object({
+        MinSupport: z.number().int().min(1).optional(),
+        MaxPromptPatterns: z.number().int().min(0).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const MemoryLearningSchema = z
+  .object({
+    Promotion: z
+      .object({
+        MinSupport: z.number().int().min(1).optional(),
+        MaxClusterSize: z.number().int().min(1).optional(),
+        MinSimilarity: z.number().min(-1).max(1).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const PresetsSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+    RootDir: z.string().min(1).optional(),
+    StateFile: z.string().min(1).optional(),
   })
   .strict();
 
@@ -225,6 +315,15 @@ const FrontendSchema = z
   })
   .strict();
 
+const ConfigStoreSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+    Kind: z.literal("sqlite").optional(),
+    DatabasePath: z.string().min(1).optional(),
+    MirrorJson: z.boolean().optional(),
+  })
+  .strict();
+
 const AgentDefaultsSchema = z
   .object({
     PluginRoots: z
@@ -241,12 +340,11 @@ const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
-    ModelProviderDefaults: ModelProviderRuntimeDefaultsSchema.optional(),
     Cli: AgentCliConfigSchema.optional(),
     ToolExecution: z
       .object({
         Mode: z.literal("Process").optional(),
-        TimeoutMs: z.number().int().min(1).optional(),
+        TimeoutSeconds: z.number().positive().optional(),
         MaxStdoutBytes: z.number().int().min(1).optional(),
         MaxStderrBytes: z.number().int().min(1).optional(),
       })
@@ -255,6 +353,10 @@ const AgentDefaultsSchema = z
     AgentLoop: AgentLoopSchema.optional(),
     AgentDelegation: AgentDelegationSchema.optional(),
     ToolSearch: ToolSearchSchema.optional(),
+    VectorModels: VectorModelsSchema.optional(),
+    ToolLearning: ToolLearningSchema.optional(),
+    MemoryLearning: MemoryLearningSchema.optional(),
+    Presets: PresetsSchema.optional(),
     Artifacts: ArtifactsSchema.optional(),
     Uploads: UploadsSchema.optional(),
     ActionPlanner: ActionPlannerSchema.optional(),
@@ -275,6 +377,7 @@ const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
+    ConfigStore: ConfigStoreSchema.optional(),
   })
   .strict();
 
@@ -309,7 +412,7 @@ export const AgentSystemConfigSchema = z
     ToolExecution: z
       .object({
         Mode: z.literal("Process").optional(),
-        TimeoutMs: z.number().int().min(1).optional(),
+        TimeoutSeconds: z.number().positive().optional(),
         MaxStdoutBytes: z.number().int().min(1).optional(),
         MaxStderrBytes: z.number().int().min(1).optional(),
       })
@@ -354,12 +457,17 @@ export const AgentSystemConfigSchema = z
       .strict()
       .optional(),
     DefaultModelProviderId: z.string().min(1).optional(),
-    ModelProviderDefaults: ModelProviderDefaultsSchema.optional(),
+    ModelProviderEndpoints: z.array(ModelProviderEndpointSchema).optional(),
     ModelProviders: z.array(ModelProviderSchema).min(1),
+    ModelGroups: z.array(ModelGroupSchema).optional(),
     Cli: AgentCliConfigSchema.optional(),
     AgentLoop: AgentLoopSchema.optional(),
     AgentDelegation: AgentDelegationSchema.optional(),
     ToolSearch: ToolSearchSchema.optional(),
+    VectorModels: VectorModelsSchema.optional(),
+    ToolLearning: ToolLearningSchema.optional(),
+    MemoryLearning: MemoryLearningSchema.optional(),
+    Presets: PresetsSchema.optional(),
     Artifacts: ArtifactsSchema.optional(),
     Uploads: UploadsSchema.optional(),
     ActionPlanner: ActionPlannerSchema.optional(),
@@ -380,5 +488,6 @@ export const AgentSystemConfigSchema = z
       })
       .strict()
       .optional(),
+    ConfigStore: ConfigStoreSchema.optional(),
   })
   .strict();

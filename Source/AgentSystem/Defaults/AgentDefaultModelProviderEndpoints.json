@@ -1,0 +1,44 @@
+[
+  {
+    "Id": "openai",
+    "Icon": "openai",
+    "Enabled": true,
+    "Kind": "OpenAICompatible",
+    "BaseUrl": "https://api.openai.com/v1",
+    "ApiKey": "",
+    "ApiVersion": "2023-06-01",
+    "Headers": {}
+  },
+  {
+    "Id": "deepseek",
+    "Icon": "deepseek",
+    "Enabled": true,
+    "Kind": "OpenAICompatible",
+    "BaseUrl": "https://api.deepseek.com/v1",
+    "ApiKey": "",
+    "ApiVersion": "2023-06-01",
+    "Headers": {}
+  },
+  {
+    "Id": "anthropic",
+    "Icon": "anthropic",
+    "Enabled": true,
+    "Kind": "OpenAICompatible",
+    "BaseUrl": "https://api.anthropic.com/v1",
+    "ApiKey": "",
+    "ApiVersion": "2023-06-01",
+    "Headers": {
+      "anthropic-version": "2023-06-01"
+    }
+  },
+  {
+    "Id": "gemini",
+    "Icon": "gemini",
+    "Enabled": true,
+    "Kind": "OpenAICompatible",
+    "BaseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "ApiKey": "",
+    "ApiVersion": "2023-06-01",
+    "Headers": {}
+  }
+]

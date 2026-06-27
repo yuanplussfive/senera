@@ -3,7 +3,10 @@ import path from "node:path";
 import { z } from "zod";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
+import {
+  toolProcessFailureResult,
+  toolProcessSuccessResult,
+} from "./AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -157,17 +160,7 @@ export const applyPatchHostTool: AgentHostToolHandler = async (args, context) =>
   try {
     throwIfAborted(context.signal);
     const result = await applyPatch(parsed.data, context.workspaceRoot, context.signal);
-    return {
-      response: {
-        protocol: AgentToolProcessProtocol,
-        ok: true,
-        result,
-      },
-      stdout: "",
-      stderr: "",
-      exitCode: null,
-      signal: null,
-    };
+    return toolProcessSuccessResult(result);
   } catch (error) {
     const normalized = normalizePatchError(error);
     return patchFailure({
@@ -587,17 +580,7 @@ function normalizePatchError(error: unknown): { message: string; diagnostics: st
 }
 
 function patchFailure(error: NonNullable<AgentToolProcessRunResult["response"]["error"]>): AgentToolProcessRunResult {
-  return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error,
-    },
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    signal: null,
-  };
+  return toolProcessFailureResult(error);
 }
 
 type StringKey<T> = `${Extract<T, string | number | boolean>}`;

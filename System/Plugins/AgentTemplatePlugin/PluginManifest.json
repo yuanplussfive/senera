@@ -32,6 +32,10 @@
       "Path": "./Templates/RootCommand.liquid"
     },
     {
+      "Name": "RoleplayPreset",
+      "Path": "./Templates/RoleplayPreset.liquid"
+    },
+    {
       "Name": "ToolCatalog",
       "Path": "./Templates/ToolCatalog.liquid"
     },

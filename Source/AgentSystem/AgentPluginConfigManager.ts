@@ -4,11 +4,9 @@ import {
   setPluginConfigEnabled,
   writePluginConfigToml,
 } from "./AgentPluginConfig.js";
-import type {
-  AgentPluginConfigSnapshotItem,
-  AgentSystemConfig,
-  LoadedPlugin,
-} from "./Types.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
+import type { AgentPluginConfigSnapshotItem } from "./Types/PluginConfigTypes.js";
+import type { LoadedPlugin } from "./Types/PluginRuntimeTypes.js";
 
 export interface AgentPluginConfigSnapshot {
   plugins: AgentPluginConfigSnapshotItem[];

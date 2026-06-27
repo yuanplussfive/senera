@@ -25,8 +25,10 @@ describe("resolveSocketPostIngestEffect", () => {
     expect(resolveSocketPostIngestEffect(event(EventKinds.ConfigReloaded))).toEqual({
       kind: "config_reloaded",
       requests: [
+        { type: "config.get" },
         { type: "model.list" },
         { type: "plugin.config.list" },
+        { type: "preset.list" },
       ],
     });
   });

@@ -1,6 +1,6 @@
 import MiniSearch from "minisearch";
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
-import type { ResolvedAgentToolSearchConfig } from "./Types.js";
+import type { ResolvedAgentToolSearchConfig } from "./Types/AgentConfigTypes.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import {
   AgentToolSearchDocumentBuilder,
@@ -46,25 +46,6 @@ export class AgentToolSearchIndex {
       storeFields: [...ToolSearchDocumentStoreFields],
       tokenize: (text) => this.tokenizer.tokenize(text),
       processTerm: (term) => term,
-      searchOptions: {
-        boost: {
-          toolName: 7,
-          title: 5,
-          tags: 7,
-          summary: 3,
-          whenToUse: 3,
-          examples: 4,
-          capabilityText: 5,
-          capabilityFacets: 6,
-          capabilityAvoid: 0.2,
-          capabilityRiskText: 0.3,
-          params: 2.5,
-          permissions: 1.5,
-        },
-        prefix: (term) => term.length >= 3,
-        fuzzy: (term) => term.length >= 5 ? 0.18 : false,
-        maxFuzzy: 2,
-      },
     });
     this.miniSearch.addAll(this.docs);
     this.rankPipeline = new AgentToolSearchRankPipeline(
@@ -78,8 +59,11 @@ export class AgentToolSearchIndex {
 
   search(options: AgentToolSearchOptions): AgentToolSearchResult[] {
     const ranked = this.rankPipeline.rank(options);
+    const memoryByTool = new Map(
+      (options.memoryEvidence ?? []).map((entry) => [entry.toolName, entry]),
+    );
     return ranked.entries.map((entry) =>
-      this.toResult(entry, ranked.rankers, ranked.queryTokens));
+      this.toResult(entry, ranked.rankers, ranked.queryTokens, memoryByTool));
   }
 
   getToolNames(): string[] {
@@ -94,6 +78,7 @@ export class AgentToolSearchIndex {
     entry: AgentToolSearchRankedEntry,
     rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,
     queryTokens: string[],
+    memoryByTool: ReadonlyMap<string, NonNullable<AgentToolSearchOptions["memoryEvidence"]>[number]>,
   ): AgentToolSearchResult {
     const doc = this.docsByTool.get(entry.toolName);
     if (!doc) {
@@ -121,6 +106,13 @@ export class AgentToolSearchIndex {
       ranks,
       matchedTerms: [...new Set(matchedTerms)],
       matchedCapabilities: matchToolCapabilities(doc, queryTokens, this.tokenizer),
+      learningSignals: (memoryByTool.get(entry.toolName)?.signals ?? []).map((signal) => ({
+        term: signal.term,
+        source: signal.source,
+        support: Number(signal.support.toFixed(6)),
+        confidence: Number(signal.confidence.toFixed(6)),
+        score: Number(signal.score.toFixed(6)),
+      })),
     };
   }
 }

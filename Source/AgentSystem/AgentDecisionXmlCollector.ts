@@ -18,7 +18,7 @@ import {
 import type { AgentTextBudgetEvaluator, AgentExceededTextBudgetSnapshot } from "./AgentTextBudget.js";
 import type { AgentXmlProtocolPolicy } from "./AgentXmlPolicy.js";
 import type { AgentXmlCandidateNormalizer } from "./AgentToolCallsXmlNormalizer.js";
-import type { RegisteredDecisionAction } from "./Types.js";
+import type { RegisteredDecisionAction } from "./Types/PluginRuntimeTypes.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "./AgentModelMetadata.js";
 import { AgentXmlErrorCodes } from "./AgentXmlStatus.js";
 import {

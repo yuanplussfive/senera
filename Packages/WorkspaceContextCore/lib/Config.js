@@ -3,13 +3,20 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-function readConfig(context, parseTomlConfig) {
+function readConfigFile(context, parseTomlConfig) {
   const configPath = path.join(context.pluginRoot, context.configFileName);
   if (!fs.existsSync(configPath)) {
     throw new Error(`缺少插件配置文件：${configPath}`);
   }
 
-  const parsed = parseTomlConfig(fs.readFileSync(configPath, "utf8"));
+  return readConfigDocument(parseTomlConfig(fs.readFileSync(configPath, "utf8")));
+}
+
+function readConfigFromToml(_context, parseTomlConfig, toml) {
+  return readConfigDocument(parseTomlConfig(toml));
+}
+
+function readConfigDocument(parsed) {
   const root = readRecord(parsed.fast_context, "fast_context");
   const index = readRecord(root.index, "fast_context.index");
   const discovery = readRecord(root.discovery, "fast_context.discovery");
@@ -18,6 +25,7 @@ function readConfig(context, parseTomlConfig) {
   const pathFuzzy = readRecord(root.path_fuzzy, "fast_context.path_fuzzy");
   const pathFuzzyWeights = readRecord(pathFuzzy.weights, "fast_context.path_fuzzy.weights");
   const read = readRecord(root.read, "fast_context.read");
+  const scout = readOptionalRecord(root.scout, "fast_context.scout");
   const messages = readRecord(root.messages, "fast_context.messages");
   const map = readRecord(root.map, "fast_context.map");
   const weights = readRecord(search.weights, "fast_context.search.weights");
@@ -89,6 +97,7 @@ function readConfig(context, parseTomlConfig) {
       directoryMaxChildren: readPositiveInteger(read.directory_max_children, "fast_context.read.directory_max_children"),
       directoryChildCharBudget: readPositiveInteger(read.directory_child_char_budget, "fast_context.read.directory_child_char_budget")
     },
+    scout: scout ? readScoutConfig(scout) : undefined,
     messages: {
       directoryGuidance: readStringArray(messages.directory_guidance, "fast_context.messages.directory_guidance"),
       workspaceMapGuidance: readStringArray(messages.workspace_map_guidance, "fast_context.messages.workspace_map_guidance"),
@@ -137,8 +146,154 @@ function readAnalyzers(value) {
   });
 }
 
+function readScoutConfig(scout) {
+  const scoutTokenizer = readRecord(scout.tokenizer, "fast_context.scout.tokenizer");
+  const scoutMarkerProfile = readRecord(scout.marker_profile, "fast_context.scout.marker_profile");
+  const scoutReferenceProfile = readRecord(scout.reference_profile, "fast_context.scout.reference_profile");
+  const scoutLlmPlanner = readRecord(scout.llm_planner, "fast_context.scout.llm_planner");
+  return {
+    maxQueries: readPositiveInteger(scout.max_queries, "fast_context.scout.max_queries"),
+    maxFiles: readPositiveInteger(scout.max_files, "fast_context.scout.max_files"),
+    maxResultsPerQuery: readPositiveInteger(scout.max_results_per_query, "fast_context.scout.max_results_per_query"),
+    contextLines: readNonNegativeInteger(scout.context_lines, "fast_context.scout.context_lines"),
+    readLineWindow: readPositiveInteger(scout.read_line_window, "fast_context.scout.read_line_window"),
+    bootstrapMarkers: readBoolean(scout.bootstrap_markers, "fast_context.scout.bootstrap_markers"),
+    refreshIndex: readBoolean(scout.refresh_index, "fast_context.scout.refresh_index"),
+    querySources: readEnumArray(scout.query_sources, "fast_context.scout.query_sources", [
+      "question",
+      "hints",
+      "question_terms",
+      "marker_files"
+    ]),
+    tokenizer: {
+      separators: readStringArray(scoutTokenizer.separators, "fast_context.scout.tokenizer.separators"),
+      minLength: readPositiveInteger(scoutTokenizer.min_length, "fast_context.scout.tokenizer.min_length"),
+      maxTerms: readPositiveInteger(scoutTokenizer.max_terms, "fast_context.scout.tokenizer.max_terms"),
+      caseSensitive: readBoolean(scoutTokenizer.case_sensitive, "fast_context.scout.tokenizer.case_sensitive")
+    },
+    markerProfile: {
+      baseScore: readNonNegativeNumber(scoutMarkerProfile.base_score, "fast_context.scout.marker_profile.base_score"),
+      pathMatchThreshold: readNonNegativeNumber(
+        scoutMarkerProfile.path_match_threshold,
+        "fast_context.scout.marker_profile.path_match_threshold"
+      ),
+      pathMatchWeight: readPositiveNumber(
+        scoutMarkerProfile.path_match_weight,
+        "fast_context.scout.marker_profile.path_match_weight"
+      ),
+      distinctTermWeight: readPositiveNumber(
+        scoutMarkerProfile.distinct_term_weight,
+        "fast_context.scout.marker_profile.distinct_term_weight"
+      ),
+      lineMatchWeight: readPositiveNumber(
+        scoutMarkerProfile.line_match_weight,
+        "fast_context.scout.marker_profile.line_match_weight"
+      ),
+      maxSnippets: readPositiveInteger(scoutMarkerProfile.max_snippets, "fast_context.scout.marker_profile.max_snippets"),
+      sourceReason: readNonEmptyString(scoutMarkerProfile.source_reason, "fast_context.scout.marker_profile.source_reason"),
+      pathReason: readNonEmptyString(scoutMarkerProfile.path_reason, "fast_context.scout.marker_profile.path_reason"),
+      contentReason: readNonEmptyString(scoutMarkerProfile.content_reason, "fast_context.scout.marker_profile.content_reason"),
+      pathTargets: readScoutPathTargets(scoutMarkerProfile.path_targets)
+    },
+    referenceProfile: {
+      enabled: readBoolean(scoutReferenceProfile.enabled, "fast_context.scout.reference_profile.enabled"),
+      score: readPositiveNumber(scoutReferenceProfile.score, "fast_context.scout.reference_profile.score"),
+      maxScorePerPath: readPositiveNumber(
+        scoutReferenceProfile.max_score_per_path,
+        "fast_context.scout.reference_profile.max_score_per_path"
+      ),
+      maxReferences: readPositiveInteger(scoutReferenceProfile.max_references, "fast_context.scout.reference_profile.max_references"),
+      maxSourceSnippets: readPositiveInteger(
+        scoutReferenceProfile.max_source_snippets,
+        "fast_context.scout.reference_profile.max_source_snippets"
+      ),
+      minLength: readPositiveInteger(scoutReferenceProfile.min_length, "fast_context.scout.reference_profile.min_length"),
+      delimiters: readStringArray(scoutReferenceProfile.delimiters, "fast_context.scout.reference_profile.delimiters"),
+      trimCharacters: readStringArray(scoutReferenceProfile.trim_characters, "fast_context.scout.reference_profile.trim_characters"),
+      reason: readNonEmptyString(scoutReferenceProfile.reason, "fast_context.scout.reference_profile.reason")
+    },
+    llmPlanner: {
+      enabled: readBoolean(scoutLlmPlanner.enabled, "fast_context.scout.llm_planner.enabled"),
+      mode: readEnum(scoutLlmPlanner.mode, "fast_context.scout.llm_planner.mode", [
+        "deterministic",
+        "llm"
+      ]),
+      maxRounds: readPositiveInteger(scoutLlmPlanner.max_rounds, "fast_context.scout.llm_planner.max_rounds"),
+      maxCommandsPerRound: readPositiveInteger(
+        scoutLlmPlanner.max_commands_per_round,
+        "fast_context.scout.llm_planner.max_commands_per_round"
+      ),
+      commandTypes: readEnumArray(scoutLlmPlanner.command_types, "fast_context.scout.llm_planner.command_types", [
+        "rg",
+        "readfile",
+        "tree",
+        "glob"
+      ]),
+      commandContextLines: readNonNegativeInteger(
+        scoutLlmPlanner.command_context_lines,
+        "fast_context.scout.llm_planner.command_context_lines"
+      ),
+      maxCommandResults: readPositiveInteger(
+        scoutLlmPlanner.max_command_results,
+        "fast_context.scout.llm_planner.max_command_results"
+      ),
+      maxObservationChars: readPositiveInteger(
+        scoutLlmPlanner.max_observation_chars,
+        "fast_context.scout.llm_planner.max_observation_chars"
+      ),
+      maxCandidateSummaries: readPositiveInteger(
+        scoutLlmPlanner.max_candidate_summaries,
+        "fast_context.scout.llm_planner.max_candidate_summaries"
+      ),
+      readLineWindow: readPositiveInteger(
+        scoutLlmPlanner.read_line_window,
+        "fast_context.scout.llm_planner.read_line_window"
+      ),
+      treeDepth: readPositiveInteger(scoutLlmPlanner.tree_depth, "fast_context.scout.llm_planner.tree_depth"),
+      maxTreeChildren: readPositiveInteger(
+        scoutLlmPlanner.max_tree_children,
+        "fast_context.scout.llm_planner.max_tree_children"
+      ),
+      commandCandidateScore: readPositiveNumber(
+        scoutLlmPlanner.command_candidate_score,
+        "fast_context.scout.llm_planner.command_candidate_score"
+      ),
+      finalCandidateScore: readPositiveNumber(
+        scoutLlmPlanner.final_candidate_score,
+        "fast_context.scout.llm_planner.final_candidate_score"
+      )
+    }
+  };
+}
+
+function readScoutPathTargets(value) {
+  if (!Array.isArray(value)) {
+    throw new Error("fast_context.scout.marker_profile.path_targets 必须是 TOML array-of-tables。");
+  }
+  const targets = value.map((entry, index) => {
+    const pointer = `fast_context.scout.marker_profile.path_targets[${index}]`;
+    const record = readRecord(entry, pointer);
+    return {
+      name: readNonEmptyString(record.name, `${pointer}.name`),
+      selector: readEnum(record.selector, `${pointer}.selector`, ["basename", "path"]),
+      weight: readPositiveNumber(record.weight, `${pointer}.weight`)
+    };
+  });
+  if (targets.length === 0) {
+    throw new Error("fast_context.scout.marker_profile.path_targets 不能为空。");
+  }
+  return targets;
+}
+
 function secondsToMilliseconds(seconds) {
   return Math.max(1, Math.round(seconds * 1000));
+}
+
+function readOptionalRecord(value, pointer) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return readRecord(value, pointer);
 }
 
 function readRecord(value, pointer) {
@@ -224,5 +379,7 @@ function readEnumArray(value, pointer, allowed) {
 }
 
 module.exports = {
-  readConfig: (context, parseTomlConfig) => validateConfig(readConfig(context, parseTomlConfig))
+  readConfig: (context, parseTomlConfig) => validateConfig(readConfigFile(context, parseTomlConfig)),
+  readConfigFromToml: (context, parseTomlConfig, toml) =>
+    validateConfig(readConfigFromToml(context, parseTomlConfig, toml))
 };

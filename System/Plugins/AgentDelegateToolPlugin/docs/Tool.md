@@ -13,7 +13,7 @@
 - `workflow`：已注册 workflow 名。
 - `objective`：可选，本轮要达成的目标。
 - `executionMode`：`plan` 只生成计划；`run` 执行子代理 loop 并按 merge policy 合并结果。
-- `evidenceRefs.item`：可选，当前轮已可见的证据引用。
+- `evidenceUris.item`：可选，当前轮已可见的证据引用。
 - `artifactUris.item`：可选，当前轮已可见的 artifact URI。
 
 ## 输出

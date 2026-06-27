@@ -11,7 +11,7 @@
     "Cli": {
       "Connection": {
         "Url": "ws://127.0.0.1:8787",
-        "TimeoutMs": 180000
+        "TimeoutSeconds": 180
       },
       "Display": {
         "EventDisplayMode": "activity",
@@ -30,18 +30,11 @@
     },
     "ToolExecution": {
       "Mode": "Process",
-      "TimeoutMs": 120000,
+      "TimeoutSeconds": 120,
       "MaxStdoutBytes": 1000000,
       "MaxStderrBytes": 1000000
     },
     "ToolSearch": {
-      "Dynamic": {
-        "BootstrapTools": [
-          "ToolSearchTool",
-          "AskUserTool",
-          "ArtifactMemoryReadTool"
-        ]
-      },
       "Memory": {
         "Kind": "sqlite",
         "DatabasePath": ".senera/ToolSearch.sqlite",
@@ -60,6 +53,40 @@
         "ScoreScale": 0.018,
         "FeatureWeights": {}
       }
+    },
+    "VectorModels": {
+      "Embedding": {
+        "Enabled": true,
+        "ProviderId": "main",
+        "Model": "qwen3-embedding-0.6b",
+        "TimeoutSeconds": 20,
+        "MaxNetworkRetries": 1,
+        "Dimensions": -1,
+        "BatchSize": 64,
+        "InputMaxChars": 12000
+      },
+      "Rerank": {
+        "Enabled": true,
+        "ProviderId": "main",
+        "Model": "qwen3-reranker-0.6b",
+        "TimeoutSeconds": 20,
+        "MaxNetworkRetries": 1,
+        "EndpointPath": "/rerank",
+        "CandidateLimit": 32,
+        "TopK": 16
+      }
+    },
+    "MemoryLearning": {
+      "Promotion": {
+        "MinSupport": 2,
+        "MaxClusterSize": 8,
+        "MinSimilarity": 0.78
+      }
+    },
+    "Presets": {
+      "Enabled": true,
+      "RootDir": ".senera/presets",
+      "StateFile": ".senera/presets-state.json"
     },
     "Artifacts": {
       "RootDir": ".senera/artifacts/runs",
@@ -93,7 +120,7 @@
       "Enabled": true,
       "MaxRepairAttempts": 1,
       "Client": {
-        "Provider": "auto",
+        "Provider": "openai-generic",
         "Temperature": 0.1,
         "MaxTokens": -1
       }
@@ -110,18 +137,21 @@
     }
   },
   "DefaultModelProviderId": "main",
-  "ModelProviderDefaults": {
-    "BaseUrl": "https://api.openai.com/v1",
-    "ApiKey": "YOUR_API_KEY",
-    "MaxOutputTokens": 4096
-  },
+  "ModelProviderEndpoints": [
+    {
+        "Id": "main",
+        "BaseUrl": "http://localhost:3000/v1",
+        "ApiKey": "YOUR_API_KEY"
+    }
+  ],
   "ModelProviders": [
     {
       "Id": "main",
-      "Title": "Main Model",
-      "Icon": "openai",
-      "Endpoint": "Responses",
-      "Model": "gpt-5.5"
+      "ProviderId": "main",
+      "Icon": "mistral",
+      "Endpoint": "ChatCompletions",
+      "Model": "mistral-large-latest",
+      "MaxOutputTokens": 4096
     }
   ]
 }

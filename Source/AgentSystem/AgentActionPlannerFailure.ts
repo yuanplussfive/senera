@@ -9,6 +9,10 @@ import {
   BamlValidationError,
 } from "./BamlClient/baml_client/index.js";
 import { AgentActionPlannerValidationError } from "./AgentActionPlannerSchema.js";
+import {
+  AgentFastContextScoutPlannerValidationError,
+} from "./AgentFastContextScoutPlannerSchema.js";
+import { AgentBamlStructuredOutputError } from "./AgentBamlStructuredOutputRunner.js";
 
 export interface RawActionPlanningFailure {
   error: unknown;
@@ -17,6 +21,14 @@ export interface RawActionPlanningFailure {
 
 export function issueMessages(error: unknown): string[] {
   if (error instanceof AgentActionPlannerValidationError) {
+    return error.issues;
+  }
+
+  if (error instanceof AgentFastContextScoutPlannerValidationError) {
+    return error.issues;
+  }
+
+  if (error instanceof AgentBamlStructuredOutputError) {
     return error.issues;
   }
 
@@ -32,6 +44,14 @@ export function stringifyIssueValue(error: unknown): string {
     return JSON.stringify(error.invalidDecision, null, 2);
   }
 
+  if (error instanceof AgentFastContextScoutPlannerValidationError) {
+    return JSON.stringify(error.invalidDecision, null, 2);
+  }
+
+  if (error instanceof AgentBamlStructuredOutputError) {
+    return error.rawOutput ?? JSON.stringify(error.attempts, null, 2);
+  }
+
   if (error instanceof z.ZodError) {
     return JSON.stringify(error.issues, null, 2);
   }
@@ -45,9 +65,13 @@ export function stringifyIssueValue(error: unknown): string {
 
 export function normalizePlanningFailure(error: unknown): RawActionPlanningFailure {
   return error instanceof AgentActionPlannerValidationError
+    || error instanceof AgentFastContextScoutPlannerValidationError
+    || error instanceof AgentBamlStructuredOutputError
     ? {
         error,
-        invalidOutput: error.invalidDecision,
+        invalidOutput: error instanceof AgentBamlStructuredOutputError
+          ? error.rawOutput
+          : error.invalidDecision,
       }
     : {
         error,
@@ -56,6 +80,8 @@ export function normalizePlanningFailure(error: unknown): RawActionPlanningFailu
 
 export function isRepairablePlanningFailure(error: unknown): boolean {
   return error instanceof AgentActionPlannerValidationError
+    || error instanceof AgentFastContextScoutPlannerValidationError
+    || error instanceof AgentBamlStructuredOutputError
     || error instanceof z.ZodError
     || error instanceof BamlValidationError;
 }
@@ -78,14 +104,34 @@ export function summarizePlannerFailure(error: unknown): string {
   }
 
   if (error instanceof BamlValidationError) {
-    return "action_planner_invalid_structured_output";
+    return withPlannerDetails("action_planner_invalid_structured_output", error.message);
   }
 
-  if (error instanceof AgentActionPlannerValidationError || error instanceof z.ZodError) {
-    return "action_planner_invalid_decision";
+  if (error instanceof AgentBamlStructuredOutputError) {
+    return withPlannerDetails("action_planner_invalid_structured_output", error.issues);
+  }
+
+  if (
+    error instanceof AgentActionPlannerValidationError
+    || error instanceof AgentFastContextScoutPlannerValidationError
+    || error instanceof z.ZodError
+  ) {
+    return withPlannerDetails("action_planner_invalid_decision", issueMessages(error));
   }
 
   return error instanceof Error ? truncateOneLine(error.message, 160) : truncateOneLine(String(error), 160);
+}
+
+function withPlannerDetails(code: string, details: string | readonly string[]): string {
+  const values = Array.isArray(details) ? details : [details];
+  const summary = values
+    .map(collapseWhitespace)
+    .filter(Boolean)
+    .slice(0, 6)
+    .join("; ");
+  return summary
+    ? `${code}: ${truncateOneLine(summary, 520)}`
+    : code;
 }
 
 function truncateOneLine(value: string, maxLength: number): string {

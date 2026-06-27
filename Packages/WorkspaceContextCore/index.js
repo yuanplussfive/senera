@@ -10,7 +10,7 @@ const {
   resolveWorkspacePath,
   toWorkspacePath
 } = require("./lib/Context.js");
-const { readConfig } = require("./lib/Config.js");
+const { readConfig, readConfigFromToml } = require("./lib/Config.js");
 const {
   configuredSearchRoots,
   listAvailableRoots,
@@ -28,6 +28,7 @@ const {
   searchIndexedDocuments,
   searchIndexedSymbols
 } = require("./lib/SqliteIndex.js");
+const { scoutWorkspace: runScoutWorkspace } = require("./lib/Scout.js");
 
 async function readFileSegment(context, config, args) {
   const absolutePath = await resolveExistingWorkspacePath(context, args.path, fsp);
@@ -484,6 +485,13 @@ async function searchResultEnvelope(context, config, query, results, prepared, s
   };
 }
 
+async function scoutWorkspace(context, config, args, deps) {
+  return runScoutWorkspace(context, config, args, {
+    ...deps,
+    searchHybrid
+  });
+}
+
 function emptyIndexStats() {
   return {
     files: 0,
@@ -507,9 +515,11 @@ function unique(values) {
 module.exports = {
   createContext,
   readConfig,
+  readConfigFromToml,
   readFileSegment,
   searchWorkspace,
   searchHybrid,
+  scoutWorkspace,
   searchIndex,
   searchSymbols,
   refreshIndex,

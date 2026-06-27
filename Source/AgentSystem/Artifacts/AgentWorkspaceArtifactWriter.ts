@@ -3,11 +3,13 @@ import path from "node:path";
 import { createTwoFilesPatch } from "diff";
 import type {
   ToolArtifactWorkspaceManifest,
+} from "../Types/PluginManifestTypes.js";
+import type {
   ToolWorkspaceCaptureResult,
   ToolWorkspaceChange,
   ToolWorkspaceFileSnapshot,
   ToolWorkspaceSnapshot,
-} from "../Types.js";
+} from "../Types/ToolRuntimeTypes.js";
 import {
   assertInsideRoot,
   toPosixPath,

@@ -13,20 +13,6 @@
       "Cwd": "."
     }
   },
-  "Discovery": {
-    "Tags": [
-      "context",
-      "上下文",
-      "read",
-      "读取",
-      "workspace",
-      "工作区",
-      "file",
-      "文件",
-      "directory",
-      "目录"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 69
@@ -77,7 +63,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "R",
               "Locator": "{% if startLine %}{{ path }}:{{ startLine }}-{{ endLine }}{% else %}{{ path }}{% endif %}",
               "Display": "workspace {{ kind }} read: {{ path }}",
               "Label": "{{ path }}",
@@ -123,8 +108,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} read {{ e.slots.kind }} {{ e.locator }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} workspace read\n  kind: {{ e.slots.kind }}\n  locator: {{ e.locator }}{% if e.slots.totalLines %}\n  totalLines: {{ e.slots.totalLines }}{% endif %}{% if e.slots.childCount %}\n  childCount: {{ e.slots.childCount }}{% endif %}\n  truncated: {{ e.slots.truncated }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} read {{ e.slots.kind }} {{ e.locator }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace read\n  kind: {{ e.slots.kind }}\n  locator: {{ e.locator }}{% if e.slots.totalLines %}\n  totalLines: {{ e.slots.totalLines }}{% endif %}{% if e.slots.childCount %}\n  childCount: {{ e.slots.childCount }}{% endif %}\n  truncated: {{ e.slots.truncated }}\n{% endfor %}"
             }
           }
         ],
@@ -135,19 +120,12 @@
       },
       "Search": {
         "Summary": "读取工作区内指定文件片段，目录路径返回轻量子路径摘要。",
-        "Keywords": [
-          "read",
-          "file",
-          "open",
-          "lines",
-          "directory",
-          "workspace",
-          "读取",
-          "查看",
-          "文件",
-          "源码",
-          "行号",
-          "目录"
+        "Tags": [
+          "文件读取",
+          "源码查看",
+          "目录浏览",
+          "行号定位",
+          "工作区上下文"
         ],
         "Capabilities": [
           {
@@ -188,13 +166,6 @@
               "open file",
               "read lines"
             ],
-            "Examples": [
-              "读取 README.md 前 100 行",
-              "read package.json"
-            ],
-            "Avoid": [
-              "不知道路径时先用工作区地图或搜索工具定位"
-            ],
             "Risk": {
               "SideEffect": "none",
               "Permission": "read"
@@ -205,10 +176,10 @@
           "已知道具体路径，需要查看文件内容、行号片段或目录摘要时使用。"
         ],
         "Examples": [
-          "读取 README.md 前 100 行",
-          "看 Source/AgentSystem/AgentLoop.ts",
-          "read package.json",
-          "查看 Frontend/src 目录"
+          "README.md 前 100 行",
+          "Source AgentSystem AgentLoop.ts",
+          "package.json 文件读取",
+          "Frontend src 目录列表"
         ],
         "Avoid": [
           "不知道路径时先用工作区地图或搜索工具定位。"

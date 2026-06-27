@@ -2,7 +2,6 @@ import type { resolveModelProviderConfig } from "./AgentDefaults.js";
 
 export interface AgentModelProviderMetadata {
   id: string;
-  title?: string;
   kind: string;
   endpoint: string;
   baseUrl: string;
@@ -36,7 +35,6 @@ export function createModelProviderMetadata(
 ): AgentModelProviderMetadata {
   return {
     id: config.Id,
-    title: config.Title,
     kind: config.Kind,
     endpoint: config.Endpoint,
     baseUrl: config.BaseUrl,

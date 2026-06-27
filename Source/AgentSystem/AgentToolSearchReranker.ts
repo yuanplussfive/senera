@@ -1,4 +1,4 @@
-import type { ResolvedAgentToolSearchConfig } from "./Types.js";
+import type { ResolvedAgentToolSearchConfig } from "./Types/AgentConfigTypes.js";
 import type { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
 
@@ -14,7 +14,6 @@ export interface AgentToolSearchRerankDocument {
   avoid: string;
   capabilityText: string;
   capabilityFacets: string;
-  capabilityAvoid: string;
   capabilityRiskText: string;
   params: string;
   permissions: string;
@@ -75,7 +74,6 @@ export const AgentToolSearchRerankDefaultWeights = {
   "field.params": 0.13,
   "field.permissions": 0.04,
   "field.avoid": -0.32,
-  "field.capability_avoid": -0.18,
   "risk.side_effect": -0.05,
   "planner_tags.coverage": 0.14,
   "planner_tags.tags": 0.24,
@@ -170,12 +168,6 @@ export class AgentToolSearchReranker<RankerName extends string> {
       ),
       ...fieldFeatures,
       "field.avoid": this.informationOverlap(doc.avoid, queryTokens, queryInformation, context),
-      "field.capability_avoid": this.informationOverlap(
-        doc.capabilityAvoid,
-        queryTokens,
-        queryInformation,
-        context,
-      ),
       "risk.side_effect": boundedLog(this.tokenizer.tokenize(doc.capabilityRiskText).length),
       "planner_tags.coverage": this.coverage(doc.coreText, plannerTagTokens),
       "planner_tags.tags": this.informationOverlap(

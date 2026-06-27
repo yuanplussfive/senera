@@ -4,13 +4,11 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { documentHostTool } from "../Source/AgentSystem/AgentDocumentRuntime.js";
 import { AgentUploadStore } from "../Source/AgentSystem/Uploads/AgentUploadStore.js";
-import type {
-  AgentSystemConfig,
-  RegisteredTool,
-} from "../Source/AgentSystem/Types.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
 
 const workspaceRoot = process.cwd();
-const pluginRoot = path.join(workspaceRoot, "System", "Plugins", "AgentDocumentPlugin");
+const pluginRoot = path.join(workspaceRoot, "Plugins", "AgentDocumentPlugin");
 const pluginConfigPath = path.join(pluginRoot, "PluginConfig.toml");
 const uploadRootDir = ".senera/tmp/document-tool-runtime/uploads";
 const content = [

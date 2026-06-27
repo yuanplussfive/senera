@@ -4,7 +4,10 @@ import kill from "tree-kill";
 import { z } from "zod";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
+import {
+  createToolProcessSuccessResponse,
+  toolProcessFailureResult,
+} from "./AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -218,18 +221,14 @@ function runShellCommand(
       const stdout = Buffer.concat(stdoutChunks).toString("utf8");
       const stderr = Buffer.concat(stderrChunks).toString("utf8");
       settle({
-        response: {
-          protocol: AgentToolProcessProtocol,
-          ok: true,
-          result: {
+        response: createToolProcessSuccessResponse({
             command: request.command,
             cwd: options.cwd,
             exitCode,
             signal,
             stdout,
             stderr,
-          },
-        },
+        }),
         stdout,
         stderr,
         exitCode,
@@ -280,15 +279,5 @@ function killProcessTree(pid: number | undefined): void {
 }
 
 function shellFailure(error: NonNullable<AgentToolProcessRunResult["response"]["error"]>): AgentToolProcessRunResult {
-  return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error,
-    },
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    signal: null,
-  };
+  return toolProcessFailureResult(error);
 }

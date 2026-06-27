@@ -22,6 +22,8 @@ export {
   DialogTrigger,
 } from "./Dialog";
 export type { DialogActionButtonProps, DialogActionsProps, DialogActionVariant } from "./Dialog";
+export { FileDropZone } from "./FileDropZone";
+export type { FileDropZoneAccept, FileDropZoneState } from "./FileDropZone";
 export {
   DropdownMenu,
   DropdownMenuCheckboxItem,

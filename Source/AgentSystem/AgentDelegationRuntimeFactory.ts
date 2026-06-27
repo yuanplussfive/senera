@@ -12,7 +12,7 @@ import {
 import { AgentDelegationExecutor } from "./AgentDelegationExecutor.js";
 import { AgentDelegationWorkflowRunner } from "./AgentDelegationWorkflowRunner.js";
 import { AgentMergePolicyExecutor } from "./AgentMergePolicyExecutor.js";
-import type { AgentSystemConfig } from "./Types.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
 
 export interface AgentDelegationRuntimeFactoryOptions {
   workspaceRoot: string;

@@ -9,7 +9,7 @@ import type { AgentExecutionResult } from "./AgentDecisionExecutor.js";
 import type { AgentProjectedTerminalResult } from "./AgentExecutionProjector.js";
 import type { AgentRetryInstruction } from "./AgentRetryableError.js";
 import type { SanitizedDecisionXml } from "./AgentDecisionXmlSanitizer.js";
-import type { AgentDecision } from "./Types.js";
+import type { AgentDecision } from "./Types/ToolRuntimeTypes.js";
 import {
   agentActionCapabilityNeeds,
   agentActionInstruction,
@@ -21,7 +21,8 @@ import type { AgentActionPlannerStageEvent } from "./AgentActionPlannerTelemetry
 import type { AgentRootCommand } from "./AgentRootCommand.js";
 import type { AgentActivatedSkill } from "./AgentSkillActivation.js";
 import type { AgentCompletionGateDecision } from "./AgentCompletionGate.js";
-import type { TaskFrame } from "./BamlClient/baml_client/types.js";
+import type { TaskFrame, TurnUnderstanding } from "./BamlClient/baml_client/types.js";
+import type { AgentInteractionRouteResult } from "./AgentInteractionRouter.js";
 
 export class AgentLoopEventFactory {
   runStarted(requestId: string, input: string): AgentDomainEvent {
@@ -123,6 +124,37 @@ export class AgentLoopEventFactory {
     ];
   }
 
+  interactionRouted(
+    requestId: string,
+    step: number,
+    route: AgentInteractionRouteResult,
+    loadedToolNames: "all" | string[],
+    rootCommand?: AgentRootCommand,
+  ): AgentDomainEvent[] {
+    return [
+      {
+        kind: AgentEventKinds.InteractionRouted,
+        context: {
+          requestId,
+          step,
+        },
+        data: {
+          mode: route.mode,
+          objective: route.objective,
+          needsFreshEvidence: route.needsFreshEvidence,
+          needsWorkspaceRead: route.needsWorkspaceRead,
+          needsSideEffect: route.needsSideEffect,
+          risk: route.risk,
+          preferredTools: [...route.preferredTools],
+          discoveryQueries: [...route.discoveryQueries],
+          reason: route.reason,
+          loadedTools: loadedToolNames === "all" ? "all" : [...loadedToolNames],
+          expectedOutputMode: rootCommand?.outputMode,
+        },
+      },
+    ];
+  }
+
   actionPlannerStage(
     requestId: string,
     step: number,
@@ -150,6 +182,9 @@ export class AgentLoopEventFactory {
             stage: event.stage,
             selectedAction: event.selectedAction,
             repaired: event.repaired,
+            turnUnderstanding: event.turnUnderstanding
+              ? projectTurnUnderstandingForEvent(event.turnUnderstanding)
+              : undefined,
             taskFrame: event.taskFrame
               ? projectTaskFrameForEvent(event.taskFrame)
               : undefined,
@@ -298,6 +333,11 @@ export class AgentLoopEventFactory {
     requestId: string,
     step: number,
     toolNames: string[],
+    metadata: {
+      status?: "planned" | "discovery_escalated" | "blocked";
+      reason?: string;
+      issues?: readonly string[];
+    } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallsPlanned,
@@ -308,6 +348,9 @@ export class AgentLoopEventFactory {
       data: {
         toolCount: toolNames.length,
         tools: toolNames,
+        status: metadata.status ?? "planned",
+        reason: metadata.reason,
+        issues: metadata.issues ? [...metadata.issues] : undefined,
       },
     };
   }
@@ -449,6 +492,16 @@ function projectTaskFrameForEvent(taskFrame: TaskFrame) {
     nextStepPurpose: taskFrame.nextStepPurpose,
     completionCriteria: taskFrame.completionCriteria,
     notes: taskFrame.notes,
+  };
+}
+
+function projectTurnUnderstandingForEvent(turnUnderstanding: TurnUnderstanding) {
+  return {
+    rawUserTurn: turnUnderstanding.rawUserTurn,
+    standaloneRequest: turnUnderstanding.standaloneRequest,
+    contextMode: turnUnderstanding.contextMode,
+    contextBasis: turnUnderstanding.contextBasis,
+    missingContext: turnUnderstanding.missingContext,
   };
 }
 

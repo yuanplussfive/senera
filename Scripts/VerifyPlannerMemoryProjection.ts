@@ -7,11 +7,13 @@ import {
   createToolEvidenceMemoryEntries,
 } from "../Source/AgentSystem/AgentPlannerMemory.js";
 import { AgentToolResultXmlRenderer } from "../Source/AgentSystem/AgentToolResultXmlRenderer.js";
-import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types.js";
+import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 
 const previousRequestId = "request_weather_1";
 const currentRequestId = "request_weather_2";
 const timestamp = "2026-06-11T00:00:00.000Z";
+const previousWeatherEvidenceUri = "senera://evidence/ev_111111111111111111111111";
+const currentWeatherEvidenceUri = "senera://evidence/ev_222222222222222222222222";
 const conversationProjector = new AgentConversationProjector();
 const conversationPolicy = new AgentConversationPolicy();
 const contextBuilder = new AgentActionPlannerContextBuilder();
@@ -39,10 +41,10 @@ const weatherResult: ExecutedToolCallResult = {
     relativePath: ".senera/artifacts/request_weather_1/step_001",
     manifestPath: "E:\\senera\\.senera\\artifacts\\request_weather_1\\step_001\\artifact.json",
     files: {},
-    summary: "WTH1 forecast for Shanghai, China on 2026-06-12: Cloudy",
+    summary: "forecast for Shanghai, China on 2026-06-12: Cloudy",
     evidence: [{
       key: "weather.forecast.day:Shanghai, China:2026-06-12",
-      ref: "WTH1",
+      evidenceUri: previousWeatherEvidenceUri,
       kind: "weather_forecast_day",
       locator: "Shanghai, China @ 2026-06-12",
       display: "forecast for Shanghai, China on 2026-06-12: Cloudy",
@@ -71,6 +73,9 @@ const weatherResult: ExecutedToolCallResult = {
 };
 
 const plannerInputFixture = {
+  currentUserTurn: {
+    content: "查明天上海天气",
+  },
   runState: {
     currentStep: 1,
     dynamicTools: true,
@@ -90,12 +95,13 @@ const plannerInputFixture = {
     role: "user",
     kind: "user_message",
     content: "查明天上海天气",
-    evidenceRefs: [],
+    evidenceUris: [],
     artifactUris: [],
   }],
   evidenceMemory: [],
   evidenceState: [],
   plannerJournal: [],
+  toolTagCatalog: [],
   compactToolCatalog: [],
   toolCatalog: [],
   activeSkills: [],
@@ -179,7 +185,7 @@ const input = contextBuilder.buildInput({
 });
 
 assert.equal(input.evidenceMemory.length, 1);
-assert.equal(input.evidenceMemory[0]?.evidenceRef, "WTH1");
+assert.equal(input.evidenceMemory[0]?.evidenceUri, previousWeatherEvidenceUri);
 assert.equal(input.evidenceMemory[0]?.kind, "weather_forecast_day");
 assert.equal(input.evidenceMemory[0]?.locator, "Shanghai, China @ 2026-06-12");
 assert.equal(input.evidenceMemory[0]?.facts.some((fact) => fact.name === "date" && fact.value === "2026-06-12"), true);
@@ -190,9 +196,9 @@ assert.equal(JSON.stringify(input.evidenceMemory).includes("\"slots\""), false);
 assert.equal(JSON.stringify(input.evidenceMemory).includes("\"key\""), false);
 assert.equal(input.plannerJournal.length, 1);
 assert.equal(input.plannerJournal[0]?.selectedAction, "use_tools");
-assert.equal(input.timeline.some((turn) => turn.content.includes("WTH1")), false);
+assert.equal(input.timeline.some((turn) => turn.content.includes(previousWeatherEvidenceUri)), false);
 assert.equal(conversationPolicy.materialize(historyEntries).some((message) => message.content.includes("tool.evidence_memory")), false);
-assert.equal(plannerTimelineMessages.some((message) => message.content.includes("WTH1")), false);
+assert.equal(plannerTimelineMessages.some((message) => message.content.includes(previousWeatherEvidenceUri)), false);
 
 const mainProgramHistoryMessages = conversationPolicy.materialize(historyEntries, {
   toolResultsScope: {
@@ -204,7 +210,7 @@ const mainProgramHistoryMessages = conversationPolicy.materialize(historyEntries
 });
 const mainProgramHistoryText = mainProgramHistoryMessages.map((message) => message.content).join("\n");
 assert.equal(mainProgramHistoryText.includes("tool_evidence_memory"), true);
-assert.equal(mainProgramHistoryText.includes("WTH1"), true);
+assert.equal(mainProgramHistoryText.includes(previousWeatherEvidenceUri), true);
 assert.equal(mainProgramHistoryText.includes("forecast for Shanghai, China on 2026-06-12: Cloudy"), true);
 assert.equal(mainProgramHistoryText.includes("call-1"), false);
 assert.equal(mainProgramHistoryText.includes("WeatherAPI"), false);
@@ -220,7 +226,7 @@ const currentWeatherResult: ExecutedToolCallResult = {
         evidence: weatherResult.artifact.evidence.map((entry) => ({
           ...entry,
           key: "weather.forecast.day:Shanghai, China:2026-06-13",
-          ref: "WTH2",
+          evidenceUri: currentWeatherEvidenceUri,
           locator: "Shanghai, China @ 2026-06-13",
           display: "forecast for Shanghai, China on 2026-06-13: Rain",
           label: "Shanghai forecast 2026-06-13",
@@ -242,7 +248,7 @@ const currentWeatherResult: ExecutedToolCallResult = {
             ),
           },
         })),
-        summary: "WTH2 forecast for Shanghai, China on 2026-06-13: Rain",
+        summary: "forecast for Shanghai, China on 2026-06-13: Rain",
       }
     : undefined,
 };
@@ -290,7 +296,7 @@ const currentRunInput = contextBuilder.buildInput({
   },
   toolCatalog: [],
 });
-assert.equal(currentRunInput.timeline.some((turn) => turn.content.includes("WTH1")), false);
-assert.equal(currentRunInput.timeline.some((turn) => turn.content.includes("WTH2")), true);
+assert.equal(currentRunInput.timeline.some((turn) => turn.content.includes(previousWeatherEvidenceUri)), false);
+assert.equal(currentRunInput.timeline.some((turn) => turn.content.includes(currentWeatherEvidenceUri)), true);
 
 console.log("Planner memory projection verification passed.");

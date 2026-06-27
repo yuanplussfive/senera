@@ -1,4 +1,4 @@
-import type { ResolvedAgentModelProviderConfig } from "../Types.js";
+import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 
 export interface AgentImageVisionRequest {
   provider: ResolvedAgentModelProviderConfig;

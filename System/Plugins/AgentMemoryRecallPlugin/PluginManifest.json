@@ -1,0 +1,254 @@
+{
+  "Plugin": {
+    "Name": "AgentMemoryRecallPlugin",
+    "Title": "长期记忆召回",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Description": "查询已经沉淀的长期记忆；未命中时降级召回普通历史对话。"
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 8
+  },
+  "Tools": [
+    {
+      "Name": "MemoryRecallTool",
+      "DescriptionFile": "./docs/Tool.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "Permissions": [
+        "memory:read"
+      ],
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "memory.recall"
+      },
+      "Artifacts": {
+        "Evidence": [
+          {
+            "Kind": "memory_recall",
+            "Records": "$.memories.item[*]",
+            "Slots": {
+              "memoryUri": "$.memoryUri",
+              "type": "$.type",
+              "subject": "$.subject",
+              "claim": "$.claim",
+              "howToApply": "$.howToApply",
+              "sourceRefs": "$.sourceRefs.item",
+              "matchedBy": "$.matchedBy.item",
+              "score": "$.score",
+              "confidence": "$.confidence",
+              "updatedAt": "$.updatedAt"
+            },
+            "Identity": {
+              "Parts": [
+                "memoryUri"
+              ]
+            },
+            "Presentation": {
+              "Locator": "{{ memoryUri }}",
+              "Display": "{{ type }} memory: {{ subject }}",
+              "Label": "{{ subject }}",
+              "Source": "{{ claim }}"
+            },
+            "Confidence": 0.9,
+            "Metadata": {
+              "type": "$.type",
+              "matchedBy": "$.matchedBy.item",
+              "sourceRefs": "$.sourceRefs.item"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "memoryUri",
+                "type",
+                "subject",
+                "claim",
+                "howToApply",
+                "sourceRefs",
+                "matchedBy",
+                "confidence",
+                "updatedAt"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "memoryUri",
+                "type",
+                "subject",
+                "claim",
+                "howToApply",
+                "sourceRefs"
+              ],
+              "ArtifactRefs": [
+                "projection",
+                "evidence"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.type }} memory {{ e.slots.subject }}: {{ e.slots.claim }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} long-term memory\n  uri: {{ e.slots.memoryUri }}\n  type: {{ e.slots.type }}\n  subject: {{ e.slots.subject }}\n  claim: {{ e.slots.claim }}\n  apply: {{ e.slots.howToApply }}\n  sourceRefs: {{ e.slots.sourceRefs }}\n  matchedBy: {{ e.slots.matchedBy }}\n{% endfor %}"
+            }
+          },
+          {
+            "Kind": "conversation_recall",
+            "Records": "$.turns.item[*]",
+            "Slots": {
+              "episodeUri": "$.episodeUri",
+              "requestId": "$.requestId",
+              "userText": "$.userMessage.text",
+              "assistantText": "$.assistantMessage.text",
+              "userSourceRef": "$.userMessage.sourceRef",
+              "assistantSourceRef": "$.assistantMessage.sourceRef",
+              "sourceRefs": "$.sourceRefs.item",
+              "matchedBy": "$.matchedBy.item",
+              "score": "$.score",
+              "startedAt": "$.startedAt",
+              "completedAt": "$.completedAt"
+            },
+            "Identity": {
+              "Parts": [
+                "episodeUri"
+              ]
+            },
+            "Presentation": {
+              "Locator": "{{ episodeUri }}",
+              "Display": "conversation turn: {{ requestId }}",
+              "Label": "{{ requestId }}",
+              "Source": "{{ userText }}"
+            },
+            "Confidence": 0.75,
+            "Metadata": {
+              "matchedBy": "$.matchedBy.item",
+              "sourceRefs": "$.sourceRefs.item"
+            },
+            "ModelProjection": {
+              "Slots": [
+                "episodeUri",
+                "requestId",
+                "userText",
+                "assistantText",
+                "userSourceRef",
+                "assistantSourceRef",
+                "sourceRefs",
+                "matchedBy",
+                "startedAt",
+                "completedAt"
+              ]
+            },
+            "PlannerMemory": {
+              "Facts": [
+                "episodeUri",
+                "requestId",
+                "userText",
+                "assistantText",
+                "sourceRefs"
+              ],
+              "ArtifactRefs": [
+                "projection",
+                "evidence"
+              ]
+            },
+            "Projection": {
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} conversation {{ e.slots.requestId }}\n  user: {{ e.slots.userText }}\n  assistant: {{ e.slots.assistantText }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} conversation recall\n  episode: {{ e.slots.episodeUri }}\n  requestId: {{ e.slots.requestId }}\n  user: {{ e.slots.userText }}\n  assistant: {{ e.slots.assistantText }}\n  sourceRefs: {{ e.slots.sourceRefs }}\n  matchedBy: {{ e.slots.matchedBy }}\n{% endfor %}"
+            }
+          }
+        ],
+        "Summary": {
+          "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}"
+        }
+      },
+      "Search": {
+        "Summary": "召回长期记忆中的用户画像、偏好、知识和剧情状态；未命中时返回普通历史对话片段。",
+        "Capabilities": [
+          {
+            "Id": "memory.recall",
+            "Title": "长期记忆召回",
+            "Description": "Recall durable memories from the local memory store, then fall back to ordinary conversation turns when no active long-term memory matches.",
+            "Facets": {
+              "Actions": [
+                "read",
+                "recall",
+                "inspect"
+              ],
+              "Targets": [
+                "long-term-memory",
+                "conversation-memory",
+                "user-profile",
+                "preference",
+                "knowledge",
+                "scene-state"
+              ],
+              "Inputs": [
+                "natural-language-query",
+                "memory-ref",
+                "source-ref",
+                "artifact-ref"
+              ],
+              "Outputs": [
+                "memory-context",
+                "conversation-turns",
+                "source-refs",
+                "evidence"
+              ],
+              "Evidence": [
+                "memory_recall",
+                "conversation_recall"
+              ],
+              "Effects": [
+                "read-only"
+              ]
+            },
+            "Aliases": [
+              "回忆长期记忆",
+              "查询用户偏好",
+              "用户画像",
+              "记忆召回"
+            ],
+            "Risk": {
+              "SideEffect": "read-only",
+              "Permission": "memory-read"
+            }
+          }
+        ],
+        "UseCases": [
+          "需要根据用户长期偏好、画像、知识或剧情状态调整回答；或需要回忆普通历史对话上下文。"
+        ],
+        "Examples": [
+          "用户偏好怎么写代码",
+          "用户喜欢什么饮料",
+          "之前教过我的知识",
+          "我刚才提过什么",
+          "当前角色剧情状态"
+        ],
+        "Avoid": [
+          "项目文件、网页事实、工具原始结果正文应使用对应工具读取。"
+        ],
+        "Tags": [
+          "长期记忆",
+          "用户偏好",
+          "用户画像",
+          "知识",
+          "剧情"
+        ]
+      }
+    }
+  ],
+  "Security": {
+    "TrustLevel": "System",
+    "Network": "Allow",
+    "FileSystem": {
+      "Read": [
+        ".senera/Memory.sqlite",
+        ".senera/Memory.sqlite-wal",
+        ".senera/Memory.sqlite-shm"
+      ],
+      "Write": [
+        ".senera/Memory.sqlite",
+        ".senera/Memory.sqlite-wal",
+        ".senera/Memory.sqlite-shm"
+      ]
+    },
+    "RequiresApproval": false
+  }
+}

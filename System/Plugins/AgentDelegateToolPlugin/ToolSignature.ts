@@ -9,7 +9,7 @@ export type AgentDelegateToolArguments = {
   executionMode?: "plan" | "run"
 
   // Optional evidence refs already visible in the current turn.
-  evidenceRefs?: {
+  evidenceUris?: {
     item: string[]
   }
 
@@ -67,7 +67,7 @@ export type AgentDelegateToolResult = {
       runtimeProfile: string
       outputSchema: string
       required: boolean
-      suppliedEvidenceRefs: {
+      suppliedEvidenceUris: {
         item: string[]
       }
       suppliedArtifactUris: {

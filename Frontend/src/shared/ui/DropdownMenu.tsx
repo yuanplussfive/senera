@@ -21,7 +21,7 @@ export const DropdownMenuContent = forwardRef<HTMLDivElement, ContentProps>(
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 min-w-[180px] overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50 p-1 shadow-soft",
+          "scrollbar-thin z-50 min-w-[180px] overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50 p-1 shadow-soft",
           "data-[state=open]:animate-fade-in",
           "data-[side=bottom]:slide-in-from-top-1",
           className,

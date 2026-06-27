@@ -286,7 +286,7 @@ function EvidenceDecisionView({ decision }: { decision: ActionEvidenceDecisionDa
             detail: [
               state.reason,
               ...state.evidence.map((entry) =>
-                `${entry.ref} ${entry.display || entry.kind} (${entry.toolName})`),
+                `${entry.evidenceUri} ${entry.display || entry.kind} (${entry.toolName})`),
               ...state.missingFacts.map((fact) => `缺失事实: ${fact}`),
               ...state.unsupportedClaims.map((claim) => `未支持结论: ${claim}`),
               ...state.blockers,

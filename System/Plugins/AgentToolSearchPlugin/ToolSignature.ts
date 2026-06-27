@@ -36,6 +36,15 @@ export type ToolSearchToolResult = {
           }
         }>
       }
+      learningSignals: {
+        item: Array<{
+          term: string
+          source: string
+          support: number
+          confidence: number
+          score: number
+        }>
+      }
       permissions: {
         item: string[]
       }

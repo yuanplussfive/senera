@@ -1,9 +1,11 @@
 import type { ActionPlanInput } from "./BamlClient/baml_client/types.js";
+import type { TurnUnderstanding } from "./BamlClient/baml_client/types.js";
 import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
-import type { ExecutedToolCallResult } from "./Types.js";
+import type { ExecutedToolCallResult } from "./Types/ToolRuntimeTypes.js";
 import type { AgentToolCatalogItem } from "./AgentToolCatalogProjector.js";
 import type { AgentActivatedSkill } from "./AgentSkillActivation.js";
+import type { AgentPlannerRoleplayPresetContext } from "./Presets/AgentPresetTypes.js";
 import {
   DefaultAgentArtifactRootDir,
 } from "./Artifacts/AgentArtifactLocator.js";
@@ -17,6 +19,7 @@ import { AgentActionPlannerTimelineProjector } from "./AgentActionPlannerTimelin
 import {
   AgentPlannerMemoryProjector,
 } from "./AgentPlannerMemory.js";
+import { AgentToolTagCatalogProjector } from "./AgentToolTagCatalogProjector.js";
 
 export type {
   AgentActionPlannerLedger,
@@ -34,6 +37,7 @@ export class AgentActionPlannerContextBuilder {
   private readonly ledgerUpdater: AgentActionPlannerLedgerUpdater;
   private readonly timelineProjector: AgentActionPlannerTimelineProjector;
   private readonly memoryProjector: AgentPlannerMemoryProjector;
+  private readonly tagCatalogProjector = new AgentToolTagCatalogProjector();
   private readonly stalledStepLag: number;
 
   constructor(
@@ -62,6 +66,8 @@ export class AgentActionPlannerContextBuilder {
     ledger: AgentActionPlannerLedger;
     toolCatalog: AgentToolCatalogItem[];
     activeSkills?: readonly AgentActivatedSkill[];
+    turnUnderstanding?: TurnUnderstanding;
+    roleplayPreset?: AgentPlannerRoleplayPresetContext;
   }): ActionPlanInput {
     const loadedTools = options.loadedToolNames === "all"
       ? options.toolCatalog.map((tool) => tool.name)
@@ -70,23 +76,11 @@ export class AgentActionPlannerContextBuilder {
     const memory = this.memoryProjector.project(options.conversationEntries ?? [], {
       excludeEvidenceRequestId: options.requestId,
     });
-    const evidenceState = [
-      ...memory.evidenceMemory.map((entry) => ({
-        evidenceRef: entry.evidenceRef,
-        kind: entry.kind,
-        toolName: entry.toolName,
-        artifactUri: entry.artifactUri,
-        locator: entry.locator,
-        display: entry.display,
-        label: entry.label,
-        facts: entry.facts,
-        artifactRefs: entry.artifactRefs,
-      })),
-      ...options.ledger.evidence.map((entry) => {
+    const evidenceState = options.ledger.evidence.map((entry) => {
         const call = options.ledger.calls.find((candidate) =>
-          candidate.evidenceRefs.includes(entry.evidenceRef));
+          candidate.evidenceUris.includes(entry.evidenceUri));
         return {
-          evidenceRef: entry.evidenceRef,
+          evidenceUri: entry.evidenceUri,
           kind: entry.kind,
           toolName: call?.toolName ?? "",
           artifactUri: entry.artifactUri,
@@ -98,11 +92,15 @@ export class AgentActionPlannerContextBuilder {
           facts: entry.modelSlots,
           artifactRefs: [entry.artifactUri],
         };
-      }),
-    ];
+      });
 
-    void options.userMessage;
     return {
+      currentUserTurn: {
+        requestId: options.requestId,
+        content: options.userMessage,
+      },
+      turnUnderstanding: options.turnUnderstanding,
+      roleplayPreset: options.roleplayPreset,
       runState: {
         currentStep: options.currentStep,
         dynamicTools: options.dynamicTools,
@@ -122,7 +120,7 @@ export class AgentActionPlannerContextBuilder {
           toolName: call.toolName,
           status: call.status,
           artifactUri: call.artifactUri,
-          evidenceRefs: call.evidenceRefs,
+          evidenceUris: call.evidenceUris,
           resultKind: call.resultKind,
           argumentsPreview: call.argumentsPreview,
           error: call.error,
@@ -135,6 +133,10 @@ export class AgentActionPlannerContextBuilder {
       evidenceMemory: memory.evidenceMemory,
       evidenceState,
       plannerJournal: memory.plannerJournal,
+      plannerState: memory.activePlannerState,
+      toolTagCatalog: this.tagCatalogProjector.project({
+        tools: options.toolCatalog,
+      }),
       compactToolCatalog: options.toolCatalog.map((tool) =>
         projectCompactToolCatalogItem(tool, visibleTools)),
       toolCatalog: options.toolCatalog.map((tool) => ({

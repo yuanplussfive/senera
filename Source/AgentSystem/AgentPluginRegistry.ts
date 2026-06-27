@@ -1,6 +1,5 @@
-import { resolveFrom } from "./AgentPath.js";
+import type { RootCommandManifest } from "./Types/PluginManifestTypes.js";
 import type {
-  AgentWorkflowJobManifest,
   LoadedPlugin,
   RegisteredAgent,
   RegisteredAgentContextPack,
@@ -10,17 +9,15 @@ import type {
   RegisteredSkill,
   RegisteredTemplate,
   RegisteredTool,
-  RootCommandManifest,
-  ToolArtifactPolicyManifest,
-} from "./Types.js";
-import { AgentJsonFileLoader } from "./AgentJsonFileLoader.js";
-import { ToolArtifactPolicySchema } from "./Schemas/PluginManifestSchema.js";
+} from "./Types/PluginRuntimeTypes.js";
+import { isLoadedPluginAvailable } from "./AgentPluginConfig.js";
 import {
-  isLoadedPluginAvailable,
-  isLoadedPluginToolEnabled,
-} from "./AgentPluginConfig.js";
+  AgentPluginRuntimeContractProjector,
+  type AgentPluginRuntimeContributions,
+} from "./AgentPluginRuntimeContractProjector.js";
 
 export class AgentPluginRegistry {
+  private readonly contractProjector = new AgentPluginRuntimeContractProjector();
   private readonly plugins = new Map<string, LoadedPlugin>();
   private readonly decisionActionsByRoot = new Map<string, RegisteredDecisionAction>();
   private readonly tools = new Map<string, RegisteredTool>();
@@ -43,165 +40,7 @@ export class AgentPluginRegistry {
     }
 
     this.plugins.set(pluginName, plugin);
-
-    for (const action of plugin.manifest.DecisionActions ?? []) {
-      if (this.decisionActionsByRoot.has(action.XmlRoot)) {
-        throw new Error(`决策 XML 根标签重复：${action.XmlRoot}`);
-      }
-
-      this.decisionActionsByRoot.set(action.XmlRoot, {
-        plugin,
-        name: action.Name,
-        kind: action.Kind,
-        xmlRoot: action.XmlRoot,
-        schemaPath: resolveFrom(plugin.rootPath, action.Schema),
-        descriptionFile: action.DescriptionFile
-          ? resolveFrom(plugin.rootPath, action.DescriptionFile)
-          : undefined,
-        signatureFile: action.SignatureFile
-          ? resolveFrom(plugin.rootPath, action.SignatureFile)
-          : undefined,
-      });
-    }
-
-    for (const tool of plugin.manifest.Tools ?? []) {
-      if (!isLoadedPluginToolEnabled(plugin, tool.Name)) {
-        continue;
-      }
-
-      if (this.tools.has(tool.Name)) {
-        throw new Error(`工具名重复：${tool.Name}`);
-      }
-
-      this.tools.set(tool.Name, {
-        plugin,
-        name: tool.Name,
-        descriptionFile: tool.DescriptionFile
-          ? resolveFrom(plugin.rootPath, tool.DescriptionFile)
-          : undefined,
-        signatureFile: tool.SignatureFile
-          ? resolveFrom(plugin.rootPath, tool.SignatureFile)
-          : undefined,
-        permissions: tool.Permissions ?? [],
-        handler: readToolHandler(tool),
-        search: tool.Search,
-        evidenceCapabilities: tool.EvidenceCapabilities ?? [],
-        artifactPolicy: readToolArtifactPolicy(plugin, tool),
-      });
-    }
-
-    for (const skill of plugin.manifest.Skills ?? []) {
-      if (this.skills.has(skill.Name)) {
-        throw new Error(`技能名重复：${skill.Name}`);
-      }
-
-      this.skills.set(skill.Name, {
-        plugin,
-        name: skill.Name,
-        title: skill.Title,
-        descriptionFile: resolveFrom(plugin.rootPath, skill.DescriptionFile),
-        workflowFile: skill.WorkflowFile
-          ? resolveFrom(plugin.rootPath, skill.WorkflowFile)
-          : undefined,
-        recommendedTools: skill.RecommendedTools ?? [],
-        recommendedAgents: skill.RecommendedAgents ?? [],
-        recommendedWorkflows: skill.RecommendedWorkflows ?? [],
-        evidenceRequirements: skill.EvidenceRequirements ?? [],
-        search: skill.Search,
-      });
-    }
-
-    for (const contextPack of plugin.manifest.ContextPacks ?? []) {
-      if (this.contextPacks.has(contextPack.Name)) {
-        throw new Error(`Agent ContextPack 名重复：${contextPack.Name}`);
-      }
-
-      this.contextPacks.set(contextPack.Name, {
-        plugin,
-        name: contextPack.Name,
-        description: contextPack.Description,
-        templateFile: resolveFrom(plugin.rootPath, contextPack.TemplateFile),
-        inputs: contextPack.Inputs,
-        toolScope: contextPack.ToolScope,
-        history: contextPack.History,
-        artifacts: contextPack.Artifacts,
-        evidence: contextPack.Evidence,
-      });
-    }
-
-    for (const mergePolicy of plugin.manifest.MergePolicies ?? []) {
-      if (this.mergePolicies.has(mergePolicy.Name)) {
-        throw new Error(`Agent MergePolicy 名重复：${mergePolicy.Name}`);
-      }
-
-      this.mergePolicies.set(mergePolicy.Name, {
-        plugin,
-        name: mergePolicy.Name,
-        description: mergePolicy.Description,
-        strategy: mergePolicy.Strategy,
-        templateFile: resolveFrom(plugin.rootPath, mergePolicy.TemplateFile),
-        outputSchemaPath: mergePolicy.OutputSchema
-          ? resolveFrom(plugin.rootPath, mergePolicy.OutputSchema)
-          : undefined,
-      });
-    }
-
-    for (const agent of plugin.manifest.Agents ?? []) {
-      if (this.agents.has(agent.Name)) {
-        throw new Error(`Agent 名重复：${agent.Name}`);
-      }
-
-      this.agents.set(agent.Name, {
-        plugin,
-        name: agent.Name,
-        title: agent.Title,
-        descriptionFile: resolveFrom(plugin.rootPath, agent.DescriptionFile),
-        instructionsFile: resolveFrom(plugin.rootPath, agent.InstructionsFile),
-        recommendedTools: agent.RecommendedTools ?? [],
-        contextPack: agent.ContextPack,
-        outputSchemaPath: resolveFrom(plugin.rootPath, agent.OutputSchema),
-        runtimeProfile: agent.RuntimeProfile,
-        search: agent.Search,
-      });
-    }
-
-    for (const workflow of plugin.manifest.Workflows ?? []) {
-      if (this.workflows.has(workflow.Name)) {
-        throw new Error(`Agent Workflow 名重复：${workflow.Name}`);
-      }
-
-      this.workflows.set(workflow.Name, {
-        plugin,
-        name: workflow.Name,
-        title: workflow.Title,
-        description: workflow.Description,
-        trigger: workflow.Trigger,
-        execution: workflow.Execution,
-        jobs: workflow.Jobs.map((job) => this.registerWorkflowJob(plugin, job)),
-        mergePolicy: workflow.MergePolicy,
-        search: workflow.Search,
-      });
-    }
-
-    for (const template of plugin.manifest.Templates ?? []) {
-      if (this.templates.has(template.Name)) {
-        throw new Error(`模板名重复：${template.Name}`);
-      }
-
-      this.templates.set(template.Name, {
-        plugin,
-        name: template.Name,
-        path: resolveFrom(plugin.rootPath, template.Path),
-      });
-    }
-
-    for (const policy of plugin.manifest.RootCommands ?? []) {
-      if (this.rootCommandPolicies.has(policy.Action)) {
-        throw new Error(`RootCommand action 策略重复：${policy.Action}`);
-      }
-
-      this.rootCommandPolicies.set(policy.Action, policy);
-    }
+    this.registerRuntimeContributions(this.contractProjector.project(plugin));
   }
 
   getPlugin(name: string): LoadedPlugin | undefined {
@@ -311,16 +150,76 @@ export class AgentPluginRegistry {
     return [...this.rootCommandPolicies.values()];
   }
 
-  private registerWorkflowJob(
-    plugin: LoadedPlugin,
-    job: AgentWorkflowJobManifest,
-  ): RegisteredAgentWorkflow["jobs"][number] {
-    return {
-      agent: job.Agent,
-      taskFile: resolveFrom(plugin.rootPath, job.TaskFile),
-      contextPack: job.ContextPack,
-      required: job.Required,
-    };
+  private registerRuntimeContributions(contributions: AgentPluginRuntimeContributions): void {
+    this.registerUnique(
+      this.decisionActionsByRoot,
+      contributions.decisionActions,
+      (action) => action.xmlRoot,
+      "决策 XML 根标签重复",
+    );
+    this.registerUnique(
+      this.tools,
+      contributions.tools,
+      (tool) => tool.name,
+      "工具名重复",
+    );
+    this.registerUnique(
+      this.skills,
+      contributions.skills,
+      (skill) => skill.name,
+      "技能名重复",
+    );
+    this.registerUnique(
+      this.contextPacks,
+      contributions.contextPacks,
+      (contextPack) => contextPack.name,
+      "Agent ContextPack 名重复",
+    );
+    this.registerUnique(
+      this.mergePolicies,
+      contributions.mergePolicies,
+      (mergePolicy) => mergePolicy.name,
+      "Agent MergePolicy 名重复",
+    );
+    this.registerUnique(
+      this.agents,
+      contributions.agents,
+      (agent) => agent.name,
+      "Agent 名重复",
+    );
+    this.registerUnique(
+      this.workflows,
+      contributions.workflows,
+      (workflow) => workflow.name,
+      "Agent Workflow 名重复",
+    );
+    this.registerUnique(
+      this.templates,
+      contributions.templates,
+      (template) => template.name,
+      "模板名重复",
+    );
+    this.registerUnique(
+      this.rootCommandPolicies,
+      contributions.rootCommandPolicies,
+      (policy) => policy.Action,
+      "RootCommand action 策略重复",
+    );
+  }
+
+  private registerUnique<T>(
+    target: Map<string, T>,
+    values: readonly T[],
+    keyOf: (value: T) => string,
+    duplicateMessage: string,
+  ): void {
+    for (const value of values) {
+      const key = keyOf(value);
+      if (target.has(key)) {
+        throw new Error(`${duplicateMessage}：${key}`);
+      }
+      target.set(key, value);
+    }
   }
 
   private assertKnown<T>(
@@ -332,88 +231,4 @@ export class AgentPluginRegistry {
       throw new Error(`${message}：${name}`);
     }
   }
-}
-
-function readToolArtifactPolicy(
-  plugin: LoadedPlugin,
-  tool: import("./Types.js").ToolManifest,
-): ToolArtifactPolicyManifest | undefined {
-  const fromFile = tool.ArtifactPolicyFile
-    ? new AgentJsonFileLoader().load(
-        resolveFrom(plugin.rootPath, tool.ArtifactPolicyFile),
-        ToolArtifactPolicySchema,
-      ) as ToolArtifactPolicyManifest
-    : undefined;
-
-  return mergeArtifactPolicy(fromFile, tool.Artifacts);
-}
-
-function mergeArtifactPolicy(
-  base: ToolArtifactPolicyManifest | undefined,
-  override: ToolArtifactPolicyManifest | undefined,
-): ToolArtifactPolicyManifest | undefined {
-  if (!base && !override) {
-    return undefined;
-  }
-
-  const redactionKeys = [
-    ...(base?.Redact?.Keys ?? []),
-    ...(override?.Redact?.Keys ?? []),
-  ];
-  const redactionPaths = [
-    ...(base?.Redact?.Paths ?? []),
-    ...(override?.Redact?.Paths ?? []),
-  ];
-  const evidence = [
-    ...(base?.Evidence ?? []),
-    ...(override?.Evidence ?? []),
-  ];
-  const workspacePaths = [
-    ...(base?.Workspace?.Paths ?? []),
-    ...(override?.Workspace?.Paths ?? []),
-  ];
-  const merged: ToolArtifactPolicyManifest = {};
-
-  if (base?.Redact || override?.Redact) {
-    merged.Redact = {
-      ...(base?.Redact ?? {}),
-      ...(override?.Redact ?? {}),
-      ...(redactionKeys.length > 0 ? { Keys: redactionKeys } : {}),
-      ...(redactionPaths.length > 0 ? { Paths: redactionPaths } : {}),
-    };
-  }
-
-  if (evidence.length > 0) {
-    merged.Evidence = evidence;
-  }
-
-  const summary = override?.Summary ?? base?.Summary;
-  if (summary) {
-    merged.Summary = summary;
-  }
-
-  if (base?.Workspace || override?.Workspace) {
-    const workspaceSource = override?.Workspace ?? base?.Workspace;
-    if (!workspaceSource) {
-      throw new Error("Artifact Workspace 策略缺少来源。");
-    }
-    merged.Workspace = {
-      ...(base?.Workspace ?? {}),
-      ...(override?.Workspace ?? {}),
-      PatchContextLines: workspaceSource.PatchContextLines,
-      ...(workspacePaths.length > 0 ? { Paths: workspacePaths } : {}),
-    };
-  }
-
-  return Object.keys(merged).length > 0 ? merged : undefined;
-}
-
-function readToolHandler(
-  tool: import("./Types.js").ToolManifest,
-): import("./Types.js").RegisteredToolHandler {
-  const handler = tool.Handler;
-
-  return handler?.Kind === "HostCapability"
-    ? { kind: "HostCapability", capability: handler.Capability }
-    : { kind: "PluginProcess" };
 }

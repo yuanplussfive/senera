@@ -27,29 +27,71 @@ export { FieldType, EnumBuilder, ClassBuilder }
 export default class TypeBuilder {
     private tb: _TypeBuilder;
     
-    ActionPlanInput: ClassViewer<'ActionPlanInput', "runState" | "timeline" | "evidenceMemory" | "evidenceState" | "plannerJournal" | "compactToolCatalog" | "toolCatalog" | "activeSkills">;
+    ActionPlanInput: ClassViewer<'ActionPlanInput', "currentUserTurn" | "turnUnderstanding" | "roleplayPreset" | "runState" | "timeline" | "evidenceMemory" | "evidenceState" | "plannerJournal" | "plannerState" | "toolTagCatalog" | "compactToolCatalog" | "toolCatalog" | "activeSkills">;
     
     ActionRunState: ClassViewer<'ActionRunState', "currentStep" | "dynamicTools" | "loadedTools" | "progress" | "warnings" | "calls">;
     
-    EvidenceRequirementVerification: ClassViewer<'EvidenceRequirementVerification', "requirementId" | "need" | "status" | "evidenceRefs" | "artifactUris" | "reason" | "missingFacts" | "unsupportedClaims">;
+    EvidenceRequirementVerification: ClassViewer<'EvidenceRequirementVerification', "requirementId" | "need" | "status" | "evidenceUris" | "artifactUris" | "reason" | "missingFacts" | "unsupportedClaims">;
     
     EvidenceSlot: ClassViewer<'EvidenceSlot', "name" | "value">;
     
     EvidenceVerification: ClassViewer<'EvidenceVerification', "ready" | "requirements" | "summary">;
     
+    FastContextScoutCommand: ClassViewer<'FastContextScoutCommand', "type" | "pattern" | "path" | "include" | "exclude" | "regex" | "caseSensitive" | "startLine" | "endLine" | "depth">;
+    
+    FastContextScoutFileSelection: ClassViewer<'FastContextScoutFileSelection', "path" | "startLine" | "endLine" | "reason">;
+    
+    FastContextScoutPlannerDecision: ClassViewer<'FastContextScoutPlannerDecision', "action" | "commands" | "files" | "reason">;
+    
+    InteractionRoute: ClassViewer<'InteractionRoute', "mode" | "objective" | "needsFreshEvidence" | "needsWorkspaceRead" | "needsSideEffect" | "risk" | "preferredTools" | "discoveryQueries" | "reason">;
+    
+    MemoryCandidate: ClassViewer<'MemoryCandidate', "type" | "subject" | "claim" | "howToApply" | "tags" | "triggers" | "sourceRefs" | "reason" | "confidence">;
+    
+    MemoryConsolidationAction: ClassViewer<'MemoryConsolidationAction', "operation" | "type" | "subject" | "claim" | "howToApply" | "tags" | "triggers" | "sourceRefs" | "candidateUris" | "targetMemoryUri" | "reason" | "confidence">;
+    
+    MemoryConsolidationResult: ClassViewer<'MemoryConsolidationResult', "actions">;
+    
+    MemoryLearningResult: ClassViewer<'MemoryLearningResult', "candidates">;
+    
+    MemoryWriteDecision: ClassViewer<'MemoryWriteDecision', "operation" | "type" | "subject" | "claim" | "howToApply" | "tags" | "triggers" | "sourceRefs" | "candidateUris" | "targetMemoryUri" | "reason" | "confidence">;
+    
+    MemoryWriteResolutionResult: ClassViewer<'MemoryWriteResolutionResult', "decision">;
+    
+    PlannedToolCall: ClassViewer<'PlannedToolCall', "name" | "arguments">;
+    
     PlannerActiveSkill: ClassViewer<'PlannerActiveSkill', "name" | "title" | "summary" | "useCases" | "avoid" | "recommendedTools" | "evidenceRequirements">;
     
-    PlannerEvidenceMemoryItem: ClassViewer<'PlannerEvidenceMemoryItem', "evidenceRef" | "kind" | "locator" | "display" | "label" | "toolName" | "artifactUri" | "facts" | "artifactRefs">;
+    PlannerCurrentUserTurn: ClassViewer<'PlannerCurrentUserTurn', "requestId" | "content">;
+    
+    PlannerEvidenceMemoryItem: ClassViewer<'PlannerEvidenceMemoryItem', "evidenceUri" | "kind" | "locator" | "display" | "label" | "toolName" | "artifactUri" | "facts" | "artifactRefs">;
     
     PlannerEvidenceRequirement: ClassViewer<'PlannerEvidenceRequirement', "need" | "accepts" | "minimumQuality" | "minimum" | "purpose">;
     
-    PlannerEvidenceStateItem: ClassViewer<'PlannerEvidenceStateItem', "evidenceRef" | "kind" | "toolName" | "artifactUri" | "locator" | "display" | "label" | "source" | "confidence" | "facts" | "artifactRefs">;
+    PlannerEvidenceStateItem: ClassViewer<'PlannerEvidenceStateItem', "evidenceUri" | "kind" | "toolName" | "artifactUri" | "locator" | "display" | "label" | "source" | "confidence" | "facts" | "artifactRefs">;
     
-    PlannerJournalItem: ClassViewer<'PlannerJournalItem', "requestId" | "step" | "selectedAction" | "evidenceRefs" | "artifactUris" | "loadedTools" | "outcome">;
+    PlannerJournalItem: ClassViewer<'PlannerJournalItem', "requestId" | "step" | "selectedAction" | "evidenceUris" | "artifactUris" | "loadedTools" | "outcome">;
     
-    PlannerTimelineTurn: ClassViewer<'PlannerTimelineTurn', "index" | "role" | "kind" | "step" | "content" | "evidenceRefs" | "artifactUris">;
+    PlannerRoleplayPreset: ClassViewer<'PlannerRoleplayPreset', "enabled" | "activePresetName" | "documents">;
     
-    PlannerToolCallStateItem: ClassViewer<'PlannerToolCallStateItem', "step" | "toolName" | "status" | "artifactUri" | "evidenceRefs" | "resultKind" | "argumentsPreview" | "error">;
+    PlannerRoleplayPresetDocument: ClassViewer<'PlannerRoleplayPresetDocument', "name" | "format" | "title" | "updatedAt" | "content">;
+    
+    PlannerStateCandidateTool: ClassViewer<'PlannerStateCandidateTool', "name" | "purpose" | "supports">;
+    
+    PlannerStateEffect: ClassViewer<'PlannerStateEffect', "id" | "effect" | "target" | "reason">;
+    
+    PlannerStateEvidence: ClassViewer<'PlannerStateEvidence', "evidenceUri" | "kind" | "toolName" | "artifactUri" | "locator" | "display" | "label">;
+    
+    PlannerStateEvidenceNeed: ClassViewer<'PlannerStateEvidenceNeed', "id" | "need" | "scope" | "minimum" | "reason">;
+    
+    PlannerStateOpenQuestion: ClassViewer<'PlannerStateOpenQuestion', "question" | "reason">;
+    
+    PlannerStateSnapshot: ClassViewer<'PlannerStateSnapshot', "taskId" | "requestId" | "step" | "status" | "userGoal" | "currentIntent" | "intentTags" | "taskTags" | "targetRefs" | "requiredEffects" | "evidenceNeeds" | "completedEvidence" | "completedEffects" | "openQuestions" | "candidateTools" | "discoveryQueries" | "nextStepPurpose" | "completionCriteria" | "lastAction" | "loadedTools" | "recentCalls" | "updatedAt">;
+    
+    PlannerStateTargetRef: ClassViewer<'PlannerStateTargetRef', "kind" | "value" | "status">;
+    
+    PlannerTimelineTurn: ClassViewer<'PlannerTimelineTurn', "index" | "role" | "kind" | "step" | "content" | "payloadJson" | "evidenceUris" | "artifactUris">;
+    
+    PlannerToolCallStateItem: ClassViewer<'PlannerToolCallStateItem', "step" | "toolName" | "status" | "artifactUri" | "evidenceUris" | "resultKind" | "argumentsPreview" | "error">;
     
     ProgressSignals: ClassViewer<'ProgressSignals', "totalToolCalls" | "totalEvidence" | "lastNewEvidenceStep" | "repeatedCallCount" | "stalled">;
     
@@ -57,15 +99,17 @@ export default class TypeBuilder {
     
     TaskCandidateTool: ClassViewer<'TaskCandidateTool', "name" | "purpose" | "supports">;
     
-    TaskFrame: ClassViewer<'TaskFrame', "taskType" | "answerGoal" | "intentTags" | "targetRefs" | "candidateTools" | "discoveryQueries" | "requiredEffects" | "requiredEvidence" | "userInputNeeds" | "nextStepPurpose" | "completionCriteria" | "notes">;
+    TaskFrame: ClassViewer<'TaskFrame', "taskType" | "answerGoal" | "intentTags" | "taskTags" | "targetRefs" | "candidateTools" | "discoveryQueries" | "requiredEffects" | "requiredEvidence" | "userInputNeeds" | "nextStepPurpose" | "completionCriteria" | "notes">;
     
     TaskRequiredEffect: ClassViewer<'TaskRequiredEffect', "id" | "effect" | "target" | "proof" | "reason">;
     
-    TaskRequiredEvidence: ClassViewer<'TaskRequiredEvidence', "id" | "need" | "minimum" | "reason">;
+    TaskRequiredEvidence: ClassViewer<'TaskRequiredEvidence', "id" | "need" | "scope" | "minimum" | "reason">;
     
     TaskTargetRef: ClassViewer<'TaskTargetRef', "kind" | "value" | "status">;
     
     TaskUserInputNeed: ClassViewer<'TaskUserInputNeed', "question" | "reason">;
+    
+    ToolCallPlan: ClassViewer<'ToolCallPlan', "calls">;
     
     ToolCapabilityFacets: ClassViewer<'ToolCapabilityFacets', "Actions" | "Targets" | "Inputs" | "Outputs" | "Evidence" | "Effects">;
     
@@ -79,27 +123,39 @@ export default class TypeBuilder {
     
     ToolEvidenceCapabilityItem: ClassViewer<'ToolEvidenceCapabilityItem', "produces" | "quality" | "satisfies" | "kinds" | "capabilityIds">;
     
+    ToolLearningRecord: ClassViewer<'ToolLearningRecord', "toolName" | "tags" | "sourceTerms" | "triggers" | "reason" | "confidence">;
+    
+    ToolLearningResult: ClassViewer<'ToolLearningResult', "records">;
+    
+    TurnUnderstanding: ClassViewer<'TurnUnderstanding', "rawUserTurn" | "standaloneRequest" | "contextMode" | "contextBasis" | "missingContext">;
+    
     
     EvidenceVerificationStatus: EnumViewer<'EvidenceVerificationStatus', "Satisfied" | "Partial" | "Missing" | "Blocked">;
     
     ExecutionDeltaOp: EnumViewer<'ExecutionDeltaOp', "AddCall" | "AddEvidence" | "AddWarning">;
     
+    InteractionRunMode: EnumViewer<'InteractionRunMode', "DirectResponse" | "ToolAgentLoop" | "DeliberateTaskLoop">;
+    
+    TaskEvidenceScope: EnumViewer<'TaskEvidenceScope', "CurrentRun" | "Memory" | "Conversation">;
+    
     ToolCallStatus: EnumViewer<'ToolCallStatus', "Success" | "Failure" | "Empty">;
+    
+    TurnContextMode: EnumViewer<'TurnContextMode', "None" | "Used" | "Insufficient">;
     
 
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ActionPlanInput","ActionRunState","EvidenceRequirementVerification","EvidenceSlot","EvidenceVerification","PlannerActiveSkill","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","TaskCandidateTool","TaskFrame","TaskRequiredEffect","TaskRequiredEvidence","TaskTargetRef","TaskUserInputNeed","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem",
+            "ActionPlanInput","ActionRunState","EvidenceRequirementVerification","EvidenceSlot","EvidenceVerification","FastContextScoutCommand","FastContextScoutFileSelection","FastContextScoutPlannerDecision","InteractionRoute","MemoryCandidate","MemoryConsolidationAction","MemoryConsolidationResult","MemoryLearningResult","MemoryWriteDecision","MemoryWriteResolutionResult","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerRoleplayPreset","PlannerRoleplayPresetDocument","PlannerStateCandidateTool","PlannerStateEffect","PlannerStateEvidence","PlannerStateEvidenceNeed","PlannerStateOpenQuestion","PlannerStateSnapshot","PlannerStateTargetRef","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","TaskCandidateTool","TaskFrame","TaskRequiredEffect","TaskRequiredEvidence","TaskTargetRef","TaskUserInputNeed","ToolCallPlan","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolLearningRecord","ToolLearningResult","TurnUnderstanding",
           ]),
           enums: new Set([
-            "EvidenceVerificationStatus","ExecutionDeltaOp","ToolCallStatus",
+            "EvidenceVerificationStatus","ExecutionDeltaOp","InteractionRunMode","TaskEvidenceScope","ToolCallStatus","TurnContextMode",
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
         
         this.ActionPlanInput = this.tb.classViewer("ActionPlanInput", [
-          "runState","timeline","evidenceMemory","evidenceState","plannerJournal","compactToolCatalog","toolCatalog","activeSkills",
+          "currentUserTurn","turnUnderstanding","roleplayPreset","runState","timeline","evidenceMemory","evidenceState","plannerJournal","plannerState","toolTagCatalog","compactToolCatalog","toolCatalog","activeSkills",
         ]);
         
         this.ActionRunState = this.tb.classViewer("ActionRunState", [
@@ -107,7 +163,7 @@ export default class TypeBuilder {
         ]);
         
         this.EvidenceRequirementVerification = this.tb.classViewer("EvidenceRequirementVerification", [
-          "requirementId","need","status","evidenceRefs","artifactUris","reason","missingFacts","unsupportedClaims",
+          "requirementId","need","status","evidenceUris","artifactUris","reason","missingFacts","unsupportedClaims",
         ]);
         
         this.EvidenceSlot = this.tb.classViewer("EvidenceSlot", [
@@ -118,12 +174,60 @@ export default class TypeBuilder {
           "ready","requirements","summary",
         ]);
         
+        this.FastContextScoutCommand = this.tb.classViewer("FastContextScoutCommand", [
+          "type","pattern","path","include","exclude","regex","caseSensitive","startLine","endLine","depth",
+        ]);
+        
+        this.FastContextScoutFileSelection = this.tb.classViewer("FastContextScoutFileSelection", [
+          "path","startLine","endLine","reason",
+        ]);
+        
+        this.FastContextScoutPlannerDecision = this.tb.classViewer("FastContextScoutPlannerDecision", [
+          "action","commands","files","reason",
+        ]);
+        
+        this.InteractionRoute = this.tb.classViewer("InteractionRoute", [
+          "mode","objective","needsFreshEvidence","needsWorkspaceRead","needsSideEffect","risk","preferredTools","discoveryQueries","reason",
+        ]);
+        
+        this.MemoryCandidate = this.tb.classViewer("MemoryCandidate", [
+          "type","subject","claim","howToApply","tags","triggers","sourceRefs","reason","confidence",
+        ]);
+        
+        this.MemoryConsolidationAction = this.tb.classViewer("MemoryConsolidationAction", [
+          "operation","type","subject","claim","howToApply","tags","triggers","sourceRefs","candidateUris","targetMemoryUri","reason","confidence",
+        ]);
+        
+        this.MemoryConsolidationResult = this.tb.classViewer("MemoryConsolidationResult", [
+          "actions",
+        ]);
+        
+        this.MemoryLearningResult = this.tb.classViewer("MemoryLearningResult", [
+          "candidates",
+        ]);
+        
+        this.MemoryWriteDecision = this.tb.classViewer("MemoryWriteDecision", [
+          "operation","type","subject","claim","howToApply","tags","triggers","sourceRefs","candidateUris","targetMemoryUri","reason","confidence",
+        ]);
+        
+        this.MemoryWriteResolutionResult = this.tb.classViewer("MemoryWriteResolutionResult", [
+          "decision",
+        ]);
+        
+        this.PlannedToolCall = this.tb.classViewer("PlannedToolCall", [
+          "name","arguments",
+        ]);
+        
         this.PlannerActiveSkill = this.tb.classViewer("PlannerActiveSkill", [
           "name","title","summary","useCases","avoid","recommendedTools","evidenceRequirements",
         ]);
         
+        this.PlannerCurrentUserTurn = this.tb.classViewer("PlannerCurrentUserTurn", [
+          "requestId","content",
+        ]);
+        
         this.PlannerEvidenceMemoryItem = this.tb.classViewer("PlannerEvidenceMemoryItem", [
-          "evidenceRef","kind","locator","display","label","toolName","artifactUri","facts","artifactRefs",
+          "evidenceUri","kind","locator","display","label","toolName","artifactUri","facts","artifactRefs",
         ]);
         
         this.PlannerEvidenceRequirement = this.tb.classViewer("PlannerEvidenceRequirement", [
@@ -131,19 +235,55 @@ export default class TypeBuilder {
         ]);
         
         this.PlannerEvidenceStateItem = this.tb.classViewer("PlannerEvidenceStateItem", [
-          "evidenceRef","kind","toolName","artifactUri","locator","display","label","source","confidence","facts","artifactRefs",
+          "evidenceUri","kind","toolName","artifactUri","locator","display","label","source","confidence","facts","artifactRefs",
         ]);
         
         this.PlannerJournalItem = this.tb.classViewer("PlannerJournalItem", [
-          "requestId","step","selectedAction","evidenceRefs","artifactUris","loadedTools","outcome",
+          "requestId","step","selectedAction","evidenceUris","artifactUris","loadedTools","outcome",
+        ]);
+        
+        this.PlannerRoleplayPreset = this.tb.classViewer("PlannerRoleplayPreset", [
+          "enabled","activePresetName","documents",
+        ]);
+        
+        this.PlannerRoleplayPresetDocument = this.tb.classViewer("PlannerRoleplayPresetDocument", [
+          "name","format","title","updatedAt","content",
+        ]);
+        
+        this.PlannerStateCandidateTool = this.tb.classViewer("PlannerStateCandidateTool", [
+          "name","purpose","supports",
+        ]);
+        
+        this.PlannerStateEffect = this.tb.classViewer("PlannerStateEffect", [
+          "id","effect","target","reason",
+        ]);
+        
+        this.PlannerStateEvidence = this.tb.classViewer("PlannerStateEvidence", [
+          "evidenceUri","kind","toolName","artifactUri","locator","display","label",
+        ]);
+        
+        this.PlannerStateEvidenceNeed = this.tb.classViewer("PlannerStateEvidenceNeed", [
+          "id","need","scope","minimum","reason",
+        ]);
+        
+        this.PlannerStateOpenQuestion = this.tb.classViewer("PlannerStateOpenQuestion", [
+          "question","reason",
+        ]);
+        
+        this.PlannerStateSnapshot = this.tb.classViewer("PlannerStateSnapshot", [
+          "taskId","requestId","step","status","userGoal","currentIntent","intentTags","taskTags","targetRefs","requiredEffects","evidenceNeeds","completedEvidence","completedEffects","openQuestions","candidateTools","discoveryQueries","nextStepPurpose","completionCriteria","lastAction","loadedTools","recentCalls","updatedAt",
+        ]);
+        
+        this.PlannerStateTargetRef = this.tb.classViewer("PlannerStateTargetRef", [
+          "kind","value","status",
         ]);
         
         this.PlannerTimelineTurn = this.tb.classViewer("PlannerTimelineTurn", [
-          "index","role","kind","step","content","evidenceRefs","artifactUris",
+          "index","role","kind","step","content","payloadJson","evidenceUris","artifactUris",
         ]);
         
         this.PlannerToolCallStateItem = this.tb.classViewer("PlannerToolCallStateItem", [
-          "step","toolName","status","artifactUri","evidenceRefs","resultKind","argumentsPreview","error",
+          "step","toolName","status","artifactUri","evidenceUris","resultKind","argumentsPreview","error",
         ]);
         
         this.ProgressSignals = this.tb.classViewer("ProgressSignals", [
@@ -159,7 +299,7 @@ export default class TypeBuilder {
         ]);
         
         this.TaskFrame = this.tb.classViewer("TaskFrame", [
-          "taskType","answerGoal","intentTags","targetRefs","candidateTools","discoveryQueries","requiredEffects","requiredEvidence","userInputNeeds","nextStepPurpose","completionCriteria","notes",
+          "taskType","answerGoal","intentTags","taskTags","targetRefs","candidateTools","discoveryQueries","requiredEffects","requiredEvidence","userInputNeeds","nextStepPurpose","completionCriteria","notes",
         ]);
         
         this.TaskRequiredEffect = this.tb.classViewer("TaskRequiredEffect", [
@@ -167,7 +307,7 @@ export default class TypeBuilder {
         ]);
         
         this.TaskRequiredEvidence = this.tb.classViewer("TaskRequiredEvidence", [
-          "id","need","minimum","reason",
+          "id","need","scope","minimum","reason",
         ]);
         
         this.TaskTargetRef = this.tb.classViewer("TaskTargetRef", [
@@ -176,6 +316,10 @@ export default class TypeBuilder {
         
         this.TaskUserInputNeed = this.tb.classViewer("TaskUserInputNeed", [
           "question","reason",
+        ]);
+        
+        this.ToolCallPlan = this.tb.classViewer("ToolCallPlan", [
+          "calls",
         ]);
         
         this.ToolCapabilityFacets = this.tb.classViewer("ToolCapabilityFacets", [
@@ -202,6 +346,18 @@ export default class TypeBuilder {
           "produces","quality","satisfies","kinds","capabilityIds",
         ]);
         
+        this.ToolLearningRecord = this.tb.classViewer("ToolLearningRecord", [
+          "toolName","tags","sourceTerms","triggers","reason","confidence",
+        ]);
+        
+        this.ToolLearningResult = this.tb.classViewer("ToolLearningResult", [
+          "records",
+        ]);
+        
+        this.TurnUnderstanding = this.tb.classViewer("TurnUnderstanding", [
+          "rawUserTurn","standaloneRequest","contextMode","contextBasis","missingContext",
+        ]);
+        
         
         this.EvidenceVerificationStatus = this.tb.enumViewer("EvidenceVerificationStatus", [
           "Satisfied","Partial","Missing","Blocked",
@@ -211,8 +367,20 @@ export default class TypeBuilder {
           "AddCall","AddEvidence","AddWarning",
         ]);
         
+        this.InteractionRunMode = this.tb.enumViewer("InteractionRunMode", [
+          "DirectResponse","ToolAgentLoop","DeliberateTaskLoop",
+        ]);
+        
+        this.TaskEvidenceScope = this.tb.enumViewer("TaskEvidenceScope", [
+          "CurrentRun","Memory","Conversation",
+        ]);
+        
         this.ToolCallStatus = this.tb.enumViewer("ToolCallStatus", [
           "Success","Failure","Empty",
+        ]);
+        
+        this.TurnContextMode = this.tb.enumViewer("TurnContextMode", [
+          "None","Used","Insufficient",
         ]);
         
     }

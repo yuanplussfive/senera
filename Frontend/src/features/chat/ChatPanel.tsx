@@ -2,6 +2,14 @@ import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type {
   ModelProviderListItem,
+  ConfigMutationState,
+  ConfigSnapshotData,
+  PresetFormat,
+  PresetItem,
+  PresetMutationState,
+  ProviderModelEndpointInput,
+  ProviderModelsFailedData,
+  ProviderModelsSnapshotData,
   PluginConfigItem,
   PluginConfigMutationState,
   UploadAttachmentData,
@@ -21,9 +29,31 @@ interface Props {
   onSelectModelProvider: (id: string) => void;
   pluginConfigs: PluginConfigItem[];
   pluginConfigOperations: Record<string, PluginConfigMutationState>;
+  configSnapshot: ConfigSnapshotData | null;
+  configOperation: ConfigMutationState | null;
+  providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
+  providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
+  providerModelLoadingIds: Record<string, boolean>;
+  presets: PresetItem[];
+  activePresetName: string | null;
+  presetsEnabled: boolean;
+  presetRootDir: string;
+  presetOperations: Record<string, PresetMutationState>;
   onRefreshPluginConfigs: () => void;
   onSavePluginConfig: (pluginName: string, toml: string) => string | null;
   onSetPluginEnabled: (pluginName: string, enabled: boolean, toolName?: string) => string | null;
+  onRefreshConfig: () => void;
+  onSaveConfig: (config: Record<string, unknown>) => string | null;
+  onFetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
+  onRefreshPresets: () => void;
+  onSavePreset: (input: {
+    name: string;
+    format: PresetFormat;
+    content: string;
+    activate?: boolean;
+  }) => string | null;
+  onDeletePreset: (name: string) => string | null;
+  onSetActivePreset: (name: string | null) => string | null;
   socketStatus: string;
   uploadUrl: string;
   onSend: (input: string, attachments?: UploadAttachmentData[]) => void;
@@ -44,9 +74,26 @@ export function ChatPanel({
   onSelectModelProvider,
   pluginConfigs,
   pluginConfigOperations,
+  configSnapshot,
+  configOperation,
+  providerModelCatalogs,
+  providerModelErrors,
+  providerModelLoadingIds,
+  presets,
+  activePresetName,
+  presetsEnabled,
+  presetRootDir,
+  presetOperations,
   onRefreshPluginConfigs,
   onSavePluginConfig,
   onSetPluginEnabled,
+  onRefreshConfig,
+  onSaveConfig,
+  onFetchProviderModels,
+  onRefreshPresets,
+  onSavePreset,
+  onDeletePreset,
+  onSetActivePreset,
   socketStatus,
   uploadUrl,
   onSend,
@@ -138,9 +185,26 @@ export function ChatPanel({
         onSelectModelProvider={onSelectModelProvider}
         pluginConfigs={pluginConfigs}
         pluginConfigOperations={pluginConfigOperations}
+        configSnapshot={configSnapshot}
+        configOperation={configOperation}
+        providerModelCatalogs={providerModelCatalogs}
+        providerModelErrors={providerModelErrors}
+        providerModelLoadingIds={providerModelLoadingIds}
+        presets={presets}
+        activePresetName={activePresetName}
+        presetsEnabled={presetsEnabled}
+        presetRootDir={presetRootDir}
+        presetOperations={presetOperations}
         onRefreshPluginConfigs={onRefreshPluginConfigs}
         onSavePluginConfig={onSavePluginConfig}
         onSetPluginEnabled={onSetPluginEnabled}
+        onRefreshConfig={onRefreshConfig}
+        onSaveConfig={onSaveConfig}
+        onFetchProviderModels={onFetchProviderModels}
+        onRefreshPresets={onRefreshPresets}
+        onSavePreset={onSavePreset}
+        onDeletePreset={onDeletePreset}
+        onSetActivePreset={onSetActivePreset}
         socketStatus={socketStatus}
         uploadUrl={uploadUrl}
         onSend={onSend}

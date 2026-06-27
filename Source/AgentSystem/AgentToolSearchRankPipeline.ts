@@ -1,5 +1,5 @@
 import type MiniSearch from "minisearch";
-import type { ResolvedAgentToolSearchConfig } from "./Types.js";
+import type { ResolvedAgentToolSearchConfig } from "./Types/AgentConfigTypes.js";
 import type { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
 import { AgentToolSearchReranker } from "./AgentToolSearchReranker.js";
@@ -33,7 +33,10 @@ export class AgentToolSearchRankPipeline {
   }
 
   rank(options: AgentToolSearchOptions): AgentToolSearchRankPipelineResult {
-    const queryTokens = this.tokenizer.tokenize(options.query);
+    const keywordTokens = this.tokenizer.keywords(options.query);
+    const queryTokens = this.rankableQueryTokens(
+      keywordTokens.length > 0 ? keywordTokens : this.tokenizer.tokenize(options.query),
+    );
     const visible = new Set(options.loadedToolNames ?? []);
     const candidates = this.docs.filter((doc) =>
       options.includeLoaded !== false || !visible.has(doc.toolName));
@@ -63,9 +66,14 @@ export class AgentToolSearchRankPipeline {
     queryTokens: string[],
     candidateNames: Set<string>,
   ): Record<AgentToolSearchRankerName, AgentToolSearchRankMap> {
+    const bm25 = this.bm25Rank(options.query, candidateNames);
+    const lexicalCandidates = bm25.size > 0
+      ? new Set(bm25.keys())
+      : candidateNames;
+
     return {
-      bm25: this.bm25Rank(options.query, candidateNames),
-      exact: this.exactRank(queryTokens, candidateNames),
+      bm25,
+      exact: this.exactRank(queryTokens, lexicalCandidates),
       memory: this.memoryRank(options.memoryEvidence ?? [], candidateNames),
       priority: this.priorityRank(candidateNames),
     };
@@ -99,22 +107,11 @@ export class AgentToolSearchRankPipeline {
       return 0;
     }
 
-    const fields = [
-      { text: doc.toolName, boost: 8 },
-      { text: doc.title, boost: 5 },
-      { text: doc.tags, boost: 7 },
-      { text: doc.summary, boost: 3 },
-      { text: doc.whenToUse, boost: 3 },
-      { text: doc.examples, boost: 4 },
-      { text: doc.params, boost: 2 },
-      { text: doc.permissions, boost: 1 },
-    ];
+    const documentTokens = new Set(this.tokenizer.tokenize(doc.coreText));
     return [...queryTokens].reduce((total, token) => {
-      const bestBoost = fields.reduce((best, field) => {
-        const fieldTokens = new Set(this.tokenizer.tokenize(field.text));
-        return fieldTokens.has(token) ? Math.max(best, field.boost) : best;
-      }, 0);
-      return total + bestBoost * this.inverseDocumentFrequency(token);
+      return documentTokens.has(token)
+        ? total + this.inverseDocumentFrequency(token)
+        : total;
     }, 0);
   }
 
@@ -144,12 +141,6 @@ export class AgentToolSearchRankPipeline {
     rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,
     candidateNames: Set<string>,
   ): AgentToolSearchRankedEntry[] {
-    const weights = {
-      bm25: 1,
-      exact: 0.9,
-      memory: 0.75,
-      priority: 0.25,
-    } satisfies Record<AgentToolSearchRankerName, number>;
     const k = this.config.Ranking.RrfK;
 
     return [...candidateNames]
@@ -157,7 +148,7 @@ export class AgentToolSearchRankPipeline {
         toolName,
         score: (Object.keys(rankers) as AgentToolSearchRankerName[]).reduce((total, name) => {
           const rank = rankers[name].get(toolName);
-          return rank === undefined ? total : total + weights[name] / (k + rank);
+          return rank === undefined ? total : total + 1 / (k + rank);
         }, 0),
       }))
       .filter((entry) => entry.score > 0)
@@ -219,44 +210,16 @@ export class AgentToolSearchRankPipeline {
     rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,
     queryTokens: string[],
   ): Set<string> {
-    const querySet = new Set(queryTokens);
-    return new Set(
-      [...rankers.bm25.keys(), ...rankers.exact.keys(), ...rankers.memory.keys()]
-        .filter((toolName) => this.isRelevantCandidate(toolName, rankers, querySet)),
-    );
-  }
-
-  private isRelevantCandidate(
-    toolName: string,
-    rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,
-    queryTokens: Set<string>,
-  ): boolean {
-    if (rankers.memory.has(toolName)) {
-      return true;
+    if (queryTokens.length === 0 || rankers.exact.size === 0) {
+      return new Set([...rankers.bm25.keys(), ...rankers.memory.keys()]);
     }
 
-    const doc = this.docsByTool.get(toolName);
-    if (!doc) {
-      return false;
-    }
-
-    const coverage = this.queryCoverage(doc, queryTokens);
-    const information = this.informationCoverage(doc, queryTokens);
-    const requiredCoverage = queryTokens.size <= 2 ? 1 : 2;
-    return (coverage >= requiredCoverage && information >= 1.5)
-      || this.exactScore(queryTokens, doc) >= 8;
+    return new Set([...rankers.exact.keys(), ...rankers.memory.keys()]);
   }
 
   private queryCoverage(doc: ToolSearchDocument, queryTokens: Set<string>): number {
     const tokens = new Set(this.tokenizer.tokenize(doc.coreText));
     return [...queryTokens].filter((token) => tokens.has(token)).length;
-  }
-
-  private informationCoverage(doc: ToolSearchDocument, queryTokens: Set<string>): number {
-    const tokens = new Set(this.tokenizer.tokenize(doc.coreText));
-    return [...queryTokens]
-      .filter((token) => tokens.has(token))
-      .reduce((total, token) => total + this.inverseDocumentFrequency(token), 0);
   }
 
   private documentSimilarity(left: ToolSearchDocument, right: ToolSearchDocument | undefined): number {
@@ -274,6 +237,22 @@ export class AgentToolSearchRankPipeline {
   private inverseDocumentFrequency(token: string): number {
     const df = this.documentFrequency.get(token) ?? 0;
     return Math.log(1 + (this.docs.length + 1) / (df + 1));
+  }
+
+  private rankableQueryTokens(tokens: string[]): string[] {
+    const present = tokens.filter((token) => this.documentFrequency.has(token));
+    if (present.length === 0) {
+      return tokens;
+    }
+
+    const information = present
+      .map((token) => this.inverseDocumentFrequency(token))
+      .sort((left, right) => left - right);
+    const pivot = information[Math.floor(information.length / 2)];
+    const selected = pivot === undefined
+      ? []
+      : present.filter((token) => this.inverseDocumentFrequency(token) >= pivot);
+    return selected.length > 0 ? selected : present;
   }
 
   private buildDocumentFrequency(): void {

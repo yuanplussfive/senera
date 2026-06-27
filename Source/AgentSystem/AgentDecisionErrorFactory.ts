@@ -20,7 +20,7 @@ import {
 } from "./AgentXmlStatus.js";
 import type { AgentXmlParseError, AgentXmlSourceHelper } from "./AgentXmlParser.js";
 import type { AgentSchemaValidationError } from "./AgentSchemaValidator.js";
-import type { AgentToolProcessError } from "./Types.js";
+import type { AgentToolProcessError } from "./Types/ToolRuntimeTypes.js";
 
 export interface AgentDecisionErrorSpec {
   code: AgentProtocolErrorCode;

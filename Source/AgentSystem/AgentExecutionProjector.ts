@@ -3,6 +3,7 @@ import type { AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentExecutionResult } from "./AgentDecisionExecutor.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "./AgentModelMetadata.js";
 import type { StepTrace } from "./AgentStepTrace.js";
+import type { TurnUnderstanding } from "./BamlClient/baml_client/types.js";
 
 export type AgentTerminalResult =
   | {
@@ -29,6 +30,7 @@ export interface AgentCompletedRunResult {
   usage?: AgentModelUsage;
   conversationEntries: AgentConversationEntry[];
   stepTraces: StepTrace[];
+  turnUnderstanding?: TurnUnderstanding;
 }
 
 export class AgentExecutionProjector {

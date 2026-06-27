@@ -13,19 +13,6 @@
       "Cwd": "."
     }
   },
-  "Discovery": {
-    "Tags": [
-      "search",
-      "搜索",
-      "web",
-      "网页",
-      "tavily",
-      "real-world",
-      "联网",
-      "新闻",
-      "事实"
-    ]
-  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 68
@@ -64,7 +51,6 @@
               ]
             },
             "Presentation": {
-              "RefPrefix": "W",
               "Locator": "{{ url }}",
               "Display": "web result: {{ title }}",
               "Label": "{{ title }}",
@@ -98,8 +84,8 @@
               ]
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- {{ e.ref }} {{ e.slots.title }} - {{ e.slots.url }}\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- {{ e.ref }} web result\n  title: {{ e.slots.title }}\n  url: {{ e.slots.url }}\n  score: {{ e.slots.score }}{% if e.slots.publishedDate %}\n  published: {{ e.slots.publishedDate }}{% endif %}\n  content: {{ e.slots.content }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.title }} - {{ e.slots.url }}\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} web result\n  title: {{ e.slots.title }}\n  url: {{ e.slots.url }}\n  score: {{ e.slots.score }}{% if e.slots.publishedDate %}\n  published: {{ e.slots.publishedDate }}{% endif %}\n  content: {{ e.slots.content }}\n{% endfor %}"
             }
           }
         ],
@@ -110,20 +96,12 @@
       },
       "Search": {
         "Summary": "联网搜索网页、新闻和实时事实信息。",
-        "Keywords": [
-          "search",
-          "web",
-          "news",
-          "latest",
-          "tavily",
-          "internet",
-          "搜索",
-          "网页",
-          "新闻",
-          "最新",
-          "实时",
-          "联网",
-          "资料"
+        "Tags": [
+          "网页搜索",
+          "最新消息",
+          "外部资料",
+          "新闻查询",
+          "联网检索"
         ],
         "Capabilities": [
           {
@@ -169,13 +147,6 @@
               "latest news",
               "official docs lookup"
             ],
-            "Examples": [
-              "查今天 OpenAI 最新新闻",
-              "find latest release notes"
-            ],
-            "Avoid": [
-              "不要用于搜索本地代码或读取工作区文件"
-            ],
             "Risk": {
               "SideEffect": "network",
               "Permission": "external-api",
@@ -190,10 +161,10 @@
           "需要比较产品、公司、政策、价格、发布时间等可能变化的信息时使用。"
         ],
         "Examples": [
-          "查今天 OpenAI 最新新闻",
-          "搜索 Tavily API 文档",
-          "对比两家公司最近动态",
-          "find latest release notes"
+          "OpenAI 最新新闻",
+          "Tavily API 文档",
+          "公司最近动态 对比",
+          "latest release notes web search"
         ],
         "Avoid": [
           "不要用于搜索本地代码或读取工作区文件。"

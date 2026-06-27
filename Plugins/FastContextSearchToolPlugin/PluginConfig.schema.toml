@@ -1,0 +1,307 @@
+[form]
+version = 1
+strict = true
+
+[[form.sections]]
+id = "senera"
+label = "启用状态"
+description = "控制工作区检索技能是否参与外部技能集。"
+
+[[form.sections.fields]]
+path = ["senera", "enabled"]
+label = "启用技能"
+description = "关闭后工作区检索技能不会参与外部技能集。"
+type = "boolean"
+
+[[form.sections]]
+id = "fast_context"
+label = "检索范围"
+description = "配置默认检索根目录、排除规则和基础资源限制。"
+
+[[form.sections.fields]]
+path = ["fast_context", "roots"]
+label = "检索根目录"
+description = "路径相对当前工作区。"
+type = "array"
+itemType = "string"
+
+[[form.sections.fields]]
+path = ["fast_context", "exclude"]
+label = "排除路径"
+description = "支持 ignore/glob 规则。"
+type = "array"
+itemType = "string"
+
+[[form.sections.fields]]
+path = ["fast_context", "max_file_mb"]
+label = "单文件上限"
+description = "超过该大小的文件不会被读取或索引，单位 MB。"
+type = "number"
+min = 0.1
+max = 10
+step = 0.1
+
+[[form.sections.fields]]
+path = ["fast_context", "max_index_files"]
+label = "索引文件上限"
+description = "单次索引最多纳入的文件数量。"
+type = "number"
+min = 1
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "default_max_results"]
+label = "默认结果数"
+description = "没有显式指定时的默认搜索结果数量。"
+type = "number"
+min = 1
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "default_context_lines"]
+label = "上下文行数"
+description = "搜索命中周围默认携带的行数。"
+type = "number"
+min = 0
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "hybrid_min_ripgrep_results"]
+label = "索引补充阈值"
+description = "ripgrep 命中少于该数量时补充 SQLite 索引检索。"
+type = "number"
+min = 0
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "ripgrep_timeout_seconds"]
+label = "精确搜索超时"
+description = "ripgrep 子进程超时时间，单位秒。"
+type = "number"
+min = 1
+step = 0.5
+
+[[form.sections]]
+id = "fast_context.search"
+label = "混合检索"
+description = "配置检索引擎和候选收集策略。"
+
+[[form.sections.fields]]
+path = ["fast_context", "search", "engines"]
+label = "检索引擎"
+description = "混合检索启用的引擎。"
+type = "array"
+itemType = "string"
+
+[[form.sections.fields]]
+path = ["fast_context", "search", "collect_multiplier"]
+label = "候选倍数"
+description = "各引擎内部候选收集倍数。"
+type = "number"
+min = 1
+step = 1
+
+[[form.sections]]
+id = "fast_context.path_fuzzy"
+label = "路径模糊检索"
+description = "配置路径和文件名模糊匹配的候选范围。"
+
+[[form.sections.fields]]
+path = ["fast_context", "path_fuzzy", "max_candidates"]
+label = "路径候选上限"
+description = "单次路径模糊检索最多扫描的路径候选数量。"
+type = "number"
+min = 1
+step = 100
+
+[[form.sections.fields]]
+path = ["fast_context", "path_fuzzy", "include_directories"]
+label = "包含目录"
+description = "开启后路径模糊检索会把目录也作为候选。"
+type = "boolean"
+
+[[form.sections.fields]]
+path = ["fast_context", "path_fuzzy", "threshold"]
+label = "路径命中阈值"
+description = "低于该分数的路径候选不会返回。"
+type = "number"
+min = 0
+max = 1
+step = 0.05
+
+[[form.sections.fields]]
+path = ["fast_context", "path_fuzzy", "targets"]
+label = "路径匹配字段"
+description = "参与路径模糊匹配的字段。"
+type = "array"
+itemType = "string"
+
+[[form.sections]]
+id = "fast_context.scout"
+label = "Scout 侦察"
+description = "配置多步工作区侦察的候选数量和读取范围。"
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "max_queries"]
+label = "侦察查询数"
+description = "单次侦察最多执行的检索查询数量。"
+type = "number"
+min = 1
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "max_files"]
+label = "侦察文件数"
+description = "最终返回给主模型的文件数量。"
+type = "number"
+min = 1
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "max_results_per_query"]
+label = "侦察候选数"
+description = "每个检索查询收集的候选数量。"
+type = "number"
+min = 1
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "context_lines"]
+label = "侦察上下文"
+description = "检索命中周围携带的上下文行数。"
+type = "number"
+min = 0
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "read_line_window"]
+label = "侦察读取窗口"
+description = "每个最终文件读取的行窗口大小。"
+type = "number"
+min = 8
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "bootstrap_markers"]
+label = "读取标记文件"
+description = "开启后把项目标记文件作为初始候选。"
+type = "boolean"
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "refresh_index"]
+label = "刷新索引"
+description = "开启后侦察前刷新 SQLite 索引。"
+type = "boolean"
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "query_sources"]
+label = "侦察查询来源"
+description = "按顺序合并问题、提示和派生词。"
+type = "array"
+itemType = "string"
+
+[[form.sections]]
+id = "fast_context.scout.llm_planner"
+label = "深度侦察"
+description = "控制 Scout 是否使用受限 LLM Planner。"
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "llm_planner", "enabled"]
+label = "启用深度侦察"
+description = "允许 Scout 使用 LLM Planner 执行受限多轮检索。"
+type = "boolean"
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "llm_planner", "mode"]
+label = "默认侦察模式"
+description = "llm 调用宿主侧 BAML Planner，deterministic 只使用本地确定性检索。"
+type = "string"
+options = ["llm", "deterministic"]
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "llm_planner", "max_rounds"]
+label = "深度侦察轮数"
+description = "最多模型规划轮数。"
+type = "number"
+min = 1
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "llm_planner", "max_commands_per_round"]
+label = "每轮命令数"
+description = "每轮最多执行的受限命令数量。"
+type = "number"
+min = 1
+step = 1
+
+[[form.sections.fields]]
+path = ["fast_context", "scout", "llm_planner", "command_types"]
+label = "受限命令类型"
+description = "允许 Planner 使用的命令类型。"
+type = "array"
+itemType = "string"
+
+[[form.allowedPaths]]
+path = ["fast_context", "state_dir"]
+
+[[form.allowedPaths]]
+path = ["fast_context", "index"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "discovery"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "chunking"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "search", "term_operator"]
+
+[[form.allowedPaths]]
+path = ["fast_context", "search", "snippet_max_lines"]
+
+[[form.allowedPaths]]
+path = ["fast_context", "search", "weights"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "search", "reasons"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "path_fuzzy", "weights"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "read"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "messages"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "map"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "analyzers"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "scout", "tokenizer"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "scout", "marker_profile"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "scout", "reference_profile"]
+recursive = true
+
+[[form.allowedPaths]]
+path = ["fast_context", "scout", "llm_planner"]
+recursive = true

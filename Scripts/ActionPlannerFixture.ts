@@ -1,14 +1,29 @@
-import type { ActionPlanInput } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
+import {
+  TurnContextMode,
+  type ActionPlanInput,
+} from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { AgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
-import type {
-  ResolvedAgentActionPlannerClientConfig,
-  ResolvedAgentActionPlannerConfig,
-} from "../Source/AgentSystem/Types.js";
+import type { ResolvedAgentActionPlannerClientConfig, ResolvedAgentActionPlannerConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 export function createActionPlanInputFixture(
   userMessage = "inspect project",
 ): ActionPlanInput {
   return {
+    currentUserTurn: {
+      content: userMessage,
+    },
+    roleplayPreset: {
+      enabled: false,
+      activePresetName: null,
+      documents: [],
+    },
+    turnUnderstanding: {
+      rawUserTurn: userMessage,
+      standaloneRequest: userMessage,
+      contextMode: TurnContextMode.None,
+      contextBasis: "",
+      missingContext: "",
+    },
     runState: {
       currentStep: 1,
       dynamicTools: true,
@@ -28,12 +43,13 @@ export function createActionPlanInputFixture(
       role: "user",
       kind: "user_message",
       content: userMessage,
-      evidenceRefs: [],
+      evidenceUris: [],
       artifactUris: [],
     }],
     evidenceMemory: [],
     evidenceState: [],
     plannerJournal: [],
+    toolTagCatalog: [],
     compactToolCatalog: [],
     toolCatalog: [],
     activeSkills: [],
@@ -58,6 +74,7 @@ export function createActionPlannerConfigFixture(options: {
     MaxRepairAttempts: options.maxRepairAttempts ?? 0,
     Evidence: AgentDefaults.ActionPlanner.Evidence,
     Client: options.client,
+    TurnUnderstandingClient: options.client,
     TaskFrameClient: options.client,
     EvidenceClient: options.client,
   };

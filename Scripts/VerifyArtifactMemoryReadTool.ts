@@ -8,11 +8,9 @@ import {
   createAgentArtifactUri,
   normalizeAgentArtifactUri,
 } from "../Source/AgentSystem/Artifacts/AgentArtifactLocator.js";
-import type {
-  AgentSystemConfig,
-  RegisteredTool,
-  ToolArtifactPolicyManifest,
-} from "../Source/AgentSystem/Types.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { ToolArtifactPolicyManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
+import type { RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
 
 const workspaceRoot = path.resolve(process.cwd());
 const artifactRoot = ".senera/artifacts/memory-read-verification";
@@ -25,17 +23,20 @@ const config: AgentSystemConfig = {
   PluginDiscovery: {
     ManifestFileName: "PluginManifest.json",
   },
-  ModelProviders: [{
+  ModelProviderEndpoints: [{
     Id: "test",
-    Kind: "OpenAICompatible",
-    Endpoint: "Responses",
     BaseUrl: "https://example.invalid/v1",
     ApiKey: "test",
+  }],
+  ModelProviders: [{
+    Id: "test",
+    ProviderId: "test",
+    Endpoint: "Responses",
     Model: "test",
     Temperature: 0,
     MaxOutputTokens: -1,
     Stream: true,
-    TimeoutMs: 1,
+    TimeoutSeconds: 0.001,
     MaxNetworkRetries: 0,
   }],
   Artifacts: {
@@ -113,7 +114,7 @@ async function main(): Promise<void> {
           item: [{
             date: "2026-06-12",
             condition: "Cloudy",
-            localPath: path.join(workspaceRoot, "Source", "AgentSystem", "Types.ts"),
+            localPath: path.join(workspaceRoot, "Source", "AgentSystem", "Types", "AgentConfigTypes.ts"),
           }],
         },
         source: "WeatherAPI",
@@ -162,7 +163,7 @@ async function main(): Promise<void> {
   assert.equal(batchRead.artifacts.item[1]?.artifactUri, artifact.artifactUri);
   assert.equal(batchRead.artifacts.item.every((entry) => entry.memoryCount === 3), true);
   assert.equal(JSON.stringify(batchRead).includes(workspaceRoot), false);
-  assert.equal(JSON.stringify(batchRead).includes("Source/AgentSystem/Types.ts"), true);
+  assert.equal(JSON.stringify(batchRead).includes("Source/AgentSystem/Types/AgentConfigTypes.ts"), true);
   assert.equal(JSON.stringify(batchRead).includes("artifactPath"), false);
 
   const invalidRead = readOkToolResult(await readArtifactMemoryHostTool({
@@ -235,7 +236,6 @@ const weatherArtifactPolicy: ToolArtifactPolicyManifest = {
       ],
     },
     Presentation: {
-      RefPrefix: "WTH",
       Locator: "{{ resolvedLocation }} @ {{ date }}",
       Display: "forecast for {{ resolvedLocation }} on {{ date }}: {{ condition }}",
       Label: "{{ resolvedLocation }} forecast {{ date }}",
@@ -260,8 +260,8 @@ const weatherArtifactPolicy: ToolArtifactPolicyManifest = {
       ],
     },
     Projection: {
-      SummaryTemplate: "{% for e in evidence %}- {{ e.ref }} {{ e.display }}\n{% endfor %}",
-      ArtifactTemplate: "{% for e in evidence %}- {{ e.ref }} weather forecast\n  location: {{ e.slots.resolvedLocation }}\n  date: {{ e.slots.date }}\n  condition: {{ e.slots.condition }}\n{% endfor %}",
+      SummaryTemplate: "{% for e in evidence %}- {{ e.evidenceUri }} {{ e.display }}\n{% endfor %}",
+      ArtifactTemplate: "{% for e in evidence %}- {{ e.evidenceUri }} weather forecast\n  location: {{ e.slots.resolvedLocation }}\n  date: {{ e.slots.date }}\n  condition: {{ e.slots.condition }}\n{% endfor %}",
     },
     Confidence: 0.8,
   }],

@@ -1,7 +1,5 @@
-import type {
-  AgentDecision,
-  RegisteredDecisionAction,
-} from "./Types.js";
+import type { RegisteredDecisionAction } from "./Types/PluginRuntimeTypes.js";
+import type { AgentDecision } from "./Types/ToolRuntimeTypes.js";
 import { AgentPluginRegistry } from "./AgentPluginRegistry.js";
 import {
   AgentSchemaValidationError,

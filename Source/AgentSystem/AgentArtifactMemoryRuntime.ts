@@ -3,8 +3,11 @@ import path from "node:path";
 import { z } from "zod";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
-import type { AgentSystemConfig } from "./Types.js";
+import {
+  toolProcessFailureResult,
+  toolProcessSuccessResult,
+} from "./AgentToolProcessEnvelope.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -135,17 +138,7 @@ export const readArtifactMemoryHostTool: AgentHostToolHandler = async (args, con
       maxBytes: resolveArtifactReadMaxBytes(parsed.data, context.config),
       signal: context.signal,
     });
-    return {
-      response: {
-        protocol: AgentToolProcessProtocol,
-        ok: true,
-        result,
-      },
-      stdout: "",
-      stderr: "",
-      exitCode: null,
-      signal: null,
-    };
+    return toolProcessSuccessResult(result);
   } catch (error) {
     return artifactMemoryFailure({
       code: AgentExecutionErrorCodes.PluginExecutionError,
@@ -471,17 +464,7 @@ function resolveArtifactReadMaxBytes(
 function artifactMemoryFailure(
   error: NonNullable<AgentToolProcessRunResult["response"]["error"]>,
 ): AgentToolProcessRunResult {
-  return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error,
-    },
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    signal: null,
-  };
+  return toolProcessFailureResult(error);
 }
 
 const EmptyArtifactInternalRoutingFields = new Set<string>();

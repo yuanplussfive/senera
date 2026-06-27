@@ -167,7 +167,7 @@ export class AgentDecisionOutputResolver {
   private resolveToolCallContract(shape: AgentDecisionOutputShape): AgentDecisionOutputResolution {
     return matchByKind(shape, {
       pure_tool_envelope: (entry) => this.toolCalls(entry, false),
-      mixed_tool_envelope: (entry) => this.toolCalls(entry, true),
+      mixed_tool_envelope: (entry) => this.mismatch(entry, "tool_call_xml"),
       tool_envelope_fragment: (entry) => this.mismatch(entry, "tool_call_xml"),
       plain_text: (entry) => this.mismatch(entry, "tool_call_xml"),
     });

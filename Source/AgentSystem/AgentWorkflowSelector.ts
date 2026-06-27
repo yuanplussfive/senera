@@ -1,6 +1,7 @@
 import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
 import type { AgentActivatedSkill } from "./AgentSkillActivation.js";
-import type { RegisteredAgentWorkflow, ToolSearchCapabilityManifest } from "./Types.js";
+import type { ToolSearchCapabilityManifest } from "./Types/PluginManifestTypes.js";
+import type { RegisteredAgentWorkflow } from "./Types/PluginRuntimeTypes.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import {
   capabilityFacetEntries,
@@ -16,9 +17,8 @@ interface AgentWorkflowSearchDocument {
   description: string;
   triggerSkills: string;
   triggerAgents: string;
-  triggerKeywords: string;
+  tags: string;
   summary: string;
-  keywords: string;
   useCases: string;
   examples: string;
   capabilities: string;
@@ -131,9 +131,8 @@ export class AgentWorkflowSelector {
         "description",
         "triggerSkills",
         "triggerAgents",
-        "triggerKeywords",
+        "tags",
         "summary",
-        "keywords",
         "useCases",
         "examples",
         "capabilities",
@@ -172,9 +171,8 @@ export class AgentWorkflowSelector {
       description: workflow.description ?? "",
       triggerSkills: (workflow.trigger.Skills ?? []).join(" "),
       triggerAgents: (workflow.trigger.Agents ?? []).join(" "),
-      triggerKeywords: (workflow.trigger.Keywords ?? []).join(" "),
+      tags: (search?.Tags ?? []).join(" "),
       summary: search?.Summary ?? "",
-      keywords: (search?.Keywords ?? []).join(" "),
       useCases: (search?.UseCases ?? []).join(" "),
       examples: (search?.Examples ?? []).join(" "),
       capabilities: capabilities.map(workflowCapabilitySearchText).join(" "),
@@ -214,7 +212,6 @@ export class AgentWorkflowSelector {
 
 function workflowCapabilitySearchText(capability: ToolSearchCapabilityManifest): string {
   return capabilitySearchText(capability, {
-    includeAvoid: true,
     includeRisk: false,
   });
 }

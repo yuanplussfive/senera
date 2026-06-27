@@ -203,7 +203,6 @@ function generateMockRuns(messages: ChatMessage[], now: number): RunRecord[] {
       pendingToolArgsByName: {},
       modelProvider: {
         id: "dev-model",
-        title: "Dev Model",
         kind: "dev",
         endpoint: "dev://motion",
         baseUrl: "dev://motion",

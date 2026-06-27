@@ -1,285 +1,154 @@
 [senera]
-# 是否启用工作区搜索技能。
 enabled = true
 
 [fast_context]
-# 默认检索根目录，路径相对当前工作区。
-roots = ["."]
-
-# 检索、索引、读取时排除的路径或 ignore/glob 规则。
-exclude = [
-  ".git",
-  ".claude",
-  "Dist",
-  "**/Dist/**",
-  "dist",
-  "**/dist/**",
-  "build",
-  "**/build/**",
-  "coverage",
-  "**/coverage/**",
-  "node_modules",
-  "**/node_modules/**",
-  "Plugins/*/node_modules",
-  "Plugins/*/.state",
-  ".senera",
-  ".state",
-  "**/.state/**",
-  "package-lock.json"
-]
-
-# 单个文件允许读取和索引的最大大小，单位 MB。
+roots = [ "." ]
+exclude = [ ".git", ".claude", "Dist", "**/Dist/**", "dist", "**/dist/**", "build", "**/build/**", "coverage", "**/coverage/**", "node_modules", "**/node_modules/**", "Plugins/*/node_modules", "Plugins/*/.state", ".senera", ".state", "**/.state/**", "package-lock.json" ]
 max_file_mb = 0.3
-# 单次索引最多纳入的文件数量。
 max_index_files = 1200
-# 未显式指定时的默认结果数量。
 default_max_results = 12
-# 搜索命中周围默认携带的上下文行数。
 default_context_lines = 4
-# 插件状态目录，路径相对插件目录。
 state_dir = ".state"
-# ripgrep 命中少于该数量时补充 SQLite 索引检索。
 hybrid_min_ripgrep_results = 3
-# ripgrep 子进程超时时间，单位秒。
 ripgrep_timeout_seconds = 8
 
 [fast_context.index]
-# SQLite 索引数据库文件名，存放在 state_dir 下。
 database = "workspace-context.sqlite"
-# FTS5 普通全文 tokenizer。
 tokenizer = "unicode61"
-# FTS5 子串检索 tokenizer。
 trigram_tokenizer = "trigram"
 
 [fast_context.discovery]
-# 是否读取工作区根目录 .gitignore。
 include_gitignore = true
-# 是否跟随符号链接。
 follow_symbolic_links = false
-# 是否自动排除已禁用插件目录。
 exclude_disabled_plugins = true
-# 扫描已禁用插件目录的最大深度。
 disabled_plugin_scan_depth = 6
 
 [fast_context.chunking]
-# 分块策略：syntax_and_window 使用 AST 结构块并补充窗口块。
 strategy = "syntax_and_window"
-# 线性窗口最小行数。
 min_lines = 4
-# 线性窗口最大行数。
 max_lines = 120
-# 线性窗口重叠行数。
 overlap_lines = 12
 
 [fast_context.search]
-# 混合检索启用的引擎。
-engines = ["ripgrep", "path_fuzzy", "sqlite_fts", "sqlite_trigram", "path"]
-# FTS 多词查询连接方式。
+engines = [ "ripgrep", "path_fuzzy", "sqlite_fts", "sqlite_trigram", "path" ]
 term_operator = "OR"
-# 各引擎内部候选收集倍数。
 collect_multiplier = 4
-# 单条索引结果最多展示的 snippet 行数。
 snippet_max_lines = 24
 
 [fast_context.search.weights]
-# ripgrep 精确命中权重。
-ripgrep = 3.0
-# 路径/文件名模糊命中权重。
+ripgrep = 3
 path_fuzzy = 2.4
-# SQLite FTS5 全文命中权重。
 sqlite_fts = 1.8
-# SQLite trigram 子串命中权重。
 sqlite_trigram = 1.4
-# 路径命中权重。
 path = 1.2
-# 符号命中权重。
-symbol = 2.0
-# 多引擎合并结果权重。
-combined = 1.0
+symbol = 2
+combined = 1
 
 [fast_context.search.reasons]
-# ripgrep 命中原因。
 ripgrep = "ripgrep 精确文本命中"
-# 路径/文件名模糊命中原因。
 path_fuzzy = "路径或文件名模糊命中"
-# SQLite FTS5 命中原因。
 sqlite_fts = "SQLite FTS5 全文命中"
-# SQLite trigram 命中原因。
 sqlite_trigram = "SQLite trigram 子串命中"
-# 路径索引命中原因。
 path = "SQLite 路径索引命中"
-# 符号索引命中原因。
 symbol = "SQLite 符号索引命中"
 
 [fast_context.path_fuzzy]
-# 单次路径模糊检索最多扫描的路径候选数量。
 max_candidates = 8000
-# 是否把目录也作为可命中的路径候选。
 include_directories = true
-# fuzzysort 低于该分数的候选不会返回。
 threshold = 0.35
-# 参与模糊匹配的路径目标字段。
-targets = ["file_name", "path"]
+targets = [ "file_name", "path" ]
 
 [fast_context.path_fuzzy.weights]
-# 文件名命中权重。
 file_name = 1.35
-# 完整相对路径命中权重。
-path = 1.0
+path = 1
 
 [fast_context.read]
-# 读取文件时未指定 endLine 的默认行窗口。
 default_line_window = 120
-# 读取目录摘要最多展示的子项数量。
 directory_max_children = 80
-# 目录摘要每个子项估算字符预算。
 directory_child_char_budget = 120
 
+[fast_context.scout]
+max_queries = 12
+max_files = 8
+max_results_per_query = 10
+context_lines = 4
+read_line_window = 120
+bootstrap_markers = true
+refresh_index = false
+query_sources = [ "question", "hints", "question_terms" ]
+
+[fast_context.scout.tokenizer]
+separators = [ " ", "\t", "\r", "\n", ",", "，", ".", "。", ":", "：", ";", "；", "?", "？", "!", "！", "(", ")", "[", "]", "{", "}", "\"", "'", "`", "<", ">", "|" ]
+min_length = 3
+max_terms = 16
+case_sensitive = false
+
+[fast_context.scout.marker_profile]
+base_score = 2.2
+path_match_threshold = 0.25
+path_match_weight = 5
+distinct_term_weight = 4
+line_match_weight = 1
+max_snippets = 6
+source_reason = "项目标记文件"
+path_reason = "标记文件路径匹配侦察查询"
+content_reason = "标记文件内容匹配侦察查询"
+
+[[fast_context.scout.marker_profile.path_targets]]
+name = "文件名"
+selector = "basename"
+weight = 1.4
+
+[[fast_context.scout.marker_profile.path_targets]]
+name = "路径"
+selector = "path"
+weight = 1
+
+[fast_context.scout.reference_profile]
+enabled = true
+score = 18
+max_score_per_path = 54
+max_references = 12
+max_source_snippets = 8
+min_length = 3
+delimiters = [ " ", "\t", "\r", "\n", ",", "，", ";", "；", "(", ")", "[", "]", "{", "}", "\"", "'", "`", "<", ">", "|" ]
+trim_characters = [ ":", "：", "。", "!", "！", "?", "？" ]
+reason = "命中摘要引用了真实工作区文件"
+
+[fast_context.scout.llm_planner]
+enabled = true
+mode = "llm"
+max_rounds = 3
+max_commands_per_round = 4
+command_types = [ "rg", "readfile", "tree", "glob" ]
+command_context_lines = 3
+max_command_results = 8
+max_observation_chars = 6000
+max_candidate_summaries = 12
+read_line_window = 100
+tree_depth = 2
+max_tree_children = 60
+command_candidate_score = 6
+final_candidate_score = 20
+
 [fast_context.messages]
-# 目录读取结果给模型的使用提示。
-directory_guidance = [
-  "这是目录摘要，不是文件内容。",
-  "要读取源码，请从 children 中选择具体文件路径再调用 FastContextReadTool。",
-  "要搜索目录内逻辑，请调用 FastContextHybridSearchTool 并传入对应 roots。"
-]
-# 项目地图结果给模型的使用提示。
-workspace_map_guidance = [
-  "优先使用 availableRoots 或 indexedRoots 中真实存在的路径。",
-  "不确定目录时省略 roots，使用插件配置的默认检索范围。",
-  "需要更大上下文时先用搜索结果 path，再调用读取工具按行读取。"
-]
-# 路径不存在时给模型的恢复提示。
-missing_path_guidance = [
-  "requestedPath 不存在，不能把它当作已读取文件。",
-  "优先从 suggestions 或 parentChildren 选择真实路径再次调用 FastContextReadTool。",
-  "如果 suggestions 为空，先读取 nearestExistingParent 或使用 FastContextHybridSearchTool 定位。"
-]
+directory_guidance = [ "这是目录摘要，不是文件内容。", "要读取源码，请从 children 中选择具体文件路径再调用 FastContextReadTool。", "要搜索目录内逻辑，请调用 FastContextHybridSearchTool 并传入对应 roots。" ]
+workspace_map_guidance = [ "优先使用 availableRoots 或 indexedRoots 中真实存在的路径。", "不确定目录时省略 roots，使用插件配置的默认检索范围。", "需要更大上下文时先用搜索结果 path，再调用读取工具按行读取。" ]
+missing_path_guidance = [ "requestedPath 不存在，不能把它当作已读取文件。", "优先从 suggestions 或 parentChildren 选择真实路径再次调用 FastContextReadTool。", "如果 suggestions 为空，先读取 nearestExistingParent 或使用 FastContextHybridSearchTool 定位。" ]
 
 [fast_context.map]
-# 项目标记文件。
-marker_files = ["package.json", "tsconfig.json", "senera.config.json", "README.md"]
-# 常见源码根目录名称。
-source_root_names = ["Source", "src", "Frontend", "Plugins", "System", "Packages"]
-# 推荐优先查看的入口目录。
-entry_point_names = ["Source", "Frontend", "Plugins", "System", "Scripts", "Packages"]
+marker_files = [ "package.json", "tsconfig.json", "senera.config.json", "README.md" ]
+source_root_names = [ "Source", "src", "Frontend", "Plugins", "System", "Packages" ]
+entry_point_names = [ "Source", "Frontend", "Plugins", "System", "Scripts", "Packages" ]
 
 [[fast_context.analyzers]]
-# TypeScript/JavaScript AST 分析器。
 name = "typescript"
 strategy = "typescript_ast"
-extensions = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]
+extensions = [ ".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs" ]
 symbol_scope = "top_level_and_members"
 component_name_style = "pascal_case"
 
 [[fast_context.analyzers]]
-# 通用文本窗口分析器。
 name = "text"
 strategy = "line_window"
-extensions = ["*"]
-
-[senera.fields.senera.enabled]
-label = "启用技能"
-description = "关闭后工作区搜索技能不会参与外部技能集。"
-type = "boolean"
-
-[senera.fields.fast_context.roots]
-label = "检索根目录"
-description = "路径相对当前工作区。"
-type = "array"
-itemType = "string"
-
-[senera.fields.fast_context.exclude]
-label = "排除路径"
-description = "支持 ignore/glob 规则。"
-type = "array"
-itemType = "string"
-
-[senera.fields.fast_context.max_file_mb]
-label = "单文件上限"
-description = "超过该大小的文件不会被读取或索引，单位 MB。"
-type = "number"
-min = 0.1
-max = 10
-step = 0.1
-
-[senera.fields.fast_context.max_index_files]
-label = "索引文件上限"
-description = "单次索引最多纳入的文件数量。"
-type = "number"
-min = 1
-step = 1
-
-[senera.fields.fast_context.default_max_results]
-label = "默认结果数"
-description = "没有显式指定时的默认搜索结果数量。"
-type = "number"
-min = 1
-step = 1
-
-[senera.fields.fast_context.default_context_lines]
-label = "上下文行数"
-description = "ripgrep 命中周围默认携带的行数。"
-type = "number"
-min = 0
-step = 1
-
-[senera.fields.fast_context.hybrid_min_ripgrep_results]
-label = "索引补充阈值"
-description = "ripgrep 命中少于该数量时补充 SQLite 索引检索。"
-type = "number"
-min = 0
-step = 1
-
-[senera.fields.fast_context.ripgrep_timeout_seconds]
-label = "精确搜索超时"
-description = "ripgrep 子进程超时时间，单位秒。"
-type = "number"
-min = 1
-step = 0.5
-
-[senera.fields.fast_context.search.engines]
-label = "检索引擎"
-description = "混合检索启用的引擎。"
-type = "array"
-itemType = "string"
-
-[senera.fields.fast_context.search.collect_multiplier]
-label = "候选倍数"
-description = "各引擎内部候选收集倍数。"
-type = "number"
-min = 1
-step = 1
-
-[senera.fields.fast_context.path_fuzzy.max_candidates]
-label = "路径候选上限"
-description = "单次路径模糊检索最多扫描的路径候选数量。"
-type = "number"
-min = 1
-step = 100
-
-[senera.fields.fast_context.path_fuzzy.include_directories]
-label = "包含目录"
-description = "开启后路径模糊检索会把目录也作为候选。"
-type = "boolean"
-
-[senera.fields.fast_context.path_fuzzy.threshold]
-label = "路径命中阈值"
-description = "低于该 fuzzysort 分数的路径候选不会返回。"
-type = "number"
-min = 0
-max = 1
-step = 0.05
-
-[senera.fields.fast_context.path_fuzzy.targets]
-label = "路径匹配字段"
-description = "参与路径模糊匹配的字段，例如 file_name、path。"
-type = "array"
-itemType = "string"
-
-[senera.sections.senera]
-label = "启用状态"
-description = "控制工作区搜索技能是否参与外部技能集。"
-
-[senera.sections.fast_context]
-label = "检索参数"
-description = "配置检索范围、索引、分块和引擎策略。"
+extensions = [ "*" ]

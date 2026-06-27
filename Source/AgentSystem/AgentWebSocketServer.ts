@@ -7,8 +7,13 @@ import {
   type AgentDomainEvent,
   toEventEnvelope,
 } from "./AgentEvent.js";
-import type { AgentSystemConfig } from "./Types.js";
-import { resolveModelProviderCatalog, resolveServerConfig, resolveUploadsConfig } from "./AgentDefaults.js";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
+import {
+  resolveModelProviderCatalog,
+  resolvePresetsConfig,
+  resolveServerConfig,
+  resolveUploadsConfig,
+} from "./AgentDefaults.js";
 import {
   AgentWebSocketRequestSchema,
 } from "./AgentWebSocketProtocol.js";
@@ -22,11 +27,16 @@ import { projectAgentRunEventForHistory } from "./AgentRunEventHistoryPolicy.js"
 import { AgentPluginConfigManager } from "./AgentPluginConfigManager.js";
 import { AgentUploadHttpApi } from "./Uploads/AgentUploadHttpApi.js";
 import { AgentUploadStore } from "./Uploads/AgentUploadStore.js";
+import { AgentPresetManager } from "./Presets/AgentPresetManager.js";
+import { AgentConfigService } from "./Config/AgentConfigService.js";
+import { projectAgentConfigForm } from "./Config/AgentConfigFormProjector.js";
+import { AgentProviderModelDiscovery } from "./Config/AgentProviderModelDiscovery.js";
 
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
   workspaceRoot?: string;
   configSnapshot?: () => AgentSystemConfig;
+  configService?: AgentConfigService;
   sessionManager: AgentSessionManager;
   userProfileManager: AgentUserProfileManager;
   pluginConfigManager?: AgentPluginConfigManager;
@@ -40,6 +50,7 @@ export class AgentWebSocketServer {
   private readonly sequencer = new AgentEventSequencer();
   private readonly pluginConfigManager: AgentPluginConfigManager;
   private readonly uploadApi: AgentUploadHttpApi;
+  private readonly providerModelDiscovery: AgentProviderModelDiscovery;
 
   constructor(private readonly options: AgentWebSocketServerOptions) {
     this.serverConfig = resolveServerConfig(options.config);
@@ -49,6 +60,9 @@ export class AgentWebSocketServer {
     });
     this.uploadApi = new AgentUploadHttpApi({
       storeFactory: () => this.createUploadStore(),
+    });
+    this.providerModelDiscovery = new AgentProviderModelDiscovery({
+      configSnapshot: () => options.configSnapshot?.() ?? options.config,
     });
   }
 
@@ -77,6 +91,9 @@ export class AgentWebSocketServer {
         hotReload: this.serverConfig.HotReload,
         requestMaxBytes: this.serverConfig.RequestMaxBytes,
       });
+    });
+    this.httpServer.on("error", (error) => {
+      this.handleServerError(error);
     });
 
     this.httpServer.listen(this.serverConfig.Port, this.serverConfig.Host);
@@ -120,6 +137,24 @@ export class AgentWebSocketServer {
         message: "接口不存在。",
       },
     }));
+  }
+
+  private handleServerError(error: NodeJS.ErrnoException): void {
+    if (error.code === "EADDRINUSE") {
+      this.logger.error("senera WS 服务启动失败", {
+        reason: "端口已被占用",
+        host: this.serverConfig.Host,
+        port: this.serverConfig.Port,
+      });
+      process.exitCode = 1;
+      return;
+    }
+
+    this.logger.error("senera WS 服务启动失败", {
+      message: error.message,
+      code: error.code,
+    });
+    process.exitCode = 1;
   }
 
   private async handleMessage(socket: WebSocket, data: RawData): Promise<void> {
@@ -220,6 +255,86 @@ export class AgentWebSocketServer {
               models: catalog.list(),
               defaultModelProviderId: catalog.defaultId,
             },
+          } satisfies AgentDomainEvent);
+        },
+        "provider.models.fetch": async (request) => {
+          try {
+            sendEvent({
+              kind: AgentEventKinds.ProviderModelsSnapshot,
+              context: {},
+              data: await this.providerModelDiscovery.listProviderModels({
+                providerId: request.providerId,
+                force: request.force,
+                endpoint: request.endpoint,
+              }),
+            });
+          } catch (error) {
+            sendEvent({
+              kind: AgentEventKinds.ProviderModelsFailed,
+              context: {},
+              data: {
+                providerId: request.providerId,
+                message: error instanceof Error ? error.message : String(error),
+                details: serializeError(error),
+              },
+            });
+          }
+        },
+        "config.get": async () => {
+          const snapshot = this.options.configService?.snapshot();
+          if (!snapshot) {
+            const config = this.options.configSnapshot?.() ?? this.options.config;
+            sendEvent({
+              kind: AgentEventKinds.ConfigSnapshot,
+              context: {},
+              data: {
+                path: "",
+                version: 1,
+                value: config,
+                source: "json",
+                diagnostics: [],
+                form: projectAgentConfigForm(config),
+              },
+            });
+            return;
+          }
+
+          sendEvent({
+            kind: AgentEventKinds.ConfigSnapshot,
+            context: {},
+            data: snapshot,
+          });
+        },
+        "config.update": async (request) => {
+          if (!this.options.configService) {
+            throw new Error("当前运行时没有启用配置服务。");
+          }
+          const snapshot = this.options.configService.update({
+            config: request.config,
+            source: "ui_update",
+            mirrorJson: request.mirrorJson,
+          });
+          sendEvent({
+            kind: AgentEventKinds.ConfigSnapshot,
+            context: {},
+            data: {
+              ...snapshot,
+              operation: {
+                requestId: request.requestId,
+                kind: "config_update",
+              },
+            },
+          });
+          sendEvent({
+            kind: AgentEventKinds.ConfigReloaded,
+            context: {},
+            data: {
+              configPath: snapshot.path,
+              source: snapshot.source,
+              revision: snapshot.revision,
+              databasePath: snapshot.databasePath,
+              diagnostics: snapshot.diagnostics,
+            },
           });
         },
         "plugin.config.list": async () => {
@@ -264,6 +379,48 @@ export class AgentWebSocketServer {
             },
           });
         },
+        "preset.list": async () => {
+          sendEvent({
+            kind: AgentEventKinds.PresetSnapshot,
+            context: {},
+            data: await this.createPresetManager().snapshot({
+              kind: "list",
+            }),
+          });
+        },
+        "preset.save": async (request) => {
+          sendEvent({
+            kind: AgentEventKinds.PresetSnapshot,
+            context: {},
+            data: await this.createPresetManager().save({
+              requestId: request.requestId,
+              name: request.name,
+              format: request.format,
+              content: request.content,
+              activate: request.activate,
+            }),
+          });
+        },
+        "preset.delete": async (request) => {
+          sendEvent({
+            kind: AgentEventKinds.PresetSnapshot,
+            context: {},
+            data: await this.createPresetManager().delete({
+              requestId: request.requestId,
+              name: request.name,
+            }),
+          });
+        },
+        "preset.set_active": async (request) => {
+          sendEvent({
+            kind: AgentEventKinds.PresetSnapshot,
+            context: {},
+            data: await this.createPresetManager().setActive({
+              requestId: request.requestId,
+              name: request.name,
+            }),
+          });
+        },
         "profile.get": async () => {
           await this.options.userProfileManager.emitSnapshot({
             onEvent: sendEvent,
@@ -279,19 +436,44 @@ export class AgentWebSocketServer {
     } catch (error) {
       if (
         parsed.data.type === "plugin.config.update" ||
-        parsed.data.type === "plugin.config.set_enabled"
+        parsed.data.type === "plugin.config.set_enabled" ||
+        parsed.data.type === "config.update"
       ) {
         sendEvent({
           kind: AgentEventKinds.ConfigFailed,
           context: {},
           data: {
-            configPath: parsed.data.pluginName,
+            configPath: parsed.data.type === "config.update"
+              ? this.options.configService?.snapshot().path ?? ""
+              : parsed.data.pluginName,
+            message: error instanceof Error ? error.message : String(error),
+            details: serializeError(error),
+            operation: parsed.data.type === "config.update"
+              ? {
+                  requestId: parsed.data.requestId,
+                  kind: "config_update",
+                }
+              : {
+                  requestId: parsed.data.requestId,
+                  kind: parsed.data.type === "plugin.config.update" ? "update" : "set_enabled",
+                  pluginName: parsed.data.pluginName,
+                },
+          },
+        });
+        return;
+      }
+
+      if (isPresetRequest(parsed.data)) {
+        sendEvent({
+          kind: AgentEventKinds.PresetFailed,
+          context: {},
+          data: {
             message: error instanceof Error ? error.message : String(error),
             details: serializeError(error),
             operation: {
-              requestId: parsed.data.requestId,
-              kind: parsed.data.type === "plugin.config.update" ? "update" : "set_enabled",
-              pluginName: parsed.data.pluginName,
+              requestId: "requestId" in parsed.data ? parsed.data.requestId : undefined,
+              kind: presetOperationKindFromRequestType(parsed.data.type),
+              name: "name" in parsed.data ? parsed.data.name ?? null : undefined,
             },
           },
         });
@@ -358,5 +540,42 @@ export class AgentWebSocketServer {
       rootDir: uploads.RootDir,
       maxFileBytes: uploads.MaxFileBytes,
     });
+  }
+
+  private createPresetManager(): AgentPresetManager {
+    const config = this.options.configSnapshot?.() ?? this.options.config;
+    return new AgentPresetManager({
+      workspaceRoot: this.options.workspaceRoot ?? process.cwd(),
+      config: resolvePresetsConfig(config),
+    });
+  }
+}
+
+type PresetRequest = Extract<
+  import("./AgentWebSocketProtocol.js").AgentWebSocketRequest,
+  { type: "preset.list" | "preset.save" | "preset.delete" | "preset.set_active" }
+>;
+
+function isPresetRequest(
+  request: import("./AgentWebSocketProtocol.js").AgentWebSocketRequest,
+): request is PresetRequest {
+  return request.type === "preset.list"
+    || request.type === "preset.save"
+    || request.type === "preset.delete"
+    || request.type === "preset.set_active";
+}
+
+function presetOperationKindFromRequestType(
+  type: PresetRequest["type"],
+): "list" | "save" | "delete" | "set_active" {
+  switch (type) {
+    case "preset.list":
+      return "list";
+    case "preset.save":
+      return "save";
+    case "preset.delete":
+      return "delete";
+    case "preset.set_active":
+      return "set_active";
   }
 }

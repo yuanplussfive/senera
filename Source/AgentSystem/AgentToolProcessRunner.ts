@@ -1,16 +1,15 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import parseJson from "json-parse-even-better-errors";
+import type { AgentSystemConfig } from "./Types/AgentConfigTypes.js";
 import type {
-  AgentSystemConfig,
   AgentToolProcessRequest,
   AgentToolProcessError,
   AgentToolProcessResponse,
-  PluginEntryManifest,
-  RegisteredTool,
-} from "./Types.js";
+} from "./Types/ToolRuntimeTypes.js";
+import type { PluginEntryManifest } from "./Types/PluginManifestTypes.js";
+import type { RegisteredTool } from "./Types/PluginRuntimeTypes.js";
 import { AgentXmlCodec } from "./AgentXmlCodec.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
 import type { AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
 import {
   AgentExecutionErrorCodes,
@@ -18,6 +17,11 @@ import {
 } from "./AgentXmlStatus.js";
 import { cancelledToolProcessResult } from "./AgentToolCancellation.js";
 import { resolveToolExecutionConfig } from "./AgentDefaults.js";
+import {
+  AgentToolProcessResponseEnvelope,
+  createToolProcessFailureResponse,
+  validateToolProcessResponseEnvelope,
+} from "./AgentToolProcessEnvelope.js";
 
 export interface AgentToolProcessSpawnOptions {
   cwd: string;
@@ -99,9 +103,12 @@ export class AgentToolProcessRunner {
     }
 
     const request: AgentToolProcessRequest = {
-      protocol: AgentToolProcessProtocol,
       tool: tool.name,
       arguments: args,
+      context: {
+        workspaceRoot: path.resolve(this.workspaceRoot),
+        pluginRoot: tool.plugin.rootPath,
+      },
     };
 
     return this.spawnProcessEntry(tool, entry, request, context);
@@ -138,8 +145,6 @@ export class AgentToolProcessRunner {
         cwd,
         env: {
           ...process.env,
-          SENERA_WORKSPACE_ROOT: path.resolve(this.workspaceRoot),
-          SENERA_PLUGIN_ROOT: tool.plugin.rootPath,
           ...(entry.Env ?? {}),
         },
         stdio: ["pipe", "pipe", "pipe"],
@@ -292,6 +297,7 @@ export class AgentToolProcessRunner {
           {
             name: request.tool,
             arguments: request.arguments,
+            context: request.context,
           },
         ],
       }));
@@ -329,19 +335,19 @@ export class AgentToolProcessRunner {
         },
         diagnostics: [
           {
-            message: "工具进程没有输出最后一行 JSON 协议响应。",
+            message: "工具进程没有输出最后一行 JSON 响应。",
             pointer: "/",
             path: [],
-            suggestion: "确保插件最后一行 stdout 输出 AgentToolProcess 协议 JSON。",
+            suggestion: "确保插件最后一行 stdout 输出工具响应 JSON 对象。",
           },
         ],
       });
     }
 
     const lastLine = lines[lines.length - 1];
-    let response: AgentToolProcessResponse;
+    let response: unknown;
     try {
-      response = parseJson(lastLine) as AgentToolProcessResponse;
+      response = parseJson(lastLine);
     } catch (error) {
       return this.failureResponse({
         code: AgentExecutionErrorCodes.ToolProcessResponseInvalid,
@@ -365,30 +371,35 @@ export class AgentToolProcessRunner {
       });
     }
 
-    if (response.protocol !== AgentToolProcessProtocol) {
+    const envelope = validateToolProcessResponseEnvelope(response);
+    if (!envelope.ok) {
       return this.failureResponse({
-        code: AgentExecutionErrorCodes.ToolProcessProtocolInvalid,
-        message: `工具进程响应协议无效：${context.modulePath}`,
+        code: AgentExecutionErrorCodes.ToolProcessResponseEnvelopeInvalid,
+        message: `工具进程响应 envelope 无效：${context.modulePath}`,
         details: {
-          phase: AgentToolProcessErrorPhases.ProtocolValidation,
+          phase: AgentToolProcessErrorPhases.ResponseValidation,
           modulePath: context.modulePath,
-          protocol: response.protocol,
-          expectedProtocol: AgentToolProcessProtocol,
+          type: readEnvelopeField(response, "type"),
+          version: readEnvelopeField(response, "version"),
+          expectedType: AgentToolProcessResponseEnvelope.Type,
+          expectedVersion: AgentToolProcessResponseEnvelope.Version,
+          issues: envelope.issues,
           exitCode: context.exitCode,
           signal: context.signal,
         },
-        diagnostics: [
-          {
-            message: `工具进程响应 protocol 不匹配，期望 ${AgentToolProcessProtocol}。`,
-            pointer: "/protocol",
-            path: ["protocol"],
-            suggestion: "确保插件响应中的 protocol 字段与宿主定义完全一致。",
-          },
-        ],
+        diagnostics: envelope.issues.map((issue) => ({
+          message: issue.message,
+          pointer: issue.pointer,
+          path: issue.pointer === "/"
+            ? []
+            : issue.pointer.slice(1).split("/").map((part) =>
+                part.replace(/~1/g, "/").replace(/~0/g, "~")),
+          suggestion: "确保插件 stdout 最后一行使用宿主定义的工具响应 envelope。",
+        })),
       });
     }
 
-    return response;
+    return envelope.response;
   }
 
   private failedResult(error: AgentToolProcessError): AgentToolProcessRunResult {
@@ -402,10 +413,12 @@ export class AgentToolProcessRunner {
   }
 
   private failureResponse(error: AgentToolProcessError): AgentToolProcessResponse {
-    return {
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error,
-    };
+    return createToolProcessFailureResponse(error);
   }
+}
+
+function readEnvelopeField(value: unknown, field: "type" | "version"): unknown {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)[field]
+    : undefined;
 }

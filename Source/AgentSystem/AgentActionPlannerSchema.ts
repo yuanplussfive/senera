@@ -1,9 +1,14 @@
 import { z } from "zod";
 import {
   EvidenceVerificationStatus,
+  TaskEvidenceScope,
+  TurnContextMode,
+  type ActionPlanInput,
   type EvidenceVerification as BamlEvidenceVerification,
   type TaskFrame as BamlTaskFrame,
+  type TurnUnderstanding as BamlTurnUnderstanding,
 } from "./BamlClient/baml_client/index.js";
+import { parseNormalizedBamlOutput } from "./AgentBamlOutputNormalizer.js";
 
 const NonEmptyStringSchema = z.string().trim().min(1);
 const TrimmedStringSchema = z.string().trim();
@@ -14,6 +19,7 @@ const TaskFrameSchema = z
     taskType: NonEmptyStringSchema,
     answerGoal: NonEmptyStringSchema,
     intentTags: StringListSchema,
+    taskTags: StringListSchema,
     targetRefs: z.array(z.object({
       kind: NonEmptyStringSchema,
       value: NonEmptyStringSchema,
@@ -35,6 +41,7 @@ const TaskFrameSchema = z
     requiredEvidence: z.array(z.object({
       id: NonEmptyStringSchema,
       need: NonEmptyStringSchema,
+      scope: z.enum(TaskEvidenceScope),
       minimum: z.number().int().min(1),
       reason: NonEmptyStringSchema,
     }).strict()),
@@ -72,7 +79,7 @@ const EvidenceVerificationSchema = z
       requirementId: NonEmptyStringSchema,
       need: NonEmptyStringSchema,
       status: z.enum(EvidenceVerificationStatus),
-      evidenceRefs: StringListSchema,
+      evidenceUris: StringListSchema,
       artifactUris: StringListSchema,
       reason: NonEmptyStringSchema,
       missingFacts: StringListSchema,
@@ -82,22 +89,38 @@ const EvidenceVerificationSchema = z
   })
   .strict();
 
-export function parseTaskFrame(taskFrame: BamlTaskFrame): BamlTaskFrame {
-  const parsed = TaskFrameSchema.parse(taskFrame);
+const TurnUnderstandingSchema = z
+  .object({
+    rawUserTurn: z.string(),
+    standaloneRequest: NonEmptyStringSchema,
+    contextMode: z.enum(TurnContextMode),
+    contextBasis: TrimmedStringSchema,
+    missingContext: TrimmedStringSchema,
+  })
+  .strict();
+
+export function parseTaskFrame(
+  taskFrame: BamlTaskFrame,
+  input?: Pick<ActionPlanInput, "toolTagCatalog">,
+): BamlTaskFrame {
+  const parsed = parseNormalizedBamlOutput(TaskFrameSchema, taskFrame);
+  if (input) {
+    assertTaskTagsInCatalog(parsed, input.toolTagCatalog);
+  }
   return parsed;
 }
 
 export function parseEvidenceVerification(
   verification: BamlEvidenceVerification,
 ): BamlEvidenceVerification {
-  const parsed = EvidenceVerificationSchema.parse(verification);
+  const parsed = parseNormalizedBamlOutput(EvidenceVerificationSchema, verification);
   return {
     ready: parsed.ready,
     requirements: parsed.requirements.map((requirement) => ({
       requirementId: requirement.requirementId,
       need: requirement.need,
       status: requirement.status,
-      evidenceRefs: requirement.evidenceRefs,
+      evidenceUris: requirement.evidenceUris,
       artifactUris: requirement.artifactUris,
       reason: requirement.reason,
       missingFacts: requirement.missingFacts,
@@ -105,6 +128,34 @@ export function parseEvidenceVerification(
     })),
     summary: parsed.summary,
   };
+}
+
+export function parseTurnUnderstanding(
+  understanding: BamlTurnUnderstanding,
+  input: Pick<ActionPlanInput, "currentUserTurn">,
+): BamlTurnUnderstanding {
+  const parsed = parseNormalizedBamlOutput(TurnUnderstandingSchema, understanding);
+  if (parsed.rawUserTurn !== input.currentUserTurn.content) {
+    throw new AgentActionPlannerValidationError([
+      "rawUserTurn: 必须和 plannerInput.currentUserTurn.content 完全一致。",
+    ], parsed);
+  }
+  if (parsed.contextMode === TurnContextMode.None && (parsed.contextBasis || parsed.missingContext)) {
+    throw new AgentActionPlannerValidationError([
+      "contextMode=None 时 contextBasis 和 missingContext 必须为空。",
+    ], parsed);
+  }
+  if (parsed.contextMode !== TurnContextMode.Insufficient && parsed.missingContext) {
+    throw new AgentActionPlannerValidationError([
+      "只有 contextMode=Insufficient 时才允许 missingContext 非空。",
+    ], parsed);
+  }
+  if (parsed.contextMode !== TurnContextMode.None && !parsed.contextBasis) {
+    throw new AgentActionPlannerValidationError([
+      "contextMode 不是 None 时必须提供具体 contextBasis。",
+    ], parsed);
+  }
+  return parsed;
 }
 
 export class AgentActionPlannerValidationError extends Error {
@@ -119,4 +170,20 @@ export class AgentActionPlannerValidationError extends Error {
 
 function uniqueTrimmed(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function assertTaskTagsInCatalog(
+  taskFrame: BamlTaskFrame,
+  toolTagCatalog: readonly string[],
+): void {
+  const allowed = new Set(toolTagCatalog.map((tag) => tag.trim()).filter(Boolean));
+  const invalid = taskFrame.taskTags.filter((tag) => !allowed.has(tag));
+  if (invalid.length === 0) {
+    return;
+  }
+
+  throw new AgentActionPlannerValidationError(
+    invalid.map((tag) => `taskTags: ${tag} 不在 plannerInput.toolTagCatalog 中。`),
+    taskFrame,
+  );
 }

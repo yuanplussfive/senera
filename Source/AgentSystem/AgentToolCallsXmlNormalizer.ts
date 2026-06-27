@@ -6,7 +6,7 @@ import { AgentPromptContractProjector } from "./AgentPromptContractProjector.js"
 import { AgentXmlEnvelopeBoundaryScanner } from "./AgentXmlEnvelopeBoundaryScanner.js";
 import { AgentXmlLexicalScanner } from "./AgentXmlLexicalScanner.js";
 import type { AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
-import type { RegisteredTool } from "./Types.js";
+import type { RegisteredTool } from "./Types/PluginRuntimeTypes.js";
 
 export interface AgentXmlNormalizationResult {
   xml: string;
@@ -190,7 +190,7 @@ export class AgentToolCallsXmlNormalizer implements AgentXmlCandidateNormalizer 
   private readRules(): Map<string, ToolLeafRules> {
     const tools = this.tools();
     const cacheKey = tools
-      .map((tool) => `${tool.name}\u0000${tool.signatureFile ?? ""}`)
+      .map((tool) => `${tool.name}\u0000${tool.signatureFile ?? ""}\u0000${tool.signatureType ?? ""}`)
       .join("\u0001");
 
     if (cacheKey === this.cacheKey) {
@@ -212,7 +212,11 @@ export class AgentToolCallsXmlNormalizer implements AgentXmlCandidateNormalizer 
       return undefined;
     }
 
-    const contract = this.contractProjector.projectFromFile(tool.signatureFile, "arguments");
+    const contract = this.contractProjector.projectFromFile(
+      tool.signatureFile,
+      "arguments",
+      tool.signatureType,
+    );
     const rules: MutableToolLeafRules = {
       scalarTags: new Set(),
       scalarArrayParents: new Set(),

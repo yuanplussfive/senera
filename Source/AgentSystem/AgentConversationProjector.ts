@@ -8,6 +8,7 @@ import type {
   AgentPlannerJournalEntryRecord,
   AgentToolEvidenceMemoryEntryRecord,
 } from "./AgentPlannerMemory.js";
+import type { AgentPlannerStateSnapshotRecord } from "./AgentPlannerState.js";
 import type { AgentUploadAttachment } from "./Uploads/AgentUploadTypes.js";
 
 export class AgentConversationProjector {
@@ -73,6 +74,23 @@ export class AgentConversationProjector {
     return {
       kind: AgentConversationEntryKinds.PlannerJournal,
       id: createConversationEntryId(requestId, "planner", scope ?? record.step),
+      requestId,
+      timestamp,
+      record,
+      metadata,
+    };
+  }
+
+  projectPlannerStateSnapshot(
+    requestId: string,
+    record: AgentPlannerStateSnapshotRecord,
+    timestamp = this.now(),
+    metadata?: AgentConversationEntryMetadata,
+    scope?: string | number,
+  ): Extract<AgentConversationEntry, { kind: "planner.state_snapshot" }> {
+    return {
+      kind: AgentConversationEntryKinds.PlannerStateSnapshot,
+      id: createConversationEntryId(requestId, "planner_state", scope ?? record.step),
       requestId,
       timestamp,
       record,

@@ -10,7 +10,7 @@ import type { StoreState } from "../store/sessionStore";
 export type SocketPostIngestEffectPlan =
   | {
       kind: "config_reloaded";
-      requests: Array<Extract<WsRequest, { type: "model.list" | "plugin.config.list" }>>;
+      requests: Array<Extract<WsRequest, { type: "config.get" | "model.list" | "plugin.config.list" | "preset.list" }>>;
     }
   | {
       kind: "profile_snapshot";
@@ -31,8 +31,10 @@ export function resolveSocketPostIngestEffect(env: EventEnvelope): SocketPostIng
     return {
       kind: "config_reloaded",
       requests: [
+        { type: "config.get" },
         { type: "model.list" },
         { type: "plugin.config.list" },
+        { type: "preset.list" },
       ],
     };
   }

@@ -1,5 +1,5 @@
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
-import { AgentToolProcessProtocol } from "./AgentToolProcessProtocol.js";
+import { createToolProcessFailureResponse } from "./AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -14,21 +14,17 @@ export function cancelledToolProcessResult(input: {
   cwd?: string;
 }): AgentToolProcessRunResult {
   return {
-    response: {
-      protocol: AgentToolProcessProtocol,
-      ok: false,
-      error: {
-        code: AgentExecutionErrorCodes.ToolProcessCancelled,
-        message: readAbortMessage(input.signal),
-        details: {
-          phase: AgentToolProcessErrorPhases.RuntimeExecution,
-          toolName: input.toolName,
-          cancellationPhase: input.phase,
-          command: input.command,
-          cwd: input.cwd,
-        },
+    response: createToolProcessFailureResponse({
+      code: AgentExecutionErrorCodes.ToolProcessCancelled,
+      message: readAbortMessage(input.signal),
+      details: {
+        phase: AgentToolProcessErrorPhases.RuntimeExecution,
+        toolName: input.toolName,
+        cancellationPhase: input.phase,
+        command: input.command,
+        cwd: input.cwd,
       },
-    },
+    }),
     stdout: "",
     stderr: "",
     exitCode: null,
