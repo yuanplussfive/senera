@@ -26,7 +26,7 @@
     "bamlcheck": "baml check --from baml_src",
     "bamlgenerate": "baml generate --from baml_src",
     "check": "tsc --noEmit",
-    "build": "npm run clean && tsc && tsx Scripts/CopyRuntimeAssets.ts",
+    "build": "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     "dev": "concurrently -k -n server,frontend -c blue,green \"npm run serverwatch\" \"npm run frontend\"",
     "frontend": "npm --workspace senera-frontend run dev",
     "frontendcheck": "npm --workspace senera-frontend run check",

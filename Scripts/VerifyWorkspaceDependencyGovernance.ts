@@ -88,7 +88,7 @@ function inspectInstalledWorkspaceState(): string[] {
 function inspectRootScripts(): string[] {
   return inspectScripts(rootPackage, "package.json", {
     "clean": "rimraf Dist",
-    "build": "npm run clean && tsc",
+    "build": "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     "dev": "concurrently -k -n server,frontend -c blue,green \"npm run serverwatch\" \"npm run frontend\"",
     "frontend": "npm --workspace senera-frontend run dev",
     "frontendcheck": "npm --workspace senera-frontend run check",
@@ -132,10 +132,12 @@ function inspectApplicationEntrypoints(): string[] {
     "Apps/Desktop/Main.ts",
     "Apps/Desktop/DesktopRuntime.ts",
     "Apps/Desktop/PackageDesktop.ts",
+    "Build/CopyRuntimeAssets.ts",
   ];
   const retiredFiles = [
     "Scripts/SeneraServer.ts",
     "Scripts/SeneraCli.ts",
+    "Scripts/CopyRuntimeAssets.ts",
   ];
 
   return [
