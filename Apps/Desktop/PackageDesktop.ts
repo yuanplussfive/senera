@@ -2,6 +2,7 @@ import { sync as spawnSync } from "cross-spawn";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { readDesktopPackageVersionOverride } from "../../Build/DesktopReleaseInfo.js";
 
 interface CommandInvocation {
   command: string;
@@ -11,7 +12,7 @@ interface CommandInvocation {
 const steps = [
   command("npm", ["run", "build"]),
   command("npm", ["--workspace", "senera-frontend", "run", "build"]),
-  command("electron-builder"),
+  command("electron-builder", electronBuilderArguments()),
 ];
 
 const nativeModules = [
@@ -61,6 +62,11 @@ function command(name: string, args: readonly string[] = []): CommandInvocation 
     command: name,
     arguments: [...args],
   };
+}
+
+function electronBuilderArguments(): string[] {
+  const version = readDesktopPackageVersionOverride();
+  return version ? [`-c.extraMetadata.version=${version}`] : [];
 }
 
 function clearNativeRebuildMetadata(): void {

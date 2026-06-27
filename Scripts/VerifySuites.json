@@ -27,6 +27,7 @@
         "VerifyAgentRuntimeServices.js",
         "VerifyRuntimeModulePath.js",
         "VerifyDesktopRuntimeConfigProjection.js",
+        "VerifyDesktopReleaseInfo.js",
         "VerifyConfigServiceSqliteSource.js",
         "VerifyAgentChildAgentRuntime.js"
       ]

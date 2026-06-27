@@ -1,0 +1,76 @@
+name: Desktop Release
+
+on:
+  workflow_run:
+    workflows:
+      - Verify
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.event.workflow_run.head_sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  windows-installer:
+    name: Windows Installer
+    runs-on: windows-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.event == 'push'
+      )
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install
+
+      - id: release
+        name: Resolve release version
+        shell: pwsh
+        env:
+          SENERA_DESKTOP_BUILD_NUMBER: ${{ github.event.workflow_run.run_number || github.run_number }}
+          SENERA_DESKTOP_RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: npx tsx Build/DesktopReleaseInfo.ts
+
+      - name: Build installer
+        shell: pwsh
+        env:
+          SENERA_DESKTOP_VERSION: ${{ steps.release.outputs.version }}
+        run: npm run desktoppack
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.release.outputs.artifact_name }}
+          path: ${{ steps.release.outputs.artifact_path }}
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_NAME: ${{ steps.release.outputs.release_name }}
+          ARTIFACT_PATH: ${{ steps.release.outputs.artifact_path }}
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+        run: |
+          $notes = "Senera desktop installer built from $env:SOURCE_SHA."
+
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG $env:ARTIFACT_PATH --clobber
+          } else {
+            gh release create $env:RELEASE_TAG $env:ARTIFACT_PATH --target $env:SOURCE_SHA --title $env:RELEASE_NAME --notes $notes
+          }
