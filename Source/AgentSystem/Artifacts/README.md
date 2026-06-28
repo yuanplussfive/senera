@@ -1,0 +1,26 @@
+# Artifacts 模块导览
+
+Artifacts 模块负责把工具调用过程落盘为可追溯证据包。
+
+## 阅读顺序
+
+1. `AgentToolExecutionArtifactRecorder.ts`：工具执行 artifact 主入口。
+2. `AgentArtifactEvidenceProjection.ts`：按 artifact policy 从工具结果生成 evidence。
+3. `AgentArtifactTemplateProjection.ts`：渲染 summary、projection 和 evidence 展示模板。
+4. `AgentArtifactRedaction.ts`：按插件声明脱敏输入和原始输出。
+5. `AgentToolWorkspaceArtifactRecorder.ts` / `AgentWorkspaceArtifactWriter.ts`：workspace 变更文件写入。
+6. `AgentArtifactFileWriter.ts` / `AgentArtifactStableJson.ts`：artifact 文件和稳定哈希基础能力。
+7. `AgentArtifactJsonSelector.ts`：按 manifest selector 从 JSON 结果中提取字段。
+8. `AgentEvidenceUri.ts`：evidence URI 生成和解析。
+9. `AgentWorkspaceChangeCapture.ts`：工具执行前后工作区快照入口。
+10. `AgentWorkspaceCapturePolicy.ts` / `AgentWorkspacePathSelector.ts`：workspace capture 的 manifest 策略解析和路径 selector 解析。
+11. `AgentWorkspaceSnapshotBuilder.ts` / `AgentWorkspaceSnapshotDiff.ts` / `AgentWorkspaceSnapshotUtils.ts`：workspace 快照构建、差异计算和文件 hash / 文本检测工具。
+12. `AgentArtifactLocator.ts`：通过 URI 查找 artifact 文件。
+
+## 扩展规则
+
+- 工具原始输出和模型可见投影分开。
+- 可复用事实必须通过 evidence URI 追溯。
+- 脱敏规则来自插件 artifact policy。
+- 工作区变更捕获由插件 manifest 声明 selector。
+- 新增 artifact 行为必须补 artifact policy 验证。

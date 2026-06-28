@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { loadVerificationConfig } from "./VerificationConfig.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { AgentPromptContextBuilder } from "../Source/AgentSystem/Prompt/AgentPromptContextBuilder.js";
 import { parseToolCallPlan } from "../Source/AgentSystem/AgentToolCallPlannerSchema.js";
 
 const workspaceRoot = process.cwd();

@@ -1,25 +1,25 @@
 import { createRequire } from "node:module";
 import { z } from "zod";
-import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
-import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import type { AgentHostToolHandler } from "./ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import type { AgentToolProcessRunResult } from "./ToolRuntime/AgentToolProcessRunner.js";
 import {
   toolProcessFailureResult,
   toolProcessSuccessResult,
-} from "./AgentToolProcessEnvelope.js";
+} from "./ToolRuntime/AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
-} from "./AgentXmlStatus.js";
-import { parsePluginTomlConfig } from "./AgentToolPluginConfig.js";
+} from "./Xml/AgentXmlStatus.js";
+import { parsePluginTomlConfig } from "./ToolRuntime/AgentToolPluginConfig.js";
 import {
   normalizeToolArrayArgument,
   normalizeToolNumberArgument,
-} from "./AgentToolArgumentNormalization.js";
+} from "./ToolRuntime/AgentToolArgumentNormalization.js";
 import {
   resolveActionPlannerConfig,
   resolveModelProviderConfig,
 } from "./AgentDefaults.js";
-import { AgentActionPlannerModelClient } from "./AgentActionPlannerModelClient.js";
+import { AgentActionPlannerModelClient } from "./ActionPlanner/AgentActionPlannerModelClient.js";
 import type {
   AgentFastContextScoutPlannerPromptInput,
 } from "./AgentFastContextScoutPlannerPromptJson.js";
@@ -32,7 +32,7 @@ import {
   issueMessages,
   normalizePlanningFailure,
   stringifyIssueValue,
-} from "./AgentActionPlannerFailure.js";
+} from "./ActionPlanner/AgentActionPlannerFailure.js";
 import { throwIfAborted } from "./AgentCancellation.js";
 
 const nodeRequire = createRequire(__filename);

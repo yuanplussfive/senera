@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { AgentActionPlannerValidationError } from "./AgentActionPlannerSchema.js";
+import { AgentActionPlannerValidationError } from "./ActionPlanner/AgentActionPlannerSchema.js";
 import type {
   AgentPromptContractView,
-} from "./AgentPromptContractProjector.js";
+} from "./Prompt/AgentPromptContractProjector.js";
 import { safeParseNormalizedBamlOutput } from "./AgentBamlOutputNormalizer.js";
-import { validateToolSignatureArguments } from "./AgentToolSignatureArgumentValidator.js";
+import { validateToolSignatureArguments } from "./ToolRuntime/AgentToolSignatureArgumentValidator.js";
 
 export interface AgentPlannedToolCall {
   name: string;

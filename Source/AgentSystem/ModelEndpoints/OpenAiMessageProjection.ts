@@ -1,4 +1,4 @@
-import type { AgentLanguageModelRequest } from "../AgentLanguageModel.js";
+import type { AgentLanguageModelRequest } from "./AgentLanguageModel.js";
 
 export function buildOpenAiInput(
   request: AgentLanguageModelRequest,

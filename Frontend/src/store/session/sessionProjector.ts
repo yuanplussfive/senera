@@ -1,13 +1,10 @@
 import { DEFAULT_SESSION_TITLE } from "./defaults";
 import { normalizeUserProfile } from "./userProfile";
-import type { MotionLevel } from "../../shared/motion";
 import {
-  DecisionXmlRoots,
   EventKinds,
   type ActionPlannedData,
   type ActionPlannerStageCompletedData,
   type ActionPlannerStageFailedData,
-  type ActionPlannerStageName,
   type ActionPlannerStageStartedData,
   type EventEnvelope,
   type AskUserData,
@@ -19,7 +16,6 @@ import {
   type DecisionXmlSummaryData,
   type FinalAnswerData,
   type InteractionRoutedData,
-  type InteractionRunMode,
   type ModelDeltaData,
   type ModelListSnapshotData,
   type ModelStartedData,
@@ -53,10 +49,27 @@ import {
   type UserProfileData,
 } from "../../api/eventTypes";
 import {
-  advanceStreamingDisplayText,
-  alignStreamingDisplayTarget,
-} from "./streamingDisplay";
+  alignRunDisplayTarget,
+  createRunRecord,
+  isToolCallStreamPrefix,
+  projectStreamingVisibility,
+  projectTerminalDisplayText,
+  touchRun,
+} from "./sessionRunProjection";
 import { readChatModelProviders } from "../../features/chat/modelProvider";
+import {
+  friendlyDecisionKind,
+  InteractionModeTitle,
+  plannerStageTitle,
+  readExpectedOutputMode,
+  readRouteExpectedOutputMode,
+  summarizeActionPlan,
+  summarizeInteractionRoute,
+  summarizePlannerStage,
+  summarizeToolPlan,
+  toolPlanTitle,
+  truncate,
+} from "./sessionPresentation";
 import type {
   ChatMessage,
   RunRecord,
@@ -66,166 +79,18 @@ import type {
 } from "./types";
 
 export { normalizeUserProfile } from "./userProfile";
+export { friendlyDecisionKind, truncate } from "./sessionPresentation";
+export { advanceRunDisplayText, createRunRecord } from "./sessionRunProjection";
 
 // =========================
 // 工具函数
 // =========================
 const nowIso = (): string => new Date().toISOString();
 
-export function truncate(text: string, max = 80): string {
-  const t = text.replace(/\s+/g, " ").trim();
-  return t.length > max ? `${t.slice(0, max)}…` : t;
-}
-
-/** 把后端行动/决策枚举翻译成中文用户语。 */
-export function friendlyDecisionKind(decisionKind: string): string {
-  switch (decisionKind) {
-    case "direct_response":
-      return "直接回复";
-    case "tool_agent_loop":
-      return "工具循环";
-    case "deliberate_task_loop":
-      return "深度任务";
-    case "answer":
-    case "FinalAnswer":
-      return "生成回复";
-    case "ask_user":
-    case "AskUser":
-      return "向用户提问";
-    case "discover_tools":
-      return "发现工具";
-    case "use_tools":
-    case "ToolCalls":
-      return "调用工具";
-    default:
-      return decisionKind;
-  }
-}
-
-function summarizeActionPlan(data: ActionPlannedData): string {
-  if (data.status === "fallback") {
-    return data.reason
-      ? `规划失败，已回退动态工具检索 · ${friendlyActionPlanFallbackReason(data.reason)}`
-      : "规划失败，已回退动态工具检索";
-  }
-
-  const question = data.askUserQuestion ? truncate(data.askUserQuestion, 96) : "";
-  const instruction = data.instruction ? truncate(data.instruction, 96) : "";
-  const toolSummary = data.preferredTools.length > 0
-    ? `${data.preferredTools.length} 个候选工具`
-    : "";
-  const searchSummary = data.toolSearchQueries.length > 0
-    ? `${data.toolSearchQueries.length} 个检索意图`
-    : "";
-  const capabilitySummary = (data.capabilityNeeds?.length ?? 0) > 0
-    ? `${data.capabilityNeeds?.length ?? 0} 组能力需求`
-    : "";
-  const stateSummary = data.runState
-    ? `${data.runState.totalToolCalls} 次工具 · ${data.runState.totalEvidence} 条证据`
-    : "";
-  return [question, instruction, toolSummary, searchSummary, capabilitySummary, stateSummary]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-function friendlyActionPlanFallbackReason(reason: string): string {
-  const code = reason.split(":")[0];
-  switch (code) {
-    case "disabled":
-      return "未启用";
-    case "action_planner_http_error":
-      return "规划模型请求失败";
-    case "action_planner_timeout":
-      return "规划模型超时";
-    case "action_planner_aborted":
-      return "规划已取消";
-    case "action_planner_incomplete_output":
-      return "规划输出不完整";
-    case "action_planner_invalid_structured_output":
-    case "action_planner_invalid_decision":
-      return "规划输出无效";
-    default:
-      return truncate(reason, 80);
-  }
-}
-
-function readExpectedOutputMode(data: ActionPlannedData): RunRecord["expectedOutputMode"] {
-  return data.expectedOutputMode === "tool_call_xml" || data.expectedOutputMode === "final_text"
-    ? data.expectedOutputMode
-    : "unknown";
-}
-
-function plannerStageBaseTitle(stage: ActionPlannerStageName): string {
-  switch (stage) {
-    case "understandUserTurn":
-      return "理解当前请求";
-    case "buildTaskFrame":
-      return "构建任务合约";
-    case "evaluateEvidence":
-      return "判断完成状态";
-  }
-}
-
-const InteractionModeTitle = {
-  direct_response: "直接回复",
-  tool_agent_loop: "工具循环",
-  deliberate_task_loop: "深度任务",
-} as const satisfies Record<InteractionRunMode, string>;
-
-function summarizeInteractionRoute(data: InteractionRoutedData): string {
-  const objective = data.objective ? truncate(data.objective, 96) : undefined;
-  const reason = data.reason ? truncate(data.reason, 96) : undefined;
-  const evidence = data.needsFreshEvidence ? "需要新证据" : undefined;
-  const workspace = data.needsWorkspaceRead ? "读取工作区" : undefined;
-  const effect = data.needsSideEffect ? "包含真实变更" : undefined;
-  const tools = data.preferredTools.length > 0
-    ? `${data.preferredTools.length} 个候选技能`
-    : undefined;
-  const search = data.discoveryQueries.length > 0
-    ? `${data.discoveryQueries.length} 个发现意图`
-    : undefined;
-  return [objective, reason, evidence, workspace, effect, tools, search]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-function toolPlanTitle(data: ToolCallsPlannedData): string {
-  switch (data.status) {
-    case "discovery_escalated":
-      return "自动发现工具";
-    case "blocked":
-      return "工具计划受阻";
-    default:
-      return `工具计划 · ${data.toolCount} 个`;
-  }
-}
-
-function summarizeToolPlan(data: ToolCallsPlannedData): string {
-  return [
-    data.reason ? truncate(data.reason, 96) : undefined,
-    data.tools.length > 0 ? data.tools.join(", ") : undefined,
-  ].filter(Boolean).join(" · ");
-}
-
-function readRouteExpectedOutputMode(
-  data: InteractionRoutedData,
-): RunRecord["expectedOutputMode"] {
-  return data.expectedOutputMode === "tool_call_xml" || data.expectedOutputMode === "final_text"
-    ? data.expectedOutputMode
-    : "unknown";
-}
-
-function plannerStageTitle(
-  stage: ActionPlannerStageName,
-  _selectedAction?: string,
-): string {
-  return plannerStageBaseTitle(stage);
-}
-
 function plannerStageStepId(
   requestId: string,
   step: number | undefined,
-  stage: ActionPlannerStageName,
+  stage: ActionPlannerStageStartedData["stage"],
 ): string {
   return `${requestId}-action-planner-${step ?? 0}-${stage}`;
 }
@@ -238,53 +103,6 @@ function hasPlannerStageForStep(run: RunRecord, step: number | undefined): boole
 function currentRun(session: SessionRecord, requestId?: string): RunRecord | undefined {
   if (!requestId) return session.runs[session.runs.length - 1];
   return session.runs.find((r) => r.requestId === requestId);
-}
-
-function summarizePlannerStage(data: ActionPlannerStageCompletedData): string | undefined {
-  if (data.turnUnderstanding) {
-    const understanding = data.turnUnderstanding;
-    return [
-      understanding.standaloneRequest
-        ? `改写为：${truncate(understanding.standaloneRequest, 96)}`
-        : undefined,
-      understanding.contextMode === "Used" && understanding.contextBasis
-        ? truncate(understanding.contextBasis, 96)
-        : undefined,
-      understanding.contextMode === "Insufficient" && understanding.missingContext
-        ? `缺少：${truncate(understanding.missingContext, 96)}`
-        : undefined,
-    ].filter(Boolean).join(" · ");
-  }
-
-  if (data.taskFrame) {
-    return [
-      data.taskFrame.answerGoal ? truncate(data.taskFrame.answerGoal, 96) : undefined,
-      data.taskFrame.requiredEffects.length > 0
-        ? `${data.taskFrame.requiredEffects.length} 项真实变更`
-        : undefined,
-      data.taskFrame.requiredEvidence.length > 0
-        ? `${data.taskFrame.requiredEvidence.length} 项完成证据`
-        : undefined,
-      data.taskFrame.candidateTools.length > 0
-        ? `${data.taskFrame.candidateTools.length} 个候选技能`
-        : undefined,
-      data.taskFrame.userInputNeeds.length > 0
-        ? `${data.taskFrame.userInputNeeds.length} 项待确认信息`
-        : undefined,
-    ].filter(Boolean).join(" · ");
-  }
-
-  if (data.evidenceDecision) {
-    const decision = data.evidenceDecision;
-    return [
-      decision.ready ? "可以完成" : "还缺完成证据",
-      decision.missingNeeds.length > 0 ? `${decision.missingNeeds.length} 项缺失` : undefined,
-      decision.satisfiedNeeds.length > 0 ? `${decision.satisfiedNeeds.length} 项满足` : undefined,
-      decision.recommendedTools.length > 0 ? `${decision.recommendedTools.length} 个推荐工具` : undefined,
-    ].filter(Boolean).join(" · ");
-  }
-
-  return undefined;
 }
 
 function timelineScopeFromEvent(env: EventEnvelope): TimelineStep["scope"] | undefined {
@@ -719,123 +537,6 @@ function syncSessionCountsFromLoadedMessages(session: SessionRecord): void {
 
 export function bumpSessionMessageCount(session: SessionRecord): void {
   session.messageCount = Math.max(session.messageCount, session.messages.length);
-}
-
-type ToolCallStreamClassification =
-  | "tool_prefix"
-  | "not_tool";
-
-function classifyToolCallStream(text: string): ToolCallStreamClassification {
-  const body = text.trimStart();
-  if (!body.startsWith("<")) return "not_tool";
-
-  const expectedRoot = `<${DecisionXmlRoots.ToolCalls}`.toLowerCase();
-  const comparable = body.slice(0, expectedRoot.length).toLowerCase();
-  const isPrefixCandidate = comparable.length < expectedRoot.length
-    ? expectedRoot.startsWith(comparable)
-    : comparable === expectedRoot && isXmlNameBoundary(body[expectedRoot.length]);
-
-  return isPrefixCandidate ? "tool_prefix" : "not_tool";
-}
-
-function isXmlNameBoundary(char: string | undefined): boolean {
-  return char === undefined || char === ">" || char === "/" || /\s/.test(char);
-}
-
-function projectStreamingVisibility(run: RunRecord): void {
-  if (run.expectedOutputMode === "tool_call_xml") {
-    run.decisionMode = "tool_candidate";
-    run.visibleText = "";
-    run.visibleKind = "tool_calls";
-    return;
-  }
-
-  if (run.expectedOutputMode === "final_text") {
-    run.decisionMode = "final_text";
-    run.visibleText = run.streamingRaw;
-    run.visibleKind = "final_answer";
-    return;
-  }
-
-  if (run.decisionMode === "final_text") {
-    run.visibleText = run.streamingRaw;
-    run.visibleKind = "final_answer";
-    return;
-  }
-
-  if (classifyToolCallStream(run.streamingRaw) === "tool_prefix") {
-    run.decisionMode = "tool_candidate";
-    run.visibleText = "";
-    run.visibleKind = "unknown";
-    return;
-  }
-
-  run.decisionMode = "final_text";
-  run.visibleText = run.streamingRaw;
-  run.visibleKind = "final_answer";
-}
-
-function alignRunDisplayTarget(run: RunRecord): void {
-  const aligned = alignStreamingDisplayTarget({
-    displayText: run.displayText,
-    targetText: run.visibleText,
-  });
-  run.displayText = aligned.displayText;
-}
-
-function projectTerminalDisplayText(
-  run: RunRecord,
-  text: string,
-  replayingHistory: boolean,
-): void {
-  run.visibleText = text;
-  if (replayingHistory) {
-    run.displayText = text;
-    return;
-  }
-  alignRunDisplayTarget(run);
-}
-
-export function createRunRecord(input: {
-  requestId: string;
-  startedAt: string;
-  input: string;
-}): RunRecord {
-  return {
-    requestId: input.requestId,
-    revision: 0,
-    startedAt: input.startedAt,
-    status: "running",
-    input: input.input,
-    steps: [],
-    streamingRaw: "",
-    xmlPreview: "",
-    visibleText: "",
-    displayText: "",
-    visibleKind: "unknown",
-    expectedOutputMode: "unknown",
-    decisionMode: "none",
-    pendingToolArgsByName: {},
-  };
-}
-
-function touchRun(run: RunRecord): void {
-  run.revision = (run.revision ?? 0) + 1;
-}
-
-export function advanceRunDisplayText(run: RunRecord, motionLevel: MotionLevel): boolean {
-  const next = advanceStreamingDisplayText(
-    {
-      displayText: run.displayText,
-      targetText: run.visibleText,
-    },
-    motionLevel,
-  );
-  if (next.changed) {
-    run.displayText = next.displayText;
-    touchRun(run);
-  }
-  return next.pending;
 }
 
 function ensureSession(state: StoreState, sessionId: string): SessionRecord {
@@ -1493,7 +1194,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       }
       if (
         run.decisionMode === "tool_candidate" &&
-        classifyToolCallStream(run.streamingRaw) === "tool_prefix"
+        isToolCallStreamPrefix(run.streamingRaw)
       ) {
         run.visibleText = "";
         run.displayText = "";

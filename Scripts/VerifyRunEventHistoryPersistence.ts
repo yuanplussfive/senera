@@ -7,12 +7,12 @@ import {
   getAgentEventSpec,
 } from "../Source/AgentSystem/AgentEvent.js";
 import type { AgentEventEnvelope } from "../Source/AgentSystem/AgentEventBase.js";
-import { AgentConversationEntryKinds } from "../Source/AgentSystem/AgentConversation.js";
+import { AgentConversationEntryKinds } from "../Source/AgentSystem/Conversation/AgentConversation.js";
 import {
   projectAgentRunEventForHistory,
 } from "../Source/AgentSystem/AgentRunEventHistoryPolicy.js";
-import { AgentSessionStore } from "../Source/AgentSystem/AgentSessionStore.js";
-import { SqliteSessionRepository } from "../Source/AgentSystem/AgentSqliteSessionRepository.js";
+import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
+import { SqliteSessionRepository } from "../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
 
 const workspaceRoot = path.resolve(process.cwd());
 const databasePath = path.join(workspaceRoot, ".senera", "run-event-history-verification.sqlite");

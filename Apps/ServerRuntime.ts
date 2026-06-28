@@ -1,30 +1,30 @@
 import path from "node:path";
 import fs from "node:fs";
-import { AgentLoop } from "../Source/AgentSystem/AgentLoop.js";
-import { AgentSessionManager } from "../Source/AgentSystem/AgentSessionManager.js";
-import { AgentSessionStore } from "../Source/AgentSystem/AgentSessionStore.js";
+import { AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
+import { AgentSessionManager } from "../Source/AgentSystem/Session/AgentSessionManager.js";
+import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
 import {
   InMemorySessionRepository,
   SqliteSessionRepository,
   type AgentSessionRepository,
-} from "../Source/AgentSystem/AgentSqliteSessionRepository.js";
-import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
-import { AgentWebSocketServer } from "../Source/AgentSystem/AgentWebSocketServer.js";
+} from "../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
+import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
+import { AgentWebSocketServer } from "../Source/AgentSystem/WebSocket/AgentWebSocketServer.js";
 import {
   resolvePersistenceConfig,
   resolveServerConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
-import { AgentModelEndpointClient } from "../Source/AgentSystem/AgentModelEndpointClient.js";
+import { AgentModelEndpointClient } from "../Source/AgentSystem/ModelEndpoints/AgentModelEndpointClient.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { AgentUserProfileManager } from "../Source/AgentSystem/AgentUserProfile.js";
-import { AgentPluginConfigManager } from "../Source/AgentSystem/AgentPluginConfigManager.js";
+import { AgentPluginConfigManager } from "../Source/AgentSystem/Plugin/AgentPluginConfigManager.js";
 import {
   DefaultAgentMemoryDatabasePath,
   resolveAgentMemoryDatabasePath,
   SqliteAgentMemorySourceRepository,
 } from "../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import { AgentMemoryLearningRuntime } from "../Source/AgentSystem/Memory/AgentMemoryLearningRuntime.js";
-import { AgentMemoryService } from "../Source/AgentSystem/AgentMemoryService.js";
+import { AgentMemoryService } from "../Source/AgentSystem/Memory/AgentMemoryService.js";
 import {
   AgentConfigService,
   type AgentConfigSourceOptions,

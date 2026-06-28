@@ -1,8 +1,8 @@
 import * as readline from "node:readline";
-import { AgentConsoleTheme, colorByEventType } from "./AgentConsoleTheme.js";
-import { AgentConsoleTreeFormatter } from "./AgentConsoleTreeFormatter.js";
+import { AgentConsoleTheme, colorByEventType } from "./CliDisplay/AgentConsoleTheme.js";
+import { AgentConsoleTreeFormatter } from "./CliDisplay/AgentConsoleTreeFormatter.js";
 import type { AgentEventEnvelope } from "./AgentEvent.js";
-import { renderAgentEventDisplay, type AgentEventDisplayMode } from "./AgentEventDisplayCatalog.js";
+import { renderAgentEventDisplay, type AgentEventDisplayMode } from "./CliDisplay/AgentEventDisplayCatalog.js";
 import { measureTerminalWidth } from "./AgentTerminalText.js";
 
 export interface AgentLoggerOptions {

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/AgentActionPlannerContext.js";
+import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
 import { resolveArtifactsConfig } from "../Source/AgentSystem/AgentDefaults.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { createToolEvidenceMemoryEntries } from "../Source/AgentSystem/AgentPlannerMemory.js";
-import { AgentToolResultXmlRenderer } from "../Source/AgentSystem/AgentToolResultXmlRenderer.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { createToolEvidenceMemoryEntries } from "../Source/AgentSystem/Memory/AgentPlannerMemory.js";
+import { AgentToolResultXmlRenderer } from "../Source/AgentSystem/Xml/AgentToolResultXmlRenderer.js";
 import { AgentToolExecutionArtifactRecorder } from "../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
@@ -218,15 +218,15 @@ const fixtures: Record<string, ToolPolicyFixture> = {
             score: 0.96,
           },
           {
-            id: "Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.ts:collectEvidence:function",
-            name: "collectEvidence",
+            id: "Source/AgentSystem/Artifacts/AgentArtifactEvidenceProjection.ts:collectArtifactEvidence:function",
+            name: "collectArtifactEvidence",
             kind: "function",
-            path: "Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.ts",
-            line: 271,
-            startLine: 271,
-            endLine: 283,
-            signature: "function collectEvidence(value, policy)",
-            exported: false,
+            path: "Source/AgentSystem/Artifacts/AgentArtifactEvidenceProjection.ts",
+            line: 13,
+            startLine: 13,
+            endLine: 28,
+            signature: "export function collectArtifactEvidence",
+            exported: true,
             imports: {
               item: [],
             },
@@ -1047,16 +1047,16 @@ function searchResultFixture(
     results: {
       item: [
         {
-          path: "Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.ts",
-          startLine: 264,
-          endLine: 291,
-          line: 271,
-          snippet: "function collectEvidence(value, policy) { ... }",
+          path: "Source/AgentSystem/Artifacts/AgentArtifactEvidenceProjection.ts",
+          startLine: 13,
+          endLine: 28,
+          line: 13,
+          snippet: "export function collectArtifactEvidence(value, policy, artifactId) { ... }",
           score: 0.94,
           source,
           matches: {
             item: [
-              "collectEvidence",
+              "collectArtifactEvidence",
             ],
           },
           reason: "matches artifact evidence projection",

@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { b as baml } from "../Source/AgentSystem/BamlClient/baml_client/index.js";
-import { AgentConversationProjector } from "../Source/AgentSystem/AgentConversationProjector.js";
-import { projectActionPlannerBamlRequestBody } from "../Source/AgentSystem/AgentActionPlannerPromptProjector.js";
-import { buildMemoryLearningPromptJson } from "../Source/AgentSystem/AgentActionPlannerModelClient.js";
+import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
+import { projectActionPlannerBamlRequestBody } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerPromptProjector.js";
+import { buildMemoryLearningPromptJson } from "../Source/AgentSystem/ActionPlanner/AgentLearningPromptJson.js";
 import { TurnContextMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import {
   buildMemoryLearningPromptInput,

@@ -1,4 +1,4 @@
-import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
+import type { AgentLanguageModelMessage } from "./ModelEndpoints/AgentLanguageModel.js";
 import { throwIfAborted } from "./AgentCancellation.js";
 
 export interface AgentBamlModelRequest {

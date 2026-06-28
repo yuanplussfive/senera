@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createModelProviderMetadata } from "../AgentModelMetadata.js";
+import { createModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import { rawPathSegment } from "../ModelEndpoints/ModelHttpClient.js";
 import { ModelHttpClient } from "../ModelEndpoints/ModelHttpClient.js";
 import { shouldSendMaxOutputTokens } from "../ModelEndpoints/ModelPayloadOptions.js";

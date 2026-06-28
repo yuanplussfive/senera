@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
+import { AgentActionPlanner } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
 import { loadVerificationConfig } from "./VerificationConfig.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { AgentPromptContextBuilder } from "../Source/AgentSystem/Prompt/AgentPromptContextBuilder.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
   createActionPlannerConfigFixture,

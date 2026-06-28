@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { loadVerificationConfig } from "./VerificationConfig.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentToolCatalogProjector, type AgentToolCatalogItem } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
-import { AgentToolTagCatalogProjector } from "../Source/AgentSystem/AgentToolTagCatalogProjector.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { AgentToolCatalogProjector, type AgentToolCatalogItem } from "../Source/AgentSystem/ToolRuntime/AgentToolCatalogProjector.js";
+import { AgentToolTagCatalogProjector } from "../Source/AgentSystem/ToolRuntime/AgentToolTagCatalogProjector.js";
 
 void main();
 

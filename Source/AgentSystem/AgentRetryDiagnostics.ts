@@ -1,12 +1,12 @@
 import type { AgentSourceDiagnostic } from "./AgentSourceDiagnostic.js";
 import type { AgentSchemaValidationError } from "./AgentSchemaValidator.js";
-import type { AgentProtocolErrorCode } from "./AgentXmlStatus.js";
-import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
-import type { AgentPromptRenderer } from "./AgentPromptRenderer.js";
+import type { AgentProtocolErrorCode } from "./Xml/AgentXmlStatus.js";
+import type { AgentPluginRegistry } from "./Plugin/AgentPluginRegistry.js";
+import type { AgentPromptRenderer } from "./Prompt/AgentPromptRenderer.js";
 import {
   AgentDefaultXmlProtocolSpec,
   type AgentXmlProtocolSpec,
-} from "./AgentXmlPolicy.js";
+} from "./Xml/AgentXmlPolicy.js";
 
 type RepairPromptDiagnostic = {
   message: string;

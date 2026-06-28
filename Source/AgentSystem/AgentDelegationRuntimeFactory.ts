@@ -1,6 +1,6 @@
-import { AgentLoop } from "./AgentLoop.js";
-import { AgentModelEndpointClient } from "./AgentModelEndpointClient.js";
-import { AgentSystemRuntime } from "./AgentSystemRuntime.js";
+import { AgentLoop } from "./Loop/AgentLoop.js";
+import { AgentModelEndpointClient } from "./ModelEndpoints/AgentModelEndpointClient.js";
+import { AgentSystemRuntime } from "./Runtime/AgentSystemRuntime.js";
 import {
   resolveAgentDelegationRuntimeProfile,
   resolveModelProviderConfig,

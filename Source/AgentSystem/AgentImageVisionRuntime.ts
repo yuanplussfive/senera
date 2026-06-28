@@ -3,18 +3,18 @@ import { z } from "zod";
 import { parse as parseToml } from "smol-toml";
 import { resolveUploadsConfig } from "./AgentDefaults.js";
 import { throwIfAborted } from "./AgentCancellation.js";
-import { AgentPromptRenderer } from "./AgentPromptRenderer.js";
+import { AgentPromptRenderer } from "./Prompt/AgentPromptRenderer.js";
 import type { ResolvedAgentModelProviderConfig } from "./Types/AgentConfigTypes.js";
-import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
-import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import type { AgentHostToolHandler } from "./ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import type { AgentToolProcessRunResult } from "./ToolRuntime/AgentToolProcessRunner.js";
 import {
   toolProcessFailureResult,
   toolProcessSuccessResult,
-} from "./AgentToolProcessEnvelope.js";
+} from "./ToolRuntime/AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
-} from "./AgentXmlStatus.js";
+} from "./Xml/AgentXmlStatus.js";
 import { AgentUploadStore } from "./Uploads/AgentUploadStore.js";
 import { normalizeAgentUploadUri } from "./Uploads/AgentUploadLocator.js";
 import { AgentImageVisionModelClient } from "./Vision/AgentImageVisionModelClient.js";

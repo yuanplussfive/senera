@@ -1,0 +1,89 @@
+import { spawn } from "node:child_process";
+import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import type { AgentToolProcessRequest } from "../Types/ToolRuntimeTypes.js";
+import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
+import { AgentXmlCodec } from "../Xml/AgentXmlCodec.js";
+import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
+import { resolveToolExecutionConfig } from "../AgentDefaults.js";
+import {
+  AgentToolProcessEntryResolver,
+} from "./AgentToolProcessEntryResolver.js";
+import { AgentToolProcessResponseParser } from "./AgentToolProcessResponseParser.js";
+import { AgentToolProcessSession } from "./AgentToolProcessSession.js";
+import type {
+  AgentToolProcessChild,
+  AgentToolProcessRunResult,
+  AgentToolProcessSpawner,
+  AgentToolProcessSpawnOptions,
+} from "./AgentToolProcessTypes.js";
+
+export type {
+  AgentToolProcessChild,
+  AgentToolProcessRunResult,
+  AgentToolProcessSpawner,
+  AgentToolProcessSpawnOptions,
+} from "./AgentToolProcessTypes.js";
+
+export class AgentToolProcessRunner {
+  private readonly xmlCodec: AgentXmlCodec;
+  private readonly entryResolver: AgentToolProcessEntryResolver;
+  private readonly responseParser = new AgentToolProcessResponseParser();
+
+  constructor(
+    private readonly config: AgentSystemConfig,
+    private readonly protocol: AgentXmlProtocolSpec,
+    private readonly workspaceRoot: string = process.cwd(),
+    private readonly spawnProcess: AgentToolProcessSpawner = spawn as AgentToolProcessSpawner,
+  ) {
+    this.xmlCodec = new AgentXmlCodec(protocol);
+    this.entryResolver = new AgentToolProcessEntryResolver(workspaceRoot);
+  }
+
+  async run(
+    tool: RegisteredTool,
+    args: Record<string, unknown>,
+    context: { signal?: AbortSignal } = {},
+  ): Promise<AgentToolProcessRunResult> {
+    const entry = this.entryResolver.resolve(tool);
+    if (!entry.ok) {
+      return entry.result;
+    }
+
+    const toolExecution = resolveToolExecutionConfig(this.config);
+    const request: AgentToolProcessRequest = {
+      tool: tool.name,
+      arguments: args,
+      context: {
+        workspaceRoot: this.entryResolver.workspaceContextRoot(),
+        pluginRoot: tool.plugin.rootPath,
+      },
+    };
+
+    return new AgentToolProcessSession({
+      spawnProcess: this.spawnProcess,
+      responseParser: this.responseParser,
+      toolName: tool.name,
+      command: entry.command,
+      args: entry.args,
+      cwd: entry.cwd,
+      env: entry.entry.Env,
+      requestXml: this.renderRequestXml(request),
+      timeoutMs: toolExecution.TimeoutMs,
+      maxStdoutBytes: toolExecution.MaxStdoutBytes,
+      maxStderrBytes: toolExecution.MaxStderrBytes,
+      signal: context.signal,
+    }).run();
+  }
+
+  private renderRequestXml(request: AgentToolProcessRequest): string {
+    return this.xmlCodec.objectToXml(this.protocol.roots.toolCalls, {
+      [this.protocol.items.toolCall]: [
+        {
+          name: request.tool,
+          arguments: request.arguments,
+          context: request.context,
+        },
+      ],
+    });
+  }
+}

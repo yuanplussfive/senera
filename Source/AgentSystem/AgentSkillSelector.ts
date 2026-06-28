@@ -3,13 +3,13 @@ import MiniSearch from "minisearch";
 import type {
   RegisteredSkill,
 } from "./Types/PluginRuntimeTypes.js";
-import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
+import { AgentToolSearchTokenizer } from "./ToolSearch/AgentToolSearchTokenizer.js";
 import {
   capabilityFacetEntries,
   capabilityRiskText,
   capabilitySearchText,
-} from "./AgentToolSearchCapabilities.js";
-import { compareLoadedPluginsForPrompting } from "./AgentPluginOrdering.js";
+} from "./ToolSearch/AgentToolSearchCapabilities.js";
+import { compareLoadedPluginsForPrompting } from "./Plugin/AgentPluginOrdering.js";
 
 interface SkillSearchDocument {
   id: string;

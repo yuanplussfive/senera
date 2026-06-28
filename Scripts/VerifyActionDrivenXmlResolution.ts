@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { loadVerificationConfig } from "./VerificationConfig.js";
-import { AgentDecisionXmlCollector, AgentDecisionXmlCollectionRetryableError } from "../Source/AgentSystem/AgentDecisionXmlCollector.js";
-import { createXmlProtocolPolicy } from "../Source/AgentSystem/AgentXmlPolicy.js";
-import type { AgentLanguageModel, AgentLanguageModelStream } from "../Source/AgentSystem/AgentLanguageModel.js";
+import { AgentDecisionXmlCollector, AgentDecisionXmlCollectionRetryableError } from "../Source/AgentSystem/Decision/AgentDecisionXmlCollector.js";
+import { createXmlProtocolPolicy } from "../Source/AgentSystem/Xml/AgentXmlPolicy.js";
+import type { AgentLanguageModel, AgentLanguageModelStream } from "../Source/AgentSystem/ModelEndpoints/AgentLanguageModel.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
-import type { AgentActionDecision } from "../Source/AgentSystem/AgentActionPlanner.js";
-import type { AgentModelProviderMetadata } from "../Source/AgentSystem/AgentModelMetadata.js";
+import type { AgentActionDecision } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
+import type { AgentModelProviderMetadata } from "../Source/AgentSystem/ModelEndpoints/AgentModelMetadata.js";
 import { AgentRetryPlanner } from "../Source/AgentSystem/AgentRetryPlanner.js";
-import { AgentActionMismatchRepairPromptBuilder } from "../Source/AgentSystem/AgentActionMismatchRepairPromptBuilder.js";
-import { AgentPromptRenderer } from "../Source/AgentSystem/AgentPromptRenderer.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import type { AgentToolCatalogProjector } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
-import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
+import { AgentActionMismatchRepairPromptBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionMismatchRepairPromptBuilder.js";
+import { AgentPromptRenderer } from "../Source/AgentSystem/Prompt/AgentPromptRenderer.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import type { AgentToolCatalogProjector } from "../Source/AgentSystem/ToolRuntime/AgentToolCatalogProjector.js";
+import { AgentPromptContextBuilder } from "../Source/AgentSystem/Prompt/AgentPromptContextBuilder.js";
 
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/AgentActionPlannerContext.js";
-import { EmptyActionPlannerLedger } from "../Source/AgentSystem/AgentActionPlannerLedger.js";
-import { AgentConversationProjector } from "../Source/AgentSystem/AgentConversationProjector.js";
+import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
+import { EmptyActionPlannerLedger } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerLedger.js";
+import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { AgentEvidenceBroker } from "../Source/AgentSystem/AgentEvidenceBroker.js";
-import { createToolEvidenceMemoryEntries } from "../Source/AgentSystem/AgentPlannerMemory.js";
-import type { AgentToolCatalogItem } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
+import { createToolEvidenceMemoryEntries } from "../Source/AgentSystem/Memory/AgentPlannerMemory.js";
+import type { AgentToolCatalogItem } from "../Source/AgentSystem/ToolRuntime/AgentToolCatalogProjector.js";
 import {
   TaskEvidenceScope,
   type TaskFrame,

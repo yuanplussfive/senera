@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
-import { AgentPromptContractProjector } from "../Source/AgentSystem/AgentPromptContractProjector.js";
-import type { AgentPromptToolContext } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
+import { AgentActionPlanner } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
+import { AgentPromptContractProjector } from "../Source/AgentSystem/Prompt/AgentPromptContractProjector.js";
+import type { AgentPromptToolContext } from "../Source/AgentSystem/Prompt/AgentPromptContextBuilder.js";
 import type { AgentRootCommand } from "../Source/AgentSystem/AgentRootCommand.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {

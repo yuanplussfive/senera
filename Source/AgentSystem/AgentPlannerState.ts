@@ -3,12 +3,12 @@ import type {
   PlannerToolCallStateItem,
   TaskFrame,
 } from "./BamlClient/baml_client/types.js";
-import type { AgentActionDecision } from "./AgentActionPlannerTypes.js";
+import type { AgentActionDecision } from "./ActionPlanner/AgentActionPlannerTypes.js";
 import type {
   AgentActionPlannerLedger,
   PlannerEvidenceRecord,
-} from "./AgentActionPlannerLedger.js";
-import { uniqueStrings } from "./AgentActionPlannerProjectionUtils.js";
+} from "./ActionPlanner/AgentActionPlannerLedger.js";
+import { uniqueStrings } from "./ActionPlanner/AgentActionPlannerProjectionUtils.js";
 
 export interface AgentPlannerStateSnapshotRecord {
   taskId: string;

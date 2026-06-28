@@ -1,4 +1,4 @@
-import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
+import type { AgentPluginRegistry } from "./Plugin/AgentPluginRegistry.js";
 import type { RegisteredSkill } from "./Types/PluginRuntimeTypes.js";
 import type {
   ToolSearchCapabilityFacetsManifest,

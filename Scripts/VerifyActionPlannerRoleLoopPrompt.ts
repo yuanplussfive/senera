@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
+import { AgentActionPlanner } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
 import { TaskEvidenceScope } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {

@@ -1,7 +1,7 @@
 import { AgentEventKinds, type AgentDomainEvent } from "./AgentEvent.js";
-import type { AgentConversationEntry } from "./AgentConversation.js";
-import type { AgentExecutionResult } from "./AgentDecisionExecutor.js";
-import type { AgentModelProviderMetadata, AgentModelUsage } from "./AgentModelMetadata.js";
+import type { AgentConversationEntry } from "./Conversation/AgentConversation.js";
+import type { AgentExecutionResult } from "./Decision/AgentDecisionExecutor.js";
+import type { AgentModelProviderMetadata, AgentModelUsage } from "./ModelEndpoints/AgentModelMetadata.js";
 import type { StepTrace } from "./AgentStepTrace.js";
 import type { TurnUnderstanding } from "./BamlClient/baml_client/types.js";
 

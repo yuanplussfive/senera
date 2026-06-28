@@ -1,4 +1,4 @@
-import type { StoredRunSnapshotStatus } from "../AgentSqliteSessionRepository.js";
+import type { StoredRunSnapshotStatus } from "../Session/AgentSqliteSessionRepository.js";
 
 export interface SessionRow {
   id: string;

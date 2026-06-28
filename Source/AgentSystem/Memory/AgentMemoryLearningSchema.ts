@@ -5,7 +5,7 @@ import type {
   MemoryWriteResolutionResult as BamlMemoryWriteResolutionResult,
 } from "../BamlClient/baml_client/types.js";
 import { parseNormalizedBamlOutput } from "../AgentBamlOutputNormalizer.js";
-import { AgentActionPlannerValidationError } from "../AgentActionPlannerSchema.js";
+import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
 import {
   AgentMemoryTypes,
   type AgentMemoryCandidateDraft,

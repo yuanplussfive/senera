@@ -4,7 +4,7 @@ import type {
   ToolCatalogItem,
   ToolCapabilityFacets,
 } from "./BamlClient/baml_client/types.js";
-import type { AgentActionCapabilityNeed } from "./AgentActionPlannerTypes.js";
+import type { AgentActionCapabilityNeed } from "./ActionPlanner/AgentActionPlannerTypes.js";
 
 export interface AgentEvidenceRequirementProfile {
   id?: string;

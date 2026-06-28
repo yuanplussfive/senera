@@ -1,4 +1,4 @@
-import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "../AgentLanguageModel.js";
+import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "./AgentLanguageModel.js";
 import type { resolveModelProviderConfig } from "../AgentDefaults.js";
 import type { ModelHttpClient } from "./ModelHttpClient.js";
 import { ClaudeMessagesEndpoint } from "./ClaudeMessagesEndpoint.js";

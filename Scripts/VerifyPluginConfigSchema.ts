@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { parseLoadedPluginConfigToml } from "../Source/AgentSystem/AgentPluginConfig.js";
+import { parseLoadedPluginConfigToml } from "../Source/AgentSystem/Plugin/AgentPluginConfig.js";
 
 const workspaceRoot = process.cwd();
 

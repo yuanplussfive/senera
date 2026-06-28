@@ -4,4 +4,4 @@ export {
   type AgentCompletionEvidenceMatch as AgentEvidenceMatch,
   type AgentCompletionMissingNeed as AgentEvidenceMissingNeed,
   type AgentCompletionSatisfiedNeed as AgentEvidenceSatisfiedNeed,
-} from "./AgentCompletionGate.js";
+} from "./Loop/AgentCompletionGate.js";

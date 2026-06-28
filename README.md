@@ -216,6 +216,12 @@ senera/
 └─ senera.config.example.json   运行与 CLI 配置模板
 ```
 
+进一步开发前建议先看:
+
+- [核心链路导览](docs/Architecture/CoreFlow.md):理解一次请求从用户输入到工具执行、记忆、前端事件投影的主路径。
+- [开发手册](docs/Development/README.md):新增工具、运行时事件、模型端点时的标准落地路径。
+- [术语表](docs/Glossary.md):统一理解 Contract、Projection、Artifact、Memory Source 等内部术语。
+
 ---
 
 ## 常用命令

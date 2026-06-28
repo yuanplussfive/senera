@@ -1,25 +1,25 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/AgentActionPlannerContext.js";
-import { EmptyActionPlannerLedger } from "../Source/AgentSystem/AgentActionPlannerLedger.js";
+import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
+import { EmptyActionPlannerLedger } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerLedger.js";
 import { loadVerificationConfig } from "./VerificationConfig.js";
 import { AgentEvidenceBroker } from "../Source/AgentSystem/AgentEvidenceBroker.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
 import { AgentSkillActivationService } from "../Source/AgentSystem/AgentSkillActivation.js";
-import { AgentToolSearchRuntime } from "../Source/AgentSystem/AgentToolSearchRuntime.js";
+import { AgentToolSearchRuntime } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
 import {
   resolveModelProviderConfig,
   resolveToolLearningConfig,
   resolveToolSearchConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
-import { AgentToolCatalogProjector } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
+import { AgentToolCatalogProjector } from "../Source/AgentSystem/ToolRuntime/AgentToolCatalogProjector.js";
 import { TaskEvidenceScope } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import {
   agentActionCapabilityNeeds,
   agentActionPreferredTools,
   agentActionToolSearchQueries,
-} from "../Source/AgentSystem/AgentActionPlanner.js";
+} from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
 
 const workspaceRoot = process.cwd();
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { AgentToolResultXmlRenderer } from "../Source/AgentSystem/AgentToolResultXmlRenderer.js";
+import { AgentToolResultXmlRenderer } from "../Source/AgentSystem/Xml/AgentToolResultXmlRenderer.js";
 import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 
 const workspaceRoot = process.cwd();

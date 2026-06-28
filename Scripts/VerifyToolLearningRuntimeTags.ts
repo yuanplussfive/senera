@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { loadVerificationConfig } from "./VerificationConfig.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentToolLearningRuntime } from "../Source/AgentSystem/AgentToolLearningRuntime.js";
-import { AgentToolSearchMemory } from "../Source/AgentSystem/AgentToolSearchMemory.js";
-import type { AgentToolLearningPromptInput } from "../Source/AgentSystem/AgentActionPlannerModelClient.js";
-import { parseToolLearningResult } from "../Source/AgentSystem/AgentToolLearningSchema.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { AgentToolLearningRuntime } from "../Source/AgentSystem/ToolSearch/AgentToolLearningRuntime.js";
+import { AgentToolSearchMemory } from "../Source/AgentSystem/ToolSearch/AgentToolSearchMemory.js";
+import type { AgentToolLearningPromptInput } from "../Source/AgentSystem/ActionPlanner/AgentLearningPromptJson.js";
+import { parseToolLearningResult } from "../Source/AgentSystem/ToolSearch/AgentToolLearningSchema.js";
 import type { ResolvedAgentModelProviderConfig, ResolvedAgentToolLearningConfig, ResolvedAgentToolSearchConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { ToolLearningResult } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 

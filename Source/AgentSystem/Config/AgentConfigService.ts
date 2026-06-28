@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { AgentConfigLoader } from "../AgentConfigLoader.js";
 import { AgentJsonFileLoader } from "../AgentJsonFileLoader.js";
 import { resolveConfigStoreConfig } from "../AgentDefaults.js";
@@ -11,6 +9,12 @@ import {
   AgentConfigSqliteRepository,
   type AgentConfigRevisionRecord,
 } from "./AgentConfigSqliteRepository.js";
+import { formatConfigIssues } from "./AgentConfigDiagnostics.js";
+import {
+  resolveConfigPath,
+  resolveConfigStoreDatabasePath,
+  writeAgentConfigJsonMirror,
+} from "./AgentConfigServicePaths.js";
 
 export type AgentConfigSnapshotSource = "sqlite" | "json";
 
@@ -92,7 +96,7 @@ export class AgentConfigService {
     const store = resolveConfigStoreConfig(config);
     if (!store.Enabled) {
       this.closeRepository();
-      this.writeJsonMirror(config, this.options.source.configPath);
+      writeAgentConfigJsonMirror(config, this.options.source.configPath);
       this.snapshotValue = {
         path: this.options.source.configPath,
         version: this.snapshotValue.version + 1,
@@ -110,7 +114,7 @@ export class AgentConfigService {
       source: input.source ?? "api_update",
     });
     if (input.mirrorJson ?? store.MirrorJson) {
-      this.writeJsonMirror(config, this.options.source.configPath);
+      writeAgentConfigJsonMirror(config, this.options.source.configPath);
     }
     this.snapshotValue = this.snapshotFromRevision(config, revision, {
       path: this.options.source.configPath,
@@ -302,17 +306,13 @@ export class AgentConfigService {
 
   private resolveDatabasePath(config: AgentSystemConfig): string {
     const store = resolveConfigStoreConfig(config);
-    return path.isAbsolute(store.DatabasePath)
-      ? path.normalize(store.DatabasePath)
-      : path.resolve(this.options.workspaceRoot, store.DatabasePath);
+    return resolveConfigStoreDatabasePath(this.options.workspaceRoot, config);
   }
 
   private resolveSqliteSourceDatabasePath(
     source: Extract<AgentConfigSourceOptions, { kind: "sqlite" }>,
   ): string {
-    return path.isAbsolute(source.databasePath)
-      ? path.normalize(source.databasePath)
-      : path.resolve(this.options.workspaceRoot, source.databasePath);
+    return resolveConfigPath(this.options.workspaceRoot, source.databasePath);
   }
 
   private readSourceLabel(
@@ -320,25 +320,8 @@ export class AgentConfigService {
   ): string {
     return source.label ?? this.resolveSqliteSourceDatabasePath(source);
   }
-
-  private writeJsonMirror(config: AgentSystemConfig, configPath: string): void {
-    const normalized = this.validateConfig(config);
-    fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    const tempPath = `${configPath}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tempPath, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
-    fs.renameSync(tempPath, configPath);
-  }
 }
 
 export function loadConfigFile(filePath: string): AgentSystemConfig {
   return new AgentJsonFileLoader().load(filePath, AgentSystemConfigSchema);
-}
-
-function formatConfigIssues(issues: readonly { path: PropertyKey[]; message: string }[]): string {
-  return issues
-    .map((issue) => {
-      const pathText = issue.path.length > 0 ? issue.path.join(".") : "<root>";
-      return `${pathText}: ${issue.message}`;
-    })
-    .join("; ");
 }

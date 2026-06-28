@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { AgentConversationProjector } from "../Source/AgentSystem/AgentConversationProjector.js";
-import { AgentMemoryService } from "../Source/AgentSystem/AgentMemoryService.js";
+import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
+import { AgentMemoryService } from "../Source/AgentSystem/Memory/AgentMemoryService.js";
 import {
   InMemoryAgentMemorySourceRepository,
   type AgentMemoryRecordedTurn,

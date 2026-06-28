@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "../AgentLanguageModel.js";
+import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "./AgentLanguageModel.js";
 import type {
   EndpointRuntime,
   TextGenerationEndpoint,

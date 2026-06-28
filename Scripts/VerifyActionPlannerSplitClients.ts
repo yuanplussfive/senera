@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
+import { AgentActionPlanner } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
 import { AgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
 import { TaskEvidenceScope } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
-import type { AgentToolCatalogItem } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
+import type { AgentToolCatalogItem } from "../Source/AgentSystem/ToolRuntime/AgentToolCatalogProjector.js";
 import type { ResolvedAgentActionPlannerConfig, ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createActionPlanInputFixture } from "./ActionPlannerFixture.js";
 

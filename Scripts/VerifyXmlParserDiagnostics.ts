@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import {
   AgentXmlParseError,
   AgentXmlParser,
-} from "../Source/AgentSystem/AgentXmlParser.js";
-import { createXmlProtocolPolicy } from "../Source/AgentSystem/AgentXmlPolicy.js";
-import { AgentXmlErrorCodes } from "../Source/AgentSystem/AgentXmlStatus.js";
+} from "../Source/AgentSystem/Xml/AgentXmlParser.js";
+import { createXmlProtocolPolicy } from "../Source/AgentSystem/Xml/AgentXmlPolicy.js";
+import { AgentXmlErrorCodes } from "../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const policy = createXmlProtocolPolicy({

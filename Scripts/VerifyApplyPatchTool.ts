@@ -4,10 +4,10 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { loadVerificationConfig } from "./VerificationConfig.js";
 import { createDefaultHostCapabilityRegistry } from "../Source/AgentSystem/AgentDefaultHostCapabilities.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentToolRunner } from "../Source/AgentSystem/AgentToolRunner.js";
-import { createXmlProtocolSpec } from "../Source/AgentSystem/AgentXmlPolicy.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentToolRunner } from "../Source/AgentSystem/ToolRuntime/AgentToolRunner.js";
+import { createXmlProtocolSpec } from "../Source/AgentSystem/Xml/AgentXmlPolicy.js";
 
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();

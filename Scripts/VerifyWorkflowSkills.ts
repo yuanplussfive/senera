@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { loadVerificationConfig } from "./VerificationConfig.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
-import { AgentPromptRenderer } from "../Source/AgentSystem/AgentPromptRenderer.js";
-import type { AgentActionDecision } from "../Source/AgentSystem/AgentActionPlanner.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { AgentPromptContextBuilder } from "../Source/AgentSystem/Prompt/AgentPromptContextBuilder.js";
+import { AgentPromptRenderer } from "../Source/AgentSystem/Prompt/AgentPromptRenderer.js";
+import type { AgentActionDecision } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
 import { AgentSkillActivationService } from "../Source/AgentSystem/AgentSkillActivation.js";
 import { AgentWorkflowSelector } from "../Source/AgentSystem/AgentWorkflowSelector.js";
 

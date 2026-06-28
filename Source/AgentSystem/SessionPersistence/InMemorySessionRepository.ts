@@ -1,7 +1,7 @@
 import {
   AgentConversationEntryKinds,
   type AgentConversationEntry,
-} from "../AgentConversation.js";
+} from "../Conversation/AgentConversation.js";
 import type { AgentEventEnvelope } from "../AgentEventBase.js";
 import {
   createAgentUserProfile,
@@ -13,8 +13,8 @@ import type {
   AgentSessionRepository,
   StoredRunSnapshot,
   StoredStepTraceRun,
-} from "../AgentSqliteSessionRepository.js";
-import type { AgentSession } from "../AgentSession.js";
+} from "../Session/AgentSqliteSessionRepository.js";
+import type { AgentSession } from "../Session/AgentSession.js";
 import type { StepTrace } from "../AgentStepTrace.js";
 
 export class InMemorySessionRepository implements AgentSessionRepository {

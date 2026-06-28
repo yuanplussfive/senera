@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
-import { AgentToolRunner } from "../Source/AgentSystem/AgentToolRunner.js";
+import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
+import { AgentToolRunner } from "../Source/AgentSystem/ToolRuntime/AgentToolRunner.js";
 import { createDefaultHostCapabilityRegistry } from "../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 

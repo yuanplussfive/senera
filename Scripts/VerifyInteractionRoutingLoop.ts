@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { AgentEventKinds } from "../Source/AgentSystem/AgentEvent.js";
-import { AgentLoopStateMachine } from "../Source/AgentSystem/AgentLoopStateMachine.js";
+import { AgentLoopStateMachine } from "../Source/AgentSystem/Loop/AgentLoopStateMachine.js";
 import {
   AgentInteractionRunModes,
   type AgentInteractionRouteResult,
-} from "../Source/AgentSystem/AgentInteractionRouter.js";
+} from "../Source/AgentSystem/ActionPlanner/AgentInteractionRouter.js";
 import { InteractionRunMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 
 const machine = new AgentLoopStateMachine({

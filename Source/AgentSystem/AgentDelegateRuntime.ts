@@ -1,19 +1,19 @@
 import { z } from "zod";
-import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
-import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import type { AgentHostToolHandler } from "./ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import type { AgentToolProcessRunResult } from "./ToolRuntime/AgentToolProcessRunner.js";
 import {
   toolProcessFailureResult,
   toolProcessSuccessResult,
-} from "./AgentToolProcessEnvelope.js";
+} from "./ToolRuntime/AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
-} from "./AgentXmlStatus.js";
+} from "./Xml/AgentXmlStatus.js";
 import { throwIfAborted } from "./AgentCancellation.js";
 import {
   normalizeToolArrayArgument,
   normalizeToolStringArgument,
-} from "./AgentToolArgumentNormalization.js";
+} from "./ToolRuntime/AgentToolArgumentNormalization.js";
 import { buildAgentDelegationPlan } from "./AgentDelegationPlan.js";
 import { AgentDelegationRuntimeFactory } from "./AgentDelegationRuntimeFactory.js";
 

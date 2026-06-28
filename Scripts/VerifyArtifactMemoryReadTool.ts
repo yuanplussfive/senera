@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { readArtifactMemoryHostTool } from "../Source/AgentSystem/AgentArtifactMemoryRuntime.js";
+import { readArtifactMemoryHostTool } from "../Source/AgentSystem/Memory/AgentArtifactMemoryRuntime.js";
 import { resolveArtifactsConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { AgentToolExecutionArtifactRecorder } from "../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
 import {

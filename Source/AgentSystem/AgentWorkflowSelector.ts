@@ -1,14 +1,14 @@
-import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
+import type { AgentPluginRegistry } from "./Plugin/AgentPluginRegistry.js";
 import type { AgentActivatedSkill } from "./AgentSkillActivation.js";
 import type { ToolSearchCapabilityManifest } from "./Types/PluginManifestTypes.js";
 import type { RegisteredAgentWorkflow } from "./Types/PluginRuntimeTypes.js";
-import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
+import { AgentToolSearchTokenizer } from "./ToolSearch/AgentToolSearchTokenizer.js";
 import {
   capabilityFacetEntries,
   capabilitySearchText,
-} from "./AgentToolSearchCapabilities.js";
+} from "./ToolSearch/AgentToolSearchCapabilities.js";
 import MiniSearch from "minisearch";
-import { compareLoadedPluginsForPrompting } from "./AgentPluginOrdering.js";
+import { compareLoadedPluginsForPrompting } from "./Plugin/AgentPluginOrdering.js";
 
 interface AgentWorkflowSearchDocument {
   name: string;

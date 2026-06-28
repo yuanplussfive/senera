@@ -1,4 +1,4 @@
-import type { AgentPluginRegistry } from "./AgentPluginRegistry.js";
+import type { AgentPluginRegistry } from "./Plugin/AgentPluginRegistry.js";
 import type { SkillEvidenceRequirementManifest } from "./Types/PluginManifestTypes.js";
 import {
   agentActionCapabilityNeeds,
@@ -6,7 +6,7 @@ import {
   agentActionPreferredTools,
   agentActionToolSearchQueries,
   type AgentActionDecision,
-} from "./AgentActionPlannerTypes.js";
+} from "./ActionPlanner/AgentActionPlannerTypes.js";
 import type { AgentRootCommand } from "./AgentRootCommand.js";
 import { AgentSkillCatalogProjector } from "./AgentSkillCatalogProjector.js";
 import { AgentSkillSelector } from "./AgentSkillSelector.js";

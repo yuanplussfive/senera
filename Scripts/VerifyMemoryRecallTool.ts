@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { recallAgentMemories } from "../Source/AgentSystem/AgentMemoryRecallRuntime.js";
+import { recallAgentMemories } from "../Source/AgentSystem/Memory/AgentMemoryRecallRuntime.js";
 import {
   AgentConversationEntryKinds,
   type AgentConversationEntry,
-} from "../Source/AgentSystem/AgentConversation.js";
+} from "../Source/AgentSystem/Conversation/AgentConversation.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
   resolveAgentMemoryDatabasePath,

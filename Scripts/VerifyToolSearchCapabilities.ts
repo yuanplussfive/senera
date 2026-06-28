@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { loadVerificationConfig } from "./VerificationConfig.js";
 import { resolveToolSearchConfig } from "../Source/AgentSystem/AgentDefaults.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentToolCatalogProjector } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
-import { AgentToolSearchIndex } from "../Source/AgentSystem/AgentToolSearchIndex.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { AgentToolCatalogProjector } from "../Source/AgentSystem/ToolRuntime/AgentToolCatalogProjector.js";
+import { AgentToolSearchIndex } from "../Source/AgentSystem/ToolSearch/AgentToolSearchIndex.js";
 
 void main();
 

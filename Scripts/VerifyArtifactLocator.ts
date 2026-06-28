@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/AgentActionPlannerContext.js";
+import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
 import { resolveArtifactsConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { AgentToolExecutionArtifactRecorder } from "../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
 import { AgentWorkspaceChangeCapture } from "../Source/AgentSystem/Artifacts/AgentWorkspaceChangeCapture.js";

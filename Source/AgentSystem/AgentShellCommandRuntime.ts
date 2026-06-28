@@ -2,17 +2,17 @@ import path from "node:path";
 import { spawn } from "cross-spawn";
 import kill from "tree-kill";
 import { z } from "zod";
-import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
-import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import type { AgentHostToolHandler } from "./ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import type { AgentToolProcessRunResult } from "./ToolRuntime/AgentToolProcessRunner.js";
 import {
   createToolProcessSuccessResponse,
   toolProcessFailureResult,
-} from "./AgentToolProcessEnvelope.js";
+} from "./ToolRuntime/AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
-} from "./AgentXmlStatus.js";
-import { cancelledToolProcessResult } from "./AgentToolCancellation.js";
+} from "./Xml/AgentXmlStatus.js";
+import { cancelledToolProcessResult } from "./ToolRuntime/AgentToolCancellation.js";
 import { resolveToolExecutionConfig } from "./AgentDefaults.js";
 
 const ShellCommandArgumentsSchema = z

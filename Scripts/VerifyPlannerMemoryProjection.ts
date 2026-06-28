@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/AgentActionPlannerContext.js";
-import { AgentConversationPolicy } from "../Source/AgentSystem/AgentConversationPolicy.js";
-import { AgentConversationProjector } from "../Source/AgentSystem/AgentConversationProjector.js";
+import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
+import { AgentConversationPolicy } from "../Source/AgentSystem/Conversation/AgentConversationPolicy.js";
+import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import {
   createPlannerJournalEntry,
   createToolEvidenceMemoryEntries,
-} from "../Source/AgentSystem/AgentPlannerMemory.js";
-import { AgentToolResultXmlRenderer } from "../Source/AgentSystem/AgentToolResultXmlRenderer.js";
+} from "../Source/AgentSystem/Memory/AgentPlannerMemory.js";
+import { AgentToolResultXmlRenderer } from "../Source/AgentSystem/Xml/AgentToolResultXmlRenderer.js";
 import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 
 const previousRequestId = "request_weather_1";

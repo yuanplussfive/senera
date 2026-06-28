@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/AgentActionPlannerContext.js";
-import type { AgentToolCatalogItem } from "../Source/AgentSystem/AgentToolCatalogProjector.js";
-import { EmptyActionPlannerLedger } from "../Source/AgentSystem/AgentActionPlannerContext.js";
+import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
+import type { AgentToolCatalogItem } from "../Source/AgentSystem/ToolRuntime/AgentToolCatalogProjector.js";
+import { EmptyActionPlannerLedger } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
 
 const tools = Array.from({ length: 64 }, (_value, index) => createTool(index));
 

@@ -1,6 +1,6 @@
-import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
+import type { AgentLanguageModelMessage } from "./ModelEndpoints/AgentLanguageModel.js";
 import type { AgentExceededTextBudgetSnapshot } from "./AgentTextBudget.js";
-import { AgentDecisionErrorFactory } from "./AgentDecisionErrorFactory.js";
+import { AgentDecisionErrorFactory } from "./Decision/AgentDecisionErrorFactory.js";
 import type { AgentRetryableError } from "./AgentRetryableError.js";
 
 export class AgentRetryPlanner {

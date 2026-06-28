@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { AgentLoopStateMachine } from "../Source/AgentSystem/AgentLoopStateMachine.js";
-import { EmptyActionPlannerLedger } from "../Source/AgentSystem/AgentActionPlannerContext.js";
+import { AgentLoopStateMachine } from "../Source/AgentSystem/Loop/AgentLoopStateMachine.js";
+import { EmptyActionPlannerLedger } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
 import { TurnContextMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 
 const requestId = "verify-turn-understanding-request-scope";

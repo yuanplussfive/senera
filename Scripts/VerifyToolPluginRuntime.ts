@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { loadVerificationConfig } from "./VerificationConfig.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentToolProcessRunner } from "../Source/AgentSystem/AgentToolProcessRunner.js";
-import { createXmlProtocolSpec } from "../Source/AgentSystem/AgentXmlPolicy.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentToolProcessRunner } from "../Source/AgentSystem/ToolRuntime/AgentToolProcessRunner.js";
+import { createXmlProtocolSpec } from "../Source/AgentSystem/Xml/AgentXmlPolicy.js";
 
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();

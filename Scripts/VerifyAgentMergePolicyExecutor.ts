@@ -15,9 +15,9 @@ import type {
   AgentLanguageModelRequest,
   AgentLanguageModelResponse,
   AgentLanguageModelStream,
-} from "../Source/AgentSystem/AgentLanguageModel.js";
-import type { AgentModelProviderMetadata } from "../Source/AgentSystem/AgentModelMetadata.js";
-import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
+} from "../Source/AgentSystem/ModelEndpoints/AgentLanguageModel.js";
+import type { AgentModelProviderMetadata } from "../Source/AgentSystem/ModelEndpoints/AgentModelMetadata.js";
+import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const workspaceRoot = path.resolve(process.cwd());

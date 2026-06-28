@@ -1,4 +1,4 @@
-import type { AgentExecutionResult } from "./AgentDecisionExecutor.js";
+import type { AgentExecutionResult } from "./Decision/AgentDecisionExecutor.js";
 import type { AgentDecision, ExecutedToolCallResult } from "./Types/ToolRuntimeTypes.js";
 
 /**

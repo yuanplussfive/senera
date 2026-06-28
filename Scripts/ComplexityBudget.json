@@ -1,0 +1,102 @@
+{
+  "sourceRoots": [
+    "Apps",
+    "Build",
+    "Frontend/src",
+    "Scripts",
+    "Source"
+  ],
+  "fileExtensions": [
+    ".ts",
+    ".tsx",
+    ".js",
+    ".mjs"
+  ],
+  "ignoredGlobs": [
+    "Dist/**",
+    "node_modules/**",
+    "Frontend/src/generated/**",
+    "Source/AgentSystem/BamlClient/**"
+  ],
+  "lineBudget": {
+    "maxLines": 800,
+    "legacyAllowance": 25
+  },
+  "legacyLargeFiles": [
+    {
+      "path": "Apps/Cli.ts",
+      "baselineLines": 1211,
+      "owner": "cli-surface",
+      "splitTarget": "把交互命令、活动展示、配置读取和会话运行拆到 Apps/Cli/*。"
+    },
+    {
+      "path": "Frontend/src/api/eventTypes.ts",
+      "baselineLines": 954,
+      "owner": "frontend-api",
+      "splitTarget": "按 session、tool、planner、memory、config 事件拆分类型，再保留统一出口。"
+    },
+    {
+      "path": "Frontend/src/features/chat/PluginConfigPanel.tsx",
+      "baselineLines": 1284,
+      "owner": "frontend-config-ui",
+      "splitTarget": "把 schema projection、field renderer、toolbar、validation summary 拆成同 feature 子模块。"
+    },
+    {
+      "path": "Frontend/src/shared/config/JsonConfigForm.tsx",
+      "baselineLines": 971,
+      "owner": "frontend-shared-config",
+      "splitTarget": "把 form state、field renderer、array/object controls、validation display 拆开。"
+    },
+    {
+      "path": "Frontend/src/store/session/sessionProjector.ts",
+      "baselineLines": 2143,
+      "owner": "frontend-session-state",
+      "splitTarget": "拆成 message、run、tool call、timeline、selection projector。"
+    },
+    {
+      "path": "Frontend/src/store/sessionStore.test.ts",
+      "baselineLines": 2007,
+      "owner": "frontend-session-tests",
+      "splitTarget": "按 session projector 行为分测试文件，避免单测试文件继续变成总入口。"
+    },
+    {
+      "path": "Scripts/VerifyPluginArtifactPolicies.ts",
+      "baselineLines": 1099,
+      "owner": "verification",
+      "splitTarget": "把 fixture、selector 验证、workspace delta 验证、policy 验证拆成 helper。"
+    }
+  ],
+  "directoryBudgets": [
+    {
+      "path": "Source/AgentSystem",
+      "maxRootFiles": 65,
+      "message": "AgentSystem 根目录已经是装配和历史中枢，新 AgentSystem 文件应优先进入明确子目录。"
+    }
+  ],
+  "requiredModuleGuides": [
+    "docs/Architecture/CoreFlow.md",
+    "docs/Development/AddTool.md",
+    "docs/Development/AddRuntimeEvent.md",
+    "docs/Development/AddModelEndpoint.md",
+    "docs/Glossary.md",
+    "Source/AgentSystem/ActionPlanner/README.md",
+    "Source/AgentSystem/Conversation/README.md",
+    "Source/AgentSystem/Decision/README.md",
+    "Source/AgentSystem/Loop/README.md",
+    "Source/AgentSystem/Memory/README.md",
+    "Source/AgentSystem/Runtime/README.md",
+    "Source/AgentSystem/Session/README.md",
+    "Source/AgentSystem/ToolRuntime/README.md",
+    "Source/AgentSystem/ToolSearch/README.md",
+    "Source/AgentSystem/Xml/README.md",
+    "Source/AgentSystem/Config/README.md",
+    "Source/AgentSystem/ModelEndpoints/README.md",
+    "Source/AgentSystem/Artifacts/README.md",
+    "Source/AgentSystem/CliDisplay/README.md",
+    "Source/AgentSystem/Plugin/README.md",
+    "Source/AgentSystem/Prompt/README.md",
+    "Source/AgentSystem/Patch/README.md",
+    "Source/AgentSystem/WebSocket/README.md",
+    "Frontend/src/store/session/README.md"
+  ]
+}

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { b as baml } from "../Source/AgentSystem/BamlClient/baml_client/index.js";
-import { buildActionPlannerPromptJson } from "../Source/AgentSystem/AgentActionPlannerPromptJson.js";
-import { projectActionPlannerBamlRequestBody } from "../Source/AgentSystem/AgentActionPlannerPromptProjector.js";
-import { createActionPlannerBamlClient } from "../Source/AgentSystem/AgentActionPlannerBamlClient.js";
+import { buildActionPlannerPromptJson } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerPromptJson.js";
+import { projectActionPlannerBamlRequestBody } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerPromptProjector.js";
+import { createActionPlannerBamlClient } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerBamlClient.js";
 import { createActionPlanInputFixture } from "./ActionPlannerFixture.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 

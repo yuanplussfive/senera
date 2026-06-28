@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { AgentEventKinds } from "../Source/AgentSystem/AgentEvent.js";
-import { AgentLoopStateMachine } from "../Source/AgentSystem/AgentLoopStateMachine.js";
-import type { AgentActionPlanResult } from "../Source/AgentSystem/AgentActionPlanner.js";
-import { EmptyActionPlannerLedger } from "../Source/AgentSystem/AgentActionPlannerContext.js";
+import { AgentLoopStateMachine } from "../Source/AgentSystem/Loop/AgentLoopStateMachine.js";
+import type { AgentActionPlanResult } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
+import { EmptyActionPlannerLedger } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
 import { loadVerificationConfig } from "./VerificationConfig.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { AgentPromptContextBuilder } from "../Source/AgentSystem/Prompt/AgentPromptContextBuilder.js";
 import {
   AgentInteractionRunModes,
   type AgentInteractionRouteResult,
-} from "../Source/AgentSystem/AgentInteractionRouter.js";
+} from "../Source/AgentSystem/ActionPlanner/AgentInteractionRouter.js";
 import { InteractionRunMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 
 const workspaceRoot = process.cwd();

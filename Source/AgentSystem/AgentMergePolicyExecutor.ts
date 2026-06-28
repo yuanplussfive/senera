@@ -1,5 +1,5 @@
 import { type AgentEventSink, withEventContext } from "./AgentEvent.js";
-import type { AgentLanguageModel } from "./AgentLanguageModel.js";
+import type { AgentLanguageModel } from "./ModelEndpoints/AgentLanguageModel.js";
 import { throwIfAborted } from "./AgentCancellation.js";
 import type { AgentChildAgentRunResult } from "./AgentChildAgentRuntime.js";
 import {

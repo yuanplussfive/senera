@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { AgentDecisionParser } from "../Source/AgentSystem/AgentDecisionParser.js";
-import { AgentDecisionErrorFactory } from "../Source/AgentSystem/AgentDecisionErrorFactory.js";
-import { AgentXmlParser, AgentXmlSourceHelper } from "../Source/AgentSystem/AgentXmlParser.js";
-import { createXmlProtocolPolicy, createXmlProtocolSpec } from "../Source/AgentSystem/AgentXmlPolicy.js";
-import type { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
+import { AgentDecisionParser } from "../Source/AgentSystem/Decision/AgentDecisionParser.js";
+import { AgentDecisionErrorFactory } from "../Source/AgentSystem/Decision/AgentDecisionErrorFactory.js";
+import { AgentXmlParser, AgentXmlSourceHelper } from "../Source/AgentSystem/Xml/AgentXmlParser.js";
+import { createXmlProtocolPolicy, createXmlProtocolSpec } from "../Source/AgentSystem/Xml/AgentXmlPolicy.js";
+import type { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
 import { AgentSchemaValidator } from "../Source/AgentSystem/AgentSchemaValidator.js";
-import { AgentDecisionXmlStreamAssembler } from "../Source/AgentSystem/AgentDecisionXmlStreamAssembler.js";
-import { AgentXmlStreamStates } from "../Source/AgentSystem/AgentXmlStatus.js";
+import { AgentDecisionXmlStreamAssembler } from "../Source/AgentSystem/Decision/AgentDecisionXmlStreamAssembler.js";
+import { AgentXmlStreamStates } from "../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 async function main(): Promise<void> {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { AgentActionPlanner } from "../Source/AgentSystem/AgentActionPlanner.js";
-import { AgentActionPlannerStageNames, type AgentActionPlannerStageEvent } from "../Source/AgentSystem/AgentActionPlannerTelemetry.js";
+import { AgentActionPlanner } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
+import { AgentActionPlannerStageNames, type AgentActionPlannerStageEvent } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerTelemetry.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import {
   createActionPlannerConfigFixture,

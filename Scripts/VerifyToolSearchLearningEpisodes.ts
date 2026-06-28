@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { AgentToolSearchMemory } from "../Source/AgentSystem/AgentToolSearchMemory.js";
-import { AgentToolSearchUsageMemory } from "../Source/AgentSystem/AgentToolSearchUsageMemory.js";
-import type { AgentToolLearningSink } from "../Source/AgentSystem/AgentToolSearchUsageMemory.js";
+import { AgentToolSearchMemory } from "../Source/AgentSystem/ToolSearch/AgentToolSearchMemory.js";
+import { AgentToolSearchUsageMemory } from "../Source/AgentSystem/ToolSearch/AgentToolSearchUsageMemory.js";
+import type { AgentToolLearningSink } from "../Source/AgentSystem/ToolSearch/AgentToolSearchUsageMemory.js";
 import type { ResolvedAgentToolSearchConfig, ResolvedAgentToolLearningConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 

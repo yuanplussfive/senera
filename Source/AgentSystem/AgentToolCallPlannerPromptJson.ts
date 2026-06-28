@@ -1,11 +1,11 @@
 import type { ActionPlanInput } from "./BamlClient/baml_client/index.js";
-import type { AgentPromptToolContext } from "./AgentPromptContextBuilder.js";
+import type { AgentPromptToolContext } from "./Prompt/AgentPromptContextBuilder.js";
 import type {
   AgentPromptContractProperty,
   AgentPromptContractView,
-} from "./AgentPromptContractProjector.js";
+} from "./Prompt/AgentPromptContractProjector.js";
 import type { AgentRootCommand } from "./AgentRootCommand.js";
-import type { AgentToolUsePattern } from "./AgentToolSearchMemory.js";
+import type { AgentToolUsePattern } from "./ToolSearch/AgentToolSearchMemory.js";
 
 export type AgentToolCallPlannerPromptStage =
   | {

@@ -6,12 +6,12 @@ import {
   resolveToolLearningConfig,
   resolveToolSearchConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
-import { AgentPluginRegistry } from "../Source/AgentSystem/AgentPluginRegistry.js";
-import { AgentPluginScanner } from "../Source/AgentSystem/AgentPluginScanner.js";
-import { AgentPromptContextBuilder } from "../Source/AgentSystem/AgentPromptContextBuilder.js";
-import { AgentPromptRenderer } from "../Source/AgentSystem/AgentPromptRenderer.js";
-import { AgentToolSearchRuntime } from "../Source/AgentSystem/AgentToolSearchRuntime.js";
-import type { AgentActionDecision } from "../Source/AgentSystem/AgentActionPlanner.js";
+import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
+import { AgentPromptContextBuilder } from "../Source/AgentSystem/Prompt/AgentPromptContextBuilder.js";
+import { AgentPromptRenderer } from "../Source/AgentSystem/Prompt/AgentPromptRenderer.js";
+import { AgentToolSearchRuntime } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
+import type { AgentActionDecision } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
 
 void main();
 

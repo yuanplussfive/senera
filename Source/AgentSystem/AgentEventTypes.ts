@@ -1,8 +1,8 @@
 import type { AgentConfigDomainEvent } from "./AgentConfigEventTypes.js";
-import type { AgentDecisionDomainEvent } from "./AgentDecisionEventTypes.js";
+import type { AgentDecisionDomainEvent } from "./Decision/AgentDecisionEventTypes.js";
 import type { AgentExecutionDomainEvent } from "./AgentExecutionEventTypes.js";
-import type { AgentSessionDomainEvent } from "./AgentSessionEventTypes.js";
-import type { AgentToolDomainEvent } from "./AgentToolEventTypes.js";
+import type { AgentSessionDomainEvent } from "./Session/AgentSessionEventTypes.js";
+import type { AgentToolDomainEvent } from "./ToolRuntime/AgentToolEventTypes.js";
 
 export type AgentDomainEvent =
   | AgentSessionDomainEvent

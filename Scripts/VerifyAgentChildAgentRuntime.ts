@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { AgentLoop } from "../Source/AgentSystem/AgentLoop.js";
-import type { AgentActionPlanResult } from "../Source/AgentSystem/AgentActionPlanner.js";
+import { AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
+import type { AgentActionPlanResult } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
 import {
   AgentEventKinds,
   type AgentDomainEvent,
@@ -12,17 +12,17 @@ import { resolveAgentDelegationRuntimeProfile } from "../Source/AgentSystem/Agen
 import { buildAgentDelegationPlan } from "../Source/AgentSystem/AgentDelegationPlan.js";
 import { AgentChildAgentRuntime } from "../Source/AgentSystem/AgentChildAgentRuntime.js";
 import { AgentDelegationExecutor } from "../Source/AgentSystem/AgentDelegationExecutor.js";
-import type { AgentRuntimeModule } from "../Source/AgentSystem/AgentRuntimeModule.js";
-import { AgentInteractionRunModes } from "../Source/AgentSystem/AgentInteractionRouter.js";
+import type { AgentRuntimeModule } from "../Source/AgentSystem/Runtime/AgentRuntimeModule.js";
+import { AgentInteractionRunModes } from "../Source/AgentSystem/ActionPlanner/AgentInteractionRouter.js";
 import { InteractionRunMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import type {
   AgentLanguageModel,
   AgentLanguageModelRequest,
   AgentLanguageModelResponse,
   AgentLanguageModelStream,
-} from "../Source/AgentSystem/AgentLanguageModel.js";
-import type { AgentModelProviderMetadata } from "../Source/AgentSystem/AgentModelMetadata.js";
-import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
+} from "../Source/AgentSystem/ModelEndpoints/AgentLanguageModel.js";
+import type { AgentModelProviderMetadata } from "../Source/AgentSystem/ModelEndpoints/AgentModelMetadata.js";
+import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const workspaceRoot = path.resolve(process.cwd());

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
+import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import { AgentWorkflowProjector } from "../Source/AgentSystem/AgentWorkflowProjector.js";
 import { AgentWorkflowSelector } from "../Source/AgentSystem/AgentWorkflowSelector.js";
 import { verificationConfigPath } from "./VerificationConfig.js";

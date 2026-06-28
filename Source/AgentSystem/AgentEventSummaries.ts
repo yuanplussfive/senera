@@ -4,7 +4,7 @@ import {
   AgentEventPhases,
 } from "./AgentEventCatalog.js";
 import type { AgentEventSpec } from "./AgentEventBase.js";
-import { readXmlRootName } from "./AgentXmlRootReader.js";
+import { readXmlRootName } from "./Xml/AgentXmlRootReader.js";
 
 export function summarizePrompt(prompt: string, tokenCount: number): AgentEventSpec<typeof AgentEventKinds.PromptSummary, {
   chars: number;

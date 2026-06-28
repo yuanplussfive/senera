@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { AgentConversationProjector } from "../Source/AgentSystem/AgentConversationProjector.js";
+import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { TurnContextMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import {
   resolveAgentMemoryDatabasePath,

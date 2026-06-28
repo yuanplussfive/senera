@@ -9,16 +9,16 @@ import {
 } from "./Documents/AgentDocumentExtract.js";
 import { probeAgentDocument } from "./Documents/AgentDocumentProbe.js";
 import type { AgentDocumentProbeResult } from "./Documents/AgentDocumentProbeTypes.js";
-import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
-import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import type { AgentHostToolHandler } from "./ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import type { AgentToolProcessRunResult } from "./ToolRuntime/AgentToolProcessRunner.js";
 import {
   toolProcessFailureResult,
   toolProcessSuccessResult,
-} from "./AgentToolProcessEnvelope.js";
+} from "./ToolRuntime/AgentToolProcessEnvelope.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
-} from "./AgentXmlStatus.js";
+} from "./Xml/AgentXmlStatus.js";
 import { AgentUploadStore } from "./Uploads/AgentUploadStore.js";
 import { normalizeAgentUploadUri } from "./Uploads/AgentUploadLocator.js";
 

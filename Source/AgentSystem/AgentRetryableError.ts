@@ -1,4 +1,4 @@
-import type { AgentProtocolErrorCode } from "./AgentXmlStatus.js";
+import type { AgentProtocolErrorCode } from "./Xml/AgentXmlStatus.js";
 
 export interface AgentRetryInstruction {
   retryable: boolean;

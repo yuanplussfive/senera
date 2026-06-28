@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { AgentRuntimeModuleComposer, type AgentRuntimeModule } from "../Source/AgentSystem/AgentRuntimeModule.js";
-import { AgentSystemRuntime } from "../Source/AgentSystem/AgentSystemRuntime.js";
-import type { LoadedToolsState } from "../Source/AgentSystem/AgentToolSearchRuntime.js";
+import { AgentRuntimeModuleComposer, type AgentRuntimeModule } from "../Source/AgentSystem/Runtime/AgentRuntimeModule.js";
+import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
+import type { LoadedToolsState } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
 import { verificationConfigPath } from "./VerificationConfig.js";
 
 const workspaceRoot = process.cwd();

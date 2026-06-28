@@ -1,13 +1,13 @@
 import type {
   AgentMemoryWriteResolutionPromptInput,
-} from "../AgentActionPlannerModelClient.js";
-import { AgentActionPlannerModelClient } from "../AgentActionPlannerModelClient.js";
+} from "../ActionPlanner/AgentLearningPromptJson.js";
+import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
 import {
   isRepairablePlanningFailure,
   issueMessages,
   normalizePlanningFailure,
   stringifyIssueValue,
-} from "../AgentActionPlannerFailure.js";
+} from "../ActionPlanner/AgentActionPlannerFailure.js";
 import type { ResolvedAgentMemoryLearningConfig } from "../Types/AgentConfigTypes.js";
 import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
 import {

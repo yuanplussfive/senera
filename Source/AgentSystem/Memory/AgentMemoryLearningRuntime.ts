@@ -4,76 +4,37 @@ import {
   resolveToolLearningConfig,
   resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
-import { AgentActionPlannerModelClient } from "../AgentActionPlannerModelClient.js";
-import type {
-  AgentMemoryConsolidationPromptInput,
-  AgentMemoryLearningPromptInput,
-} from "../AgentActionPlannerModelClient.js";
-import {
-  isRepairablePlanningFailure,
-  issueMessages,
-  normalizePlanningFailure,
-  stringifyIssueValue,
-} from "../AgentActionPlannerFailure.js";
+import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
 import type {
   AgentSystemConfig,
   ResolvedAgentMemoryLearningConfig,
 } from "../Types/AgentConfigTypes.js";
-import { encodePlannerTimelinePayload } from "../AgentPlannerTimelinePayload.js";
 import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
-import { cosineSimilarity } from "../Vector/AgentVectorSimilarity.js";
 import {
-  parseMemoryConsolidationResult,
-  parseMemoryLearningResult,
-} from "./AgentMemoryLearningSchema.js";
-import {
-  memoryCandidateEmbeddingText,
-  memoryItemEmbeddingText,
-} from "./AgentMemoryText.js";
-import {
-  AgentMemoryTypes,
-  type AgentMemoryCandidateDraft,
   type AgentMemoryCandidateRecord,
   type AgentMemoryConsolidationActionRecord,
-  type AgentMemoryItemRecord,
   type AgentMemoryRecordedTurn,
-  type AgentMemorySourceKind,
-  type AgentMemorySourceRecord,
   type AgentMemorySourceRepository,
 } from "./AgentMemorySourceRepository.js";
 import { AgentMemoryWriteResolver } from "./AgentMemoryWriteResolver.js";
+import {
+  buildMemoryConsolidationPromptInput,
+  buildMemoryLearningPromptInput,
+  candidateSourceRefs,
+} from "./AgentMemoryLearningPromptProjector.js";
+import {
+  rankSimilarPendingCandidates,
+  recordMemoryItemEmbeddings,
+  withMemoryCandidateEmbeddings,
+} from "./AgentMemoryLearningVectorRuntime.js";
+import { AgentMemoryLearningModelClient } from "./AgentMemoryLearningModelClient.js";
+
+export { buildMemoryLearningPromptInput } from "./AgentMemoryLearningPromptProjector.js";
 
 export interface AgentMemoryLearningRuntimeOptions {
   repository: AgentMemorySourceRepository;
   configSnapshot: () => AgentSystemConfig;
 }
-
-const MemoryLearningSourcePolicies = {
-  user_message: {
-    memoryRole: "support",
-    timelineRole: "user",
-    timelineKind: "memory_user_message",
-  },
-  assistant_final: {
-    memoryRole: "context",
-    timelineRole: "assistant",
-    timelineKind: "memory_assistant_context",
-  },
-  tool_evidence: {
-    memoryRole: "support",
-    timelineRole: "user",
-    timelineKind: "memory_tool_evidence",
-  },
-  artifact: {
-    memoryRole: "support",
-    timelineRole: "user",
-    timelineKind: "memory_artifact",
-  },
-} as const satisfies Record<AgentMemorySourceKind, {
-  memoryRole: "support" | "context";
-  timelineRole: "user" | "assistant";
-  timelineKind: string;
-}>;
 
 export class AgentMemoryLearningRuntime {
   constructor(private readonly options: AgentMemoryLearningRuntimeOptions) {}
@@ -101,6 +62,10 @@ export class AgentMemoryLearningRuntime {
     const client = new AgentActionPlannerModelClient(model, learningConfig.Client, {
       maxRepairAttempts: learningConfig.MaxRepairAttempts,
     });
+    const learningClient = new AgentMemoryLearningModelClient({
+      client,
+      maxRepairAttempts: learningConfig.MaxRepairAttempts,
+    });
     const vectorClient = new AgentVectorModelClient(vectorConfig);
     const writeResolver = new AgentMemoryWriteResolver({
       repository: this.options.repository,
@@ -111,8 +76,7 @@ export class AgentMemoryLearningRuntime {
       maxRepairAttempts: learningConfig.MaxRepairAttempts,
     });
     const learningInput = buildMemoryLearningPromptInput(recordedTurn);
-    const learned = await this.learnAndValidate(client, learningInput, {
-      maxRepairAttempts: learningConfig.MaxRepairAttempts,
+    const learned = await learningClient.learnAndValidate(learningInput, {
       supportingSourceRefs: learningInput.supportingSourceRefs,
     });
 
@@ -124,7 +88,7 @@ export class AgentMemoryLearningRuntime {
       return;
     }
 
-    const candidates = await withEmbeddings(vectorClient, learned.candidates);
+    const candidates = await withMemoryCandidateEmbeddings(vectorClient, learned.candidates);
     const recordedCandidates = this.options.repository.recordMemoryCandidates({
       episode: recordedTurn.episode,
       candidates,
@@ -143,13 +107,12 @@ export class AgentMemoryLearningRuntime {
     });
 
     await this.promoteReadyCandidates({
-      client,
+      learningClient,
       vectorClient,
       writeResolver,
       memoryLearningConfig,
       recordedTurn,
       candidates: this.pendingRecordedCandidates(recordedTurn, recordedCandidates),
-      maxRepairAttempts: learningConfig.MaxRepairAttempts,
     });
   }
 
@@ -203,13 +166,12 @@ export class AgentMemoryLearningRuntime {
   }
 
   private async promoteReadyCandidates(input: {
-    client: AgentActionPlannerModelClient;
+    learningClient: AgentMemoryLearningModelClient;
     vectorClient: AgentVectorModelClient;
     writeResolver: AgentMemoryWriteResolver;
     memoryLearningConfig: ResolvedAgentMemoryLearningConfig;
     recordedTurn: AgentMemoryRecordedTurn;
     candidates: readonly AgentMemoryCandidateRecord[];
-    maxRepairAttempts: number;
   }): Promise<void> {
     for (const candidate of input.candidates) {
       const pending = this.options.repository.listPendingMemoryCandidates(
@@ -235,8 +197,7 @@ export class AgentMemoryLearningRuntime {
         cluster,
         existingMemories,
       );
-      const consolidated = await this.consolidateAndValidate(input.client, consolidationInput, {
-        maxRepairAttempts: input.maxRepairAttempts,
+      const consolidated = await input.learningClient.consolidateAndValidate(consolidationInput, {
         candidateSources: candidateSourceRefs(cluster),
         existingMemoryUris: consolidationInput.existingMemories.map((memory) => memory.uri),
       });
@@ -276,180 +237,6 @@ export class AgentMemoryLearningRuntime {
     }
   }
 
-  private async learnAndValidate(
-    client: AgentActionPlannerModelClient,
-    input: AgentMemoryLearningPromptInput,
-    options: {
-      maxRepairAttempts: number;
-      supportingSourceRefs: readonly string[];
-    },
-  ) {
-    let current = await client.learnMemory(input);
-    for (let attempt = 0; attempt <= options.maxRepairAttempts; attempt += 1) {
-      try {
-        return parseMemoryLearningResult(current, {
-          supportingSourceRefs: options.supportingSourceRefs,
-        });
-      } catch (error) {
-        if (attempt >= options.maxRepairAttempts) {
-          throw error;
-        }
-        const failure = normalizePlanningFailure(error);
-        if (!isRepairablePlanningFailure(failure.error)) {
-          throw error;
-        }
-        current = await client.repairMemoryLearning({
-          input,
-          invalidLearning: stringifyIssueValue(failure.invalidOutput ?? failure.error),
-          issues: issueMessages(failure.error),
-        });
-      }
-    }
-
-    throw new Error("Memory learning validation did not produce a result.");
-  }
-
-  private async consolidateAndValidate(
-    client: AgentActionPlannerModelClient,
-    input: AgentMemoryConsolidationPromptInput,
-    options: {
-      maxRepairAttempts: number;
-      candidateSources: ReadonlyMap<string, readonly string[]>;
-      existingMemoryUris: readonly string[];
-    },
-  ) {
-    let current = await client.consolidateMemoryCandidates(input);
-    for (let attempt = 0; attempt <= options.maxRepairAttempts; attempt += 1) {
-      try {
-        return parseMemoryConsolidationResult(current, {
-          candidateSources: options.candidateSources,
-          existingMemoryUris: options.existingMemoryUris,
-        });
-      } catch (error) {
-        if (attempt >= options.maxRepairAttempts) {
-          throw error;
-        }
-        const failure = normalizePlanningFailure(error);
-        if (!isRepairablePlanningFailure(failure.error)) {
-          throw error;
-        }
-        current = await client.repairMemoryConsolidation({
-          input,
-          invalidConsolidation: stringifyIssueValue(failure.invalidOutput ?? failure.error),
-          issues: issueMessages(failure.error),
-        });
-      }
-    }
-
-    throw new Error("Memory consolidation validation did not produce a result.");
-  }
-}
-
-export function buildMemoryLearningPromptInput(
-  recordedTurn: AgentMemoryRecordedTurn,
-): AgentMemoryLearningPromptInput {
-  const sources = recordedTurn.sources.map(projectSource);
-  return {
-    memoryTypes: [...AgentMemoryTypes],
-    episode: projectEpisode(recordedTurn),
-    timeline: [...recordedTurn.sources]
-      .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id))
-      .map(projectTimelineSource),
-    sourceCatalog: sources,
-    supportingSourceRefs: sources
-      .filter((source) => source.memoryRole === "support")
-      .map((source) => source.sourceRef),
-    contextSourceRefs: sources
-      .filter((source) => source.memoryRole === "context")
-      .map((source) => source.sourceRef),
-  };
-}
-
-function buildMemoryConsolidationPromptInput(
-  recordedTurn: AgentMemoryRecordedTurn,
-  candidates: readonly AgentMemoryCandidateRecord[],
-  existingMemories: readonly AgentMemoryItemRecord[],
-): AgentMemoryConsolidationPromptInput {
-  return {
-    memoryTypes: [...AgentMemoryTypes],
-    episode: projectEpisode(recordedTurn),
-    candidates: candidates.map(projectCandidate),
-    existingMemories: existingMemories.map(projectExistingMemory),
-  };
-}
-
-function projectEpisode(recordedTurn: AgentMemoryRecordedTurn): AgentMemoryLearningPromptInput["episode"] {
-  return {
-    episodeUri: recordedTurn.episode.uri,
-    requestId: recordedTurn.episode.requestId,
-    standaloneRequest: recordedTurn.episode.standaloneRequest,
-    contextMode: recordedTurn.episode.contextMode,
-    contextBasis: recordedTurn.episode.contextBasis,
-    startedAt: recordedTurn.episode.startedAt,
-    completedAt: recordedTurn.episode.completedAt,
-    localDate: recordedTurn.episode.localDate,
-    localHour: recordedTurn.episode.localHour,
-  };
-}
-
-function projectSource(source: AgentMemorySourceRecord): AgentMemoryLearningPromptInput["sourceCatalog"][number] {
-  const policy = MemoryLearningSourcePolicies[source.sourceKind];
-  return {
-    sourceRef: source.uri,
-    sourceKind: source.sourceKind,
-    role: source.role,
-    memoryRole: policy.memoryRole,
-    evidenceUri: source.evidenceUri,
-    artifactUri: source.artifactUri,
-    toolName: source.toolName,
-    createdAt: source.createdAt,
-  };
-}
-
-function projectTimelineSource(
-  source: AgentMemorySourceRecord,
-  index: number,
-): AgentMemoryLearningPromptInput["timeline"][number] {
-  const policy = MemoryLearningSourcePolicies[source.sourceKind];
-  return {
-    index,
-    role: policy.timelineRole,
-    kind: policy.timelineKind,
-    content: source.summary ?? source.textContent ?? "",
-    payloadJson: encodePlannerTimelinePayload({
-      sourceRef: source.uri,
-      sourceKind: source.sourceKind,
-      sourceRole: source.role,
-      memoryRole: policy.memoryRole,
-      content: source.textContent ?? undefined,
-      summary: source.summary ?? undefined,
-      evidenceUri: source.evidenceUri || undefined,
-      artifactUri: source.artifactUri || undefined,
-      toolName: source.toolName || undefined,
-      metadata: source.metadata,
-      createdAt: source.createdAt,
-    }),
-    evidenceUris: source.evidenceUri ? [source.evidenceUri] : [],
-    artifactUris: source.artifactUri ? [source.artifactUri] : [],
-  };
-}
-
-function projectCandidate(
-  candidate: AgentMemoryCandidateRecord,
-): AgentMemoryConsolidationPromptInput["candidates"][number] {
-  return {
-    uri: candidate.uri,
-    type: candidate.type,
-    subject: candidate.subject,
-    claim: candidate.claim,
-    howToApply: candidate.howToApply,
-    tags: candidate.tags,
-    triggers: candidate.triggers,
-    sourceRefs: candidate.sourceRefs,
-    reason: candidate.reason,
-    confidence: candidate.confidence,
-    createdAt: candidate.createdAt,
-  };
 }
 
 function candidateToProposedWrite(candidate: AgentMemoryCandidateRecord): AgentMemoryConsolidationActionRecord {
@@ -466,113 +253,4 @@ function candidateToProposedWrite(candidate: AgentMemoryCandidateRecord): AgentM
     reason: candidate.reason,
     confidence: candidate.confidence,
   };
-}
-
-function projectExistingMemory(
-  memory: AgentMemoryItemRecord,
-): AgentMemoryConsolidationPromptInput["existingMemories"][number] {
-  return {
-    uri: memory.uri,
-    type: memory.type,
-    subject: memory.subject,
-    claim: memory.claim,
-    howToApply: memory.howToApply,
-    tags: memory.tags,
-    triggers: memory.triggers,
-    confidence: memory.confidence,
-    updatedAt: memory.updatedAt,
-  };
-}
-
-async function withEmbeddings(
-  vectorClient: AgentVectorModelClient,
-  candidates: readonly AgentMemoryCandidateDraft[],
-): Promise<AgentMemoryCandidateDraft[]> {
-  const result = await vectorClient.embed({
-    input: candidates.map(memoryCandidateEmbeddingText),
-  });
-  return candidates.map((candidate, index) => ({
-    ...candidate,
-    embedding: result.vectors[index],
-  }));
-}
-
-async function recordMemoryItemEmbeddings(
-  vectorClient: AgentVectorModelClient,
-  repository: AgentMemorySourceRepository,
-  items: readonly AgentMemoryItemRecord[],
-): Promise<void> {
-  if (items.length === 0) {
-    return;
-  }
-
-  const result = await vectorClient.embed({
-    input: items.map(memoryItemEmbeddingText),
-  });
-  repository.upsertMemoryItemVectors(items.flatMap((item, index) => {
-    const embedding = result.vectors[index];
-    return embedding ? [{
-      memoryUri: item.uri,
-      model: result.model,
-      embedding,
-      updatedAt: item.updatedAt,
-    }] : [];
-  }));
-}
-
-async function rankSimilarPendingCandidates(
-  vectorClient: AgentVectorModelClient,
-  config: ResolvedAgentMemoryLearningConfig,
-  target: AgentMemoryCandidateRecord,
-  pending: readonly AgentMemoryCandidateRecord[],
-): Promise<AgentMemoryCandidateRecord[]> {
-  const embeddingRanked = pending
-    .map((candidate) => ({
-      candidate,
-      score: memoryCandidateSimilarity(target, candidate),
-    }))
-    .filter((item) => item.score >= config.Promotion.MinSimilarity)
-    .sort((left, right) =>
-      right.score - left.score
-      || left.candidate.createdAtMs - right.candidate.createdAtMs
-      || left.candidate.id.localeCompare(right.candidate.id))
-    .slice(0, config.Promotion.MaxClusterSize)
-    .map((item) => item.candidate);
-
-  const reranked = await vectorClient.rerank({
-    query: memoryCandidateEmbeddingText(target),
-    documents: embeddingRanked.map((candidate) => ({
-      id: candidate.uri,
-      text: memoryCandidateEmbeddingText(candidate),
-    })),
-    topK: config.Promotion.MaxClusterSize,
-  });
-
-  if (reranked.results.length === 0) {
-    return embeddingRanked;
-  }
-
-  const byUri = new Map(embeddingRanked.map((candidate) => [candidate.uri, candidate]));
-  return reranked.results
-    .map((item) => byUri.get(item.id))
-    .filter((candidate): candidate is AgentMemoryCandidateRecord => Boolean(candidate));
-}
-
-function memoryCandidateSimilarity(
-  left: AgentMemoryCandidateRecord,
-  right: AgentMemoryCandidateRecord,
-): number {
-  if (left.uri === right.uri) {
-    return 1;
-  }
-  if (left.embedding && right.embedding) {
-    return cosineSimilarity(left.embedding, right.embedding);
-  }
-  return left.subject === right.subject && left.claim === right.claim ? 1 : 0;
-}
-
-function candidateSourceRefs(
-  candidates: readonly AgentMemoryCandidateRecord[],
-): ReadonlyMap<string, readonly string[]> {
-  return new Map(candidates.map((candidate) => [candidate.uri, candidate.sourceRefs]));
 }

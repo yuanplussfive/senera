@@ -5,9 +5,9 @@ import {
   agentActionToolSearchQueries,
   type AgentActionCapabilityNeed,
   type AgentActionDecision,
-} from "./AgentActionPlanner.js";
+} from "./ActionPlanner/AgentActionPlanner.js";
 import type { TaskFrame } from "./BamlClient/baml_client/types.js";
-import type { AgentDecisionOutputContract } from "./AgentDecisionOutputResolver.js";
+import type { AgentDecisionOutputContract } from "./Decision/AgentDecisionOutputResolver.js";
 import type { RegisteredTool } from "./Types/PluginRuntimeTypes.js";
 import type {
   RootCommandManifest,

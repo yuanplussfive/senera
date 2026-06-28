@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { AgentLanguageModelMessage } from "./AgentLanguageModel.js";
-import { AgentPromptRenderer } from "./AgentPromptRenderer.js";
+import type { AgentLanguageModelMessage } from "./ModelEndpoints/AgentLanguageModel.js";
+import { AgentPromptRenderer } from "./Prompt/AgentPromptRenderer.js";
 import { assertInsideRoot } from "./Artifacts/AgentArtifactLocator.js";
 import {
   AgentChildContextMaterializer,

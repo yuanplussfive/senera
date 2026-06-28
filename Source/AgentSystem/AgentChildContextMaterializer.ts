@@ -1,5 +1,5 @@
 import path from "node:path";
-import { AgentPromptRenderer } from "./AgentPromptRenderer.js";
+import { AgentPromptRenderer } from "./Prompt/AgentPromptRenderer.js";
 import { assertInsideRoot } from "./Artifacts/AgentArtifactLocator.js";
 import type {
   AgentDelegationJob,

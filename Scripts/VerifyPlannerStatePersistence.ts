@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/AgentActionPlannerContext.js";
-import { EmptyActionPlannerLedger } from "../Source/AgentSystem/AgentActionPlannerLedger.js";
-import { AgentConversationProjector } from "../Source/AgentSystem/AgentConversationProjector.js";
-import { createPlannerStateSnapshotEntry } from "../Source/AgentSystem/AgentPlannerMemory.js";
-import { AgentSessionStore } from "../Source/AgentSystem/AgentSessionStore.js";
-import { SqliteSessionRepository } from "../Source/AgentSystem/AgentSqliteSessionRepository.js";
+import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
+import { EmptyActionPlannerLedger } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerLedger.js";
+import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
+import { createPlannerStateSnapshotEntry } from "../Source/AgentSystem/Memory/AgentPlannerMemory.js";
+import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
+import { SqliteSessionRepository } from "../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
 import {
   TaskEvidenceScope,
   type ActionPlanInput,
   type TaskFrame,
 } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
-import type { AgentActionPlanResult } from "../Source/AgentSystem/AgentActionPlannerTypes.js";
+import type { AgentActionPlanResult } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerTypes.js";
 
 const workspaceRoot = path.resolve(process.cwd());
 const databasePath = path.join(workspaceRoot, ".senera", "planner-state-persistence-verification.sqlite");
