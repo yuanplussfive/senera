@@ -8,7 +8,7 @@ import {
   type TaskFrame as BamlTaskFrame,
   type TurnUnderstanding as BamlTurnUnderstanding,
 } from "../BamlClient/baml_client/index.js";
-import { parseNormalizedBamlOutput } from "../AgentBamlOutputNormalizer.js";
+import { parseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
 
 const NonEmptyStringSchema = z.string().trim().min(1);
 const TrimmedStringSchema = z.string().trim();

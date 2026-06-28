@@ -182,7 +182,7 @@ export interface AgentToolProcessContext {
 export interface AgentToolProcessError {
   code: import("../Xml/AgentXmlStatus.js").AgentExecutionErrorCode;
   message: string;
-  diagnostics?: import("../AgentSourceDiagnostic.js").AgentSourceDiagnostic[];
+  diagnostics?: import("../Diagnostics/AgentSourceDiagnostic.js").AgentSourceDiagnostic[];
   details?: {
     phase?: import("../Xml/AgentXmlStatus.js").AgentToolProcessErrorPhase;
     issues?: unknown;

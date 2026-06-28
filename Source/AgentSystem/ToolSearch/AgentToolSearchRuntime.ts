@@ -27,7 +27,7 @@ import {
 import { buildToolSearchResultProjection } from "./AgentToolSearchResultProjector.js";
 import { buildPlannedToolSearchQueries } from "./AgentToolSearchQueryPlanner.js";
 import { AgentToolSearchUsageMemory } from "./AgentToolSearchUsageMemory.js";
-import { throwIfAborted } from "../AgentCancellation.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { AgentToolLearningRuntime } from "./AgentToolLearningRuntime.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 

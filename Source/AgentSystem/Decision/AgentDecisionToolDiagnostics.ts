@@ -1,4 +1,4 @@
-import type { AgentSourceDiagnostic } from "../AgentSourceDiagnostic.js";
+import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import type { AgentXmlSourceHelper } from "../Xml/AgentXmlParser.js";
 

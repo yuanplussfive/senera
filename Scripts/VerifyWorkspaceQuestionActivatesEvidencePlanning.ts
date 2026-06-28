@@ -3,10 +3,10 @@ import path from "node:path";
 import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
 import { EmptyActionPlannerLedger } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerLedger.js";
 import { loadVerificationConfig } from "./VerificationConfig.js";
-import { AgentEvidenceBroker } from "../Source/AgentSystem/AgentEvidenceBroker.js";
+import { AgentEvidenceBroker } from "../Source/AgentSystem/Evidence/AgentEvidenceBroker.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
 import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
-import { AgentSkillActivationService } from "../Source/AgentSystem/AgentSkillActivation.js";
+import { AgentSkillActivationService } from "../Source/AgentSystem/Skills/AgentSkillActivation.js";
 import { AgentToolSearchRuntime } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
 import {
   resolveModelProviderConfig,

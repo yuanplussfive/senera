@@ -2,7 +2,7 @@ import type {
   AgentMemoryConsolidationPromptInput,
   AgentMemoryLearningPromptInput,
 } from "../ActionPlanner/AgentLearningPromptJson.js";
-import { encodePlannerTimelinePayload } from "../AgentPlannerTimelinePayload.js";
+import { encodePlannerTimelinePayload } from "../ActionPlanner/AgentPlannerTimelinePayload.js";
 import {
   AgentMemoryTypes,
   type AgentMemoryCandidateRecord,

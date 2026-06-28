@@ -1,7 +1,7 @@
 import {
   type AgentConversationEntry,
 } from "../Conversation/AgentConversation.js";
-import type { AgentTerminalResult } from "../AgentExecutionProjector.js";
+import type { AgentTerminalResult } from "../Runtime/AgentExecutionProjector.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 

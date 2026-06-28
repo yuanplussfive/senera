@@ -1,6 +1,6 @@
-import { AgentEventKinds } from "../AgentEventCatalog.js";
-import type { AgentEventContext } from "../AgentEventBase.js";
-import type { AgentRetryInstruction } from "../AgentRetryableError.js";
+import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import type { AgentEventContext } from "../Events/AgentEventBase.js";
+import type { AgentRetryInstruction } from "../Retry/AgentRetryableError.js";
 
 export type AgentDecisionDomainEvent =
   | {

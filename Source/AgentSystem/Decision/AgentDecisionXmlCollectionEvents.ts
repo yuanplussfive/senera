@@ -3,8 +3,8 @@ import {
   createEventDetailId,
   emitAgentEvent,
   summarizeXmlDocument,
-} from "../AgentEvent.js";
-import type { AgentExceededTextBudgetSnapshot } from "../AgentTextBudget.js";
+} from "../Events/AgentEvent.js";
+import type { AgentExceededTextBudgetSnapshot } from "../Text/AgentTextBudget.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentXmlProtocolPolicy } from "../Xml/AgentXmlPolicy.js";
 import {

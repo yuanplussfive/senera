@@ -1,4 +1,4 @@
-import type { AgentEventSink } from "../AgentEvent.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentModelProviderMetadata } from "./AgentModelMetadata.js";
 
 export interface AgentLanguageModelRequest {

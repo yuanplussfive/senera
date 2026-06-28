@@ -11,8 +11,8 @@ import {
 import { AgentActionPlannerValidationError } from "./AgentActionPlannerSchema.js";
 import {
   AgentFastContextScoutPlannerValidationError,
-} from "../AgentFastContextScoutPlannerSchema.js";
-import { AgentBamlStructuredOutputError } from "../AgentBamlStructuredOutputRunner.js";
+} from "./AgentFastContextScoutPlannerSchema.js";
+import { AgentBamlStructuredOutputError } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 
 export interface RawActionPlanningFailure {
   error: unknown;

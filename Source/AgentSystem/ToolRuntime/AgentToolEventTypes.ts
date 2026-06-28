@@ -1,5 +1,5 @@
-import { AgentEventKinds } from "../AgentEventCatalog.js";
-import type { AgentEventContext } from "../AgentEventBase.js";
+import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import type { AgentEventContext } from "../Events/AgentEventBase.js";
 
 export type AgentToolDomainEvent =
   | {

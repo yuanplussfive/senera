@@ -1,5 +1,5 @@
-import type { AgentToolCallPlannerPromptInput } from "../AgentToolCallPlannerPromptJson.js";
-import type { AgentPlannedToolCall } from "../AgentToolCallPlannerSchema.js";
+import type { AgentToolCallPlannerPromptInput } from "./AgentToolCallPlannerPromptJson.js";
+import type { AgentPlannedToolCall } from "./AgentToolCallPlannerSchema.js";
 import { issueMessages } from "./AgentActionPlannerFailure.js";
 import { uniqueStrings } from "./AgentActionPlannerProjectionUtils.js";
 import type { AgentActionCapabilityNeed } from "./AgentActionPlannerTypes.js";

@@ -56,5 +56,5 @@ import type {
   AgentPlannerJournalEntryRecord,
   AgentToolEvidenceMemoryEntryRecord,
 } from "../Memory/AgentPlannerMemory.js";
-import type { AgentPlannerStateSnapshotRecord } from "../AgentPlannerState.js";
+import type { AgentPlannerStateSnapshotRecord } from "../ActionPlanner/AgentPlannerState.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";

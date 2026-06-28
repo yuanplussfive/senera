@@ -1,6 +1,6 @@
 import type { AgentExecutionResult } from "./AgentDecisionExecutor.js";
-import { AgentExecutionProjector } from "../AgentExecutionProjector.js";
-import type { AgentEventSink } from "../AgentEvent.js";
+import { AgentExecutionProjector } from "../Runtime/AgentExecutionProjector.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type {
   AgentLoopCommand,
   AgentLoopCommandResult,
@@ -10,7 +10,7 @@ import { AgentToolResultXmlRenderer } from "../Xml/AgentToolResultXmlRenderer.js
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import { throwIfAborted } from "../AgentCancellation.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { createToolEvidenceMemoryEntries } from "../Memory/AgentPlannerMemory.js";
 import type { AgentActionPlannerContextBuilder } from "../ActionPlanner/AgentActionPlannerContext.js";
 
@@ -169,7 +169,7 @@ function retryableFailure(
       kind: "retryable_failed",
       requestId,
       step,
-      error: error as import("../AgentRetryableError.js").AgentRetryableError,
+      error: error as import("../Retry/AgentRetryableError.js").AgentRetryableError,
       responseText,
     };
   }

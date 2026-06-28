@@ -3,10 +3,10 @@ import {
   createEventDetailId,
   summarizeXmlDocument,
   type AgentDomainEvent,
-} from "../AgentEvent.js";
+} from "../Events/AgentEvent.js";
 import type { SanitizedDecisionXml } from "../Decision/AgentDecisionXmlSanitizer.js";
 import type { AgentDecision } from "../Types/ToolRuntimeTypes.js";
-import type { AgentRetryInstruction } from "../AgentRetryableError.js";
+import type { AgentRetryInstruction } from "../Retry/AgentRetryableError.js";
 
 export class AgentLoopDecisionEventFactory {
   sanitizedDecisionXml(
@@ -115,4 +115,3 @@ export class AgentLoopDecisionEventFactory {
     ];
   }
 }
-

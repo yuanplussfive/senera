@@ -5,7 +5,7 @@ import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
 } from "../Xml/AgentXmlStatus.js";
-import { throwIfAborted } from "../AgentCancellation.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 import {
   ApplyPatchArgumentsSchema,
   type ApplyPatchArguments,

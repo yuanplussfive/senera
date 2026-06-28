@@ -1,7 +1,7 @@
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import type { AgentEventSink } from "../AgentEvent.js";
-import { AgentEventKinds, emitAgentEvent } from "../AgentEvent.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
 import type { AgentLanguageModel } from "../ModelEndpoints/AgentLanguageModel.js";
 import {
   AgentLoopCommandExecutor,
@@ -15,8 +15,8 @@ import type {
   RunningAgentLoopMachineState,
 } from "./AgentLoopStateTypes.js";
 import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
-import type { AgentCompletedRunResult } from "../AgentExecutionProjector.js";
-import { throwIfAborted } from "../AgentCancellation.js";
+import type { AgentCompletedRunResult } from "../Runtime/AgentExecutionProjector.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 
 export interface AgentLoopOptions extends AgentLoopCommandExecutorOptions {
@@ -100,7 +100,7 @@ export class AgentLoop {
 
   private async emitAll(
     onEvent: AgentEventSink | undefined,
-    events: import("../AgentEvent.js").AgentDomainEvent[],
+    events: import("../Events/AgentEvent.js").AgentDomainEvent[],
   ): Promise<void> {
     for (const event of events) {
       await emitAgentEvent(onEvent, event);

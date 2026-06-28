@@ -1,4 +1,4 @@
-import type { AgentEventSink } from "../AgentEvent.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type {
   AgentDecision,

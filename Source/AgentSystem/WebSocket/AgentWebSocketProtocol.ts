@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { createRequestId } from "../AgentIds.js";
-import { AgentUserProfileInputSchema } from "../AgentUserProfile.js";
+import { createRequestId } from "../Core/AgentIds.js";
+import { AgentUserProfileInputSchema } from "../Session/AgentUserProfile.js";
 import { AgentUploadAttachmentListSchema } from "../Uploads/AgentUploadTypes.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 

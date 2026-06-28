@@ -1,4 +1,4 @@
-import type { AgentEventEnvelope } from "../AgentEvent.js";
+import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
 import { readXmlRootName } from "../Xml/AgentXmlRootReader.js";
 import {
   AgentCliActivityTone,

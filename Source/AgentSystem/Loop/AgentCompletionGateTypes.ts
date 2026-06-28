@@ -3,7 +3,7 @@ import type { AgentActionDecision } from "../ActionPlanner/AgentActionPlannerTyp
 import type {
   AgentEvidenceCapabilityIndex,
   AgentEvidenceCapabilityMatch,
-} from "../AgentEvidenceCapabilityIndex.js";
+} from "../Evidence/AgentEvidenceCapabilityIndex.js";
 
 export interface AgentCompletionEvidenceVerifier {
   verify(options: {

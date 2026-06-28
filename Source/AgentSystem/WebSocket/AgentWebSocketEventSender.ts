@@ -4,9 +4,9 @@ import {
   type AgentDomainEvent,
   type AgentEventEnvelope,
   toEventEnvelope,
-} from "../AgentEvent.js";
-import { AgentLogger } from "../AgentLogger.js";
-import { projectAgentRunEventForHistory } from "../AgentRunEventHistoryPolicy.js";
+} from "../Events/AgentEvent.js";
+import { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import { projectAgentRunEventForHistory } from "../Events/AgentRunEventHistoryPolicy.js";
 import type { AgentSessionManager } from "../Session/AgentSessionManager.js";
 
 export class AgentWebSocketEventEnvelopeSender {

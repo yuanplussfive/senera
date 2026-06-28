@@ -2,8 +2,8 @@ import { WebSocket, type RawData } from "ws";
 import {
   AgentEventKinds,
   type AgentDomainEvent,
-} from "../AgentEvent.js";
-import { matchByType } from "../AgentMatch.js";
+} from "../Events/AgentEvent.js";
+import { matchByType } from "../Core/AgentMatch.js";
 import {
   AgentWebSocketRequestSchema,
   type AgentWebSocketRequest,

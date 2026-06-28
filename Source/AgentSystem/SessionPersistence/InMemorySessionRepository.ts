@@ -2,20 +2,20 @@ import {
   AgentConversationEntryKinds,
   type AgentConversationEntry,
 } from "../Conversation/AgentConversation.js";
-import type { AgentEventEnvelope } from "../AgentEventBase.js";
+import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import {
   createAgentUserProfile,
   createDefaultAgentUserProfile,
   type AgentUserProfile,
   type AgentUserProfileInput,
-} from "../AgentUserProfile.js";
+} from "../Session/AgentUserProfile.js";
 import type {
   AgentSessionRepository,
   StoredRunSnapshot,
   StoredStepTraceRun,
 } from "../Session/AgentSqliteSessionRepository.js";
 import type { AgentSession } from "../Session/AgentSession.js";
-import type { StepTrace } from "../AgentStepTrace.js";
+import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 
 export class InMemorySessionRepository implements AgentSessionRepository {
   private readonly sessions = new Map<string, AgentSession>();

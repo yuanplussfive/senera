@@ -1,6 +1,6 @@
 import type { AgentActionDecision } from "../ActionPlanner/AgentActionPlanner.js";
 import type { AgentRootCommand, AgentRootCommandWorkflowRecommendation } from "../AgentRootCommand.js";
-import type { AgentActivatedSkill } from "../AgentSkillActivation.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { TaskFrame } from "../BamlClient/baml_client/types.js";
 import type { AgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
 import type { AgentPromptContractView } from "./AgentPromptContractProjector.js";

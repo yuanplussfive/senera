@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { resolveFrom } from "../AgentPath.js";
+import { resolveFrom } from "../Core/AgentPath.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type {
   PluginManifest,
@@ -9,7 +9,7 @@ import type {
 import type {
   LoadedPlugin,
 } from "../Types/PluginRuntimeTypes.js";
-import { AgentJsonFileLoader } from "../AgentJsonFileLoader.js";
+import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { PluginManifestSchema } from "../Schemas/PluginManifestSchema.js";
 import { readLoadedPluginConfig } from "./AgentPluginConfig.js";
 import {

@@ -4,7 +4,7 @@ import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
 } from "../Xml/AgentXmlStatus.js";
-import { readAbortMessage } from "../AgentCancellation.js";
+import { readAbortMessage } from "../Core/AgentCancellation.js";
 
 export function cancelledToolProcessResult(input: {
   signal?: AbortSignal;

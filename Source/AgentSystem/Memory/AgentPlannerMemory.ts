@@ -21,7 +21,7 @@ import {
   createPlannerStateSnapshot,
   latestPlannerStateSnapshot,
   type AgentPlannerStateSnapshotRecord,
-} from "../AgentPlannerState.js";
+} from "../ActionPlanner/AgentPlannerState.js";
 
 export interface AgentPlannerJournalEntryRecord {
   requestId: string;

@@ -4,7 +4,7 @@ import { loadVerificationConfig } from "./VerificationConfig.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
 import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
 import { AgentPromptContextBuilder } from "../Source/AgentSystem/Prompt/AgentPromptContextBuilder.js";
-import { parseToolCallPlan } from "../Source/AgentSystem/AgentToolCallPlannerSchema.js";
+import { parseToolCallPlan } from "../Source/AgentSystem/ActionPlanner/AgentToolCallPlannerSchema.js";
 
 const workspaceRoot = process.cwd();
 const config = loadVerificationConfig(workspaceRoot);

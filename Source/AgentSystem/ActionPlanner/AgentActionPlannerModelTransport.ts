@@ -1,5 +1,5 @@
-import { throwIfAborted } from "../AgentCancellation.js";
-import type { AgentBamlModelRequest } from "../AgentBamlStructuredOutputRunner.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
+import type { AgentBamlModelRequest } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 import { createModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import { createModelEndpoint } from "../ModelEndpoints/ModelEndpointTypes.js";
 import type { TextGenerationEndpoint } from "../ModelEndpoints/ModelEndpointTypes.js";
@@ -40,4 +40,3 @@ export class AgentActionPlannerModelTransport {
     return text;
   }
 }
-

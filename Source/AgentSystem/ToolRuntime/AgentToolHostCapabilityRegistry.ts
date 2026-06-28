@@ -4,7 +4,7 @@ import type {
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type { AgentPluginRegistryLike } from "../Types/ToolRuntimeTypes.js";
-import type { AgentEventSink } from "../AgentEvent.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
 
 export interface AgentHostToolContext {
   tool: RegisteredTool;

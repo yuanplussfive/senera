@@ -1,7 +1,7 @@
 import {
   AgentEventKinds,
   type AgentDomainEvent,
-} from "../AgentEvent.js";
+} from "../Events/AgentEvent.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import type { AgentSession, AgentSessionSnapshot } from "./AgentSession.js";
 

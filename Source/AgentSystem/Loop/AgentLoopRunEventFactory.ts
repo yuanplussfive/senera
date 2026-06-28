@@ -1,5 +1,5 @@
-import { AgentEventKinds, type AgentDomainEvent } from "../AgentEvent.js";
-import type { AgentProjectedTerminalResult } from "../AgentExecutionProjector.js";
+import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
+import type { AgentProjectedTerminalResult } from "../Runtime/AgentExecutionProjector.js";
 
 export class AgentLoopRunEventFactory {
   runStarted(requestId: string, input: string): AgentDomainEvent {
@@ -21,4 +21,3 @@ export class AgentLoopRunEventFactory {
     ];
   }
 }
-

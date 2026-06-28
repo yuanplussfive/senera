@@ -1,7 +1,7 @@
-import type { AgentEventEnvelope } from "../AgentEventBase.js";
-import type { StepTrace } from "../AgentStepTrace.js";
+import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
+import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import type { AgentUserProfileRepository } from "../AgentUserProfile.js";
+import type { AgentUserProfileRepository } from "../Session/AgentUserProfile.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentSession } from "./AgentSession.js";
 

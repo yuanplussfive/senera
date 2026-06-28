@@ -1,5 +1,5 @@
-import { throwIfAborted } from "../AgentCancellation.js";
-import { createToolCallId } from "../AgentIds.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { createToolCallId } from "../Core/AgentIds.js";
 import {
   AgentWorkspaceChangeCapture,
   type PreparedWorkspaceCapture,

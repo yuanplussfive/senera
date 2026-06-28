@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
 import { EmptyActionPlannerLedger } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerLedger.js";
 import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
-import { AgentEvidenceBroker } from "../Source/AgentSystem/AgentEvidenceBroker.js";
+import { AgentEvidenceBroker } from "../Source/AgentSystem/Evidence/AgentEvidenceBroker.js";
 import { createToolEvidenceMemoryEntries } from "../Source/AgentSystem/Memory/AgentPlannerMemory.js";
 import type { AgentToolCatalogItem } from "../Source/AgentSystem/ToolRuntime/AgentToolCatalogProjector.js";
 import {

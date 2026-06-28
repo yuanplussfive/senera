@@ -1,5 +1,5 @@
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
-import type { StepTrace } from "../AgentStepTrace.js";
+import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import {
   AgentConversationEntryKinds,
   type AgentConversationEntry,

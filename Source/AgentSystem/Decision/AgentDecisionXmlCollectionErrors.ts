@@ -1,4 +1,4 @@
-import { AgentRetryableError } from "../AgentRetryableError.js";
+import { AgentRetryableError } from "../Retry/AgentRetryableError.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentActionMismatchRepairPromptBuilder } from "../ActionPlanner/AgentActionMismatchRepairPromptBuilder.js";
 import { AgentXmlErrorCodes } from "../Xml/AgentXmlStatus.js";

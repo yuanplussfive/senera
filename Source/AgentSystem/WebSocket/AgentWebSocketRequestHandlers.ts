@@ -1,8 +1,8 @@
 import {
   AgentEventKinds,
   type AgentDomainEvent,
-} from "../AgentEvent.js";
-import { serializeError } from "../AgentErrorSerializer.js";
+} from "../Events/AgentEvent.js";
+import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { resolveModelProviderCatalog } from "../AgentDefaults.js";
 import { projectAgentConfigForm } from "../Config/AgentConfigFormProjector.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";

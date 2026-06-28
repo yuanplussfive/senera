@@ -1,5 +1,5 @@
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
-import { matchByKind } from "../AgentMatch.js";
+import { matchByKind } from "../Core/AgentMatch.js";
 import {
   AgentConversationEntryKinds,
   type AgentConversationEntry,

@@ -1,5 +1,5 @@
-import { AgentConfigLoader } from "../AgentConfigLoader.js";
-import { AgentJsonFileLoader } from "../AgentJsonFileLoader.js";
+import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
+import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { resolveConfigStoreConfig } from "../AgentDefaults.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";

@@ -7,7 +7,7 @@ import type { AgentLanguageModel, AgentLanguageModelStream } from "../Source/Age
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentActionDecision } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
 import type { AgentModelProviderMetadata } from "../Source/AgentSystem/ModelEndpoints/AgentModelMetadata.js";
-import { AgentRetryPlanner } from "../Source/AgentSystem/AgentRetryPlanner.js";
+import { AgentRetryPlanner } from "../Source/AgentSystem/Retry/AgentRetryPlanner.js";
 import { AgentActionMismatchRepairPromptBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionMismatchRepairPromptBuilder.js";
 import { AgentPromptRenderer } from "../Source/AgentSystem/Prompt/AgentPromptRenderer.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";

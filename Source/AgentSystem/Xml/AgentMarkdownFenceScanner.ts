@@ -1,6 +1,6 @@
-import { matchByKind } from "../AgentMatch.js";
-import type { AgentTextLineBoundary } from "../AgentTextLocator.js";
-import { AgentTextLocator } from "../AgentTextLocator.js";
+import { matchByKind } from "../Core/AgentMatch.js";
+import type { AgentTextLineBoundary } from "../Text/AgentTextLocator.js";
+import { AgentTextLocator } from "../Text/AgentTextLocator.js";
 
 export type AgentMarkdownFenceOpening =
   | {

@@ -1,4 +1,4 @@
-import { AgentRetryableError } from "../AgentRetryableError.js";
+import { AgentRetryableError } from "../Retry/AgentRetryableError.js";
 import { AgentXmlEnvelopeBoundaryScanner } from "./AgentXmlEnvelopeBoundaryScanner.js";
 import { AgentXmlErrorCodes } from "./AgentXmlStatus.js";
 import { AgentXmlLexicalScanner } from "./AgentXmlLexicalScanner.js";

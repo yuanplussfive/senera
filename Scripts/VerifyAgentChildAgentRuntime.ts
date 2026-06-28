@@ -7,11 +7,11 @@ import {
   AgentEventKinds,
   type AgentDomainEvent,
   type AgentEventContext,
-} from "../Source/AgentSystem/AgentEvent.js";
+} from "../Source/AgentSystem/Events/AgentEvent.js";
 import { resolveAgentDelegationRuntimeProfile } from "../Source/AgentSystem/AgentDefaults.js";
-import { buildAgentDelegationPlan } from "../Source/AgentSystem/AgentDelegationPlan.js";
-import { AgentChildAgentRuntime } from "../Source/AgentSystem/AgentChildAgentRuntime.js";
-import { AgentDelegationExecutor } from "../Source/AgentSystem/AgentDelegationExecutor.js";
+import { buildAgentDelegationPlan } from "../Source/AgentSystem/Delegation/AgentDelegationPlan.js";
+import { AgentChildAgentRuntime } from "../Source/AgentSystem/Delegation/AgentChildAgentRuntime.js";
+import { AgentDelegationExecutor } from "../Source/AgentSystem/Delegation/AgentDelegationExecutor.js";
 import type { AgentRuntimeModule } from "../Source/AgentSystem/Runtime/AgentRuntimeModule.js";
 import { AgentInteractionRunModes } from "../Source/AgentSystem/ActionPlanner/AgentInteractionRouter.js";
 import { InteractionRunMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";

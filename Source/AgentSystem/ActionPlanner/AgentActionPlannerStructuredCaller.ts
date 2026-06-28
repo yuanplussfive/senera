@@ -1,7 +1,7 @@
 import {
   AgentBamlStructuredOutputRunner,
   type AgentBamlStructuredOutputTraceSink,
-} from "../AgentBamlStructuredOutputRunner.js";
+} from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 import { issueMessages } from "./AgentActionPlannerFailure.js";
 import {
   AgentActionPlannerBamlFunctionArgs,

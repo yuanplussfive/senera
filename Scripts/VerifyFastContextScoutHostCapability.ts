@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
-import { fastContextScoutHostTool } from "../Source/AgentSystem/AgentFastContextScoutRuntime.js";
+import { fastContextScoutHostTool } from "../Source/AgentSystem/ToolSearch/AgentFastContextScoutRuntime.js";
 import { VerificationConfigFileName, verificationConfigPath } from "./VerificationConfig.js";
 
 async function main(): Promise<void> {

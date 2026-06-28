@@ -1,4 +1,4 @@
-import type { AgentEventSink } from "../AgentEvent.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentLanguageModel } from "../ModelEndpoints/AgentLanguageModel.js";
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import { AgentDecisionErrorFactory } from "../Decision/AgentDecisionErrorFactory.js";
@@ -6,10 +6,10 @@ import type {
   AgentLoopCommand,
   AgentLoopCommandResult,
 } from "./AgentLoopStateTypes.js";
-import { matchByKind } from "../AgentMatch.js";
-import { AgentRetryPlanner } from "../AgentRetryPlanner.js";
+import { matchByKind } from "../Core/AgentMatch.js";
+import { AgentRetryPlanner } from "../Retry/AgentRetryPlanner.js";
 import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
-import { AgentRetryableError } from "../AgentRetryableError.js";
+import { AgentRetryableError } from "../Retry/AgentRetryableError.js";
 import { AgentDecisionXmlCollectionRetryableError } from "../Decision/AgentDecisionXmlCollector.js";
 import { AgentActionPlannerContextBuilder } from "../ActionPlanner/AgentActionPlannerContext.js";
 import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
@@ -252,7 +252,7 @@ export class AgentLoopCommandExecutor {
         kind: "retryable_failed",
         requestId,
         step,
-        error: error as import("../AgentRetryableError.js").AgentRetryableError,
+        error: error as import("../Retry/AgentRetryableError.js").AgentRetryableError,
         responseText,
       };
     }

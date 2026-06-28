@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
+import { AgentConfigLoader } from "../Source/AgentSystem/Config/AgentConfigLoader.js";
 import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import type { AgentMemoryRecordedTurn } from "../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import {

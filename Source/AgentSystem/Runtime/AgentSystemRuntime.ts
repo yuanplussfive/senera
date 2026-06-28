@@ -1,6 +1,6 @@
 import path from "node:path";
-import { AgentConfigLoader } from "../AgentConfigLoader.js";
-import { AgentModelTextBudget, AgentModelTokenEstimator } from "../AgentTextBudget.js";
+import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
+import { AgentModelTextBudget, AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
 import {
   resolveActionPlannerConfig,
   resolveAgentDelegationConfig,
@@ -19,7 +19,7 @@ import { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import { AgentPluginScanner } from "../Plugin/AgentPluginScanner.js";
 import { AgentPromptContextBuilder } from "../Prompt/AgentPromptContextBuilder.js";
 import { AgentPromptRenderer } from "../Prompt/AgentPromptRenderer.js";
-import { AgentSchemaValidator } from "../AgentSchemaValidator.js";
+import { AgentSchemaValidator } from "../Core/AgentSchemaValidator.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import { AgentXmlParser } from "../Xml/AgentXmlParser.js";
@@ -32,7 +32,7 @@ import { AgentActionPlanner } from "../ActionPlanner/AgentActionPlanner.js";
 import { AgentToolCatalogProjector } from "../ToolRuntime/AgentToolCatalogProjector.js";
 import { AgentActionMismatchRepairPromptBuilder } from "../ActionPlanner/AgentActionMismatchRepairPromptBuilder.js";
 import { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
-import { AgentSkillActivationService } from "../AgentSkillActivation.js";
+import { AgentSkillActivationService } from "../Skills/AgentSkillActivation.js";
 import { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import { AgentRuntimeModuleComposer, type AgentRuntimeModule } from "./AgentRuntimeModule.js";
 import {

@@ -1,10 +1,10 @@
-import type { AgentEventSink } from "../AgentEvent.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import type {
   AgentLoopCommand,
   AgentLoopCommandResult,
 } from "../Loop/AgentLoopStateTypes.js";
-import { AgentRetryableError } from "../AgentRetryableError.js";
+import { AgentRetryableError } from "../Retry/AgentRetryableError.js";
 import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
 import type {
   AgentActionDecision,

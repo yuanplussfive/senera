@@ -4,7 +4,7 @@ import { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import {
   AgentSchemaValidationError,
   AgentSchemaValidator,
-} from "../AgentSchemaValidator.js";
+} from "../Core/AgentSchemaValidator.js";
 import { AgentXmlParser } from "../Xml/AgentXmlParser.js";
 import {
   AgentDecisionXmlSanitizer,

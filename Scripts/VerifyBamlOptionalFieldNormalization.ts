@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { normalizeBamlOptionalFields } from "../Source/AgentSystem/AgentBamlOutputNormalizer.js";
-import { parseFastContextScoutPlannerDecision } from "../Source/AgentSystem/AgentFastContextScoutPlannerSchema.js";
-import type { AgentFastContextScoutPlannerPromptInput } from "../Source/AgentSystem/AgentFastContextScoutPlannerPromptJson.js";
+import { normalizeBamlOptionalFields } from "../Source/AgentSystem/BamlClient/AgentBamlOutputNormalizer.js";
+import { parseFastContextScoutPlannerDecision } from "../Source/AgentSystem/ActionPlanner/AgentFastContextScoutPlannerSchema.js";
+import type { AgentFastContextScoutPlannerPromptInput } from "../Source/AgentSystem/ActionPlanner/AgentFastContextScoutPlannerPromptJson.js";
 
 const scoutInput: AgentFastContextScoutPlannerPromptInput = {
   stage: "planFastContextScout",

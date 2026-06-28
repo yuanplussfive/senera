@@ -1,7 +1,7 @@
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
 import { AgentToolProcessRunner } from "./AgentToolProcessRunner.js";
 import type { AgentToolHostCapabilityRegistry } from "./AgentToolHostCapabilityRegistry.js";
-import type { AgentEventSink } from "../AgentEvent.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type { AgentPluginRegistryLike } from "../Types/ToolRuntimeTypes.js";

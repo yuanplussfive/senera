@@ -14,7 +14,7 @@ import {
 import {
   AgentPlannerTimelinePayloadKeys,
   encodePlannerTimelinePayload,
-} from "../AgentPlannerTimelinePayload.js";
+} from "./AgentPlannerTimelinePayload.js";
 
 export class AgentPlannerTimelineXmlProjector {
   private readonly toolObservationProjector: AgentToolObservationProjector;

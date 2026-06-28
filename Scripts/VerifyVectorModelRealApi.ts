@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
+import { AgentConfigLoader } from "../Source/AgentSystem/Config/AgentConfigLoader.js";
 import { resolveVectorModelsConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { AgentVectorModelClient } from "../Source/AgentSystem/Vector/AgentVectorModelClient.js";
 import { cosineSimilarity } from "../Source/AgentSystem/Vector/AgentVectorSimilarity.js";

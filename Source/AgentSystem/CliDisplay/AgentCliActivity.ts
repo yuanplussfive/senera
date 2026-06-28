@@ -1,4 +1,4 @@
-import type { AgentEventEnvelope } from "../AgentEvent.js";
+import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
 
 export const AgentCliActivityTone = {
   Progress: "progress",

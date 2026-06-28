@@ -1,5 +1,5 @@
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import type { AgentEventSink } from "../AgentEvent.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import type { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import type {
@@ -18,7 +18,7 @@ import {
   agentActionToolSearchQueries,
 } from "./AgentActionPlanner.js";
 import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
-import type { AgentWorkflowSelectionResult } from "../AgentWorkflowSelector.js";
+import type { AgentWorkflowSelectionResult } from "../Workflow/AgentWorkflowSelector.js";
 import type { AgentRootCommandWorkflowRecommendation } from "../AgentRootCommand.js";
 import { AgentInteractionRunModes } from "./AgentInteractionRouter.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";

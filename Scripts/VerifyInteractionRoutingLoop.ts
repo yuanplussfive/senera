@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { AgentEventKinds } from "../Source/AgentSystem/AgentEvent.js";
+import { AgentEventKinds } from "../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentLoopStateMachine } from "../Source/AgentSystem/Loop/AgentLoopStateMachine.js";
 import {
   AgentInteractionRunModes,

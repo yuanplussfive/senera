@@ -1,5 +1,5 @@
 import { SaxesParser } from "saxes";
-import { AgentSourceDiagnosticBuilder } from "../AgentSourceDiagnostic.js";
+import { AgentSourceDiagnosticBuilder } from "../Diagnostics/AgentSourceDiagnostic.js";
 import type { AgentXmlProtocolPolicy } from "./AgentXmlPolicy.js";
 import { AgentXmlErrorCodes } from "./AgentXmlStatus.js";
 import {

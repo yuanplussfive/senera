@@ -2,7 +2,7 @@ import type { ActionPlanInput, TaskFrame } from "../BamlClient/baml_client/types
 import {
   AgentEvidenceCapabilityIndex,
   uniqueCapabilityNeeds,
-} from "../AgentEvidenceCapabilityIndex.js";
+} from "../Evidence/AgentEvidenceCapabilityIndex.js";
 import type {
   AgentCompletionCandidateToolRecommendation,
   AgentCompletionMissingNeed,

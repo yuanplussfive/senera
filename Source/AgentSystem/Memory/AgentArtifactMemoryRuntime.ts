@@ -10,7 +10,7 @@ import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
 } from "../Xml/AgentXmlStatus.js";
-import { throwIfAborted } from "../AgentCancellation.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { resolveArtifactsConfig } from "../AgentDefaults.js";
 import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
 import { indexArtifactManifests } from "./AgentArtifactManifestIndex.js";

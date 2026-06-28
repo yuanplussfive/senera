@@ -1,9 +1,9 @@
 import {
   AgentEventKinds,
   type AgentDomainEvent,
-} from "../AgentEvent.js";
-import { serializeError } from "../AgentErrorSerializer.js";
-import { createRequestId } from "../AgentIds.js";
+} from "../Events/AgentEvent.js";
+import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
+import { createRequestId } from "../Core/AgentIds.js";
 import type { AgentWebSocketRequest, AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 

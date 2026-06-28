@@ -11,7 +11,7 @@ import {
 } from "./AgentToolProcessEnvelope.js";
 import type {
   AgentSourceDiagnostic,
-} from "../AgentSourceDiagnostic.js";
+} from "../Diagnostics/AgentSourceDiagnostic.js";
 import type { AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
 import {
   AgentExecutionErrorCodes,

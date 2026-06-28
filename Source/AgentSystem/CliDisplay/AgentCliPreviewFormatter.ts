@@ -1,4 +1,4 @@
-import { AgentModelTextPreviewer } from "../AgentTextBudget.js";
+import { AgentModelTextPreviewer } from "../Text/AgentTextBudget.js";
 
 export interface AgentCliPreviewFormatterOptions {
   model: string;

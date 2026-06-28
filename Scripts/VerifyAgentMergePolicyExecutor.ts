@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { AgentChildAgentRuntime } from "../Source/AgentSystem/AgentChildAgentRuntime.js";
-import { AgentDelegationExecutor } from "../Source/AgentSystem/AgentDelegationExecutor.js";
-import { AgentDelegationWorkflowRunner } from "../Source/AgentSystem/AgentDelegationWorkflowRunner.js";
-import { buildAgentDelegationPlan } from "../Source/AgentSystem/AgentDelegationPlan.js";
+import { AgentChildAgentRuntime } from "../Source/AgentSystem/Delegation/AgentChildAgentRuntime.js";
+import { AgentDelegationExecutor } from "../Source/AgentSystem/Delegation/AgentDelegationExecutor.js";
+import { AgentDelegationWorkflowRunner } from "../Source/AgentSystem/Delegation/AgentDelegationWorkflowRunner.js";
+import { buildAgentDelegationPlan } from "../Source/AgentSystem/Delegation/AgentDelegationPlan.js";
 import {
   AgentEventKinds,
   type AgentDomainEvent,
   type AgentEventContext,
-} from "../Source/AgentSystem/AgentEvent.js";
-import { AgentMergePolicyExecutor } from "../Source/AgentSystem/AgentMergePolicyExecutor.js";
+} from "../Source/AgentSystem/Events/AgentEvent.js";
+import { AgentMergePolicyExecutor } from "../Source/AgentSystem/Delegation/AgentMergePolicyExecutor.js";
 import type {
   AgentLanguageModel,
   AgentLanguageModelRequest,

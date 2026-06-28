@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import { compactObject } from "./AgentActionPlannerProjectionUtils.js";
-import { decodePlannerTimelinePayload } from "../AgentPlannerTimelinePayload.js";
+import { decodePlannerTimelinePayload } from "./AgentPlannerTimelinePayload.js";
 
 export interface ProjectedActionPlannerPrompt {
   systemPrompt: string;

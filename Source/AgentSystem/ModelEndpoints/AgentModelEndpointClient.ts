@@ -1,4 +1,4 @@
-import { AgentEventKinds, emitAgentEvent } from "../AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
 import type {
   AgentLanguageModel,
   AgentLanguageModelRequest,

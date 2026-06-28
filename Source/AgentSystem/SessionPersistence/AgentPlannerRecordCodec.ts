@@ -14,7 +14,7 @@ import type {
   AgentPlannerStateSnapshotRecord,
   AgentPlannerStateTargetRef,
   AgentPlannerTaskStatus,
-} from "../AgentPlannerState.js";
+} from "../ActionPlanner/AgentPlannerState.js";
 import type {
   AgentPlannerJournalEntryRecord,
   AgentToolEvidenceMemoryEntryRecord,
@@ -264,4 +264,3 @@ function readEvidenceFacts(value: unknown): EvidenceSlot[] {
     return name && slotValue ? [{ name, value: slotValue }] : [];
   });
 }
-

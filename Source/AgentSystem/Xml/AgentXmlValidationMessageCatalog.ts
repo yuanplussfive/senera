@@ -1,7 +1,7 @@
 import {
   matchesSomeTextRule,
   type AgentTextPredicate,
-} from "../AgentTextMatcher.js";
+} from "../Text/AgentTextMatcher.js";
 
 export type AgentXmlValidationMessageKind =
   | "incomplete"

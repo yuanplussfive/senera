@@ -5,12 +5,12 @@ import {
   AgentEventChannels,
   AgentEventKinds,
   getAgentEventSpec,
-} from "../Source/AgentSystem/AgentEvent.js";
-import type { AgentEventEnvelope } from "../Source/AgentSystem/AgentEventBase.js";
+} from "../Source/AgentSystem/Events/AgentEvent.js";
+import type { AgentEventEnvelope } from "../Source/AgentSystem/Events/AgentEventBase.js";
 import { AgentConversationEntryKinds } from "../Source/AgentSystem/Conversation/AgentConversation.js";
 import {
   projectAgentRunEventForHistory,
-} from "../Source/AgentSystem/AgentRunEventHistoryPolicy.js";
+} from "../Source/AgentSystem/Events/AgentRunEventHistoryPolicy.js";
 import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
 import { SqliteSessionRepository } from "../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
 

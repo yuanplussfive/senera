@@ -4,7 +4,7 @@ import { AgentDecisionErrorFactory } from "../Source/AgentSystem/Decision/AgentD
 import { AgentXmlParser, AgentXmlSourceHelper } from "../Source/AgentSystem/Xml/AgentXmlParser.js";
 import { createXmlProtocolPolicy, createXmlProtocolSpec } from "../Source/AgentSystem/Xml/AgentXmlPolicy.js";
 import type { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
-import { AgentSchemaValidator } from "../Source/AgentSystem/AgentSchemaValidator.js";
+import { AgentSchemaValidator } from "../Source/AgentSystem/Core/AgentSchemaValidator.js";
 import { AgentDecisionXmlStreamAssembler } from "../Source/AgentSystem/Decision/AgentDecisionXmlStreamAssembler.js";
 import { AgentXmlStreamStates } from "../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";

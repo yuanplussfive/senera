@@ -1,7 +1,7 @@
-import type { AgentEventSink } from "../AgentEvent.js";
-import { AgentEventKinds, emitAgentEvent, withEventContext } from "../AgentEvent.js";
-import { AgentCancellationError } from "../AgentCancellation.js";
-import { createRequestId } from "../AgentIds.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent, withEventContext } from "../Events/AgentEvent.js";
+import { AgentCancellationError } from "../Core/AgentCancellation.js";
+import { createRequestId } from "../Core/AgentIds.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import type { AgentLoop } from "../Loop/AgentLoop.js";

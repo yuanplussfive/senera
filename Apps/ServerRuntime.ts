@@ -16,7 +16,7 @@ import {
 } from "../Source/AgentSystem/AgentDefaults.js";
 import { AgentModelEndpointClient } from "../Source/AgentSystem/ModelEndpoints/AgentModelEndpointClient.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
-import { AgentUserProfileManager } from "../Source/AgentSystem/AgentUserProfile.js";
+import { AgentUserProfileManager } from "../Source/AgentSystem/Session/AgentUserProfile.js";
 import { AgentPluginConfigManager } from "../Source/AgentSystem/Plugin/AgentPluginConfigManager.js";
 import {
   DefaultAgentMemoryDatabasePath,
@@ -29,8 +29,8 @@ import {
   AgentConfigService,
   type AgentConfigSourceOptions,
 } from "../Source/AgentSystem/Config/AgentConfigService.js";
-import { AgentEventKinds, emitAgentEvent } from "../Source/AgentSystem/AgentEvent.js";
-import { serializeError } from "../Source/AgentSystem/AgentErrorSerializer.js";
+import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
+import { serializeError } from "../Source/AgentSystem/Diagnostics/AgentErrorSerializer.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
@@ -139,7 +139,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
           },
         });
       } catch (error) {
-        void emitAgentEvent((event) => server.broadcast(event), {
+        void emitAgentEvent((event: AgentDomainEvent) => server.broadcast(event), {
           kind: AgentEventKinds.ConfigFailed,
           context: {},
           data: {

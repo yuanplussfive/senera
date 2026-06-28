@@ -3,7 +3,7 @@ import {
   createXmlProtocolSpec,
   type AgentXmlProtocolSpec,
 } from "./AgentXmlPolicy.js";
-import type { AgentPlannedToolCall } from "../AgentToolCallPlannerSchema.js";
+import type { AgentPlannedToolCall } from "../ActionPlanner/AgentToolCallPlannerSchema.js";
 
 export class AgentToolCallPlanXmlRenderer {
   private readonly codec: AgentXmlCodec;

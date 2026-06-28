@@ -1,4 +1,4 @@
-import type { AgentActivatedSkill } from "../AgentSkillActivation.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type {
   AgentPromptSkillCatalogContext,
   AgentPromptSkillContext,

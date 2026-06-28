@@ -4,7 +4,7 @@ import type { AgentConversationEntry } from "../Conversation/AgentConversation.j
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolCatalogItem } from "../ToolRuntime/AgentToolCatalogProjector.js";
-import type { AgentActivatedSkill } from "../AgentSkillActivation.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { AgentPlannerRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
 import {
   DefaultAgentArtifactRootDir,

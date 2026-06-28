@@ -8,8 +8,8 @@ import type {
   ToolCallPlan as BamlToolCallPlan,
   TurnUnderstanding as BamlTurnUnderstanding,
 } from "../BamlClient/baml_client/types.js";
-import type { AgentFastContextScoutPlannerPromptInput } from "../AgentFastContextScoutPlannerPromptJson.js";
-import type { AgentToolCallPlannerPromptInput } from "../AgentToolCallPlannerPromptJson.js";
+import type { AgentFastContextScoutPlannerPromptInput } from "./AgentFastContextScoutPlannerPromptJson.js";
+import type { AgentToolCallPlannerPromptInput } from "./AgentToolCallPlannerPromptJson.js";
 import type { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
 
 export class AgentActionPlannerCoreModelCalls {

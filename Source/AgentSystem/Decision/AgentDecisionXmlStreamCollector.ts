@@ -1,5 +1,5 @@
-import { AgentCancellationError } from "../AgentCancellation.js";
-import type { AgentTextBudgetEvaluator, AgentExceededTextBudgetSnapshot } from "../AgentTextBudget.js";
+import { AgentCancellationError } from "../Core/AgentCancellation.js";
+import type { AgentTextBudgetEvaluator, AgentExceededTextBudgetSnapshot } from "../Text/AgentTextBudget.js";
 import type { AgentXmlProtocolPolicy } from "../Xml/AgentXmlPolicy.js";
 import type { AgentXmlCandidateNormalizer } from "../Xml/AgentToolCallsXmlNormalizer.js";
 import type { AgentLanguageModel } from "../ModelEndpoints/AgentLanguageModel.js";

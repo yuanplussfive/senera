@@ -1,4 +1,4 @@
-import type { AgentEventEnvelope } from "../AgentEventBase.js";
+import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 
 export function parseJsonObject(value: string): Record<string, unknown> {
   try {

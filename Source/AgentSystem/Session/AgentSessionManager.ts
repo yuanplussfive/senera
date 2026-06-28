@@ -1,7 +1,7 @@
-import type { AgentEventSink } from "../AgentEvent.js";
-import { AgentEventKinds, emitAgentEvent } from "../AgentEvent.js";
-import type { AgentEventEnvelope } from "../AgentEventBase.js";
-import { matchByKind } from "../AgentMatch.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
+import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
+import { matchByKind } from "../Core/AgentMatch.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import type { AgentLoop } from "../Loop/AgentLoop.js";

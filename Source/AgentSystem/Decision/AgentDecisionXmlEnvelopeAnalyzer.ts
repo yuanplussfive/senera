@@ -4,7 +4,7 @@ import { AgentXmlLexicalScanner } from "../Xml/AgentXmlLexicalScanner.js";
 import { AgentXmlEnvelopeBoundaryScanner } from "../Xml/AgentXmlEnvelopeBoundaryScanner.js";
 import { AgentXmlEnvelopeClassifier } from "../Xml/AgentXmlEnvelopeClassifier.js";
 import { AgentMarkdownFenceScanner } from "../Xml/AgentMarkdownFenceScanner.js";
-import { AgentTextLocator } from "../AgentTextLocator.js";
+import { AgentTextLocator } from "../Text/AgentTextLocator.js";
 import { AgentXmlCandidateOffsetScanner } from "../Xml/AgentXmlCandidateOffsetScanner.js";
 import {
   AgentXmlEnvelopeKinds,

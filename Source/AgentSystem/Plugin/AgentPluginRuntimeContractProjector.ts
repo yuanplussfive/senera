@@ -1,5 +1,5 @@
-import { resolveFrom } from "../AgentPath.js";
-import { AgentJsonFileLoader } from "../AgentJsonFileLoader.js";
+import { resolveFrom } from "../Core/AgentPath.js";
+import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { isLoadedPluginToolEnabled } from "./AgentPluginConfig.js";
 import { ToolArtifactPolicySchema } from "../Schemas/PluginManifestSchema.js";
 import type {

@@ -1,9 +1,9 @@
-import type { AgentSourceDiagnostic } from "../AgentSourceDiagnostic.js";
+import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import {
   formatSchemaIssue,
   suggestionForSchemaIssue,
-} from "../AgentRetryDiagnostics.js";
-import type { AgentSchemaValidationError } from "../AgentSchemaValidator.js";
+} from "../Retry/AgentRetryDiagnostics.js";
+import type { AgentSchemaValidationError } from "../Core/AgentSchemaValidator.js";
 import type { AgentXmlSourceHelper } from "../Xml/AgentXmlParser.js";
 
 export function buildDecisionSchemaDiagnostics(

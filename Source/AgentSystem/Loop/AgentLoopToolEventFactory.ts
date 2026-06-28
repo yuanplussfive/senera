@@ -2,7 +2,7 @@ import {
   AgentEventKinds,
   createEventDetailId,
   type AgentDomainEvent,
-} from "../AgentEvent.js";
+} from "../Events/AgentEvent.js";
 import type { AgentExecutionResult } from "../Decision/AgentDecisionExecutor.js";
 
 export class AgentLoopToolEventFactory {

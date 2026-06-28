@@ -1,12 +1,12 @@
-import { AgentEventKinds, emitAgentEvent, type AgentEventSink } from "../AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent, type AgentEventSink } from "../Events/AgentEvent.js";
 import {
   AgentConversationEntryKinds,
   type AgentConversationEntry,
 } from "../Conversation/AgentConversation.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { extractDecisionStreamingPreview } from "../Decision/AgentDecisionStreamingPreview.js";
-import { AgentRunEventHistoryReplayChunkSize } from "../AgentRunEventHistoryPolicy.js";
-import type { StepTrace } from "../AgentStepTrace.js";
+import { AgentRunEventHistoryReplayChunkSize } from "../Events/AgentRunEventHistoryPolicy.js";
+import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import type { StoredRunSnapshot } from "./AgentSqliteSessionRepository.js";
 import type { AgentHistoryStepRun } from "./AgentSessionEventTypes.js";
 import { AgentSessionEventFactory } from "./AgentSessionEventFactory.js";

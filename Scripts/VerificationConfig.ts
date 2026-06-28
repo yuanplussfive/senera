@@ -1,5 +1,5 @@
 import path from "node:path";
-import { AgentConfigLoader } from "../Source/AgentSystem/AgentConfigLoader.js";
+import { AgentConfigLoader } from "../Source/AgentSystem/Config/AgentConfigLoader.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 export const VerificationConfigFileName = "senera.config.example.json";

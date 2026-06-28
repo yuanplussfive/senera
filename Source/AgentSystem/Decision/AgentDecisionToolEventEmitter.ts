@@ -1,7 +1,7 @@
 import {
   emitAgentEvent,
   type AgentEventSink,
-} from "../AgentEvent.js";
+} from "../Events/AgentEvent.js";
 import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
 import type {

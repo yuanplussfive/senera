@@ -1,8 +1,8 @@
-import { AgentRetryableError } from "../AgentRetryableError.js";
-import { AgentRetryDiagnostics } from "../AgentRetryDiagnostics.js";
+import { AgentRetryableError } from "../Retry/AgentRetryableError.js";
+import { AgentRetryDiagnostics } from "../Retry/AgentRetryDiagnostics.js";
 import type { AgentPromptRenderer } from "../Prompt/AgentPromptRenderer.js";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
-import type { AgentExceededTextBudgetSnapshot } from "../AgentTextBudget.js";
+import type { AgentExceededTextBudgetSnapshot } from "../Text/AgentTextBudget.js";
 import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import {
   AgentExecutionErrorCodes,
@@ -10,7 +10,7 @@ import {
   isAgentProtocolErrorCode,
 } from "../Xml/AgentXmlStatus.js";
 import type { AgentXmlParseError, AgentXmlSourceHelper } from "../Xml/AgentXmlParser.js";
-import type { AgentSchemaValidationError } from "../AgentSchemaValidator.js";
+import type { AgentSchemaValidationError } from "../Core/AgentSchemaValidator.js";
 import type { AgentToolProcessError } from "../Types/ToolRuntimeTypes.js";
 import type { AgentDecisionErrorSpec } from "./AgentDecisionErrorTypes.js";
 import { AgentDecisionRootSuggestions } from "./AgentDecisionRootSuggestions.js";

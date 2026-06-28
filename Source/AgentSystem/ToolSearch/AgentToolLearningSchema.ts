@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolLearningResult as BamlToolLearningResult } from "../BamlClient/baml_client/types.js";
-import { parseNormalizedBamlOutput } from "../AgentBamlOutputNormalizer.js";
+import { parseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
 import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
 
 const NonEmptyStringSchema = z.string().trim().min(1);

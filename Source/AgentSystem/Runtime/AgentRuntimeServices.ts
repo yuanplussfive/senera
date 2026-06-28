@@ -3,14 +3,14 @@ import type { AgentDecisionExecutor } from "../Decision/AgentDecisionExecutor.js
 import type { AgentPromptContextBuilder } from "../Prompt/AgentPromptContextBuilder.js";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { AgentPresetManager } from "../Presets/AgentPresetManager.js";
-import type { AgentSkillActivationService } from "../AgentSkillActivation.js";
+import type { AgentSkillActivationService } from "../Skills/AgentSkillActivation.js";
 import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
 import type { AgentToolCatalogProjector } from "../ToolRuntime/AgentToolCatalogProjector.js";
 import type { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
 import {
   AgentWorkflowSelector,
   type AgentWorkflowSelectionResult,
-} from "../AgentWorkflowSelector.js";
+} from "../Workflow/AgentWorkflowSelector.js";
 
 export interface AgentPlanningService {
   plan(options: Parameters<AgentActionPlanner["plan"]>[0]): ReturnType<AgentActionPlanner["plan"]>;

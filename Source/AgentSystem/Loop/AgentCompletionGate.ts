@@ -5,7 +5,7 @@ import type {
 import {
   AgentEvidenceCapabilityIndex,
   uniqueCapabilityNeeds,
-} from "../AgentEvidenceCapabilityIndex.js";
+} from "../Evidence/AgentEvidenceCapabilityIndex.js";
 import {
   assessCompletionProgress,
 } from "./AgentCompletionProgress.js";

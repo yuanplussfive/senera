@@ -1,5 +1,5 @@
-import type { AgentDomainEvent } from "../AgentEvent.js";
-import type { AgentUserProfileManager } from "../AgentUserProfile.js";
+import type { AgentDomainEvent } from "../Events/AgentEvent.js";
+import type { AgentUserProfileManager } from "../Session/AgentUserProfile.js";
 import type { AgentConfigService } from "../Config/AgentConfigService.js";
 import type { AgentProviderModelDiscovery } from "../Config/AgentProviderModelDiscovery.js";
 import type { AgentPluginConfigManager } from "../Plugin/AgentPluginConfigManager.js";

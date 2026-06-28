@@ -1,5 +1,5 @@
-import type { AgentEventSink } from "../AgentEvent.js";
-import type { AgentTextBudgetEvaluator, AgentExceededTextBudgetSnapshot } from "../AgentTextBudget.js";
+import type { AgentEventSink } from "../Events/AgentEvent.js";
+import type { AgentTextBudgetEvaluator, AgentExceededTextBudgetSnapshot } from "../Text/AgentTextBudget.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentActionMismatchRepairPromptBuilder } from "../ActionPlanner/AgentActionMismatchRepairPromptBuilder.js";
 import type { AgentXmlProtocolPolicy } from "../Xml/AgentXmlPolicy.js";

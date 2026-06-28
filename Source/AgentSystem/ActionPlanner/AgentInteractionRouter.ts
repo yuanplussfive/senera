@@ -3,8 +3,8 @@ import {
   type ActionPlanInput,
   type InteractionRoute,
 } from "../BamlClient/baml_client/types.js";
-import { normalizeBamlOptionalFields } from "../AgentBamlOutputNormalizer.js";
-import { throwIfAborted } from "../AgentCancellation.js";
+import { normalizeBamlOptionalFields } from "../BamlClient/AgentBamlOutputNormalizer.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 
 export const AgentInteractionRunModes = {
   DirectResponse: "direct_response",

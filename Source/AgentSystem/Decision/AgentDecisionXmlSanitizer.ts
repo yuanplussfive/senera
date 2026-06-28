@@ -1,5 +1,5 @@
-import type { AgentSourceDiagnostic } from "../AgentSourceDiagnostic.js";
-import { AgentSourceDiagnosticBuilder } from "../AgentSourceDiagnostic.js";
+import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
+import { AgentSourceDiagnosticBuilder } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { AgentXmlParseError } from "../Xml/AgentXmlParser.js";
 import {
   AgentDecisionXmlEnvelopeAnalyzer,

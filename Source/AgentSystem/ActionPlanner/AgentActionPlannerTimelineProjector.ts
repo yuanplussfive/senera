@@ -10,7 +10,7 @@ import { stringifyPreview } from "./AgentActionPlannerProjectionUtils.js";
 import {
   AgentPlannerTimelinePayloadKeys,
   encodePlannerTimelinePayload,
-} from "../AgentPlannerTimelinePayload.js";
+} from "./AgentPlannerTimelinePayload.js";
 import { AgentPlannerTimelineXmlProjector } from "./AgentPlannerTimelineXmlProjector.js";
 import { appendMissingLedgerObservations } from "./AgentPlannerTimelineLedgerProjector.js";
 

@@ -4,7 +4,7 @@ import {
   type AgentXmlPathSegment,
   type AgentXmlProtocolPolicy,
 } from "../Xml/AgentXmlPolicy.js";
-import type { AgentSourceDiagnostic } from "../AgentSourceDiagnostic.js";
+import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 
 export interface AgentDecisionNormalizationResult {
   value: unknown;

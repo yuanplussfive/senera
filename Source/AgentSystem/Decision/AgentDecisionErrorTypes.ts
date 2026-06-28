@@ -1,4 +1,4 @@
-import type { AgentSourceDiagnostic } from "../AgentSourceDiagnostic.js";
+import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import type { AgentProtocolErrorCode } from "../Xml/AgentXmlStatus.js";
 
 export interface AgentDecisionErrorSpec {

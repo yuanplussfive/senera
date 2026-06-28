@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildToolCallPlannerPromptEnvelope } from "../Source/AgentSystem/AgentToolCallPlannerPromptJson.js";
+import { buildToolCallPlannerPromptEnvelope } from "../Source/AgentSystem/ActionPlanner/AgentToolCallPlannerPromptJson.js";
 import {
   TurnContextMode,
   type ActionPlanInput,

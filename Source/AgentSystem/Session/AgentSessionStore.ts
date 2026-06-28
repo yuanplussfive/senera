@@ -1,4 +1,4 @@
-import { createSessionId } from "../AgentIds.js";
+import { createSessionId } from "../Core/AgentIds.js";
 import {
   AgentSessionStatuses,
   type AgentSession,
@@ -10,8 +10,8 @@ import type {
 } from "./AgentSqliteSessionRepository.js";
 import { InMemorySessionRepository } from "./AgentSqliteSessionRepository.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import type { StepTrace } from "../AgentStepTrace.js";
-import type { AgentEventEnvelope } from "../AgentEventBase.js";
+import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 
 export type AgentSessionOpenResult =
   | {

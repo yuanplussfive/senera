@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { documentHostTool } from "../Source/AgentSystem/AgentDocumentRuntime.js";
+import { documentHostTool } from "../Source/AgentSystem/Documents/AgentDocumentRuntime.js";
 import { AgentUploadStore } from "../Source/AgentSystem/Uploads/AgentUploadStore.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";

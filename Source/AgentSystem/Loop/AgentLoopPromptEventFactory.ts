@@ -2,7 +2,7 @@ import {
   AgentEventKinds,
   summarizePrompt,
   type AgentDomainEvent,
-} from "../AgentEvent.js";
+} from "../Events/AgentEvent.js";
 
 export class AgentLoopPromptEventFactory {
   promptRendered(

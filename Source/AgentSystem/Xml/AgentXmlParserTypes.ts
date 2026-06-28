@@ -1,5 +1,5 @@
-import type { AgentSourceDiagnostic } from "../AgentSourceDiagnostic.js";
-import type { AgentTextBudgetEvaluator } from "../AgentTextBudget.js";
+import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
+import type { AgentTextBudgetEvaluator } from "../Text/AgentTextBudget.js";
 import type { AgentXmlProtocolPolicy } from "./AgentXmlPolicy.js";
 import type { AgentXmlErrorCode } from "./AgentXmlStatus.js";
 import type { AgentXmlSourceHelper } from "./AgentXmlSourceHelper.js";

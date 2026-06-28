@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { ActionPlanInput } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { TaskEvidenceScope } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
-import { AgentEvidenceBroker } from "../Source/AgentSystem/AgentEvidenceBroker.js";
+import { AgentEvidenceBroker } from "../Source/AgentSystem/Evidence/AgentEvidenceBroker.js";
 
 const workspaceTaskFrame = {
   taskType: "workspace investigation",

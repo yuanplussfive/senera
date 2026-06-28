@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { throwIfAborted } from "../AgentCancellation.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 import type { WritePlan } from "./AgentPatchApplyTypes.js";
 
 export async function commitWritePlan(plan: WritePlan[], signal?: AbortSignal): Promise<void> {

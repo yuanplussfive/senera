@@ -4,7 +4,7 @@ import {
   TaskEvidenceScope,
   ToolCallStatus,
 } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
-import { AgentEvidenceBroker } from "../Source/AgentSystem/AgentEvidenceBroker.js";
+import { AgentEvidenceBroker } from "../Source/AgentSystem/Evidence/AgentEvidenceBroker.js";
 
 const taskFrame: TaskFrame = {
   taskType: "workspace investigation",

@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import type { AgentEventEnvelope } from "../AgentEventBase.js";
+import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import {
   entryToRow,
   parseJsonObject,
@@ -18,8 +18,8 @@ import {
   parseStoredAgentUserProfile,
   type AgentUserProfile,
   type AgentUserProfileInput,
-} from "../AgentUserProfile.js";
-import type { StepTrace } from "../AgentStepTrace.js";
+} from "../Session/AgentUserProfile.js";
+import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import {
   configureAgentSessionDatabase,
   installAgentSessionSchema,

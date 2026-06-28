@@ -1,20 +1,20 @@
 import type {
   AgentCompletedRunResult,
   AgentProjectedTerminalResult,
-} from "../AgentExecutionProjector.js";
-import type { AgentDomainEvent } from "../AgentEvent.js";
+} from "../Runtime/AgentExecutionProjector.js";
+import type { AgentDomainEvent } from "../Events/AgentEvent.js";
 import type { AgentExecutionResult } from "../Decision/AgentDecisionExecutor.js";
 import type { SanitizedDecisionXml } from "../Decision/AgentDecisionXmlSanitizer.js";
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
-import type { AgentRetryInstruction, AgentRetryableError } from "../AgentRetryableError.js";
+import type { AgentRetryInstruction, AgentRetryableError } from "../Retry/AgentRetryableError.js";
 import type { AgentDecision } from "../Types/ToolRuntimeTypes.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentActionPlanResult } from "../ActionPlanner/AgentActionPlanner.js";
 import type { AgentActionPlannerLedger } from "../ActionPlanner/AgentActionPlannerContext.js";
-import type { StepTrace } from "../AgentStepTrace.js";
+import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
-import type { AgentActivatedSkill } from "../AgentSkillActivation.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 

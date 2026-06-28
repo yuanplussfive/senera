@@ -3,7 +3,7 @@ import { AgentMarkdownFenceScanner } from "./AgentMarkdownFenceScanner.js";
 import {
   AgentXmlTailKinds,
 } from "./AgentXmlStatus.js";
-import { matchByKind } from "../AgentMatch.js";
+import { matchByKind } from "../Core/AgentMatch.js";
 import {
   classifyXmlValidationMessage,
   isIncompleteXmlValidationMessage,

@@ -1,9 +1,9 @@
-import type { AgentDomainEvent } from "../AgentEvent.js";
-import { matchByKind } from "../AgentMatch.js";
+import type { AgentDomainEvent } from "../Events/AgentEvent.js";
+import { matchByKind } from "../Core/AgentMatch.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
-import type { AgentRetryableError } from "../AgentRetryableError.js";
-import type { StepTrace } from "../AgentStepTrace.js";
+import type { AgentRetryableError } from "../Retry/AgentRetryableError.js";
+import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import type { AgentActionPlannerLedger } from "../ActionPlanner/AgentActionPlannerContext.js";
 import {
   routeInteractionCommand,

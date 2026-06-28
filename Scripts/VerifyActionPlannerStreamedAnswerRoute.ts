@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { AgentEventKinds } from "../Source/AgentSystem/AgentEvent.js";
+import { AgentEventKinds } from "../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentLoopStateMachine } from "../Source/AgentSystem/Loop/AgentLoopStateMachine.js";
 import type { AgentActionPlanResult } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
 import { EmptyActionPlannerLedger } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";

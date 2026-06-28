@@ -1,12 +1,12 @@
 import { applyPatchHostTool } from "./Patch/AgentPatchApplyRuntime.js";
 import { readArtifactMemoryHostTool } from "./Memory/AgentArtifactMemoryRuntime.js";
-import { delegateAgentHostTool } from "./AgentDelegateRuntime.js";
-import { documentHostTool } from "./AgentDocumentRuntime.js";
-import { imageVisionHostTool } from "./AgentImageVisionRuntime.js";
+import { delegateAgentHostTool } from "./Delegation/AgentDelegateRuntime.js";
+import { documentHostTool } from "./Documents/AgentDocumentRuntime.js";
+import { imageVisionHostTool } from "./Vision/AgentImageVisionRuntime.js";
 import { recallMemoryHostTool } from "./Memory/AgentMemoryRecallRuntime.js";
 import { writeMemoryHostTool } from "./Memory/AgentMemoryWriteRuntime.js";
-import { runShellCommandHostTool } from "./AgentShellCommandRuntime.js";
-import { fastContextScoutHostTool } from "./AgentFastContextScoutRuntime.js";
+import { runShellCommandHostTool } from "./ToolRuntime/AgentShellCommandRuntime.js";
+import { fastContextScoutHostTool } from "./ToolSearch/AgentFastContextScoutRuntime.js";
 import { AgentToolHostCapabilityRegistry } from "./ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentToolSearchRuntime } from "./ToolSearch/AgentToolSearchRuntime.js";
 

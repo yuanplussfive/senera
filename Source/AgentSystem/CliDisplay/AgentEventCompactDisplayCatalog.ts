@@ -1,5 +1,5 @@
-import type { AgentEventEnvelope } from "../AgentEvent.js";
-import { describeSessionHandle } from "../AgentIds.js";
+import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
+import { describeSessionHandle } from "../Core/AgentIds.js";
 import type {
   AgentCompactEventDisplay,
   AgentCompactEventFormatter,

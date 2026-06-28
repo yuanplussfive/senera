@@ -1,13 +1,13 @@
-import type { AgentDomainEvent } from "../AgentEvent.js";
+import type { AgentDomainEvent } from "../Events/AgentEvent.js";
 import type { AgentExecutionResult } from "../Decision/AgentDecisionExecutor.js";
-import type { AgentProjectedTerminalResult } from "../AgentExecutionProjector.js";
-import type { AgentRetryInstruction } from "../AgentRetryableError.js";
+import type { AgentProjectedTerminalResult } from "../Runtime/AgentExecutionProjector.js";
+import type { AgentRetryInstruction } from "../Retry/AgentRetryableError.js";
 import type { SanitizedDecisionXml } from "../Decision/AgentDecisionXmlSanitizer.js";
 import type { AgentDecision } from "../Types/ToolRuntimeTypes.js";
 import type { AgentActionPlanResult } from "../ActionPlanner/AgentActionPlanner.js";
 import type { AgentActionPlannerStageEvent } from "../ActionPlanner/AgentActionPlannerTelemetry.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
-import type { AgentActivatedSkill } from "../AgentSkillActivation.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
 import { AgentLoopDecisionEventFactory } from "./AgentLoopDecisionEventFactory.js";
 import { AgentLoopPlannerEventFactory } from "./AgentLoopPlannerEventFactory.js";
@@ -157,4 +157,3 @@ export class AgentLoopEventFactory {
     return this.runEvents.terminal(projected, requestId);
   }
 }
-

@@ -7,7 +7,7 @@ import {
   type AgentCliTimelineViewState,
 } from "./AgentCliActivity.js";
 import { AgentConsoleTheme } from "./AgentConsoleTheme.js";
-import { fitTerminalLine } from "../AgentTerminalText.js";
+import { fitTerminalLine } from "../Text/AgentTerminalText.js";
 
 const ActivityIcons: Record<AgentCliActivityTone, string> = {
   progress: "•",

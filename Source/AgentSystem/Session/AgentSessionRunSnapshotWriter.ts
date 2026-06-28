@@ -1,4 +1,4 @@
-import { AgentCancellationError } from "../AgentCancellation.js";
+import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentSession } from "./AgentSession.js";
 import { AgentSessionStore } from "./AgentSessionStore.js";

@@ -1,4 +1,4 @@
-import { AgentEventKinds, type AgentDomainEvent } from "../AgentEvent.js";
+import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import {
   agentActionCapabilityNeeds,
   agentActionInstruction,
@@ -9,7 +9,7 @@ import {
 import type { AgentActionPlannerStageEvent } from "../ActionPlanner/AgentActionPlannerTelemetry.js";
 import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
-import type { AgentActivatedSkill } from "../AgentSkillActivation.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import {
   projectEvidenceDecisionForEvent,
   projectTaskFrameForEvent,
@@ -140,4 +140,3 @@ export class AgentLoopPlannerEventFactory {
     }
   }
 }
-

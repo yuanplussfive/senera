@@ -1,12 +1,12 @@
 import http from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import type { AgentDomainEvent } from "../AgentEvent.js";
+import type { AgentDomainEvent } from "../Events/AgentEvent.js";
 import {
   resolvePresetsConfig,
   resolveServerConfig,
   resolveUploadsConfig,
 } from "../AgentDefaults.js";
-import { AgentLogger } from "../AgentLogger.js";
+import { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { AgentPluginConfigManager } from "../Plugin/AgentPluginConfigManager.js";
 import { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import { AgentUploadHttpApi } from "../Uploads/AgentUploadHttpApi.js";

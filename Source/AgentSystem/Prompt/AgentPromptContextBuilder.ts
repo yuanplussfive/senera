@@ -1,6 +1,6 @@
 import { AgentHostCapabilityNames } from "../AgentDefaultHostCapabilities.js";
 import { buildAgentRootCommand } from "../AgentRootCommand.js";
-import { AgentSkillActivationService } from "../AgentSkillActivation.js";
+import { AgentSkillActivationService } from "../Skills/AgentSkillActivation.js";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import { compareLoadedPluginsForPrompting } from "../Plugin/AgentPluginOrdering.js";
 import { EmptyAgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";

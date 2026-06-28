@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { StepTrace } from "../AgentStepTrace.js";
+import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import { entryToRow } from "../SessionPersistence/AgentSessionCodec.js";
 import type { AgentSessionSqlStatements } from "../SessionPersistence/AgentSessionSqlStatements.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";

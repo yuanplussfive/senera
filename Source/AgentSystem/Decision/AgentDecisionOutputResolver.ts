@@ -2,7 +2,7 @@ import { AgentDecisionXmlEnvelopeAnalyzer } from "./AgentDecisionXmlEnvelopeAnal
 import type { AgentXmlProtocolPolicy } from "../Xml/AgentXmlPolicy.js";
 import type { AgentXmlCandidateNormalizer } from "../Xml/AgentToolCallsXmlNormalizer.js";
 import { AgentXmlLexicalScanner } from "../Xml/AgentXmlLexicalScanner.js";
-import { matchByKind } from "../AgentMatch.js";
+import { matchByKind } from "../Core/AgentMatch.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 
 export type AgentDecisionOutputShape =

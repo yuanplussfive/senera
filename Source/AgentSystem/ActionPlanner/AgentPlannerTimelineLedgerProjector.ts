@@ -11,7 +11,7 @@ import { compactObject } from "./AgentActionPlannerProjectionUtils.js";
 import {
   AgentPlannerTimelinePayloadKeys,
   encodePlannerTimelinePayload,
-} from "../AgentPlannerTimelinePayload.js";
+} from "./AgentPlannerTimelinePayload.js";
 
 export function appendMissingLedgerObservations(
   turns: PlannerTimelineTurn[],

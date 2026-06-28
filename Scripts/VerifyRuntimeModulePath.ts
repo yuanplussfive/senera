@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { toRuntimeModulePath } from "../Source/AgentSystem/AgentPath.js";
-import { AgentSchemaValidator } from "../Source/AgentSystem/AgentSchemaValidator.js";
+import { toRuntimeModulePath } from "../Source/AgentSystem/Core/AgentPath.js";
+import { AgentSchemaValidator } from "../Source/AgentSystem/Core/AgentSchemaValidator.js";
 
 const runtimeAppRoot = path.resolve(__dirname, "..", "..");
 const desktopRuntimeSchemaPath = path.join(

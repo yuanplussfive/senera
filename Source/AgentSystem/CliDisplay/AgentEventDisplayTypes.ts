@@ -1,4 +1,4 @@
-import type { AgentEventEnvelope } from "../AgentEvent.js";
+import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
 
 export type AgentEventDisplayMode = "activity" | "compact" | "verbose";
 

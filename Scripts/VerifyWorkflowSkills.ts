@@ -6,8 +6,8 @@ import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScan
 import { AgentPromptContextBuilder } from "../Source/AgentSystem/Prompt/AgentPromptContextBuilder.js";
 import { AgentPromptRenderer } from "../Source/AgentSystem/Prompt/AgentPromptRenderer.js";
 import type { AgentActionDecision } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
-import { AgentSkillActivationService } from "../Source/AgentSystem/AgentSkillActivation.js";
-import { AgentWorkflowSelector } from "../Source/AgentSystem/AgentWorkflowSelector.js";
+import { AgentSkillActivationService } from "../Source/AgentSystem/Skills/AgentSkillActivation.js";
+import { AgentWorkflowSelector } from "../Source/AgentSystem/Workflow/AgentWorkflowSelector.js";
 
 void main();
 

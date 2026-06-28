@@ -11,7 +11,7 @@ import { renderToolObservationContent } from "./AgentToolObservationRenderer.js"
 import {
   normalizeAgentArtifactUri,
 } from "../Artifacts/AgentArtifactLocator.js";
-import { AgentPlannerTimelinePayloadKeys } from "../AgentPlannerTimelinePayload.js";
+import { AgentPlannerTimelinePayloadKeys } from "../ActionPlanner/AgentPlannerTimelinePayload.js";
 
 export interface ToolObservationProjection {
   content: string;

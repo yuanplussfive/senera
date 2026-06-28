@@ -1,6 +1,6 @@
 import MarkdownIt from "markdown-it";
 import type { AgentMarkdownFenceScanner } from "../Xml/AgentMarkdownFenceScanner.js";
-import type { AgentTextLocator } from "../AgentTextLocator.js";
+import type { AgentTextLocator } from "../Text/AgentTextLocator.js";
 import type { PreparedDecisionXmlDocument } from "./AgentDecisionXmlEnvelopeTypes.js";
 
 export class AgentDecisionXmlFenceReader {
@@ -77,4 +77,3 @@ export class AgentDecisionXmlFenceReader {
           };
   }
 }
-

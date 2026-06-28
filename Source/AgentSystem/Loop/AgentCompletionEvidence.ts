@@ -7,7 +7,7 @@ import { TaskEvidenceScope } from "../BamlClient/baml_client/types.js";
 import {
   AgentEvidenceCapabilityIndex,
   type AgentEvidenceCandidateProfile,
-} from "../AgentEvidenceCapabilityIndex.js";
+} from "../Evidence/AgentEvidenceCapabilityIndex.js";
 import { completionRequirementBlockers } from "./AgentCompletionProgress.js";
 import type {
   AgentCompletionEvidenceVerification,

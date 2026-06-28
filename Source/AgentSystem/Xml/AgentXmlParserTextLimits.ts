@@ -1,4 +1,4 @@
-import { AgentSourceDiagnosticBuilder } from "../AgentSourceDiagnostic.js";
+import { AgentSourceDiagnosticBuilder } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { AgentXmlErrorCodes } from "./AgentXmlStatus.js";
 import {
   AgentXmlParseError,
