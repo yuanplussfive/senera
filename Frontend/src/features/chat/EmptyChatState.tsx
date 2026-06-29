@@ -1,4 +1,5 @@
 import { LogoMark } from "../../shared/ui";
+import { resolveRuntimeEmptySuggestions } from "../../config/runtimeConfig";
 import { parseEmptySuggestions } from "./emptySuggestions";
 
 export function EmptyChatState({
@@ -6,7 +7,7 @@ export function EmptyChatState({
 }: {
   onSelectSuggestion?: (suggestion: string) => void;
 }): JSX.Element {
-  const suggestions = parseEmptySuggestions(import.meta.env.VITE_EMPTY_SUGGESTIONS);
+  const suggestions = parseEmptySuggestions(resolveRuntimeEmptySuggestions(__SENERA_EMPTY_SUGGESTIONS__));
   return (
     <div className="flex max-w-xl flex-col items-center text-center">
       <LogoMark size={34} />

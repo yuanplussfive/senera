@@ -1,0 +1,18 @@
+services:
+  senera:
+    build:
+      context: .
+    image: ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:latest}
+    pull_policy: missing
+    container_name: senera
+    ports:
+      - "${SENERA_PORT:-8787}:8787"
+    environment:
+      SENERA_WORKSPACE_ROOT: /data
+      AGENT_CONFIG_PATH: /data/senera.config.json
+      SENERA_SERVER_HOST: 0.0.0.0
+      SENERA_SERVER_PORT: 8787
+      SENERA_PUBLIC_WS_URL: ${SENERA_PUBLIC_WS_URL:-}
+    volumes:
+      - ./docker-data:/data
+    restart: unless-stopped

@@ -35,6 +35,7 @@ import { serializeError } from "../Source/AgentSystem/Diagnostics/AgentErrorSeri
 export interface SeneraServerOptions {
   workspaceRoot?: string;
   configPath?: string;
+  staticFrontendRoot?: string;
   configSource?: AgentConfigSourceOptions;
   runtimeConfigProjection?: (config: AgentSystemConfig) => AgentSystemConfig;
 }
@@ -113,6 +114,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   server = new AgentWebSocketServer({
     config: initialRuntime.config,
     workspaceRoot,
+    staticFrontendRoot: options.staticFrontendRoot,
     configService,
     configSnapshot,
     sessionManager,

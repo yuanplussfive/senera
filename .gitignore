@@ -10,6 +10,7 @@ Frontend/*.log
 Frontend/tsconfig.tsbuildinfo
 node_modules/
 .senera/
+docker-data/
 .claude/settings.local.json
 tmp/
 Plugins/*/PluginConfig.toml

@@ -15,6 +15,7 @@ import { AgentProviderModelDiscovery } from "../Config/AgentProviderModelDiscove
 import { AgentWebSocketEventEnvelopeSender } from "./AgentWebSocketEventSender.js";
 import { AgentWebSocketHttpRouter } from "./AgentWebSocketHttpRouter.js";
 import { AgentWebSocketMessageRouter } from "./AgentWebSocketMessageRouter.js";
+import { AgentStaticFrontendHttpApi } from "./AgentStaticFrontendHttpApi.js";
 import type {
   AgentWebSocketRequestContext,
   AgentWebSocketServerOptions,
@@ -51,6 +52,9 @@ export class AgentWebSocketServer {
       uploadApi: new AgentUploadHttpApi({
         storeFactory: () => createUploadStore(options, configSnapshot()),
       }),
+      staticFrontendApi: options.staticFrontendRoot
+        ? new AgentStaticFrontendHttpApi({ rootDir: options.staticFrontendRoot })
+        : undefined,
     });
     this.messageRouter = new AgentWebSocketMessageRouter({
       context: {

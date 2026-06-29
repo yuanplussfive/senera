@@ -10,6 +10,7 @@ import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
   workspaceRoot?: string;
+  staticFrontendRoot?: string;
   configSnapshot?: () => AgentSystemConfig;
   configService?: AgentConfigService;
   sessionManager: AgentSessionManager;

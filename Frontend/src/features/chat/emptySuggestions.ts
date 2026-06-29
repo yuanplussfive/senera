@@ -4,11 +4,13 @@ export const DEFAULT_EMPTY_SUGGESTIONS = [
   "把需求拆成可执行步骤",
 ] as const;
 
-export function parseEmptySuggestions(value?: string): string[] {
-  const suggestions = (value ?? "")
-    .split("|")
+export function parseEmptySuggestions(value?: string | string[]): string[] {
+  const suggestions = Array.isArray(value)
+    ? value
+    : (value ?? "").split("|");
+  const normalized = suggestions
     .map((suggestion) => suggestion.trim())
     .filter(Boolean);
 
-  return suggestions.length > 0 ? suggestions : [...DEFAULT_EMPTY_SUGGESTIONS];
+  return normalized.length > 0 ? normalized : [...DEFAULT_EMPTY_SUGGESTIONS];
 }

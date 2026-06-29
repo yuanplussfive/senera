@@ -82,6 +82,22 @@ ActionPlanner(BAML 轻量规划)──► 决定下一步:Answer / AskUser / Dis
 
 要求:**Node.js 20+**
 
+### Docker 一键部署
+
+```bash
+docker compose up -d
+```
+
+打开 `http://localhost:8787`。运行数据会保存到 `docker-data/`，首次启动会自动生成 `docker-data/senera.config.json`。
+
+需要从当前源码构建镜像时：
+
+```bash
+docker compose up -d --build
+```
+
+### 本地开发启动
+
 **1. 安装依赖**(根目录与前端各一次):
 
 ```bash

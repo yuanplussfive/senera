@@ -41,9 +41,10 @@ import { useSocketPostIngestEffects } from "./app/useSocketPostIngestEffects";
 import { useWorkflowNavigation } from "./app/useWorkflowNavigation";
 import { useResponsiveMode } from "./shared/responsive";
 import { installCopyableToasts } from "./shared/ui/installCopyableToasts";
+import { resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { generateId } from "./lib/util";
 
-const WS_URL = __SENERA_DEFAULT_WS_URL__;
+const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 installCopyableToasts();
 
 type PendingPluginConfigOperation = {
