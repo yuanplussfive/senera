@@ -21,11 +21,7 @@ export function decodeSeneraProcessOutput(
   }
 
   const detected = normalizeDetectedEncoding(detect(buffer));
-  const candidates = [
-    process.platform === "win32" ? "gb18030" : undefined,
-    detected,
-    "utf8",
-  ].filter((value): value is string => Boolean(value));
+  const candidates = buildEncodingCandidates(detected);
 
   for (const candidate of candidates) {
     if (iconv.encodingExists(candidate)) {
@@ -50,4 +46,19 @@ function normalizeDetectedEncoding(value: string | null): string | undefined {
     "iso-8859-1": "latin1",
   };
   return aliases[normalized] ?? normalized;
+}
+
+function buildEncodingCandidates(detected: string | undefined): string[] {
+  const candidates = [
+    process.platform === "win32" ? "gb18030" : undefined,
+    isLikelyMisdetectedGb18030(detected) ? "gb18030" : undefined,
+    detected,
+    "utf8",
+  ].filter((value): value is string => Boolean(value));
+
+  return Array.from(new Set(candidates));
+}
+
+function isLikelyMisdetectedGb18030(detected: string | undefined): boolean {
+  return detected === "big5";
 }
