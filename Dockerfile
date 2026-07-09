@@ -9,7 +9,8 @@ RUN apt-get update \
 COPY . .
 
 RUN npm install --ignore-scripts
-RUN npm run sandboxprepare -- --base-dir /opt/senera/sandbox-runtime --bundle-dir /opt/senera/sandbox-bundles --skip-image-pull
+RUN mkdir -p /opt/senera/sandbox-runtime /opt/senera/sandbox-bundles \
+  && node --import tsx Build/PrepareSandboxRuntime.ts --base-dir /opt/senera/sandbox-runtime --bundle-dir /opt/senera/sandbox-bundles --skip-image-pull
 RUN npm run build
 RUN npm --workspace senera-frontend run build
 RUN npm prune --omit=dev
