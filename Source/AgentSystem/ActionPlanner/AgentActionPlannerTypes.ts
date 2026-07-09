@@ -1,5 +1,4 @@
-import type { ActionPlanInput, TaskFrame } from "../BamlClient/baml_client/index.js";
-import type { AgentCompletionGateDecision } from "../Loop/AgentCompletionGate.js";
+import type { ActionPlanInput } from "../BamlClient/baml_client/index.js";
 
 export type AgentActionKind =
   | "answer"
@@ -47,8 +46,6 @@ export interface AgentActionPlanResult {
   kind: "planned";
   decision: AgentActionDecision;
   input: ActionPlanInput;
-  taskFrame?: TaskFrame;
-  evidenceDecision?: AgentCompletionGateDecision;
   selectedAction: AgentActionKind;
   selectionRepaired: boolean;
   payloadRepaired: boolean;

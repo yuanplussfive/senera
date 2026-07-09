@@ -1,5 +1,8 @@
-import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
+import * as AjvModule from "ajv";
+import type { ErrorObject, ValidateFunction } from "ajv";
 import type { AgentPromptContractView } from "../Prompt/AgentPromptContractProjector.js";
+
+const Ajv = (AjvModule.default ?? AjvModule) as unknown as typeof import("ajv").default;
 
 const ajv = new Ajv({
   allErrors: true,

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { app, BrowserWindow, dialog, Menu } from "electron";
+import electron from "electron";
 import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
 import {
   appendDesktopLog,
@@ -9,8 +9,10 @@ import {
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
 import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
 
+const { app, BrowserWindow, dialog, Menu } = electron;
+
 let serverHandle: SeneraServerHandle | undefined;
-let mainWindow: BrowserWindow | undefined;
+let mainWindow: electron.BrowserWindow | undefined;
 let runtimePaths: DesktopRuntimePaths | undefined;
 
 app.setName("Senera");
@@ -34,6 +36,7 @@ app.whenReady()
         label: paths.configDatabasePath,
       },
       runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
+      resourcesPath: paths.appRoot,
     });
     mainWindow = createMainWindow();
     void mainWindow.loadFile(runtimePaths.frontendIndexHtml);
@@ -64,7 +67,7 @@ app.on("before-quit", () => {
   serverHandle = undefined;
 });
 
-function createMainWindow(): BrowserWindow {
+function createMainWindow(): electron.BrowserWindow {
   return new BrowserWindow({
     width: 1360,
     height: 880,

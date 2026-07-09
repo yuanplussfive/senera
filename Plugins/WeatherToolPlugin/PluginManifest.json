@@ -6,11 +6,32 @@
     "Kind": "Tool",
     "Entry": {
       "Kind": "Process",
-      "Command": "node",
+      "Command": "npm",
       "Args": [
-        "index.js"
+        "run",
+        "tool"
       ],
       "Cwd": "."
+    }
+  },
+  "Runtime": {
+    "Kind": "Node",
+    "NodeVersion": "22",
+    "PackageManager": "npm",
+    "Install": "none",
+    "Script": "tool",
+    "SandboxProfile": "node-plugin"
+  },
+  "Sandbox": {
+    "Network": "Allow",
+    "Workspace": {
+      "Read": [
+        "PluginConfig.toml"
+      ],
+      "Write": []
+    },
+    "State": {
+      "Write": []
     }
   },
   "Prompting": {
@@ -29,6 +50,12 @@
         "network:https://*.qweatherapi.com",
         "network:https://weather.visualcrossing.com"
       ],
+      "Execution": {
+        "Boundary": "Sandbox",
+        "Network": "Allow",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Deny"
+      },
       "Artifacts": {
         "Redact": {
           "Paths": [

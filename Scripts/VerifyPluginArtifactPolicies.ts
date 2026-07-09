@@ -66,32 +66,11 @@ const fixtures: Record<string, ToolPolicyFixture> = {
       query: "search workspace tools",
       tools: {
         item: [{
-          name: "FastContextSearchTool",
-          title: "Fast Context Search Tool",
-          summary: "Search local workspace content.",
+          name: "WorkspaceGrep",
+          title: "Workspace Grep",
+          summary: "Search local workspace content through MCP ripgrep.",
           score: 0.92,
         }],
-      },
-    },
-  },
-  ApplyPatchTool: {
-    expectedKinds: [
-      "workspace_file",
-    ],
-    result: {
-      dryRun: false,
-      changedFiles: {
-        item: [{
-          path: "Source/AgentSystem/Types/AgentConfigTypes.ts",
-          status: "modified",
-          additions: 4,
-          deletions: 1,
-        }],
-      },
-      diagnostics: {
-        item: [
-          "编辑已应用，共 1 个文件。",
-        ],
       },
     },
   },
@@ -144,225 +123,65 @@ const fixtures: Record<string, ToolPolicyFixture> = {
       source: "Tavily",
     },
   },
-  FastContextHybridSearchTool: {
+  WorkspaceReadFile: mcpToolResultFixture("package.json content"),
+  WorkspaceListDirectory: mcpToolResultFixture("[FILE] package.json\n[DIR] Source"),
+  WorkspaceSearchFiles: mcpToolResultFixture("Source/AgentSystem/ToolRuntime/AgentToolRunner.ts"),
+  WorkspaceGrep: mcpToolResultFixture("Source/AgentSystem/ToolRuntime/AgentToolRunner.ts:17:export interface AgentToolRunnerLike"),
+  WorkspaceListFiles: mcpToolResultFixture("Source/AgentSystem/ToolRuntime/AgentToolRunner.ts"),
+  WorkspaceEditFile: {
     expectedKinds: [
-      "workspace_search_match",
+      "workspace_write_result",
     ],
-    expectedEvidenceCount: 2,
-    result: searchResultFixture("hybrid context", "combined"),
+    result: mcpToolResult("Successfully applied edits to Source/AgentSystem/ToolRuntime/AgentToolRunner.ts"),
   },
-  FastContextScoutTool: {
+  WorkspaceWriteFile: {
     expectedKinds: [
-      "workspace_scout_file",
+      "workspace_write_result",
     ],
-    expectedEvidenceCount: 2,
-    result: {
-      question: "项目主模型配置文件在哪里",
-      workspaceRoot,
-      files: {
-        item: [
-          {
-            path: "Source/AgentSystem/AgentDefaults.ts",
-            startLine: 1,
-            endLine: 80,
-            totalLines: 420,
-            score: 0.93,
-            reason: "contains default model provider configuration",
-            focus: "AgentDefaults model provider defaults",
-            content: "export const AgentDefaults = { ModelProviders: [...] }",
-          },
-          {
-            path: "senera.config.json",
-            startLine: 1,
-            endLine: 60,
-            totalLines: 180,
-            score: 0.89,
-            reason: "contains project runtime configuration",
-            focus: "project config",
-            content: "{ \"ModelProviders\": [] }",
-          },
-        ],
-      },
-    },
+    result: mcpToolResult("Successfully wrote to docs/Development/McpWrite.md"),
   },
-  FastContextSearchTool: {
+  WorkspaceCreateDirectory: {
     expectedKinds: [
-      "workspace_search_match",
+      "workspace_write_result",
     ],
-    expectedEvidenceCount: 2,
-    result: searchResultFixture("exact context", "ripgrep"),
+    result: mcpToolResult("Successfully created directory docs/Development"),
   },
-  FastContextSymbolSearchTool: {
+  WorkspaceMoveFile: {
     expectedKinds: [
-      "workspace_symbol",
+      "workspace_write_result",
     ],
-    expectedEvidenceCount: 2,
-    result: {
-      query: "AgentToolExecutionArtifactRecorder",
-      workspaceRoot,
-      symbols: {
-        item: [
-          {
-            id: "Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.ts:AgentToolExecutionArtifactRecorder:class",
-            name: "AgentToolExecutionArtifactRecorder",
-            kind: "class",
-            path: "Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.ts",
-            line: 26,
-            startLine: 26,
-            endLine: 203,
-            signature: "export class AgentToolExecutionArtifactRecorder",
-            exported: true,
-            imports: {
-              item: [],
-            },
-            score: 0.96,
-          },
-          {
-            id: "Source/AgentSystem/Artifacts/AgentArtifactEvidenceProjection.ts:collectArtifactEvidence:function",
-            name: "collectArtifactEvidence",
-            kind: "function",
-            path: "Source/AgentSystem/Artifacts/AgentArtifactEvidenceProjection.ts",
-            line: 13,
-            startLine: 13,
-            endLine: 28,
-            signature: "export function collectArtifactEvidence",
-            exported: true,
-            imports: {
-              item: [],
-            },
-            score: 0.84,
-          },
-        ],
-      },
-      warnings: {
-        item: [],
-      },
-      availableRoots: {
-        item: [
-          workspaceRoot,
-        ],
-      },
-      stats: {
-        resultCount: 2,
-        symbolCount: 2,
-        refreshedIndex: false,
-        elapsedMs: 11,
-      },
-    },
+    result: mcpToolResult("Successfully moved old.md to docs/new.md"),
   },
-  FastContextReadTool: {
+  WorkspaceApplyPatch: {
     expectedKinds: [
-      "workspace_read",
+      "workspace_patch_result",
     ],
     result: {
-      kind: "file",
-      path: "Source/AgentSystem/Types/AgentConfigTypes.ts",
-      startLine: 300,
-      endLine: 340,
-      totalLines: 620,
-      content: "export interface ToolArtifactEvidenceManifest { ... }",
-      truncated: false,
-    },
-  },
-  FastContextIndexSearchTool: {
-    expectedKinds: [
-      "workspace_search_match",
-    ],
-    expectedEvidenceCount: 2,
-    result: searchResultFixture("indexed context", "index"),
-  },
-  FastContextRefreshIndexTool: {
-    expectedKinds: [
-      "workspace_index",
-    ],
-    result: {
-      workspaceRoot,
-      indexedFiles: 120,
-      indexedDocuments: 310,
-      indexedSymbols: 88,
-      skippedFiles: 4,
-      stateFile: ".state/FastContextIndex.json",
-      warnings: {
-        item: [],
-      },
-      availableRoots: {
-        item: [
-          workspaceRoot,
-        ],
-      },
-      elapsedMs: 153,
-    },
-  },
-  FastContextWorkspaceMapTool: {
-    expectedKinds: [
-      "workspace_map_path",
-      "workspace_recommended_root",
-    ],
-    expectedEvidenceCount: 7,
-    result: {
-      workspaceRoot,
-      topLevel: {
-        item: [
-          {
-            path: "Source",
-            kind: "directory",
-            purpose: "Runtime source code.",
-            children: {
-              item: [
-                "AgentSystem",
-              ],
-            },
-          },
-          {
-            path: "Plugins",
-            kind: "directory",
-            purpose: "Tool plugin packages.",
-            children: {
-              item: [
-                "FastContextSearchToolPlugin",
-              ],
-            },
-          },
-        ],
-      },
-      indexedRoots: {
-        item: [
-          "Source",
-        ],
-      },
-      availableRoots: {
-        item: [
-          workspaceRoot,
-        ],
-      },
-      project: {
-        markers: {
-          item: [
-            "package.json",
+      text: "Workspace patch applied 2 operation(s) over 2 path(s).",
+      applied: true,
+      dryRun: false,
+      fuzzFactor: 0,
+      operationCount: 2,
+      changedPaths: [
+        "Source/Example.ts",
+        "docs/Example.md",
+      ],
+      operations: [
+        {
+          kind: "update",
+          path: "Source/Example.ts",
+          changedPaths: [
+            "Source/Example.ts",
           ],
         },
-        sourceRoots: {
-          item: [
-            "Source",
+        {
+          kind: "add",
+          path: "docs/Example.md",
+          changedPaths: [
+            "docs/Example.md",
           ],
         },
-        entryPoints: {
-          item: [
-            "Source/AgentSystem/AgentSystemRuntime.ts",
-          ],
-        },
-        recommendedRoots: {
-          item: [
-            "Source",
-            "System/Plugins",
-          ],
-        },
-      },
-      guidance: {
-        item: [
-          "Use search before reading unknown files.",
-        ],
-      },
+      ],
     },
   },
   WeatherTool: {
@@ -639,40 +458,6 @@ const fixtures: Record<string, ToolPolicyFixture> = {
       guidance: "Memory was written as active long-term memory.",
     },
   },
-  AgentDelegateTool: {
-    expectedKinds: [
-      "agent_delegation_job",
-    ],
-    expectedEvidenceCount: 3,
-    result: {
-      workflow: {
-        name: "ParallelPullRequestReview",
-        title: "并行变更审查",
-        description: "按安全、测试缺口和可维护性并行审查变更。",
-        pluginName: "AgentWorkflowSkillsPlugin",
-      },
-      objective: "并行审查当前 PR。",
-      execution: {
-        mode: "plan",
-        status: "readyForRuntime",
-      },
-      jobs: {
-        item: [
-          agentDelegationJobFixture("job_security", "SecurityReviewer", "安全审查代理"),
-          agentDelegationJobFixture("job_test", "TestGapReviewer", "测试缺口代理"),
-          agentDelegationJobFixture("job_maintainability", "MaintainabilityReviewer", "可维护性审查代理"),
-        ],
-      },
-      jobCount: 3,
-      mergePolicy: {
-        name: "FindingsBySeverity",
-        description: "将多个审查代理的发现按严重度、证据和文件位置合并。",
-        strategy: "findings.bySeverity",
-        templateFile: "System/Plugins/AgentWorkflowSkillsPlugin/merges/FindingsBySeverity.liquid",
-        outputSchema: "System/Plugins/AgentWorkflowSkillsPlugin/schemas/FindingList.schema.json",
-      },
-    },
-  },
   AskUserTool: {
     expectedKinds: [
       "clarification_request",
@@ -711,6 +496,7 @@ async function main(): Promise<void> {
   const recorder = new AgentToolExecutionArtifactRecorder({
     workspaceRoot,
     config: resolveArtifactsConfig(config),
+    model: "test",
   });
   const results: ExecutedToolCallResult[] = [];
 
@@ -748,6 +534,9 @@ async function main(): Promise<void> {
     assert.equal(fs.existsSync(result.artifact.files.raw), true);
     assert.equal(fs.existsSync(result.artifact.files.evidence), true);
     assert.equal(fs.existsSync(result.artifact.files.summary), true);
+    assert.equal(fs.existsSync(result.artifact.files.summaryJson), true);
+    assert.equal(result.artifact.structuredSummary?.type, "senera.tool_result_summary.v1");
+    assert.equal(result.artifact.structuredSummary?.artifactUri, result.artifact.artifactUri);
     assertEvidence(result.name, result.artifact.evidence, fixture);
     assertArtifactFiles(result.name, result.artifact);
   }
@@ -983,116 +772,25 @@ function sampleArguments(toolName: string): Record<string, unknown> {
   };
 }
 
-function agentDelegationJobFixture(
-  jobId: string,
-  agentName: string,
-  agentTitle: string,
-): Record<string, unknown> {
+function mcpToolResultFixture(text: string): ToolPolicyFixture {
   return {
-    jobId,
-    index: 0,
-    status: "planned",
-    workflowName: "ParallelPullRequestReview",
-    agentName,
-    agentTitle,
-    agentPluginName: "AgentWorkflowSkillsPlugin",
-    agentDescriptionFile: `System/Plugins/AgentWorkflowSkillsPlugin/agents/${agentName}.md`,
-    agentInstructionsFile: `System/Plugins/AgentWorkflowSkillsPlugin/agents/${agentName}.instructions.md`,
-    taskFile: `System/Plugins/AgentWorkflowSkillsPlugin/tasks/${agentName}.md`,
-    contextPack: "DiffFocusedReadOnly",
-    contextPackDescription: "只给子代理当前变更、diff 证据、相关文件和审查目标。",
-    contextTemplateFile: "System/Plugins/AgentWorkflowSkillsPlugin/contexts/DiffFocusedReadOnly.liquid",
-    contextInputs: {
-      item: [
-        "latestUserRequest",
-        "activeSkill",
-        "workspaceDiff",
-        "evidenceUris",
-        "artifactRefs",
-      ],
-    },
-    toolScope: "agentRecommendedTools",
-    historyPolicy: "none",
-    artifactPolicy: "referencesOnly",
-    evidencePolicy: "compact",
-    recommendedTools: {
-      item: [
-        "FastContextHybridSearchTool",
-        "FastContextReadTool",
-      ],
-    },
-    runtimeProfile: "ReadOnlyReview",
-    outputSchema: "System/Plugins/AgentWorkflowSkillsPlugin/schemas/FindingList.schema.json",
-    required: true,
-    suppliedEvidenceUris: {
-      item: [
-        "DIFF1",
-      ],
-    },
-    suppliedArtifactUris: {
-      item: [
-        "senera://artifact/art_1234567890abcdef12345678",
-      ],
-    },
+    expectedKinds: [
+      "mcp_tool_result",
+    ],
+    result: mcpToolResult(text),
   };
 }
 
-function searchResultFixture(
-  query: string,
-  source: "ripgrep" | "flexsearch" | "index" | "scan" | "path" | "symbol" | "combined",
-): unknown {
+function mcpToolResult(text: string): Record<string, unknown> {
   return {
-    query,
-    workspaceRoot,
-    results: {
-      item: [
-        {
-          path: "Source/AgentSystem/Artifacts/AgentArtifactEvidenceProjection.ts",
-          startLine: 13,
-          endLine: 28,
-          line: 13,
-          snippet: "export function collectArtifactEvidence(value, policy, artifactId) { ... }",
-          score: 0.94,
-          source,
-          matches: {
-            item: [
-              "collectArtifactEvidence",
-            ],
-          },
-          reason: "matches artifact evidence projection",
-        },
-        {
-          path: "Source/AgentSystem/Schemas/PluginManifestSchema.ts",
-          startLine: 55,
-          endLine: 82,
-          line: 61,
-          snippet: "const ToolArtifactEvidenceSchema = z.object({ ... })",
-          score: 0.88,
-          source,
-          matches: {
-            item: [
-              "ToolArtifactEvidenceSchema",
-            ],
-          },
-          reason: "matches plugin manifest policy schema",
-        },
-      ],
-    },
-    warnings: {
-      item: [],
-    },
-    availableRoots: {
-      item: [
-        workspaceRoot,
-      ],
-    },
-    stats: {
-      resultCount: 2,
-      ripgrepMatchCount: source === "ripgrep" ? 2 : 0,
-      queryPatternCount: 1,
-      indexDocumentCount: 120,
-      refreshedIndex: false,
-      elapsedMs: 19,
+    text,
+    mcp: {
+      content: {
+        item: [{
+          type: "text",
+          text,
+        }],
+      },
     },
   };
 }

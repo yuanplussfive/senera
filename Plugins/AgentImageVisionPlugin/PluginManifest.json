@@ -23,6 +23,12 @@
         "Kind": "HostCapability",
         "Capability": "image.vision"
       },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Allow",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Allow"
+      },
       "Artifacts": {
         "Evidence": [
           {

@@ -1,0 +1,36 @@
+const EventMessageCatalog: Record<string, string> = {
+  "session.created": "会话已创建",
+  "session.snapshot": "会话快照",
+  "session.closed": "会话已关闭",
+  "session.busy": "会话忙碌",
+  "session.not_found": "会话不存在",
+  "run.started": "任务开始",
+  "prompt.summary": "提示词摘要",
+  "action.planner.stage.started": "行动规划阶段开始",
+  "action.planner.stage.completed": "行动规划阶段完成",
+  "action.planner.stage.failed": "行动规划阶段失败",
+  "interaction.routed": "运行路径已选择",
+  "action.planned": "行动规划完成",
+  "model.started": "模型开始输出",
+  "model.delta": "",
+  "model.completed": "模型输出完成",
+  "pi.trace": "Pi 原生轨迹",
+  "tool.call.result.detail": "工具结果详情已生成",
+  "assistant.message.created": "助手消息",
+  "sandbox.status.snapshot": "安全沙箱状态已同步",
+  "sandbox.install.started": "安全沙箱初始化开始",
+  "sandbox.install.completed": "安全沙箱初始化完成",
+  "sandbox.install.failed": "安全沙箱初始化失败",
+  "run.failed": "任务失败",
+  "run.completed": "任务完成",
+  "request.invalid": "请求无效",
+  "config.reloaded": "配置已热更新",
+  "config.failed": "配置热更新失败",
+  "model.list.snapshot": "模型列表已同步",
+  "plugin.config.snapshot": "插件配置已同步",
+  "profile.snapshot": "用户资料已同步",
+};
+
+export function eventDisplayMessage(kind: string): string {
+  return EventMessageCatalog[kind] ?? kind;
+}

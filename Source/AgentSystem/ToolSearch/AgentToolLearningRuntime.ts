@@ -19,6 +19,7 @@ import {
   stringifyIssueValue,
 } from "../ActionPlanner/AgentActionPlannerFailure.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 
 export interface AgentToolLearningEpisodeDraft {
   episode: Omit<AgentToolSearchEpisode, "learnedKeywords">;
@@ -37,6 +38,7 @@ export class AgentToolLearningRuntime {
     model: ResolvedAgentModelProviderConfig,
     private readonly config: ResolvedAgentToolLearningConfig,
     private readonly memory: AgentToolSearchMemory,
+    private readonly logger?: AgentLogger,
   ) {
     this.client = new AgentActionPlannerModelClient(model, config.Client, {
       maxRepairAttempts: config.MaxRepairAttempts,
@@ -143,7 +145,7 @@ export class AgentToolLearningRuntime {
   }
 
   private reportSkip(draft: AgentToolLearningEpisodeDraft, reason: string): void {
-    console.debug("[tool-learning] skipped", {
+    this.logger?.info("tool.learning.skipped", {
       reason,
       standaloneRequest: draft.standaloneRequest,
       chosenTools: draft.episode.chosenTools,
@@ -151,7 +153,7 @@ export class AgentToolLearningRuntime {
   }
 
   private reportFailure(draft: AgentToolLearningEpisodeDraft, error: unknown): void {
-    console.warn("[tool-learning] failed", {
+    this.logger?.warn("tool.learning.failed", {
       message: error instanceof Error ? error.message : String(error),
       standaloneRequest: draft.standaloneRequest,
       chosenTools: draft.episode.chosenTools,

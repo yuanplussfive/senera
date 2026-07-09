@@ -1,7 +1,7 @@
 export const AgentXmlErrorCodes = {
-  EmptyDecisionXml: "EmptyDecisionXml",
-  DecisionXmlTokenLimitExceeded: "DecisionXmlTokenLimitExceeded",
-  DecisionXmlTooLong: "DecisionXmlTooLong",
+  EmptyXml: "EmptyXml",
+  XmlTokenLimitExceeded: "XmlTokenLimitExceeded",
+  XmlTooLong: "XmlTooLong",
   InvalidXmlSyntax: "InvalidXmlSyntax",
   InvalidXmlEnvelope: "InvalidXmlEnvelope",
   XmlEnvelopePrefixText: "XmlEnvelopePrefixText",
@@ -19,7 +19,6 @@ export const AgentXmlErrorCodes = {
   XmlDepthExceeded: "XmlDepthExceeded",
   InvalidDecisionPayload: "InvalidDecisionPayload",
   UnknownDecisionRoot: "UnknownDecisionRoot",
-  ForbiddenOutputXml: "ForbiddenOutputXml",
 } as const;
 
 export const AgentExecutionErrorCodes = {

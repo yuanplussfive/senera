@@ -30,6 +30,7 @@ import {
   buildArtifactProjection,
   buildArtifactSummary,
 } from "./AgentArtifactTemplateProjection.js";
+import { AgentToolResultSummaryCompiler } from "./AgentToolResultSummaryCompiler.js";
 import {
   writeToolWorkspaceArtifacts,
 } from "./AgentToolWorkspaceArtifactRecorder.js";
@@ -37,6 +38,7 @@ import {
 export interface AgentToolExecutionArtifactRecorderOptions {
   workspaceRoot: string;
   config: ResolvedAgentArtifactsConfig;
+  model: string;
 }
 
 export interface RecordToolArtifactsInput {
@@ -46,7 +48,15 @@ export interface RecordToolArtifactsInput {
 }
 
 export class AgentToolExecutionArtifactRecorder {
-  constructor(private readonly options: AgentToolExecutionArtifactRecorderOptions) {}
+  private readonly options: AgentToolExecutionArtifactRecorderOptions;
+  private readonly summaryCompiler: AgentToolResultSummaryCompiler;
+
+  constructor(options: AgentToolExecutionArtifactRecorderOptions) {
+    this.options = options;
+    this.summaryCompiler = new AgentToolResultSummaryCompiler({
+      model: options.model,
+    });
+  }
 
   async record(input: RecordToolArtifactsInput): Promise<ExecutedToolCallResult[]> {
     const previousEvidence = new Set<string>();
@@ -115,7 +125,7 @@ export class AgentToolExecutionArtifactRecorder {
           changes: workspaceArtifacts.changes,
         }
       : undefined;
-    const summary = buildArtifactSummary({
+    const deterministicSummary = buildArtifactSummary({
       toolName: input.result.name,
       callId: input.result.callId,
       args: redactedInput,
@@ -130,9 +140,20 @@ export class AgentToolExecutionArtifactRecorder {
         relativePath: locator.relativeDir,
       },
       workspace: workspaceProjection,
-      maxChars: this.options.config.SummaryMaxChars,
     });
-    const artifact: ExecutedToolCallArtifact = {
+    const structuredSummary = this.summaryCompiler.compile({
+      toolName: input.result.name,
+      callId: input.result.callId,
+      status: readToolResultStatus(input.result),
+      artifactUri: locator.artifactUri,
+      deterministicSummary,
+      result: redactedRaw,
+      evidence,
+      delta,
+      workspace: workspaceProjection,
+    });
+    const summary = this.summaryCompiler.renderMarkdown(structuredSummary);
+    const artifactBase: ExecutedToolCallArtifact = {
       artifactId: locator.artifactId,
       artifactUri: locator.artifactUri,
       artifactPath: locator.absoluteDir,
@@ -140,9 +161,22 @@ export class AgentToolExecutionArtifactRecorder {
       manifestPath: locator.files.manifest,
       files: locator.files,
       summary,
+      structuredSummary,
       evidence,
       delta,
       workspace: workspaceProjection,
+    };
+    const projection = buildArtifactProjection({
+      artifact: artifactBase,
+      toolName: input.result.name,
+      callId: input.result.callId,
+      args: redactedInput,
+      result: redactedRaw,
+      policy: input.result.artifactPolicy,
+    });
+    const artifact: ExecutedToolCallArtifact = {
+      ...artifactBase,
+      projection,
     };
 
     await fs.mkdir(locator.absoluteDir, { recursive: true });
@@ -199,6 +233,20 @@ function buildArtifactDelta(input: {
   ];
 }
 
+function readToolResultStatus(result: ExecutedToolCallResult): "success" | "failure" | "empty" {
+  const structuredError = readRecord(result.result)?.error;
+  if (structuredError || result.process.exitCode !== 0 || result.process.signal) {
+    return "failure";
+  }
+  return result.result === undefined || result.result === null ? "empty" : "success";
+}
+
+function readRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
 async function writeToolArtifactFiles(input: {
   config: ResolvedAgentArtifactsConfig;
   artifact: ExecutedToolCallArtifact;
@@ -253,6 +301,7 @@ async function writeToolArtifactFiles(input: {
   await writeArtifactJson(input.artifact.files.input, input.redactedInput);
   await writeBoundedArtifactJson(input.artifact.files.raw, input.redactedRaw, input.config.RawJsonMaxBytes);
   await writeArtifactText(input.artifact.files.summary, input.artifact.summary, input.config.TextFileMaxBytes);
+  await writeArtifactJson(input.artifact.files.summaryJson, input.artifact.structuredSummary);
   await writeArtifactJson(input.artifact.files.evidence, {
     artifactId: input.artifact.artifactId,
     artifactUri: input.artifact.artifactUri,
@@ -261,14 +310,7 @@ async function writeToolArtifactFiles(input: {
   });
   await writeArtifactText(
     input.artifact.files.projection,
-    buildArtifactProjection({
-      artifact: input.artifact,
-      toolName: input.result.name,
-      callId: input.result.callId,
-      args: input.redactedInput,
-      result: input.redactedRaw,
-      policy: input.result.artifactPolicy,
-    }),
+    input.artifact.projection ?? "",
     input.config.TextFileMaxBytes,
   );
   await writeArtifactJson(input.artifact.files.delta, {

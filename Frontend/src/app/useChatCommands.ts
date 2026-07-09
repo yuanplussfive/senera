@@ -20,6 +20,7 @@ export interface UseChatCommandsOptions {
     requestId: string,
     input: string,
     attachments?: UploadAttachmentData[],
+    options?: { createRun?: boolean },
   ) => void;
   lastSendRef: MutableRefObject<LastSentMessage | null>;
   pendingAfterTruncateRef: MutableRefObject<PendingAfterTruncate[]>;
@@ -34,9 +35,11 @@ export interface ChatCommandsHandle {
   deleteFromMessage: (message: ChatMessage) => void;
   editUserMessage: (message: ChatMessage, nextContent: string) => void;
   regenerateMessage: (message: ChatMessage) => void;
-  sendMessage: (input: string, attachments?: UploadAttachmentData[]) => void;
+  sendMessage: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
   sendAfterTruncate: (pending: PendingAfterTruncate) => boolean;
 }
+
+export type MessageQueueMode = Extract<WsRequest, { type: "session.message" }>["queueMode"];
 
 export interface LastSentMessage {
   sessionId: string;
@@ -44,6 +47,7 @@ export interface LastSentMessage {
   input: string;
   attachments?: UploadAttachmentData[];
   modelProviderId?: string;
+  queueMode?: MessageQueueMode;
 }
 
 export type SendTargetResolution =
@@ -272,7 +276,11 @@ export function useChatCommands({
     toast.success("已删除");
   }, [activeSessionId, send, status]);
 
-  const sendMessage = useCallback((input: string, attachments?: UploadAttachmentData[]): void => {
+  const sendMessage = useCallback((
+    input: string,
+    attachments?: UploadAttachmentData[],
+    queueMode?: MessageQueueMode,
+  ): void => {
     const state = useStore.getState();
     const modelProviderId = state.selectedModelProviderId ?? undefined;
     const target = resolveSendTargetSession({
@@ -293,7 +301,11 @@ export function useChatCommands({
     }
 
     if (target.shouldCreateSession) {
-      const ok = send({ type: "session.create", sessionId: targetSessionId });
+      const ok = send({
+        type: "session.create",
+        sessionId: targetSessionId,
+        modelProviderId,
+      });
       if (!ok) {
         toast.error("创建会话失败，连接可能已断开");
         return;
@@ -304,7 +316,11 @@ export function useChatCommands({
 
     const requestId = generateId();
     if (!serverKnownSessionIdsRef.current.has(targetSessionId)) {
-      const ok = send({ type: "session.create", sessionId: targetSessionId });
+      const ok = send({
+        type: "session.create",
+        sessionId: targetSessionId,
+        modelProviderId,
+      });
       if (!ok) {
         toast.error("创建会话失败，连接可能已断开");
         return;
@@ -312,8 +328,10 @@ export function useChatCommands({
       serverKnownSessionIdsRef.current.add(targetSessionId);
     }
 
-    appendUserMessage(targetSessionId, requestId, input, attachments);
-    lastSendRef.current = { sessionId: targetSessionId, requestId, input, attachments, modelProviderId };
+    appendUserMessage(targetSessionId, requestId, input, attachments, {
+      createRun: queueMode === undefined,
+    });
+    lastSendRef.current = { sessionId: targetSessionId, requestId, input, attachments, modelProviderId, queueMode };
     const ok = send({
       type: "session.message",
       sessionId: targetSessionId,
@@ -321,6 +339,7 @@ export function useChatCommands({
       modelProviderId,
       input,
       attachments,
+      queueMode,
     });
     if (!ok) {
       toast.error("发送失败，连接可能已断开");

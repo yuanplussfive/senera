@@ -1,19 +1,9 @@
 export type {
-  AgentCliConfig,
   AgentFrontendClientConfig,
   AgentFrontendConfig,
   AgentFrontendServerConfig,
   ResolvedAgentFrontendConfig,
 } from "./AgentAppConfigTypes.js";
-export type {
-  AgentDelegationConfig,
-  AgentDelegationMergeConfig,
-  AgentDelegationRuntimeMode,
-  AgentDelegationRuntimeProfileConfig,
-  AgentDelegationTemplateConfig,
-  ResolvedAgentDelegationConfig,
-  ResolvedAgentDelegationRuntimeProfileConfig,
-} from "./AgentDelegationConfigTypes.js";
 export type {
   AgentModelCapabilitiesConfig,
   AgentModelGroupConfig,
@@ -40,6 +30,7 @@ export type {
   AgentLoadedToolsConfig,
   AgentLoopConfig,
   AgentPresetsConfig,
+  AgentSandboxRuntimeConfig,
   AgentToolExecutionConfig,
   AgentUploadsConfig,
   ResolvedAgentArtifactsConfig,
@@ -49,6 +40,7 @@ export type {
   ResolvedAgentPluginDiscoveryConfig,
   ResolvedAgentPluginRootsConfig,
   ResolvedAgentPresetsConfig,
+  ResolvedAgentSandboxRuntimeConfig,
   ResolvedAgentToolExecutionConfig,
   ResolvedAgentUploadsConfig,
 } from "./AgentRuntimeConfigTypes.js";

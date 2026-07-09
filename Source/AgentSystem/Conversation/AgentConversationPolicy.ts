@@ -105,6 +105,7 @@ export class AgentConversationPolicy {
         "user.message": (current) => {
           turn.user = current;
         },
+        "openai.transcript": () => undefined,
         "assistant.decision": (current) => {
           turn.assistants.push(current);
         },
@@ -112,7 +113,6 @@ export class AgentConversationPolicy {
           turn.toolResults.push(current);
         },
         "planner.journal": () => undefined,
-        "planner.state_snapshot": () => undefined,
         "tool.evidence_memory": (current) => {
           turn.evidenceMemory.push(current);
         },

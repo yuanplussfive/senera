@@ -1,8 +1,10 @@
 import type { EventEnvelope } from "../../api/eventTypes";
+import { runApprovalEventHandlers } from "./runApprovalProjector";
 import { runDecisionEventHandlers } from "./runDecisionProjector";
 import { type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { runLifecycleEventHandlers } from "./runLifecycleProjector";
 import { runModelStreamEventHandlers } from "./runModelStreamProjector";
+import { runPiTraceEventHandlers } from "./runPiTraceProjector";
 import { runToolAndAnswerEventHandlers } from "./runToolAndAnswerProjector";
 import type { StoreState } from "./types";
 
@@ -10,6 +12,8 @@ const runEventHandlers: RunEventHandlerMap = {
   ...runLifecycleEventHandlers,
   ...runDecisionEventHandlers,
   ...runModelStreamEventHandlers,
+  ...runPiTraceEventHandlers,
+  ...runApprovalEventHandlers,
   ...runToolAndAnswerEventHandlers,
 };
 

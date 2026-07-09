@@ -22,6 +22,12 @@
         "Kind": "HostCapability",
         "Capability": "memory.write"
       },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadWrite",
+        "LocalFallback": "Allow"
+      },
       "Artifacts": {
         "Evidence": [
           {

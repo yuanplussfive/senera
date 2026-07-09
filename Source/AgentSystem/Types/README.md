@@ -8,7 +8,7 @@
 2. `AgentModelConfigTypes` / `AgentPlannerConfigTypes` / `AgentRuntimeConfigTypes`：按配置领域拆分的系统配置契约。
 3. `PluginManifestTypes`：插件 manifest 的统一兼容出口，只保留顶层 manifest 组合。
 4. `PluginManifestSharedTypes` / `PluginToolManifestTypes` / `PluginArtifactManifestTypes` / `PluginSearchManifestTypes`：插件基础、工具、artifact 和搜索相关 manifest 契约。
-5. `PluginSkillManifestTypes` / `PluginAgentManifestTypes` / `PluginRootCommandManifestTypes`：技能、子 agent、工作流和 root command 契约。
+5. `PluginSkillManifestTypes` / `PluginRootCommandManifestTypes`：技能和 root command 契约。
 6. `PluginRuntimeTypes` / `ToolRuntimeTypes`：插件加载后的运行时形态。
 
 ## 边界规则

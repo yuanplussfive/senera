@@ -8,6 +8,7 @@ export interface MessageActionsProps {
   placement: "left" | "right";
   hasRequestId: boolean;
   hasWorkflow: boolean;
+  allowMutation?: boolean;
   showInlineActions: boolean;
   onRegenerate: () => void;
   onDelete: () => void;
@@ -19,16 +20,18 @@ export type MessageActionIntent = "copy" | "viewWorkflow" | "regenerate" | "dele
 export interface MessageActionAvailability {
   hasRequestId: boolean;
   hasWorkflow: boolean;
+  allowMutation?: boolean;
 }
 
 export function readMessageActionIntents({
   hasRequestId,
   hasWorkflow,
+  allowMutation = true,
 }: MessageActionAvailability): MessageActionIntent[] {
   const intents: MessageActionIntent[] = ["copy"];
   if (!hasRequestId) return intents;
   if (hasWorkflow) intents.push("viewWorkflow");
-  intents.push("regenerate", "delete");
+  if (allowMutation) intents.push("regenerate", "delete");
   return intents;
 }
 
@@ -37,6 +40,7 @@ export function MessageActions({
   placement,
   hasRequestId,
   hasWorkflow,
+  allowMutation = true,
   showInlineActions,
   onRegenerate,
   onDelete,
@@ -46,7 +50,7 @@ export function MessageActions({
   const onCopy = async (): Promise<void> => {
     await copyText(content);
   };
-  const intents = readMessageActionIntents({ hasRequestId, hasWorkflow });
+  const intents = readMessageActionIntents({ hasRequestId, hasWorkflow, allowMutation });
 
   return (
     <div

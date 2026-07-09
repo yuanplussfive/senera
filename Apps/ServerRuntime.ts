@@ -8,10 +8,10 @@ import {
   SqliteSessionRepository,
   type AgentSessionRepository,
 } from "../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
-import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import { AgentWebSocketServer } from "../Source/AgentSystem/WebSocket/AgentWebSocketServer.js";
 import {
   resolvePersistenceConfig,
+  resolveSandboxRuntimeConfig,
   resolveServerConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
 import { AgentModelEndpointClient } from "../Source/AgentSystem/ModelEndpoints/AgentModelEndpointClient.js";
@@ -31,11 +31,20 @@ import {
 } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
 import { serializeError } from "../Source/AgentSystem/Diagnostics/AgentErrorSerializer.js";
+import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
+import { AgentServerEventLogger } from "../Source/AgentSystem/Diagnostics/AgentServerEventLogger.js";
+import { AgentApprovalRuntime } from "../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
+import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
+import { AgentPiSessionBootstrapService } from "../Source/AgentSystem/Pi/AgentPiSessionBootstrapService.js";
+import { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
+import { prepareAgentSandboxRuntime } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
+import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
   configPath?: string;
   staticFrontendRoot?: string;
+  resourcesPath?: string;
   configSource?: AgentConfigSourceOptions;
   runtimeConfigProjection?: (config: AgentSystemConfig) => AgentSystemConfig;
 }
@@ -47,51 +56,85 @@ export interface SeneraServerHandle {
   stop(): void;
 }
 
+type ServerEventLogDetail = "compact" | "verbose";
+
 export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServerHandle {
   const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
   const configSource = resolveConfigSource(workspaceRoot, options);
   const configPath = resolveRuntimeConfigPath(workspaceRoot, configSource);
   let server: AgentWebSocketServer;
   let watchedConfigPath: string | undefined;
+  const eventLogDetail = resolveServerEventLogDetail(process.env.SENERA_LOG_EVENTS);
+  const logger = new AgentLogger({
+    verbose: eventLogDetail === "verbose",
+    eventDisplayMode: eventLogDetail,
+  });
+  const eventLogger = new AgentServerEventLogger({
+    logger,
+    detail: eventLogDetail,
+  });
 
   const configService = new AgentConfigService({
     workspaceRoot,
     source: configSource,
   });
+  const approvalRuntime = new AgentApprovalRuntime();
+  const piSessionRegistry = new AgentPiActiveSessionRegistry();
   const projectRuntimeConfig = (config: AgentSystemConfig): AgentSystemConfig =>
     options.runtimeConfigProjection?.(config) ?? config;
   const initialSnapshot = configService.snapshot();
-  const initialRuntime = AgentSystemRuntime.fromConfig({
+  const initialConfig = projectRuntimeConfig(initialSnapshot.value);
+  const runtimeSnapshot = () => {
+    const snapshot = configService.snapshot();
+    return {
+      version: snapshot.version,
+      revision: snapshot.revision,
+      config: projectRuntimeConfig(snapshot.value),
+    };
+  };
+  const configSnapshot = () => runtimeSnapshot().config;
+  const sandboxRuntimeService = new AgentSandboxRuntimeService({
+    workspaceRoot,
+    configSnapshot,
+  });
+  void prepareAgentSandboxRuntime({
+    workspaceRoot,
+    config: resolveSandboxRuntimeConfig(initialConfig),
+    skipImagePull: true,
+    strict: false,
+    log: (message) => logger.info("sandbox.runtime.prepare", { message }),
+  });
+  const runtimeCache = new AgentSystemRuntimeCache({
     workspaceRoot,
     configPath,
-    config: projectRuntimeConfig(initialSnapshot.value),
+    snapshot: runtimeSnapshot,
+    logger,
+    approvalRuntime,
+    piSessionRegistry,
+    resourcesPath: options.resourcesPath,
   });
 
-  const configSnapshot = () => projectRuntimeConfig(configService.snapshot().value);
-
   const loopFactory = (modelProviderId?: string) => {
-    const config = configSnapshot();
-    const runtime = AgentSystemRuntime.fromConfig({
-      workspaceRoot,
-      configPath,
-      config,
-      modelProviderId,
-    });
-    const model = new AgentModelEndpointClient(config, modelProviderId);
+    const runtime = runtimeCache.get(modelProviderId);
+    const model = new AgentModelEndpointClient(runtime.config, modelProviderId);
 
     return new AgentLoop({
       runtime,
       model,
     });
   };
+  const piSessionBootstrap = new AgentPiSessionBootstrapService({
+    runtime: (modelProviderId) => runtimeCache.get(modelProviderId),
+  });
 
-  const repository = createRepository(workspaceRoot, initialRuntime.config);
+  const repository = createRepository(workspaceRoot, initialConfig);
   const memorySourceRepository = new SqliteAgentMemorySourceRepository(
     resolveAgentMemoryDatabasePath(workspaceRoot, DefaultAgentMemoryDatabasePath),
   );
   const memoryLearning = new AgentMemoryLearningRuntime({
     repository: memorySourceRepository,
     configSnapshot,
+    logger,
   });
   const memoryService = new AgentMemoryService({
     sourceRepository: memorySourceRepository,
@@ -104,6 +147,10 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     loopFactory,
     store: sessionStore,
     memoryService,
+    logger,
+    approvalRuntime,
+    piSessions: piSessionRegistry,
+    piSessionBootstrap,
   });
   const userProfileManager = new AgentUserProfileManager(repository);
   const pluginConfigManager = new AgentPluginConfigManager({
@@ -112,7 +159,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   });
 
   server = new AgentWebSocketServer({
-    config: initialRuntime.config,
+    config: initialConfig,
     workspaceRoot,
     staticFrontendRoot: options.staticFrontendRoot,
     configService,
@@ -120,10 +167,14 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     sessionManager,
     userProfileManager,
     pluginConfigManager,
+    approvalRuntime,
+    sandboxRuntimeService,
+    logger,
+    eventLogger,
   });
 
   server.start();
-  if (configSource.kind === "json" && resolveServerConfig(initialRuntime.config).HotReload) {
+  if (configSource.kind === "json" && resolveServerConfig(initialConfig).HotReload) {
     const jsonConfigPath = configSource.configPath;
     watchedConfigPath = jsonConfigPath;
     fs.watchFile(jsonConfigPath, { interval: 500 }, () => {
@@ -154,7 +205,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     });
   }
 
-  const serverConfig = resolveServerConfig(initialRuntime.config);
+  const serverConfig = resolveServerConfig(initialConfig);
 
   return {
     workspaceRoot,
@@ -164,6 +215,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
       if (watchedConfigPath) {
         fs.unwatchFile(watchedConfigPath);
       }
+      runtimeCache.clear();
       server.stop();
       configService.close();
       memoryService.close();
@@ -189,6 +241,10 @@ function resolveConfigPath(workspaceRoot: string): string {
   return configuredPath
     ? path.resolve(workspaceRoot, configuredPath)
     : path.resolve(workspaceRoot, "senera.config.json");
+}
+
+function resolveServerEventLogDetail(value: string | undefined): ServerEventLogDetail {
+  return value?.trim().toLowerCase() === "verbose" ? "verbose" : "compact";
 }
 
 function resolveConfigSource(

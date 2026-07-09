@@ -1,13 +1,12 @@
 export interface RootCommandManifest {
   Action: string;
-  OutputMode: "tool_call_xml" | "final_text" | "open";
+  OutputMode: "final_text" | "open";
   ToolAccess: "disabled" | "restricted" | "discovery_only";
   Objective: string;
   InsufficiencyPolicy: string;
   AllowedTools: RootCommandToolSelectorManifest[];
   ForbiddenOutputs: string[];
   VisibleOutput: RootCommandVisibleOutputManifest;
-  IncludeDecisionProtocol: boolean;
   IncludeToolCatalog: boolean;
 }
 

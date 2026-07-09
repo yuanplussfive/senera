@@ -30,6 +30,7 @@ import { AgentToolSearchUsageMemory } from "./AgentToolSearchUsageMemory.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { AgentToolLearningRuntime } from "./AgentToolLearningRuntime.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 
 export type { LoadedToolsState } from "./AgentToolSearchRuntimeTypes.js";
 export { ToolSearchToolName } from "./AgentToolSearchRuntimeTypes.js";
@@ -47,6 +48,7 @@ export class AgentToolSearchRuntime {
     private readonly learningConfig: ResolvedAgentToolLearningConfig,
     private readonly workspaceRoot: string,
     model: ResolvedAgentModelProviderConfig,
+    logger?: AgentLogger,
   ) {
     this.memory = new AgentToolSearchMemory(config, workspaceRoot);
     this.projectId = createProjectId(workspaceRoot);
@@ -55,6 +57,7 @@ export class AgentToolSearchRuntime {
       model,
       learningConfig,
       this.memory,
+      logger,
     );
     this.usageMemory = new AgentToolSearchUsageMemory(
       this.memory,

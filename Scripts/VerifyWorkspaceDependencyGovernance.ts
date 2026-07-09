@@ -1,17 +1,28 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { sync as spawnSync } from "cross-spawn";
+import crossSpawn from "cross-spawn";
 import fg from "fast-glob";
+
+const { sync: spawnSync } = crossSpawn;
 
 interface PackageJson {
   name?: string;
+  type?: string;
   workspaces?: string[] | {
     packages?: string[];
   };
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
+  exports?: Record<string, PackageExportConditions>;
   build?: ElectronBuilderConfig;
+}
+
+interface PackageExportConditions {
+  types?: string;
+  import?: string;
+  require?: string;
+  default?: string;
 }
 
 interface ElectronBuilderConfig {
@@ -47,7 +58,9 @@ const installedWorkspaces = readInstalledWorkspacePackages();
 const violations = [
   ...inspectWorkspaceCoverage(),
   ...inspectInstalledWorkspaceState(),
+  ...inspectRootNpmPolicy(),
   ...inspectRootScripts(),
+  ...inspectModuleSystemBoundary(),
   ...inspectRootRuntimeDependencies(),
   ...inspectRetiredRootScripts(),
   ...inspectApplicationEntrypoints(),
@@ -88,15 +101,25 @@ function inspectInstalledWorkspaceState(): string[] {
 function inspectRootScripts(): string[] {
   return inspectScripts(rootPackage, "package.json", {
     "clean": "rimraf Dist",
+    "bamlcheck": "baml check --from baml_src",
+    "bamlgenerate": "baml generate --from baml_src",
+    "compileopapolicy": "tsx Build/CompileOpaPolicy.ts",
+    "sandboxprepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
+    "postinstall": "tsx Build/PrepareSandboxRuntime.ts",
+    "securitycheck": "npm audit --audit-level=high",
     "build": "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     "dev": "concurrently -k -n server,frontend -c blue,green \"npm run serverwatch\" \"npm run frontend\"",
+    "dockerup": "docker compose pull && docker compose up -d",
+    "dockerdown": "docker compose down",
+    "dockerlogs": "docker compose logs -f senera",
     "frontend": "npm --workspace senera-frontend run dev",
     "frontendcheck": "npm --workspace senera-frontend run check",
     "frontendtest": "npm --workspace senera-frontend run test",
+    "frontendcoverage": "npm --workspace senera-frontend run coverage",
     "frontendverify": "npm --workspace senera-frontend run verify",
     "server": "npm run build && node Dist/Apps/Server.js",
-    "serverwatch": "tsx watch Apps/Server.ts",
-    "cli": "npm run build && node Dist/Apps/Cli.js",
+    "serverwatch": "tsx Apps/ServerWatch.ts",
+    "serverwatchdry": "tsx Apps/ServerWatch.ts --dry-run",
     "desktop": "npm run build && npm --workspace senera-frontend run build && electron Dist/Apps/Desktop/Main.js",
     "desktoppack": "tsx Apps/Desktop/PackageDesktop.ts",
     "desktoprestore": "npm rebuild better-sqlite3",
@@ -106,16 +129,60 @@ function inspectRootScripts(): string[] {
     "verifycontracts": "npm run build && npm run verifysuite -- contracts",
     "verify": "npm run build && npm run verifysuite -- core",
     "verifyall": "npm run build && npm run verifysuite -- all-local",
-    "ci": "npm run check && npm run build && npm run verifysuite -- workspace core && npm run frontendverify",
+    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run build && npm run verifysuite -- workspace core && npm run frontendverify && npm run frontendcoverage",
   });
 }
 
 function inspectRootRuntimeDependencies(): string[] {
   return inspectDependencies(rootPackage, "package.json", {
     "@senera/tool-plugin-sdk": "file:Packages/ToolPluginSdk",
-    "@senera/workspace-context-core": "file:Packages/WorkspaceContextCore",
-    "@vscode/ripgrep": "^1.15.14",
   });
+}
+
+function inspectModuleSystemBoundary(): string[] {
+  return [
+    ...inspectPackageType(rootPackage, "package.json", "module"),
+    ...inspectRootPackageExports(),
+    ...inspectWorkspacePackageTypes({
+      "Frontend": "module",
+      "Packages/ToolPluginSdk": "commonjs",
+    }),
+    ...inspectWorkspacePackageTypeByPrefix([
+      "Plugins/",
+      "System/Plugins/",
+    ], "commonjs"),
+  ];
+}
+
+function inspectRootPackageExports(): string[] {
+  return Object.entries(rootPackage.exports ?? {})
+    .filter(([, conditions]) => Boolean(conditions.require))
+    .map(([exportPath]) => `package.json export ${exportPath} must not expose a CommonJS require condition.`);
+}
+
+function inspectWorkspacePackageTypes(expectedTypes: Record<string, string>): string[] {
+  return Object.entries(expectedTypes).flatMap(([location, expectedType]) => {
+    const packageJsonPath = path.join(workspaceRoot, location, "package.json");
+    return fs.existsSync(packageJsonPath)
+      ? inspectPackageType(readPackageJson(packageJsonPath), `${location}/package.json`, expectedType)
+      : [];
+  });
+}
+
+function inspectWorkspacePackageTypeByPrefix(prefixes: readonly string[], expectedType: string): string[] {
+  return expectedWorkspaces
+    .filter((workspace) => prefixes.some((prefix) => workspace.location.startsWith(prefix)))
+    .flatMap((workspace) => inspectPackageType(
+      readPackageJson(path.join(workspaceRoot, workspace.location, "package.json")),
+      `${workspace.location}/package.json`,
+      expectedType,
+    ));
+}
+
+function inspectPackageType(packageJson: PackageJson, packagePath: string, expectedType: string): string[] {
+  return packageJson.type === expectedType
+    ? []
+    : [`${packagePath} type must be: ${expectedType}`];
 }
 
 function inspectRetiredRootScripts(): string[] {
@@ -127,7 +194,6 @@ function inspectRetiredRootScripts(): string[] {
 function inspectApplicationEntrypoints(): string[] {
   const expectedFiles = [
     "Apps/Server.ts",
-    "Apps/Cli.ts",
     "Apps/ServerRuntime.ts",
     "Apps/Desktop/Main.ts",
     "Apps/Desktop/DesktopRuntime.ts",
@@ -136,7 +202,6 @@ function inspectApplicationEntrypoints(): string[] {
   ];
   const retiredFiles = [
     "Scripts/SeneraServer.ts",
-    "Scripts/SeneraCli.ts",
     "Scripts/CopyRuntimeAssets.ts",
   ];
 
@@ -159,11 +224,15 @@ function inspectDesktopPackageConfig(): string[] {
     ),
     ...inspectDesktopPackageScript(),
     ...inspectDesktopFileSet("Packages/ToolPluginSdk", "node_modules/@senera/tool-plugin-sdk"),
-    ...inspectDesktopFileSet("Packages/WorkspaceContextCore", "node_modules/@senera/workspace-context-core"),
     ...inspectDesktopAsarUnpack([
       "senera.config.example.json",
       "System/Plugins/**",
       "Plugins/**",
+      "**/*.node",
+      "**/*.dll",
+      "**/*.so",
+      "**/*.dylib",
+      "**/ffi-rs/**",
     ]),
   ];
 }
@@ -193,10 +262,27 @@ function inspectDesktopAsarUnpack(expectedEntries: readonly string[]): string[] 
 function inspectFrontendScripts(): string[] {
   const frontendPackage = readPackageJson(path.join(workspaceRoot, "Frontend", "package.json"));
   return inspectScripts(frontendPackage, "Frontend/package.json", {
+    "arch:check": "node --import tsx ../Scripts/VerifyFrontendArchitecture.ts",
     "check": "tsc --noEmit",
-    "test": "vitest run",
-    "verify": "npm run arch:check && npm run check && npm run test",
+    "test": "node --import tsx ../Scripts/VerifyFrontendStateFlows.ts",
+    "coverage": "vitest run --config ../vitest.config.ts --coverage",
+    "verify": "npm run arch:check && npm run check && node --import tsx ../Scripts/VerifyFrontendTestCoverage.ts && npm run test",
   });
+}
+
+function inspectRootNpmPolicy(): string[] {
+  const npmrcPath = path.join(workspaceRoot, ".npmrc");
+  if (!fs.existsSync(npmrcPath)) {
+    return ["Root .npmrc must disable package-lock generation for this no-lockfile workspace policy."];
+  }
+
+  const lines = fs.readFileSync(npmrcPath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+  return lines.includes("package-lock=false")
+    ? []
+    : [".npmrc must contain package-lock=false."];
 }
 
 function inspectWorkspaceNpmrcFiles(): string[] {

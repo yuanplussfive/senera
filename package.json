@@ -12,12 +12,12 @@
   "exports": {
     ".": {
       "types": "./Source/AgentSystem/AgentSystemRuntime.ts",
-      "require": "./Dist/Source/AgentSystem/AgentSystemRuntime.js",
+      "import": "./Dist/Source/AgentSystem/AgentSystemRuntime.js",
       "default": "./Dist/Source/AgentSystem/AgentSystemRuntime.js"
     },
     "./plugin-sdk": {
       "types": "./Source/AgentSystem/AgentToolPluginSdk.ts",
-      "require": "./Dist/Source/AgentSystem/AgentToolPluginSdk.js",
+      "import": "./Dist/Source/AgentSystem/AgentToolPluginSdk.js",
       "default": "./Dist/Source/AgentSystem/AgentToolPluginSdk.js"
     }
   },
@@ -25,21 +25,24 @@
     "clean": "rimraf Dist",
     "bamlcheck": "baml check --from baml_src",
     "bamlgenerate": "baml generate --from baml_src",
+    "compileopapolicy": "tsx Build/CompileOpaPolicy.ts",
+    "sandboxprepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
+    "postinstall": "tsx Build/PrepareSandboxRuntime.ts",
+    "securitycheck": "npm audit --audit-level=high",
     "check": "tsc --noEmit",
     "build": "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     "dev": "concurrently -k -n server,frontend -c blue,green \"npm run serverwatch\" \"npm run frontend\"",
-    "dockerbuild": "docker build -t senera:local .",
     "dockerup": "docker compose pull && docker compose up -d",
-    "dockerbuildrun": "docker compose up -d --build",
     "dockerdown": "docker compose down",
     "dockerlogs": "docker compose logs -f senera",
     "frontend": "npm --workspace senera-frontend run dev",
     "frontendcheck": "npm --workspace senera-frontend run check",
     "frontendtest": "npm --workspace senera-frontend run test",
+    "frontendcoverage": "npm --workspace senera-frontend run coverage",
     "frontendverify": "npm --workspace senera-frontend run verify",
     "server": "npm run build && node Dist/Apps/Server.js",
-    "serverwatch": "tsx watch Apps/Server.ts",
-    "cli": "npm run build && node Dist/Apps/Cli.js",
+    "serverwatch": "tsx Apps/ServerWatch.ts",
+    "serverwatchdry": "tsx Apps/ServerWatch.ts --dry-run",
     "desktop": "npm run build && npm --workspace senera-frontend run build && electron Dist/Apps/Desktop/Main.js",
     "desktoppack": "tsx Apps/Desktop/PackageDesktop.ts",
     "desktoprestore": "npm rebuild better-sqlite3",
@@ -49,13 +52,13 @@
     "verifycontracts": "npm run build && npm run verifysuite -- contracts",
     "verify": "npm run build && npm run verifysuite -- core",
     "verifyall": "npm run build && npm run verifysuite -- all-local",
-    "ci": "npm run check && npm run build && npm run verifysuite -- workspace core && npm run frontendverify",
+    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run build && npm run verifysuite -- workspace core && npm run frontendverify && npm run frontendcoverage",
     "test": "npm run check && npm run verify"
   },
   "keywords": [],
   "author": "",
   "license": "Apache-2.0",
-  "type": "commonjs",
+  "type": "module",
   "build": {
     "appId": "ai.senera.desktop",
     "productName": "Senera",
@@ -68,18 +71,12 @@
       "Dist/**/*",
       "Frontend/dist/**/*",
       "Apps/Desktop/Assets/**/*",
+      "SandboxBundles/**/*",
       "System/Plugins/**/*",
       "Plugins/**/*",
       {
         "from": "Packages/ToolPluginSdk",
         "to": "node_modules/@senera/tool-plugin-sdk",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "Packages/WorkspaceContextCore",
-        "to": "node_modules/@senera/workspace-context-core",
         "filter": [
           "**/*"
         ]
@@ -92,11 +89,14 @@
     },
     "asarUnpack": [
       "senera.config.example.json",
+      "SandboxBundles/**",
       "System/Plugins/**",
       "Plugins/**",
       "**/*.node",
-      "**/rg.exe",
-      "**/@vscode/ripgrep/**",
+      "**/*.dll",
+      "**/*.so",
+      "**/*.dylib",
+      "**/ffi-rs/**",
       "**/better-sqlite3/**",
       "**/@node-rs/**"
     ],
@@ -116,17 +116,24 @@
     }
   },
   "dependencies": {
+    "@ai-sdk/policy-opa": "^1.0.15",
     "@boundaryml/baml": "^0.222.0",
+    "@earendil-works/pi-agent-core": "^0.74.2",
+    "@earendil-works/pi-ai": "^0.74.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server-filesystem": "^2026.7.4",
     "@node-rs/jieba": "^2.0.1",
+    "@open-policy-agent/opa-wasm": "^1.10.0",
     "@senera/tool-plugin-sdk": "file:Packages/ToolPluginSdk",
-    "@senera/workspace-context-core": "file:Packages/WorkspaceContextCore",
-    "@vscode/ripgrep": "^1.15.14",
     "@types/better-sqlite3": "^7.6.13",
     "@types/busboy": "^1.5.4",
     "@types/diff": "^7.0.2",
     "@types/mime-types": "^3.0.1",
     "@types/yauzl": "^3.4.0",
+    "@vscode/ripgrep": "^1.18.0",
     "@xmldom/xmldom": "^0.9.10",
+    "ai": "^7.0.15",
+    "ai-sdk-guardrails": "^6.0.1",
     "ajv": "^8.20.0",
     "better-sqlite3": "^12.10.0",
     "busboy": "^1.6.0",
@@ -147,6 +154,7 @@
     "json-source-map": "^0.6.1",
     "liquidjs": "^10.25.7",
     "markdown-it": "^14.1.1",
+    "microsandbox": "^0.6.4",
     "mime-types": "^3.0.2",
     "minisearch": "^7.2.0",
     "officeparser": "^7.2.1",
@@ -161,14 +169,22 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.6.2",
     "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "concurrently": "^10.0.3",
     "electron": "^42.5.0",
     "electron-builder": "^26.15.3",
+    "jsdom": "^29.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "rimraf": "^6.1.3",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   }
 }

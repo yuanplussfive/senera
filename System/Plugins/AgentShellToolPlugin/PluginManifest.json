@@ -18,6 +18,12 @@
         "process:shell",
         "filesystem:workspace"
       ],
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Allow",
+        "Workspace": "ReadWrite",
+        "LocalFallback": "Allow"
+      },
       "Handler": {
         "Kind": "HostCapability",
         "Capability": "shell.run"
@@ -86,24 +92,29 @@
         }
       },
       "Search": {
-        "Summary": "在工作区内执行宿主机 shell 命令。",
+        "Summary": "在工作区内执行当前平台 shell 命令，用于测试、构建、git、诊断、脚本和快速只读文件片段检查；文件编辑不要走 shell。",
         "Capabilities": [
           {
             "Id": "host.shell-command",
             "Title": "Host shell command",
-            "Description": "Run shell commands in the workspace for tests, builds, checks, git, scripts, and diagnostics.",
+            "Description": "Run current-platform shell commands in the workspace for tests, builds, checks, git, scripts, diagnostics, and quick read-only inspection.",
             "Facets": {
               "Actions": [
                 "run",
                 "execute",
                 "test",
                 "build",
-                "check"
+                "check",
+                "inspect",
+                "slice-file",
+                "search"
               ],
               "Targets": [
                 "shell",
                 "process",
                 "workspace",
+                "file-fragment",
+                "project-inspection",
                 "test-suite",
                 "build-system"
               ],
@@ -132,7 +143,11 @@
               "终端",
               "run tests",
               "npm run check",
-              "git status"
+              "git status",
+              "PowerShell Get-Content",
+              "PowerShell Get-Command",
+              "sed file slice",
+              "rg search"
             ],
             "Risk": {
               "SideEffect": "process",
@@ -144,16 +159,23 @@
           }
         ],
         "UseCases": [
-          "需要运行测试、构建、类型检查、git、脚本或系统命令时使用。"
+          "需要运行测试、构建、类型检查、git、脚本或系统命令时使用。",
+          "需要验证刚才的文件修改是否通过时使用。",
+          "需要用当前平台 shell 快速读取文件片段、列目录、组合多个只读检查或运行 rg 时使用。"
         ],
         "Examples": [
           "npm run check",
           "git status",
           "node --version",
-          "Frontend tests"
+          "Windows PowerShell: $c=Get-Content -Path Source\\AgentSystem\\Execution\\SeneraShellPlatform.ts; $c[0..80]",
+          "Windows PowerShell: Get-Command pm2 -ErrorAction SilentlyContinue",
+          "Linux/macOS sh: sed -n '1,80p' Source/AgentSystem/Execution/SeneraShellPlatform.ts",
+          "rg \"WorkspaceApplyPatch\" Source System"
         ],
         "Avoid": [
-          "不要用于直接编辑文件；编辑文件使用 ApplyPatchTool。"
+          "不要用于直接编辑文件；工作区文件变更优先使用 WorkspaceApplyPatch。",
+          "需要结构化工具证据或大范围代码搜索时优先使用 WorkspaceReadFile 或 WorkspaceGrep。",
+          "不要在未知影响范围内执行删除、移动、覆盖、安装或网络命令。"
         ],
         "Tags": [
           "命令执行",

@@ -94,7 +94,10 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   }
 
   loadEntries(sessionId: string): AgentConversationEntry[] {
-    return this.stmts.selectEntries.all(sessionId).map(rowToEntry);
+    return this.stmts.selectEntries.all(sessionId).flatMap((row) => {
+      const entry = rowToEntry(row);
+      return entry ? [entry] : [];
+    });
   }
 
   upsertSession(session: AgentSession): void {
@@ -226,4 +229,3 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     this.db.close();
   }
 }
-

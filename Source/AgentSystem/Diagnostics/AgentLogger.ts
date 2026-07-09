@@ -1,18 +1,23 @@
 import * as readline from "node:readline";
-import { AgentConsoleTheme, colorByEventType } from "../CliDisplay/AgentConsoleTheme.js";
-import { AgentConsoleTreeFormatter } from "../CliDisplay/AgentConsoleTreeFormatter.js";
+import { AgentConsoleTheme, colorByEventType } from "../TerminalDisplay/AgentConsoleTheme.js";
+import {
+  AgentConsoleTreeFormatter,
+  type AgentConsoleTreeFormatterOptions,
+} from "../TerminalDisplay/AgentConsoleTreeFormatter.js";
 import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
-import { renderAgentEventDisplay, type AgentEventDisplayMode } from "../CliDisplay/AgentEventDisplayCatalog.js";
+import { renderAgentEventDisplay, type AgentEventDisplayMode } from "../TerminalDisplay/AgentEventDisplayCatalog.js";
 import { measureTerminalWidth } from "../Text/AgentTerminalText.js";
 
 export interface AgentLoggerOptions {
   verbose?: boolean;
   eventDisplayMode?: AgentEventDisplayMode;
+  output?: NodeJS.WriteStream;
 }
 
 export class AgentLogger {
   private readonly treeFormatter: AgentConsoleTreeFormatter;
   private readonly eventDisplayMode: AgentEventDisplayMode;
+  private readonly output: NodeJS.WriteStream;
   private transientRowCount = 0;
 
   constructor(private readonly options: AgentLoggerOptions = {}) {
@@ -22,6 +27,7 @@ export class AgentLogger {
       maxStringLength: options.verbose ? 2400 : 600,
     });
     this.eventDisplayMode = options.eventDisplayMode ?? "compact";
+    this.output = options.output ?? process.stdout;
   }
 
   banner(title: string, details: Record<string, unknown> = {}): void {
@@ -50,7 +56,7 @@ export class AgentLogger {
   }
 
   raw(text: string): void {
-    process.stdout.write(AgentConsoleTheme.xml(text));
+    this.output.write(AgentConsoleTheme.xml(text));
   }
 
   event(event: AgentEventEnvelope<string, unknown>): void {
@@ -69,12 +75,21 @@ export class AgentLogger {
     this.block(title, content, color);
   }
 
+  fullTree(title: string, content: unknown, color: (value: string) => string = AgentConsoleTheme.frame): void {
+    this.clearTransient();
+    this.writeLines(this.renderBlockLines(title, content, color, {
+      maxDepth: Number.MAX_SAFE_INTEGER,
+      maxArrayItems: Number.MAX_SAFE_INTEGER,
+      maxStringLength: Number.MAX_SAFE_INTEGER,
+    }));
+  }
+
   replaceBlock(
     title: string,
     content: unknown,
     color: (value: string) => string = AgentConsoleTheme.frame,
   ): void {
-    if (!process.stdout.isTTY) {
+    if (!this.output.isTTY) {
       return;
     }
 
@@ -86,7 +101,7 @@ export class AgentLogger {
     content: string,
     color: (value: string) => string = AgentConsoleTheme.frame,
   ): void {
-    if (!process.stdout.isTTY) {
+    if (!this.output.isTTY) {
       return;
     }
 
@@ -96,7 +111,7 @@ export class AgentLogger {
   }
 
   replaceView(lines: string[]): void {
-    if (!process.stdout.isTTY) {
+    if (!this.output.isTTY) {
       this.writeLines(lines);
       return;
     }
@@ -105,7 +120,7 @@ export class AgentLogger {
   }
 
   clearTransient(): void {
-    if (!process.stdout.isTTY || this.transientRowCount === 0) {
+    if (!this.output.isTTY || this.transientRowCount === 0) {
       return;
     }
 
@@ -121,7 +136,7 @@ export class AgentLogger {
   ): void {
     const prefix = color(this.padLabel(label, 20));
     const suffix = this.inlineDetails(details, tokens);
-    console.log(`${prefix} ${AgentConsoleTheme.value(message)}${suffix}`);
+    this.writeLine(`${prefix} ${AgentConsoleTheme.value(message)}${suffix}`);
   }
 
   private inlineDetails(details: Record<string, unknown>, tokens: string[] = []): string {
@@ -153,12 +168,14 @@ export class AgentLogger {
     return AgentConsoleTheme.value(this.inlineValue(value));
   }
 
-  private blockLines(value: unknown): string[] {
+  private blockLines(value: unknown, options?: AgentConsoleTreeFormatterOptions): string[] {
     if (typeof value === "string") {
       return value.split(/\r?\n/);
     }
 
-    return this.treeFormatter.format(value);
+    return options
+      ? new AgentConsoleTreeFormatter(options).format(value)
+      : this.treeFormatter.format(value);
   }
 
   private renderBannerLines(title: string, details: Record<string, unknown>): string[] {
@@ -176,25 +193,30 @@ export class AgentLogger {
     title: string,
     content: unknown,
     color: (value: string) => string,
+    options?: AgentConsoleTreeFormatterOptions,
   ): string[] {
     return [
       `${color("╭─")} ${AgentConsoleTheme.label(title)}`,
-      ...this.blockLines(content).map((line) => `${color("│")} ${line}`),
+      ...this.blockLines(content, options).map((line) => `${color("│")} ${line}`),
       color("╰─"),
     ];
   }
 
   private writeLines(lines: string[]): void {
     for (const line of lines) {
-      console.log(line);
+      this.writeLine(line);
     }
+  }
+
+  private writeLine(line: string): void {
+    this.output.write(`${line}\n`);
   }
 
   private rewriteTransient(lines: string[]): void {
     this.eraseTransient();
 
     if (lines.length > 0) {
-      process.stdout.write(`${lines.join("\n")}\n`);
+      this.output.write(`${lines.join("\n")}\n`);
     }
 
     this.transientRowCount = this.measureRenderedRows(lines);
@@ -205,22 +227,22 @@ export class AgentLogger {
       return;
     }
 
-    readline.moveCursor(process.stdout, 0, -this.transientRowCount);
+    readline.moveCursor(this.output, 0, -this.transientRowCount);
     for (let index = 0; index < this.transientRowCount; index += 1) {
-      readline.clearLine(process.stdout, 0);
-      readline.cursorTo(process.stdout, 0);
+      readline.clearLine(this.output, 0);
+      readline.cursorTo(this.output, 0);
       if (index < this.transientRowCount - 1) {
-        readline.moveCursor(process.stdout, 0, 1);
+        readline.moveCursor(this.output, 0, 1);
       }
     }
 
     if (this.transientRowCount > 1) {
-      readline.moveCursor(process.stdout, 0, -(this.transientRowCount - 1));
+      readline.moveCursor(this.output, 0, -(this.transientRowCount - 1));
     }
   }
 
   private measureRenderedRows(lines: string[]): number {
-    const columns = Math.max(process.stdout.columns ?? 120, 1);
+    const columns = Math.max(this.output.columns ?? 120, 1);
     return lines.reduce(
       (count, line) => count + Math.max(1, Math.ceil(this.measureVisibleWidth(line) / columns)),
       0,

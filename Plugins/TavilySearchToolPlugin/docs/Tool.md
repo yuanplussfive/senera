@@ -24,20 +24,6 @@
 
 返回查询、答案、结果列表、图片、用量和请求信息。结果含标题、URL、摘要、分数和发布日期。
 
-## 调用示例
-
-<senera_tool_calls>
-  <tool_call>
-    <name>TavilySearchTool</name>
-    <arguments>
-      <query>OpenAI latest model release May 2026</query>
-      <topic>news</topic>
-      <maxResults>5</maxResults>
-      <includeAnswer>basic</includeAnswer>
-    </arguments>
-  </tool_call>
-</senera_tool_calls>
-
 ## 执行约束
 
 不要传 API key。引用事实时使用返回的标题和 URL。

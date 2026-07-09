@@ -4,8 +4,7 @@ export interface AgentActionPlannerConfig {
   Evidence?: AgentActionPlannerEvidenceConfig;
   Client?: AgentActionPlannerClientConfig;
   TurnUnderstandingClient?: AgentActionPlannerClientConfig;
-  TaskFrameClient?: AgentActionPlannerClientConfig;
-  EvidenceClient?: AgentActionPlannerClientConfig;
+  PlanningClient?: AgentActionPlannerClientConfig;
 }
 
 export interface AgentActionPlannerEvidenceConfig {
@@ -32,8 +31,7 @@ export interface ResolvedAgentActionPlannerConfig {
   Evidence: Required<AgentActionPlannerEvidenceConfig>;
   Client: ResolvedAgentActionPlannerClientConfig;
   TurnUnderstandingClient: ResolvedAgentActionPlannerClientConfig;
-  TaskFrameClient: ResolvedAgentActionPlannerClientConfig;
-  EvidenceClient: ResolvedAgentActionPlannerClientConfig;
+  PlanningClient: ResolvedAgentActionPlannerClientConfig;
 }
 
 export interface ResolvedAgentActionPlannerClientConfig {

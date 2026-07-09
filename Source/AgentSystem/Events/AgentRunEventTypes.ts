@@ -2,6 +2,14 @@ import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
 
 type AgentRequestContext = Required<Pick<AgentEventContext, "requestId">>;
+type AgentVisibleAssistantContext =
+  AgentRequestContext
+  & Partial<Pick<AgentEventContext, "sessionId" | "step">>;
+
+export type AgentAssistantMessageKind =
+  | "tool_preface"
+  | "final_answer"
+  | "ask_user";
 
 export type AgentRunDomainEvent =
   | {
@@ -12,17 +20,16 @@ export type AgentRunDomainEvent =
       };
     }
   | {
-      kind: typeof AgentEventKinds.FinalAnswer;
-      context: AgentRequestContext;
+      kind: typeof AgentEventKinds.AssistantMessageCreated;
+      context: AgentVisibleAssistantContext;
       data: {
+        messageId: string;
+        kind: AgentAssistantMessageKind;
         content: string;
-      };
-    }
-  | {
-      kind: typeof AgentEventKinds.AskUser;
-      context: AgentRequestContext;
-      data: {
-        question: string;
+        terminal: boolean;
+        toolCount?: number;
+        batchId?: string;
+        toolCallIds?: string[];
         reasonCode?: string;
       };
     }
@@ -55,4 +62,3 @@ export type AgentRunDomainEvent =
         details?: unknown;
       };
     };
-

@@ -27,7 +27,6 @@ export const ActionPlannerSchema = z
       .optional(),
     Client: ActionPlannerClientSchema("ActionPlanner.Client").optional(),
     TurnUnderstandingClient: ActionPlannerClientSchema("ActionPlanner.TurnUnderstandingClient").optional(),
-    TaskFrameClient: ActionPlannerClientSchema("ActionPlanner.TaskFrameClient").optional(),
-    EvidenceClient: ActionPlannerClientSchema("ActionPlanner.EvidenceClient").optional(),
+    PlanningClient: ActionPlannerClientSchema("ActionPlanner.PlanningClient").optional(),
   })
   .strict();

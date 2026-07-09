@@ -3,8 +3,6 @@ import {
   type EventEnvelope,
   type SessionHistoryChunkData,
   type SessionHistoryCompletedData,
-  type SessionHistoryEntryData,
-  type SessionHistorySnapshotData,
   type SessionHistoryStartedData,
   type SessionHistoryStepsData,
   type SessionRunHistoryChunkData,
@@ -15,8 +13,11 @@ import {
   projectEntryToMessage,
   rebuildRunFromHistory,
 } from "./historyRunProjection";
-import { syncSessionCountsFromLoadedMessages } from "./sessionProjectorCore";
-import type { ChatMessage, StoreState } from "./types";
+import {
+  syncSessionCountsFromLoadedMessages,
+  upsertStep,
+} from "./sessionProjectorCore";
+import type { ChatMessage, SessionRecord, StoreState } from "./types";
 
 export type SessionHistoryProjectionContext = {
   state: StoreState;
@@ -36,21 +37,6 @@ export function projectSessionHistoryEvent(
 type SessionHistoryEventHandler = (context: SessionHistoryProjectionContext) => void;
 
 const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], SessionHistoryEventHandler>> = {
-  [EventKinds.SessionHistorySnapshot]: ({ state, env }) => {
-    const sessionId = env.sessionId;
-    if (!sessionId) return;
-    const data = env.data as SessionHistorySnapshotData;
-    const session = state.sessions[sessionId];
-    if (!session) return;
-    session.messages = data.entries
-      .map((item) => projectEntryToMessage(item.entry, item.visible))
-      .filter((message): message is ChatMessage => Boolean(message));
-    session.entryCount = data.totalEntries;
-    session.messageCount = data.messageCount;
-    clearHistoryLoadingState(state, sessionId);
-    state.historyLoadedIds[sessionId] = true;
-  },
-
   [EventKinds.SessionHistoryStarted]: ({ state, env }) => {
     const sessionId = env.sessionId;
     if (!sessionId) return;
@@ -78,33 +64,17 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     const sessionId = env.sessionId;
     if (!sessionId) return;
     const data = env.data as SessionHistoryChunkData;
-    const session = state.sessions[sessionId];
-    if (!session) return;
+    if (!state.sessions[sessionId]) return;
     const buffer = state.historyReplayBuffers[sessionId];
     if (!state.historyLoadingIds[sessionId] || !buffer) return;
     buffer.push(...data.entries);
-  },
-
-  [EventKinds.SessionHistoryEntry]: ({ state, env }) => {
-    const sessionId = env.sessionId;
-    if (!sessionId) return;
-    const data = env.data as SessionHistoryEntryData;
-    const session = state.sessions[sessionId];
-    if (!session) return;
-    const buffer = state.historyReplayBuffers[sessionId];
-    if (!state.historyLoadingIds[sessionId] || !buffer) return;
-    buffer.push({
-      entry: data.entry,
-      visible: data.visible,
-    });
   },
 
   [EventKinds.SessionHistorySteps]: ({ state, env }) => {
     const sessionId = env.sessionId;
     if (!sessionId) return;
     const data = env.data as SessionHistoryStepsData;
-    const session = state.sessions[sessionId];
-    if (!session) return;
+    if (!state.sessions[sessionId]) return;
     if (!state.historyLoadingIds[sessionId]) return;
     state.historyStepBuffers[sessionId] = data.runs;
   },
@@ -114,8 +84,7 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     if (!sessionId) return;
     const data = env.data as SessionRunHistoryChunkData;
     if (data.sessionId && data.sessionId !== sessionId) return;
-    const session = state.sessions[sessionId];
-    if (!session) return;
+    if (!state.sessions[sessionId]) return;
     if (!state.historyLoadingIds[sessionId]) return;
     const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
     state.historyEventRunIds[sessionId] = eventRunIds;
@@ -137,10 +106,10 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     if (!sessionId) return;
     const data = env.data as SessionHistoryCompletedData;
     if (data.sessionId && data.sessionId !== sessionId) return;
+    if (!state.historyLoadingIds[sessionId]) return;
     const session = state.sessions[sessionId];
     if (!session) return;
-    const buffer = state.historyReplayBuffers[sessionId];
-    if (!state.historyLoadingIds[sessionId] || !buffer) return;
+    const buffer = state.historyReplayBuffers[sessionId] ?? [];
     const nextMessages = buffer
       .map((item) => projectEntryToMessage(item.entry, item.visible))
       .filter((message): message is ChatMessage => Boolean(message));
@@ -160,6 +129,14 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
       session.messages = nextMessages;
       session.runs = nextRuns;
     }
+    closeRecoveredRunningRuns(
+      session,
+      env.timestamp,
+      new Set([
+        ...stepRuns.map((run) => run.requestId),
+        ...Object.keys(eventRunIds),
+      ]),
+    );
     clearHistoryLoadingState(state, sessionId);
     state.historyLoadedIds[sessionId] = true;
     syncSessionCountsFromLoadedMessages(session);
@@ -173,4 +150,33 @@ function clearHistoryLoadingState(state: StoreState, sessionId: string): void {
   delete state.historyEventRunIds[sessionId];
   delete state.historyFailedIds[sessionId];
   delete state.missingOnServerIds[sessionId];
+}
+
+function closeRecoveredRunningRuns(
+  session: SessionRecord,
+  timestamp: string,
+  recoveredRunIds: ReadonlySet<string>,
+): void {
+  for (const run of session.runs) {
+    if (run.status !== "running" || !recoveredRunIds.has(run.requestId)) {
+      continue;
+    }
+
+    run.status = "cancelled";
+    run.endedAt = timestamp;
+    run.recoverySource = "history";
+    upsertStep(run, {
+      id: `${run.requestId}-history-interrupted`,
+      kind: "error",
+      title: "历史运行已中断",
+      description: "该运行没有收到结束事件，已按历史状态收口。",
+      status: "failed",
+      startedAt: timestamp,
+      endedAt: timestamp,
+    });
+  }
+
+  if (session.activeRequestId && recoveredRunIds.has(session.activeRequestId)) {
+    session.activeRequestId = undefined;
+  }
 }

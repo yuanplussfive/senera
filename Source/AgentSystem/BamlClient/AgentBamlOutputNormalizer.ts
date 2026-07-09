@@ -1,4 +1,9 @@
 import type { z } from "zod";
+import {
+  formatAgentStructuredIssues,
+  zodIssuesToAgentStructuredIssues,
+  type AgentStructuredIssue,
+} from "../Diagnostics/AgentStructuredIssue.js";
 
 export interface AgentBamlParseSuccess<T> {
   success: true;
@@ -10,6 +15,7 @@ export interface AgentBamlParseFailure {
   success: false;
   error: z.ZodError;
   issues: string[];
+  structuredIssues: AgentStructuredIssue[];
   normalized: unknown;
 }
 
@@ -40,16 +46,18 @@ export function safeParseNormalizedBamlOutput<T>(
     };
   }
 
+  const structuredIssues = zodIssuesToAgentStructuredIssues(parsed.error.issues);
   return {
     success: false,
     error: parsed.error,
-    issues: formatBamlValidationIssues(parsed.error.issues),
+    issues: formatAgentStructuredIssues(structuredIssues),
+    structuredIssues,
     normalized,
   };
 }
 
 export function formatBamlValidationIssues(issues: readonly z.ZodIssue[]): string[] {
-  return issues.map((issue) => `${formatBamlIssuePath(issue.path)}: ${issue.message}`);
+  return formatAgentStructuredIssues(zodIssuesToAgentStructuredIssues(issues));
 }
 
 function normalizeValue(value: unknown): unknown {
@@ -70,18 +78,4 @@ function normalizeValue(value: unknown): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function formatBamlIssuePath(path: readonly PropertyKey[]): string {
-  if (path.length === 0) {
-    return "/";
-  }
-
-  return path.reduce<string>((output, part) => {
-    if (typeof part === "number") {
-      return `${output}[${part}]`;
-    }
-    const segment = typeof part === "symbol" ? String(part) : part;
-    return output ? `${output}.${segment}` : segment;
-  }, "");
 }

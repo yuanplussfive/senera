@@ -1,14 +1,4 @@
-import * as cl100kBase from "gpt-tokenizer/cjs/encoding/cl100k_base";
-import * as o200kBase from "gpt-tokenizer/cjs/encoding/o200k_base";
-import * as o200kHarmony from "gpt-tokenizer/cjs/encoding/o200k_harmony";
-import * as p50kBase from "gpt-tokenizer/cjs/encoding/p50k_base";
-import * as p50kEdit from "gpt-tokenizer/cjs/encoding/p50k_edit";
-import * as r50kBase from "gpt-tokenizer/cjs/encoding/r50k_base";
-import {
-  DEFAULT_ENCODING,
-  modelToEncodingMap,
-  type EncodingName,
-} from "gpt-tokenizer/cjs/mapping";
+import { createRequire } from "node:module";
 
 type EncodingApi = {
   encode(input: string): number[];
@@ -17,16 +7,32 @@ type EncodingApi = {
   isWithinTokenLimit(input: string, tokenLimit: number): false | number;
 };
 
+type EncodingName =
+  | "cl100k_base"
+  | "o200k_base"
+  | "o200k_harmony"
+  | "p50k_base"
+  | "p50k_edit"
+  | "r50k_base";
+
+interface TokenizerMappingModule {
+  DEFAULT_ENCODING: EncodingName;
+  modelToEncodingMap: Record<string, EncodingName>;
+}
+
+const nodeRequire = createRequire(import.meta.url);
+const tokenizerMapping = nodeRequire("gpt-tokenizer/cjs/mapping") as TokenizerMappingModule;
+
 const EncodingApiRegistry = {
-  cl100k_base: cl100kBase,
-  o200k_base: o200kBase,
-  o200k_harmony: o200kHarmony,
-  p50k_base: p50kBase,
-  p50k_edit: p50kEdit,
-  r50k_base: r50kBase,
+  cl100k_base: nodeRequire("gpt-tokenizer/cjs/encoding/cl100k_base") as EncodingApi,
+  o200k_base: nodeRequire("gpt-tokenizer/cjs/encoding/o200k_base") as EncodingApi,
+  o200k_harmony: nodeRequire("gpt-tokenizer/cjs/encoding/o200k_harmony") as EncodingApi,
+  p50k_base: nodeRequire("gpt-tokenizer/cjs/encoding/p50k_base") as EncodingApi,
+  p50k_edit: nodeRequire("gpt-tokenizer/cjs/encoding/p50k_edit") as EncodingApi,
+  r50k_base: nodeRequire("gpt-tokenizer/cjs/encoding/r50k_base") as EncodingApi,
 } as const satisfies Record<EncodingName, EncodingApi>;
 
-const KnownModelEncodingMap = modelToEncodingMap as Record<string, EncodingName>;
+const KnownModelEncodingMap = tokenizerMapping.modelToEncodingMap;
 
 export type AgentTextBudgetSnapshot =
   | {
@@ -208,7 +214,7 @@ export class AgentModelTextPreviewer {
 }
 
 function resolveEncodingContext(model: string): ResolvedEncodingContext {
-  const encodingName = KnownModelEncodingMap[model] ?? DEFAULT_ENCODING;
+  const encodingName = KnownModelEncodingMap[model] ?? tokenizerMapping.DEFAULT_ENCODING;
   return {
     api: EncodingApiRegistry[encodingName],
     model,

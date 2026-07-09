@@ -22,16 +22,5 @@
 
 `sources` 提供简要溯源信息，`fallback` 说明是否发生了降级检索。
 
-## 调用示例
-<senera_tool_calls>
-  <tool_call>
-    <name>MemoryRecallTool</name>
-    <arguments>
-      <query>用户对代码实现方式有什么长期偏好</query>
-      <scope>preference</scope>
-    </arguments>
-  </tool_call>
-</senera_tool_calls>
-
 ## 执行约束
-本工具只读取本地长期记忆数据库，不访问网络、不修改工作区。工具调用时整条回复只能是工具 XML。
+本工具只读取本地长期记忆数据库，不访问网络、不修改工作区。参数以 JSON 对象表达，由 Senera 运行时、BAML 工具编译器或 Pi tool call 承载。

@@ -1,11 +1,13 @@
 import type http from "node:http";
 import type { AgentStaticFrontendHttpApi } from "./AgentStaticFrontendHttpApi.js";
 import { AgentUploadHttpApi } from "../Uploads/AgentUploadHttpApi.js";
+import type { AgentPiProxyHttpApi } from "../PiProxy/AgentPiProxyHttpApi.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
     private readonly options: {
       uploadApi: AgentUploadHttpApi;
+      piProxyApi?: AgentPiProxyHttpApi;
       staticFrontendApi?: AgentStaticFrontendHttpApi;
     },
   ) {}
@@ -16,6 +18,11 @@ export class AgentWebSocketHttpRouter {
   ): Promise<void> {
     if (this.options.uploadApi.canHandle(request)) {
       await this.options.uploadApi.handle(request, response);
+      return;
+    }
+
+    if (this.options.piProxyApi?.canHandle(request)) {
+      await this.options.piProxyApi.handle(request, response);
       return;
     }
 

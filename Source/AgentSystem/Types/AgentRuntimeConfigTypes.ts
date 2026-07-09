@@ -1,12 +1,25 @@
 export type AgentLoadedToolsConfig = "all" | "dynamic" | string[];
 
 export interface AgentLoopConfig {
-  MaxSteps?: number;
-  MaxRepairAttempts?: number;
   LoadedTools?: AgentLoadedToolsConfig;
+  PiSessionCreateTimeoutSeconds?: number;
+  PiSessions?: AgentPiSessionsConfig;
 }
 
-export type ResolvedAgentLoopConfig = Required<AgentLoopConfig>;
+export interface AgentPiSessionsConfig {
+  RootDir?: string;
+}
+
+export interface ResolvedAgentPiSessionsConfig {
+  RootDir: string;
+}
+
+export interface ResolvedAgentLoopConfig {
+  LoadedTools: AgentLoadedToolsConfig;
+  PiSessionCreateTimeoutSeconds: number;
+  PiSessionCreateTimeoutMs: number;
+  PiSessions: ResolvedAgentPiSessionsConfig;
+}
 
 export interface ResolvedAgentPluginRootsConfig {
   System: string[];
@@ -19,17 +32,31 @@ export interface ResolvedAgentPluginDiscoveryConfig {
 }
 
 export interface AgentToolExecutionConfig {
-  Mode?: "Process";
   TimeoutSeconds?: number;
   MaxStdoutBytes?: number;
   MaxStderrBytes?: number;
 }
 
 export interface ResolvedAgentToolExecutionConfig {
-  Mode: "Process";
   TimeoutMs: number;
   MaxStdoutBytes: number;
   MaxStderrBytes: number;
+}
+
+export interface AgentSandboxRuntimeConfig {
+  BaseDir?: string;
+  BundleDir?: string;
+  ImportBundlesOnStartup?: boolean;
+  PrepareImagesOnInstall?: boolean;
+  Images?: string[];
+}
+
+export interface ResolvedAgentSandboxRuntimeConfig {
+  BaseDir: string;
+  BundleDir: string;
+  ImportBundlesOnStartup: boolean;
+  PrepareImagesOnInstall: boolean;
+  Images: string[];
 }
 
 export interface AgentPresetsConfig {

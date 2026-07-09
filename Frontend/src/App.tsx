@@ -36,6 +36,7 @@ import { useSessionHistoryRecovery } from "./app/useSessionHistoryRecovery";
 import { useSessionNotFoundRecovery } from "./app/useSessionNotFoundRecovery";
 import { useSessionTruncateReplay } from "./app/useSessionTruncateReplay";
 import { useServerKnownSessions } from "./app/useServerKnownSessions";
+import { useSandboxRuntimeStatus } from "./app/useSandboxRuntimeStatus";
 import { useSocketErrorToasts } from "./app/useSocketErrorToasts";
 import { useSocketPostIngestEffects } from "./app/useSocketPostIngestEffects";
 import { useWorkflowNavigation } from "./app/useWorkflowNavigation";
@@ -120,6 +121,9 @@ export function App(): JSX.Element {
   const pendingPluginConfigOpsRef = useRef<Map<string, PendingPluginConfigOperation>>(new Map());
   const pendingConfigOpsRef = useRef<Map<string, PendingConfigOperation>>(new Map());
   const pendingPresetOpsRef = useRef<Map<string, PendingPresetOperation>>(new Map());
+  const {
+    ingestSandboxEvent,
+  } = useSandboxRuntimeStatus();
 
   const handleOpenSessionPanel = useCallback((): void => {
     if (hasPersistentSessionPanel) {
@@ -243,6 +247,8 @@ export function App(): JSX.Element {
           });
         }
 
+        ingestSandboxEvent(env);
+
         if (env.kind === EventKinds.ConfigFailed) {
           const data = env.data as ConfigFailedData;
           const requestId = data.operation?.requestId;
@@ -337,6 +343,7 @@ export function App(): JSX.Element {
     renameSession: handleRenameSession,
     updateUserProfile: handleUpdateUserProfile,
   } = useSessionCommands({
+    selectedModelProviderId,
     send,
     serverKnownSessionIdsRef,
     status,
@@ -384,6 +391,24 @@ export function App(): JSX.Element {
     if (status !== "open") return;
     send({ type: "plugin.config.list" });
   }, [send, status]);
+
+  const handleResolveApproval = useCallback(
+    (approvalId: string, approvalStatus: "approved" | "denied"): void => {
+      if (status !== "open") {
+        toast.error("审批失败，后端未连接");
+        return;
+      }
+      const ok = send({
+        type: "approval.resolve",
+        approvalId,
+        status: approvalStatus,
+      });
+      if (!ok) {
+        toast.error("审批发送失败，连接可能已断开");
+      }
+    },
+    [send, status],
+  );
 
   const handleSavePluginConfig = useCallback(
     (pluginName: string, toml: string): string | null => {
@@ -698,6 +723,7 @@ export function App(): JSX.Element {
             onEditUserMessage={handleEditUserMessage}
             onDeleteFromMessage={handleDeleteFromMessage}
             onViewWorkflow={handleViewWorkflow}
+            onResolveApproval={handleResolveApproval}
             onOpenSessionPanel={appShellRenderPlan.showChatSessionPanelAction ? handleOpenSessionPanel : undefined}
             onOpenWorkflowPanel={
               appShellRenderPlan.showChatWorkflowPanelAction ? () => setWorkflowDrawerOpen(true) : undefined

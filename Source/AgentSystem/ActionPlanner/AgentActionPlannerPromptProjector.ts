@@ -37,6 +37,21 @@ type PlannerTimelineTurnRecord = z.infer<typeof PlannerTimelineTurnSchema>;
 export function projectActionPlannerBamlRequestBody(
   body: Record<string, unknown>,
 ): ProjectedActionPlannerPrompt {
+  return projectBamlRequestBody(body, projectPlannerConversationMessages);
+}
+
+export function projectPlainBamlRequestBody(
+  body: Record<string, unknown>,
+): ProjectedActionPlannerPrompt {
+  return projectBamlRequestBody(body, (conversation) => [...conversation]);
+}
+
+function projectBamlRequestBody(
+  body: Record<string, unknown>,
+  projectConversation: (
+    messages: readonly AgentLanguageModelMessage[],
+  ) => AgentLanguageModelMessage[],
+): ProjectedActionPlannerPrompt {
   const messages = readBamlMessages(body);
   const systemPrompt = messages
     .filter((message) => message.role === "system")
@@ -58,7 +73,7 @@ export function projectActionPlannerBamlRequestBody(
 
   return {
     systemPrompt,
-    messages: projectPlannerConversationMessages(conversation),
+    messages: projectConversation(conversation),
   };
 }
 

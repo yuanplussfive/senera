@@ -2,7 +2,8 @@ import {
   AgentBamlStructuredOutputRunner,
   type AgentBamlStructuredOutputTraceSink,
 } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
-import { issueMessages } from "./AgentActionPlannerFailure.js";
+import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
+import { issueDetails, issueMessages } from "./AgentActionPlannerFailure.js";
 import {
   AgentActionPlannerBamlFunctionArgs,
   AgentActionPlannerBamlPromptFactory,
@@ -30,6 +31,7 @@ export class AgentActionPlannerStructuredCaller {
       maxRepairAttempts: options.maxRepairAttempts ?? 0,
       traceSink: options.traceSink,
       describeIssues: issueMessages,
+      describeStructuredIssues: issueDetails,
     });
   }
 
@@ -41,6 +43,7 @@ export class AgentActionPlannerStructuredCaller {
     repair?: (failure: {
       invalidOutput: string;
       issues: string[];
+      diagnostics: AgentSourceDiagnostic[];
     }) => BamlRepairArgs;
   }): Promise<TValue> {
     const result = await this.structuredOutputRunner.run({
@@ -52,6 +55,7 @@ export class AgentActionPlannerStructuredCaller {
         ? (failure) => this.promptFactory.buildPrompt(options.repair?.({
             invalidOutput: failure.invalidOutput,
             issues: failure.issues,
+            diagnostics: failure.diagnostics,
           }) ?? options.args)
         : undefined,
     });

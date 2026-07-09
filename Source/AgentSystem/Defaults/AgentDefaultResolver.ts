@@ -1,7 +1,6 @@
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentDefaults } from "./AgentDefaultValues.js";
 import type { ResolvedAgentDefaultsConfig } from "./AgentDefaultValues.js";
-import { resolveAgentDelegationDefaults } from "./AgentDelegationProfileCore.js";
 import {
   disabledOrSecondsToMilliseconds,
   secondsToMilliseconds,
@@ -26,18 +25,7 @@ export function resolveAgentDefaults(
       ...AgentDefaults.ModelRuntime,
       ...defaultModelRuntimeMilliseconds(AgentDefaults.ModelRuntime),
     },
-    Cli: {
-      Connection: {
-        ...AgentDefaults.Cli.Connection,
-        ...defaults?.Cli?.Connection,
-      },
-      Display: {
-        ...AgentDefaults.Cli.Display,
-        ...defaults?.Cli?.Display,
-      },
-    },
     ToolExecution: {
-      Mode: defaults?.ToolExecution?.Mode ?? AgentDefaults.ToolExecution.Mode,
       TimeoutMs: secondsToMilliseconds(
         defaults?.ToolExecution?.TimeoutSeconds
           ?? AgentDefaults.ToolExecution.TimeoutSeconds,
@@ -45,14 +33,28 @@ export function resolveAgentDefaults(
       MaxStdoutBytes: defaults?.ToolExecution?.MaxStdoutBytes ?? AgentDefaults.ToolExecution.MaxStdoutBytes,
       MaxStderrBytes: defaults?.ToolExecution?.MaxStderrBytes ?? AgentDefaults.ToolExecution.MaxStderrBytes,
     },
+    SandboxRuntime: {
+      ...AgentDefaults.SandboxRuntime,
+      ...defaults?.SandboxRuntime,
+      Images: [
+        ...new Set([
+          ...AgentDefaults.SandboxRuntime.Images,
+          ...(defaults?.SandboxRuntime?.Images ?? []),
+        ]),
+      ],
+    },
     AgentLoop: {
       ...AgentDefaults.AgentLoop,
       ...defaults?.AgentLoop,
+      PiSessions: {
+        ...AgentDefaults.AgentLoop.PiSessions,
+        ...defaults?.AgentLoop?.PiSessions,
+      },
+      PiSessionCreateTimeoutMs: secondsToMilliseconds(
+        defaults?.AgentLoop?.PiSessionCreateTimeoutSeconds
+          ?? AgentDefaults.AgentLoop.PiSessionCreateTimeoutSeconds,
+      ),
     },
-    AgentDelegation: resolveAgentDelegationDefaults(defaults?.AgentDelegation, {
-      ...AgentDefaults.AgentLoop,
-      ...defaults?.AgentLoop,
-    }),
     ToolSearch: {
       Embedding: {
         ...AgentDefaults.ToolSearch.Embedding,
@@ -130,13 +132,9 @@ export function resolveAgentDefaults(
         ...AgentDefaults.ActionPlanner.TurnUnderstandingClient,
         ...defaults?.ActionPlanner?.TurnUnderstandingClient,
       },
-      TaskFrameClient: {
-        ...AgentDefaults.ActionPlanner.TaskFrameClient,
-        ...defaults?.ActionPlanner?.TaskFrameClient,
-      },
-      EvidenceClient: {
-        ...AgentDefaults.ActionPlanner.EvidenceClient,
-        ...defaults?.ActionPlanner?.EvidenceClient,
+      PlanningClient: {
+        ...AgentDefaults.ActionPlanner.PlanningClient,
+        ...defaults?.ActionPlanner?.PlanningClient,
       },
     },
     Artifacts: {

@@ -7,7 +7,6 @@ import { useMotionLevel } from "../../shared/motion";
 import { DeleteMessageDialog } from "./DeleteMessageDialog";
 import { EditMessageDialog } from "./EditMessageDialog";
 import { MessageRow } from "./MessageRow";
-import { isTerminalAssistantMessageForRun } from "./messagePresentation";
 import { MotionMessageItem } from "./MotionMessageItem";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { StreamingRow } from "./StreamingRow";
@@ -30,6 +29,8 @@ interface MessageListProps {
   onEditUserMessage: (m: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (m: ChatMessage) => void;
   onViewWorkflow: (m: ChatMessage) => void;
+  onResolveApproval?: (approvalId: string, status: "approved" | "denied") => void;
+  approvalDisabled?: boolean;
 }
 
 const MESSAGE_LIST_BOTTOM_THRESHOLD = 80;
@@ -66,6 +67,8 @@ export function MessageList({
   onEditUserMessage,
   onDeleteFromMessage,
   onViewWorkflow,
+  onResolveApproval,
+  approvalDisabled = false,
 }: MessageListProps): JSX.Element {
   const { reduceMotion, disableMotion } = useMotionLevel();
   const { prefersCompactControls, supportsHover } = useResponsiveMode();
@@ -84,11 +87,7 @@ export function MessageList({
     for (const run of runs) map.set(run.requestId, run);
     return map;
   }, [runs]);
-  const hasTerminalAssistantMessage = useMemo(
-    () => messages.some((message) => isTerminalAssistantMessageForRun(message, currentRun)),
-    [currentRun, messages],
-  );
-  const streamingRun = currentRun && !hasTerminalAssistantMessage ? currentRun : undefined;
+  const streamingRun = currentRun?.status === "running" ? currentRun : undefined;
   const items = useMemo(
     () => (streamingRun ? [...messages, { __streaming: true as const, run: streamingRun }] : messages),
     [messages, streamingRun],
@@ -207,6 +206,8 @@ export function MessageList({
                     run={item.run}
                     assistantAvatarIcon={assistantAvatarIcon}
                     selectedModelProvider={selectedModelProvider}
+                    approvalDisabled={approvalDisabled}
+                    onResolveApproval={onResolveApproval}
                   />
                 </MotionMessageItem>
               </div>

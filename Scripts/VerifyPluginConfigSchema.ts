@@ -8,10 +8,6 @@ const workspaceRoot = process.cwd();
 const pluginDirs = [
   "Plugins/AgentDocumentPlugin",
   "Plugins/AgentImageVisionPlugin",
-  "Plugins/FastContextIndexToolPlugin",
-  "Plugins/FastContextReadToolPlugin",
-  "Plugins/FastContextSearchToolPlugin",
-  "Plugins/FastContextWorkspaceMapToolPlugin",
   "Plugins/TavilySearchToolPlugin",
   "Plugins/WeatherToolPlugin",
 ];

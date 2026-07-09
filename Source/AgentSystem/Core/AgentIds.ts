@@ -12,12 +12,24 @@ export function createRequestId(): string {
   return createOpaqueId("run");
 }
 
+export function createApprovalId(): string {
+  return createOpaqueId("approval");
+}
+
 export function createSessionId(): string {
   return createOpaqueId(`${AgentProductName}_session`);
 }
 
 export function createToolCallId(): string {
   return `${ToolCallPrefix}_${randomUUID().replace(/-/g, "").slice(0, ShortOpaqueIdLength)}`;
+}
+
+export function createToolBatchId(): string {
+  return createOpaqueId("toolbatch");
+}
+
+export function createAssistantMessageId(): string {
+  return createOpaqueId("assistantmsg");
 }
 
 export function describeSessionHandle(sessionId: string): string {

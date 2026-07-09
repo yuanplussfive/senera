@@ -29,6 +29,7 @@ npm run dev        # 默认 http://127.0.0.1:5173
 |---|---|---|
 | `Frontend.DevServer.Host` | `127.0.0.1` | Vite dev host |
 | `Frontend.DevServer.Port` | `5173` | Vite dev 端口 |
+| `Frontend.DevServer.StrictPort` | `false` | dev 端口被占用时允许 Vite 自动切换到下一个可用端口 |
 | `Frontend.PreviewServer.Port` | `4173` | Vite preview 端口 |
 | `Frontend.Client.WebSocketUrl` | 根据 `Server.Host`/`Server.Port` 推导 | 浏览器连接后端的 WS 地址 |
 | `Frontend.Client.EmptySuggestions` | 内置三条建议 | 启动空状态建议 |
@@ -42,10 +43,15 @@ src/
     useAgentSocket.ts     WS 连接 / 自动重连 hook
   store/
     sessionStore.ts       Zustand store + 事件→状态投影
-  components/
-    SessionList.tsx       左栏：会话列表
-    ChatPanel.tsx         中栏：对话气泡 + 输入框
-    ThinkingTimeline.tsx  右栏：思考过程时间线
+  features/
+    session/              左栏：会话列表、用户资料和会话操作
+    chat/                 中栏：对话消息、输入框、配置面板和审批条
+    workflow/             右栏：思考过程时间线、工具节点和详情抽屉
+  shared/
+    ui/                   无业务语义的 UI primitives
+    code/                 Markdown / code 渲染能力
+  layout/
+    AppShell.tsx          三栏响应式布局
   lib/util.ts             小工具
   App.tsx                 顶层组装
 ```
@@ -56,10 +62,10 @@ src/
 |---|---|
 | 左栏会话标题 | 首条用户消息客户端截取 24 字 |
 | 中栏用户气泡 | 本地立即渲染 |
-| 中栏助手气泡 | `final.answer` / `ask.user` |
+| 中栏助手气泡 | `assistant.message.created` |
 | 中栏"正在生成" | `model.delta` 流式占位 |
-| 右栏卡片 | `run.started` / `prompt.summary` / `model.*` / `decision.*` / `tool.*` / `retry.planned` / `final.answer` |
-| 右栏 callId 关联 | `tool.call.started.callId` ↔ `tool.results.detail.value[].callId` |
+| 右栏卡片 | `run.started` / `prompt.summary` / `model.*` / `pi.trace` / `tool.*` / `assistant.message.created` |
+| 右栏 callId 关联 | `tool.call.started.callId` ↔ `tool.call.result.detail.callId` |
 
 ## 协议同步
 

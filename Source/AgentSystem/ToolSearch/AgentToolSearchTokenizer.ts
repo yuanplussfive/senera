@@ -1,5 +1,11 @@
+import { createRequire } from "node:module";
 import { Jieba, TfIdf } from "@node-rs/jieba";
-import { dict, idf } from "@node-rs/jieba/dict";
+
+const nodeRequire = createRequire(import.meta.url);
+const { dict, idf } = nodeRequire("@node-rs/jieba/dict") as {
+  dict: Uint8Array;
+  idf: Uint8Array;
+};
 
 const SearchCharacterPattern = /[\p{L}\p{N}]/u;
 

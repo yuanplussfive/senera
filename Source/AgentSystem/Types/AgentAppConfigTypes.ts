@@ -22,20 +22,3 @@ export interface ResolvedAgentFrontendConfig {
   PreviewServer: Required<AgentFrontendServerConfig>;
   Client: Required<AgentFrontendClientConfig>;
 }
-
-export interface AgentCliConfig {
-  Connection?: {
-    Url?: string;
-    SessionId?: string;
-    TimeoutSeconds?: number;
-  };
-  Display?: {
-    EventDisplayMode?: "activity" | "compact" | "verbose";
-    DetailMode?: "none" | "errors" | "tools" | "xml" | "all";
-    ShowXml?: boolean;
-    StreamXml?: boolean;
-    LivePreview?: boolean;
-    PreviewMode?: "block" | "line";
-    PreviewTokenLimit?: number;
-  };
-}

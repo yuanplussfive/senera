@@ -1,20 +1,16 @@
 import { z } from "zod";
 import {
-  DecisionActionSchema,
   PluginEntrySchema,
   PluginKindSchema,
+  PluginMcpServerSchema,
+  PluginRuntimeSchema,
+  PluginSandboxSchema,
   PromptingSchema,
   SecuritySchema,
   TemplateSchema,
 } from "./PluginManifestSharedSchema.js";
 import { ToolSchema } from "./PluginToolManifestSchema.js";
 import { SkillSchema } from "./PluginSkillManifestSchema.js";
-import {
-  AgentContextPackSchema,
-  AgentMergePolicySchema,
-  AgentSchema,
-  AgentWorkflowSchema,
-} from "./PluginAgentManifestSchema.js";
 import { RootCommandSchema } from "./PluginRootCommandManifestSchema.js";
 
 export const PluginManifestSchema = z
@@ -30,20 +26,17 @@ export const PluginManifestSchema = z
       })
       .strict(),
     Compatibility: z.record(z.string(), z.unknown()).optional(),
-    DecisionActions: z.array(DecisionActionSchema).optional(),
     Tools: z.array(ToolSchema).optional(),
+    McpServers: z.array(PluginMcpServerSchema).optional(),
     Skills: z.array(SkillSchema).optional(),
-    Agents: z.array(AgentSchema).optional(),
-    ContextPacks: z.array(AgentContextPackSchema).optional(),
-    Workflows: z.array(AgentWorkflowSchema).optional(),
-    MergePolicies: z.array(AgentMergePolicySchema).optional(),
     Resources: z.array(z.unknown()).optional(),
     Prompts: z.array(z.unknown()).optional(),
     Templates: z.array(TemplateSchema).optional(),
     RootCommands: z.array(RootCommandSchema).optional(),
+    Runtime: PluginRuntimeSchema.optional(),
+    Sandbox: PluginSandboxSchema.optional(),
     Security: SecuritySchema.optional(),
     Prompting: PromptingSchema.optional(),
     XmlProtocol: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
-

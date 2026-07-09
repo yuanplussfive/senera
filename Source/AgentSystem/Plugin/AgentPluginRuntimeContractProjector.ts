@@ -3,18 +3,12 @@ import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { isLoadedPluginToolEnabled } from "./AgentPluginConfig.js";
 import { ToolArtifactPolicySchema } from "../Schemas/PluginManifestSchema.js";
 import type {
-  AgentWorkflowJobManifest,
   RootCommandManifest,
   ToolArtifactPolicyManifest,
   ToolManifest,
 } from "../Types/PluginManifestTypes.js";
 import type {
   LoadedPlugin,
-  RegisteredAgent,
-  RegisteredAgentContextPack,
-  RegisteredAgentMergePolicy,
-  RegisteredAgentWorkflow,
-  RegisteredDecisionAction,
   RegisteredSkill,
   RegisteredTemplate,
   RegisteredTool,
@@ -22,13 +16,8 @@ import type {
 } from "../Types/PluginRuntimeTypes.js";
 
 export interface AgentPluginRuntimeContributions {
-  decisionActions: RegisteredDecisionAction[];
   tools: RegisteredTool[];
   skills: RegisteredSkill[];
-  agents: RegisteredAgent[];
-  contextPacks: RegisteredAgentContextPack[];
-  mergePolicies: RegisteredAgentMergePolicy[];
-  workflows: RegisteredAgentWorkflow[];
   templates: RegisteredTemplate[];
   rootCommandPolicies: RootCommandManifest[];
 }
@@ -36,33 +25,11 @@ export interface AgentPluginRuntimeContributions {
 export class AgentPluginRuntimeContractProjector {
   project(plugin: LoadedPlugin): AgentPluginRuntimeContributions {
     return {
-      decisionActions: this.projectDecisionActions(plugin),
       tools: this.projectTools(plugin),
       skills: this.projectSkills(plugin),
-      agents: this.projectAgents(plugin),
-      contextPacks: this.projectContextPacks(plugin),
-      mergePolicies: this.projectMergePolicies(plugin),
-      workflows: this.projectWorkflows(plugin),
       templates: this.projectTemplates(plugin),
       rootCommandPolicies: plugin.manifest.RootCommands ?? [],
     };
-  }
-
-  private projectDecisionActions(plugin: LoadedPlugin): RegisteredDecisionAction[] {
-    return (plugin.manifest.DecisionActions ?? []).map((action) => ({
-      plugin,
-      name: action.Name,
-      kind: action.Kind,
-      xmlRoot: action.XmlRoot,
-      schemaPath: resolveFrom(plugin.rootPath, action.Schema),
-      descriptionFile: action.DescriptionFile
-        ? resolveFrom(plugin.rootPath, action.DescriptionFile)
-        : undefined,
-      signatureFile: action.SignatureFile
-        ? resolveFrom(plugin.rootPath, action.SignatureFile)
-        : undefined,
-      signatureType: action.SignatureType,
-    }));
   }
 
   private projectTools(plugin: LoadedPlugin): RegisteredTool[] {
@@ -80,8 +47,10 @@ export class AgentPluginRuntimeContractProjector {
         signatureType: tool.SignatureType,
         permissions: tool.Permissions ?? [],
         handler: readToolHandler(tool),
+        execution: tool.Execution,
         search: tool.Search,
         evidenceCapabilities: tool.EvidenceCapabilities ?? [],
+        approval: tool.Approval,
         artifactPolicy: readToolArtifactPolicy(plugin, tool),
       }));
   }
@@ -92,70 +61,9 @@ export class AgentPluginRuntimeContractProjector {
       name: skill.Name,
       title: skill.Title,
       descriptionFile: resolveFrom(plugin.rootPath, skill.DescriptionFile),
-      workflowFile: skill.WorkflowFile
-        ? resolveFrom(plugin.rootPath, skill.WorkflowFile)
-        : undefined,
       recommendedTools: skill.RecommendedTools ?? [],
-      recommendedAgents: skill.RecommendedAgents ?? [],
-      recommendedWorkflows: skill.RecommendedWorkflows ?? [],
       evidenceRequirements: skill.EvidenceRequirements ?? [],
       search: skill.Search,
-    }));
-  }
-
-  private projectAgents(plugin: LoadedPlugin): RegisteredAgent[] {
-    return (plugin.manifest.Agents ?? []).map((agent) => ({
-      plugin,
-      name: agent.Name,
-      title: agent.Title,
-      descriptionFile: resolveFrom(plugin.rootPath, agent.DescriptionFile),
-      instructionsFile: resolveFrom(plugin.rootPath, agent.InstructionsFile),
-      recommendedTools: agent.RecommendedTools ?? [],
-      contextPack: agent.ContextPack,
-      outputSchemaPath: resolveFrom(plugin.rootPath, agent.OutputSchema),
-      runtimeProfile: agent.RuntimeProfile,
-      search: agent.Search,
-    }));
-  }
-
-  private projectContextPacks(plugin: LoadedPlugin): RegisteredAgentContextPack[] {
-    return (plugin.manifest.ContextPacks ?? []).map((contextPack) => ({
-      plugin,
-      name: contextPack.Name,
-      description: contextPack.Description,
-      templateFile: resolveFrom(plugin.rootPath, contextPack.TemplateFile),
-      inputs: contextPack.Inputs,
-      toolScope: contextPack.ToolScope,
-      history: contextPack.History,
-      artifacts: contextPack.Artifacts,
-      evidence: contextPack.Evidence,
-    }));
-  }
-
-  private projectMergePolicies(plugin: LoadedPlugin): RegisteredAgentMergePolicy[] {
-    return (plugin.manifest.MergePolicies ?? []).map((mergePolicy) => ({
-      plugin,
-      name: mergePolicy.Name,
-      description: mergePolicy.Description,
-      strategy: mergePolicy.Strategy,
-      templateFile: resolveFrom(plugin.rootPath, mergePolicy.TemplateFile),
-      outputSchemaPath: mergePolicy.OutputSchema
-        ? resolveFrom(plugin.rootPath, mergePolicy.OutputSchema)
-        : undefined,
-    }));
-  }
-
-  private projectWorkflows(plugin: LoadedPlugin): RegisteredAgentWorkflow[] {
-    return (plugin.manifest.Workflows ?? []).map((workflow) => ({
-      plugin,
-      name: workflow.Name,
-      title: workflow.Title,
-      description: workflow.Description,
-      trigger: workflow.Trigger,
-      execution: workflow.Execution,
-      jobs: workflow.Jobs.map((job) => registerWorkflowJob(plugin, job)),
-      mergePolicy: workflow.MergePolicy,
-      search: workflow.Search,
     }));
   }
 
@@ -164,20 +72,11 @@ export class AgentPluginRuntimeContractProjector {
       plugin,
       name: template.Name,
       path: resolveFrom(plugin.rootPath, template.Path),
+      description: template.Description,
+      exposeToPi: template.ExposeToPi === true,
+      search: template.Search,
     }));
   }
-}
-
-function registerWorkflowJob(
-  plugin: LoadedPlugin,
-  job: AgentWorkflowJobManifest,
-): RegisteredAgentWorkflow["jobs"][number] {
-  return {
-    agent: job.Agent,
-    taskFile: resolveFrom(plugin.rootPath, job.TaskFile),
-    contextPack: job.ContextPack,
-    required: job.Required,
-  };
 }
 
 function readToolArtifactPolicy(
@@ -259,7 +158,11 @@ function readToolHandler(
 ): RegisteredToolHandler {
   const handler = tool.Handler;
 
-  return handler?.Kind === "HostCapability"
-    ? { kind: "HostCapability", capability: handler.Capability }
-    : { kind: "PluginProcess" };
+  const handlers = {
+    HostCapability: () => ({ kind: "HostCapability", capability: handler?.Kind === "HostCapability" ? handler.Capability : "" }) satisfies RegisteredToolHandler,
+    McpTool: () => ({ kind: "McpTool", server: handler?.Kind === "McpTool" ? handler.Server : "", tool: handler?.Kind === "McpTool" ? handler.Tool : "" }) satisfies RegisteredToolHandler,
+    PluginProcess: () => ({ kind: "PluginProcess" }) satisfies RegisteredToolHandler,
+  } satisfies Record<NonNullable<ToolManifest["Handler"]>["Kind"] | "PluginProcess", () => RegisteredToolHandler>;
+
+  return handlers[handler?.Kind ?? "PluginProcess"]();
 }

@@ -54,10 +54,19 @@ export function resolveSocketErrorToast(
   }
 
   if (env.kind === EventKinds.RequestInvalid) {
+    const message = readDataString(env.data, "message") ?? "";
+    if (message.includes("审批请求不存在或已结束")) {
+      return {
+        variant: "warning",
+        title: "审批已失效",
+        description: message,
+      };
+    }
+
     return {
       variant: "error",
       title: "请求格式错误",
-      description: readDataString(env.data, "message") ?? "",
+      description: message,
     };
   }
 

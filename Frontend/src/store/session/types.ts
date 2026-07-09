@@ -10,6 +10,7 @@ export type {
   ChatMessage,
   HistoryReplayEntry,
   MessageRole,
+  ApprovalRunRecord,
   RunRecord,
   SessionRecord,
   StoreState,

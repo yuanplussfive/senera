@@ -6,6 +6,7 @@ import {
   toEventEnvelope,
 } from "../Events/AgentEvent.js";
 import { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import type { AgentServerEventLogger } from "../Diagnostics/AgentServerEventLogger.js";
 import { projectAgentRunEventForHistory } from "../Events/AgentRunEventHistoryPolicy.js";
 import type { AgentSessionManager } from "../Session/AgentSessionManager.js";
 
@@ -16,11 +17,14 @@ export class AgentWebSocketEventEnvelopeSender {
     private readonly options: {
       logger: AgentLogger;
       sessionManager: AgentSessionManager;
+      eventLogger?: AgentServerEventLogger;
     },
   ) {}
 
   broadcast(clients: Iterable<WebSocket>, event: AgentDomainEvent): void {
-    const payload = this.serialize(toEventEnvelope(event, this.sequencer.next()));
+    const envelope = toEventEnvelope(event, this.sequencer.next());
+    this.logEvent(envelope);
+    const payload = this.serialize(envelope);
     for (const client of clients) {
       this.send(client, payload);
     }
@@ -28,6 +32,7 @@ export class AgentWebSocketEventEnvelopeSender {
 
   sendEnvelope(socket: WebSocket, event: AgentDomainEvent): void {
     const envelope = toEventEnvelope(event, this.sequencer.next());
+    this.logEvent(envelope);
     this.persistRunEvent(envelope);
     this.send(socket, this.serialize(envelope));
   }
@@ -42,6 +47,10 @@ export class AgentWebSocketEventEnvelopeSender {
 
   private serialize(payload: unknown): string {
     return JSON.stringify(payload);
+  }
+
+  private logEvent(envelope: AgentEventEnvelope): void {
+    this.options.eventLogger?.event(envelope);
   }
 
   private persistRunEvent(envelope: AgentEventEnvelope): void {

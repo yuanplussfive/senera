@@ -1,13 +1,11 @@
 import type {
   AgentActionPlannerConfig,
-  AgentCliConfig,
   AgentSystemConfig,
   AgentToolLearningConfig,
   AgentVectorEmbeddingConfig,
   AgentVectorRerankConfig,
   ResolvedAgentArtifactsConfig,
   ResolvedAgentConfigStoreConfig,
-  ResolvedAgentDelegationConfig,
   ResolvedAgentFrontendConfig,
   ResolvedAgentLoopConfig,
   ResolvedAgentMemoryLearningConfig,
@@ -16,27 +14,11 @@ import type {
   ResolvedAgentPluginDiscoveryConfig,
   ResolvedAgentPluginRootsConfig,
   ResolvedAgentPresetsConfig,
+  ResolvedAgentSandboxRuntimeConfig,
   ResolvedAgentToolExecutionConfig,
   ResolvedAgentToolSearchConfig,
   ResolvedAgentUploadsConfig,
 } from "../Types/AgentConfigTypes.js";
-
-export type ResolvedAgentCliDefaultsConfig = {
-  Connection: {
-    Url: string;
-    TimeoutSeconds: number;
-    SessionId?: string;
-  };
-  Display: {
-    EventDisplayMode: NonNullable<NonNullable<AgentCliConfig["Display"]>["EventDisplayMode"]>;
-    DetailMode: NonNullable<NonNullable<AgentCliConfig["Display"]>["DetailMode"]>;
-    ShowXml: boolean;
-    StreamXml: boolean;
-    LivePreview: boolean;
-    PreviewMode?: NonNullable<NonNullable<AgentCliConfig["Display"]>["PreviewMode"]>;
-    PreviewTokenLimit: number;
-  };
-};
 
 export interface AgentVectorModelsDefaultsConfig {
   Embedding: Required<AgentVectorEmbeddingConfig>;
@@ -87,14 +69,13 @@ export type AgentToolLearningDefaultsConfig =
 export type AgentActionPlannerDefaultsConfig =
   Required<Omit<
     AgentActionPlannerConfig,
-    "Evidence" | "Client" | "TurnUnderstandingClient" | "TaskFrameClient" | "EvidenceClient"
+    "Evidence" | "Client" | "TurnUnderstandingClient" | "PlanningClient"
   >>
   & {
     Evidence: Required<NonNullable<AgentActionPlannerConfig["Evidence"]>>;
     Client: AgentActionPlannerClientDefaultsConfig;
     TurnUnderstandingClient: AgentActionPlannerClientDefaultsConfig;
-    TaskFrameClient: AgentActionPlannerClientDefaultsConfig;
-    EvidenceClient: AgentActionPlannerClientDefaultsConfig;
+    PlanningClient: AgentActionPlannerClientDefaultsConfig;
   };
 
 export interface ResolvedAgentDefaultsConfig {
@@ -102,10 +83,9 @@ export interface ResolvedAgentDefaultsConfig {
   PluginDiscovery: ResolvedAgentPluginDiscoveryConfig;
   ModelProviderEndpoints: ResolvedAgentModelProviderEndpointConfig[];
   ModelRuntime: ResolvedAgentModelRuntimeDefaultsConfig;
-  Cli: ResolvedAgentCliDefaultsConfig;
   ToolExecution: ResolvedAgentToolExecutionConfig;
+  SandboxRuntime: ResolvedAgentSandboxRuntimeConfig;
   AgentLoop: ResolvedAgentLoopConfig;
-  AgentDelegation: ResolvedAgentDelegationConfig;
   ToolSearch: ResolvedAgentToolSearchConfig;
   VectorModels: {
     Embedding: ResolvedAgentVectorEmbeddingDefaultsConfig;

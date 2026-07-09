@@ -1,62 +1,66 @@
 import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
 
+type AgentToolEventContext =
+  Required<Pick<AgentEventContext, "requestId" | "step">>
+  & Partial<Pick<AgentEventContext, "sessionId">>;
+
 export type AgentToolDomainEvent =
   | {
       kind: typeof AgentEventKinds.ToolCallsPlanned;
-      context: Required<Pick<AgentEventContext, "requestId" | "step">>;
+      context: AgentToolEventContext;
       data: {
         toolCount: number;
         tools: string[];
         status?: "planned" | "discovery_escalated" | "blocked";
+        executionMode?: "parallel" | "sequential";
+        batchId?: string;
         reason?: string;
         issues?: string[];
       };
     }
   | {
       kind: typeof AgentEventKinds.ToolCallStarted;
-      context: Required<Pick<AgentEventContext, "requestId" | "step">>;
+      context: AgentToolEventContext;
       data: {
         index: number;
         toolName: string;
         callId: string;
+        batchId?: string;
       };
     }
   | {
       kind: typeof AgentEventKinds.ToolCallCompleted;
-      context: Required<Pick<AgentEventContext, "requestId" | "step">>;
+      context: AgentToolEventContext;
       data: {
         index: number;
         toolName: string;
         callId: string;
+        batchId?: string;
         preview?: string;
       };
     }
   | {
       kind: typeof AgentEventKinds.ToolCallFailed;
-      context: Required<Pick<AgentEventContext, "requestId" | "step">>;
+      context: AgentToolEventContext;
       data: {
         index: number;
         toolName: string;
         callId: string;
+        batchId?: string;
         code?: string;
         message: string;
       };
     }
   | {
-      kind: typeof AgentEventKinds.ToolResults;
-      context: Required<Pick<AgentEventContext, "requestId" | "step">>;
-      data: {
-        toolCount: number;
-        detailId: string;
-      };
-    }
-  | {
-      kind: typeof AgentEventKinds.ToolResultsDetail;
-      context: Required<Pick<AgentEventContext, "requestId" | "step">>;
+      kind: typeof AgentEventKinds.ToolCallResultDetail;
+      context: AgentToolEventContext;
       data: {
         detailId: string;
-        xml: string;
+        index: number;
+        toolName: string;
+        callId: string;
+        batchId?: string;
         value: unknown;
       };
     };

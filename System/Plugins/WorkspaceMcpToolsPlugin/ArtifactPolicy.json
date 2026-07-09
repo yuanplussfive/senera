@@ -1,0 +1,48 @@
+{
+  "Evidence": [
+    {
+      "Kind": "mcp_tool_result",
+      "Records": "$",
+      "Slots": {
+        "text": "$.text"
+      },
+      "Identity": {
+        "Parts": [
+          "text"
+        ]
+      },
+      "Presentation": {
+        "Locator": "mcp-result",
+        "Display": "MCP tool result",
+        "Label": "MCP result",
+        "Source": "{{ text }}"
+      },
+      "Confidence": 0.74,
+      "Metadata": {
+        "text": "$.text"
+      },
+      "ModelProjection": {
+        "Slots": [
+          "text"
+        ]
+      },
+      "PlannerMemory": {
+        "Facts": [
+          "text"
+        ],
+        "ArtifactRefs": [
+          "evidence",
+          "projection"
+        ]
+      },
+      "Projection": {
+        "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} MCP result: {{ e.slots.text }}\n{% endfor %}",
+        "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} MCP tool result\n  text: {{ e.slots.text }}\n{% endfor %}"
+      }
+    }
+  ],
+  "Summary": {
+    "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+    "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}"
+  }
+}

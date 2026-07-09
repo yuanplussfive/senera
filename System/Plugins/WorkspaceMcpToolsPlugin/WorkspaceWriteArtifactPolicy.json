@@ -1,0 +1,69 @@
+{
+  "Evidence": [
+    {
+      "Kind": "workspace_write_result",
+      "Records": "$",
+      "Slots": {
+        "text": "$.text"
+      },
+      "Identity": {
+        "Parts": [
+          "text"
+        ]
+      },
+      "Presentation": {
+        "Locator": "workspace-write",
+        "Display": "Workspace write result",
+        "Label": "Workspace write",
+        "Source": "{{ text }}"
+      },
+      "Confidence": 0.9,
+      "Metadata": {
+        "text": "$.text"
+      },
+      "ModelProjection": {
+        "Slots": [
+          "text"
+        ]
+      },
+      "PlannerMemory": {
+        "Facts": [
+          "text"
+        ],
+        "ArtifactRefs": [
+          "evidence",
+          "projection",
+          "workspaceDiff",
+          "workspacePatch"
+        ]
+      },
+      "Projection": {
+        "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace write: {{ e.slots.text }}\n{% endfor %}",
+        "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace write result\n  text: {{ e.slots.text }}\n{% endfor %}"
+      }
+    }
+  ],
+  "Summary": {
+    "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+    "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+  },
+  "Workspace": {
+    "Capture": "declared",
+    "Paths": [
+      {
+        "Selector": "$.path"
+      },
+      {
+        "Selector": "$.source"
+      },
+      {
+        "Selector": "$.destination"
+      }
+    ],
+    "MaxFileBytes": 262144,
+    "MaxFiles": 32,
+    "MaxDirectoryDepth": 0,
+    "CaptureContent": "text",
+    "PatchContextLines": 3
+  }
+}

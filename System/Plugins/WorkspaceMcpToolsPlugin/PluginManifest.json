@@ -1,0 +1,531 @@
+{
+  "Plugin": {
+    "Name": "WorkspaceMcpToolsPlugin",
+    "Title": "MCP 工作区工具",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Description": "通过标准 Model Context Protocol server 暴露工作区文件读取、目录查看和内容检索能力。"
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 78
+  },
+  "McpServers": [
+    {
+      "Id": "filesystem",
+      "Transport": "stdio",
+      "Command": "${packageBin:@modelcontextprotocol/server-filesystem:mcp-server-filesystem}",
+      "Args": [
+        "${workspaceRoot}"
+      ],
+      "Cwd": "${workspaceRoot}"
+    },
+    {
+      "Id": "ripgrep",
+      "Transport": "stdio",
+      "Command": "${node}",
+      "Args": [
+        "${runtimeModule:Source/AgentSystem/Mcp/AgentRipgrepMcpServer.js}"
+      ],
+      "Cwd": "${workspaceRoot}"
+    }
+  ],
+  "Tools": [
+    {
+      "Name": "WorkspaceReadFile",
+      "DescriptionFile": "./docs/WorkspaceReadFile.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "WorkspaceReadFileArguments",
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "filesystem",
+        "Tool": "read_text_file"
+      },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Allow"
+      },
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": [
+        "filesystem:read:workspace"
+      ],
+      "Search": {
+        "Summary": "读取工作区内已知路径的文本文件内容。",
+        "Tags": [
+          "MCP",
+          "文件读取",
+          "源码查看",
+          "工作区上下文"
+        ],
+        "UseCases": [
+          "已知道文件路径，需要读取完整文本或指定范围时使用。"
+        ],
+        "Examples": [
+          "读取 package.json",
+          "查看 Source/AgentSystem/Loop/AgentLoop.ts"
+        ],
+        "Avoid": [
+          "不知道路径时先用 WorkspaceGrep 或 WorkspaceListDirectory 定位。"
+        ]
+      }
+    },
+    {
+      "Name": "WorkspaceListDirectory",
+      "DescriptionFile": "./docs/WorkspaceListDirectory.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "WorkspaceListDirectoryArguments",
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "filesystem",
+        "Tool": "list_directory"
+      },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Allow"
+      },
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": [
+        "filesystem:read:workspace"
+      ],
+      "Search": {
+        "Summary": "列出工作区目录的直接子项。",
+        "Tags": [
+          "MCP",
+          "目录查看",
+          "项目结构"
+        ],
+        "UseCases": [
+          "需要确认目录结构、真实文件名或下一步读取路径时使用。"
+        ],
+        "Examples": [
+          "列出 Source/AgentSystem",
+          "查看 Plugins 目录"
+        ],
+        "Avoid": [
+          "不要用它搜索文件内容；内容检索用 WorkspaceGrep。"
+        ]
+      }
+    },
+    {
+      "Name": "WorkspaceSearchFiles",
+      "DescriptionFile": "./docs/WorkspaceSearchFiles.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "WorkspaceSearchFilesArguments",
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "filesystem",
+        "Tool": "search_files"
+      },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Allow"
+      },
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": [
+        "filesystem:read:workspace"
+      ],
+      "Search": {
+        "Summary": "用 glob 模式查找工作区文件路径。",
+        "Tags": [
+          "MCP",
+          "路径搜索",
+          "文件发现"
+        ],
+        "UseCases": [
+          "知道文件名片段、扩展名或路径模式，需要找真实路径时使用。"
+        ],
+        "Examples": [
+          "**/*AgentLoop*",
+          "**/*.baml"
+        ],
+        "Avoid": [
+          "它只匹配路径，不搜索文件内容；内容检索用 WorkspaceGrep。"
+        ]
+      }
+    },
+    {
+      "Name": "WorkspaceGrep",
+      "DescriptionFile": "./docs/WorkspaceGrep.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "WorkspaceGrepArguments",
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "ripgrep",
+        "Tool": "search"
+      },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Allow"
+      },
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": [
+        "filesystem:read:workspace",
+        "process:run:ripgrep"
+      ],
+      "Search": {
+        "Summary": "用 MCP ripgrep 在工作区内搜索文件内容。",
+        "Tags": [
+          "MCP",
+          "ripgrep",
+          "内容搜索",
+          "代码检索"
+        ],
+        "UseCases": [
+          "搜索错误码、函数名、文案、配置键、代码片段或普通文本时使用。"
+        ],
+        "Examples": [
+          "搜索 AgentToolRunner",
+          "搜索 senera.config.json"
+        ],
+        "Avoid": [
+          "已知道精确路径且只需要读取内容时用 WorkspaceReadFile。"
+        ]
+      }
+    },
+    {
+      "Name": "WorkspaceListFiles",
+      "DescriptionFile": "./docs/WorkspaceListFiles.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "WorkspaceListFilesArguments",
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "ripgrep",
+        "Tool": "list-files"
+      },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Allow"
+      },
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": [
+        "filesystem:read:workspace",
+        "process:run:ripgrep"
+      ],
+      "Search": {
+        "Summary": "用 ripgrep 的文件发现能力列出会被搜索的工作区文件。",
+        "Tags": [
+          "MCP",
+          "文件发现",
+          "ripgrep"
+        ],
+        "UseCases": [
+          "需要按 glob 或文件类型列出候选文件时使用。"
+        ],
+        "Examples": [
+          "列出 TypeScript 文件",
+          "按 *.json 查找配置文件"
+        ],
+        "Avoid": [
+          "搜索文件内容时用 WorkspaceGrep。"
+        ]
+      }
+    },
+    {
+      "Name": "WorkspaceEditFile",
+      "DescriptionFile": "./docs/WorkspaceEditFile.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "WorkspaceEditFileArguments",
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "filesystem",
+        "Tool": "edit_file"
+      },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadWrite",
+        "LocalFallback": "Allow"
+      },
+      "ArtifactPolicyFile": "./WorkspaceWriteArtifactPolicy.json",
+      "Permissions": [
+        "filesystem:read:workspace",
+        "filesystem:write:workspace"
+      ],
+      "Approval": {
+        "Mode": "ask",
+        "Reason": "修改工作区文件。"
+      },
+      "Search": {
+        "Summary": "用官方 filesystem MCP 对已知文件执行局部文本编辑，支持 dryRun 预览 diff。",
+        "Tags": [
+          "MCP",
+          "文件编辑",
+          "代码修改",
+          "diff预览",
+          "工作区写入"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.file-edit",
+            "Title": "Workspace file edit",
+            "Description": "Apply targeted text edits to an existing workspace file through the filesystem MCP server.",
+            "Facets": {
+              "Actions": [
+                "edit",
+                "replace",
+                "patch"
+              ],
+              "Targets": [
+                "workspace",
+                "file",
+                "source-code",
+                "configuration",
+                "documentation"
+              ],
+              "Inputs": [
+                "path",
+                "oldText",
+                "newText",
+                "dryRun"
+              ],
+              "Outputs": [
+                "diff",
+                "workspace-file-change",
+                "mcp-result"
+              ],
+              "Evidence": [
+                "workspace-write-result",
+                "workspace-diff"
+              ],
+              "Effects": [
+                "write-workspace"
+              ]
+            },
+            "Aliases": [
+              "编辑文件",
+              "修改代码",
+              "replace text",
+              "edit file"
+            ],
+            "Risk": {
+              "SideEffect": "write-workspace",
+              "Permission": "write",
+              "Notes": [
+                "Changes workspace files unless dryRun is true."
+              ]
+            }
+          }
+        ],
+        "UseCases": [
+          "仅在需要直接使用 MCP filesystem 的精确文本替换时使用。",
+          "不确定替换是否精确时，先用 dryRun=true 预览。"
+        ],
+        "Examples": [
+          "把 AgentToolProcessRunner 的 context 替换为执行计划路径",
+          "修改 PluginManifest.json 的工具说明",
+          "dryRun 预览文件修改"
+        ],
+        "Avoid": [
+          "不知道文件内容时先用 WorkspaceReadFile。",
+          "常规代码修改、创建、删除、移动文件优先使用 WorkspaceApplyPatch。",
+          "只读查询不要使用。"
+        ]
+      }
+    },
+    {
+      "Name": "WorkspaceWriteFile",
+      "DescriptionFile": "./docs/WorkspaceWriteFile.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "WorkspaceWriteFileArguments",
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "filesystem",
+        "Tool": "write_file"
+      },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadWrite",
+        "LocalFallback": "Allow"
+      },
+      "ArtifactPolicyFile": "./WorkspaceWriteArtifactPolicy.json",
+      "Permissions": [
+        "filesystem:write:workspace"
+      ],
+      "Approval": {
+        "Mode": "ask",
+        "Reason": "创建或覆盖工作区文件。"
+      },
+      "Search": {
+        "Summary": "用官方 filesystem MCP 创建或覆盖一个工作区文本文件。",
+        "Tags": [
+          "MCP",
+          "文件写入",
+          "创建文件",
+          "覆盖文件",
+          "工作区写入"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.file-write",
+            "Title": "Workspace file write",
+            "Description": "Create or overwrite a workspace file through the filesystem MCP server.",
+            "Facets": {
+              "Actions": [
+                "write",
+                "create",
+                "overwrite"
+              ],
+              "Targets": [
+                "workspace",
+                "file",
+                "source-code",
+                "configuration",
+                "documentation"
+              ],
+              "Inputs": [
+                "path",
+                "content"
+              ],
+              "Outputs": [
+                "workspace-file-change",
+                "mcp-result"
+              ],
+              "Evidence": [
+                "workspace-write-result",
+                "workspace-diff"
+              ],
+              "Effects": [
+                "write-workspace"
+              ]
+            },
+            "Aliases": [
+              "创建文件",
+              "写入文件",
+              "overwrite file",
+              "write file"
+            ],
+            "Risk": {
+              "SideEffect": "write-workspace",
+              "Permission": "write",
+              "Notes": [
+                "Overwrites existing file content."
+              ]
+            }
+          }
+        ],
+        "UseCases": [
+          "仅在需要直接使用 MCP filesystem 创建或覆盖完整文本文件时使用。"
+        ],
+        "Examples": [
+          "创建新的 docs/Development/xxx.md",
+          "写入新的 JSON 配置文件"
+        ],
+        "Avoid": [
+          "新增、修改、删除、移动文件优先使用 WorkspaceApplyPatch。",
+          "未读取旧文件且不确定是否覆盖时不要使用。"
+        ]
+      }
+    },
+    {
+      "Name": "WorkspaceCreateDirectory",
+      "DescriptionFile": "./docs/WorkspaceCreateDirectory.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "WorkspaceCreateDirectoryArguments",
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "filesystem",
+        "Tool": "create_directory"
+      },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadWrite",
+        "LocalFallback": "Allow"
+      },
+      "ArtifactPolicyFile": "./WorkspaceWriteArtifactPolicy.json",
+      "Permissions": [
+        "filesystem:write:workspace"
+      ],
+      "Approval": {
+        "Mode": "ask",
+        "Reason": "创建工作区目录。"
+      },
+      "Search": {
+        "Summary": "用官方 filesystem MCP 创建或确认工作区目录存在。",
+        "Tags": [
+          "MCP",
+          "目录创建",
+          "工作区写入"
+        ],
+        "UseCases": [
+          "写文件前需要创建目录，或需要初始化新插件/文档目录时使用。"
+        ],
+        "Examples": [
+          "创建 docs/Development",
+          "创建 System/Plugins/NewToolPlugin/docs"
+        ],
+        "Avoid": [
+          "只查看目录时使用 WorkspaceListDirectory。"
+        ]
+      }
+    },
+    {
+      "Name": "WorkspaceMoveFile",
+      "DescriptionFile": "./docs/WorkspaceMoveFile.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "WorkspaceMoveFileArguments",
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "filesystem",
+        "Tool": "move_file"
+      },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadWrite",
+        "LocalFallback": "Allow"
+      },
+      "ArtifactPolicyFile": "./WorkspaceWriteArtifactPolicy.json",
+      "Permissions": [
+        "filesystem:write:workspace"
+      ],
+      "Approval": {
+        "Mode": "ask",
+        "Reason": "移动或重命名工作区文件。"
+      },
+      "Search": {
+        "Summary": "用官方 filesystem MCP 移动或重命名工作区文件/目录。",
+        "Tags": [
+          "MCP",
+          "移动文件",
+          "重命名",
+          "工作区写入"
+        ],
+        "UseCases": [
+          "需要重命名文件、移动文件到新目录或整理目录结构时使用。"
+        ],
+        "Examples": [
+          "重命名旧文档",
+          "移动插件 manifest 旁边的 docs 文件"
+        ],
+        "Avoid": [
+          "复制内容但保留源文件时不要使用。"
+        ]
+      }
+    }
+  ],
+  "Security": {
+    "TrustLevel": "System",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [
+        "../.."
+      ],
+      "Write": [
+        "../.."
+      ]
+    },
+    "RequiresApproval": false
+  }
+}

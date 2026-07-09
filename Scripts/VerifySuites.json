@@ -17,28 +17,57 @@
       "description": "Fast local runtime gates for agent/plugin contracts.",
       "patterns": [
         "VerifyAgentTypeContractBoundaries.js",
+        "VerifyFrontendArchitecture.js",
+        "VerifyFrontendTestCoverage.js",
+        "VerifyFrontendStateFlows.js",
         "VerifyPluginConfigSchema.js",
+        "VerifyRuntimeEventContract.js",
         "VerifyPluginArtifactPolicies.js",
+        "VerifyPluginProcessRuntimeManifest.js",
+        "VerifyToolExecutionPolicy.js",
+        "VerifyWorkspaceApplyPatchTool.js",
+        "VerifyPluginProcessBundleProjection.js",
         "VerifyToolSignatureMappingAndPlanValidation.js",
         "VerifyModelProviderEndpointConfig.js",
         "VerifyAgentConfigFormProjection.js",
         "VerifyModelTimeoutConfig.js",
         "VerifyVectorModelClient.js",
+        "VerifyWorkspaceContextFffSearch.js",
         "VerifyAgentRuntimeServices.js",
+        "VerifyMemorySourceIdempotency.js",
+        "VerifyPiResourceProjection.js",
+        "VerifyPiNativeWorkflowResourceRouting.js",
+        "VerifyPiSessionBootstrap.js",
+        "VerifyPiSessionManagerBootstrap.js",
+        "VerifyPiHarnessSessionReuse.js",
+        "VerifyPiRuntimeQueueSteering.js",
+        "VerifyPiAgentLoopSubstrate.js",
+        "VerifyAgentLoopRuntimeBoundary.js",
+        "VerifyPiOpenAiTranscriptProjection.js",
+        "VerifyPiTurnExecutorContracts.js",
+        "VerifyPiAssistantCompilerController.js",
+        "VerifyPiProxyOpenAiWire.js",
+        "VerifyPiToolExecutionBridge.js",
+        "VerifyMcpPersistentProcessBoundary.js",
+        "VerifySeneraExecutionEnvBoundary.js",
+        "VerifySeneraMicrosandboxBackend.js",
+        "VerifySeneraExecutionBackendFallback.js",
+        "VerifySeneraSandboxRuntimeService.js",
+        "VerifySandboxRuntimeConfig.js",
+        "VerifySandboxPrepareRuntime.js",
+        "VerifyAgentSafetyApproval.js",
         "VerifyRuntimeModulePath.js",
         "VerifyDesktopRuntimeConfigProjection.js",
         "VerifyDesktopReleaseInfo.js",
         "VerifyComplexityBudget.js",
-        "VerifyConfigServiceSqliteSource.js",
-        "VerifyAgentChildAgentRuntime.js"
+        "VerifyConfigServiceSqliteSource.js"
       ]
     },
     "all-local": {
-      "description": "Every local verification script except the suite runner and real external API probes.",
+      "description": "Every maintained local verification script except the suite runner.",
       "patterns": [
         "Verify*.js",
-        "!VerifySuite.js",
-        "!VerifyVectorModelRealApi.js"
+        "!VerifySuite.js"
       ]
     }
   }

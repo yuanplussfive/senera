@@ -22,7 +22,7 @@ const removedCompatibilityBarrels = [
   target: normalizePath(policy.target),
 }));
 
-const files = fg.sync([
+const moduleBoundaryFiles = fg.sync([
   "Source/**/*.ts",
   "Scripts/**/*.ts",
   "Frontend/**/*.ts",
@@ -33,11 +33,23 @@ const files = fg.sync([
   onlyFiles: true,
   ignore: [
     "Frontend/node_modules/**",
+    "Source/AgentSystem/BamlClient/baml_client/**",
+  ],
+});
+const handWrittenAgentSystemFiles = fg.sync([
+  "Source/AgentSystem/**/*.ts",
+], {
+  cwd: workspaceRoot,
+  absolute: true,
+  onlyFiles: true,
+  ignore: [
+    "Source/AgentSystem/BamlClient/baml_client/**",
   ],
 });
 
 const violations = [
-  ...files.flatMap((file) => inspectFile(file)),
+  ...moduleBoundaryFiles.flatMap((file) => inspectModuleBoundary(file)),
+  ...handWrittenAgentSystemFiles.flatMap((file) => inspectExplicitAny(file)),
   ...removedCompatibilityBarrels.flatMap((barrel) => inspectRemovedBarrel(barrel)),
 ];
 
@@ -45,18 +57,17 @@ assert.deepEqual(
   violations,
   [],
   [
-    "Workspace modules must not import deleted AgentSystem type barrels.",
+    "Agent type contract boundary verification failed.",
     ...violations,
   ].join("\n"),
 );
 
 console.log("Agent type contract boundaries verified.");
 
-function inspectFile(file: string): string[] {
+function inspectModuleBoundary(file: string): string[] {
   const sourceText = ts.sys.readFile(file);
   assert.ok(sourceText !== undefined, `Unable to read ${file}`);
 
-  const normalizedFile = normalizePath(file);
   const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
   const issues: string[] = [];
 
@@ -88,6 +99,31 @@ function inspectFile(file: string): string[] {
   });
 
   return issues;
+}
+
+function inspectExplicitAny(file: string): string[] {
+  const sourceText = ts.sys.readFile(file);
+  assert.ok(sourceText !== undefined, `Unable to read ${file}`);
+
+  const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+  const issues: string[] = [];
+
+  inspectNode(source);
+  return issues;
+
+  function inspectNode(root: ts.Node): void {
+    root.forEachChild((node) => {
+      if (node.kind === ts.SyntaxKind.AnyKeyword) {
+        const location = source.getLineAndCharacterOfPosition(node.getStart(source));
+        issues.push([
+          `${relativePath(file)}:${location.line + 1}:${location.character + 1}`,
+          "must not use explicit any",
+          "use unknown, a concrete generic bound, or a typed boundary adapter.",
+        ].join(" - "));
+      }
+      inspectNode(node);
+    });
+  }
 }
 
 function inspectRemovedBarrel(policy: {

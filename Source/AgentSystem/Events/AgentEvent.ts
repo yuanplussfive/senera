@@ -31,5 +31,4 @@ export {
 } from "./AgentEventRuntime.js";
 export {
   summarizePrompt,
-  summarizeXmlDocument,
 } from "./AgentEventSummaries.js";

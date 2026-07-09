@@ -5,14 +5,12 @@ import type { AgentActionCapabilityNeed } from "../ActionPlanner/AgentActionPlan
 import type { AgentInteractionRunMode } from "../ActionPlanner/AgentInteractionRouter.js";
 import type {
   AgentActivatedSkillEventData,
-  AgentPlannerEvidenceDecisionEventData,
-  AgentTaskFrameEventData,
   AgentTurnUnderstandingEventData,
 } from "./AgentExecutionEventSharedTypes.js";
 
 type AgentStepContext = Required<Pick<AgentEventContext, "requestId" | "step">>;
 type AgentLoadedToolNames = "all" | string[];
-type AgentExpectedOutputMode = "tool_call_xml" | "final_text" | "open";
+type AgentExpectedOutputMode = "final_text" | "open";
 
 export type AgentPlannerDomainEvent =
   | {
@@ -30,8 +28,6 @@ export type AgentPlannerDomainEvent =
         selectedAction?: string;
         repaired?: boolean;
         turnUnderstanding?: AgentTurnUnderstandingEventData;
-        taskFrame?: AgentTaskFrameEventData;
-        evidenceDecision?: AgentPlannerEvidenceDecisionEventData;
       };
     }
   | {
@@ -83,9 +79,6 @@ export type AgentPlannerDomainEvent =
         selectedAction?: string;
         selectionRepaired?: boolean;
         payloadRepaired?: boolean;
-        taskFrame?: AgentTaskFrameEventData;
-        evidenceDecision?: AgentPlannerEvidenceDecisionEventData;
         activeSkills?: AgentActivatedSkillEventData[];
       };
     };
-

@@ -16,29 +16,51 @@ export function toolBatchFromEvent(
   env: EventEnvelope,
   data?: { index?: number },
   size?: number,
-): TimelineStep["toolBatch"] {
+): NonNullable<TimelineStep["toolBatch"]> {
+  const eventData = readRecord(env.data);
+  const batchId = typeof eventData.batchId === "string" && eventData.batchId.trim()
+    ? eventData.batchId
+    : undefined;
+  const callId = typeof eventData.callId === "string" && eventData.callId.trim()
+    ? eventData.callId
+    : undefined;
+  const executionMode = eventData.executionMode === "parallel" || eventData.executionMode === "sequential"
+    ? eventData.executionMode
+    : undefined;
   return {
-    id: [
+    id: batchId ?? fallbackToolBatchId(env, callId),
+    index: data?.index,
+    size,
+    executionMode,
+  };
+}
+
+function fallbackToolBatchId(env: EventEnvelope, callId: string | undefined): string {
+  return [
       env.scope?.parentRequestId,
       env.scope?.workflowName,
       env.scope?.role,
       env.scope?.jobId,
       env.requestId,
       env.step ?? 0,
+      callId ? `call:${callId}` : `event:${env.sequence}`,
     ]
       .filter((value) => value !== undefined && value !== "")
-      .join(":"),
-    index: data?.index,
-    size,
-  };
+      .join(":");
 }
 
 export function toolBatchForTrace(
   requestId: string,
   trace: StepTraceDto,
-): TimelineStep["toolBatch"] {
+): NonNullable<TimelineStep["toolBatch"]> {
   return {
-    id: [requestId, trace.step].join(":"),
+    id: trace.batchId ?? [requestId, trace.step, trace.callId ? `call:${trace.callId}` : trace.seq].join(":"),
     index: trace.seq,
   };
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }

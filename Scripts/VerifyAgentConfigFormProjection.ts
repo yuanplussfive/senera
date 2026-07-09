@@ -5,8 +5,6 @@ import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigT
 const config: AgentSystemConfig = {
   Defaults: {
     AgentLoop: {
-      MaxSteps: 8,
-      MaxRepairAttempts: 2,
       LoadedTools: "dynamic",
     },
     ActionPlanner: {
@@ -64,10 +62,10 @@ assert.ok(models.itemFields?.some((field) =>
   field.key === "Endpoint" && field.options?.includes("ChatCompletions")
 ));
 
-const loopMaxSteps = findField(form, ["AgentLoop", "MaxSteps"]);
-assert.equal(loopMaxSteps.type, "number");
-assert.equal(loopMaxSteps.value, undefined);
-assert.equal(loopMaxSteps.effectiveValue, 8);
+const loadedTools = findField(form, ["AgentLoop", "LoadedTools"]);
+assert.equal(loadedTools.type, "string");
+assert.equal(loadedTools.value, undefined);
+assert.equal(loadedTools.effectiveValue, "dynamic");
 
 const plannerProvider = findField(form, ["ActionPlanner", "Client", "Provider"]);
 assert.equal(plannerProvider.type, "string");

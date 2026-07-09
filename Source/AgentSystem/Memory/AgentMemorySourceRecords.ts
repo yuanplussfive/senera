@@ -8,6 +8,7 @@ import {
   stableMemoryId,
 } from "./AgentMemoryIdentity.js";
 import { projectMemoryTime } from "./AgentMemoryTime.js";
+import { previewAgentText } from "../Text/AgentTextProjection.js";
 import type {
   AgentMemoryCompletedTurnInput,
   AgentMemoryEpisodeRecord,
@@ -15,6 +16,12 @@ import type {
   AgentMemorySourceRecord,
 } from "./AgentMemorySourceRepository.js";
 import { terminalText } from "./AgentMemoryTerminalText.js";
+
+const MemorySourceTextLimits = {
+  textContentChars: 4_000,
+  summaryChars: 2_000,
+  factChars: 1_000,
+} as const;
 
 export function buildSources(
   input: AgentMemoryCompletedTurnInput,
@@ -85,7 +92,19 @@ export function buildSources(
     }
   }
 
-  return [...sources, ...artifactSources.values()];
+  return uniqueSourcesByUri([...sources, ...artifactSources.values()]);
+}
+
+function uniqueSourcesByUri(
+  sources: readonly AgentMemorySourceRecord[],
+): AgentMemorySourceRecord[] {
+  const byUri = new Map<string, AgentMemorySourceRecord>();
+  for (const source of sources) {
+    if (!byUri.has(source.uri)) {
+      byUri.set(source.uri, source);
+    }
+  }
+  return [...byUri.values()];
 }
 
 function buildSource(input: {
@@ -119,8 +138,12 @@ function buildSource(input: {
     requestId: input.input.requestId,
     sourceKind: input.sourceKind,
     role: input.role,
-    textContent: input.textContent ?? null,
-    summary: input.summary ?? null,
+    textContent: input.textContent
+      ? previewAgentText(input.textContent, MemorySourceTextLimits.textContentChars)
+      : null,
+    summary: input.summary
+      ? previewAgentText(input.summary, MemorySourceTextLimits.summaryChars)
+      : null,
     conversationEntryId: input.conversationEntryId,
     evidenceUri: input.evidenceUri ?? "",
     artifactUri: input.artifactUri ?? "",
@@ -147,7 +170,10 @@ function projectMemoryEvidenceSource(
     label: evidence.label,
     toolName: evidence.toolName,
     artifactUri: evidence.artifactUri,
-    facts: evidence.facts,
+    facts: evidence.facts.map((fact) => ({
+      name: fact.name,
+      value: previewAgentText(fact.value, MemorySourceTextLimits.factChars),
+    })),
     artifactRefs: evidence.artifactRefs,
   });
 }

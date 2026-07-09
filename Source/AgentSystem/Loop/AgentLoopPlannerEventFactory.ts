@@ -4,15 +4,13 @@ import {
   agentActionInstruction,
   agentActionPreferredTools,
   agentActionToolSearchQueries,
-  type AgentActionPlanResult,
 } from "../ActionPlanner/AgentActionPlanner.js";
+import type { AgentActionPlanResult } from "../ActionPlanner/AgentActionPlannerTypes.js";
 import type { AgentActionPlannerStageEvent } from "../ActionPlanner/AgentActionPlannerTelemetry.js";
 import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import {
-  projectEvidenceDecisionForEvent,
-  projectTaskFrameForEvent,
   projectTurnUnderstandingForEvent,
 } from "./AgentLoopEventProjection.js";
 
@@ -50,10 +48,6 @@ export class AgentLoopPlannerEventFactory {
           selectedAction: plan.selectedAction,
           selectionRepaired: plan.selectionRepaired,
           payloadRepaired: plan.payloadRepaired,
-          taskFrame: plan.taskFrame ? projectTaskFrameForEvent(plan.taskFrame) : undefined,
-          evidenceDecision: plan.evidenceDecision
-            ? projectEvidenceDecisionForEvent(plan.evidenceDecision)
-            : undefined,
           activeSkills: activeSkills.map((skill) => ({
             name: skill.name,
             title: skill.title,
@@ -61,8 +55,6 @@ export class AgentLoopPlannerEventFactory {
             matchedTerms: skill.matchedTerms,
             matchedFields: skill.matchedFields,
             recommendedTools: skill.recommendedTools,
-            recommendedAgents: skill.recommendedAgents,
-            recommendedWorkflows: skill.recommendedWorkflows,
           })),
         },
       },
@@ -121,10 +113,6 @@ export class AgentLoopPlannerEventFactory {
             repaired: event.repaired,
             turnUnderstanding: event.turnUnderstanding
               ? projectTurnUnderstandingForEvent(event.turnUnderstanding)
-              : undefined,
-            taskFrame: event.taskFrame ? projectTaskFrameForEvent(event.taskFrame) : undefined,
-            evidenceDecision: event.evidenceDecision
-              ? projectEvidenceDecisionForEvent(event.evidenceDecision)
               : undefined,
           },
         };

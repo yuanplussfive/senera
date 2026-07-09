@@ -3,8 +3,12 @@
 *.local
 senera.config.json
 package-lock.json
+.npm-cache/
 Dist/
 Frontend/dist/
+coverage/
+SandboxBundles/
+.uploads/
 Frontend/.vite-dev*.log
 Frontend/*.log
 Frontend/tsconfig.tsbuildinfo

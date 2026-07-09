@@ -1,0 +1,18 @@
+{
+  "ToolApproval": {
+    "OnBlock": "user-approval",
+    "DenyAtOrAbove": "critical"
+  },
+  "BuiltInToolGuardrails": [
+    {
+      "Kind": "PathTraversal"
+    },
+    {
+      "Kind": "SqlInjection"
+    },
+    {
+      "Kind": "ParameterLength",
+      "MaxLength": 20000
+    }
+  ]
+}

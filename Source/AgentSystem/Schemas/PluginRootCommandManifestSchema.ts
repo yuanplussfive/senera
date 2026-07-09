@@ -61,15 +61,13 @@ const RootCommandVisibleOutputSchema = z
 export const RootCommandSchema = z
   .object({
     Action: z.string().min(1),
-    OutputMode: z.enum(["tool_call_xml", "final_text", "open"]),
+    OutputMode: z.enum(["final_text", "open"]),
     ToolAccess: z.enum(["disabled", "restricted", "discovery_only"]),
     Objective: z.string().min(1),
     InsufficiencyPolicy: z.string().min(1),
     AllowedTools: z.array(RootCommandToolSelectorSchema),
     ForbiddenOutputs: z.array(z.string().min(1)),
     VisibleOutput: RootCommandVisibleOutputSchema,
-    IncludeDecisionProtocol: z.boolean(),
     IncludeToolCatalog: z.boolean(),
   })
   .strict();
-

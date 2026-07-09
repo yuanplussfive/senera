@@ -7,11 +7,14 @@ import {
   resolveUploadsConfig,
 } from "../AgentDefaults.js";
 import { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import { AgentServerEventLogger } from "../Diagnostics/AgentServerEventLogger.js";
 import { AgentPluginConfigManager } from "../Plugin/AgentPluginConfigManager.js";
 import { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import { AgentUploadHttpApi } from "../Uploads/AgentUploadHttpApi.js";
 import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import { AgentProviderModelDiscovery } from "../Config/AgentProviderModelDiscovery.js";
+import { AgentPiProxyHttpApi } from "../PiProxy/AgentPiProxyHttpApi.js";
+import { AgentSandboxRuntimeService } from "../Sandbox/AgentSandboxRuntimeService.js";
 import { AgentWebSocketEventEnvelopeSender } from "./AgentWebSocketEventSender.js";
 import { AgentWebSocketHttpRouter } from "./AgentWebSocketHttpRouter.js";
 import { AgentWebSocketMessageRouter } from "./AgentWebSocketMessageRouter.js";
@@ -25,7 +28,7 @@ export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
 export class AgentWebSocketServer {
   private readonly serverConfig: ReturnType<typeof resolveServerConfig>;
-  private readonly logger = new AgentLogger();
+  private readonly logger: AgentLogger;
   private readonly eventSender: AgentWebSocketEventEnvelopeSender;
   private readonly httpRouter: AgentWebSocketHttpRouter;
   private readonly messageRouter: AgentWebSocketMessageRouter;
@@ -33,6 +36,7 @@ export class AgentWebSocketServer {
   private server?: WebSocketServer;
 
   constructor(private readonly options: AgentWebSocketServerOptions) {
+    this.logger = options.logger ?? new AgentLogger();
     const configSnapshot = (): ReturnType<AgentWebSocketRequestContext["configSnapshot"]> =>
       options.configSnapshot?.() ?? options.config;
     const pluginConfigManager = options.pluginConfigManager ?? new AgentPluginConfigManager({
@@ -42,15 +46,21 @@ export class AgentWebSocketServer {
     const providerModelDiscovery = new AgentProviderModelDiscovery({
       configSnapshot,
     });
+    const sandboxRuntimeService = options.sandboxRuntimeService ?? new AgentSandboxRuntimeService();
 
     this.serverConfig = resolveServerConfig(options.config);
     this.eventSender = new AgentWebSocketEventEnvelopeSender({
       logger: this.logger,
       sessionManager: options.sessionManager,
+      eventLogger: options.eventLogger,
     });
     this.httpRouter = new AgentWebSocketHttpRouter({
       uploadApi: new AgentUploadHttpApi({
         storeFactory: () => createUploadStore(options, configSnapshot()),
+      }),
+      piProxyApi: new AgentPiProxyHttpApi({
+        configSnapshot,
+        onEvent: (event) => this.broadcast(event),
       }),
       staticFrontendApi: options.staticFrontendRoot
         ? new AgentStaticFrontendHttpApi({ rootDir: options.staticFrontendRoot })
@@ -66,6 +76,8 @@ export class AgentWebSocketServer {
         pluginConfigManager,
         providerModelDiscovery,
         presetManagerFactory: () => createPresetManager(options, configSnapshot()),
+        approvalRuntime: options.approvalRuntime,
+        sandboxRuntimeService,
       },
       sendEnvelope: (socket, event) => this.eventSender.sendEnvelope(socket, event),
     });
@@ -83,6 +95,9 @@ export class AgentWebSocketServer {
 
     this.server.on("connection", (socket) => {
       this.handleConnection(socket);
+    });
+    this.server.on("error", (error) => {
+      this.handleServerError(error as NodeJS.ErrnoException);
     });
 
     this.httpServer.on("listening", () => {

@@ -9,6 +9,7 @@ export interface UseSessionCommandsOptions {
   send: (request: WsRequest) => boolean;
   serverKnownSessionIdsRef: MutableRefObject<Set<string>>;
   status: SocketStatus;
+  selectedModelProviderId: string | null;
 }
 
 export interface SessionCommandsHandle {
@@ -32,6 +33,7 @@ export function useSessionCommands({
   send,
   serverKnownSessionIdsRef,
   status,
+  selectedModelProviderId,
 }: UseSessionCommandsOptions): SessionCommandsHandle {
   const clearAllSessions = useStore((state) => state.clearAllSessions);
   const registerSession = useStore((state) => state.registerCreatingSession);
@@ -46,7 +48,11 @@ export function useSessionCommands({
     }
 
     const sessionId = generateId();
-    const ok = send({ type: "session.create", sessionId });
+    const ok = send({
+      type: "session.create",
+      sessionId,
+      modelProviderId: selectedModelProviderId ?? undefined,
+    });
     if (!ok) {
       toast.error("新建失败，连接可能已断开");
       return;
@@ -54,7 +60,7 @@ export function useSessionCommands({
 
     registerSession(sessionId);
     serverKnownSessionIdsRef.current.add(sessionId);
-  }, [registerSession, send, serverKnownSessionIdsRef, status]);
+  }, [registerSession, selectedModelProviderId, send, serverKnownSessionIdsRef, status]);
 
   const closeSession = useCallback((sessionId: string): void => {
     const ok = send({ type: "session.close", sessionId });

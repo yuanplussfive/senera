@@ -3,11 +3,10 @@ import {
   createInitialAgentLoopState,
   type AgentLoopStartRequest,
 } from "./AgentLoopInitialState.js";
-import { routeInteractionCommand } from "./AgentLoopCommandBuilder.js";
+import { understandTurnCommand } from "./AgentLoopCommandBuilder.js";
 import { AgentLoopTransitionReducer } from "./AgentLoopTransitionReducer.js";
 import type {
   AgentLoopCommandResult,
-  AgentLoopMachineConfig,
   AgentLoopTransition,
   RunningAgentLoopMachineState,
 } from "./AgentLoopStateTypes.js";
@@ -18,10 +17,9 @@ export class AgentLoopStateMachine {
   private readonly reducer: AgentLoopTransitionReducer;
 
   constructor(
-    config: AgentLoopMachineConfig,
     private readonly eventFactory = new AgentLoopEventFactory(),
   ) {
-    this.reducer = new AgentLoopTransitionReducer(config, eventFactory);
+    this.reducer = new AgentLoopTransitionReducer(eventFactory);
   }
 
   start(request: AgentLoopStartRequest): AgentLoopTransition {
@@ -29,7 +27,7 @@ export class AgentLoopStateMachine {
 
     return {
       state,
-      command: routeInteractionCommand(state),
+      command: understandTurnCommand(state),
       events: request.emitRunStarted === false
         ? []
         : [
@@ -45,4 +43,3 @@ export class AgentLoopStateMachine {
     return this.reducer.consume(state, result);
   }
 }
-

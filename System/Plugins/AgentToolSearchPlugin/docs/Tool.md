@@ -16,15 +16,5 @@
 ## 输出
 返回匹配工具列表：工具名、标题、摘要、适用场景、分数、命中词、匹配能力、推荐原因和权限。下一轮只调用最匹配的具体工具。
 
-## 调用示例
-<senera_tool_calls>
-  <tool_call>
-    <name>ToolSearchTool</name>
-    <arguments>
-      <query>查找工作区里对话列表消息数量不更新的代码</query>
-    </arguments>
-  </tool_call>
-</senera_tool_calls>
-
 ## 执行约束
-本工具只检索工具目录，不读取项目源码、不访问网络、不执行命令。工具调用时整条回复只能是工具 XML。
+本工具只检索工具目录，不读取项目源码、不访问网络、不执行命令。参数以 JSON 对象表达，由 Senera 运行时、BAML 工具编译器或 Pi tool call 承载。

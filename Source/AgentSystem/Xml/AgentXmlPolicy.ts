@@ -89,7 +89,7 @@ export const AgentDefaultXmlProtocolSpec = {
     readOnlyEvidence: "read_only_evidence",
     currentUserMessage: "current_user_message",
     historicalUserTurn: "historical_user_turn",
-    toolCalls: "senera_tool_calls",
+    toolCalls: "tool_request",
     toolResults: "tool_results",
     agentResult: "agent_result",
   },

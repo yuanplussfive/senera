@@ -4,22 +4,17 @@ import {
   type ActionPlannerStageCompletedData,
   type ActionPlannerStageFailedData,
   type ActionPlannerStageStartedData,
-  type AskUserData,
-  type DecisionParsedData,
-  type DecisionParsedDetailData,
-  type DecisionXmlSummaryData,
+  type AssistantMessageCreatedData,
   type EventEnvelope,
-  type FinalAnswerData,
   type InteractionRoutedData,
   type ModelStartedData,
   type PromptSummaryData,
-  type RetryPlannedData,
   type RunFailedData,
+  type ToolCallResultDetailData,
   type ToolCallCompletedData,
   type ToolCallFailedData,
   type ToolCallStartedData,
   type ToolCallsPlannedData,
-  type ToolResultsDetailData,
 } from "../../api/eventTypes";
 import {
   friendlyDecisionKind,
@@ -95,8 +90,6 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         startedAt: run.steps.find((step) => step.id === id)?.startedAt ?? env.timestamp,
         endedAt: env.timestamp,
         decisionKind: data.selectedAction,
-        taskFrame: data.taskFrame,
-        evidenceDecision: data.evidenceDecision,
         detailJson: data,
         scope,
       });
@@ -182,61 +175,18 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       }
       return true;
     }
-
-    case EventKinds.DecisionXmlSummary: {
-      const data = env.data as DecisionXmlSummaryData;
-      upsertStep(run, {
-        id: scopedStepId(env, "decision-xml"),
-        kind: "decision",
-        title: scopedStepTitle(env, "行动决策"),
-        description: scopedStepDescription(env, `${data.root ?? "?"} · ${data.chars} 字符${data.sanitized ? " · 已清洗" : ""}`),
-        status: "done",
-        startedAt: env.timestamp,
-        endedAt: env.timestamp,
-        xmlRoot: data.root,
-        scope,
-      });
-      return true;
-    }
-
-    case EventKinds.DecisionParsed: {
-      const data = env.data as DecisionParsedData;
-      upsertStep(run, {
-        id: scopedStepId(env, "decision"),
-        kind: "decision",
-        title: scopedStepTitle(env, "确定行动"),
-        description: scopedStepDescription(env, friendlyDecisionKind(data.decisionKind)),
-        status: "done",
-        startedAt: env.timestamp,
-        endedAt: env.timestamp,
-        decisionKind: data.decisionKind,
-        xmlRoot: data.root,
-        scope,
-      });
-      return true;
-    }
-
-    case EventKinds.DecisionParsedDetail: {
-      const data = env.data as DecisionParsedDetailData;
-      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "decision"));
-      if (step) {
-        step.detailJson = data.payload;
-        touchRun(run);
-      }
-      return true;
-    }
-
     case EventKinds.ToolCallsPlanned: {
       const data = env.data as ToolCallsPlannedData;
+      const toolBatch = toolBatchFromEvent(env, undefined, data.toolCount);
       upsertStep(run, {
-        id: scopedStepId(env, "tool-plan"),
+        id: scopedStepId(env, "tool-plan", toolBatch.id),
         kind: "tool",
         title: scopedStepTitle(env, toolPlanTitle(data)),
         description: scopedStepDescription(env, summarizeToolPlan(data)),
         status: "done",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
-        toolBatch: toolBatchFromEvent(env, undefined, data.toolCount),
+        toolBatch,
         scope,
       });
       return true;
@@ -297,64 +247,31 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       return true;
     }
 
-    case EventKinds.ToolResultsDetail: {
-      const data = env.data as ToolResultsDetailData;
-      if (Array.isArray(data.value)) {
-        for (const entry of data.value) {
-          const callId = (entry as { callId?: string })?.callId;
-          if (!callId) continue;
-          const step = run.steps.find((item) => item.id === scopedStepId(env, "tool", callId));
-          if (step) {
-            step.toolResult = entry;
-            touchRun(run);
-          }
-        }
+    case EventKinds.ToolCallResultDetail: {
+      const data = env.data as ToolCallResultDetailData;
+      const step = run.steps.find((item) => item.id === scopedStepId(env, "tool", data.callId));
+      if (step) {
+        step.toolResult = data.value;
+        touchRun(run);
       }
       return true;
     }
-
-    case EventKinds.RetryPlanned: {
-      const data = env.data as RetryPlannedData;
+    case EventKinds.AssistantMessageCreated: {
+      const data = env.data as AssistantMessageCreatedData;
+      const title = data.kind === "ask_user"
+        ? "提出问题"
+        : data.kind === "tool_preface"
+          ? "工具调用前回复"
+          : "生成回复";
       upsertStep(run, {
-        id: scopedStepId(env, "retry", data.attempt),
-        kind: "retry",
-        title: scopedStepTitle(env, `重试 · 第 ${data.attempt} 次`),
-        description: scopedStepDescription(env, `${data.code} · ${data.message}`),
-        status: data.retryable ? "done" : "failed",
-        startedAt: env.timestamp,
-        endedAt: env.timestamp,
-        retryAttempt: data.attempt,
-        retryCode: data.code,
-        scope,
-      });
-      return true;
-    }
-
-    case EventKinds.FinalAnswer: {
-      const data = env.data as FinalAnswerData;
-      upsertStep(run, {
-        id: scopedStepId(env, "answer"),
-        kind: "answer",
-        title: scopedStepTitle(env, "生成回复"),
+        id: scopedStepId(env, "assistant-message", data.messageId),
+        kind: data.kind === "tool_preface" ? "decision" : "answer",
+        title: scopedStepTitle(env, title),
         description: truncate(data.content, 60),
         status: "done",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
-        scope,
-      });
-      return true;
-    }
-
-    case EventKinds.AskUser: {
-      const data = env.data as AskUserData;
-      upsertStep(run, {
-        id: scopedStepId(env, "ask"),
-        kind: "answer",
-        title: scopedStepTitle(env, "提出问题"),
-        description: truncate(data.question, 60),
-        status: "done",
-        startedAt: env.timestamp,
-        endedAt: env.timestamp,
+        decisionKind: data.kind,
         scope,
       });
       return true;
@@ -377,7 +294,6 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
     }
 
     case EventKinds.ModelDelta:
-    case EventKinds.DecisionXmlProgress:
     case EventKinds.RunStarted:
     case EventKinds.RunCompleted:
     case EventKinds.RunCancelled:

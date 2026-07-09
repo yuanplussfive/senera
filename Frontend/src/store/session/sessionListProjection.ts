@@ -70,10 +70,11 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     existing.createdAt = item.createdAt;
     existing.entryCount = item.entryCount;
     existing.messageCount = item.messageCount;
+    settleStaleHistoryLoading(state, existing);
     return;
   }
 
-  state.sessions[item.sessionId] = {
+  const session: SessionRecord = {
     sessionId: item.sessionId,
     title: item.title,
     status: "ready",
@@ -84,6 +85,27 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     messages: [],
     runs: [],
   };
+  state.sessions[item.sessionId] = session;
+  settleStaleHistoryLoading(state, session);
+}
+
+function settleStaleHistoryLoading(state: StoreState, session: SessionRecord): void {
+  if (!state.historyLoadingIds[session.sessionId]) {
+    return;
+  }
+
+  const hasRecoveringRun = session.runs.some(
+    (run) => run.status === "running" && run.recoverySource === "history",
+  );
+  const hasMissingMessages = session.messageCount > 0 && session.messages.length === 0;
+  if (hasRecoveringRun || hasMissingMessages) {
+    return;
+  }
+
+  state.historyLoadingIds[session.sessionId] = false;
+  delete state.historyReplayBuffers[session.sessionId];
+  delete state.historyStepBuffers[session.sessionId];
+  delete state.historyEventRunIds[session.sessionId];
 }
 
 function syncActiveSessionAfterListIngest(

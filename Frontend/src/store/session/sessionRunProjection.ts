@@ -1,14 +1,9 @@
-import { DecisionXmlRoots } from "../../api/eventTypes";
 import type { MotionLevel } from "../../shared/motion";
 import {
   advanceStreamingDisplayText,
   alignStreamingDisplayTarget,
 } from "./streamingDisplay";
 import type { RunRecord } from "./types";
-
-type ToolCallStreamClassification =
-  | "tool_prefix"
-  | "not_tool";
 
 export function createRunRecord(input: {
   requestId: string;
@@ -30,6 +25,7 @@ export function createRunRecord(input: {
     expectedOutputMode: "unknown",
     decisionMode: "none",
     pendingToolArgsByName: {},
+    approvals: [],
   };
 }
 
@@ -53,13 +49,6 @@ export function advanceRunDisplayText(run: RunRecord, motionLevel: MotionLevel):
 }
 
 export function projectStreamingVisibility(run: RunRecord): void {
-  if (run.expectedOutputMode === "tool_call_xml") {
-    run.decisionMode = "tool_candidate";
-    run.visibleText = "";
-    run.visibleKind = "tool_calls";
-    return;
-  }
-
   if (run.expectedOutputMode === "final_text") {
     run.decisionMode = "final_text";
     run.visibleText = run.streamingRaw;
@@ -70,13 +59,6 @@ export function projectStreamingVisibility(run: RunRecord): void {
   if (run.decisionMode === "final_text") {
     run.visibleText = run.streamingRaw;
     run.visibleKind = "final_answer";
-    return;
-  }
-
-  if (isToolCallStreamPrefix(run.streamingRaw)) {
-    run.decisionMode = "tool_candidate";
-    run.visibleText = "";
-    run.visibleKind = "unknown";
     return;
   }
 
@@ -104,25 +86,4 @@ export function projectTerminalDisplayText(
     return;
   }
   alignRunDisplayTarget(run);
-}
-
-export function isToolCallStreamPrefix(text: string): boolean {
-  return classifyToolCallStream(text) === "tool_prefix";
-}
-
-function classifyToolCallStream(text: string): ToolCallStreamClassification {
-  const body = text.trimStart();
-  if (!body.startsWith("<")) return "not_tool";
-
-  const expectedRoot = `<${DecisionXmlRoots.ToolCalls}`.toLowerCase();
-  const comparable = body.slice(0, expectedRoot.length).toLowerCase();
-  const isPrefixCandidate = comparable.length < expectedRoot.length
-    ? expectedRoot.startsWith(comparable)
-    : comparable === expectedRoot && isXmlNameBoundary(body[expectedRoot.length]);
-
-  return isPrefixCandidate ? "tool_prefix" : "not_tool";
-}
-
-function isXmlNameBoundary(char: string | undefined): boolean {
-  return char === undefined || char === ">" || char === "/" || /\s/.test(char);
 }

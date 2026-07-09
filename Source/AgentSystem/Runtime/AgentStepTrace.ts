@@ -1,5 +1,5 @@
-import type { AgentExecutionResult } from "../Decision/AgentDecisionExecutor.js";
-import type { AgentDecision, ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 
 /**
  * 精简档执行步骤轨迹：持久化后用于历史回放时重建前端执行图。
@@ -16,6 +16,7 @@ export interface StepTrace {
   decisionKind?: string;
   toolName?: string;
   callId?: string;
+  batchId?: string;
   status: "done" | "failed";
   startedAt?: string;
   endedAt?: string;
@@ -58,21 +59,6 @@ function clampPreview(value: string | undefined): string | undefined {
   return normalized.length > MAX_PREVIEW_CHARS
     ? `${normalized.slice(0, MAX_PREVIEW_CHARS)}…`
     : normalized;
-}
-
-/** ToolCalls 决策 → 决策节点（多步轮次的主干）。 */
-export function buildDecisionTrace(
-  step: number,
-  seq: number,
-  decision: AgentDecision,
-): StepTrace {
-  return {
-    step,
-    seq,
-    kind: "decision",
-    decisionKind: decision.kind,
-    status: "done",
-  };
 }
 
 /** 执行结果 → 工具节点（一次工具调用一条）。 */

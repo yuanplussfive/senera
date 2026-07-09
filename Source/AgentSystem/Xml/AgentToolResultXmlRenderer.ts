@@ -1,5 +1,5 @@
 import { AgentXmlCodec } from "./AgentXmlCodec.js";
-import type { AgentExecutionResult } from "../Decision/AgentDecisionExecutor.js";
+import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import { createXmlProtocolSpec, type AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
 
 export class AgentToolResultXmlRenderer {

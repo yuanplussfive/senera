@@ -17,17 +17,5 @@
 ## 输出
 返回每个 URI 的读取状态、可用 ref 列表和已加载记忆内容。`projection` 是默认给模型阅读的紧凑投影；需要结构化记录时读取 `evidence`；需要补丁文本时读取 `workspacePatch`。
 
-## 调用示例
-<senera_tool_calls>
-  <tool_call>
-    <name>ArtifactMemoryReadTool</name>
-    <arguments>
-      <artifactUris>
-        <item>senera://artifact/art_1234567890abcdef12345678</item>
-      </artifactUris>
-    </arguments>
-  </tool_call>
-</senera_tool_calls>
-
 ## 执行约束
 本工具只读取当前工作区配置的 artifact 存储，不访问网络、不执行命令、不修改文件。工具返回内容用于当前轮证据补全，不能把读取失败当成事实来源。

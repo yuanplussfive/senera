@@ -10,17 +10,14 @@
   -> AgentSystemRuntime 装配运行时
   -> AgentLoop 驱动步骤
   -> TurnUnderstanding 改写当前用户意图
-  -> TaskFrame / InteractionRoute 形成任务契约和路由
-  -> ActionPlanner 决定下一步
+  -> InteractionRoute 选择直接回复或工具循环
+  -> ActionPlanner 生成结构化规划输入
   -> PromptContextBuilder 组装模型上下文
-  -> 模型流式输出
-  -> DecisionXmlCollector 收集结构化决策
-  -> DecisionParser / schema 校验
-  -> ToolCallPlanner 生成工具参数
-  -> DecisionExecutor 执行决策
-  -> ToolRunner / 宿主能力 / 插件进程
+  -> Pi Harness 驱动模型回复与工具循环
+  -> Pi 原生 tools 或 PiProxy+BAML 编译工具调用
+  -> ToolCallExecutor / 宿主能力 / 插件进程
   -> ArtifactRecorder 记录证据包
-  -> Planner State / Memory Learning 更新状态
+  -> Memory Learning 更新记忆
   -> Final Answer
   -> WebSocket 事件投影
   -> 前端 Session Projector 更新界面
@@ -28,21 +25,19 @@
 
 ## 每层负责什么
 
-`Apps/*` 是入口层，负责 CLI、Server、Desktop 的启动、路径、配置来源和传输协议。这里不应该写规划、工具、记忆或 artifact 业务逻辑。
+`Apps/*` 是入口层，负责 终端、Server、Desktop 的启动、路径、配置来源和传输协议。这里不应该写规划、工具、记忆或 artifact 业务逻辑。
 
 `AgentSystemRuntime` 是装配层，负责创建服务、加载配置、扫描插件、注册能力。它可以知道有哪些服务，但不应该继续承载具体业务策略。
 
-`AgentLoop` 是步骤驱动层，负责什么时候规划、执行、修复、提问、结束。它消费 runtime services，并发出领域事件。
+`AgentLoop` 是步骤驱动层，负责理解、路由、渲染提示词、启动 Pi turn 和收口最终回复。它消费 runtime services，并发出领域事件。
 
-`ActionPlanner` 是结构化规划层，负责当前轮理解、任务契约、交互路由、证据校验和下一步动作。BAML 负责生成结构化输出，本地 schema 校验负责兜住最终形态。
+`ActionPlanner` 是结构化规划层，负责当前轮理解和交互路由。BAML 负责生成结构化输出，本地 schema 校验负责兜住最终形态。
 
 `PromptContextBuilder` 是上下文投影层，负责把工具、技能、预设、记忆、运行状态投影成模型能吃的上下文。它不执行工具，也不修改运行状态。
 
-`DecisionXmlCollector` 和 `DecisionParser` 是模型决策协议层，负责收集 XML 决策、解析、校验和生成诊断。修复逻辑应该留在决策/规划修复链路，不下沉到插件内部。
+`Pi` 是工具循环层。支持 tools 的模型直接走 Pi 原生工具调用；不支持 tools 的模型走 Senera PiProxy，把 Pi 的 OpenAI-compatible tools 请求交给 BAML 编译成结构化 assistant message。
 
-`ToolCallPlanner` 是工具参数生成层，只接收允许调用的工具、工具契约和少量历史模式。它不负责发现工具，也不负责执行工具。
-
-`DecisionExecutor` 是决策执行层，负责把已经校验过的决策映射成运行时动作。工具执行必须经过注册表、宿主能力或插件进程。
+`ToolRuntime` 是工具执行层，负责校验可见工具、保留 Pi toolCallId、运行宿主能力或插件进程，并把结果交给 artifact、日志和 Pi observation。
 
 `ArtifactRecorder` 是可追溯证据层，负责写入工具输入、原始输出、摘要、证据、投影和工作区变更。模型和前端应该拿引用和摘要，不直接依赖临时进程输出。
 
@@ -79,4 +74,3 @@ npm run frontendverify
 ```bash
 npm run verifyall
 ```
-

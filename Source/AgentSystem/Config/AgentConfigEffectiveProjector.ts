@@ -100,8 +100,7 @@ function projectResolvedActionPlanner(config: AgentSystemConfig): NonNullable<Ag
     Evidence: resolved.Evidence,
     Client: projectResolvedPlannerClient(resolved.Client),
     TurnUnderstandingClient: projectResolvedPlannerClient(resolved.TurnUnderstandingClient),
-    TaskFrameClient: projectResolvedPlannerClient(resolved.TaskFrameClient),
-    EvidenceClient: projectResolvedPlannerClient(resolved.EvidenceClient),
+    PlanningClient: projectResolvedPlannerClient(resolved.PlanningClient),
   };
 }
 
@@ -129,7 +128,6 @@ function projectResolvedToolLearning(config: AgentSystemConfig): NonNullable<Age
 function projectResolvedToolExecution(config: AgentSystemConfig): NonNullable<AgentSystemConfig["ToolExecution"]> {
   const resolved = resolveToolExecutionConfig(config);
   return {
-    Mode: resolved.Mode,
     TimeoutSeconds: config.ToolExecution?.TimeoutSeconds
       ?? config.Defaults?.ToolExecution?.TimeoutSeconds
       ?? AgentDefaults.ToolExecution.TimeoutSeconds,

@@ -16,12 +16,8 @@ export const SkillSchema = z
     Name: z.string().min(1),
     Title: z.string().min(1).optional(),
     DescriptionFile: z.string().min(1),
-    WorkflowFile: z.string().min(1).optional(),
     RecommendedTools: z.array(z.string().min(1)).optional(),
-    RecommendedAgents: z.array(z.string().min(1)).optional(),
-    RecommendedWorkflows: z.array(z.string().min(1)).optional(),
     EvidenceRequirements: z.array(SkillEvidenceRequirementSchema).optional(),
     Search: ToolSearchSchema.optional(),
   })
   .strict();
-

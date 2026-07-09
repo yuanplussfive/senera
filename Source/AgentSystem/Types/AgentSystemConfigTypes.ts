@@ -1,8 +1,6 @@
 import type {
-  AgentCliConfig,
   AgentFrontendConfig,
 } from "./AgentAppConfigTypes.js";
-import type { AgentDelegationConfig } from "./AgentDelegationConfigTypes.js";
 import type {
   AgentActionPlannerConfig,
 } from "./AgentPlannerConfigTypes.js";
@@ -11,6 +9,7 @@ import type {
   AgentConfigStoreConfig,
   AgentLoopConfig,
   AgentPresetsConfig,
+  AgentSandboxRuntimeConfig,
   AgentToolExecutionConfig,
   AgentUploadsConfig,
 } from "./AgentRuntimeConfigTypes.js";
@@ -35,10 +34,9 @@ export interface AgentDefaultsConfig {
     ManifestFileName?: string;
     ConfigFileName?: string;
   };
-  Cli?: AgentCliConfig;
   ToolExecution?: AgentToolExecutionConfig;
+  SandboxRuntime?: AgentSandboxRuntimeConfig;
   AgentLoop?: AgentLoopConfig;
-  AgentDelegation?: AgentDelegationConfig;
   ToolSearch?: AgentToolSearchConfig;
   VectorModels?: AgentVectorModelsConfig;
   ToolLearning?: AgentToolLearningConfig;
@@ -80,19 +78,13 @@ export interface AgentSystemConfig {
     ArrayElementNameSuffix?: string;
   };
   ToolExecution?: AgentToolExecutionConfig;
+  SandboxRuntime?: AgentSandboxRuntimeConfig;
   PluginDocumentation?: {
     Markdown?: {
       MinNonEmptyLines?: number;
       ExcludePathFragments?: string[];
     };
     ToolDescription?: {
-      MinNonEmptyLines?: number;
-      SummarySection?: string;
-      TriggerSection?: string;
-      AvoidSection?: string;
-      RequiredSections?: string[];
-    };
-    DecisionActionDescription?: {
       MinNonEmptyLines?: number;
       SummarySection?: string;
       TriggerSection?: string;
@@ -108,9 +100,7 @@ export interface AgentSystemConfig {
   ModelProviderEndpoints?: AgentModelProviderEndpointConfig[];
   ModelProviders: AgentModelProviderConfig[];
   ModelGroups?: AgentModelGroupConfig[];
-  Cli?: AgentCliConfig;
   AgentLoop?: AgentLoopConfig;
-  AgentDelegation?: AgentDelegationConfig;
   ToolSearch?: AgentToolSearchConfig;
   VectorModels?: AgentVectorModelsConfig;
   ToolLearning?: AgentToolLearningConfig;

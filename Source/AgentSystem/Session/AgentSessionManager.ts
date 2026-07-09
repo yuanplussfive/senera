@@ -5,8 +5,12 @@ import { matchByKind } from "../Core/AgentMatch.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import type { AgentLoop } from "../Loop/AgentLoop.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { AgentMemoryService, type AgentMemoryLearningSink } from "../Memory/AgentMemoryService.js";
 import type { AgentMemorySourceRepository } from "../Memory/AgentMemorySourceRepository.js";
+import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
+import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
+import type { AgentPiSessionBootstrapPort } from "../Pi/AgentPiSessionBootstrapService.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentSession } from "./AgentSession.js";
 import { AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
@@ -23,6 +27,10 @@ export interface AgentSessionManagerOptions {
   memoryService?: AgentMemoryService;
   memorySourceRepository?: AgentMemorySourceRepository;
   memoryLearning?: AgentMemoryLearningSink;
+  logger?: AgentLogger;
+  approvalRuntime?: AgentApprovalRuntime;
+  piSessions?: AgentPiActiveSessionRegistry;
+  piSessionBootstrap?: AgentPiSessionBootstrapPort;
 }
 
 export type { AgentMemoryLearningSink } from "../Memory/AgentMemoryService.js";
@@ -55,6 +63,9 @@ export class AgentSessionManager {
       conversationPolicy,
       conversationProjector,
       memory: this.memory,
+      logger: options.logger,
+      approvalRuntime: options.approvalRuntime,
+      piSessions: options.piSessions,
       loopFactory: options.loopFactory,
     });
     this.titleProjector = new AgentSessionTitleProjector((sessionId) => (
@@ -65,6 +76,7 @@ export class AgentSessionManager {
 
   async createSession(request: {
     sessionId?: string;
+    modelProviderId?: string;
     onEvent?: AgentEventSink;
   }): Promise<void> {
     const opened = this.store.open(request.sessionId);
@@ -76,6 +88,12 @@ export class AgentSessionManager {
         existing: ({ session }) => this.eventFactory.snapshot(session),
       }),
     );
+
+    await this.options.piSessionBootstrap?.bootstrap({
+      sessionId: opened.session.id,
+      modelProviderId: request.modelProviderId,
+      onEvent: request.onEvent,
+    });
   }
 
   async closeSession(request: {
@@ -112,6 +130,7 @@ export class AgentSessionManager {
     modelProviderId?: string;
     input: string;
     attachments?: AgentUploadAttachment[];
+    queueMode?: "steer" | "follow_up";
     onEvent?: AgentEventSink;
   }): Promise<void> {
     const lookup = this.store.get(request.sessionId);
@@ -130,6 +149,18 @@ export class AgentSessionManager {
             await this.runCoordinator.runTurn(current, request);
           },
           busy: async ({ current }) => {
+            const steered = await this.runCoordinator.steerActiveRun({
+              session: current,
+              requestId: request.requestId,
+              input: request.input,
+              attachments: request.attachments,
+              queueMode: request.queueMode,
+              onEvent: request.onEvent,
+            });
+            if (steered) {
+              return;
+            }
+
             await emitAgentEvent(
               request.onEvent,
               this.eventFactory.busy(current, "session.message", request.requestId),

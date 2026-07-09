@@ -13,11 +13,12 @@ for (const sourcePath of runtimeAssets) {
   copyFile(sourcePath, targetPath);
 }
 
-console.log(`Runtime assets copied: ${runtimeAssets.length}`);
+process.stdout.write(`Runtime assets copied: ${runtimeAssets.length}\n`);
 
 function discoverRuntimeAssets(root: string): string[] {
+  const copiedExtensions = new Set([".json", ".rego", ".wasm"]);
   return walkFiles(root)
-    .filter((file) => path.extname(file) === ".json")
+    .filter((file) => copiedExtensions.has(path.extname(file)))
     .sort((left, right) => left.localeCompare(right));
 }
 

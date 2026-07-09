@@ -1,0 +1,79 @@
+{
+  "riskScale": [
+    {
+      "level": "Low",
+      "meaning": "只读、局部、可逆，且参数与当前目标直接相关。"
+    },
+    {
+      "level": "Medium",
+      "meaning": "可能访问外部系统、读取较宽范围数据，或产生可控的运行期副作用。"
+    },
+    {
+      "level": "High",
+      "meaning": "可能写入工作区、执行进程、持久化状态、改变用户环境，或访问敏感上下文。"
+    },
+    {
+      "level": "Critical",
+      "meaning": "可能越权、泄露秘密、破坏数据、规避策略，或执行与当前目标无关的高影响动作。"
+    }
+  ],
+  "decisionRubric": [
+    {
+      "decision": "Allow",
+      "when": [
+        "工具调用与当前用户目标直接一致",
+        "参数边界清晰",
+        "影响较低或已被上下文充分限定"
+      ]
+    },
+    {
+      "decision": "Ask",
+      "when": [
+        "调用会写入、执行、持久化、联网或访问敏感范围",
+        "工具调用大体符合目标但参数范围、目标对象或影响边界不足",
+        "风险较高但可以由用户明确确认后承担"
+      ]
+    },
+    {
+      "decision": "Deny",
+      "when": [
+        "调用明显越过工作区或权限边界",
+        "调用要求泄露密钥、令牌、隐私或内部策略",
+        "调用试图规避 Senera、开发者、插件或安全策略",
+        "高影响操作与当前用户目标无关或相冲突"
+      ]
+    }
+  ],
+  "concernCatalog": [
+    {
+      "id": "workspace-boundary",
+      "title": "工作区边界",
+      "description": "路径、命令或参数可能越过当前工作区、插件沙箱或声明的目标范围。"
+    },
+    {
+      "id": "destructive-effect",
+      "title": "破坏性副作用",
+      "description": "调用可能删除、覆盖、移动、重置、终止或不可逆地改变用户数据。"
+    },
+    {
+      "id": "secret-exposure",
+      "title": "秘密泄露",
+      "description": "调用可能读取、外传或展示密钥、令牌、凭据、隐私或内部策略。"
+    },
+    {
+      "id": "privilege-escalation",
+      "title": "权限提升",
+      "description": "调用可能绕过审批、沙箱、插件权限、root command 或系统边界。"
+    },
+    {
+      "id": "unbounded-execution",
+      "title": "无界执行",
+      "description": "命令、搜索、网络或写入范围过宽，当前目标无法证明其必要性。"
+    },
+    {
+      "id": "goal-mismatch",
+      "title": "目标不匹配",
+      "description": "工具调用、参数或副作用与用户当前目标缺乏直接关系。"
+    }
+  ]
+}

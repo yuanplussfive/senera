@@ -1,5 +1,14 @@
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
+import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
+import {
+  createAgentStructuredIssue,
+  type AgentStructuredIssue,
+} from "../Diagnostics/AgentStructuredIssue.js";
+import {
+  buildBamlRawOutputDiagnostics,
+  formatBamlRawOutputRepairIssues,
+} from "./AgentBamlRawOutputDiagnostics.js";
 
 export interface AgentBamlModelRequest {
   requestId: string;
@@ -23,6 +32,8 @@ export interface AgentBamlStructuredOutputAttempt {
   rawOutput?: string;
   status: "success" | "failed";
   issues: string[];
+  structuredIssues?: AgentStructuredIssue[];
+  diagnostics?: AgentSourceDiagnostic[];
   artifactUri?: string;
   artifactPath?: string;
 }
@@ -43,6 +54,7 @@ export interface AgentBamlStructuredOutputRepairInput {
   rawOutput: string;
   invalidOutput: string;
   issues: string[];
+  diagnostics: AgentSourceDiagnostic[];
   error: unknown;
 }
 
@@ -50,6 +62,8 @@ export class AgentBamlStructuredOutputError extends Error {
   readonly functionName: string;
   readonly attempts: AgentBamlStructuredOutputAttempt[];
   readonly issues: string[];
+  readonly structuredIssues: AgentStructuredIssue[];
+  readonly diagnostics: AgentSourceDiagnostic[];
   readonly rawOutput?: string;
   readonly originalError: unknown;
 
@@ -57,6 +71,8 @@ export class AgentBamlStructuredOutputError extends Error {
     functionName: string;
     attempts: AgentBamlStructuredOutputAttempt[];
     issues: string[];
+    structuredIssues?: AgentStructuredIssue[];
+    diagnostics?: AgentSourceDiagnostic[];
     rawOutput?: string;
     error: unknown;
   }) {
@@ -65,6 +81,8 @@ export class AgentBamlStructuredOutputError extends Error {
     this.functionName = input.functionName;
     this.attempts = input.attempts;
     this.issues = input.issues;
+    this.structuredIssues = input.structuredIssues ?? [];
+    this.diagnostics = input.diagnostics ?? [];
     this.rawOutput = input.rawOutput;
     this.originalError = input.error;
   }
@@ -78,6 +96,7 @@ export class AgentBamlStructuredOutputRunner {
       traceSink?: AgentBamlStructuredOutputTraceSink;
       isRepairable?: (error: unknown) => boolean;
       describeIssues?: (error: unknown) => string[];
+      describeStructuredIssues?: (error: unknown) => AgentStructuredIssue[];
       describeInvalidOutput?: (error: unknown, rawOutput: string) => string;
     },
   ) {}
@@ -102,6 +121,8 @@ export class AgentBamlStructuredOutputRunner {
         rawOutput = await this.options.complete(request, options.signal);
       } catch (error) {
         const issues = this.describeIssues(error);
+        const structuredIssues = this.describeStructuredIssues(error, issues);
+        const diagnostics = this.describeRawOutputDiagnostics(rawOutput, structuredIssues);
         attempts.push(await this.record({
           functionName: options.functionName,
           phase,
@@ -110,6 +131,8 @@ export class AgentBamlStructuredOutputRunner {
           rawOutput,
           status: "failed",
           issues,
+          structuredIssues,
+          diagnostics,
           request,
           error,
         }));
@@ -117,6 +140,8 @@ export class AgentBamlStructuredOutputRunner {
           functionName: options.functionName,
           attempts,
           issues,
+          structuredIssues,
+          diagnostics,
           rawOutput,
           error,
         });
@@ -141,6 +166,8 @@ export class AgentBamlStructuredOutputRunner {
         };
       } catch (error) {
         const issues = this.describeIssues(error);
+        const structuredIssues = this.describeStructuredIssues(error, issues);
+        const diagnostics = this.describeRawOutputDiagnostics(rawOutput, structuredIssues);
         attempts.push(await this.record({
           functionName: options.functionName,
           phase,
@@ -149,6 +176,8 @@ export class AgentBamlStructuredOutputRunner {
           rawOutput,
           status: "failed",
           issues,
+          structuredIssues,
+          diagnostics,
           request,
           error,
         }));
@@ -162,6 +191,8 @@ export class AgentBamlStructuredOutputRunner {
             functionName: options.functionName,
             attempts,
             issues,
+            structuredIssues,
+            diagnostics,
             rawOutput,
             error,
           });
@@ -174,7 +205,11 @@ export class AgentBamlStructuredOutputRunner {
           repairAttempt,
           rawOutput,
           invalidOutput: this.describeInvalidOutput(error, rawOutput),
-          issues,
+          issues: formatBamlRawOutputRepairIssues({
+            issues,
+            diagnostics,
+          }),
+          diagnostics,
           error,
         });
       }
@@ -191,6 +226,23 @@ export class AgentBamlStructuredOutputRunner {
       return issues;
     }
     return [error instanceof Error ? error.message : String(error)];
+  }
+
+  private describeStructuredIssues(error: unknown, issues: readonly string[]): AgentStructuredIssue[] {
+    const structuredIssues = this.options.describeStructuredIssues?.(error);
+    return structuredIssues && structuredIssues.length > 0
+      ? structuredIssues
+      : issues.map((issue) => createAgentStructuredIssue(issue));
+  }
+
+  private describeRawOutputDiagnostics(
+    rawOutput: string,
+    structuredIssues: readonly AgentStructuredIssue[],
+  ): AgentSourceDiagnostic[] {
+    return buildBamlRawOutputDiagnostics({
+      rawOutput,
+      issues: structuredIssues,
+    });
   }
 
   private describeInvalidOutput(error: unknown, rawOutput: string): string {
@@ -217,6 +269,8 @@ export class AgentBamlStructuredOutputRunner {
       rawOutput: event.rawOutput,
       status: event.status,
       issues: event.issues,
+      structuredIssues: event.structuredIssues,
+      diagnostics: event.diagnostics,
     };
   }
 }

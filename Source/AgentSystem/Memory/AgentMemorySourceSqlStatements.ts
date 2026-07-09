@@ -66,6 +66,27 @@ export function prepareAgentMemorySourceSqlStatements(
         @local_hour,
         @metadata_json
       )
+      ON CONFLICT(uri) DO UPDATE SET
+        episode_id = excluded.episode_id,
+        episode_uri = excluded.episode_uri,
+        session_id = excluded.session_id,
+        request_id = excluded.request_id,
+        source_kind = excluded.source_kind,
+        role = excluded.role,
+        text_content = excluded.text_content,
+        summary = excluded.summary,
+        conversation_entry_id = excluded.conversation_entry_id,
+        evidence_uri = excluded.evidence_uri,
+        artifact_uri = excluded.artifact_uri,
+        tool_name = excluded.tool_name,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at,
+        created_at_ms = excluded.created_at_ms,
+        updated_at_ms = excluded.updated_at_ms,
+        time_zone = excluded.time_zone,
+        local_date = excluded.local_date,
+        local_hour = excluded.local_hour,
+        metadata_json = excluded.metadata_json
     `),
     listSourcesStmt: db.prepare<[string], SourceRow>(`
       SELECT * FROM memory_sources
@@ -87,4 +108,3 @@ export function prepareAgentMemorySourceSqlStatements(
     `),
   };
 }
-

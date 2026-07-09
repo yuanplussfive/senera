@@ -2,7 +2,9 @@ import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 
-type AgentStepContext = Required<Pick<AgentEventContext, "requestId" | "step">>;
+type AgentStepContext =
+  Required<Pick<AgentEventContext, "requestId" | "step">>
+  & Partial<Pick<AgentEventContext, "sessionId">>;
 
 export type AgentModelDomainEvent =
   | {
@@ -10,13 +12,6 @@ export type AgentModelDomainEvent =
       context: AgentStepContext;
       data: {
         model: string;
-        provider?: AgentModelProviderMetadata;
-      };
-    }
-  | {
-      kind: typeof AgentEventKinds.ModelStreamOpened;
-      context: AgentStepContext;
-      data: {
         provider?: AgentModelProviderMetadata;
       };
     }
@@ -36,10 +31,12 @@ export type AgentModelDomainEvent =
       };
     }
   | {
-      kind: typeof AgentEventKinds.ModelStreamAborted;
+      kind: typeof AgentEventKinds.PiTrace;
       context: AgentStepContext;
       data: {
-        reason: string;
+        source: "session" | "proxy" | "tool_bridge" | "substrate";
+        eventType: string;
+        summary: string;
+        payload?: unknown;
       };
     };
-

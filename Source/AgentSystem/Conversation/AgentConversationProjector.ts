@@ -8,8 +8,8 @@ import type {
   AgentPlannerJournalEntryRecord,
   AgentToolEvidenceMemoryEntryRecord,
 } from "../Memory/AgentPlannerMemory.js";
-import type { AgentPlannerStateSnapshotRecord } from "../ActionPlanner/AgentPlannerState.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
+import type { AgentOpenAiTranscriptMessage } from "./AgentOpenAiTranscript.js";
 
 export class AgentConversationProjector {
   projectUserInput(
@@ -26,6 +26,23 @@ export class AgentConversationProjector {
       timestamp,
       content,
       attachments: attachments && attachments.length > 0 ? [...attachments] : undefined,
+      metadata,
+    };
+  }
+
+  projectOpenAiTranscript(
+    requestId: string,
+    messages: readonly AgentOpenAiTranscriptMessage[],
+    timestamp = this.now(),
+    metadata?: AgentConversationEntryMetadata,
+    scope?: string | number,
+  ): Extract<AgentConversationEntry, { kind: "openai.transcript" }> {
+    return {
+      kind: AgentConversationEntryKinds.OpenAiTranscript,
+      id: createConversationEntryId(requestId, "openai_transcript", scope),
+      requestId,
+      timestamp,
+      messages: [...messages],
       metadata,
     };
   }
@@ -74,23 +91,6 @@ export class AgentConversationProjector {
     return {
       kind: AgentConversationEntryKinds.PlannerJournal,
       id: createConversationEntryId(requestId, "planner", scope ?? record.step),
-      requestId,
-      timestamp,
-      record,
-      metadata,
-    };
-  }
-
-  projectPlannerStateSnapshot(
-    requestId: string,
-    record: AgentPlannerStateSnapshotRecord,
-    timestamp = this.now(),
-    metadata?: AgentConversationEntryMetadata,
-    scope?: string | number,
-  ): Extract<AgentConversationEntry, { kind: "planner.state_snapshot" }> {
-    return {
-      kind: AgentConversationEntryKinds.PlannerStateSnapshot,
-      id: createConversationEntryId(requestId, "planner_state", scope ?? record.step),
       requestId,
       timestamp,
       record,

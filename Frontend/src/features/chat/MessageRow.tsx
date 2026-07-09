@@ -67,10 +67,11 @@ export function MessageRow({
           onViewWorkflow={onViewWorkflow}
         />
         <MessageActions
-          content={message.content}
+          content={displayContent}
           placement="left"
           hasRequestId={!!message.requestId}
           hasWorkflow={!!run}
+          allowMutation={message.kind !== "AssistantToolPreface"}
           showInlineActions={showInlineActions}
           onRegenerate={onRegenerate}
           onDelete={onDelete}

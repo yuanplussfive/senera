@@ -3,7 +3,6 @@ import {
   createEventDetailId,
   type AgentDomainEvent,
 } from "../Events/AgentEvent.js";
-import type { AgentExecutionResult } from "../Decision/AgentDecisionExecutor.js";
 
 export class AgentLoopToolEventFactory {
   toolCallsPlanned(
@@ -12,6 +11,8 @@ export class AgentLoopToolEventFactory {
     toolNames: string[],
     metadata: {
       status?: "planned" | "discovery_escalated" | "blocked";
+      executionMode?: "parallel" | "sequential";
+      batchId?: string;
       reason?: string;
       issues?: readonly string[];
     } = {},
@@ -23,6 +24,8 @@ export class AgentLoopToolEventFactory {
         toolCount: toolNames.length,
         tools: toolNames,
         status: metadata.status ?? "planned",
+        executionMode: metadata.executionMode,
+        batchId: metadata.batchId,
         reason: metadata.reason,
         issues: metadata.issues ? [...metadata.issues] : undefined,
       },
@@ -35,11 +38,12 @@ export class AgentLoopToolEventFactory {
     index: number,
     toolName: string,
     callId: string,
+    metadata: { batchId?: string } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallStarted,
       context: { requestId, step },
-      data: { index, toolName, callId },
+      data: { index, toolName, callId, batchId: metadata.batchId },
     };
   }
 
@@ -50,11 +54,12 @@ export class AgentLoopToolEventFactory {
     toolName: string,
     callId: string,
     preview?: string,
+    metadata: { batchId?: string } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallCompleted,
       context: { requestId, step },
-      data: { index, toolName, callId, preview },
+      data: { index, toolName, callId, preview, batchId: metadata.batchId },
     };
   }
 
@@ -66,46 +71,41 @@ export class AgentLoopToolEventFactory {
     callId: string,
     message: string,
     code?: string,
+    metadata: { batchId?: string } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallFailed,
       context: { requestId, step },
-      data: { index, toolName, callId, message, code },
+      data: { index, toolName, callId, message, code, batchId: metadata.batchId },
     };
   }
 
-  toolResults(
+  toolCallResultDetail(
     requestId: string,
     step: number,
-    execution: Extract<AgentExecutionResult, { kind: "ToolResults" }>,
-    resultXml: string,
-  ): AgentDomainEvent[] {
-    const detailId = createEventDetailId(
-      requestId,
-      step,
-      AgentEventKinds.ToolResultsDetail,
-      "tool-results",
-    );
-
-    return [
-      {
-        kind: AgentEventKinds.ToolResults,
-        context: { requestId, step },
-        data: {
-          toolCount: Array.isArray(execution.value) ? execution.value.length : 0,
-          detailId,
-        },
+    index: number,
+    toolName: string,
+    callId: string,
+    value: unknown,
+    metadata: { batchId?: string } = {},
+  ): AgentDomainEvent {
+    return {
+      kind: AgentEventKinds.ToolCallResultDetail,
+      context: { requestId, step },
+      data: {
+        detailId: createEventDetailId(
+          requestId,
+          step,
+          AgentEventKinds.ToolCallResultDetail,
+          callId,
+        ),
+        index,
+        toolName,
+        callId,
+        batchId: metadata.batchId,
+        value,
       },
-      {
-        kind: AgentEventKinds.ToolResultsDetail,
-        context: { requestId, step },
-        data: {
-          detailId,
-          xml: resultXml,
-          value: execution.value,
-        },
-      },
-    ];
+    };
   }
-}
 
+}

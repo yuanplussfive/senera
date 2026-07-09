@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
   AgentDefaultsConfig,
   ResolvedAgentModelProviderEndpointConfig,
@@ -7,10 +9,15 @@ import type {
   AgentVectorModelsDefaultsConfig,
   ResolvedAgentDefaultsConfig,
 } from "./AgentDefaultValueTypes.js";
-import defaultModelProviderEndpoints from "./AgentDefaultModelProviderEndpoints.json";
+import { moduleDirPath } from "../Core/AgentPath.js";
+import { SeneraMicrosandboxDefaults } from "../Execution/SeneraMicrosandboxDefaults.js";
 
-const DefaultModelProviderEndpoints =
-  defaultModelProviderEndpoints as ResolvedAgentModelProviderEndpointConfig[];
+const DefaultModelProviderEndpoints = JSON.parse(
+  fs.readFileSync(
+    path.join(moduleDirPath(import.meta.url), "AgentDefaultModelProviderEndpoints.json"),
+    "utf8",
+  ),
+) as ResolvedAgentModelProviderEndpointConfig[];
 
 export const AgentDefaults = {
   PluginRoots: {
@@ -45,38 +52,25 @@ export const AgentDefaults = {
     MaxRequestSeconds: -1,
     MaxNetworkRetries: 1,
   },
-  Cli: {
-    Connection: {
-      Url: "ws://127.0.0.1:8787",
-      TimeoutSeconds: 180,
-    },
-    Display: {
-      EventDisplayMode: "activity",
-      DetailMode: "none",
-      ShowXml: false,
-      StreamXml: false,
-      LivePreview: true,
-      PreviewTokenLimit: 50,
-    },
-  },
   ToolExecution: {
-    Mode: "Process",
     TimeoutSeconds: 120,
     MaxStdoutBytes: 1000000,
     MaxStderrBytes: 1000000,
   },
-  AgentLoop: {
-    MaxSteps: 16,
-    MaxRepairAttempts: 2,
-    LoadedTools: "dynamic",
+  SandboxRuntime: {
+    BaseDir: ".senera/sandbox-runtime",
+    BundleDir: ".senera/sandbox-bundles",
+    ImportBundlesOnStartup: true,
+    PrepareImagesOnInstall: true,
+    Images: [SeneraMicrosandboxDefaults.image],
   },
-  AgentDelegation: {
-    RuntimeProfiles: {},
-    Templates: {
-      ChildSystemPrompt: "ChildAgentSystemPrompt",
-      MergeSystemPrompt: "AgentMergeSystemPrompt",
+  AgentLoop: {
+    LoadedTools: "dynamic",
+    PiSessionCreateTimeoutSeconds: 20,
+    PiSessionCreateTimeoutMs: 20000,
+    PiSessions: {
+      RootDir: ".senera/pi-sessions",
     },
-    Merge: {},
   },
   ToolSearch: {
     Embedding: {
@@ -169,12 +163,7 @@ export const AgentDefaults = {
       Temperature: 0.1,
       MaxTokens: -1,
     },
-    TaskFrameClient: {
-      Provider: "openai-generic",
-      Temperature: 0.1,
-      MaxTokens: -1,
-    },
-    EvidenceClient: {
+    PlanningClient: {
       Provider: "openai-generic",
       Temperature: 0.1,
       MaxTokens: -1,
@@ -194,7 +183,7 @@ export const AgentDefaults = {
     DevServer: {
       Host: "127.0.0.1",
       Port: 5173,
-      StrictPort: true,
+      StrictPort: false,
     },
     PreviewServer: {
       Host: "127.0.0.1",
@@ -234,5 +223,6 @@ export const AgentDefaults = {
 > & {
   ModelRuntime: AgentModelRuntimeDefaultsConfig;
   ToolExecution: Required<NonNullable<AgentDefaultsConfig["ToolExecution"]>>;
+  SandboxRuntime: Required<NonNullable<AgentDefaultsConfig["SandboxRuntime"]>>;
   VectorModels: AgentVectorModelsDefaultsConfig;
 };

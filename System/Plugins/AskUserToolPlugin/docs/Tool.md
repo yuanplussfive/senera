@@ -20,18 +20,6 @@
 
 返回 `AskUser` 控制结果，宿主暂停运行。
 
-## 调用示例
-
-<senera_tool_calls>
-  <tool_call>
-    <name>AskUserTool</name>
-    <arguments>
-      <question>你想对比什么内容？</question>
-      <reason_code>missing_scope</reason_code>
-    </arguments>
-  </tool_call>
-</senera_tool_calls>
-
 ## 执行约束
 
 必须单独调用，不能与其它工具混用。

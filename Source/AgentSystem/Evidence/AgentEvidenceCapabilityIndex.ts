@@ -1,6 +1,5 @@
 import type {
   EvidenceSlot,
-  TaskTargetRef,
   ToolCatalogItem,
   ToolCapabilityFacets,
 } from "../BamlClient/baml_client/types.js";
@@ -10,7 +9,6 @@ export interface AgentEvidenceRequirementProfile {
   id?: string;
   need: string;
   reason?: string;
-  targets?: readonly TaskTargetRef[];
 }
 
 export interface AgentEvidenceCandidateProfile {

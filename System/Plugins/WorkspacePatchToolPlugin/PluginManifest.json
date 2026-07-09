@@ -1,0 +1,138 @@
+{
+  "Plugin": {
+    "Name": "WorkspacePatchToolPlugin",
+    "Title": "Workspace Patch Tool",
+    "Version": "0.1.0",
+    "Kind": "Tool"
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 92
+  },
+  "Tools": [
+    {
+      "Name": "WorkspaceApplyPatch",
+      "DescriptionFile": "./docs/WorkspaceApplyPatch.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "WorkspaceApplyPatchArguments",
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "workspace.apply_patch"
+      },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadWrite",
+        "LocalFallback": "Allow"
+      },
+      "ArtifactPolicyFile": "./WorkspacePatchArtifactPolicy.json",
+      "Permissions": [
+        "filesystem:read:workspace",
+        "filesystem:write:workspace"
+      ],
+      "Approval": {
+        "Mode": "ask",
+        "Reason": "应用工作区文件补丁。"
+      },
+      "Search": {
+        "Summary": "对工作区应用 Codex-like 高层补丁，支持新增、hunk 更新、删除、移动文件以及目录创建/删除。",
+        "Tags": [
+          "文件编辑",
+          "代码修改",
+          "apply_patch",
+          "unified diff",
+          "工作区写入"
+        ],
+        "Capabilities": [
+          {
+            "Id": "workspace.apply-patch",
+            "Title": "Workspace apply patch",
+            "Description": "Apply high-level workspace patch operations without oldText/newText replacement.",
+            "Facets": {
+              "Actions": [
+                "patch",
+                "edit",
+                "add",
+                "delete",
+                "move",
+                "mkdir"
+              ],
+              "Targets": [
+                "workspace",
+                "file",
+                "directory",
+                "source-code",
+                "configuration",
+                "documentation"
+              ],
+              "Inputs": [
+                "operations",
+                "unified-hunk",
+                "content",
+                "dryRun",
+                "fuzzFactor"
+              ],
+              "Outputs": [
+                "workspace-patch-result",
+                "workspace-file-change",
+                "workspace-diff"
+              ],
+              "Evidence": [
+                "workspace-patch-result",
+                "workspace-diff"
+              ],
+              "Effects": [
+                "write-workspace"
+              ]
+            },
+            "Aliases": [
+              "apply patch",
+              "应用补丁",
+              "修改代码",
+              "新增文件",
+              "删除文件",
+              "移动文件"
+            ],
+            "Risk": {
+              "SideEffect": "write-workspace",
+              "Permission": "write",
+              "Notes": [
+                "Changes workspace files unless dryRun is true.",
+                "Destructive delete operations require the normal workspace write approval path."
+              ]
+            }
+          }
+        ],
+        "UseCases": [
+          "需要像 Codex apply_patch 一样表达代码修改时使用。",
+          "需要新增文件、删除文件、移动文件或创建目录时使用。",
+          "已读取目标文件内容，并能生成 unified hunk patch 时使用。"
+        ],
+        "Examples": [
+          "新增一个 TypeScript 文件",
+          "用 @@ hunk 修改已有函数",
+          "移动文件并同时修正导出名",
+          "dryRun 预览补丁"
+        ],
+        "Avoid": [
+          "只读查询不要使用。",
+          "不知道已有文件内容时先用 WorkspaceReadFile 或 WorkspaceGrep。",
+          "不要把 oldText/newText 替换格式传给本工具。"
+        ]
+      }
+    }
+  ],
+  "Security": {
+    "TrustLevel": "System",
+    "Network": "Deny",
+    "FileSystem": {
+      "Read": [
+        "../.."
+      ],
+      "Write": [
+        "../.."
+      ]
+    },
+    "RequiresApproval": false
+  }
+}

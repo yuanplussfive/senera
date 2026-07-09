@@ -25,8 +25,6 @@ interface SkillSearchDocument {
   capabilityFacets: string;
   capabilityRiskText: string;
   recommendedTools: string;
-  recommendedAgents: string;
-  recommendedWorkflows: string;
 }
 
 export interface AgentSkillSelectionResult {
@@ -70,8 +68,6 @@ export class AgentSkillSelector {
         "capabilityFacets",
         "capabilityRiskText",
         "recommendedTools",
-        "recommendedAgents",
-        "recommendedWorkflows",
       ],
       storeFields: ["id", "skillName"],
       tokenize: (text) => this.tokenizer.tokenize(text),
@@ -124,8 +120,6 @@ export class AgentSkillSelector {
     const examples = (search?.Examples ?? []).join(" ");
     const avoid = (search?.Avoid ?? []).join(" ");
     const recommendedTools = skill.recommendedTools.join(" ");
-    const recommendedAgents = skill.recommendedAgents.join(" ");
-    const recommendedWorkflows = skill.recommendedWorkflows.join(" ");
     const title = skill.title ?? search?.Summary ?? skill.name;
     return {
       id: stableSkillDocumentId(skill),
@@ -141,8 +135,6 @@ export class AgentSkillSelector {
       capabilityFacets,
       capabilityRiskText: capabilityRiskDocumentText,
       recommendedTools,
-      recommendedAgents,
-      recommendedWorkflows,
     };
   }
 

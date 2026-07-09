@@ -38,6 +38,7 @@ export function projectEntryToMessage(
   }
 
   if (entry.kind === "assistant.decision") {
+    if (!isTerminalAssistantEntry(entry)) return null;
     if (!visible || !visible.text) return null;
     const isAsk = visible.kind === "ask_user";
     return {
@@ -45,7 +46,7 @@ export function projectEntryToMessage(
       role: "assistant",
       content: visible.text,
       createdAt: entry.timestamp,
-      kind: isAsk ? "AskUser" : "FinalAnswer",
+      kind: isAsk ? "AssistantAsk" : "AssistantFinal",
       requestId: entry.requestId,
       metadata: entry.metadata,
     };
@@ -54,11 +55,21 @@ export function projectEntryToMessage(
   return null;
 }
 
+function isTerminalAssistantEntry(entry: ConversationEntryDto): boolean {
+  return Boolean(entry.metadata?.run);
+}
+
 export function upsertMessageByRequestId(
   session: SessionRecord,
   message: ChatMessage,
 ): void {
-  if (!message.requestId) {
+  const idIndex = session.messages.findIndex((item) => item.id === message.id);
+  if (idIndex >= 0) {
+    session.messages[idIndex] = message;
+    return;
+  }
+
+  if (!message.requestId || message.kind === "AssistantToolPreface") {
     session.messages.push(message);
     return;
   }
@@ -125,6 +136,7 @@ export function rebuildRunFromHistory(
     expectedOutputMode: "unknown",
     decisionMode: "none",
     pendingToolArgsByName: {},
+    approvals: [],
     modelProvider: run.modelProvider,
     recoverySource: run.status === "running" ? "history" : undefined,
   };

@@ -15,9 +15,10 @@ export const EventPhases = {
   Prompt: "prompt",
   Model: "model",
   Decision: "decision",
-  Retry: "retry",
   Tool: "tool",
   Run: "run",
+  Approval: "approval",
+  Sandbox: "sandbox",
   Config: "config",
 } as const;
 export type EventPhase = (typeof EventPhases)[keyof typeof EventPhases];
@@ -29,16 +30,13 @@ export const EventKinds = {
   SessionBusy: "session.busy",
   SessionNotFound: "session.not_found",
   SessionListSnapshot: "session.list.snapshot",
-  SessionHistorySnapshot: "session.history.snapshot",
   SessionHistoryStarted: "session.history.started",
-  SessionHistoryEntry: "session.history.entry",
   SessionHistoryChunk: "session.history.chunk",
   SessionHistorySteps: "session.history.steps",
   SessionRunHistoryChunk: "session.run_history.chunk",
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
-  PromptRendered: "prompt.rendered",
   PromptSummary: "prompt.summary",
   ActionPlannerStageStarted: "action.planner.stage.started",
   ActionPlannerStageCompleted: "action.planner.stage.completed",
@@ -46,27 +44,18 @@ export const EventKinds = {
   InteractionRouted: "interaction.routed",
   ActionPlanned: "action.planned",
   ModelStarted: "model.started",
-  ModelStreamOpened: "model.stream.opened",
   ModelDelta: "model.delta",
   ModelCompleted: "model.completed",
-  ModelStreamAborted: "model.stream.aborted",
-  DecisionXmlProgress: "decision.xml.progress",
-  DecisionXmlReady: "decision.xml.ready",
-  DecisionXmlLimitReached: "decision.xml.limit_reached",
-  DecisionXmlSummary: "decision.xml.summary",
-  DecisionXmlDetail: "decision.xml.detail",
-  DecisionParsed: "decision.parsed",
-  DecisionParsedDetail: "decision.parsed.detail",
-  RetryPlanned: "retry.planned",
-  RetryDetail: "retry.detail",
+  PiTrace: "pi.trace",
   ToolCallsPlanned: "tool.calls.planned",
   ToolCallStarted: "tool.call.started",
   ToolCallCompleted: "tool.call.completed",
   ToolCallFailed: "tool.call.failed",
-  ToolResults: "tool.results",
-  ToolResultsDetail: "tool.results.detail",
-  FinalAnswer: "final.answer",
-  AskUser: "ask.user",
+  ToolCallResultDetail: "tool.call.result.detail",
+  AssistantMessageCreated: "assistant.message.created",
+  ApprovalRequested: "approval.requested",
+  ApprovalResolved: "approval.resolved",
+  SandboxStatusSnapshot: "sandbox.status.snapshot",
   RunCompleted: "run.completed",
   RunFailed: "run.failed",
   RunCancelled: "run.cancelled",
@@ -83,10 +72,6 @@ export const EventKinds = {
   PresetFailed: "preset.failed",
 } as const;
 export type EventKind = (typeof EventKinds)[keyof typeof EventKinds];
-
-export const DecisionXmlRoots = {
-  ToolCalls: "senera_tool_calls",
-} as const;
 
 export interface EventEnvelope<TKind extends string = EventKind, TData = unknown> {
   channel: "agent.event";
@@ -179,27 +164,11 @@ export type ConversationEntryDto =
       metadata?: ConversationEntryMetadata;
     };
 
-export interface SessionHistorySnapshotData {
-  sessionId: string;
-  totalEntries: number;
-  messageCount: number;
-  entries: Array<{
-    entry: ConversationEntryDto;
-    visible?: { kind: string; text: string };
-  }>;
-}
-
 export interface SessionHistoryStartedData {
   sessionId: string;
   totalEntries: number;
   messageCount: number;
   refresh?: boolean;
-}
-
-export interface SessionHistoryEntryData {
-  sessionId: string;
-  entry: ConversationEntryDto;
-  visible?: { kind: string; text: string };
 }
 
 export interface SessionHistoryChunkData {
@@ -228,6 +197,7 @@ export interface StepTraceDto {
   decisionKind?: string;
   toolName?: string;
   callId?: string;
+  batchId?: string;
   status: "done" | "failed";
   startedAt?: string;
   endedAt?: string;
@@ -304,6 +274,33 @@ export interface ProviderModelsFailedData {
   providerId: string;
   message: string;
   details?: unknown;
+}
+
+export type SandboxEffectiveMode = "sandbox" | "fallback";
+
+export interface SandboxDiagnosticData {
+  code: string;
+  severity: "warning" | "error";
+  message: string;
+  recommendation: string;
+  details: string[];
+  manualCommands?: string[];
+}
+
+export interface SandboxDependencySnapshotData {
+  errors: string[];
+  warnings: string[];
+}
+
+export interface SandboxStatusSnapshotData {
+  provider: string;
+  platform: string;
+  supported: boolean;
+  effectiveMode: SandboxEffectiveMode;
+  dependencies: SandboxDependencySnapshotData;
+  diagnostics: SandboxDiagnosticData[];
+  message: string;
+  updatedAt: string;
 }
 
 export interface ProviderModelEndpointInput {
@@ -605,137 +602,10 @@ export interface PromptSummaryData {
   tokenCount: number;
 }
 
-export interface ActionTaskFrameData {
-  taskType: string;
-  answerGoal: string;
-  intentTags: string[];
-  targetRefs: Array<{
-    kind: string;
-    value: string;
-    status: string;
-  }>;
-  candidateTools: Array<{
-    name: string;
-    purpose: string;
-    supports: string[];
-  }>;
-  discoveryQueries: string[];
-  requiredEffects: Array<{
-    id: string;
-    effect: string;
-    target: string;
-    proof: string;
-    reason: string;
-  }>;
-  requiredEvidence: Array<{
-    id: string;
-    need: string;
-    minimum: number;
-    reason: string;
-  }>;
-  userInputNeeds: Array<{
-    question: string;
-    reason: string;
-  }>;
-  nextStepPurpose: string;
-  completionCriteria: string[];
-  notes: string[];
-}
-
-export interface ActionEvidenceDecisionData {
-  ready: boolean;
-  missingNeeds: Array<{
-    id: string;
-    need: string;
-    reason: string;
-    status: "partial" | "missing" | "stalled" | "blocked";
-    observed: number;
-    required: number;
-    missingFacts: string[];
-    unsupportedClaims: string[];
-    blockers: string[];
-  }>;
-  satisfiedNeeds: Array<{
-    id: string;
-    need: string;
-    evidence: ActionEvidenceMatchData[];
-  }>;
-  requirementStates: Array<{
-    id: string;
-    need: string;
-    status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
-    reason: string;
-    observed: number;
-    required: number;
-    evidence: ActionEvidenceMatchData[];
-    missingFacts: string[];
-    unsupportedClaims: string[];
-    blockers: string[];
-  }>;
-  progress: {
-    stalled: boolean;
-    repeatedCalls: Array<{
-      toolName: string;
-      argsHash: string;
-      count: number;
-      lastStep: number;
-    }>;
-    nonEvidenceCalls: ActionEvidenceProgressCallData[];
-    failedCalls: ActionEvidenceProgressCallData[];
-  };
-  verification?: {
-    ready: boolean;
-    requirements: Array<{
-      requirementId: string;
-      need: string;
-      status: "satisfied" | "partial" | "missing" | "stalled" | "blocked";
-      evidenceUris: string[];
-      artifactUris: string[];
-      reason: string;
-      missingFacts: string[];
-      unsupportedClaims: string[];
-    }>;
-    summary: string;
-  };
-  recommendedTools: string[];
-  searchQueries: string[];
-}
-
-export interface ActionEvidenceMatchData {
-  evidenceUri: string;
-  kind: string;
-  toolName: string;
-  artifactUri: string;
-  locator: string;
-  display: string;
-  label: string;
-  source?: string | null;
-  confidence?: number | null;
-  facts: Array<{
-    name: string;
-    value: string;
-  }>;
-  produces: string;
-  satisfies: string[];
-  quality: string;
-  supportingSignals: string[];
-}
-
-export interface ActionEvidenceProgressCallData {
-  step: number;
-  toolName: string;
-  status: string;
-  resultKind: string;
-  artifactUri: string;
-  evidenceUris: string[];
-  argumentsPreview: string;
-  error: string;
-}
-
 export interface ActionPlannedData {
   status: "planned" | "fallback";
   action?: string;
-  expectedOutputMode?: "tool_call_xml" | "final_text" | "open";
+  expectedOutputMode?: "final_text" | "open";
   instruction?: string;
   askUserQuestion?: string;
   capabilityNeeds?: Array<{
@@ -760,15 +630,12 @@ export interface ActionPlannedData {
   selectedAction?: string;
   selectionRepaired?: boolean;
   payloadRepaired?: boolean;
-  taskFrame?: ActionTaskFrameData;
-  evidenceDecision?: ActionEvidenceDecisionData;
   reason?: string;
 }
 
 export type InteractionRunMode =
   | "direct_response"
-  | "tool_agent_loop"
-  | "deliberate_task_loop";
+  | "tool_agent_loop";
 
 export interface InteractionRoutedData {
   mode: InteractionRunMode;
@@ -781,10 +648,10 @@ export interface InteractionRoutedData {
   discoveryQueries: string[];
   reason: string;
   loadedTools: string[] | "all";
-  expectedOutputMode?: "tool_call_xml" | "final_text" | "open";
+  expectedOutputMode?: "final_text" | "open";
 }
 
-export type ActionPlannerStageName = "understandUserTurn" | "buildTaskFrame" | "evaluateEvidence";
+export type ActionPlannerStageName = "understandUserTurn";
 
 export type TurnContextMode = "None" | "Used" | "Insufficient";
 
@@ -805,8 +672,6 @@ export interface ActionPlannerStageCompletedData {
   selectedAction?: string;
   repaired?: boolean;
   turnUnderstanding?: TurnUnderstandingData;
-  taskFrame?: ActionTaskFrameData;
-  evidenceDecision?: ActionEvidenceDecisionData;
 }
 
 export interface ActionPlannerStageFailedData {
@@ -823,49 +688,24 @@ export interface ModelStartedData {
   provider?: ModelProviderMetadata;
 }
 
-export interface ModelStreamOpenedData {
-  provider?: ModelProviderMetadata;
-}
-
 export interface ModelCompletedData {
   text: string;
   provider?: ModelProviderMetadata;
 }
 
-export interface DecisionXmlProgressData {
-  state: string;
-  xml: string;
-  /** 后端已经把 CDATA 剥好、实体转义反过来的"用户可见文本"——流式逐步增长 */
-  kind: "final_answer" | "ask_user" | "tool_calls" | "unknown";
-  text: string;
-  preambleText: string;
-}
-
-export interface DecisionXmlSummaryData {
-  chars: number;
-  lines: number;
-  root?: string;
-  sanitized: boolean;
-  detailId: string;
-}
-
-export interface DecisionParsedData {
-  root: string;
-  decisionKind: string;
-  detailId: string;
-}
-
-export interface DecisionParsedDetailData {
-  detailId: string;
-  root: string;
-  decisionKind: string;
-  payload: unknown;
+export interface PiTraceData {
+  source: "session" | "proxy" | "tool_bridge" | "substrate";
+  eventType: string;
+  summary: string;
+  payload?: unknown;
 }
 
 export interface ToolCallsPlannedData {
   toolCount: number;
   tools: string[];
   status?: "planned" | "discovery_escalated" | "blocked";
+  executionMode?: "parallel" | "sequential";
+  batchId?: string;
   reason?: string;
   issues?: string[];
 }
@@ -874,12 +714,14 @@ export interface ToolCallStartedData {
   index: number;
   toolName: string;
   callId: string;
+  batchId?: string;
 }
 
 export interface ToolCallCompletedData {
   index: number;
   toolName: string;
   callId: string;
+  batchId?: string;
   preview?: string;
 }
 
@@ -887,32 +729,36 @@ export interface ToolCallFailedData {
   index: number;
   toolName: string;
   callId: string;
+  batchId?: string;
   code?: string;
   message: string;
 }
 
-export interface ToolResultsDetailData {
+export interface ToolCallResultDetailData {
   detailId: string;
-  xml: string;
+  index: number;
+  toolName: string;
+  callId: string;
+  batchId?: string;
   value: unknown;
 }
 
-export interface FinalAnswerData {
+export interface AssistantMessageCreatedData {
+  messageId: string;
+  kind: "tool_preface" | "final_answer" | "ask_user";
   content: string;
-}
-
-export interface AskUserData {
-  question: string;
+  terminal: boolean;
+  toolCount?: number;
+  batchId?: string;
+  toolCallIds?: string[];
   reasonCode?: string;
 }
 
-export interface RetryPlannedData {
-  attempt: number;
-  code: string;
-  message: string;
-  retryable: boolean;
-  detailId: string;
-}
+export type {
+  ApprovalRequestedData,
+  ApprovalResolvedData,
+  ApprovalSubjectData,
+} from "./approvalEventTypes";
 
 export interface RunFailedData {
   message: string;
@@ -922,32 +768,4 @@ export interface RunFailedData {
 
 // --- 客户端 → 服务端 请求 ---
 
-export type WsRequest =
-  | { type: "session.create"; sessionId?: string }
-  | {
-      type: "session.message";
-      sessionId: string;
-      requestId?: string;
-      modelProviderId?: string;
-      input: string;
-      attachments?: UploadAttachmentData[];
-    }
-  | { type: "session.close"; sessionId: string }
-  | { type: "session.cancel"; sessionId: string }
-  | { type: "session.truncate_from"; sessionId: string; requestId: string }
-  | { type: "session.list" }
-  | { type: "session.history"; sessionId: string; refresh?: boolean }
-  | { type: "session.rename"; sessionId: string; title: string }
-  | { type: "model.list" }
-  | { type: "provider.models.fetch"; providerId: string; force?: boolean; endpoint?: ProviderModelEndpointInput }
-  | { type: "config.get" }
-  | { type: "config.update"; requestId?: string; config: Record<string, unknown>; mirrorJson?: boolean }
-  | { type: "plugin.config.list" }
-  | { type: "plugin.config.update"; requestId?: string; pluginName: string; toml: string }
-  | { type: "plugin.config.set_enabled"; requestId?: string; pluginName: string; toolName?: string; enabled: boolean }
-  | { type: "preset.list" }
-  | { type: "preset.save"; requestId?: string; name: string; format: PresetFormat; content: string; activate?: boolean }
-  | { type: "preset.delete"; requestId?: string; name: string }
-  | { type: "preset.set_active"; requestId?: string; name?: string | null }
-  | { type: "profile.get" }
-  | { type: "profile.update"; profile: Pick<UserProfileData, "name" | "avatarDataUrl"> };
+export type { WsRequest } from "./wsRequestTypes";

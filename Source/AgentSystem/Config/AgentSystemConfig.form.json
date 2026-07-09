@@ -369,23 +369,6 @@
         "icon": "sliders-horizontal",
         "fields": [
           {
-            "path": ["AgentLoop", "MaxSteps"],
-            "label": "最大步骤数",
-            "description": "-1 表示不限制。",
-            "type": "number",
-            "min": -1,
-            "step": 1,
-            "required": false
-          },
-          {
-            "path": ["AgentLoop", "MaxRepairAttempts"],
-            "label": "修复重试次数",
-            "type": "number",
-            "min": 0,
-            "step": 1,
-            "required": false
-          },
-          {
             "path": ["AgentLoop", "LoadedTools"],
             "label": "工具加载策略",
             "description": "dynamic 表示按需发现工具，all 表示加载全部工具。",
@@ -395,6 +378,14 @@
               "dynamic": "按需发现",
               "all": "全部加载"
             },
+            "required": false
+          },
+          {
+            "path": ["AgentLoop", "PiSessions", "RootDir"],
+            "label": "Pi 会话目录",
+            "description": "Pi 原生 session tree 的持久化目录，支持相对工作区路径。",
+            "type": "string",
+            "placeholder": ".senera/pi-sessions",
             "required": false
           },
           {
@@ -585,7 +576,7 @@
           {
             "path": ["ToolLearning", "Patterns", "MaxPromptPatterns"],
             "label": "注入模式上限",
-            "description": "ToolCallPlanner 最多读取的相关工具使用经验数量。",
+            "description": "PiProxy 编译工具调用时最多读取的相关工具使用经验数量。",
             "type": "number",
             "min": 0,
             "step": 1,
@@ -880,4 +871,3 @@
     ]
   }
 }
-

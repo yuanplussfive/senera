@@ -22,6 +22,12 @@
         "Kind": "HostCapability",
         "Capability": "artifact.memory.read"
       },
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Allow"
+      },
       "Artifacts": {
         "Evidence": [
           {

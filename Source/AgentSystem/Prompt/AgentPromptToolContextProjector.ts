@@ -1,10 +1,8 @@
 import type {
-  RegisteredDecisionAction,
   RegisteredTool,
 } from "../Types/PluginRuntimeTypes.js";
 import { normalizeMarkdownSectionText } from "../Xml/AgentMarkdownSections.js";
 import type {
-  AgentPromptDecisionActionContext,
   AgentPromptToolContext,
 } from "./AgentPromptContextTypes.js";
 import type { AgentPromptContractProjector } from "./AgentPromptContractProjector.js";
@@ -16,29 +14,6 @@ export class AgentPromptToolContextProjector {
     private readonly contractProjector: AgentPromptContractProjector,
     private readonly documentationReader: AgentPromptDocumentationReader,
   ) {}
-
-  projectDecisionAction(
-    action: RegisteredDecisionAction,
-    sections: ResolvedAgentPromptSections,
-  ): AgentPromptDecisionActionContext {
-    const document = this.documentationReader.readMarkdownSections(action.descriptionFile);
-    const fallbackDescription = action.plugin.manifest.Plugin.Description ?? "";
-
-    return {
-      name: action.name,
-      kind: action.kind,
-      xmlRoot: action.xmlRoot,
-      description: this.readSection(document.sections, sections.summary, fallbackDescription),
-      whenToUse: this.readSection(document.sections, sections.trigger, fallbackDescription),
-      whenNotToUse: this.readSection(document.sections, sections.avoid),
-      outputContract: this.contractProjector.projectFromFile(
-        action.signatureFile,
-        action.xmlRoot,
-        action.signatureType,
-      ),
-      documentationXml: this.documentationReader.renderOptionalMarkdownFile(action.descriptionFile),
-    };
-  }
 
   projectTool(
     tool: RegisteredTool,

@@ -14,6 +14,7 @@ export const AgentArtifactFileNames = {
   input: "input.redacted.json",
   raw: "raw.json",
   summary: "summary.md",
+  summaryJson: "summary.json",
   evidence: "evidence.json",
   projection: "projection.md",
   delta: "delta.json",

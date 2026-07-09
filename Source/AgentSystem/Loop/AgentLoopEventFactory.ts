@@ -1,15 +1,10 @@
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
-import type { AgentExecutionResult } from "../Decision/AgentDecisionExecutor.js";
 import type { AgentProjectedTerminalResult } from "../Runtime/AgentExecutionProjector.js";
-import type { AgentRetryInstruction } from "../Retry/AgentRetryableError.js";
-import type { SanitizedDecisionXml } from "../Decision/AgentDecisionXmlSanitizer.js";
-import type { AgentDecision } from "../Types/ToolRuntimeTypes.js";
-import type { AgentActionPlanResult } from "../ActionPlanner/AgentActionPlanner.js";
+import type { AgentActionPlanResult } from "../ActionPlanner/AgentActionPlannerTypes.js";
 import type { AgentActionPlannerStageEvent } from "../ActionPlanner/AgentActionPlannerTelemetry.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
-import { AgentLoopDecisionEventFactory } from "./AgentLoopDecisionEventFactory.js";
 import { AgentLoopPlannerEventFactory } from "./AgentLoopPlannerEventFactory.js";
 import { AgentLoopPromptEventFactory } from "./AgentLoopPromptEventFactory.js";
 import { AgentLoopRunEventFactory } from "./AgentLoopRunEventFactory.js";
@@ -19,7 +14,6 @@ export class AgentLoopEventFactory {
   private readonly runEvents = new AgentLoopRunEventFactory();
   private readonly promptEvents = new AgentLoopPromptEventFactory();
   private readonly plannerEvents = new AgentLoopPlannerEventFactory();
-  private readonly decisionEvents = new AgentLoopDecisionEventFactory();
   private readonly toolEvents = new AgentLoopToolEventFactory();
 
   runStarted(requestId: string, input: string): AgentDomainEvent {
@@ -77,33 +71,14 @@ export class AgentLoopEventFactory {
     return this.plannerEvents.actionPlannerStage(requestId, step, event);
   }
 
-  sanitizedDecisionXml(
-    requestId: string,
-    step: number,
-    sanitized: SanitizedDecisionXml,
-  ): AgentDomainEvent[] {
-    return this.decisionEvents.sanitizedDecisionXml(requestId, step, sanitized);
-  }
-
-  parsedDecision(requestId: string, step: number, decision: AgentDecision): AgentDomainEvent[] {
-    return this.decisionEvents.parsedDecision(requestId, step, decision);
-  }
-
-  retryPlanned(
-    requestId: string,
-    step: number,
-    attempt: number,
-    instruction: AgentRetryInstruction,
-  ): AgentDomainEvent[] {
-    return this.decisionEvents.retryPlanned(requestId, step, attempt, instruction);
-  }
-
   toolCallsPlanned(
     requestId: string,
     step: number,
     toolNames: string[],
     metadata: {
       status?: "planned" | "discovery_escalated" | "blocked";
+      executionMode?: "parallel" | "sequential";
+      batchId?: string;
       reason?: string;
       issues?: readonly string[];
     } = {},
@@ -117,8 +92,9 @@ export class AgentLoopEventFactory {
     index: number,
     toolName: string,
     callId: string,
+    metadata: { batchId?: string } = {},
   ): AgentDomainEvent {
-    return this.toolEvents.toolCallStarted(requestId, step, index, toolName, callId);
+    return this.toolEvents.toolCallStarted(requestId, step, index, toolName, callId, metadata);
   }
 
   toolCallCompleted(
@@ -128,8 +104,9 @@ export class AgentLoopEventFactory {
     toolName: string,
     callId: string,
     preview?: string,
+    metadata: { batchId?: string } = {},
   ): AgentDomainEvent {
-    return this.toolEvents.toolCallCompleted(requestId, step, index, toolName, callId, preview);
+    return this.toolEvents.toolCallCompleted(requestId, step, index, toolName, callId, preview, metadata);
   }
 
   toolCallFailed(
@@ -140,20 +117,25 @@ export class AgentLoopEventFactory {
     callId: string,
     message: string,
     code?: string,
+    metadata: { batchId?: string } = {},
   ): AgentDomainEvent {
-    return this.toolEvents.toolCallFailed(requestId, step, index, toolName, callId, message, code);
+    return this.toolEvents.toolCallFailed(requestId, step, index, toolName, callId, message, code, metadata);
   }
 
-  toolResults(
+  toolCallResultDetail(
     requestId: string,
     step: number,
-    execution: Extract<AgentExecutionResult, { kind: "ToolResults" }>,
-    resultXml: string,
-  ): AgentDomainEvent[] {
-    return this.toolEvents.toolResults(requestId, step, execution, resultXml);
+    index: number,
+    toolName: string,
+    callId: string,
+    value: unknown,
+    metadata: { batchId?: string } = {},
+  ): AgentDomainEvent {
+    return this.toolEvents.toolCallResultDetail(requestId, step, index, toolName, callId, value, metadata);
   }
 
   terminal(projected: AgentProjectedTerminalResult, requestId: string): AgentDomainEvent[] {
     return this.runEvents.terminal(projected, requestId);
   }
+
 }

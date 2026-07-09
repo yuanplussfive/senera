@@ -4,7 +4,6 @@ import {
   type AgentConversationEntry,
 } from "../Conversation/AgentConversation.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
-import { extractDecisionStreamingPreview } from "../Decision/AgentDecisionStreamingPreview.js";
 import { AgentRunEventHistoryReplayChunkSize } from "../Events/AgentRunEventHistoryPolicy.js";
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import type { StoredRunSnapshot } from "./AgentSqliteSessionRepository.js";
@@ -119,7 +118,7 @@ export class AgentSessionHistoryReplay {
             entry,
             visible:
               entry.kind === AgentConversationEntryKinds.AssistantDecision
-                ? extractDecisionStreamingPreview(entry.xml)
+                ? projectAssistantHistoryVisible(entry.xml)
                 : undefined,
           })),
         },
@@ -206,6 +205,13 @@ export class AgentSessionHistoryReplay {
       traces: status === "running" ? [] : [createMissingRunDataTrace(snapshot)],
     });
   }
+}
+
+function projectAssistantHistoryVisible(text: string): { kind: "final_answer"; text: string } {
+  return {
+    kind: "final_answer",
+    text,
+  };
 }
 
 class AgentSessionHistoryEntryIndex {

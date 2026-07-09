@@ -5,6 +5,7 @@ import { buildInitialActionPlannerLedger } from "../ActionPlanner/AgentActionPla
 import type { RunningAgentLoopMachineState } from "./AgentLoopStateTypes.js";
 
 export interface AgentLoopStartRequest {
+  sessionId?: string;
   requestId: string;
   input: string;
   messages?: AgentLanguageModelMessage[];
@@ -27,10 +28,10 @@ export function createInitialAgentLoopState(
 
   return {
     kind: "running",
+    sessionId: request.sessionId,
     requestId: request.requestId,
     input: request.input,
     step: 1,
-    repairAttempts: 0,
     messages: request.messages && request.messages.length > 0
       ? request.messages
       : fallbackMessages,
@@ -38,10 +39,8 @@ export function createInitialAgentLoopState(
     loadedToolNames: request.loadedToolNames,
     plannerLedger: buildInitialActionPlannerLedger(request.messages),
     rootCommand: request.rootCommand,
-    toolPlanDiscoveryEscalated: false,
     systemPromptPreamble: request.systemPromptPreamble,
     activeSkills: [],
     stepTraces: [],
   };
 }
-

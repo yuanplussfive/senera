@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { isMainModule } from "../Source/AgentSystem/Core/AgentPath.js";
 
 export const DesktopReleaseVersionEnv = "SENERA_DESKTOP_VERSION";
 export const DesktopReleaseBuildNumberEnv = "SENERA_DESKTOP_BUILD_NUMBER";
@@ -158,8 +159,8 @@ function readPackageVersionField(value: Record<string, unknown>): string {
   return version;
 }
 
-if (require.main === module) {
+if (isMainModule(import.meta.url)) {
   const info = readDesktopReleaseInfo();
   writeGitHubOutputs(info);
-  console.log(JSON.stringify(info, null, 2));
+  process.stdout.write(`${JSON.stringify(info, null, 2)}\n`);
 }

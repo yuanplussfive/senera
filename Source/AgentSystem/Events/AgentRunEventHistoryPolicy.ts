@@ -14,19 +14,13 @@ const RunEventHistoryPhases = new Set<AgentEventPhase>([
   AgentEventPhases.Prompt,
   AgentEventPhases.Model,
   AgentEventPhases.Decision,
-  AgentEventPhases.Retry,
   AgentEventPhases.Tool,
   AgentEventPhases.Run,
 ]);
 
 const RunEventHistoryExcludedKinds = new Set<AgentEventKind>([
-  AgentEventKinds.PromptRendered,
   AgentEventKinds.ModelDelta,
-  AgentEventKinds.DecisionXmlProgress,
-  AgentEventKinds.DecisionXmlReady,
-  AgentEventKinds.DecisionXmlDetail,
-  AgentEventKinds.RetryDetail,
-  AgentEventKinds.ToolResultsDetail,
+  AgentEventKinds.ToolCallResultDetail,
 ]);
 
 const RunEventHistoryDataProjectors = new Map<AgentEventKind, RunEventHistoryDataProjector>([

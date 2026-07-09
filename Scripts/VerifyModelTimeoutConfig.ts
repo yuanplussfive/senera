@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { AgentSystemConfigSchema } from "../Source/AgentSystem/Schemas/AgentSystemConfigSchema.js";
 import {
   resolveActionPlannerConfig,
+  resolveAgentLoopConfig,
   resolveAgentDefaults,
-  resolveCliConfig,
   resolveFrontendConfig,
   resolveModelProviderConfig,
   resolvePersistenceConfig,
@@ -19,11 +19,6 @@ const baseConfig = {
     BaseUrl: "https://example.test/v1",
     ApiKey: "test",
   }],
-  Cli: {
-    Display: {
-      DetailMode: "tools",
-    },
-  },
   ModelProviders: [{
     Id: "test",
     ProviderId: "test-endpoint",
@@ -50,8 +45,8 @@ assert.deepEqual(resolvePersistenceConfig(parsedBase), {
   DatabasePath: ".senera/senera.db",
 });
 assert.equal(resolveToolExecutionConfig(parsedBase).TimeoutMs, 120000);
-assert.equal(resolveCliConfig(parsedBase).Display?.DetailMode, "tools");
-assert.equal(resolveCliConfig(parsedBase).Connection?.Url, "ws://127.0.0.1:8787");
+assert.equal(resolveAgentLoopConfig(parsedBase).PiSessionCreateTimeoutMs, 20000);
+assert.equal(resolveAgentDefaults(parsedBase).Server.Port, 8787);
 
 const configuredDefaults = parseConfig({
   ...baseConfig,
@@ -59,14 +54,6 @@ const configuredDefaults = parseConfig({
     PluginRoots: {
       System: ["./SystemTools"],
       User: ["./ExternalTools"],
-    },
-    Cli: {
-      Connection: {
-        Url: "ws://127.0.0.1:9797",
-      },
-      Display: {
-        PreviewTokenLimit: 80,
-      },
     },
     ToolExecution: {
       TimeoutSeconds: 90,
@@ -85,11 +72,6 @@ const configuredDefaults = parseConfig({
       },
     },
   },
-  Cli: {
-    Display: {
-      DetailMode: "all",
-    },
-  },
   ModelProviders: [{
     ...baseConfig.ModelProviders[0],
     Temperature: 0.7,
@@ -99,22 +81,22 @@ const configuredDefaults = parseConfig({
       Port: 4174,
     },
   },
+  AgentLoop: {
+    PiSessionCreateTimeoutSeconds: 7,
+  },
 });
 assert.deepEqual(resolvePluginRootsConfig(configuredDefaults), {
   System: ["./SystemTools"],
   User: ["./ExternalTools"],
 });
-assert.equal(resolveCliConfig(configuredDefaults).Connection?.Url, "ws://127.0.0.1:9797");
-assert.equal(resolveCliConfig(configuredDefaults).Display?.DetailMode, "all");
-assert.equal(resolveCliConfig(configuredDefaults).Display?.PreviewTokenLimit, 80);
 assert.equal(resolveToolExecutionConfig(configuredDefaults).TimeoutMs, 90000);
-assert.equal(resolveAgentDefaults(configuredDefaults).Cli.Display.PreviewTokenLimit, 80);
+assert.equal(resolveAgentLoopConfig(configuredDefaults).PiSessionCreateTimeoutMs, 7000);
+assert.equal(resolveAgentDefaults(configuredDefaults).Server.Port, 8787);
 assert.equal(resolveModelProviderConfig(configuredDefaults).Temperature, 0.7);
 assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Model, "test-model");
 assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Provider, "openai-generic");
 assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Temperature, 0.3);
-assert.equal(resolveActionPlannerConfig(configuredDefaults).TaskFrameClient.Model, "test-model");
-assert.equal(resolveActionPlannerConfig(configuredDefaults).EvidenceClient.Model, "test-model");
+assert.equal(resolveActionPlannerConfig(configuredDefaults).PlanningClient.Model, "test-model");
 assert.equal(resolveFrontendConfig(configuredDefaults).DevServer.Port, 5174);
 assert.equal(resolveFrontendConfig(configuredDefaults).PreviewServer.Port, 4174);
 assert.equal(resolveFrontendConfig(configuredDefaults).Client.WebSocketUrl, "ws://127.0.0.1:8787");
@@ -161,27 +143,17 @@ const splitPlanner = resolveActionPlannerConfig(parseConfig({
     },
   ],
   ActionPlanner: {
-    TaskFrameClient: {
+    PlanningClient: {
       ModelProviderId: "gpt-planner",
       Provider: "openai-responses",
       Temperature: 0.1,
       MaxTokens: 4096,
     },
-    EvidenceClient: {
-      ModelProviderId: "mistral-large-latest",
-      Provider: "openai-generic",
-      Temperature: 0,
-      MaxTokens: 2048,
-    },
   },
 }));
-assert.equal(splitPlanner.TaskFrameClient.Provider, "openai-responses");
-assert.equal(splitPlanner.TaskFrameClient.Model, "gpt-planner-model");
-assert.equal(splitPlanner.TaskFrameClient.MaxTokens, 4096);
-assert.equal(splitPlanner.EvidenceClient.Provider, "openai-generic");
-assert.equal(splitPlanner.EvidenceClient.Model, "mistral-large-latest");
-assert.equal(splitPlanner.EvidenceClient.Temperature, 0);
-assert.equal(splitPlanner.EvidenceClient.MaxTokens, 2048);
+assert.equal(splitPlanner.PlanningClient.Provider, "openai-responses");
+assert.equal(splitPlanner.PlanningClient.Model, "gpt-planner-model");
+assert.equal(splitPlanner.PlanningClient.MaxTokens, 4096);
 
 assert.throws(() => parseConfig({
   ...baseConfig,

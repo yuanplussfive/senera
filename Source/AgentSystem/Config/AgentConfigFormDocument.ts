@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { moduleDirPath } from "../Core/AgentPath.js";
 
-const FormSchemaPath = path.join(__dirname, "AgentSystemConfig.form.json");
+const FormSchemaPath = path.join(moduleDirPath(import.meta.url), "AgentSystemConfig.form.json");
 
 const ConfigFormFieldTypeSchema = z.enum([
   "boolean",

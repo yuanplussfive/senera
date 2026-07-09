@@ -8,10 +8,24 @@ export interface ToolManifest {
   SignatureType?: string;
   Permissions?: string[];
   Handler?: ToolHandlerManifest;
+  Execution: ToolExecutionManifest;
   Search?: ToolSearchManifest;
   EvidenceCapabilities?: ToolEvidenceCapabilityManifest[];
+  Approval?: ToolApprovalManifest;
   Artifacts?: ToolArtifactPolicyManifest;
   ArtifactPolicyFile?: string;
+}
+
+export interface ToolApprovalManifest {
+  Mode: "allow" | "ask" | "deny";
+  Reason?: string;
+}
+
+export interface ToolExecutionManifest {
+  Boundary: "Local" | "Sandbox" | "SandboxPreferred";
+  Network: "Allow" | "Deny";
+  Workspace: "ReadOnly" | "ReadWrite";
+  LocalFallback: "Allow" | "Deny";
 }
 
 export interface ToolEvidenceCapabilityManifest {
@@ -29,4 +43,9 @@ export type ToolHandlerManifest =
   | {
       Kind: "HostCapability";
       Capability: string;
+    }
+  | {
+      Kind: "McpTool";
+      Server: string;
+      Tool: string;
     };

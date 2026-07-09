@@ -148,7 +148,7 @@ function generateMockMessages(count: number, sessionId: string, now: number): Ch
         ? `帮我检查第 ${requestIndex + 1} 个前端交互路径。`
         : `已完成第 ${requestIndex + 1} 轮检查：列表、消息和抽屉动画保持轻量，长列表不会启用 layout 动画。`,
       createdAt: new Date(now - (count - index) * 18_000).toISOString(),
-      kind: isUser ? undefined : "FinalAnswer",
+      kind: isUser ? undefined : "AssistantFinal",
       requestId,
     };
   });

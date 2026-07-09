@@ -31,7 +31,7 @@ Plugins/<ToolPlugin>            外部工具、业务工具、用户可扩展工
 `ToolSignature.ts` 是工具参数和结果的正式契约，会影响：
 
 - 工具参数 schema。
-- ToolCallPlanner 生成参数。
+- Pi tool schema 和 PiProxy+BAML 工具调用编译。
 - 模型提示里的工具说明。
 - 验证脚本。
 - artifact policy 的结果投影。
@@ -94,7 +94,7 @@ PluginConfig.example.toml
 
 ## 必须验证
 
-至少新增或更新一个 `Scripts/Verify*.ts`。
+优先更新现有核心验证脚本，只有出现新的独立运行时边界时才新增 `Scripts/Verify*.ts`。
 
 常规验证：
 
@@ -110,7 +110,6 @@ npm run verifysuite -- workspace core
 node Dist/Scripts/VerifyPluginConfigSchema.js
 node Dist/Scripts/VerifyPluginArtifactPolicies.js
 node Dist/Scripts/VerifyToolSignatureMappingAndPlanValidation.js
-node Dist/Scripts/VerifyToolSignatureJsonSchemaValidation.js
 ```
 
 如果工具输出会影响前端显示，还要跑：
@@ -129,4 +128,3 @@ npm run frontendverify
 - 可复用事实进入 artifact evidence。
 - 私有配置不提交，示例配置可提交。
 - 验证覆盖签名、配置、artifact、运行时行为。
-

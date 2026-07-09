@@ -5,6 +5,26 @@ import {
   readRecord,
   stringifyPreview,
 } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
+import { previewAgentText } from "../Text/AgentTextProjection.js";
+import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
+
+const ToolObservationTextLimits = {
+  lineValueChars: 2_000,
+  itemChars: 8_000,
+  jsonStringChars: 2_000,
+  jsonArrayItems: 24,
+  jsonObjectFields: 48,
+} as const;
+
+const ToolObservationTokenLimits = {
+  lineValueTokens: 500,
+  jsonStringTokens: 500,
+  projectionTokens: 4_000,
+} as const;
+
+export interface AgentToolObservationRenderOptions {
+  model?: string;
+}
 
 export function projectLedgerEvidenceForTimeline(record: PlannerEvidenceRecord): Record<string, unknown> {
   return compactObject({
@@ -21,7 +41,46 @@ export function projectLedgerEvidenceForTimeline(record: PlannerEvidenceRecord):
 }
 
 export function renderToolObservationContent(items: readonly Record<string, unknown>[]): string {
-  return items.map(renderToolObservationItem).join("\n\n");
+  return items
+    .map(renderToolObservationItem)
+    .map((item) => previewAgentText(item, ToolObservationTextLimits.itemChars))
+    .join("\n\n");
+}
+
+export function renderOpenAiToolObservationContent(
+  item: Record<string, unknown>,
+  options: AgentToolObservationRenderOptions = {},
+): string {
+  return JSON.stringify(projectOpenAiToolObservation(item, createProjectionContext(options)));
+}
+
+export function projectOpenAiToolObservation(
+  item: Record<string, unknown>,
+  context: AgentToolObservationProjectionContext = createProjectionContext(),
+): Record<string, unknown> {
+  const artifact = readRecord(item.artifact);
+  const structuredSummary = readRecord(artifact?.structuredSummary);
+  const evidence = readArray(item.evidence ?? artifact?.evidence);
+  const response = readRecord(item.response);
+  return compactObject({
+    type: "senera.tool_observation.v1",
+    tool_name: item.name,
+    call_id: item.callId,
+    status: readObservationStatus(item, response),
+    arguments: projectOpenAiObservationValueWithContext(item.arguments, context),
+    headline: projectOpenAiObservationValueWithContext(structuredSummary?.headline, context),
+    summary: projectOpenAiObservationValueWithContext(structuredSummary?.summary ?? artifact?.summary, context),
+    projection: projectOpenAiProjection(artifact?.projection, context),
+    summary_facts: projectOpenAiObservationValueWithContext(structuredSummary?.facts, context),
+    limitations: projectOpenAiObservationValueWithContext(structuredSummary?.limitations, context),
+    retrieval: projectOpenAiObservationValueWithContext(structuredSummary?.retrieval, context),
+    error: projectOpenAiObservationValueWithContext(item.error ?? response?.error, context),
+    result: artifact ? undefined : projectOpenAiObservationValueWithContext(item.result, context),
+    artifact_uri: item.artifactUri ?? artifact?.artifactUri,
+    evidence: evidence.map(projectOpenAiEvidence),
+    delta: readArray(artifact?.delta).map(projectOpenAiDelta),
+    workspace: projectOpenAiObservationValueWithContext(artifact?.workspace, context),
+  });
 }
 
 function renderToolObservationItem(item: Record<string, unknown>): string {
@@ -63,7 +122,7 @@ function renderToolObservationItem(item: Record<string, unknown>): string {
 function renderEvidenceBlock(value: unknown): string[] {
   const record = readRecord(value);
   if (!record) {
-    return [`- ${stringifyPreview(value)}`];
+    return [`- ${previewObservationValue(value)}`];
   }
 
   const lines = [
@@ -80,12 +139,149 @@ function renderEvidenceBlock(value: unknown): string[] {
     for (const slot of slots) {
       const slotRecord = readRecord(slot);
       lines.push(slotRecord
-        ? `  - ${String(slotRecord.name ?? "")}: ${String(slotRecord.value ?? "")}`
-        : `  - ${stringifyPreview(slot)}`);
+        ? `  - ${String(slotRecord.name ?? "")}: ${previewObservationValue(slotRecord.value)}`
+        : `  - ${previewObservationValue(slot)}`);
     }
   }
 
   return lines;
+}
+
+function projectOpenAiEvidence(value: unknown): unknown {
+  const record = readRecord(value);
+  if (!record) {
+    return projectOpenAiObservationValue(value);
+  }
+
+  return compactObject({
+    evidence_uri: record.evidenceUri,
+    kind: record.kind,
+    locator: projectOpenAiObservationValue(record.locator),
+    display: projectOpenAiObservationValue(record.display),
+    label: projectOpenAiObservationValue(record.label),
+    source: projectOpenAiObservationValue(record.source),
+    confidence: record.confidence,
+    facts: readArray(record.slots).map((slot) => {
+      const slotRecord = readRecord(slot);
+      return slotRecord
+        ? compactObject({
+            name: slotRecord.name,
+            value: projectOpenAiObservationValue(slotRecord.value),
+          })
+        : projectOpenAiObservationValue(slot);
+    }),
+  });
+}
+
+function projectOpenAiDelta(value: unknown): unknown {
+  const record = readRecord(value);
+  if (!record) {
+    return projectOpenAiObservationValue(value);
+  }
+
+  return compactObject({
+    kind: record.kind,
+    status: record.status,
+    summary: projectOpenAiObservationValue(record.summary),
+  });
+}
+
+function projectOpenAiProjection(
+  value: unknown,
+  context: AgentToolObservationProjectionContext,
+): unknown {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+
+  return previewProjectionText(value, {
+    chars: ToolObservationTextLimits.itemChars,
+    tokens: ToolObservationTokenLimits.projectionTokens,
+    context,
+  });
+}
+
+function readObservationStatus(
+  item: Record<string, unknown>,
+  response: Record<string, unknown> | undefined,
+): string {
+  if (item.error || response?.error) {
+    return "failure";
+  }
+  if (response?.ok === false) {
+    return "failure";
+  }
+  if (response?.ok === true || item.result || item.artifact) {
+    return "success";
+  }
+  return String(item.status ?? "");
+}
+
+function projectOpenAiObservationValue(value: unknown, depth = 0): unknown {
+  return projectOpenAiObservationValueWithContext(value, createProjectionContext(), depth);
+}
+
+interface AgentToolObservationProjectionContext {
+  tokenProjector?: AgentTokenProjector;
+}
+
+function createProjectionContext(
+  options: AgentToolObservationRenderOptions = {},
+): AgentToolObservationProjectionContext {
+  return {
+    tokenProjector: options.model ? new AgentTokenProjector(options.model) : undefined,
+  };
+}
+
+function projectOpenAiObservationValueWithContext(
+  value: unknown,
+  context: AgentToolObservationProjectionContext,
+  depth = 0,
+): unknown {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return previewProjectionText(value, {
+      chars: ToolObservationTextLimits.jsonStringChars,
+      tokens: ToolObservationTokenLimits.jsonStringTokens,
+      context,
+    });
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "bigint") {
+    return String(value);
+  }
+  if (depth >= 4) {
+    return previewProjectionText(stringifyPreview(value), {
+      chars: ToolObservationTextLimits.jsonStringChars,
+      tokens: ToolObservationTokenLimits.jsonStringTokens,
+      context,
+    });
+  }
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, ToolObservationTextLimits.jsonArrayItems)
+      .map((entry) => projectOpenAiObservationValueWithContext(entry, context, depth + 1));
+  }
+  const record = readRecord(value);
+  if (!record) {
+    return previewProjectionText(stringifyPreview(value), {
+      chars: ToolObservationTextLimits.jsonStringChars,
+      tokens: ToolObservationTokenLimits.jsonStringTokens,
+      context,
+    });
+  }
+  return Object.fromEntries(
+    Object.entries(record)
+      .slice(0, ToolObservationTextLimits.jsonObjectFields)
+      .flatMap(([key, entry]) => {
+        const projected = projectOpenAiObservationValueWithContext(entry, context, depth + 1);
+        return projected === undefined ? [] : [[key, projected]];
+      }),
+  );
 }
 
 function renderOptionalLine(label: string, value: unknown): string[] {
@@ -93,5 +289,20 @@ function renderOptionalLine(label: string, value: unknown): string[] {
     return [];
   }
 
-  return [`${label}: ${typeof value === "string" ? value : stringifyPreview(value)}`];
+  return [`${label}: ${previewObservationValue(value)}`];
+}
+
+function previewObservationValue(value: unknown): string {
+  const text = typeof value === "string" ? value : stringifyPreview(value);
+  return previewAgentText(text, ToolObservationTextLimits.lineValueChars);
+}
+
+function previewProjectionText(input: string, options: {
+  chars: number;
+  tokens: number;
+  context: AgentToolObservationProjectionContext;
+}): string {
+  return options.context.tokenProjector
+    ? options.context.tokenProjector.previewText(input, options.tokens).text
+    : previewAgentText(input, options.chars);
 }

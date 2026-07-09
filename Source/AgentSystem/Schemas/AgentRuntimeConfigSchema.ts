@@ -8,20 +8,32 @@ export const LoadedToolsSchema = z.union([
 
 export const AgentLoopSchema = z
   .object({
-    MaxSteps: z.number().int().refine((value) => value === -1 || value >= 1, {
-      message: "AgentLoop.MaxSteps 必须是 -1 或大于等于 1 的整数。",
-    }).optional(),
-    MaxRepairAttempts: z.number().int().min(0).optional(),
     LoadedTools: LoadedToolsSchema.optional(),
+    PiSessionCreateTimeoutSeconds: z.number().positive().optional(),
+    PiSessions: z
+      .object({
+        RootDir: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
 export const ToolExecutionSchema = z
   .object({
-    Mode: z.literal("Process").optional(),
     TimeoutSeconds: z.number().positive().optional(),
     MaxStdoutBytes: z.number().int().min(1).optional(),
     MaxStderrBytes: z.number().int().min(1).optional(),
+  })
+  .strict();
+
+export const SandboxRuntimeSchema = z
+  .object({
+    BaseDir: z.string().min(1).optional(),
+    BundleDir: z.string().min(1).optional(),
+    ImportBundlesOnStartup: z.boolean().optional(),
+    PrepareImagesOnInstall: z.boolean().optional(),
+    Images: z.array(z.string().min(1)).optional(),
   })
   .strict();
 

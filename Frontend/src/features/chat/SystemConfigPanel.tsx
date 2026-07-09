@@ -14,6 +14,7 @@ import {
   Save,
   Search,
   Settings,
+  ShieldAlert,
   SlidersHorizontal,
 } from "lucide-react";
 import type {
@@ -453,6 +454,8 @@ function sectionIcon(icon: string | undefined): typeof Settings {
       return Search;
     case "folder-cog":
       return FolderCog;
+    case "shield-alert":
+      return ShieldAlert;
     default:
       return Settings;
   }

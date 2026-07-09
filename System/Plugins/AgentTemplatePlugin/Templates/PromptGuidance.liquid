@@ -7,13 +7,10 @@
       <rule>当你要给出任何可复制、可执行或可运行的长段代码，必须把它完整放进 Markdown fenced code block（```lang ... ```）。</rule>
       <rule>不要输出“部分代码 + 描述 + 又一小段代码”的碎片化结构；优先一次性输出可直接复制的整段代码块，随后再解释要点。</rule>
 {% if RootCommand %}
-{% if RootCommand.includeDecisionProtocol %}
-      <rule>工具调用必须按 decision_protocol 和 tool_protocol 输出，不能混入自然语言、Markdown、标题、代码围栏、解释或最终回答。</rule>
-      <rule>如果当前工具目录没有需要的能力，按工具目录里的发现工具规则搜索；不要猜测未展示的工具名。</rule>
-{% endif %}
+      <rule>如果 runtime_control.tool_access 允许工具，工具选择和调用由 Pi Harness 管理；你只需要按任务目标、允许工具和可用证据行动。</rule>
+      <rule>如果当前工具能力不足，说明缺少的能力或信息；不要猜测未注册工具名，不要伪造工具结果。</rule>
 {% else %}
-      <rule>用 XML 标签分隔角色、决策协议、工具目录和用户任务上下文。</rule>
-      <rule>普通最终回复直接输出自然语言或 Markdown；只有工具调用才输出纯工具调用 XML。</rule>
+      <rule>普通最终回复直接输出自然语言或 Markdown；需要工具时交给运行时工具能力处理。</rule>
 {% endif %}
     </rules>
   </prompt_guidance>

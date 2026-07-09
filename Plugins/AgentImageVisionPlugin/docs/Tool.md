@@ -18,15 +18,3 @@
 
 ## 输出
 返回图片识别状态、使用的模型、简要答案或可见观察结果。返回内容不包含本地绝对路径，也不包含 base64 图片数据。
-
-## 调用示例
-<senera_tool_calls>
-  <tool_call>
-    <name>ImageVisionTool</name>
-    <arguments>
-      <uploadUri>senera://upload/upl_0123abcd</uploadUri>
-      <task>inspect-ui</task>
-      <question>这个截图里的界面问题是什么？</question>
-    </arguments>
-  </tool_call>
-</senera_tool_calls>

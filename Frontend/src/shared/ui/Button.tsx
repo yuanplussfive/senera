@@ -1,5 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes } from "react";
-import { cn } from "@/lib/util";
+import { cn } from "../../lib/util";
 
 type ButtonVariant = "default" | "ghost" | "outline" | "destructive";
 type ButtonSize = "default" | "icon" | "sm";

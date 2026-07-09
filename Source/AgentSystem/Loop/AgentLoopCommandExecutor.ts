@@ -1,21 +1,16 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentLanguageModel } from "../ModelEndpoints/AgentLanguageModel.js";
+import { AgentActionPlannerContextBuilder } from "../ActionPlanner/AgentActionPlannerContext.js";
+import { AgentPlanningCommandHandler } from "../ActionPlanner/AgentPlanningCommandHandler.js";
+import { matchByKind } from "../Core/AgentMatch.js";
+import { AgentPiTurnExecutor } from "../Pi/AgentPiTurnExecutor.js";
+import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
+import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
-import { AgentDecisionErrorFactory } from "../Decision/AgentDecisionErrorFactory.js";
 import type {
   AgentLoopCommand,
   AgentLoopCommandResult,
 } from "./AgentLoopStateTypes.js";
-import { matchByKind } from "../Core/AgentMatch.js";
-import { AgentRetryPlanner } from "../Retry/AgentRetryPlanner.js";
-import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
-import { AgentRetryableError } from "../Retry/AgentRetryableError.js";
-import { AgentDecisionXmlCollectionRetryableError } from "../Decision/AgentDecisionXmlCollector.js";
-import { AgentActionPlannerContextBuilder } from "../ActionPlanner/AgentActionPlannerContext.js";
-import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
-import { AgentToolCallPlanningCommandHandler } from "../ActionPlanner/AgentToolCallPlanningCommandHandler.js";
-import { AgentDecisionExecutionCommandHandler } from "../Decision/AgentDecisionExecutionCommandHandler.js";
-import { AgentPlanningCommandHandler } from "../ActionPlanner/AgentPlanningCommandHandler.js";
 
 export interface AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
@@ -24,26 +19,13 @@ export interface AgentLoopCommandExecutorOptions {
 }
 
 export class AgentLoopCommandExecutor {
-  private readonly retryPlanner: AgentRetryPlanner;
   private readonly eventFactory = new AgentLoopEventFactory();
   private readonly planning: AgentPlanningCommandHandler;
-  private readonly toolCallPlanning: AgentToolCallPlanningCommandHandler;
-  private readonly decisionExecution: AgentDecisionExecutionCommandHandler;
-  private readonly decisionXmlCollector;
-  private readonly actionPlannerContextBuilder;
-  private readonly agentLoopConfig: ResolvedAgentLoopConfig;
+  private readonly piTurn: AgentPiTurnExecutor;
 
   constructor(private readonly options: AgentLoopCommandExecutorOptions) {
-    this.agentLoopConfig = options.agentLoopConfig ?? options.runtime.agentLoopConfig;
-    const errorFactory = new AgentDecisionErrorFactory({
-      registry: options.runtime.registry,
-      promptRenderer: options.runtime.promptRenderer,
-      workspaceRoot: options.runtime.workspaceRoot,
-      protocol: options.runtime.xmlPolicy.protocol,
-    });
-    this.retryPlanner = new AgentRetryPlanner(errorFactory);
-    this.decisionXmlCollector = options.runtime.createDecisionXmlCollector(options.model);
-    this.actionPlannerContextBuilder = new AgentActionPlannerContextBuilder(
+    const agentLoopConfig = options.agentLoopConfig ?? options.runtime.agentLoopConfig;
+    const actionPlannerContextBuilder = new AgentActionPlannerContextBuilder(
       options.runtime.workspaceRoot,
       options.runtime.artifactsConfig.RootDir,
       {
@@ -53,19 +35,11 @@ export class AgentLoopCommandExecutor {
     this.planning = new AgentPlanningCommandHandler({
       runtime: options.runtime,
       eventFactory: this.eventFactory,
-      actionPlannerContextBuilder: this.actionPlannerContextBuilder,
-      agentLoopConfig: this.agentLoopConfig,
+      actionPlannerContextBuilder,
+      agentLoopConfig,
     });
-    this.toolCallPlanning = new AgentToolCallPlanningCommandHandler({
+    this.piTurn = new AgentPiTurnExecutor({
       runtime: options.runtime,
-      eventFactory: this.eventFactory,
-      actionPlannerContextBuilder: this.actionPlannerContextBuilder,
-      agentLoopConfig: this.agentLoopConfig,
-    });
-    this.decisionExecution = new AgentDecisionExecutionCommandHandler({
-      runtime: options.runtime,
-      actionPlannerContextBuilder: this.actionPlannerContextBuilder,
-      agentLoopConfig: this.agentLoopConfig,
     });
   }
 
@@ -75,14 +49,10 @@ export class AgentLoopCommandExecutor {
     signal?: AbortSignal,
   ): Promise<AgentLoopCommandResult> {
     return matchByKind(command, {
+      understand_turn: (entry) => this.planning.understandTurn(entry, onEvent, signal),
       route_interaction: (entry) => this.planning.routeInteraction(entry, onEvent, signal),
-      plan_action: (entry) => this.planning.planAction(entry, onEvent, signal),
       render_prompt: (entry) => this.renderPrompt(entry),
-      collect_tool_call_plan: (entry) => this.toolCallPlanning.collect(entry, onEvent, signal),
-      collect_decision_xml: (entry) => this.collectDecisionXml(entry, onEvent, signal),
-      parse_decision: (entry) => this.parseDecision(entry),
-      execute_decision: (entry) => this.decisionExecution.execute(entry, onEvent, signal),
-      plan_retry: (entry) => this.planRetry(entry),
+      run_pi_turn: (entry) => this.piTurn.run(entry, onEvent, signal),
     });
   }
 
@@ -95,8 +65,6 @@ export class AgentLoopCommandExecutor {
     }
 
     const toolDescription = this.options.runtime.config.PluginDocumentation?.ToolDescription;
-    const actionDescription =
-      this.options.runtime.config.PluginDocumentation?.DecisionActionDescription;
     const roleplayPreset = await this.options.runtime.services.promptContext.promptRoleplayPreset();
 
     const prompt = await this.options.runtime.promptRenderer.renderFile(template.path, {
@@ -110,11 +78,6 @@ export class AgentLoopCommandExecutor {
           summary: toolDescription?.SummarySection,
           trigger: toolDescription?.TriggerSection,
           avoid: toolDescription?.AvoidSection,
-        },
-        actionSections: {
-          summary: actionDescription?.SummarySection,
-          trigger: actionDescription?.TriggerSection,
-          avoid: actionDescription?.AvoidSection,
         },
       }),
     });
@@ -133,131 +96,4 @@ export class AgentLoopCommandExecutor {
       },
     };
   }
-
-  private async collectDecisionXml(
-    command: Extract<AgentLoopCommand, { kind: "collect_decision_xml" }>,
-    onEvent?: AgentEventSink,
-    signal?: AbortSignal,
-  ): Promise<AgentLoopCommandResult> {
-    let collection;
-    try {
-      collection = await this.decisionXmlCollector.collect({
-        requestId: command.requestId,
-        step: command.step,
-        systemPrompt: command.prompt,
-        messages: command.messages,
-        rootCommand: command.rootCommand,
-        onEvent,
-        signal,
-      });
-    } catch (error) {
-      if (error instanceof AgentRetryableError) {
-        return {
-          kind: "retryable_failed",
-          requestId: command.requestId,
-          step: command.step,
-          error,
-          responseText: error instanceof AgentDecisionXmlCollectionRetryableError
-            ? error.responseText
-            : "",
-        };
-      }
-      throw error;
-    }
-
-    return collection.kind === "token_limit"
-      ? {
-          kind: "retryable_failed",
-          requestId: command.requestId,
-          step: command.step,
-          error: this.retryPlanner.buildDecisionXmlTokenLimitError(collection.budget),
-          responseText: collection.text,
-        }
-      : collection.kind === "tool_calls"
-        ? {
-          kind: "succeeded",
-          output: {
-            kind: "tool_calls_collected",
-            requestId: command.requestId,
-            step: command.step,
-            responseText: collection.text,
-            toolCallsXml: collection.toolCallsXml,
-            modelProvider: collection.modelProvider,
-            usage: collection.usage,
-          },
-        }
-        : {
-          kind: "succeeded",
-          output: {
-            kind: "final_text_collected",
-            requestId: command.requestId,
-            step: command.step,
-            responseText: collection.text,
-            modelProvider: collection.modelProvider,
-            usage: collection.usage,
-          },
-        };
-  }
-
-  private async parseDecision(
-    command: Extract<AgentLoopCommand, { kind: "parse_decision" }>,
-  ): Promise<AgentLoopCommandResult> {
-    try {
-      const parsed = await this.options.runtime.decisionParser.parseSanitized(command.responseText);
-      return {
-        kind: "succeeded",
-        output: {
-          kind: "decision_parsed",
-          requestId: command.requestId,
-          step: command.step,
-          responseText: parsed.decision.source.xml,
-          decision: parsed.decision,
-          sanitized: parsed.sanitized,
-        },
-      };
-    } catch (error) {
-      return this.retryableFailure(command.requestId, command.step, command.responseText, error);
-    }
-  }
-
-  private async planRetry(
-    command: Extract<AgentLoopCommand, { kind: "plan_retry" }>,
-  ): Promise<AgentLoopCommandResult> {
-    return {
-      kind: "succeeded",
-      output: {
-        kind: "retry_planned",
-        requestId: command.requestId,
-        step: command.step,
-        attempt: command.attempt,
-        instruction: command.error.instruction,
-        responseText: command.responseText,
-        repairedMessages: this.retryPlanner.buildRepairConversation(
-          command.messages,
-          command.responseText,
-          command.error,
-        ),
-      },
-    };
-  }
-
-  private retryableFailure(
-    requestId: string,
-    step: number,
-    responseText: string,
-    error: unknown,
-  ): AgentLoopCommandResult {
-    if (error instanceof Error && "instruction" in error) {
-      return {
-        kind: "retryable_failed",
-        requestId,
-        step,
-        error: error as import("../Retry/AgentRetryableError.js").AgentRetryableError,
-        responseText,
-      };
-    }
-
-    throw error;
-  }
-
 }

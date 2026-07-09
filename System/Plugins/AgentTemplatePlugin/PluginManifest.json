@@ -12,20 +12,12 @@
       "Path": "./Templates/BaseSystemPrompt.liquid"
     },
     {
-      "Name": "RepairPrompt",
-      "Path": "./Templates/RepairPrompt.liquid"
-    },
-    {
-      "Name": "ActionMismatchRepairPrompt",
-      "Path": "./Templates/ActionMismatchRepairPrompt.liquid"
-    },
-    {
       "Name": "PromptGuidance",
       "Path": "./Templates/PromptGuidance.liquid"
     },
     {
-      "Name": "DecisionProtocol",
-      "Path": "./Templates/DecisionProtocol.liquid"
+      "Name": "ExecutionEnvironment",
+      "Path": "./Templates/ExecutionEnvironment.liquid"
     },
     {
       "Name": "RootCommand",
@@ -42,14 +34,6 @@
     {
       "Name": "SkillCatalog",
       "Path": "./Templates/SkillCatalog.liquid"
-    },
-    {
-      "Name": "ChildAgentSystemPrompt",
-      "Path": "./Templates/ChildAgentSystemPrompt.liquid"
-    },
-    {
-      "Name": "AgentMergeSystemPrompt",
-      "Path": "./Templates/AgentMergeSystemPrompt.liquid"
     }
   ],
   "RootCommands": [
@@ -65,8 +49,6 @@
         }
       ],
       "ForbiddenOutputs": [
-        "senera_tool_calls",
-        "tool_call_xml",
         "internal_context_xml"
       ],
       "VisibleOutput": {
@@ -111,12 +93,11 @@
           ]
         }
       },
-      "IncludeDecisionProtocol": false,
       "IncludeToolCatalog": false
     },
     {
       "Action": "ask_user",
-      "OutputMode": "tool_call_xml",
+      "OutputMode": "open",
       "ToolAccess": "restricted",
       "Objective": "向用户提出继续任务所必需的问题。",
       "InsufficiencyPolicy": "只通过允许的提问工具请求必要信息，不要自行补全关键缺失事实。",
@@ -134,18 +115,18 @@
       ],
       "VisibleOutput": {
         "Audience": "runtime",
-        "Start": "tool_call_xml_root",
-        "Format": "tool_call_xml",
+        "Start": "pi_tool_turn",
+        "Format": "pi_tool_calls_or_final_text",
         "Rules": [
           {
-            "Name": "natural_language",
-            "Value": "forbidden",
-            "Instruction": "不要输出解释、寒暄、标题或 Markdown。"
+            "Name": "tool_call_format",
+            "Value": "pi_custom_tools",
+            "Instruction": "需要提问时使用 AskUserTool；不要把提问伪装成最终回答。"
           },
           {
-            "Name": "root",
-            "Value": "tool_call_xml_root",
-            "Instruction": "第一个非空字符必须是 <，并且只输出一个完整工具调用根。"
+            "Name": "final_answer",
+            "Value": "blocked_until_user_input",
+            "Instruction": "缺少必要用户输入时不要继续完成任务。"
           },
           {
             "Name": "tool_name_source",
@@ -154,27 +135,26 @@
           }
         ],
         "Repair": {
-          "Instruction": "只输出完整工具调用 XML；不要解释，不要确认修复，不要回答用户。",
+          "Instruction": "按 Pi 工具调用协议发起必要提问；如果无法使用提问工具，说明缺少用户输入。",
           "Rules": [
             {
-              "Name": "start",
-              "Value": "tool_call_xml_root",
-              "Instruction": "第一个非空字符必须是 <。"
+              "Name": "tool_call_format",
+              "Value": "pi_custom_tools",
+              "Instruction": "只使用允许的提问工具。"
             },
             {
-              "Name": "natural_language",
-              "Value": "forbidden",
-              "Instruction": "XML 外不能有自然语言、Markdown、标题、代码围栏或解释。"
+              "Name": "final_answer",
+              "Value": "allowed_only_when_question_unavailable",
+              "Instruction": "没有可用提问工具时，直接说明缺少的用户输入。"
             }
           ]
         }
       },
-      "IncludeDecisionProtocol": true,
-      "IncludeToolCatalog": true
+      "IncludeToolCatalog": false
     },
     {
       "Action": "discover_tools",
-      "OutputMode": "tool_call_xml",
+      "OutputMode": "open",
       "ToolAccess": "discovery_only",
       "Objective": "搜索当前任务需要的插件能力。",
       "InsufficiencyPolicy": "只调用工具发现能力，不要猜测未展示的工具名。",
@@ -191,18 +171,18 @@
       ],
       "VisibleOutput": {
         "Audience": "runtime",
-        "Start": "tool_call_xml_root",
-        "Format": "tool_call_xml",
+        "Start": "pi_tool_turn",
+        "Format": "pi_tool_calls_or_final_text",
         "Rules": [
           {
-            "Name": "natural_language",
-            "Value": "forbidden",
-            "Instruction": "不要输出解释、寒暄、标题或 Markdown。"
+            "Name": "tool_call_format",
+            "Value": "pi_custom_tools",
+            "Instruction": "需要发现能力时使用工具发现能力；不要猜测未注册工具名。"
           },
           {
-            "Name": "root",
-            "Value": "tool_call_xml_root",
-            "Instruction": "第一个非空字符必须是 <，并且只输出一个完整工具调用根。"
+            "Name": "final_answer",
+            "Value": "allowed_when_discovery_unavailable",
+            "Instruction": "没有可用发现工具时，说明缺少工具能力。"
           },
           {
             "Name": "tool_name_source",
@@ -211,27 +191,26 @@
           }
         ],
         "Repair": {
-          "Instruction": "只输出完整工具调用 XML；不要解释，不要确认修复，不要回答用户。",
+          "Instruction": "按 Pi 工具调用协议搜索插件能力；如果无法搜索，说明缺少的能力。",
           "Rules": [
             {
-              "Name": "start",
-              "Value": "tool_call_xml_root",
-              "Instruction": "第一个非空字符必须是 <。"
+              "Name": "tool_call_format",
+              "Value": "pi_custom_tools",
+              "Instruction": "只使用允许的发现工具。"
             },
             {
-              "Name": "natural_language",
-              "Value": "forbidden",
-              "Instruction": "XML 外不能有自然语言、Markdown、标题、代码围栏或解释。"
+              "Name": "tool_name_source",
+              "Value": "allowed_tools",
+              "Instruction": "工具名只能来自 allowed_tools。"
             }
           ]
         }
       },
-      "IncludeDecisionProtocol": true,
-      "IncludeToolCatalog": true
+      "IncludeToolCatalog": false
     },
     {
       "Action": "use_tools",
-      "OutputMode": "tool_call_xml",
+      "OutputMode": "open",
       "ToolAccess": "restricted",
       "Objective": "调用允许的工具取得完成当前任务所需的事实或执行结果。",
       "InsufficiencyPolicy": "如果允许工具不足以完成任务，只调用工具发现能力或停止并说明阻塞，不要编造工具名。",
@@ -246,18 +225,18 @@
       ],
       "VisibleOutput": {
         "Audience": "runtime",
-        "Start": "tool_call_xml_root",
-        "Format": "tool_call_xml",
+        "Start": "pi_tool_turn",
+        "Format": "pi_tool_calls_or_final_text",
         "Rules": [
           {
-            "Name": "natural_language",
-            "Value": "forbidden",
-            "Instruction": "不要输出解释、寒暄、标题或 Markdown。"
+            "Name": "tool_call_format",
+            "Value": "pi_custom_tools",
+            "Instruction": "需要工具时使用 Pi 提供的自定义工具；不要伪造工具结果。"
           },
           {
-            "Name": "root",
-            "Value": "tool_call_xml_root",
-            "Instruction": "第一个非空字符必须是 <，并且只输出一个完整工具调用根。"
+            "Name": "final_answer_after_tools",
+            "Value": "required",
+            "Instruction": "工具结果足够后，直接生成用户可读答案。"
           },
           {
             "Name": "tool_name_source",
@@ -266,23 +245,22 @@
           }
         ],
         "Repair": {
-          "Instruction": "只输出完整工具调用 XML；不要解释，不要确认修复，不要回答用户。",
+          "Instruction": "按 Pi 工具调用协议继续；如果不能调用可用工具，直接说明缺少的能力或信息。",
           "Rules": [
             {
-              "Name": "start",
-              "Value": "tool_call_xml_root",
-              "Instruction": "第一个非空字符必须是 <。"
+              "Name": "tool_call_format",
+              "Value": "pi_custom_tools",
+              "Instruction": "不要伪造工具结果。"
             },
             {
-              "Name": "natural_language",
-              "Value": "forbidden",
-              "Instruction": "XML 外不能有自然语言、Markdown、标题、代码围栏或解释。"
+              "Name": "final_answer",
+              "Value": "allowed_when_ready",
+              "Instruction": "已有足够工具结果时，直接给用户最终答案。"
             }
           ]
         }
       },
-      "IncludeDecisionProtocol": true,
-      "IncludeToolCatalog": true
+      "IncludeToolCatalog": false
     }
   ]
 }

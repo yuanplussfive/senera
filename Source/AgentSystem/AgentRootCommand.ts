@@ -6,8 +6,6 @@ import {
   type AgentActionCapabilityNeed,
   type AgentActionDecision,
 } from "./ActionPlanner/AgentActionPlanner.js";
-import type { TaskFrame } from "./BamlClient/baml_client/types.js";
-import type { AgentDecisionOutputContract } from "./Decision/AgentDecisionOutputResolver.js";
 import type { RegisteredTool } from "./Types/PluginRuntimeTypes.js";
 import type {
   RootCommandManifest,
@@ -17,11 +15,12 @@ import type {
 } from "./Types/PluginManifestTypes.js";
 
 export type AgentRootCommandToolAccess = RootCommandManifest["ToolAccess"];
+export type AgentRootOutputMode = RootCommandManifest["OutputMode"];
 
 export interface AgentRootCommand {
   authority: "senera_runtime_root";
   action: AgentActionDecision["action"];
-  outputMode: AgentDecisionOutputContract;
+  outputMode: AgentRootOutputMode;
   toolAccess: AgentRootCommandToolAccess;
   objective: string;
   instruction: string | null;
@@ -29,58 +28,10 @@ export interface AgentRootCommand {
   forbiddenOutputs: string[];
   insufficiencyPolicy: string;
   preferredTools: string[];
-  workflowRecommendedTools: string[];
-  workflowRecommendations: AgentRootCommandWorkflowRecommendation[];
   toolSearchQueries: string[];
   needs: AgentActionCapabilityNeed[];
-  taskContract: AgentRootTaskContract | null;
-  includeDecisionProtocol: boolean;
   includeToolCatalog: boolean;
   visibleOutput: AgentRootCommandVisibleOutput;
-}
-
-export interface AgentRootTaskContract {
-  taskType: string;
-  answerGoal: string;
-  intentTags: string[];
-  taskTags: string[];
-  targetRefs: Array<{
-    kind: string;
-    value: string;
-    status: string;
-  }>;
-  candidateTools: Array<{
-    name: string;
-    purpose: string;
-    supports: string[];
-  }>;
-  discoveryQueries: string[];
-  requiredEffects: Array<{
-    id: string;
-    effect: string;
-    target: string;
-    proof: string;
-    reason: string;
-  }>;
-  requiredEvidence: Array<{
-    id: string;
-    need: string;
-    scope: string;
-    minimum: number;
-    reason: string;
-  }>;
-  nextStepPurpose: string;
-  completionCriteria: string[];
-}
-
-export interface AgentRootCommandWorkflowRecommendation {
-  name: string;
-  title?: string;
-  description?: string;
-  sources: string[];
-  matchedSkills: string[];
-  matchedAgents: string[];
-  matchedTerms: string[];
 }
 
 export interface AgentRootCommandVisibleOutput {
@@ -106,9 +57,6 @@ export function buildAgentRootCommand(options: {
   decision: AgentActionDecision;
   loadedTools: readonly Pick<RegisteredTool, "name" | "handler">[];
   policy: RootCommandManifest;
-  taskContract?: TaskFrame;
-  workflowRecommendedTools?: readonly string[];
-  workflowRecommendations?: readonly AgentRootCommandWorkflowRecommendation[];
 }): AgentRootCommand {
   if (options.policy.Action !== options.decision.action) {
     throw new Error(
@@ -117,14 +65,11 @@ export function buildAgentRootCommand(options: {
   }
 
   const preferredTools = agentActionPreferredTools(options.decision);
-  const workflowRecommendedTools = [...new Set(options.workflowRecommendedTools ?? [])];
-  const workflowRecommendations = [...(options.workflowRecommendations ?? [])];
   const toolSearchQueries = agentActionToolSearchQueries(options.decision);
   const instruction = agentActionInstruction(options.decision).trim();
   const allowedTools = resolveAllowedToolNames(options.policy.AllowedTools, {
     loadedTools: options.loadedTools,
     preferredTools,
-    workflowRecommendedTools,
   });
 
   return {
@@ -138,50 +83,10 @@ export function buildAgentRootCommand(options: {
     forbiddenOutputs: options.policy.ForbiddenOutputs,
     insufficiencyPolicy: options.policy.InsufficiencyPolicy,
     preferredTools,
-    workflowRecommendedTools,
-    workflowRecommendations,
     toolSearchQueries,
     needs: agentActionCapabilityNeeds(options.decision),
-    taskContract: options.taskContract ? projectTaskContract(options.taskContract) : null,
-    includeDecisionProtocol: options.policy.IncludeDecisionProtocol,
     includeToolCatalog: options.policy.IncludeToolCatalog,
     visibleOutput: projectVisibleOutput(options.policy.VisibleOutput),
-  };
-}
-
-function projectTaskContract(taskFrame: TaskFrame): AgentRootTaskContract {
-  return {
-    taskType: taskFrame.taskType,
-    answerGoal: taskFrame.answerGoal,
-    intentTags: taskFrame.intentTags,
-    taskTags: taskFrame.taskTags,
-    targetRefs: taskFrame.targetRefs.map((target) => ({
-      kind: target.kind,
-      value: target.value,
-      status: target.status,
-    })),
-    candidateTools: taskFrame.candidateTools.map((tool) => ({
-      name: tool.name,
-      purpose: tool.purpose,
-      supports: tool.supports,
-    })),
-    discoveryQueries: taskFrame.discoveryQueries,
-    requiredEffects: taskFrame.requiredEffects.map((effect) => ({
-      id: effect.id,
-      effect: effect.effect,
-      target: effect.target,
-      proof: effect.proof,
-      reason: effect.reason,
-    })),
-    requiredEvidence: taskFrame.requiredEvidence.map((need) => ({
-      id: need.id,
-      need: need.need,
-      scope: need.scope,
-      minimum: need.minimum,
-      reason: need.reason,
-    })),
-    nextStepPurpose: taskFrame.nextStepPurpose,
-    completionCriteria: taskFrame.completionCriteria,
   };
 }
 
@@ -254,15 +159,13 @@ function readSelectorToolNames(
 function filterPreferredLoadedToolNames(scope: RootCommandToolScope): string[] {
   const loaded = new Set(scope.loadedTools.map((tool) => tool.name));
   return [
-    ...new Set([
-      ...scope.preferredTools,
-      ...scope.workflowRecommendedTools,
-    ]),
+      ...new Set([
+        ...scope.preferredTools,
+      ]),
   ].filter((toolName) => loaded.has(toolName));
 }
 
 interface RootCommandToolScope {
   loadedTools: readonly Pick<RegisteredTool, "name" | "handler">[];
   preferredTools: readonly string[];
-  workflowRecommendedTools: readonly string[];
 }

@@ -1,14 +1,10 @@
 import type {
-  AgentContextPackManifest,
-  AgentManifest,
-  AgentMergePolicyManifest,
-  AgentWorkflowManifest,
-} from "./PluginAgentManifestTypes.js";
-import type {
-  DecisionActionManifest,
   PluginEntryManifest,
   PluginKind,
   PluginPromptingManifest,
+  PluginMcpServerManifest,
+  PluginRuntimeManifest,
+  PluginSandboxManifest,
   PluginSecurityManifest,
   PromptManifest,
   TemplateManifest,
@@ -17,15 +13,6 @@ import type { RootCommandManifest } from "./PluginRootCommandManifestTypes.js";
 import type { SkillManifest } from "./PluginSkillManifestTypes.js";
 import type { ToolManifest } from "./PluginToolManifestTypes.js";
 
-export type {
-  AgentContextPackManifest,
-  AgentManifest,
-  AgentMergePolicyManifest,
-  AgentWorkflowExecutionManifest,
-  AgentWorkflowJobManifest,
-  AgentWorkflowManifest,
-  AgentWorkflowTriggerManifest,
-} from "./PluginAgentManifestTypes.js";
 export type {
   ToolArtifactConditionManifest,
   ToolArtifactEvidenceIdentityManifest,
@@ -45,11 +32,13 @@ export type {
   ToolArtifactWorkspacePathManifest,
 } from "./PluginArtifactManifestTypes.js";
 export type {
-  DecisionActionManifest,
   PluginEntryManifest,
   PluginKind,
   PluginPromptingManifest,
+  PluginMcpServerManifest,
   PluginRootKind,
+  PluginRuntimeManifest,
+  PluginSandboxManifest,
   PluginSecurityManifest,
   PromptManifest,
   TemplateManifest,
@@ -72,7 +61,9 @@ export type {
   SkillManifest,
 } from "./PluginSkillManifestTypes.js";
 export type {
+  ToolApprovalManifest,
   ToolEvidenceCapabilityManifest,
+  ToolExecutionManifest,
   ToolHandlerManifest,
   ToolManifest,
 } from "./PluginToolManifestTypes.js";
@@ -87,17 +78,15 @@ export interface PluginManifest {
     Entry?: PluginEntryManifest;
   };
   Compatibility?: Record<string, unknown>;
-  DecisionActions?: DecisionActionManifest[];
   Tools?: ToolManifest[];
+  McpServers?: PluginMcpServerManifest[];
   Skills?: SkillManifest[];
-  Agents?: AgentManifest[];
-  ContextPacks?: AgentContextPackManifest[];
-  Workflows?: AgentWorkflowManifest[];
-  MergePolicies?: AgentMergePolicyManifest[];
   Resources?: unknown[];
   Prompts?: PromptManifest[];
   Templates?: TemplateManifest[];
   RootCommands?: RootCommandManifest[];
+  Runtime?: PluginRuntimeManifest;
+  Sandbox?: PluginSandboxManifest;
   Security?: PluginSecurityManifest;
   Prompting?: PluginPromptingManifest;
 }

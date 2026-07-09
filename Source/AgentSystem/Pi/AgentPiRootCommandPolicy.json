@@ -1,0 +1,49 @@
+{
+  "OutputMode": "open",
+  "ForbiddenOutputs": {
+    "Add": [
+      "unregistered_tools"
+    ],
+    "Remove": [
+      "final_answer"
+    ]
+  },
+  "IncludeToolCatalog": false,
+  "VisibleOutput": {
+    "Audience": "runtime",
+    "Start": "pi_tool_turn",
+    "Format": "openai_tool_calls_or_final_text",
+    "Rules": [
+      {
+        "Name": "tool_call_format",
+        "Value": "pi_custom_tools",
+        "Instruction": "需要工具时使用 Pi 提供的 custom tools；不要输出 senera XML 工具协议。"
+      },
+      {
+        "Name": "final_answer_after_tools",
+        "Value": "required",
+        "Instruction": "工具结果足够后，直接生成用户可读答案，不要暴露内部工具包装或 artifact 结构。"
+      },
+      {
+        "Name": "tool_name_source",
+        "Value": "allowed_tools",
+        "Instruction": "工具调用只能使用 allowed_tools 中的名称。"
+      }
+    ],
+    "Repair": {
+      "Instruction": "按 Pi 工具调用协议重试；如果不能调用可用工具，直接说明缺少的能力或信息。",
+      "Rules": [
+        {
+          "Name": "tool_call_format",
+          "Value": "pi_custom_tools",
+          "Instruction": "不要输出 XML 或伪造工具结果。"
+        },
+        {
+          "Name": "final_answer",
+          "Value": "allowed_when_ready",
+          "Instruction": "已有足够工具结果时，直接给用户最终答案。"
+        }
+      ]
+    }
+  }
+}

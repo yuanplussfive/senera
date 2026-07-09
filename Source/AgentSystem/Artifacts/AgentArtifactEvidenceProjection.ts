@@ -11,6 +11,13 @@ import { selectJsonValues } from "./AgentArtifactJsonSelector.js";
 import { stableArtifactStringify } from "./AgentArtifactStableJson.js";
 import { createAgentEvidenceUri } from "./AgentEvidenceUri.js";
 import { renderEvidenceTemplate } from "./AgentArtifactTemplateProjection.js";
+import { previewAgentText } from "../Text/AgentTextProjection.js";
+
+const EvidenceModelTextLimits = {
+  slotChars: 2_000,
+  identityChars: 4_000,
+  presentationChars: 2_000,
+} as const;
 
 export function collectArtifactEvidence(
   value: unknown,
@@ -70,10 +77,10 @@ function projectScopedEvidenceRule(
       key,
       evidenceUri: "",
       kind: rule.Kind,
-      locator,
-      display,
-      label,
-      source,
+      locator: previewAgentText(locator, EvidenceModelTextLimits.presentationChars),
+      display: previewAgentText(display, EvidenceModelTextLimits.presentationChars),
+      label: previewAgentText(label, EvidenceModelTextLimits.presentationChars),
+      source: previewAgentText(source, EvidenceModelTextLimits.presentationChars),
       confidence: rule.Confidence,
       slots,
       modelSlots: projectModelSlots(slots, rule.ModelProjection.Slots),
@@ -101,13 +108,13 @@ function normalizeModelSlotValue(value: unknown): string | undefined {
     return undefined;
   }
   if (typeof value === "string") {
-    const trimmed = value.trim();
+    const trimmed = previewAgentText(value.trim(), EvidenceModelTextLimits.slotChars);
     return trimmed.length > 0 ? trimmed : undefined;
   }
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
     return String(value);
   }
-  return stableArtifactStringify(value);
+  return previewAgentText(stableArtifactStringify(value), EvidenceModelTextLimits.slotChars);
 }
 
 function projectSlots(
@@ -206,7 +213,7 @@ function normalizeKeyPart(value: unknown): string | undefined {
   }
 
   if (typeof value === "string") {
-    const trimmed = value.trim();
+    const trimmed = previewAgentText(value.trim(), EvidenceModelTextLimits.identityChars);
     return trimmed.length > 0 ? trimmed : undefined;
   }
 
@@ -214,5 +221,5 @@ function normalizeKeyPart(value: unknown): string | undefined {
     return String(value);
   }
 
-  return stableArtifactStringify(value);
+  return previewAgentText(stableArtifactStringify(value), EvidenceModelTextLimits.identityChars);
 }

@@ -4,6 +4,7 @@ import {
   type TimelineStep,
   type TimelineStepStatus,
 } from "../../store/sessionStore";
+import { truncate } from "../../store/session/sessionPresentation";
 
 export type FeedItemKind = "tool" | "trace";
 
@@ -34,6 +35,38 @@ export interface FeedModel {
   footer?: string;
 }
 
+const TimelineStatusPresentation = {
+  running: {
+    label: "进行中",
+    dotClass: "bg-umber-500 motion-safe:animate-pulse",
+    textClass: "text-umber-600",
+  },
+  pending: {
+    label: "等待中",
+    dotClass: "bg-ink-300",
+    textClass: "text-ink-400",
+  },
+  failed: {
+    label: "失败",
+    dotClass: "bg-brick-500",
+    textClass: "text-brick-500",
+  },
+  done: {
+    label: "完成",
+    dotClass: "bg-moss-500",
+    textClass: "text-moss-600",
+  },
+  neutral: {
+    label: undefined,
+    dotClass: "bg-ink-300",
+    textClass: "text-ink-400",
+  },
+} as const satisfies Record<TimelineStepStatus | "neutral", {
+  label?: string;
+  dotClass: string;
+  textClass: string;
+}>;
+
 export function deriveFeedModel(run: RunRecord): FeedModel {
   const latestStep = run.steps[run.steps.length - 1];
   const latestDecision = [...run.steps].reverse().find((step) => step.kind === "decision");
@@ -41,27 +74,16 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
   const activeStep = resolveActiveStep(run, latestStep, runningStep, latestDecision);
   const rootSteps = run.steps.filter((step) => !step.scope?.parentRequestId);
   const scopedGroups = collectScopedGroups(run.steps);
-  const toolItems = rootSteps
-    .filter((step) => step.kind === "tool" && !!step.toolName)
-    .map((step) => mapToolItem(step));
+  const rootToolGroups = collectRootToolGroups(rootSteps);
   const traceItems = rootSteps
     .filter((step) => step.id !== activeStep?.id)
     .filter((step) => !(step.kind === "tool" && step.toolName))
+    .filter((step) => !isGroupedToolPlan(step, rootToolGroups.batchIds))
     .slice(-3)
     .map((step) => mapTraceItem(step));
   const groups: FeedGroup[] = [];
 
-  if (toolItems.length > 0) {
-    groups.push({
-      id: "tools",
-      label: `${toolItems.length} 个工具调用`,
-      variant: "tools",
-      meta: `${toolItems.filter((item) => item.status === "done").length}/${toolItems.length}`,
-      items: toolItems,
-      defaultExpanded: true,
-      collapsible: true,
-    });
-  }
+  groups.push(...rootToolGroups.groups);
   groups.push(...scopedGroups);
   if (traceItems.length > 0) {
     groups.push({
@@ -79,6 +101,64 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
     placeholder: derivePendingLabel(run, activeStep, latestDecision),
     footer: deriveFooter(activeStep),
   };
+}
+
+function collectRootToolGroups(rootSteps: TimelineStep[]): {
+  groups: FeedGroup[];
+  batchIds: Set<string>;
+} {
+  const groups = new Map<string, {
+    steps: TimelineStep[];
+    toolSteps: TimelineStep[];
+    firstIndex: number;
+  }>();
+
+  rootSteps.forEach((step, index) => {
+    if (step.kind !== "tool") return;
+    const batchId = step.toolBatch?.id ?? (step.toolName ? step.id : undefined);
+    if (!batchId) return;
+    const group = groups.get(batchId) ?? {
+      steps: [],
+      toolSteps: [],
+      firstIndex: index,
+    };
+    group.steps.push(step);
+    if (step.toolName) {
+      group.toolSteps.push(step);
+    }
+    group.firstIndex = Math.min(group.firstIndex, index);
+    groups.set(batchId, group);
+  });
+
+  const batchIds = new Set<string>();
+  const entries = [...groups.entries()]
+    .filter(([, group]) => group.toolSteps.length > 0)
+    .sort((a, b) => a[1].firstIndex - b[1].firstIndex);
+  const feedGroups = entries
+    .map(([batchId, group], index) => {
+      batchIds.add(batchId);
+      const items = group.toolSteps.map((step) => mapToolItem(step));
+      const toolGroup = summarizeToolGroup(group.steps, items);
+      return {
+        id: `tools:${batchId}`,
+        label: toolGroup.label || `工具批次 ${index + 1}`,
+        variant: "tools" as const,
+        meta: toolGroup.meta,
+        items,
+        defaultExpanded: items.some((item) => item.status === "running" || item.status === "failed")
+          || index === entries.length - 1,
+        collapsible: true,
+      };
+    });
+
+  return { groups: feedGroups, batchIds };
+}
+
+function isGroupedToolPlan(step: TimelineStep, groupedBatchIds: ReadonlySet<string>): boolean {
+  return step.kind === "tool"
+    && !step.toolName
+    && !!step.toolBatch?.id
+    && groupedBatchIds.has(step.toolBatch.id);
 }
 
 function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
@@ -131,7 +211,10 @@ function scopedGroupMeta(items: FeedItem[], workflowName?: string): string | und
   const done = items.filter((item) => item.status === "done").length;
   const failed = items.filter((item) => item.status === "failed").length;
   const progress = `${done}/${items.length}`;
-  if (failed > 0) return workflowName ? `${workflowName} · ${progress} · ${failed} 失败` : `${progress} · ${failed} 失败`;
+  const failedLabel = TimelineStatusPresentation.failed.label;
+  if (failed > 0) {
+    return [workflowName, progress, `${failed} ${failedLabel}`].filter(Boolean).join(" · ");
+  }
   return workflowName ? `${workflowName} · ${progress}` : progress;
 }
 
@@ -233,8 +316,43 @@ function mapToolItem(step: TimelineStep): FeedItem {
     status: step.status,
     title: step.toolName ?? step.title,
     subtitle: summarizeToolSubtitle(step),
-    meta: statusLabel(step.status),
+    meta: toolItemMeta(step),
   };
+}
+
+function summarizeToolGroup(
+  steps: TimelineStep[],
+  items: FeedItem[],
+): { label: string; meta: string } {
+  const done = items.filter((item) => item.status === "done").length;
+  const failed = items.filter((item) => item.status === "failed").length;
+  const progress = `${done}/${items.length}`;
+  const plan = [...steps]
+    .reverse()
+    .find((step) => step.kind === "tool" && !step.toolName && step.toolBatch?.size);
+  const size = plan?.toolBatch?.size ?? items.length;
+  const mode = plan?.toolBatch?.executionMode;
+  const label = mode === "parallel" && size > 1
+    ? `并发工具批次 · ${size} 个工具`
+    : mode === "sequential"
+      ? `${items.length} 个顺序工具调用`
+      : `${items.length} 个工具调用`;
+  const modeLabel = mode === "parallel" && size > 1
+    ? "并发"
+    : mode === "sequential"
+      ? "顺序"
+      : undefined;
+  const failedLabel = failed > 0 ? `${failed} 失败` : undefined;
+  return {
+    label,
+    meta: [modeLabel, progress, failedLabel].filter(Boolean).join(" · "),
+  };
+}
+
+function toolItemMeta(step: TimelineStep): string | undefined {
+  const status = statusLabel(step.status);
+  const index = typeof step.toolBatch?.index === "number" ? `#${step.toolBatch.index + 1}` : undefined;
+  return [index, status].filter(Boolean).join(" · ");
 }
 
 function mapTraceItem(step: TimelineStep): FeedItem {
@@ -318,6 +436,10 @@ function derivePendingLabel(
     return activeStep.modelName ? `正在调用 ${activeStep.modelName}` : "正在调用模型";
   }
 
+  if (activeStep?.kind === "pi") {
+    return activeStep.eventType ? `Pi 正在处理：${activeStep.eventType}` : "Pi 正在处理";
+  }
+
   if (activeStep?.title) {
     return activeStep.status === "running" ? `正在处理：${activeStep.title}` : activeStep.title;
   }
@@ -345,6 +467,11 @@ function summarizeStepSubtitle(step: TimelineStep): string | undefined {
   if (step.decisionKind) {
     return friendlyDecisionKind(step.decisionKind);
   }
+  if (step.kind === "pi") {
+    return [step.traceSource, step.eventType, step.description]
+      .filter((value): value is string => Boolean(value))
+      .join(" · ");
+  }
   return step.description;
 }
 
@@ -355,54 +482,23 @@ function deriveFooter(activeStep?: TimelineStep): string | undefined {
 
 function summarizeUnknown(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
-  if (typeof value === "string") return clampInline(value, 160);
+  if (typeof value === "string") return truncate(value, 160);
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   try {
-    return clampInline(JSON.stringify(value), 180);
+    return truncate(JSON.stringify(value), 180);
   } catch {
     return undefined;
   }
 }
 
-function clampInline(value: string, max: number): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  return normalized.length > max ? `${normalized.slice(0, max)}…` : normalized;
-}
-
 export function statusLabel(status: TimelineStepStatus | "neutral"): string | undefined {
-  switch (status) {
-    case "running":
-      return "进行中";
-    case "failed":
-      return "失败";
-    case "done":
-      return "完成";
-    default:
-      return undefined;
-  }
+  return TimelineStatusPresentation[status].label;
 }
 
 export function statusDotClass(status: TimelineStepStatus | "neutral", _pulse = false): string {
-  const base =
-    status === "running"
-      ? "bg-umber-500 motion-safe:animate-pulse"
-      : status === "failed"
-      ? "bg-brick-500"
-      : status === "done"
-      ? "bg-moss-500"
-      : "bg-ink-300";
-  return base;
+  return TimelineStatusPresentation[status].dotClass;
 }
 
 export function statusTextClass(status: TimelineStepStatus | "neutral"): string {
-  switch (status) {
-    case "running":
-      return "text-umber-600";
-    case "failed":
-      return "text-brick-500";
-    case "done":
-      return "text-moss-600";
-    default:
-      return "text-ink-400";
-  }
+  return TimelineStatusPresentation[status].textClass;
 }

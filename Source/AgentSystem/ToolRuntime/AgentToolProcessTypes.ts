@@ -1,10 +1,16 @@
 import type { AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
+import type { SeneraExecutionLimits } from "../Execution/SeneraExecutionTypes.js";
+import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
 
 export interface AgentToolProcessSpawnOptions {
   cwd: string;
   env?: NodeJS.ProcessEnv;
   stdio: ["pipe", "pipe", "pipe"];
   windowsHide: boolean;
+  timeoutMs: number;
+  limits: SeneraExecutionLimits;
+  signal?: AbortSignal;
+  profile?: SeneraProcessExecutionProfile;
 }
 
 export interface AgentToolProcessChild {
@@ -20,6 +26,7 @@ export interface AgentToolProcessChild {
   on(event: "error", listener: (error: Error) => void): void;
   on(event: "close", listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void): void;
   kill(signal?: NodeJS.Signals): boolean;
+  pid?: number;
 }
 
 export type AgentToolProcessSpawner = (

@@ -1,5 +1,8 @@
 name: Desktop Release
 
+env:
+  npm_config_cache: .npm-cache
+
 on:
   workflow_run:
     workflows:
@@ -34,6 +37,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - uses: actions/cache@v4
+        with:
+          path: .npm-cache
+          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package.json', 'Frontend/package.json', 'Packages/*/package.json', 'System/Plugins/*/package.json', 'Plugins/*/package.json', '.npmrc') }}
+          restore-keys: |
+            ${{ runner.os }}-node-22-npm-
 
       - run: npm install
 

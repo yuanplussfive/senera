@@ -14,6 +14,7 @@ import type {
   PluginConfigMutationState,
   UploadAttachmentData,
 } from "../../api/eventTypes";
+import type { MessageQueueMode } from "../../app/useChatCommands";
 import { useStore, type ChatMessage, type UserProfile, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
 import { ChatComposer } from "./ChatComposer";
 import { ChatHeader } from "./ChatHeader";
@@ -56,12 +57,13 @@ interface Props {
   onSetActivePreset: (name: string | null) => string | null;
   socketStatus: string;
   uploadUrl: string;
-  onSend: (input: string, attachments?: UploadAttachmentData[]) => void;
+  onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
   onCancel: () => void;
   onRegenerate: (message: ChatMessage) => void;
   onEditUserMessage: (message: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (message: ChatMessage) => void;
   onViewWorkflow: (message: ChatMessage) => void;
+  onResolveApproval: (approvalId: string, status: "approved" | "denied") => void;
   userProfile: UserProfile;
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
@@ -102,6 +104,7 @@ export function ChatPanel({
   onEditUserMessage,
   onDeleteFromMessage,
   onViewWorkflow,
+  onResolveApproval,
   userProfile,
   onOpenSessionPanel,
   onOpenWorkflowPanel,
@@ -173,6 +176,8 @@ export function ChatPanel({
               onEditUserMessage={onEditUserMessage}
               onDeleteFromMessage={onDeleteFromMessage}
               onViewWorkflow={onViewWorkflow}
+              onResolveApproval={onResolveApproval}
+              approvalDisabled={socketStatus !== "open"}
             />
           </ChatContentMotion>
         )}

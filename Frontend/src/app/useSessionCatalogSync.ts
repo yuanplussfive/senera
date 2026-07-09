@@ -21,6 +21,7 @@ export function buildConnectionOpenSyncRequests(userProfile: UserProfile): WsReq
     { type: "model.list" },
     { type: "plugin.config.list" },
     { type: "preset.list" },
+    { type: "sandbox.status" },
   ];
 
   if (userProfile.syncState === "pending") {
@@ -41,6 +42,7 @@ export function buildManualRefreshRequests(): WsRequest[] {
     { type: "plugin.config.list" },
     { type: "preset.list" },
     { type: "profile.get" },
+    { type: "sandbox.status" },
   ];
 }
 

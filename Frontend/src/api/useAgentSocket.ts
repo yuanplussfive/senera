@@ -11,6 +11,7 @@ export type SocketStatus = "idle" | "connecting" | "open" | "closed" | "error";
 export interface UseAgentSocketOptions {
   url: string;
   onEvent: (env: EventEnvelope) => void;
+  onMalformedEvent?: (error: unknown) => void;
 }
 
 export interface AgentSocketHandle {
@@ -19,15 +20,23 @@ export interface AgentSocketHandle {
   reconnect: () => void;
 }
 
+export function readAgentSocketRetryDelayMs(attempt: number): number {
+  return Math.min(15000, 1000 * 2 ** Math.max(0, attempt));
+}
+
+export function parseAgentSocketEventData(data: unknown): EventEnvelope {
+  return JSON.parse(typeof data === "string" ? data : "") as EventEnvelope;
+}
+
 /**
  * 单连接 + 指数退避自动重连。后端协议本身是无状态的（每次请求自带 sessionId），
  * 因此重连不需要恢复服务端状态，只需要 UI 重新订阅事件流即可。
  *
- * 流式优化：对 model.delta / decision.xml.progress 这类高频事件，
+ * 流式优化：对 model.delta 这类高频事件，
  * 累积到浏览器帧再回放给 onEvent；同时用最大等待窗口保证实时输出不会被拖到最终事件。
  */
 export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
-  const { url, onEvent } = opts;
+  const { url, onEvent, onMalformedEvent } = opts;
   const [status, setStatus] = useState<SocketStatus>("idle");
   const wsRef = useRef<WebSocket | null>(null);
   const connectSeqRef = useRef(0);
@@ -112,10 +121,10 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
 
     ws.onmessage = (evt) => {
       try {
-        const env = JSON.parse(typeof evt.data === "string" ? evt.data : "") as EventEnvelope;
+        const env = parseAgentSocketEventData(evt.data);
         dispatch(env);
-      } catch (err) {
-        console.warn("[ws] bad payload", err);
+      } catch (error) {
+        onMalformedEvent?.(error);
       }
     };
 
@@ -142,7 +151,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     if (retryTimerRef.current !== null) return;
     const attempt = retryRef.current;
     retryRef.current = attempt + 1;
-    const delay = Math.min(15000, 1000 * 2 ** attempt);
+    const delay = readAgentSocketRetryDelayMs(attempt);
     retryTimerRef.current = window.setTimeout(() => {
       retryTimerRef.current = null;
       connect();

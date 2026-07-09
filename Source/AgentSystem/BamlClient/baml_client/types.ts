@@ -47,13 +47,6 @@ export function all_succeeded<CheckName extends string>(checks: Record<CheckName
 export function get_checks<CheckName extends string>(checks: Record<CheckName, Check>): Check[] {
     return Object.values(checks)
 }
-export enum EvidenceVerificationStatus {
-  Satisfied = "Satisfied",
-  Partial = "Partial",
-  Missing = "Missing",
-  Blocked = "Blocked",
-}
-
 export enum ExecutionDeltaOp {
   AddCall = "AddCall",
   AddEvidence = "AddEvidence",
@@ -63,19 +56,31 @@ export enum ExecutionDeltaOp {
 export enum InteractionRunMode {
   DirectResponse = "DirectResponse",
   ToolAgentLoop = "ToolAgentLoop",
-  DeliberateTaskLoop = "DeliberateTaskLoop",
 }
 
-export enum TaskEvidenceScope {
-  CurrentRun = "CurrentRun",
-  Memory = "Memory",
-  Conversation = "Conversation",
+export enum PiControllerActionKind {
+  FinalAnswer = "FinalAnswer",
+  AskUser = "AskUser",
+  CallTools = "CallTools",
 }
 
 export enum ToolCallStatus {
   Success = "Success",
   Failure = "Failure",
   Empty = "Empty",
+}
+
+export enum ToolRiskAuditDecision {
+  Allow = "Allow",
+  Ask = "Ask",
+  Deny = "Deny",
+}
+
+export enum ToolRiskLevel {
+  Low = "Low",
+  Medium = "Medium",
+  High = "High",
+  Critical = "Critical",
 }
 
 export enum TurnContextMode {
@@ -93,12 +98,11 @@ export interface ActionPlanInput {
   evidenceMemory: PlannerEvidenceMemoryItem[]
   evidenceState: PlannerEvidenceStateItem[]
   plannerJournal: PlannerJournalItem[]
-  plannerState?: PlannerStateSnapshot | null
   toolTagCatalog: string[]
   compactToolCatalog: ToolCatalogSummaryItem[]
   toolCatalog: ToolCatalogItem[]
   activeSkills: PlannerActiveSkill[]
-  
+
 }
 
 export interface ActionRunState {
@@ -108,62 +112,13 @@ export interface ActionRunState {
   progress: ProgressSignals
   warnings: RepeatedCallWarning[]
   calls: PlannerToolCallStateItem[]
-  
-}
 
-export interface EvidenceRequirementVerification {
-  requirementId: string
-  need: string
-  status: EvidenceVerificationStatus
-  evidenceUris: string[]
-  artifactUris: string[]
-  reason: string
-  missingFacts: string[]
-  unsupportedClaims: string[]
-  
 }
 
 export interface EvidenceSlot {
   name: string
   value: string
-  
-}
 
-export interface EvidenceVerification {
-  ready: boolean
-  requirements: EvidenceRequirementVerification[]
-  summary: string
-  
-}
-
-export interface FastContextScoutCommand {
-  type: string
-  pattern?: string | null
-  path?: string | null
-  include?: string[] | null
-  exclude?: string[] | null
-  regex?: boolean | null
-  caseSensitive?: boolean | null
-  startLine?: number | null
-  endLine?: number | null
-  depth?: number | null
-  
-}
-
-export interface FastContextScoutFileSelection {
-  path: string
-  startLine: number
-  endLine: number
-  reason: string
-  
-}
-
-export interface FastContextScoutPlannerDecision {
-  action: string
-  commands: FastContextScoutCommand[]
-  files: FastContextScoutFileSelection[]
-  reason: string
-  
 }
 
 export interface InteractionRoute {
@@ -176,7 +131,7 @@ export interface InteractionRoute {
   preferredTools: string[]
   discoveryQueries: string[]
   reason: string
-  
+
 }
 
 export interface MemoryCandidate {
@@ -189,7 +144,7 @@ export interface MemoryCandidate {
   sourceRefs: string[]
   reason: string
   confidence: number
-  
+
 }
 
 export interface MemoryConsolidationAction {
@@ -205,17 +160,17 @@ export interface MemoryConsolidationAction {
   targetMemoryUri?: string | null
   reason: string
   confidence: number
-  
+
 }
 
 export interface MemoryConsolidationResult {
   actions: MemoryConsolidationAction[]
-  
+
 }
 
 export interface MemoryLearningResult {
   candidates: MemoryCandidate[]
-  
+
 }
 
 export interface MemoryWriteDecision {
@@ -231,18 +186,37 @@ export interface MemoryWriteDecision {
   targetMemoryUri?: string | null
   reason: string
   confidence: number
-  
+
 }
 
 export interface MemoryWriteResolutionResult {
   decision: MemoryWriteDecision
-  
+
 }
 
-export interface PlannedToolCall {
-  name: string
+export interface PiControllerAction {
+  kind: PiControllerActionKind
+  answer?: string | null
+  question?: string | null
+  preface?: string | null
+  calls?: PiPlannedToolCall[] | null
+
+}
+
+export interface PiPlannedToolCall {
+  toolName: string
+  purpose: string
+  required: boolean
+  dependsOn?: number[] | null
+  argumentHints?: Record<string, ToolCallArgumentValue> | null
+
+}
+
+export interface PiToolArgumentsDraft {
   arguments: Record<string, ToolCallArgumentValue>
-  
+  missingInputs: string[]
+  assumptions: string[]
+
 }
 
 export interface PlannerActiveSkill {
@@ -253,13 +227,13 @@ export interface PlannerActiveSkill {
   avoid: string[]
   recommendedTools: string[]
   evidenceRequirements: PlannerEvidenceRequirement[]
-  
+
 }
 
 export interface PlannerCurrentUserTurn {
   requestId?: string | null
   content: string
-  
+
 }
 
 export interface PlannerEvidenceMemoryItem {
@@ -272,7 +246,7 @@ export interface PlannerEvidenceMemoryItem {
   artifactUri: string
   facts: EvidenceSlot[]
   artifactRefs: string[]
-  
+
 }
 
 export interface PlannerEvidenceRequirement {
@@ -281,7 +255,7 @@ export interface PlannerEvidenceRequirement {
   minimumQuality: string[]
   minimum: number
   purpose: string
-  
+
 }
 
 export interface PlannerEvidenceStateItem {
@@ -296,7 +270,7 @@ export interface PlannerEvidenceStateItem {
   confidence?: number | null
   facts: EvidenceSlot[]
   artifactRefs: string[]
-  
+
 }
 
 export interface PlannerJournalItem {
@@ -307,14 +281,14 @@ export interface PlannerJournalItem {
   artifactUris: string[]
   loadedTools: string[]
   outcome: string
-  
+
 }
 
 export interface PlannerRoleplayPreset {
   enabled: boolean
   activePresetName?: string | null
   documents: PlannerRoleplayPresetDocument[]
-  
+
 }
 
 export interface PlannerRoleplayPresetDocument {
@@ -323,81 +297,7 @@ export interface PlannerRoleplayPresetDocument {
   title: string
   updatedAt: string
   content: string
-  
-}
 
-export interface PlannerStateCandidateTool {
-  name: string
-  purpose: string
-  supports: string[]
-  
-}
-
-export interface PlannerStateEffect {
-  id: string
-  effect: string
-  target: string
-  reason: string
-  
-}
-
-export interface PlannerStateEvidence {
-  evidenceUri: string
-  kind: string
-  toolName: string
-  artifactUri: string
-  locator: string
-  display: string
-  label: string
-  
-}
-
-export interface PlannerStateEvidenceNeed {
-  id: string
-  need: string
-  scope: string
-  minimum: number
-  reason: string
-  
-}
-
-export interface PlannerStateOpenQuestion {
-  question: string
-  reason: string
-  
-}
-
-export interface PlannerStateSnapshot {
-  taskId: string
-  requestId: string
-  step: number
-  status: string
-  userGoal: string
-  currentIntent: string
-  intentTags: string[]
-  taskTags: string[]
-  targetRefs: PlannerStateTargetRef[]
-  requiredEffects: PlannerStateEffect[]
-  evidenceNeeds: PlannerStateEvidenceNeed[]
-  completedEvidence: PlannerStateEvidence[]
-  completedEffects: PlannerStateEffect[]
-  openQuestions: PlannerStateOpenQuestion[]
-  candidateTools: PlannerStateCandidateTool[]
-  discoveryQueries: string[]
-  nextStepPurpose: string
-  completionCriteria: string[]
-  lastAction: string
-  loadedTools: string[]
-  recentCalls: PlannerToolCallStateItem[]
-  updatedAt: string
-  
-}
-
-export interface PlannerStateTargetRef {
-  kind: string
-  value: string
-  status: string
-  
 }
 
 export interface PlannerTimelineTurn {
@@ -409,7 +309,7 @@ export interface PlannerTimelineTurn {
   payloadJson?: string | null
   evidenceUris: string[]
   artifactUris: string[]
-  
+
 }
 
 export interface PlannerToolCallStateItem {
@@ -421,7 +321,7 @@ export interface PlannerToolCallStateItem {
   resultKind: string
   argumentsPreview: string
   error: string
-  
+
 }
 
 export interface ProgressSignals {
@@ -430,7 +330,7 @@ export interface ProgressSignals {
   lastNewEvidenceStep: number
   repeatedCallCount: number
   stalled: boolean
-  
+
 }
 
 export interface RepeatedCallWarning {
@@ -438,67 +338,7 @@ export interface RepeatedCallWarning {
   argsHash: string
   count: number
   lastStep: number
-  
-}
 
-export interface TaskCandidateTool {
-  name: string
-  purpose: string
-  supports: string[]
-  
-}
-
-export interface TaskFrame {
-  taskType: string
-  answerGoal: string
-  intentTags: string[]
-  taskTags: string[]
-  targetRefs: TaskTargetRef[]
-  candidateTools: TaskCandidateTool[]
-  discoveryQueries: string[]
-  requiredEffects: TaskRequiredEffect[]
-  requiredEvidence: TaskRequiredEvidence[]
-  userInputNeeds: TaskUserInputNeed[]
-  nextStepPurpose: string
-  completionCriteria: string[]
-  notes: string[]
-  
-}
-
-export interface TaskRequiredEffect {
-  id: string
-  effect: string
-  target: string
-  proof: string
-  reason: string
-  
-}
-
-export interface TaskRequiredEvidence {
-  id: string
-  need: string
-  scope: TaskEvidenceScope
-  minimum: number
-  reason: string
-  
-}
-
-export interface TaskTargetRef {
-  kind: string
-  value: string
-  status: string
-  
-}
-
-export interface TaskUserInputNeed {
-  question: string
-  reason: string
-  
-}
-
-export interface ToolCallPlan {
-  calls: PlannedToolCall[]
-  
 }
 
 export interface ToolCapabilityFacets {
@@ -508,7 +348,7 @@ export interface ToolCapabilityFacets {
   Outputs?: string[] | null
   Evidence?: string[] | null
   Effects?: string[] | null
-  
+
 }
 
 export interface ToolCapabilityItem {
@@ -517,13 +357,13 @@ export interface ToolCapabilityItem {
   description: string
   facets: ToolCapabilityFacets
   risk?: ToolCapabilityRisk | null
-  
+
 }
 
 export interface ToolCapabilityRisk {
   sideEffect?: string | null
   permission?: string | null
-  
+
 }
 
 export interface ToolCatalogItem {
@@ -538,7 +378,7 @@ export interface ToolCatalogItem {
   permissions: string[]
   evidenceCapabilities: ToolEvidenceCapabilityItem[]
   loaded: boolean
-  
+
 }
 
 export interface ToolCatalogSummaryItem {
@@ -552,7 +392,7 @@ export interface ToolCatalogSummaryItem {
   permissions: string[]
   loaded: boolean
   rootKind: string
-  
+
 }
 
 export interface ToolEvidenceCapabilityItem {
@@ -561,7 +401,7 @@ export interface ToolEvidenceCapabilityItem {
   satisfies: string[]
   kinds: string[]
   capabilityIds: string[]
-  
+
 }
 
 export interface ToolLearningRecord {
@@ -571,12 +411,23 @@ export interface ToolLearningRecord {
   triggers: string[]
   reason: string
   confidence: number
-  
+
 }
 
 export interface ToolLearningResult {
   records: ToolLearningRecord[]
-  
+
+}
+
+export interface ToolRiskAudit {
+  decision: ToolRiskAuditDecision
+  riskLevel: ToolRiskLevel
+  confidence: number
+  tripwire: boolean
+  reason: string
+  matchedConcerns: string[]
+  safeAlternative?: string | null
+
 }
 
 export interface TurnUnderstanding {
@@ -585,7 +436,7 @@ export interface TurnUnderstanding {
   contextMode: TurnContextMode
   contextBasis: string
   missingContext: string
-  
+
 }
 
 export interface ToolCallArgumentValue {

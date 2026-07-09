@@ -38,10 +38,12 @@ const workspaceRoot = process.cwd();
 const budgetPath = path.join(workspaceRoot, "Scripts", "ComplexityBudget.json");
 const budget = readBudget();
 const sourceFiles = readSourceFileMetrics();
-const legacyBudgetsByPath = new Map(budget.legacyLargeFiles.map((entry) => [entry.path, entry]));
+const sourceFilesByPath = new Map(sourceFiles.map((file) => [file.path, file]));
+const legacyBudgetsByPath = new Map(budget.legacyLargeFiles.map((entry) => [normalizePath(entry.path), entry]));
 
 const violations = [
   ...inspectRequiredGuides(),
+  ...inspectLegacyBudgets(),
   ...inspectLargeFiles(),
   ...inspectDirectoryBudgets(),
 ];
@@ -65,6 +67,36 @@ function inspectRequiredGuides(): string[] {
   return budget.requiredModuleGuides
     .filter((guide) => !fs.existsSync(path.join(workspaceRoot, guide)))
     .map((guide) => `${guide} must exist as a module guide.`);
+}
+
+function inspectLegacyBudgets(): string[] {
+  return budget.legacyLargeFiles.flatMap((entry) => {
+    const budgetedPath = normalizePath(entry.path);
+    const file = sourceFilesByPath.get(budgetedPath);
+    if (!file) {
+      return [
+        `${entry.path} legacy large-file budget references a missing or ignored source file.`,
+      ];
+    }
+    if (file.lines <= budget.lineBudget.maxLines) {
+      return [
+        [
+          `${entry.path} has ${file.lines} lines, within normal budget ${budget.lineBudget.maxLines}.`,
+          "Remove this legacyLargeFiles entry.",
+        ].join(" "),
+      ];
+    }
+    if (entry.baselineLines > file.lines) {
+      return [
+        [
+          `${entry.path} legacy baseline is stale.`,
+          `baseline=${entry.baselineLines}, current=${file.lines}.`,
+          "Lower baselineLines to the current line count so the budget ratchets down after splits.",
+        ].join(" "),
+      ];
+    }
+    return [];
+  });
 }
 
 function inspectLargeFiles(): string[] {
@@ -149,7 +181,7 @@ function readBudget(): ComplexityBudget {
   assert.ok(Array.isArray(parsed.requiredModuleGuides), "ComplexityBudget.json must define requiredModuleGuides.");
   assert.equal(
     parsed.legacyLargeFiles.length,
-    new Set(parsed.legacyLargeFiles.map((entry) => entry.path)).size,
+    new Set(parsed.legacyLargeFiles.map((entry) => normalizePath(entry.path))).size,
     "ComplexityBudget.json legacyLargeFiles paths must be unique.",
   );
   for (const entry of parsed.legacyLargeFiles) {

@@ -1,6 +1,5 @@
 import {
   EventKinds,
-  type DecisionXmlProgressData,
   type ModelDeltaData,
   type ModelStartedData,
 } from "../../api/eventTypes";
@@ -8,7 +7,6 @@ import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTyp
 import { upsertStep } from "./sessionProjectorCore";
 import {
   alignRunDisplayTarget,
-  isToolCallStreamPrefix,
   projectStreamingVisibility,
   touchRun,
 } from "./sessionRunProjection";
@@ -24,8 +22,8 @@ export const runModelStreamEventHandlers = {
     run.xmlPreview = "";
     run.visibleText = "";
     run.displayText = "";
-    run.visibleKind = run.expectedOutputMode === "tool_call_xml" ? "tool_calls" : "unknown";
-    run.decisionMode = run.expectedOutputMode === "tool_call_xml" ? "tool_candidate" : "none";
+    run.visibleKind = "unknown";
+    run.decisionMode = "none";
     upsertStep(run, {
       id: `${run.requestId}-model-${env.step ?? 0}`,
       kind: "model",
@@ -56,35 +54,5 @@ export const runModelStreamEventHandlers = {
       step.endedAt = env.timestamp;
       touchRun(run);
     }
-  },
-
-  [EventKinds.DecisionXmlProgress]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    const data = env.data as DecisionXmlProgressData;
-    run.xmlPreview = data.xml;
-    if (run.expectedOutputMode === "tool_call_xml" || data.kind === "tool_calls") {
-      run.decisionMode = "tool_candidate";
-      run.visibleText = "";
-      run.displayText = "";
-      run.visibleKind = "tool_calls";
-      touchRun(run);
-      return;
-    }
-    if (
-      run.decisionMode === "tool_candidate" &&
-      isToolCallStreamPrefix(run.streamingRaw)
-    ) {
-      run.visibleText = "";
-      run.displayText = "";
-      run.visibleKind = "unknown";
-      touchRun(run);
-      return;
-    }
-    run.decisionMode = "none";
-    run.visibleText = data.text || run.streamingRaw;
-    run.visibleKind = data.kind;
-    alignRunDisplayTarget(run);
-    touchRun(run);
   },
 } satisfies RunEventHandlerMap;

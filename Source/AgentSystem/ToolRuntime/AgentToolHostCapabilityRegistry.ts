@@ -5,6 +5,7 @@ import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type { AgentPluginRegistryLike } from "../Types/ToolRuntimeTypes.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
+import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 
 export interface AgentHostToolContext {
   tool: RegisteredTool;
@@ -12,6 +13,7 @@ export interface AgentHostToolContext {
   configPath?: string;
   workspaceRoot: string;
   registry: AgentPluginRegistryLike;
+  executionEnv: SeneraExecutionEnv;
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;

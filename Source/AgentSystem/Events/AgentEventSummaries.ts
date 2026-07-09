@@ -4,7 +4,6 @@ import {
   AgentEventPhases,
 } from "./AgentEventCatalog.js";
 import type { AgentEventSpec } from "./AgentEventBase.js";
-import { readXmlRootName } from "../Xml/AgentXmlRootReader.js";
 
 export function summarizePrompt(prompt: string, tokenCount: number): AgentEventSpec<typeof AgentEventKinds.PromptSummary, {
   chars: number;
@@ -19,30 +18,6 @@ export function summarizePrompt(prompt: string, tokenCount: number): AgentEventS
       chars: prompt.length,
       lines: countLines(prompt),
       tokenCount,
-    },
-  };
-}
-
-export function summarizeXmlDocument(xml: string, options: {
-  sanitized: boolean;
-  detailId: string;
-}): AgentEventSpec<typeof AgentEventKinds.DecisionXmlSummary, {
-  chars: number;
-  lines: number;
-  root?: string;
-  sanitized: boolean;
-  detailId: string;
-}> {
-  return {
-    kind: AgentEventKinds.DecisionXmlSummary,
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Decision,
-    data: {
-      chars: xml.length,
-      lines: countLines(xml),
-      root: readXmlRootName(xml),
-      sanitized: options.sanitized,
-      detailId: options.detailId,
     },
   };
 }

@@ -8,15 +8,9 @@
 
 {% include "PromptGuidance.liquid" %}
 
-{% include "SkillCatalog.liquid" %}
+{% include "ExecutionEnvironment.liquid" %}
 
-{% if RootCommand %}
-{% if RootCommand.includeDecisionProtocol %}
-{% include "DecisionProtocol.liquid" %}
-{% endif %}
-{% else %}
-{% include "DecisionProtocol.liquid" %}
-{% endif %}
+{% include "SkillCatalog.liquid" %}
 
 {% if RootCommand %}
 {% if RootCommand.includeToolCatalog %}

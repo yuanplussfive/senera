@@ -15,6 +15,7 @@ import type {
   PluginConfigMutationState,
   UploadAttachmentData,
 } from "../../api/eventTypes";
+import type { MessageQueueMode } from "../../app/useChatCommands";
 import { uploadFile, type UploadProgress } from "../../api/uploadClient";
 import { cn, generateId } from "../../lib/util";
 import { useResponsiveMode } from "../../shared/responsive";
@@ -77,7 +78,7 @@ interface ChatComposerProps {
   onSetActivePreset: (name: string | null) => string | null;
   socketStatus: string;
   uploadUrl: string;
-  onSend: (input: string, attachments?: UploadAttachmentData[]) => void;
+  onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
   onCancel: () => void;
 }
 
@@ -135,7 +136,7 @@ export function ChatComposer({
   const textareaMaxHeight = prefersCompactControls ? TOUCH_TEXTAREA_MAX_HEIGHT : DESKTOP_TEXTAREA_MAX_HEIGHT;
 
   const hint = useMemo(() => {
-    if (running) return prefersCompactControls ? "正在思考" : "正在思考——可按 Esc 中断";
+    if (running) return prefersCompactControls ? "可补充指令" : "输入会注入当前任务，Alt+Enter 排到任务之后";
     if (socketStatus === "open") return "跟 senera 说点什么";
     if (socketStatus === "connecting" || socketStatus === "idle") return "正在连接后端…";
     return "后端未连接，请检查服务";
@@ -164,13 +165,13 @@ export function ChatComposer({
     el.style.height = value ? `${Math.min(el.scrollHeight, textareaMaxHeight)}px` : "auto";
   }, [textareaMaxHeight, value]);
 
-  const submit = (): void => {
+  const submit = (queueMode?: MessageQueueMode): void => {
     const text = value.trim();
     const uploading = pendingAttachments.some((attachment) => attachment.status === "uploading");
-    if (!text || disabled || running || uploading) return;
+    if (!text || disabled || uploading) return;
     const attachments = pendingAttachments.flatMap((entry) =>
       entry.status === "uploaded" && entry.attachment ? [entry.attachment] : []);
-    onSend(text, attachments.length > 0 ? attachments : undefined);
+    onSend(text, attachments.length > 0 ? attachments : undefined, queueMode);
     setValue("");
     setPendingAttachments([]);
     if (taRef.current) taRef.current.style.height = "auto";
@@ -179,7 +180,7 @@ export function ChatComposer({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      submit();
+      submit(running && e.altKey ? "follow_up" : running ? "steer" : undefined);
     }
   };
 
@@ -191,7 +192,7 @@ export function ChatComposer({
   };
 
   const uploading = pendingAttachments.some((attachment) => attachment.status === "uploading");
-  const canSend = !disabled && !running && !uploading && value.trim().length > 0;
+  const canSend = !disabled && !uploading && value.trim().length > 0;
 
   const enqueueFiles = (files: File[]): void => {
     if (files.length === 0) return;
@@ -317,7 +318,7 @@ export function ChatComposer({
             tooltipSide="top"
             size="lg"
             tone="primary"
-            disabled={running}
+            disabled={disabled || running}
             onClick={() => fileInputRef.current?.click()}
             touchSafe
           >
@@ -331,27 +332,43 @@ export function ChatComposer({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={hint}
-            disabled={running}
+            disabled={disabled}
             style={{ maxHeight: textareaMaxHeight }}
             className="scrollbar-thin min-w-0 flex-1 resize-none bg-transparent py-2 text-[14.5px] leading-6 text-ink-900 placeholder:text-ink-400 focus:outline-none disabled:opacity-60"
           />
           {running ? (
-            <Tooltip content="中断当前运行" side="top" shortcut={prefersCompactControls ? undefined : "Esc"}>
-              <MotionButton
-                onClick={onCancel}
-                className={cn(
-                  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brick-500 text-paper-50 transition hover:bg-brick-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
-                  prefersCompactControls && "min-h-11 min-w-11",
-                )}
-                aria-label="cancel"
-              >
-                <Square className="h-3.5 w-3.5 fill-current" />
-              </MotionButton>
-            </Tooltip>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Tooltip content="注入当前任务" side="top" shortcut={prefersCompactControls ? undefined : "↵"}>
+                <MotionButton
+                  onClick={() => submit("steer")}
+                  disabled={!canSend}
+                  className={cn(
+                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
+                    prefersCompactControls && "min-h-11 min-w-11",
+                    canSend ? "bg-ink-900 text-paper-50 hover:bg-terra-500" : "bg-ink-200/60 text-ink-400",
+                  )}
+                  aria-label="inject-current-run"
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </MotionButton>
+              </Tooltip>
+              <Tooltip content="中断当前运行" side="top" shortcut={prefersCompactControls ? undefined : "Esc"}>
+                <MotionButton
+                  onClick={onCancel}
+                  className={cn(
+                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brick-500 text-paper-50 transition hover:bg-brick-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
+                    prefersCompactControls && "min-h-11 min-w-11",
+                  )}
+                  aria-label="cancel"
+                >
+                  <Square className="h-3.5 w-3.5 fill-current" />
+                </MotionButton>
+              </Tooltip>
+            </div>
           ) : (
             <Tooltip content="发送" side="top" shortcut={prefersCompactControls ? undefined : "↵"}>
               <MotionButton
-                onClick={submit}
+                onClick={() => submit(running ? "steer" : undefined)}
                 disabled={!canSend}
                 className={cn(
                   "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
@@ -369,8 +386,14 @@ export function ChatComposer({
           <span className="min-w-0 truncate">
             {prefersCompactControls ? null : running ? (
               <>
+                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">↵</kbd>
+                <span className="ml-1.5">注入当前任务</span>
+                <span className="mx-2 text-ink-300">·</span>
+                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">Alt↵</kbd>
+                <span className="ml-1.5">排到任务之后</span>
+                <span className="mx-2 text-ink-300">·</span>
                 <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">Esc</kbd>
-                <span className="ml-1.5">中断当前运行</span>
+                <span className="ml-1.5">中断</span>
               </>
             ) : (
               <>

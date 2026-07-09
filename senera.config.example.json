@@ -1,38 +1,36 @@
 {
   "Defaults": {
     "PluginRoots": {
-      "System": ["./System/Plugins"],
-      "User": ["./Plugins"]
+      "System": [
+        "./System/Plugins"
+      ],
+      "User": [
+        "./Plugins"
+      ]
     },
     "PluginDiscovery": {
       "ManifestFileName": "PluginManifest.json",
       "ConfigFileName": "PluginConfig.toml"
     },
-    "Cli": {
-      "Connection": {
-        "Url": "ws://127.0.0.1:8787",
-        "TimeoutSeconds": 180
-      },
-      "Display": {
-        "EventDisplayMode": "activity",
-        "DetailMode": "tools",
-        "ShowXml": false,
-        "StreamXml": false,
-        "LivePreview": true,
-        "PreviewMode": "block",
-        "PreviewTokenLimit": 50
+    "AgentLoop": {
+      "LoadedTools": "dynamic",
+      "PiSessions": {
+        "RootDir": ".senera/pi-sessions"
       }
     },
-    "AgentLoop": {
-      "MaxSteps": 16,
-      "MaxRepairAttempts": 2,
-      "LoadedTools": "dynamic"
-    },
     "ToolExecution": {
-      "Mode": "Process",
       "TimeoutSeconds": 120,
       "MaxStdoutBytes": 1000000,
       "MaxStderrBytes": 1000000
+    },
+    "SandboxRuntime": {
+      "BaseDir": ".senera/sandbox-runtime",
+      "BundleDir": ".senera/sandbox-bundles",
+      "ImportBundlesOnStartup": true,
+      "PrepareImagesOnInstall": true,
+      "Images": [
+        "alpine"
+      ]
     },
     "ToolSearch": {
       "Memory": {
@@ -98,7 +96,7 @@
       "DevServer": {
         "Host": "127.0.0.1",
         "Port": 5173,
-        "StrictPort": true
+        "StrictPort": false
       },
       "PreviewServer": {
         "Host": "127.0.0.1",
@@ -139,9 +137,9 @@
   "DefaultModelProviderId": "main",
   "ModelProviderEndpoints": [
     {
-        "Id": "main",
-        "BaseUrl": "http://localhost:3000/v1",
-        "ApiKey": "YOUR_API_KEY"
+      "Id": "main",
+      "BaseUrl": "http://localhost:3000/v1",
+      "ApiKey": "YOUR_API_KEY"
     }
   ],
   "ModelProviders": [

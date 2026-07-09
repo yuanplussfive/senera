@@ -1,10 +1,10 @@
 # senera
 
-> 一个**可观测、可校验、可自愈**的 Agent 运行时与 Web 工作台。
-> 让模型保持自然的对话体验,在需要工具时切换到结构化、可重试、全程可追踪的工具调用协议。
+> 一个可观测、可校验、可扩展的 Agent 工作台。
+> 让模型像正常聊天一样表达,也能在需要行动时稳定地搜索、读写文件、调用插件、留下证据。
 
 <p>
-  <img alt="Node" src="https://img.shields.io/badge/Node.js-20%2B-43853d">
+  <img alt="Node" src="https://img.shields.io/badge/Node.js-22%2B-43853d">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6">
   <img alt="Protocols" src="https://img.shields.io/badge/LLM-OpenAI%20%7C%20Claude%20%7C%20Gemini-8a2be2">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
@@ -13,252 +13,213 @@
 <p align="center">
   <img alt="senera 工作台" src="docs/screenshot.png" width="100%">
 </p>
-<p align="center"><sub>三栏工作台 · 左:会话列表 · 中:自然对话 · 右:实时展开的决策 / 工具调用 / 思考过程时间线</sub></p>
+<p align="center"><sub>三栏工作台:会话、自然对话、实时展开的思考和工具执行过程。</sub></p>
 
-senera 不只是又一个聊天壳。它的目标是让 AI 能**稳定地**搜索、读取项目、执行插件、修改文件,并把推理、决策、工具调用、失败与重试的**每一步都摊开给你看**。
+senera 不是一个简单的聊天壳。它更像一个透明的 AI 工作台:模型可以边说边做,工具执行过程可以被看到、被审批、被复盘,每次搜索、文件修改、命令执行都会留下结构化结果和证据。
 
----
-
-## 为什么是 senera(区位优势)
-
-市面上的 Agent 大多落在两端:要么把工具塞进模型原生的 JSON function-calling、对话和工具混在一起且难以校验;要么是一个看不见内部状态的黑箱。senera 选了第三条路——**把"对话"和"工具调用"彻底分开,并让工具调用这条链路变得可校验、可自愈、可观测。**
-
-- **双模协议:对话归对话,工具归工具。**
-  普通回复就是自然语言 / Markdown;只有真正需要工具时,整条回复才是一个 `<senera_tool_calls>` 根标签。聊天不会被 XML 包络污染,工具调用又能享受完整的结构化校验与审计。
-
-- **工具调用"可校验 + 可自愈"——这是 senera 的核心竞争力。**
-  每次工具调用都要过 **Zod schema 校验**。出问题时不是简单报错,而是**分层修复**:
-  - 轻微格式问题(如参数未用 CDATA 包裹)→ 在解析前**程序性自动修补**;
-  - 语义 / 结构错误 → 生成带**行号、列号、JSON Pointer 和修复建议**的诊断,连同协议文档一起喂回模型**重新生成**;
-  - 全程有**重试上限**(`MaxRepairAttempts`)兜底,不会无限打转。
-
-- **过程完全可见。**
-  后端贯穿全流程发出 **40+ 种细粒度事件**(`model.delta` / `decision.*` / `tool.call.*` / `retry.planned` / `final.answer` …),带 `layer / phase / sequence / detailId`,经 WebSocket 实时推送。前端三栏工作台把流式输出、决策、工具调用、结果、失败原因和重试链路逐条展示出来。
-
-- **动态工具发现,越用越准。**
-  工具不必一次性全塞进上下文。senera 内置工具检索:**MiniSearch 本地索引 + BM25/精确/优先级多路 RRF 融合 + MMR 去冗余**,再叠加 **SQLite 记忆反馈**(用过哪些工具、成功与否会带半衰期地影响后续排序)。工具越多,上下文反而越干净。
-
-- **多模型,一套接口。**
-  OpenAI **Responses**、**Chat Completions**、Anthropic **Claude Messages**、Google **GenerateContent** 四种上游协议都是**真适配**(各自完整实现 `complete()` / `stream()`),统一的 SSE 流式解析,统一的首字超时 / 总时长 / 中断 / 网络重试控制。
-
-- **插件进程级隔离。**
-  外部工具插件以**子进程**运行,通过 stdin/stdout 的 JSON 协议通信,带**超时**、**stdout/stderr 字节上限**、独立工作目录与环境变量隔离。插件可用 Node.js、Python 或任意可执行文件实现。
-  > 说明:插件 manifest 的权限(网络 / 文件系统 / 信任级别)目前是**声明式**的——用于发现、展示与调度决策,而非操作系统级强制沙箱。
+它的核心目标是把“模型会聊天”和“模型能可靠行动”放在同一个产品里。普通模型只需要会输出文本,也能通过 senera 获得接近原生工具调用的体验;支持原生工具的模型,则可以直接吃到 Pi 的多步工具循环能力。
 
 ---
 
-## 工作原理
+## 核心卖点
 
-一次"行动 → 收尾"的循环大致是这样:
+- **接近原生 tools 的体验,但不被供应商锁死。**
+  senera 内部用 OpenAI 风格 transcript 保存用户消息、assistant 文本、tool calls 和 tool result。即使上游模型不支持原生 tools,也能通过 Pi + BAML 投影成可校验的动作,兼容 OpenAI、Claude、Gemini 和 OpenAI-compatible 模型服务。
 
-```
-用户输入
-   │
-   ▼
-ActionPlanner(BAML 轻量规划)──► 决定下一步:Answer / AskUser / DiscoverTools / UseTools
-   │
-   ▼
-渲染提示(注入工具目录 + 协议契约 + 执行状态)
-   │
-   ▼
-模型流式输出 ──► model.delta 实时可见
-   │
-   ▼
-解析 & 校验  ──┐  失败?
-   │           ├─► 程序性修补(CDATA 规范化)
-   │           └─► 诊断 + 重新生成(带重试上限)
-   ▼
-执行工具(进程隔离 / 宿主能力)──► tool.call.* 全程可见
-   │
-   ▼
-回填结果 ──► 进入下一步,或输出 final.answer
-```
+- **工具调用不是靠模型“猜对格式”。**
+  每个工具都有 manifest、签名和 Zod 参数校验。模型先决定要不要行动,再生成工具参数;结构错了会带着具体字段路径进入修复流程,而不是把坏 JSON 直接交给工具执行。
 
-`ActionPlanner` 还会校验"模型实际输出的形态"与"规划意图"是否一致(例如规划要用工具却回了纯文本),不一致同样触发修复。
+- **过程可见,不是黑箱。**
+  前端会把预回复、工具计划、审批、开始执行、结果摘要、失败原因和最终回复分开展示。用户看到的是“边说边做”的过程,不是等很久以后只拿到一个最终答案。
+
+- **工具多了也不把上下文塞爆。**
+  senera 会动态检索工具,结合本地索引、BM25/RRF/MMR 和 SQLite 记忆反馈,只把当前任务真正可能用到的工具放进上下文。
+
+- **每次行动都有证据。**
+  工具结果会生成 artifact/evidence 包,长期上下文优先使用摘要和证据投影,需要时再取回原始内容。这样能减少上下文膨胀,也方便追查模型到底依据了什么。
+
+- **插件边界清楚。**
+  工具通过插件扩展。插件声明自己的执行边界、网络能力、工作区权限和 artifact 策略;系统工具可以使用宿主能力,外部进程插件可以放进 microsandbox microVM 边界。
+
+---
+
+## 具体怎么写
+
+### Agent 动作协议
+
+senera 把每一轮任务拆成清晰的动作:
+
+- `FinalAnswer`: 信息足够,直接回复用户。
+- `AskUser`: 缺少必要输入,向用户追问。
+- `CallTools`: 需要行动,先给出一段自然语言预回复,再规划工具调用。
+
+`CallTools` 不要求模型一次性写出所有复杂参数。运行时会先让模型选择需要的工具和依赖关系,再并发生成各个工具的参数。工具调用 ID 由宿主生成,例如 `call_xxx`,依赖关系在宿主侧投影和校验,避免把稳定性押在模型自己编 ID 上。
+
+### Pi + BAML 兼容层
+
+Pi 负责会话、流式文本、工具调用和多步循环。BAML 负责把不支持原生 tools 的模型输出约束成结构化动作。整体流程是:
+
+1. 读取当前 OpenAI 风格 transcript。
+2. 根据模型能力选择原生 tools 或 BAML 兼容投影。
+3. 先判断本轮应直接回答、追问,还是调用工具。
+4. 如果需要工具,生成工具计划、物化参数、执行工具。
+5. 把工具结果写回 transcript,再进入下一步推理或最终回答。
+
+这让 senera 可以同时支持强工具模型和普通文本模型。底层不是把所有提示词写死成一大段,而是把工具协议、上下文策略、证据投影和插件描述分层生成。
+
+### 像 OpenAI tools 一样保存上下文
+
+数据库里保存的是标准化消息结构:用户原话、assistant 文本、tool calls、tool result、最终回复。即使某些上游接口不接受 `role: "tool"`,也只在请求模型前做投影,不会把存储层降级成一堆私有 XML 字符串。
+
+这种写法有两个价值:
+
+- 历史链路稳定,后续切换模型或协议不用迁移会话格式。
+- 工具调用、工具结果和最终回复天然对齐,前端可以把“准备做什么”“正在做什么”“做完得到什么”分开展示。
+
+### 上下文策略
+
+senera 不把历史工具原文无限塞回模型。新一轮任务会优先使用:
+
+- 当前轮的完整用户输入和新工具结果。
+- 历史轮次的最终回复和必要工具摘要。
+- artifact / evidence 的结构化摘要、事实、URI。
+- 动态召回的项目记忆和相关文件片段。
+
+早期大段输出会沉淀成证据投影;真正需要原文时再通过 artifact 工具取回。这样上下文不会被旧日志、旧搜索结果、旧文件内容拖爆。
+
+### 插件写法
+
+一个工具插件通常包含:
+
+- `PluginManifest.json`: 插件身份、能力声明、执行边界。
+- `ToolSignature.ts`: 工具名、参数 schema、返回结构、权限说明。
+- `docs/*.md`: 给模型看的工具使用说明。
+- `PluginConfig.toml`: 私有密钥和业务配置。
+
+插件可以声明 `Execution.Boundary`、`Network`、`Workspace` 和 `LocalFallback`。系统工具可以使用本机能力;外部插件默认更适合放到沙箱边界里执行。Agent 主循环只认识统一的工具协议,不需要为每个业务插件写特殊分支。
+
+---
+
+## 能做什么
+
+- 搜索资料、查询天气、读取图片和文档。
+- 理解项目结构,搜索代码,读取和修改工作区文件。
+- 执行受控 shell 命令,并把 stdout/stderr、退出码和工作目录整理成证据。
+- 在需要高风险操作时先请求用户审批。
+- 把工具结果、文件 diff、摘要、证据 URI 和最终回答串成完整链路。
+- 用插件接入新的业务工具,不用改 Agent 主循环。
 
 ---
 
 ## 快速开始
 
-要求:**Node.js 20+**
+要求:Node.js 22+。真实密钥放在 `senera.config.json`,这个文件已被 git 忽略。
 
-### Docker 一键部署
+### Docker
 
 ```bash
 docker compose up -d
 ```
 
-打开 `http://localhost:8787`。运行数据会保存到 `docker-data/`，首次启动会自动生成 `docker-data/senera.config.json`。
+打开 `http://localhost:8787`。运行数据会写入 `docker-data/`。
 
-需要从当前源码构建镜像时：
-
-```bash
-docker compose up -d --build
-```
-
-### 本地开发启动
-
-**1. 安装依赖**(根目录与前端各一次):
+### 本地开发
 
 ```bash
 npm install
-cd Frontend && npm install && cd ..
-```
-
-**2. 创建本地运行配置:**
-
-```bash
-# PowerShell
 copy senera.config.example.json senera.config.json
+npm run dev
 ```
+
+macOS / Linux 创建配置文件:
+
 ```bash
-# macOS / Linux
 cp senera.config.example.json senera.config.json
 ```
 
-编辑 `senera.config.json`,在 `ModelProviders` 里填好模型服务的 `BaseUrl`、`ApiKey`、`Model`。前端开发端口、预览端口和默认 WS 地址在 `Defaults.Frontend` 或顶层 `Frontend` 里配置。
+然后编辑 `senera.config.json`,填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。启动后打开 `http://127.0.0.1:5173`。
 
-**3. 启动后端:**
-
-```bash
-npm run server     # 默认 WebSocket 监听 ws://127.0.0.1:8787
-```
-
-**4. 启动前端**(另开一个终端):
-
-```bash
-cd Frontend
-npm run dev        # 默认 http://127.0.0.1:5173
-```
-
-打开浏览器即可,前端会自动建一个空会话并连上后端。
-
-也可以直接用 CLI:
-
-```bash
-npm run cli
-```
-
-> 真实的 `senera.config.json` 已在 `.gitignore` 中忽略,**不要把密钥提交到仓库**。
+仓库使用 npm workspaces,只需要在根目录执行一次 `npm install`。项目不提交 lockfile,`.npmrc` 固定 `package-lock=false`。
 
 ---
 
-## 配置模型
+## 模型与协议
 
-最小配置见 [senera.config.example.json](./senera.config.example.json)。常用字段:
+一个模型提供方通常由两部分组成:
 
-| 字段 | 说明 |
-|---|---|
-| `DefaultModelProviderId` | 默认使用的模型提供方 `Id`。 |
-| `ModelProviders[]` | 模型提供方列表,前端会自动读取并展示。 |
-| `ModelProviders[].Endpoint` | 上游协议:`Responses` / `ChatCompletions` / `ClaudeMessages` / `GoogleGenerateContent`。 |
-| `MaxOutputTokens` | 填 `-1` 表示不传该 API 字段,让模型自由输出。 |
-| `TimeoutMs` | 等待上游响应头的超时。 |
-| `FirstTokenTimeoutMs` | 流式首个文本增量的超时,`-1` 表示不限制。 |
-| `MaxRequestMs` | 单次模型请求总时长上限(含完整流式输出),`-1` 表示不限制。 |
-| `AgentLoop.MaxSteps` | 最大行动步数,`-1` 表示不限制。 |
-| `AgentLoop.MaxRepairAttempts` | 工具调用解析 / 校验失败后的自动修复重试上限。 |
-| `AgentLoop.LoadedTools` | `"dynamic"` 动态按需发现工具(推荐);`"all"` 加载全部;也可填工具名数组做白名单。 |
-| `ToolSearch.*` | 动态工具发现的旋钮:`BootstrapTools` 启动工具、`Memory`(SQLite 记忆 / 半衰期)、`Ranking`(RRF / MMR 参数)、`Rerank`(字段化轻量重排)。 |
-| `ActionPlanner.*` | 行动规划器:是否启用、目录工具上限,以及 `Client.Provider`(默认 `"auto"`,按当前 `Endpoint` 自动同步 BAML planner 路由)。 |
-| `Artifacts.*` | 工具调用证据包落盘位置与大小上限。默认写入 `.senera/artifacts/runs`。 |
+- `ModelProviderEndpoints[]`: 端点、BaseUrl、ApiKey。
+- `ModelProviders[]`: 具体模型、协议类型、输出上限和前端展示信息。
+
+支持的上游协议:
+
+- OpenAI Responses
+- OpenAI Chat Completions
+- Anthropic Claude Messages
+- Google GenerateContent
+- OpenAI-compatible Chat Completions 服务
+
+如果模型支持原生工具调用,senera 可以吃到 Pi 的工具循环能力;如果模型不支持,senera 会把工具语义投影成结构化动作,再由本地运行时负责校验、修复、执行和回填。
 
 ---
 
 ## 工具与插件
 
-senera 的工具是**插件化**的。每个插件自带:`PluginManifest.json`(声明工具名、签名、文档、权限与运行入口)、`ToolSignature.ts`(参数契约,驱动 schema 校验与提示生成)、可选的 `docs/*.md`(给模型看的工具说明)。宿主只负责发现、校验、调度与隔离。
+系统插件提供运行时基础能力:
 
-内置 / 示例能力:
+- `AgentToolSearchPlugin`: 动态工具发现。
+- `AgentCapabilitySkillsPlugin`: 代码调查、前端检查、文档理解、记忆形成等能力技能。
+- `AgentArtifactMemoryPlugin`: 按 artifact / evidence URI 读取历史证据。
+- `AgentMemoryRecallPlugin` / `AgentMemoryWritePlugin`: 长期记忆召回与写入。
+- `AskUserToolPlugin`: 缺少必要信息时向用户提问。
+- `AgentShellToolPlugin`: 在受控工作区内执行命令。
+- `WorkspaceMcpToolsPlugin`: 读取、列目录、搜索、写文件等工作区能力。
+- `WorkspacePatchToolPlugin`: 用结构化 patch 修改文件。
+- `AgentTemplatePlugin`: Liquid 提示模板。
 
-**系统插件**(`System/Plugins/`,支撑运行时本身)
-- `AgentDecisionPlugin` — 工具调用决策协议(`senera_tool_calls`)。
-- `AgentToolSearchPlugin` — 动态工具检索与发现。
-- `AgentPatchToolPlugin` — 以受控补丁方式修改文件。
-- `AgentShellToolPlugin` — 在配置的安全工作区内执行命令。
-- `AgentTemplatePlugin` — 提示模板(Liquid)。
+示例插件展示如何接业务工具:
 
-**示例 / 业务插件**(`Plugins/`)
-- `AskUserTool` — 缺少必要信息时向用户提问。
-- `TavilySearchTool` — 联网搜索,支持多 key 轮询。
-- `FastContextWorkspaceMapTool` — 快速了解工作区结构。
-- `FastContextSearchTool` — 基于 ripgrep 的快速文本 / 符号搜索。
-- `FastContextIndexSearchTool` — 本地轻量索引搜索。
-- `FastContextReadTool` — 按文件读取上下文。
-- `WeatherTool` — 天气查询示例插件。
+- `TavilySearchToolPlugin`: 联网搜索。
+- `WeatherToolPlugin`: 天气查询。
+- `AgentDocumentPlugin`: 文档解析。
+- `AgentImageVisionPlugin`: 图像理解。
 
-插件私有配置放在 `PluginConfig.toml`(如 Tavily API key),已默认忽略;需要公开模板时用 `PluginConfig.example.toml`。
-
-### Artifact Pack
-
-每次工具调用都会生成独立 artifact 包,包含 `manifest.json`、`input.redacted.json`、`raw.json`、`summary.md`、`evidence.json`、`projection.md`、`delta.json`。路径由运行时生成绝对目录,模型上下文只接收摘要、证据键和文件引用。
-
-工具能力和风险由每个插件自己的 `PluginManifest.json` 声明。核心只读取插件声明的 `Search.Capabilities`、权限和 artifact 策略,不扫描字段名或工具名来猜工具语义。
-
-涉及工作区变更的工具可以在自己的 `PluginManifest.json` 里声明 `Artifacts.Workspace`。宿主只按插件声明的 selector 捕获路径,生成:
-
-- `workspace.before.json` / `workspace.after.json`: 机器可读快照,含路径、hash、大小、内容样本的 artifact 引用。
-- `workspace.diff.json`: 机器可读变更表,含 added/modified/deleted/type_changed/unchanged 和 patch 引用。
-- `workspace.patch`: 标准 unified diff,用于人工复核。
-- `workspace/before/*` / `workspace/after/*`: 小文本文件的前后内容样本。
-
-这层目前不依赖 SQLite index。SQLite 后续只需要索引 artifact 包里的 manifest/evidence/delta,不用参与工具执行时的 diff 生成。
+插件私有配置放在 `PluginConfig.toml`,例如 Tavily API key。公开模板可以用 `PluginConfig.example.toml`。
 
 ---
 
-## 协议设计
+## 证据与记忆
 
-senera 把模型输出分成两种模式:
+senera 会把工具调用结果整理成 artifact pack,包括输入、原始结果、摘要、证据、投影和变更信息。模型上下文默认不直接塞大段 raw output,而是优先使用结构化摘要和证据 URI。
 
-- **普通回复**:直接输出自然语言或 Markdown。
-- **工具调用**:整条回复只能是一个完整的 `<senera_tool_calls>` XML 根标签。
+这样有三个好处:
 
-这样既避免了普通聊天被 XML 包络污染,又为工具调用保留了结构化校验、自动修复与审计能力。XML 解析基于 `fast-xml-parser`,并对深度、工具调用数量、决策 token 等设有上限(见配置中的 `XmlProtocol`)。
+- 上下文更短,不容易被历史工具结果拖爆。
+- 需要追查时可以回到原始 artifact。
+- 长期记忆可以基于 fresh evidence 沉淀,而不是反复学习旧历史。
 
 ---
 
 ## 项目结构
 
-```
+```text
 senera/
-├─ Source/AgentSystem/      Agent 运行时核心(循环 / 解析 / 校验 / 修复 / 事件 / 持久化)
-│  └─ ModelEndpoints/       四种上游协议适配 + SSE 流式
-├─ System/Plugins/          系统插件(决策协议、工具检索、补丁、Shell、模板)
-├─ Plugins/                 示例 / 业务工具插件
-├─ Packages/                可复用内部包(ToolPluginSdk、WorkspaceContextCore)
-├─ baml_src/                BAML 定义(ActionPlanner 行动规划)
-├─ Scripts/                 启动脚本与各类校验脚本(Server / Cli / Verify*)
-├─ Frontend/                React + Vite 三栏 Web 工作台
-└─ senera.config.example.json   运行与 CLI 配置模板
+├─ Apps/                    Server 和 Desktop 入口
+├─ Build/                   构建与沙箱运行时准备
+├─ Source/AgentSystem/      Agent 运行时核心
+├─ System/Plugins/          系统插件
+├─ Plugins/                 示例和业务插件
+├─ Packages/                内部 SDK 包
+├─ baml_src/                BAML 定义
+├─ Scripts/                 维护脚本
+├─ Frontend/                React + Vite 工作台
+└─ senera.config.example.json
 ```
 
-进一步开发前建议先看:
+更多开发细节可以看:
 
-- [核心链路导览](docs/Architecture/CoreFlow.md):理解一次请求从用户输入到工具执行、记忆、前端事件投影的主路径。
-- [开发手册](docs/Development/README.md):新增工具、运行时事件、模型端点时的标准落地路径。
-- [术语表](docs/Glossary.md):统一理解 Contract、Projection、Artifact、Memory Source 等内部术语。
-
----
-
-## 常用命令
-
-后端 / 运行时:
-
-```bash
-npm run check      # 类型检查(tsc --noEmit)
-npm run build      # 清理并编译到 Dist/
-npm run server     # 编译并启动 WebSocket 服务
-npm run cli        # 编译并启动 CLI
-```
-
-前端:
-
-```bash
-cd Frontend
-npm run check
-npm run build
-npm run dev
-```
+- [核心链路导览](docs/Architecture/CoreFlow.md)
+- [开发手册](docs/Development/README.md)
+- [术语表](docs/Glossary.md)
 
 ---
 

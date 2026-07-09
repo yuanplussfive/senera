@@ -42,20 +42,12 @@ export function resolveActionPlannerConfig(
         configured?.TurnUnderstandingClient,
       ),
     }),
-    TaskFrameClient: resolveActionPlannerClientConfig({
+    PlanningClient: resolveActionPlannerClientConfig({
       config,
       baseProvider: provider,
       configuredClient: mergeActionPlannerClientConfig(
         sharedClientConfig,
-        configured?.TaskFrameClient,
-      ),
-    }),
-    EvidenceClient: resolveActionPlannerClientConfig({
-      config,
-      baseProvider: provider,
-      configuredClient: mergeActionPlannerClientConfig(
-        sharedClientConfig,
-        configured?.EvidenceClient,
+        configured?.PlanningClient,
       ),
     }),
   };

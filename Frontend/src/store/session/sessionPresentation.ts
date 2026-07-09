@@ -19,9 +19,7 @@ export function friendlyDecisionKind(decisionKind: string): string {
     case "direct_response":
       return "直接回复";
     case "tool_agent_loop":
-      return "工具循环";
-    case "deliberate_task_loop":
-      return "深度任务";
+      return "执行任务";
     case "answer":
     case "FinalAnswer":
       return "生成回复";
@@ -86,7 +84,7 @@ function friendlyActionPlanFallbackReason(reason: string): string {
 }
 
 export function readExpectedOutputMode(data: ActionPlannedData): RunRecord["expectedOutputMode"] {
-  return data.expectedOutputMode === "tool_call_xml" || data.expectedOutputMode === "final_text"
+  return data.expectedOutputMode === "open" || data.expectedOutputMode === "final_text"
     ? data.expectedOutputMode
     : "unknown";
 }
@@ -95,17 +93,12 @@ function plannerStageBaseTitle(stage: ActionPlannerStageName): string {
   switch (stage) {
     case "understandUserTurn":
       return "理解当前请求";
-    case "buildTaskFrame":
-      return "构建任务合约";
-    case "evaluateEvidence":
-      return "判断完成状态";
   }
 }
 
 export const InteractionModeTitle = {
   direct_response: "直接回复",
-  tool_agent_loop: "工具循环",
-  deliberate_task_loop: "深度任务",
+  tool_agent_loop: "执行任务",
 } as const satisfies Record<InteractionRunMode, string>;
 
 export function summarizeInteractionRoute(data: InteractionRoutedData): string {
@@ -132,12 +125,24 @@ export function toolPlanTitle(data: ToolCallsPlannedData): string {
     case "blocked":
       return "工具计划受阻";
     default:
+      if (data.executionMode === "parallel" && data.toolCount > 1) {
+        return `并发工具批次 · ${data.toolCount} 个`;
+      }
+      if (data.executionMode === "sequential") {
+        return `顺序工具调用 · ${data.toolCount} 个`;
+      }
       return `工具计划 · ${data.toolCount} 个`;
   }
 }
 
 export function summarizeToolPlan(data: ToolCallsPlannedData): string {
+  const execution = data.executionMode === "parallel" && data.toolCount > 1
+    ? "并发执行"
+    : data.executionMode === "sequential"
+      ? "顺序执行"
+      : undefined;
   return [
+    execution,
     data.reason ? truncate(data.reason, 96) : undefined,
     data.tools.length > 0 ? data.tools.join(", ") : undefined,
   ].filter(Boolean).join(" · ");
@@ -146,7 +151,7 @@ export function summarizeToolPlan(data: ToolCallsPlannedData): string {
 export function readRouteExpectedOutputMode(
   data: InteractionRoutedData,
 ): RunRecord["expectedOutputMode"] {
-  return data.expectedOutputMode === "tool_call_xml" || data.expectedOutputMode === "final_text"
+  return data.expectedOutputMode === "open" || data.expectedOutputMode === "final_text"
     ? data.expectedOutputMode
     : "unknown";
 }
@@ -171,34 +176,6 @@ export function summarizePlannerStage(data: ActionPlannerStageCompletedData): st
       understanding.contextMode === "Insufficient" && understanding.missingContext
         ? `缺少：${truncate(understanding.missingContext, 96)}`
         : undefined,
-    ].filter(Boolean).join(" · ");
-  }
-
-  if (data.taskFrame) {
-    return [
-      data.taskFrame.answerGoal ? truncate(data.taskFrame.answerGoal, 96) : undefined,
-      data.taskFrame.requiredEffects.length > 0
-        ? `${data.taskFrame.requiredEffects.length} 项真实变更`
-        : undefined,
-      data.taskFrame.requiredEvidence.length > 0
-        ? `${data.taskFrame.requiredEvidence.length} 项完成证据`
-        : undefined,
-      data.taskFrame.candidateTools.length > 0
-        ? `${data.taskFrame.candidateTools.length} 个候选技能`
-        : undefined,
-      data.taskFrame.userInputNeeds.length > 0
-        ? `${data.taskFrame.userInputNeeds.length} 项待确认信息`
-        : undefined,
-    ].filter(Boolean).join(" · ");
-  }
-
-  if (data.evidenceDecision) {
-    const decision = data.evidenceDecision;
-    return [
-      decision.ready ? "可以完成" : "还缺完成证据",
-      decision.missingNeeds.length > 0 ? `${decision.missingNeeds.length} 项缺失` : undefined,
-      decision.satisfiedNeeds.length > 0 ? `${decision.satisfiedNeeds.length} 项满足` : undefined,
-      decision.recommendedTools.length > 0 ? `${decision.recommendedTools.length} 个推荐工具` : undefined,
     ].filter(Boolean).join(" · ");
   }
 

@@ -14,9 +14,10 @@ export const AgentEventPhases = {
   Prompt: "prompt",
   Model: "model",
   Decision: "decision",
-  Retry: "retry",
   Tool: "tool",
   Run: "run",
+  Approval: "approval",
+  Sandbox: "sandbox",
   Config: "config",
 } as const;
 
@@ -30,7 +31,6 @@ export const AgentEventKinds = {
   SessionBusy: "session.busy",
   SessionNotFound: "session.not_found",
   SessionListSnapshot: "session.list.snapshot",
-  SessionHistorySnapshot: "session.history.snapshot",
   SessionHistoryStarted: "session.history.started",
   SessionHistoryChunk: "session.history.chunk",
   SessionHistorySteps: "session.history.steps",
@@ -38,7 +38,6 @@ export const AgentEventKinds = {
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   RunStarted: "run.started",
-  PromptRendered: "prompt.rendered",
   PromptSummary: "prompt.summary",
   ActionPlannerStageStarted: "action.planner.stage.started",
   ActionPlannerStageCompleted: "action.planner.stage.completed",
@@ -46,27 +45,18 @@ export const AgentEventKinds = {
   InteractionRouted: "interaction.routed",
   ActionPlanned: "action.planned",
   ModelStarted: "model.started",
-  ModelStreamOpened: "model.stream.opened",
   ModelDelta: "model.delta",
   ModelCompleted: "model.completed",
-  ModelStreamAborted: "model.stream.aborted",
-  DecisionXmlProgress: "decision.xml.progress",
-  DecisionXmlReady: "decision.xml.ready",
-  DecisionXmlLimitReached: "decision.xml.limit_reached",
-  DecisionXmlSummary: "decision.xml.summary",
-  DecisionXmlDetail: "decision.xml.detail",
-  DecisionParsed: "decision.parsed",
-  DecisionParsedDetail: "decision.parsed.detail",
-  RetryPlanned: "retry.planned",
-  RetryDetail: "retry.detail",
+  PiTrace: "pi.trace",
   ToolCallsPlanned: "tool.calls.planned",
   ToolCallStarted: "tool.call.started",
   ToolCallCompleted: "tool.call.completed",
   ToolCallFailed: "tool.call.failed",
-  ToolResults: "tool.results",
-  ToolResultsDetail: "tool.results.detail",
-  FinalAnswer: "final.answer",
-  AskUser: "ask.user",
+  ToolCallResultDetail: "tool.call.result.detail",
+  AssistantMessageCreated: "assistant.message.created",
+  ApprovalRequested: "approval.requested",
+  ApprovalResolved: "approval.resolved",
+  SandboxStatusSnapshot: "sandbox.status.snapshot",
   RunCompleted: "run.completed",
   RunFailed: "run.failed",
   RunCancelled: "run.cancelled",
@@ -123,10 +113,6 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
   },
-  [AgentEventKinds.SessionHistorySnapshot]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Session,
-  },
   [AgentEventKinds.SessionHistoryStarted]: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
@@ -154,10 +140,6 @@ export const AgentEventSpecTable: {
   [AgentEventKinds.RunStarted]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Run,
-  },
-  [AgentEventKinds.PromptRendered]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Prompt,
   },
   [AgentEventKinds.PromptSummary]: {
     layer: AgentEventLayers.Progress,
@@ -187,10 +169,6 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Model,
   },
-  [AgentEventKinds.ModelStreamOpened]: {
-    layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Model,
-  },
   [AgentEventKinds.ModelDelta]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Model,
@@ -199,45 +177,9 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Model,
   },
-  [AgentEventKinds.ModelStreamAborted]: {
+  [AgentEventKinds.PiTrace]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Model,
-  },
-  [AgentEventKinds.DecisionXmlProgress]: {
-    layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.DecisionXmlReady]: {
-    layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.DecisionXmlLimitReached]: {
-    layer: AgentEventLayers.Error,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.DecisionXmlSummary]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.DecisionXmlDetail]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.DecisionParsed]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.DecisionParsedDetail]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Decision,
-  },
-  [AgentEventKinds.RetryPlanned]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Retry,
-  },
-  [AgentEventKinds.RetryDetail]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Retry,
   },
   [AgentEventKinds.ToolCallsPlanned]: {
     layer: AgentEventLayers.Progress,
@@ -255,21 +197,25 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Error,
     phase: AgentEventPhases.Tool,
   },
-  [AgentEventKinds.ToolResults]: {
+  [AgentEventKinds.ToolCallResultDetail]: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Tool,
   },
-  [AgentEventKinds.ToolResultsDetail]: {
+  [AgentEventKinds.AssistantMessageCreated]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Run,
+  },
+  [AgentEventKinds.ApprovalRequested]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Approval,
+  },
+  [AgentEventKinds.ApprovalResolved]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Approval,
+  },
+  [AgentEventKinds.SandboxStatusSnapshot]: {
     layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Tool,
-  },
-  [AgentEventKinds.FinalAnswer]: {
-    layer: AgentEventLayers.Terminal,
-    phase: AgentEventPhases.Run,
-  },
-  [AgentEventKinds.AskUser]: {
-    layer: AgentEventLayers.Terminal,
-    phase: AgentEventPhases.Run,
+    phase: AgentEventPhases.Sandbox,
   },
   [AgentEventKinds.RunCompleted]: {
     layer: AgentEventLayers.Terminal,

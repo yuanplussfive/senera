@@ -18,11 +18,8 @@ export interface AgentActivatedSkill {
   useCases: string[];
   avoid: string[];
   recommendedTools: string[];
-  recommendedAgents: string[];
-  recommendedWorkflows: string[];
   evidenceRequirements: SkillEvidenceRequirementManifest[];
   descriptionFile: string;
-  workflowFile?: string;
   matchedTerms: string[];
   matchedFields: AgentActivatedSkillMatchedField[];
   score: number;
@@ -66,11 +63,8 @@ export class AgentSkillActivationService {
           useCases: catalog.useCases,
           avoid: catalog.avoid,
           recommendedTools: selection.skill.recommendedTools,
-          recommendedAgents: selection.skill.recommendedAgents,
-          recommendedWorkflows: selection.skill.recommendedWorkflows,
           evidenceRequirements: selection.skill.evidenceRequirements,
           descriptionFile: selection.skill.descriptionFile,
-          workflowFile: selection.skill.workflowFile,
           matchedTerms: selection.matchedTerms,
           matchedFields: selection.matchedFields,
           score: selection.score,
@@ -84,26 +78,6 @@ export class AgentSkillActivationService {
         skills
           .flatMap((skill) => skill.recommendedTools)
           .filter((toolName) => Boolean(this.registry.getTool(toolName))),
-      ),
-    ];
-  }
-
-  recommendedAgentNames(skills: readonly AgentActivatedSkill[]): string[] {
-    return [
-      ...new Set(
-        skills
-          .flatMap((skill) => skill.recommendedAgents)
-          .filter((agentName) => Boolean(this.registry.getAgent(agentName))),
-      ),
-    ];
-  }
-
-  recommendedWorkflowNames(skills: readonly AgentActivatedSkill[]): string[] {
-    return [
-      ...new Set(
-        skills
-          .flatMap((skill) => skill.recommendedWorkflows)
-          .filter((workflowName) => Boolean(this.registry.getAgentWorkflow(workflowName))),
       ),
     ];
   }
@@ -144,16 +118,6 @@ export class AgentSkillActivationService {
       rootCommand.objective,
       ...(rootCommand.instruction ? [rootCommand.instruction] : []),
       ...rootCommand.preferredTools,
-      ...rootCommand.workflowRecommendedTools,
-      ...rootCommand.workflowRecommendations.flatMap((workflow) => [
-        workflow.name,
-        workflow.title ?? "",
-        workflow.description ?? "",
-        ...workflow.sources,
-        ...workflow.matchedSkills,
-        ...workflow.matchedAgents,
-        ...workflow.matchedTerms,
-      ]),
       ...rootCommand.toolSearchQueries,
       ...rootCommand.allowedTools,
       ...this.capabilityNeedSegments(rootCommand.needs),

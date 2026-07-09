@@ -1,6 +1,7 @@
 import type { ModelProviderListItem } from "../../api/eventTypes";
 import type { RunRecord } from "../../store/sessionStore";
 import { AgentExecutionFeed } from "../workflow/AgentExecutionFeed";
+import { ApprovalRequestStrip } from "./ApprovalRequestStrip";
 import { MessageAvatar, MessageMeta } from "./MessageChrome";
 import { readRunDisplayName } from "./messagePresentation";
 
@@ -8,12 +9,16 @@ export interface StreamingRowProps {
   run: RunRecord;
   assistantAvatarIcon?: string;
   selectedModelProvider?: ModelProviderListItem;
+  approvalDisabled?: boolean;
+  onResolveApproval?: (approvalId: string, status: "approved" | "denied") => void;
 }
 
 export function StreamingRow({
   run,
   assistantAvatarIcon,
   selectedModelProvider,
+  approvalDisabled = false,
+  onResolveApproval,
 }: StreamingRowProps): JSX.Element {
   return (
     <div className="flex items-start gap-3">
@@ -24,6 +29,11 @@ export function StreamingRow({
           timestamp={run.startedAt}
         />
         <div className="mt-1">
+          <ApprovalRequestStrip
+            approvals={run.approvals ?? []}
+            disabled={approvalDisabled || !onResolveApproval}
+            onResolve={(approvalId, approvalStatus) => onResolveApproval?.(approvalId, approvalStatus)}
+          />
           <AgentExecutionFeed run={run} />
         </div>
       </div>

@@ -1,282 +1,109 @@
 import assert from "node:assert/strict";
-import path from "node:path";
-import { AgentActionPlanner } from "../Source/AgentSystem/ActionPlanner/AgentActionPlanner.js";
 import { AgentPromptContractProjector } from "../Source/AgentSystem/Prompt/AgentPromptContractProjector.js";
-import type { AgentPromptToolContext } from "../Source/AgentSystem/Prompt/AgentPromptContextBuilder.js";
-import type { AgentRootCommand } from "../Source/AgentSystem/AgentRootCommand.js";
-import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import {
-  createActionPlannerConfigFixture,
-  createActionPlanInputFixture,
-} from "./ActionPlannerFixture.js";
-
-const provider: ResolvedAgentModelProviderConfig = {
-  Id: "test",
-  ProviderId: "test",
-  Kind: "OpenAICompatible",
-  Endpoint: "ChatCompletions",
-  BaseUrl: "https://example.test/v1",
-  ApiKey: "test-key",
-  ApiVersion: "2023-06-01",
-  Model: "test-model",
-  Temperature: 0.2,
-  MaxOutputTokens: -1,
-  Stream: true,
-  TimeoutMs: 1000,
-  FirstTokenTimeoutMs: -1,
-  MaxRequestMs: -1,
-  MaxNetworkRetries: 0,
-  Headers: {},
-};
-
-const plannerConfig = createActionPlannerConfigFixture({
-  maxRepairAttempts: 1,
-  client: {
-    Provider: "openai-generic",
-    BaseUrl: "https://example.test/v1",
-    ApiKey: "test-key",
-    Model: "test-model",
-    Temperature: 0.1,
-    MaxTokens: -1,
-  },
-});
+  parsePiControllerAction,
+  parsePiToolArgumentsDraft,
+} from "../Source/AgentSystem/PiProxy/AgentPiAssistantMessageSchema.js";
+import { verificationConfigPath } from "./VerificationConfig.js";
 
 void main();
 
 async function main(): Promise<void> {
   const workspaceRoot = process.cwd();
-  const loadedToolNames = [
-    "FastContextScoutTool",
-    "FastContextHybridSearchTool",
-  ];
-  const rootCommand = createRootCommandFixture(loadedToolNames);
-  const toolContracts = createToolContractFixtures(workspaceRoot);
-  const scout = toolContracts.find((tool) => tool.name === "FastContextScoutTool");
-  const hybrid = toolContracts.find((tool) => tool.name === "FastContextHybridSearchTool");
-  assert.ok(scout?.argumentsContract, "Scout contract should be loaded.");
-  assert.ok(hybrid?.argumentsContract, "Hybrid contract should be loaded.");
-  assert.deepEqual(contractFieldNames(scout.argumentsContract), [
-    "question",
-    "hints",
-    "roots",
-    "exclude",
-    "maxQueries",
-    "maxResults",
-    "maxFiles",
-    "contextLines",
-    "readLineWindow",
-    "refreshIndex",
-    "planningMode",
-  ]);
-  assert.deepEqual(contractFieldNames(hybrid.argumentsContract), [
-    "query",
-    "roots",
-    "exclude",
-    "maxResults",
-    "contextLines",
-    "regex",
-    "caseSensitive",
-    "refreshIndex",
-  ]);
-
-  const input = createActionPlanInputFixture("项目主模型配置文件怎么写？");
-  input.runState.loadedTools = loadedToolNames;
-
-  const originalFetch = globalThis.fetch;
-  const requests: string[] = [];
-  const responses = [
-    {
-      calls: [{
-        name: "FastContextHybridSearchTool",
-        arguments: {
-          query: {
-            text: "项目主模型配置文件",
-          },
-          hints: {
-            item: ["ModelProviders"],
-          },
-          maxFiles: 5,
-        },
-      }],
-    },
-    {
-      calls: [{
-        name: "FastContextScoutTool",
-        arguments: {
-          question: "项目主模型配置文件怎么写？",
-          hints: {
-            item: ["ModelProviders"],
-          },
-          maxFiles: 5,
-        },
-      }],
-    },
-  ];
-
-  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push(String(init?.body ?? ""));
-    const response = responses.shift();
-    assert.ok(response, "unexpected tool-call planner model call");
-    return new Response(sseEvent({
-      choices: [{
-        delta: {
-          content: JSON.stringify(response),
-        },
-      }],
-    }), {
-      status: 200,
-      headers: {
-        "content-type": "text/event-stream",
-      },
-    });
-  };
+  const runtime = AgentSystemRuntime.load({
+    workspaceRoot,
+    configPath: verificationConfigPath(workspaceRoot),
+  });
 
   try {
-    const result = await new AgentActionPlanner(plannerConfig, provider, {}).planToolCalls({
-      input: {
-        actionInput: input,
-        rootCommand,
-        toolContracts,
-      },
+    const visibleTools = [
+      "WorkspaceGrep",
+      "WorkspaceReadFile",
+    ];
+    const toolDefinitions = runtime.services.pi.toolDefinitions({
+      visibleToolNames: visibleTools,
     });
+    const grep = toolDefinitions.find((tool) => tool.name === "WorkspaceGrep");
+    const readFile = toolDefinitions.find((tool) => tool.name === "WorkspaceReadFile");
 
-    assert.equal(result.repaired, true);
-    assert.equal(result.calls[0]?.name, "FastContextScoutTool");
-    assert.equal(result.calls[0]?.arguments.question, "项目主模型配置文件怎么写？");
-    assert.equal(requests.length, 2);
+    assert.ok(grep, "WorkspaceGrep Pi tool should be projected.");
+    assert.ok(readFile, "WorkspaceReadFile Pi tool should be projected.");
+    assert.deepEqual(schemaFieldNames(grep.parameters), [
+      "pattern",
+      "path",
+      "caseSensitive",
+      "filePattern",
+      "maxResults",
+      "context",
+    ]);
+    assert.deepEqual(schemaFieldNames(readFile.parameters), [
+      "path",
+      "head",
+      "tail",
+    ]);
 
-    const repair = readFinalPlannerInput(requests[1] ?? "");
-    assert.equal(repair.directive.stage, "repairToolCallPlan");
-    assert.equal(
-      repair.directive.issues.some((issue) =>
-        issue.includes("hints") && issue.includes("additional properties")),
-      true,
+    const projector = new AgentPromptContractProjector();
+    const contract = projector.projectFromFile(
+      runtime.registry.getTool("WorkspaceGrep")?.signatureFile,
+      "arguments",
+      "WorkspaceGrepArguments",
     );
-    assert.equal(
-      repair.directive.issues.some((issue) =>
-        issue.includes("query") && issue.includes("must be string")),
-      true,
+    assert.deepEqual(contract?.properties.map((property) => property.name), schemaFieldNames(grep.parameters));
+
+    const action = parsePiControllerAction({
+      kind: "CallTools",
+      preface: "我先搜索配置引用，再读取命中的文件。",
+      calls: [{
+        toolName: "WorkspaceGrep",
+        purpose: "定位 ModelProviders 配置引用。",
+        required: true,
+      }, {
+        toolName: "WorkspaceReadFile",
+        purpose: "读取搜索命中的配置文件。",
+        required: true,
+        dependsOn: [0],
+      }],
+    }, {
+      allowedTools: visibleTools,
+    });
+    assert.equal(action.calls?.[1]?.dependsOn?.[0], 0);
+
+    const argumentsDraft = parsePiToolArgumentsDraft({
+      arguments: {
+        pattern: "ModelProviders",
+        path: ".",
+      },
+      missingInputs: [],
+      assumptions: [],
+    });
+    assert.equal(argumentsDraft.arguments.pattern, "ModelProviders");
+
+    assert.throws(
+      () => parsePiControllerAction({
+        kind: "CallTools",
+        preface: "invalid dependency",
+        calls: [{
+          toolName: "WorkspaceGrep",
+          purpose: "Search.",
+          required: true,
+          dependsOn: [0],
+        }],
+      }, {
+        allowedTools: visibleTools,
+      }),
+      /dependsOn/,
     );
 
-    console.log("Tool signature mapping and tool-plan contract validation verification passed.");
+    console.log("Tool signature mapping and Pi tool-call validation verified.");
   } finally {
-    globalThis.fetch = originalFetch;
+    runtime.toolSearch.close();
   }
 }
 
-function createToolContractFixtures(workspaceRoot: string): AgentPromptToolContext[] {
-  const projector = new AgentPromptContractProjector();
-  const signatureFile = path.join(
-    workspaceRoot,
-    "Plugins",
-    "FastContextSearchToolPlugin",
-    "ToolSignature.ts",
-  );
-
-  return [
-    {
-      name: "FastContextScoutTool",
-      description: "Scout workspace context.",
-      whenToUse: "Use when locating project files from a natural-language question.",
-      whenNotToUse: "",
-      documentationXml: "",
-      argumentsContract: projector.projectFromFile(
-        signatureFile,
-        "arguments",
-        "FastContextScoutToolArguments",
-      ),
-    },
-    {
-      name: "FastContextHybridSearchTool",
-      description: "Search workspace context.",
-      whenToUse: "Use when searching workspace text and paths.",
-      whenNotToUse: "",
-      documentationXml: "",
-      argumentsContract: projector.projectFromFile(
-        signatureFile,
-        "arguments",
-        "FastContextHybridSearchToolArguments",
-      ),
-    },
-  ];
-}
-
-function createRootCommandFixture(allowedTools: string[]): AgentRootCommand {
-  return {
-    authority: "senera_runtime_root",
-    action: "use_tools",
-    outputMode: "tool_call_xml",
-    toolAccess: "restricted",
-    objective: "调用允许的工具取得完成当前任务所需的事实或执行结果。",
-    instruction: "定位项目主模型配置文件。",
-    allowedTools,
-    forbiddenOutputs: [
-      "final_answer",
-      "unregistered_tools",
-    ],
-    insufficiencyPolicy: "如果允许工具不足以完成任务，停止并说明阻塞。",
-    preferredTools: allowedTools,
-    workflowRecommendedTools: [],
-    workflowRecommendations: [],
-    toolSearchQueries: [],
-    needs: [],
-    taskContract: null,
-    includeDecisionProtocol: true,
-    includeToolCatalog: true,
-    visibleOutput: {
-      audience: "runtime",
-      start: "tool_call_xml_root",
-      format: "tool_call_xml",
-      rules: [],
-      repair: {
-        instruction: "只输出完整工具调用 XML。",
-        rules: [],
-      },
-    },
-  };
-}
-
-function contractFieldNames(contract: {
-  properties: Array<{
-    name: string;
-  }>;
-}): string[] {
-  return contract.properties.map((property) => property.name);
-}
-
-function readFinalPlannerInput(body: string): {
-  directive: {
-    stage: string;
-    invalidPlan: string;
-    issues: string[];
-  };
-} {
-  const payload = JSON.parse(body) as {
-    messages?: Array<{
-      role?: string;
-      content?: string;
-    }>;
-  };
-  const message = payload.messages?.at(-1);
-  assert.equal(message?.role, "user");
-  assert.ok(message?.content);
-  const parsed = JSON.parse(message.content) as {
-    plannerInput: {
-      directive: {
-        stage: string;
-        invalidPlan: string;
-        issues: string[];
-      };
-    };
-  };
-  return parsed.plannerInput;
-}
-
-function sseEvent(value: Record<string, unknown>): string {
-  return [
-    `data: ${JSON.stringify(value)}`,
-    "",
-    "data: [DONE]",
-    "",
-  ].join("\n");
+function schemaFieldNames(schema: Record<string, unknown>): string[] {
+  const properties = schema.properties;
+  return properties && typeof properties === "object" && !Array.isArray(properties)
+    ? Object.keys(properties)
+    : [];
 }

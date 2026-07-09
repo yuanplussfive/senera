@@ -1,5 +1,5 @@
 import type { EventEnvelope } from "../../api/eventTypes";
-import { currentRun, ensureSession } from "./sessionProjectorCore";
+import { currentRun } from "./sessionProjectorCore";
 import type { RunRecord, StoreState } from "./types";
 
 export type RunEventHandler = (state: StoreState, env: EventEnvelope) => void;
@@ -11,6 +11,7 @@ export function readCurrentRun(
 ): RunRecord | undefined {
   const sessionId = env.sessionId;
   if (!sessionId) return undefined;
-  const session = ensureSession(state, sessionId);
+  const session = state.sessions[sessionId];
+  if (!session) return undefined;
   return currentRun(session, env.requestId);
 }

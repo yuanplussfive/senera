@@ -1,21 +1,20 @@
 import type { AgentActionPlanner } from "../ActionPlanner/AgentActionPlanner.js";
-import type { AgentDecisionExecutor } from "../Decision/AgentDecisionExecutor.js";
+import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import type { AgentPromptContextBuilder } from "../Prompt/AgentPromptContextBuilder.js";
-import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import type { AgentSkillActivationService } from "../Skills/AgentSkillActivation.js";
 import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
 import type { AgentToolCatalogProjector } from "../ToolRuntime/AgentToolCatalogProjector.js";
 import type { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
-import {
-  AgentWorkflowSelector,
-  type AgentWorkflowSelectionResult,
-} from "../Workflow/AgentWorkflowSelector.js";
+import type {
+  AgentPiRuntimeService,
+  AgentPiSubstrate,
+} from "../Pi/AgentPiSubstrate.js";
+import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 
 export interface AgentPlanningService {
-  plan(options: Parameters<AgentActionPlanner["plan"]>[0]): ReturnType<AgentActionPlanner["plan"]>;
+  understandTurn(options: Parameters<AgentActionPlanner["understandTurn"]>[0]): ReturnType<AgentActionPlanner["understandTurn"]>;
   routeWithInput(options: Parameters<AgentActionPlanner["routeWithInput"]>[0]): ReturnType<AgentActionPlanner["routeWithInput"]>;
-  planToolCallOutcome(options: Parameters<AgentActionPlanner["planToolCallOutcome"]>[0]): ReturnType<AgentActionPlanner["planToolCallOutcome"]>;
 }
 
 export interface AgentRetrievalService {
@@ -28,6 +27,7 @@ export interface AgentRetrievalService {
 
 export interface AgentPromptContextService {
   activateSkills(options: Parameters<AgentSkillActivationService["activate"]>[0]): ReturnType<AgentSkillActivationService["activate"]>;
+  recommendedSkillTools(skills: Parameters<AgentSkillActivationService["recommendedToolNames"]>[0]): ReturnType<AgentSkillActivationService["recommendedToolNames"]>;
   buildBaseContext(options?: Parameters<AgentPromptContextBuilder["buildBaseContext"]>[0]): ReturnType<AgentPromptContextBuilder["buildBaseContext"]>;
   buildRootCommand(options: Parameters<AgentPromptContextBuilder["buildRootCommand"]>[0]): ReturnType<AgentPromptContextBuilder["buildRootCommand"]>;
   plannerRoleplayPreset(): ReturnType<AgentPresetManager["plannerContext"]>;
@@ -35,30 +35,28 @@ export interface AgentPromptContextService {
   toolCatalog(): ReturnType<AgentToolCatalogProjector["list"]>;
 }
 
-export interface AgentWorkflowService {
-  select(options: Parameters<AgentWorkflowSelector["select"]>[0]): AgentWorkflowSelectionResult[];
-}
-
 export interface AgentExecutionService {
-  executeDecision(...args: Parameters<AgentDecisionExecutor["execute"]>): ReturnType<AgentDecisionExecutor["execute"]>;
+  executeToolCall(...args: Parameters<AgentToolCallExecutor["execute"]>): ReturnType<AgentToolCallExecutor["execute"]>;
   recordToolArtifacts(options: Parameters<AgentToolExecutionArtifactRecorder["record"]>[0]): ReturnType<AgentToolExecutionArtifactRecorder["record"]>;
 }
 
 export interface AgentRuntimeServices {
   execution: AgentExecutionService;
+  pi: AgentPiRuntimeService;
+  piSessions: AgentPiActiveSessionRegistry;
   planning: AgentPlanningService;
   retrieval: AgentRetrievalService;
   promptContext: AgentPromptContextService;
-  workflow: AgentWorkflowService;
 }
 
 export interface AgentRuntimeServiceDependencies {
   actionPlanner: AgentActionPlanner;
   artifactRecorder: AgentToolExecutionArtifactRecorder;
-  decisionExecutor: AgentDecisionExecutor;
+  toolCallExecutor: AgentToolCallExecutor;
+  piSessionRegistry: AgentPiActiveSessionRegistry;
   presetManager: AgentPresetManager;
   promptContextBuilder: AgentPromptContextBuilder;
-  registry: AgentPluginRegistry;
+  piSubstrate: AgentPiSubstrate;
   skillActivation: AgentSkillActivationService;
   toolCatalog: AgentToolCatalogProjector;
   toolSearch: AgentToolSearchRuntime;
@@ -67,17 +65,16 @@ export interface AgentRuntimeServiceDependencies {
 export function createDefaultAgentRuntimeServices(
   dependencies: AgentRuntimeServiceDependencies,
 ): AgentRuntimeServices {
-  const workflowSelector = new AgentWorkflowSelector(dependencies.registry);
-
   return {
     execution: {
-      executeDecision: (...args) => dependencies.decisionExecutor.execute(...args),
+      executeToolCall: (...args) => dependencies.toolCallExecutor.execute(...args),
       recordToolArtifacts: (options) => dependencies.artifactRecorder.record(options),
     },
+    pi: dependencies.piSubstrate,
+    piSessions: dependencies.piSessionRegistry,
     planning: {
-      plan: (options) => dependencies.actionPlanner.plan(options),
+      understandTurn: (options) => dependencies.actionPlanner.understandTurn(options),
       routeWithInput: (options) => dependencies.actionPlanner.routeWithInput(options),
-      planToolCallOutcome: (options) => dependencies.actionPlanner.planToolCallOutcome(options),
     },
     retrieval: {
       resolveInitialLoadedTools: (...args) => dependencies.toolSearch.resolveInitialLoadedTools(...args),
@@ -88,14 +85,12 @@ export function createDefaultAgentRuntimeServices(
     },
     promptContext: {
       activateSkills: (options) => dependencies.skillActivation.activate(options),
+      recommendedSkillTools: (skills) => dependencies.skillActivation.recommendedToolNames(skills),
       buildBaseContext: (options) => dependencies.promptContextBuilder.buildBaseContext(options),
       buildRootCommand: (options) => dependencies.promptContextBuilder.buildRootCommand(options),
       plannerRoleplayPreset: () => dependencies.presetManager.plannerContext(),
       promptRoleplayPreset: () => dependencies.presetManager.promptContext(),
       toolCatalog: () => dependencies.toolCatalog.list(),
-    },
-    workflow: {
-      select: (options) => workflowSelector.select(options),
     },
   };
 }

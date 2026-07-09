@@ -36,7 +36,7 @@
 从 `System/Plugins` 或 `Plugins` 发现的能力包。插件可以声明工具、动作、技能、文档、权限、配置 schema 和 artifact policy。
 
 `Projection`
-把内部状态转换成某个消费者需要的形态。常见投影包括模型上下文、前端事件状态、artifact markdown、CLI 展示、配置表单。
+把内部状态转换成某个消费者需要的形态。常见投影包括模型上下文、前端事件状态、artifact markdown、终端 展示、配置表单。
 
 `Root Command`
 规划后生成的单步运行时指令。它规定本步允许的输出模式、工具范围和动作期望。
@@ -55,4 +55,3 @@
 
 `Workflow`
 插件声明的高层任务分解。Workflow 可以选择子代理、上下文包和合并策略。
-

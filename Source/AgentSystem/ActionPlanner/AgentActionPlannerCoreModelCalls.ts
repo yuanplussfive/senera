@@ -1,40 +1,22 @@
 import { b as baml } from "../BamlClient/baml_client/index.js";
 import type {
   ActionPlanInput,
-  EvidenceVerification as BamlEvidenceVerification,
-  FastContextScoutPlannerDecision as BamlFastContextScoutPlannerDecision,
   InteractionRoute as BamlInteractionRoute,
-  TaskFrame as BamlTaskFrame,
-  ToolCallPlan as BamlToolCallPlan,
+  PiControllerAction as BamlPiControllerAction,
+  PiToolArgumentsDraft as BamlPiToolArgumentsDraft,
+  ToolRiskAudit as BamlToolRiskAudit,
   TurnUnderstanding as BamlTurnUnderstanding,
 } from "../BamlClient/baml_client/types.js";
-import type { AgentFastContextScoutPlannerPromptInput } from "./AgentFastContextScoutPlannerPromptJson.js";
-import type { AgentToolCallPlannerPromptInput } from "./AgentToolCallPlannerPromptJson.js";
 import type { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
+import type {
+  AgentPiControllerActionInput,
+  AgentPiToolArgumentsInput,
+  AgentPiToolArgumentsRepairInput,
+} from "../PiProxy/AgentPiAssistantMessageTypes.js";
+import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 
 export class AgentActionPlannerCoreModelCalls {
   constructor(private readonly caller: AgentActionPlannerStructuredCaller) {}
-
-  async buildTaskFrame(
-    input: ActionPlanInput,
-    options: { signal?: AbortSignal } = {},
-  ): Promise<BamlTaskFrame> {
-    return this.caller.run({
-      functionName: "BuildTaskFrame",
-      args: {
-        functionName: "BuildTaskFrame",
-        input,
-      },
-      signal: options.signal,
-      parse: (rawOutput) => baml.parse.BuildTaskFrame(rawOutput),
-      repair: (failure) => ({
-        functionName: "RepairTaskFrame",
-        input,
-        invalidTaskFrame: failure.invalidOutput,
-        issues: failure.issues,
-      }),
-    });
-  }
 
   async understandUserTurn(
     input: ActionPlanInput,
@@ -78,43 +60,6 @@ export class AgentActionPlannerCoreModelCalls {
     });
   }
 
-  async verifyTaskEvidence(options: {
-    input: ActionPlanInput;
-    taskFrame: BamlTaskFrame;
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlEvidenceVerification> {
-    return this.caller.run({
-      functionName: "VerifyTaskEvidence",
-      args: {
-        functionName: "VerifyTaskEvidence",
-        ...options,
-      },
-      signal: requestOptions.signal,
-      parse: (rawOutput) => baml.parse.VerifyTaskEvidence(rawOutput),
-      repair: (failure) => ({
-        functionName: "RepairEvidenceVerification",
-        ...options,
-        invalidVerification: failure.invalidOutput,
-        issues: failure.issues,
-      }),
-    });
-  }
-
-  async repairTaskFrame(options: {
-    input: ActionPlanInput;
-    invalidTaskFrame: string;
-    issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlTaskFrame> {
-    return this.caller.repair({
-      functionName: "RepairTaskFrame",
-      args: {
-        functionName: "RepairTaskFrame",
-        ...options,
-      },
-      signal: requestOptions.signal,
-      parse: (rawOutput) => baml.parse.RepairTaskFrame(rawOutput),
-    });
-  }
-
   async repairTurnUnderstanding(options: {
     input: ActionPlanInput;
     invalidUnderstanding: string;
@@ -131,77 +76,115 @@ export class AgentActionPlannerCoreModelCalls {
     });
   }
 
-  async planFastContextScout(
-    input: AgentFastContextScoutPlannerPromptInput,
+  async selectPiAction(
+    input: AgentPiControllerActionInput,
     options: { signal?: AbortSignal } = {},
-  ): Promise<BamlFastContextScoutPlannerDecision> {
+  ): Promise<BamlPiControllerAction> {
     return this.caller.run({
-      functionName: "PlanFastContextScout",
+      functionName: "SelectPiAction",
       args: {
-        functionName: "PlanFastContextScout",
+        functionName: "SelectPiAction",
         input,
       },
       signal: options.signal,
-      parse: (rawOutput) => baml.parse.PlanFastContextScout(rawOutput),
+      parse: (rawOutput) => baml.parse.SelectPiAction(rawOutput),
       repair: (failure) => ({
-        functionName: "RepairFastContextScoutPlan",
+        functionName: "RepairPiAction",
         input,
-        invalidDecision: failure.invalidOutput,
+        invalidAction: failure.invalidOutput,
         issues: failure.issues,
       }),
     });
   }
 
-  async repairFastContextScoutPlan(options: {
-    input: AgentFastContextScoutPlannerPromptInput;
-    invalidDecision: string;
+  async repairPiAction(options: {
+    input: AgentPiControllerActionInput;
+    invalidAction: string;
     issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlFastContextScoutPlannerDecision> {
+  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlPiControllerAction> {
     return this.caller.repair({
-      functionName: "RepairFastContextScoutPlan",
+      functionName: "RepairPiAction",
       args: {
-        functionName: "RepairFastContextScoutPlan",
+        functionName: "RepairPiAction",
         ...options,
       },
       signal: requestOptions.signal,
-      parse: (rawOutput) => baml.parse.RepairFastContextScoutPlan(rawOutput),
+      parse: (rawOutput) => baml.parse.RepairPiAction(rawOutput),
     });
   }
 
-  async planToolCalls(
-    input: AgentToolCallPlannerPromptInput,
+  async fillPiToolArguments(
+    input: AgentPiToolArgumentsInput,
     options: { signal?: AbortSignal } = {},
-  ): Promise<BamlToolCallPlan> {
+  ): Promise<BamlPiToolArgumentsDraft> {
     return this.caller.run({
-      functionName: "PlanToolCalls",
+      functionName: "FillPiToolArguments",
       args: {
-        functionName: "PlanToolCalls",
+        functionName: "FillPiToolArguments",
         input,
       },
       signal: options.signal,
-      parse: (rawOutput) => baml.parse.PlanToolCalls(rawOutput),
+      parse: (rawOutput) => baml.parse.FillPiToolArguments(rawOutput),
       repair: (failure) => ({
-        functionName: "RepairToolCallPlan",
+        functionName: "RepairPiToolArguments",
+        input: {
+          ...input,
+          invalidArguments: failure.invalidOutput,
+          issues: failure.issues,
+        },
+      }),
+    });
+  }
+
+  async repairPiToolArguments(
+    input: AgentPiToolArgumentsRepairInput,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<BamlPiToolArgumentsDraft> {
+    return this.caller.repair({
+      functionName: "RepairPiToolArguments",
+      args: {
+        functionName: "RepairPiToolArguments",
         input,
-        invalidPlan: failure.invalidOutput,
+      },
+      signal: options.signal,
+      parse: (rawOutput) => baml.parse.RepairPiToolArguments(rawOutput),
+    });
+  }
+
+  async auditToolRisk(
+    input: AgentBamlToolRiskAuditPromptInput,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<BamlToolRiskAudit> {
+    return this.caller.run({
+      functionName: "AuditToolRisk",
+      args: {
+        functionName: "AuditToolRisk",
+        input,
+      },
+      signal: options.signal,
+      parse: (rawOutput) => baml.parse.AuditToolRisk(rawOutput),
+      repair: (failure) => ({
+        functionName: "RepairToolRiskAudit",
+        input,
+        invalidAudit: failure.invalidOutput,
         issues: failure.issues,
       }),
     });
   }
 
-  async repairToolCallPlan(options: {
-    input: AgentToolCallPlannerPromptInput;
-    invalidPlan: string;
+  async repairToolRiskAudit(options: {
+    input: AgentBamlToolRiskAuditPromptInput;
+    invalidAudit: string;
     issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlToolCallPlan> {
+  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlToolRiskAudit> {
     return this.caller.repair({
-      functionName: "RepairToolCallPlan",
+      functionName: "RepairToolRiskAudit",
       args: {
-        functionName: "RepairToolCallPlan",
+        functionName: "RepairToolRiskAudit",
         ...options,
       },
       signal: requestOptions.signal,
-      parse: (rawOutput) => baml.parse.RepairToolCallPlan(rawOutput),
+      parse: (rawOutput) => baml.parse.RepairToolRiskAudit(rawOutput),
     });
   }
 }

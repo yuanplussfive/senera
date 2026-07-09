@@ -11,22 +11,74 @@ const runtime = AgentSystemRuntime.load({ workspaceRoot, configPath });
 assert.ok(runtime.services.planning);
 assert.ok(runtime.services.retrieval);
 assert.ok(runtime.services.promptContext);
-assert.ok(runtime.services.workflow);
+assert.ok(runtime.services.pi);
 assert.ok(runtime.services.execution);
+assert.equal(runtime.services.pi.model().id, runtime.modelProviderConfig.Model);
 
 const skills = runtime.services.promptContext.activateSkills({
   input: "检查项目结构并总结作用",
 });
 assert.ok(Array.isArray(skills));
 
+const workflowSkills = runtime.services.promptContext.activateSkills({
+  input: "继续全面优化拓展代码质量，不要硬编码，运行测试验证直到完成",
+});
+assert.equal(
+  workflowSkills.some((skill) => skill.name === "ExecutionWorkflowSkill"),
+  true,
+);
+assert.ok(
+  runtime.services.promptContext
+    .recommendedSkillTools(workflowSkills)
+    .includes("WorkspaceApplyPatch"),
+);
+assert.ok(
+  runtime.services.promptContext
+    .recommendedSkillTools(workflowSkills)
+    .includes("ShellCommandTool"),
+);
+const investigationSkills = runtime.services.promptContext.activateSkills({
+  input: "现在的 shell 工具怎么实现的，读取 SeneraShellPlatform 的片段并分析",
+});
+assert.ok(
+  runtime.services.promptContext
+    .recommendedSkillTools(investigationSkills)
+    .includes("ShellCommandTool"),
+);
+
 const toolCatalog = runtime.services.promptContext.toolCatalog();
 assert.ok(toolCatalog.length > 0);
 const visibleToolName = toolCatalog[0].name;
+assert.ok(runtime.services.pi.activeToolNames().includes(visibleToolName));
+assert.ok(runtime.services.pi.toolDefinitions().some((tool) => tool.name === visibleToolName));
 
 const baseContext = runtime.services.promptContext.buildBaseContext({
   loadedToolNames: [visibleToolName],
 });
 assert.ok(baseContext.ToolCards.some((tool) => tool.name === visibleToolName));
+assert.equal(baseContext.ExecutionEnvironment.workspace.root, workspaceRoot);
+assert.equal(baseContext.ExecutionEnvironment.workspace.preferredPathForm, "workspace-relative");
+assert.ok(baseContext.ExecutionEnvironment.shell.invocation.length > 0);
+const baseTemplate = runtime.registry.getTemplate("BaseSystemPrompt");
+assert.ok(baseTemplate);
+const renderedBasePrompt = runtime.promptRenderer.renderFileSync(baseTemplate.path, {
+  ...baseContext,
+});
+assert.ok(renderedBasePrompt.includes("<execution_environment>"));
+assert.ok(renderedBasePrompt.includes("<preferred_path_form>workspace-relative</preferred_path_form>"));
+
+const shellSearchResults = runtime.toolSearch.search({
+  query: "PowerShell Get-Content read file slice rg search shell",
+  includeLoaded: true,
+  loadedToolNames: [],
+});
+assert.ok(shellSearchResults.some((result) => result.toolName === "ShellCommandTool"));
+const patchSearchResults = runtime.toolSearch.search({
+  query: "apply patch modify code add file move file unified hunk",
+  includeLoaded: true,
+  loadedToolNames: [],
+});
+assert.ok(patchSearchResults.some((result) => result.toolName === "WorkspaceApplyPatch"));
 
 const answerRootCommand = runtime.services.promptContext.buildRootCommand({
   decision: { action: "answer" },

@@ -1,0 +1,23 @@
+<execution_environment>
+  <os>{{ ExecutionEnvironment.os | escape }}</os>
+  <platform>{{ ExecutionEnvironment.platform | escape }}</platform>
+  <workspace>
+    <root>{{ ExecutionEnvironment.workspace.root | escape }}</root>
+    <path_style>{{ ExecutionEnvironment.workspace.pathStyle | escape }}</path_style>
+    <separator>{{ ExecutionEnvironment.workspace.separator | escape }}</separator>
+    <preferred_path_form>{{ ExecutionEnvironment.workspace.preferredPathForm | escape }}</preferred_path_form>
+  </workspace>
+  <shell>
+    <family>{{ ExecutionEnvironment.shell.family | escape }}</family>
+    <command>{{ ExecutionEnvironment.shell.command | escape }}</command>
+    <invocation>{{ ExecutionEnvironment.shell.invocation | escape }}</invocation>
+  </shell>
+  <guidance>
+{% for rule in ExecutionEnvironment.guidance.shell %}
+    <rule>{{ rule | escape }}</rule>
+{% endfor %}
+{% for rule in ExecutionEnvironment.guidance.paths %}
+    <rule>{{ rule | escape }}</rule>
+{% endfor %}
+  </guidance>
+</execution_environment>

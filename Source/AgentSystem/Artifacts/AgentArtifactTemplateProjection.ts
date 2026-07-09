@@ -7,7 +7,6 @@ import type {
   ToolArtifactDeltaRecord,
   ToolArtifactEvidenceRecord,
 } from "../Types/ToolRuntimeTypes.js";
-import { truncateArtifactText } from "./AgentArtifactFileWriter.js";
 
 const ArtifactTemplateRenderer = new Liquid({
   strictFilters: true,
@@ -29,11 +28,10 @@ export function buildArtifactSummary(input: {
   policy: ToolArtifactPolicyManifest | undefined;
   artifact: Record<string, unknown>;
   workspace: unknown;
-  maxChars: number;
 }): string {
   const template = input.policy?.Summary?.Template;
   return template
-    ? truncateArtifactText(renderArtifactTemplate(template, createArtifactTemplateScope(input)) ?? "", input.maxChars)
+    ? renderArtifactTemplate(template, createArtifactTemplateScope(input)) ?? ""
     : "";
 }
 

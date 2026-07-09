@@ -2,6 +2,10 @@ import { z } from "zod";
 import type { ToolLearningResult as BamlToolLearningResult } from "../BamlClient/baml_client/types.js";
 import { parseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
 import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
+import {
+  createAgentStructuredIssue,
+  type AgentStructuredIssue,
+} from "../Diagnostics/AgentStructuredIssue.js";
 
 const NonEmptyStringSchema = z.string().trim().min(1);
 const StringListSchema = z.array(NonEmptyStringSchema).transform(uniqueTrimmed);
@@ -32,24 +36,38 @@ export function parseToolLearningResult(
   const parsed = parseNormalizedBamlOutput(ToolLearningResultSchema, result);
   const selectedTools = new Set(options.selectedTools);
   const sourceTerms = new Set(options.candidateSourceTerms);
-  const issues: string[] = [];
+  const issues: AgentStructuredIssue[] = [];
 
   parsed.records.forEach((record, index) => {
     if (!selectedTools.has(record.toolName)) {
-      issues.push(`records.${index}.toolName: 不在 selectedTools 中：${record.toolName}`);
+      issues.push(createAgentStructuredIssue(`不在 selectedTools 中：${record.toolName}`, [
+        "records",
+        index,
+        "toolName",
+      ]));
       return;
     }
 
     const allowedTags = options.toolTagCatalogByTool.get(record.toolName) ?? new Set<string>();
     record.tags.forEach((tag, tagIndex) => {
       if (!allowedTags.has(tag)) {
-        issues.push(`records.${index}.tags.${tagIndex}: 标签不属于 ${record.toolName}：${tag}`);
+        issues.push(createAgentStructuredIssue(`标签不属于 ${record.toolName}：${tag}`, [
+          "records",
+          index,
+          "tags",
+          tagIndex,
+        ]));
       }
     });
 
     record.sourceTerms.forEach((term, termIndex) => {
       if (!sourceTerms.has(term)) {
-        issues.push(`records.${index}.sourceTerms.${termIndex}: 源词不在 candidateSourceTerms 中：${term}`);
+        issues.push(createAgentStructuredIssue(`源词不在 candidateSourceTerms 中：${term}`, [
+          "records",
+          index,
+          "sourceTerms",
+          termIndex,
+        ]));
       }
     });
   });

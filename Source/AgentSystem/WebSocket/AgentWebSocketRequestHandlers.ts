@@ -20,6 +20,7 @@ export class AgentWebSocketSessionRequestHandlers {
   ): Promise<void> {
     await this.context.sessionManager.createSession({
       sessionId: request.sessionId,
+      modelProviderId: request.modelProviderId,
       onEvent: sendEvent,
     });
   }
@@ -34,6 +35,7 @@ export class AgentWebSocketSessionRequestHandlers {
       modelProviderId: request.modelProviderId,
       input: request.input,
       attachments: request.attachments,
+      queueMode: request.queueMode,
       onEvent: sendEvent,
     });
   }
@@ -330,6 +332,81 @@ export class AgentWebSocketProfileRequestHandlers {
     await this.context.userProfileManager.updateProfile({
       profile: request.profile,
       onEvent: sendEvent,
+    });
+  }
+}
+
+export class AgentWebSocketApprovalRequestHandlers {
+  constructor(private readonly context: AgentWebSocketRequestContext) {}
+
+  resolve(
+    request: AgentWebSocketRequestOf<"approval.resolve">,
+    sendEvent: AgentWebSocketEventSender,
+  ): void {
+    const approvalRuntime = this.context.approvalRuntime;
+    if (!approvalRuntime) {
+      throw new Error("当前运行时没有启用审批服务。");
+    }
+
+    const pending = approvalRuntime.getPending(request.approvalId);
+    if (!pending) {
+      sendEvent({
+        kind: AgentEventKinds.RequestInvalid,
+        context: {},
+        data: {
+          message: `审批请求不存在或已结束：${request.approvalId}`,
+        },
+      });
+      return;
+    }
+
+    const resolution = approvalRuntime.tryResolve({
+      approvalId: request.approvalId,
+      status: request.status,
+      message: request.message,
+    });
+    if (!resolution) {
+      sendEvent({
+        kind: AgentEventKinds.RequestInvalid,
+        context: {},
+        data: {
+          message: `审批请求不存在或已结束：${request.approvalId}`,
+        },
+      });
+      return;
+    }
+
+    sendEvent({
+      kind: AgentEventKinds.ApprovalResolved,
+      context: {
+        requestId: pending.requestId,
+        step: pending.step,
+      },
+      data: {
+        approvalId: pending.approvalId,
+        approvalKind: pending.kind,
+        title: pending.title,
+        reason: pending.reason,
+        rule: pending.rule,
+        riskSignals: pending.riskSignals,
+        subject: pending.subject,
+        createdAt: pending.createdAt,
+        status: resolution.status,
+        message: resolution.message,
+        resolvedAt: resolution.resolvedAt,
+      },
+    });
+  }
+}
+
+export class AgentWebSocketSandboxRequestHandlers {
+  constructor(private readonly context: AgentWebSocketRequestContext) {}
+
+  status(sendEvent: AgentWebSocketEventSender): void {
+    sendEvent({
+      kind: AgentEventKinds.SandboxStatusSnapshot,
+      context: {},
+      data: this.context.sandboxRuntimeService.snapshot(),
     });
   }
 }

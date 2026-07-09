@@ -3,6 +3,7 @@ import {
   type AgentConversationEntry,
 } from "../Conversation/AgentConversation.js";
 import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+import { parseAgentOpenAiTranscriptMessages } from "../Conversation/AgentOpenAiTranscript.js";
 import {
   AgentUploadAttachmentListSchema,
   type AgentUploadAttachment,
@@ -10,7 +11,6 @@ import {
 import type { EntryRow } from "./AgentSessionSqlRows.js";
 import {
   parsePlannerJournalRecord,
-  parsePlannerStateSnapshotRecord,
   parseToolEvidenceMemoryRecord,
 } from "./AgentPlannerRecordCodec.js";
 
@@ -45,10 +45,11 @@ export function entryToRow(
   };
 }
 
-export function rowToEntry(row: EntryRow): AgentConversationEntry {
+export function rowToEntry(row: EntryRow): AgentConversationEntry | undefined {
   const data = JSON.parse(row.data) as {
     content?: string;
     attachments?: unknown;
+    messages?: unknown;
     xml?: string;
     record?: unknown;
     metadata?: unknown;
@@ -76,6 +77,13 @@ export function rowToEntry(row: EntryRow): AgentConversationEntry {
         xml: data.xml ?? "",
         metadata,
       };
+    case AgentConversationEntryKinds.OpenAiTranscript:
+      return {
+        ...base,
+        kind: AgentConversationEntryKinds.OpenAiTranscript,
+        messages: parseAgentOpenAiTranscriptMessages(data.messages),
+        metadata,
+      };
     case AgentConversationEntryKinds.ContextToolResults:
       return {
         ...base,
@@ -90,13 +98,6 @@ export function rowToEntry(row: EntryRow): AgentConversationEntry {
         record: parsePlannerJournalRecord(data.record, row.request_id, row.timestamp),
         metadata,
       };
-    case AgentConversationEntryKinds.PlannerStateSnapshot:
-      return {
-        ...base,
-        kind: AgentConversationEntryKinds.PlannerStateSnapshot,
-        record: parsePlannerStateSnapshotRecord(data.record, row.request_id, row.timestamp),
-        metadata,
-      };
     case AgentConversationEntryKinds.ToolEvidenceMemory:
       return {
         ...base,
@@ -105,7 +106,7 @@ export function rowToEntry(row: EntryRow): AgentConversationEntry {
         metadata,
       };
     default:
-      throw new Error(`未知 conversation entry kind: ${row.kind}`);
+      return undefined;
   }
 }
 
@@ -118,11 +119,12 @@ function encodeEntryData(entry: AgentConversationEntry): Record<string, unknown>
           ? { attachments: entry.attachments }
           : {}),
       };
+    case AgentConversationEntryKinds.OpenAiTranscript:
+      return { messages: entry.messages };
     case AgentConversationEntryKinds.AssistantDecision:
     case AgentConversationEntryKinds.ContextToolResults:
       return { xml: entry.xml };
     case AgentConversationEntryKinds.PlannerJournal:
-    case AgentConversationEntryKinds.PlannerStateSnapshot:
     case AgentConversationEntryKinds.ToolEvidenceMemory:
       return { record: entry.record };
   }
@@ -138,4 +140,3 @@ function parseUploadAttachments(value: unknown): AgentUploadAttachment[] | undef
   const parsed = AgentUploadAttachmentListSchema.safeParse(value);
   return parsed.success && parsed.data.length > 0 ? parsed.data : undefined;
 }
-

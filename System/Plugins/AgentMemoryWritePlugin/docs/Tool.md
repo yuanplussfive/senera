@@ -24,27 +24,5 @@
 ## 输出
 返回写入或强化后的 active 长期记忆。若内容不适合作为长期记忆，`status` 可能为 `skipped` 且不返回 memory item。`sourceRefs` 允许为空，表示这是显式工具写入而不是由对话 source 聚合晋升。
 
-## 调用示例
-<senera_tool_calls>
-  <tool_call>
-    <name>MemoryWriteTool</name>
-    <arguments>
-      <type>preference</type>
-      <subject>assistant_work_style</subject>
-      <claim>用户偏好从源头解决问题，避免硬编码和粗糙兜底。</claim>
-      <howToApply>实现时优先使用结构化协议、统一模块、schema 和成熟库。</howToApply>
-      <tags>
-        <item>工作方式</item>
-        <item>代码质量</item>
-      </tags>
-      <triggers>
-        <item>不要硬编码</item>
-        <item>从源头解决</item>
-      </triggers>
-      <confidence>0.95</confidence>
-    </arguments>
-  </tool_call>
-</senera_tool_calls>
-
 ## 执行约束
-本工具会写入本地长期记忆数据库。工具调用时整条回复只能是工具 XML。
+本工具会写入本地长期记忆数据库。参数以 JSON 对象表达，由 Senera 运行时、BAML 工具编译器或 Pi tool call 承载。

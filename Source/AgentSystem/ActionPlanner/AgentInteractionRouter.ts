@@ -9,7 +9,6 @@ import { throwIfAborted } from "../Core/AgentCancellation.js";
 export const AgentInteractionRunModes = {
   DirectResponse: "direct_response",
   ToolAgentLoop: "tool_agent_loop",
-  DeliberateTaskLoop: "deliberate_task_loop",
 } as const;
 
 export type AgentInteractionRunMode =
@@ -69,7 +68,5 @@ function projectInteractionRunMode(mode: InteractionRunMode): AgentInteractionRu
       return AgentInteractionRunModes.DirectResponse;
     case InteractionRunMode.ToolAgentLoop:
       return AgentInteractionRunModes.ToolAgentLoop;
-    case InteractionRunMode.DeliberateTaskLoop:
-      return AgentInteractionRunModes.DeliberateTaskLoop;
   }
 }

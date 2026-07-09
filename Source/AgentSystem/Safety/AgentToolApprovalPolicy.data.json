@@ -1,0 +1,29 @@
+{
+  "Entrypoints": {
+    "ToolDecision": "senera/tool/decision"
+  },
+  "Reasons": {
+    "ManifestDeny": "工具 Manifest 明确禁止本次调用。",
+    "ManifestAsk": "工具 Manifest 明确要求执行前确认。",
+    "ManifestAllow": "工具 Manifest 明确允许自动执行。",
+    "MissingTool": "工具未在插件注册表中声明，执行前需要确认。",
+    "RequiresApproval": "插件安全声明要求工具调用前确认。",
+    "Untrusted": "插件未受信任，执行前需要确认。",
+    "RiskPermission": "工具声明了高影响权限，执行前需要确认。",
+    "RiskSideEffect": "工具会产生进程、工作区或持久化副作用，执行前需要确认。",
+    "ToolPermission": "工具权限包含高影响操作，执行前需要确认。",
+    "DefaultAllow": "工具未声明需要审批的高风险信号。"
+  },
+  "HighImpact": {
+    "RiskPermissions": ["shell", "write", "memory-write", "read-write-cache", "internal"],
+    "RiskSideEffects": [
+      "process",
+      "write-workspace",
+      "persistent-write",
+      "workspace-change",
+      "artifact-write",
+      "memory-write"
+    ],
+    "ToolPermissionTerms": ["shell", "write", "memory"]
+  }
+}

@@ -2,10 +2,13 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { XMLParser } = require("fast-xml-parser");
 const { parse: parseToml } = require("smol-toml");
 const { z, ZodError } = require("zod");
 
+const ToolProcessRequestEnvelope = Object.freeze({
+  Type: "tool_request",
+  Version: 1
+});
 const ToolProcessResponseEnvelope = Object.freeze({
   Type: "tool_result",
   Version: 1
@@ -17,20 +20,6 @@ const AgentExecutionErrorCodes = {
 const AgentToolProcessErrorPhases = {
   SchemaValidation: "schema_validation",
   RuntimeExecution: "runtime_execution"
-};
-const DefaultXmlProtocolSpec = {
-  roots: {
-    toolCalls: "senera_tool_calls"
-  },
-  items: {
-    toolCall: "tool_call",
-    arrayItem: "item"
-  },
-  toolCall: {
-    name: "name",
-    arguments: "arguments"
-  },
-  arrayElementNameSuffix: "_item"
 };
 
 async function runToolPlugin(definition, options = {}) {
@@ -65,74 +54,38 @@ async function readStdin() {
 }
 
 function parseToolCallRequest(input, options) {
-  const protocol = options.protocol ?? DefaultXmlProtocolSpec;
-  const parsed = new XMLParser({
-    ignoreAttributes: false,
-    attributeNamePrefix: "@_",
-    trimValues: true,
-    parseTagValue: false,
-    parseAttributeValue: false,
-    alwaysCreateTextNode: false,
-    cdataPropName: "#cdata",
-    isArray: (name) => isArrayElementName(name, protocol, options)
-  }).parse(input);
-
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("工具请求不是 XML 对象。");
+  const parsed = JSON.parse(input);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("工具请求必须是 JSON 对象。");
+  }
+  if (parsed.type !== ToolProcessRequestEnvelope.Type || parsed.version !== ToolProcessRequestEnvelope.Version) {
+    throw new Error(`不支持的工具请求 envelope：type=${String(parsed.type)} version=${String(parsed.version)}。`);
   }
 
-  const value = normalizeXmlValue(parsed[protocol.roots.toolCalls]);
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`不支持的工具请求根标签，期望 ${protocol.roots.toolCalls}。`);
-  }
-
-  const toolCalls = value[protocol.items.toolCall];
-  const [call] = Array.isArray(toolCalls) ? toolCalls : [];
-  if (!call || typeof call !== "object" || Array.isArray(call)) {
-    throw new Error(`工具请求缺少 ${protocol.items.toolCall}。`);
-  }
-
-  const args = call[protocol.toolCall.arguments];
+  const args = parsed.arguments;
   return {
-    toolName: String(call[protocol.toolCall.name] ?? ""),
+    toolName: String(parsed.tool ?? ""),
     arguments:
       args && typeof args === "object" && !Array.isArray(args)
         ? args
         : {},
-    context: normalizeToolProcessContext(call.context)
+    context: normalizeToolProcessContext(parsed.context)
   };
 }
 
 function normalizeToolProcessContext(value) {
-  return value && typeof value === "object" && !Array.isArray(value)
+  const context = value && typeof value === "object" && !Array.isArray(value)
     ? value
     : {};
-}
-
-function normalizeXmlValue(value) {
-  if (Array.isArray(value)) {
-    return value.map(normalizeXmlValue);
-  }
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-
-  const entries = Object.entries(value);
-  if (entries.length === 1 && entries[0][0] === "#cdata") {
-    return entries[0][1];
-  }
-
-  return Object.fromEntries(
-    entries.map(([key, item]) => [key, normalizeXmlValue(item)])
-  );
-}
-
-function isArrayElementName(name, protocol, options) {
-  return new Set([
-    protocol.items.arrayItem,
-    protocol.items.toolCall,
-    ...(options.arrayElementNames ?? [])
-  ]).has(name) || name.endsWith(options.arrayElementNameSuffix ?? protocol.arrayElementNameSuffix);
+  return {
+    ...context,
+    ...Object.fromEntries(
+      [
+        ["workspaceRoot", process.env.SENERA_TOOL_CONTEXT_WORKSPACE_ROOT],
+        ["pluginRoot", process.env.SENERA_TOOL_CONTEXT_PLUGIN_ROOT]
+      ].filter((entry) => typeof entry[1] === "string" && entry[1].length > 0)
+    )
+  };
 }
 
 function writeResponse(response) {
@@ -234,6 +187,7 @@ function parsePluginTomlConfig(content) {
 module.exports = {
   runToolPlugin,
   runToolPluginSuite,
+  ToolProcessRequestEnvelope,
   ToolProcessResponseEnvelope,
   createToolProcessSuccessResponse,
   createToolProcessFailureResponse,

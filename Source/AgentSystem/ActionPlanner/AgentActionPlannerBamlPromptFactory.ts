@@ -1,18 +1,8 @@
 import { ClientRegistry } from "@boundaryml/baml";
 import { b as baml } from "../BamlClient/baml_client/index.js";
-import type {
-  ActionPlanInput,
-  TaskFrame as BamlTaskFrame,
-} from "../BamlClient/baml_client/types.js";
+import type { ActionPlanInput } from "../BamlClient/baml_client/types.js";
 import type { AgentBamlModelRequest } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
-import type { AgentFastContextScoutPlannerPromptInput } from "./AgentFastContextScoutPlannerPromptJson.js";
-import { buildFastContextScoutPromptJson } from "./AgentFastContextScoutPlannerPromptJson.js";
-import type { AgentToolCallPlannerPromptInput } from "./AgentToolCallPlannerPromptJson.js";
-import { buildToolCallPlannerPromptJson } from "./AgentToolCallPlannerPromptJson.js";
-import {
-  buildActionPlannerPromptJson,
-  buildEvidenceVerificationPromptJson,
-} from "./AgentActionPlannerPromptJson.js";
+import { buildActionPlannerPromptJson } from "./AgentActionPlannerPromptJson.js";
 import { projectActionPlannerBamlRequestBody } from "./AgentActionPlannerPromptProjector.js";
 import {
   type AgentMemoryConsolidationPromptInput,
@@ -24,6 +14,13 @@ import {
   buildMemoryWriteResolutionPromptJson,
   buildToolLearningPromptJson,
 } from "./AgentLearningPromptJson.js";
+import type {
+  AgentPiControllerActionInput,
+  AgentPiToolArgumentsInput,
+  AgentPiToolArgumentsRepairInput,
+} from "../PiProxy/AgentPiAssistantMessageTypes.js";
+import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
+import { buildBamlToolRiskAuditPromptJson } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 
 export type AgentActionPlannerBamlFunctionArgs =
   | {
@@ -41,51 +38,37 @@ export type AgentActionPlannerBamlFunctionArgs =
       input: ActionPlanInput;
     }
   | {
-      functionName: "BuildTaskFrame";
-      input: ActionPlanInput;
-    }
-  | {
-      functionName: "RepairTaskFrame";
-      input: ActionPlanInput;
-      invalidTaskFrame: string;
-      issues: string[];
-    }
-  | {
       functionName: "RepairInteractionRoute";
       input: ActionPlanInput;
       invalidRoute: string;
       issues: string[];
     }
   | {
-      functionName: "VerifyTaskEvidence";
-      input: ActionPlanInput;
-      taskFrame: BamlTaskFrame;
+      functionName: "SelectPiAction";
+      input: AgentPiControllerActionInput;
     }
   | {
-      functionName: "RepairEvidenceVerification";
-      input: ActionPlanInput;
-      taskFrame: BamlTaskFrame;
-      invalidVerification: string;
+      functionName: "RepairPiAction";
+      input: AgentPiControllerActionInput;
+      invalidAction: string;
       issues: string[];
     }
   | {
-      functionName: "PlanFastContextScout";
-      input: AgentFastContextScoutPlannerPromptInput;
+      functionName: "FillPiToolArguments";
+      input: AgentPiToolArgumentsInput;
     }
   | {
-      functionName: "RepairFastContextScoutPlan";
-      input: AgentFastContextScoutPlannerPromptInput;
-      invalidDecision: string;
-      issues: string[];
+      functionName: "RepairPiToolArguments";
+      input: AgentPiToolArgumentsRepairInput;
     }
   | {
-      functionName: "PlanToolCalls";
-      input: AgentToolCallPlannerPromptInput;
+      functionName: "AuditToolRisk";
+      input: AgentBamlToolRiskAuditPromptInput;
     }
   | {
-      functionName: "RepairToolCallPlan";
-      input: AgentToolCallPlannerPromptInput;
-      invalidPlan: string;
+      functionName: "RepairToolRiskAudit";
+      input: AgentBamlToolRiskAuditPromptInput;
+      invalidAudit: string;
       issues: string[];
     }
   | {
@@ -127,14 +110,18 @@ export type AgentActionPlannerBamlFunctionArgs =
       input: AgentMemoryWriteResolutionPromptInput;
       invalidResolution: string;
       issues: string[];
-    };
+    }
+  ;
 
 export class AgentActionPlannerBamlPromptFactory {
   private readonly promptRegistry = createPromptRegistry();
 
   async buildPrompt(args: AgentActionPlannerBamlFunctionArgs): Promise<AgentBamlModelRequest> {
     const request = await this.buildBamlRequest(args);
-    const prompt = projectActionPlannerBamlRequestBody(request.body.json() as Record<string, unknown>);
+    const prompt = projectPromptForBamlFunction(
+      args.functionName,
+      request.body.json() as Record<string, unknown>,
+    );
     return {
       requestId: `action-planner:${args.functionName}`,
       step: 0,
@@ -172,22 +159,6 @@ export class AgentActionPlannerBamlPromptFactory {
           }),
           options,
         );
-      case "BuildTaskFrame":
-        return baml.request.BuildTaskFrame(
-          buildActionPlannerPromptJson(args.input, {
-            stage: "buildTaskFrame",
-          }),
-          options,
-        );
-      case "RepairTaskFrame":
-        return baml.request.RepairTaskFrame(
-          buildActionPlannerPromptJson(args.input, {
-            stage: "repairTaskFrame",
-            invalidTaskFrame: args.invalidTaskFrame,
-            issues: args.issues,
-          }),
-          options,
-        );
       case "RepairInteractionRoute":
         return baml.request.RepairInteractionRoute(
           buildActionPlannerPromptJson(args.input, {
@@ -197,48 +168,48 @@ export class AgentActionPlannerBamlPromptFactory {
           }),
           options,
         );
-      case "VerifyTaskEvidence":
-        return baml.request.VerifyTaskEvidence(
-          buildEvidenceVerificationPromptJson(args.input, args.taskFrame),
+      case "SelectPiAction":
+        return baml.request.SelectPiAction(
+          buildPiPromptJson(args.input, {
+            stage: "selectPiAction",
+          }),
           options,
         );
-      case "RepairEvidenceVerification":
-        return baml.request.RepairEvidenceVerification(
-          buildEvidenceVerificationPromptJson(args.input, args.taskFrame, {
-            stage: "repairEvidenceVerification",
-            invalidVerification: args.invalidVerification,
+      case "RepairPiAction":
+        return baml.request.RepairPiAction(
+          buildPiPromptJson(args.input, {
+            stage: "repairPiAction",
+            invalidAction: args.invalidAction,
             issues: args.issues,
           }),
           options,
         );
-      case "PlanFastContextScout":
-        return baml.request.PlanFastContextScout(
-          buildFastContextScoutPromptJson(args.input, {
-            stage: "planFastContextScout",
+      case "FillPiToolArguments":
+        return baml.request.FillPiToolArguments(
+          buildPiPromptJson(args.input, {
+            stage: "fillPiToolArguments",
           }),
           options,
         );
-      case "RepairFastContextScoutPlan":
-        return baml.request.RepairFastContextScoutPlan(
-          buildFastContextScoutPromptJson(args.input, {
-            stage: "repairFastContextScoutPlan",
-            invalidDecision: args.invalidDecision,
-            issues: args.issues,
+      case "RepairPiToolArguments":
+        return baml.request.RepairPiToolArguments(
+          buildPiPromptJson(args.input, {
+            stage: "repairPiToolArguments",
+            invalidArguments: args.input.invalidArguments,
+            issues: args.input.issues,
           }),
           options,
         );
-      case "PlanToolCalls":
-        return baml.request.PlanToolCalls(
-          buildToolCallPlannerPromptJson(args.input, {
-            stage: "planToolCalls",
-          }),
+      case "AuditToolRisk":
+        return baml.request.AuditToolRisk(
+          buildBamlToolRiskAuditPromptJson(args.input),
           options,
         );
-      case "RepairToolCallPlan":
-        return baml.request.RepairToolCallPlan(
-          buildToolCallPlannerPromptJson(args.input, {
-            stage: "repairToolCallPlan",
-            invalidPlan: args.invalidPlan,
+      case "RepairToolRiskAudit":
+        return baml.request.RepairToolRiskAudit(
+          buildBamlToolRiskAuditPromptJson(args.input, {
+            stage: "repairToolRiskAudit",
+            invalidAudit: args.invalidAudit,
             issues: args.issues,
           }),
           options,
@@ -309,6 +280,25 @@ export class AgentActionPlannerBamlPromptFactory {
         );
     }
   }
+}
+
+function projectPromptForBamlFunction(
+  functionName: AgentActionPlannerBamlFunctionArgs["functionName"],
+  body: Record<string, unknown>,
+) {
+  return projectActionPlannerBamlRequestBody(body);
+}
+
+function buildPiPromptJson(
+  input: object,
+  directive: Record<string, unknown>,
+): string {
+  return JSON.stringify({
+    context: {
+      ...input,
+    },
+    directive,
+  }, null, 2);
 }
 
 function createPromptRegistry(): ClientRegistry {

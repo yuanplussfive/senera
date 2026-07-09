@@ -1,5 +1,8 @@
 name: Verify
 
+env:
+  npm_config_cache: .npm-cache
+
 on:
   push:
   pull_request:
@@ -7,14 +10,30 @@ on:
 
 jobs:
   agent-core:
-    name: Agent Core
-    runs-on: ubuntu-latest
+    name: Agent Core (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+        node:
+          - 22
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
+      - uses: actions/cache@v4
+        with:
+          path: .npm-cache
+          key: ${{ runner.os }}-node-${{ matrix.node }}-npm-${{ hashFiles('package.json', 'Frontend/package.json', 'Packages/*/package.json', 'System/Plugins/*/package.json', 'Plugins/*/package.json', '.npmrc') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node }}-npm-
       - run: npm install
+      - run: npm run securitycheck
+      - run: npm run bamlcheck
       - run: npm run check
       - run: npm run build
       - run: npm run verifysuite -- workspace core
@@ -27,8 +46,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: .npm-cache
+          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package.json', 'Frontend/package.json', 'Packages/*/package.json', 'System/Plugins/*/package.json', 'Plugins/*/package.json', '.npmrc') }}
+          restore-keys: |
+            ${{ runner.os }}-node-22-npm-
       - run: npm install
       - run: npm run frontendverify
+      - run: npm run frontendcoverage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: coverage/frontend
+          if-no-files-found: error
 
   all-local:
     name: All Local Verifications
@@ -39,5 +70,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: .npm-cache
+          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package.json', 'Frontend/package.json', 'Packages/*/package.json', 'System/Plugins/*/package.json', 'Plugins/*/package.json', '.npmrc') }}
+          restore-keys: |
+            ${{ runner.os }}-node-22-npm-
       - run: npm install
+      - run: npm run securitycheck
+      - run: npm run bamlcheck
       - run: npm run verifyall

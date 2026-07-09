@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { toRuntimeModulePath } from "../Source/AgentSystem/Core/AgentPath.js";
-import { AgentSchemaValidator } from "../Source/AgentSystem/Core/AgentSchemaValidator.js";
+import { moduleDirPath, toRuntimeModulePath } from "../Source/AgentSystem/Core/AgentPath.js";
 
-const runtimeAppRoot = path.resolve(__dirname, "..", "..");
+const runtimeAppRoot = path.resolve(moduleDirPath(import.meta.url), "..", "..");
 const desktopRuntimeSchemaPath = path.join(
   os.homedir(),
   "AppData",
@@ -13,33 +13,19 @@ const desktopRuntimeSchemaPath = path.join(
   "runtime",
   "System",
   "Plugins",
-  "AgentDecisionPlugin",
-  "Schemas",
-  "ToolCallsDecisionSchema.ts",
+  "AgentShellToolPlugin",
+  "ToolSignature.ts",
 );
 const expectedModulePath = path.join(
   runtimeAppRoot,
   "Dist",
   "System",
   "Plugins",
-  "AgentDecisionPlugin",
-  "Schemas",
-  "ToolCallsDecisionSchema.js",
+  "AgentShellToolPlugin",
+  "ToolSignature.js",
 );
 
 assert.equal(toRuntimeModulePath(desktopRuntimeSchemaPath), expectedModulePath);
+assert.equal(fs.existsSync(expectedModulePath), true);
 
-void main();
-
-async function main(): Promise<void> {
-  await new AgentSchemaValidator().validate(desktopRuntimeSchemaPath, {
-    tool_call: [{
-      name: "ToolSearchTool",
-      arguments: {
-        query: "runtime module path",
-      },
-    }],
-  });
-
-  console.log("Runtime module path verification passed.");
-}
+console.log("Runtime module path verification passed.");

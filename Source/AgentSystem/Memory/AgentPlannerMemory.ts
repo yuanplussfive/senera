@@ -9,7 +9,6 @@ import {
 } from "../Conversation/AgentConversation.js";
 import type { AgentActionPlanResult } from "../ActionPlanner/AgentActionPlannerTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import type { AgentActionPlannerLedger } from "../ActionPlanner/AgentActionPlannerLedger.js";
 import {
   stableStringify,
   uniqueStrings,
@@ -17,11 +16,6 @@ import {
 import {
   normalizeAgentArtifactUri,
 } from "../Artifacts/AgentArtifactLocator.js";
-import {
-  createPlannerStateSnapshot,
-  latestPlannerStateSnapshot,
-  type AgentPlannerStateSnapshotRecord,
-} from "../ActionPlanner/AgentPlannerState.js";
 
 export interface AgentPlannerJournalEntryRecord {
   requestId: string;
@@ -49,8 +43,6 @@ export interface AgentToolEvidenceMemoryEntryRecord {
 export interface PlannerMemorySnapshot {
   evidenceMemory: PlannerEvidenceMemoryItem[];
   plannerJournal: PlannerJournalItem[];
-  plannerStates: AgentPlannerStateSnapshotRecord[];
-  activePlannerState?: AgentPlannerStateSnapshotRecord;
 }
 
 export class AgentPlannerMemoryProjector {
@@ -60,12 +52,9 @@ export class AgentPlannerMemoryProjector {
       excludeEvidenceRequestId?: string;
     } = {},
   ): PlannerMemorySnapshot {
-    const plannerStates = this.projectPlannerStates(entries);
     return {
       evidenceMemory: this.projectEvidenceMemory(entries, options),
       plannerJournal: this.projectPlannerJournal(entries),
-      plannerStates,
-      activePlannerState: latestPlannerStateSnapshot(plannerStates),
     };
   }
 
@@ -100,15 +89,6 @@ export class AgentPlannerMemoryProjector {
     });
   }
 
-  projectPlannerStates(entries: readonly AgentConversationEntry[]): AgentPlannerStateSnapshotRecord[] {
-    return entries.flatMap((entry) => {
-      if (entry.kind !== AgentConversationEntryKinds.PlannerStateSnapshot) {
-        return [];
-      }
-      return [entry.record];
-    });
-  }
-
   createJournalEntry(options: {
     requestId: string;
     step: number;
@@ -133,37 +113,6 @@ export class AgentPlannerMemoryProjector {
         result: options.plan.kind,
         createdAt,
       },
-    };
-  }
-
-  createStateSnapshotEntry(options: {
-    requestId: string;
-    step: number;
-    plan: AgentActionPlanResult;
-    ledger: AgentActionPlannerLedger;
-    loadedToolNames: "all" | readonly string[];
-    timestamp?: string;
-  }): Extract<AgentConversationEntry, { kind: "planner.state_snapshot" }> | undefined {
-    if (!options.plan.taskFrame) {
-      return undefined;
-    }
-
-    const createdAt = options.timestamp ?? new Date().toISOString();
-    return {
-      id: createConversationEntryId(options.requestId, "planner_state", options.step),
-      requestId: options.requestId,
-      timestamp: createdAt,
-      kind: AgentConversationEntryKinds.PlannerStateSnapshot,
-      record: createPlannerStateSnapshot({
-        requestId: options.requestId,
-        step: options.step,
-        taskFrame: options.plan.taskFrame,
-        decision: options.plan.decision,
-        ledger: options.ledger,
-        loadedToolNames: options.loadedToolNames,
-        evidenceMemory: options.plan.input.evidenceMemory,
-        timestamp: createdAt,
-      }),
     };
   }
 
@@ -234,17 +183,6 @@ export function createPlannerJournalEntry(options: {
   timestamp?: string;
 }): Extract<AgentConversationEntry, { kind: "planner.journal" }> {
   return new AgentPlannerMemoryProjector().createJournalEntry(options);
-}
-
-export function createPlannerStateSnapshotEntry(options: {
-  requestId: string;
-  step: number;
-  plan: AgentActionPlanResult;
-  ledger: AgentActionPlannerLedger;
-  loadedToolNames: "all" | readonly string[];
-  timestamp?: string;
-}): Extract<AgentConversationEntry, { kind: "planner.state_snapshot" }> | undefined {
-  return new AgentPlannerMemoryProjector().createStateSnapshotEntry(options);
 }
 
 export function createToolEvidenceMemoryEntries(options: {

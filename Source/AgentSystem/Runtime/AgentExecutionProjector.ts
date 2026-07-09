@@ -1,6 +1,7 @@
 import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
+import { createAssistantMessageId } from "../Core/AgentIds.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
-import type { AgentExecutionResult } from "../Decision/AgentDecisionExecutor.js";
+import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { StepTrace } from "./AgentStepTrace.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
@@ -18,8 +19,7 @@ export type AgentTerminalResult =
 
 export interface AgentProjectedTerminalResult {
   event:
-    | Extract<AgentDomainEvent, { kind: "final.answer" }>
-    | Extract<AgentDomainEvent, { kind: "ask.user" }>;
+    Extract<AgentDomainEvent, { kind: typeof AgentEventKinds.AssistantMessageCreated }>;
   result: AgentTerminalResult;
 }
 
@@ -42,12 +42,15 @@ export class AgentExecutionProjector {
     const reasonCode = this.readOptionalStringField(execution.value, "reason_code");
     return {
       event: {
-        kind: AgentEventKinds.AskUser,
+        kind: AgentEventKinds.AssistantMessageCreated,
         context: {
           requestId,
         },
         data: {
-          question,
+          messageId: createAssistantMessageId(),
+          kind: "ask_user",
+          content: question,
+          terminal: true,
           reasonCode,
         },
       },

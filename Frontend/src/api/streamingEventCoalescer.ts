@@ -2,7 +2,6 @@ import { EventKinds, type EventEnvelope } from "./eventTypes";
 
 type StreamingBucket = {
   model?: EventEnvelope;
-  decision?: EventEnvelope;
 };
 
 export const StreamingEventFlushPolicy = {
@@ -17,7 +16,6 @@ export const StreamingEventMaxLatencyMs = Math.ceil(
 
 const StreamingEventKinds: ReadonlySet<string> = new Set([
   EventKinds.ModelDelta,
-  EventKinds.DecisionXmlProgress,
 ]);
 
 export function isBufferedStreamingEvent(kind: string): boolean {
@@ -31,18 +29,13 @@ export function coalesceStreamingEvents(queue: readonly EventEnvelope[]): EventE
     const key = streamingEventKey(env);
     const bucket = byRun.get(key) ?? {};
 
-    if (env.kind === EventKinds.ModelDelta) {
-      bucket.model = mergeModelDelta(bucket.model, env);
-    } else if (env.kind === EventKinds.DecisionXmlProgress) {
-      bucket.decision = env;
-    }
+    bucket.model = mergeModelDelta(bucket.model, env);
 
     byRun.set(key, bucket);
   }
 
   return Array.from(byRun.values()).flatMap((bucket) => [
     ...(bucket.model ? [bucket.model] : []),
-    ...(bucket.decision ? [bucket.decision] : []),
   ]);
 }
 

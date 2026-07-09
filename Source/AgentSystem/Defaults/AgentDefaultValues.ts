@@ -5,7 +5,6 @@ export type {
   AgentModelRuntimeDefaultsConfig,
   AgentToolLearningDefaultsConfig,
   AgentVectorModelsDefaultsConfig,
-  ResolvedAgentCliDefaultsConfig,
   ResolvedAgentDefaultsConfig,
   ResolvedAgentModelRuntimeDefaultsConfig,
   ResolvedAgentVectorEmbeddingDefaultsConfig,

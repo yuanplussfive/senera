@@ -24,6 +24,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("session.create"),
       sessionId: z.string().min(1).optional(),
+      modelProviderId: z.string().min(1).optional(),
     })
     .strict(),
   z
@@ -34,6 +35,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       modelProviderId: z.string().min(1).optional(),
       input: z.string().min(1),
       attachments: AgentUploadAttachmentListSchema.optional(),
+      queueMode: z.enum(["steer", "follow_up"]).optional(),
     })
     .strict(),
   z
@@ -160,6 +162,19 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("profile.update"),
       profile: AgentUserProfileInputSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("approval.resolve"),
+      approvalId: z.string().min(1),
+      status: z.enum(["approved", "denied"]),
+      message: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("sandbox.status"),
     })
     .strict(),
 ]);

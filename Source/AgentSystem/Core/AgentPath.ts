@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export function resolveFrom(basePath: string, targetPath: string): string {
   if (path.isAbsolute(targetPath)) {
@@ -11,6 +12,19 @@ export function resolveFrom(basePath: string, targetPath: string): string {
 export function toFileUrl(filePath: string): string {
   const normalized = path.resolve(filePath).replace(/\\/g, "/");
   return `file:///${normalized.replace(/^\/+/, "")}`;
+}
+
+export function moduleFilePath(importMetaUrl: string): string {
+  return fileURLToPath(importMetaUrl);
+}
+
+export function moduleDirPath(importMetaUrl: string): string {
+  return path.dirname(moduleFilePath(importMetaUrl));
+}
+
+export function isMainModule(importMetaUrl: string, argv: readonly string[] = process.argv): boolean {
+  const entryPath = argv[1];
+  return Boolean(entryPath) && path.resolve(entryPath) === moduleFilePath(importMetaUrl);
 }
 
 export function toRuntimeModulePath(filePath: string): string {
@@ -45,7 +59,7 @@ function runtimePluginRelativePath(filePath: string): string | undefined {
 }
 
 function runtimeAppRoot(): string {
-  const currentDir = path.resolve(__dirname);
+  const currentDir = moduleDirPath(import.meta.url);
   const distSegment = `${path.sep}Dist${path.sep}`;
   const distIndex = currentDir.lastIndexOf(distSegment);
   if (distIndex >= 0) {

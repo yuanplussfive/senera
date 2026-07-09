@@ -13,9 +13,9 @@ export function assertXmlParserTextLimits(
     throw new AgentXmlParseError("XML 输出为空。", [
       {
         message: "XML 输出为空。",
-        suggestion: "输出一个已注册的决策根标签。",
+        suggestion: "输出一个已注册的 XML 根标签。",
       },
-    ], AgentXmlErrorCodes.EmptyDecisionXml);
+    ], AgentXmlErrorCodes.EmptyXml);
   }
 
   const tokenBudget = options.textBudget?.measure(trimmed);
@@ -26,10 +26,10 @@ export function assertXmlParserTextLimits(
         0,
         {
           pointer: "/",
-          suggestion: "只输出必要的 XML 决策，不要附加解释文本或冗余字段。",
+          suggestion: "只输出必要的 XML 内容，不要附加解释文本或冗余字段。",
         },
       ),
-    ], AgentXmlErrorCodes.DecisionXmlTokenLimitExceeded, {
+    ], AgentXmlErrorCodes.XmlTokenLimitExceeded, {
       model: tokenBudget.model,
       encodingName: tokenBudget.encodingName,
       resolution: tokenBudget.resolution,
@@ -43,9 +43,9 @@ export function assertXmlParserTextLimits(
     throw new AgentXmlParseError("XML 输出超过最大长度。", [
       {
         message: "XML 输出超过最大长度。",
-        suggestion: "只输出必要的 XML 决策，不要附加解释文本。",
+        suggestion: "只输出必要的 XML 内容，不要附加解释文本。",
       },
-    ], AgentXmlErrorCodes.DecisionXmlTooLong, {
+    ], AgentXmlErrorCodes.XmlTooLong, {
       length: trimmed.length,
       maxLength: options.maxTextLength,
     });

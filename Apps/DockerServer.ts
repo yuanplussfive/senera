@@ -4,6 +4,7 @@ import { startSeneraServer } from "./ServerRuntime.js";
 import { resolveFrontendConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { writeAgentConfigJsonMirror } from "../Source/AgentSystem/Config/AgentConfigServicePaths.js";
+import { moduleDirPath } from "../Source/AgentSystem/Core/AgentPath.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const AppRoot = resolveAppRoot();
@@ -18,11 +19,16 @@ const DockerPluginRoots = {
   System: [path.join(AppRoot, "System", "Plugins")],
   User: [path.join(AppRoot, "Plugins")],
 } as const;
+const DockerSandboxRuntime = {
+  BaseDir: "/opt/senera/sandbox-runtime",
+  BundleDir: "/opt/senera/sandbox-bundles",
+} as const;
 
 main();
 
 function main(): void {
   fs.mkdirSync(WorkspaceRoot, { recursive: true });
+  ensureFrontendBundleExists();
   ensureRuntimeConfigFile();
 
   const config = loadConfigFile(ConfigPath);
@@ -34,16 +40,26 @@ function main(): void {
     workspaceRoot: WorkspaceRoot,
     configPath: ConfigPath,
     staticFrontendRoot: FrontendRoot,
+    resourcesPath: AppRoot,
     runtimeConfigProjection: runtimeProjection,
   });
 
-  console.log(JSON.stringify({
+  writeJsonLine({
     kind: "senera.docker.started",
     workspaceRoot: server.workspaceRoot,
     configPath: server.configPath,
     webUrl: `http://localhost:${resolveDockerPort()}`,
     websocketUrl: server.websocketUrl,
-  }));
+  });
+}
+
+function ensureFrontendBundleExists(): void {
+  const indexPath = path.join(FrontendRoot, "index.html");
+  if (fs.existsSync(indexPath)) {
+    return;
+  }
+
+  throw new Error(`容器前端产物缺失: ${indexPath}`);
 }
 
 function ensureRuntimeConfigFile(): void {
@@ -62,17 +78,14 @@ function createDockerRuntimeProjection(): (config: AgentSystemConfig) => AgentSy
       System: [...DockerPluginRoots.System],
       User: [...DockerPluginRoots.User],
     },
+    SandboxRuntime: {
+      ...config.SandboxRuntime,
+      ...DockerSandboxRuntime,
+    },
     Server: {
       ...config.Server,
       Host: resolveDockerHost(),
       Port: resolveDockerPort(),
-    },
-    Cli: {
-      ...config.Cli,
-      Connection: {
-        ...config.Cli?.Connection,
-        Url: `ws://127.0.0.1:${resolveDockerPort()}`,
-      },
     },
   });
 }
@@ -119,10 +132,14 @@ function resolveWorkspacePath(value: string): string {
 }
 
 function resolveAppRoot(): string {
-  const currentDir = path.resolve(__dirname);
+  const currentDir = moduleDirPath(import.meta.url);
   const distSegment = `${path.sep}Dist${path.sep}`;
   const distIndex = currentDir.lastIndexOf(distSegment);
   return distIndex >= 0
     ? currentDir.slice(0, distIndex)
     : path.resolve(currentDir, "..");
+}
+
+function writeJsonLine(payload: unknown): void {
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
 }

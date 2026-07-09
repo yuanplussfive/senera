@@ -25,7 +25,7 @@ const config: AgentSystemConfig = {
     MaxOutputTokens: -1,
   }],
   ActionPlanner: {
-    TaskFrameClient: {
+    PlanningClient: {
       ModelProviderId: "chat-main",
       Temperature: 0.1,
       MaxTokens: 2048,
@@ -53,9 +53,9 @@ const planner = resolveActionPlannerConfig(config);
 assert.equal(planner.Client.Provider, "openai-generic");
 assert.equal(planner.Client.BaseUrl, "https://provider.test/v1");
 assert.equal(planner.Client.ApiKey, "provider-key");
-assert.equal(planner.TaskFrameClient.Provider, "openai-generic");
-assert.equal(planner.TaskFrameClient.Model, "mistral-large-latest");
-assert.equal(planner.TaskFrameClient.MaxTokens, 2048);
+assert.equal(planner.PlanningClient.Provider, "openai-generic");
+assert.equal(planner.PlanningClient.Model, "mistral-large-latest");
+assert.equal(planner.PlanningClient.MaxTokens, 2048);
 
 const vector = resolveVectorModelsConfig(config);
 assert.equal(vector.Embedding.BaseUrl, "https://provider.test/v1");

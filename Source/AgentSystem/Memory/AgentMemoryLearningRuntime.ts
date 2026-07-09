@@ -28,12 +28,14 @@ import {
   withMemoryCandidateEmbeddings,
 } from "./AgentMemoryLearningVectorRuntime.js";
 import { AgentMemoryLearningModelClient } from "./AgentMemoryLearningModelClient.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 
 export { buildMemoryLearningPromptInput } from "./AgentMemoryLearningPromptProjector.js";
 
 export interface AgentMemoryLearningRuntimeOptions {
   repository: AgentMemorySourceRepository;
   configSnapshot: () => AgentSystemConfig;
+  logger?: AgentLogger;
 }
 
 export class AgentMemoryLearningRuntime {
@@ -41,7 +43,7 @@ export class AgentMemoryLearningRuntime {
 
   enqueue(recordedTurn: AgentMemoryRecordedTurn): void {
     void this.learn(recordedTurn).catch((error) => {
-      console.warn("[memory-learning] failed", {
+      this.options.logger?.warn("memory.learning.failed", {
         message: error instanceof Error ? error.message : String(error),
         requestId: recordedTurn.episode.requestId,
         standaloneRequest: recordedTurn.episode.standaloneRequest,
@@ -81,7 +83,7 @@ export class AgentMemoryLearningRuntime {
     });
 
     if (learned.candidates.length === 0) {
-      console.debug("[memory-learning] skipped", {
+      this.options.logger?.info("memory.learning.skipped", {
         reason: "BAML returned no durable memory candidates",
         requestId: recordedTurn.episode.requestId,
       });
@@ -93,7 +95,7 @@ export class AgentMemoryLearningRuntime {
       episode: recordedTurn.episode,
       candidates,
     });
-    console.debug("[memory-learning] candidates recorded", {
+    this.options.logger?.info("memory.learning.candidates_recorded", {
       requestId: recordedTurn.episode.requestId,
       count: recordedCandidates.length,
       candidateUris: recordedCandidates.map((candidate) => candidate.uri),
@@ -139,12 +141,12 @@ export class AgentMemoryLearningRuntime {
       });
       await recordMemoryItemEmbeddings(input.vectorClient, this.options.repository, written)
         .catch((error) => {
-          console.warn("[memory-learning] absorbed memory item embedding skipped", {
+          this.options.logger?.warn("memory.learning.embedding_skipped", {
             requestId: input.recordedTurn.episode.requestId,
             message: error instanceof Error ? error.message : String(error),
           });
         });
-      console.debug("[memory-learning] candidate absorbed", {
+      this.options.logger?.info("memory.learning.candidate_absorbed", {
         requestId: input.recordedTurn.episode.requestId,
         operation: decision.operation,
         candidateUri: candidate.uri,
@@ -222,12 +224,12 @@ export class AgentMemoryLearningRuntime {
       });
       await recordMemoryItemEmbeddings(input.vectorClient, this.options.repository, written)
         .catch((error) => {
-          console.warn("[memory-learning] memory item embedding skipped", {
+          this.options.logger?.warn("memory.learning.embedding_skipped", {
             requestId: input.recordedTurn.episode.requestId,
             message: error instanceof Error ? error.message : String(error),
           });
         });
-      console.debug("[memory-learning] promoted", {
+      this.options.logger?.info("memory.learning.promoted", {
         requestId: input.recordedTurn.episode.requestId,
         count: written.length,
         operations: resolvedActions.map((action) => action.operation),

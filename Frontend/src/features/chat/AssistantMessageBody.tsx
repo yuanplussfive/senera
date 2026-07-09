@@ -13,16 +13,22 @@ export function AssistantMessageBody({
   run,
   onViewWorkflow,
 }: AssistantMessageBodyProps): JSX.Element {
+  const isToolPreface = message.kind === "AssistantToolPreface";
   return (
     <div className="mt-1 min-w-0">
-      <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} />
+      {!isToolPreface ? <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} /> : null}
+      {isToolPreface ? (
+        <div className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-umber-50 px-2 py-0.5 font-mono text-[10.5px] text-umber-600">
+          工具调用前回复
+        </div>
+      ) : null}
       <LazyMarkdownRenderer
         className="mt-1 min-w-0"
         contentClassName="text-[14.5px] leading-[1.85] text-ink-800"
       >
         {message.content}
       </LazyMarkdownRenderer>
-      {message.kind === "AskUser" ? (
+      {message.kind === "AssistantAsk" ? (
         <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-terra-50 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-wider text-terra-600">
           需要你的回复
         </div>

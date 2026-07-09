@@ -12,6 +12,7 @@ import type {
 } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { ScrollArea } from "../ui";
+import { JsonConfigRecordField } from "./JsonConfigRecordField";
 
 export type JsonConfigObject = Record<string, unknown>;
 
@@ -160,7 +161,7 @@ function renderJsonFieldInput(
     );
   }
 
-  if (field.options && field.options.length > 0) {
+  if (field.type !== "record" && field.options && field.options.length > 0) {
     return (
       <OptionControl
         field={field}
@@ -195,10 +196,11 @@ function renderJsonFieldInput(
 
   if (field.type === "record") {
     return (
-      <RecordFieldControl
+      <JsonConfigRecordField
         field={field}
         value={isRecord(value) ? value : {}}
         disabled={disabled}
+        inputClassName={inputClassName}
         onChange={onChange}
       />
     );
@@ -519,79 +521,6 @@ function NestedFieldControl({
   );
 }
 
-function RecordFieldControl({
-  field,
-  value,
-  disabled,
-  onChange,
-}: {
-  field: ConfigFormFieldData;
-  value: Record<string, unknown>;
-  disabled: boolean;
-  onChange: (value: Record<string, unknown>) => void;
-}): JSX.Element {
-  const entries = Object.entries(value);
-  const updateEntryKey = (index: number, nextKey: string): void => {
-    const nextEntries = entries.map((entry, entryIndex) =>
-      entryIndex === index ? [nextKey, entry[1]] as [string, unknown] : entry);
-    onChange(Object.fromEntries(nextEntries.filter(([key]) => key.trim().length > 0)));
-  };
-  const updateEntryValue = (index: number, nextValue: string): void => {
-    const nextEntries = entries.map(([key, entryValue], entryIndex) =>
-      entryIndex === index ? [key, coerceArrayItem(nextValue, field.itemType ?? "string")] : [key, entryValue]);
-    onChange(Object.fromEntries(nextEntries));
-  };
-
-  return (
-    <div className="space-y-2">
-      {entries.map(([key, entryValue], index) => (
-        <div key={`${key}-${index}`} className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
-          <input
-            value={key}
-            placeholder={field.keyPlaceholder}
-            disabled={disabled}
-            spellCheck={false}
-            onChange={(event) => updateEntryKey(index, event.currentTarget.value)}
-            className={inputClassName}
-          />
-          <input
-            type={field.secret ? "password" : field.itemType === "number" ? "number" : "text"}
-            value={String(entryValue ?? "")}
-            placeholder={field.valuePlaceholder}
-            disabled={disabled}
-            spellCheck={false}
-            onChange={(event) => updateEntryValue(index, event.currentTarget.value)}
-            className={inputClassName}
-          />
-          <IconAction
-            label="删除"
-            disabled={disabled}
-            danger
-            onClick={() => onChange(Object.fromEntries(entries.filter((_, itemIndex) => itemIndex !== index)))}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </IconAction>
-        </div>
-      ))}
-      <button
-        type="button"
-        disabled={disabled}
-        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-paper-50 px-2.5 text-[12px] text-ink-600 transition hover:border-terra-300 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50"
-        onClick={() => {
-          const nextKey = nextRecordKey(value);
-          onChange({
-            ...value,
-            [nextKey]: defaultArrayItem(field.itemType ?? "string"),
-          });
-        }}
-      >
-        <Plus className="h-3.5 w-3.5" />
-        添加键值
-      </button>
-    </div>
-  );
-}
-
 function IconAction({
   children,
   danger,
@@ -680,9 +609,12 @@ function validateJsonConfigField(field: ConfigFormFieldData, value: unknown): st
   }
   if (field.options && field.options.length > 0) {
     const values = field.type === "array" && Array.isArray(value) ? value : [value];
-    values.forEach((item, index) => {
+    const checkedValues = field.type === "record" && isRecord(value)
+      ? Object.values(value)
+      : values;
+    checkedValues.forEach((item, index) => {
       if (!field.options?.some((option) => sameOptionValue(item, option))) {
-        const suffix = values.length > 1 ? ` 第 ${index + 1} 项` : "";
+        const suffix = checkedValues.length > 1 ? ` 第 ${index + 1} 项` : "";
         errors.push(`${label}${suffix} 必须是允许的选项`);
       }
     });
@@ -866,18 +798,6 @@ function defaultArrayItem(itemType: string): unknown {
     return {};
   }
   return "";
-}
-
-function nextRecordKey(value: Record<string, unknown>): string {
-  const base = "key";
-  if (!(base in value)) {
-    return base;
-  }
-  let index = 2;
-  while (`${base}${index}` in value) {
-    index += 1;
-  }
-  return `${base}${index}`;
 }
 
 function optionLabel(

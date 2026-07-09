@@ -10,9 +10,11 @@ import {
 } from "./AgentWebSocketProtocol.js";
 import { projectAgentWebSocketRequestFailure } from "./AgentWebSocketRequestFailures.js";
 import {
+  AgentWebSocketApprovalRequestHandlers,
   AgentWebSocketConfigRequestHandlers,
   AgentWebSocketPresetRequestHandlers,
   AgentWebSocketProfileRequestHandlers,
+  AgentWebSocketSandboxRequestHandlers,
   AgentWebSocketSessionRequestHandlers,
 } from "./AgentWebSocketRequestHandlers.js";
 import type {
@@ -25,6 +27,8 @@ export class AgentWebSocketMessageRouter {
   private readonly config: AgentWebSocketConfigRequestHandlers;
   private readonly preset: AgentWebSocketPresetRequestHandlers;
   private readonly profile: AgentWebSocketProfileRequestHandlers;
+  private readonly approval: AgentWebSocketApprovalRequestHandlers;
+  private readonly sandbox: AgentWebSocketSandboxRequestHandlers;
 
   constructor(
     private readonly options: {
@@ -36,6 +40,8 @@ export class AgentWebSocketMessageRouter {
     this.config = new AgentWebSocketConfigRequestHandlers(options.context);
     this.preset = new AgentWebSocketPresetRequestHandlers(options.context);
     this.profile = new AgentWebSocketProfileRequestHandlers(options.context);
+    this.approval = new AgentWebSocketApprovalRequestHandlers(options.context);
+    this.sandbox = new AgentWebSocketSandboxRequestHandlers(options.context);
   }
 
   async handleMessage(socket: WebSocket, data: RawData): Promise<void> {
@@ -82,6 +88,8 @@ export class AgentWebSocketMessageRouter {
       "preset.set_active": (entry) => this.preset.setActive(entry, sendEvent),
       "profile.get": () => this.profile.get(sendEvent),
       "profile.update": (entry) => this.profile.update(entry, sendEvent),
+      "approval.resolve": (entry) => this.approval.resolve(entry, sendEvent),
+      "sandbox.status": () => this.sandbox.status(sendEvent),
     });
   }
 

@@ -1,13 +1,12 @@
 import type {
   ActionPlanInput,
-  EvidenceVerification as BamlEvidenceVerification,
-  FastContextScoutPlannerDecision as BamlFastContextScoutPlannerDecision,
   InteractionRoute as BamlInteractionRoute,
   MemoryConsolidationResult as BamlMemoryConsolidationResult,
   MemoryLearningResult as BamlMemoryLearningResult,
   MemoryWriteResolutionResult as BamlMemoryWriteResolutionResult,
-  TaskFrame as BamlTaskFrame,
-  ToolCallPlan as BamlToolCallPlan,
+  PiControllerAction as BamlPiControllerAction,
+  PiToolArgumentsDraft as BamlPiToolArgumentsDraft,
+  ToolRiskAudit as BamlToolRiskAudit,
   ToolLearningResult as BamlToolLearningResult,
   TurnUnderstanding as BamlTurnUnderstanding,
 } from "../BamlClient/baml_client/types.js";
@@ -15,8 +14,6 @@ import type {
   ResolvedAgentActionPlannerClientConfig,
   ResolvedAgentModelProviderConfig,
 } from "../Types/AgentConfigTypes.js";
-import type { AgentFastContextScoutPlannerPromptInput } from "./AgentFastContextScoutPlannerPromptJson.js";
-import type { AgentToolCallPlannerPromptInput } from "./AgentToolCallPlannerPromptJson.js";
 import type { AgentBamlStructuredOutputTraceSink } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 import type {
   AgentMemoryConsolidationPromptInput,
@@ -24,6 +21,12 @@ import type {
   AgentMemoryWriteResolutionPromptInput,
   AgentToolLearningPromptInput,
 } from "./AgentLearningPromptJson.js";
+import type {
+  AgentPiControllerActionInput,
+  AgentPiToolArgumentsInput,
+  AgentPiToolArgumentsRepairInput,
+} from "../PiProxy/AgentPiAssistantMessageTypes.js";
+import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import { AgentActionPlannerModelTransport } from "./AgentActionPlannerModelTransport.js";
 import { resolvePlannerProvider } from "./AgentActionPlannerProviderResolver.js";
 import { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
@@ -52,13 +55,6 @@ export class AgentActionPlannerModelClient {
     this.learning = new AgentActionPlannerLearningModelCalls(caller);
   }
 
-  buildTaskFrame(
-    input: ActionPlanInput,
-    options?: { signal?: AbortSignal },
-  ): Promise<BamlTaskFrame> {
-    return this.core.buildTaskFrame(input, options);
-  }
-
   understandUserTurn(
     input: ActionPlanInput,
     options?: { signal?: AbortSignal },
@@ -73,21 +69,6 @@ export class AgentActionPlannerModelClient {
     return this.core.routeInteraction(input, options);
   }
 
-  verifyTaskEvidence(options: {
-    input: ActionPlanInput;
-    taskFrame: BamlTaskFrame;
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlEvidenceVerification> {
-    return this.core.verifyTaskEvidence(options, requestOptions);
-  }
-
-  repairTaskFrame(options: {
-    input: ActionPlanInput;
-    invalidTaskFrame: string;
-    issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlTaskFrame> {
-    return this.core.repairTaskFrame(options, requestOptions);
-  }
-
   repairTurnUnderstanding(options: {
     input: ActionPlanInput;
     invalidUnderstanding: string;
@@ -96,34 +77,48 @@ export class AgentActionPlannerModelClient {
     return this.core.repairTurnUnderstanding(options, requestOptions);
   }
 
-  planFastContextScout(
-    input: AgentFastContextScoutPlannerPromptInput,
+  selectPiAction(
+    input: AgentPiControllerActionInput,
     options?: { signal?: AbortSignal },
-  ): Promise<BamlFastContextScoutPlannerDecision> {
-    return this.core.planFastContextScout(input, options);
+  ): Promise<BamlPiControllerAction> {
+    return this.core.selectPiAction(input, options);
   }
 
-  repairFastContextScoutPlan(options: {
-    input: AgentFastContextScoutPlannerPromptInput;
-    invalidDecision: string;
+  repairPiAction(options: {
+    input: AgentPiControllerActionInput;
+    invalidAction: string;
     issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlFastContextScoutPlannerDecision> {
-    return this.core.repairFastContextScoutPlan(options, requestOptions);
+  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlPiControllerAction> {
+    return this.core.repairPiAction(options, requestOptions);
   }
 
-  planToolCalls(
-    input: AgentToolCallPlannerPromptInput,
+  fillPiToolArguments(
+    input: AgentPiToolArgumentsInput,
     options?: { signal?: AbortSignal },
-  ): Promise<BamlToolCallPlan> {
-    return this.core.planToolCalls(input, options);
+  ): Promise<BamlPiToolArgumentsDraft> {
+    return this.core.fillPiToolArguments(input, options);
   }
 
-  repairToolCallPlan(options: {
-    input: AgentToolCallPlannerPromptInput;
-    invalidPlan: string;
+  repairPiToolArguments(
+    input: AgentPiToolArgumentsRepairInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<BamlPiToolArgumentsDraft> {
+    return this.core.repairPiToolArguments(input, options);
+  }
+
+  auditToolRisk(
+    input: AgentBamlToolRiskAuditPromptInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<BamlToolRiskAudit> {
+    return this.core.auditToolRisk(input, options);
+  }
+
+  repairToolRiskAudit(options: {
+    input: AgentBamlToolRiskAuditPromptInput;
+    invalidAudit: string;
     issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlToolCallPlan> {
-    return this.core.repairToolCallPlan(options, requestOptions);
+  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlToolRiskAudit> {
+    return this.core.repairToolRiskAudit(options, requestOptions);
   }
 
   learnToolUse(
@@ -185,4 +180,5 @@ export class AgentActionPlannerModelClient {
   }, requestOptions?: { signal?: AbortSignal }): Promise<BamlMemoryWriteResolutionResult> {
     return this.learning.repairMemoryWriteResolution(options, requestOptions);
   }
+
 }

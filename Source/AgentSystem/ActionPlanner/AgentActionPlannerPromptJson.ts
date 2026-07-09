@@ -1,8 +1,4 @@
-import {
-  TaskEvidenceScope,
-  type ActionPlanInput,
-  type TaskFrame,
-} from "../BamlClient/baml_client/index.js";
+import type { ActionPlanInput } from "../BamlClient/baml_client/index.js";
 
 export type AgentActionPlannerPromptStage =
   | {
@@ -17,24 +13,8 @@ export type AgentActionPlannerPromptStage =
       stage: "routeInteraction";
     }
   | {
-      stage: "buildTaskFrame";
-    }
-  | {
-      stage: "repairTaskFrame";
-      invalidTaskFrame: string;
-      issues: readonly string[];
-    }
-  | {
       stage: "repairInteractionRoute";
       invalidRoute: string;
-      issues: readonly string[];
-    }
-  | {
-      stage: "verifyTaskEvidence";
-    }
-  | {
-      stage: "repairEvidenceVerification";
-      invalidVerification: string;
       issues: readonly string[];
     };
 
@@ -55,7 +35,6 @@ export interface AgentActionPlannerPromptContext {
   evidenceMemory: ActionPlanInput["evidenceMemory"];
   evidenceState: ActionPlanInput["evidenceState"];
   plannerJournal: ActionPlanInput["plannerJournal"];
-  plannerState: ActionPlanInput["plannerState"];
   activeSkills: ActionPlanInput["activeSkills"];
 }
 
@@ -84,77 +63,8 @@ export function buildActionPlannerPromptEnvelope(
       evidenceMemory: input.evidenceMemory,
       evidenceState: input.evidenceState,
       plannerJournal: input.plannerJournal,
-      plannerState: input.plannerState,
       activeSkills: input.activeSkills,
     },
     directive,
   };
-}
-
-export function buildEvidenceVerificationPromptJson(
-  input: ActionPlanInput,
-  taskFrame: TaskFrame,
-  directive: Extract<AgentActionPlannerPromptStage, {
-    stage: "verifyTaskEvidence" | "repairEvidenceVerification";
-  }> = {
-    stage: "verifyTaskEvidence",
-  },
-): string {
-  return JSON.stringify({
-    context: {
-      task: {
-        taskType: taskFrame.taskType,
-        answerGoal: taskFrame.answerGoal,
-        intentTags: taskFrame.intentTags,
-        taskTags: taskFrame.taskTags,
-        targetRefs: taskFrame.targetRefs,
-        discoveryQueries: taskFrame.discoveryQueries,
-        requiredEffects: taskFrame.requiredEffects,
-        requiredEvidence: taskFrame.requiredEvidence,
-        userInputNeeds: taskFrame.userInputNeeds,
-        nextStepPurpose: taskFrame.nextStepPurpose,
-        completionCriteria: taskFrame.completionCriteria,
-        notes: taskFrame.notes,
-      },
-      verificationRequirements: [
-        ...taskFrame.requiredEvidence.filter(isCurrentRunEvidenceRequirement).map((requirement) => ({
-          id: requirement.id,
-          kind: "evidence",
-          need: requirement.need,
-          scope: requirement.scope,
-          minimum: requirement.minimum,
-          reason: requirement.reason,
-        })),
-        ...taskFrame.requiredEffects.map((requirement) => ({
-          id: requirement.id,
-          kind: "effect",
-          need: requirement.target
-            ? `${requirement.effect}: ${requirement.target}`
-            : requirement.effect,
-          minimum: 1,
-          reason: [requirement.reason, requirement.proof].filter(Boolean).join("\n"),
-        })),
-      ],
-      evidenceState: input.evidenceState,
-      evidenceCatalog: input.toolCatalog.map((tool) => ({
-        toolName: tool.name,
-        title: tool.title,
-        summary: tool.summary,
-        evidenceCapabilities: tool.evidenceCapabilities,
-      })),
-      progress: {
-        currentStep: input.runState.currentStep,
-        progress: input.runState.progress,
-        warnings: input.runState.warnings,
-        calls: input.runState.calls,
-      },
-    },
-    directive,
-  }, null, 2);
-}
-
-function isCurrentRunEvidenceRequirement(
-  requirement: TaskFrame["requiredEvidence"][number],
-): boolean {
-  return requirement.scope === TaskEvidenceScope.CurrentRun;
 }

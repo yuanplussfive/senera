@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { app } from "electron";
+import electron from "electron";
+
+const { app } = electron;
 
 export interface DesktopRuntimePaths {
   appRoot: string;
@@ -10,6 +12,8 @@ export interface DesktopRuntimePaths {
   configSeedPath: string;
   systemPluginRoot: string;
   userPluginRoot: string;
+  sandboxRuntimeRoot: string;
+  sandboxBundleRoot: string;
   frontendIndexHtml: string;
   windowIconPath: string;
   logPath: string;
@@ -49,11 +53,15 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
   const runtimeUserPlugins = path.join(desktopDataRoot, "Plugins");
   const configDatabasePath = path.join(desktopDataRoot, ConfigDatabaseFileName);
   const configSeedPath = path.join(appRoot, ConfigTemplateFileName);
+  const sandboxRuntimeRoot = path.join(desktopDataRoot, "SandboxRuntime");
+  const sandboxBundleRoot = path.join(desktopDataRoot, "SandboxBundles");
+  const bundledSandboxBundles = path.join(appRoot, "SandboxBundles");
 
   fs.mkdirSync(workspaceRoot, { recursive: true });
   fs.mkdirSync(desktopDataRoot, { recursive: true });
   syncDirectory(bundledSystemPlugins, runtimeSystemPlugins);
   syncDirectory(bundledUserPlugins, runtimeUserPlugins);
+  syncDirectory(bundledSandboxBundles, sandboxBundleRoot);
   syncPluginRuntimeDependencies({
     pluginRoots: [
       bundledSystemPlugins,
@@ -71,6 +79,8 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
     configSeedPath,
     systemPluginRoot: runtimeSystemPlugins,
     userPluginRoot: runtimeUserPlugins,
+    sandboxRuntimeRoot,
+    sandboxBundleRoot,
     frontendIndexHtml: path.join(appRoot, "Frontend", "dist", "index.html"),
     windowIconPath: path.join(appRoot, "Apps", "Desktop", "Assets", DesktopIconFileName),
     logPath: path.join(userDataRoot, "desktop.log"),

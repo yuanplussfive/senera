@@ -23,13 +23,3 @@
 
 ## 注意
 当前上下文优先使用 `markdownPreview` 作为主预览。`textPreview` 和完整 `chunks` 只保存在工具结果 artifact 的 `raw` 引用中；需要更长内容时读取对应 artifact。
-
-## 调用示例
-<senera_tool_calls>
-  <tool_call>
-    <name>DocumentTool</name>
-    <arguments>
-      <uploadUri>senera://upload/upl_0123abcd</uploadUri>
-    </arguments>
-  </tool_call>
-</senera_tool_calls>

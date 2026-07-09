@@ -1,0 +1,84 @@
+{
+  "Evidence": [
+    {
+      "Kind": "workspace_patch_result",
+      "Records": "$",
+      "Slots": {
+        "text": "$.text",
+        "applied": "$.applied",
+        "dryRun": "$.dryRun",
+        "operationCount": "$.operationCount"
+      },
+      "Identity": {
+        "Parts": [
+          "text",
+          "operationCount"
+        ]
+      },
+      "Presentation": {
+        "Locator": "workspace-patch",
+        "Display": "Workspace patch",
+        "Label": "Workspace patch",
+        "Source": "{{ text }}"
+      },
+      "Confidence": 0.92,
+      "Metadata": {
+        "applied": "$.applied",
+        "dryRun": "$.dryRun",
+        "operationCount": "$.operationCount"
+      },
+      "ModelProjection": {
+        "Slots": [
+          "text",
+          "applied",
+          "dryRun",
+          "operationCount"
+        ]
+      },
+      "PlannerMemory": {
+        "Facts": [
+          "text",
+          "applied",
+          "dryRun",
+          "operationCount"
+        ],
+        "ArtifactRefs": [
+          "evidence",
+          "projection",
+          "workspaceDiff",
+          "workspacePatch"
+        ]
+      },
+      "Projection": {
+        "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace patch: {{ e.slots.text }}\n{% endfor %}",
+        "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace patch\n  text: {{ e.slots.text }}\n  applied: {{ e.slots.applied }}\n  dryRun: {{ e.slots.dryRun }}\n  operationCount: {{ e.slots.operationCount }}\n{% endfor %}"
+      }
+    }
+  ],
+  "Summary": {
+    "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+    "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+  },
+  "Workspace": {
+    "Capture": "declared",
+    "Paths": [
+      {
+        "Selector": "$.operations[*].path"
+      },
+      {
+        "Selector": "$.operations[*].source"
+      },
+      {
+        "Selector": "$.operations[*].destination"
+      },
+      {
+        "Selector": "$.changedPaths[*]"
+      }
+    ],
+    "MaxFileBytes": 262144,
+    "MaxFiles": 64,
+    "MaxDirectoryDepth": 1,
+    "CaptureContent": "text",
+    "PatchContextLines": 3
+  }
+}

@@ -21,11 +21,11 @@ $ pnpm add @boundaryml/baml
 import type { BamlRuntime, BamlCtxManager, Image, Audio, Pdf, Video, FunctionLog } from
 "@boundaryml/baml"
 import { toBamlError, HTTPRequest, ClientRegistry } from "@boundaryml/baml"
-import type { Checked, Check } from "./types"
-import type * as types from "./types"
-import type {ActionPlanInput, ActionRunState, EvidenceRequirementVerification, EvidenceSlot, EvidenceVerification, EvidenceVerificationStatus, ExecutionDeltaOp, FastContextScoutCommand, FastContextScoutFileSelection, FastContextScoutPlannerDecision, InteractionRoute, InteractionRunMode, MemoryCandidate, MemoryConsolidationAction, MemoryConsolidationResult, MemoryLearningResult, MemoryWriteDecision, MemoryWriteResolutionResult, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerRoleplayPreset, PlannerRoleplayPresetDocument, PlannerStateCandidateTool, PlannerStateEffect, PlannerStateEvidence, PlannerStateEvidenceNeed, PlannerStateOpenQuestion, PlannerStateSnapshot, PlannerStateTargetRef, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, TaskCandidateTool, TaskEvidenceScope, TaskFrame, TaskRequiredEffect, TaskRequiredEvidence, TaskTargetRef, TaskUserInputNeed, ToolCallArgumentValue, ToolCallPlan, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, TurnContextMode, TurnUnderstanding} from "./types"
-import type TypeBuilder from "./type_builder"
-import type * as events from "./events"
+import type { Checked, Check } from "./types.js"
+import type * as types from "./types.js"
+import type {ActionPlanInput, ActionRunState, EvidenceSlot, ExecutionDeltaOp, InteractionRoute, InteractionRunMode, MemoryCandidate, MemoryConsolidationAction, MemoryConsolidationResult, MemoryLearningResult, MemoryWriteDecision, MemoryWriteResolutionResult, PiControllerAction, PiControllerActionKind, PiPlannedToolCall, PiToolArgumentsDraft, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerRoleplayPreset, PlannerRoleplayPresetDocument, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel, TurnContextMode, TurnUnderstanding} from "./types.js"
+import type TypeBuilder from "./type_builder.js"
+import type * as events from "./events.js"
 
 type TickReason = "Unknown";
 
@@ -41,8 +41,8 @@ env?: Record<string, string | undefined>
   export class AsyncHttpRequest {
   constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
-  
-  async BuildTaskFrame(
+
+  async AuditToolRisk(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
@@ -60,7 +60,7 @@ env?: Record<string, string | undefined>
       }
 
       return await this.runtime.buildRequest(
-      "BuildTaskFrame",
+      "AuditToolRisk",
       {
       "promptJson": promptJson
       },
@@ -74,7 +74,7 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
   async ConsolidateMemoryCandidates(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -107,7 +107,40 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
+  async FillPiToolArguments(
+  promptJson: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "FillPiToolArguments",
+      {
+      "promptJson": promptJson
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+
   async LearnMemory(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -140,7 +173,7 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
   async LearnToolUse(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -173,139 +206,7 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
-  async PlanFastContextScout(
-  promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
 
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "PlanFastContextScout",
-      {
-      "promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
-  async PlanToolCalls(
-  promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "PlanToolCalls",
-      {
-      "promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
-  async RepairEvidenceVerification(
-  promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "RepairEvidenceVerification",
-      {
-      "promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
-  async RepairFastContextScoutPlan(
-  promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "RepairFastContextScoutPlan",
-      {
-      "promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
   async RepairInteractionRoute(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -338,7 +239,7 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
   async RepairMemoryConsolidation(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -371,7 +272,7 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
   async RepairMemoryLearning(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -404,7 +305,7 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
   async RepairMemoryWriteResolution(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -437,8 +338,8 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
-  async RepairTaskFrame(
+
+  async RepairPiAction(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
@@ -456,7 +357,7 @@ env?: Record<string, string | undefined>
       }
 
       return await this.runtime.buildRequest(
-      "RepairTaskFrame",
+      "RepairPiAction",
       {
       "promptJson": promptJson
       },
@@ -470,8 +371,8 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
-  async RepairToolCallPlan(
+
+  async RepairPiToolArguments(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
@@ -489,7 +390,7 @@ env?: Record<string, string | undefined>
       }
 
       return await this.runtime.buildRequest(
-      "RepairToolCallPlan",
+      "RepairPiToolArguments",
       {
       "promptJson": promptJson
       },
@@ -503,7 +404,7 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
   async RepairToolLearning(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -536,7 +437,40 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
+  async RepairToolRiskAudit(
+  promptJson: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "RepairToolRiskAudit",
+      {
+      "promptJson": promptJson
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+
   async RepairTurnUnderstanding(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -569,7 +503,7 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
   async ResolveMemoryWrite(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -602,7 +536,7 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
   async RouteInteraction(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -635,7 +569,40 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
+
+  async SelectPiAction(
+  promptJson: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "SelectPiAction",
+      {
+      "promptJson": promptJson
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+
   async UnderstandUserTurn(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -668,47 +635,14 @@ env?: Record<string, string | undefined>
       throw toBamlError(error);
       }
       }
-      
-  async VerifyTaskEvidence(
-  promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
 
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "VerifyTaskEvidence",
-      {
-      "promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
       }
 
       export class AsyncHttpStreamRequest {
       constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
-      
-      async BuildTaskFrame(
+
+      async AuditToolRisk(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
@@ -726,7 +660,7 @@ env?: Record<string, string | undefined>
           }
 
           return await this.runtime.buildRequest(
-          "BuildTaskFrame",
+          "AuditToolRisk",
           {
           "promptJson": promptJson
           },
@@ -740,7 +674,7 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
       async ConsolidateMemoryCandidates(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -773,7 +707,40 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
+      async FillPiToolArguments(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "FillPiToolArguments",
+          {
+          "promptJson": promptJson
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+
       async LearnMemory(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -806,7 +773,7 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
       async LearnToolUse(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -839,139 +806,7 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
-      async PlanFastContextScout(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
 
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "PlanFastContextScout",
-          {
-          "promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
-      async PlanToolCalls(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
-
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "PlanToolCalls",
-          {
-          "promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
-      async RepairEvidenceVerification(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
-
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "RepairEvidenceVerification",
-          {
-          "promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
-      async RepairFastContextScoutPlan(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
-
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "RepairFastContextScoutPlan",
-          {
-          "promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
       async RepairInteractionRoute(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1004,7 +839,7 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
       async RepairMemoryConsolidation(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1037,7 +872,7 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
       async RepairMemoryLearning(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1070,7 +905,7 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
       async RepairMemoryWriteResolution(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1103,8 +938,8 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
-      async RepairTaskFrame(
+
+      async RepairPiAction(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
@@ -1122,7 +957,7 @@ env?: Record<string, string | undefined>
           }
 
           return await this.runtime.buildRequest(
-          "RepairTaskFrame",
+          "RepairPiAction",
           {
           "promptJson": promptJson
           },
@@ -1136,8 +971,8 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
-      async RepairToolCallPlan(
+
+      async RepairPiToolArguments(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
@@ -1155,7 +990,7 @@ env?: Record<string, string | undefined>
           }
 
           return await this.runtime.buildRequest(
-          "RepairToolCallPlan",
+          "RepairPiToolArguments",
           {
           "promptJson": promptJson
           },
@@ -1169,7 +1004,7 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
       async RepairToolLearning(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1202,7 +1037,40 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
+      async RepairToolRiskAudit(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "RepairToolRiskAudit",
+          {
+          "promptJson": promptJson
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+
       async RepairTurnUnderstanding(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1235,7 +1103,7 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
       async ResolveMemoryWrite(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1268,7 +1136,7 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
       async RouteInteraction(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1301,7 +1169,40 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
+
+      async SelectPiAction(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "SelectPiAction",
+          {
+          "promptJson": promptJson
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+
       async UnderstandUserTurn(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1334,38 +1235,5 @@ env?: Record<string, string | undefined>
           throw toBamlError(error);
           }
           }
-          
-      async VerifyTaskEvidence(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
 
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "VerifyTaskEvidence",
-          {
-          "promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
           }

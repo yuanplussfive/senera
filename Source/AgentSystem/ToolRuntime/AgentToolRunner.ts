@@ -11,6 +11,8 @@ import {
 } from "../Xml/AgentXmlStatus.js";
 import { toolProcessFailureResult } from "./AgentToolProcessEnvelope.js";
 import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
+import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
+import { AgentMcpToolRunner } from "../Mcp/AgentMcpToolRunner.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -31,6 +33,7 @@ export interface AgentToolRunnerContext {
 
 export class AgentToolRunner implements AgentToolRunnerLike {
   private readonly processRunner: AgentToolProcessRunner;
+  private readonly mcpRunner: AgentMcpToolRunner;
 
   constructor(
     private readonly config: AgentSystemConfig,
@@ -38,9 +41,20 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     private readonly workspaceRoot: string,
     private readonly hostCapabilities: AgentToolHostCapabilityRegistry,
     private readonly registry: AgentPluginRegistryLike,
+    private readonly executionEnv: SeneraExecutionEnv,
     processRunner?: AgentToolProcessRunner,
   ) {
-    this.processRunner = processRunner ?? new AgentToolProcessRunner(config, protocol, workspaceRoot);
+    this.processRunner = processRunner ?? new AgentToolProcessRunner(
+      config,
+      protocol,
+      workspaceRoot,
+      executionEnv.spawnProcess,
+    );
+    this.mcpRunner = new AgentMcpToolRunner({
+      config,
+      workspaceRoot,
+      executionEnv,
+    });
   }
 
   async run(
@@ -53,6 +67,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
         signal: context.signal,
       }),
       HostCapability: () => this.runHostCapability(tool, args, context),
+      McpTool: () => this.mcpRunner.run(tool, args, context),
     } satisfies Record<RegisteredTool["handler"]["kind"], () => Promise<AgentToolProcessRunResult>>;
 
     return runners[tool.handler.kind]();
@@ -89,6 +104,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       configPath: context.configPath,
       workspaceRoot: this.workspaceRoot,
       registry: this.registry,
+      executionEnv: this.executionEnv,
       requestId: context.requestId,
       step: context.step,
       onEvent: context.onEvent,

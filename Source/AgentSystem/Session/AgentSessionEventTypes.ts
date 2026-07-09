@@ -56,16 +56,6 @@ export type AgentSessionDomainEvent =
       };
     }
   | {
-      kind: typeof AgentEventKinds.SessionHistorySnapshot;
-      context: Required<Pick<AgentEventContext, "sessionId">>;
-      data: {
-        sessionId: string;
-        totalEntries: number;
-        messageCount: number;
-        entries: AgentSessionHistoryEntry[];
-      };
-    }
-  | {
       kind: typeof AgentEventKinds.SessionHistoryStarted;
       context: Required<Pick<AgentEventContext, "sessionId">>;
       data: {

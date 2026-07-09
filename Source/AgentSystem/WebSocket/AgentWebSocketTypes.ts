@@ -1,4 +1,6 @@
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import type { AgentServerEventLogger } from "../Diagnostics/AgentServerEventLogger.js";
 import type { AgentUserProfileManager } from "../Session/AgentUserProfile.js";
 import type { AgentConfigService } from "../Config/AgentConfigService.js";
 import type { AgentProviderModelDiscovery } from "../Config/AgentProviderModelDiscovery.js";
@@ -6,6 +8,8 @@ import type { AgentPluginConfigManager } from "../Plugin/AgentPluginConfigManage
 import type { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import type { AgentSessionManager } from "../Session/AgentSessionManager.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
+import type { AgentSandboxRuntimeService } from "../Sandbox/AgentSandboxRuntimeService.js";
 
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
@@ -16,6 +20,10 @@ export interface AgentWebSocketServerOptions {
   sessionManager: AgentSessionManager;
   userProfileManager: AgentUserProfileManager;
   pluginConfigManager?: AgentPluginConfigManager;
+  logger?: AgentLogger;
+  eventLogger?: AgentServerEventLogger;
+  approvalRuntime?: AgentApprovalRuntime;
+  sandboxRuntimeService?: AgentSandboxRuntimeService;
 }
 
 export interface AgentWebSocketRequestContext {
@@ -27,6 +35,8 @@ export interface AgentWebSocketRequestContext {
   pluginConfigManager: AgentPluginConfigManager;
   providerModelDiscovery: AgentProviderModelDiscovery;
   presetManagerFactory: () => AgentPresetManager;
+  approvalRuntime?: AgentApprovalRuntime;
+  sandboxRuntimeService: AgentSandboxRuntimeService;
 }
 
 export type AgentWebSocketEventSender = (event: AgentDomainEvent) => void;

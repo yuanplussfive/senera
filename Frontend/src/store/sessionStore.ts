@@ -22,8 +22,8 @@ import {
   type ConversationEntryMetadata,
   type ConfigSnapshotData,
   type EventEnvelope,
-  type ActionEvidenceDecisionData,
-  type ActionTaskFrameData,
+  type ApprovalRequestedData,
+  type ApprovalResolvedData,
   type ModelProviderMetadata,
   type ModelProviderListItem,
   type PresetItem,
@@ -51,7 +51,7 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   createdAt: string;
-  kind?: "FinalAnswer" | "AskUser" | "Error";
+  kind?: "AssistantFinal" | "AssistantAsk" | "AssistantToolPreface" | "Error";
   /** 后端 conversation entry 的 requestId——用于 truncate_from（删除 / 重新回答） */
   requestId?: string;
   attachments?: UploadAttachmentData[];
@@ -62,6 +62,7 @@ export type TimelineStepKind =
   | "understand"
   | "prompt"
   | "model"
+  | "pi"
   | "decision"
   | "tool"
   | "retry"
@@ -82,6 +83,7 @@ export interface TimelineToolBatch {
   id: string;
   index?: number;
   size?: number;
+  executionMode?: "parallel" | "sequential";
 }
 
 export interface TimelineStep {
@@ -100,13 +102,13 @@ export interface TimelineStep {
   toolPreview?: string;
   toolResult?: unknown;
   toolErrorMessage?: string;
-  taskFrame?: ActionTaskFrameData;
-  evidenceDecision?: ActionEvidenceDecisionData;
   detailJson?: unknown;
   retryAttempt?: number;
   retryCode?: string;
   errorMessage?: string;
   modelName?: string;
+  traceSource?: string;
+  eventType?: string;
   promptChars?: number;
   promptLines?: number;
   promptTokenCount?: number;
@@ -125,19 +127,34 @@ export interface RunRecord {
   steps: TimelineStep[];
   /** model.delta 累积（原始 token 流，可能含 XML 包装） */
   streamingRaw: string;
-  /** decision.xml.progress 累积（清洗后的 XML） */
+  /** 旧版 XML 预览字段；新链路仅用于历史兼容显示 */
   xmlPreview: string;
   /** 后端实时解析出的用户可见文本目标 */
   visibleText: string;
   /** 前端平滑消费 visibleText 后真正展示的文本，不影响 streamingRaw 准确性 */
   displayText: string;
   visibleKind: "final_answer" | "ask_user" | "tool_calls" | "unknown";
-  expectedOutputMode: "unknown" | "final_text" | "tool_call_xml";
+  expectedOutputMode: "unknown" | "final_text" | "open";
   decisionMode: "none" | "tool_candidate" | "final_text";
-  /** 通过 decision.parsed.detail 暂存的工具参数 */
+  /** 工具参数暂存，供工具节点显示 */
   pendingToolArgsByName: Record<string, unknown>;
+  approvals?: ApprovalRunRecord[];
   modelProvider?: ModelProviderMetadata;
   recoverySource?: "history";
+}
+
+export interface ApprovalRunRecord {
+  approvalId: string;
+  status: ApprovalRequestedData["status"] | ApprovalResolvedData["status"];
+  title: string;
+  reason: string;
+  rule?: string;
+  riskSignals?: string[];
+  toolName: string;
+  createdAt: string;
+  resolvedAt?: string;
+  message?: string;
+  arguments: Record<string, unknown>;
 }
 
 export interface SessionRecord {
@@ -211,6 +228,7 @@ export interface StoreState {
     requestId: string,
     input: string,
     attachments?: UploadAttachmentData[],
+    options?: { createRun?: boolean },
   ) => void;
   advanceStreamingDisplay: (sessionId: string, requestId: string) => boolean;
   ingest: (env: EventEnvelope) => void;
@@ -432,7 +450,7 @@ export const useStore = create<StoreState>()(
           : state.sessionOrder[0] ?? null;
       }),
 
-    appendUserMessage: (sessionId, requestId, input, attachments) =>
+    appendUserMessage: (sessionId, requestId, input, attachments, options) =>
       set((state) => {
         if (state.historyLoadingIds[sessionId]) return;
         const session = state.sessions[sessionId];
@@ -450,8 +468,10 @@ export const useStore = create<StoreState>()(
           requestId,
         });
         bumpSessionMessageCount(session);
-        session.activeRequestId = requestId;
-        session.runs.push(createRunRecord({ requestId, startedAt: nowIso(), input }));
+        if (options?.createRun !== false) {
+          session.activeRequestId = requestId;
+          session.runs.push(createRunRecord({ requestId, startedAt: nowIso(), input }));
+        }
       }),
 
       advanceStreamingDisplay: (sessionId, requestId) => {

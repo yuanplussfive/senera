@@ -126,7 +126,12 @@ function FeedGroupBlock({
   onToggle: () => void;
   motionLevel: MotionLevel;
 }): JSX.Element {
-  const Icon = group.variant === "delegation" ? Workflow : group.variant === "tools" ? Wrench : GitBranch;
+  const Icon = group.variant === "delegation"
+    ? Workflow
+    : group.variant === "tools"
+      ? Wrench
+      : GitBranch;
+
   return (
     <div className="flex flex-col gap-1.5 py-0.5">
       <button

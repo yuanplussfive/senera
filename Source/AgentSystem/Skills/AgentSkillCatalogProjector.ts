@@ -14,8 +14,6 @@ export interface AgentSkillCatalogItem {
   examples: string[];
   avoid: string[];
   recommendedTools: string[];
-  recommendedAgents: string[];
-  recommendedWorkflows: string[];
   priority?: number;
 }
 
@@ -62,8 +60,6 @@ export class AgentSkillCatalogProjector {
       examples: search?.Examples ?? [],
       avoid: search?.Avoid ?? [],
       recommendedTools: skill.recommendedTools,
-      recommendedAgents: skill.recommendedAgents,
-      recommendedWorkflows: skill.recommendedWorkflows,
       priority: skill.plugin.manifest.Prompting?.Priority,
     };
   }

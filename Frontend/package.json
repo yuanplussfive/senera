@@ -8,9 +8,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "check": "tsc --noEmit",
-    "arch:check": "node scripts/check-architecture.mjs",
-    "test": "vitest run",
-    "verify": "npm run arch:check && npm run check && npm run test"
+    "arch:check": "node --import tsx ../Scripts/VerifyFrontendArchitecture.ts",
+    "test": "node --import tsx ../Scripts/VerifyFrontendStateFlows.ts",
+    "coverage": "vitest run --config ../vitest.config.ts --coverage",
+    "verify": "npm run arch:check && npm run check && node --import tsx ../Scripts/VerifyFrontendTestCoverage.ts && npm run test"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
@@ -59,7 +60,6 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3",
-    "vite": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vite": "^6.4.3"
   }
 }

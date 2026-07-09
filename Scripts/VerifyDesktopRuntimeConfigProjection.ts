@@ -23,6 +23,8 @@ const sourceConfig: AgentSystemConfig = {
 const projected = projectDesktopRuntimeConfig({
   systemPluginRoot: "C:/Users/test/AppData/Roaming/Senera/runtime/System/Plugins",
   userPluginRoot: "C:/Users/test/AppData/Roaming/Senera/runtime/Plugins",
+  sandboxRuntimeRoot: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxRuntime",
+  sandboxBundleRoot: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxBundles",
 }, sourceConfig);
 
 assert.deepEqual(sourceConfig.PluginRoots, {
@@ -32,6 +34,10 @@ assert.deepEqual(sourceConfig.PluginRoots, {
 assert.deepEqual(projected.PluginRoots, {
   System: ["C:/Users/test/AppData/Roaming/Senera/runtime/System/Plugins"],
   User: ["C:/Users/test/AppData/Roaming/Senera/runtime/Plugins"],
+});
+assert.deepEqual(projected.SandboxRuntime, {
+  BaseDir: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxRuntime",
+  BundleDir: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxBundles",
 });
 assert.equal(projected.ModelProviders[0].Model, "model-a");
 

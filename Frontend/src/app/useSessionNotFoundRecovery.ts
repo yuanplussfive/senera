@@ -88,13 +88,18 @@ export function resolveSessionNotFoundRecovery(
         input: lastSentMessage.input,
         attachments: lastSentMessage.attachments,
         modelProviderId: lastSentMessage.modelProviderId,
+        queueMode: lastSentMessage.queueMode,
       }
     : undefined;
 
   return {
     kind: "message_recreate",
     sessionId,
-    createRequest: { type: "session.create", sessionId },
+    createRequest: {
+      type: "session.create",
+      sessionId,
+      modelProviderId: lastSentMessage?.modelProviderId,
+    },
     replayRequest,
     toast: replayRequest
       ? {

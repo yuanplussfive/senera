@@ -133,7 +133,6 @@ export class AgentActionPlannerContextBuilder {
       evidenceMemory: memory.evidenceMemory,
       evidenceState,
       plannerJournal: memory.plannerJournal,
-      plannerState: memory.activePlannerState,
       toolTagCatalog: this.tagCatalogProjector.project({
         tools: options.toolCatalog,
       }),

@@ -26,6 +26,7 @@ export interface AgentLoopOptions extends AgentLoopCommandExecutorOptions {
 }
 
 export interface AgentRunRequest {
+  sessionId?: string;
   requestId: string;
   input: string;
   messages?: AgentLanguageModelMessage[];
@@ -43,11 +44,7 @@ export class AgentLoop {
 
   constructor(private readonly options: AgentLoopOptions) {
     this.agentLoopConfig = options.agentLoopConfig ?? options.runtime.agentLoopConfig;
-    this.stateMachine = new AgentLoopStateMachine({
-      maxSteps: this.agentLoopConfig.MaxSteps,
-      maxRepairAttempts: this.agentLoopConfig.MaxRepairAttempts,
-      dynamicTools: this.agentLoopConfig.LoadedTools === "dynamic",
-    });
+    this.stateMachine = new AgentLoopStateMachine();
     this.commandExecutor = new AgentLoopCommandExecutor({
       ...options,
       agentLoopConfig: this.agentLoopConfig,
@@ -71,6 +68,7 @@ export class AgentLoop {
         this.agentLoopConfig.LoadedTools,
       );
     let transition = this.stateMachine.start({
+      sessionId: request.sessionId,
       requestId: request.requestId,
       input: request.input,
       messages: request.messages,
@@ -118,10 +116,6 @@ export class AgentLoop {
   private unwrapTerminalResult(state: AgentLoopMachineState): AgentCompletedRunResult {
     if (state.kind === "completed") {
       return state.result;
-    }
-
-    if (state.kind === "failed") {
-      throw state.error;
     }
 
     throw new Error("AgentLoop 在命令结束后没有得到终态结果。");

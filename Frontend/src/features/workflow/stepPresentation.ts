@@ -17,6 +17,7 @@ export const stepKindLabels = {
   understand: "理解",
   prompt: "提示",
   model: "模型",
+  pi: "Pi",
   decision: "决策",
   tool: "工具",
   retry: "重试",
@@ -91,6 +92,12 @@ export function readStepAccent(step: Pick<TimelineStep, "kind" | "status">): Ste
         border: "border-ink-200/70",
         iconBg: "bg-ink-900",
         iconFg: "text-paper-50",
+      };
+    case "pi":
+      return {
+        border: "border-sky-100",
+        iconBg: "bg-sky-50",
+        iconFg: "text-sky-600",
       };
     case "decision":
       return {

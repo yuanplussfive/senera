@@ -7,6 +7,10 @@ import type {
 import { parseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
 import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
 import {
+  createAgentStructuredIssue,
+  type AgentStructuredIssue,
+} from "../Diagnostics/AgentStructuredIssue.js";
+import {
   AgentMemoryTypes,
   type AgentMemoryCandidateDraft,
   type AgentMemoryConsolidationActionRecord,
@@ -87,12 +91,17 @@ export function parseMemoryLearningResult(
 ): ParsedMemoryLearningResult {
   const parsed = parseNormalizedBamlOutput(MemoryLearningResultSchema, result);
   const supportingSourceRefs = new Set(options.supportingSourceRefs);
-  const issues: string[] = [];
+  const issues: AgentStructuredIssue[] = [];
 
   parsed.candidates.forEach((candidate, index) => {
     candidate.sourceRefs.forEach((sourceRef, sourceIndex) => {
       if (!supportingSourceRefs.has(sourceRef)) {
-        issues.push(`candidates.${index}.sourceRefs.${sourceIndex}: sourceRef 不是可学习来源：${sourceRef}`);
+        issues.push(createAgentStructuredIssue(`sourceRef 不是可学习来源：${sourceRef}`, [
+          "candidates",
+          index,
+          "sourceRefs",
+          sourceIndex,
+        ]));
       }
     });
   });
@@ -118,14 +127,19 @@ export function parseMemoryConsolidationResult(
 ): ParsedMemoryConsolidationResult {
   const parsed = parseNormalizedBamlOutput(MemoryConsolidationResultSchema, result);
   const existingMemoryUris = new Set(options.existingMemoryUris);
-  const issues: string[] = [];
+  const issues: AgentStructuredIssue[] = [];
 
   parsed.actions.forEach((action, index) => {
     const allowedSourceRefs = new Set(
       action.candidateUris.flatMap((candidateUri, candidateIndex) => {
         const sourceRefs = options.candidateSources.get(candidateUri);
         if (!sourceRefs) {
-          issues.push(`actions.${index}.candidateUris.${candidateIndex}: candidate uri 不存在：${candidateUri}`);
+          issues.push(createAgentStructuredIssue(`candidate uri 不存在：${candidateUri}`, [
+            "actions",
+            index,
+            "candidateUris",
+            candidateIndex,
+          ]));
           return [];
         }
         return [...sourceRefs];
@@ -134,20 +148,37 @@ export function parseMemoryConsolidationResult(
 
     action.sourceRefs.forEach((sourceRef, sourceIndex) => {
       if (!allowedSourceRefs.has(sourceRef)) {
-        issues.push(`actions.${index}.sourceRefs.${sourceIndex}: sourceRef 不属于所选候选：${sourceRef}`);
+        issues.push(createAgentStructuredIssue(`sourceRef 不属于所选候选：${sourceRef}`, [
+          "actions",
+          index,
+          "sourceRefs",
+          sourceIndex,
+        ]));
       }
     });
 
     if ((action.operation === "create" || action.operation === "reject") && action.targetMemoryUri) {
-      issues.push(`actions.${index}.targetMemoryUri: ${action.operation} 不应指定 targetMemoryUri。`);
+      issues.push(createAgentStructuredIssue(`${action.operation} 不应指定 targetMemoryUri。`, [
+        "actions",
+        index,
+        "targetMemoryUri",
+      ]));
     }
 
     if (requiresTargetMemory(action.operation) && !action.targetMemoryUri) {
-      issues.push(`actions.${index}.targetMemoryUri: ${action.operation} 必须指定已有 memory uri。`);
+      issues.push(createAgentStructuredIssue(`${action.operation} 必须指定已有 memory uri。`, [
+        "actions",
+        index,
+        "targetMemoryUri",
+      ]));
     }
 
     if (action.targetMemoryUri && !existingMemoryUris.has(action.targetMemoryUri)) {
-      issues.push(`actions.${index}.targetMemoryUri: memory uri 不存在：${action.targetMemoryUri}`);
+      issues.push(createAgentStructuredIssue(`memory uri 不存在：${action.targetMemoryUri}`, [
+        "actions",
+        index,
+        "targetMemoryUri",
+      ]));
     }
   });
 
@@ -187,7 +218,7 @@ export function parseMemoryWriteResolutionResult(
 ): ParsedMemoryWriteResolutionResult {
   const parsed = parseNormalizedBamlOutput(MemoryWriteResolutionResultSchema, result);
   const decision = parsed.decision;
-  const issues: string[] = [];
+  const issues: AgentStructuredIssue[] = [];
   const allowedOperations = new Set(options.allowedOperations);
   const memoryTypes = new Set(options.memoryTypes);
   const sourceRefs = new Set(options.sourceRefs);
@@ -195,35 +226,58 @@ export function parseMemoryWriteResolutionResult(
   const similarMemoryUris = new Set(options.similarMemoryUris);
 
   if (!allowedOperations.has(decision.operation)) {
-    issues.push(`decision.operation: 不在允许操作集合中：${decision.operation}`);
+    issues.push(createAgentStructuredIssue(`不在允许操作集合中：${decision.operation}`, [
+      "decision",
+      "operation",
+    ]));
   }
 
   if (!memoryTypes.has(decision.type)) {
-    issues.push(`decision.type: 不在允许记忆类型集合中：${decision.type}`);
+    issues.push(createAgentStructuredIssue(`不在允许记忆类型集合中：${decision.type}`, [
+      "decision",
+      "type",
+    ]));
   }
 
   decision.sourceRefs.forEach((sourceRef, index) => {
     if (!sourceRefs.has(sourceRef)) {
-      issues.push(`decision.sourceRefs.${index}: sourceRef 不属于 proposed：${sourceRef}`);
+      issues.push(createAgentStructuredIssue(`sourceRef 不属于 proposed：${sourceRef}`, [
+        "decision",
+        "sourceRefs",
+        index,
+      ]));
     }
   });
 
   decision.candidateUris.forEach((candidateUri, index) => {
     if (!candidateUris.has(candidateUri)) {
-      issues.push(`decision.candidateUris.${index}: candidate uri 不属于 proposed：${candidateUri}`);
+      issues.push(createAgentStructuredIssue(`candidate uri 不属于 proposed：${candidateUri}`, [
+        "decision",
+        "candidateUris",
+        index,
+      ]));
     }
   });
 
   if ((decision.operation === "create" || decision.operation === "reject") && decision.targetMemoryUri) {
-    issues.push(`decision.targetMemoryUri: ${decision.operation} 不应指定 targetMemoryUri。`);
+    issues.push(createAgentStructuredIssue(`${decision.operation} 不应指定 targetMemoryUri。`, [
+      "decision",
+      "targetMemoryUri",
+    ]));
   }
 
   if (requiresTargetMemory(decision.operation) && !decision.targetMemoryUri) {
-    issues.push(`decision.targetMemoryUri: ${decision.operation} 必须指定已有 memory uri。`);
+    issues.push(createAgentStructuredIssue(`${decision.operation} 必须指定已有 memory uri。`, [
+      "decision",
+      "targetMemoryUri",
+    ]));
   }
 
   if (decision.targetMemoryUri && !similarMemoryUris.has(decision.targetMemoryUri)) {
-    issues.push(`decision.targetMemoryUri: memory uri 不属于 similarMemories：${decision.targetMemoryUri}`);
+    issues.push(createAgentStructuredIssue(`memory uri 不属于 similarMemories：${decision.targetMemoryUri}`, [
+      "decision",
+      "targetMemoryUri",
+    ]));
   }
 
   if (issues.length > 0) {

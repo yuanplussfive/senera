@@ -1,18 +1,16 @@
 import { ZodError, type ZodType } from "zod";
-import { AgentXmlParser } from "../Xml/AgentXmlParser.js";
-import {
-  createXmlProtocolSpec,
-  listXmlArrayElementNames,
-  type AgentXmlProtocolSpec,
-} from "../Xml/AgentXmlPolicy.js";
 import {
   createToolProcessFailureResponse,
   createToolProcessSuccessResponse,
 } from "./AgentToolProcessEnvelope.js";
+import {
+  AgentToolProcessRequestEnvelope,
+  type AgentToolProcessRequestEnvelopeDocument,
+} from "./AgentToolProcessRequestEnvelope.js";
 import type {
   AgentSourceDiagnostic,
 } from "../Diagnostics/AgentSourceDiagnostic.js";
-import type { AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
+import type { AgentToolProcessContext, AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -22,21 +20,17 @@ export interface ToolPluginDefinition<TArguments, TResult> {
   toolName: string;
   argumentSchema: ZodType<TArguments>;
   resultSchema: ZodType<TResult>;
-  execute: (args: TArguments) => Promise<TResult> | TResult;
+  execute: (args: TArguments, context: AgentToolProcessContext) => Promise<TResult> | TResult;
 }
 
 type RunnableToolPluginDefinition = {
   toolName: string;
   argumentSchema: ZodType;
   resultSchema: ZodType;
-  execute: (args: unknown) => Promise<unknown> | unknown;
+  execute: (args: unknown, context: AgentToolProcessContext) => Promise<unknown> | unknown;
 };
 
-export interface ToolPluginRuntimeOptions {
-  arrayElementNames?: string[];
-  arrayElementNameSuffix?: string;
-  protocol?: AgentXmlProtocolSpec;
-}
+export interface ToolPluginRuntimeOptions {}
 
 export async function runToolPlugin<TArguments, TResult>(
   definition: ToolPluginDefinition<TArguments, TResult>,
@@ -57,7 +51,7 @@ export async function runToolPluginSuite(
     }
 
     const args = definition.argumentSchema.parse(request.arguments);
-    const rawResult = await definition.execute(args);
+    const rawResult = await definition.execute(args, request.context);
     const result = definition.resultSchema.parse(rawResult);
 
     writeResponse(createToolProcessSuccessResponse(result));
@@ -82,32 +76,33 @@ function parseToolCallRequest(
 ): {
   toolName: string;
   arguments: Record<string, unknown>;
+  context: AgentToolProcessContext;
 } {
-  const protocol = options.protocol ?? createXmlProtocolSpec();
-  const parsed = new AgentXmlParser({
-    arrayElementNames: listXmlArrayElementNames(protocol, options.arrayElementNames ?? []),
-    arrayElementNameSuffix:
-      options.arrayElementNameSuffix ?? protocol.arrayElementNameSuffix,
-  }).parse(input);
-
-  if (parsed.rootName !== protocol.roots.toolCalls) {
-    throw new Error(`不支持的工具请求根标签：${parsed.rootName}`);
+  const parsed = JSON.parse(input) as Partial<AgentToolProcessRequestEnvelopeDocument>;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("工具请求必须是 JSON 对象。");
+  }
+  if (parsed.type !== AgentToolProcessRequestEnvelope.Type || parsed.version !== AgentToolProcessRequestEnvelope.Version) {
+    throw new Error(`不支持的工具请求 envelope：type=${String(parsed.type)} version=${String(parsed.version)}。`);
   }
 
-  const value = parsed.value as Record<string, unknown>;
-  const toolCalls = value[protocol.items.toolCall];
-  const [call] = Array.isArray(toolCalls) ? toolCalls : [];
-  if (!call || typeof call !== "object") {
-    throw new Error(`工具请求缺少 ${protocol.items.toolCall}。`);
-  }
-
-  const callValue = call as Record<string, unknown>;
   return {
-    toolName: String(callValue.name ?? ""),
+    toolName: String(parsed.tool ?? ""),
     arguments:
-      callValue.arguments && typeof callValue.arguments === "object"
-        ? (callValue.arguments as Record<string, unknown>)
+      parsed.arguments && typeof parsed.arguments === "object" && !Array.isArray(parsed.arguments)
+        ? parsed.arguments
         : {},
+    context: normalizeToolProcessContext(parsed.context),
+  };
+}
+
+function normalizeToolProcessContext(value: unknown): AgentToolProcessContext {
+  const context = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Partial<AgentToolProcessContext>
+    : {};
+  return {
+    workspaceRoot: process.env.SENERA_TOOL_CONTEXT_WORKSPACE_ROOT ?? context.workspaceRoot ?? "",
+    pluginRoot: process.env.SENERA_TOOL_CONTEXT_PLUGIN_ROOT ?? context.pluginRoot ?? "",
   };
 }
 

@@ -1,5 +1,4 @@
 import type {
-  AgentCliConfig,
   AgentSystemConfig,
   ResolvedAgentArtifactsConfig,
   ResolvedAgentFrontendConfig,
@@ -27,25 +26,6 @@ export function resolvePluginDiscoveryConfig(
   return {
     ...defaults.PluginDiscovery,
     ...config.PluginDiscovery,
-  };
-}
-
-export function resolveCliConfig(
-  config: Pick<AgentSystemConfig, "Cli" | "Defaults"> | undefined,
-  override: AgentCliConfig = {},
-): AgentCliConfig {
-  const defaults = resolveAgentDefaults(config);
-  return {
-    Connection: {
-      ...defaults.Cli.Connection,
-      ...config?.Cli?.Connection,
-      ...override.Connection,
-    },
-    Display: {
-      ...defaults.Cli.Display,
-      ...config?.Cli?.Display,
-      ...override.Display,
-    },
   };
 }
 

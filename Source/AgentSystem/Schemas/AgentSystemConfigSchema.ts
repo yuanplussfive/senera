@@ -1,7 +1,5 @@
 import { z } from "zod";
-import { AgentCliConfigSchema } from "./AgentCliConfigSchema.js";
 import { FrontendSchema } from "./AgentAppConfigSchema.js";
-import { AgentDelegationSchema } from "./AgentDelegationConfigSchema.js";
 import {
   ModelGroupSchema,
   ModelProviderEndpointSchema,
@@ -16,6 +14,7 @@ import {
   PluginDiscoverySchema,
   PluginRootsSchema,
   PresetsSchema,
+  SandboxRuntimeSchema,
   ServerSchema,
   ToolExecutionSchema,
   UploadsSchema,
@@ -31,10 +30,9 @@ const AgentDefaultsSchema = z
   .object({
     PluginRoots: PluginRootsSchema.optional(),
     PluginDiscovery: PluginDiscoverySchema.optional(),
-    Cli: AgentCliConfigSchema.optional(),
     ToolExecution: ToolExecutionSchema.optional(),
+    SandboxRuntime: SandboxRuntimeSchema.optional(),
     AgentLoop: AgentLoopSchema.optional(),
-    AgentDelegation: AgentDelegationSchema.optional(),
     ToolSearch: ToolSearchSchema.optional(),
     VectorModels: VectorModelsSchema.optional(),
     ToolLearning: ToolLearningSchema.optional(),
@@ -67,6 +65,7 @@ export const AgentSystemConfigSchema = z
       .strict()
       .optional(),
     ToolExecution: ToolExecutionSchema.optional(),
+    SandboxRuntime: SandboxRuntimeSchema.optional(),
     PluginDocumentation: z
       .object({
         Markdown: z
@@ -85,16 +84,6 @@ export const AgentSystemConfigSchema = z
             RequiredSections: z.array(z.string().min(1)),
           })
           .strict(),
-        DecisionActionDescription: z
-          .object({
-            MinNonEmptyLines: z.number().int().min(1),
-            SummarySection: z.string().min(1),
-            TriggerSection: z.string().min(1),
-            AvoidSection: z.string().min(1),
-            RequiredSections: z.array(z.string().min(1)),
-          })
-          .strict()
-          .optional(),
         PromptXml: z
           .object({
             XmlFenceLanguages: z.array(z.string().min(1)).optional(),
@@ -109,9 +98,7 @@ export const AgentSystemConfigSchema = z
     ModelProviderEndpoints: z.array(ModelProviderEndpointSchema).optional(),
     ModelProviders: z.array(ModelProviderSchema).min(1),
     ModelGroups: z.array(ModelGroupSchema).optional(),
-    Cli: AgentCliConfigSchema.optional(),
     AgentLoop: AgentLoopSchema.optional(),
-    AgentDelegation: AgentDelegationSchema.optional(),
     ToolSearch: ToolSearchSchema.optional(),
     VectorModels: VectorModelsSchema.optional(),
     ToolLearning: ToolLearningSchema.optional(),

@@ -22,4 +22,4 @@ ToolSearch 模块负责工具发现、工具排序、工具使用记忆和工具
 - 新增工具搜索策略时优先扩展 rank pipeline，不直接改 runtime。
 - 工具学习只记录结构化 episode 和聚合结果，不写临时反馈概念。
 - 搜索文档字段来自插件契约和 manifest，不在 runtime 里硬编码工具名单。
-- 新增工具搜索行为必须补 `Scripts/VerifyToolSearch*.ts` 或相关 planner 验证。
+- 新增工具搜索行为优先扩展工具签名映射、Pi 工具桥接或插件 artifact 核心验证，避免新增零散专项脚本。

@@ -1,5 +1,4 @@
 import {
-  AgentEventKinds,
   summarizePrompt,
   type AgentDomainEvent,
 } from "../Events/AgentEvent.js";
@@ -19,12 +18,6 @@ export class AgentLoopPromptEventFactory {
         context: { requestId, step },
         data: summary.data,
       },
-      {
-        kind: AgentEventKinds.PromptRendered,
-        context: { requestId, step },
-        data: { prompt },
-      },
     ];
   }
 }
-

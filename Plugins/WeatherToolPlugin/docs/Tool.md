@@ -20,18 +20,6 @@
 
 返回解析后的地点、当前天气、体感温度、湿度、风力、观测时间、来源；有预报时返回逐日预报。
 
-## 调用示例
-
-<senera_tool_calls>
-  <tool_call>
-    <name>WeatherTool</name>
-    <arguments>
-      <location>北京</location>
-      <days>3</days>
-    </arguments>
-  </tool_call>
-</senera_tool_calls>
-
 ## 执行约束
 
 不要编造天气。地点歧义或工具失败时说明原因，并让用户补充城市、省份或国家。

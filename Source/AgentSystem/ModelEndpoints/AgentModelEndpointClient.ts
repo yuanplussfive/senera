@@ -66,17 +66,6 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
     await this.emitStarted(request);
     const stream = await this.endpoint.stream(request);
 
-    await emitAgentEvent(request.onEvent, {
-      kind: AgentEventKinds.ModelStreamOpened,
-      context: {
-        requestId: request.requestId,
-        step: request.step,
-      },
-      data: {
-        provider: this.metadata,
-      },
-    });
-
     let accumulatedText = "";
     const self = this;
     const chunks = (async function* (): AsyncGenerator<AgentLanguageModelStreamChunk> {

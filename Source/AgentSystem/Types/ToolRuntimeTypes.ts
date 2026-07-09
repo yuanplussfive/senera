@@ -3,34 +3,10 @@ import type {
   AgentToolProcessResponseVersion,
 } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import type {
-  RegisteredAgent,
-  RegisteredAgentContextPack,
-  RegisteredAgentMergePolicy,
-  RegisteredAgentWorkflow,
   RegisteredTool,
 } from "./PluginRuntimeTypes.js";
 import type { ToolArtifactPolicyManifest } from "./PluginManifestTypes.js";
-
-export type AgentDecision =
-  {
-    kind: "ToolCalls";
-    root: string;
-    source: AgentDecisionSource;
-    payload: ToolCallsDecision;
-  };
-
-export interface AgentDecisionSource {
-  xml: string;
-}
-
-export interface ToolCallsDecision {
-  tool_call: ToolCallDecision[];
-}
-
-export interface ToolCallDecision {
-  name: string;
-  arguments?: Record<string, unknown>;
-}
+import type { AgentToolResultSummary } from "./AgentToolResultSummaryTypes.js";
 
 export interface ExecutedToolCallResult {
   callId: string;
@@ -55,6 +31,8 @@ export interface ExecutedToolCallArtifact {
   manifestPath: string;
   files: Record<string, string>;
   summary: string;
+  projection?: string;
+  structuredSummary?: AgentToolResultSummary;
   evidence: ToolArtifactEvidenceRecord[];
   delta: ToolArtifactDeltaRecord[];
   workspace?: ToolWorkspaceCaptureResult;
@@ -161,11 +139,6 @@ export interface ToolExecutionContext {
 
 export interface AgentPluginRegistryLike {
   getTool(name: string): RegisteredTool | undefined;
-  getAgent?(name: string): RegisteredAgent | undefined;
-  getAgentWorkflow?(name: string): RegisteredAgentWorkflow | undefined;
-  getAgentContextPack?(name: string): RegisteredAgentContextPack | undefined;
-  getAgentMergePolicy?(name: string): RegisteredAgentMergePolicy | undefined;
-  listAgentWorkflows?(): RegisteredAgentWorkflow[];
 }
 
 export interface AgentToolProcessRequest {

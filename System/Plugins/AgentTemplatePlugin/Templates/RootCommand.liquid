@@ -37,129 +37,12 @@
     <instruction>{{ RootCommand.instruction | escape }}</instruction>
 {% endif %}
     <insufficiency_policy>{{ RootCommand.insufficiencyPolicy | escape }}</insufficiency_policy>
-{% if RootCommand.taskContract %}
-    <task_contract>
-      <task_type>{{ RootCommand.taskContract.taskType | escape }}</task_type>
-      <answer_goal>{{ RootCommand.taskContract.answerGoal | escape }}</answer_goal>
-{% if RootCommand.taskContract.intentTags.size > 0 %}
-      <intent_tags>
-{% for tag in RootCommand.taskContract.intentTags %}
-        <tag>{{ tag | escape }}</tag>
-{% endfor %}
-      </intent_tags>
-{% endif %}
-{% if RootCommand.taskContract.targetRefs.size > 0 %}
-      <target_refs>
-{% for target in RootCommand.taskContract.targetRefs %}
-        <target>
-          <kind>{{ target.kind | escape }}</kind>
-          <value>{{ target.value | escape }}</value>
-          <status>{{ target.status | escape }}</status>
-        </target>
-{% endfor %}
-      </target_refs>
-{% endif %}
-{% if RootCommand.taskContract.candidateTools.size > 0 %}
-      <candidate_tools>
-{% for tool in RootCommand.taskContract.candidateTools %}
-        <tool>
-          <name>{{ tool.name | escape }}</name>
-          <purpose>{{ tool.purpose | escape }}</purpose>
-{% if tool.supports.size > 0 %}
-          <supports>
-{% for item in tool.supports %}
-            <item>{{ item | escape }}</item>
-{% endfor %}
-          </supports>
-{% endif %}
-        </tool>
-{% endfor %}
-      </candidate_tools>
-{% endif %}
-{% if RootCommand.taskContract.requiredEffects.size > 0 %}
-      <required_effects>
-{% for effect in RootCommand.taskContract.requiredEffects %}
-        <effect>
-          <id>{{ effect.id | escape }}</id>
-          <name>{{ effect.effect | escape }}</name>
-          <target>{{ effect.target | escape }}</target>
-          <proof>{{ effect.proof | escape }}</proof>
-          <reason>{{ effect.reason | escape }}</reason>
-        </effect>
-{% endfor %}
-      </required_effects>
-{% endif %}
-{% if RootCommand.taskContract.requiredEvidence.size > 0 %}
-      <required_evidence>
-{% for evidence in RootCommand.taskContract.requiredEvidence %}
-        <evidence>
-          <id>{{ evidence.id | escape }}</id>
-          <need>{{ evidence.need | escape }}</need>
-          <minimum>{{ evidence.minimum }}</minimum>
-          <reason>{{ evidence.reason | escape }}</reason>
-        </evidence>
-{% endfor %}
-      </required_evidence>
-{% endif %}
-{% if RootCommand.taskContract.nextStepPurpose %}
-      <next_step_purpose>{{ RootCommand.taskContract.nextStepPurpose | escape }}</next_step_purpose>
-{% endif %}
-{% if RootCommand.taskContract.completionCriteria.size > 0 %}
-      <completion_criteria>
-{% for criterion in RootCommand.taskContract.completionCriteria %}
-        <criterion>{{ criterion | escape }}</criterion>
-{% endfor %}
-      </completion_criteria>
-{% endif %}
-{% if RootCommand.taskContract.discoveryQueries.size > 0 %}
-      <discovery_queries>
-{% for query in RootCommand.taskContract.discoveryQueries %}
-        <query>{{ query | escape }}</query>
-{% endfor %}
-      </discovery_queries>
-{% endif %}
-    </task_contract>
-{% endif %}
 {% if RootCommand.preferredTools.size > 0 %}
     <preferred_tools>
 {% for tool in RootCommand.preferredTools %}
       <tool>{{ tool | escape }}</tool>
 {% endfor %}
     </preferred_tools>
-{% endif %}
-{% if RootCommand.workflowRecommendedTools.size > 0 %}
-    <workflow_recommended_tools>
-{% for tool in RootCommand.workflowRecommendedTools %}
-      <tool>{{ tool | escape }}</tool>
-{% endfor %}
-    </workflow_recommended_tools>
-{% endif %}
-{% if RootCommand.workflowRecommendations.size > 0 %}
-    <workflow_recommendations>
-{% for workflow in RootCommand.workflowRecommendations %}
-      <workflow>
-        <name>{{ workflow.name | escape }}</name>
-{% if workflow.title %}
-        <title>{{ workflow.title | escape }}</title>
-{% endif %}
-{% if workflow.description %}
-        <description>{{ workflow.description | escape }}</description>
-{% endif %}
-{% if workflow.sources.size > 0 %}
-        <sources>{% for source in workflow.sources %}<source>{{ source | escape }}</source>{% endfor %}</sources>
-{% endif %}
-{% if workflow.matchedSkills.size > 0 %}
-        <matched_skills>{% for skill in workflow.matchedSkills %}<skill>{{ skill | escape }}</skill>{% endfor %}</matched_skills>
-{% endif %}
-{% if workflow.matchedAgents.size > 0 %}
-        <matched_agents>{% for agent in workflow.matchedAgents %}<agent>{{ agent | escape }}</agent>{% endfor %}</matched_agents>
-{% endif %}
-{% if workflow.matchedTerms.size > 0 %}
-        <matched_terms>{% for term in workflow.matchedTerms %}<term>{{ term | escape }}</term>{% endfor %}</matched_terms>
-{% endif %}
-      </workflow>
-{% endfor %}
-    </workflow_recommendations>
 {% endif %}
 {% if RootCommand.toolSearchQueries.size > 0 %}
     <tool_search_queries>

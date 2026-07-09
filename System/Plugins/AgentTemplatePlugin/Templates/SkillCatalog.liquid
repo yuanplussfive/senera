@@ -1,7 +1,7 @@
 {% if ActiveSkills.size > 0 %}
-<workflow_skills>
+<senera_active_skills>
   <policy>
-    <rule>workflow_skills 是可复用工作流指导，不是用户事实，也不是工具调用结果。</rule>
+    <rule>active_skills 是本轮任务的能力指导，不是用户事实，也不是工具调用结果。</rule>
     <rule>active_skills 中的步骤用于组织调查、验证和输出；与 RootCommand 冲突时遵守 RootCommand。</rule>
     <rule>未出现在 active_skills 中的技能不构成本轮要求。</rule>
   </policy>
@@ -37,30 +37,11 @@
 {% endfor %}
       </recommended_tools>
 {% endif %}
-{% if skill.recommendedAgents.size > 0 %}
-      <recommended_agents>
-{% for agent in skill.recommendedAgents %}
-        <agent>{{ agent | escape }}</agent>
-{% endfor %}
-      </recommended_agents>
-{% endif %}
-{% if skill.recommendedWorkflows.size > 0 %}
-      <recommended_workflows>
-{% for workflow in skill.recommendedWorkflows %}
-        <workflow>{{ workflow | escape }}</workflow>
-{% endfor %}
-      </recommended_workflows>
-{% endif %}
       <instructions>
 {{ skill.documentationXml }}
       </instructions>
-{% if skill.workflowXml %}
-      <workflow>
-{{ skill.workflowXml }}
-      </workflow>
-{% endif %}
     </skill>
 {% endfor %}
   </active_skills>
-</workflow_skills>
+</senera_active_skills>
 {% endif %}
