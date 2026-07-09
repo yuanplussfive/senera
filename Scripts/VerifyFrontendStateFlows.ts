@@ -15,6 +15,11 @@ await new Promise<void>((resolve, reject) => {
     path.join(workspaceRoot, "vitest.config.ts"),
   ], {
     cwd: workspaceRoot,
+    env: {
+      ...process.env,
+      FORCE_COLOR: "0",
+      NO_COLOR: "1",
+    },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
@@ -37,7 +42,8 @@ await new Promise<void>((resolve, reject) => {
   });
 });
 
-assert.match(output, /Tests\s+[1-9]\d*\s+passed/, "Vitest did not execute any frontend tests.");
+const plainOutput = stripAnsi(output);
+assert.match(plainOutput, /Tests\s+[1-9]\d*\s+passed/, "Vitest did not execute any frontend tests.");
 console.log("Frontend Vitest state flow tests verified.");
 
 function resolveWorkspaceRoot(): string {
@@ -50,4 +56,8 @@ function resolveWorkspaceRoot(): string {
     return parent;
   }
   return cwd;
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
 }
