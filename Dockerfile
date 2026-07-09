@@ -8,7 +8,7 @@ RUN apt-get update \
 
 COPY . .
 
-RUN npm ci --ignore-scripts
+RUN npm install --ignore-scripts
 RUN npm run sandboxprepare -- --base-dir /opt/senera/sandbox-runtime --bundle-dir /opt/senera/sandbox-bundles --skip-image-pull
 RUN npm run build
 RUN npm --workspace senera-frontend run build
