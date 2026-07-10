@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import {
   discoverSandboxImages,
   prepareSandboxRuntime,
   readOptions,
+  type PrepareOptions,
 } from "../Build/PrepareSandboxRuntime.js";
+import { resolveAgentSandboxRuntimePaths } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
+import { resolveAgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
 
 interface FakeSetupBuilder {
   baseDir(path: string): FakeSetupBuilder;
@@ -134,22 +140,52 @@ assert.deepEqual(readOptions(["--skip-image-pull"]), {
   exportBundlePath: undefined,
 });
 
-const installed = new FakeMicrosandboxModule(true);
-await prepareSandboxRuntime({
-  strict: true,
-  skipImagePull: false,
-  importBundles: false,
-}, installed);
-assert.equal(installed.installCount, 0);
-assert.deepEqual(installed.createdImages, ["alpine", ...images]);
+const tempRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-prepare-"));
+try {
+  const installed = new FakeMicrosandboxModule(true);
+  const installedOptions = await prepareOptionsFixture(tempRoot, "installed", false);
+  await writeRuntimeInstallMarkers(installedOptions);
+  await prepareSandboxRuntime(installedOptions, installed);
+  assert.equal(installed.installCount, 0);
+  assert.deepEqual(installed.createdImages, ["alpine", ...images]);
 
-const missing = new FakeMicrosandboxModule(false);
-await prepareSandboxRuntime({
-  strict: true,
-  skipImagePull: true,
-  importBundles: false,
-}, missing);
-assert.equal(missing.installCount, 1);
-assert.deepEqual(missing.createdImages, []);
+  const missing = new FakeMicrosandboxModule(false);
+  const missingOptions = await prepareOptionsFixture(tempRoot, "missing", true);
+  await prepareSandboxRuntime(missingOptions, missing);
+  assert.equal(missing.installCount, 1);
+  assert.deepEqual(missing.createdImages, []);
+} finally {
+  await rm(tempRoot, { recursive: true, force: true });
+}
 
 console.log("Sandbox prepare runtime verification passed.");
+
+async function prepareOptionsFixture(
+  root: string,
+  name: string,
+  skipImagePull: boolean,
+): Promise<PrepareOptions> {
+  const baseDir = path.join(root, name, "runtime");
+  const bundleDir = path.join(root, name, "bundles");
+  await mkdir(bundleDir, { recursive: true });
+  return {
+    strict: true,
+    skipImagePull,
+    importBundles: false,
+    baseDir,
+    bundleDir,
+    exportBundlePath: undefined,
+  };
+}
+
+async function writeRuntimeInstallMarkers(options: PrepareOptions): Promise<void> {
+  const defaults = resolveAgentDefaults(undefined).SandboxRuntime;
+  const paths = resolveAgentSandboxRuntimePaths(process.cwd(), {
+    BaseDir: options.baseDir ?? defaults.BaseDir,
+    BundleDir: options.bundleDir ?? defaults.BundleDir,
+  });
+  await mkdir(path.dirname(paths.msbPath), { recursive: true });
+  await mkdir(path.dirname(paths.libkrunfwPath), { recursive: true });
+  await writeFile(paths.msbPath, "");
+  await writeFile(paths.libkrunfwPath, "");
+}
