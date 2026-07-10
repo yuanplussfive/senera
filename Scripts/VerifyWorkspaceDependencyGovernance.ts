@@ -12,6 +12,7 @@ interface PackageJson {
   };
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
   exports?: Record<string, PackageExportConditions>;
   build?: ElectronBuilderConfig;
 }
@@ -25,6 +26,7 @@ interface PackageLockJson {
     resolved?: string;
     link?: boolean;
     workspaces?: unknown;
+    optionalDependencies?: Record<string, string>;
   }>;
 }
 
@@ -69,6 +71,7 @@ const desktopReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", 
 const violations = [
   ...inspectWorkspaceCoverage(),
   ...inspectLockfileWorkspaceState(),
+  ...inspectBamlNativeBindingClosure(),
   ...inspectRootNpmPolicy(),
   ...inspectVerifyWorkflow(),
   ...inspectSecurityScanWorkflow(),
@@ -117,6 +120,29 @@ function inspectLockfileWorkspaceState(): string[] {
     }
     if (!linkEntry || linkEntry.resolved !== workspace.location || linkEntry.link !== true) {
       issues.push(`package-lock.json must link workspace ${workspace.name} to ${workspace.location}.`);
+    }
+    return issues;
+  });
+}
+
+function inspectBamlNativeBindingClosure(): string[] {
+  const packages = rootLockfile?.packages;
+  if (!packages) return [];
+
+  const bamlPackage = packages["node_modules/@boundaryml/baml"];
+  const platformBindings = bamlPackage?.optionalDependencies;
+  if (!platformBindings) {
+    return ["package-lock.json must retain @boundaryml/baml platform binding metadata."];
+  }
+
+  const declaredBindings = rootPackage.optionalDependencies ?? {};
+  return Object.entries(platformBindings).flatMap(([packageName, version]) => {
+    const issues: string[] = [];
+    if (!(packageName in declaredBindings)) {
+      issues.push(`package.json optionalDependencies must declare BAML platform binding ${packageName}.`);
+    }
+    if (packages[`node_modules/${packageName}`]?.version !== version) {
+      issues.push(`package-lock.json must resolve BAML platform binding ${packageName}@${version}.`);
     }
     return issues;
   });
@@ -387,7 +413,7 @@ function inspectSecurityScanWorkflow(): string[] {
     "github/codeql-action/init@v3",
     "queries: security-extended,security-and-quality",
     "actions/dependency-review-action@v4",
-    "aquasecurity/trivy-action@0.29.0",
+    "aquasecurity/trivy-action@0.35.0",
     "exit-code: \"1\"",
     "github/codeql-action/upload-sarif@v3",
   ]);

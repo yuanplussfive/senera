@@ -7,6 +7,10 @@ import { useSandboxRuntimeStatus } from "../../../Frontend/src/app/useSandboxRun
 import { useSessionCatalogSync } from "../../../Frontend/src/app/useSessionCatalogSync.ts";
 import { useSocketPostIngestEffects } from "../../../Frontend/src/app/useSocketPostIngestEffects.ts";
 import {
+  clearTestToastCalls,
+  readTestToastCalls,
+} from "../mocks/sonner.mjs";
+import {
   resolveSocketErrorToast,
   useSocketErrorToasts,
 } from "../../../Frontend/src/app/useSocketErrorToasts.ts";
@@ -16,31 +20,15 @@ import {
   useStore,
 } from "../../../Frontend/src/store/sessionStore.ts";
 
-const toastCalls = [];
-
-vi.mock("sonner", () => ({
-  toast: {
-    error: (title, options) => {
-      toastCalls.push({ variant: "error", title, options });
-    },
-    success: (title, options) => {
-      toastCalls.push({ variant: "success", title, options });
-    },
-    warning: (title, options) => {
-      toastCalls.push({ variant: "warning", title, options });
-    },
-  },
-}));
-
 beforeEach(() => {
   installLocalStorage();
-  toastCalls.length = 0;
+  clearTestToastCalls();
   resetStore();
 });
 
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 test("useSandboxRuntimeStatus ingests only sandbox status snapshots", async () => {
@@ -105,7 +93,7 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
     "profile.update",
   ]);
   expect(send.mock.calls.at(-1)?.[0].profile.name).toBe("Alice");
-  expect(toastCalls).toEqual([
+  expect(readTestToastCalls()).toEqual([
     expect.objectContaining({
       variant: "success",
       title: "恢复 2 个会话",
@@ -194,7 +182,7 @@ test("useSocketErrorToasts resolves history failures and tool failures from stor
     }))).toBe(true);
   });
 
-  expect(toastCalls).toEqual([
+  expect(readTestToastCalls()).toEqual([
     expect.objectContaining({
       variant: "error",
       title: "历史同步失败",
@@ -249,7 +237,7 @@ test("useConfigMutationController tracks plugin config requests through success 
     kind: "update",
     status: "success",
   }));
-  expect(toastCalls).toContainEqual(expect.objectContaining({
+  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({
     variant: "success",
     title: "插件配置已保存",
   }));
@@ -272,7 +260,7 @@ test("useConfigMutationController rolls back disconnected sends and records prov
 
   expect(requestId).toBe(null);
   expect(handleRef.current.configOperation).toBe(null);
-  expect(toastCalls).toContainEqual(expect.objectContaining({
+  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({
     variant: "error",
     title: "主配置保存失败，连接可能已断开",
   }));
@@ -292,7 +280,7 @@ test("useConfigMutationController rolls back disconnected sends and records prov
   });
 
   expect(handleRef.current.providerModelLoadingIds.openai).toBeUndefined();
-  expect(toastCalls).toContainEqual(expect.objectContaining({
+  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({
     variant: "error",
     title: "模型列表检测失败",
     options: { description: "bad endpoint" },

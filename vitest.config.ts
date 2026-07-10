@@ -9,6 +9,10 @@ const workspaceRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = (...segments: string[]): string => normalizePath(path.join(workspaceRoot, ...segments));
 const workspacePaths = (values: readonly string[]): string[] =>
   values.map((value) => workspacePath(...value.split("/")));
+const frontendTestDoubles = {
+  "react-virtuoso": workspacePath("Scripts", "FrontendTests", "mocks", "react-virtuoso.mjs"),
+  sonner: workspacePath("Scripts", "FrontendTests", "mocks", "sonner.mjs"),
+} as const;
 
 export default defineConfig({
   root: workspaceRoot,
@@ -18,6 +22,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": workspacePath("Frontend", "src"),
+      ...frontendTestDoubles,
     },
     dedupe: [
       "react",

@@ -4,28 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
-vi.mock("react-virtuoso", () => ({
-  Virtuoso: React.forwardRef(function MockVirtuoso(props, ref) {
-    React.useImperativeHandle(ref, () => ({
-      scrollToIndex: vi.fn(),
-      scrollTo: vi.fn(),
-    }));
-    const Header = props.components?.Header;
-    const Footer = props.components?.Footer;
-    return React.createElement(
-      "div",
-      { "data-testid": "virtuoso" },
-      Header ? React.createElement(Header) : null,
-      props.data.map((item, index) => React.createElement(
-        "div",
-        { key: props.computeItemKey?.(index, item) ?? index },
-        props.itemContent(index, item),
-      )),
-      Footer ? React.createElement(Footer) : null,
-    );
-  }),
-}));
-
 vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
   TooltipProvider: ({ children }) => React.createElement(React.Fragment, null, children),
   Tooltip: ({ children }) => React.createElement(React.Fragment, null, children),
@@ -42,7 +20,7 @@ const {
 
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
   clearPersistedStore();
 });
 

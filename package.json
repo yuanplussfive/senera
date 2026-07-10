@@ -177,6 +177,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.6.2",
     "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^4.7.0",
     "@vitest/coverage-v8": "^4.1.10",
     "concurrently": "^10.0.3",
     "electron": "^42.5.0",
@@ -188,5 +189,15 @@
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
+  },
+  "optionalDependencies": {
+    "@boundaryml/baml-darwin-arm64": "^0.222.0",
+    "@boundaryml/baml-darwin-x64": "^0.222.0",
+    "@boundaryml/baml-linux-arm64-gnu": "^0.222.0",
+    "@boundaryml/baml-linux-arm64-musl": "^0.222.0",
+    "@boundaryml/baml-linux-x64-gnu": "^0.222.0",
+    "@boundaryml/baml-linux-x64-musl": "^0.222.0",
+    "@boundaryml/baml-win32-arm64-msvc": "^0.222.0",
+    "@boundaryml/baml-win32-x64-msvc": "^0.222.0"
   }
 }
