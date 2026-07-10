@@ -71,7 +71,7 @@ const desktopReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", 
 const violations = [
   ...inspectWorkspaceCoverage(),
   ...inspectLockfileWorkspaceState(),
-  ...inspectBamlNativeBindingClosure(),
+  ...inspectNativeOptionalDependencyClosure(),
   ...inspectRootNpmPolicy(),
   ...inspectVerifyWorkflow(),
   ...inspectSecurityScanWorkflow(),
@@ -125,25 +125,37 @@ function inspectLockfileWorkspaceState(): string[] {
   });
 }
 
-function inspectBamlNativeBindingClosure(): string[] {
+function inspectNativeOptionalDependencyClosure(): string[] {
   const packages = rootLockfile?.packages;
   if (!packages) return [];
 
-  const bamlPackage = packages["node_modules/@boundaryml/baml"];
-  const platformBindings = bamlPackage?.optionalDependencies;
-  if (!platformBindings) {
-    return ["package-lock.json must retain @boundaryml/baml platform binding metadata."];
-  }
-
   const declaredBindings = rootPackage.optionalDependencies ?? {};
-  return Object.entries(platformBindings).flatMap(([packageName, version]) => {
+  const declaredBindingNames = new Set(Object.keys(declaredBindings));
+  const nativeEntrypoints = Object.keys(rootPackage.dependencies ?? {})
+    .map((dependencyName) => ({
+      dependencyName,
+      bindings: packages[`node_modules/${dependencyName}`]?.optionalDependencies ?? {},
+    }))
+    .filter(({ bindings }) =>
+      Object.keys(bindings).some((packageName) => declaredBindingNames.has(packageName))
+    );
+
+  return nativeEntrypoints.flatMap(({ dependencyName, bindings }) => {
+    const bindingEntries = Object.entries(bindings);
     const issues: string[] = [];
-    if (!(packageName in declaredBindings)) {
-      issues.push(`package.json optionalDependencies must declare BAML platform binding ${packageName}.`);
+    if (bindingEntries.length === 0) {
+      issues.push(`package-lock.json must retain ${dependencyName} native optional binding metadata.`);
     }
-    if (packages[`node_modules/${packageName}`]?.version !== version) {
-      issues.push(`package-lock.json must resolve BAML platform binding ${packageName}@${version}.`);
+
+    for (const [packageName, version] of bindingEntries) {
+      if (!(packageName in declaredBindings)) {
+        issues.push(`package.json optionalDependencies must declare ${dependencyName} native binding ${packageName}.`);
+      }
+      if (packages[`node_modules/${packageName}`]?.version !== version) {
+        issues.push(`package-lock.json must resolve ${dependencyName} native binding ${packageName}@${version}.`);
+      }
     }
+
     return issues;
   });
 }

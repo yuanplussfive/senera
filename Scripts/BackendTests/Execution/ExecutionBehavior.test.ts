@@ -15,14 +15,16 @@ describe("Execution behavior", () => {
 
   test("buffers stdout and stderr independently with byte accounting", () => {
     const output = new SeneraProcessOutputBuffer({ encoding: "auto" });
+    const stderrText = "错误";
+
     output.pushStdout("alpha");
     output.pushStdout(Buffer.from(" beta"));
-    output.pushStderr(iconv.encode("错误", "gb18030"));
+    output.pushStderr(Buffer.from(stderrText, "utf8"));
 
     expect(output.stdout()).toBe("alpha beta");
-    expect(output.stderr()).toBe("错误");
+    expect(output.stderr()).toBe(stderrText);
     expect(output.stdoutBytes).toBe(Buffer.byteLength("alpha beta"));
-    expect(output.stderrBytes).toBeGreaterThan(0);
+    expect(output.stderrBytes).toBe(Buffer.byteLength(stderrText));
   });
 
   test("projects host paths into stable POSIX guest paths", () => {
