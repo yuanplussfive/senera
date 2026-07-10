@@ -20,8 +20,11 @@ export class AgentPluginRegistry {
   private readonly templates = new Map<string, RegisteredTemplate>();
   private readonly rootCommandPolicies = new Map<string, RootCommandManifest>();
   private readonly rootCommandPolicyPlugins = new Map<string, LoadedPlugin>();
+  private readonly declaredToolNames = new Set<string>();
 
   registerPlugin(plugin: LoadedPlugin): void {
+    this.registerDeclaredTools(plugin);
+
     if (!isLoadedPluginAvailable(plugin)) {
       return;
     }
@@ -45,6 +48,10 @@ export class AgentPluginRegistry {
 
   listTools(): RegisteredTool[] {
     return [...this.tools.values()];
+  }
+
+  filterAvailableToolNames(toolNames: readonly string[]): string[] {
+    return [...new Set(toolNames.filter((toolName) => this.tools.has(toolName)))];
   }
 
   getSkill(name: string): RegisteredSkill | undefined {
@@ -138,11 +145,17 @@ export class AgentPluginRegistry {
     }
   }
 
+  private registerDeclaredTools(plugin: LoadedPlugin): void {
+    for (const tool of plugin.manifest.Tools ?? []) {
+      this.declaredToolNames.add(tool.Name);
+    }
+  }
+
   private validateSkillToolReferences(): string[] {
     const issues: string[] = [];
     for (const skill of this.skills.values()) {
       for (const toolName of skill.recommendedTools) {
-        if (!this.tools.has(toolName)) {
+        if (!this.declaredToolNames.has(toolName)) {
           issues.push(
             agentErrorMessage("plugin.skillRecommendedToolMissing", {
               member: this.describePluginMember("Skill", skill.plugin, skill.name),

@@ -62,7 +62,7 @@ export class AgentSkillActivationService {
           summary: catalog.summary,
           useCases: catalog.useCases,
           avoid: catalog.avoid,
-          recommendedTools: selection.skill.recommendedTools,
+          recommendedTools: this.registry.filterAvailableToolNames(selection.skill.recommendedTools),
           evidenceRequirements: selection.skill.evidenceRequirements,
           descriptionFile: selection.skill.descriptionFile,
           matchedTerms: selection.matchedTerms,
@@ -75,9 +75,7 @@ export class AgentSkillActivationService {
   recommendedToolNames(skills: readonly AgentActivatedSkill[]): string[] {
     return [
       ...new Set(
-        skills
-          .flatMap((skill) => skill.recommendedTools)
-          .filter((toolName) => Boolean(this.registry.getTool(toolName))),
+        skills.flatMap((skill) => skill.recommendedTools),
       ),
     ];
   }

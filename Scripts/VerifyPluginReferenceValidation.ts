@@ -13,6 +13,24 @@ registry.registerPlugin(pluginFixture({
 }));
 assert.doesNotThrow(() => registry.validateAgentReferences());
 
+const optionalRecommendedTool = new AgentPluginRegistry();
+optionalRecommendedTool.registerPlugin(pluginFixture({
+  name: "OptionalToolProvider",
+  tools: ["OptionalTool"],
+  recommendedTools: [],
+  rootCommandToolNames: [],
+  available: false,
+  rootKind: "User",
+}));
+optionalRecommendedTool.registerPlugin(pluginFixture({
+  name: "OptionalToolConsumer",
+  tools: ["KnownTool"],
+  recommendedTools: ["KnownTool", "OptionalTool"],
+  rootCommandToolNames: [],
+}));
+assert.equal(optionalRecommendedTool.getTool("OptionalTool"), undefined);
+assert.doesNotThrow(() => optionalRecommendedTool.validateAgentReferences());
+
 const missingSkillTool = new AgentPluginRegistry();
 missingSkillTool.registerPlugin(pluginFixture({
   name: "MissingSkillToolReference",
@@ -72,13 +90,20 @@ function pluginFixture(options: {
   recommendedTools: readonly string[];
   rootCommandToolNames: readonly string[];
   rootCommandHostCapability?: string;
+  available?: boolean;
+  rootKind?: LoadedPlugin["rootKind"];
 }): LoadedPlugin {
-  const rootPath = path.join(process.cwd(), "System", "Plugins", options.name);
+  const rootKind = options.rootKind ?? "System";
+  const rootPath = path.join(
+    process.cwd(),
+    rootKind === "System" ? "System" : "Plugins",
+    options.name,
+  );
   return {
     rootPath,
-    rootKind: "System",
+    rootKind,
     manifestPath: path.join(rootPath, "PluginManifest.json"),
-    config: loadedPluginConfig(rootPath),
+    config: loadedPluginConfig(rootPath, options.available ?? true),
     manifest: {
       Plugin: {
         Name: options.name,
@@ -148,14 +173,14 @@ function rootCommandAllowedTools(options: {
   return [{ Source: "None" }];
 }
 
-function loadedPluginConfig(rootPath: string): LoadedPlugin["config"] {
+function loadedPluginConfig(rootPath: string, available: boolean): LoadedPlugin["config"] {
   return {
     fileName: "PluginConfig.toml",
     path: path.join(rootPath, "PluginConfig.toml"),
     exists: false,
-    source: "default",
+    source: available ? "default" : "example",
     templateExists: false,
-    needsUserConfig: false,
+    needsUserConfig: !available,
     toml: "",
     sections: [],
     runtime: {

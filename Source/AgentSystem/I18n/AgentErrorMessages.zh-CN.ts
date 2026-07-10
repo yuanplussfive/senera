@@ -73,7 +73,7 @@ export const AgentErrorMessagesZhCn = {
   "plugin.referenceValidationFailed": "插件引用校验失败：",
   "plugin.rootCommandHostCapabilityMissing": "{member} 的 AllowedTools 引用了未加载 HostCapability：{capability}",
   "plugin.rootCommandNamedToolMissing": "{member} 的 AllowedTools 引用了未加载工具：{toolName}",
-  "plugin.skillRecommendedToolMissing": "{member} 的 RecommendedTools 引用了未加载工具：{toolName}",
+  "plugin.skillRecommendedToolMissing": "{member} 的 RecommendedTools 引用了未声明工具：{toolName}",
   "plugin.manifestInvalid": "插件声明无效：{manifestPath}",
 
   "rootCommand.policyActionMismatch": "RootCommand policy 与行动不匹配：{policyAction} != {decisionAction}",

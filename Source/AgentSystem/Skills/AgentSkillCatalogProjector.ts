@@ -59,7 +59,7 @@ export class AgentSkillCatalogProjector {
       useCases: search?.UseCases ?? [],
       examples: search?.Examples ?? [],
       avoid: search?.Avoid ?? [],
-      recommendedTools: skill.recommendedTools,
+      recommendedTools: this.registry.filterAvailableToolNames(skill.recommendedTools),
       priority: skill.plugin.manifest.Prompting?.Priority,
     };
   }
