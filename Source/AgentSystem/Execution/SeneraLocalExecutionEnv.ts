@@ -359,7 +359,11 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
-  async cleanup(): Promise<void> {}
+  async cleanup(): Promise<void> {
+    const roots = [...this.ownedTempRoots];
+    this.ownedTempRoots.clear();
+    await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
+  }
 
   private resolveWorkspaceCwd(value: string | undefined): string {
     const resolved = resolveWorkspacePath(this.workspaceRoot, value);

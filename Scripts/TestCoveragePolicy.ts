@@ -39,23 +39,24 @@ const sourceLocalTestPattern = /\.test\.(ts|tsx|js|jsx|mjs|mts)$/;
 const frontendTestLayers = [
   {
     name: "State",
+    minimumCases: 8,
     forbidsImportsFrom: [
       "Frontend/src/features",
       "Frontend/src/app",
     ],
   },
-  { name: "Api" },
-  { name: "App" },
-  { name: "Store" },
-  { name: "Feature" },
+  { name: "Api", minimumCases: 4 },
+  { name: "App", minimumCases: 5 },
+  { name: "Store", minimumCases: 6 },
+  { name: "Feature", minimumCases: 20 },
 ] as const satisfies readonly TestLayerPolicy[];
 
 const backendTestLayers = [
-  { name: "ActionPlanner", minimumCases: 8 },
-  { name: "Execution", minimumCases: 3 },
-  { name: "Memory", minimumCases: 7 },
-  { name: "Pi", minimumCases: 8 },
-  { name: "Session", minimumCases: 3 },
+  { name: "ActionPlanner", minimumCases: 10 },
+  { name: "Execution", minimumCases: 15 },
+  { name: "Memory", minimumCases: 10 },
+  { name: "Pi", minimumCases: 10 },
+  { name: "Session", minimumCases: 10 },
   { name: "Text", minimumCases: 3 },
   { name: "ToolSearch", minimumCases: 3 },
   { name: "Xml", minimumCases: 3 },
@@ -87,10 +88,10 @@ export const FrontendTestCoveragePolicy = {
     "Frontend/src/**/*.d.ts",
   ],
   thresholds: {
-    lines: 22,
-    functions: 18,
-    branches: 13,
-    statements: 21,
+    lines: 38,
+    functions: 35,
+    branches: 27,
+    statements: 36,
   },
   requiredLayers: frontendTestLayers,
 } as const satisfies TestSuiteCoveragePolicy;
@@ -112,10 +113,10 @@ export const BackendTestCoveragePolicy = {
     "Source/AgentSystem/**/*.d.ts",
   ],
   thresholds: {
-    lines: 25,
-    functions: 25,
-    branches: 20,
-    statements: 25,
+    lines: 40,
+    functions: 38,
+    branches: 30,
+    statements: 40,
   },
   requiredLayers: backendTestLayers,
 } as const satisfies TestSuiteCoveragePolicy;
