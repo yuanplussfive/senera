@@ -7,6 +7,7 @@ export type CoverageThresholds = {
 
 export type TestLayerPolicy = {
   name: string;
+  minimumCases?: number;
   forbidsImportsFrom?: readonly string[];
 };
 
@@ -50,14 +51,14 @@ const frontendTestLayers = [
 ] as const satisfies readonly TestLayerPolicy[];
 
 const backendTestLayers = [
-  { name: "ActionPlanner" },
-  { name: "Execution" },
-  { name: "Memory" },
-  { name: "Pi" },
-  { name: "Session" },
-  { name: "Text" },
-  { name: "ToolSearch" },
-  { name: "Xml" },
+  { name: "ActionPlanner", minimumCases: 8 },
+  { name: "Execution", minimumCases: 3 },
+  { name: "Memory", minimumCases: 7 },
+  { name: "Pi", minimumCases: 8 },
+  { name: "Session", minimumCases: 3 },
+  { name: "Text", minimumCases: 3 },
+  { name: "ToolSearch", minimumCases: 3 },
+  { name: "Xml", minimumCases: 3 },
 ] as const satisfies readonly TestLayerPolicy[];
 
 export const FrontendTestCoveragePolicy = {
@@ -111,10 +112,10 @@ export const BackendTestCoveragePolicy = {
     "Source/AgentSystem/**/*.d.ts",
   ],
   thresholds: {
-    lines: 16,
-    functions: 16,
-    branches: 13,
-    statements: 16,
+    lines: 25,
+    functions: 25,
+    branches: 20,
+    statements: 25,
   },
   requiredLayers: backendTestLayers,
 } as const satisfies TestSuiteCoveragePolicy;

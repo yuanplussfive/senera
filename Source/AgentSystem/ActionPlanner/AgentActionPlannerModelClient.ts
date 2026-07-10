@@ -182,3 +182,20 @@ export class AgentActionPlannerModelClient {
   }
 
 }
+
+/** The narrow planner capability required by turn understanding and routing. */
+export interface AgentActionPlannerCoreClient {
+  understandUserTurn(
+    input: ActionPlanInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<BamlTurnUnderstanding>;
+  routeInteraction(
+    input: ActionPlanInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<BamlInteractionRoute>;
+  repairTurnUnderstanding(options: {
+    input: ActionPlanInput;
+    invalidUnderstanding: string;
+    issues: string[];
+  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlTurnUnderstanding>;
+}

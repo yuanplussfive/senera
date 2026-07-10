@@ -6,7 +6,11 @@ import type {
   AgentLoopCommand,
   AgentLoopCommandResult,
 } from "../Loop/AgentLoopStateTypes.js";
-import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
+import type {
+  AgentPlanningService,
+  AgentPromptContextService,
+  AgentRetrievalService,
+} from "../Runtime/AgentRuntimeServices.js";
 import type { AgentActionPlannerContextBuilder } from "./AgentActionPlannerContext.js";
 import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import { AgentInteractionRunModes } from "./AgentInteractionRouter.js";
@@ -14,12 +18,32 @@ import type { AgentInteractionRouteResult } from "./AgentInteractionRouter.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import { projectPiToolAgentRootCommand } from "../Pi/AgentPiRootCommand.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
+import type { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 
 export interface AgentPlanningCommandHandlerOptions {
-  runtime: AgentSystemRuntime;
-  eventFactory: AgentLoopEventFactory;
-  actionPlannerContextBuilder: AgentActionPlannerContextBuilder;
+  runtime: AgentPlanningCommandRuntime;
+  eventFactory: Pick<AgentLoopEventFactory, "actionPlannerStage">;
+  actionPlannerContextBuilder: Pick<AgentActionPlannerContextBuilder, "buildInput">;
   agentLoopConfig: ResolvedAgentLoopConfig;
+}
+
+export interface AgentPlanningCommandRuntime {
+  services: {
+    planning: AgentPlanningService;
+    retrieval: Pick<
+      AgentRetrievalService,
+      "resolvePlannedLoadedTools" | "rememberAutoSearch"
+    >;
+    promptContext: Pick<
+      AgentPromptContextService,
+      | "activateSkills"
+      | "recommendedSkillTools"
+      | "buildRootCommand"
+      | "plannerRoleplayPreset"
+      | "toolCatalog"
+    >;
+  };
+  conversationPolicy: Pick<AgentConversationPolicy, "materialize">;
 }
 
 export class AgentPlanningCommandHandler {

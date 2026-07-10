@@ -36,9 +36,13 @@ export interface AgentPiOpenSessionResult {
   storage: "created" | "existing";
 }
 
+export interface AgentPiSessionStorePort {
+  openOrCreate(request: AgentPiOpenSessionRequest): Promise<AgentPiOpenSessionResult>;
+}
+
 const PiSessionOpenQueues = new Map<string, Promise<AgentPiOpenSessionResult>>();
 
-export class AgentPiSessionStore {
+export class AgentPiSessionStore implements AgentPiSessionStorePort {
   private readonly repo: JsonlSessionRepo;
   private readonly metadataBySessionId = new Map<string, JsonlSessionMetadata>();
 

@@ -36,6 +36,10 @@ import {
 } from "./AgentMemorySourceRepository.js";
 import { memoryItemEmbeddingText } from "./AgentMemoryText.js";
 import { AgentMemoryWriteResolver } from "./AgentMemoryWriteResolver.js";
+import type {
+  AgentMemoryWriteResolutionRequest,
+  AgentMemoryWriteResolverOptions,
+} from "./AgentMemoryWriteResolver.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 
 const MemoryWriteOperations = [
@@ -107,6 +111,23 @@ export interface MemoryWriteResult {
   guidance: string;
 }
 
+/** The model-mediated decision is a runtime boundary, not a repository concern. */
+export interface AgentMemoryWriteDecisionResolver {
+  resolve(input: AgentMemoryWriteResolutionRequest): Promise<AgentMemoryConsolidationActionRecord>;
+}
+
+export type AgentMemoryWriteDecisionResolverFactory = (
+  options: AgentMemoryWriteResolverOptions,
+) => AgentMemoryWriteDecisionResolver;
+
+export interface AgentMemoryWriteOptions {
+  repository: AgentMemorySourceRepository;
+  config: AgentSystemConfig;
+  requestId?: string;
+  signal?: AbortSignal;
+  createDecisionResolver?: AgentMemoryWriteDecisionResolverFactory;
+}
+
 export const writeMemoryHostTool: AgentHostToolHandler = async (args, context) => {
   const parsed = MemoryWriteArgumentsSchema.safeParse(args);
   if (!parsed.success) {
@@ -153,12 +174,7 @@ export const writeMemoryHostTool: AgentHostToolHandler = async (args, context) =
 
 export async function writeAgentMemory(
   args: MemoryWriteToolArguments,
-  options: {
-    repository: AgentMemorySourceRepository;
-    config: AgentSystemConfig;
-    requestId?: string;
-    signal?: AbortSignal;
-  },
+  options: AgentMemoryWriteOptions,
 ): Promise<MemoryWriteResult> {
   const operation = args.operation ?? "create";
   const decision = await resolveDirectMemoryWrite(args, operation, options);
@@ -207,12 +223,7 @@ export async function writeAgentMemory(
 async function resolveDirectMemoryWrite(
   args: MemoryWriteToolArguments,
   operation: AgentMemoryDirectWriteOperation,
-  options: {
-    repository: AgentMemorySourceRepository;
-    config: AgentSystemConfig;
-    requestId?: string;
-    signal?: AbortSignal;
-  },
+  options: AgentMemoryWriteOptions,
 ): Promise<AgentMemoryConsolidationActionRecord> {
   const proposed = directMemoryWriteProposedAction(args, operation);
   const hasComparableMemory = options.repository.listActiveMemoryItems()
@@ -224,7 +235,7 @@ async function resolveDirectMemoryWrite(
   const learningConfig = resolveToolLearningConfig(options.config);
   const memoryLearningConfig = resolveMemoryLearningConfig(options.config);
   const vectorConfig = resolveVectorModelsConfig(options.config);
-  const resolver = new AgentMemoryWriteResolver({
+  const resolverOptions = {
     repository: options.repository,
     client: new AgentActionPlannerModelClient(
       resolveModelProviderConfig(options.config),
@@ -235,7 +246,8 @@ async function resolveDirectMemoryWrite(
     memoryLearningConfig,
     embeddingModel: vectorConfig.Embedding.Model,
     maxRepairAttempts: learningConfig.MaxRepairAttempts,
-  });
+  } satisfies AgentMemoryWriteResolverOptions;
+  const resolver = (options.createDecisionResolver ?? createAgentMemoryWriteDecisionResolver)(resolverOptions);
   return resolver.resolve({
     source: "direct_tool",
     requestId: options.requestId ?? "",
@@ -267,11 +279,7 @@ function directMemoryWriteProposedAction(
 
 async function writeMemoryEmbedding(
   item: AgentMemoryItemRecord,
-  options: {
-    repository: AgentMemorySourceRepository;
-    config: AgentSystemConfig;
-    signal?: AbortSignal;
-  },
+  options: Pick<AgentMemoryWriteOptions, "repository" | "config" | "signal">,
 ): Promise<void> {
   const vectorConfig = resolveVectorModelsConfig(options.config);
   if (!vectorConfig.Embedding.Enabled) {
@@ -293,6 +301,12 @@ async function writeMemoryEmbedding(
     embedding,
     updatedAt: item.updatedAt,
   }]);
+}
+
+function createAgentMemoryWriteDecisionResolver(
+  options: AgentMemoryWriteResolverOptions,
+): AgentMemoryWriteDecisionResolver {
+  return new AgentMemoryWriteResolver(options);
 }
 
 function projectMemoryWriteResult(

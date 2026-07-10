@@ -9,11 +9,11 @@ import {
 } from "./AgentActionPlannerTelemetry.js";
 import { runAgentActionPlannerStage } from "./AgentActionPlannerStageRunner.js";
 import { runAgentActionPlannerRepairLoop } from "./AgentActionPlannerRepairLoop.js";
-import type { AgentActionPlannerModelClient } from "./AgentActionPlannerModelClient.js";
+import type { AgentActionPlannerCoreClient } from "./AgentActionPlannerModelClient.js";
 
 export class AgentActionPlannerUnderstanding {
   constructor(
-    private readonly client: AgentActionPlannerModelClient,
+    private readonly client: AgentActionPlannerCoreClient,
     private readonly maxRepairAttempts: ResolvedAgentActionPlannerConfig["MaxRepairAttempts"],
   ) {}
 

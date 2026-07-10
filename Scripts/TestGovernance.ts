@@ -28,7 +28,7 @@ export function verifyTestGovernance(options: TestGovernanceOptions): number {
     `Expected ${options.policy.label} tests across configured layers, found ${testFiles.length}.`,
   );
   assertTestFilesDeclareCases(options, testSources);
-  assertRequiredLayers(options.policy, testRoot, testFiles);
+  assertRequiredLayers(options.policy, testRoot, testFiles, testSources);
   assertTestFilesStayInScripts(options, sourceRoot, testRoot);
   assertLayerImportRules(options, testRoot, testFiles, testSources);
   assertCoveragePolicy(options.policy);
@@ -48,11 +48,27 @@ export function resolveWorkspaceRoot(): string {
   return cwd;
 }
 
-function assertRequiredLayers(policy: TestSuitePolicy, testRoot: string, testFiles: readonly string[]): void {
-  const missing = (policy.requiredLayers ?? [])
-    .filter((layer) => !testFiles.some((file) => isUnderTestLayer(testRoot, file, layer.name)))
-    .map((layer) => layer.name);
-  assert.deepEqual(missing, [], `${policy.label} tests are missing required layers: ${missing.join(", ")}`);
+function assertRequiredLayers(
+  policy: TestSuitePolicy,
+  testRoot: string,
+  testFiles: readonly string[],
+  testSources: ReadonlyMap<string, string>,
+): void {
+  const violations = (policy.requiredLayers ?? []).flatMap((layer) => {
+    const layerFiles = testFiles.filter((file) => isUnderTestLayer(testRoot, file, layer.name));
+    if (layerFiles.length === 0) {
+      return [`${layer.name} has no test files`];
+    }
+
+    const cases = layerFiles.reduce(
+      (count, file) => count + countVitestCaseCalls(testSources.get(file) ?? ""),
+      0,
+    );
+    return layer.minimumCases !== undefined && cases < layer.minimumCases
+      ? [`${layer.name} has ${cases} cases, requires ${layer.minimumCases}`]
+      : [];
+  });
+  assert.deepEqual(violations, [], `${policy.label} test layer requirements failed: ${violations.join("; ")}`);
 }
 
 function assertTestFilesDeclareCases(

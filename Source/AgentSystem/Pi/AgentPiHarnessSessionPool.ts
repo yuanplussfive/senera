@@ -22,6 +22,7 @@ import {
   projectPiHarnessTraceEvent,
 } from "./AgentPiHarnessEvents.js";
 import { AgentPiHarnessSession } from "./AgentPiHarnessSession.js";
+import type { AgentPiSession } from "./AgentPiSubstrate.js";
 import {
   renderPiHarnessSystemPrompt,
   type AgentPiSelectedPromptTemplateFrame,
@@ -71,8 +72,13 @@ export interface AgentPiHarnessLeaseInput {
 }
 
 export interface AgentPiHarnessLeaseResult {
-  session: AgentPiHarnessSession;
+  session: AgentPiSession;
   storage: "created" | "existing";
+}
+
+export interface AgentPiHarnessSessionPoolPort {
+  lease(input: AgentPiHarnessLeaseInput): Promise<AgentPiHarnessLeaseResult>;
+  close(): void;
 }
 
 interface PooledHarness {
@@ -99,7 +105,7 @@ class AgentPiMutableHarnessFrame {
   }
 }
 
-export class AgentPiHarnessSessionPool {
+export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort {
   private readonly sessions = new Map<string, PooledHarness>();
   private readonly leaseQueues = new Map<string, Promise<void>>();
 

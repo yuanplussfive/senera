@@ -3,7 +3,10 @@ import type {
   ResolvedAgentActionPlannerConfig,
   ResolvedAgentModelProviderConfig,
 } from "../Types/AgentConfigTypes.js";
-import { AgentActionPlannerModelClient } from "./AgentActionPlannerModelClient.js";
+import {
+  AgentActionPlannerModelClient,
+  type AgentActionPlannerCoreClient,
+} from "./AgentActionPlannerModelClient.js";
 import {
   summarizePlannerFailure,
 } from "./AgentActionPlannerFailure.js";
@@ -30,21 +33,19 @@ export {
 } from "./AgentActionPlannerTypes.js";
 
 export class AgentActionPlanner {
-  private readonly turnUnderstandingClient: AgentActionPlannerModelClient;
-  private readonly planningClient: AgentActionPlannerModelClient;
+  private readonly turnUnderstandingClient: AgentActionPlannerCoreClient;
+  private readonly planningClient: AgentActionPlannerCoreClient;
   private readonly understanding: AgentActionPlannerUnderstanding;
 
   constructor(
     private readonly config: ResolvedAgentActionPlannerConfig,
     model: ResolvedAgentModelProviderConfig,
     _catalog: unknown,
+    dependencies: AgentActionPlannerDependencies = {},
   ) {
-    this.turnUnderstandingClient = new AgentActionPlannerModelClient(model, config.TurnUnderstandingClient, {
-      maxRepairAttempts: config.MaxRepairAttempts,
-    });
-    this.planningClient = new AgentActionPlannerModelClient(model, config.PlanningClient, {
-      maxRepairAttempts: config.MaxRepairAttempts,
-    });
+    const createClient = dependencies.createClient ?? createAgentActionPlannerClient;
+    this.turnUnderstandingClient = createClient(model, config.TurnUnderstandingClient, config.MaxRepairAttempts);
+    this.planningClient = createClient(model, config.PlanningClient, config.MaxRepairAttempts);
     this.understanding = new AgentActionPlannerUnderstanding(
       this.turnUnderstandingClient,
       config.MaxRepairAttempts,
@@ -118,4 +119,22 @@ export class AgentActionPlanner {
   private isEnabled(): boolean {
     return isActionPlannerReady(this.config);
   }
+}
+
+export interface AgentActionPlannerDependencies {
+  createClient?: (
+    model: ResolvedAgentModelProviderConfig,
+    config: ResolvedAgentActionPlannerConfig["Client"],
+    maxRepairAttempts: number,
+  ) => AgentActionPlannerCoreClient;
+}
+
+function createAgentActionPlannerClient(
+  model: ResolvedAgentModelProviderConfig,
+  config: ResolvedAgentActionPlannerConfig["Client"],
+  maxRepairAttempts: number,
+): AgentActionPlannerCoreClient {
+  return new AgentActionPlannerModelClient(model, config, {
+    maxRepairAttempts,
+  });
 }

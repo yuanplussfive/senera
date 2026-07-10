@@ -20,8 +20,14 @@ import { AgentPiToolPermissionHook } from "./AgentPiToolPermissionHook.js";
 import {
   projectSeneraModelProviderToPi,
 } from "./AgentPiModelProjector.js";
-import { AgentPiHarnessSessionPool } from "./AgentPiHarnessSessionPool.js";
-import { AgentPiSessionStore } from "./AgentPiSessionStore.js";
+import {
+  AgentPiHarnessSessionPool,
+  type AgentPiHarnessSessionPoolPort,
+} from "./AgentPiHarnessSessionPool.js";
+import {
+  AgentPiSessionStore,
+  type AgentPiSessionStorePort,
+} from "./AgentPiSessionStore.js";
 import { AgentPiResourceProjector } from "./AgentPiResourceProjector.js";
 import {
   projectSelectedPromptTemplateFrame,
@@ -47,10 +53,20 @@ export interface AgentPiSubstrateOptions {
   config: AgentSystemConfig;
   modelProvider: ResolvedAgentModelProviderConfig;
   registry: AgentPluginRegistry;
-  toolCallExecutor: AgentToolCallExecutor;
-  artifactRecorder: AgentToolExecutionArtifactRecorder;
+  toolCallExecutor: AgentPiToolCallExecutorPort;
+  artifactRecorder: AgentPiArtifactRecorderPort;
   executionEnv: SeneraExecutionEnv;
   toolPermissionGate?: AgentToolPermissionGate;
+  sessionStore?: AgentPiSessionStorePort;
+  harnessPool?: AgentPiHarnessSessionPoolPort;
+}
+
+export interface AgentPiToolCallExecutorPort {
+  execute: AgentToolCallExecutor["execute"];
+}
+
+export interface AgentPiArtifactRecorderPort {
+  record: AgentToolExecutionArtifactRecorder["record"];
 }
 
 export interface AgentPiSessionOptions extends AgentPiToolProjectionContext {
@@ -98,24 +114,24 @@ export interface AgentPiRuntimeService {
 export class AgentPiSubstrate implements AgentPiRuntimeService {
   private readonly provider: AgentPiProviderProjection;
   private readonly env: SeneraExecutionEnv;
-  private readonly sessionStore: AgentPiSessionStore;
+  private readonly sessionStore: AgentPiSessionStorePort;
   private readonly toolProjector: AgentPiToolRegistryProjector;
   private readonly permissionHook: AgentPiToolPermissionHook;
   private readonly resourceProjector: AgentPiResourceProjector;
-  private readonly harnessPool: AgentPiHarnessSessionPool;
+  private readonly harnessPool: AgentPiHarnessSessionPoolPort;
   private readonly contextPolicy: AgentPiContextPolicy;
 
   constructor(private readonly options: AgentPiSubstrateOptions) {
     this.provider = projectSeneraModelProviderToPi(options.modelProvider, options.config);
     this.contextPolicy = new AgentPiContextPolicy(options.modelProvider.Model);
     this.env = options.executionEnv;
-    this.sessionStore = new AgentPiSessionStore({
+    this.sessionStore = options.sessionStore ?? new AgentPiSessionStore({
       workspaceRoot: options.workspaceRoot,
       sessionsRoot: resolveAgentLoopConfig(options.config).PiSessions.RootDir,
       env: this.env,
     });
     this.resourceProjector = new AgentPiResourceProjector(options.registry);
-    this.harnessPool = new AgentPiHarnessSessionPool({
+    this.harnessPool = options.harnessPool ?? new AgentPiHarnessSessionPool({
       env: this.env,
       provider: this.provider,
       modelProvider: options.modelProvider,
