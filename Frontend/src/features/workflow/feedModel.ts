@@ -369,6 +369,10 @@ function mapTraceItem(step: TimelineStep): FeedItem {
 function summarizeToolSubtitle(step: TimelineStep): string | undefined {
   if (step.toolErrorMessage) return step.toolErrorMessage;
 
+  const presentation = step.toolPresentation;
+  if (presentation?.summary) return truncate(presentation.summary, 160);
+  if (presentation?.headline) return presentation.headline;
+
   const preview = summarizeUnknown(step.toolPreview);
   if (preview) return preview;
 

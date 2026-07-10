@@ -7,15 +7,12 @@ import { isMainModule } from "../../Source/AgentSystem/Core/AgentPath.js";
 
 const { sync: spawnSync } = crossSpawn;
 
-const DesktopSandboxBundlePath = "SandboxBundles/senera-sandbox-runtime.tar.zst";
-
 interface CommandInvocation {
   command: string;
   arguments: string[];
 }
 
 const steps = [
-  command("npm", ["run", "sandboxprepare", "--", "--bundle-dir", "SandboxBundles", "--export-bundle", DesktopSandboxBundlePath]),
   command("npm", ["run", "build"]),
   command("npm", ["--workspace", "senera-frontend", "run", "build"]),
   command("electron-builder", electronBuilderArguments()),

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveFrom } from "../Core/AgentPath.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type {
   PluginManifest,
@@ -80,7 +81,7 @@ export class AgentPluginScanner {
 
   private assertManifest(manifest: PluginManifest, manifestPath: string): void {
     if (!manifest?.Plugin?.Name || !manifest.Plugin.Version || !manifest.Plugin.Kind) {
-      throw new Error(`插件声明无效：${manifestPath}`);
+      throw new Error(agentErrorMessage("plugin.manifestInvalid", { manifestPath }));
     }
   }
 }

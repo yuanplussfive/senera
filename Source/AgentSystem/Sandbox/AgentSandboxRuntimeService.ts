@@ -1,10 +1,18 @@
 import {
   AgentSandboxRuntimeProvider,
+  type AgentSandboxRuntimeState,
   type AgentSandboxRuntimeSnapshot,
 } from "./AgentSandboxRuntimeTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { resolveSandboxRuntimeConfig } from "../AgentDefaults.js";
 import { resolveAgentSandboxRuntimePaths } from "./AgentSandboxRuntimePreparation.js";
+
+export interface AgentSandboxRuntimePreparationStatus {
+  state: AgentSandboxRuntimeState;
+  message?: string;
+  error?: string;
+  updatedAt?: string;
+}
 
 export interface AgentSandboxRuntimeServiceOptions {
   workspaceRoot?: string;
@@ -20,6 +28,9 @@ export class AgentSandboxRuntimeService {
   private readonly platform: NodeJS.Platform;
   private readonly clock: () => Date;
   private readonly packageAvailable: () => boolean;
+  private preparationStatus: AgentSandboxRuntimePreparationStatus = {
+    state: "unknown",
+  };
 
   constructor(options: AgentSandboxRuntimeServiceOptions = {}) {
     this.workspaceRoot = options.workspaceRoot ?? process.cwd();
@@ -32,20 +43,47 @@ export class AgentSandboxRuntimeService {
   snapshot(): AgentSandboxRuntimeSnapshot {
     const supported = this.packageAvailable();
     const paths = this.runtimePaths();
+    const state = supported ? this.preparationStatus.state : "fallback";
+    const effectiveMode = supported && state === "ready" ? "sandbox" : "fallback";
+    const diagnostics = this.diagnostics(supported, state);
     return {
       provider: AgentSandboxRuntimeProvider,
       platform: this.platform,
+      state,
       supported,
-      effectiveMode: supported ? "sandbox" : "fallback",
+      effectiveMode,
       paths,
       dependencies: {
-        errors: supported ? [] : ["microsandbox package is not resolvable"],
-        warnings: supported ? ["microsandbox host runtime is checked when a command executes"] : [],
+        errors: this.dependencyErrors(supported, state),
+        warnings: this.dependencyWarnings(supported, state),
       },
-      diagnostics: [supported ? microsandboxConfiguredDiagnostic() : microsandboxMissingDiagnostic()],
-      message: supported
-        ? "microsandbox 沙箱后端已配置，命令执行会优先进入 microVM。"
-        : "microsandbox 包不可用，当前使用本地执行边界。",
+      diagnostics,
+      message: this.message(supported, state),
+      updatedAt: this.clock().toISOString(),
+    };
+  }
+
+  markPreparing(message = "正在准备 microsandbox 沙箱运行时。"): void {
+    this.preparationStatus = {
+      state: "preparing",
+      message,
+      updatedAt: this.clock().toISOString(),
+    };
+  }
+
+  markReady(message = "microsandbox 沙箱运行时已可用。"): void {
+    this.preparationStatus = {
+      state: "ready",
+      message,
+      updatedAt: this.clock().toISOString(),
+    };
+  }
+
+  markFallback(error: unknown, message = "microsandbox 沙箱运行时不可用，已回落到本地执行边界。"): void {
+    this.preparationStatus = {
+      state: "fallback",
+      message,
+      error: errorMessage(error),
       updatedAt: this.clock().toISOString(),
     };
   }
@@ -61,6 +99,76 @@ export class AgentSandboxRuntimeService {
       resolveSandboxRuntimeConfig(config),
     );
   }
+
+  private dependencyErrors(
+    supported: boolean,
+    state: AgentSandboxRuntimeState,
+  ): string[] {
+    if (!supported) {
+      return ["microsandbox package is not resolvable"];
+    }
+    if (state === "fallback" && this.preparationStatus.error) {
+      return [this.preparationStatus.error];
+    }
+    return [];
+  }
+
+  private dependencyWarnings(
+    supported: boolean,
+    state: AgentSandboxRuntimeState,
+  ): string[] {
+    if (!supported) {
+      return [];
+    }
+    if (state === "unknown") {
+      return ["microsandbox host runtime has not been checked yet"];
+    }
+    if (state === "preparing") {
+      return ["microsandbox host runtime is being prepared"];
+    }
+    if (state === "fallback") {
+      return ["commands continue through the local fallback backend when allowed by tool policy"];
+    }
+    return [];
+  }
+
+  private diagnostics(
+    supported: boolean,
+    state: AgentSandboxRuntimeState,
+  ): AgentSandboxRuntimeSnapshot["diagnostics"] {
+    if (!supported) {
+      return [microsandboxMissingDiagnostic()];
+    }
+    if (state === "ready") {
+      return [microsandboxReadyDiagnostic()];
+    }
+    if (state === "preparing") {
+      return [microsandboxPreparingDiagnostic()];
+    }
+    if (state === "fallback") {
+      return [microsandboxFallbackDiagnostic(this.preparationStatus.error)];
+    }
+    return [microsandboxConfiguredDiagnostic()];
+  }
+
+  private message(
+    supported: boolean,
+    state: AgentSandboxRuntimeState,
+  ): string {
+    if (!supported) {
+      return "microsandbox 包不可用，当前使用本地执行边界。";
+    }
+    if (state === "ready") {
+      return this.preparationStatus.message ?? "microsandbox 沙箱运行时已可用。";
+    }
+    if (state === "preparing") {
+      return this.preparationStatus.message ?? "正在准备 microsandbox 沙箱运行时。";
+    }
+    if (state === "fallback") {
+      return this.preparationStatus.message ?? "microsandbox 沙箱运行时不可用，当前使用本地执行边界。";
+    }
+    return "microsandbox 沙箱后端已配置，命令执行会优先进入 microVM。";
+  }
 }
 
 function microsandboxConfiguredDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
@@ -73,6 +181,46 @@ function microsandboxConfiguredDiagnostic(): AgentSandboxRuntimeSnapshot["diagno
       "默认使用只读工作区挂载。",
       "默认禁用沙箱网络。",
       "不会再触发旧的 Windows UAC 安装或修复流程。",
+    ],
+  };
+}
+
+function microsandboxPreparingDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
+  return {
+    code: "microsandbox_runtime_preparing",
+    severity: "warning",
+    message: "microsandbox 沙箱运行时正在准备。",
+    recommendation: "可继续使用 Senera；准备完成前允许 fallback 的工具会使用本地执行边界。",
+    details: [
+      "桌面端首次启动会自动检查并准备沙箱运行时。",
+      "首次使用沙箱镜像可能需要网络。",
+    ],
+  };
+}
+
+function microsandboxReadyDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
+  return {
+    code: "microsandbox_runtime_ready",
+    severity: "warning",
+    message: "microsandbox 沙箱运行时可用。",
+    recommendation: "支持沙箱的工具会优先进入 microVM；工具策略允许时仍可在不可用时 fallback。",
+    details: [
+      "默认使用只读工作区挂载。",
+      "默认禁用沙箱网络，除非工具策略声明允许网络。",
+    ],
+  };
+}
+
+function microsandboxFallbackDiagnostic(error: string | undefined): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
+  return {
+    code: "microsandbox_runtime_fallback",
+    severity: "warning",
+    message: "microsandbox 沙箱运行时不可用。",
+    recommendation: "如需 OS 沙箱隔离，请启用系统虚拟化能力后重启 Senera。",
+    details: [
+      "Senera 会继续使用本地执行边界、工作区路径守卫和审批系统。",
+      "Windows 通常需要启用 Windows Hypervisor Platform / Virtual Machine Platform。",
+      ...(error ? [`最近一次准备错误：${error}`] : []),
     ],
   };
 }
@@ -96,4 +244,8 @@ function resolveMicrosandboxPackageAvailable(): boolean {
   } catch {
     return false;
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

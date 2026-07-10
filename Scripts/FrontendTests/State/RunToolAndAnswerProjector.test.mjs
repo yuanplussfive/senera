@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { EventKinds } from "../../Frontend/src/api/eventTypes.ts";
-import { applyEvent } from "../../Frontend/src/store/session/sessionProjector.ts";
+import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
+import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import {
   createEvent,
   createTestState,
@@ -75,7 +75,16 @@ test("tool.call.result.detail attaches structured result to the matching tool ca
     toolName: "WorkspaceReadFile",
     callId: "call_read",
     batchId: "batch_read",
-    preview: "README.md",
+    presentation: {
+      type: "senera.tool_result_presentation.v1",
+      version: 1,
+      status: "success",
+      headline: "README.md 已读取",
+      summary: "包含项目说明。",
+      facts: [],
+      evidence: [],
+      changes: [],
+    },
   }, { step: 1, sequence: 3, phase: "tool" }));
   applyEvent(state, createEvent(EventKinds.ToolCallResultDetail, {
     detailId: "detail_read",
@@ -87,6 +96,15 @@ test("tool.call.result.detail attaches structured result to the matching tool ca
       callId: "call_read",
       name: "WorkspaceReadFile",
       result: { text: "file content" },
+      presentation: {
+        type: "senera.tool_result_presentation.v1",
+        version: 1,
+        status: "success",
+        headline: "README.md 已读取",
+        facts: [],
+        evidence: [],
+        changes: [],
+      },
     },
   }, { step: 1, sequence: 4, phase: "tool" }));
 
@@ -95,12 +113,22 @@ test("tool.call.result.detail attaches structured result to the matching tool ca
   const toolStep = run.steps.find((step) => step.id === "tool-call_read");
   expect(toolStep).toBeTruthy();
   expect(toolStep.status).toBe("done");
-  expect(toolStep.toolPreview).toBe("README.md");
+  expect(toolStep.toolPreview).toBe("README.md 已读取");
+  expect(toolStep.toolPresentation?.summary).toBe("包含项目说明。");
   expect(toolStep.toolBatch?.id).toBe("batch_read");
   expect(toolStep.toolBatch?.index).toBe(0);
   expect(toolStep.toolResult).toEqual({
     callId: "call_read",
     name: "WorkspaceReadFile",
     result: { text: "file content" },
+    presentation: {
+      type: "senera.tool_result_presentation.v1",
+      version: 1,
+      status: "success",
+      headline: "README.md 已读取",
+      facts: [],
+      evidence: [],
+      changes: [],
+    },
   });
 });

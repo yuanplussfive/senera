@@ -13,6 +13,7 @@ import type {
   RootCommandVisibleOutputManifest,
   RootCommandVisibleOutputRuleManifest,
 } from "./Types/PluginManifestTypes.js";
+import { agentErrorMessage } from "./I18n/AgentMessageCatalog.js";
 
 export type AgentRootCommandToolAccess = RootCommandManifest["ToolAccess"];
 export type AgentRootOutputMode = RootCommandManifest["OutputMode"];
@@ -60,7 +61,10 @@ export function buildAgentRootCommand(options: {
 }): AgentRootCommand {
   if (options.policy.Action !== options.decision.action) {
     throw new Error(
-      `RootCommand policy 与行动不匹配：${options.policy.Action} != ${options.decision.action}`,
+      agentErrorMessage("rootCommand.policyActionMismatch", {
+        policyAction: options.policy.Action,
+        decisionAction: options.decision.action,
+      }),
     );
   }
 

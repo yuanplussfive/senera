@@ -7,6 +7,7 @@ import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type {
   ToolExecutionManifest,
 } from "../Types/PluginManifestTypes.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export type AgentToolExecutionMode = "local" | "sandbox" | "sandbox-preferred";
 
@@ -66,7 +67,7 @@ export function resolveAgentToolExecutionPolicy(tool: RegisteredTool): AgentTool
 
 function resolveExecutionMode(tool: RegisteredTool): AgentToolExecutionMode {
   if (!tool.execution) {
-    throw new Error(`工具缺少 Execution 配置：${tool.name}`);
+    throw new Error(agentErrorMessage("tool.executionMissingConfig", { toolName: tool.name }));
   }
 
   return BoundaryByToolExecutionManifest[tool.execution.Boundary];

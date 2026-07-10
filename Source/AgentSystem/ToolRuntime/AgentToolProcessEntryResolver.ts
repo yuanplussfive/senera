@@ -1,4 +1,5 @@
 import path from "node:path";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { PluginEntryManifest } from "../Types/PluginManifestTypes.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import {
@@ -32,7 +33,9 @@ export class AgentToolProcessEntryResolver {
         ok: false,
         result: failedToolProcessResult({
           code: AgentExecutionErrorCodes.ToolProcessConfigurationInvalid,
-          message: `工具插件缺少入口模块：${tool.plugin.manifest.Plugin.Name}`,
+          message: agentErrorMessage("tool.entryModuleMissing", {
+            pluginName: tool.plugin.manifest.Plugin.Name,
+          }),
           details: {
             phase: AgentToolProcessErrorPhases.ConfigurationValidation,
             pluginName: tool.plugin.manifest.Plugin.Name,
@@ -47,7 +50,7 @@ export class AgentToolProcessEntryResolver {
         ok: false,
         result: failedToolProcessResult({
           code: AgentExecutionErrorCodes.ToolProcessRuntimeUnsupported,
-          message: `不支持的插件入口类型：${entry.Kind}`,
+          message: agentErrorMessage("tool.entryTypeUnsupported", { entryKind: entry.Kind }),
           details: {
             phase: AgentToolProcessErrorPhases.ConfigurationValidation,
             pluginName: tool.plugin.manifest.Plugin.Name,

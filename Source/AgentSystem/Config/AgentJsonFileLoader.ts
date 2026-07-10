@@ -5,6 +5,7 @@ import jsonSourceMap, { type JsonSourceLocation } from "json-source-map";
 import { ZodError, type ZodType } from "zod";
 import type { AgentSourceFrame } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { AgentSourceDiagnosticBuilder } from "../Diagnostics/AgentSourceDiagnostic.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export interface AgentJsonLocation {
   line: number;
@@ -44,7 +45,9 @@ export class AgentJsonFileLoader {
         parseJson(text);
       } catch (error) {
         const parseError = error as Error & { position?: number };
-        throw new AgentJsonFileError(`JSON 语法错误：${absolutePath}`, {
+        throw new AgentJsonFileError(agentErrorMessage("json.syntaxError", {
+          filePath: absolutePath,
+        }), {
           filePath: absolutePath,
           message: parseError.message,
           location:
@@ -58,9 +61,11 @@ export class AgentJsonFileLoader {
         });
       }
 
-      throw new AgentJsonFileError(`JSON 语法错误：${absolutePath}`, {
+      throw new AgentJsonFileError(agentErrorMessage("json.syntaxError", {
         filePath: absolutePath,
-        message: "JSON 解析失败。",
+      }), {
+        filePath: absolutePath,
+        message: agentErrorMessage("json.parseFailed"),
       });
     }
 
@@ -72,14 +77,16 @@ export class AgentJsonFileLoader {
         ? mapped.pointers[pointer]?.value ?? mapped.pointers[pointer]?.key
         : mapped.pointers[""]?.value;
 
-      throw new AgentJsonFileError(`JSON 结构校验失败：${absolutePath}`, {
+      throw new AgentJsonFileError(agentErrorMessage("json.validationError", {
+        filePath: absolutePath,
+      }), {
         filePath: absolutePath,
         message: this.formatZodError(result.error),
         pointer,
         location: sourceLocation ? this.fromJsonSourceLocation(sourceLocation) : undefined,
         frame: sourceLocation
           ? sourceBuilder.fromLineColumn(
-              firstIssue?.message ?? "JSON 结构校验失败。",
+              firstIssue?.message ?? agentErrorMessage("json.validationErrorFallback"),
               sourceLocation.line + 1,
               sourceLocation.column + 1,
             ).frame

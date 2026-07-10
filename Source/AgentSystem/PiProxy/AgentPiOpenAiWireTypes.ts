@@ -10,7 +10,7 @@ const ImagePartSchema = z.object({
 }).passthrough();
 
 export const PiOpenAiMessageSchema = z.object({
-  role: z.enum(["system", "user", "assistant", "tool"]),
+  role: z.enum(["system", "developer", "user", "assistant", "tool"]),
   content: z.union([
     z.string(),
     z.array(z.union([TextPartSchema, ImagePartSchema])),

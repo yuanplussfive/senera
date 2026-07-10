@@ -5,6 +5,7 @@ import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.j
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
 import type { SeneraPersistentProcessSpawner } from "../Execution/SeneraPersistentProcessTypes.js";
 import { AgentMcpStdioTransport } from "./AgentMcpStdioTransport.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -158,7 +159,9 @@ function resolveMcpFilesystemServerEntry(): string {
   const packageJson = nodeRequire(packageJsonPath) as NodePackageJson;
   const binEntry = readPackageBinEntry(packageJson);
   if (!binEntry) {
-    throw new Error(`${McpFilesystemServerPackageName} 缺少可执行 bin 入口。`);
+    throw new Error(agentErrorMessage("mcp.packageMissingBin", {
+      packageName: McpFilesystemServerPackageName,
+    }));
   }
 
   return path.resolve(packageRoot, binEntry);

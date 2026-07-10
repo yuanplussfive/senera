@@ -1,5 +1,6 @@
 import { resolveFrom } from "../Core/AgentPath.js";
 import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { isLoadedPluginToolEnabled } from "./AgentPluginConfig.js";
 import { ToolArtifactPolicySchema } from "../Schemas/PluginManifestSchema.js";
 import type {
@@ -140,7 +141,7 @@ function mergeArtifactPolicy(
   if (base?.Workspace || override?.Workspace) {
     const workspaceSource = override?.Workspace ?? base?.Workspace;
     if (!workspaceSource) {
-      throw new Error("Artifact Workspace 策略缺少来源。");
+      throw new Error(agentErrorMessage("plugin.artifactWorkspacePolicyMissingSource"));
     }
     merged.Workspace = {
       ...(base?.Workspace ?? {}),

@@ -1,11 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import electron from "electron";
+import { syncDesktopRuntimeDirectory } from "./DesktopRuntimeAssetSync.js";
+import {
+  resolveDesktopResourceRoot,
+  resolveDesktopWorkspaceRoot,
+} from "./DesktopRuntimePathResolver.js";
 
 const { app } = electron;
 
 export interface DesktopRuntimePaths {
   appRoot: string;
+  resourceRoot: string;
   desktopDataRoot: string;
   workspaceRoot: string;
   configDatabasePath: string;
@@ -19,7 +25,6 @@ export interface DesktopRuntimePaths {
   logPath: string;
 }
 
-const ConfigFileName = "senera.config.json";
 const ConfigTemplateFileName = "senera.config.example.json";
 const ConfigDatabaseFileName = "Config.sqlite";
 const PluginConfigFileName = "PluginConfig.toml";
@@ -39,40 +44,49 @@ interface DependencyRequest {
 
 export function prepareDesktopRuntime(): DesktopRuntimePaths {
   const appRoot = resolveAppRoot();
-  const userDataRoot = app.getPath("userData");
-  const workspaceRoot = resolveWorkspaceRoot({
-    appRoot,
-    executableRoot: path.dirname(process.execPath),
+  const resourceRoot = resolveDesktopResourceRoot({
+    appPath: appRoot,
+    isPackaged: app.isPackaged,
     launchRoot: process.cwd(),
+  });
+  const userDataRoot = app.getPath("userData");
+  const workspaceRoot = resolveDesktopWorkspaceRoot({
+    isPackaged: app.isPackaged,
+    resourceRoot,
     userDataRoot,
   });
   const desktopDataRoot = path.join(userDataRoot, "runtime");
-  const bundledSystemPlugins = path.join(appRoot, "System", "Plugins");
-  const bundledUserPlugins = path.join(appRoot, "Plugins");
+  const bundledSystemPlugins = path.join(resourceRoot, "System", "Plugins");
+  const bundledUserPlugins = path.join(resourceRoot, "Plugins");
   const runtimeSystemPlugins = path.join(desktopDataRoot, "System", "Plugins");
   const runtimeUserPlugins = path.join(desktopDataRoot, "Plugins");
   const configDatabasePath = path.join(desktopDataRoot, ConfigDatabaseFileName);
-  const configSeedPath = path.join(appRoot, ConfigTemplateFileName);
+  const configSeedPath = path.join(resourceRoot, ConfigTemplateFileName);
   const sandboxRuntimeRoot = path.join(desktopDataRoot, "SandboxRuntime");
   const sandboxBundleRoot = path.join(desktopDataRoot, "SandboxBundles");
-  const bundledSandboxBundles = path.join(appRoot, "SandboxBundles");
 
   fs.mkdirSync(workspaceRoot, { recursive: true });
   fs.mkdirSync(desktopDataRoot, { recursive: true });
-  syncDirectory(bundledSystemPlugins, runtimeSystemPlugins);
-  syncDirectory(bundledUserPlugins, runtimeUserPlugins);
-  syncDirectory(bundledSandboxBundles, sandboxBundleRoot);
+  syncDesktopRuntimeDirectory(bundledSystemPlugins, runtimeSystemPlugins, {
+    preserveFileNames: [PluginConfigFileName],
+    pruneExtraneous: true,
+  });
+  syncDesktopRuntimeDirectory(bundledUserPlugins, runtimeUserPlugins, {
+    preserveFileNames: [PluginConfigFileName],
+    pruneExtraneous: true,
+  });
   syncPluginRuntimeDependencies({
     pluginRoots: [
       bundledSystemPlugins,
       bundledUserPlugins,
     ],
-    sourceNodeModulesRoots: dependencySourceNodeModulesRoots(appRoot),
+    sourceNodeModulesRoots: dependencySourceNodeModulesRoots(resourceRoot),
     targetNodeModulesRoot: path.join(desktopDataRoot, NodeModulesDirectoryName),
   });
 
   return {
     appRoot,
+    resourceRoot,
     desktopDataRoot,
     workspaceRoot,
     configDatabasePath,
@@ -81,8 +95,8 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
     userPluginRoot: runtimeUserPlugins,
     sandboxRuntimeRoot,
     sandboxBundleRoot,
-    frontendIndexHtml: path.join(appRoot, "Frontend", "dist", "index.html"),
-    windowIconPath: path.join(appRoot, "Apps", "Desktop", "Assets", DesktopIconFileName),
+    frontendIndexHtml: path.join(resourceRoot, "Frontend", "dist", "index.html"),
+    windowIconPath: path.join(resourceRoot, "Apps", "Desktop", "Assets", DesktopIconFileName),
     logPath: path.join(userDataRoot, "desktop.log"),
   };
 }
@@ -96,78 +110,8 @@ function resolveAppRoot(): string {
   return app.getAppPath();
 }
 
-function resolveWorkspaceRoot(paths: {
-  appRoot: string;
-  executableRoot: string;
-  launchRoot: string;
-  userDataRoot: string;
-}): string {
-  if (app.isPackaged) {
-    return paths.userDataRoot;
-  }
-
-  for (const startPath of uniquePaths([
-    paths.launchRoot,
-    paths.executableRoot,
-    paths.appRoot,
-  ])) {
-    const workspaceRoot = findWorkspaceRoot(startPath);
-    if (workspaceRoot) {
-      return workspaceRoot;
-    }
-  }
-
-  return paths.userDataRoot;
-}
-
-function findWorkspaceRoot(startPath: string): string | undefined {
-  let current = resolveDirectoryPath(startPath);
-  while (true) {
-    if (fs.existsSync(path.join(current, ConfigFileName))) {
-      return current;
-    }
-
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return undefined;
-    }
-    current = parent;
-  }
-}
-
-function resolveDirectoryPath(startPath: string): string {
-  const resolved = path.resolve(startPath);
-  return fs.existsSync(resolved) && fs.statSync(resolved).isFile()
-    ? path.dirname(resolved)
-    : resolved;
-}
-
 function uniquePaths(paths: readonly string[]): string[] {
   return [...new Set(paths.map((value) => path.resolve(value)))];
-}
-
-function syncDirectory(sourceRoot: string, targetRoot: string): void {
-  if (!fs.existsSync(sourceRoot)) {
-    return;
-  }
-
-  fs.mkdirSync(targetRoot, { recursive: true });
-
-  for (const entry of fs.readdirSync(sourceRoot, { withFileTypes: true })) {
-    const sourcePath = path.join(sourceRoot, entry.name);
-    const targetPath = path.join(targetRoot, entry.name);
-
-    if (entry.isDirectory()) {
-      syncDirectory(sourcePath, targetPath);
-      continue;
-    }
-
-    if (entry.isFile()) {
-      copyFileIfChanged(sourcePath, targetPath, {
-        preserveExisting: entry.name === PluginConfigFileName,
-      });
-    }
-  }
 }
 
 function syncPluginRuntimeDependencies(options: {
@@ -202,7 +146,7 @@ function syncPluginRuntimeDependencies(options: {
       throw new Error(`桌面端插件运行依赖缺失：${request.name}`);
     }
 
-    syncDirectory(
+    syncDesktopRuntimeDirectory(
       sourcePackageRoot,
       path.join(options.targetNodeModulesRoot, ...packageNamePathParts(request.name)),
     );
@@ -281,25 +225,4 @@ function unpackedAppRoot(appRoot: string): string {
   return appRoot.endsWith(".asar")
     ? appRoot.replace(/\.asar$/i, ".asar.unpacked")
     : appRoot;
-}
-
-function copyFileIfChanged(
-  sourcePath: string,
-  targetPath: string,
-  options: { preserveExisting?: boolean } = {},
-): void {
-  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  if (options.preserveExisting && fs.existsSync(targetPath)) {
-    return;
-  }
-
-  if (fs.existsSync(targetPath)) {
-    const source = fs.statSync(sourcePath);
-    const target = fs.statSync(targetPath);
-    if (source.size === target.size && source.mtimeMs <= target.mtimeMs) {
-      return;
-    }
-  }
-
-  fs.copyFileSync(sourcePath, targetPath);
 }

@@ -1,4 +1,5 @@
 import type { AgentToolProcessError } from "../Types/ToolRuntimeTypes.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
@@ -114,7 +115,10 @@ export class AgentToolProcessSession {
         killChild();
         settle(this.failure({
           code: AgentExecutionErrorCodes.ToolProcessTimeout,
-          message: `工具进程超时，超过 ${this.options.timeoutMs}ms：${processLabel}`,
+          message: agentErrorMessage("toolProcess.timeout", {
+            timeoutMs: this.options.timeoutMs,
+            processLabel,
+          }),
           details: {
             phase: AgentToolProcessErrorPhases.RuntimeExecution,
             modulePath: processLabel,
@@ -134,7 +138,10 @@ export class AgentToolProcessSession {
           killChild();
           settle(this.failure({
             code: AgentExecutionErrorCodes.ToolProcessStdoutLimitExceeded,
-            message: `工具 stdout 超过 ${this.options.maxStdoutBytes} 字节：${processLabel}`,
+            message: agentErrorMessage("toolProcess.stdoutLimitExceeded", {
+              maxStdoutBytes: this.options.maxStdoutBytes,
+              processLabel,
+            }),
             details: {
               phase: AgentToolProcessErrorPhases.RuntimeExecution,
               modulePath: processLabel,
@@ -156,7 +163,10 @@ export class AgentToolProcessSession {
           killChild();
           settle(this.failure({
             code: AgentExecutionErrorCodes.ToolProcessStderrLimitExceeded,
-            message: `工具 stderr 超过 ${this.options.maxStderrBytes} 字节：${processLabel}`,
+            message: agentErrorMessage("toolProcess.stderrLimitExceeded", {
+              maxStderrBytes: this.options.maxStderrBytes,
+              processLabel,
+            }),
             details: {
               phase: AgentToolProcessErrorPhases.RuntimeExecution,
               modulePath: processLabel,
@@ -233,42 +243,42 @@ const SpawnFailureProjectionBySeneraCode = {
   [SeneraExecutionErrorCodes.Aborted]: {
     code: AgentExecutionErrorCodes.ToolProcessCancelled,
     phase: AgentToolProcessErrorPhases.RuntimeExecution,
-    suggestion: "重新发起工具调用前确认当前请求没有被取消。",
+    suggestion: agentErrorMessage("toolProcess.suggestion.cancelled"),
   },
   [SeneraExecutionErrorCodes.InvalidWorkspacePath]: {
     code: AgentExecutionErrorCodes.ToolProcessConfigurationInvalid,
     phase: AgentToolProcessErrorPhases.ConfigurationValidation,
-    suggestion: "检查插件 Entry.Cwd，插件进程只能在 Senera 执行工作区内启动。",
+    suggestion: agentErrorMessage("toolProcess.suggestion.invalidWorkspacePath"),
   },
   [SeneraExecutionErrorCodes.Timeout]: {
     code: AgentExecutionErrorCodes.ToolProcessTimeout,
     phase: AgentToolProcessErrorPhases.RuntimeExecution,
-    suggestion: "减少插件启动前置工作，或调整工具执行超时配置。",
+    suggestion: agentErrorMessage("toolProcess.suggestion.timeout"),
   },
   [SeneraExecutionErrorCodes.StdoutLimitExceeded]: {
     code: AgentExecutionErrorCodes.ToolProcessStdoutLimitExceeded,
     phase: AgentToolProcessErrorPhases.RuntimeExecution,
-    suggestion: "减少插件 stdout 输出，最后一行只保留结构化响应。",
+    suggestion: agentErrorMessage("toolProcess.suggestion.stdoutLimit"),
   },
   [SeneraExecutionErrorCodes.StderrLimitExceeded]: {
     code: AgentExecutionErrorCodes.ToolProcessStderrLimitExceeded,
     phase: AgentToolProcessErrorPhases.RuntimeExecution,
-    suggestion: "减少插件 stderr 输出，把大体量诊断写入 artifact。",
+    suggestion: agentErrorMessage("toolProcess.suggestion.stderrLimit"),
   },
   [SeneraExecutionErrorCodes.SandboxUnavailable]: {
     code: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
     phase: AgentToolProcessErrorPhases.ProcessSpawn,
-    suggestion: "检查当前执行后端是否可用；不可用时应回退到本地执行边界。",
+    suggestion: agentErrorMessage("toolProcess.suggestion.sandboxUnavailable"),
   },
   [SeneraExecutionErrorCodes.SpawnFailed]: {
     code: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
     phase: AgentToolProcessErrorPhases.ProcessSpawn,
-    suggestion: "检查插件 Entry.Command、Entry.Args、Entry.Cwd 是否正确，以及工具包依赖是否已安装。",
+    suggestion: agentErrorMessage("toolProcess.suggestion.spawnFailed"),
   },
   [SeneraExecutionErrorCodes.Unknown]: {
     code: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
     phase: AgentToolProcessErrorPhases.ProcessSpawn,
-    suggestion: "检查插件入口配置和执行环境诊断。",
+    suggestion: agentErrorMessage("toolProcess.suggestion.unknown"),
   },
 } satisfies Record<SeneraExecutionErrorCode, {
   code: typeof AgentExecutionErrorCodes[keyof typeof AgentExecutionErrorCodes];
@@ -287,7 +297,7 @@ function projectSpawnFailure(error: unknown): {
     : {
         code: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
         phase: AgentToolProcessErrorPhases.ProcessSpawn,
-        suggestion: "检查插件 Entry.Command、Entry.Args、Entry.Cwd 是否正确，以及工具包依赖是否已安装。",
+        suggestion: agentErrorMessage("toolProcess.suggestion.spawnFailed"),
       };
 
   return {

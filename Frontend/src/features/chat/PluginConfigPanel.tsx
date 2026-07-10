@@ -20,6 +20,7 @@ import {
   validatePluginConfigDraft,
   writeDraftFieldValue,
 } from "./pluginConfigDraft";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 export {
   readNumberDraftCommitValue,
   validatePluginConfigDraft,
@@ -126,7 +127,7 @@ export function PluginConfigControl({
     }
     if (saveOperation?.status === "error") {
       setSaveRequestId(null);
-      setSaveError(saveOperation.message ?? "保存失败");
+      setSaveError(saveOperation.message ?? frontendMessage("pluginConfig.saveFailed"));
       return;
     }
     if (dirty) return;

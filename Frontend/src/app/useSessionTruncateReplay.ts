@@ -8,6 +8,7 @@ import {
 } from "../api/eventTypes";
 import { useStore, type StoreState } from "../store/sessionStore";
 import { generateId } from "../lib/util";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import {
   consumePendingAfterTruncate,
   type LastSentMessage,
@@ -58,7 +59,7 @@ export function useSessionTruncateReplay({
       replay,
       send,
     })) {
-      toast.error("重新发送失败，连接可能已断开");
+      toast.error(frontendMessage("session.replayDisconnected"));
     }
     return true;
   }, [

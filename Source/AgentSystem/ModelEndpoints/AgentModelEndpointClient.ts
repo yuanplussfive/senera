@@ -12,6 +12,7 @@ import {
   type AgentModelProviderMetadata,
 } from "./AgentModelMetadata.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { ModelHttpClient } from "./ModelHttpClient.js";
 import type {
   TextGenerationEndpoint,
@@ -29,7 +30,9 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
   constructor(config: AgentSystemConfig, modelProviderId?: string) {
     this.providerConfig = resolveModelProviderConfig(config, modelProviderId);
     if (!this.providerConfig.ApiKey?.trim()) {
-      throw new Error(`缺少模型 API Key。请在配置文件中填写 ModelProviders[].ApiKey。 provider=${this.providerConfig.Id}`);
+      throw new Error(agentErrorMessage("model.apiKeyMissing", {
+        providerId: this.providerConfig.Id,
+      }));
     }
 
     this.metadata = createModelProviderMetadata(this.providerConfig);

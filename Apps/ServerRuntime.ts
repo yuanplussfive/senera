@@ -97,13 +97,6 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     workspaceRoot,
     configSnapshot,
   });
-  void prepareAgentSandboxRuntime({
-    workspaceRoot,
-    config: resolveSandboxRuntimeConfig(initialConfig),
-    skipImagePull: true,
-    strict: false,
-    log: (message) => logger.info("sandbox.runtime.prepare", { message }),
-  });
   const runtimeCache = new AgentSystemRuntimeCache({
     workspaceRoot,
     configPath,
@@ -174,6 +167,13 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   });
 
   server.start();
+  startSandboxRuntimePreparation({
+    workspaceRoot,
+    config: initialConfig,
+    sandboxRuntimeService,
+    logger,
+    broadcast: (event) => server.broadcast(event),
+  });
   if (configSource.kind === "json" && resolveServerConfig(initialConfig).HotReload) {
     const jsonConfigPath = configSource.configPath;
     watchedConfigPath = jsonConfigPath;
@@ -222,6 +222,47 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
       repository.close();
     },
   };
+}
+
+function startSandboxRuntimePreparation(input: {
+  workspaceRoot: string;
+  config: AgentSystemConfig;
+  sandboxRuntimeService: AgentSandboxRuntimeService;
+  logger: AgentLogger;
+  broadcast: (event: AgentDomainEvent) => void;
+}): void {
+  const publishStatus = (): void => {
+    input.broadcast({
+      kind: AgentEventKinds.SandboxStatusSnapshot,
+      context: {},
+      data: input.sandboxRuntimeService.snapshot(),
+    });
+  };
+
+  input.sandboxRuntimeService.markPreparing();
+  publishStatus();
+  void prepareAgentSandboxRuntime({
+    workspaceRoot: input.workspaceRoot,
+    config: resolveSandboxRuntimeConfig(input.config),
+    skipImagePull: true,
+    strict: true,
+    log: (message) => input.logger.info("sandbox.runtime.prepare", { message }),
+  }).then(
+    () => {
+      input.sandboxRuntimeService.markReady();
+      input.logger.success("sandbox.runtime.ready", {
+        provider: "microsandbox",
+      });
+      publishStatus();
+    },
+    (error: unknown) => {
+      input.sandboxRuntimeService.markFallback(error);
+      input.logger.warn("sandbox.runtime.fallback", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      publishStatus();
+    },
+  );
 }
 
 function createRepository(workspaceRoot: string, config: AgentSystemConfig): AgentSessionRepository {

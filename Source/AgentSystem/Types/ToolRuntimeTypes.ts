@@ -19,8 +19,54 @@ export interface ExecutedToolCallResult {
   };
   result: unknown;
   artifact?: ExecutedToolCallArtifact;
+  presentation?: AgentToolResultPresentation;
   artifactPolicy?: ToolArtifactPolicyManifest;
   workspaceCapture?: ToolWorkspaceCaptureResult;
+}
+
+export const AgentToolResultPresentationType = "senera.tool_result_presentation.v1";
+
+export type AgentToolResultPresentationStatus = "success" | "failure" | "empty";
+
+/**
+ * User-facing projection of a tool result. The raw result remains on
+ * ExecutedToolCallResult.result for inspection and model observation.
+ */
+export interface AgentToolResultPresentation {
+  type: typeof AgentToolResultPresentationType;
+  version: 1;
+  status: AgentToolResultPresentationStatus;
+  headline: string;
+  summary?: string;
+  facts: AgentToolResultPresentationFact[];
+  evidence: AgentToolResultPresentationEvidence[];
+  changes: AgentToolResultPresentationChange[];
+  artifactUri?: string;
+}
+
+export interface AgentToolResultPresentationFact {
+  name: string;
+  value: string;
+  kind?: string;
+  evidenceUri?: string;
+  confidence?: number;
+}
+
+export interface AgentToolResultPresentationEvidence {
+  evidenceUri: string;
+  kind: string;
+  display: string;
+  label: string;
+  source: string;
+  locator: string;
+  confidence: number;
+}
+
+export interface AgentToolResultPresentationChange {
+  kind: string;
+  status: "added" | "changed" | "unchanged";
+  key: string;
+  summary: string;
 }
 
 export interface ExecutedToolCallArtifact {

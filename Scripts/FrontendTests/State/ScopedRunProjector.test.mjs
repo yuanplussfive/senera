@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { EventKinds } from "../../Frontend/src/api/eventTypes.ts";
-import { applyEvent } from "../../Frontend/src/store/session/sessionProjector.ts";
+import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
+import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import {
   createEvent,
   createTestState,

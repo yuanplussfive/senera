@@ -6,6 +6,7 @@ import type {
   TextGenerationEndpointResult,
 } from "./ModelEndpointTypes.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
+import { resolveAgentModelCompatibility } from "./ModelCompatibility.js";
 import { buildOpenAiInput } from "./OpenAiMessageProjection.js";
 
 const TextPartSchema = z.object({
@@ -30,7 +31,7 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
   async complete(request: AgentLanguageModelRequest): Promise<TextGenerationEndpointResult> {
     const payload: Record<string, unknown> = {
       model: this.runtime.config.Model,
-      input: buildOpenAiInput(request),
+      input: this.buildInput(request),
       temperature: this.runtime.config.Temperature,
     };
     if (shouldSendMaxOutputTokens(this.runtime.config)) {
@@ -53,7 +54,7 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
   async stream(request: AgentLanguageModelRequest): Promise<AgentLanguageModelStream> {
     const payload: Record<string, unknown> = {
       model: this.runtime.config.Model,
-      input: buildOpenAiInput(request),
+      input: this.buildInput(request),
       temperature: this.runtime.config.Temperature,
       stream: true,
     };
@@ -76,5 +77,9 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
       Authorization: `Bearer ${this.runtime.config.ApiKey}`,
       ...this.runtime.config.Headers,
     };
+  }
+
+  private buildInput(request: AgentLanguageModelRequest) {
+    return buildOpenAiInput(request, resolveAgentModelCompatibility(this.runtime.config));
   }
 }

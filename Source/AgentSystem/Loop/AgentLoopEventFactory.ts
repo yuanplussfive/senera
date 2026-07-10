@@ -9,6 +9,7 @@ import { AgentLoopPlannerEventFactory } from "./AgentLoopPlannerEventFactory.js"
 import { AgentLoopPromptEventFactory } from "./AgentLoopPromptEventFactory.js";
 import { AgentLoopRunEventFactory } from "./AgentLoopRunEventFactory.js";
 import { AgentLoopToolEventFactory } from "./AgentLoopToolEventFactory.js";
+import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
 
 export class AgentLoopEventFactory {
   private readonly runEvents = new AgentLoopRunEventFactory();
@@ -103,10 +104,10 @@ export class AgentLoopEventFactory {
     index: number,
     toolName: string,
     callId: string,
-    preview?: string,
+    presentation?: AgentToolResultPresentation,
     metadata: { batchId?: string } = {},
   ): AgentDomainEvent {
-    return this.toolEvents.toolCallCompleted(requestId, step, index, toolName, callId, preview, metadata);
+    return this.toolEvents.toolCallCompleted(requestId, step, index, toolName, callId, presentation, metadata);
   }
 
   toolCallFailed(

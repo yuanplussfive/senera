@@ -1,4 +1,4 @@
-import { DEFAULT_USER_PROFILE } from "../../Frontend/src/store/session/userProfile.ts";
+import { DEFAULT_USER_PROFILE } from "../../../Frontend/src/store/session/userProfile.ts";
 
 export const TestSessionId = "session_test";
 export const TestRequestId = "request_test";

@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
-import type { AgentEvent as AgentSessionEvent } from "@earendil-works/pi-agent-core";
+import type {
+  AgentEvent as AgentSessionEvent,
+  AgentHarness,
+} from "@earendil-works/pi-agent-core";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentConversationEntryKinds } from "../Source/AgentSystem/Conversation/AgentConversation.js";
 import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { AgentEventKinds } from "../Source/AgentSystem/Events/AgentEvent.js";
 import type { AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
+import { AgentPiHarnessSession } from "../Source/AgentSystem/Pi/AgentPiHarnessSession.js";
 import { AgentPiTurnExecutor, type AgentPiTurnRuntimePort } from "../Source/AgentSystem/Pi/AgentPiTurnExecutor.js";
 import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import type {
@@ -75,6 +80,7 @@ async function main(): Promise<void> {
   assert.equal(events.some((event) => event.kind === AgentEventKinds.ModelDelta), true);
   assert.equal(events.some((event) => event.kind === AgentEventKinds.ToolCallStarted), true);
   assert.equal(events.some((event) => event.kind === AgentEventKinds.ToolCallCompleted), true);
+  assert.equal(events.some((event) => event.kind === AgentEventKinds.ToolCallResultDetail), true);
   assertPiTrace(events, "turn.started");
   assertPiTrace(events, "session.create.started");
   assertPiTrace(events, "session.create.completed");
@@ -85,6 +91,7 @@ async function main(): Promise<void> {
   assert.equal(output.stepTraces.length, 2);
   assert.equal(output.stepTraces[0]?.kind, "tool");
   assert.equal(output.stepTraces[0]?.toolName, "SeneraEchoTool");
+  assert.equal(output.stepTraces[0]?.toolPresentation?.headline, "workspace summary");
   assert.deepEqual(output.stepTraces[0]?.toolArgs, {
     text: "检查当前工作区",
   });
@@ -126,6 +133,8 @@ async function main(): Promise<void> {
   await verifyAbortCleansContext(command);
   await verifyAbortDuringSessionCreate(command);
   await verifyExistingPiSessionSkipsHistoryMigration(command);
+  await verifyProviderFailureDoesNotSucceed(command);
+  await verifyHarnessSessionRejectsFailedAssistant();
 
   console.log("Pi turn executor contracts verified.");
 }
@@ -206,6 +215,46 @@ async function verifyExistingPiSessionSkipsHistoryMigration(
   assert.equal(result.kind, "succeeded");
   assert.deepEqual(existingPi.session.assignedHistoryTexts(), []);
   assert.deepEqual(existingPi.session.prompts, ["检查当前工作区"]);
+}
+
+async function verifyProviderFailureDoesNotSucceed(
+  command: Extract<AgentLoopCommand, { kind: "run_pi_turn" }>,
+): Promise<void> {
+  const failingPi = new FakePiRuntime();
+  failingPi.session.promptFailure = new Error("500 Invalid option: expected one of system|user|assistant|tool");
+  const runtime = createRuntime(failingPi);
+  const executor = new AgentPiTurnExecutor({ runtime });
+  const events: AgentDomainEvent[] = [];
+
+  await assert.rejects(
+    executor.run(command, (event) => {
+      events.push(event);
+    }),
+    /Invalid option/,
+  );
+
+  assert.equal(failingPi.session.disposed, true);
+  assert.equal(failingPi.session.unsubscribeCount, 1);
+  assertPiTrace(events, "turn.failed");
+}
+
+async function verifyHarnessSessionRejectsFailedAssistant(): Promise<void> {
+  const session = new AgentPiHarnessSession(
+    new FakeHarness(createAssistantMessage({
+      stopReason: "error",
+      errorMessage: "500 Invalid option: expected one of system|user|assistant|tool",
+    })) as unknown as AgentHarness,
+    {
+      model: new FakePiRuntime().model(),
+      tools: [],
+    },
+  );
+
+  await assert.rejects(
+    session.prompt("hello"),
+    /Invalid option/,
+  );
+  assert.equal(session.getLastAssistantText(), undefined);
 }
 
 function readPiOutput(
@@ -355,6 +404,7 @@ class FakePiSession {
   disposed = false;
   abortCount = 0;
   unsubscribeCount = 0;
+  promptFailure?: Error;
   onPromptStarted?: () => void;
   private promptStartedResolve!: () => void;
   private promptFinishResolve!: () => void;
@@ -385,6 +435,9 @@ class FakePiSession {
     if (this.deferPrompt) {
       await this.promptFinished;
       return;
+    }
+    if (this.promptFailure) {
+      throw this.promptFailure;
     }
     this.emitScriptedEvents();
   }
@@ -508,6 +561,47 @@ class FakePiSession {
       listener(event);
     }
   }
+}
+
+class FakeHarness {
+  constructor(private readonly assistant: AssistantMessage) {}
+
+  async prompt(): Promise<AssistantMessage> {
+    return this.assistant;
+  }
+}
+
+function createAssistantMessage(input: {
+  stopReason: AssistantMessage["stopReason"];
+  errorMessage?: string;
+}): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [{
+      type: "text",
+      text: "",
+    }],
+    api: "openai-completions",
+    provider: "senera-pi-proxy",
+    model: "verification-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+      },
+    },
+    stopReason: input.stopReason,
+    errorMessage: input.errorMessage,
+    timestamp: Date.now(),
+  };
 }
 
 function projectPiToolResult(): unknown {

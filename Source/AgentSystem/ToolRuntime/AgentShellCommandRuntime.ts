@@ -12,6 +12,7 @@ import {
 import { cancelledToolProcessResult } from "./AgentToolCancellation.js";
 import { resolveToolExecutionConfig } from "../AgentDefaults.js";
 import { resolveWorkspacePath } from "../Execution/SeneraWorkspacePath.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import {
   SeneraExecutionError,
   SeneraExecutionErrorCodes,
@@ -38,7 +39,7 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
   if (!parsed.success) {
     return shellFailure({
       code: AgentExecutionErrorCodes.InvalidToolArguments,
-      message: "ShellCommandTool 参数无效。",
+      message: agentErrorMessage("tool.shellArgumentsInvalid"),
       details: {
         phase: AgentToolProcessErrorPhases.RuntimeExecution,
         issues: parsed.error.issues,
@@ -67,7 +68,7 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
           message: cwdResult.message,
           pointer: "/cwd",
           path: ["cwd"],
-          suggestion: "把 cwd 设置为工作区内的相对路径，例如 .、Frontend、Plugins/ToolName。",
+          suggestion: agentErrorMessage("tool.shellCwdSuggestion"),
         },
       ],
     });
@@ -157,7 +158,10 @@ function shellExecutionFailure(input: {
   return shellFailure({
     code,
     message: code === AgentExecutionErrorCodes.ToolProcessTimeout
-      ? `命令执行超时，超过 ${input.timeoutMs}ms：${input.command}`
+      ? agentErrorMessage("tool.shellCommandTimeout", {
+          timeoutMs: input.timeoutMs,
+          command: input.command,
+        })
       : message,
     details: {
       phase: code === AgentExecutionErrorCodes.ToolProcessSpawnFailed

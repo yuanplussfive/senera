@@ -8,6 +8,7 @@ import type {
 } from "./ModelEndpointTypes.js";
 import { rawPathSegment } from "./ModelHttpClient.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
+import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
 
 const GooglePartSchema = z.object({
   text: z.string().optional(),
@@ -55,15 +56,24 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
     if (shouldSendMaxOutputTokens(this.runtime.config)) {
       generationConfig.maxOutputTokens = this.runtime.config.MaxOutputTokens;
     }
+    const messages = projectOpenAiCompatibleTextMessages(request, {
+      developerRole: "system",
+    });
+    const system = messages
+      .filter((message) => message.role === "system" || message.role === "developer")
+      .map((message) => message.content)
+      .join("\n\n");
 
     return {
       systemInstruction: {
-        parts: [{ text: request.systemPrompt }],
+        parts: [{ text: system }],
       },
-      contents: request.messages.map((message) => ({
-        role: message.role === "assistant" ? "model" : "user",
-        parts: [{ text: message.content }],
-      })),
+      contents: messages
+        .filter((message) => message.role === "user" || message.role === "assistant")
+        .map((message) => ({
+          role: message.role === "assistant" ? "model" : "user",
+          parts: [{ text: message.content }],
+        })),
       generationConfig,
     };
   }

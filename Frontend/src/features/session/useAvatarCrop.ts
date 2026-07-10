@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export const MAX_AVATAR_SOURCE_BYTES = 8 * 1024 * 1024;
 export const AVATAR_OUTPUT_SIZE = 256;
@@ -35,7 +36,7 @@ export function useLoadedAvatarImage(source: string): LoadedAvatarImage | null {
       });
     };
     element.onerror = () => {
-      if (!cancelled) toast.error("图片加载失败");
+      if (!cancelled) toast.error(frontendMessage("profile.imageLoadFailed"));
     };
     element.src = source;
     return () => {

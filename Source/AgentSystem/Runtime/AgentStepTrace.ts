@@ -1,5 +1,9 @@
 import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
-import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type {
+  AgentToolResultPresentation,
+  ExecutedToolCallResult,
+} from "../Types/ToolRuntimeTypes.js";
+import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 
 /**
  * 精简档执行步骤轨迹：持久化后用于历史回放时重建前端执行图。
@@ -23,6 +27,7 @@ export interface StepTrace {
   title?: string;
   toolArgs?: unknown;
   toolPreview?: string;
+  toolPresentation?: AgentToolResultPresentation;
   toolResult?: unknown;
   toolErrorMessage?: string;
   errorMessage?: string;
@@ -70,6 +75,7 @@ export function buildToolTraces(
   const results: ExecutedToolCallResult[] = Array.isArray(execution.value) ? execution.value : [];
   return results.map((result, index) => {
     const failed = result.process.exitCode !== null && result.process.exitCode !== 0;
+    const presentation = result.presentation ?? projectAgentToolResultPresentation(result);
     return {
       step,
       seq: startSeq + index,
@@ -78,7 +84,8 @@ export function buildToolTraces(
       callId: result.callId,
       status: failed ? "failed" : "done",
       toolArgs: clampField(result.arguments),
-      toolPreview: clampPreview(summarizeResult(result.result)),
+      toolPreview: clampPreview(presentation.headline),
+      toolPresentation: presentation,
       toolResult: clampField(result.result),
       toolErrorMessage: failed ? clampPreview(result.process.stderr) : undefined,
     };
@@ -116,19 +123,4 @@ export function buildRetryTrace(
     retryCode: code,
     errorMessage: clampPreview(message),
   };
-}
-
-function summarizeResult(value: unknown): string | undefined {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value === "string") return value;
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    if (typeof record.preview === "string") return record.preview;
-    if (typeof record.content === "string") return record.content;
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return undefined;
-  }
 }

@@ -13,6 +13,7 @@ import {
 } from "./AgentToolProcessEnvelope.js";
 import { failedToolProcessResponse } from "./AgentToolProcessResultFactory.js";
 import type { AgentToolProcessResponseParseContext } from "./AgentToolProcessTypes.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export class AgentToolProcessResponseParser {
   parse(context: AgentToolProcessResponseParseContext): AgentToolProcessResponse {
@@ -20,7 +21,9 @@ export class AgentToolProcessResponseParser {
     if (!lastLine) {
       return this.failure({
         code: AgentExecutionErrorCodes.ToolProcessResponseMissing,
-        message: `工具进程没有输出结构化 stdout：${context.modulePath}`,
+        message: agentErrorMessage("toolProcess.structuredStdoutMissing", {
+          modulePath: context.modulePath,
+        }),
         details: {
           phase: AgentToolProcessErrorPhases.ResponseParsing,
           modulePath: context.modulePath,
@@ -29,10 +32,10 @@ export class AgentToolProcessResponseParser {
         },
         diagnostics: [
           {
-            message: "工具进程没有输出最后一行 JSON 响应。",
+            message: agentErrorMessage("toolProcess.lastJsonLineMissing"),
             pointer: "/",
             path: [],
-            suggestion: "确保插件最后一行 stdout 输出工具响应 JSON 对象。",
+            suggestion: agentErrorMessage("toolProcess.lastJsonLineMissingSuggestion"),
           },
         ],
       });
@@ -62,7 +65,9 @@ export class AgentToolProcessResponseParser {
         ok: false,
         value: this.failure({
           code: AgentExecutionErrorCodes.ToolProcessResponseInvalid,
-          message: `工具进程响应不是合法 JSON：${context.modulePath}`,
+          message: agentErrorMessage("toolProcess.responseInvalidJson", {
+            modulePath: context.modulePath,
+          }),
           details: {
             phase: AgentToolProcessErrorPhases.ResponseParsing,
             modulePath: context.modulePath,
@@ -73,10 +78,10 @@ export class AgentToolProcessResponseParser {
           },
           diagnostics: [
             {
-              message: "工具进程最后一行 stdout 不是合法 JSON。",
+              message: agentErrorMessage("toolProcess.lastJsonLineInvalid"),
               pointer: "/",
               path: [],
-              suggestion: "确保插件最后一行只输出一个完整 JSON 对象，不要混入额外文本。",
+              suggestion: agentErrorMessage("toolProcess.lastJsonLineInvalidSuggestion"),
             },
           ],
         }),
@@ -95,7 +100,9 @@ export class AgentToolProcessResponseParser {
 
     return this.failure({
       code: AgentExecutionErrorCodes.ToolProcessResponseEnvelopeInvalid,
-      message: `工具进程响应 envelope 无效：${context.modulePath}`,
+      message: agentErrorMessage("toolProcess.responseEnvelopeInvalid", {
+        modulePath: context.modulePath,
+      }),
       details: {
         phase: AgentToolProcessErrorPhases.ResponseValidation,
         modulePath: context.modulePath,
@@ -114,7 +121,7 @@ export class AgentToolProcessResponseParser {
           ? []
           : issue.pointer.slice(1).split("/").map((part) =>
               part.replace(/~1/g, "/").replace(/~0/g, "~")),
-        suggestion: "确保插件 stdout 最后一行使用宿主定义的工具响应 envelope。",
+        suggestion: agentErrorMessage("toolProcess.responseEnvelopeSuggestion"),
       })),
     });
   }

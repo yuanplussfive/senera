@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { toast } from "sonner";
 import { EventKinds, type EventEnvelope } from "../api/eventTypes";
 import { useStore } from "../store/sessionStore";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export type SocketErrorToastVariant = "error" | "warning";
 
@@ -33,7 +34,9 @@ export function resolveSocketErrorToast(
 
     return {
       variant: "error",
-      title: isHistoryLoadFailure ? "历史同步失败" : "运行失败",
+      title: isHistoryLoadFailure
+        ? frontendMessage("socket.historySyncFailed")
+        : frontendMessage("socket.runFailed"),
       description: readDataString(env.data, "message") ?? "",
     };
   }
@@ -41,14 +44,16 @@ export function resolveSocketErrorToast(
   if (env.kind === EventKinds.SessionBusy) {
     return {
       variant: "warning",
-      title: "会话正忙，请等待当前请求结束",
+      title: frontendMessage("socket.sessionBusy"),
     };
   }
 
   if (env.kind === EventKinds.ToolCallFailed) {
     return {
       variant: "error",
-      title: `工具调用失败: ${readDataString(env.data, "toolName") ?? ""}`,
+      title: frontendMessage("socket.toolCallFailed", {
+        toolName: readDataString(env.data, "toolName") ?? "",
+      }),
       description: readDataString(env.data, "message"),
     };
   }
@@ -58,14 +63,14 @@ export function resolveSocketErrorToast(
     if (message.includes("审批请求不存在或已结束")) {
       return {
         variant: "warning",
-        title: "审批已失效",
+        title: frontendMessage("socket.approvalExpired"),
         description: message,
       };
     }
 
     return {
       variant: "error",
-      title: "请求格式错误",
+      title: frontendMessage("socket.requestInvalid"),
       description: message,
     };
   }

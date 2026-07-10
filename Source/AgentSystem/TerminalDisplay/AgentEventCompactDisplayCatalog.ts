@@ -138,6 +138,7 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
       message: "安全沙箱状态",
       tokens: [
         readStringToken(data.platform),
+        readStringToken(data.state),
         readStringToken(data.effectiveMode),
         readStringToken(data.message),
       ],

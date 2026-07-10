@@ -1,4 +1,5 @@
 import { AgentPluginScanner } from "./AgentPluginScanner.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import {
   projectPluginConfigSnapshot,
   setPluginConfigEnabled,
@@ -54,7 +55,7 @@ export class AgentPluginConfigManager {
       (item) => item.manifest.Plugin.Name === pluginName,
     );
     if (!plugin) {
-      throw new Error(`可配置插件不存在：${pluginName}`);
+      throw new Error(agentErrorMessage("plugin.configurablePluginMissing", { pluginName }));
     }
     return plugin;
   }

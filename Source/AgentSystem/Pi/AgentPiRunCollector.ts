@@ -11,7 +11,11 @@ import {
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import { clampField, type StepTrace } from "../Runtime/AgentStepTrace.js";
-import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import {
+  type AgentToolResultPresentation,
+  type ExecutedToolCallResult,
+} from "../Types/ToolRuntimeTypes.js";
+import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 import type { AgentOpenAiTranscriptMessage } from "../Conversation/AgentOpenAiTranscript.js";
 import { readPiProxyToolCallBatchId } from "../PiProxy/AgentPiProxyRuntimeContext.js";
 import type { AgentPiToolDetails } from "./AgentPiTypes.js";
@@ -46,17 +50,20 @@ type ProjectablePiEvent =
 
 type PiEventProjector = (
   event: ProjectablePiEvent,
-) => AgentDomainEvent | undefined;
+) => readonly AgentDomainEvent[];
 
 export class AgentPiRunCollector {
   private readonly eventFactory = new AgentLoopEventFactory();
   private readonly projectors: Partial<Record<AgentSessionEvent["type"], PiEventProjector>> = {
-    tool_execution_start: (event) =>
+    tool_execution_start: (event) => [
       this.toolExecutionStarted(event as Extract<ProjectablePiEvent, { type: "tool_execution_start" }>),
+    ],
     tool_execution_end: (event) =>
       this.toolExecutionEnded(event as Extract<ProjectablePiEvent, { type: "tool_execution_end" }>),
-    message_update: (event) =>
-      this.messageUpdated(event as Extract<ProjectablePiEvent, { type: "message_update" }>),
+    message_update: (event) => {
+      const projected = this.messageUpdated(event as Extract<ProjectablePiEvent, { type: "message_update" }>);
+      return projected ? [projected] : [];
+    },
   };
   private readonly events: AgentDomainEvent[] = [];
   private readonly traces: StepTrace[] = [];
@@ -100,9 +107,9 @@ export class AgentPiRunCollector {
       this.recordOpenAiTurn(event);
     }
 
-    const projected = this.projectors[event.type]?.(event as ProjectablePiEvent);
-    if (projected) {
-      await this.emit(projected);
+    const projected = this.projectors[event.type]?.(event as ProjectablePiEvent) ?? [];
+    for (const event of projected) {
+      await this.emit(event);
     }
   }
 
@@ -128,7 +135,7 @@ export class AgentPiRunCollector {
 
   private toolExecutionEnded(
     event: Extract<AgentSessionEvent, { type: "tool_execution_end" }>,
-  ): AgentDomainEvent {
+  ): readonly AgentDomainEvent[] {
     const active = this.activeToolTraces.get(event.toolCallId) ?? {
       seq: this.traces.length,
       toolName: event.toolName,
@@ -144,7 +151,7 @@ export class AgentPiRunCollector {
     const trace = this.buildToolTrace(active, event, executed);
     this.traces.push(trace);
 
-    return event.isError
+    const lifecycle = event.isError
       ? this.eventFactory.toolCallFailed(
           this.options.requestId,
           this.options.step,
@@ -161,9 +168,21 @@ export class AgentPiRunCollector {
           active.seq,
           event.toolName,
           event.toolCallId,
-          readToolPreview(event.result),
+          readToolPresentation(event.result),
           { batchId: this.batchIdFor(event.toolCallId) },
         );
+    return [
+      lifecycle,
+      this.eventFactory.toolCallResultDetail(
+        this.options.requestId,
+        this.options.step,
+        active.seq,
+        event.toolName,
+        event.toolCallId,
+        executed ?? event.result,
+        { batchId: this.batchIdFor(event.toolCallId) },
+      ),
+    ];
   }
 
   private messageUpdated(
@@ -209,7 +228,8 @@ export class AgentPiRunCollector {
       callId: event.toolCallId,
       batchId: this.batchIdFor(event.toolCallId),
       toolArgs: clampField(executed?.arguments ?? active.args),
-      toolPreview: readToolPreview(event.result),
+      toolPreview: readToolPresentation(event.result)?.headline,
+      toolPresentation: readToolPresentation(event.result),
       toolResult: clampField(executed?.result ?? event.result),
       toolErrorMessage: event.isError ? readToolErrorMessage(event.result) : undefined,
     };
@@ -302,8 +322,9 @@ function isAgentPiToolDetails(value: unknown): value is AgentPiToolDetails {
   return Boolean(readRecord(readRecord(value)?.senera));
 }
 
-function readToolPreview(value: unknown): string | undefined {
-  return readFirstTextContent(value) ?? readExecutedToolResult(value)?.artifact?.summary;
+function readToolPresentation(value: unknown): AgentToolResultPresentation | undefined {
+  const executed = readExecutedToolResult(value);
+  return executed?.presentation ?? (executed ? projectAgentToolResultPresentation(executed) : undefined);
 }
 
 function readToolErrorMessage(value: unknown): string {

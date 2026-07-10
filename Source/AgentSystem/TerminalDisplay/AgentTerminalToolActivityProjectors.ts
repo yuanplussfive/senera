@@ -80,7 +80,7 @@ export const AgentTerminalToolActivityProjectors: AgentTerminalActivityProjector
           formatToolIndex(data.index),
           readString(data.toolName),
           formatCallHandle(data.callId),
-          readString(data.preview),
+          readPresentationHeadline(data.presentation),
         ),
         detail: shouldRenderDetails(detailMode, "tools") ? current?.detail : undefined,
         tone: AgentTerminalActivityTone.Success,
@@ -134,6 +134,11 @@ export const AgentTerminalToolActivityProjectors: AgentTerminalActivityProjector
     });
   },
 };
+
+function readPresentationHeadline(value: unknown): string | undefined {
+  const record = normalizeRecord(value);
+  return readString(record.headline);
+}
 
 const AssistantMessageActivityTitles: Record<string, string> = {
   tool_preface: "工具调用前回复",

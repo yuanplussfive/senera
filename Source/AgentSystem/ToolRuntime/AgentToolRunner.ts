@@ -13,6 +13,7 @@ import { toolProcessFailureResult } from "./AgentToolProcessEnvelope.js";
 import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { AgentMcpToolRunner } from "../Mcp/AgentMcpToolRunner.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -80,7 +81,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
   ): Promise<AgentToolProcessRunResult> {
     if (tool.handler.kind !== "HostCapability") {
       return this.failure(
-        `工具不是宿主能力：${tool.name}`,
+        agentErrorMessage("tool.notHostCapability", { toolName: tool.name }),
         {
           toolName: tool.name,
         },
@@ -90,7 +91,9 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     const handler = this.hostCapabilities.get(tool.handler.capability);
     if (!handler) {
       return this.failure(
-        `宿主能力没有注册：${tool.handler.capability}`,
+        agentErrorMessage("tool.hostCapabilityMissingHandler", {
+          capability: tool.handler.capability,
+        }),
         {
           toolName: tool.name,
           capability: tool.handler.capability,

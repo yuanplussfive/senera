@@ -1,0 +1,95 @@
+import { afterEach, describe, expect, test } from "vitest";
+import { AgentEventKinds } from "../../../Source/AgentSystem/Events/AgentEventCatalog.js";
+import { createAgentProtocolE2eHarness, type AgentProtocolE2eHarness } from "./AgentProtocolE2eHarness.js";
+
+const openHarnesses: AgentProtocolE2eHarness[] = [];
+
+afterEach(() => {
+  while (openHarnesses.length > 0) {
+    openHarnesses.pop()?.stop();
+  }
+});
+
+describe("agent protocol E2E", () => {
+  test("websocket session message emits run lifecycle and replayable history", async () => {
+    const harness = await createHarness();
+    const sessionId = "session_e2e_direct";
+    const requestId = "request_e2e_direct";
+
+    harness.client.send({ type: "session.create", sessionId });
+    await harness.client.waitForEvent(AgentEventKinds.SessionCreated, (event) => event.sessionId === sessionId);
+
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId,
+      input: "检查协议链路",
+    });
+    await harness.client.waitForKinds([
+      AgentEventKinds.RunStarted,
+      AgentEventKinds.ModelStarted,
+      AgentEventKinds.ModelDelta,
+      AgentEventKinds.AssistantMessageCreated,
+      AgentEventKinds.RunCompleted,
+    ]);
+
+    const finalAnswer = await harness.client.waitForEvent(
+      AgentEventKinds.AssistantMessageCreated,
+      (event) => event.requestId === requestId &&
+        readDataRecord(event).kind === "final_answer" &&
+        readDataRecord(event).content === "E2E response: 检查协议链路",
+    );
+    expect(finalAnswer.sessionId).toBe(sessionId);
+    expect(finalAnswer.phase).toBe("run");
+
+    harness.client.send({ type: "session.history", sessionId, refresh: true });
+    await harness.client.waitForKinds([
+      AgentEventKinds.SessionHistoryStarted,
+      AgentEventKinds.SessionHistoryChunk,
+      AgentEventKinds.SessionHistorySteps,
+      AgentEventKinds.SessionRunHistoryChunk,
+      AgentEventKinds.SessionHistoryCompleted,
+    ], { afterSequence: finalAnswer.sequence });
+    const historyChunk = await harness.client.waitForEvent(
+      AgentEventKinds.SessionHistoryChunk,
+      (event) => event.sessionId === sessionId && JSON.stringify(event.data).includes("检查协议链路"),
+      { afterSequence: finalAnswer.sequence },
+    );
+    expect(readDataRecord(historyChunk).entries).toEqual(expect.any(Array));
+  });
+
+  test("invalid websocket payload is rejected without closing the connection", async () => {
+    const harness = await createHarness();
+    const before = harness.client.snapshot().at(-1)?.sequence ?? 0;
+
+    harness.client.send({ type: "session.list" });
+    await harness.client.waitForEvent(AgentEventKinds.SessionListSnapshot, undefined, { afterSequence: before });
+
+    harness.client.send({
+      type: "session.message",
+      sessionId: "missing_input",
+      input: "",
+    });
+    const invalid = await harness.client.waitForEvent(AgentEventKinds.RequestInvalid);
+    expect(readDataRecord(invalid).message).toBe("WS 请求结构无效。");
+
+    harness.client.send({ type: "sandbox.status" });
+    const sandbox = await harness.client.waitForEvent(
+      AgentEventKinds.SandboxStatusSnapshot,
+      undefined,
+      { afterSequence: invalid.sequence },
+    );
+    expect(readDataRecord(sandbox).state).toBe("fallback");
+  });
+});
+
+async function createHarness(): Promise<AgentProtocolE2eHarness> {
+  const harness = await createAgentProtocolE2eHarness();
+  openHarnesses.push(harness);
+  return harness;
+}
+
+function readDataRecord(event: { data: unknown }): Record<string, unknown> {
+  expect(event.data).toEqual(expect.any(Object));
+  return event.data as Record<string, unknown>;
+}

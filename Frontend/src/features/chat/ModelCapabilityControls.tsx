@@ -6,6 +6,7 @@ import {
   Eye,
   ImageIcon,
   MessageCircle,
+  ShieldCheck,
   Wrench,
 } from "lucide-react";
 import { cn } from "../../lib/util";
@@ -136,6 +137,12 @@ export const ModelCapabilityIconItems = [
     label: "工具调用",
     icon: <Wrench className="h-3 w-3" />,
     className: "border-amber-200 bg-amber-50 text-amber-700",
+  },
+  {
+    key: "DeveloperRole",
+    label: "Developer Role",
+    icon: <ShieldCheck className="h-3 w-3" />,
+    className: "border-cyan-200 bg-cyan-50 text-cyan-700",
   },
 ] as const satisfies readonly {
   key: keyof ModelCapabilitiesDraft;

@@ -1,4 +1,4 @@
-import type { ExecEvent, ExecHandle, Sandbox } from "microsandbox";
+import type { ExecEvent } from "microsandbox";
 import {
   SeneraExecutionError,
   SeneraExecutionErrorCodes,
@@ -11,11 +11,80 @@ import type {
   SeneraMicrosandboxSession,
 } from "./SeneraMicrosandboxTypes.js";
 
-type MicrosandboxModule = typeof import("microsandbox");
+interface MicrosandboxModule {
+  isInstalled(): boolean;
+  setRuntimeLibkrunfwPath(path: string): void;
+  setup(): MicrosandboxSetupBuilder;
+  Sandbox: {
+    builder(name: string): MicrosandboxSandboxBuilder;
+  };
+}
+
+interface MicrosandboxSetupBuilder {
+  baseDir(path: string): this;
+  install(): Promise<void>;
+}
+
+interface MicrosandboxSandboxBuilder {
+  image(image: string): this;
+  cpus(value: number): this;
+  memory(value: number): this;
+  pullPolicy(policy: string): this;
+  workdir(path: string): this;
+  envs(env: Record<string, string>): this;
+  ephemeral(enabled: boolean): this;
+  replace(): this;
+  disableMetricsSample(): this;
+  quietLogs(): this;
+  maxDuration(seconds: number): this;
+  volume(path: string, configure: (mount: MicrosandboxVolumeMount) => MicrosandboxVolumeMount): this;
+  patch(configure: (patch: MicrosandboxRootfsPatch) => MicrosandboxRootfsPatch): this;
+  disableNetwork(): this;
+  create(): Promise<MicrosandboxSandbox>;
+}
+
+interface MicrosandboxVolumeMount {
+  bind(path: string): this;
+  nosuid(): this;
+  nodev(): this;
+  readonly(): this;
+  quota(value: number): this;
+}
+
+interface MicrosandboxRootfsPatch {
+  copyDir(hostPath: string, guestPath: string, options: { replace: boolean }): this;
+}
+
+interface MicrosandboxSandbox {
+  execStreamWith(
+    command: string,
+    configure: (builder: MicrosandboxExecBuilder) => MicrosandboxExecBuilder,
+  ): Promise<MicrosandboxExecHandle>;
+  stopWithTimeout(timeoutMs: number): Promise<unknown>;
+  kill(): Promise<unknown>;
+}
+
+interface MicrosandboxExecHandle {
+  recv(): Promise<ExecEvent | null>;
+}
+
+interface MicrosandboxExecBuilder {
+  args(args: readonly string[]): this;
+  cwd(path: string): this;
+  envs(env: Record<string, string>): this;
+  timeout(milliseconds: number): this;
+  tty(enabled: boolean): this;
+  stdinNull(): this;
+  stdinBytes(data: Buffer): this;
+}
+
+type MicrosandboxModuleLoader = () => Promise<MicrosandboxModule>;
 
 export class SeneraMicrosandboxDynamicSdkAdapter implements SeneraMicrosandboxSdkAdapter {
   private modulePromise: Promise<MicrosandboxModule> | undefined;
   private runtimePreparePromise: Promise<void> | undefined;
+
+  constructor(private readonly moduleLoader: MicrosandboxModuleLoader = () => import("microsandbox")) {}
 
   async isInstalled(): Promise<boolean> {
     try {
@@ -81,7 +150,7 @@ export class SeneraMicrosandboxDynamicSdkAdapter implements SeneraMicrosandboxSd
   }
 
   private load(): Promise<MicrosandboxModule> {
-    this.modulePromise ??= import("microsandbox");
+    this.modulePromise ??= this.moduleLoader();
     return this.modulePromise;
   }
 
@@ -94,14 +163,27 @@ export class SeneraMicrosandboxDynamicSdkAdapter implements SeneraMicrosandboxSd
     }
 
     const runtime = request.runtime;
-    this.runtimePreparePromise ??= (async () => {
-      process.env.MSB_PATH = runtime.msbPath;
-      microsandbox.setRuntimeLibkrunfwPath(runtime.libkrunfwPath);
-      if (!microsandbox.isInstalled()) {
-        await microsandbox.setup().baseDir(runtime.baseDir).install();
-      }
-    })();
+    this.runtimePreparePromise ??= this.installRuntime(microsandbox, runtime)
+      .catch((error: unknown) => {
+        this.runtimePreparePromise = undefined;
+        throw error;
+      });
     return this.runtimePreparePromise;
+  }
+
+  private async installRuntime(
+    microsandbox: MicrosandboxModule,
+    runtime: NonNullable<SeneraMicrosandboxCreateRequest["runtime"]>,
+  ): Promise<void> {
+    if (microsandbox.isInstalled()) {
+      return;
+    }
+
+    process.env.MSB_PATH = runtime.msbPath;
+    microsandbox.setRuntimeLibkrunfwPath(runtime.libkrunfwPath);
+    if (!microsandbox.isInstalled()) {
+      await microsandbox.setup().baseDir(runtime.baseDir).install();
+    }
   }
 }
 
@@ -113,7 +195,7 @@ function applyWorkspaceMountMode<TMount extends { readonly(): TMount }>(
 }
 
 class SeneraMicrosandboxSdkSession implements SeneraMicrosandboxSession {
-  constructor(private readonly sandbox: Sandbox) {}
+  constructor(private readonly sandbox: MicrosandboxSandbox) {}
 
   async *exec(request: SeneraMicrosandboxExecRequest): AsyncIterable<SeneraMicrosandboxExecEvent> {
     const handle = await this.sandbox.execStreamWith(
@@ -146,7 +228,7 @@ class SeneraMicrosandboxSdkSession implements SeneraMicrosandboxSession {
   }
 }
 
-async function* readMicrosandboxExecEvents(handle: ExecHandle): AsyncIterable<ExecEvent> {
+async function* readMicrosandboxExecEvents(handle: MicrosandboxExecHandle): AsyncIterable<ExecEvent> {
   for (;;) {
     const event = await handle.recv();
     if (event === null) return;

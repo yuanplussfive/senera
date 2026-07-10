@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import crossSpawn from "cross-spawn";
 import fg from "fast-glob";
-
-const { sync: spawnSync } = crossSpawn;
+import { E2eTestPolicy, ProjectTestCoveragePolicies } from "./TestCoveragePolicy.js";
 
 interface PackageJson {
   name?: string;
@@ -16,6 +14,18 @@ interface PackageJson {
   dependencies?: Record<string, string>;
   exports?: Record<string, PackageExportConditions>;
   build?: ElectronBuilderConfig;
+}
+
+interface PackageLockJson {
+  name?: string;
+  lockfileVersion?: number;
+  packages?: Record<string, {
+    name?: string;
+    version?: string;
+    resolved?: string;
+    link?: boolean;
+    workspaces?: unknown;
+  }>;
 }
 
 interface PackageExportConditions {
@@ -44,26 +54,31 @@ interface WorkspacePackage {
   location: string;
 }
 
-interface NpmWorkspaceQueryEntry {
-  name?: string;
-  location?: string;
-  path?: string;
-}
-
 const workspaceRoot = process.cwd();
 const rootPackage = readPackageJson(path.join(workspaceRoot, "package.json"));
+const rootLockfilePath = path.join(workspaceRoot, "package-lock.json");
+const rootLockfile = fs.existsSync(rootLockfilePath)
+  ? readPackageLockJson(rootLockfilePath)
+  : undefined;
 const workspacePatterns = readWorkspacePatterns(rootPackage);
 const expectedWorkspaces = discoverWorkspacePackages(workspacePatterns);
-const installedWorkspaces = readInstalledWorkspacePackages();
+const verifyWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "verify.yml"));
+const securityScanWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "security-scan.yml"));
+const containerReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "container-release.yml"));
+const desktopReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "desktop-release.yml"));
 const violations = [
   ...inspectWorkspaceCoverage(),
-  ...inspectInstalledWorkspaceState(),
+  ...inspectLockfileWorkspaceState(),
   ...inspectRootNpmPolicy(),
+  ...inspectVerifyWorkflow(),
+  ...inspectSecurityScanWorkflow(),
+  ...inspectReleaseWorkflowGates(),
   ...inspectRootScripts(),
   ...inspectModuleSystemBoundary(),
   ...inspectRootRuntimeDependencies(),
   ...inspectRetiredRootScripts(),
   ...inspectApplicationEntrypoints(),
+  ...inspectTestGovernanceEntrypoints(),
   ...inspectDesktopPackageConfig(),
   ...inspectFrontendScripts(),
   ...inspectWorkspaceNpmrcFiles(),
@@ -88,24 +103,32 @@ function inspectWorkspaceCoverage(): string[] {
     : ["Frontend/package.json is not covered by the root package.json workspaces."];
 }
 
-function inspectInstalledWorkspaceState(): string[] {
-  const installedLocations = new Set(installedWorkspaces.map((workspace) => workspace.location));
-  return expectedWorkspaces
-    .filter((workspace) => !installedLocations.has(workspace.location))
-    .map((workspace) => [
-      `${workspace.location} is declared as a workspace but is not present in npm query .workspace.`,
-      "Run npm install from the repository root to refresh workspace links.",
-    ].join(" "));
+function inspectLockfileWorkspaceState(): string[] {
+  if (!rootLockfile) {
+    return [];
+  }
+  const packages = rootLockfile.packages ?? {};
+  return expectedWorkspaces.flatMap((workspace) => {
+    const workspaceEntry = packages[workspace.location];
+    const linkEntry = packages[path.posix.join("node_modules", workspace.name)];
+    const issues: string[] = [];
+    if (!workspaceEntry) {
+      issues.push(`${workspace.location} is declared as a workspace but is missing from package-lock.json.`);
+    }
+    if (!linkEntry || linkEntry.resolved !== workspace.location || linkEntry.link !== true) {
+      issues.push(`package-lock.json must link workspace ${workspace.name} to ${workspace.location}.`);
+    }
+    return issues;
+  });
 }
 
 function inspectRootScripts(): string[] {
-  return inspectScripts(rootPackage, "package.json", {
+  const expectedScripts = {
     "clean": "rimraf Dist",
     "bamlcheck": "baml check --from baml_src",
     "bamlgenerate": "baml generate --from baml_src",
     "compileopapolicy": "tsx Build/CompileOpaPolicy.ts",
     "sandboxprepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
-    "postinstall": "tsx Build/PrepareSandboxRuntime.ts",
     "securitycheck": "npm audit --audit-level=high",
     "build": "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     "dev": "concurrently -k -n server,frontend -c blue,green \"npm run serverwatch\" \"npm run frontend\"",
@@ -117,6 +140,10 @@ function inspectRootScripts(): string[] {
     "frontendtest": "npm --workspace senera-frontend run test",
     "frontendcoverage": "npm --workspace senera-frontend run coverage",
     "frontendverify": "npm --workspace senera-frontend run verify",
+    "backendtest": vitestRunCommand(ProjectTestCoveragePolicies.backend.vitestConfig),
+    "backendcoverage": vitestRunCommand(ProjectTestCoveragePolicies.backend.vitestConfig, "--coverage"),
+    "e2etest": vitestRunCommand(E2eTestPolicy.vitestConfig),
+    "coverage": "npm run frontendcoverage && npm run backendcoverage",
     "server": "npm run build && node Dist/Apps/Server.js",
     "serverwatch": "tsx Apps/ServerWatch.ts",
     "serverwatchdry": "tsx Apps/ServerWatch.ts --dry-run",
@@ -129,8 +156,23 @@ function inspectRootScripts(): string[] {
     "verifycontracts": "npm run build && npm run verifysuite -- contracts",
     "verify": "npm run build && npm run verifysuite -- core",
     "verifyall": "npm run build && npm run verifysuite -- all-local",
-    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run build && npm run verifysuite -- workspace core && npm run frontendverify && npm run frontendcoverage",
-  });
+    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run backendtest && npm run e2etest && npm run build && npm run verifysuite -- workspace core && npm run frontendverify && npm run frontendcoverage && npm run backendcoverage",
+  };
+
+  return [
+    ...inspectScripts(rootPackage, "package.json", expectedScripts),
+    ...inspectScriptSequence(rootPackage, "package.json", "ci", [
+      "securitycheck",
+      "bamlcheck",
+      "check",
+      "backendtest",
+      "e2etest",
+      "build",
+      "frontendverify",
+      "frontendcoverage",
+      "backendcoverage",
+    ]),
+  ];
 }
 
 function inspectRootRuntimeDependencies(): string[] {
@@ -215,6 +257,21 @@ function inspectApplicationEntrypoints(): string[] {
   ];
 }
 
+function inspectTestGovernanceEntrypoints(): string[] {
+  const expectedFiles = [
+    "Scripts/TestCoveragePolicy.ts",
+    "Scripts/TestGovernance.ts",
+    ...Object.values(ProjectTestCoveragePolicies).flatMap((policy) => [
+      policy.verifyEntrypoint,
+      policy.runnerEntrypoint,
+      policy.vitestConfig,
+    ].filter((file): file is string => Boolean(file))),
+  ].filter(uniqueString);
+  return expectedFiles
+    .filter((file) => !fs.existsSync(path.join(workspaceRoot, file)))
+    .map((file) => `${file} must exist as a test governance entrypoint.`);
+}
+
 function inspectDesktopPackageConfig(): string[] {
   return [
     ...(
@@ -264,25 +321,93 @@ function inspectFrontendScripts(): string[] {
   return inspectScripts(frontendPackage, "Frontend/package.json", {
     "arch:check": "node --import tsx ../Scripts/VerifyFrontendArchitecture.ts",
     "check": "tsc --noEmit",
-    "test": "node --import tsx ../Scripts/VerifyFrontendStateFlows.ts",
-    "coverage": "vitest run --config ../vitest.config.ts --coverage",
-    "verify": "npm run arch:check && npm run check && node --import tsx ../Scripts/VerifyFrontendTestCoverage.ts && npm run test",
+    "test": `node --import tsx ../${ProjectTestCoveragePolicies.frontend.runnerEntrypoint}`,
+    "coverage": vitestRunCommand(`../${ProjectTestCoveragePolicies.frontend.vitestConfig}`, "--coverage"),
+    "verify": `npm run arch:check && npm run check && node --import tsx ../${ProjectTestCoveragePolicies.frontend.verifyEntrypoint} && npm run test`,
   });
 }
 
 function inspectRootNpmPolicy(): string[] {
+  const violations: string[] = [];
   const npmrcPath = path.join(workspaceRoot, ".npmrc");
   if (!fs.existsSync(npmrcPath)) {
-    return ["Root .npmrc must disable package-lock generation for this no-lockfile workspace policy."];
+    violations.push("Root .npmrc must enable package-lock generation for reproducible npm ci installs.");
+  } else {
+    const settings = readNpmrcSettings(npmrcPath);
+    if (settings.get("package-lock") !== "true") {
+      violations.push(".npmrc must contain package-lock=true so npm ci uses the committed root lockfile.");
+    }
   }
 
-  const lines = fs.readFileSync(npmrcPath, "utf8")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("#"));
-  return lines.includes("package-lock=false")
-    ? []
-    : [".npmrc must contain package-lock=false."];
+  if (!rootLockfile) {
+    violations.push("Root package-lock.json must be committed for reproducible workspace installs.");
+    return violations;
+  }
+
+  if (rootLockfile.name !== rootPackage.name) {
+    violations.push(`package-lock.json name must match package.json name ${rootPackage.name}.`);
+  }
+  if (rootLockfile.lockfileVersion !== 3) {
+    violations.push("package-lock.json must use npm lockfileVersion 3.");
+  }
+
+  const lockedWorkspacePatterns = readLockfileWorkspacePatterns(rootLockfile);
+  if (!sameStringSet(lockedWorkspacePatterns, workspacePatterns)) {
+    violations.push("package-lock.json root workspaces must match package.json workspaces.");
+  }
+
+  return violations;
+}
+
+function inspectVerifyWorkflow(): string[] {
+  const expectedScripts = [
+    "backendtest",
+    "backendcoverage",
+    "e2etest",
+    "frontendverify",
+    "frontendcoverage",
+  ].map((script) => `npm run ${script}`);
+  const coverageArtifactNames = Object.values(ProjectTestCoveragePolicies)
+    .map((policy) => policy.coverageDirectory.split("/").at(-1))
+    .filter((name): name is string => Boolean(name))
+    .map((name) => `${name}-coverage`);
+
+  return [
+    ...inspectTextIncludes(verifyWorkflow, ".github/workflows/verify.yml", [
+      "npm ci",
+      ...expectedScripts,
+      ...coverageArtifactNames,
+    ]),
+  ];
+}
+
+function inspectSecurityScanWorkflow(): string[] {
+  return inspectTextIncludes(securityScanWorkflow, ".github/workflows/security-scan.yml", [
+    "name: Security Scan",
+    "github/codeql-action/init@v3",
+    "queries: security-extended,security-and-quality",
+    "actions/dependency-review-action@v4",
+    "aquasecurity/trivy-action@0.29.0",
+    "exit-code: \"1\"",
+    "github/codeql-action/upload-sarif@v3",
+  ]);
+}
+
+function inspectReleaseWorkflowGates(): string[] {
+  return [
+    ...inspectTextIncludes(containerReleaseWorkflow, ".github/workflows/container-release.yml", [
+      "- Security Scan",
+      "github.event.workflow_run.name == 'Security Scan'",
+      "Require Verify success",
+      "gh run list --workflow \"Verify\"",
+    ]),
+    ...inspectTextIncludes(desktopReleaseWorkflow, ".github/workflows/desktop-release.yml", [
+      "- Security Scan",
+      "github.event.workflow_run.name == 'Security Scan'",
+      "Require Verify success",
+      "gh run list --workflow \"Verify\"",
+    ]),
+  ];
 }
 
 function inspectWorkspaceNpmrcFiles(): string[] {
@@ -301,7 +426,7 @@ function inspectWorkspaceLockFiles(): string[] {
     .filter((file) => fs.existsSync(file))
     .map((file) => [
       `${relativePath(file)} creates a second npm install boundary.`,
-      "Use npm install from the repository root so the root workspace owns dependency resolution.",
+      "Keep dependency resolution in the root package-lock.json; do not commit workspace-local package-lock.json files.",
     ].join(" "));
 }
 
@@ -329,6 +454,44 @@ function inspectScripts(
     .map(([name, command]) => `${packagePath} script ${name} must be: ${command}`);
 }
 
+function inspectScriptSequence(
+  packageJson: PackageJson,
+  packagePath: string,
+  scriptName: string,
+  expectedSteps: readonly string[],
+): string[] {
+  const script = packageJson.scripts?.[scriptName];
+  if (!script) {
+    return [`${packagePath} script ${scriptName} must exist.`];
+  }
+
+  const commands = script
+    .split("&&")
+    .map((command) => command.trim())
+    .filter(Boolean);
+  const missingSteps = expectedSteps
+    .map((step) => `npm run ${step}`)
+    .filter((command) => !commands.includes(command));
+
+  return missingSteps.length === 0
+    ? []
+    : [`${packagePath} script ${scriptName} must include steps: ${missingSteps.join(", ")}.`];
+}
+
+function vitestRunCommand(configPath: string, ...args: readonly string[]): string {
+  return [
+    "vitest",
+    "run",
+    "--config",
+    configPath,
+    ...args,
+  ].join(" ");
+}
+
+function uniqueString(value: string, index: number, values: readonly string[]): boolean {
+  return values.indexOf(value) === index;
+}
+
 function discoverWorkspacePackages(patterns: readonly string[]): WorkspacePackage[] {
   const packageFiles = fg.sync(patterns.map(toPackageJsonPattern), {
     cwd: workspaceRoot,
@@ -352,38 +515,6 @@ function discoverWorkspacePackages(patterns: readonly string[]): WorkspacePackag
   });
 }
 
-function readInstalledWorkspacePackages(): WorkspacePackage[] {
-  const result = spawnSync("npm", ["query", ".workspace", "--json"], {
-    cwd: workspaceRoot,
-    encoding: "utf8",
-    windowsHide: true,
-  });
-
-  assert.equal(
-    result.status,
-    0,
-    [
-      "npm query .workspace failed.",
-      result.error?.message,
-      result.stderr?.trim(),
-    ].filter(Boolean).join("\n"),
-  );
-
-  const entries = JSON.parse(result.stdout) as NpmWorkspaceQueryEntry[];
-  assert.ok(Array.isArray(entries), "npm query .workspace must return an array.");
-
-  return entries.map((entry) => {
-    assert.ok(entry.name, "npm workspace query entry must include name.");
-    assert.ok(entry.location || entry.path, `npm workspace query entry ${entry.name} must include location or path.`);
-    return {
-      name: entry.name,
-      location: entry.location
-        ? normalizeRelativePath(entry.location)
-        : relativePath(entry.path as string),
-    };
-  });
-}
-
 function readWorkspacePatterns(packageJson: PackageJson): string[] {
   if (Array.isArray(packageJson.workspaces)) {
     return packageJson.workspaces;
@@ -396,6 +527,50 @@ function readWorkspacePatterns(packageJson: PackageJson): string[] {
 
 function readPackageJson(file: string): PackageJson {
   return JSON.parse(fs.readFileSync(file, "utf8")) as PackageJson;
+}
+
+function readTextFile(file: string): string {
+  return fs.readFileSync(file, "utf8");
+}
+
+function readPackageLockJson(file: string): PackageLockJson {
+  return JSON.parse(fs.readFileSync(file, "utf8")) as PackageLockJson;
+}
+
+function readNpmrcSettings(file: string): Map<string, string> {
+  return new Map(
+    fs.readFileSync(file, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .map((line) => {
+        const separatorIndex = line.indexOf("=");
+        return separatorIndex === -1
+          ? [line, ""]
+          : [line.slice(0, separatorIndex).trim(), line.slice(separatorIndex + 1).trim()];
+      }),
+  );
+}
+
+function readLockfileWorkspacePatterns(lockfile: PackageLockJson): string[] {
+  const workspaces = lockfile.packages?.[""]?.workspaces;
+  return Array.isArray(workspaces)
+    ? workspaces.flatMap((workspace) => typeof workspace === "string" ? [workspace] : [])
+    : [];
+}
+
+function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const rightValues = new Set(right);
+  return left.every((value) => rightValues.has(value));
+}
+
+function inspectTextIncludes(source: string, label: string, expectedTerms: readonly string[]): string[] {
+  return expectedTerms
+    .filter((term) => !source.includes(term))
+    .map((term) => `${label} must include ${term}.`);
 }
 
 function toPackageJsonPattern(pattern: string): string {

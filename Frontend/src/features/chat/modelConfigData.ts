@@ -254,6 +254,7 @@ export function defaultModelCapabilities(template: Record<string, unknown>): Req
     ImageOutput: readBoolean(capabilities.ImageOutput) ?? false,
     Reasoning: readBoolean(capabilities.Reasoning) ?? false,
     ToolCalling: readBoolean(capabilities.ToolCalling) ?? true,
+    DeveloperRole: readBoolean(capabilities.DeveloperRole) ?? false,
   };
 }
 
@@ -575,6 +576,7 @@ export const ModelCapabilityKeys = [
   "ImageOutput",
   "Reasoning",
   "ToolCalling",
+  "DeveloperRole",
 ] as const satisfies readonly (keyof ModelCapabilitiesDraft)[];
 
 export const ModelGroupMatchOptions = [

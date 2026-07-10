@@ -1,5 +1,6 @@
 import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
+import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
 
 type AgentToolEventContext =
   Required<Pick<AgentEventContext, "requestId" | "step">>
@@ -37,7 +38,7 @@ export type AgentToolDomainEvent =
         toolName: string;
         callId: string;
         batchId?: string;
-        preview?: string;
+        presentation?: AgentToolResultPresentation;
       };
     }
   | {

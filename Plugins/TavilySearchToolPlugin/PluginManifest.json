@@ -54,7 +54,7 @@
         "Boundary": "Sandbox",
         "Network": "Allow",
         "Workspace": "ReadWrite",
-        "LocalFallback": "Deny"
+        "LocalFallback": "Allow"
       },
       "Artifacts": {
         "Redact": {

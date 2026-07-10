@@ -6,11 +6,16 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ bubblewrap socat ripgrep \
   && rm -rf /var/lib/apt/lists/*
 
+COPY package.json package-lock.json .npmrc ./
+COPY Frontend/package.json ./Frontend/package.json
+COPY Packages ./Packages
+COPY System/Plugins ./System/Plugins
+COPY Plugins ./Plugins
+
+RUN npm ci --ignore-scripts
+
 COPY . .
 
-RUN npm install --ignore-scripts
-RUN mkdir -p /opt/senera/sandbox-runtime /opt/senera/sandbox-bundles \
-  && node --import tsx Build/PrepareSandboxRuntime.ts --base-dir /opt/senera/sandbox-runtime --bundle-dir /opt/senera/sandbox-bundles --skip-image-pull
 RUN npm run build
 RUN npm --workspace senera-frontend run build
 RUN npm prune --omit=dev
@@ -33,10 +38,11 @@ COPY --from=builder /app/System ./System
 COPY --from=builder /app/Plugins ./Plugins
 COPY --from=builder /app/Packages ./Packages
 COPY --from=builder /app/senera.config.example.json ./senera.config.example.json
-COPY --from=builder /opt/senera/sandbox-runtime /opt/senera/sandbox-runtime
-COPY --from=builder /opt/senera/sandbox-bundles /opt/senera/sandbox-bundles
 
-RUN mkdir -p /data
+RUN mkdir -p /data \
+  && chown -R node:node /data /app/Frontend/dist
+
+USER node
 
 VOLUME ["/data"]
 EXPOSE 8787

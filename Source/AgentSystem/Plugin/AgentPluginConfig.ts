@@ -5,6 +5,7 @@ import {
   type TomlTableWithoutBigInt,
 } from "smol-toml";
 import { resolvePluginDiscoveryConfig } from "../AgentDefaults.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type {
   LoadedPluginConfig,
@@ -148,7 +149,9 @@ export function validatePluginConfigTomlForWrite(toml: string, configPath?: stri
     ? fs.readFileSync(schemaPath, "utf8")
     : undefined;
   if (configPath && !schemaToml) {
-    throw new Error(`插件配置 TOML 无效：缺少插件配置 schema：${schemaPath ?? configPath}`);
+    throw new Error(agentErrorMessage("plugin.configTomlInvalidMissingSchema", {
+      schemaPath: schemaPath ?? configPath,
+    }));
   }
 
   const parsed = parseLoadedPluginConfigToml(toml, {
@@ -158,7 +161,7 @@ export function validatePluginConfigTomlForWrite(toml: string, configPath?: stri
   });
   const error = parsed.diagnostics.find((diagnostic) => diagnostic.severity === "error");
   if (error) {
-    throw new Error(`插件配置 TOML 无效：${error.message}`);
+    throw new Error(agentErrorMessage("plugin.configTomlInvalid", { message: error.message }));
   }
 }
 

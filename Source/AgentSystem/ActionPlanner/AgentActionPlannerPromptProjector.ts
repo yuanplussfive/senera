@@ -54,11 +54,11 @@ function projectBamlRequestBody(
 ): ProjectedActionPlannerPrompt {
   const messages = readBamlMessages(body);
   const systemPrompt = messages
-    .filter((message) => message.role === "system")
+    .filter((message) => message.role === "system" || message.role === "developer")
     .map((message) => message.content)
     .join("\n\n");
   const conversation = messages.flatMap((message) => {
-    if (message.role === "system") {
+    if (message.role === "system" || message.role === "developer") {
       return [];
     }
     return {
@@ -155,7 +155,7 @@ function omitRecordKeys(
 }
 
 function readBamlMessages(body: Record<string, unknown>): Array<{
-  role: "system" | "user" | "assistant";
+  role: AgentLanguageModelMessage["role"];
   content: string;
 }> {
   const messages = body.messages;
@@ -172,7 +172,7 @@ function readBamlMessages(body: Record<string, unknown>): Array<{
 }
 
 function readBamlMessage(value: unknown): {
-  role: "system" | "user" | "assistant";
+  role: AgentLanguageModelMessage["role"];
   content: string;
 } {
   if (!value || typeof value !== "object") {
@@ -186,8 +186,8 @@ function readBamlMessage(value: unknown): {
   };
 }
 
-function readRole(value: unknown): "system" | "user" | "assistant" {
-  if (value === "system" || value === "assistant" || value === "user") {
+function readRole(value: unknown): AgentLanguageModelMessage["role"] {
+  if (value === "system" || value === "developer" || value === "assistant" || value === "user") {
     return value;
   }
   throw new Error(`Unsupported BAML action planner message role: ${String(value)}`);

@@ -6,6 +6,7 @@ import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type { AgentPluginRegistryLike } from "../Types/ToolRuntimeTypes.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export interface AgentHostToolContext {
   tool: RegisteredTool;
@@ -31,7 +32,7 @@ export class AgentToolHostCapabilityRegistry {
 
   register(capability: string, handler: AgentHostToolHandler): this {
     if (this.handlers.has(capability)) {
-      throw new Error(`宿主工具能力重复注册：${capability}`);
+      throw new Error(agentErrorMessage("tool.hostCapabilityDuplicate", { capability }));
     }
 
     this.handlers.set(capability, handler);

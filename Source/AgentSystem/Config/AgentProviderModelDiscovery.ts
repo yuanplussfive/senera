@@ -4,6 +4,7 @@ import type {
   ResolvedAgentModelProviderEndpointConfig,
 } from "../Types/AgentConfigTypes.js";
 import { resolveModelProviderEndpointCatalog } from "../Defaults/AgentModelProviderDefaults.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export interface AgentProviderModelInfo {
   id: string;
@@ -54,11 +55,15 @@ export class AgentProviderModelDiscovery {
     }
 
     if (!endpoint.Enabled) {
-      throw new Error(`供应商已关闭：${endpoint.Id}`);
+      throw new Error(agentErrorMessage("model.listProviderDisabled", {
+        providerId: endpoint.Id,
+      }));
     }
 
     if (!endpoint.BaseUrl.trim()) {
-      throw new Error(`供应商 Base URL 为空：${endpoint.Id}`);
+      throw new Error(agentErrorMessage("model.listBaseUrlEmpty", {
+        providerId: endpoint.Id,
+      }));
     }
 
     const response = await this.fetchImpl(modelsUrl(endpoint.BaseUrl), {
@@ -67,7 +72,11 @@ export class AgentProviderModelDiscovery {
     });
 
     if (!response.ok) {
-      throw new Error(`模型列表请求失败：provider=${endpoint.Id} status=${response.status} ${response.statusText}`);
+      throw new Error(agentErrorMessage("model.listRequestFailed", {
+        providerId: endpoint.Id,
+        status: response.status,
+        statusText: response.statusText,
+      }));
     }
 
     const snapshot: AgentProviderModelSnapshot = {

@@ -16,6 +16,7 @@ import { UserFooter } from "./ProfileFooter";
 import { SessionHeader, SessionRail } from "./SessionChrome";
 import { SessionPanelBody } from "./SessionPanelBody";
 import type { ConfirmationIntent, LayoutPreferenceId, SessionMenuSection } from "./types";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 interface Props {
   onNewSession: () => void;
@@ -87,12 +88,12 @@ export function SessionList({
     if (!renaming) return;
     const nextTitle = renameDraft.trim();
     if (!nextTitle) {
-      toast.error("会话名称不能为空");
+      toast.error(frontendMessage("session.renameEmpty"));
       return;
     }
     onRenameSession(renaming.sessionId, nextTitle);
     setRenaming(null);
-    toast.success("已重命名");
+    toast.success(frontendMessage("session.renameSucceeded"));
   };
 
   const confirmDeleteSession = (session: SessionRecord): void => {
@@ -104,7 +105,7 @@ export function SessionList({
       details: ["删除后会话列表、消息历史和后端 SQLite 记录都会移除。", "这个操作不能通过刷新恢复。"],
       onConfirm: () => {
         onCloseSession(session.sessionId);
-        toast.success("已发送删除请求");
+        toast.success(frontendMessage("session.deleteRequested"));
       },
     });
   };
@@ -120,7 +121,7 @@ export function SessionList({
       details: ["每个会话都会发送后端删除请求。", "删除完成后，刷新也不会恢复这些历史。"],
       onConfirm: () => {
         onCloseSessions(ids);
-        toast.success(`已发送 ${ids.length} 个删除请求`);
+        toast.success(frontendMessage("session.bulkDeleteRequested", { count: ids.length }));
       },
     });
   };

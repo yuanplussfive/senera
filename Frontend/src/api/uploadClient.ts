@@ -1,4 +1,5 @@
 import type { UploadAttachmentData } from "./eventTypes";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export interface UploadResponse {
   ok: true;
@@ -59,7 +60,7 @@ export function uploadFile(
 
       const [upload] = payload.uploads;
       if (!upload) {
-        reject(new Error("上传响应为空。"));
+        reject(new Error(frontendMessage("upload.emptyResponse")));
         return;
       }
 
@@ -72,13 +73,13 @@ export function uploadFile(
     });
 
     request.addEventListener("error", () => {
-      reject(new Error("上传网络请求失败。"));
+      reject(new Error(frontendMessage("upload.networkFailed")));
     });
     request.addEventListener("abort", () => {
-      reject(new Error("上传已取消。"));
+      reject(new Error(frontendMessage("upload.aborted")));
     });
     request.addEventListener("timeout", () => {
-      reject(new Error("上传请求超时。"));
+      reject(new Error(frontendMessage("upload.timeout")));
     });
 
     request.open("POST", uploadUrl);
@@ -93,7 +94,7 @@ function parseUploadResponse(value: string): UploadResponse | UploadErrorRespons
     return {
       ok: false,
       error: {
-        message: "上传响应不是有效 JSON。",
+        message: frontendMessage("upload.invalidJsonResponse"),
       },
     };
   }
@@ -107,5 +108,5 @@ function isUploadSuccess(
 }
 
 function readUploadErrorMessage(payload: UploadResponse | UploadErrorResponse): string {
-  return payload.ok ? "上传失败。" : payload.error?.message ?? "上传失败。";
+  return payload.ok ? frontendMessage("upload.failed") : payload.error?.message ?? frontendMessage("upload.failed");
 }

@@ -69,6 +69,9 @@ export interface AgentPiModelProjection {
   contextWindow: number;
   maxTokens: number;
   headers?: Record<string, string>;
+  compat?: {
+    supportsDeveloperRole?: boolean;
+  };
 }
 
 export interface AgentPiProviderProjection {

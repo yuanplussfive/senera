@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type { SocketStatus } from "../api/useAgentSocket";
 import type { WsRequest } from "../api/eventTypes";
 import { useStore, type SessionRecord } from "../store/sessionStore";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 const RECOVERY_POLL_DELAYS_MS = [1500, 2000, 3000, 5000] as const;
 
@@ -78,7 +79,7 @@ export function useSessionHistoryRecovery({
       const ok = send({ type: "session.history", sessionId, refresh: options.refresh || undefined });
       if (!ok) {
         markHistoryLoadFailed(sessionId);
-        toast.error("历史同步失败，连接可能已断开");
+        toast.error(frontendMessage("session.historyDisconnected"));
       }
       return ok;
     },

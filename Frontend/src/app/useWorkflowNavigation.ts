@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import type { ChatMessage } from "../store/sessionStore";
 import { useStore, type SessionRecord } from "../store/sessionStore";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export interface UseWorkflowNavigationOptions {
   activeSessionId: string | null;
@@ -56,7 +57,7 @@ export function useWorkflowNavigation({
     });
 
     if (result.kind === "missing_message_request") {
-      toast.error("无法定位该消息的工作流");
+      toast.error(frontendMessage("workflow.messageRunMissing"));
       return;
     }
     if (result.kind === "run_not_found") {

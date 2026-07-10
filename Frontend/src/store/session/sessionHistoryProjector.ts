@@ -126,7 +126,9 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
         mergeHistoryRuns(session, nextRuns);
       }
     } else {
-      session.messages = nextMessages;
+      // Run events restore visible intermediate messages; conversation entries restore durable turns.
+      // Merge them so a tool preface cannot be erased when history replay completes.
+      mergeHistoryMessages(session, nextMessages);
       session.runs = nextRuns;
     }
     closeRecoveredRunningRuns(

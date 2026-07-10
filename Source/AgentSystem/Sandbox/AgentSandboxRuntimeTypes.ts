@@ -1,6 +1,7 @@
 export const AgentSandboxRuntimeProvider = "microsandbox";
 
 export type AgentSandboxEffectiveMode = "sandbox" | "fallback";
+export type AgentSandboxRuntimeState = "unknown" | "preparing" | "ready" | "fallback";
 export type AgentSandboxDiagnosticSeverity = "warning" | "error";
 
 export interface AgentSandboxDiagnostic {
@@ -27,6 +28,7 @@ export interface AgentSandboxRuntimePathSnapshot {
 export interface AgentSandboxRuntimeSnapshot {
   provider: typeof AgentSandboxRuntimeProvider;
   platform: NodeJS.Platform;
+  state: AgentSandboxRuntimeState;
   supported: boolean;
   effectiveMode: AgentSandboxEffectiveMode;
   paths?: AgentSandboxRuntimePathSnapshot;

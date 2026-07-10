@@ -47,7 +47,6 @@ export interface AgentSandboxRuntimeConfig {
   BaseDir?: string;
   BundleDir?: string;
   ImportBundlesOnStartup?: boolean;
-  PrepareImagesOnInstall?: boolean;
   Images?: string[];
 }
 
@@ -55,7 +54,6 @@ export interface ResolvedAgentSandboxRuntimeConfig {
   BaseDir: string;
   BundleDir: string;
   ImportBundlesOnStartup: boolean;
-  PrepareImagesOnInstall: boolean;
   Images: string[];
 }
 

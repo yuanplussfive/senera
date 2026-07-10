@@ -24,6 +24,7 @@ export interface AgentModelCapabilitiesConfig {
   ImageOutput?: boolean;
   Reasoning?: boolean;
   ToolCalling?: boolean;
+  DeveloperRole?: boolean;
 }
 
 export type AgentModelGroupMatchKind = "exact" | "prefix" | "suffix" | "includes";

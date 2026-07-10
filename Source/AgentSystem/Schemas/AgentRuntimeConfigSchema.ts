@@ -32,7 +32,6 @@ export const SandboxRuntimeSchema = z
     BaseDir: z.string().min(1).optional(),
     BundleDir: z.string().min(1).optional(),
     ImportBundlesOnStartup: z.boolean().optional(),
-    PrepareImagesOnInstall: z.boolean().optional(),
     Images: z.array(z.string().min(1)).optional(),
   })
   .strict();

@@ -6,6 +6,7 @@ import type {
   TextGenerationEndpointResult,
 } from "./ModelEndpointTypes.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
+import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
 
 const ClaudeContentBlockSchema = z.object({
   type: z.string().optional(),
@@ -59,10 +60,19 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
   }
 
   private buildPayload(request: AgentLanguageModelRequest, stream: boolean): Record<string, unknown> {
+    const messages = projectOpenAiCompatibleTextMessages(request, {
+      developerRole: "system",
+    });
+    const system = messages
+      .filter((message) => message.role === "system" || message.role === "developer")
+      .map((message) => message.content)
+      .join("\n\n");
     const payload: Record<string, unknown> = {
       model: this.runtime.config.Model,
-      system: request.systemPrompt,
-      messages: request.messages.map((message) => ({
+      system,
+      messages: messages
+        .filter((message) => message.role === "user" || message.role === "assistant")
+        .map((message) => ({
         role: message.role,
         content: message.content,
       })),

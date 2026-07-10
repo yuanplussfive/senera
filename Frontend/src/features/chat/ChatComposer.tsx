@@ -3,16 +3,6 @@ import { AlertCircle, ArrowUp, Check, ChevronDown, Loader2, Paperclip, Square, X
 import { toast } from "sonner";
 import type {
   ModelProviderListItem,
-  ConfigMutationState,
-  ConfigSnapshotData,
-  PresetItem,
-  PresetFormat,
-  PresetMutationState,
-  ProviderModelEndpointInput,
-  ProviderModelsFailedData,
-  ProviderModelsSnapshotData,
-  PluginConfigItem,
-  PluginConfigMutationState,
   UploadAttachmentData,
 } from "../../api/eventTypes";
 import type { MessageQueueMode } from "../../app/useChatCommands";
@@ -39,6 +29,14 @@ import {
   readChatModelProviders,
   readSelectedModelProvider,
 } from "./modelProvider";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import type {
+  ChatModelConfig,
+  ChatPluginConfig,
+  ChatPresetConfig,
+  ChatRuntimeState,
+  ChatSystemConfig,
+} from "./ChatPanelContracts";
 
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
@@ -46,38 +44,11 @@ const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
 interface ChatComposerProps {
   disabled: boolean;
   running: boolean;
-  modelProviders: ModelProviderListItem[];
-  selectedModelProviderId: string | null;
-  onSelectModelProvider: (id: string) => void;
-  pluginConfigs: PluginConfigItem[];
-  pluginConfigOperations: Record<string, PluginConfigMutationState>;
-  configSnapshot: ConfigSnapshotData | null;
-  configOperation: ConfigMutationState | null;
-  providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
-  providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
-  providerModelLoadingIds: Record<string, boolean>;
-  presets: PresetItem[];
-  activePresetName: string | null;
-  presetsEnabled: boolean;
-  presetRootDir: string;
-  presetOperations: Record<string, PresetMutationState>;
-  onRefreshPluginConfigs: () => void;
-  onSavePluginConfig: (pluginName: string, toml: string) => string | null;
-  onSetPluginEnabled: (pluginName: string, enabled: boolean, toolName?: string) => string | null;
-  onRefreshConfig: () => void;
-  onSaveConfig: (config: Record<string, unknown>) => string | null;
-  onFetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
-  onRefreshPresets: () => void;
-  onSavePreset: (input: {
-    name: string;
-    format: PresetFormat;
-    content: string;
-    activate?: boolean;
-  }) => string | null;
-  onDeletePreset: (name: string) => string | null;
-  onSetActivePreset: (name: string | null) => string | null;
-  socketStatus: string;
-  uploadUrl: string;
+  modelConfig: ChatModelConfig;
+  pluginConfig: ChatPluginConfig;
+  systemConfig: ChatSystemConfig;
+  presetConfig: ChatPresetConfig;
+  runtime: Pick<ChatRuntimeState, "socketStatus" | "uploadUrl">;
   onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
   onCancel: () => void;
 }
@@ -96,33 +67,11 @@ type PendingAttachment = {
 export function ChatComposer({
   disabled,
   running,
-  modelProviders,
-  selectedModelProviderId,
-  onSelectModelProvider,
-  pluginConfigs,
-  pluginConfigOperations,
-  configSnapshot,
-  configOperation,
-  providerModelCatalogs,
-  providerModelErrors,
-  providerModelLoadingIds,
-  presets,
-  activePresetName,
-  presetsEnabled,
-  presetRootDir,
-  presetOperations,
-  onRefreshPluginConfigs,
-  onSavePluginConfig,
-  onSetPluginEnabled,
-  onRefreshConfig,
-  onSaveConfig,
-  onFetchProviderModels,
-  onRefreshPresets,
-  onSavePreset,
-  onDeletePreset,
-  onSetActivePreset,
-  socketStatus,
-  uploadUrl,
+  modelConfig,
+  pluginConfig,
+  systemConfig,
+  presetConfig,
+  runtime,
   onSend,
   onCancel,
 }: ChatComposerProps): JSX.Element {
@@ -137,10 +86,10 @@ export function ChatComposer({
 
   const hint = useMemo(() => {
     if (running) return prefersCompactControls ? "可补充指令" : "输入会注入当前任务，Alt+Enter 排到任务之后";
-    if (socketStatus === "open") return "跟 senera 说点什么";
-    if (socketStatus === "connecting" || socketStatus === "idle") return "正在连接后端…";
+    if (runtime.socketStatus === "open") return "跟 senera 说点什么";
+    if (runtime.socketStatus === "connecting" || runtime.socketStatus === "idle") return "正在连接后端…";
     return "后端未连接，请检查服务";
-  }, [prefersCompactControls, socketStatus, running]);
+  }, [prefersCompactControls, runtime.socketStatus, running]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -209,7 +158,7 @@ export function ChatComposer({
           progress: { loaded: 0, total: file.size, ratio: file.size === 0 ? 1 : 0 },
         },
       ]);
-      void uploadFile(uploadUrl, file, {
+      void uploadFile(runtime.uploadUrl, file, {
         onProgress: (progress) => {
           setPendingAttachments((current) => current.map((entry) =>
             entry.id === id ? { ...entry, progress } : entry));
@@ -233,7 +182,7 @@ export function ChatComposer({
           const message = error instanceof Error ? error.message : String(error);
           setPendingAttachments((current) => current.map((entry) =>
             entry.id === id ? { ...entry, status: "error", error: message } : entry));
-          toast.error("文件上传失败", { description: message });
+          toast.error(frontendMessage("upload.fileFailed"), { description: message });
         });
     }
   };
@@ -408,40 +357,40 @@ export function ChatComposer({
           <span className="flex min-w-0 items-center gap-1">
             <SystemConfigControl
               disabled={disabled || running}
-              snapshot={configSnapshot}
-              operation={configOperation}
-              providerModelCatalogs={providerModelCatalogs}
-              providerModelErrors={providerModelErrors}
-              providerModelLoadingIds={providerModelLoadingIds}
-              onRefresh={onRefreshConfig}
-              onSave={onSaveConfig}
-              onFetchProviderModels={onFetchProviderModels}
+              snapshot={systemConfig.configSnapshot}
+              operation={systemConfig.configOperation}
+              providerModelCatalogs={systemConfig.providerModelCatalogs}
+              providerModelErrors={systemConfig.providerModelErrors}
+              providerModelLoadingIds={systemConfig.providerModelLoadingIds}
+              onRefresh={systemConfig.onRefreshConfig}
+              onSave={systemConfig.onSaveConfig}
+              onFetchProviderModels={systemConfig.onFetchProviderModels}
             />
             <PluginConfigControl
               disabled={disabled || running}
-              plugins={pluginConfigs}
-              operations={pluginConfigOperations}
-              onRefresh={onRefreshPluginConfigs}
-              onSave={onSavePluginConfig}
-              onSetEnabled={onSetPluginEnabled}
+              plugins={pluginConfig.pluginConfigs}
+              operations={pluginConfig.pluginConfigOperations}
+              onRefresh={pluginConfig.onRefreshPluginConfigs}
+              onSave={pluginConfig.onSavePluginConfig}
+              onSetEnabled={pluginConfig.onSetPluginEnabled}
             />
             <PresetControl
               disabled={disabled || running}
-              enabled={presetsEnabled}
-              rootDir={presetRootDir}
-              presets={presets}
-              activePresetName={activePresetName}
-              operations={presetOperations}
-              onRefresh={onRefreshPresets}
-              onSave={onSavePreset}
-              onDelete={onDeletePreset}
-              onSetActive={onSetActivePreset}
+              enabled={presetConfig.presetsEnabled}
+              rootDir={presetConfig.presetRootDir}
+              presets={presetConfig.presets}
+              activePresetName={presetConfig.activePresetName}
+              operations={presetConfig.presetOperations}
+              onRefresh={presetConfig.onRefreshPresets}
+              onSave={presetConfig.onSavePreset}
+              onDelete={presetConfig.onDeletePreset}
+              onSetActive={presetConfig.onSetActivePreset}
             />
             <ModelSelector
               disabled={disabled || running}
-              models={modelProviders}
-              selectedId={selectedModelProviderId}
-              onSelect={onSelectModelProvider}
+              models={modelConfig.modelProviders}
+              selectedId={modelConfig.selectedModelProviderId}
+              onSelect={modelConfig.onSelectModelProvider}
               prefersCompactControls={prefersCompactControls}
             />
           </span>

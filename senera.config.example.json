@@ -27,7 +27,6 @@
       "BaseDir": ".senera/sandbox-runtime",
       "BundleDir": ".senera/sandbox-bundles",
       "ImportBundlesOnStartup": true,
-      "PrepareImagesOnInstall": true,
       "Images": [
         "alpine"
       ]
@@ -147,6 +146,9 @@
       "Id": "main",
       "ProviderId": "main",
       "Icon": "mistral",
+      "Capabilities": {
+        "DeveloperRole": false
+      },
       "Endpoint": "ChatCompletions",
       "Model": "mistral-large-latest",
       "MaxOutputTokens": 4096

@@ -31,6 +31,7 @@ import {
   buildArtifactSummary,
 } from "./AgentArtifactTemplateProjection.js";
 import { AgentToolResultSummaryCompiler } from "./AgentToolResultSummaryCompiler.js";
+import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 import {
   writeToolWorkspaceArtifacts,
 } from "./AgentToolWorkspaceArtifactRecorder.js";
@@ -71,9 +72,13 @@ export class AgentToolExecutionArtifactRecorder {
         previousEvidence,
       });
       artifact.evidence.forEach((entry) => previousEvidence.add(entry.key));
-      recorded.push({
+      const recordedResult = {
         ...result,
         artifact,
+      };
+      recorded.push({
+        ...recordedResult,
+        presentation: projectAgentToolResultPresentation(recordedResult),
       });
     }
 
@@ -235,7 +240,11 @@ function buildArtifactDelta(input: {
 
 function readToolResultStatus(result: ExecutedToolCallResult): "success" | "failure" | "empty" {
   const structuredError = readRecord(result.result)?.error;
-  if (structuredError || result.process.exitCode !== 0 || result.process.signal) {
+  if (
+    structuredError
+    || (result.process.exitCode !== null && result.process.exitCode !== 0)
+    || result.process.signal
+  ) {
     return "failure";
   }
   return result.result === undefined || result.result === null ? "empty" : "success";

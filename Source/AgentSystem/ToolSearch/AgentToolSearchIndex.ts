@@ -1,6 +1,6 @@
 import MiniSearch from "minisearch";
-import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { ResolvedAgentToolSearchConfig } from "../Types/AgentConfigTypes.js";
+import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import {
   AgentToolSearchDocumentBuilder,
@@ -26,6 +26,10 @@ export type {
   AgentToolSearchResult,
 } from "./AgentToolSearchTypes.js";
 
+export interface AgentToolSearchRegistryReader {
+  listTools(): RegisteredTool[];
+}
+
 export class AgentToolSearchIndex {
   private readonly tokenizer = new AgentToolSearchTokenizer();
   private readonly miniSearch;
@@ -34,7 +38,7 @@ export class AgentToolSearchIndex {
   private readonly rankPipeline: AgentToolSearchRankPipeline;
 
   constructor(
-    registry: AgentPluginRegistry,
+    registry: AgentToolSearchRegistryReader,
     private readonly config: ResolvedAgentToolSearchConfig,
   ) {
     const documentBuilder = new AgentToolSearchDocumentBuilder();

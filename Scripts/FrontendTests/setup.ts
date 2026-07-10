@@ -24,3 +24,11 @@ globalThis.__SENERA_EMPTY_SUGGESTIONS__ ??= "整理日志|检查项目";
 if (typeof window !== "undefined") {
   window.__SENERA_RUNTIME_CONFIG__ ??= {};
 }
+
+class SeneraTestResizeObserver implements ResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+globalThis.ResizeObserver ??= SeneraTestResizeObserver;

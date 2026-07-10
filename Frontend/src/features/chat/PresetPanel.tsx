@@ -40,6 +40,7 @@ import {
   DropOverlay,
   type PresetConfirmAction,
 } from "./PresetOverlays";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 const PresetFileAccept = {
   "application/json": [".json"],
@@ -217,7 +218,7 @@ export function PresetControl({
     }
     if (saveOperation.status === "error") {
       setSaveRequestId(null);
-      setLocalError(saveOperation.message ?? "保存失败");
+      setLocalError(saveOperation.message ?? frontendMessage("preset.saveFailed"));
     }
   }, [saveOperation]);
 

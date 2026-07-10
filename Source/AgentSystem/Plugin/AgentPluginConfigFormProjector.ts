@@ -15,6 +15,7 @@ import {
   type PluginConfigSchemaDocument,
   type PluginConfigSchemaField,
 } from "./AgentPluginConfigSchema.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export function projectPluginConfigSections(
   parsed: TomlTableWithoutBigInt,
@@ -69,7 +70,7 @@ export function projectStrictPathDiagnostics(
 
   return unknownPaths.map((unknownPath) => ({
     severity: "error" as const,
-    message: `配置项未在 schema 中声明：${unknownPath.join(".")}`,
+    message: agentErrorMessage("plugin.configUnknownPath", { path: unknownPath.join(".") }),
   }));
 }
 
@@ -112,20 +113,20 @@ function validatePluginConfigField(field: LoadedPluginConfigField): string[] {
   const label = field.label;
 
   if (field.value === undefined) {
-    return field.required === false ? [] : [`${label} 缺少必填配置`];
+    return field.required === false ? [] : [agentErrorMessage("plugin.configFieldRequired", { label })];
   }
 
   if (field.type === "boolean" && typeof field.value !== "boolean") {
-    errors.push(`${label} 必须是布尔值`);
+    errors.push(agentErrorMessage("plugin.configFieldMustBeBoolean", { label }));
   }
 
   if (field.type === "string" && typeof field.value !== "string") {
-    errors.push(`${label} 必须是字符串`);
+    errors.push(agentErrorMessage("plugin.configFieldMustBeString", { label }));
   }
 
   if (field.type === "number") {
     if (typeof field.value !== "number" || !Number.isFinite(field.value)) {
-      errors.push(`${label} 必须是数字`);
+      errors.push(agentErrorMessage("plugin.configFieldMustBeNumber", { label }));
     } else {
       errors.push(...validateNumberConfigField(field, field.value, label));
     }
@@ -136,7 +137,7 @@ function validatePluginConfigField(field: LoadedPluginConfigField): string[] {
   }
 
   if (field.type === "table" && !isPlainTomlTable(field.value)) {
-    errors.push(`${label} 必须是表格对象`);
+    errors.push(agentErrorMessage("plugin.configFieldMustBeTable", { label }));
   }
 
   errors.push(...validateOptionConfigField(field, label));
@@ -148,7 +149,7 @@ function validateArrayConfigField(
   label: string,
 ): string[] {
   if (!Array.isArray(field.value)) {
-    return [`${label} 必须是数组`];
+    return [agentErrorMessage("plugin.configFieldMustBeArray", { label })];
   }
 
   return field.value.flatMap((item, index) =>
@@ -170,7 +171,7 @@ function validateOptionConfigField(
     }
 
     const suffix = values.length > 1 ? ` 第 ${index + 1} 项` : "";
-    return [`${label}${suffix} 必须是允许的选项`];
+    return [agentErrorMessage("plugin.configFieldOptionInvalid", { label, suffix })];
   });
 }
 
@@ -180,8 +181,12 @@ function validateNumberConfigField(
   label: string,
 ): string[] {
   return [
-    typeof field.min === "number" && value < field.min ? `${label} 不能小于 ${field.min}` : undefined,
-    typeof field.max === "number" && value > field.max ? `${label} 不能大于 ${field.max}` : undefined,
+    typeof field.min === "number" && value < field.min
+      ? agentErrorMessage("plugin.configFieldMin", { label, min: field.min })
+      : undefined,
+    typeof field.max === "number" && value > field.max
+      ? agentErrorMessage("plugin.configFieldMax", { label, max: field.max })
+      : undefined,
   ].filter((message): message is string => Boolean(message));
 }
 
@@ -195,19 +200,19 @@ function validateArrayConfigItem(
   const itemType = field.itemType ?? "string";
 
   if (itemType === "boolean" && typeof item !== "boolean") {
-    return [`${itemLabel} 必须是布尔值`];
+    return [agentErrorMessage("plugin.configFieldMustBeBoolean", { label: itemLabel })];
   }
   if (itemType === "number") {
     if (typeof item !== "number" || !Number.isFinite(item)) {
-      return [`${itemLabel} 必须是数字`];
+      return [agentErrorMessage("plugin.configFieldMustBeNumber", { label: itemLabel })];
     }
     return validateNumberConfigField(field, item, itemLabel);
   }
   if (itemType === "string" && typeof item !== "string") {
-    return [`${itemLabel} 必须是字符串`];
+    return [agentErrorMessage("plugin.configFieldMustBeString", { label: itemLabel })];
   }
   if (itemType === "table" && !isPlainTomlTable(item)) {
-    return [`${itemLabel} 必须是表格对象`];
+    return [agentErrorMessage("plugin.configFieldMustBeTable", { label: itemLabel })];
   }
   return [];
 }

@@ -172,6 +172,7 @@ const stepTraceProjectors = {
     toolBatch: toolBatchForTrace(requestId, trace),
     toolArgs: trace.toolArgs,
     toolPreview: trace.toolPreview,
+    toolPresentation: trace.toolPresentation,
     toolResult: trace.toolResult,
     toolErrorMessage: trace.toolErrorMessage,
   }),

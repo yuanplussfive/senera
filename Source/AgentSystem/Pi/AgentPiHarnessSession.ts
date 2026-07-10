@@ -7,6 +7,8 @@ import type {
   PromptTemplate,
   Skill,
 } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import type { AgentPiHarnessEvent } from "./AgentPiHarnessEvents.js";
 import {
   isPiCoreAgentEvent,
@@ -69,6 +71,7 @@ export class AgentPiHarnessSession implements AgentPiSession {
   async prompt(text: string): Promise<void> {
     await this.appendHistory();
     const assistant = await this.harness.prompt(text);
+    throwIfAssistantFailed(assistant);
     this.lastAssistantText = readAssistantText(assistant);
   }
 
@@ -134,4 +137,13 @@ function readAssistantText(message: AgentState["messages"][number]): string {
   return content.flatMap((entry) =>
     entry.type === "text" && typeof entry.text === "string" ? [entry.text] : [],
   ).join("").trim();
+}
+
+function throwIfAssistantFailed(message: AssistantMessage): void {
+  if (message.stopReason === "aborted") {
+    throw new AgentCancellationError(message.errorMessage ?? "Pi provider request was aborted.");
+  }
+  if (message.stopReason === "error") {
+    throw new Error(message.errorMessage ?? "Pi provider returned an error.");
+  }
 }

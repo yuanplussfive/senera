@@ -100,6 +100,7 @@ export interface TimelineStep {
   toolBatch?: TimelineToolBatch;
   toolArgs?: unknown;
   toolPreview?: string;
+  toolPresentation?: import("../api/eventTypes").ToolResultPresentation;
   toolResult?: unknown;
   toolErrorMessage?: string;
   detailJson?: unknown;

@@ -7,6 +7,7 @@ import type {
   ModelProviderConfig,
 } from "./ModelEndpointTypes.js";
 import type { AgentModelProviderMetadata } from "./AgentModelMetadata.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { combineAbortSignals, createModelRequestLifetime } from "./ModelHttpAbort.js";
 import { normalizeModelHttpError } from "./ModelHttpErrors.js";
 import { parseModelHttpJsonObject } from "./ModelHttpJson.js";
@@ -97,7 +98,7 @@ export class ModelHttpClient {
         signal,
       }, query);
       if (!response.body) {
-        throw new Error("模型服务没有返回可读取的流。");
+        throw new Error(agentErrorMessage("model.readableStreamMissing"));
       }
       return response as Response & { body: ReadableStream<Uint8Array> };
     } catch (error) {

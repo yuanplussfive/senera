@@ -4,6 +4,7 @@ import type { WsRequest } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { generateId } from "../lib/util";
 import { useStore, type UserProfile } from "../store/sessionStore";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export interface UseSessionCommandsOptions {
   send: (request: WsRequest) => boolean;
@@ -43,7 +44,7 @@ export function useSessionCommands({
 
   const createSession = useCallback((): void => {
     if (status !== "open") {
-      toast.warning("后端未连接，无法新建会话");
+      toast.warning(frontendMessage("session.createOffline"));
       return;
     }
 
@@ -54,7 +55,7 @@ export function useSessionCommands({
       modelProviderId: selectedModelProviderId ?? undefined,
     });
     if (!ok) {
-      toast.error("新建失败，连接可能已断开");
+      toast.error(frontendMessage("session.createDisconnected"));
       return;
     }
 
@@ -65,7 +66,7 @@ export function useSessionCommands({
   const closeSession = useCallback((sessionId: string): void => {
     const ok = send({ type: "session.close", sessionId });
     if (!ok) {
-      toast.error("删除失败，连接可能已断开");
+      toast.error(frontendMessage("session.deleteDisconnected"));
       return;
     }
     removeSession(sessionId);
@@ -88,7 +89,9 @@ export function useSessionCommands({
       clearAllSessions(sentIds);
     }
     if (sentIds.length < uniqueIds.length) {
-      toast.error(`有 ${uniqueIds.length - sentIds.length} 个会话删除请求发送失败`);
+      toast.error(frontendMessage("session.bulkDeletePartialFailed", {
+        count: uniqueIds.length - sentIds.length,
+      }));
     }
   }, [clearAllSessions, send, serverKnownSessionIdsRef]);
 

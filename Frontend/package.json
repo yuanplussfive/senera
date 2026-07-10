@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "check": "tsc --noEmit",
     "arch:check": "node --import tsx ../Scripts/VerifyFrontendArchitecture.ts",
-    "test": "node --import tsx ../Scripts/VerifyFrontendStateFlows.ts",
+    "test": "node --import tsx ../Scripts/VerifyFrontendVitestSuite.ts",
     "coverage": "vitest run --config ../vitest.config.ts --coverage",
     "verify": "npm run arch:check && npm run check && node --import tsx ../Scripts/VerifyFrontendTestCoverage.ts && npm run test"
   },

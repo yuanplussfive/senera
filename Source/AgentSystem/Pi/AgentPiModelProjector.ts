@@ -7,6 +7,7 @@ import type {
 } from "./AgentPiTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { buildPiProxyBaseUrl } from "../PiProxy/AgentPiProxyHttpApi.js";
+import { resolveAgentModelCompatibility } from "../ModelEndpoints/ModelCompatibility.js";
 
 const FreeCostModel = {
   input: 0,
@@ -25,6 +26,7 @@ export function projectSeneraModelProviderToPi(
   config: AgentSystemConfig,
 ): AgentPiProviderProjection {
   const capabilities = provider.Capabilities ?? {};
+  const compatibility = resolveAgentModelCompatibility(provider);
   const proxyBaseUrl = buildPiProxyBaseUrl(config);
   const model = {
     id: provider.Model,
@@ -37,6 +39,9 @@ export function projectSeneraModelProviderToPi(
     cost: { ...FreeCostModel },
     contextWindow: positiveOrUnlimited(provider.ContextWindowTokens),
     maxTokens: positiveOrUnlimited(provider.MaxModelOutputTokens),
+    compat: {
+      supportsDeveloperRole: compatibility.supportsDeveloperRole,
+    },
   } satisfies AgentPiProviderProjection["model"];
 
   return {

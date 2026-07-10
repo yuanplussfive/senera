@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseToml, type TomlTableWithoutBigInt } from "smol-toml";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export type PluginTomlConfig = TomlTableWithoutBigInt;
 
@@ -25,16 +26,25 @@ export function readPluginTomlConfig<TConfig = PluginTomlConfig>(
   const configPath = resolvePluginConfigPath(fileName, options);
   if (!fs.existsSync(configPath)) {
     const exampleHint = options.exampleFileName
-      ? ` 请复制 ${options.exampleFileName} 为 ${path.basename(configPath)} 后填写配置。`
+      ? agentErrorMessage("plugin.configFileMissingHint", {
+          exampleFileName: options.exampleFileName,
+          configFileName: path.basename(configPath),
+        })
       : "";
-    throw new Error(`缺少插件配置文件：${configPath}。${exampleHint}`);
+    throw new Error(agentErrorMessage("plugin.configFileMissing", {
+      configPath,
+      hint: exampleHint,
+    }));
   }
 
   try {
     return parsePluginTomlConfig<TConfig>(fs.readFileSync(configPath, "utf8"));
   } catch (error: unknown) {
     throw new Error(
-      `插件配置文件 TOML 格式错误：${configPath}：${error instanceof Error ? error.message : String(error)}`,
+      agentErrorMessage("plugin.configFileTomlInvalid", {
+        configPath,
+        message: error instanceof Error ? error.message : String(error),
+      }),
       { cause: error },
     );
   }

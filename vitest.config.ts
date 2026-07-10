@@ -1,8 +1,14 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { normalizePath } from "vite";
 import react from "@vitejs/plugin-react";
+import { FrontendTestCoveragePolicy } from "./Scripts/TestCoveragePolicy.js";
 
-const workspaceRoot = path.resolve(__dirname);
+const workspaceRoot = path.dirname(fileURLToPath(import.meta.url));
+const workspacePath = (...segments: string[]): string => normalizePath(path.join(workspaceRoot, ...segments));
+const workspacePaths = (values: readonly string[]): string[] =>
+  values.map((value) => workspacePath(...value.split("/")));
 
 export default defineConfig({
   root: workspaceRoot,
@@ -11,7 +17,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": path.join(workspaceRoot, "Frontend", "src"),
+      "@": workspacePath("Frontend", "src"),
     },
     dedupe: [
       "react",
@@ -37,11 +43,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: false,
     include: [
-      "Scripts/FrontendTests/**/*.test.mjs",
+      ...FrontendTestCoveragePolicy.testInclude,
     ],
-    setupFiles: [
-      path.join(workspaceRoot, "Scripts", "FrontendTests", "setup.ts"),
-    ],
+    setupFiles: workspacePaths(FrontendTestCoveragePolicy.setupFiles ?? []),
     server: {
       deps: {
         inline: [
@@ -57,33 +61,10 @@ export default defineConfig({
         "html",
         "json-summary",
       ],
-      reportsDirectory: "coverage/frontend",
-      include: [
-        "Frontend/src/api/streamingEventCoalescer.ts",
-        "Frontend/src/api/useAgentSocket.ts",
-        "Frontend/src/features/chat/ApprovalRequestStrip.tsx",
-        "Frontend/src/features/chat/ChatHeader.tsx",
-        "Frontend/src/features/chat/EmptyChatState.tsx",
-        "Frontend/src/features/chat/messagePresentation.ts",
-        "Frontend/src/features/chat/modelProvider.ts",
-        "Frontend/src/features/workflow/canvasLoadPolicy.ts",
-        "Frontend/src/features/workflow/runSummary.ts",
-        "Frontend/src/features/workflow/stepPresentation.ts",
-        "Frontend/src/shared/code/CodeArtifactModel.ts",
-        "Frontend/src/shared/code/CodeArtifactSourceView.tsx",
-        "Frontend/src/shared/motion/index.ts",
-        "Frontend/src/shared/motion/presets.ts",
-        "Frontend/src/shared/responsive/index.ts",
-        "Frontend/src/shared/responsive/responsiveMode.ts",
-        "Frontend/src/shared/responsive/responsiveStore.ts",
-        "Frontend/src/store/session/**/*.ts",
-        "Frontend/src/store/sessionStore.ts",
-      ],
-      exclude: [
-        "Frontend/src/main.tsx",
-        "Frontend/src/generated/**",
-        "Frontend/src/**/*.d.ts",
-      ],
+      reportsDirectory: FrontendTestCoveragePolicy.coverageDirectory,
+      thresholds: FrontendTestCoveragePolicy.thresholds,
+      include: [...FrontendTestCoveragePolicy.coverageInclude],
+      exclude: [...FrontendTestCoveragePolicy.coverageExclude],
     },
   },
 });

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type { ChatMessage } from "../../store/sessionStore";
 import { cn, formatTime } from "../../lib/util";
 import { Dialog, DialogActionButton, DialogActions, DialogContent, ScrollArea } from "../../shared/ui";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export function EditMessageDialog({
   editing,
@@ -22,7 +23,7 @@ export function EditMessageDialog({
     if (!target) return;
     const next = draft.trim();
     if (!next) {
-      toast.error("内容不能为空");
+      toast.error(frontendMessage("chat.contentRequired"));
       return;
     }
     onSubmit(target, next);

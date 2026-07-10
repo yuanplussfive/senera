@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { EventKinds } from "../../Frontend/src/api/eventTypes.ts";
-import { applyEvent } from "../../Frontend/src/store/session/sessionProjector.ts";
+import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
+import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import {
   createEvent,
   createTestState,
@@ -67,7 +67,15 @@ test("complete tool-assisted run projects chat messages, approvals, tool details
     toolName: "WeatherTool",
     callId: "call_weather",
     batchId: "batch_weather",
-    preview: "北京 28C 晴",
+    presentation: {
+      type: "senera.tool_result_presentation.v1",
+      version: 1,
+      status: "success",
+      headline: "北京 28C 晴",
+      facts: [],
+      evidence: [],
+      changes: [],
+    },
   }, { step: 1, sequence: 7, phase: "tool" }));
   applyEvent(state, createEvent(EventKinds.ToolCallResultDetail, {
     detailId: "detail_weather",

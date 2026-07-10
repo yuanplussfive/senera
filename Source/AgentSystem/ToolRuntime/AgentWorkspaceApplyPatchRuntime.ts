@@ -3,6 +3,7 @@ import path from "node:path";
 import { applyPatch } from "diff";
 import { z } from "zod";
 import { resolveWorkspacePath, workspaceRelativePath } from "../Execution/SeneraWorkspacePath.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import {
   AgentExecutionErrorCodes,
@@ -112,7 +113,7 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
   if (!parsed.success) {
     return workspacePatchFailure({
       code: AgentExecutionErrorCodes.InvalidToolArguments,
-      message: "WorkspaceApplyPatch 参数无效。",
+      message: agentErrorMessage("workspacePatch.argumentsInvalid"),
       diagnostics: parsed.error.issues.map((issue) => ({
         message: issue.message,
         pointer: `/${issue.path.join("/")}`,
@@ -228,9 +229,9 @@ async function planAddOperation(input: {
   const existing = await lstatOrUndefined(target.absolutePath);
   if (existing) {
     throw new WorkspaceApplyPatchError({
-      message: `新增文件已存在：${target.relativePath}`,
+      message: agentErrorMessage("workspacePatch.addFileExists", { path: target.relativePath }),
       pointer: `${pointer}/path`,
-      suggestion: "已存在文件请使用 update，并提供 unified hunk patch。",
+      suggestion: agentErrorMessage("workspacePatch.addFileExistsSuggestion"),
     });
   }
 
@@ -285,9 +286,9 @@ async function planDeleteOperation(input: {
   const stat = await requiredStat(target, `${pointer}/path`);
   if (!stat.isFile()) {
     throw new WorkspaceApplyPatchError({
-      message: `delete 只能删除文件：${target.relativePath}`,
+      message: agentErrorMessage("workspacePatch.deleteFileOnly", { path: target.relativePath }),
       pointer: `${pointer}/path`,
-      suggestion: "删除目录请使用 deleteDirectory。",
+      suggestion: agentErrorMessage("workspacePatch.deleteFileOnlySuggestion"),
     });
   }
 
@@ -310,7 +311,7 @@ async function planMoveOperation(input: {
   const destination = resolveTarget(input.workspaceRoot, input.operation.destination, `${pointer}/destination`);
   if (source.relativePath === destination.relativePath) {
     throw new WorkspaceApplyPatchError({
-      message: `move 的 source 和 destination 不能相同：${source.relativePath}`,
+      message: agentErrorMessage("workspacePatch.moveSamePath", { path: source.relativePath }),
       pointer,
     });
   }
@@ -320,7 +321,7 @@ async function planMoveOperation(input: {
   const destinationExisting = await lstatOrUndefined(destination.absolutePath);
   if (destinationExisting) {
     throw new WorkspaceApplyPatchError({
-      message: `移动目标已存在：${destination.relativePath}`,
+      message: agentErrorMessage("workspacePatch.moveDestinationExists", { path: destination.relativePath }),
       pointer: `${pointer}/destination`,
     });
   }
@@ -356,11 +357,15 @@ async function planCreateDirectoryOperation(input: {
   plan: PatchPlan;
 }, pointer: string): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensureNotWorkspaceRoot(target, `${pointer}/path`, "不能把工作区根目录作为 createDirectory 目标。");
+  ensureNotWorkspaceRoot(
+    target,
+    `${pointer}/path`,
+    agentErrorMessage("workspacePatch.createDirectoryRoot"),
+  );
   const existing = await lstatOrUndefined(target.absolutePath);
   if (existing && !existing.isDirectory()) {
     throw new WorkspaceApplyPatchError({
-      message: `目录目标已存在但不是目录：${target.relativePath}`,
+      message: agentErrorMessage("workspacePatch.directoryTargetNotDirectory", { path: target.relativePath }),
       pointer: `${pointer}/path`,
     });
   }
@@ -382,14 +387,18 @@ async function planDeleteDirectoryOperation(input: {
   plan: PatchPlan;
 }, pointer: string): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensureNotWorkspaceRoot(target, `${pointer}/path`, "不能删除工作区根目录。");
+  ensureNotWorkspaceRoot(
+    target,
+    `${pointer}/path`,
+    agentErrorMessage("workspacePatch.deleteDirectoryRoot"),
+  );
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const stat = await requiredStat(target, `${pointer}/path`);
   if (!stat.isDirectory()) {
     throw new WorkspaceApplyPatchError({
-      message: `deleteDirectory 只能删除目录：${target.relativePath}`,
+      message: agentErrorMessage("workspacePatch.deleteDirectoryOnly", { path: target.relativePath }),
       pointer: `${pointer}/path`,
-      suggestion: "删除文件请使用 delete。",
+      suggestion: agentErrorMessage("workspacePatch.deleteDirectoryOnlySuggestion"),
     });
   }
 
@@ -451,9 +460,9 @@ function applyHunkPatch(input: {
     });
     if (result === false) {
       throw new WorkspaceApplyPatchError({
-        message: `补丁无法应用：${input.oldPath}`,
+        message: agentErrorMessage("workspacePatch.patchApplyFailed", { path: input.oldPath }),
         pointer: input.pointer,
-        suggestion: "重新读取文件后生成更精确的 unified hunk patch。",
+        suggestion: agentErrorMessage("workspacePatch.patchApplyFailedSuggestion"),
       });
     }
     return result;
@@ -464,7 +473,7 @@ function applyHunkPatch(input: {
     throw new WorkspaceApplyPatchError({
       message: error instanceof Error ? error.message : String(error),
       pointer: input.pointer,
-      suggestion: "确认 patch 只包含 @@ hunk，且 hunk header 行数与内容一致。",
+      suggestion: agentErrorMessage("workspacePatch.patchStructureSuggestion"),
     });
   }
 }
@@ -473,26 +482,26 @@ function normalizeHunkPatch(value: string, pointer: string): string {
   const normalized = value.replace(/\r\n/g, "\n");
   if (/^(diff --git|--- |\+\+\+ )/m.test(normalized)) {
     throw new WorkspaceApplyPatchError({
-      message: "update/move.patch 只能包含 unified hunk，不能包含文件头。",
+      message: agentErrorMessage("workspacePatch.patchHeaderOnly"),
       pointer,
-      suggestion: "保留 @@ ... @@ 及其后面的上下文、删除、插入行。",
+      suggestion: agentErrorMessage("workspacePatch.patchHeaderOnlySuggestion"),
     });
   }
   const hunkStart = /^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@/m.exec(normalized);
   if (!hunkStart) {
     throw new WorkspaceApplyPatchError({
-      message: "patch 缺少 unified hunk header。",
+      message: agentErrorMessage("workspacePatch.patchMissingHunkHeader"),
       pointer,
-      suggestion: "patch 应以 @@ -oldStart,oldLines +newStart,newLines @@ 开始。",
+      suggestion: agentErrorMessage("workspacePatch.patchMissingHunkHeaderSuggestion"),
     });
   }
 
   const prefix = normalized.slice(0, hunkStart.index);
   if (prefix.trim().length > 0) {
     throw new WorkspaceApplyPatchError({
-      message: "patch 的 hunk header 前不能包含非空内容。",
+      message: agentErrorMessage("workspacePatch.patchNonEmptyBeforeHeader"),
       pointer,
-      suggestion: "patch 应从 @@ hunk 开始。",
+      suggestion: agentErrorMessage("workspacePatch.patchNonEmptyBeforeHeaderSuggestion"),
     });
   }
 
@@ -504,7 +513,7 @@ async function readExistingFile(target: ResolvedWorkspaceTarget, pointer: string
   const stat = await requiredStat(target, pointer);
   if (!stat.isFile()) {
     throw new WorkspaceApplyPatchError({
-      message: `目标不是文件：${target.relativePath}`,
+      message: agentErrorMessage("workspacePatch.targetNotFile", { path: target.relativePath }),
       pointer,
     });
   }
@@ -518,7 +527,7 @@ async function requiredStat(
   const stat = await lstatOrUndefined(target.absolutePath);
   if (!stat) {
     throw new WorkspaceApplyPatchError({
-      message: `路径不存在：${target.relativePath}`,
+      message: agentErrorMessage("workspacePatch.pathMissing", { path: target.relativePath }),
       pointer,
     });
   }
@@ -543,7 +552,7 @@ function resolveTarget(
 ): ResolvedWorkspaceTarget {
   if (value.includes("\0")) {
     throw new WorkspaceApplyPatchError({
-      message: "路径不能包含 NUL 字符。",
+      message: agentErrorMessage("workspacePatch.pathContainsNul"),
       pointer,
     });
   }
@@ -559,7 +568,7 @@ function resolveTarget(
   const relativePath = workspaceRelativePath(workspaceRoot, resolved.absolutePath);
   if (!relativePath || relativePath === ".") {
     throw new WorkspaceApplyPatchError({
-      message: "路径不能指向工作区根目录。",
+      message: agentErrorMessage("workspacePatch.pathCannotBeRoot"),
       pointer,
     });
   }
@@ -597,9 +606,9 @@ function ensurePathUnused(
     || plan.deleteDirectories.has(target.relativePath);
   if (used) {
     throw new WorkspaceApplyPatchError({
-      message: `同一个 WorkspaceApplyPatch 调用不能重复操作同一路径：${target.relativePath}`,
+      message: agentErrorMessage("workspacePatch.duplicateOperation", { path: target.relativePath }),
       pointer,
-      suggestion: "把同一文件的多个 hunk 合并到一个 update.patch。",
+      suggestion: agentErrorMessage("workspacePatch.duplicateOperationSuggestion"),
     });
   }
 }
@@ -613,7 +622,7 @@ function addWrite(
   const pending = pendingFiles.get(write.target.relativePath);
   if (pending) {
     throw new WorkspaceApplyPatchError({
-      message: `同一个 WorkspaceApplyPatch 调用不能重复写入同一路径：${write.target.relativePath}`,
+      message: agentErrorMessage("workspacePatch.duplicateWrite", { path: write.target.relativePath }),
       pointer,
     });
   }
@@ -626,9 +635,12 @@ function rejectDirectoryDeleteConflicts(plan: PatchPlan): void {
     for (const changedPath of collectChangedPaths(plan)) {
       if (changedPath !== deletion.target.relativePath && isInsideDirectory(changedPath, deletion.target.relativePath)) {
         throw new WorkspaceApplyPatchError({
-          message: `目录删除与子路径操作冲突：${deletion.target.relativePath} -> ${changedPath}`,
+          message: agentErrorMessage("workspacePatch.directoryDeleteConflict", {
+            directoryPath: deletion.target.relativePath,
+            changedPath,
+          }),
           pointer: "/operations",
-          suggestion: "把目录删除和目录内文件修改拆成不同工具调用。",
+          suggestion: agentErrorMessage("workspacePatch.directoryDeleteConflictSuggestion"),
         });
       }
     }

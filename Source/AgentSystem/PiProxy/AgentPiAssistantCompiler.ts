@@ -8,6 +8,7 @@ import type { ResolvedAgentActionPlannerConfig } from "../Types/AgentConfigTypes
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
 import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
 import { createToolCallId } from "../Core/AgentIds.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import {
   parsePiControllerAction,
   parsePiToolArgumentsDraft,
@@ -242,7 +243,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
       return {
         ok: false,
         required: entry.call.required,
-        message: `工具不可用：${entry.call.toolName}`,
+        message: agentErrorMessage("pi.toolUnavailable", { toolName: entry.call.toolName }),
       };
     }
 
@@ -446,7 +447,7 @@ function formatArgumentFailure(
   issues: readonly string[],
 ): string {
   return [
-    `工具 ${call.toolName} 的参数还不能安全生成。`,
+    agentErrorMessage("pi.toolArgumentsUnsafe", { toolName: call.toolName }),
     ...issues.slice(0, 6),
   ].join("\n");
 }

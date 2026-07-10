@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import mime from "mime-types";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export interface AgentStaticFrontendHttpApiOptions {
   rootDir: string;
@@ -117,7 +118,7 @@ export class AgentStaticFrontendHttpApi {
       ok: false,
       error: {
         code: "not_found",
-        message: "前端资源不存在。",
+        message: agentErrorMessage("websocket.frontendAssetMissing"),
       },
     }));
   }

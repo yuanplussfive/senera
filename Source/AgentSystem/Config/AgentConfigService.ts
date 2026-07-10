@@ -1,6 +1,7 @@
 import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
 import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { resolveConfigStoreConfig } from "../AgentDefaults.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentConfigFormSnapshot } from "../Types/ConfigFormTypes.js";
@@ -15,6 +16,7 @@ import {
   resolveConfigStoreDatabasePath,
   writeAgentConfigJsonMirror,
 } from "./AgentConfigServicePaths.js";
+import { migrateUnknownConfigKeys } from "./AgentConfigMigration.js";
 
 export type AgentConfigSnapshotSource = "sqlite" | "json";
 
@@ -55,8 +57,20 @@ export type AgentConfigSourceOptions =
 
 interface AgentConfigRevisionLoadResult {
   revision: AgentConfigRevisionRecord;
-  repaired: boolean;
+  repaired: AgentConfigRepairResult;
 }
+
+type AgentConfigRepairResult =
+  | {
+      kind: "none";
+    }
+  | {
+      kind: "migrated_unknown_keys";
+      removedPaths: string[];
+    }
+  | {
+      kind: "seed_reimported";
+    };
 
 export class AgentConfigService {
   private snapshotValue: AgentConfigSnapshot;
@@ -164,18 +178,13 @@ export class AgentConfigService {
           config: jsonConfig,
           source: "json_import",
         }),
-        repaired: false,
+        repaired: { kind: "none" },
       };
       return this.snapshotFromRevision(latest.revision.config, latest.revision, {
         path: source.configPath,
         databasePath,
         version,
-        diagnostics: latest.repaired
-          ? [{
-              severity: "warning",
-              message: "配置数据库中的旧配置已不兼容，已从当前 JSON 镜像重新导入。",
-            }]
-          : [],
+        diagnostics: diagnosticsForRepair(latest.repaired),
       });
     } catch (error) {
       return {
@@ -186,7 +195,7 @@ export class AgentConfigService {
         databasePath: this.resolveDatabasePath(jsonConfig),
         diagnostics: [{
           severity: "error",
-          message: "配置数据库不可用，已使用 JSON 镜像启动。",
+          message: agentErrorMessage("config.databaseUnavailableJsonMirror"),
           details: error instanceof Error ? error.message : String(error),
         }],
         form: projectAgentConfigForm(jsonConfig),
@@ -215,19 +224,19 @@ export class AgentConfigService {
       });
     }
 
-    const parsed = AgentSystemConfigSchema.safeParse(latest.config);
-    if (!parsed.success) {
-      throw new Error(`配置数据库中的配置结构无效：${formatConfigIssues(parsed.error.issues)}`);
-    }
+    const loaded = this.readLatestValidRevision(repository, seedConfig) ?? {
+      revision: repository.appendRevision({
+        config: seedConfig,
+        source: "seed",
+      }),
+      repaired: { kind: "none" },
+    };
 
-    return this.snapshotFromRevision(parsed.data, {
-      ...latest,
-      config: parsed.data,
-    }, {
+    return this.snapshotFromRevision(loaded.revision.config, loaded.revision, {
       path: this.readSourceLabel(source),
       databasePath,
       version,
-      diagnostics: [],
+      diagnostics: diagnosticsForRepair(loaded.repaired),
     });
   }
 
@@ -265,8 +274,28 @@ export class AgentConfigService {
           ...latest,
           config: result.data,
         },
-        repaired: false,
+        repaired: { kind: "none" },
       };
+    }
+
+    const migrated = migrateUnknownConfigKeys(latest.config, AgentSystemConfigSchema);
+    if (migrated) {
+      return {
+        revision: repository.appendRevision({
+          config: migrated.config,
+          source: "migration",
+        }),
+        repaired: {
+          kind: "migrated_unknown_keys",
+          removedPaths: migrated.removedPaths,
+        },
+      };
+    }
+
+    if (seedConfig === latest.config) {
+      throw new Error(agentErrorMessage("config.databaseInvalid", {
+        issues: formatConfigIssues(result.error.issues),
+      }));
     }
 
     return {
@@ -274,7 +303,7 @@ export class AgentConfigService {
         config: seedConfig,
         source: "seed",
       }),
-      repaired: true,
+      repaired: { kind: "seed_reimported" },
     };
   }
 
@@ -324,4 +353,19 @@ export class AgentConfigService {
 
 export function loadConfigFile(filePath: string): AgentSystemConfig {
   return new AgentJsonFileLoader().load(filePath, AgentSystemConfigSchema);
+}
+
+function diagnosticsForRepair(repair: AgentConfigRepairResult): AgentConfigDiagnostic[] {
+  if (repair.kind === "none") {
+    return [];
+  }
+
+  if (repair.kind === "migrated_unknown_keys") {
+    return [];
+  }
+
+  return [{
+    severity: "warning",
+    message: agentErrorMessage("config.databaseLegacyReimported"),
+  }];
 }

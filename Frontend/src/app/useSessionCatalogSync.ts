@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type { WsRequest } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { useStore, type UserProfile } from "../store/sessionStore";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export interface UseSessionCatalogSyncOptions {
   status: SocketStatus;
@@ -74,8 +75,10 @@ export function useSessionCatalogSync({
 
     if (!hydrationToastShownRef.current && state.sessionOrder.length > 0) {
       hydrationToastShownRef.current = true;
-      toast.success(`恢复 ${state.sessionOrder.length} 个会话`, {
-        description: "正在从后端同步消息历史…",
+      toast.success(frontendMessage("session.hydrated", {
+        count: state.sessionOrder.length,
+      }), {
+        description: frontendMessage("session.hydratingDescription"),
       });
     }
   }, [onServerSessionsReset, send, status]);

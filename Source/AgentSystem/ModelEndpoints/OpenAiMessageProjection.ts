@@ -1,16 +1,14 @@
 import type { AgentLanguageModelRequest } from "./AgentLanguageModel.js";
+import {
+  projectOpenAiCompatibleTextMessages,
+  type OpenAiCompatibleTextMessage,
+} from "./OpenAiCompatibleMessageProjector.js";
 
 export function buildOpenAiInput(
   request: AgentLanguageModelRequest,
-): Array<{ role: "system" | "user" | "assistant"; content: string }> {
-  return [
-    {
-      role: "system",
-      content: request.systemPrompt,
-    },
-    ...request.messages.map((message) => ({
-      role: message.role,
-      content: message.content,
-    })),
-  ];
+  options: { supportsDeveloperRole?: boolean } = {},
+): OpenAiCompatibleTextMessage[] {
+  return projectOpenAiCompatibleTextMessages(request, {
+    developerRole: options.supportsDeveloperRole === true ? "native" : "system",
+  });
 }

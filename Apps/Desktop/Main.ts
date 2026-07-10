@@ -36,7 +36,7 @@ app.whenReady()
         label: paths.configDatabasePath,
       },
       runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
-      resourcesPath: paths.appRoot,
+      resourcesPath: paths.resourceRoot,
     });
     mainWindow = createMainWindow();
     void mainWindow.loadFile(runtimePaths.frontendIndexHtml);

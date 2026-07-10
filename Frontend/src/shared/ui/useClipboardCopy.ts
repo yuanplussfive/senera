@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export type ClipboardWriter = Pick<Clipboard, "writeText">;
 
@@ -15,8 +16,8 @@ export interface ClipboardCopyResult {
   copyText: (text: string) => Promise<boolean>;
 }
 
-const DEFAULT_SUCCESS_MESSAGE = "已复制";
-const DEFAULT_ERROR_MESSAGE = "复制失败";
+const DEFAULT_SUCCESS_MESSAGE = frontendMessage("clipboard.copied");
+const DEFAULT_ERROR_MESSAGE = frontendMessage("clipboard.copyFailed");
 const DEFAULT_RESET_DELAY_MS = 1200;
 
 export async function writeClipboardText(

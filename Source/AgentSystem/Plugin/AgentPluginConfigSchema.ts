@@ -6,6 +6,7 @@ import { z } from "zod";
 import type {
   LoadedPluginConfigDiagnostic,
 } from "../Types/PluginConfigTypes.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export const AgentPluginConfigDefaults = {
   FrameworkSection: "senera",
@@ -125,8 +126,8 @@ export function parsePluginConfigSchema(
         ? [{
           severity: "warning",
           message: options.schemaPath
-            ? `缺少插件配置 schema：${options.schemaPath}`
-            : "缺少插件配置 schema。",
+            ? agentErrorMessage("plugin.configSchemaMissingAtPath", { schemaPath: options.schemaPath })
+            : agentErrorMessage("plugin.configSchemaMissing"),
         }]
         : [],
     };
@@ -139,7 +140,9 @@ export function parsePluginConfigSchema(
     return {
       diagnostics: [{
         severity: "error",
-        message: `插件配置 schema TOML 无效：${error instanceof Error ? error.message : String(error)}`,
+        message: agentErrorMessage("plugin.configSchemaTomlInvalid", {
+          message: error instanceof Error ? error.message : String(error),
+        }),
       }],
     };
   }
@@ -149,7 +152,9 @@ export function parsePluginConfigSchema(
     return {
       diagnostics: [{
         severity: "error",
-        message: `插件配置 schema 结构无效：${result.error.issues.map(formatZodIssue).join("; ")}`,
+        message: agentErrorMessage("plugin.configSchemaInvalid", {
+          issues: result.error.issues.map(formatZodIssue).join("; "),
+        }),
       }],
     };
   }

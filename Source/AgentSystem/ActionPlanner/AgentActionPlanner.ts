@@ -15,6 +15,7 @@ import {
 } from "./AgentInteractionRouter.js";
 import { AgentActionPlannerUnderstanding } from "./AgentActionPlannerUnderstanding.js";
 import { isActionPlannerReady } from "./AgentActionPlannerReadiness.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export type {
   AgentActionCapabilityNeed,
@@ -56,7 +57,7 @@ export class AgentActionPlanner {
     onStage?: AgentActionPlannerStageSink;
   }): Promise<ActionPlanInput> {
     if (!this.isEnabled()) {
-      throw new Error("Turn Understanding 未启用或配置不完整。");
+      throw new Error(agentErrorMessage("actionPlanner.turnUnderstandingNotReady"));
     }
 
     try {
@@ -70,7 +71,9 @@ export class AgentActionPlanner {
       if (error instanceof AgentCancellationError || options.signal?.aborted) {
         throw error instanceof AgentCancellationError ? error : new AgentCancellationError();
       }
-      throw new Error(`Turn Understanding 生成失败：${summarizePlannerFailure(error)}`);
+      throw new Error(agentErrorMessage("actionPlanner.turnUnderstandingFailed", {
+        reason: summarizePlannerFailure(error),
+      }));
     }
   }
 
@@ -90,7 +93,7 @@ export class AgentActionPlanner {
     input: ActionPlanInput;
   }> {
     if (!this.isEnabled()) {
-      throw new Error("Interaction Router 未启用或配置不完整。");
+      throw new Error(agentErrorMessage("actionPlanner.interactionRouterNotReady"));
     }
 
     try {
@@ -106,7 +109,9 @@ export class AgentActionPlanner {
       if (error instanceof AgentCancellationError || options.signal?.aborted) {
         throw error instanceof AgentCancellationError ? error : new AgentCancellationError();
       }
-      throw new Error(`Interaction Router 生成失败：${summarizePlannerFailure(error)}`);
+      throw new Error(agentErrorMessage("actionPlanner.interactionRouterFailed", {
+        reason: summarizePlannerFailure(error),
+      }));
     }
   }
 

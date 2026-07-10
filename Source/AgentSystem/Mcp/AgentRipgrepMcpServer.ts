@@ -6,6 +6,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { rgPath } from "@vscode/ripgrep";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 const RipgrepTools = {
   search: "search",
@@ -91,7 +92,7 @@ function ripgrepArgs(toolName: string, args: Record<string, unknown>): string[] 
   };
   const createArgs = toolArgs[toolName];
   if (!createArgs) {
-    throw new Error(`不支持的 ripgrep MCP 工具：${toolName}`);
+    throw new Error(agentErrorMessage("mcp.ripgrepUnsupportedTool", { toolName }));
   }
 
   return createArgs();
@@ -157,7 +158,7 @@ function optionalValueFlag(flag: string, value: string | undefined): string[] {
 function readRequiredString(value: unknown, name: string): string {
   const text = readString(value);
   if (!text) {
-    throw new Error(`${name} 必须是非空字符串。`);
+    throw new Error(agentErrorMessage("mcp.requiredNonEmptyString", { name }));
   }
 
   return text;

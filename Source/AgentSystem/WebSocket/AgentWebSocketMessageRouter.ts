@@ -21,6 +21,7 @@ import type {
   AgentWebSocketEventSender,
   AgentWebSocketRequestContext,
 } from "./AgentWebSocketTypes.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export class AgentWebSocketMessageRouter {
   private readonly session: AgentWebSocketSessionRequestHandlers;
@@ -121,7 +122,7 @@ export class AgentWebSocketMessageRouter {
       : {
           ok: false,
           event: requestInvalidEvent({
-            message: "WS 请求结构无效。",
+            message: agentErrorMessage("websocket.requestInvalid"),
             details: parsed.error.issues,
           }),
         };

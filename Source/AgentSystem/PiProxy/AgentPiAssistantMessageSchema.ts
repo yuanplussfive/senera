@@ -5,6 +5,7 @@ import {
   createAgentStructuredIssue,
   type AgentStructuredIssue,
 } from "../Diagnostics/AgentStructuredIssue.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 type JsonValue = string | number | boolean | JsonValue[] | JsonObject;
 
@@ -89,26 +90,26 @@ function validatePiControllerAction(
   const validators = {
     FinalAnswer: () => {
       if (!action.answer?.trim()) {
-        issues.push(createAgentStructuredIssue("FinalAnswer 必须包含 answer。", ["answer"]));
+        issues.push(createAgentStructuredIssue(agentErrorMessage("pi.finalAnswerMissingAnswer"), ["answer"]));
       }
       if (calls.length > 0) {
-        issues.push(createAgentStructuredIssue("FinalAnswer 不能包含工具计划。", ["calls"]));
+        issues.push(createAgentStructuredIssue(agentErrorMessage("pi.finalAnswerContainsCalls"), ["calls"]));
       }
     },
     AskUser: () => {
       if (!action.question?.trim()) {
-        issues.push(createAgentStructuredIssue("AskUser 必须包含 question。", ["question"]));
+        issues.push(createAgentStructuredIssue(agentErrorMessage("pi.askUserMissingQuestion"), ["question"]));
       }
       if (calls.length > 0) {
-        issues.push(createAgentStructuredIssue("AskUser 不能包含工具计划。", ["calls"]));
+        issues.push(createAgentStructuredIssue(agentErrorMessage("pi.askUserContainsCalls"), ["calls"]));
       }
     },
     CallTools: () => {
       if (!action.preface?.trim()) {
-        issues.push(createAgentStructuredIssue("CallTools 必须包含 preface。", ["preface"]));
+        issues.push(createAgentStructuredIssue(agentErrorMessage("pi.callToolsMissingPreface"), ["preface"]));
       }
       if (calls.length === 0) {
-        issues.push(createAgentStructuredIssue("CallTools 必须包含至少一个工具计划。", ["calls"]));
+        issues.push(createAgentStructuredIssue(agentErrorMessage("pi.callToolsMissingCalls"), ["calls"]));
       }
     },
   } satisfies Record<ParsedPiControllerAction["kind"], () => void>;
@@ -116,7 +117,9 @@ function validatePiControllerAction(
   validators[action.kind]();
   calls.forEach((call, index) => {
     if (!allowedTools.has(call.toolName)) {
-      issues.push(createAgentStructuredIssue(`工具不在 Pi 请求 tools 中：${call.toolName}`, [
+      issues.push(createAgentStructuredIssue(agentErrorMessage("pi.toolNotAllowed", {
+        toolName: call.toolName,
+      }), [
         "calls",
         index,
         "toolName",
@@ -125,7 +128,7 @@ function validatePiControllerAction(
 
     for (const dependency of call.dependsOn ?? []) {
       if (dependency >= index) {
-        issues.push(createAgentStructuredIssue("dependsOn 只能引用更早的工具计划。", [
+        issues.push(createAgentStructuredIssue(agentErrorMessage("pi.dependsOnMustReferenceEarlierCall"), [
           "calls",
           index,
           "dependsOn",

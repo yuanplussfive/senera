@@ -39,7 +39,8 @@ npm run dev        # 默认 http://127.0.0.1:5173
 ```
 src/
   api/
-    eventTypes.ts         协议类型（与后端 AgentEvent.ts 同步）
+    eventTypes.ts         协议 DTO；事件枚举从 generatedEventCatalog.ts 引入
+    generatedEventCatalog.ts 后端事件 catalog 生成物
     useAgentSocket.ts     WS 连接 / 自动重连 hook
   store/
     sessionStore.ts       Zustand store + 事件→状态投影
@@ -69,4 +70,4 @@ src/
 
 ## 协议同步
 
-后端 `Source/AgentSystem/AgentEvent.ts` 修改后，需手动同步 `src/api/eventTypes.ts` 中的 `EventKinds` 与各 `*Data` 接口。
+后端事件枚举以 `Source/AgentSystem/Events/AgentEventCatalog.ts` 为单源。修改事件枚举后运行 `npm run generatefrontendevents`，CI 会校验生成物是否过期；事件 data DTO 仍保留在 `src/api/eventTypes.ts`，只表达前端实际读取的字段。

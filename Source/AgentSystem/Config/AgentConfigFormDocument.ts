@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { moduleDirPath } from "../Core/AgentPath.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 const FormSchemaPath = path.join(moduleDirPath(import.meta.url), "AgentSystemConfig.form.json");
 
@@ -120,7 +121,9 @@ export function readConfigFormDocument(): ConfigFormDocument {
     JSON.parse(fs.readFileSync(FormSchemaPath, "utf8")),
   );
   if (!result.success) {
-    throw new Error(`主配置表单说明文件无效：${result.error.issues.map(formatZodIssue).join("; ")}`);
+    throw new Error(agentErrorMessage("config.formDocumentInvalid", {
+      issues: result.error.issues.map(formatZodIssue).join("; "),
+    }));
   }
 
   cachedDocument = result.data;

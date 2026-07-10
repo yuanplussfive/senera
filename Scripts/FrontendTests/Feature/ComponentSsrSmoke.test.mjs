@@ -6,15 +6,16 @@ import { ChatHeader } from "../../../Frontend/src/features/chat/ChatHeader.tsx";
 import { EmptyChatState } from "../../../Frontend/src/features/chat/EmptyChatState.tsx";
 import { readCodeArtifact } from "../../../Frontend/src/shared/code/CodeArtifactModel.ts";
 import { CodeArtifactSourceView } from "../../../Frontend/src/shared/code/CodeArtifactSourceView.tsx";
+import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 
 globalThis.__SENERA_EMPTY_SUGGESTIONS__ = "整理日志|检查项目";
 globalThis.window.__SENERA_RUNTIME_CONFIG__ = {};
 
 test("chat header and empty state render stable first-screen copy", () => {
-  const header = renderToStaticMarkup(React.createElement(ChatHeader, {
+  const header = renderToStaticMarkup(withUiProviders(React.createElement(ChatHeader, {
     title: "会话标题",
     runStatus: "failed",
-  }));
+  })));
   const empty = renderToStaticMarkup(React.createElement(EmptyChatState, {
     onSelectSuggestion: () => undefined,
   }));
@@ -62,3 +63,9 @@ test("code artifact source SSR smoke covers source and preview metadata", () => 
   expect(markup).toMatch(/data-language="html"/);
   expect(markup).toMatch(/Hello/);
 });
+
+function withUiProviders(element) {
+  return React.createElement(TooltipProvider, {
+    delayDuration: 0,
+  }, element);
+}

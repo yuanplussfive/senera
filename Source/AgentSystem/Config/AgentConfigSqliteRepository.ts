@@ -8,7 +8,7 @@ const SchemaVersion = "agent-config-sqlite-v1";
 export interface AgentConfigRevisionRecord {
   revision: number;
   config: AgentSystemConfig;
-  source: "seed" | "json_import" | "ui_update" | "api_update";
+  source: "seed" | "json_import" | "ui_update" | "api_update" | "migration";
   createdAt: string;
 }
 

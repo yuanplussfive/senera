@@ -4,7 +4,7 @@ import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import { matchByKind } from "../Core/AgentMatch.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
-import type { AgentLoop } from "../Loop/AgentLoop.js";
+import type { AgentLoopRunner } from "../Loop/AgentLoopRunner.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { AgentMemoryService, type AgentMemoryLearningSink } from "../Memory/AgentMemoryService.js";
 import type { AgentMemorySourceRepository } from "../Memory/AgentMemorySourceRepository.js";
@@ -20,7 +20,7 @@ import { AgentSessionStore } from "./AgentSessionStore.js";
 import { AgentSessionTitleProjector } from "./AgentSessionTitleProjector.js";
 
 export interface AgentSessionManagerOptions {
-  loopFactory: (modelProviderId?: string) => AgentLoop;
+  loopFactory: (modelProviderId?: string) => AgentLoopRunner;
   store?: AgentSessionStore;
   conversationPolicy?: AgentConversationPolicy;
   conversationProjector?: AgentConversationProjector;

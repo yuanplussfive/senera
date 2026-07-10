@@ -3,6 +3,7 @@ import {
   createEventDetailId,
   type AgentDomainEvent,
 } from "../Events/AgentEvent.js";
+import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
 
 export class AgentLoopToolEventFactory {
   toolCallsPlanned(
@@ -53,13 +54,13 @@ export class AgentLoopToolEventFactory {
     index: number,
     toolName: string,
     callId: string,
-    preview?: string,
+    presentation?: AgentToolResultPresentation,
     metadata: { batchId?: string } = {},
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.ToolCallCompleted,
       context: { requestId, step },
-      data: { index, toolName, callId, preview, batchId: metadata.batchId },
+      data: { index, toolName, callId, presentation, batchId: metadata.batchId },
     };
   }
 

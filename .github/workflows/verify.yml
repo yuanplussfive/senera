@@ -28,15 +28,39 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .npm-cache
-          key: ${{ runner.os }}-node-${{ matrix.node }}-npm-${{ hashFiles('package.json', 'Frontend/package.json', 'Packages/*/package.json', 'System/Plugins/*/package.json', 'Plugins/*/package.json', '.npmrc') }}
+          key: ${{ runner.os }}-node-${{ matrix.node }}-npm-${{ hashFiles('package-lock.json', '.npmrc') }}
           restore-keys: |
             ${{ runner.os }}-node-${{ matrix.node }}-npm-
-      - run: npm install
+      - run: npm ci
       - run: npm run securitycheck
       - run: npm run bamlcheck
       - run: npm run check
+      - run: npm run backendtest
       - run: npm run build
       - run: npm run verifysuite -- workspace core
+      - run: npm run backendcoverage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-${{ runner.os }}
+          path: coverage/backend
+          if-no-files-found: error
+
+  protocol-e2e:
+    name: Protocol E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: .npm-cache
+          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package-lock.json', '.npmrc') }}
+          restore-keys: |
+            ${{ runner.os }}-node-22-npm-
+      - run: npm ci
+      - run: npm run e2etest
 
   frontend:
     name: Frontend
@@ -49,10 +73,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .npm-cache
-          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package.json', 'Frontend/package.json', 'Packages/*/package.json', 'System/Plugins/*/package.json', 'Plugins/*/package.json', '.npmrc') }}
+          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package-lock.json', '.npmrc') }}
           restore-keys: |
             ${{ runner.os }}-node-22-npm-
-      - run: npm install
+      - run: npm ci
       - run: npm run frontendverify
       - run: npm run frontendcoverage
       - uses: actions/upload-artifact@v4
@@ -73,10 +97,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .npm-cache
-          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package.json', 'Frontend/package.json', 'Packages/*/package.json', 'System/Plugins/*/package.json', 'Plugins/*/package.json', '.npmrc') }}
+          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package-lock.json', '.npmrc') }}
           restore-keys: |
             ${{ runner.os }}-node-22-npm-
-      - run: npm install
+      - run: npm ci
       - run: npm run securitycheck
       - run: npm run bamlcheck
       - run: npm run verifyall

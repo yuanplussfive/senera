@@ -6,7 +6,7 @@ import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
-import type { AgentLoop } from "../Loop/AgentLoop.js";
+import type { AgentLoopRunner } from "../Loop/AgentLoopRunner.js";
 import { AgentMemoryService } from "../Memory/AgentMemoryService.js";
 import type { AgentMemoryCompletedTurnInput } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
@@ -36,7 +36,7 @@ export interface AgentSessionRunCoordinatorOptions {
   logger?: AgentLogger;
   approvalRuntime?: AgentApprovalRuntime;
   piSessions?: AgentPiActiveSessionRegistry;
-  loopFactory: (modelProviderId?: string) => AgentLoop;
+  loopFactory: (modelProviderId?: string) => AgentLoopRunner;
 }
 
 export type AgentSessionAvailability =

@@ -16,6 +16,7 @@ function main(): void {
   verifyOpenAiTranscriptPersistenceRoundTrip();
   verifyPiHistoryUsesCanonicalTranscript();
   verifyPlanningProjectionUsesOpenAiSemantics();
+  verifyPlanningProjectionPreservesToolProgressAcrossBatches();
 
   console.log("Pi OpenAI transcript projection verified.");
 }
@@ -65,6 +66,7 @@ function verifyPiHistoryUsesCanonicalTranscript(): void {
     "assistant",
   ]);
   const assistant = projected.history[1] as { content?: Array<Record<string, unknown>> };
+  expectAssistantText(assistant, "我先查天气。");
   assert.equal(assistant.content?.some((part) => part.type === "toolCall"), true);
   const tool = projected.history[2] as { toolCallId?: string; toolName?: string; isError?: boolean };
   assert.equal(tool.toolCallId, "call_weather");
@@ -138,6 +140,77 @@ function verifyPlanningProjectionUsesOpenAiSemantics(): void {
     "senera://evidence/weather/beijing",
   ]);
   assert.equal(projection.toolTranscript[0]?.observation?.content.endsWith("..."), true);
+}
+
+function verifyPlanningProjectionPreservesToolProgressAcrossBatches(): void {
+  const projector = new AgentPiOpenAiPlanningProjector({ modelProvider });
+  const projection = projector.project({
+    model: "test-model",
+    messages: [
+      {
+        role: "user",
+        content: "检查项目配置",
+      },
+      {
+        role: "assistant",
+        content: "我先读取项目配置。",
+        tool_calls: [{
+          id: "call_read",
+          type: "function",
+          function: {
+            name: "WorkspaceReadFile",
+            arguments: "{\"path\":\"package.json\"}",
+          },
+        }],
+      },
+      {
+        role: "tool",
+        tool_call_id: "call_read",
+        content: JSON.stringify({
+          type: "senera.tool_observation.v1",
+          status: "success",
+          summary: "已读取 package.json。",
+        }),
+      },
+      {
+        role: "assistant",
+        content: "配置已读取，我再核对依赖关系。",
+        tool_calls: [{
+          id: "call_verify",
+          type: "function",
+          function: {
+            name: "WorkspaceReadFile",
+            arguments: "{\"path\":\"package-lock.json\"}",
+          },
+        }],
+      },
+    ],
+  });
+
+  const messages = projection.messages as Array<{
+    role?: string;
+    content?: string;
+    tool_calls?: Array<{ id?: string }>;
+  }>;
+  assert.deepEqual(
+    messages
+      .filter((message) => message.role === "assistant")
+      .map((message) => ({ content: message.content, callId: message.tool_calls?.[0]?.id })),
+    [
+      { content: "我先读取项目配置。", callId: "call_read" },
+      { content: "配置已读取，我再核对依赖关系。", callId: "call_verify" },
+    ],
+  );
+}
+
+function expectAssistantText(
+  message: { content?: Array<Record<string, unknown>> },
+  text: string,
+): void {
+  assert.equal(
+    message.content?.some((part) => part.type === "text" && part.text === text),
+    true,
+  );
 }
 
 function transcriptFixture(): AgentOpenAiTranscriptMessage[] {

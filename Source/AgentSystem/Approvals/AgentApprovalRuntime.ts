@@ -11,6 +11,7 @@ import {
   type AgentApprovalRuntime as AgentApprovalRuntimePort,
   type AgentApprovalWaitOptions,
 } from "./AgentApprovalTypes.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 interface PendingApproval {
   approval: AgentApprovalRequest;
@@ -68,7 +69,9 @@ export class AgentApprovalRuntime implements AgentApprovalRuntimePort {
   ): AgentApprovalResolution {
     const resolved = this.tryResolve(resolution);
     if (!resolved) {
-      throw new Error(`审批请求不存在或已结束：${resolution.approvalId}`);
+      throw new Error(agentErrorMessage("approval.requestNotPending", {
+        approvalId: resolution.approvalId,
+      }));
     }
 
     return resolved;

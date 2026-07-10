@@ -10,6 +10,7 @@ import type {
   AgentWebSocketEventSender,
   AgentWebSocketRequestContext,
 } from "./AgentWebSocketTypes.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export class AgentWebSocketSessionRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
@@ -173,7 +174,7 @@ export class AgentWebSocketConfigRequestHandlers {
     sendEvent: AgentWebSocketEventSender,
   ): void {
     if (!this.context.configService) {
-      throw new Error("当前运行时没有启用配置服务。");
+      throw new Error(agentErrorMessage("websocket.configServiceDisabled"));
     }
 
     const snapshot = this.context.configService.update({
@@ -345,7 +346,7 @@ export class AgentWebSocketApprovalRequestHandlers {
   ): void {
     const approvalRuntime = this.context.approvalRuntime;
     if (!approvalRuntime) {
-      throw new Error("当前运行时没有启用审批服务。");
+      throw new Error(agentErrorMessage("websocket.approvalServiceDisabled"));
     }
 
     const pending = approvalRuntime.getPending(request.approvalId);
@@ -354,7 +355,9 @@ export class AgentWebSocketApprovalRequestHandlers {
         kind: AgentEventKinds.RequestInvalid,
         context: {},
         data: {
-          message: `审批请求不存在或已结束：${request.approvalId}`,
+          message: agentErrorMessage("approval.requestNotPending", {
+            approvalId: request.approvalId,
+          }),
         },
       });
       return;
@@ -370,7 +373,9 @@ export class AgentWebSocketApprovalRequestHandlers {
         kind: AgentEventKinds.RequestInvalid,
         context: {},
         data: {
-          message: `审批请求不存在或已结束：${request.approvalId}`,
+          message: agentErrorMessage("approval.requestNotPending", {
+            approvalId: request.approvalId,
+          }),
         },
       });
       return;

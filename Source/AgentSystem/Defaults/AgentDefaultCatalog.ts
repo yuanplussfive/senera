@@ -41,6 +41,7 @@ export const AgentDefaults = {
       ImageOutput: false,
       Reasoning: false,
       ToolCalling: true,
+      DeveloperRole: false,
     },
     ContextWindowTokens: -1,
     MaxModelOutputTokens: -1,
@@ -61,7 +62,6 @@ export const AgentDefaults = {
     BaseDir: ".senera/sandbox-runtime",
     BundleDir: ".senera/sandbox-bundles",
     ImportBundlesOnStartup: true,
-    PrepareImagesOnInstall: true,
     Images: [SeneraMicrosandboxDefaults.image],
   },
   AgentLoop: {

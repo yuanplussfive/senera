@@ -40,6 +40,7 @@ import {
 import { ModelConfigView } from "./ModelConfigView";
 import { PlanningConfigView } from "./PlanningConfigView";
 import { VectorModelConfigView } from "./VectorModelConfigView";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export function SystemConfigControl({
   disabled,
@@ -120,7 +121,7 @@ export function SystemConfigControl({
     }
     if (saveOperation.status === "error") {
       setSaveRequestId(null);
-      setLocalError(saveOperation.message ?? "主配置保存失败");
+      setLocalError(saveOperation.message ?? frontendMessage("config.mainFailed"));
     }
   }, [saveOperation]);
 
@@ -135,7 +136,7 @@ export function SystemConfigControl({
     if (!dirty || saving) return;
     const errors = snapshot ? validateJsonConfigDraft(snapshot.form.sections, draft) : [];
     if (errors.length > 0) {
-      setLocalError(errors[0] ?? "主配置表单校验失败");
+      setLocalError(errors[0] ?? frontendMessage("config.mainInvalid"));
       return;
     }
     const requestId = onSave(draft);

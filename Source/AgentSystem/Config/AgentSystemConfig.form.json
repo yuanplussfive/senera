@@ -109,7 +109,8 @@
                 "Vision": false,
                 "ImageOutput": false,
                 "Reasoning": false,
-                "ToolCalling": true
+                "ToolCalling": true,
+                "DeveloperRole": false
               },
               "ContextWindowTokens": -1,
               "MaxModelOutputTokens": -1,
@@ -179,6 +180,13 @@
               {
                 "path": ["Capabilities", "ToolCalling"],
                 "label": "工具调用",
+                "type": "boolean",
+                "required": false
+              },
+              {
+                "path": ["Capabilities", "DeveloperRole"],
+                "label": "Developer Role",
+                "description": "供应商原生支持 OpenAI developer 消息角色时启用；关闭时自动降级为 system 指令。",
                 "type": "boolean",
                 "required": false
               },

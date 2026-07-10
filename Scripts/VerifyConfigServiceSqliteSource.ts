@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
+import { AgentConfigSqliteRepository } from "../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const tempRoot = path.join(process.cwd(), ".senera", "tmp", "verify-config-service");
@@ -192,6 +193,74 @@ try {
   });
   assert.equal(reloaded.snapshot().revision, 2);
   assert.equal(reloaded.snapshot().value.ModelProviders[0].Model, "updated-desktop-model");
+  reloaded.close();
+  reloaded = undefined;
+
+  service = new AgentConfigService({
+    workspaceRoot,
+    source: {
+      kind: "sqlite",
+      databasePath: desktopDatabasePath,
+      seedConfig: desktopSeedConfig,
+    },
+  });
+  const legacyConfig = {
+    ...service.snapshot().value,
+    Defaults: {
+      ...service.snapshot().value.Defaults,
+      Cli: {
+        Enabled: true,
+      },
+      ToolExecution: {
+        Mode: "Local",
+        TimeoutSeconds: 30,
+      },
+      AgentLoop: {
+        MaxSteps: -1,
+        MaxRepairAttempts: 2,
+      },
+    },
+    ToolExecution: {
+      Mode: "SandboxPreferred",
+      TimeoutSeconds: 30,
+    },
+    AgentLoop: {
+      MaxSteps: -1,
+      LoadedTools: "dynamic",
+    },
+  } as unknown as AgentSystemConfig;
+  const legacyRevision = service.update({
+    config: service.snapshot().value,
+    source: "ui_update",
+  });
+  assert.equal(legacyRevision.revision, 3);
+  const legacyRepository = new AgentConfigSqliteRepository(desktopDatabasePath);
+  legacyRepository.appendRevision({
+    config: legacyConfig,
+    source: "migration",
+  });
+  legacyRepository.close();
+  service.close();
+  service = undefined;
+
+  reloaded = new AgentConfigService({
+    workspaceRoot,
+    source: {
+      kind: "sqlite",
+      databasePath: desktopDatabasePath,
+      seedConfig: desktopSeedConfig,
+    },
+  });
+  const migratedSnapshot = reloaded.snapshot();
+  assert.equal(migratedSnapshot.revision, 5);
+  assert.equal(migratedSnapshot.value.ToolExecution?.TimeoutSeconds, 30);
+  assert.equal("Mode" in (migratedSnapshot.value.ToolExecution ?? {}), false);
+  assert.equal(migratedSnapshot.value.AgentLoop?.LoadedTools, "dynamic");
+  assert.equal("MaxSteps" in (migratedSnapshot.value.AgentLoop ?? {}), false);
+  assert.equal("Cli" in (migratedSnapshot.value.Defaults ?? {}), false);
+  assert.equal("Mode" in (migratedSnapshot.value.Defaults?.ToolExecution ?? {}), false);
+  assert.equal("MaxRepairAttempts" in (migratedSnapshot.value.Defaults?.AgentLoop ?? {}), false);
+  assert.deepEqual(migratedSnapshot.diagnostics, []);
   reloaded.close();
   reloaded = undefined;
 

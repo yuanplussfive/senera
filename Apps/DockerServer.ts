@@ -20,8 +20,8 @@ const DockerPluginRoots = {
   User: [path.join(AppRoot, "Plugins")],
 } as const;
 const DockerSandboxRuntime = {
-  BaseDir: "/opt/senera/sandbox-runtime",
-  BundleDir: "/opt/senera/sandbox-bundles",
+  BaseDir: "/data/.senera/sandbox-runtime",
+  BundleDir: "/data/.senera/sandbox-bundles",
 } as const;
 
 main();

@@ -158,6 +158,9 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
         body: JSON.stringify({
           model: "test-model",
           messages: [{
+            role: "developer",
+            content: "runtime rule",
+          }, {
             role: "user",
             content: "hello",
           }],
@@ -183,6 +186,10 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
   );
 
   assert.equal(response.statusCode, 200);
+  assert.deepEqual(compiler.lastRequest?.request.messages.map((message) => message.role), [
+    "developer",
+    "user",
+  ]);
   assert.equal(compiler.lastRequest?.runtime?.rootCommand, rootCommand);
   assert.deepEqual(compiler.lastRequest?.runtime?.activeSkills, activeSkills);
   assert.equal(events.some((event) =>

@@ -3,7 +3,7 @@ name: Container Release
 on:
   workflow_run:
     workflows:
-      - Verify
+      - Security Scan
     types:
       - completed
   workflow_dispatch:
@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
   packages: write
+  actions: read
 
 concurrency:
   group: container-release-${{ github.event.workflow_run.head_sha || github.sha }}
@@ -25,12 +26,33 @@ jobs:
       (
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.event == 'push'
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.name == 'Security Scan'
       )
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Require Verify success
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            state="$(gh run list --workflow "Verify" --commit "$SOURCE_SHA" --limit 20 --json status,conclusion,event,headBranch --jq '.[] | select(.event == "push" and .headBranch == "main") | "\(.status):\(.conclusion)"' | head -n 1)"
+            if [ "$state" = "completed:success" ]; then
+              exit 0
+            fi
+            if echo "$state" | grep -Eq '^completed:'; then
+              echo "Verify workflow did not succeed for $SOURCE_SHA: $state"
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "Timed out waiting for Verify workflow success for $SOURCE_SHA."
+          exit 1
 
       - uses: docker/setup-buildx-action@v3
 

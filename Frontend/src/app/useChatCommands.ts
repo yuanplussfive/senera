@@ -4,6 +4,7 @@ import type { UploadAttachmentData, WsRequest } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { useStore, type ChatMessage } from "../store/sessionStore";
 import { generateId } from "../lib/util";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export interface PendingAfterTruncate {
   sessionId: string;
@@ -203,7 +204,7 @@ export function useChatCommands({
     });
     if (!ok) {
       pendingAfterTruncateRef.current = removePendingAfterTruncate(pendingAfterTruncateRef.current, pending);
-      toast.error("操作失败，连接可能已断开");
+      toast.error(frontendMessage("chat.operationDisconnected"));
     }
     return ok;
   }, [pendingAfterTruncateRef, send]);
@@ -212,7 +213,7 @@ export function useChatCommands({
     if (!activeSessionId) return;
     if (status !== "open") return;
     send({ type: "session.cancel", sessionId: activeSessionId });
-    toast.message("已发送中断请求…");
+    toast.message(frontendMessage("chat.cancelRequested"));
   }, [activeSessionId, send, status]);
 
   const regenerateMessage = useCallback((message: ChatMessage): void => {
@@ -220,11 +221,11 @@ export function useChatCommands({
 
     const result = findRegenerateInput({ activeSessionId, message });
     if (result.kind === "missing_request") {
-      toast.error("无法重新回答：缺少 requestId");
+      toast.error(frontendMessage("chat.regenerateMissingRequestId"));
       return;
     }
     if (result.kind === "not_found") {
-      toast.error("找不到对应的用户消息");
+      toast.error(frontendMessage("chat.regenerateSourceNotFound"));
       return;
     }
 
@@ -240,12 +241,12 @@ export function useChatCommands({
   const editUserMessage = useCallback((message: ChatMessage, nextContent: string): void => {
     if (!activeSessionId || status !== "open") return;
     if (!message.requestId) {
-      toast.error("无法编辑：缺少 requestId");
+      toast.error(frontendMessage("chat.editMissingRequestId"));
       return;
     }
     const trimmed = normalizeEditedMessageContent(nextContent);
     if (!trimmed) {
-      toast.error("内容不能为空");
+      toast.error(frontendMessage("chat.contentRequired"));
       return;
     }
 
@@ -261,7 +262,7 @@ export function useChatCommands({
   const deleteFromMessage = useCallback((message: ChatMessage): void => {
     if (!activeSessionId || status !== "open") return;
     if (!message.requestId) {
-      toast.error("无法删除：缺少 requestId");
+      toast.error(frontendMessage("chat.deleteMissingRequestId"));
       return;
     }
     const ok = send({
@@ -270,10 +271,10 @@ export function useChatCommands({
       requestId: message.requestId,
     });
     if (!ok) {
-      toast.error("删除失败，连接可能已断开");
+      toast.error(frontendMessage("chat.deleteDisconnected"));
       return;
     }
-    toast.success("已删除");
+    toast.success(frontendMessage("chat.deleted"));
   }, [activeSessionId, send, status]);
 
   const sendMessage = useCallback((
@@ -291,7 +292,7 @@ export function useChatCommands({
     });
 
     if (target.kind === "blocked_history_loading") {
-      toast.warning("正在恢复历史，请稍后再发送");
+      toast.warning(frontendMessage("chat.historyRecovering"));
       return;
     }
 
@@ -307,7 +308,7 @@ export function useChatCommands({
         modelProviderId,
       });
       if (!ok) {
-        toast.error("创建会话失败，连接可能已断开");
+        toast.error(frontendMessage("chat.createSessionDisconnected"));
         return;
       }
       registerSession(targetSessionId);
@@ -322,7 +323,7 @@ export function useChatCommands({
         modelProviderId,
       });
       if (!ok) {
-        toast.error("创建会话失败，连接可能已断开");
+        toast.error(frontendMessage("chat.createSessionDisconnected"));
         return;
       }
       serverKnownSessionIdsRef.current.add(targetSessionId);
@@ -342,7 +343,7 @@ export function useChatCommands({
       queueMode,
     });
     if (!ok) {
-      toast.error("发送失败，连接可能已断开");
+      toast.error(frontendMessage("chat.sendDisconnected"));
     }
   }, [
     activeSessionId,

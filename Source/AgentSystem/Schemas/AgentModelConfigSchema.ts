@@ -20,6 +20,7 @@ export const ModelCapabilitiesSchema = z
     ImageOutput: z.boolean().optional(),
     Reasoning: z.boolean().optional(),
     ToolCalling: z.boolean().optional(),
+    DeveloperRole: z.boolean().optional(),
   })
   .strict();
 

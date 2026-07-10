@@ -2,6 +2,7 @@ import type http from "node:http";
 import type { AgentStaticFrontendHttpApi } from "./AgentStaticFrontendHttpApi.js";
 import { AgentUploadHttpApi } from "../Uploads/AgentUploadHttpApi.js";
 import type { AgentPiProxyHttpApi } from "../PiProxy/AgentPiProxyHttpApi.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
@@ -38,7 +39,7 @@ export class AgentWebSocketHttpRouter {
       ok: false,
       error: {
         code: "not_found",
-        message: "接口不存在。",
+        message: agentErrorMessage("websocket.httpRouteNotFound"),
       },
     }));
   }

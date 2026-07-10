@@ -132,7 +132,7 @@ const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
         </Section>
       ) : null}
 
-      {step.toolPreview ? (
+      {step.toolPreview && step.toolPreview !== step.toolPresentation?.headline ? (
         <Section label="结果预览" copyValue={step.toolPreview}>
           <MarkdownRenderer
             className="rounded-md bg-paper-100/50 px-3 py-2"
@@ -145,8 +145,10 @@ const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
         </Section>
       ) : null}
 
+      {step.toolPresentation ? <ToolResultPresentationView presentation={step.toolPresentation} /> : null}
+
       {step.toolResult !== undefined ? (
-        <Section label="完整结果" copyValue={step.toolResult}>
+        <Section label="原始工具结果" copyValue={step.toolResult}>
           <DataCard>
             <DataView value={step.toolResult} />
           </DataCard>
@@ -163,6 +165,78 @@ const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
     </div>
   );
 });
+
+function ToolResultPresentationView({
+  presentation,
+}: {
+  presentation: NonNullable<TimelineStep["toolPresentation"]>;
+}): JSX.Element {
+  const facts = presentation.facts.map((fact) => ({
+    name: fact.name,
+    value: fact.value,
+    kind: fact.kind,
+    evidenceUri: fact.evidenceUri,
+    confidence: fact.confidence,
+  }));
+  const evidence = presentation.evidence.map((item) => ({
+    display: item.display,
+    label: item.label,
+    kind: item.kind,
+    locator: item.locator,
+    source: item.source,
+    evidenceUri: item.evidenceUri,
+    confidence: item.confidence,
+  }));
+  const changes = presentation.changes.map((change) => ({
+    status: change.status,
+    path: change.key,
+    summary: change.summary,
+    kind: change.kind,
+  }));
+
+  return (
+    <>
+      {presentation.summary ? (
+        <Section label="结果摘要" copyValue={presentation.summary}>
+          <MarkdownRenderer
+            className="rounded-md bg-paper-100/50 px-3 py-2"
+            contentClassName="text-[13px] leading-relaxed"
+            compact
+            lightweightCode
+          >
+            {presentation.summary}
+          </MarkdownRenderer>
+        </Section>
+      ) : null}
+
+      {facts.length > 0 ? (
+        <Section label="关键事实" copyValue={facts}>
+          <DataCard><DataView value={facts} /></DataCard>
+        </Section>
+      ) : null}
+
+      {evidence.length > 0 ? (
+        <Section label="证据" copyValue={evidence}>
+          <DataCard><DataView value={evidence} /></DataCard>
+        </Section>
+      ) : null}
+
+      {changes.length > 0 ? (
+        <Section label="变更" copyValue={changes}>
+          <DataCard><DataView value={changes} /></DataCard>
+        </Section>
+      ) : null}
+
+      {presentation.artifactUri ? (
+        <Section label="结果归档" copyValue={presentation.artifactUri}>
+          <span className="break-all font-mono text-[12px] text-ink-500">
+            {presentation.artifactUri}
+          </span>
+        </Section>
+      ) : null}
+    </>
+  );
+}
 
 function MetaStrip({ step }: { step: TimelineStep }): JSX.Element {
   const chips: Array<{ label: string; value: string; mono?: boolean; tone?: "default" | "warn" | "ok" | "live" }> = [];

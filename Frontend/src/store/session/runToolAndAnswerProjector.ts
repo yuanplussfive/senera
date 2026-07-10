@@ -18,6 +18,10 @@ import {
 import { alignRunDisplayTarget, touchRun } from "./sessionRunProjection";
 import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
 import { toolBatchFromEvent } from "./timelineProjection";
+import {
+  mergeToolResultPresentation,
+  readToolResultPresentation,
+} from "./toolResultPresentation";
 
 export const runToolAndAnswerEventHandlers = {
   [EventKinds.AssistantMessageCreated]: (state, env) => {
@@ -111,7 +115,8 @@ export const runToolAndAnswerEventHandlers = {
     if (step) {
       step.status = "done";
       step.endedAt = env.timestamp;
-      step.toolPreview = data.preview;
+      step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
+      step.toolPreview = step.toolPresentation?.headline;
       touchRun(run);
     }
   },
@@ -149,6 +154,11 @@ export const runToolAndAnswerEventHandlers = {
     const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
     if (step) {
       step.toolResult = data.value;
+      step.toolPresentation = mergeToolResultPresentation(
+        step.toolPresentation,
+        readToolResultPresentation(data.value),
+      );
+      step.toolPreview = step.toolPresentation?.headline ?? step.toolPreview;
       touchRun(run);
     }
   },
@@ -164,6 +174,7 @@ function chatMessageKindForAssistantMessage(
   } as const satisfies Record<AssistantMessageCreatedData["kind"], "AssistantToolPreface" | "AssistantFinal" | "AssistantAsk">;
   return map[kind];
 }
+
 
 function assistantStepTitle(kind: AssistantMessageCreatedData["kind"]): string {
   const map = {

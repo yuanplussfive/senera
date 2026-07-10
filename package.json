@@ -26,8 +26,8 @@
     "bamlcheck": "baml check --from baml_src",
     "bamlgenerate": "baml generate --from baml_src",
     "compileopapolicy": "tsx Build/CompileOpaPolicy.ts",
+    "generatefrontendevents": "tsx Build/GenerateFrontendEventCatalog.ts",
     "sandboxprepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
-    "postinstall": "tsx Build/PrepareSandboxRuntime.ts",
     "securitycheck": "npm audit --audit-level=high",
     "check": "tsc --noEmit",
     "build": "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
@@ -40,6 +40,10 @@
     "frontendtest": "npm --workspace senera-frontend run test",
     "frontendcoverage": "npm --workspace senera-frontend run coverage",
     "frontendverify": "npm --workspace senera-frontend run verify",
+    "backendtest": "vitest run --config vitest.backend.config.ts",
+    "backendcoverage": "vitest run --config vitest.backend.config.ts --coverage",
+    "e2etest": "vitest run --config vitest.e2e.config.ts",
+    "coverage": "npm run frontendcoverage && npm run backendcoverage",
     "server": "npm run build && node Dist/Apps/Server.js",
     "serverwatch": "tsx Apps/ServerWatch.ts",
     "serverwatchdry": "tsx Apps/ServerWatch.ts --dry-run",
@@ -52,8 +56,8 @@
     "verifycontracts": "npm run build && npm run verifysuite -- contracts",
     "verify": "npm run build && npm run verifysuite -- core",
     "verifyall": "npm run build && npm run verifysuite -- all-local",
-    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run build && npm run verifysuite -- workspace core && npm run frontendverify && npm run frontendcoverage",
-    "test": "npm run check && npm run verify"
+    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run backendtest && npm run e2etest && npm run build && npm run verifysuite -- workspace core && npm run frontendverify && npm run frontendcoverage && npm run backendcoverage",
+    "test": "npm run check && npm run backendtest && npm run e2etest && npm run verify"
   },
   "keywords": [],
   "author": "",
@@ -71,7 +75,6 @@
       "Dist/**/*",
       "Frontend/dist/**/*",
       "Apps/Desktop/Assets/**/*",
-      "SandboxBundles/**/*",
       "System/Plugins/**/*",
       "Plugins/**/*",
       {
@@ -89,7 +92,6 @@
     },
     "asarUnpack": [
       "senera.config.example.json",
-      "SandboxBundles/**",
       "System/Plugins/**",
       "Plugins/**",
       "**/*.node",

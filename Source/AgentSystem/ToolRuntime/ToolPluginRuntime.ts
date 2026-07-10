@@ -15,6 +15,7 @@ import {
   AgentExecutionErrorCodes,
   AgentToolProcessErrorPhases,
 } from "../Xml/AgentXmlStatus.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export interface ToolPluginDefinition<TArguments, TResult> {
   toolName: string;
@@ -47,7 +48,9 @@ export async function runToolPluginSuite(
     const request = parseToolCallRequest(await readStdin(), options);
     const definition = definitions.find((item) => item.toolName === request.toolName);
     if (!definition) {
-      throw new Error(`不支持的工具：${request.toolName}`);
+      throw new Error(agentErrorMessage("toolPlugin.unsupportedTool", {
+        toolName: request.toolName,
+      }));
     }
 
     const args = definition.argumentSchema.parse(request.arguments);
@@ -80,10 +83,13 @@ function parseToolCallRequest(
 } {
   const parsed = JSON.parse(input) as Partial<AgentToolProcessRequestEnvelopeDocument>;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("工具请求必须是 JSON 对象。");
+    throw new Error(agentErrorMessage("toolPlugin.requestMustBeJsonObject"));
   }
   if (parsed.type !== AgentToolProcessRequestEnvelope.Type || parsed.version !== AgentToolProcessRequestEnvelope.Version) {
-    throw new Error(`不支持的工具请求 envelope：type=${String(parsed.type)} version=${String(parsed.version)}。`);
+    throw new Error(agentErrorMessage("toolPlugin.unsupportedEnvelope", {
+      type: String(parsed.type),
+      version: String(parsed.version),
+    }));
   }
 
   return {

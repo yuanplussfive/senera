@@ -30,6 +30,10 @@ import {
 import { currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
 import { touchRun } from "./sessionRunProjection";
 import { timelineScopeFromEvent, toolBatchFromEvent } from "./timelineProjection";
+import {
+  mergeToolResultPresentation,
+  readToolResultPresentation,
+} from "./toolResultPresentation";
 import type { StoreState } from "./types";
 
 export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): boolean {
@@ -214,7 +218,8 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       if (step) {
         step.status = "done";
         step.endedAt = env.timestamp;
-        step.toolPreview = data.preview;
+        step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
+        step.toolPreview = step.toolPresentation?.headline;
         touchRun(run);
       }
       return true;
@@ -252,6 +257,11 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       const step = run.steps.find((item) => item.id === scopedStepId(env, "tool", data.callId));
       if (step) {
         step.toolResult = data.value;
+        step.toolPresentation = mergeToolResultPresentation(
+          step.toolPresentation,
+          readToolResultPresentation(data.value),
+        );
+        step.toolPreview = step.toolPresentation?.headline ?? step.toolPreview;
         touchRun(run);
       }
       return true;
@@ -303,6 +313,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       return true;
   }
 }
+
 
 function scopedStepId(
   env: EventEnvelope,

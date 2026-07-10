@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  FrontendEventCatalogPath,
+  renderFrontendEventCatalogSource,
+} from "../Build/FrontendEventCatalogSource.js";
 
 const workspaceRoot = process.cwd();
 const IgnoredDirectories = new Set([
@@ -13,12 +17,19 @@ const IgnoredDirectories = new Set([
   "node_modules",
 ]);
 
+const generatedEventCatalogPath = path.join(workspaceRoot, ...FrontendEventCatalogPath.split("/"));
+assert.equal(
+  normalizeLineEndings(fs.readFileSync(generatedEventCatalogPath, "utf8")),
+  normalizeLineEndings(renderFrontendEventCatalogSource()),
+  `${FrontendEventCatalogPath} is stale. Run npm run generatefrontendevents.`,
+);
+
 const backendKinds = parseConstObject(
   path.join(workspaceRoot, "Source", "AgentSystem", "Events", "AgentEventCatalog.ts"),
   "AgentEventKinds",
 );
 const frontendKinds = parseConstObject(
-  path.join(workspaceRoot, "Frontend", "src", "api", "eventTypes.ts"),
+  generatedEventCatalogPath,
   "EventKinds",
 );
 
@@ -214,4 +225,8 @@ function relativePath(filePath: string): string {
 
 function normalizedPath(filePath: string): string {
   return filePath.replace(/\\/g, "/");
+}
+
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n?/g, "\n");
 }

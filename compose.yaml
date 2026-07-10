@@ -12,9 +12,12 @@ services:
       SENERA_SERVER_PORT: 8787
       SENERA_PUBLIC_WS_URL: ${SENERA_PUBLIC_WS_URL:-}
     volumes:
-      - ./docker-data:/data
+      - senera-data:/data
     devices:
       - /dev/kvm:/dev/kvm
     cap_add:
       - NET_ADMIN
     restart: unless-stopped
+
+volumes:
+  senera-data:

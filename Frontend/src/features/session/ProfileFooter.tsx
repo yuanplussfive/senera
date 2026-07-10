@@ -13,6 +13,7 @@ import {
   useLoadedAvatarImage,
   type AvatarCropState,
 } from "./useAvatarCrop";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export function UserFooter({
   profile,
@@ -62,7 +63,7 @@ export function UserFooter({
         onSubmit={(next) => {
           onUpdateProfile(next);
           setOpen(false);
-          toast.success("用户资料已保存");
+          toast.success(frontendMessage("profile.saved"));
         }}
       />
     </>
@@ -116,11 +117,11 @@ function ProfileDialog({
 
   const readAvatarFile = (file: File): void => {
     if (!file.type.startsWith("image/")) {
-      toast.error("请选择图片文件");
+      toast.error(frontendMessage("profile.imageRequired"));
       return;
     }
     if (file.size > MAX_AVATAR_SOURCE_BYTES) {
-      toast.error("图片不能超过 8MB");
+      toast.error(frontendMessage("profile.imageTooLarge"));
       return;
     }
     const reader = new FileReader();
@@ -135,7 +136,7 @@ function ProfileDialog({
         });
       }
     };
-    reader.onerror = () => toast.error("读取头像失败");
+    reader.onerror = () => toast.error(frontendMessage("profile.avatarReadFailed"));
     reader.readAsDataURL(file);
   };
 
@@ -164,11 +165,11 @@ function ProfileDialog({
             event.preventDefault();
             const name = draftName.trim();
             if (!name) {
-              toast.error("名称不能为空");
+              toast.error(frontendMessage("profile.nameRequired"));
               return;
             }
             if (crop) {
-              toast.error("请先完成头像裁切");
+              toast.error(frontendMessage("profile.avatarCropRequired"));
               return;
             }
             onSubmit({ name, avatarDataUrl: draftAvatar });

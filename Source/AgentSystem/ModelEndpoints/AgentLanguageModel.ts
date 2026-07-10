@@ -11,7 +11,7 @@ export interface AgentLanguageModelRequest {
 }
 
 export interface AgentLanguageModelMessage {
-  role: "user" | "assistant";
+  role: "system" | "developer" | "user" | "assistant";
   content: string;
 }
 

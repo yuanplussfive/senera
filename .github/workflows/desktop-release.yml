@@ -6,13 +6,14 @@ env:
 on:
   workflow_run:
     workflows:
-      - Verify
+      - Security Scan
     types:
       - completed
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: desktop-release-${{ github.event.workflow_run.head_sha || github.sha }}
@@ -27,12 +28,33 @@ jobs:
       (
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.event == 'push'
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.name == 'Security Scan'
       )
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Require Verify success
+        if: github.event_name == 'workflow_run'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          for ($attempt = 1; $attempt -le 60; $attempt++) {
+            $runs = gh run list --workflow "Verify" --commit $env:SOURCE_SHA --limit 20 --json status,conclusion,event,headBranch | ConvertFrom-Json
+            $run = $runs | Where-Object { $_.event -eq "push" -and $_.headBranch -eq "main" } | Select-Object -First 1
+            if ($run -and $run.status -eq "completed" -and $run.conclusion -eq "success") {
+              exit 0
+            }
+            if ($run -and $run.status -eq "completed") {
+              throw "Verify workflow did not succeed for $env:SOURCE_SHA: $($run.conclusion)"
+            }
+            Start-Sleep -Seconds 20
+          }
+          throw "Timed out waiting for Verify workflow success for $env:SOURCE_SHA."
 
       - uses: actions/setup-node@v4
         with:
@@ -41,11 +63,11 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .npm-cache
-          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package.json', 'Frontend/package.json', 'Packages/*/package.json', 'System/Plugins/*/package.json', 'Plugins/*/package.json', '.npmrc') }}
+          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package-lock.json', '.npmrc') }}
           restore-keys: |
             ${{ runner.os }}-node-22-npm-
 
-      - run: npm install
+      - run: npm ci
 
       - id: release
         name: Resolve release version

@@ -17,6 +17,8 @@ import type { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntim
 import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { SeneraLocalExecutionEnv } from "../Execution/SeneraLocalExecutionEnv.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { projectAgentToolResultPresentation } from "./AgentToolResultPresentation.js";
 import type {
   AgentToolCallExecutionContext,
   AgentToolCallExecutionRequest,
@@ -90,7 +92,7 @@ export class AgentToolCallExecutor {
     const tool = this.options.registry.getTool(toolName);
     const allowedTools = this.allowedToolNames(loadedToolNames);
     if (!tool || !allowedTools.has(toolName)) {
-      throw new Error(`工具没有注册或当前不可见：${toolName}`);
+      throw new Error(agentErrorMessage("tool.notRegisteredOrVisible", { toolName }));
     }
 
     return tool;
@@ -138,7 +140,7 @@ export class AgentToolCallExecutor {
       ? execution.response.result
       : { error: execution.response.error };
     const workspaceCapture = await capture.complete(result);
-    const executed: ExecutedToolCallResult = {
+    const executedBase: ExecutedToolCallResult = {
       callId,
       name: tool.name,
       arguments: args,
@@ -150,6 +152,10 @@ export class AgentToolCallExecutor {
       result,
       artifactPolicy: tool.artifactPolicy,
       workspaceCapture,
+    };
+    const executed: ExecutedToolCallResult = {
+      ...executedBase,
+      presentation: projectAgentToolResultPresentation(executedBase),
     };
 
     await this.emitResultLifecycle(context, index, executed);
@@ -180,7 +186,7 @@ export class AgentToolCallExecutor {
             index,
             result.name,
             result.callId,
-            previewToolResult(result.result),
+            result.presentation ?? projectAgentToolResultPresentation(result),
             { batchId: context.batchId },
           ));
     await this.emitLifecycle(context, () =>
@@ -226,7 +232,11 @@ function readAskUserControl(value: unknown): AskUserControlResult | undefined {
     return undefined;
   }
 
-  const question = readRequiredText(record, "question", "AskUser 控制结果缺少 question。");
+  const question = readRequiredText(
+    record,
+    "question",
+    agentErrorMessage("tool.askUserControlMissingQuestion"),
+  );
   const reason = readOptionalText(record, "reason_code");
   return reason
     ? {
@@ -270,15 +280,4 @@ function readRequiredText(
 function readOptionalText(value: Record<string, unknown>, key: string): string | undefined {
   const text = typeof value[key] === "string" ? value[key].trim() : "";
   return text.length > 0 ? text : undefined;
-}
-
-function previewToolResult(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value && typeof value === "object") {
-    return Object.keys(value as Record<string, unknown>).slice(0, 4).join(", ");
-  }
-
-  return value === undefined ? undefined : String(value);
 }

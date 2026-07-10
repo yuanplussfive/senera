@@ -1,77 +1,25 @@
-// 协议类型——与后端 Source/AgentSystem/AgentEvent.ts 保持同步
-// 保持手写，避免引入构建期类型同步链路；后端协议变更时手动更新。
+// 协议类型。事件枚举从后端 AgentEventCatalog 生成，其他 DTO 保持前端消费视角。
+import {
+  EventKinds,
+  EventLayers,
+  EventPhases,
+} from "./generatedEventCatalog";
+import type {
+  EventKind,
+  EventLayer,
+  EventPhase,
+} from "./generatedEventCatalog";
 
-export const EventLayers = {
-  Progress: "progress",
-  Snapshot: "snapshot",
-  Terminal: "terminal",
-  Error: "error",
-} as const;
-export type EventLayer = (typeof EventLayers)[keyof typeof EventLayers];
-
-export const EventPhases = {
-  Request: "request",
-  Session: "session",
-  Prompt: "prompt",
-  Model: "model",
-  Decision: "decision",
-  Tool: "tool",
-  Run: "run",
-  Approval: "approval",
-  Sandbox: "sandbox",
-  Config: "config",
-} as const;
-export type EventPhase = (typeof EventPhases)[keyof typeof EventPhases];
-
-export const EventKinds = {
-  SessionCreated: "session.created",
-  SessionSnapshot: "session.snapshot",
-  SessionClosed: "session.closed",
-  SessionBusy: "session.busy",
-  SessionNotFound: "session.not_found",
-  SessionListSnapshot: "session.list.snapshot",
-  SessionHistoryStarted: "session.history.started",
-  SessionHistoryChunk: "session.history.chunk",
-  SessionHistorySteps: "session.history.steps",
-  SessionRunHistoryChunk: "session.run_history.chunk",
-  SessionHistoryCompleted: "session.history.completed",
-  SessionTruncated: "session.truncated",
-  RunStarted: "run.started",
-  PromptSummary: "prompt.summary",
-  ActionPlannerStageStarted: "action.planner.stage.started",
-  ActionPlannerStageCompleted: "action.planner.stage.completed",
-  ActionPlannerStageFailed: "action.planner.stage.failed",
-  InteractionRouted: "interaction.routed",
-  ActionPlanned: "action.planned",
-  ModelStarted: "model.started",
-  ModelDelta: "model.delta",
-  ModelCompleted: "model.completed",
-  PiTrace: "pi.trace",
-  ToolCallsPlanned: "tool.calls.planned",
-  ToolCallStarted: "tool.call.started",
-  ToolCallCompleted: "tool.call.completed",
-  ToolCallFailed: "tool.call.failed",
-  ToolCallResultDetail: "tool.call.result.detail",
-  AssistantMessageCreated: "assistant.message.created",
-  ApprovalRequested: "approval.requested",
-  ApprovalResolved: "approval.resolved",
-  SandboxStatusSnapshot: "sandbox.status.snapshot",
-  RunCompleted: "run.completed",
-  RunFailed: "run.failed",
-  RunCancelled: "run.cancelled",
-  RequestInvalid: "request.invalid",
-  ConfigReloaded: "config.reloaded",
-  ConfigFailed: "config.failed",
-  ConfigSnapshot: "config.snapshot",
-  ModelListSnapshot: "model.list.snapshot",
-  ProviderModelsSnapshot: "provider.models.snapshot",
-  ProviderModelsFailed: "provider.models.failed",
-  PluginConfigSnapshot: "plugin.config.snapshot",
-  ProfileSnapshot: "profile.snapshot",
-  PresetSnapshot: "preset.snapshot",
-  PresetFailed: "preset.failed",
-} as const;
-export type EventKind = (typeof EventKinds)[keyof typeof EventKinds];
+export {
+  EventKinds,
+  EventLayers,
+  EventPhases,
+};
+export type {
+  EventKind,
+  EventLayer,
+  EventPhase,
+} from "./generatedEventCatalog";
 
 export interface EventEnvelope<TKind extends string = EventKind, TData = unknown> {
   channel: "agent.event";
@@ -204,6 +152,7 @@ export interface StepTraceDto {
   title?: string;
   toolArgs?: unknown;
   toolPreview?: string;
+  toolPresentation?: ToolResultPresentation;
   toolResult?: unknown;
   toolErrorMessage?: string;
   errorMessage?: string;
@@ -250,6 +199,44 @@ export interface ModelCapabilitiesData {
   ImageOutput?: boolean;
   Reasoning?: boolean;
   ToolCalling?: boolean;
+  DeveloperRole?: boolean;
+}
+
+export interface ToolResultPresentation {
+  type: "senera.tool_result_presentation.v1";
+  version: 1;
+  status: "success" | "failure" | "empty";
+  headline: string;
+  summary?: string;
+  facts: ToolResultPresentationFact[];
+  evidence: ToolResultPresentationEvidence[];
+  changes: ToolResultPresentationChange[];
+  artifactUri?: string;
+}
+
+export interface ToolResultPresentationFact {
+  name: string;
+  value: string;
+  kind?: string;
+  evidenceUri?: string;
+  confidence?: number;
+}
+
+export interface ToolResultPresentationEvidence {
+  evidenceUri: string;
+  kind: string;
+  display: string;
+  label: string;
+  source: string;
+  locator: string;
+  confidence: number;
+}
+
+export interface ToolResultPresentationChange {
+  kind: string;
+  status: "added" | "changed" | "unchanged";
+  key: string;
+  summary: string;
 }
 
 export interface ModelListSnapshotData {
@@ -277,6 +264,7 @@ export interface ProviderModelsFailedData {
 }
 
 export type SandboxEffectiveMode = "sandbox" | "fallback";
+export type SandboxRuntimeState = "unknown" | "preparing" | "ready" | "fallback";
 
 export interface SandboxDiagnosticData {
   code: string;
@@ -295,6 +283,7 @@ export interface SandboxDependencySnapshotData {
 export interface SandboxStatusSnapshotData {
   provider: string;
   platform: string;
+  state: SandboxRuntimeState;
   supported: boolean;
   effectiveMode: SandboxEffectiveMode;
   dependencies: SandboxDependencySnapshotData;
@@ -722,7 +711,7 @@ export interface ToolCallCompletedData {
   toolName: string;
   callId: string;
   batchId?: string;
-  preview?: string;
+  presentation?: ToolResultPresentation;
 }
 
 export interface ToolCallFailedData {
