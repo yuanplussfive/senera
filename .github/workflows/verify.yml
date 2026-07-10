@@ -5,102 +5,73 @@ env:
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
+    inputs:
+      full_suite:
+        description: Run every local verification script after the normal gates.
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  agent-core:
-    name: Agent Core (${{ matrix.os }}, Node ${{ matrix.node }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-        node:
-          - 22
+  fast:
+    name: Fast Gate
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-      - uses: actions/cache@v4
-        with:
-          path: .npm-cache
-          key: ${{ runner.os }}-node-${{ matrix.node }}-npm-${{ hashFiles('package-lock.json', '.npmrc') }}
-          restore-keys: |
-            ${{ runner.os }}-node-${{ matrix.node }}-npm-
-      - run: npm ci
-      - run: npm run securitycheck
+      - uses: ./.github/actions/setup-node
       - run: npm run bamlcheck
       - run: npm run check
       - run: npm run backendtest
-      - run: npm run build
-      - run: npm run verifysuite -- workspace core
-      - run: npm run backendcoverage
-      - uses: actions/upload-artifact@v4
-        with:
-          name: backend-coverage-${{ runner.os }}
-          path: coverage/backend
-          if-no-files-found: error
-
-  protocol-e2e:
-    name: Protocol E2E
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: actions/cache@v4
-        with:
-          path: .npm-cache
-          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package-lock.json', '.npmrc') }}
-          restore-keys: |
-            ${{ runner.os }}-node-22-npm-
-      - run: npm ci
-      - run: npm run e2etest
-
-  frontend:
-    name: Frontend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: actions/cache@v4
-        with:
-          path: .npm-cache
-          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package-lock.json', '.npmrc') }}
-          restore-keys: |
-            ${{ runner.os }}-node-22-npm-
-      - run: npm ci
       - run: npm run frontendverify
+      - run: npm run e2etest
+      - run: npm run build
+      - run: npm run verifysuite -- workspace core e2e release
+
+  platform-windows:
+    name: Windows Platform Smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - run: npm run build
+      - run: npm run verifysuite -- platform
+
+  coverage:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    needs:
+      - fast
+      - platform-windows
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
       - run: npm run frontendcoverage
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage
           path: coverage/frontend
           if-no-files-found: error
+      - run: npm run backendcoverage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage/backend
+          if-no-files-found: error
 
   all-local:
     name: All Local Verifications
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.full_suite
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: actions/cache@v4
-        with:
-          path: .npm-cache
-          key: ${{ runner.os }}-node-22-npm-${{ hashFiles('package-lock.json', '.npmrc') }}
-          restore-keys: |
-            ${{ runner.os }}-node-22-npm-
-      - run: npm ci
-      - run: npm run securitycheck
-      - run: npm run bamlcheck
+      - uses: ./.github/actions/setup-node
       - run: npm run verifyall

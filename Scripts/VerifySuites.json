@@ -14,15 +14,10 @@
       ]
     },
     "core": {
-      "description": "Fast local runtime gates for agent/plugin contracts.",
+      "description": "Agent runtime and plugin contracts without browser, E2E, or OS-specific checks.",
       "patterns": [
         "VerifyAgentTypeContractBoundaries.js",
-        "VerifyFrontendArchitecture.js",
         "VerifyBackendTestCoverage.js",
-        "VerifyFrontendTestCoverage.js",
-        "VerifyE2eTestCoverage.js",
-        "VerifyFrontendVitestSuite.js",
-        "VerifyE2eVitestSuite.js",
         "VerifyPluginConfigSchema.js",
         "VerifyRuntimeEventContract.js",
         "VerifyAgentErrorI18n.js",
@@ -50,6 +45,7 @@
         "VerifyPiHarnessSessionReuse.js",
         "VerifyPiRuntimeQueueSteering.js",
         "VerifyPiAgentLoopSubstrate.js",
+        "VerifyPiContextPolicy.js",
         "VerifyAgentLoopRuntimeBoundary.js",
         "VerifyPiOpenAiTranscriptProjection.js",
         "VerifyPiTurnExecutorContracts.js",
@@ -57,22 +53,45 @@
         "VerifyPiProxyOpenAiWire.js",
         "VerifyPiToolExecutionBridge.js",
         "VerifyMcpPersistentProcessBoundary.js",
+        "VerifyAgentSafetyApproval.js",
+        "VerifyComplexityBudget.js",
+        "VerifyConfigServiceSqliteSource.js"
+      ]
+    },
+    "frontend": {
+      "description": "Frontend architecture and test governance; frontendverify runs the Vitest suite.",
+      "patterns": [
+        "VerifyFrontendArchitecture.js",
+        "VerifyFrontendTestCoverage.js"
+      ]
+    },
+    "e2e": {
+      "description": "End-to-end test governance; e2etest runs the protocol suite.",
+      "patterns": [
+        "VerifyE2eTestCoverage.js"
+      ]
+    },
+    "platform": {
+      "description": "Cross-platform execution, sandbox, and desktop path smoke checks.",
+      "patterns": [
         "VerifySeneraExecutionEnvBoundary.js",
         "VerifySeneraMicrosandboxBackend.js",
         "VerifySeneraMicrosandboxRuntimeRetry.js",
         "VerifySeneraExecutionBackendFallback.js",
         "VerifySeneraSandboxRuntimeService.js",
         "VerifySandboxRuntimeConfig.js",
-        "VerifyDockerRuntimeSandboxPolicy.js",
         "VerifySandboxPrepareRuntime.js",
-        "VerifyAgentSafetyApproval.js",
         "VerifyRuntimeModulePath.js",
         "VerifyDesktopRuntimeConfigProjection.js",
         "VerifyDesktopRuntimeAssetSync.js",
-        "VerifyDesktopRuntimePaths.js",
-        "VerifyDesktopReleaseInfo.js",
-        "VerifyComplexityBudget.js",
-        "VerifyConfigServiceSqliteSource.js"
+        "VerifyDesktopRuntimePaths.js"
+      ]
+    },
+    "release": {
+      "description": "Container and desktop release metadata and runtime policies.",
+      "patterns": [
+        "VerifyDockerRuntimeSandboxPolicy.js",
+        "VerifyDesktopReleaseInfo.js"
       ]
     },
     "all-local": {

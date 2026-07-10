@@ -85,6 +85,29 @@ docker compose exec -T senera tar czf - -C /data . > senera-data-backup.tgz
 
 如果你改成了 `./docker-data:/data`，直接备份 `docker-data/` 目录即可。
 
+## 发布与回滚
+
+GitHub 的验证和发布分开处理，避免每次提交都构建安装包或镜像。
+
+- Pull Request：运行快速验证和 Windows 平台冒烟，尽快发现类型、测试和路径问题。
+- 合并到 `main`：额外计算前后端覆盖率；安全扫描会在主干和每周定时运行。
+- 发布预览：手动运行 `Container Release` 或 `Desktop Release`，选择 `preview`。工作流只接受已经通过 Verify 的提交。
+- 发布稳定版：在同一工作流中选择 `stable`。容器会把已存在的 `sha-<完整提交>` 镜像标记为 `stable` 和 `latest`；桌面端会把已有预览 Release 转为正式版。
+
+稳定版不重新构建，所以回滚就是把上一份已经验证的版本再次提升：
+
+```text
+Container Release: channel=stable, source_sha=<上一份镜像对应的提交>
+Desktop Release: channel=stable, release_tag=<上一份 desktop-v... 标签>
+```
+
+容器回滚完成后，部署机器拉取稳定标签即可：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
 ## 日志和健康状态
 
 看日志：

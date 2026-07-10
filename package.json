@@ -55,8 +55,10 @@
     "verifyworkspace": "npm run build && npm run verifysuite -- workspace",
     "verifycontracts": "npm run build && npm run verifysuite -- contracts",
     "verify": "npm run build && npm run verifysuite -- core",
+    "verifyplatform": "npm run build && npm run verifysuite -- platform",
+    "verifyrelease": "npm run build && npm run verifysuite -- release",
     "verifyall": "npm run build && npm run verifysuite -- all-local",
-    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run backendtest && npm run e2etest && npm run build && npm run verifysuite -- workspace core && npm run frontendverify && npm run frontendcoverage && npm run backendcoverage",
+    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run backendtest && npm run frontendverify && npm run e2etest && npm run build && npm run verifysuite -- workspace core e2e platform release && npm run frontendcoverage && npm run backendcoverage",
     "test": "npm run check && npm run backendtest && npm run e2etest && npm run verify"
   },
   "keywords": [],

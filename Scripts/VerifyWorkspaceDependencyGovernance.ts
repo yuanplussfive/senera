@@ -193,8 +193,10 @@ function inspectRootScripts(): string[] {
     "verifyworkspace": "npm run build && npm run verifysuite -- workspace",
     "verifycontracts": "npm run build && npm run verifysuite -- contracts",
     "verify": "npm run build && npm run verifysuite -- core",
+    "verifyplatform": "npm run build && npm run verifysuite -- platform",
+    "verifyrelease": "npm run build && npm run verifysuite -- release",
     "verifyall": "npm run build && npm run verifysuite -- all-local",
-    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run backendtest && npm run e2etest && npm run build && npm run verifysuite -- workspace core && npm run frontendverify && npm run frontendcoverage && npm run backendcoverage",
+    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run backendtest && npm run frontendverify && npm run e2etest && npm run build && npm run verifysuite -- workspace core e2e platform release && npm run frontendcoverage && npm run backendcoverage",
   };
 
   return [
@@ -204,9 +206,9 @@ function inspectRootScripts(): string[] {
       "bamlcheck",
       "check",
       "backendtest",
+      "frontendverify",
       "e2etest",
       "build",
-      "frontendverify",
       "frontendcoverage",
       "backendcoverage",
     ]),
@@ -398,25 +400,21 @@ function inspectRootNpmPolicy(): string[] {
 }
 
 function inspectVerifyWorkflow(): string[] {
-  const expectedScripts = [
-    "backendtest",
-    "backendcoverage",
-    "e2etest",
-    "frontendverify",
-    "frontendcoverage",
-  ].map((script) => `npm run ${script}`);
-  const coverageArtifactNames = Object.values(ProjectTestCoveragePolicies)
-    .map((policy) => policy.coverageDirectory.split("/").at(-1))
-    .filter((name): name is string => Boolean(name))
-    .map((name) => `${name}-coverage`);
-
-  return [
-    ...inspectTextIncludes(verifyWorkflow, ".github/workflows/verify.yml", [
-      "npm ci",
-      ...expectedScripts,
-      ...coverageArtifactNames,
-    ]),
-  ];
+  return inspectTextIncludes(verifyWorkflow, ".github/workflows/verify.yml", [
+    "name: Fast Gate",
+    "name: Windows Platform Smoke",
+    "name: Coverage Gate",
+    "./.github/actions/setup-node",
+    "npm run backendtest",
+    "npm run frontendverify",
+    "npm run e2etest",
+    "npm run verifysuite -- workspace core e2e release",
+    "npm run verifysuite -- platform",
+    "github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'",
+    "npm run frontendcoverage",
+    "npm run backendcoverage",
+    "inputs.full_suite",
+  ]);
 }
 
 function inspectSecurityScanWorkflow(): string[] {
@@ -428,22 +426,33 @@ function inspectSecurityScanWorkflow(): string[] {
     "aquasecurity/trivy-action@0.35.0",
     "exit-code: \"1\"",
     "github/codeql-action/upload-sarif@v3",
+    "if: github.event_name != 'pull_request'",
+    "npm run securitycheck",
   ]);
 }
 
 function inspectReleaseWorkflowGates(): string[] {
   return [
     ...inspectTextIncludes(containerReleaseWorkflow, ".github/workflows/container-release.yml", [
-      "- Security Scan",
-      "github.event.workflow_run.name == 'Security Scan'",
-      "Require Verify success",
-      "gh run list --workflow \"Verify\"",
+      "workflow_dispatch:",
+      "channel:",
+      "source_sha:",
+      "Require successful verification",
+      "gh run list --workflow verify.yml",
+      "type=raw,value=sha-${{ needs.source.outputs.sha }}",
+      "type=raw,value=preview",
+      "Promote immutable image without rebuilding",
+      "--tag \"$IMAGE:latest\"",
     ]),
     ...inspectTextIncludes(desktopReleaseWorkflow, ".github/workflows/desktop-release.yml", [
-      "- Security Scan",
-      "github.event.workflow_run.name == 'Security Scan'",
-      "Require Verify success",
-      "gh run list --workflow \"Verify\"",
+      "workflow_dispatch:",
+      "channel:",
+      "release_tag:",
+      "Require successful verification",
+      "gh run list --workflow verify.yml",
+      "--prerelease",
+      "Promote preview release without rebuilding",
+      "--prerelease=false",
     ]),
   ];
 }
