@@ -4,6 +4,18 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.0.24](https://github.com/yuanplussfive/senera/compare/v1.0.23...v1.0.24) (2026-07-12)
+
+
+### 问题修复
+
+* **release:** 防止发布提交静默跳过 ([c690a1c](https://github.com/yuanplussfive/senera/commit/c690a1ceeaf21678cceb16455d24de8e58a4206b))
+
+
+### 文档
+
+* 删除过时升级指南 ([#9](https://github.com/yuanplussfive/senera/issues/9)) ([ba49814](https://github.com/yuanplussfive/senera/commit/ba49814fae1a236eae5d993ed9bfb79dff490f60))
+
 ## [1.0.23](https://github.com/yuanplussfive/senera/compare/v1.0.22...v1.0.23) (2026-07-12)
 
 
