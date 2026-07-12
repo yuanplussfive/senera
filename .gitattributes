@@ -1,1 +1,3 @@
 *.wasm binary
+Source/AgentSystem/Safety/*.rego text eol=lf
+Source/AgentSystem/Safety/*.json text eol=lf
