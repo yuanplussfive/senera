@@ -151,6 +151,7 @@ jobs:
     name: Build Windows Installer
     needs:
       - metadata
+    if: needs.metadata.result == 'success'
     runs-on: windows-latest
     environment: release-stable
     steps:
@@ -176,6 +177,7 @@ jobs:
     name: Publish Container Image
     needs:
       - metadata
+    if: needs.metadata.result == 'success'
     runs-on: ubuntu-latest
     environment: release-stable
     steps:
@@ -213,6 +215,10 @@ jobs:
       - metadata
       - desktop
       - container
+    if: >-
+      needs.metadata.result == 'success' &&
+      needs.desktop.result == 'success' &&
+      needs.container.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Publish draft as the latest stable release
