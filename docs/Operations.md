@@ -174,8 +174,6 @@ docker compose pull
 docker compose up -d
 ```
 
-桌面端回退和数据兼容要求见 [升级指南](Upgrading.md)。
-
 ## 日志和健康状态
 
 看日志：
