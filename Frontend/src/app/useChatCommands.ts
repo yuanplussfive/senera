@@ -153,12 +153,15 @@ export function findRegenerateInput({
 }: {
   activeSessionId: string | null;
   message: ChatMessage;
-}): {
-  attachments?: UploadAttachmentData[];
-  kind: "found";
-  input: string;
-  requestId: string;
-} | { kind: "missing_request" } | { kind: "not_found" } {
+}):
+  | {
+      attachments?: UploadAttachmentData[];
+      kind: "found";
+      input: string;
+      requestId: string;
+    }
+  | { kind: "missing_request" }
+  | { kind: "not_found" } {
   if (!activeSessionId || !message.requestId) {
     return { kind: "missing_request" };
   }
@@ -194,20 +197,23 @@ export function useChatCommands({
   serverKnownSessionIdsRef,
   status,
 }: UseChatCommandsOptions): ChatCommandsHandle {
-  const sendAfterTruncate = useCallback((pending: PendingAfterTruncate): boolean => {
-    pendingAfterTruncateRef.current = upsertPendingAfterTruncate(pendingAfterTruncateRef.current, pending);
+  const sendAfterTruncate = useCallback(
+    (pending: PendingAfterTruncate): boolean => {
+      pendingAfterTruncateRef.current = upsertPendingAfterTruncate(pendingAfterTruncateRef.current, pending);
 
-    const ok = send({
-      type: "session.truncate_from",
-      sessionId: pending.sessionId,
-      requestId: pending.requestId,
-    });
-    if (!ok) {
-      pendingAfterTruncateRef.current = removePendingAfterTruncate(pendingAfterTruncateRef.current, pending);
-      toast.error(frontendMessage("chat.operationDisconnected"));
-    }
-    return ok;
-  }, [pendingAfterTruncateRef, send]);
+      const ok = send({
+        type: "session.truncate_from",
+        sessionId: pending.sessionId,
+        requestId: pending.requestId,
+      });
+      if (!ok) {
+        pendingAfterTruncateRef.current = removePendingAfterTruncate(pendingAfterTruncateRef.current, pending);
+        toast.error(frontendMessage("chat.operationDisconnected"));
+      }
+      return ok;
+    },
+    [pendingAfterTruncateRef, send],
+  );
 
   const cancelActiveSession = useCallback((): void => {
     if (!activeSessionId) return;
@@ -216,143 +222,144 @@ export function useChatCommands({
     toast.message(frontendMessage("chat.cancelRequested"));
   }, [activeSessionId, send, status]);
 
-  const regenerateMessage = useCallback((message: ChatMessage): void => {
-    if (!activeSessionId || status !== "open") return;
+  const regenerateMessage = useCallback(
+    (message: ChatMessage): void => {
+      if (!activeSessionId || status !== "open") return;
 
-    const result = findRegenerateInput({ activeSessionId, message });
-    if (result.kind === "missing_request") {
-      toast.error(frontendMessage("chat.regenerateMissingRequestId"));
-      return;
-    }
-    if (result.kind === "not_found") {
-      toast.error(frontendMessage("chat.regenerateSourceNotFound"));
-      return;
-    }
-
-    sendAfterTruncate({
-      sessionId: activeSessionId,
-      requestId: result.requestId,
-      nextInput: result.input,
-      attachments: result.attachments,
-      modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
-    });
-  }, [activeSessionId, sendAfterTruncate, status]);
-
-  const editUserMessage = useCallback((message: ChatMessage, nextContent: string): void => {
-    if (!activeSessionId || status !== "open") return;
-    if (!message.requestId) {
-      toast.error(frontendMessage("chat.editMissingRequestId"));
-      return;
-    }
-    const trimmed = normalizeEditedMessageContent(nextContent);
-    if (!trimmed) {
-      toast.error(frontendMessage("chat.contentRequired"));
-      return;
-    }
-
-    sendAfterTruncate({
-      sessionId: activeSessionId,
-      requestId: message.requestId,
-      nextInput: trimmed,
-      attachments: message.attachments,
-      modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
-    });
-  }, [activeSessionId, sendAfterTruncate, status]);
-
-  const deleteFromMessage = useCallback((message: ChatMessage): void => {
-    if (!activeSessionId || status !== "open") return;
-    if (!message.requestId) {
-      toast.error(frontendMessage("chat.deleteMissingRequestId"));
-      return;
-    }
-    const ok = send({
-      type: "session.truncate_from",
-      sessionId: activeSessionId,
-      requestId: message.requestId,
-    });
-    if (!ok) {
-      toast.error(frontendMessage("chat.deleteDisconnected"));
-      return;
-    }
-    toast.success(frontendMessage("chat.deleted"));
-  }, [activeSessionId, send, status]);
-
-  const sendMessage = useCallback((
-    input: string,
-    attachments?: UploadAttachmentData[],
-    queueMode?: MessageQueueMode,
-  ): void => {
-    const state = useStore.getState();
-    const modelProviderId = state.selectedModelProviderId ?? undefined;
-    const target = resolveSendTargetSession({
-      activeSessionId,
-      createSessionId: generateId,
-      historyLoadingIds: state.historyLoadingIds,
-      missingOnServerIds: state.missingOnServerIds,
-    });
-
-    if (target.kind === "blocked_history_loading") {
-      toast.warning(frontendMessage("chat.historyRecovering"));
-      return;
-    }
-
-    const targetSessionId = target.sessionId;
-    if (activeSessionId && target.shouldCreateSession) {
-      serverKnownSessionIdsRef.current.delete(activeSessionId);
-    }
-
-    if (target.shouldCreateSession) {
-      const ok = send({
-        type: "session.create",
-        sessionId: targetSessionId,
-        modelProviderId,
-      });
-      if (!ok) {
-        toast.error(frontendMessage("chat.createSessionDisconnected"));
+      const result = findRegenerateInput({ activeSessionId, message });
+      if (result.kind === "missing_request") {
+        toast.error(frontendMessage("chat.regenerateMissingRequestId"));
         return;
       }
-      registerSession(targetSessionId);
-      serverKnownSessionIdsRef.current.add(targetSessionId);
-    }
-
-    const requestId = generateId();
-    if (!serverKnownSessionIdsRef.current.has(targetSessionId)) {
-      const ok = send({
-        type: "session.create",
-        sessionId: targetSessionId,
-        modelProviderId,
-      });
-      if (!ok) {
-        toast.error(frontendMessage("chat.createSessionDisconnected"));
+      if (result.kind === "not_found") {
+        toast.error(frontendMessage("chat.regenerateSourceNotFound"));
         return;
       }
-      serverKnownSessionIdsRef.current.add(targetSessionId);
-    }
 
-    appendUserMessage(targetSessionId, requestId, input, attachments, {
-      createRun: queueMode === undefined,
-    });
-    lastSendRef.current = { sessionId: targetSessionId, requestId, input, attachments, modelProviderId, queueMode };
-    const ok = send({
-      type: "session.message",
-      sessionId: targetSessionId,
-      requestId,
-      modelProviderId,
-      input,
-      attachments,
-      queueMode,
-    });
-    if (!ok) {
-      toast.error(frontendMessage("chat.sendDisconnected"));
-    }
-  }, [
-    activeSessionId,
-    appendUserMessage,
-    lastSendRef,
-    registerSession,
-    send,
-    serverKnownSessionIdsRef,
-  ]);
+      sendAfterTruncate({
+        sessionId: activeSessionId,
+        requestId: result.requestId,
+        nextInput: result.input,
+        attachments: result.attachments,
+        modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
+      });
+    },
+    [activeSessionId, sendAfterTruncate, status],
+  );
+
+  const editUserMessage = useCallback(
+    (message: ChatMessage, nextContent: string): void => {
+      if (!activeSessionId || status !== "open") return;
+      if (!message.requestId) {
+        toast.error(frontendMessage("chat.editMissingRequestId"));
+        return;
+      }
+      const trimmed = normalizeEditedMessageContent(nextContent);
+      if (!trimmed) {
+        toast.error(frontendMessage("chat.contentRequired"));
+        return;
+      }
+
+      sendAfterTruncate({
+        sessionId: activeSessionId,
+        requestId: message.requestId,
+        nextInput: trimmed,
+        attachments: message.attachments,
+        modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
+      });
+    },
+    [activeSessionId, sendAfterTruncate, status],
+  );
+
+  const deleteFromMessage = useCallback(
+    (message: ChatMessage): void => {
+      if (!activeSessionId || status !== "open") return;
+      if (!message.requestId) {
+        toast.error(frontendMessage("chat.deleteMissingRequestId"));
+        return;
+      }
+      const ok = send({
+        type: "session.truncate_from",
+        sessionId: activeSessionId,
+        requestId: message.requestId,
+      });
+      if (!ok) {
+        toast.error(frontendMessage("chat.deleteDisconnected"));
+        return;
+      }
+      toast.success(frontendMessage("chat.deleted"));
+    },
+    [activeSessionId, send, status],
+  );
+
+  const sendMessage = useCallback(
+    (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode): void => {
+      const state = useStore.getState();
+      const modelProviderId = state.selectedModelProviderId ?? undefined;
+      const target = resolveSendTargetSession({
+        activeSessionId,
+        createSessionId: generateId,
+        historyLoadingIds: state.historyLoadingIds,
+        missingOnServerIds: state.missingOnServerIds,
+      });
+
+      if (target.kind === "blocked_history_loading") {
+        toast.warning(frontendMessage("chat.historyRecovering"));
+        return;
+      }
+
+      const targetSessionId = target.sessionId;
+      if (activeSessionId && target.shouldCreateSession) {
+        serverKnownSessionIdsRef.current.delete(activeSessionId);
+      }
+
+      if (target.shouldCreateSession) {
+        const ok = send({
+          type: "session.create",
+          sessionId: targetSessionId,
+          modelProviderId,
+        });
+        if (!ok) {
+          toast.error(frontendMessage("chat.createSessionDisconnected"));
+          return;
+        }
+        registerSession(targetSessionId);
+        serverKnownSessionIdsRef.current.add(targetSessionId);
+      }
+
+      const requestId = generateId();
+      if (!serverKnownSessionIdsRef.current.has(targetSessionId)) {
+        const ok = send({
+          type: "session.create",
+          sessionId: targetSessionId,
+          modelProviderId,
+        });
+        if (!ok) {
+          toast.error(frontendMessage("chat.createSessionDisconnected"));
+          return;
+        }
+        serverKnownSessionIdsRef.current.add(targetSessionId);
+      }
+
+      appendUserMessage(targetSessionId, requestId, input, attachments, {
+        createRun: queueMode === undefined,
+      });
+      lastSendRef.current = { sessionId: targetSessionId, requestId, input, attachments, modelProviderId, queueMode };
+      const ok = send({
+        type: "session.message",
+        sessionId: targetSessionId,
+        requestId,
+        modelProviderId,
+        input,
+        attachments,
+        queueMode,
+      });
+      if (!ok) {
+        toast.error(frontendMessage("chat.sendDisconnected"));
+      }
+    },
+    [activeSessionId, appendUserMessage, lastSendRef, registerSession, send, serverKnownSessionIdsRef],
+  );
 
   return {
     cancelActiveSession,

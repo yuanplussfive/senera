@@ -112,8 +112,7 @@ function writeLastMeasure(sample: PerfSample): void {
 
 function writeLastMeasureError(error: unknown): void {
   document.documentElement.dataset.motionDevLastMeasureStatus = "error";
-  document.documentElement.dataset.motionDevLastMeasureError =
-    error instanceof Error ? error.message : String(error);
+  document.documentElement.dataset.motionDevLastMeasureError = error instanceof Error ? error.message : String(error);
 }
 
 function generateMockSessions(sessionCount: number, messageCount: number): SessionRecord[] {
@@ -156,60 +155,62 @@ function generateMockMessages(count: number, sessionId: string, now: number): Ch
 
 function generateMockRuns(messages: ChatMessage[], now: number): RunRecord[] {
   const userMessages = messages.filter((message) => message.role === "user" && message.requestId);
-  return userMessages.map((message, index) => {
-    const startedAt = message.createdAt;
-    const endedAt = new Date(new Date(startedAt).getTime() + 1400).toISOString();
-    return {
-      requestId: message.requestId ?? `dev-run-${index + 1}`,
-      revision: 3,
-      startedAt,
-      endedAt,
-      status: "completed",
-      input: message.content,
-      steps: [
-        {
-          id: `${message.requestId}-understand`,
-          kind: "understand",
-          title: "理解用户问题",
-          status: "done",
-          startedAt,
-          endedAt: new Date(new Date(startedAt).getTime() + 120).toISOString(),
+  return userMessages
+    .map((message, index) => {
+      const startedAt = message.createdAt;
+      const endedAt = new Date(new Date(startedAt).getTime() + 1400).toISOString();
+      return {
+        requestId: message.requestId ?? `dev-run-${index + 1}`,
+        revision: 3,
+        startedAt,
+        endedAt,
+        status: "completed",
+        input: message.content,
+        steps: [
+          {
+            id: `${message.requestId}-understand`,
+            kind: "understand",
+            title: "理解用户问题",
+            status: "done",
+            startedAt,
+            endedAt: new Date(new Date(startedAt).getTime() + 120).toISOString(),
+          },
+          {
+            id: `${message.requestId}-model`,
+            kind: "model",
+            title: "模型生成",
+            status: "done",
+            startedAt: new Date(new Date(startedAt).getTime() + 120).toISOString(),
+            endedAt,
+            modelName: "dev-model",
+          },
+          {
+            id: `${message.requestId}-answer`,
+            kind: "answer",
+            title: "生成回复",
+            status: "done",
+            startedAt: endedAt,
+            endedAt,
+          },
+        ],
+        streamingRaw: "",
+        xmlPreview: "",
+        visibleText: "",
+        displayText: "",
+        visibleKind: "final_answer",
+        expectedOutputMode: "final_text",
+        decisionMode: "none",
+        pendingToolArgsByName: {},
+        modelProvider: {
+          id: "dev-model",
+          kind: "dev",
+          endpoint: "dev://motion",
+          baseUrl: "dev://motion",
+          model: "dev-model",
         },
-        {
-          id: `${message.requestId}-model`,
-          kind: "model",
-          title: "模型生成",
-          status: "done",
-          startedAt: new Date(new Date(startedAt).getTime() + 120).toISOString(),
-          endedAt,
-          modelName: "dev-model",
-        },
-        {
-          id: `${message.requestId}-answer`,
-          kind: "answer",
-          title: "生成回复",
-          status: "done",
-          startedAt: endedAt,
-          endedAt,
-        },
-      ],
-      streamingRaw: "",
-      xmlPreview: "",
-      visibleText: "",
-      displayText: "",
-      visibleKind: "final_answer",
-      expectedOutputMode: "final_text",
-      decisionMode: "none",
-      pendingToolArgsByName: {},
-      modelProvider: {
-        id: "dev-model",
-        kind: "dev",
-        endpoint: "dev://motion",
-        baseUrl: "dev://motion",
-        model: "dev-model",
-      },
-    } satisfies RunRecord;
-  }).filter((run) => new Date(run.startedAt).getTime() <= now);
+      } satisfies RunRecord;
+    })
+    .filter((run) => new Date(run.startedAt).getTime() <= now);
 }
 
 async function measureMessageInsertion(count: number, label: string): Promise<PerfSample> {
@@ -226,11 +227,9 @@ async function measureMessageInsertion(count: number, label: string): Promise<Pe
   const start = performance.now();
   const observer = createLongTaskObserver(start);
   for (let index = 0; index < safeCount; index += 1) {
-    useStore.getState().appendUserMessage(
-      targetSessionId,
-      `dev-insert-${Date.now()}-${index}`,
-      `Motion 插入性能样本 ${index + 1}`,
-    );
+    useStore
+      .getState()
+      .appendUserMessage(targetSessionId, `dev-insert-${Date.now()}-${index}`, `Motion 插入性能样本 ${index + 1}`);
   }
   await waitForNextPaint();
   const durationMs = performance.now() - start;
@@ -253,7 +252,7 @@ async function measureScrollPerformance(): Promise<PerfSample> {
 
   await waitForNextPaint();
 
-  const chatContainer = document.querySelector('[data-chat-container]');
+  const chatContainer = document.querySelector("[data-chat-container]");
   if (!chatContainer) {
     throw new Error("Chat container not found. Ensure [data-chat-container] exists in the DOM.");
   }

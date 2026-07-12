@@ -77,11 +77,7 @@ function ensureTargetFilePath(targetPath: string): void {
   }
 }
 
-function copyFileIfChanged(
-  sourcePath: string,
-  targetPath: string,
-  options: { preserveExisting?: boolean } = {},
-): void {
+function copyFileIfChanged(sourcePath: string, targetPath: string, options: { preserveExisting?: boolean } = {}): void {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   if (options.preserveExisting && fs.existsSync(targetPath)) {
     return;

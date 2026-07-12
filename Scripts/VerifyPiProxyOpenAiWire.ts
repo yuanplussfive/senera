@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { Readable, Writable } from "node:stream";
 import type http from "node:http";
-import { projectPiChatCompletionResponse, projectPiChatCompletionStreamEvents } from "../Source/AgentSystem/PiProxy/AgentPiOpenAiResponseProjector.js";
 import {
-  AgentPiProxyHttpApi,
-  buildPiProxyBaseUrl,
-} from "../Source/AgentSystem/PiProxy/AgentPiProxyHttpApi.js";
+  projectPiChatCompletionResponse,
+  projectPiChatCompletionStreamEvents,
+} from "../Source/AgentSystem/PiProxy/AgentPiOpenAiResponseProjector.js";
+import { AgentPiProxyHttpApi } from "../Source/AgentSystem/PiProxy/AgentPiProxyHttpApi.js";
+import {
+  AgentPiProxyProtocol,
+  resolveAgentPiProxyBaseUrl,
+} from "../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
 import {
   AgentPiProxyContextHeader,
   withPiProxyRuntimeContext,
@@ -29,17 +33,21 @@ const config: AgentSystemConfig = {
     Port: 8787,
   },
   DefaultModelProviderId: "main",
-  ModelProviderEndpoints: [{
-    Id: "main",
-    BaseUrl: "https://example.invalid/v1",
-    ApiKey: "test-key",
-  }],
-  ModelProviders: [{
-    Id: "test-model",
-    ProviderId: "main",
-    Endpoint: "ChatCompletions",
-    Model: "test-model",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "main",
+      BaseUrl: "https://example.invalid/v1",
+      ApiKey: "test-key",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "test-model",
+      ProviderId: "main",
+      Endpoint: "ChatCompletions",
+      Model: "test-model",
+    },
+  ],
 };
 
 const provider: ResolvedAgentModelProviderConfig = {
@@ -59,34 +67,35 @@ const provider: ResolvedAgentModelProviderConfig = {
   MaxRequestMs: 20_000,
   MaxNetworkRetries: 1,
   Headers: {},
-  Capabilities: {
-    ToolCalling: false,
-  },
 };
 
 const projected = projectSeneraModelProviderToPi(provider, config);
-assert.equal(projected.model.provider, "senera-pi-proxy");
-assert.equal(projected.model.api, "openai-completions");
-assert.equal(projected.model.baseUrl, buildPiProxyBaseUrl(config));
-assert.equal(projected.upstream.baseUrl, provider.BaseUrl);
-assert.equal(buildPiProxyBaseUrl({
-  ...config,
-  Server: {
-    Host: "0.0.0.0",
-    Port: 8787,
-  },
-}), "http://127.0.0.1:8787/v1");
+assert.equal(projected.model.provider, AgentPiProxyProtocol.providerId);
+assert.equal(projected.model.api, AgentPiProxyProtocol.modelApi);
+assert.equal(projected.model.baseUrl, resolveAgentPiProxyBaseUrl(config));
+assert.equal(
+  resolveAgentPiProxyBaseUrl({
+    ...config,
+    Server: {
+      Host: "0.0.0.0",
+      Port: 8787,
+    },
+  }),
+  `http://127.0.0.1:8787${AgentPiProxyProtocol.basePath}`,
+);
 
 const toolMessage = {
   kind: "tool_calls" as const,
   content: "我先调用回声工具确认输入。",
-  toolCalls: [{
-    id: "call_verify",
-    name: "SeneraEchoTool",
-    arguments: {
-      text: "hello",
+  toolCalls: [
+    {
+      id: "call_verify",
+      name: "SeneraEchoTool",
+      arguments: {
+        text: "hello",
+      },
     },
-  }],
+  ],
 };
 
 const completion = projectPiChatCompletionResponse("test-model", toolMessage);
@@ -94,7 +103,7 @@ assert.equal(completion.choices[0]?.finish_reason, "tool_calls");
 assert.equal(completion.choices[0]?.message.content, "我先调用回声工具确认输入。");
 assert.equal(completion.choices[0]?.message.tool_calls?.[0]?.id, "call_verify");
 assert.equal(completion.choices[0]?.message.tool_calls?.[0]?.function.name, "SeneraEchoTool");
-assert.equal(completion.choices[0]?.message.tool_calls?.[0]?.function.arguments, "{\"text\":\"hello\"}");
+assert.equal(completion.choices[0]?.message.tool_calls?.[0]?.function.arguments, '{"text":"hello"}');
 
 const streamEvents = projectPiChatCompletionStreamEvents("test-model", toolMessage);
 const serialized = streamEvents.map((event) => JSON.stringify(event)).join("\n");
@@ -117,10 +126,12 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
     authority: "senera_runtime_root",
     objective: "verify context forwarding",
   };
-  const activeSkills = [{
-    name: "VerifySkill",
-    title: "Verify Skill",
-  }];
+  const activeSkills = [
+    {
+      name: "VerifySkill",
+      title: "Verify Skill",
+    },
+  ];
   const events: unknown[] = [];
   const compiler = new SpyCompiler();
   const api = new AgentPiProxyHttpApi({
@@ -132,11 +143,12 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
   });
   const router = new AgentWebSocketHttpRouter({
     uploadApi: new AgentUploadHttpApi({
-      storeFactory: () => new AgentUploadStore({
-        workspaceRoot: process.cwd(),
-        rootDir: ".senera/uploads",
-        maxFileBytes: 1_024,
-      }),
+      storeFactory: () =>
+        new AgentUploadStore({
+          workspaceRoot: process.cwd(),
+          rootDir: ".senera/uploads",
+          maxFileBytes: 1_024,
+        }),
     }),
     piProxyApi: api,
   });
@@ -151,30 +163,35 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
     async (contextId) => {
       const request = new MockHttpRequest({
         method: "POST",
-        url: "/v1/chat/completions",
+        url: AgentPiProxyProtocol.routes.chatCompletions,
         headers: {
           [AgentPiProxyContextHeader]: contextId,
         },
         body: JSON.stringify({
           model: "test-model",
-          messages: [{
-            role: "developer",
-            content: "runtime rule",
-          }, {
-            role: "user",
-            content: "hello",
-          }],
-          tools: [{
-            type: "function",
-            function: {
-              name: "SeneraEchoTool",
-              description: "Echo input.",
-              parameters: {
-                type: "object",
-                properties: {},
+          messages: [
+            {
+              role: "developer",
+              content: "runtime rule",
+            },
+            {
+              role: "user",
+              content: "hello",
+            },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "SeneraEchoTool",
+                description: "Echo input.",
+                parameters: {
+                  type: "object",
+                  properties: {},
+                },
               },
             },
-          }],
+          ],
         }),
       });
       const output = new MockHttpResponse();
@@ -186,31 +203,43 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
   );
 
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(compiler.lastRequest?.request.messages.map((message) => message.role), [
-    "developer",
-    "user",
-  ]);
+  assert.deepEqual(
+    compiler.lastRequest?.request.messages.map((message) => message.role),
+    ["developer", "user"],
+  );
   assert.equal(compiler.lastRequest?.runtime?.rootCommand, rootCommand);
   assert.deepEqual(compiler.lastRequest?.runtime?.activeSkills, activeSkills);
-  assert.equal(events.some((event) =>
-    readRecord(event).kind === "pi.trace"
-    && readRecord(readRecord(event).context).requestId === "verify-pi-proxy-context"
-  ), true);
-  assert.equal(events.some((event) =>
-    readRecord(event).kind === "assistant.message.created"
-    && readRecord(readRecord(event).data).kind === "tool_preface"
-    && readRecord(readRecord(event).data).content === "I will call a tool first."
-  ), true);
-  assert.equal(events.some((event) =>
-    readRecord(event).kind === "tool.calls.planned"
-    && readRecord(readRecord(event).data).executionMode === "parallel"
-  ), true);
-  const prefaceBatchId = readRecord(readRecord(
-    events.find((event) => readRecord(event).kind === "assistant.message.created"),
-  ).data).batchId;
-  const plannedBatchId = readRecord(readRecord(
-    events.find((event) => readRecord(event).kind === "tool.calls.planned"),
-  ).data).batchId;
+  assert.equal(
+    events.some(
+      (event) =>
+        readRecord(event).kind === "pi.trace" &&
+        readRecord(readRecord(event).context).requestId === "verify-pi-proxy-context",
+    ),
+    true,
+  );
+  assert.equal(
+    events.some(
+      (event) =>
+        readRecord(event).kind === "assistant.message.created" &&
+        readRecord(readRecord(event).data).kind === "tool_preface" &&
+        readRecord(readRecord(event).data).content === "I will call a tool first.",
+    ),
+    true,
+  );
+  assert.equal(
+    events.some(
+      (event) =>
+        readRecord(event).kind === "tool.calls.planned" &&
+        readRecord(readRecord(event).data).executionMode === "parallel",
+    ),
+    true,
+  );
+  const prefaceBatchId = readRecord(
+    readRecord(events.find((event) => readRecord(event).kind === "assistant.message.created")).data,
+  ).batchId;
+  const plannedBatchId = readRecord(
+    readRecord(events.find((event) => readRecord(event).kind === "tool.calls.planned")).data,
+  ).batchId;
   assert.equal(prefaceBatchId, plannedBatchId);
   assert.match(String(plannedBatchId), /^toolbatch_/);
   assert.match(response.bodyText(), /"content":"I will call a tool first."/);
@@ -225,19 +254,19 @@ class SpyCompiler implements AgentPiAssistantCompilerPort {
     return {
       kind: "tool_calls" as const,
       content: "I will call a tool first.",
-      toolCalls: [{
-        id: "call_context",
-        name: "SeneraEchoTool",
-        arguments: {},
-      }],
+      toolCalls: [
+        {
+          id: "call_context",
+          name: "SeneraEchoTool",
+          arguments: {},
+        },
+      ],
     };
   }
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 class MockHttpRequest extends Readable {
@@ -247,12 +276,7 @@ class MockHttpRequest extends Readable {
   private body: Buffer;
   private sent = false;
 
-  constructor(options: {
-    method: string;
-    url: string;
-    headers: http.IncomingHttpHeaders;
-    body: string;
-  }) {
+  constructor(options: { method: string; url: string; headers: http.IncomingHttpHeaders; body: string }) {
     super();
     this.method = options.method;
     this.url = options.url;
@@ -286,11 +310,7 @@ class MockHttpResponse extends Writable {
     return Buffer.concat(this.chunks).toString("utf8");
   }
 
-  _write(
-    chunk: string | Buffer,
-    _encoding: BufferEncoding,
-    callback: (error?: Error | null) => void,
-  ): void {
+  _write(chunk: string | Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
     this.chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     callback();
   }

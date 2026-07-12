@@ -1,12 +1,8 @@
 {
   "OutputMode": "open",
   "ForbiddenOutputs": {
-    "Add": [
-      "unregistered_tools"
-    ],
-    "Remove": [
-      "final_answer"
-    ]
+    "Add": ["unregistered_tools"],
+    "Remove": ["final_answer"]
   },
   "IncludeToolCatalog": false,
   "VisibleOutput": {

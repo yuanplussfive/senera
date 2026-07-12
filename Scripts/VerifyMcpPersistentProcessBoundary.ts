@@ -26,30 +26,38 @@ async function main(): Promise<void> {
     profile: SeneraProcessExecutionProfile | undefined;
   }> = [];
 
-  const result = await withAgentMcpToolClient({
-    server: {
-      id: "verify",
+  const result = await withAgentMcpToolClient(
+    {
+      server: {
+        id: "verify",
+        command: "verify-mcp-server",
+        args: ["--stdio"],
+        cwd: process.cwd(),
+      },
+      requestTimeoutMs: 5_000,
+      executionProfile: profile,
+      spawnPersistentProcess: createFakeMcpSpawner(spawned),
+    },
+    (client) =>
+      client.callTool("verify.echo", {
+        value: "through-persistent-boundary",
+      }),
+  );
+
+  assert.deepEqual(spawned, [
+    {
       command: "verify-mcp-server",
       args: ["--stdio"],
       cwd: process.cwd(),
+      profile,
     },
-    requestTimeoutMs: 5_000,
-    executionProfile: profile,
-    spawnPersistentProcess: createFakeMcpSpawner(spawned),
-  }, (client) => client.callTool("verify.echo", {
-    value: "through-persistent-boundary",
-  }));
-
-  assert.deepEqual(spawned, [{
-    command: "verify-mcp-server",
-    args: ["--stdio"],
-    cwd: process.cwd(),
-    profile,
-  }]);
-  assert.deepEqual(readRecord(result).content, [{
-    type: "text",
-    text: "through-persistent-boundary",
-  }]);
+  ]);
+  assert.deepEqual(readRecord(result).content, [
+    {
+      type: "text",
+      text: "through-persistent-boundary",
+    },
+  ]);
 
   console.log("MCP persistent process boundary verification passed.");
 }
@@ -62,7 +70,7 @@ function createFakeMcpSpawner(
     profile: SeneraProcessExecutionProfile | undefined;
   }>,
 ): SeneraPersistentProcessSpawner {
-  return (command, args, options) => {
+  return async (command, args, options) => {
     spawned.push({
       command,
       args: [...args],
@@ -100,12 +108,12 @@ class FakeMcpProcess extends EventEmitter implements SeneraPersistentProcessChil
 
   override on(event: "error", listener: (error: Error) => void): this;
   override on(event: "close", listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void): this;
-  override on(event: string, listener: (...args: any[]) => void): this {
+  override on(event: string, listener: Parameters<EventEmitter["on"]>[1]): this {
     return super.on(event, listener);
   }
 
   override once(event: "close", listener: () => void): this;
-  override once(event: string, listener: (...args: any[]) => void): this {
+  override once(event: string, listener: Parameters<EventEmitter["once"]>[1]): this {
     return super.once(event, listener);
   }
 
@@ -116,23 +124,33 @@ class FakeMcpProcess extends EventEmitter implements SeneraPersistentProcessChil
 
   private handleMessage(message: Record<string, unknown>): void {
     const handlers = new Map<string, () => void>([
-      ["initialize", () => this.respond(message, {
-          protocolVersion: "2025-11-25",
-          capabilities: {
-            tools: {},
-          },
-          serverInfo: {
-            name: "verify-mcp",
-            version: "0.0.0",
-          },
-        })],
+      [
+        "initialize",
+        () =>
+          this.respond(message, {
+            protocolVersion: "2025-11-25",
+            capabilities: {
+              tools: {},
+            },
+            serverInfo: {
+              name: "verify-mcp",
+              version: "0.0.0",
+            },
+          }),
+      ],
       ["notifications/initialized", () => undefined],
-      ["tools/call", () => this.respond(message, {
-          content: [{
-            type: "text",
-            text: readToolValue(message),
-          }],
-        })],
+      [
+        "tools/call",
+        () =>
+          this.respond(message, {
+            content: [
+              {
+                type: "text",
+                text: readToolValue(message),
+              },
+            ],
+          }),
+      ],
     ]);
 
     const method = typeof message.method === "string" ? message.method : "";
@@ -141,11 +159,13 @@ class FakeMcpProcess extends EventEmitter implements SeneraPersistentProcessChil
 
   private respond(request: Record<string, unknown>, result: Record<string, unknown>): void {
     if (!("id" in request)) return;
-    this.stdout.emitData(`${JSON.stringify({
-      jsonrpc: "2.0",
-      id: request.id,
-      result,
-    })}\n`);
+    this.stdout.emitData(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: request.id,
+        result,
+      })}\n`,
+    );
   }
 
   private close(exitCode: number | null, signal: NodeJS.Signals | null = null): void {
@@ -157,7 +177,7 @@ class FakeMcpProcess extends EventEmitter implements SeneraPersistentProcessChil
 class FakeReadable extends EventEmitter {
   on(event: "data", listener: (chunk: Buffer) => void): this;
   on(event: "error", listener: (error: Error) => void): this;
-  override on(event: string, listener: (...args: any[]) => void): this {
+  override on(event: string, listener: Parameters<EventEmitter["on"]>[1]): this {
     return super.on(event, listener);
   }
 
@@ -192,9 +212,7 @@ function readToolValue(message: Record<string, unknown>): string {
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 await main();

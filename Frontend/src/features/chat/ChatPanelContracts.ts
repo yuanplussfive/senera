@@ -14,6 +14,7 @@ import type {
   UploadAttachmentData,
 } from "../../api/eventTypes";
 import type { SocketStatus } from "../../api/useAgentSocket";
+import type { ApprovalResolutionScope } from "../../api/approvalEventTypes";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatMessage, UserProfile } from "../../store/sessionStore";
 
@@ -49,12 +50,7 @@ export interface ChatPresetConfig {
   presetRootDir: string;
   presetOperations: Record<string, PresetMutationState>;
   onRefreshPresets: () => void;
-  onSavePreset: (input: {
-    name: string;
-    format: PresetFormat;
-    content: string;
-    activate?: boolean;
-  }) => string | null;
+  onSavePreset: (input: { name: string; format: PresetFormat; content: string; activate?: boolean }) => string | null;
   onDeletePreset: (name: string) => string | null;
   onSetActivePreset: (name: string | null) => string | null;
 }
@@ -63,6 +59,7 @@ export interface ChatRuntimeState {
   socketStatus: SocketStatus;
   sandboxStatus: SandboxStatusSnapshotData | null;
   uploadUrl: string;
+  uploadCsrfToken?: string;
 }
 
 export interface ChatMessageActions {
@@ -72,7 +69,7 @@ export interface ChatMessageActions {
   onEditUserMessage: (message: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (message: ChatMessage) => void;
   onViewWorkflow: (message: ChatMessage) => void;
-  onResolveApproval: (approvalId: string, status: "approved" | "denied") => void;
+  onResolveApproval: (approvalId: string, status: "approved" | "denied", scope?: ApprovalResolutionScope) => void;
 }
 
 export interface ChatNavigationActions {

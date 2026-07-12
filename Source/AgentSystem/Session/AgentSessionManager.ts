@@ -48,10 +48,12 @@ export class AgentSessionManager {
     const conversationProjector = options.conversationProjector ?? new AgentConversationProjector();
 
     this.store = options.store ?? new AgentSessionStore();
-    this.memory = options.memoryService ?? new AgentMemoryService({
-      learning: options.memoryLearning,
-      sourceRepository: options.memorySourceRepository,
-    });
+    this.memory =
+      options.memoryService ??
+      new AgentMemoryService({
+        learning: options.memoryLearning,
+        sourceRepository: options.memorySourceRepository,
+      });
     this.eventFactory = new AgentSessionEventFactory(conversationPolicy);
     this.historyReplay = new AgentSessionHistoryReplay({
       store: this.store,
@@ -68,9 +70,7 @@ export class AgentSessionManager {
       piSessions: options.piSessions,
       loopFactory: options.loopFactory,
     });
-    this.titleProjector = new AgentSessionTitleProjector((sessionId) => (
-      this.store.loadConversation(sessionId)
-    ));
+    this.titleProjector = new AgentSessionTitleProjector((sessionId) => this.store.loadConversation(sessionId));
     this.runCoordinator.cleanupOrphanedRunningSnapshots();
   }
 
@@ -96,18 +96,12 @@ export class AgentSessionManager {
     });
   }
 
-  async closeSession(request: {
-    sessionId: string;
-    onEvent?: AgentEventSink;
-  }): Promise<void> {
+  async closeSession(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<void> {
     const lookup = this.store.get(request.sessionId);
 
     await matchByKind(lookup, {
       missing: async ({ sessionId }) => {
-        await emitAgentEvent(
-          request.onEvent,
-          this.eventFactory.notFound(sessionId, "session.close"),
-        );
+        await emitAgentEvent(request.onEvent, this.eventFactory.notFound(sessionId, "session.close"));
       },
       found: async ({ session }) => {
         this.runCoordinator.discardActiveRun(session);
@@ -137,10 +131,7 @@ export class AgentSessionManager {
 
     await matchByKind(lookup, {
       missing: async ({ sessionId }) => {
-        await emitAgentEvent(
-          request.onEvent,
-          this.eventFactory.notFound(sessionId, "session.message"),
-        );
+        await emitAgentEvent(request.onEvent, this.eventFactory.notFound(sessionId, "session.message"));
       },
       found: async ({ session }) => {
         const gate = this.runCoordinator.assertAvailable(session);
@@ -191,11 +182,7 @@ export class AgentSessionManager {
     }));
   }
 
-  async replayHistory(request: {
-    sessionId: string;
-    refresh?: boolean;
-    onEvent?: AgentEventSink;
-  }): Promise<void> {
+  async replayHistory(request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink }): Promise<void> {
     await this.historyReplay.replay(request);
   }
 
@@ -207,17 +194,10 @@ export class AgentSessionManager {
     this.store.persistRunEvent(envelope.sessionId, envelope);
   }
 
-  async renameSession(request: {
-    sessionId: string;
-    title: string;
-    onEvent?: AgentEventSink;
-  }): Promise<void> {
+  async renameSession(request: { sessionId: string; title: string; onEvent?: AgentEventSink }): Promise<void> {
     const lookup = this.store.get(request.sessionId);
     if (lookup.kind === "missing") {
-      await emitAgentEvent(
-        request.onEvent,
-        this.eventFactory.notFound(request.sessionId, "session.close"),
-      );
+      await emitAgentEvent(request.onEvent, this.eventFactory.notFound(request.sessionId, "session.close"));
       return;
     }
 
@@ -225,10 +205,7 @@ export class AgentSessionManager {
     await emitAgentEvent(request.onEvent, this.eventFactory.snapshot(lookup.session));
   }
 
-  async cancelActiveRun(request: {
-    sessionId: string;
-    onEvent?: AgentEventSink;
-  }): Promise<boolean> {
+  async cancelActiveRun(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<boolean> {
     return this.runCoordinator.cancelActiveRun(request);
   }
 

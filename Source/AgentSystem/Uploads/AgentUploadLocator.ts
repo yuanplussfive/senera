@@ -51,19 +51,11 @@ export function parseAgentUploadUri(value: string): string | undefined {
 }
 
 export function resolveAgentUploadRoot(workspaceRoot: string, rootDir: string): string {
-  return assertInsideRoot(
-    workspaceRoot,
-    path.resolve(workspaceRoot, rootDir),
-    `upload 根目录超出工作区：${rootDir}`,
-  );
+  return assertInsideRoot(workspaceRoot, path.resolve(workspaceRoot, rootDir), `upload 根目录超出工作区：${rootDir}`);
 }
 
 export function resolveAgentUploadDir(uploadRoot: string, uploadId: string): string {
-  return assertInsideRoot(
-    uploadRoot,
-    path.resolve(uploadRoot, uploadId),
-    `upload 目录超出上传根目录：${uploadId}`,
-  );
+  return assertInsideRoot(uploadRoot, path.resolve(uploadRoot, uploadId), `upload 目录超出上传根目录：${uploadId}`);
 }
 
 export function resolveAgentUploadFile(uploadRoot: string, uploadId: string, fileName: string): string {

@@ -9,14 +9,8 @@ import type {
   ResolvedAgentVectorModelsConfig,
 } from "../Types/AgentConfigTypes.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
-import {
-  resolveModelProviderConfig,
-  resolveModelProviderEndpointConfig,
-} from "./AgentModelProviderDefaults.js";
-import {
-  mergeActionPlannerClientConfig,
-  resolveActionPlannerClientConfig,
-} from "./AgentPlannerDefaults.js";
+import { resolveModelProviderConfig, resolveModelProviderEndpointConfig } from "./AgentModelProviderDefaults.js";
+import { mergeActionPlannerClientConfig, resolveActionPlannerClientConfig } from "./AgentPlannerDefaults.js";
 import { optionalSecondsToMilliseconds } from "./AgentTimeDefaults.js";
 
 export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgentToolSearchConfig {
@@ -47,25 +41,17 @@ export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgen
 
 export function resolveVectorModelsConfig(config: AgentSystemConfig): ResolvedAgentVectorModelsConfig {
   const defaults = resolveAgentDefaults(config);
-  const {
-    TimeoutSeconds: embeddingTimeoutSeconds,
-    ...configuredEmbedding
-  } = config.VectorModels?.Embedding ?? {};
-  const {
-    TimeoutSeconds: rerankTimeoutSeconds,
-    ...configuredRerank
-  } = config.VectorModels?.Rerank ?? {};
+  const { TimeoutSeconds: embeddingTimeoutSeconds, ...configuredEmbedding } = config.VectorModels?.Embedding ?? {};
+  const { TimeoutSeconds: rerankTimeoutSeconds, ...configuredRerank } = config.VectorModels?.Rerank ?? {};
   const embedding = {
     ...defaults.VectorModels.Embedding,
     ...configuredEmbedding,
-    TimeoutMs: optionalSecondsToMilliseconds(embeddingTimeoutSeconds)
-      ?? defaults.VectorModels.Embedding.TimeoutMs,
+    TimeoutMs: optionalSecondsToMilliseconds(embeddingTimeoutSeconds) ?? defaults.VectorModels.Embedding.TimeoutMs,
   };
   const rerank = {
     ...defaults.VectorModels.Rerank,
     ...configuredRerank,
-    TimeoutMs: optionalSecondsToMilliseconds(rerankTimeoutSeconds)
-      ?? defaults.VectorModels.Rerank.TimeoutMs,
+    TimeoutMs: optionalSecondsToMilliseconds(rerankTimeoutSeconds) ?? defaults.VectorModels.Rerank.TimeoutMs,
   };
   const embeddingEndpoint = resolveModelProviderEndpointConfig(config, embedding.ProviderId);
   const rerankEndpoint = resolveModelProviderEndpointConfig(config, rerank.ProviderId);
@@ -99,10 +85,7 @@ export function resolveToolLearningConfig(config: AgentSystemConfig): ResolvedAg
     Client: resolveActionPlannerClientConfig({
       config,
       baseProvider: provider,
-      configuredClient: mergeActionPlannerClientConfig(
-        defaults.ToolLearning.Client,
-        config.ToolLearning?.Client,
-      ),
+      configuredClient: mergeActionPlannerClientConfig(defaults.ToolLearning.Client, config.ToolLearning?.Client),
     }),
   };
 }

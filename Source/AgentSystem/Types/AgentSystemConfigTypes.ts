@@ -1,15 +1,12 @@
-import type {
-  AgentFrontendConfig,
-} from "./AgentAppConfigTypes.js";
-import type {
-  AgentActionPlannerConfig,
-} from "./AgentPlannerConfigTypes.js";
+import type { AgentFrontendConfig } from "./AgentAppConfigTypes.js";
+import type { AgentActionPlannerConfig } from "./AgentPlannerConfigTypes.js";
 import type {
   AgentArtifactsConfig,
   AgentConfigStoreConfig,
   AgentLoopConfig,
   AgentPresetsConfig,
   AgentSandboxRuntimeConfig,
+  AgentServerConfig,
   AgentToolExecutionConfig,
   AgentUploadsConfig,
 } from "./AgentRuntimeConfigTypes.js";
@@ -46,12 +43,7 @@ export interface AgentDefaultsConfig {
   Uploads?: AgentUploadsConfig;
   ActionPlanner?: AgentActionPlannerConfig;
   Frontend?: AgentFrontendConfig;
-  Server?: {
-    Host?: string;
-    Port?: number;
-    HotReload?: boolean;
-    RequestMaxBytes?: number;
-  };
+  Server?: AgentServerConfig;
   Persistence?: {
     Kind?: "sqlite" | "memory";
     DatabasePath?: string;
@@ -110,12 +102,7 @@ export interface AgentSystemConfig {
   Uploads?: AgentUploadsConfig;
   ActionPlanner?: AgentActionPlannerConfig;
   Frontend?: AgentFrontendConfig;
-  Server?: {
-    Host?: string;
-    Port?: number;
-    HotReload?: boolean;
-    RequestMaxBytes?: number;
-  };
+  Server?: AgentServerConfig;
   Persistence?: {
     Kind?: "sqlite" | "memory";
     DatabasePath?: string;

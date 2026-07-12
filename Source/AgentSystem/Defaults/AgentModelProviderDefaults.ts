@@ -7,10 +7,7 @@ import type {
   ResolvedAgentModelProviderConfig,
 } from "../Types/AgentConfigTypes.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
-import {
-  optionalDisabledOrSecondsToMilliseconds,
-  optionalSecondsToMilliseconds,
-} from "./AgentTimeDefaults.js";
+import { optionalDisabledOrSecondsToMilliseconds, optionalSecondsToMilliseconds } from "./AgentTimeDefaults.js";
 
 export function resolveModelProviderConfig(config: AgentSystemConfig, id?: string): ResolvedAgentModelProviderConfig {
   return resolveModelProviderCatalog(config).resolve(id);
@@ -54,24 +51,17 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
   const endpointCatalog = resolveModelProviderEndpointCatalog(config);
   const providers: ResolvedAgentModelProviderConfig[] = config.ModelProviders.map((provider) => {
     const endpoint = endpointCatalog.resolve(provider.ProviderId);
-    const {
-      Capabilities,
-      TimeoutSeconds,
-      FirstTokenTimeoutSeconds,
-      MaxRequestSeconds,
-      Icon,
-      ...providerRuntime
-    } = provider;
+    const { Capabilities, TimeoutSeconds, FirstTokenTimeoutSeconds, MaxRequestSeconds, Icon, ...providerRuntime } =
+      provider;
     return {
       ...defaults.ModelRuntime,
       ...endpoint,
       ...providerRuntime,
       Capabilities: resolveModelCapabilities(defaults.ModelRuntime, Capabilities),
       TimeoutMs: optionalSecondsToMilliseconds(TimeoutSeconds) ?? defaults.ModelRuntime.TimeoutMs,
-      FirstTokenTimeoutMs: optionalDisabledOrSecondsToMilliseconds(FirstTokenTimeoutSeconds)
-        ?? defaults.ModelRuntime.FirstTokenTimeoutMs,
-      MaxRequestMs: optionalDisabledOrSecondsToMilliseconds(MaxRequestSeconds)
-        ?? defaults.ModelRuntime.MaxRequestMs,
+      FirstTokenTimeoutMs:
+        optionalDisabledOrSecondsToMilliseconds(FirstTokenTimeoutSeconds) ?? defaults.ModelRuntime.FirstTokenTimeoutMs,
+      MaxRequestMs: optionalDisabledOrSecondsToMilliseconds(MaxRequestSeconds) ?? defaults.ModelRuntime.MaxRequestMs,
       Icon: Icon ?? endpoint.Icon,
       ProviderId: endpoint.Id,
       Kind: endpoint.Kind,
@@ -107,8 +97,7 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
       }
       return provider;
     },
-    list: () => providers.map((provider) =>
-      toModelProviderListItem(provider, defaultId, defaults.ModelRuntime)),
+    list: () => providers.map((provider) => toModelProviderListItem(provider, defaultId, defaults.ModelRuntime)),
   };
 }
 

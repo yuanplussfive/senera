@@ -1,11 +1,5 @@
-import type {
-  AgentLanguageModelStream,
-} from "./AgentLanguageModel.js";
-import type {
-  JsonObject,
-  ModelHttpPathSegment,
-  ModelProviderConfig,
-} from "./ModelEndpointTypes.js";
+import type { AgentLanguageModelStream } from "./AgentLanguageModel.js";
+import type { JsonObject, ModelHttpPathSegment, ModelProviderConfig } from "./ModelEndpointTypes.js";
 import type { AgentModelProviderMetadata } from "./AgentModelMetadata.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { combineAbortSignals, createModelRequestLifetime } from "./ModelHttpAbort.js";
@@ -54,15 +48,12 @@ export class ModelHttpClient {
     options: { signal?: AbortSignal } = {},
   ): Promise<AgentLanguageModelStream> {
     const controller = new AbortController();
-    const requestSignal = options.signal
-      ? combineAbortSignals(options.signal, controller.signal)
-      : controller.signal;
+    const requestSignal = options.signal ? combineAbortSignals(options.signal, controller.signal) : controller.signal;
     const lifetime = createModelRequestLifetime(this.config, requestSignal);
-    const response = await this.openSseResponse(path, payload, headers, query, lifetime.signal)
-      .catch((error) => {
-        lifetime.dispose();
-        throw error;
-      });
+    const response = await this.openSseResponse(path, payload, headers, query, lifetime.signal).catch((error) => {
+      lifetime.dispose();
+      throw error;
+    });
 
     const chunks = parseModelEventStreamText(response.body, extractText, {
       requestSignal: lifetime.signal,
@@ -88,15 +79,19 @@ export class ModelHttpClient {
     signal: AbortSignal,
   ): Promise<Response & { body: ReadableStream<Uint8Array> }> {
     try {
-      const response = await this.fetchWithRetries(path, {
-        method: "POST",
-        headers: {
-          ...this.headers(headers),
-          Accept: "text/event-stream",
+      const response = await this.fetchWithRetries(
+        path,
+        {
+          method: "POST",
+          headers: {
+            ...this.headers(headers),
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify(payload),
+          signal,
         },
-        body: JSON.stringify(payload),
-        signal,
-      }, query);
+        query,
+      );
       if (!response.body) {
         throw new Error(agentErrorMessage("model.readableStreamMissing"));
       }
@@ -111,11 +106,7 @@ export class ModelHttpClient {
     init: RequestInit,
     query?: Record<string, string>,
   ): Promise<Response> {
-    return fetchModelHttpWithRetries(
-      this.config,
-      createModelHttpUrl(this.config, path, query),
-      init,
-    );
+    return fetchModelHttpWithRetries(this.config, createModelHttpUrl(this.config, path, query), init);
   }
 
   private headers(headers: HeadersInit): HeadersInit {

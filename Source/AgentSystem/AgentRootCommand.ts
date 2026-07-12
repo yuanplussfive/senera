@@ -94,9 +94,7 @@ export function buildAgentRootCommand(options: {
   };
 }
 
-function projectVisibleOutput(
-  value: RootCommandVisibleOutputManifest,
-): AgentRootCommandVisibleOutput {
+function projectVisibleOutput(value: RootCommandVisibleOutputManifest): AgentRootCommandVisibleOutput {
   return {
     audience: value.Audience,
     start: value.Start,
@@ -109,9 +107,7 @@ function projectVisibleOutput(
   };
 }
 
-function projectVisibleOutputRule(
-  value: RootCommandVisibleOutputRuleManifest,
-): AgentRootCommandVisibleOutputRule {
+function projectVisibleOutputRule(value: RootCommandVisibleOutputRuleManifest): AgentRootCommandVisibleOutputRule {
   return {
     name: value.Name,
     value: value.Value,
@@ -127,10 +123,7 @@ function resolveAllowedToolNames(
   return [...new Set(names)];
 }
 
-function readSelectorToolNames(
-  selector: RootCommandToolSelectorManifest,
-  scope: RootCommandToolScope,
-): string[] {
+function readSelectorToolNames(selector: RootCommandToolSelectorManifest, scope: RootCommandToolScope): string[] {
   switch (selector.Source) {
     case "None":
       return [];
@@ -138,35 +131,24 @@ function readSelectorToolNames(
       return scope.loadedTools.map((tool) => tool.name);
     case "NamedLoaded": {
       const requested = new Set(selector.Names);
-      return scope.loadedTools
-        .filter((tool) => requested.has(tool.name))
-        .map((tool) => tool.name);
+      return scope.loadedTools.filter((tool) => requested.has(tool.name)).map((tool) => tool.name);
     }
     case "HostCapability":
       return scope.loadedTools
-        .filter((tool) =>
-          tool.handler.kind === "HostCapability"
-          && tool.handler.capability === selector.Capability
-        )
+        .filter((tool) => tool.handler.kind === "HostCapability" && tool.handler.capability === selector.Capability)
         .map((tool) => tool.name);
     case "PreferredLoaded":
       return filterPreferredLoadedToolNames(scope);
     case "PreferredLoadedOrLoaded": {
       const preferred = filterPreferredLoadedToolNames(scope);
-      return preferred.length > 0
-        ? preferred
-        : scope.loadedTools.map((tool) => tool.name);
+      return preferred.length > 0 ? preferred : scope.loadedTools.map((tool) => tool.name);
     }
   }
 }
 
 function filterPreferredLoadedToolNames(scope: RootCommandToolScope): string[] {
   const loaded = new Set(scope.loadedTools.map((tool) => tool.name));
-  return [
-      ...new Set([
-        ...scope.preferredTools,
-      ]),
-  ].filter((toolName) => loaded.has(toolName));
+  return [...new Set([...scope.preferredTools])].filter((toolName) => loaded.has(toolName));
 }
 
 interface RootCommandToolScope {

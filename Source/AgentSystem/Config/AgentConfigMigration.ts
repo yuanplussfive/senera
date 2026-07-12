@@ -1,4 +1,4 @@
-import { z, type ZodIssue, type ZodType } from "zod";
+import type { ZodIssue, ZodType } from "zod";
 
 export interface AgentConfigUnknownKeyMigrationResult<TConfig> {
   config: TConfig;

@@ -1,28 +1,11 @@
 import { useMemo, useRef } from "react";
-import {
-  Loader2,
-  RefreshCw,
-  Settings2,
-  Tags,
-} from "lucide-react";
-import type {
-  ProviderModelsFailedData,
-  ProviderModelsSnapshotData,
-} from "../../api/eventTypes";
+import { Loader2, RefreshCw, Settings2, Tags } from "lucide-react";
+import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import {
-  ScrollArea,
-  Tooltip,
-} from "../../shared/ui";
-import {
-  inferModelProviderIcon,
-  ModelProviderIcon,
-} from "./ModelProviderIcon";
-import {
-  defaultModelCapabilities,
-  providerEnabled,
-  readModelCapabilities,
-} from "./modelConfigData";
+import { ScrollArea, Tooltip } from "../../shared/ui";
+import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
+import { defaultModelCapabilities, providerEnabled, readModelCapabilities } from "./modelConfigData";
 import type {
   ModelProviderDraft,
   ProviderEndpointDraft,
@@ -90,17 +73,17 @@ export function ProviderModelList({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <ListHeader
-        title="模型"
+        title={frontendMessage("config.model.title")}
         subtitle={modelListSubtitle(selectedProvider, catalog, rows.length)}
-        action={(
+        action={
           <div className="flex items-center gap-1.5">
-            <Tooltip content="模型分组" side="top">
+            <Tooltip content={frontendMessage("config.modelGroups.title")} side="top">
               <button
                 type="button"
                 disabled={disabled}
                 className={iconButtonClassName}
                 onClick={onOpenModelGroups}
-                aria-label="模型分组"
+                aria-label={frontendMessage("config.modelGroups.title")}
               >
                 <Tags className="h-3.5 w-3.5" />
               </button>
@@ -120,33 +103,26 @@ export function ProviderModelList({
             >
               ON
             </button>
-            <Tooltip content="检测模型" side="top">
+            <Tooltip content={frontendMessage("config.model.check")} side="top">
               <button
                 type="button"
                 disabled={disabled || loading || !enabled || !selectedProvider?.Id}
                 className={iconButtonClassName}
                 onClick={() => onFetch(true)}
-                aria-label="检测模型"
+                aria-label={frontendMessage("config.model.check")}
               >
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               </button>
             </Tooltip>
           </div>
-        )}
+        }
       />
       <div className="grid gap-2 border-b border-ink-200/70 bg-paper-50/75 p-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
         <ProviderCatalogStatus catalog={catalog} error={error} loading={loading} disabled={!enabled} />
       </div>
-      <ModelGroupSummary
-        groups={groups}
-        total={rows.length}
-        onSelectGroup={scrollToGroup}
-      />
-      <ScrollArea
-        className="min-h-0 flex-1 overflow-hidden"
-        viewportClassName="h-full pr-2 [scrollbar-gutter:stable]"
-      >
+      <ModelGroupSummary groups={groups} total={rows.length} onSelectGroup={scrollToGroup} />
+      <ScrollArea className="min-h-0 flex-1 overflow-hidden" viewportClassName="h-full pr-2 [scrollbar-gutter:stable]">
         <div ref={scrollTopRef} />
         <ProviderModelRows
           selectedProvider={selectedProvider}
@@ -199,25 +175,22 @@ function ProviderModelRows({
 }): JSX.Element {
   const selectedProviderId = selectedProvider?.Id ?? "";
   const configuredByModel = useMemo(
-    () => new Map(
-      models
-        .filter((model) => model.ProviderId === selectedProviderId)
-        .map((model) => [model.Model, model]),
-    ),
+    () =>
+      new Map(models.filter((model) => model.ProviderId === selectedProviderId).map((model) => [model.Model, model])),
     [models, selectedProviderId],
   );
 
   if (!selectedProvider) {
-    return <EmptyList text="先添加供应商" />;
+    return <EmptyList text={frontendMessage("config.model.addProviderFirst")} />;
   }
   if (!enabled) {
-    return <EmptyList text="当前供应商已关闭" />;
+    return <EmptyList text={frontendMessage("config.provider.disabled")} />;
   }
   if (!catalog && rows.length === 0) {
-    return <EmptyList text="点击检测模型读取 /models 列表" />;
+    return <EmptyList text={frontendMessage("config.model.checkHint")} />;
   }
   if (rows.length === 0) {
-    return <EmptyList text="没有匹配的模型" />;
+    return <EmptyList text={frontendMessage("config.model.noMatches")} />;
   }
 
   return (
@@ -280,18 +253,14 @@ function ProviderModelRow({
 
   return (
     <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 transition hover:bg-paper-100/80 [content-visibility:auto] [contain-intrinsic-size:52px]">
-      <ModelProviderIcon
-        icon={configured?.Icon ?? inferModelProviderIcon(model.id)}
-        size={22}
-        className="rounded"
-      />
+      <ModelProviderIcon icon={configured?.Icon ?? inferModelProviderIcon(model.id)} size={22} className="rounded" />
       <span className="min-w-0">
         <span className="block truncate font-mono text-[12px] text-ink-850" title={model.id}>
           {model.id}
         </span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5">
           <span className="truncate text-[10.5px] text-ink-400">
-            {model.ownedBy || "供应商模型"}
+            {model.ownedBy || frontendMessage("config.model.providerModel")}
           </span>
           <CapabilityIconStrip capabilities={capabilities} />
         </span>
@@ -302,8 +271,8 @@ function ProviderModelRow({
           type="button"
           disabled={disabled || !providerId}
           className={iconButtonClassName}
-          title="配置模型"
-          aria-label="配置模型"
+          title={frontendMessage("config.model.configure")}
+          aria-label={frontendMessage("config.model.configure")}
           onClick={() => onConfigureModel(model)}
         >
           <Settings2 className="h-3.5 w-3.5" />
@@ -356,13 +325,11 @@ function ModelGroupSummary({
           type="button"
           className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-ink-300 bg-paper-100 px-2.5 text-[11px] text-ink-750 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700"
           onClick={() => onSelectGroup(null)}
-          title={`所有模型: ${total}`}
+          title={frontendMessage("config.model.allModelsTitle", { count: total })}
         >
           <Tags className="h-3.5 w-3.5" />
-          <span className="font-medium">所有模型</span>
-          <span className="rounded-full bg-ink-900/[0.06] px-1.5 py-0.5 text-[10px] text-ink-500">
-            {total}
-          </span>
+          <span className="font-medium">{frontendMessage("config.model.allModels")}</span>
+          <span className="rounded-full bg-ink-900/[0.06] px-1.5 py-0.5 text-[10px] text-ink-500">{total}</span>
         </button>
         {groups.map((group) => (
           <button
@@ -390,15 +357,17 @@ function modelListSubtitle(
   visibleRows: number,
 ): string {
   if (!selectedProvider) {
-    return "选择供应商后显示模型";
+    return frontendMessage("config.model.selectProviderHint");
   }
   if (!providerEnabled(selectedProvider)) {
-    return "当前供应商已关闭";
+    return frontendMessage("config.provider.disabled");
   }
   if (!catalog) {
-    return visibleRows > 0 ? `${visibleRows} 个已配置模型` : "检测后显示可用模型";
+    return visibleRows > 0
+      ? frontendMessage("config.model.configuredCount", { count: visibleRows })
+      : frontendMessage("config.model.checkToShow");
   }
   return visibleRows === catalog.models.length
-    ? `${catalog.models.length} 个模型`
-    : `${visibleRows} / ${catalog.models.length} 个模型`;
+    ? frontendMessage("config.model.count", { count: catalog.models.length })
+    : frontendMessage("config.model.filteredCount", { visible: visibleRows, total: catalog.models.length });
 }

@@ -4,26 +4,19 @@ export function readArrayItems(value: unknown, itemKey: string): unknown[] {
   }
 
   const item = (value as Record<string, unknown>)[itemKey];
-  return Array.isArray(item)
-    ? item
-    : item !== undefined
-      ? [item]
-      : [];
+  return Array.isArray(item) ? item : item !== undefined ? [item] : [];
 }
 
 export function compactObject(value: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(value).filter(([, entry]) =>
-      entry !== undefined
-      && entry !== ""
-      && !(Array.isArray(entry) && entry.length === 0)),
+    Object.entries(value).filter(
+      ([, entry]) => entry !== undefined && entry !== "" && !(Array.isArray(entry) && entry.length === 0),
+    ),
   );
 }
 
 export function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 export function uniqueStrings(values: readonly string[]): string[] {

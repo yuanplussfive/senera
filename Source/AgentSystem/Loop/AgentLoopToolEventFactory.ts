@@ -1,8 +1,4 @@
-import {
-  AgentEventKinds,
-  createEventDetailId,
-  type AgentDomainEvent,
-} from "../Events/AgentEvent.js";
+import { AgentEventKinds, createEventDetailId, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
 
 export class AgentLoopToolEventFactory {
@@ -94,12 +90,7 @@ export class AgentLoopToolEventFactory {
       kind: AgentEventKinds.ToolCallResultDetail,
       context: { requestId, step },
       data: {
-        detailId: createEventDetailId(
-          requestId,
-          step,
-          AgentEventKinds.ToolCallResultDetail,
-          callId,
-        ),
+        detailId: createEventDetailId(requestId, step, AgentEventKinds.ToolCallResultDetail, callId),
         index,
         toolName,
         callId,
@@ -108,5 +99,4 @@ export class AgentLoopToolEventFactory {
       },
     };
   }
-
 }

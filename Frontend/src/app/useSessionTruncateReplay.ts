@@ -1,11 +1,6 @@
 import { useCallback, type MutableRefObject } from "react";
 import { toast } from "sonner";
-import {
-  EventKinds,
-  type EventEnvelope,
-  type SessionTruncatedData,
-  type WsRequest,
-} from "../api/eventTypes";
+import { EventKinds, type EventEnvelope, type SessionTruncatedData, type WsRequest } from "../api/eventTypes";
 import { useStore, type StoreState } from "../store/sessionStore";
 import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
@@ -43,32 +38,31 @@ export function useSessionTruncateReplay({
   pendingAfterTruncateRef,
   sendRef,
 }: UseSessionTruncateReplayOptions): SessionTruncateReplayHandle {
-  const replayAfterSessionTruncated = useCallback((env: EventEnvelope): boolean => {
-    const send = sendRef.current;
-    const replay = resolveSessionTruncateReplay({
-      createRequestId,
-      env,
-      pendingAfterTruncate: pendingAfterTruncateRef.current,
-    });
-    if (!send || !replay) return false;
+  const replayAfterSessionTruncated = useCallback(
+    (env: EventEnvelope): boolean => {
+      const send = sendRef.current;
+      const replay = resolveSessionTruncateReplay({
+        createRequestId,
+        env,
+        pendingAfterTruncate: pendingAfterTruncateRef.current,
+      });
+      if (!send || !replay) return false;
 
-    if (!executeSessionTruncateReplay({
-      appendUserMessage,
-      lastSendRef,
-      pendingAfterTruncateRef,
-      replay,
-      send,
-    })) {
-      toast.error(frontendMessage("session.replayDisconnected"));
-    }
-    return true;
-  }, [
-    appendUserMessage,
-    createRequestId,
-    lastSendRef,
-    pendingAfterTruncateRef,
-    sendRef,
-  ]);
+      if (
+        !executeSessionTruncateReplay({
+          appendUserMessage,
+          lastSendRef,
+          pendingAfterTruncateRef,
+          replay,
+          send,
+        })
+      ) {
+        toast.error(frontendMessage("session.replayDisconnected"));
+      }
+      return true;
+    },
+    [appendUserMessage, createRequestId, lastSendRef, pendingAfterTruncateRef, sendRef],
+  );
 
   return { replayAfterSessionTruncated };
 }

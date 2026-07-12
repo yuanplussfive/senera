@@ -6,10 +6,7 @@ export interface ModelRequestLifetime {
   dispose: () => void;
 }
 
-export function createModelRequestLifetime(
-  config: ModelProviderConfig,
-  parent?: AbortSignal,
-): ModelRequestLifetime {
+export function createModelRequestLifetime(config: ModelProviderConfig, parent?: AbortSignal): ModelRequestLifetime {
   if (config.MaxRequestMs === -1) {
     return parent
       ? {
@@ -24,20 +21,14 @@ export function createModelRequestLifetime(
 
   const timeout = new AbortController();
   const signal = combineAbortSignals(parent, timeout.signal);
-  const timer = setTimeout(
-    () => timeout.abort(new ModelRequestTimeoutError("max_request")),
-    config.MaxRequestMs,
-  );
+  const timer = setTimeout(() => timeout.abort(new ModelRequestTimeoutError("max_request")), config.MaxRequestMs);
   return {
     signal,
     dispose: () => clearTimeout(timer),
   };
 }
 
-export function combineAbortSignals(
-  first: AbortSignal | null | undefined,
-  second: AbortSignal,
-): AbortSignal {
+export function combineAbortSignals(first: AbortSignal | null | undefined, second: AbortSignal): AbortSignal {
   if (!first) return second;
 
   const controller = new AbortController();
@@ -55,11 +46,7 @@ export function combineAbortSignals(
   return controller.signal;
 }
 
-export function readAbortFailure(
-  ...signals: Array<AbortSignal | null | undefined>
-): { reason: unknown } | undefined {
+export function readAbortFailure(...signals: Array<AbortSignal | null | undefined>): { reason: unknown } | undefined {
   const signal = signals.find((item) => item?.aborted);
-  return signal
-    ? { reason: signal.reason ?? new Error("请求已取消。") }
-    : undefined;
+  return signal ? { reason: signal.reason ?? new Error("请求已取消。") } : undefined;
 }

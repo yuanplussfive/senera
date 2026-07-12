@@ -6,22 +6,9 @@ export {
   AgentEventSpecTable,
   getAgentEventSpec,
 } from "./AgentEventCatalog.js";
-export type {
-  AgentEventChannel,
-  AgentEventKind,
-  AgentEventLayer,
-  AgentEventPhase,
-} from "./AgentEventCatalog.js";
-export type {
-  AgentEventContext,
-  AgentEventEnvelope,
-  AgentEventSpec,
-  AgentEventScope,
-} from "./AgentEventBase.js";
-export type {
-  AgentDomainEvent,
-  AgentEventSink,
-} from "./AgentEventTypes.js";
+export type { AgentEventChannel, AgentEventKind, AgentEventLayer, AgentEventPhase } from "./AgentEventCatalog.js";
+export type { AgentEventContext, AgentEventEnvelope, AgentEventSpec, AgentEventScope } from "./AgentEventBase.js";
+export type { AgentDomainEvent, AgentEventSink } from "./AgentEventTypes.js";
 export {
   AgentEventSequencer,
   createEventDetailId,
@@ -29,6 +16,4 @@ export {
   toEventEnvelope,
   withEventContext,
 } from "./AgentEventRuntime.js";
-export {
-  summarizePrompt,
-} from "./AgentEventSummaries.js";
+export { summarizePrompt } from "./AgentEventSummaries.js";

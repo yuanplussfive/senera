@@ -1,8 +1,5 @@
 import type { AgentMemoryCompletedTurnInput, AgentMemoryEpisodeRecord } from "./AgentMemorySourceRepository.js";
-import {
-  memoryEpisodeUri,
-  stableMemoryId,
-} from "./AgentMemoryIdentity.js";
+import { memoryEpisodeUri, stableMemoryId } from "./AgentMemoryIdentity.js";
 import { projectMemoryTime } from "./AgentMemoryTime.js";
 import { terminalText } from "./AgentMemoryTerminalText.js";
 
@@ -40,10 +37,7 @@ export function buildEpisode(input: AgentMemoryCompletedTurnInput): AgentMemoryE
   };
 }
 
-export function buildDirectMemoryAnchor(
-  requestId: string | undefined,
-  writtenAt: string,
-): AgentMemoryEpisodeRecord {
+export function buildDirectMemoryAnchor(requestId: string | undefined, writtenAt: string): AgentMemoryEpisodeRecord {
   const normalizedRequestId = requestId?.trim() || "memory_write_anchor";
   const episodeId = stableMemoryId("ep", ["direct-memory-write", normalizedRequestId]);
   const time = projectMemoryTime(writtenAt);

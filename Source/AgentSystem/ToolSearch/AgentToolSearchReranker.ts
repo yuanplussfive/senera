@@ -112,9 +112,7 @@ export class AgentToolSearchReranker<RankerName extends string> {
       ...limited
         .map((entry) => ({
           ...entry,
-          score: entry.score + this.config.ScoreScale * this.score(
-            this.features(entry, context, maxBaseScore),
-          ),
+          score: entry.score + this.config.ScoreScale * this.score(this.features(entry, context, maxBaseScore)),
         }))
         .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName)),
       ...rest,
@@ -122,10 +120,7 @@ export class AgentToolSearchReranker<RankerName extends string> {
   }
 
   private score(features: Record<string, number>): number {
-    return Object.entries(features).reduce(
-      (total, [name, value]) => total + (this.weights[name] ?? 0) * value,
-      0,
-    );
+    return Object.entries(features).reduce((total, [name, value]) => total + (this.weights[name] ?? 0) * value, 0);
   }
 
   private features(
@@ -160,28 +155,13 @@ export class AgentToolSearchReranker<RankerName extends string> {
       "base.rrf": entry.score / maxBaseScore,
       ...rankFeatures,
       "match.coverage": this.coverage(doc.coreText, queryTokens),
-      "match.information": this.informationOverlap(
-        doc.coreText,
-        queryTokens,
-        queryInformation,
-        context,
-      ),
+      "match.information": this.informationOverlap(doc.coreText, queryTokens, queryInformation, context),
       ...fieldFeatures,
       "field.avoid": this.informationOverlap(doc.avoid, queryTokens, queryInformation, context),
       "risk.side_effect": boundedLog(this.tokenizer.tokenize(doc.capabilityRiskText).length),
       "planner_tags.coverage": this.coverage(doc.coreText, plannerTagTokens),
-      "planner_tags.tags": this.informationOverlap(
-        doc.tags,
-        plannerTagTokens,
-        plannerTagInformation,
-        context,
-      ),
-      "planner_tags.core": this.informationOverlap(
-        doc.coreText,
-        plannerTagTokens,
-        plannerTagInformation,
-        context,
-      ),
+      "planner_tags.tags": this.informationOverlap(doc.tags, plannerTagTokens, plannerTagInformation, context),
+      "planner_tags.core": this.informationOverlap(doc.coreText, plannerTagTokens, plannerTagInformation, context),
       "memory.confidence": memory?.confidence ?? 0,
       "memory.evidence": memory ? boundedLog(memory.evidence) : 0,
       "permission.count": boundedLog(doc.permissions.split(/\s+/).filter(Boolean).length),
@@ -214,14 +194,8 @@ export class AgentToolSearchReranker<RankerName extends string> {
     return Math.min(1, information / queryInformation);
   }
 
-  private queryInformation(
-    queryTokens: Set<string>,
-    context: AgentToolSearchRerankContext<RankerName>,
-  ): number {
-    return [...queryTokens].reduce(
-      (total, token) => total + context.inverseDocumentFrequency(token),
-      0,
-    );
+  private queryInformation(queryTokens: Set<string>, context: AgentToolSearchRerankContext<RankerName>): number {
+    return [...queryTokens].reduce((total, token) => total + context.inverseDocumentFrequency(token), 0);
   }
 }
 

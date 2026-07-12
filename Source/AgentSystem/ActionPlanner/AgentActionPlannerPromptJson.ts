@@ -38,10 +38,7 @@ export interface AgentActionPlannerPromptContext {
   activeSkills: ActionPlanInput["activeSkills"];
 }
 
-export function buildActionPlannerPromptJson(
-  input: ActionPlanInput,
-  directive: AgentActionPlannerPromptStage,
-): string {
+export function buildActionPlannerPromptJson(input: ActionPlanInput, directive: AgentActionPlannerPromptStage): string {
   return JSON.stringify(buildActionPlannerPromptEnvelope(input, directive), null, 2);
 }
 
@@ -49,8 +46,8 @@ export function buildActionPlannerPromptEnvelope(
   input: ActionPlanInput,
   directive: AgentActionPlannerPromptStage,
 ): AgentActionPlannerPromptEnvelope {
-  const includeRoleplayPreset = directive.stage === "understandUserTurn"
-    || directive.stage === "repairTurnUnderstanding";
+  const includeRoleplayPreset =
+    directive.stage === "understandUserTurn" || directive.stage === "repairTurnUnderstanding";
   return {
     context: {
       currentUserTurn: input.currentUserTurn,

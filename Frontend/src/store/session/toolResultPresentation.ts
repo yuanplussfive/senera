@@ -21,11 +21,10 @@ export function mergeToolResultPresentation(
 }
 
 export function readToolResultPresentation(value: unknown): ToolResultPresentation | undefined {
-  const record = value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  const record =
+    value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
   const presentation = record?.presentation;
   return presentation && typeof presentation === "object" && !Array.isArray(presentation)
-    ? presentation as ToolResultPresentation
+    ? (presentation as ToolResultPresentation)
     : undefined;
 }

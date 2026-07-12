@@ -12,18 +12,13 @@ import {
  * Separates the model's complete tool observation from the compact, human
  * readable result surface. Plugin evidence owns the display wording.
  */
-export function projectAgentToolResultPresentation(
-  result: ExecutedToolCallResult,
-): AgentToolResultPresentation {
+export function projectAgentToolResultPresentation(result: ExecutedToolCallResult): AgentToolResultPresentation {
   const status = readStatus(result);
   const evidence = projectEvidence(result);
   const changes = projectChanges(result);
   const facts = projectFacts(result);
   const fallback = readResultText(result.result);
-  const headline = evidence[0]?.display
-    ?? changes[0]?.summary
-    ?? fallback
-    ?? result.name;
+  const headline = evidence[0]?.display ?? changes[0]?.summary ?? fallback ?? result.name;
   const summary = buildSummary(evidence, changes, fallback, headline);
 
   return {
@@ -41,9 +36,9 @@ export function projectAgentToolResultPresentation(
 
 function readStatus(result: ExecutedToolCallResult): AgentToolResultPresentationStatus {
   if (
-    readRecord(result.result)?.error
-    || (result.process.exitCode !== null && result.process.exitCode !== 0)
-    || result.process.signal
+    readRecord(result.result)?.error ||
+    (result.process.exitCode !== null && result.process.exitCode !== 0) ||
+    result.process.signal
   ) {
     return "failure";
   }
@@ -58,36 +53,42 @@ function projectEvidence(result: ExecutedToolCallResult): AgentToolResultPresent
       return [];
     }
     seen.add(key);
-    return [{
-      evidenceUri: entry.evidenceUri,
-      kind: entry.kind,
-      display: entry.display,
-      label: entry.label,
-      source: entry.source,
-      locator: entry.locator,
-      confidence: entry.confidence,
-    }];
+    return [
+      {
+        evidenceUri: entry.evidenceUri,
+        kind: entry.kind,
+        display: entry.display,
+        label: entry.label,
+        source: entry.source,
+        locator: entry.locator,
+        confidence: entry.confidence,
+      },
+    ];
   });
 }
 
 function projectFacts(result: ExecutedToolCallResult): AgentToolResultPresentationFact[] {
   const summaryFacts = result.artifact?.structuredSummary?.facts ?? [];
-  const fallbackFacts = result.artifact?.evidence.flatMap((entry) => entry.modelSlots.map((slot) => ({
-    name: slot.name,
-    value: slot.value,
-    kind: entry.kind,
-    evidenceUri: entry.evidenceUri,
-    confidence: entry.confidence,
-  }))) ?? [];
-  const facts = summaryFacts.length > 0
-    ? summaryFacts.map((fact) => ({
-        name: fact.name,
-        value: fact.value,
-        kind: fact.kind,
-        evidenceUri: fact.evidenceUri,
-        confidence: fact.confidence,
-      }))
-    : fallbackFacts;
+  const fallbackFacts =
+    result.artifact?.evidence.flatMap((entry) =>
+      entry.modelSlots.map((slot) => ({
+        name: slot.name,
+        value: slot.value,
+        kind: entry.kind,
+        evidenceUri: entry.evidenceUri,
+        confidence: entry.confidence,
+      })),
+    ) ?? [];
+  const facts =
+    summaryFacts.length > 0
+      ? summaryFacts.map((fact) => ({
+          name: fact.name,
+          value: fact.value,
+          kind: fact.kind,
+          evidenceUri: fact.evidenceUri,
+          confidence: fact.confidence,
+        }))
+      : fallbackFacts;
   const seen = new Set<string>();
   return facts.flatMap((fact) => {
     const name = fact.name.trim();
@@ -110,12 +111,14 @@ function projectChanges(result: ExecutedToolCallResult): AgentToolResultPresenta
       return [];
     }
     seen.add(key);
-    return [{
-      kind: change.kind,
-      status: change.status,
-      key: change.key,
-      summary: change.summary,
-    }];
+    return [
+      {
+        kind: change.kind,
+        status: change.status,
+        key: change.key,
+        summary: change.summary,
+      },
+    ];
   });
 }
 
@@ -145,13 +148,7 @@ function readResultText(value: unknown): string | undefined {
 }
 
 function readSemanticText(value: Record<string, unknown>): string | undefined {
-  const candidates = [
-    value.headline,
-    value.summary,
-    value.message,
-    value.text,
-    value.output,
-  ];
+  const candidates = [value.headline, value.summary, value.message, value.text, value.output];
   for (const candidate of candidates) {
     if (typeof candidate === "string") {
       const text = normalizeText(candidate);
@@ -181,7 +178,5 @@ function uniqueText(values: readonly (string | undefined)[]): string[] {
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }

@@ -1,15 +1,8 @@
 import type { MotionLevel } from "../../shared/motion";
-import {
-  advanceStreamingDisplayText,
-  alignStreamingDisplayTarget,
-} from "./streamingDisplay";
+import { advanceStreamingDisplayText, alignStreamingDisplayTarget } from "./streamingDisplay";
 import type { RunRecord } from "./types";
 
-export function createRunRecord(input: {
-  requestId: string;
-  startedAt: string;
-  input: string;
-}): RunRecord {
+export function createRunRecord(input: { requestId: string; startedAt: string; input: string }): RunRecord {
   return {
     requestId: input.requestId,
     revision: 0,
@@ -75,11 +68,7 @@ export function alignRunDisplayTarget(run: RunRecord): void {
   run.displayText = aligned.displayText;
 }
 
-export function projectTerminalDisplayText(
-  run: RunRecord,
-  text: string,
-  replayingHistory: boolean,
-): void {
+export function projectTerminalDisplayText(run: RunRecord, text: string, replayingHistory: boolean): void {
   run.visibleText = text;
   if (replayingHistory) {
     run.displayText = text;

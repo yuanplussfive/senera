@@ -32,11 +32,7 @@ export function ChatPanel({
   const isRunning = currentRun?.status === "running";
   const composerDisabled = runtime.socketStatus !== "open" || historyLoading;
   const shouldShowHistoryRecovery =
-    messages.length === 0 &&
-    !isRunning &&
-    !!session &&
-    session.messageCount > 0 &&
-    (historyLoading || historyFailed);
+    messages.length === 0 && !isRunning && !!session && session.messageCount > 0 && (historyLoading || historyFailed);
   const assistantAvatarIcon = useMemo(
     () => readSelectedModelProvider(modelConfig.modelProviders, modelConfig.selectedModelProviderId)?.icon,
     [modelConfig.modelProviders, modelConfig.selectedModelProviderId],
@@ -57,13 +53,18 @@ export function ChatPanel({
       />
       <AnimatePresence mode="wait" initial={false}>
         {shouldShowHistoryRecovery ? (
-          <ChatContentMotion key={`history:${activeId}:${historyFailed ? "failed" : "loading"}`} motionLevel={effectiveMotionLevel}>
+          <ChatContentMotion
+            key={`history:${activeId}:${historyFailed ? "failed" : "loading"}`}
+            motionLevel={effectiveMotionLevel}
+          >
             <HistoryRecoveryState
               failed={historyFailed}
               messageCount={session.messageCount}
-              onRetry={activeId && navigationActions?.onRetryHistory
-                ? () => navigationActions.onRetryHistory?.(activeId)
-                : undefined}
+              onRetry={
+                activeId && navigationActions?.onRetryHistory
+                  ? () => navigationActions.onRetryHistory?.(activeId)
+                  : undefined
+              }
               retryDisabled={runtime.socketStatus !== "open"}
             />
           </ChatContentMotion>

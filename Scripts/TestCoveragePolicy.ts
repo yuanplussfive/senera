@@ -31,30 +31,39 @@ export type TestSuiteCoveragePolicy = {
 
 export type TestSuitePolicy = Pick<
   TestSuiteCoveragePolicy,
-  "label" | "testRoot" | "sourceRoot" | "testFilePattern" | "sourceLocalTestPattern" | "vitestConfig" | "verifyEntrypoint" | "runnerEntrypoint" | "testInclude" | "requiredLayers"
+  | "label"
+  | "testRoot"
+  | "sourceRoot"
+  | "testFilePattern"
+  | "sourceLocalTestPattern"
+  | "vitestConfig"
+  | "verifyEntrypoint"
+  | "runnerEntrypoint"
+  | "testInclude"
+  | "requiredLayers"
 >;
 
 const sourceLocalTestPattern = /\.test\.(ts|tsx|js|jsx|mjs|mts)$/;
 
 const frontendTestLayers = [
+  { name: "Architecture", minimumCases: 6 },
   {
     name: "State",
     minimumCases: 8,
-    forbidsImportsFrom: [
-      "Frontend/src/features",
-      "Frontend/src/app",
-    ],
+    forbidsImportsFrom: ["Frontend/src/features", "Frontend/src/app"],
   },
-  { name: "Api", minimumCases: 4 },
-  { name: "App", minimumCases: 5 },
+  { name: "Api", minimumCases: 10 },
+  { name: "App", minimumCases: 15 },
   { name: "Store", minimumCases: 6 },
-  { name: "Feature", minimumCases: 20 },
+  { name: "Feature", minimumCases: 35 },
 ] as const satisfies readonly TestLayerPolicy[];
 
 const backendTestLayers = [
   { name: "ActionPlanner", minimumCases: 10 },
+  { name: "Auth", minimumCases: 12 },
   { name: "Execution", minimumCases: 15 },
   { name: "Memory", minimumCases: 10 },
+  { name: "ModelEndpoints", minimumCases: 12 },
   { name: "Pi", minimumCases: 10 },
   { name: "Session", minimumCases: 10 },
   { name: "Text", minimumCases: 3 },
@@ -71,27 +80,16 @@ export const FrontendTestCoveragePolicy = {
   vitestConfig: "vitest.config.ts",
   verifyEntrypoint: "Scripts/VerifyFrontendTestCoverage.ts",
   runnerEntrypoint: "Scripts/VerifyFrontendVitestSuite.ts",
-  testInclude: [
-    "Scripts/FrontendTests/**/*.test.mjs",
-    "Scripts/FrontendTests/**/*.test.ts",
-  ],
-  setupFiles: [
-    "Scripts/FrontendTests/setup.ts",
-  ],
+  testInclude: ["Scripts/FrontendTests/**/*.test.mjs", "Scripts/FrontendTests/**/*.test.ts"],
+  setupFiles: ["Scripts/FrontendTests/setup.ts"],
   coverageDirectory: "coverage/frontend",
-  coverageInclude: [
-    "Frontend/src/**/*.{ts,tsx}",
-  ],
-  coverageExclude: [
-    "Frontend/src/main.tsx",
-    "Frontend/src/generated/**",
-    "Frontend/src/**/*.d.ts",
-  ],
+  coverageInclude: ["Frontend/src/**/*.{ts,tsx}"],
+  coverageExclude: ["Frontend/src/main.tsx", "Frontend/src/generated/**", "Frontend/src/**/*.d.ts"],
   thresholds: {
-    lines: 38,
-    functions: 35,
-    branches: 27,
-    statements: 36,
+    lines: 53,
+    functions: 52,
+    branches: 40,
+    statements: 50,
   },
   requiredLayers: frontendTestLayers,
 } as const satisfies TestSuiteCoveragePolicy;
@@ -104,19 +102,15 @@ export const BackendTestCoveragePolicy = {
   sourceLocalTestPattern,
   vitestConfig: "vitest.backend.config.ts",
   verifyEntrypoint: "Scripts/VerifyBackendTestCoverage.ts",
-  testInclude: [
-    "Scripts/BackendTests/**/*.test.ts",
-  ],
+  testInclude: ["Scripts/BackendTests/**/*.test.ts"],
   coverageDirectory: "coverage/backend",
   coverageInclude: backendTestLayers.map((layer) => `Source/AgentSystem/${layer.name}/**/*.ts`),
-  coverageExclude: [
-    "Source/AgentSystem/**/*.d.ts",
-  ],
+  coverageExclude: ["Source/AgentSystem/**/*.d.ts"],
   thresholds: {
-    lines: 40,
-    functions: 38,
-    branches: 30,
-    statements: 40,
+    lines: 60,
+    functions: 60,
+    branches: 45,
+    statements: 60,
   },
   requiredLayers: backendTestLayers,
 } as const satisfies TestSuiteCoveragePolicy;
@@ -125,16 +119,15 @@ export const E2eTestPolicy = {
   label: "E2E",
   testRoot: "Scripts/E2ETests",
   sourceRoot: "Source",
-  testFilePattern: /\.test\.ts$/,
+  testFilePattern: /\.test\.(mjs|ts)$/,
   sourceLocalTestPattern,
   vitestConfig: "vitest.e2e.config.ts",
   verifyEntrypoint: "Scripts/VerifyE2eTestCoverage.ts",
   runnerEntrypoint: "Scripts/VerifyE2eVitestSuite.ts",
-  testInclude: [
-    "Scripts/E2ETests/**/*.test.ts",
-  ],
+  testInclude: ["Scripts/E2ETests/**/*.test.ts", "Scripts/E2ETests/**/*.test.mjs"],
   requiredLayers: [
-    { name: "AgentProtocol" },
+    { name: "AgentProtocol", minimumCases: 3 },
+    { name: "FrontendJourney", minimumCases: 2 },
   ],
 } as const satisfies TestSuitePolicy;
 

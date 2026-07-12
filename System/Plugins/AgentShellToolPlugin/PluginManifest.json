@@ -14,15 +14,12 @@
       "Name": "ShellCommandTool",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
-      "Permissions": [
-        "process:shell",
-        "filesystem:workspace"
-      ],
+      "Permissions": ["process:shell", "filesystem:workspace"],
       "Execution": {
         "Boundary": "Local",
         "Network": "Allow",
         "Workspace": "ReadWrite",
-        "LocalFallback": "Allow"
+        "LocalFallback": "Deny"
       },
       "Handler": {
         "Kind": "HostCapability",
@@ -42,11 +39,7 @@
               "stderr": "$.stderr"
             },
             "Identity": {
-              "Parts": [
-                "cwd",
-                "command",
-                "exitCode"
-              ]
+              "Parts": ["cwd", "command", "exitCode"]
             },
             "Presentation": {
               "Locator": "{{ cwd }}",
@@ -61,24 +54,11 @@
               "signal": "$.signal"
             },
             "ModelProjection": {
-              "Slots": [
-                "cwd",
-                "command",
-                "exitCode",
-                "signal"
-              ]
+              "Slots": ["cwd", "command", "exitCode", "signal"]
             },
             "PlannerMemory": {
-              "Facts": [
-                "cwd",
-                "command",
-                "exitCode",
-                "signal"
-              ],
-              "ArtifactRefs": [
-                "evidence",
-                "projection"
-              ]
+              "Facts": ["cwd", "command", "exitCode", "signal"],
+              "ArtifactRefs": ["evidence", "projection"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} shell exit {{ e.slots.exitCode }}: {{ e.slots.command }}\n{% endfor %}",
@@ -99,16 +79,7 @@
             "Title": "Host shell command",
             "Description": "Run current-platform shell commands in the workspace for tests, builds, checks, git, scripts, diagnostics, and quick read-only inspection.",
             "Facets": {
-              "Actions": [
-                "run",
-                "execute",
-                "test",
-                "build",
-                "check",
-                "inspect",
-                "slice-file",
-                "search"
-              ],
+              "Actions": ["run", "execute", "test", "build", "check", "inspect", "slice-file", "search"],
               "Targets": [
                 "shell",
                 "process",
@@ -118,25 +89,10 @@
                 "test-suite",
                 "build-system"
               ],
-              "Inputs": [
-                "command",
-                "cwd",
-                "timeout"
-              ],
-              "Outputs": [
-                "exit-code",
-                "stdout",
-                "stderr",
-                "shell-execution"
-              ],
-              "Evidence": [
-                "shell-execution"
-              ],
-              "Effects": [
-                "process",
-                "may-write-workspace",
-                "network-possible"
-              ]
+              "Inputs": ["command", "cwd", "timeout"],
+              "Outputs": ["exit-code", "stdout", "stderr", "shell-execution"],
+              "Evidence": ["shell-execution"],
+              "Effects": ["process", "may-write-workspace", "network-possible"]
             },
             "Aliases": [
               "运行命令",
@@ -152,9 +108,7 @@
             "Risk": {
               "SideEffect": "process",
               "Permission": "shell",
-              "Notes": [
-                "Commands can read, write, spawn processes, or access network depending on the command."
-              ]
+              "Notes": ["Commands can read, write, spawn processes, or access network depending on the command."]
             }
           }
         ],
@@ -177,13 +131,7 @@
           "需要结构化工具证据或大范围代码搜索时优先使用 WorkspaceReadFile 或 WorkspaceGrep。",
           "不要在未知影响范围内执行删除、移动、覆盖、安装或网络命令。"
         ],
-        "Tags": [
-          "命令执行",
-          "项目构建",
-          "测试检查",
-          "代码处理",
-          "终端操作"
-        ]
+        "Tags": ["命令执行", "项目构建", "测试检查", "代码处理", "终端操作"]
       }
     }
   ],
@@ -191,12 +139,8 @@
     "TrustLevel": "System",
     "Network": "Allow",
     "FileSystem": {
-      "Read": [
-        "../.."
-      ],
-      "Write": [
-        "../.."
-      ]
+      "Read": ["../.."],
+      "Write": ["../.."]
     },
     "RequiresApproval": false
   }

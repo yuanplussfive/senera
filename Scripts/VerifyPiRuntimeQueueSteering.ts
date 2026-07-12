@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import type { AgentState } from "@earendil-works/pi-agent-core";
-import { AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
+import { type AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
 import { AgentConversationEntryKinds } from "../Source/AgentSystem/Conversation/AgentConversation.js";
-import { AgentEventKinds, AgentEventSequencer, toEventEnvelope, type AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
+import {
+  AgentEventKinds,
+  AgentEventSequencer,
+  toEventEnvelope,
+  type AgentDomainEvent,
+} from "../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentPiSession } from "../Source/AgentSystem/Pi/AgentPiSubstrate.js";
 import { AgentSessionManager } from "../Source/AgentSystem/Session/AgentSessionManager.js";
@@ -60,25 +65,27 @@ async function main(): Promise<void> {
   assert.equal(lookup.kind === "found" ? lookup.session.status : undefined, AgentSessionStatuses.Idle);
   assert.deepEqual(fakeLoop.session.steers, ["补充说明 Pi 是否真正接管运行中消息"]);
   assert.equal(piSessions.get(sessionId), undefined);
-  assert.equal(events.some((event) => event.kind === AgentEventKinds.SessionBusy), false);
+  assert.equal(
+    events.some((event) => event.kind === AgentEventKinds.SessionBusy),
+    false,
+  );
   assert.equal(hasPiTrace(events, "runtime_queue.steer.accepted"), true);
-  assert.equal(store.loadConversation(sessionId).filter((entry) =>
-    entry.kind === AgentConversationEntryKinds.UserMessage).length, 2);
+  assert.equal(
+    store.loadConversation(sessionId).filter((entry) => entry.kind === AgentConversationEntryKinds.UserMessage).length,
+    2,
+  );
 
   console.log("Pi runtime queue steering verification passed.");
 }
 
 function hasPiTrace(events: readonly AgentDomainEvent[], eventType: string): boolean {
-  return events.some((event) =>
-    event.kind === AgentEventKinds.PiTrace
-    && readRecord(event.data)?.eventType === eventType
+  return events.some(
+    (event) => event.kind === AgentEventKinds.PiTrace && readRecord(event.data)?.eventType === eventType,
   );
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 const VerificationPiModel = {

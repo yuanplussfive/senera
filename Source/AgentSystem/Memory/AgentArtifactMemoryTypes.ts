@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AgentArtifactFileNames } from "../Artifacts/AgentArtifactLocator.js";
+import { type AgentArtifactFileNames } from "../Artifacts/AgentArtifactLocator.js";
 import {
   normalizeToolArrayArgument,
   normalizeToolNumberArgument,
@@ -15,7 +15,7 @@ export const ReadableArtifactRefs = [
   "workspacePatch",
 ] as const satisfies Array<keyof typeof AgentArtifactFileNames>;
 
-export type ReadableArtifactRef = typeof ReadableArtifactRefs[number];
+export type ReadableArtifactRef = (typeof ReadableArtifactRefs)[number];
 
 export const ReadableArtifactRefDefinitions = {
   summary: {
@@ -46,10 +46,13 @@ export const ReadableArtifactRefDefinitions = {
     file: "workspacePatch",
     format: "text",
   },
-} as const satisfies Record<ReadableArtifactRef, {
-  file: keyof typeof AgentArtifactFileNames;
-  format: "json" | "text";
-}>;
+} as const satisfies Record<
+  ReadableArtifactRef,
+  {
+    file: keyof typeof AgentArtifactFileNames;
+    format: "json" | "text";
+  }
+>;
 
 export const ArtifactMemoryReadArgumentsSchema = z
   .object({
@@ -91,4 +94,3 @@ export interface ArtifactMemoryContentItem {
   byteLength: number;
   truncated: boolean;
 }
-

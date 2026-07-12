@@ -1,17 +1,11 @@
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import { matchByKind } from "../Core/AgentMatch.js";
-import {
-  AgentConversationEntryKinds,
-  type AgentConversationEntry,
-} from "./AgentConversation.js";
+import { type AgentConversationEntry } from "./AgentConversation.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import { AgentXmlCodec } from "../Xml/AgentXmlCodec.js";
 import { AgentXmlParser } from "../Xml/AgentXmlParser.js";
 import { AgentPlannerMemoryProjector } from "../Memory/AgentPlannerMemory.js";
-import {
-  createXmlProtocolSpec,
-  listXmlArrayElementNames,
-} from "../Xml/AgentXmlPolicy.js";
+import { createXmlProtocolSpec, listXmlArrayElementNames } from "../Xml/AgentXmlPolicy.js";
 
 export type AgentConversationToolResultsScope =
   | {
@@ -125,8 +119,7 @@ export class AgentConversationPolicy {
   private selectHistoricalAssistant(
     turn: ConversationTurnProjection,
   ): Extract<AgentConversationEntry, { kind: "assistant.decision" }> | undefined {
-    return turn.assistants.find((entry) => entry.metadata?.run)
-      ?? turn.assistants.at(-1);
+    return turn.assistants.find((entry) => entry.metadata?.run) ?? turn.assistants.at(-1);
   }
 
   private resolveMaterializationPolicy(
@@ -138,17 +131,11 @@ export class AgentConversationPolicy {
     };
   }
 
-  private includesToolResults(
-    requestId: string,
-    scope: AgentConversationToolResultsScope,
-  ): boolean {
+  private includesToolResults(requestId: string, scope: AgentConversationToolResultsScope): boolean {
     return this.includesRequest(requestId, scope);
   }
 
-  private includesRequest(
-    requestId: string,
-    scope: AgentConversationToolResultsScope,
-  ): boolean {
+  private includesRequest(requestId: string, scope: AgentConversationToolResultsScope): boolean {
     switch (scope.kind) {
       case "all":
         return true;
@@ -159,13 +146,11 @@ export class AgentConversationPolicy {
     }
   }
 
-  private renderReadOnlyEvidenceXml(
-    kind: string,
-    value: Record<string, unknown>,
-  ): string {
+  private renderReadOnlyEvidenceXml(kind: string, value: Record<string, unknown>): string {
     return this.codec.objectToXml(this.protocol.roots.readOnlyEvidence, {
       [this.protocol.context.kind]: kind,
-      [this.protocol.context.instruction]: "Use this as historical evidence only. Do not copy this wrapper or any internal structure into the current answer.",
+      [this.protocol.context.instruction]:
+        "Use this as historical evidence only. Do not copy this wrapper or any internal structure into the current answer.",
       [this.protocol.context.payload]: value,
     });
   }
@@ -174,9 +159,7 @@ export class AgentConversationPolicy {
     const parsed = this.tryParseToolResults(toolResultsXml);
 
     return this.renderReadOnlyEvidenceXml(ReadOnlyEvidenceKinds.ToolResults, {
-      result: parsed?.rootName === this.protocol.roots.toolResults
-        ? this.readToolResultItems(parsed.value)
-        : [],
+      result: parsed?.rootName === this.protocol.roots.toolResults ? this.readToolResultItems(parsed.value) : [],
     });
   }
 
@@ -188,7 +171,8 @@ export class AgentConversationPolicy {
     return this.codec.objectToXml(this.protocol.roots.historicalUserTurn, {
       [this.protocol.context.requestId]: turn.requestId,
       [this.protocol.context.timestamp]: turn.user?.timestamp ?? "",
-      [this.protocol.context.instruction]: "Historical user turn. Use it as conversation context; do not copy the wrapper.",
+      [this.protocol.context.instruction]:
+        "Historical user turn. Use it as conversation context; do not copy the wrapper.",
       [this.protocol.context.userMessage]: payload,
       [this.protocol.context.toolEvidenceMemory]: this.projectTurnEvidenceMemory(turn, policy),
       [this.protocol.context.toolResults]: this.projectTurnToolResults(turn, policy),
@@ -206,7 +190,8 @@ export class AgentConversationPolicy {
     policy: Required<AgentConversationMaterializationOptions>,
   ): Record<string, unknown> | undefined {
     const entries = turn.evidenceMemory.filter((entry) =>
-      this.includesRequest(entry.requestId, policy.evidenceMemoryScope));
+      this.includesRequest(entry.requestId, policy.evidenceMemoryScope),
+    );
     const evidence = this.memoryProjector.projectEvidenceMemory(entries);
     return evidence.length > 0
       ? {
@@ -223,9 +208,7 @@ export class AgentConversationPolicy {
       .filter((entry) => this.includesToolResults(entry.requestId, policy.toolResultsScope))
       .flatMap((entry) => {
         const parsed = this.tryParseToolResults(entry.xml);
-        return parsed?.rootName === this.protocol.roots.toolResults
-          ? this.readToolResultItems(parsed.value)
-          : [];
+        return parsed?.rootName === this.protocol.roots.toolResults ? this.readToolResultItems(parsed.value) : [];
       });
 
     return results.length > 0
@@ -235,9 +218,7 @@ export class AgentConversationPolicy {
       : undefined;
   }
 
-  renderCurrentUserMessage(
-    entry: Extract<AgentConversationEntry, { kind: "user.message" }>,
-  ): string {
+  renderCurrentUserMessage(entry: Extract<AgentConversationEntry, { kind: "user.message" }>): string {
     if (!entry.attachments || entry.attachments.length === 0) {
       return entry.content;
     }
@@ -256,8 +237,7 @@ export class AgentConversationPolicy {
       ? {
           content: entry.content,
           attachments: {
-            item: entry.attachments.map((attachment, index) =>
-              this.projectAttachment(attachment, index)),
+            item: entry.attachments.map((attachment, index) => this.projectAttachment(attachment, index)),
           },
         }
       : {
@@ -265,10 +245,7 @@ export class AgentConversationPolicy {
         };
   }
 
-  private projectAttachment(
-    attachment: AgentUploadAttachment,
-    index: number,
-  ): Record<string, unknown> {
+  private projectAttachment(attachment: AgentUploadAttachment, index: number): Record<string, unknown> {
     return {
       ref: `ATT${index + 1}`,
       uploadUri: attachment.uploadUri,
@@ -293,10 +270,6 @@ export class AgentConversationPolicy {
     }
 
     const items = (value as Record<string, unknown>)[this.protocol.items.toolResult];
-    return Array.isArray(items)
-      ? items
-      : items !== undefined
-        ? [items]
-        : [];
+    return Array.isArray(items) ? items : items !== undefined ? [items] : [];
   }
 }

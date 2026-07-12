@@ -7,28 +7,28 @@ const { z, ZodError } = require("zod");
 
 const ToolProcessRequestEnvelope = Object.freeze({
   Type: "tool_request",
-  Version: 1
+  Version: 1,
 });
 const ToolProcessResponseEnvelope = Object.freeze({
   Type: "tool_result",
-  Version: 1
+  Version: 1,
 });
 const AgentExecutionErrorCodes = {
   InvalidToolArguments: "InvalidToolArguments",
-  PluginExecutionError: "PluginExecutionError"
+  PluginExecutionError: "PluginExecutionError",
 };
 const AgentToolProcessErrorPhases = {
   SchemaValidation: "schema_validation",
-  RuntimeExecution: "runtime_execution"
+  RuntimeExecution: "runtime_execution",
 };
 
-async function runToolPlugin(definition, options = {}) {
-  return runToolPluginSuite([definition], options);
+async function runToolPlugin(definition) {
+  return runToolPluginSuite([definition]);
 }
 
-async function runToolPluginSuite(definitions, options = {}) {
+async function runToolPluginSuite(definitions) {
   try {
-    const request = parseToolCallRequest(await readStdin(), options);
+    const request = parseToolCallRequest(await readStdin());
     const definition = definitions.find((item) => item.toolName === request.toolName);
     if (!definition) {
       throw new Error(`不支持的工具：${request.toolName}`);
@@ -53,7 +53,7 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function parseToolCallRequest(input, options) {
+function parseToolCallRequest(input) {
   const parsed = JSON.parse(input);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("工具请求必须是 JSON 对象。");
@@ -65,26 +65,21 @@ function parseToolCallRequest(input, options) {
   const args = parsed.arguments;
   return {
     toolName: String(parsed.tool ?? ""),
-    arguments:
-      args && typeof args === "object" && !Array.isArray(args)
-        ? args
-        : {},
-    context: normalizeToolProcessContext(parsed.context)
+    arguments: args && typeof args === "object" && !Array.isArray(args) ? args : {},
+    context: normalizeToolProcessContext(parsed.context),
   };
 }
 
 function normalizeToolProcessContext(value) {
-  const context = value && typeof value === "object" && !Array.isArray(value)
-    ? value
-    : {};
+  const context = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
     ...context,
     ...Object.fromEntries(
       [
         ["workspaceRoot", process.env.SENERA_TOOL_CONTEXT_WORKSPACE_ROOT],
-        ["pluginRoot", process.env.SENERA_TOOL_CONTEXT_PLUGIN_ROOT]
-      ].filter((entry) => typeof entry[1] === "string" && entry[1].length > 0)
-    )
+        ["pluginRoot", process.env.SENERA_TOOL_CONTEXT_PLUGIN_ROOT],
+      ].filter((entry) => typeof entry[1] === "string" && entry[1].length > 0),
+    ),
   };
 }
 
@@ -97,7 +92,7 @@ function createToolProcessSuccessResponse(result) {
     type: ToolProcessResponseEnvelope.Type,
     version: ToolProcessResponseEnvelope.Version,
     ok: true,
-    result
+    result,
   };
 }
 
@@ -106,38 +101,39 @@ function createToolProcessFailureResponse(error) {
     type: ToolProcessResponseEnvelope.Type,
     version: ToolProcessResponseEnvelope.Version,
     ok: false,
-    error
+    error,
   };
 }
 
 function normalizeToolPluginError(error) {
   return error instanceof ZodError
     ? {
-      code: AgentExecutionErrorCodes.InvalidToolArguments,
-      message: error.message,
-      diagnostics: error.issues.map((issue) => ({
-        message: issue.message,
-        path: issue.path.filter((part) => typeof part === "string" || typeof part === "number"),
-        pointer: zodPathToPointer(issue.path)
-      })),
-      details: {
-        phase: AgentToolProcessErrorPhases.SchemaValidation,
-        issues: error.issues
+        code: AgentExecutionErrorCodes.InvalidToolArguments,
+        message: error.message,
+        diagnostics: error.issues.map((issue) => ({
+          message: issue.message,
+          path: issue.path.filter((part) => typeof part === "string" || typeof part === "number"),
+          pointer: zodPathToPointer(issue.path),
+        })),
+        details: {
+          phase: AgentToolProcessErrorPhases.SchemaValidation,
+          issues: error.issues,
+        },
       }
-    }
     : {
-      code: AgentExecutionErrorCodes.PluginExecutionError,
-      message: error instanceof Error ? error.message : String(error),
-      diagnostics: normalizeRuntimeDiagnostics(error)
-        ?? [{
-          message: error instanceof Error ? error.message : String(error),
-          path: [],
-          pointer: "/"
-        }],
-      details: {
-        phase: AgentToolProcessErrorPhases.RuntimeExecution
-      }
-    };
+        code: AgentExecutionErrorCodes.PluginExecutionError,
+        message: error instanceof Error ? error.message : String(error),
+        diagnostics: normalizeRuntimeDiagnostics(error) ?? [
+          {
+            message: error instanceof Error ? error.message : String(error),
+            path: [],
+            pointer: "/",
+          },
+        ],
+        details: {
+          phase: AgentToolProcessErrorPhases.RuntimeExecution,
+        },
+      };
 }
 
 function normalizeRuntimeDiagnostics(error) {
@@ -156,9 +152,7 @@ function zodPathToPointer(pathParts) {
 }
 
 function resolvePluginConfigPath(fileName = "PluginConfig.toml", options = {}) {
-  return path.isAbsolute(fileName)
-    ? fileName
-    : path.resolve(options.cwd ?? process.cwd(), fileName);
+  return path.isAbsolute(fileName) ? fileName : path.resolve(options.cwd ?? process.cwd(), fileName);
 }
 
 function readPluginTomlConfig(fileName = "PluginConfig.toml", options = {}) {
@@ -175,7 +169,7 @@ function readPluginTomlConfig(fileName = "PluginConfig.toml", options = {}) {
   } catch (error) {
     throw new Error(
       `插件配置文件 TOML 格式错误：${configPath}：${error instanceof Error ? error.message : String(error)}`,
-      { cause: error }
+      { cause: error },
     );
   }
 }
@@ -195,5 +189,5 @@ module.exports = {
   readPluginTomlConfig,
   resolvePluginConfigPath,
   z,
-  ZodError
+  ZodError,
 };

@@ -1,7 +1,4 @@
-import type {
-  AgentMemoryWriteResolutionPromptInput,
-} from "../ActionPlanner/AgentLearningPromptJson.js";
-import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
+import type { AgentMemoryWriteResolutionPromptInput } from "../ActionPlanner/AgentLearningPromptJson.js";
 import {
   isRepairablePlanningFailure,
   issueMessages,
@@ -9,13 +6,9 @@ import {
   stringifyIssueValue,
 } from "../ActionPlanner/AgentActionPlannerFailure.js";
 import type { ResolvedAgentMemoryLearningConfig } from "../Types/AgentConfigTypes.js";
-import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
-import {
-  parseMemoryWriteResolutionResult,
-} from "./AgentMemoryLearningSchema.js";
-import {
-  rankSimilarMemoryItems,
-} from "./AgentMemoryVectorIndex.js";
+import type { MemoryWriteResolutionResult as BamlMemoryWriteResolutionResult } from "../BamlClient/baml_client/types.js";
+import { parseMemoryWriteResolutionResult } from "./AgentMemoryLearningSchema.js";
+import { type AgentMemoryVectorClient, rankSimilarMemoryItems } from "./AgentMemoryVectorIndex.js";
 import {
   AgentMemoryTypes,
   type AgentMemoryConsolidationActionRecord,
@@ -23,21 +16,30 @@ import {
   type AgentMemorySourceRepository,
 } from "./AgentMemorySourceRepository.js";
 
-export const AgentMemoryWriteOperations = [
-  "create",
-  "reinforce",
-  "update",
-  "supersede",
-  "reject",
-] as const;
+export const AgentMemoryWriteOperations = ["create", "reinforce", "update", "supersede", "reject"] as const;
 
 export interface AgentMemoryWriteResolverOptions {
   repository: AgentMemorySourceRepository;
-  client: AgentActionPlannerModelClient;
-  vectorClient: AgentVectorModelClient;
+  client: AgentMemoryWriteResolutionClient;
+  vectorClient: AgentMemoryVectorClient;
   memoryLearningConfig: ResolvedAgentMemoryLearningConfig;
   embeddingModel: string;
   maxRepairAttempts: number;
+}
+
+export interface AgentMemoryWriteResolutionClient {
+  resolveMemoryWrite(
+    input: AgentMemoryWriteResolutionPromptInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<BamlMemoryWriteResolutionResult>;
+  repairMemoryWriteResolution(
+    options: {
+      input: AgentMemoryWriteResolutionPromptInput;
+      invalidResolution: string;
+      issues: string[];
+    },
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<BamlMemoryWriteResolutionResult>;
 }
 
 export interface AgentMemoryWriteResolutionRequest {
@@ -79,13 +81,16 @@ export class AgentMemoryWriteResolver {
         if (!isRepairablePlanningFailure(failure.error)) {
           throw error;
         }
-        current = await this.options.client.repairMemoryWriteResolution({
-          input: promptInput,
-          invalidResolution: stringifyIssueValue(failure.invalidOutput ?? failure.error),
-          issues: issueMessages(failure.error),
-        }, {
-          signal: input.signal,
-        });
+        current = await this.options.client.repairMemoryWriteResolution(
+          {
+            input: promptInput,
+            invalidResolution: stringifyIssueValue(failure.invalidOutput ?? failure.error),
+            issues: issueMessages(failure.error),
+          },
+          {
+            signal: input.signal,
+          },
+        );
       }
     }
 
@@ -95,25 +100,25 @@ export class AgentMemoryWriteResolver {
   private async similarMemories(
     input: AgentMemoryWriteResolutionRequest,
   ): Promise<Array<AgentMemoryItemRecord & { similarity: number }>> {
-    const active = this.options.repository.listActiveMemoryItems()
-      .filter((item) => item.type === input.proposed.type);
-    const ranked = await rankSimilarMemoryItems(
-      this.options.vectorClient,
-      this.options.repository,
-      {
-        text: proposedMemoryText(input.proposed),
-        items: active,
-        model: this.options.embeddingModel,
-        limit: this.options.memoryLearningConfig.Promotion.MaxClusterSize,
-        minSimilarity: this.options.memoryLearningConfig.Promotion.MinSimilarity,
-        signal: input.signal,
-      },
-    );
+    const active = this.options.repository.listActiveMemoryItems().filter((item) => item.type === input.proposed.type);
+    const ranked = await rankSimilarMemoryItems(this.options.vectorClient, this.options.repository, {
+      text: proposedMemoryText(input.proposed),
+      items: active,
+      model: this.options.embeddingModel,
+      limit: this.options.memoryLearningConfig.Promotion.MaxClusterSize,
+      minSimilarity: this.options.memoryLearningConfig.Promotion.MinSimilarity,
+      signal: input.signal,
+    });
 
-    const byUri = new Map(ranked.map((entry) => [entry.item.uri, {
-      ...entry.item,
-      similarity: entry.score,
-    }]));
+    const byUri = new Map(
+      ranked.map((entry) => [
+        entry.item.uri,
+        {
+          ...entry.item,
+          similarity: entry.score,
+        },
+      ]),
+    );
     const target = input.proposed.targetMemoryUri
       ? active.find((item) => item.uri === input.proposed.targetMemoryUri)
       : undefined;
@@ -123,8 +128,9 @@ export class AgentMemoryWriteResolver {
         similarity: 1,
       });
     }
-    return [...byUri.values()]
-      .sort((left, right) => right.similarity - left.similarity || left.uri.localeCompare(right.uri));
+    return [...byUri.values()].sort(
+      (left, right) => right.similarity - left.similarity || left.uri.localeCompare(right.uri),
+    );
   }
 }
 

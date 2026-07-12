@@ -31,15 +31,19 @@ describe("Execution behavior", () => {
     const hostRoot = path.resolve("workspace");
     const nested = path.join(hostRoot, "dir", "file.txt");
 
-    expect(projectHostPathToGuestPath({
-      hostRoot,
-      hostPath: hostRoot,
-      guestRoot: "/workspace",
-    })).toBe("/workspace");
-    expect(projectHostPathToGuestPath({
-      hostRoot,
-      hostPath: nested,
-      guestRoot: "/workspace",
-    })).toBe("/workspace/dir/file.txt");
+    expect(
+      projectHostPathToGuestPath({
+        hostRoot,
+        hostPath: hostRoot,
+        guestRoot: "/workspace",
+      }),
+    ).toBe("/workspace");
+    expect(
+      projectHostPathToGuestPath({
+        hostRoot,
+        hostPath: nested,
+        guestRoot: "/workspace",
+      }),
+    ).toBe("/workspace/dir/file.txt");
   });
 });

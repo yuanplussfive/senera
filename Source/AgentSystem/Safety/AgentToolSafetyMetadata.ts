@@ -8,10 +8,10 @@ export function projectAgentToolSafetyMetadata(tool: RegisteredTool): AgentToolS
     rootKind: tool.plugin.rootKind,
     approval: tool.approval,
     permissions: [...tool.permissions],
-    capabilityRisks: (tool.search?.Capabilities ?? [])
-      .flatMap((capability) => capability.Risk ? [capability.Risk] : []),
-    capabilityEffects: (tool.search?.Capabilities ?? [])
-      .flatMap((capability) => capability.Facets?.Effects ?? []),
+    capabilityRisks: (tool.search?.Capabilities ?? []).flatMap((capability) =>
+      capability.Risk ? [capability.Risk] : [],
+    ),
+    capabilityEffects: (tool.search?.Capabilities ?? []).flatMap((capability) => capability.Facets?.Effects ?? []),
     security: tool.plugin.manifest.Security,
   };
 }

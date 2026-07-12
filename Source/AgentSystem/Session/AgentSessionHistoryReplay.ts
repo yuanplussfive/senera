@@ -1,15 +1,13 @@
 import { AgentEventKinds, emitAgentEvent, type AgentEventSink } from "../Events/AgentEvent.js";
-import {
-  AgentConversationEntryKinds,
-  type AgentConversationEntry,
-} from "../Conversation/AgentConversation.js";
-import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
+import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
+import { type AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { AgentRunEventHistoryReplayChunkSize } from "../Events/AgentRunEventHistoryPolicy.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import type { StoredRunSnapshot } from "./AgentSqliteSessionRepository.js";
 import type { AgentHistoryStepRun } from "./AgentSessionEventTypes.js";
-import { AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
-import { AgentSessionStore } from "./AgentSessionStore.js";
+import { type AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
+import { type AgentSessionStore } from "./AgentSessionStore.js";
 
 const SessionHistoryEntryChunkSize = 50;
 
@@ -22,11 +20,7 @@ export interface AgentSessionHistoryReplayOptions {
 export class AgentSessionHistoryReplay {
   constructor(private readonly options: AgentSessionHistoryReplayOptions) {}
 
-  async replay(request: {
-    sessionId: string;
-    refresh?: boolean;
-    onEvent?: AgentEventSink;
-  }): Promise<void> {
+  async replay(request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink }): Promise<void> {
     const entries = await this.loadHistoryEntries(request);
     if (!entries) {
       return;
@@ -39,10 +33,7 @@ export class AgentSessionHistoryReplay {
     await this.emitHistoryCompleted(request);
   }
 
-  buildStepRuns(
-    sessionId: string,
-    entries: readonly AgentConversationEntry[],
-  ): AgentHistoryStepRun[] {
+  buildStepRuns(sessionId: string, entries: readonly AgentConversationEntry[]): AgentHistoryStepRun[] {
     const entryIndex = new AgentSessionHistoryEntryIndex(entries);
     const runsByRequest = new Map<string, AgentHistoryStepRun>();
 
@@ -80,10 +71,7 @@ export class AgentSessionHistoryReplay {
       return entries;
     }
 
-    await emitAgentEvent(
-      request.onEvent,
-      this.options.eventFactory.notFound(request.sessionId, "session.history"),
-    );
+    await emitAgentEvent(request.onEvent, this.options.eventFactory.notFound(request.sessionId, "session.history"));
     return undefined;
   }
 
@@ -142,9 +130,7 @@ export class AgentSessionHistoryReplay {
     });
   }
 
-  private async emitRunEventChunks(
-    request: { sessionId: string; onEvent?: AgentEventSink },
-  ): Promise<void> {
+  private async emitRunEventChunks(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<void> {
     const runEvents = this.options.store.loadRunEvents(request.sessionId);
     for (let index = 0; index < runEvents.length; index += AgentRunEventHistoryReplayChunkSize) {
       const chunk = runEvents.slice(index, index + AgentRunEventHistoryReplayChunkSize);
@@ -159,9 +145,11 @@ export class AgentSessionHistoryReplay {
     }
   }
 
-  private async emitHistoryCompleted(
-    request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink },
-  ): Promise<void> {
+  private async emitHistoryCompleted(request: {
+    sessionId: string;
+    refresh?: boolean;
+    onEvent?: AgentEventSink;
+  }): Promise<void> {
     await emitAgentEvent(request.onEvent, {
       kind: AgentEventKinds.SessionHistoryCompleted,
       context: { sessionId: request.sessionId },
@@ -169,10 +157,7 @@ export class AgentSessionHistoryReplay {
     });
   }
 
-  private mergeSnapshotRun(
-    runsByRequest: Map<string, AgentHistoryStepRun>,
-    snapshot: StoredRunSnapshot,
-  ): void {
+  private mergeSnapshotRun(runsByRequest: Map<string, AgentHistoryStepRun>, snapshot: StoredRunSnapshot): void {
     const existing = runsByRequest.get(snapshot.requestId);
     if (existing) {
       existing.input ||= snapshot.input;
@@ -252,7 +237,7 @@ function createMissingRunDataTrace(snapshot: StoredRunSnapshot): StepTrace {
     status: "failed",
     startedAt: snapshot.startedAt,
     endedAt: snapshot.endedAt ?? snapshot.updatedAt,
-    title: "回复数据丢失",
-    errorMessage: snapshot.errorMessage ?? "回复数据丢失，请重新发送请求。",
+    title: agentErrorMessage("session.historyMissingReplyTitle"),
+    errorMessage: snapshot.errorMessage ?? agentErrorMessage("session.historyMissingReplyError"),
   };
 }

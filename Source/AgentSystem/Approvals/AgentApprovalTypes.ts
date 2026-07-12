@@ -1,11 +1,12 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
+import type { SeneraProcessFallbackSubject } from "../Execution/SeneraProcessFallbackAuthorization.js";
 
 export const AgentApprovalKinds = {
   ToolCall: "tool_call",
+  ExecutionFallback: "execution_fallback",
 } as const;
 
-export type AgentApprovalKind =
-  typeof AgentApprovalKinds[keyof typeof AgentApprovalKinds];
+export type AgentApprovalKind = (typeof AgentApprovalKinds)[keyof typeof AgentApprovalKinds];
 
 export const AgentApprovalStatuses = {
   Pending: "pending",
@@ -14,8 +15,7 @@ export const AgentApprovalStatuses = {
   Cancelled: "cancelled",
 } as const;
 
-export type AgentApprovalStatus =
-  typeof AgentApprovalStatuses[keyof typeof AgentApprovalStatuses];
+export type AgentApprovalStatus = (typeof AgentApprovalStatuses)[keyof typeof AgentApprovalStatuses];
 
 export interface AgentApprovalRequest {
   approvalId: string;
@@ -35,12 +35,21 @@ export type AgentApprovalSubject =
       kind: typeof AgentApprovalKinds.ToolCall;
       toolName: string;
       arguments: Record<string, unknown>;
-    };
+    }
+  | ({
+      kind: typeof AgentApprovalKinds.ExecutionFallback;
+      fromBackend: string;
+      toBackend: string;
+      failureReason: string;
+    } & SeneraProcessFallbackSubject);
+
+export type AgentApprovalScope = "once" | "session";
 
 export interface AgentApprovalResolution {
   approvalId: string;
   status: Extract<AgentApprovalStatus, "approved" | "denied">;
   message?: string;
+  scope?: AgentApprovalScope;
   resolvedAt: string;
 }
 

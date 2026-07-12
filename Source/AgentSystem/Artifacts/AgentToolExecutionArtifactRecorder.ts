@@ -1,7 +1,5 @@
 import fs from "node:fs/promises";
-import type {
-  ResolvedAgentArtifactsConfig,
-} from "../Types/AgentConfigTypes.js";
+import type { ResolvedAgentArtifactsConfig } from "../Types/AgentConfigTypes.js";
 import type {
   ExecutedToolCallArtifact,
   ExecutedToolCallResult,
@@ -9,32 +7,15 @@ import type {
   ToolArtifactEvidenceRecord,
   ToolWorkspaceChange,
 } from "../Types/ToolRuntimeTypes.js";
-import {
-  createAgentArtifactLocator,
-} from "./AgentArtifactLocator.js";
-import {
-  writeArtifactJson,
-  writeArtifactText,
-  writeBoundedArtifactJson,
-} from "./AgentArtifactFileWriter.js";
-import {
-  redactArtifactSecrets,
-} from "./AgentArtifactRedaction.js";
-import {
-  stableArtifactHash,
-} from "./AgentArtifactStableJson.js";
-import {
-  collectArtifactEvidence,
-} from "./AgentArtifactEvidenceProjection.js";
-import {
-  buildArtifactProjection,
-  buildArtifactSummary,
-} from "./AgentArtifactTemplateProjection.js";
+import { createAgentArtifactLocator } from "./AgentArtifactLocator.js";
+import { writeArtifactJson, writeArtifactText, writeBoundedArtifactJson } from "./AgentArtifactFileWriter.js";
+import { redactArtifactSecrets } from "./AgentArtifactRedaction.js";
+import { stableArtifactHash } from "./AgentArtifactStableJson.js";
+import { collectArtifactEvidence } from "./AgentArtifactEvidenceProjection.js";
+import { buildArtifactProjection, buildArtifactSummary } from "./AgentArtifactTemplateProjection.js";
 import { AgentToolResultSummaryCompiler } from "./AgentToolResultSummaryCompiler.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
-import {
-  writeToolWorkspaceArtifacts,
-} from "./AgentToolWorkspaceArtifactRecorder.js";
+import { writeToolWorkspaceArtifacts } from "./AgentToolWorkspaceArtifactRecorder.js";
 
 export interface AgentToolExecutionArtifactRecorderOptions {
   workspaceRoot: string;
@@ -213,47 +194,47 @@ function buildArtifactDelta(input: {
   workspaceChanges?: readonly ToolWorkspaceChange[];
 }): ToolArtifactDeltaRecord[] {
   return [
-    ...input.evidence.map((entry) => ({
-      kind: "evidence",
-      key: entry.key,
-      status: input.previousEvidence.has(entry.key) ? "unchanged" : "added",
-      summary: entry.label,
-      metadata: {
-        evidenceKind: entry.kind,
-      },
-    } satisfies ToolArtifactDeltaRecord)),
-    ...(input.workspaceChanges ?? []).map((change) => ({
-      kind: "workspace",
-      key: change.path,
-      status: change.status === "unchanged" ? "unchanged" : "changed",
-      summary: `${change.status}: ${change.path}`,
-      metadata: {
-        beforeHash: change.beforeHash,
-        afterHash: change.afterHash,
-        beforeSize: change.beforeSize,
-        afterSize: change.afterSize,
-        patch: change.patch,
-      },
-    } satisfies ToolArtifactDeltaRecord)),
+    ...input.evidence.map(
+      (entry) =>
+        ({
+          kind: "evidence",
+          key: entry.key,
+          status: input.previousEvidence.has(entry.key) ? "unchanged" : "added",
+          summary: entry.label,
+          metadata: {
+            evidenceKind: entry.kind,
+          },
+        }) satisfies ToolArtifactDeltaRecord,
+    ),
+    ...(input.workspaceChanges ?? []).map(
+      (change) =>
+        ({
+          kind: "workspace",
+          key: change.path,
+          status: change.status === "unchanged" ? "unchanged" : "changed",
+          summary: `${change.status}: ${change.path}`,
+          metadata: {
+            beforeHash: change.beforeHash,
+            afterHash: change.afterHash,
+            beforeSize: change.beforeSize,
+            afterSize: change.afterSize,
+            patch: change.patch,
+          },
+        }) satisfies ToolArtifactDeltaRecord,
+    ),
   ];
 }
 
 function readToolResultStatus(result: ExecutedToolCallResult): "success" | "failure" | "empty" {
   const structuredError = readRecord(result.result)?.error;
-  if (
-    structuredError
-    || (result.process.exitCode !== null && result.process.exitCode !== 0)
-    || result.process.signal
-  ) {
+  if (structuredError || (result.process.exitCode !== null && result.process.exitCode !== 0) || result.process.signal) {
     return "failure";
   }
   return result.result === undefined || result.result === null ? "empty" : "success";
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 async function writeToolArtifactFiles(input: {

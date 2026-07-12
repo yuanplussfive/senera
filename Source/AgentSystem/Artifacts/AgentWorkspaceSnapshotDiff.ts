@@ -11,16 +11,12 @@ export function compareWorkspaceSnapshots(
 ): ToolWorkspaceChange[] {
   const beforeByPath = new Map(before.files.map((entry) => [entry.path, entry]));
   const afterByPath = new Map(after.files.map((entry) => [entry.path, entry]));
-  const paths = new Set([
-    ...beforeByPath.keys(),
-    ...afterByPath.keys(),
-  ]);
+  const paths = new Set([...beforeByPath.keys(), ...afterByPath.keys()]);
 
   return [...paths].sort().map((filePath) => {
-    const left = beforeByPath.get(filePath)
-      ?? missingWorkspaceSnapshot(filePath, afterByPath.get(filePath)?.absolutePath ?? "");
-    const right = afterByPath.get(filePath)
-      ?? missingWorkspaceSnapshot(filePath, left.absolutePath);
+    const left =
+      beforeByPath.get(filePath) ?? missingWorkspaceSnapshot(filePath, afterByPath.get(filePath)?.absolutePath ?? "");
+    const right = afterByPath.get(filePath) ?? missingWorkspaceSnapshot(filePath, left.absolutePath);
     return {
       path: filePath,
       absolutePath: right.absolutePath || left.absolutePath,

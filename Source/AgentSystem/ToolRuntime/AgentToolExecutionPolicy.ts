@@ -4,9 +4,7 @@ import type {
   SeneraProcessWorkspaceMountMode,
 } from "../Execution/SeneraExecutionProfile.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import type {
-  ToolExecutionManifest,
-} from "../Types/PluginManifestTypes.js";
+import type { ToolExecutionManifest } from "../Types/PluginManifestTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export type AgentToolExecutionMode = "local" | "sandbox" | "sandbox-preferred";

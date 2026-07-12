@@ -10,17 +10,9 @@ import type {
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import type { AgentPiHarnessEvent } from "./AgentPiHarnessEvents.js";
-import {
-  isPiCoreAgentEvent,
-} from "./AgentPiHarnessEvents.js";
-import type {
-  AgentPiSession,
-  AgentPiSessionEventListener,
-} from "./AgentPiSubstrate.js";
-import type {
-  AgentPiModelProjection,
-  AgentPiToolDefinition,
-} from "./AgentPiTypes.js";
+import { isPiCoreAgentEvent } from "./AgentPiHarnessEvents.js";
+import type { AgentPiSession, AgentPiSessionEventListener } from "./AgentPiSubstrate.js";
+import type { AgentPiModelProjection, AgentPiToolDefinition } from "./AgentPiTypes.js";
 
 export interface AgentPiHarnessSessionOptions {
   model: AgentPiModelProjection;
@@ -39,7 +31,10 @@ export class AgentPiHarnessSession implements AgentPiSession {
   ) {}
 
   get state(): AgentState {
-    const owner = this;
+    const readHistory = (): AgentMessage[] => [...this.history];
+    const writeHistory = (messages: AgentMessage[]): void => {
+      this.history = [...messages];
+    };
     const tools = this.snapshotTools();
     return {
       systemPrompt: "",
@@ -50,10 +45,10 @@ export class AgentPiHarnessSession implements AgentPiSession {
       },
       set tools(_tools: AgentPiToolDefinition[]) {},
       get messages() {
-        return [...owner.history];
+        return readHistory();
       },
       set messages(messages: AgentMessage[]) {
-        owner.history = [...messages];
+        writeHistory(messages);
       },
       isStreaming: false,
       pendingToolCalls: new Set(),
@@ -134,9 +129,10 @@ export class AgentPiHarnessSession implements AgentPiSession {
 
 function readAssistantText(message: AgentState["messages"][number]): string {
   const content = message.role === "assistant" ? message.content : [];
-  return content.flatMap((entry) =>
-    entry.type === "text" && typeof entry.text === "string" ? [entry.text] : [],
-  ).join("").trim();
+  return content
+    .flatMap((entry) => (entry.type === "text" && typeof entry.text === "string" ? [entry.text] : []))
+    .join("")
+    .trim();
 }
 
 function throwIfAssistantFailed(message: AssistantMessage): void {

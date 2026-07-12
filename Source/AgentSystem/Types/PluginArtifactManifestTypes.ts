@@ -26,9 +26,7 @@ export interface ToolArtifactEvidenceManifest {
 
 export type ToolArtifactEvidenceSlotScope = "Record" | "Root";
 
-export type ToolArtifactEvidenceSlotManifest =
-  | string
-  | ToolArtifactEvidenceSlotObjectManifest;
+export type ToolArtifactEvidenceSlotManifest = string | ToolArtifactEvidenceSlotObjectManifest;
 
 export interface ToolArtifactEvidenceSlotObjectManifest {
   Selector: string;

@@ -41,4 +41,3 @@ export const ToolSearchSchema = z
     Avoid: z.array(z.string().min(1)).optional(),
   })
   .strict();
-

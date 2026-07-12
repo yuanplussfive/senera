@@ -1,6 +1,5 @@
 import {
   AgentHarness,
-  type AgentEvent,
   type AgentHarnessResources,
   type PromptTemplate,
   type Skill,
@@ -13,29 +12,13 @@ import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import { AgentPiProxyContextHeader } from "../PiProxy/AgentPiProxyRuntimeContext.js";
-import type {
-  AgentPiHarnessEvent,
-  AgentPiHarnessTraceContext,
-} from "./AgentPiHarnessEvents.js";
-import {
-  isPiCoreAgentEvent,
-  projectPiHarnessTraceEvent,
-} from "./AgentPiHarnessEvents.js";
+import type { AgentPiHarnessEvent, AgentPiHarnessTraceContext } from "./AgentPiHarnessEvents.js";
+import { isPiCoreAgentEvent, projectPiHarnessTraceEvent } from "./AgentPiHarnessEvents.js";
 import { AgentPiHarnessSession } from "./AgentPiHarnessSession.js";
 import type { AgentPiSession } from "./AgentPiSubstrate.js";
-import {
-  renderPiHarnessSystemPrompt,
-  type AgentPiSelectedPromptTemplateFrame,
-} from "./AgentPiPromptFrameProjector.js";
-import {
-  applyAgentPiContextPolicy,
-  type AgentPiContextPolicyFrame,
-} from "./AgentPiContextPolicy.js";
-import type {
-  AgentPiModelProjection,
-  AgentPiProviderProjection,
-  AgentPiToolDefinition,
-} from "./AgentPiTypes.js";
+import { renderPiHarnessSystemPrompt, type AgentPiSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
+import { applyAgentPiContextPolicy, type AgentPiContextPolicyFrame } from "./AgentPiContextPolicy.js";
+import type { AgentPiProviderProjection, AgentPiToolDefinition } from "./AgentPiTypes.js";
 
 export interface AgentPiHarnessSessionFrame {
   sessionId?: string;
@@ -210,10 +193,7 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
       void this.emitHarnessTrace(frame.snapshot(), event as AgentPiHarnessEvent);
     });
     const disposeContextPolicy = harness.on("context", (event) => ({
-      messages: applyAgentPiContextPolicy(
-        event.messages,
-        frame.snapshot().contextPolicy,
-      ),
+      messages: applyAgentPiContextPolicy(event.messages, frame.snapshot().contextPolicy),
     }));
     const pooled: PooledHarness = {
       harness,
@@ -228,10 +208,7 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
     };
   }
 
-  private async configurePooledHarness(
-    pooled: PooledHarness,
-    input: AgentPiHarnessLeaseInput,
-  ): Promise<void> {
+  private async configurePooledHarness(pooled: PooledHarness, input: AgentPiHarnessLeaseInput): Promise<void> {
     pooled.frame.update(input.frame);
     pooled.disposePreflight?.();
     pooled.disposePreflight = pooled.harness.on("tool_call", (event) =>
@@ -239,7 +216,8 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         input: event.input,
-      }));
+      }),
+    );
 
     await pooled.harness.waitForIdle();
     await pooled.harness.setTools([...input.tools], [...input.activeToolNames]);
@@ -265,10 +243,7 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
       : { ...this.options.provider.headers };
   }
 
-  private async emitHarnessTrace(
-    frame: AgentPiHarnessSessionFrame,
-    event: AgentPiHarnessEvent,
-  ): Promise<void> {
+  private async emitHarnessTrace(frame: AgentPiHarnessSessionFrame, event: AgentPiHarnessEvent): Promise<void> {
     if (isPiCoreAgentEvent(event)) {
       return;
     }

@@ -17,7 +17,14 @@ void main().catch((error) => {
 });
 
 async function main(): Promise<void> {
-  const server = http.createServer(async (request, response) => {
+  const server = http.createServer((request, response) => {
+    void handleRequest(request, response).catch((error: unknown) => {
+      response.statusCode = 500;
+      response.end(error instanceof Error ? error.message : String(error));
+    });
+  });
+
+  async function handleRequest(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
     const body = await readBody(request);
     requests.push({
       path: request.url ?? "",
@@ -27,28 +34,32 @@ async function main(): Promise<void> {
 
     response.setHeader("content-type", "application/json");
     if (request.url === "/v1/embeddings") {
-      response.end(JSON.stringify({
-        data: [
-          { index: 0, embedding: [1, 0, 0] },
-          { index: 1, embedding: [0, 1, 0] },
-        ],
-      }));
+      response.end(
+        JSON.stringify({
+          data: [
+            { index: 0, embedding: [1, 0, 0] },
+            { index: 1, embedding: [0, 1, 0] },
+          ],
+        }),
+      );
       return;
     }
 
     if (request.url === "/v1/rerank") {
-      response.end(JSON.stringify({
-        results: [
-          { index: 1, relevance_score: 0.91 },
-          { index: 0, relevance_score: 0.42 },
-        ],
-      }));
+      response.end(
+        JSON.stringify({
+          results: [
+            { index: 1, relevance_score: 0.91 },
+            { index: 0, relevance_score: 0.42 },
+          ],
+        }),
+      );
       return;
     }
 
     response.statusCode = 404;
     response.end(JSON.stringify({ error: "not found" }));
-  });
+  }
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 
@@ -57,17 +68,21 @@ async function main(): Promise<void> {
     assert.ok(address && typeof address === "object");
     const baseUrl = `http://127.0.0.1:${address.port}/v1`;
     const config = resolveVectorModelsConfig({
-      ModelProviderEndpoints: [{
-        Id: "vector-test",
-        BaseUrl: baseUrl,
-        ApiKey: "test-key",
-      }],
-      ModelProviders: [{
-        Id: "main",
-        ProviderId: "vector-test",
-        Endpoint: "Responses",
-        Model: "unused",
-      }],
+      ModelProviderEndpoints: [
+        {
+          Id: "vector-test",
+          BaseUrl: baseUrl,
+          ApiKey: "test-key",
+        },
+      ],
+      ModelProviders: [
+        {
+          Id: "main",
+          ProviderId: "vector-test",
+          Endpoint: "Responses",
+          Model: "unused",
+        },
+      ],
       VectorModels: {
         Embedding: {
           ProviderId: "vector-test",
@@ -89,7 +104,10 @@ async function main(): Promise<void> {
       input: ["不要硬编码", "从源头解决"],
     });
     assert.equal(embedding.model, "qwen3-embedding-0.6b");
-    assert.deepEqual(embedding.vectors, [[1, 0, 0], [0, 1, 0]]);
+    assert.deepEqual(embedding.vectors, [
+      [1, 0, 0],
+      [0, 1, 0],
+    ]);
 
     const rerank = await client.rerank({
       query: "代码质量偏好",
@@ -98,7 +116,10 @@ async function main(): Promise<void> {
         { id: "b", text: "用户要求不要硬编码" },
       ],
     });
-    assert.deepEqual(rerank.results.map((item) => item.id), ["b", "a"]);
+    assert.deepEqual(
+      rerank.results.map((item) => item.id),
+      ["b", "a"],
+    );
     assert.equal(requests[0]?.path, "/v1/embeddings");
     assert.equal(requests[1]?.path, "/v1/rerank");
     assert.equal(requests[0]?.authorization, "Bearer test-key");
@@ -110,7 +131,7 @@ async function main(): Promise<void> {
     console.log("Vector model client verification passed.");
   } finally {
     await new Promise<void>((resolve, reject) => {
-      server.close((error) => error ? reject(error) : resolve());
+      server.close((error) => (error ? reject(error) : resolve()));
     });
   }
 }
@@ -122,7 +143,7 @@ function readBody(request: http.IncomingMessage): Promise<unknown> {
     request.on("error", reject);
     request.on("end", () => {
       const text = Buffer.concat(chunks).toString("utf8");
-      resolve(text ? JSON.parse(text) as unknown : undefined);
+      resolve(text ? (JSON.parse(text) as unknown) : undefined);
     });
   });
 }

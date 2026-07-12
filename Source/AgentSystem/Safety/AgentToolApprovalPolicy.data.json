@@ -1,6 +1,7 @@
 {
   "Entrypoints": {
-    "ToolDecision": "senera/tool/decision"
+    "ToolDecision": "senera/tool/decision",
+    "ExecutionFallback": "senera/execution/fallback"
   },
   "Reasons": {
     "ManifestDeny": "工具 Manifest 明确禁止本次调用。",
@@ -12,7 +13,16 @@
     "RiskPermission": "工具声明了高影响权限，执行前需要确认。",
     "RiskSideEffect": "工具会产生进程、工作区或持久化副作用，执行前需要确认。",
     "ToolPermission": "工具权限包含高影响操作，执行前需要确认。",
-    "DefaultAllow": "工具未声明需要审批的高风险信号。"
+    "DefaultAllow": "工具未声明需要审批的高风险信号。",
+    "PolicyUnavailable": "OPA 策略产物不可用，工具调用需要人工确认。",
+    "EntrypointMismatch": "OPA 策略入口不匹配，工具调用已被拒绝。",
+    "FallbackStrictSandbox": "工具要求严格沙箱隔离，禁止切换到本地进程。",
+    "FallbackNotAllowed": "工具没有声明允许本地回退。",
+    "FallbackMissingTool": "工具或插件身份无法由注册表确认，禁止本地回退。",
+    "FallbackUntrusted": "未受信任插件禁止在宿主本地进程中运行。",
+    "FallbackExternalApproval": "外部插件请求从 OS 沙箱降级为本地进程，需要用户确认。",
+    "FallbackSystemAllow": "系统插件明确允许在沙箱不可用时使用本地执行边界。",
+    "FallbackDefaultDeny": "执行边界降级没有匹配允许规则，已拒绝本地执行。"
   },
   "HighImpact": {
     "RiskPermissions": ["shell", "write", "memory-write", "read-write-cache", "internal"],
@@ -25,5 +35,10 @@
       "memory-write"
     ],
     "ToolPermissionTerms": ["shell", "write", "memory"]
+  },
+  "Fallback": {
+    "DenyTrustLevels": ["Untrusted"],
+    "ApprovalTrustLevels": ["External", "Local"],
+    "AutoAllowTrustLevels": ["System"]
   }
 }

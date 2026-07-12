@@ -16,16 +16,9 @@ const ArtifactWrapperInternalRoutingFields = new Set([
   "workspaceRoot",
 ]);
 
-const ArtifactEvidenceInternalFields = new Set([
-  ...ArtifactWrapperInternalRoutingFields,
-  "key",
-  "plannerMemory",
-]);
+const ArtifactEvidenceInternalFields = new Set([...ArtifactWrapperInternalRoutingFields, "key", "plannerMemory"]);
 
-const ArtifactDeltaInternalFields = new Set([
-  ...ArtifactWrapperInternalRoutingFields,
-  "key",
-]);
+const ArtifactDeltaInternalFields = new Set([...ArtifactWrapperInternalRoutingFields, "key"]);
 
 const ArtifactInternalRoutingFieldsByRef: Partial<Record<ReadableArtifactRef, ReadonlySet<string>>> = {
   delta: ArtifactDeltaInternalFields,
@@ -55,11 +48,7 @@ export function truncateUtf8(value: string, maxBytes: number): string {
     : value;
 }
 
-function projectModelSafeJson(
-  ref: ReadableArtifactRef,
-  value: unknown,
-  workspaceRoot: string,
-): unknown {
+function projectModelSafeJson(ref: ReadableArtifactRef, value: unknown, workspaceRoot: string): unknown {
   if (Array.isArray(value)) {
     return value.map((entry) => projectModelSafeJson(ref, entry, workspaceRoot));
   }
@@ -101,4 +90,3 @@ function normalizeLocalAbsolutePath(value: string, workspaceRoot: string): strin
     return undefined;
   }
 }
-

@@ -1,38 +1,55 @@
 import { z } from "zod";
 import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "./AgentLanguageModel.js";
-import type {
-  EndpointRuntime,
-  TextGenerationEndpoint,
-  TextGenerationEndpointResult,
-} from "./ModelEndpointTypes.js";
+import type { EndpointRuntime, TextGenerationEndpoint, TextGenerationEndpointResult } from "./ModelEndpointTypes.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { resolveAgentModelCompatibility } from "./ModelCompatibility.js";
 import { buildOpenAiInput } from "./OpenAiMessageProjection.js";
 
-const TextContentPartSchema = z.object({
-  text: z.string().nullish(),
-}).passthrough();
+const TextContentPartSchema = z
+  .object({
+    text: z.string().nullish(),
+  })
+  .passthrough();
 
-const TextContentSchema = z.union([
-  z.string(),
-  z.array(TextContentPartSchema),
-]).nullish();
+const TextContentSchema = z.union([z.string(), z.array(TextContentPartSchema)]).nullish();
 
-const ChatCompletionBodySchema = z.object({
-  choices: z.array(z.object({
-    message: z.object({
-      content: TextContentSchema,
-    }).passthrough().optional(),
-  }).passthrough()).optional(),
-}).passthrough();
+const ChatCompletionBodySchema = z
+  .object({
+    choices: z
+      .array(
+        z
+          .object({
+            message: z
+              .object({
+                content: TextContentSchema,
+              })
+              .passthrough()
+              .optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
 
-const ChatCompletionStreamEventSchema = z.object({
-  choices: z.array(z.object({
-    delta: z.object({
-      content: TextContentSchema,
-    }).passthrough().optional(),
-  }).passthrough()).optional(),
-}).passthrough();
+const ChatCompletionStreamEventSchema = z
+  .object({
+    choices: z
+      .array(
+        z
+          .object({
+            delta: z
+              .object({
+                content: TextContentSchema,
+              })
+              .passthrough()
+              .optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
 
 export class OpenAiChatCompletionsEndpoint implements TextGenerationEndpoint {
   constructor(private readonly runtime: EndpointRuntime) {}
@@ -68,12 +85,19 @@ export class OpenAiChatCompletionsEndpoint implements TextGenerationEndpoint {
       payload.max_tokens = this.runtime.config.MaxOutputTokens;
     }
 
-    return this.runtime.http.postSseStream(["chat", "completions"], payload, this.authHeaders(), (event) => {
-      const parsed = ChatCompletionStreamEventSchema.parse(event);
-      return readTextContent(parsed.choices?.[0]?.delta?.content);
-    }, undefined, {
-      signal: request.signal,
-    });
+    return this.runtime.http.postSseStream(
+      ["chat", "completions"],
+      payload,
+      this.authHeaders(),
+      (event) => {
+        const parsed = ChatCompletionStreamEventSchema.parse(event);
+        return readTextContent(parsed.choices?.[0]?.delta?.content);
+      },
+      undefined,
+      {
+        signal: request.signal,
+      },
+    );
   }
 
   private authHeaders(): HeadersInit {
@@ -85,7 +109,5 @@ export class OpenAiChatCompletionsEndpoint implements TextGenerationEndpoint {
 }
 
 function readTextContent(value: string | Array<{ text?: string | null }> | null | undefined): string {
-  return typeof value === "string"
-    ? value
-    : value?.map((item) => item.text ?? "").join("") ?? "";
+  return typeof value === "string" ? value : (value?.map((item) => item.text ?? "").join("") ?? "");
 }

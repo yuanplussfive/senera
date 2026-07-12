@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowUp, Check, ChevronDown, Loader2, Paperclip, Square, X } from "lucide-react";
 import { toast } from "sonner";
-import type {
-  ModelProviderListItem,
-  UploadAttachmentData,
-} from "../../api/eventTypes";
+import type { ModelProviderListItem, UploadAttachmentData } from "../../api/eventTypes";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import { uploadFile, type UploadProgress } from "../../api/uploadClient";
 import { cn, generateId } from "../../lib/util";
@@ -25,10 +22,7 @@ import { PluginConfigControl } from "./PluginConfigPanel";
 import { PresetControl } from "./PresetPanel";
 import { SystemConfigControl } from "./SystemConfigPanel";
 import { ModelProviderIcon } from "./ModelProviderIcon";
-import {
-  readChatModelProviders,
-  readSelectedModelProvider,
-} from "./modelProvider";
+import { readChatModelProviders, readSelectedModelProvider } from "./modelProvider";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type {
   ChatModelConfig,
@@ -48,7 +42,7 @@ interface ChatComposerProps {
   pluginConfig: ChatPluginConfig;
   systemConfig: ChatSystemConfig;
   presetConfig: ChatPresetConfig;
-  runtime: Pick<ChatRuntimeState, "socketStatus" | "uploadUrl">;
+  runtime: Pick<ChatRuntimeState, "socketStatus" | "uploadUrl" | "uploadCsrfToken">;
   onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
   onCancel: () => void;
 }
@@ -85,10 +79,12 @@ export function ChatComposer({
   const textareaMaxHeight = prefersCompactControls ? TOUCH_TEXTAREA_MAX_HEIGHT : DESKTOP_TEXTAREA_MAX_HEIGHT;
 
   const hint = useMemo(() => {
-    if (running) return prefersCompactControls ? "可补充指令" : "输入会注入当前任务，Alt+Enter 排到任务之后";
-    if (runtime.socketStatus === "open") return "跟 senera 说点什么";
-    if (runtime.socketStatus === "connecting" || runtime.socketStatus === "idle") return "正在连接后端…";
-    return "后端未连接，请检查服务";
+    if (running)
+      return frontendMessage(prefersCompactControls ? "chat.composer.hintRunningCompact" : "chat.composer.hintRunning");
+    if (runtime.socketStatus === "open") return frontendMessage("chat.composer.hintOpen");
+    if (runtime.socketStatus === "connecting" || runtime.socketStatus === "idle")
+      return frontendMessage("chat.composer.hintIdle");
+    return frontendMessage("chat.composer.hintDisconnected");
   }, [prefersCompactControls, runtime.socketStatus, running]);
 
   useEffect(() => {
@@ -119,7 +115,8 @@ export function ChatComposer({
     const uploading = pendingAttachments.some((attachment) => attachment.status === "uploading");
     if (!text || disabled || uploading) return;
     const attachments = pendingAttachments.flatMap((entry) =>
-      entry.status === "uploaded" && entry.attachment ? [entry.attachment] : []);
+      entry.status === "uploaded" && entry.attachment ? [entry.attachment] : [],
+    );
     onSend(text, attachments.length > 0 ? attachments : undefined, queueMode);
     setValue("");
     setPendingAttachments([]);
@@ -159,29 +156,35 @@ export function ChatComposer({
         },
       ]);
       void uploadFile(runtime.uploadUrl, file, {
+        headers: runtime.uploadCsrfToken ? { "X-Senera-Csrf": runtime.uploadCsrfToken } : undefined,
         onProgress: (progress) => {
-          setPendingAttachments((current) => current.map((entry) =>
-            entry.id === id ? { ...entry, progress } : entry));
+          setPendingAttachments((current) =>
+            current.map((entry) => (entry.id === id ? { ...entry, progress } : entry)),
+          );
         },
       })
         .then((attachment) => {
-          setPendingAttachments((current) => current.map((entry) =>
-            entry.id === id
-              ? {
-                  ...entry,
-                  fileName: attachment.name,
-                  mime: attachment.mime,
-                  size: attachment.size,
-                  status: "uploaded",
-                  progress: { loaded: attachment.size, total: attachment.size, ratio: 1 },
-                  attachment,
-                }
-              : entry));
+          setPendingAttachments((current) =>
+            current.map((entry) =>
+              entry.id === id
+                ? {
+                    ...entry,
+                    fileName: attachment.name,
+                    mime: attachment.mime,
+                    size: attachment.size,
+                    status: "uploaded",
+                    progress: { loaded: attachment.size, total: attachment.size, ratio: 1 },
+                    attachment,
+                  }
+                : entry,
+            ),
+          );
         })
         .catch((error) => {
           const message = error instanceof Error ? error.message : String(error);
-          setPendingAttachments((current) => current.map((entry) =>
-            entry.id === id ? { ...entry, status: "error", error: message } : entry));
+          setPendingAttachments((current) =>
+            current.map((entry) => (entry.id === id ? { ...entry, status: "error", error: message } : entry)),
+          );
           toast.error(frontendMessage("upload.fileFailed"), { description: message });
         });
     }
@@ -250,7 +253,7 @@ export function ChatComposer({
       >
         {isDraggingFiles ? (
           <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-[14px] border border-dashed border-terra-300 bg-paper-50/80 text-[13px] font-medium text-terra-700 backdrop-blur-sm">
-            松开上传文件
+            {frontendMessage("chat.composer.dropFiles")}
           </div>
         ) : null}
         <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFileSelection} />
@@ -263,7 +266,7 @@ export function ChatComposer({
         <div className="flex items-end gap-2">
           <IconButton
             label="attach"
-            tooltip="附加文件"
+            tooltip={frontendMessage("chat.attachment.tooltip")}
             tooltipSide="top"
             size="lg"
             tone="primary"
@@ -287,7 +290,11 @@ export function ChatComposer({
           />
           {running ? (
             <div className="flex shrink-0 items-center gap-1.5">
-              <Tooltip content="注入当前任务" side="top" shortcut={prefersCompactControls ? undefined : "↵"}>
+              <Tooltip
+                content={frontendMessage("chat.composer.inject")}
+                side="top"
+                shortcut={prefersCompactControls ? undefined : "↵"}
+              >
                 <MotionButton
                   onClick={() => submit("steer")}
                   disabled={!canSend}
@@ -301,7 +308,11 @@ export function ChatComposer({
                   <ArrowUp className="h-4 w-4" />
                 </MotionButton>
               </Tooltip>
-              <Tooltip content="中断当前运行" side="top" shortcut={prefersCompactControls ? undefined : "Esc"}>
+              <Tooltip
+                content={frontendMessage("chat.composer.cancelRunning")}
+                side="top"
+                shortcut={prefersCompactControls ? undefined : "Esc"}
+              >
                 <MotionButton
                   onClick={onCancel}
                   className={cn(
@@ -315,7 +326,11 @@ export function ChatComposer({
               </Tooltip>
             </div>
           ) : (
-            <Tooltip content="发送" side="top" shortcut={prefersCompactControls ? undefined : "↵"}>
+            <Tooltip
+              content={frontendMessage("chat.composer.send")}
+              side="top"
+              shortcut={prefersCompactControls ? undefined : "↵"}
+            >
               <MotionButton
                 onClick={() => submit(running ? "steer" : undefined)}
                 disabled={!canSend}
@@ -336,21 +351,21 @@ export function ChatComposer({
             {prefersCompactControls ? null : running ? (
               <>
                 <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">↵</kbd>
-                <span className="ml-1.5">注入当前任务</span>
+                <span className="ml-1.5">{frontendMessage("chat.composer.inject")}</span>
                 <span className="mx-2 text-ink-300">·</span>
                 <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">Alt↵</kbd>
-                <span className="ml-1.5">排到任务之后</span>
+                <span className="ml-1.5">{frontendMessage("chat.composer.followUp")}</span>
                 <span className="mx-2 text-ink-300">·</span>
                 <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">Esc</kbd>
-                <span className="ml-1.5">中断</span>
+                <span className="ml-1.5">{frontendMessage("chat.composer.cancelRunning")}</span>
               </>
             ) : (
               <>
                 <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">⌘K</kbd>
-                <span className="ml-1.5">聚焦输入</span>
+                <span className="ml-1.5">{frontendMessage("chat.composer.focusInput")}</span>
                 <span className="mx-2 text-ink-300">·</span>
                 <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">⇧↵</kbd>
-                <span className="ml-1.5">换行</span>
+                <span className="ml-1.5">{frontendMessage("chat.composer.newLine")}</span>
               </>
             )}
           </span>
@@ -446,8 +461,8 @@ function AttachmentTray({
             {entry.status === "uploading" ? <UploadProgressBar progress={entry.progress} /> : null}
           </span>
           <IconButton
-            label="移除附件"
-            tooltip={entry.error ?? "移除"}
+            label={frontendMessage("chat.attachment.remove")}
+            tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
             tooltipSide="top"
             size="sm"
             onClick={() => onRemove(entry.id)}
@@ -477,16 +492,13 @@ function UploadProgressBar({ progress }: { progress?: UploadProgress }): JSX.Ele
 
 function formatUploadProgress(progress?: UploadProgress): string {
   const ratio = readProgressRatio(progress);
-  return ratio === undefined ? "上传中" : `${Math.round(ratio * 100)}%`;
+  return ratio === undefined ? frontendMessage("chat.composer.uploading") : `${Math.round(ratio * 100)}%`;
 }
 
 function readProgressRatio(progress?: UploadProgress): number | undefined {
-  const ratio = progress?.ratio ?? (
-    progress?.total && progress.total > 0 ? progress.loaded / progress.total : undefined
-  );
-  return typeof ratio === "number" && Number.isFinite(ratio)
-    ? Math.min(1, Math.max(0, ratio))
-    : undefined;
+  const ratio =
+    progress?.ratio ?? (progress?.total && progress.total > 0 ? progress.loaded / progress.total : undefined);
+  return typeof ratio === "number" && Number.isFinite(ratio) ? Math.min(1, Math.max(0, ratio)) : undefined;
 }
 
 function formatFileSize(bytes: number): string {
@@ -521,14 +533,8 @@ function ModelSelector({
   onSelect: (id: string) => void;
   prefersCompactControls: boolean;
 }): JSX.Element {
-  const chatModels = useMemo(
-    () => readChatModelProviders(models),
-    [models],
-  );
-  const selected = useMemo(
-    () => readSelectedModelProvider(chatModels, selectedId) ?? null,
-    [chatModels, selectedId],
-  );
+  const chatModels = useMemo(() => readChatModelProviders(models), [models]);
+  const selected = useMemo(() => readSelectedModelProvider(chatModels, selectedId) ?? null, [chatModels, selectedId]);
   const label = readModelSelectorLabel(selected);
 
   return (
@@ -542,19 +548,15 @@ function ModelSelector({
             "focus:outline-none focus:ring-2 focus:ring-terra-200/60",
             (disabled || chatModels.length === 0) && "pointer-events-none opacity-55",
           )}
-          aria-label="选择模型"
+          aria-label={frontendMessage("chat.composer.selectModel")}
         >
-          <ModelProviderIcon
-            className="shrink-0"
-            icon={selected?.icon}
-            size={14}
-          />
+          <ModelProviderIcon className="shrink-0" icon={selected?.icon} size={14} />
           <span className="truncate">{label}</span>
           <ChevronDown className="h-3 w-3 shrink-0 text-ink-350" />
         </MotionButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="top" className="w-[min(280px,calc(100vw-24px))]">
-        <DropdownMenuLabel>模型</DropdownMenuLabel>
+        <DropdownMenuLabel>{frontendMessage("chat.composer.model")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {chatModels.map((model) => {
           const active = model.id === selected?.id;
@@ -563,18 +565,15 @@ function ModelSelector({
               key={model.id}
               onSelect={() => onSelect(model.id)}
               className="h-10 py-2"
-              icon={active
-                ? <Check className="h-3.5 w-3.5 text-terra-500" />
-                : (
-                  <ModelProviderIcon
-                    icon={model.icon}
-                    size={14}
-                  />
-                )}
+              icon={
+                active ? (
+                  <Check className="h-3.5 w-3.5 text-terra-500" />
+                ) : (
+                  <ModelProviderIcon icon={model.icon} size={14} />
+                )
+              }
             >
-              <span className="min-w-0 truncate text-[13px] text-ink-850">
-                {readModelSelectorLabel(model)}
-              </span>
+              <span className="min-w-0 truncate text-[13px] text-ink-850">{readModelSelectorLabel(model)}</span>
             </DropdownMenuItem>
           );
         })}

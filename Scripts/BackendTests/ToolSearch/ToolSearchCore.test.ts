@@ -21,9 +21,7 @@ describe("ToolSearch core", () => {
       expect.arrayContaining(["read", "workspace", "文件"]),
     );
     expect(new Set(tokenizer.tokenize("Read READ")).size).toBe(tokenizer.tokenize("Read READ").length);
-    expect(tokenizer.keywords("读取 workspace 文件 并 总结")).toEqual(
-      expect.arrayContaining(["workspace"]),
-    );
+    expect(tokenizer.keywords("读取 workspace 文件 并 总结")).toEqual(expect.arrayContaining(["workspace"]));
   });
 
   test("matches capability facets and projects risk text", () => {
@@ -84,19 +82,24 @@ describe("ToolSearch core", () => {
   });
 
   test("builds planned discovery queries from explicit queries and capability needs", () => {
-    const queries = buildPlannedToolSearchQueries({
-      input: "update docs",
-      discover: true,
-      queries: ["workspace write", "workspace write"],
-      needs: [{
-        actions: ["write"],
-        targets: ["workspace"],
-        inputs: ["path"],
-        outputs: ["file"],
-        evidence: [],
-        effects: ["filesystem"],
-      }],
-    }, (text) => text.split(/\s+/));
+    const queries = buildPlannedToolSearchQueries(
+      {
+        input: "update docs",
+        discover: true,
+        queries: ["workspace write", "workspace write"],
+        needs: [
+          {
+            actions: ["write"],
+            targets: ["workspace"],
+            inputs: ["path"],
+            outputs: ["file"],
+            evidence: [],
+            effects: ["filesystem"],
+          },
+        ],
+      },
+      (text) => text.split(/\s+/),
+    );
 
     expect(queries).toEqual([
       {
@@ -112,26 +115,29 @@ describe("ToolSearch core", () => {
   });
 
   test("indexes registered tools and ranks by capability without score coupling", () => {
-    const index = new AgentToolSearchIndex(createRegistry([
-      createTool({
-        name: "WorkspaceReadFile",
-        title: "Read file",
-        summary: "Read project files from the workspace",
-        tags: ["workspace", "read"],
-        actions: ["read"],
-        targets: ["workspace", "file"],
-        priority: 10,
-      }),
-      createTool({
-        name: "WeatherTool",
-        title: "Weather",
-        summary: "Fetch weather forecast",
-        tags: ["weather"],
-        actions: ["forecast"],
-        targets: ["weather", "city"],
-        priority: 50,
-      }),
-    ]), createToolSearchConfig());
+    const index = new AgentToolSearchIndex(
+      createRegistry([
+        createTool({
+          name: "WorkspaceReadFile",
+          title: "Read file",
+          summary: "Read project files from the workspace",
+          tags: ["workspace", "read"],
+          actions: ["read"],
+          targets: ["workspace", "file"],
+          priority: 10,
+        }),
+        createTool({
+          name: "WeatherTool",
+          title: "Weather",
+          summary: "Fetch weather forecast",
+          tags: ["weather"],
+          actions: ["forecast"],
+          targets: ["weather", "city"],
+          priority: 50,
+        }),
+      ]),
+      createToolSearchConfig(),
+    );
 
     const results = index.search({
       query: "read workspace file",
@@ -206,15 +212,17 @@ function createTool(options: {
       Summary: options.summary,
       Tags: options.tags,
       UseCases: [options.summary],
-      Capabilities: [{
-        Id: `${options.name}.capability`,
-        Title: options.title,
-        Description: options.summary,
-        Facets: {
-          Actions: options.actions,
-          Targets: options.targets,
+      Capabilities: [
+        {
+          Id: `${options.name}.capability`,
+          Title: options.title,
+          Description: options.summary,
+          Facets: {
+            Actions: options.actions,
+            Targets: options.targets,
+          },
         },
-      }],
+      ],
     },
   };
 }

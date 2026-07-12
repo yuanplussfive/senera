@@ -7,8 +7,7 @@ export const AgentSessionStatuses = {
   Running: "running",
 } as const;
 
-export type AgentSessionStatus =
-  typeof AgentSessionStatuses[keyof typeof AgentSessionStatuses];
+export type AgentSessionStatus = (typeof AgentSessionStatuses)[keyof typeof AgentSessionStatuses];
 
 export interface AgentSessionActiveRequest {
   requestId: string;

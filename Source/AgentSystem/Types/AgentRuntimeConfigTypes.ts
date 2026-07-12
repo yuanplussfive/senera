@@ -111,3 +111,54 @@ export interface ResolvedAgentConfigStoreConfig {
   DatabasePath: string;
   MirrorJson: boolean;
 }
+
+export type AgentServerAccessMode = "auto" | "required" | "disabled";
+
+export interface AgentServerSessionConfig {
+  AbsoluteTtlHours?: number;
+  IdleTtlHours?: number;
+  MaxSessions?: number;
+}
+
+export interface AgentServerConnectionLimitsConfig {
+  MaxConnections?: number;
+  MaxConnectionsPerClient?: number;
+  UpgradeRequestsPerMinute?: number;
+  HttpRequestsPerMinute?: number;
+  MessagesPerMinute?: number;
+  LoginAttemptsPerMinute?: number;
+  HeartbeatIntervalSeconds?: number;
+  IdleSocketTimeoutSeconds?: number;
+}
+
+export interface AgentServerAccessControlConfig {
+  Mode?: AgentServerAccessMode;
+  AccountFile?: string;
+  AllowedOrigins?: string[];
+  TrustedProxyAddresses?: string[];
+  AllowInsecureLoopback?: boolean;
+  Session?: AgentServerSessionConfig;
+  Limits?: AgentServerConnectionLimitsConfig;
+}
+
+export interface AgentServerConfig {
+  Host?: string;
+  Port?: number;
+  HotReload?: boolean;
+  RequestMaxBytes?: number;
+  AccessControl?: AgentServerAccessControlConfig;
+}
+
+export interface ResolvedAgentServerAccessControlConfig {
+  Mode: AgentServerAccessMode;
+  AccountFile: string;
+  AllowedOrigins: string[];
+  TrustedProxyAddresses: string[];
+  AllowInsecureLoopback: boolean;
+  Session: Required<AgentServerSessionConfig>;
+  Limits: Required<AgentServerConnectionLimitsConfig>;
+}
+
+export interface ResolvedAgentServerConfig extends Required<Omit<AgentServerConfig, "AccessControl">> {
+  AccessControl: ResolvedAgentServerAccessControlConfig;
+}

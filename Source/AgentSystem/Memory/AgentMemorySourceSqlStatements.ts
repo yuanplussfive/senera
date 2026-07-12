@@ -10,9 +10,7 @@ export interface AgentMemorySourceSqlStatements {
   selectSourcesByArtifactUriStmt: Database.Statement<[string], SourceRow>;
 }
 
-export function prepareAgentMemorySourceSqlStatements(
-  db: Database.Database,
-): AgentMemorySourceSqlStatements {
+export function prepareAgentMemorySourceSqlStatements(db: Database.Database): AgentMemorySourceSqlStatements {
   return {
     deleteSourcesByEpisodeStmt: db.prepare<[string]>(`
       DELETE FROM memory_sources WHERE episode_id = ?

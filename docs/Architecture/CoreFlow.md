@@ -14,7 +14,7 @@
   -> ActionPlanner 生成结构化规划输入
   -> PromptContextBuilder 组装模型上下文
   -> Pi Harness 驱动模型回复与工具循环
-  -> Pi 原生 tools 或 PiProxy+BAML 编译工具调用
+  -> PiProxy+BAML 统一编译结构化动作
   -> ToolCallExecutor / 宿主能力 / 插件进程
   -> ArtifactRecorder 记录证据包
   -> Memory Learning 更新记忆
@@ -35,15 +35,29 @@
 
 `PromptContextBuilder` 是上下文投影层，负责把工具、技能、预设、记忆、运行状态投影成模型能吃的上下文。它不执行工具，也不修改运行状态。
 
-`Pi` 是工具循环层。支持 tools 的模型直接走 Pi 原生工具调用；不支持 tools 的模型走 Senera PiProxy，把 Pi 的 OpenAI-compatible tools 请求交给 BAML 编译成结构化 assistant message。
+`PiProxy` 是统一模型决策层。Pi 发出的 OpenAI-compatible 请求始终由 PiProxy 接收，再通过配置的模型端点调用 OpenAI、Claude、Google 或兼容服务，并由 BAML 编译成结构化 assistant message。运行时不根据供应商原生 tools 能力分流。
+
+`Pi` 是工具循环和会话层。它消费 PiProxy 返回的结构化 assistant message，负责工具生命周期、权限预检、执行结果回填、流式事件和多步循环。供应商协议适配不进入 Pi 的工具执行逻辑。
 
 `ToolRuntime` 是工具执行层，负责校验可见工具、保留 Pi toolCallId、运行宿主能力或插件进程，并把结果交给 artifact、日志和 Pi observation。
+
+`Safety` 是工具授权层。Guardrail 先处理语义风险，OPA WASM 再按插件注册状态、Manifest 审批声明、信任等级、权限和副作用做确定性决策。Rego 是唯一业务规则源；随产品发布的 WASM 通过源码、数据和二进制哈希校验。策略产物缺失或损坏时只允许明确拒绝或请求人工确认，不运行另一套自动放行规则。
 
 `ArtifactRecorder` 是可追溯证据层，负责写入工具输入、原始输出、摘要、证据、投影和工作区变更。模型和前端应该拿引用和摘要，不直接依赖临时进程输出。
 
 `Memory` 是长期状态层，负责原始来源、候选记忆、晋升记忆、主动写入和回忆。记忆应该通过 source refs 和 repository 追溯，不应该重新临时解析聊天记录。
 
 `AgentWebSocketServer` 是事件传输层，负责把后端领域事件序列化给前端。前端通过 projector 更新 UI 状态，不反向复制后端决策逻辑。
+
+## OPA 策略产物
+
+工具审批规则维护在 `Source/AgentSystem/Safety/AgentToolApprovalPolicy.rego`，规则文本和高影响权限集合维护在同目录的 `AgentToolApprovalPolicy.data.json`。修改任一文件后，使用 OPA 编译器重新生成产物：
+
+```bash
+npm run policy.compile
+```
+
+OPA 编译器版本、平台产物名与 SHA-256 统一维护在 `Build/OpaToolchain.json`。`npm run policy.compile` 和 `npm run policy.verify` 会按当前平台将固定版本下载到被忽略的 `.cache/opa/`，先完成 SHA-256 校验才执行；无需全局安装，也不在仓库中提交二进制。受控构建环境可通过 `SENERA_OPA_BINARY` 显式提供同版本编译器。编译会同时更新可移植的 `.wasm` 和 artifact manifest；CI 使用 `npm run policy.verify` 重新编译并逐字节检查提交产物。普通用户、Docker 和桌面端只加载已提交并校验过的产物，不在应用启动时下载或编译 OPA。
 
 ## 新能力的落地规则
 
@@ -63,14 +77,14 @@
 改核心链路时至少跑：
 
 ```bash
-npm run check
+npm run check.types
 npm run build
-npm run verifysuite -- workspace core
-npm run frontendverify
+npm run verify.suite -- workspace core
+npm run test.frontend
 ```
 
 大改前后跑完整本地套件：
 
 ```bash
-npm run verifyall
+npm run verify.all
 ```

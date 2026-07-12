@@ -13,10 +13,8 @@ import {
   projectEntryToMessage,
   rebuildRunFromHistory,
 } from "./historyRunProjection";
-import {
-  syncSessionCountsFromLoadedMessages,
-  upsertStep,
-} from "./sessionProjectorCore";
+import { syncSessionCountsFromLoadedMessages, upsertStep } from "./sessionProjectorCore";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ChatMessage, SessionRecord, StoreState } from "./types";
 
 export type SessionHistoryProjectionContext = {
@@ -25,9 +23,7 @@ export type SessionHistoryProjectionContext = {
   applyEvent: (state: StoreState, env: EventEnvelope) => void;
 };
 
-export function projectSessionHistoryEvent(
-  context: SessionHistoryProjectionContext,
-): boolean {
+export function projectSessionHistoryEvent(context: SessionHistoryProjectionContext): boolean {
   const handler = sessionHistoryEventHandlers[context.env.kind];
   if (!handler) return false;
   handler(context);
@@ -117,9 +113,7 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
     const traceOnlyRuns = stepRuns.filter((run) => !eventRunIds[run.requestId]);
     const hasTraceOnlyRuns = traceOnlyRuns.length > 0;
-    const nextRuns = hasTraceOnlyRuns
-      ? traceOnlyRuns.map((run) => rebuildRunFromHistory(run))
-      : session.runs;
+    const nextRuns = hasTraceOnlyRuns ? traceOnlyRuns.map((run) => rebuildRunFromHistory(run)) : session.runs;
     if (data.refresh) {
       mergeHistoryMessages(session, nextMessages);
       if (hasTraceOnlyRuns) {
@@ -134,10 +128,7 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     closeRecoveredRunningRuns(
       session,
       env.timestamp,
-      new Set([
-        ...stepRuns.map((run) => run.requestId),
-        ...Object.keys(eventRunIds),
-      ]),
+      new Set([...stepRuns.map((run) => run.requestId), ...Object.keys(eventRunIds)]),
     );
     clearHistoryLoadingState(state, sessionId);
     state.historyLoadedIds[sessionId] = true;
@@ -170,8 +161,8 @@ function closeRecoveredRunningRuns(
     upsertStep(run, {
       id: `${run.requestId}-history-interrupted`,
       kind: "error",
-      title: "历史运行已中断",
-      description: "该运行没有收到结束事件，已按历史状态收口。",
+      title: frontendMessage("workflow.projection.historyInterrupted"),
+      description: frontendMessage("workflow.projection.historyInterruptedDescription"),
       status: "failed",
       startedAt: timestamp,
       endedAt: timestamp,

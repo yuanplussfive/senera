@@ -1,41 +1,12 @@
-import {
-  BrainCircuit,
-  Settings2,
-  SlidersHorizontal,
-  Trash2,
-} from "lucide-react";
+import { BrainCircuit, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "../../lib/util";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  ScrollArea,
-} from "../../shared/ui";
-import {
-  ModelProviderIcon,
-  ModelProviderIconNames,
-} from "./ModelProviderIcon";
-import {
-  readBooleanWithTemplate,
-  readModelCapabilities,
-  readNumberWithTemplate,
-} from "./modelConfigData";
-import type {
-  ModelCapabilitiesDraft,
-  ModelProviderDraft,
-} from "./modelConfigTypes";
-import {
-  CapabilityToggle,
-  ModelCapabilityIconItems,
-} from "./ModelCapabilityControls";
-import {
-  MenuRow,
-  MenuSelect,
-  NumberRow,
-  SectionLabel,
-  SettingsTable,
-  ToggleRow,
-} from "./ModelConfigPrimitives";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { Button, Dialog, DialogContent, ScrollArea } from "../../shared/ui";
+import { ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
+import { readBooleanWithTemplate, readModelCapabilities, readNumberWithTemplate } from "./modelConfigData";
+import type { ModelCapabilitiesDraft, ModelProviderDraft } from "./modelConfigTypes";
+import { CapabilityToggle, ModelCapabilityIconItems } from "./ModelCapabilityControls";
+import { MenuRow, MenuSelect, NumberRow, SectionLabel, SettingsTable, ToggleRow } from "./ModelConfigPrimitives";
 
 export function ModelOptionsDialog({
   model,
@@ -81,19 +52,14 @@ export function ModelOptionsDialog({
   );
   const maxRequestSeconds = readNumberWithTemplate(model.MaxRequestSeconds, modelTemplate, "MaxRequestSeconds");
   const maxNetworkRetries = readNumberWithTemplate(model.MaxNetworkRetries, modelTemplate, "MaxNetworkRetries");
-  const contextWindowTokens = readNumberWithTemplate(
-    model.ContextWindowTokens,
-    modelTemplate,
-    "ContextWindowTokens",
-  );
+  const contextWindowTokens = readNumberWithTemplate(model.ContextWindowTokens, modelTemplate, "ContextWindowTokens");
   const maxModelOutputTokens = readNumberWithTemplate(
     model.MaxModelOutputTokens,
     modelTemplate,
     "MaxModelOutputTokens",
   );
-  const streamEnabled = typeof model.Stream === "boolean"
-    ? model.Stream
-    : readBooleanWithTemplate(modelTemplate, "Stream");
+  const streamEnabled =
+    typeof model.Stream === "boolean" ? model.Stream : readBooleanWithTemplate(modelTemplate, "Stream");
 
   const updateCapability = (key: keyof ModelCapabilitiesDraft, enabled: boolean): void => {
     onChange({
@@ -107,7 +73,7 @@ export function ModelOptionsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="模型选项"
+        title={frontendMessage("config.model.optionsTitle")}
         description={model.Model}
         motionPreset="focus"
         className="h-[min(720px,calc(100dvh_-_48px))] w-[min(760px,calc(100vw_-_32px))] max-w-none rounded-xl bg-paper-50"
@@ -116,7 +82,10 @@ export function ModelOptionsDialog({
         <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
           <div className="space-y-5 px-5 py-4">
             <section>
-              <SectionLabel icon={<SlidersHorizontal className="h-4 w-4" />} title="模型能力" />
+              <SectionLabel
+                icon={<SlidersHorizontal className="h-4 w-4" />}
+                title={frontendMessage("config.model.capabilitiesTitle")}
+              />
               <div className="grid gap-2 sm:grid-cols-2">
                 {ModelCapabilityIconItems.map((item) => (
                   <CapabilityToggle
@@ -133,10 +102,13 @@ export function ModelOptionsDialog({
             </section>
 
             <section>
-              <SectionLabel icon={<BrainCircuit className="h-4 w-4" />} title="模型参数" />
+              <SectionLabel
+                icon={<BrainCircuit className="h-4 w-4" />}
+                title={frontendMessage("config.model.parametersTitle")}
+              />
               <SettingsTable>
                 <NumberRow
-                  label="上下文窗口"
+                  label={frontendMessage("config.model.contextWindow")}
                   value={contextWindowTokens}
                   min={-1}
                   step={1}
@@ -145,7 +117,7 @@ export function ModelOptionsDialog({
                   onChange={(ContextWindowTokens) => onChange({ ContextWindowTokens })}
                 />
                 <NumberRow
-                  label="模型最大输出"
+                  label={frontendMessage("config.model.maxModelOutput")}
                   value={maxModelOutputTokens}
                   min={-1}
                   step={1}
@@ -153,27 +125,35 @@ export function ModelOptionsDialog({
                   placeholder="-1"
                   onChange={(MaxModelOutputTokens) => onChange({ MaxModelOutputTokens })}
                 />
-                <MenuRow icon={<Settings2 className="h-3.5 w-3.5" />} label="请求协议">
+                <MenuRow
+                  icon={<Settings2 className="h-3.5 w-3.5" />}
+                  label={frontendMessage("config.model.endpointProtocol")}
+                >
                   <MenuSelect
                     value={model.Endpoint}
-                    placeholder="选择协议"
+                    placeholder={frontendMessage("config.model.selectProtocol")}
                     options={endpointOptions}
                     disabled={disabled || endpointOptions.length === 0}
                     onChange={(Endpoint) => onChange({ Endpoint })}
                   />
                 </MenuRow>
-                <MenuRow icon={<BrainCircuit className="h-3.5 w-3.5" />} label="图标">
+                <MenuRow
+                  icon={<BrainCircuit className="h-3.5 w-3.5" />}
+                  label={frontendMessage("config.provider.icon")}
+                >
                   <MenuSelect
                     value={model.Icon ?? ""}
-                    placeholder="选择图标"
+                    placeholder={frontendMessage("config.provider.selectIcon")}
                     options={iconOptions}
                     disabled={disabled}
-                    renderValue={(value) => value ? (
-                      <span className="inline-flex min-w-0 items-center gap-2">
-                        <ModelProviderIcon icon={value} size={18} />
-                        <span className="truncate">{value}</span>
-                      </span>
-                    ) : null}
+                    renderValue={(value) =>
+                      value ? (
+                        <span className="inline-flex min-w-0 items-center gap-2">
+                          <ModelProviderIcon icon={value} size={18} />
+                          <span className="truncate">{value}</span>
+                        </span>
+                      ) : null
+                    }
                     renderOption={(option) => (
                       <span className="inline-flex min-w-0 items-center gap-2">
                         <ModelProviderIcon icon={option.value} size={16} />
@@ -187,10 +167,13 @@ export function ModelOptionsDialog({
             </section>
 
             <section>
-              <SectionLabel icon={<SlidersHorizontal className="h-4 w-4" />} title="运行参数" />
+              <SectionLabel
+                icon={<SlidersHorizontal className="h-4 w-4" />}
+                title={frontendMessage("config.model.runtimeParameters")}
+              />
               <SettingsTable>
                 <NumberRow
-                  label="温度"
+                  label={frontendMessage("config.model.temperature")}
                   value={temperature}
                   min={0}
                   max={2}
@@ -200,7 +183,7 @@ export function ModelOptionsDialog({
                   onChange={(Temperature) => onChange({ Temperature })}
                 />
                 <NumberRow
-                  label="最大输出"
+                  label={frontendMessage("config.model.maxOutput")}
                   value={maxOutputTokens}
                   min={-1}
                   step={1}
@@ -209,13 +192,13 @@ export function ModelOptionsDialog({
                   onChange={(MaxOutputTokens) => onChange({ MaxOutputTokens })}
                 />
                 <ToggleRow
-                  label="流式输出"
+                  label={frontendMessage("config.model.streaming")}
                   enabled={streamEnabled}
                   disabled={disabled}
                   onChange={(Stream) => onChange({ Stream })}
                 />
                 <NumberRow
-                  label="请求超时(s)"
+                  label={frontendMessage("config.model.requestTimeout")}
                   value={timeoutSeconds}
                   min={1}
                   step={1}
@@ -224,7 +207,7 @@ export function ModelOptionsDialog({
                   onChange={(TimeoutSeconds) => onChange({ TimeoutSeconds })}
                 />
                 <NumberRow
-                  label="首 token(s)"
+                  label={frontendMessage("config.model.firstTokenTimeout")}
                   value={firstTokenTimeoutSeconds}
                   min={-1}
                   step={1}
@@ -233,7 +216,7 @@ export function ModelOptionsDialog({
                   onChange={(FirstTokenTimeoutSeconds) => onChange({ FirstTokenTimeoutSeconds })}
                 />
                 <NumberRow
-                  label="最大请求(s)"
+                  label={frontendMessage("config.model.maxRequestTime")}
                   value={maxRequestSeconds}
                   min={-1}
                   step={1}
@@ -242,7 +225,7 @@ export function ModelOptionsDialog({
                   onChange={(MaxRequestSeconds) => onChange({ MaxRequestSeconds })}
                 />
                 <NumberRow
-                  label="网络重试"
+                  label={frontendMessage("config.model.networkRetries")}
                   value={maxNetworkRetries}
                   min={0}
                   step={1}
@@ -270,7 +253,7 @@ export function ModelOptionsDialog({
             }}
           >
             <Trash2 className="h-3.5 w-3.5" />
-            {isSaved ? "移除" : "未保存"}
+            {frontendMessage(isSaved ? "config.model.remove" : "config.model.unsaved")}
           </button>
           <div className="flex items-center gap-2">
             <button
@@ -285,14 +268,10 @@ export function ModelOptionsDialog({
               )}
               onClick={() => onSetDefault(model.Id)}
             >
-              {isDefault ? "DEFAULT" : "设为默认"}
+              {isDefault ? "DEFAULT" : frontendMessage("config.model.setDefault")}
             </button>
-            <Button
-              size="sm"
-              disabled={disabled}
-              onClick={onCommit}
-            >
-              {isSaved ? "完成" : "保存"}
+            <Button size="sm" disabled={disabled} onClick={onCommit}>
+              {frontendMessage(isSaved ? "config.model.done" : "config.model.save")}
             </Button>
           </div>
         </div>

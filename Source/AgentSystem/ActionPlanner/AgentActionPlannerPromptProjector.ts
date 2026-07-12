@@ -16,41 +16,39 @@ const PlannerPromptKeys = {
   Turn: "turn",
 } as const;
 
-const PlannerPromptEnvelopeSchema = z.object({
-  [PlannerPromptKeys.Context]: z.record(z.string(), z.unknown()),
-  [PlannerPromptKeys.Directive]: z.unknown(),
-}).passthrough();
+const PlannerPromptEnvelopeSchema = z
+  .object({
+    [PlannerPromptKeys.Context]: z.record(z.string(), z.unknown()),
+    [PlannerPromptKeys.Directive]: z.unknown(),
+  })
+  .passthrough();
 
-const PlannerTimelineTurnSchema = z.object({
-  index: z.number().optional(),
-  role: z.enum(["user", "assistant"]),
-  kind: z.string(),
-  step: z.number().nullable().optional(),
-  content: z.string(),
-  payloadJson: z.string().nullable().optional(),
-  evidenceUris: z.array(z.string()).optional(),
-  artifactUris: z.array(z.string()).optional(),
-}).passthrough();
+const PlannerTimelineTurnSchema = z
+  .object({
+    index: z.number().optional(),
+    role: z.enum(["user", "assistant"]),
+    kind: z.string(),
+    step: z.number().nullable().optional(),
+    content: z.string(),
+    payloadJson: z.string().nullable().optional(),
+    evidenceUris: z.array(z.string()).optional(),
+    artifactUris: z.array(z.string()).optional(),
+  })
+  .passthrough();
 
 type PlannerTimelineTurnRecord = z.infer<typeof PlannerTimelineTurnSchema>;
 
-export function projectActionPlannerBamlRequestBody(
-  body: Record<string, unknown>,
-): ProjectedActionPlannerPrompt {
+export function projectActionPlannerBamlRequestBody(body: Record<string, unknown>): ProjectedActionPlannerPrompt {
   return projectBamlRequestBody(body, projectPlannerConversationMessages);
 }
 
-export function projectPlainBamlRequestBody(
-  body: Record<string, unknown>,
-): ProjectedActionPlannerPrompt {
+export function projectPlainBamlRequestBody(body: Record<string, unknown>): ProjectedActionPlannerPrompt {
   return projectBamlRequestBody(body, (conversation) => [...conversation]);
 }
 
 function projectBamlRequestBody(
   body: Record<string, unknown>,
-  projectConversation: (
-    messages: readonly AgentLanguageModelMessage[],
-  ) => AgentLanguageModelMessage[],
+  projectConversation: (messages: readonly AgentLanguageModelMessage[]) => AgentLanguageModelMessage[],
 ): ProjectedActionPlannerPrompt {
   const messages = readBamlMessages(body);
   const systemPrompt = messages
@@ -97,9 +95,13 @@ function projectPlannerConversationMessages(
     ...timeline.map(projectTimelineTurnMessage),
     {
       role: "user",
-      content: JSON.stringify({
-        [PlannerPromptKeys.PlannerInput]: plannerInput,
-      }, null, 2),
+      content: JSON.stringify(
+        {
+          [PlannerPromptKeys.PlannerInput]: plannerInput,
+        },
+        null,
+        2,
+      ),
     },
   ];
 }
@@ -124,34 +126,31 @@ function readPlannerTimeline(value: unknown): PlannerTimelineTurnRecord[] {
   return parsed.data;
 }
 
-function projectTimelineTurnMessage(
-  turn: PlannerTimelineTurnRecord,
-): AgentLanguageModelMessage {
+function projectTimelineTurnMessage(turn: PlannerTimelineTurnRecord): AgentLanguageModelMessage {
   return {
     role: turn.role,
-    content: JSON.stringify({
-      [PlannerPromptKeys.Turn]: compactObject({
-        index: turn.index,
-        role: turn.role,
-        kind: turn.kind,
-        step: turn.step,
-        content: turn.payloadJson ? undefined : turn.content,
-        payload: decodePlannerTimelinePayload(turn.payloadJson ?? undefined),
-        evidenceUris: turn.evidenceUris,
-        artifactUris: turn.artifactUris,
-      }),
-    }, null, 2),
+    content: JSON.stringify(
+      {
+        [PlannerPromptKeys.Turn]: compactObject({
+          index: turn.index,
+          role: turn.role,
+          kind: turn.kind,
+          step: turn.step,
+          content: turn.payloadJson ? undefined : turn.content,
+          payload: decodePlannerTimelinePayload(turn.payloadJson ?? undefined),
+          evidenceUris: turn.evidenceUris,
+          artifactUris: turn.artifactUris,
+        }),
+      },
+      null,
+      2,
+    ),
   };
 }
 
-function omitRecordKeys(
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): Record<string, unknown> {
+function omitRecordKeys(record: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
   const excluded = new Set(keys);
-  return Object.fromEntries(
-    Object.entries(record).filter(([key]) => !excluded.has(key)),
-  );
+  return Object.fromEntries(Object.entries(record).filter(([key]) => !excluded.has(key)));
 }
 
 function readBamlMessages(body: Record<string, unknown>): Array<{

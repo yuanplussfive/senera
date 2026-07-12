@@ -15,9 +15,7 @@
       "Name": "DocumentTool",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
-      "Permissions": [
-        "filesystem:read:uploads"
-      ],
+      "Permissions": ["filesystem:read:uploads"],
       "Handler": {
         "Kind": "HostCapability",
         "Capability": "document"
@@ -26,7 +24,7 @@
         "Boundary": "Local",
         "Network": "Deny",
         "Workspace": "ReadOnly",
-        "LocalFallback": "Allow"
+        "LocalFallback": "Deny"
       },
       "Artifacts": {
         "Evidence": [
@@ -64,11 +62,7 @@
               "message": "$.message"
             },
             "Identity": {
-              "Parts": [
-                "uploadUri",
-                "mode",
-                "status"
-              ]
+              "Parts": ["uploadUri", "mode", "status"]
             },
             "Presentation": {
               "Locator": "{{ uploadUri }}",
@@ -127,9 +121,7 @@
                 "textLength",
                 "chunkCount"
               ],
-              "ArtifactRefs": [
-                "projection"
-              ]
+              "ArtifactRefs": ["projection"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.name }} mode={{ e.slots.mode }} mime={{ e.slots.effectiveMime }} fileType={{ e.slots.fileType }} text={{ e.slots.textLength }} chunks={{ e.slots.chunkCount }}\n{% endfor %}",
@@ -150,13 +142,7 @@
             "Title": "Document processing",
             "Description": "Resolve an uploadUri, probe file facts, and optionally extract content text and chunks through configured extractors.",
             "Facets": {
-              "Actions": [
-                "probe",
-                "extract",
-                "read",
-                "summarize",
-                "chunk"
-              ],
+              "Actions": ["probe", "extract", "read", "summarize", "chunk"],
               "Targets": [
                 "uploaded-document",
                 "office-document",
@@ -169,23 +155,10 @@
                 "presentation",
                 "upload-handle"
               ],
-              "Inputs": [
-                "upload-uri",
-                "mode"
-              ],
-              "Outputs": [
-                "document-probe",
-                "text-preview",
-                "markdown-preview",
-                "document-chunks",
-                "metadata"
-              ],
-              "Evidence": [
-                "uploaded-document"
-              ],
-              "Effects": [
-                "read-only"
-              ]
+              "Inputs": ["upload-uri", "mode"],
+              "Outputs": ["document-probe", "text-preview", "markdown-preview", "document-chunks", "metadata"],
+              "Evidence": ["uploaded-document"],
+              "Effects": ["read-only"]
             },
             "Aliases": [
               "读取文档",
@@ -203,27 +176,13 @@
             }
           }
         ],
-        "UseCases": [
-          "上传文件读取、总结、分析、要点提取。",
-          "uploadUri、MIME 类型、编码、容器结构确认。"
-        ],
-        "Examples": [
-          "PDF 文档总结",
-          "docx 上传文档读取",
-          "附件 MIME 类型探测",
-          "PPT 内容提取"
-        ],
+        "UseCases": ["上传文件读取、总结、分析、要点提取。", "uploadUri、MIME 类型、编码、容器结构确认。"],
+        "Examples": ["PDF 文档总结", "docx 上传文档读取", "附件 MIME 类型探测", "PPT 内容提取"],
         "Avoid": [
           "不要猜测 uploadUri。",
           "不要把 markdownPreview 当作完整全文；需要 textPreview 或 chunks 时读取 artifact 的 raw 引用。"
         ],
-        "Tags": [
-          "文档解析",
-          "附件读取",
-          "内容抽取",
-          "文件预览",
-          "格式识别"
-        ]
+        "Tags": ["文档解析", "附件读取", "内容抽取", "文件预览", "格式识别"]
       }
     }
   ],
@@ -231,9 +190,7 @@
     "TrustLevel": "Local",
     "Network": "Deny",
     "FileSystem": {
-      "Read": [
-        ".senera/uploads"
-      ],
+      "Read": [".senera/uploads"],
       "Write": []
     },
     "RequiresApproval": false

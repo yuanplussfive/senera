@@ -1,8 +1,5 @@
 import { z } from "zod";
-import {
-  BamlAbortError,
-  BamlTimeoutError,
-} from "@boundaryml/baml";
+import { BamlAbortError, BamlTimeoutError } from "@boundaryml/baml";
 import {
   BamlClientFinishReasonError,
   BamlClientHttpError,
@@ -10,10 +7,7 @@ import {
 } from "../BamlClient/baml_client/index.js";
 import { AgentActionPlannerValidationError } from "./AgentActionPlannerSchema.js";
 import { AgentBamlStructuredOutputError } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
-import {
-  zodIssuesToAgentStructuredIssues,
-  type AgentStructuredIssue,
-} from "../Diagnostics/AgentStructuredIssue.js";
+import { zodIssuesToAgentStructuredIssues, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
 
 export interface RawActionPlanningFailure {
   error: unknown;
@@ -73,13 +67,10 @@ export function stringifyIssueValue(error: unknown): string {
 }
 
 export function normalizePlanningFailure(error: unknown): RawActionPlanningFailure {
-  return error instanceof AgentActionPlannerValidationError
-    || error instanceof AgentBamlStructuredOutputError
+  return error instanceof AgentActionPlannerValidationError || error instanceof AgentBamlStructuredOutputError
     ? {
         error,
-        invalidOutput: error instanceof AgentBamlStructuredOutputError
-          ? error.rawOutput
-          : error.invalidDecision,
+        invalidOutput: error instanceof AgentBamlStructuredOutputError ? error.rawOutput : error.invalidDecision,
       }
     : {
         error,
@@ -87,10 +78,12 @@ export function normalizePlanningFailure(error: unknown): RawActionPlanningFailu
 }
 
 export function isRepairablePlanningFailure(error: unknown): boolean {
-  return error instanceof AgentActionPlannerValidationError
-    || error instanceof AgentBamlStructuredOutputError
-    || error instanceof z.ZodError
-    || error instanceof BamlValidationError;
+  return (
+    error instanceof AgentActionPlannerValidationError ||
+    error instanceof AgentBamlStructuredOutputError ||
+    error instanceof z.ZodError ||
+    error instanceof BamlValidationError
+  );
 }
 
 export function summarizePlannerFailure(error: unknown): string {
@@ -118,10 +111,7 @@ export function summarizePlannerFailure(error: unknown): string {
     return withPlannerDetails("action_planner_invalid_structured_output", error.issues);
   }
 
-  if (
-    error instanceof AgentActionPlannerValidationError
-    || error instanceof z.ZodError
-  ) {
+  if (error instanceof AgentActionPlannerValidationError || error instanceof z.ZodError) {
     return withPlannerDetails("action_planner_invalid_decision", issueMessages(error));
   }
 
@@ -130,21 +120,13 @@ export function summarizePlannerFailure(error: unknown): string {
 
 function withPlannerDetails(code: string, details: string | readonly string[]): string {
   const values = Array.isArray(details) ? details : [details];
-  const summary = values
-    .map(collapseWhitespace)
-    .filter(Boolean)
-    .slice(0, 6)
-    .join("; ");
-  return summary
-    ? `${code}: ${truncateOneLine(summary, 520)}`
-    : code;
+  const summary = values.map(collapseWhitespace).filter(Boolean).slice(0, 6).join("; ");
+  return summary ? `${code}: ${truncateOneLine(summary, 520)}` : code;
 }
 
 function truncateOneLine(value: string, maxLength: number): string {
   const normalized = collapseWhitespace(value);
-  return normalized.length > maxLength
-    ? `${normalized.slice(0, maxLength)}...`
-    : normalized;
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
 }
 
 function collapseWhitespace(value: string): string {

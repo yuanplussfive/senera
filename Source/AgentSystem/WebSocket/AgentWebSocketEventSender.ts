@@ -1,11 +1,11 @@
-import { WebSocket } from "ws";
+import { type WebSocket } from "ws";
 import {
   AgentEventSequencer,
   type AgentDomainEvent,
   type AgentEventEnvelope,
   toEventEnvelope,
 } from "../Events/AgentEvent.js";
-import { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import { type AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentServerEventLogger } from "../Diagnostics/AgentServerEventLogger.js";
 import { projectAgentRunEventForHistory } from "../Events/AgentRunEventHistoryPolicy.js";
 import type { AgentSessionManager } from "../Session/AgentSessionManager.js";

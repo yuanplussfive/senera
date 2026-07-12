@@ -1,47 +1,50 @@
 import { z } from "zod";
 import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "./AgentLanguageModel.js";
-import type {
-  EndpointRuntime,
-  TextGenerationEndpoint,
-  TextGenerationEndpointResult,
-} from "./ModelEndpointTypes.js";
+import type { EndpointRuntime, TextGenerationEndpoint, TextGenerationEndpointResult } from "./ModelEndpointTypes.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
 
-const ClaudeContentBlockSchema = z.object({
-  type: z.string().optional(),
-  text: z.string().optional(),
-}).passthrough();
-
-const ClaudeMessageBodySchema = z.object({
-  content: z.array(ClaudeContentBlockSchema).optional(),
-}).passthrough();
-
-const ClaudeStreamEventSchema = z.object({
-  type: z.string().optional(),
-  delta: z.object({
+const ClaudeContentBlockSchema = z
+  .object({
+    type: z.string().optional(),
     text: z.string().optional(),
-  }).passthrough().optional(),
-}).passthrough();
+  })
+  .passthrough();
+
+const ClaudeMessageBodySchema = z
+  .object({
+    content: z.array(ClaudeContentBlockSchema).optional(),
+  })
+  .passthrough();
+
+const ClaudeStreamEventSchema = z
+  .object({
+    type: z.string().optional(),
+    delta: z
+      .object({
+        text: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
 
 export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
   constructor(private readonly runtime: EndpointRuntime) {}
 
   async complete(request: AgentLanguageModelRequest): Promise<TextGenerationEndpointResult> {
     const body = ClaudeMessageBodySchema.parse(
-      await this.runtime.http.postJson(
-        ["messages"],
-        this.buildPayload(request, false),
-        this.authHeaders(),
-        { signal: request.signal },
-      ),
+      await this.runtime.http.postJson(["messages"], this.buildPayload(request, false), this.authHeaders(), {
+        signal: request.signal,
+      }),
     );
 
     return {
-      text: body.content
-        ?.filter((content) => content.type === "text")
-        .map((content) => content.text ?? "")
-        .join("") ?? "",
+      text:
+        body.content
+          ?.filter((content) => content.type === "text")
+          .map((content) => content.text ?? "")
+          .join("") ?? "",
     };
   }
 
@@ -52,7 +55,7 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
       this.authHeaders(),
       (event) => {
         const parsed = ClaudeStreamEventSchema.parse(event);
-        return parsed.type === "content_block_delta" ? parsed.delta?.text ?? "" : "";
+        return parsed.type === "content_block_delta" ? (parsed.delta?.text ?? "") : "";
       },
       undefined,
       { signal: request.signal },
@@ -73,9 +76,9 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
       messages: messages
         .filter((message) => message.role === "user" || message.role === "assistant")
         .map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
+          role: message.role,
+          content: message.content,
+        })),
       temperature: this.runtime.config.Temperature,
       stream,
     };

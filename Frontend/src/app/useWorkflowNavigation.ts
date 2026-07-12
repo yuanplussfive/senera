@@ -48,34 +48,37 @@ export function useWorkflowNavigation({
 }: UseWorkflowNavigationOptions): WorkflowNavigationHandle {
   const setViewedRun = useStore((state) => state.setViewedRun);
 
-  const viewMessageWorkflow = useCallback((message: ChatMessage): void => {
-    const state = useStore.getState();
-    const result = findMessageWorkflowRun({
-      activeSessionId,
-      message,
-      sessions: state.sessions,
-    });
-
-    if (result.kind === "missing_message_request") {
-      toast.error(frontendMessage("workflow.messageRunMissing"));
-      return;
-    }
-    if (result.kind === "run_not_found") {
-      toast.info("该轮工作流仅在当前 session 期间可见", {
-        description: "刷新后历史消息的思考过程不再保留——只有原始对话条目可恢复。",
+  const viewMessageWorkflow = useCallback(
+    (message: ChatMessage): void => {
+      const state = useStore.getState();
+      const result = findMessageWorkflowRun({
+        activeSessionId,
+        message,
+        sessions: state.sessions,
       });
-      return;
-    }
 
-    setViewedRun(result.sessionId, result.requestId);
-    if (!hasPersistentWorkflowPanel) {
-      setWorkflowDrawerOpen(true);
-      return;
-    }
-    if (state.rightPanelCollapsed) {
-      state.toggleRightPanel();
-    }
-  }, [activeSessionId, hasPersistentWorkflowPanel, setViewedRun, setWorkflowDrawerOpen]);
+      if (result.kind === "missing_message_request") {
+        toast.error(frontendMessage("workflow.messageRunMissing"));
+        return;
+      }
+      if (result.kind === "run_not_found") {
+        toast.info(frontendMessage("workflow.currentSessionOnlyTitle"), {
+          description: frontendMessage("workflow.currentSessionOnlyDescription"),
+        });
+        return;
+      }
+
+      setViewedRun(result.sessionId, result.requestId);
+      if (!hasPersistentWorkflowPanel) {
+        setWorkflowDrawerOpen(true);
+        return;
+      }
+      if (state.rightPanelCollapsed) {
+        state.toggleRightPanel();
+      }
+    },
+    [activeSessionId, hasPersistentWorkflowPanel, setViewedRun, setWorkflowDrawerOpen],
+  );
 
   return { viewMessageWorkflow };
 }

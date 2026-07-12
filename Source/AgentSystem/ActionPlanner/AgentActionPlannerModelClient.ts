@@ -55,25 +55,22 @@ export class AgentActionPlannerModelClient {
     this.learning = new AgentActionPlannerLearningModelCalls(caller);
   }
 
-  understandUserTurn(
-    input: ActionPlanInput,
-    options?: { signal?: AbortSignal },
-  ): Promise<BamlTurnUnderstanding> {
+  understandUserTurn(input: ActionPlanInput, options?: { signal?: AbortSignal }): Promise<BamlTurnUnderstanding> {
     return this.core.understandUserTurn(input, options);
   }
 
-  routeInteraction(
-    input: ActionPlanInput,
-    options?: { signal?: AbortSignal },
-  ): Promise<BamlInteractionRoute> {
+  routeInteraction(input: ActionPlanInput, options?: { signal?: AbortSignal }): Promise<BamlInteractionRoute> {
     return this.core.routeInteraction(input, options);
   }
 
-  repairTurnUnderstanding(options: {
-    input: ActionPlanInput;
-    invalidUnderstanding: string;
-    issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlTurnUnderstanding> {
+  repairTurnUnderstanding(
+    options: {
+      input: ActionPlanInput;
+      invalidUnderstanding: string;
+      issues: string[];
+    },
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<BamlTurnUnderstanding> {
     return this.core.repairTurnUnderstanding(options, requestOptions);
   }
 
@@ -84,11 +81,14 @@ export class AgentActionPlannerModelClient {
     return this.core.selectPiAction(input, options);
   }
 
-  repairPiAction(options: {
-    input: AgentPiControllerActionInput;
-    invalidAction: string;
-    issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlPiControllerAction> {
+  repairPiAction(
+    options: {
+      input: AgentPiControllerActionInput;
+      invalidAction: string;
+      issues: string[];
+    },
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<BamlPiControllerAction> {
     return this.core.repairPiAction(options, requestOptions);
   }
 
@@ -113,11 +113,14 @@ export class AgentActionPlannerModelClient {
     return this.core.auditToolRisk(input, options);
   }
 
-  repairToolRiskAudit(options: {
-    input: AgentBamlToolRiskAuditPromptInput;
-    invalidAudit: string;
-    issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlToolRiskAudit> {
+  repairToolRiskAudit(
+    options: {
+      input: AgentBamlToolRiskAuditPromptInput;
+      invalidAudit: string;
+      issues: string[];
+    },
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<BamlToolRiskAudit> {
     return this.core.repairToolRiskAudit(options, requestOptions);
   }
 
@@ -128,11 +131,14 @@ export class AgentActionPlannerModelClient {
     return this.learning.learnToolUse(input, options);
   }
 
-  repairToolLearning(options: {
-    input: AgentToolLearningPromptInput;
-    invalidLearning: string;
-    issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlToolLearningResult> {
+  repairToolLearning(
+    options: {
+      input: AgentToolLearningPromptInput;
+      invalidLearning: string;
+      issues: string[];
+    },
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<BamlToolLearningResult> {
     return this.learning.repairToolLearning(options, requestOptions);
   }
 
@@ -143,11 +149,14 @@ export class AgentActionPlannerModelClient {
     return this.learning.learnMemory(input, options);
   }
 
-  repairMemoryLearning(options: {
-    input: AgentMemoryLearningPromptInput;
-    invalidLearning: string;
-    issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlMemoryLearningResult> {
+  repairMemoryLearning(
+    options: {
+      input: AgentMemoryLearningPromptInput;
+      invalidLearning: string;
+      issues: string[];
+    },
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<BamlMemoryLearningResult> {
     return this.learning.repairMemoryLearning(options, requestOptions);
   }
 
@@ -158,11 +167,14 @@ export class AgentActionPlannerModelClient {
     return this.learning.consolidateMemoryCandidates(input, options);
   }
 
-  repairMemoryConsolidation(options: {
-    input: AgentMemoryConsolidationPromptInput;
-    invalidConsolidation: string;
-    issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlMemoryConsolidationResult> {
+  repairMemoryConsolidation(
+    options: {
+      input: AgentMemoryConsolidationPromptInput;
+      invalidConsolidation: string;
+      issues: string[];
+    },
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<BamlMemoryConsolidationResult> {
     return this.learning.repairMemoryConsolidation(options, requestOptions);
   }
 
@@ -173,29 +185,28 @@ export class AgentActionPlannerModelClient {
     return this.learning.resolveMemoryWrite(input, options);
   }
 
-  repairMemoryWriteResolution(options: {
-    input: AgentMemoryWriteResolutionPromptInput;
-    invalidResolution: string;
-    issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlMemoryWriteResolutionResult> {
+  repairMemoryWriteResolution(
+    options: {
+      input: AgentMemoryWriteResolutionPromptInput;
+      invalidResolution: string;
+      issues: string[];
+    },
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<BamlMemoryWriteResolutionResult> {
     return this.learning.repairMemoryWriteResolution(options, requestOptions);
   }
-
 }
 
 /** The narrow planner capability required by turn understanding and routing. */
 export interface AgentActionPlannerCoreClient {
-  understandUserTurn(
-    input: ActionPlanInput,
-    options?: { signal?: AbortSignal },
+  understandUserTurn(input: ActionPlanInput, options?: { signal?: AbortSignal }): Promise<BamlTurnUnderstanding>;
+  routeInteraction(input: ActionPlanInput, options?: { signal?: AbortSignal }): Promise<BamlInteractionRoute>;
+  repairTurnUnderstanding(
+    options: {
+      input: ActionPlanInput;
+      invalidUnderstanding: string;
+      issues: string[];
+    },
+    requestOptions?: { signal?: AbortSignal },
   ): Promise<BamlTurnUnderstanding>;
-  routeInteraction(
-    input: ActionPlanInput,
-    options?: { signal?: AbortSignal },
-  ): Promise<BamlInteractionRoute>;
-  repairTurnUnderstanding(options: {
-    input: ActionPlanInput;
-    invalidUnderstanding: string;
-    issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<BamlTurnUnderstanding>;
 }

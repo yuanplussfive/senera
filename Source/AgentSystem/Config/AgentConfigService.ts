@@ -6,10 +6,7 @@ import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentConfigFormSnapshot } from "../Types/ConfigFormTypes.js";
 import { projectAgentConfigForm } from "./AgentConfigFormProjector.js";
-import {
-  AgentConfigSqliteRepository,
-  type AgentConfigRevisionRecord,
-} from "./AgentConfigSqliteRepository.js";
+import { AgentConfigSqliteRepository, type AgentConfigRevisionRecord } from "./AgentConfigSqliteRepository.js";
 import { formatConfigIssues } from "./AgentConfigDiagnostics.js";
 import {
   resolveConfigPath,
@@ -193,11 +190,13 @@ export class AgentConfigService {
         value: jsonConfig,
         source: "json",
         databasePath: this.resolveDatabasePath(jsonConfig),
-        diagnostics: [{
-          severity: "error",
-          message: agentErrorMessage("config.databaseUnavailableJsonMirror"),
-          details: error instanceof Error ? error.message : String(error),
-        }],
+        diagnostics: [
+          {
+            severity: "error",
+            message: agentErrorMessage("config.databaseUnavailableJsonMirror"),
+            details: error instanceof Error ? error.message : String(error),
+          },
+        ],
         form: projectAgentConfigForm(jsonConfig),
       };
     }
@@ -293,9 +292,11 @@ export class AgentConfigService {
     }
 
     if (seedConfig === latest.config) {
-      throw new Error(agentErrorMessage("config.databaseInvalid", {
-        issues: formatConfigIssues(result.error.issues),
-      }));
+      throw new Error(
+        agentErrorMessage("config.databaseInvalid", {
+          issues: formatConfigIssues(result.error.issues),
+        }),
+      );
     }
 
     return {
@@ -334,19 +335,14 @@ export class AgentConfigService {
   }
 
   private resolveDatabasePath(config: AgentSystemConfig): string {
-    const store = resolveConfigStoreConfig(config);
     return resolveConfigStoreDatabasePath(this.options.workspaceRoot, config);
   }
 
-  private resolveSqliteSourceDatabasePath(
-    source: Extract<AgentConfigSourceOptions, { kind: "sqlite" }>,
-  ): string {
+  private resolveSqliteSourceDatabasePath(source: Extract<AgentConfigSourceOptions, { kind: "sqlite" }>): string {
     return resolveConfigPath(this.options.workspaceRoot, source.databasePath);
   }
 
-  private readSourceLabel(
-    source: Extract<AgentConfigSourceOptions, { kind: "sqlite" }>,
-  ): string {
+  private readSourceLabel(source: Extract<AgentConfigSourceOptions, { kind: "sqlite" }>): string {
     return source.label ?? this.resolveSqliteSourceDatabasePath(source);
   }
 }
@@ -364,8 +360,10 @@ function diagnosticsForRepair(repair: AgentConfigRepairResult): AgentConfigDiagn
     return [];
   }
 
-  return [{
-    severity: "warning",
-    message: agentErrorMessage("config.databaseLegacyReimported"),
-  }];
+  return [
+    {
+      severity: "warning",
+      message: agentErrorMessage("config.databaseLegacyReimported"),
+    },
+  ];
 }

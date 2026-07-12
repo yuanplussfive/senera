@@ -160,11 +160,7 @@ try {
 
 console.log("Sandbox prepare runtime verification passed.");
 
-async function prepareOptionsFixture(
-  root: string,
-  name: string,
-  skipImagePull: boolean,
-): Promise<PrepareOptions> {
+async function prepareOptionsFixture(root: string, name: string, skipImagePull: boolean): Promise<PrepareOptions> {
   const baseDir = path.join(root, name, "runtime");
   const bundleDir = path.join(root, name, "bundles");
   await mkdir(bundleDir, { recursive: true });

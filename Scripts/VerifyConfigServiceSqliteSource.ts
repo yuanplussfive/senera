@@ -20,17 +20,21 @@ try {
       DatabasePath: ".senera/Config.sqlite",
       MirrorJson: true,
     },
-    ModelProviderEndpoints: [{
-      Id: "default",
-      BaseUrl: "https://example.invalid/v1",
-      ApiKey: "test",
-    }],
-    ModelProviders: [{
-      Id: "default",
-      ProviderId: "default",
-      Endpoint: "Responses",
-      Model: "initial-model",
-    }],
+    ModelProviderEndpoints: [
+      {
+        Id: "default",
+        BaseUrl: "https://example.invalid/v1",
+        ApiKey: "test",
+      },
+    ],
+    ModelProviders: [
+      {
+        Id: "default",
+        ProviderId: "default",
+        Endpoint: "Responses",
+        Model: "initial-model",
+      },
+    ],
   };
 
   fs.writeFileSync(configPath, `${JSON.stringify(initialConfig, null, 2)}\n`, "utf8");
@@ -59,15 +63,18 @@ try {
         ApiKey: "secondary-key",
       },
     ],
-    ModelProviders: [{
-      ...first.value.ModelProviders[0],
-      Model: "updated-model",
-    }, {
-      Id: "secondary/secondary-model",
-      ProviderId: "secondary",
-      Endpoint: "ChatCompletions",
-      Model: "secondary-model",
-    }],
+    ModelProviders: [
+      {
+        ...first.value.ModelProviders[0],
+        Model: "updated-model",
+      },
+      {
+        Id: "secondary/secondary-model",
+        ProviderId: "secondary",
+        Endpoint: "ChatCompletions",
+        Model: "secondary-model",
+      },
+    ],
   };
 
   const second = service.update({
@@ -98,7 +105,7 @@ try {
             ...provider,
             Model: "moved-model",
           }
-        : provider
+        : provider,
     ),
   };
   const moved = service.update({
@@ -134,17 +141,21 @@ try {
 
   const desktopDatabasePath = path.join(workspaceRoot, ".senera", "DesktopConfig.sqlite");
   const desktopSeedConfig: AgentSystemConfig = {
-    ModelProviderEndpoints: [{
-      Id: "desktop",
-      BaseUrl: "https://desktop.example.invalid/v1",
-      ApiKey: "desktop-key",
-    }],
-    ModelProviders: [{
-      Id: "desktop/seed-model",
-      ProviderId: "desktop",
-      Endpoint: "ChatCompletions",
-      Model: "seed-model",
-    }],
+    ModelProviderEndpoints: [
+      {
+        Id: "desktop",
+        BaseUrl: "https://desktop.example.invalid/v1",
+        ApiKey: "desktop-key",
+      },
+    ],
+    ModelProviders: [
+      {
+        Id: "desktop/seed-model",
+        ProviderId: "desktop",
+        Endpoint: "ChatCompletions",
+        Model: "seed-model",
+      },
+    ],
   };
 
   service = new AgentConfigService({
@@ -163,11 +174,13 @@ try {
     config: {
       ...service.snapshot().value,
       DefaultModelProviderId: "desktop/updated-model",
-      ModelProviders: [{
-        ...service.snapshot().value.ModelProviders[0],
-        Id: "desktop/updated-model",
-        Model: "updated-desktop-model",
-      }],
+      ModelProviders: [
+        {
+          ...service.snapshot().value.ModelProviders[0],
+          Id: "desktop/updated-model",
+          Model: "updated-desktop-model",
+        },
+      ],
     },
     source: "ui_update",
     mirrorJson: true,
@@ -184,10 +197,12 @@ try {
       databasePath: desktopDatabasePath,
       seedConfig: {
         ...desktopSeedConfig,
-        ModelProviders: [{
-          ...desktopSeedConfig.ModelProviders[0],
-          Model: "ignored-seed-on-reload",
-        }],
+        ModelProviders: [
+          {
+            ...desktopSeedConfig.ModelProviders[0],
+            Model: "ignored-seed-on-reload",
+          },
+        ],
       },
     },
   });
@@ -295,9 +310,7 @@ function removeTempWorkspace(targetPath: string): void {
 }
 
 function isBusyFileError(error: unknown): boolean {
-  return error instanceof Error
-    && "code" in error
-    && (error.code === "EBUSY" || error.code === "EPERM");
+  return error instanceof Error && "code" in error && (error.code === "EBUSY" || error.code === "EPERM");
 }
 
 function sleep(milliseconds: number): void {

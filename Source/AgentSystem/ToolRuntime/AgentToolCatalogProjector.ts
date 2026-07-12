@@ -42,9 +42,7 @@ export class AgentToolCatalogProjector {
   constructor(private readonly registry: AgentPluginRegistry) {}
 
   list(): AgentToolCatalogItem[] {
-    return this.registry
-      .listTools()
-      .map((tool) => this.project(tool));
+    return this.registry.listTools().map((tool) => this.project(tool));
   }
 
   listVisible(visible: "all" | readonly string[]): AgentToolCatalogItem[] {
@@ -88,9 +86,7 @@ export class AgentToolCatalogProjector {
   }
 }
 
-function projectEvidenceCapability(
-  capability: ToolEvidenceCapabilityManifest,
-): AgentToolCatalogEvidenceCapability {
+function projectEvidenceCapability(capability: ToolEvidenceCapabilityManifest): AgentToolCatalogEvidenceCapability {
   return {
     produces: capability.Produces,
     quality: capability.Quality,
@@ -105,20 +101,14 @@ function projectArtifactEvidenceCapabilities(tool: RegisteredTool): AgentToolCat
     const capabilityIds = (tool.search?.Capabilities ?? [])
       .filter((capability) => {
         const facets = capability.Facets ?? {};
-        return [
-          ...(facets.Evidence ?? []),
-          ...(facets.Outputs ?? []),
-        ].includes(evidence.Kind);
+        return [...(facets.Evidence ?? []), ...(facets.Outputs ?? [])].includes(evidence.Kind);
       })
       .map((capability) => capability.Id);
 
     return {
       produces: evidence.Kind,
       quality: "observed",
-      satisfies: [
-        evidence.Kind,
-        ...capabilityIds,
-      ],
+      satisfies: [evidence.Kind, ...capabilityIds],
       kinds: [evidence.Kind],
       capabilityIds,
     };

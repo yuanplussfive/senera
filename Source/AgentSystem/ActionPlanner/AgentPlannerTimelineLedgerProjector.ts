@@ -1,17 +1,11 @@
 import type { PlannerTimelineTurn } from "../BamlClient/baml_client/types.js";
-import type {
-  AgentActionPlannerLedger,
-  PlannerEvidenceRecord,
-} from "./AgentActionPlannerLedger.js";
+import type { AgentActionPlannerLedger, PlannerEvidenceRecord } from "./AgentActionPlannerLedger.js";
 import {
   projectLedgerEvidenceForTimeline,
   renderToolObservationContent,
 } from "../ToolRuntime/AgentToolObservationRenderer.js";
 import { compactObject } from "./AgentActionPlannerProjectionUtils.js";
-import {
-  AgentPlannerTimelinePayloadKeys,
-  encodePlannerTimelinePayload,
-} from "./AgentPlannerTimelinePayload.js";
+import { AgentPlannerTimelinePayloadKeys, encodePlannerTimelinePayload } from "./AgentPlannerTimelinePayload.js";
 
 export function appendMissingLedgerObservations(
   turns: PlannerTimelineTurn[],
@@ -45,9 +39,7 @@ export function appendMissingLedgerObservations(
       role: "user",
       kind: "tool_observation",
       step: call.step,
-      content: renderToolObservationContent([
-        observation,
-      ]),
+      content: renderToolObservationContent([observation]),
       payloadJson: encodePlannerTimelinePayload({
         [AgentPlannerTimelinePayloadKeys.Observations]: [observation],
       }),

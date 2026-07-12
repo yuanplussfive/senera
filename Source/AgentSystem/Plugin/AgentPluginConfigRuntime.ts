@@ -3,12 +3,8 @@ import type {
   LoadedPluginConfigDiagnostic,
   LoadedPluginRuntimeConfig,
 } from "../Types/PluginConfigTypes.js";
-import type {
-  LoadedPlugin,
-} from "../Types/PluginRuntimeTypes.js";
-import {
-  FrameworkRuntimeConfigSchema,
-} from "./AgentPluginConfigSchema.js";
+import type { LoadedPlugin } from "../Types/PluginRuntimeTypes.js";
+import { FrameworkRuntimeConfigSchema } from "./AgentPluginConfigSchema.js";
 
 export function projectPluginRuntimeConfig(value: unknown): LoadedPluginRuntimeConfig {
   const framework = FrameworkRuntimeConfigSchema.parse(value ?? {});
@@ -32,9 +28,7 @@ export function disabledPluginRuntimeConfig(): LoadedPluginRuntimeConfig {
   };
 }
 
-export function projectPluginConfigSnapshot(
-  plugin: LoadedPlugin,
-): AgentPluginConfigSnapshotItem {
+export function projectPluginConfigSnapshot(plugin: LoadedPlugin): AgentPluginConfigSnapshotItem {
   const manifest = plugin.manifest;
   const tools = (manifest.Tools ?? []).map((tool) => ({
     name: tool.Name,
@@ -72,15 +66,12 @@ export function isLoadedPluginAvailable(plugin: LoadedPlugin): boolean {
     return !hasErrorDiagnostics(plugin.config.diagnostics);
   }
 
-  return plugin.config.runtime.enabled
-    && !plugin.config.needsUserConfig
-    && !hasErrorDiagnostics(plugin.config.diagnostics);
+  return (
+    plugin.config.runtime.enabled && !plugin.config.needsUserConfig && !hasErrorDiagnostics(plugin.config.diagnostics)
+  );
 }
 
-export function isLoadedPluginToolEnabled(
-  plugin: LoadedPlugin,
-  toolName: string,
-): boolean {
+export function isLoadedPluginToolEnabled(plugin: LoadedPlugin, toolName: string): boolean {
   if (plugin.rootKind === "System") {
     return true;
   }

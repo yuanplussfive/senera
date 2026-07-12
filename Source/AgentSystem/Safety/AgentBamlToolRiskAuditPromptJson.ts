@@ -53,10 +53,14 @@ export function buildBamlToolRiskAuditPromptJson(
     stage: "auditToolRisk",
   },
 ): string {
-  return JSON.stringify({
-    context: input,
-    directive,
-  }, null, 2);
+  return JSON.stringify(
+    {
+      context: input,
+      directive,
+    },
+    null,
+    2,
+  );
 }
 
 export function projectToolRiskAuditPromptInput(options: {

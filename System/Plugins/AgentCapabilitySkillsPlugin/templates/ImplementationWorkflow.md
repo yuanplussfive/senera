@@ -6,6 +6,7 @@ Objective:
 $ARGUMENTS
 
 Execution contract:
+
 - Read the nearest owning code before editing.
 - Prefer existing abstractions, manifest data, schemas, and typed projectors over ad hoc branching.
 - Make the narrowest coherent change that moves the system toward the requested architecture.

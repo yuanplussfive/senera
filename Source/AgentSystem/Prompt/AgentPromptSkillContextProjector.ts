@@ -1,14 +1,9 @@
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
-import type {
-  AgentPromptSkillCatalogContext,
-  AgentPromptSkillContext,
-} from "./AgentPromptContextTypes.js";
+import type { AgentPromptSkillCatalogContext, AgentPromptSkillContext } from "./AgentPromptContextTypes.js";
 import type { AgentPromptDocumentationReader } from "./AgentPromptDocumentationReader.js";
 
 export class AgentPromptSkillContextProjector {
-  constructor(
-    private readonly documentationReader: AgentPromptDocumentationReader,
-  ) {}
+  constructor(private readonly documentationReader: AgentPromptDocumentationReader) {}
 
   projectActiveSkills(activeSkills: readonly AgentActivatedSkill[]): AgentPromptSkillContext[] {
     return activeSkills.map((skill) => ({
@@ -23,10 +18,9 @@ export class AgentPromptSkillContextProjector {
     }));
   }
 
-  private toCatalogContext(skill: Pick<
-    AgentActivatedSkill,
-    "name" | "title" | "summary" | "useCases" | "avoid" | "recommendedTools"
-  >): AgentPromptSkillCatalogContext {
+  private toCatalogContext(
+    skill: Pick<AgentActivatedSkill, "name" | "title" | "summary" | "useCases" | "avoid" | "recommendedTools">,
+  ): AgentPromptSkillCatalogContext {
     return {
       name: skill.name,
       title: skill.title,

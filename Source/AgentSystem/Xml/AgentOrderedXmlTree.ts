@@ -25,9 +25,7 @@ export type OrderedXmlNode = {
 export class AgentOrderedXmlTreeParser {
   private readonly parser: XMLParser;
 
-  constructor(options: {
-    allowBooleanAttributes: boolean;
-  }) {
+  constructor(options: { allowBooleanAttributes: boolean }) {
     this.parser = new XMLParser({
       preserveOrder: true,
       ignoreAttributes: false,
@@ -55,10 +53,7 @@ export class AgentOrderedXmlTreeParser {
     return roots;
   }
 
-  findNodeByPath(
-    root: OrderedXmlNode,
-    path: readonly string[],
-  ): OrderedXmlNode | undefined {
+  findNodeByPath(root: OrderedXmlNode, path: readonly string[]): OrderedXmlNode | undefined {
     let current: OrderedXmlNode | undefined = root;
 
     for (const segment of path) {
@@ -71,17 +66,13 @@ export class AgentOrderedXmlTreeParser {
     return current;
   }
 
-  private readElementEntry(
-    value: unknown,
-  ): { name: string; children: unknown[] } | undefined {
+  private readElementEntry(value: unknown): { name: string; children: unknown[] } | undefined {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return undefined;
     }
 
     const record = value as Record<string, unknown>;
-    const elementEntries = Object.entries(record).filter(
-      ([key]) => key !== "#text" && key !== ":@",
-    );
+    const elementEntries = Object.entries(record).filter(([key]) => key !== "#text" && key !== ":@");
 
     if (elementEntries.length !== 1) {
       return undefined;
@@ -94,10 +85,7 @@ export class AgentOrderedXmlTreeParser {
     };
   }
 
-  private toNode(
-    entry: { name: string; children: unknown[] },
-    path: XmlPath,
-  ): OrderedXmlNode {
+  private toNode(entry: { name: string; children: unknown[] }, path: XmlPath): OrderedXmlNode {
     const childOccurrences = new Map<string, number>();
     const content: OrderedXmlContent[] = [];
     const children: OrderedXmlNode[] = [];

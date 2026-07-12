@@ -1,5 +1,6 @@
 import { MetaLabel, ScrollArea } from "../../shared/ui";
 import { MotionList, MotionListItem } from "../../shared/motion";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { SessionRecord } from "../../store/sessionStore";
 import { EmptyState, SessionRow } from "./SessionRows";
 import { formatSessionSubtitle } from "./sessionPresentation";
@@ -34,7 +35,7 @@ export function SessionPanelBody({
           <>
             <div className="mt-1 px-2 pb-1.5">
               <MetaLabel as="div" size="sm">
-                最近 · {sessions.length}
+                {frontendMessage("session.recentCount", { count: sessions.length })}
               </MetaLabel>
             </div>
             <MotionList>
@@ -47,12 +48,7 @@ export function SessionPanelBody({
                 const subtitle = formatSessionSubtitle(session, isHistoryLoading);
 
                 return (
-                  <MotionListItem
-                    key={session.sessionId}
-                    index={index}
-                    itemCount={sessions.length}
-                    layout="position"
-                  >
+                  <MotionListItem key={session.sessionId} index={index} itemCount={sessions.length} layout="position">
                     <SessionRow
                       active={isActive}
                       sessionId={session.sessionId}

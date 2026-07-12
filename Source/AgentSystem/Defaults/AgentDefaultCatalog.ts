@@ -1,9 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type {
-  AgentDefaultsConfig,
-  ResolvedAgentModelProviderEndpointConfig,
-} from "../Types/AgentConfigTypes.js";
+import type { AgentDefaultsConfig, ResolvedAgentModelProviderEndpointConfig } from "../Types/AgentConfigTypes.js";
 import type {
   AgentModelRuntimeDefaultsConfig,
   AgentVectorModelsDefaultsConfig,
@@ -13,10 +10,7 @@ import { moduleDirPath } from "../Core/AgentPath.js";
 import { SeneraMicrosandboxDefaults } from "../Execution/SeneraMicrosandboxDefaults.js";
 
 const DefaultModelProviderEndpoints = JSON.parse(
-  fs.readFileSync(
-    path.join(moduleDirPath(import.meta.url), "AgentDefaultModelProviderEndpoints.json"),
-    "utf8",
-  ),
+  fs.readFileSync(path.join(moduleDirPath(import.meta.url), "AgentDefaultModelProviderEndpoints.json"), "utf8"),
 ) as ResolvedAgentModelProviderEndpointConfig[];
 
 export const AgentDefaults = {
@@ -40,7 +34,6 @@ export const AgentDefaults = {
       Vision: false,
       ImageOutput: false,
       Reasoning: false,
-      ToolCalling: true,
       DeveloperRole: false,
     },
     ContextWindowTokens: -1,
@@ -194,11 +187,7 @@ export const AgentDefaults = {
       WebSocketUrl: "",
       ModelLabel: "senera",
       UserName: "you",
-      EmptySuggestions: [
-        "整理今天的工作优先级",
-        "分析一段错误日志",
-        "把需求拆成可执行步骤",
-      ],
+      EmptySuggestions: ["整理今天的工作优先级", "分析一段错误日志", "把需求拆成可执行步骤"],
     },
   },
   Server: {
@@ -206,6 +195,28 @@ export const AgentDefaults = {
     Port: 8787,
     HotReload: true,
     RequestMaxBytes: 1048576,
+    AccessControl: {
+      Mode: "auto",
+      AccountFile: ".senera/access/admin-account.json",
+      AllowedOrigins: [],
+      TrustedProxyAddresses: [],
+      AllowInsecureLoopback: false,
+      Session: {
+        AbsoluteTtlHours: 72,
+        IdleTtlHours: 12,
+        MaxSessions: 8,
+      },
+      Limits: {
+        MaxConnections: 64,
+        MaxConnectionsPerClient: 8,
+        UpgradeRequestsPerMinute: 30,
+        HttpRequestsPerMinute: 60,
+        MessagesPerMinute: 100,
+        LoginAttemptsPerMinute: 5,
+        HeartbeatIntervalSeconds: 30,
+        IdleSocketTimeoutSeconds: 90,
+      },
+    },
   },
   Persistence: {
     Kind: "sqlite",
@@ -217,10 +228,7 @@ export const AgentDefaults = {
     DatabasePath: ".senera/Config.sqlite",
     MirrorJson: true,
   },
-} as const satisfies Omit<
-  ResolvedAgentDefaultsConfig,
-  "ModelRuntime" | "ToolExecution" | "VectorModels"
-> & {
+} as const satisfies Omit<ResolvedAgentDefaultsConfig, "ModelRuntime" | "ToolExecution" | "VectorModels"> & {
   ModelRuntime: AgentModelRuntimeDefaultsConfig;
   ToolExecution: Required<NonNullable<AgentDefaultsConfig["ToolExecution"]>>;
   SandboxRuntime: Required<NonNullable<AgentDefaultsConfig["SandboxRuntime"]>>;

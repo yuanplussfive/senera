@@ -46,10 +46,7 @@ export function LogoMark({ className, size = 22 }: LogoProps): JSX.Element {
 export function LogoWordmark({ className }: { className?: string }): JSX.Element {
   return (
     <span
-      className={cn(
-        "select-none font-serif text-[19px] leading-none tracking-tight text-ink-900",
-        className,
-      )}
+      className={cn("select-none font-serif text-[19px] leading-none tracking-tight text-ink-900", className)}
       style={{ fontFamily: "Fraunces, serif", fontStyle: "italic", fontWeight: 500 }}
     >
       senera

@@ -24,10 +24,7 @@ import type {
   SeneraShellExecutionRequest,
   SeneraShellExecutionResult,
 } from "./SeneraExecutionTypes.js";
-import {
-  SeneraExecutionError,
-  SeneraExecutionErrorCodes,
-} from "./SeneraExecutionTypes.js";
+import { SeneraExecutionError, SeneraExecutionErrorCodes } from "./SeneraExecutionTypes.js";
 import { resolveSeneraShellInvocation } from "./SeneraShellPlatform.js";
 import { resolveWorkspacePath } from "./SeneraWorkspacePath.js";
 import { SeneraNodeProcessBackend } from "./SeneraNodeProcessBackend.js";
@@ -82,8 +79,8 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
       });
     }
 
-    const invocation = this.processBackend.resolveShellInvocation?.(request.command)
-      ?? resolveSeneraShellInvocation(request.command);
+    const invocation =
+      this.processBackend.resolveShellInvocation?.(request.command) ?? resolveSeneraShellInvocation(request.command);
     return this.processBackend.executeProcess({
       command: invocation.command,
       args: invocation.args,
@@ -97,11 +94,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     });
   }
 
-  spawnProcess = (
-    command: string,
-    args: string[],
-    options: AgentToolProcessSpawnOptions,
-  ): AgentToolProcessChild => {
+  spawnProcess = (command: string, args: string[], options: AgentToolProcessSpawnOptions): AgentToolProcessChild => {
     const cwd = this.resolveWorkspaceCwd(options.cwd);
     return this.processSpawner(command, args, {
       ...options,
@@ -113,7 +106,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     command: string,
     args: readonly string[],
     options: SeneraPersistentProcessSpawnOptions,
-  ): SeneraPersistentProcessChild => {
+  ): Promise<SeneraPersistentProcessChild> => {
     const cwd = this.resolveWorkspaceCwd(options.cwd);
     return this.persistentProcessSpawner(command, args, {
       ...options,
@@ -220,7 +213,11 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
-  async writeFile(value: string, content: string | Uint8Array, abortSignal?: AbortSignal): Promise<Result<void, FileError>> {
+  async writeFile(
+    value: string,
+    content: string | Uint8Array,
+    abortSignal?: AbortSignal,
+  ): Promise<Result<void, FileError>> {
     const pathResult = this.safeFilePath(value);
     if (!pathResult.ok) return pathResult;
     const resolved = pathResult.value;
@@ -303,7 +300,10 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
-  async createDir(value: string, options?: { recursive?: boolean; abortSignal?: AbortSignal }): Promise<Result<void, FileError>> {
+  async createDir(
+    value: string,
+    options?: { recursive?: boolean; abortSignal?: AbortSignal },
+  ): Promise<Result<void, FileError>> {
     const pathResult = this.safeFilePath(value);
     if (!pathResult.ok) return pathResult;
     const resolved = pathResult.value;
@@ -368,11 +368,10 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   private resolveWorkspaceCwd(value: string | undefined): string {
     const resolved = resolveWorkspacePath(this.workspaceRoot, value);
     if (!resolved.ok) {
-      throw new SeneraExecutionError(
-        SeneraExecutionErrorCodes.InvalidWorkspacePath,
-        resolved.message,
-        { cwd: value ?? ".", workspaceRoot: this.workspaceRoot },
-      );
+      throw new SeneraExecutionError(SeneraExecutionErrorCodes.InvalidWorkspacePath, resolved.message, {
+        cwd: value ?? ".",
+        workspaceRoot: this.workspaceRoot,
+      });
     }
     return resolved.absolutePath;
   }
@@ -388,17 +387,14 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   ): Result<TValue | string, FileError> {
     const resolved = path.isAbsolute(value) ? path.resolve(value) : path.resolve(this.cwd, value);
     return this.isAllowedFilePath(resolved)
-      ? mapper?.(resolved) ?? ok(resolved)
-      : err(new FileError(
-          "permission_denied",
-          `路径超出执行工作区：${value}`,
-          resolved,
-        ));
+      ? (mapper?.(resolved) ?? ok(resolved))
+      : err(new FileError("permission_denied", `路径超出执行工作区：${value}`, resolved));
   }
 
   private isAllowedFilePath(value: string): boolean {
-    return isPathInside(this.workspaceRoot, value)
-      || [...this.ownedTempRoots].some((root) => isPathInside(root, value));
+    return (
+      isPathInside(this.workspaceRoot, value) || [...this.ownedTempRoots].some((root) => isPathInside(root, value))
+    );
   }
 }
 
@@ -439,11 +435,7 @@ function toPiExecutionError(error: unknown): ExecutionError {
     return error;
   }
   if (error instanceof SeneraExecutionError) {
-    return new ExecutionError(
-      PiExecutionCodeBySeneraCode[error.code],
-      error.message,
-      error,
-    );
+    return new ExecutionError(PiExecutionCodeBySeneraCode[error.code], error.message, error);
   }
 
   const cause = error instanceof Error ? error : new Error(String(error));
@@ -475,9 +467,10 @@ function fileInfoFromStats(
 function toFileError(error: unknown, filePath?: string): FileError {
   if (error instanceof FileError) return error;
   const cause = error instanceof Error ? error : new Error(String(error));
-  const code = typeof (error as NodeJS.ErrnoException | undefined)?.code === "string"
-    ? (error as NodeJS.ErrnoException).code
-    : undefined;
+  const code =
+    typeof (error as NodeJS.ErrnoException | undefined)?.code === "string"
+      ? (error as NodeJS.ErrnoException).code
+      : undefined;
 
   const mappings: Record<string, ConstructorParameters<typeof FileError>[0]> = {
     ABORT_ERR: "aborted",
@@ -488,5 +481,5 @@ function toFileError(error: unknown, filePath?: string): FileError {
     EISDIR: "is_directory",
     EINVAL: "invalid",
   };
-  return new FileError(code ? mappings[code] ?? "unknown" : "unknown", cause.message, filePath, cause);
+  return new FileError(code ? (mappings[code] ?? "unknown") : "unknown", cause.message, filePath, cause);
 }

@@ -1,10 +1,6 @@
-import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
-import type {
-  AgentApprovalKind,
-  AgentApprovalStatus,
-  AgentApprovalSubject,
-} from "./AgentApprovalTypes.js";
+import type { AgentApprovalKind, AgentApprovalStatus, AgentApprovalSubject } from "./AgentApprovalTypes.js";
 
 export type AgentApprovalDomainEvent =
   | {
@@ -20,6 +16,7 @@ export type AgentApprovalDomainEvent =
       data: AgentApprovalEventData & {
         status: Extract<AgentApprovalStatus, "approved" | "denied">;
         message?: string;
+        scope?: "once" | "session";
         resolvedAt: string;
       };
     };

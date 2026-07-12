@@ -8,12 +8,16 @@ import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 afterEach(cleanup);
 
 test("tool result surface presents evidence and retains inspectable structured data", async () => {
-  render(React.createElement(TooltipProvider, { delayDuration: 0 },
-    React.createElement(NodeDetailDrawer, {
-      step: toolStep(),
-      onClose: () => undefined,
-    }),
-  ));
+  render(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(NodeDetailDrawer, {
+        step: toolStep(),
+        onClose: () => undefined,
+      }),
+    ),
+  );
 
   expect(await screen.findByText("结果摘要")).toBeTruthy();
   expect(screen.getByText("关键事实")).toBeTruthy();
@@ -64,26 +68,32 @@ function toolStep() {
       status: "success",
       headline: "北京：晴，26 C",
       summary: "当前天气已更新。",
-      facts: [{
-        name: "temperature",
-        value: "26 C",
-        kind: "weather",
-      }],
-      evidence: [{
-        evidenceUri: "senera://evidence/weather-beijing",
-        kind: "weather",
-        display: "北京：晴，26 C",
-        label: "北京天气",
-        source: "Weather API",
-        locator: "weather://beijing",
-        confidence: 0.96,
-      }],
-      changes: [{
-        kind: "workspace",
-        status: "changed",
-        key: "Source/weather.ts",
-        summary: "modified: Source/weather.ts",
-      }],
+      facts: [
+        {
+          name: "temperature",
+          value: "26 C",
+          kind: "weather",
+        },
+      ],
+      evidence: [
+        {
+          evidenceUri: "senera://evidence/weather-beijing",
+          kind: "weather",
+          display: "北京：晴，26 C",
+          label: "北京天气",
+          source: "Weather API",
+          locator: "weather://beijing",
+          confidence: 0.96,
+        },
+      ],
+      changes: [
+        {
+          kind: "workspace",
+          status: "changed",
+          key: "Source/weather.ts",
+          summary: "modified: Source/weather.ts",
+        },
+      ],
       artifactUri: "senera://artifact/weather",
     },
     toolResult: {

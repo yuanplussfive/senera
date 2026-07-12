@@ -7,9 +7,7 @@ import {
   type Skill,
 } from "@earendil-works/pi-agent-core";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import type {
-  ResolvedAgentModelProviderConfig,
-} from "../Types/AgentConfigTypes.js";
+import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
 import type { AgentToolPermissionGate } from "../Safety/AgentToolPermissionGate.js";
@@ -17,21 +15,11 @@ import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor
 import { AgentPiToolExecutionBridge } from "./AgentPiToolExecutionBridge.js";
 import { AgentPiToolRegistryProjector } from "./AgentPiToolRegistryProjector.js";
 import { AgentPiToolPermissionHook } from "./AgentPiToolPermissionHook.js";
-import {
-  projectSeneraModelProviderToPi,
-} from "./AgentPiModelProjector.js";
-import {
-  AgentPiHarnessSessionPool,
-  type AgentPiHarnessSessionPoolPort,
-} from "./AgentPiHarnessSessionPool.js";
-import {
-  AgentPiSessionStore,
-  type AgentPiSessionStorePort,
-} from "./AgentPiSessionStore.js";
+import { projectSeneraModelProviderToPi } from "./AgentPiModelProjector.js";
+import { AgentPiHarnessSessionPool, type AgentPiHarnessSessionPoolPort } from "./AgentPiHarnessSessionPool.js";
+import { AgentPiSessionStore, type AgentPiSessionStorePort } from "./AgentPiSessionStore.js";
 import { AgentPiResourceProjector } from "./AgentPiResourceProjector.js";
-import {
-  projectSelectedPromptTemplateFrame,
-} from "./AgentPiPromptFrameProjector.js";
+import { projectSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
 import { createPiTraceEvent } from "./AgentPiTraceProjector.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { resolveAgentLoopConfig } from "../AgentDefaults.js";
@@ -125,17 +113,21 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
     this.provider = projectSeneraModelProviderToPi(options.modelProvider, options.config);
     this.contextPolicy = new AgentPiContextPolicy(options.modelProvider.Model);
     this.env = options.executionEnv;
-    this.sessionStore = options.sessionStore ?? new AgentPiSessionStore({
-      workspaceRoot: options.workspaceRoot,
-      sessionsRoot: resolveAgentLoopConfig(options.config).PiSessions.RootDir,
-      env: this.env,
-    });
+    this.sessionStore =
+      options.sessionStore ??
+      new AgentPiSessionStore({
+        workspaceRoot: options.workspaceRoot,
+        sessionsRoot: resolveAgentLoopConfig(options.config).PiSessions.RootDir,
+        env: this.env,
+      });
     this.resourceProjector = new AgentPiResourceProjector(options.registry);
-    this.harnessPool = options.harnessPool ?? new AgentPiHarnessSessionPool({
-      env: this.env,
-      provider: this.provider,
-      modelProvider: options.modelProvider,
-    });
+    this.harnessPool =
+      options.harnessPool ??
+      new AgentPiHarnessSessionPool({
+        env: this.env,
+        provider: this.provider,
+        modelProvider: options.modelProvider,
+      });
     this.permissionHook = new AgentPiToolPermissionHook({
       registry: options.registry,
       permissionGate: options.toolPermissionGate,
@@ -188,7 +180,8 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         resourceKinds: selection.resourceKinds,
         workflowRoles: selection.workflowRoles,
         selectionScore: selection.score,
-      }));
+      }),
+    );
     await this.emitSubstrateTrace(options, "core.agent.create.started", {
       model: this.provider.model.id,
       provider: this.provider.providerId,
@@ -222,8 +215,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         selectedPromptTemplates,
         contextPolicy,
       },
-      preflight: (event) =>
-        this.permissionHook.authorize(options, event),
+      preflight: (event) => this.permissionHook.authorize(options, event),
     });
     await this.emitSubstrateTrace(options, "core.agent.create.completed", {
       piSessionId: persistentSession.sessionId,
@@ -254,27 +246,24 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
   }
 
   private resolveObjective(options: AgentPiSessionOptions): string | undefined {
-    return options.rootCommand?.objective
-      ?? options.turnUnderstanding?.standaloneRequest
-      ?? options.input;
+    return options.rootCommand?.objective ?? options.turnUnderstanding?.standaloneRequest ?? options.input;
   }
 
   close(): void {
     this.harnessPool.close();
   }
 
-  private async emitSubstrateTrace(
-    options: AgentPiSessionOptions,
-    eventType: string,
-    payload: unknown,
-  ): Promise<void> {
-    await emitAgentEvent(options.onEvent, createPiTraceEvent({
-      sessionId: options.sessionId,
-      requestId: options.requestId ?? "pi-substrate",
-      step: options.step ?? 0,
-      source: "substrate",
-      eventType,
-      payload,
-    }));
+  private async emitSubstrateTrace(options: AgentPiSessionOptions, eventType: string, payload: unknown): Promise<void> {
+    await emitAgentEvent(
+      options.onEvent,
+      createPiTraceEvent({
+        sessionId: options.sessionId,
+        requestId: options.requestId ?? "pi-substrate",
+        step: options.step ?? 0,
+        source: "substrate",
+        eventType,
+        payload,
+      }),
+    );
   }
 }

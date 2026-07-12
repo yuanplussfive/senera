@@ -7,10 +7,7 @@
     "Entry": {
       "Kind": "Process",
       "Command": "npm",
-      "Args": [
-        "run",
-        "tool"
-      ],
+      "Args": ["run", "tool"],
       "Cwd": "."
     }
   },
@@ -25,9 +22,7 @@
   "Sandbox": {
     "Network": "Allow",
     "Workspace": {
-      "Read": [
-        "PluginConfig.toml"
-      ],
+      "Read": ["PluginConfig.toml"],
       "Write": []
     },
     "State": {
@@ -51,16 +46,14 @@
         "network:https://weather.visualcrossing.com"
       ],
       "Execution": {
-        "Boundary": "Sandbox",
+        "Boundary": "SandboxPreferred",
         "Network": "Allow",
         "Workspace": "ReadOnly",
         "LocalFallback": "Allow"
       },
       "Artifacts": {
         "Redact": {
-          "Paths": [
-            "$.apiKey"
-          ]
+          "Paths": ["$.apiKey"]
         },
         "Evidence": [
           {
@@ -128,10 +121,7 @@
                 "windSpeed",
                 "timezone"
               ],
-              "ArtifactRefs": [
-                "evidence",
-                "projection"
-              ]
+              "ArtifactRefs": ["evidence", "projection"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} current {{ e.slots.resolvedLocation }}: {{ e.slots.condition }}, {{ e.slots.temperature }}{{ e.slots.temperatureUnit }}\n{% endfor %}",
@@ -160,11 +150,7 @@
               "precipitation": "$.precipitation"
             },
             "Identity": {
-              "Parts": [
-                "resolvedLocation",
-                "date",
-                "sourceName"
-              ]
+              "Parts": ["resolvedLocation", "date", "sourceName"]
             },
             "Presentation": {
               "Locator": "{{ resolvedLocation }} @ {{ date }}",
@@ -206,10 +192,7 @@
                 "temperatureUnit",
                 "chanceOfRain"
               ],
-              "ArtifactRefs": [
-                "evidence",
-                "projection"
-              ]
+              "ArtifactRefs": ["evidence", "projection"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.date }} {{ e.slots.resolvedLocation }}: {{ e.slots.condition }}, {{ e.slots.minTemperature }}-{{ e.slots.maxTemperature }}{{ e.slots.temperatureUnit }}, rain {{ e.slots.chanceOfRain }}%\n{% endfor %}",
@@ -224,79 +207,31 @@
       },
       "Search": {
         "Summary": "按城市、地区、地址或邮编查询当前天气和未来几天天气预报。",
-        "Tags": [
-          "天气查询",
-          "天气预报",
-          "气温降雨",
-          "城市天气"
-        ],
+        "Tags": ["天气查询", "天气预报", "气温降雨", "城市天气"],
         "Capabilities": [
           {
             "Id": "weather.forecast",
             "Title": "Weather forecast",
             "Description": "Query current weather and multi-day forecasts for cities, regions, addresses, postal codes, or coordinates.",
             "Facets": {
-              "Actions": [
-                "query",
-                "forecast",
-                "observe"
-              ],
-              "Targets": [
-                "weather",
-                "forecast",
-                "city",
-                "location"
-              ],
-              "Inputs": [
-                "location",
-                "city",
-                "address",
-                "postal-code",
-                "days",
-                "language"
-              ],
-              "Outputs": [
-                "weather-observation",
-                "forecast-day",
-                "temperature",
-                "condition",
-                "rain-probability"
-              ],
-              "Evidence": [
-                "weather-observation",
-                "weather-forecast-day"
-              ],
-              "Effects": [
-                "network"
-              ]
+              "Actions": ["query", "forecast", "observe"],
+              "Targets": ["weather", "forecast", "city", "location"],
+              "Inputs": ["location", "city", "address", "postal-code", "days", "language"],
+              "Outputs": ["weather-observation", "forecast-day", "temperature", "condition", "rain-probability"],
+              "Evidence": ["weather-observation", "weather-forecast-day"],
+              "Effects": ["network"]
             },
-            "Aliases": [
-              "天气",
-              "天气预报",
-              "weather",
-              "will it rain"
-            ],
+            "Aliases": ["天气", "天气预报", "weather", "will it rain"],
             "Risk": {
               "SideEffect": "network",
               "Permission": "external-api",
-              "Notes": [
-                "Uses configured weather providers."
-              ]
+              "Notes": ["Uses configured weather providers."]
             }
           }
         ],
-        "UseCases": [
-          "天气、气温、降雨、城市预报、经纬度天气查询。"
-        ],
-        "Examples": [
-          "上海 天气 预报",
-          "北京 明天 降雨",
-          "New York weather",
-          "东京 三天 天气"
-        ],
-        "Avoid": [
-          "不要用于查询新闻、网页或本地代码。"
-        ]
+        "UseCases": ["天气、气温、降雨、城市预报、经纬度天气查询。"],
+        "Examples": ["上海 天气 预报", "北京 明天 降雨", "New York weather", "东京 三天 天气"],
+        "Avoid": ["不要用于查询新闻、网页或本地代码。"]
       }
     }
   ],

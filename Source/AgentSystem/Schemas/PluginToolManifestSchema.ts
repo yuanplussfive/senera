@@ -47,7 +47,17 @@ const ToolExecutionSchema = z
     Workspace: z.enum(["ReadOnly", "ReadWrite"]),
     LocalFallback: z.enum(["Allow", "Deny"]),
   })
-  .strict();
+  .strict()
+  .superRefine((execution, context) => {
+    const requiredFallback = execution.Boundary === "SandboxPreferred" ? "Allow" : "Deny";
+    if (execution.LocalFallback !== requiredFallback) {
+      context.addIssue({
+        code: "custom",
+        path: ["LocalFallback"],
+        message: `${execution.Boundary} requires LocalFallback=${requiredFallback}.`,
+      });
+    }
+  });
 
 export const ToolSchema = z
   .object({

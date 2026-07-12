@@ -1,5 +1,6 @@
 import { isValidElement, type MouseEvent, type ReactNode } from "react";
 import { toast, type ExternalToast } from "sonner";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 type ToastMethod = (message: ReactNode | (() => ReactNode), data?: ExternalToast) => string | number;
 
@@ -21,15 +22,12 @@ function withCopyAction(method: ToastMethod): ToastMethod {
   return (message, data) => method(message, addToastCopyAction(message, data));
 }
 
-function addToastCopyAction(
-  message: ReactNode | (() => ReactNode),
-  data?: ExternalToast,
-): ExternalToast | undefined {
+function addToastCopyAction(message: ReactNode | (() => ReactNode), data?: ExternalToast): ExternalToast | undefined {
   const copyText = formatToastCopyText(message, data?.description);
   if (!copyText) return data;
 
   const copyAction = {
-    label: "复制",
+    label: frontendMessage("clipboard.copyToast"),
     onClick: (event: MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
       void writeToastCopyText(copyText);
@@ -57,12 +55,7 @@ function formatToastCopyText(
   message: ReactNode | (() => ReactNode),
   description?: ReactNode | (() => ReactNode),
 ): string {
-  return [
-    readNodeText(message),
-    readNodeText(description),
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return [readNodeText(message), readNodeText(description)].filter(Boolean).join("\n");
 }
 
 function readNodeText(value: ReactNode | (() => ReactNode) | undefined): string {
@@ -78,7 +71,10 @@ function readNodeText(value: ReactNode | (() => ReactNode) | undefined): string 
     }
   }
   if (Array.isArray(value)) {
-    return value.map((item) => readNodeText(item)).filter(Boolean).join(" ");
+    return value
+      .map((item) => readNodeText(item))
+      .filter(Boolean)
+      .join(" ");
   }
   if (isValidElement<{ children?: ReactNode }>(value)) {
     return readNodeText(value.props.children);

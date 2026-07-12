@@ -18,15 +18,12 @@ export function toolBatchFromEvent(
   size?: number,
 ): NonNullable<TimelineStep["toolBatch"]> {
   const eventData = readRecord(env.data);
-  const batchId = typeof eventData.batchId === "string" && eventData.batchId.trim()
-    ? eventData.batchId
-    : undefined;
-  const callId = typeof eventData.callId === "string" && eventData.callId.trim()
-    ? eventData.callId
-    : undefined;
-  const executionMode = eventData.executionMode === "parallel" || eventData.executionMode === "sequential"
-    ? eventData.executionMode
-    : undefined;
+  const batchId = typeof eventData.batchId === "string" && eventData.batchId.trim() ? eventData.batchId : undefined;
+  const callId = typeof eventData.callId === "string" && eventData.callId.trim() ? eventData.callId : undefined;
+  const executionMode =
+    eventData.executionMode === "parallel" || eventData.executionMode === "sequential"
+      ? eventData.executionMode
+      : undefined;
   return {
     id: batchId ?? fallbackToolBatchId(env, callId),
     index: data?.index,
@@ -37,22 +34,19 @@ export function toolBatchFromEvent(
 
 function fallbackToolBatchId(env: EventEnvelope, callId: string | undefined): string {
   return [
-      env.scope?.parentRequestId,
-      env.scope?.workflowName,
-      env.scope?.role,
-      env.scope?.jobId,
-      env.requestId,
-      env.step ?? 0,
-      callId ? `call:${callId}` : `event:${env.sequence}`,
-    ]
-      .filter((value) => value !== undefined && value !== "")
-      .join(":");
+    env.scope?.parentRequestId,
+    env.scope?.workflowName,
+    env.scope?.role,
+    env.scope?.jobId,
+    env.requestId,
+    env.step ?? 0,
+    callId ? `call:${callId}` : `event:${env.sequence}`,
+  ]
+    .filter((value) => value !== undefined && value !== "")
+    .join(":");
 }
 
-export function toolBatchForTrace(
-  requestId: string,
-  trace: StepTraceDto,
-): NonNullable<TimelineStep["toolBatch"]> {
+export function toolBatchForTrace(requestId: string, trace: StepTraceDto): NonNullable<TimelineStep["toolBatch"]> {
   return {
     id: trace.batchId ?? [requestId, trace.step, trace.callId ? `call:${trace.callId}` : trace.seq].join(":"),
     index: trace.seq,
@@ -60,7 +54,5 @@ export function toolBatchForTrace(
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }

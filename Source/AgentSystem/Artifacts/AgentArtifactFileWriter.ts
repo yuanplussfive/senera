@@ -5,11 +5,7 @@ export async function writeArtifactJson(filePath: string, value: unknown): Promi
   await writeArtifactText(filePath, `${JSON.stringify(value, null, 2)}\n`, Number.MAX_SAFE_INTEGER);
 }
 
-export async function writeBoundedArtifactJson(
-  filePath: string,
-  value: unknown,
-  maxBytes: number,
-): Promise<void> {
+export async function writeBoundedArtifactJson(filePath: string, value: unknown, maxBytes: number): Promise<void> {
   const text = `${JSON.stringify(value, null, 2)}\n`;
   if (byteLength(text) <= maxBytes) {
     await writeArtifactText(filePath, text, maxBytes + 64);
@@ -23,16 +19,13 @@ export async function writeBoundedArtifactJson(
   });
 }
 
-export async function writeArtifactText(
-  filePath: string,
-  value: string,
-  maxBytes: number,
-): Promise<void> {
+export async function writeArtifactText(filePath: string, value: string, maxBytes: number): Promise<void> {
   const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
-  const text = byteLength(value) > maxBytes
-    ? `${Buffer.from(value).subarray(0, maxBytes).toString("utf8")}\n[truncated]\n`
-    : value;
+  const text =
+    byteLength(value) > maxBytes
+      ? `${Buffer.from(value).subarray(0, maxBytes).toString("utf8")}\n[truncated]\n`
+      : value;
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   await fs.writeFile(tempPath, text, "utf8");
   await fs.rename(tempPath, filePath);

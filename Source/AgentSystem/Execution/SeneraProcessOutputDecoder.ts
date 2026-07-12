@@ -8,10 +8,7 @@ export interface SeneraProcessOutputDecoderOptions {
   encoding?: SeneraProcessOutputEncoding;
 }
 
-export function decodeSeneraProcessOutput(
-  buffer: Buffer,
-  options: SeneraProcessOutputDecoderOptions = {},
-): string {
+export function decodeSeneraProcessOutput(buffer: Buffer, options: SeneraProcessOutputDecoderOptions = {}): string {
   if (buffer.length === 0) {
     return "";
   }

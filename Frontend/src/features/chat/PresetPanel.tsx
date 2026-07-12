@@ -1,27 +1,10 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FileRejection } from "react-dropzone";
-import {
-  AlertTriangle,
-  BookUser,
-} from "lucide-react";
-import type {
-  PresetFormat,
-  PresetItem,
-  PresetMutationState,
-} from "../../api/eventTypes";
+import { AlertTriangle, BookUser } from "lucide-react";
+import type { PresetFormat, PresetItem, PresetMutationState } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../../shared/responsive";
-import {
-  Dialog,
-  DialogContent,
-  FileDropZone,
-  Tooltip,
-  type FileDropZoneAccept,
-} from "../../shared/ui";
+import { Dialog, DialogContent, FileDropZone, Tooltip, type FileDropZoneAccept } from "../../shared/ui";
 import {
   describeRejectedImports,
   readPresetDisplayName,
@@ -31,15 +14,8 @@ import {
   withPresetFormatExtension,
 } from "./presetPanelUtils";
 import { PresetSidebar } from "./PresetSidebar";
-import {
-  PresetInspector,
-  PresetWorkspace,
-} from "./PresetWorkspace";
-import {
-  ConfirmLayer,
-  DropOverlay,
-  type PresetConfirmAction,
-} from "./PresetOverlays";
+import { PresetInspector, PresetWorkspace } from "./PresetWorkspace";
+import { ConfirmLayer, DropOverlay, type PresetConfirmAction } from "./PresetOverlays";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 const PresetFileAccept = {
@@ -73,12 +49,7 @@ export function PresetControl({
   activePresetName: string | null;
   operations: Record<string, PresetMutationState>;
   onRefresh: () => void;
-  onSave: (input: {
-    name: string;
-    format: PresetFormat;
-    content: string;
-    activate?: boolean;
-  }) => string | null;
+  onSave: (input: { name: string; format: PresetFormat; content: string; activate?: boolean }) => string | null;
   onDelete: (name: string) => string | null;
   onSetActive: (name: string | null) => string | null;
 }): JSX.Element {
@@ -130,15 +101,14 @@ export function PresetControl({
         readPresetDisplayName(preset.name),
         readPresetDisplayName(preset.title),
         preset.format,
-      ].join(" ").toLocaleLowerCase().includes(query)
+      ]
+        .join(" ")
+        .toLocaleLowerCase()
+        .includes(query),
     );
   }, [filterText, presets]);
 
-  const replaceDraft = (next: {
-    name: string;
-    format: PresetFormat;
-    content: string;
-  }): void => {
+  const replaceDraft = (next: { name: string; format: PresetFormat; content: string }): void => {
     setDraftName(next.name);
     setDraftFormat(next.format);
     setDraftContent(next.content);
@@ -166,9 +136,9 @@ export function PresetControl({
     }
 
     setConfirmAction({
-      title: "丢弃未保存修改",
+      title: frontendMessage("preset.ui.discardTitle"),
       description,
-      confirmLabel: "丢弃并继续",
+      confirmLabel: frontendMessage("preset.ui.discardConfirm"),
       tone: "danger",
       onConfirm: action,
     });
@@ -178,13 +148,13 @@ export function PresetControl({
     if (busy) return;
     const rejectedMessages = describeRejectedImports(rejections);
     if (files.length === 0) {
-      setLocalError(rejectedMessages.join("\n") || "没有可导入的预设文件。");
+      setLocalError(rejectedMessages.join("\n") || frontendMessage("preset.ui.noImportableFiles"));
       return;
     }
 
     runAfterDiscardCheck(() => {
       void saveImportedFiles(files, rejectedMessages);
-    }, "导入文件会替换当前编辑区内容。");
+    }, frontendMessage("preset.ui.importReplaceWarning"));
   };
 
   useEffect(() => {
@@ -233,10 +203,7 @@ export function PresetControl({
 
   const selectPreset = (name: string): void => {
     if (name === selectedName) return;
-    runAfterDiscardCheck(
-      () => setSelectedName(name),
-      "切换预设会替换当前编辑区内容。",
-    );
+    runAfterDiscardCheck(() => setSelectedName(name), frontendMessage("preset.ui.switchReplaceWarning"));
   };
 
   const createPreset = (): void => {
@@ -249,7 +216,7 @@ export function PresetControl({
       });
       setDirty(true);
       setLocalError(null);
-    }, "新建预设会清空当前编辑区内容。");
+    }, frontendMessage("preset.ui.createClearWarning"));
   };
 
   const save = (activate: boolean): void => {
@@ -274,9 +241,9 @@ export function PresetControl({
   const removeSelected = (): void => {
     if (!selected || deleting) return;
     setConfirmAction({
-      title: "删除角色预设",
+      title: frontendMessage("preset.ui.deleteTitle"),
       description: selected.name,
-      confirmLabel: "删除",
+      confirmLabel: frontendMessage("preset.ui.delete"),
       tone: "danger",
       onConfirm: () => {
         const requestId = onDelete(selected.name);
@@ -290,17 +257,14 @@ export function PresetControl({
 
   const toggleActive = (): void => {
     if (settingActive) return;
-    const nextName = selectedIsActive ? null : selected?.name ?? null;
+    const nextName = selectedIsActive ? null : (selected?.name ?? null);
     const requestId = onSetActive(nextName);
     if (requestId) {
       setActiveRequestId(requestId);
     }
   };
 
-  const saveImportedFiles = async (
-    files: readonly File[],
-    rejectedMessages: readonly string[],
-  ): Promise<void> => {
+  const saveImportedFiles = async (files: readonly File[], rejectedMessages: readonly string[]): Promise<void> => {
     setImporting(true);
     setLocalError(null);
 
@@ -308,7 +272,7 @@ export function PresetControl({
       const result = await readPresetImportEntries(files);
       const errors: string[] = [
         ...rejectedMessages,
-        ...result.rejected.map((name) => `${name}: 只支持 .json、.md、.txt`),
+        ...result.rejected.map((name) => frontendMessage("preset.ui.unsupportedFile", { name })),
       ];
 
       for (const entry of result.entries) {
@@ -341,7 +305,7 @@ export function PresetControl({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Tooltip content="角色预设" side="top">
+      <Tooltip content={frontendMessage("preset.ui.title")} side="top">
         <button
           type="button"
           className={cn(
@@ -350,20 +314,20 @@ export function PresetControl({
             "focus:outline-none focus:ring-2 focus:ring-terra-200/60",
             disabled && "pointer-events-none opacity-55",
           )}
-          aria-label="角色预设"
+          aria-label={frontendMessage("preset.ui.title")}
           disabled={disabled}
           onClick={() => setOpen(true)}
         >
           <BookUser className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">预设</span>
+          <span className="hidden sm:inline">{frontendMessage("preset.ui.shortTitle")}</span>
           {activePreset ? <span className="h-1.5 w-1.5 rounded-full bg-terra-500" /> : null}
           {hasDiagnostics ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
         </button>
       </Tooltip>
 
       <DialogContent
-        title="角色预设"
-        description={rootDir || "本地预设"}
+        title={frontendMessage("preset.ui.title")}
+        description={rootDir || frontendMessage("preset.ui.localPresets")}
         motionPreset="focus"
         className="h-[min(900px,calc(100dvh_-_20px))] max-h-none w-[min(1440px,calc(100vw_-_20px))] max-w-none rounded-xl bg-paper-100 sm:w-[min(1440px,calc(100vw_-_32px))]"
         bodyClassName="flex min-h-0 flex-1 bg-paper-100"

@@ -1,8 +1,5 @@
 import { uniqueTrimmed } from "./AgentMemoryCollections.js";
-import {
-  memoryCandidateUri,
-  randomMemoryId,
-} from "./AgentMemoryIdentity.js";
+import { memoryCandidateUri, randomMemoryId } from "./AgentMemoryIdentity.js";
 import { projectMemoryTime } from "./AgentMemoryTime.js";
 import type {
   AgentMemoryCandidateDraft,

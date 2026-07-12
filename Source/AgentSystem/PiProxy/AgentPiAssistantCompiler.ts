@@ -1,8 +1,5 @@
 import * as AjvModule from "ajv";
-import type {
-  ErrorObject,
-  ValidateFunction,
-} from "ajv";
+import type { ErrorObject, ValidateFunction } from "ajv";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { ResolvedAgentActionPlannerConfig } from "../Types/AgentConfigTypes.js";
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
@@ -24,10 +21,7 @@ import type {
   AgentPiToolArgumentsRepairInput,
   AgentPiToolCard,
 } from "./AgentPiAssistantMessageTypes.js";
-import type {
-  PiOpenAiChatCompletionRequest,
-  PiOpenAiTool,
-} from "./AgentPiOpenAiWireTypes.js";
+import type { PiOpenAiChatCompletionRequest, PiOpenAiTool } from "./AgentPiOpenAiWireTypes.js";
 import { AgentPiOpenAiPlanningProjector } from "./AgentPiOpenAiPlanningProjector.js";
 
 const Ajv = (AjvModule.default ?? AjvModule) as unknown as typeof import("ajv").default;
@@ -64,23 +58,17 @@ export interface AgentPiAssistantCompilerPort {
 }
 
 export interface AgentPiAssistantCompilerModelClient {
-  selectPiAction(
-    input: AgentPiControllerActionInput,
-    options?: { signal?: AbortSignal },
+  selectPiAction(input: AgentPiControllerActionInput, options?: { signal?: AbortSignal }): Promise<unknown>;
+  repairPiAction(
+    options: {
+      input: AgentPiControllerActionInput;
+      invalidAction: string;
+      issues: string[];
+    },
+    requestOptions?: { signal?: AbortSignal },
   ): Promise<unknown>;
-  repairPiAction(options: {
-    input: AgentPiControllerActionInput;
-    invalidAction: string;
-    issues: string[];
-  }, requestOptions?: { signal?: AbortSignal }): Promise<unknown>;
-  fillPiToolArguments(
-    input: AgentPiToolArgumentsInput,
-    options?: { signal?: AbortSignal },
-  ): Promise<unknown>;
-  repairPiToolArguments(
-    input: AgentPiToolArgumentsRepairInput,
-    options?: { signal?: AbortSignal },
-  ): Promise<unknown>;
+  fillPiToolArguments(input: AgentPiToolArgumentsInput, options?: { signal?: AbortSignal }): Promise<unknown>;
+  repairPiToolArguments(input: AgentPiToolArgumentsRepairInput, options?: { signal?: AbortSignal }): Promise<unknown>;
 }
 
 interface AgentPiToolChoiceConstraint {
@@ -98,13 +86,11 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
     this.planningProjector = new AgentPiOpenAiPlanningProjector({
       modelProvider: options.modelProvider,
     });
-    this.client = options.client ?? new AgentActionPlannerModelClient(
-      options.modelProvider,
-      options.actionPlannerConfig.Client,
-      {
+    this.client =
+      options.client ??
+      new AgentActionPlannerModelClient(options.modelProvider, options.actionPlannerConfig.Client, {
         maxRepairAttempts: options.actionPlannerConfig.MaxRepairAttempts,
-      },
-    );
+      });
   }
 
   async compile(input: AgentPiAssistantCompileRequest): Promise<AgentPiAssistantMessage> {
@@ -129,28 +115,25 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
       if (!isPlannerValidationError(error)) {
         throw error;
       }
-      const repaired = await this.client.repairPiAction({
-        input,
-        invalidAction: stringifyForRepair(rawAction),
-        issues: error.issues,
-      }, {
-        signal,
-      });
+      const repaired = await this.client.repairPiAction(
+        {
+          input,
+          invalidAction: stringifyForRepair(rawAction),
+          issues: error.issues,
+        },
+        {
+          signal,
+        },
+      );
       return this.parseAction(repaired, toolChoice);
     }
   }
 
-  private parseAction(
-    rawAction: unknown,
-    toolChoice: AgentPiToolChoiceConstraint,
-  ): ParsedPiControllerAction {
+  private parseAction(rawAction: unknown, toolChoice: AgentPiToolChoiceConstraint): ParsedPiControllerAction {
     const action = parsePiControllerAction(rawAction, {
       allowedTools: toolChoice.allowedTools,
     });
-    const issues = [
-      ...validateActionToolChoice(action, toolChoice),
-      ...validateActionExecutionReadiness(action),
-    ];
+    const issues = [...validateActionToolChoice(action, toolChoice), ...validateActionExecutionReadiness(action)];
     if (issues.length > 0) {
       throw new AgentActionPlannerValidationError(issues, action);
     }
@@ -184,19 +167,15 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
     input: AgentPiControllerActionInput,
     signal: AbortSignal | undefined,
   ): Promise<AgentPiAssistantMessage> {
-    const readyCalls = this.readyCalls(
-      action.calls ?? [],
-      input.openAiRequest.parallelToolCalls !== false,
-    );
+    const readyCalls = this.readyCalls(action.calls ?? [], input.openAiRequest.parallelToolCalls !== false);
     if (readyCalls.length === 0) {
-      throw new AgentActionPlannerValidationError([
-        "CallTools must include at least one immediately executable call.",
-      ], action);
+      throw new AgentActionPlannerValidationError(
+        ["CallTools must include at least one immediately executable call."],
+        action,
+      );
     }
 
-    const materialized = await Promise.all(
-      readyCalls.map((entry) => this.materializeToolCall(entry, input, signal)),
-    );
+    const materialized = await Promise.all(readyCalls.map((entry) => this.materializeToolCall(entry, input, signal)));
     const requiredFailure = materialized.find((entry) => !entry.ok && entry.required);
     if (requiredFailure && !requiredFailure.ok) {
       return {
@@ -206,11 +185,9 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
       };
     }
 
-    const executable = materialized.flatMap((entry) => entry.ok ? [entry.call] : []);
+    const executable = materialized.flatMap((entry) => (entry.ok ? [entry.call] : []));
     if (executable.length === 0) {
-      throw new AgentActionPlannerValidationError([
-        "No tool calls were executable after argument validation.",
-      ], action);
+      throw new AgentActionPlannerValidationError(["No tool calls were executable after argument validation."], action);
     }
 
     return {
@@ -285,26 +262,31 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
       return hinted;
     }
 
-    const draft = parsePiToolArgumentsDraft(await this.client.fillPiToolArguments(input, {
-      signal,
-    }));
+    const draft = parsePiToolArgumentsDraft(
+      await this.client.fillPiToolArguments(input, {
+        signal,
+      }),
+    );
     const issues = this.argumentDraftIssues(draft, input.tool);
     if (issues.length === 0) {
       return draft;
     }
 
-    return parsePiToolArgumentsDraft(await this.client.repairPiToolArguments({
-      ...input,
-      invalidArguments: draft.arguments,
-      issues,
-    }, {
-      signal,
-    }));
+    return parsePiToolArgumentsDraft(
+      await this.client.repairPiToolArguments(
+        {
+          ...input,
+          invalidArguments: draft.arguments,
+          issues,
+        },
+        {
+          signal,
+        },
+      ),
+    );
   }
 
-  private argumentsFromHints(
-    input: AgentPiToolArgumentsInput,
-  ): ParsedPiToolArgumentsDraft | undefined {
+  private argumentsFromHints(input: AgentPiToolArgumentsInput): ParsedPiToolArgumentsDraft | undefined {
     const hints = input.call.argumentHints;
     if (!hints) {
       return undefined;
@@ -326,10 +308,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
       .map((input) => input.trim())
       .filter(Boolean)
       .map((input) => `missing input: ${input}`);
-    return [
-      ...missing,
-      ...validateJsonSchema(tool.parameters ?? EmptyObjectParameterSchema, draft.arguments),
-    ];
+    return [...missing, ...validateJsonSchema(tool.parameters ?? EmptyObjectParameterSchema, draft.arguments)];
   }
 
   private readyCalls(
@@ -341,11 +320,14 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
   }> {
     const ready = calls.flatMap((call, index) =>
       (call.dependsOn ?? []).length === 0
-        ? [{
-            call,
-            planIndex: index,
-          }]
-        : []);
+        ? [
+            {
+              call,
+              planIndex: index,
+            },
+          ]
+        : [],
+    );
     return parallelToolCalls ? ready : ready.slice(0, 1);
   }
 
@@ -392,9 +374,7 @@ function validateJsonSchema(schema: unknown, value: Record<string, unknown>): st
   } catch (error) {
     return [`tool schema is invalid: ${errorMessage(error)}`];
   }
-  return validate(value)
-    ? []
-    : (validate.errors ?? []).map(formatAjvIssue);
+  return validate(value) ? [] : (validate.errors ?? []).map(formatAjvIssue);
 }
 
 const schemaValidatorCache = new WeakMap<object, ValidateFunction>();
@@ -412,15 +392,12 @@ function compileJsonSchema(schema: unknown): ValidateFunction {
 
 function normalizeParameterSchema(schema: unknown): Record<string, unknown> {
   return schema && typeof schema === "object" && !Array.isArray(schema)
-    ? schema as Record<string, unknown>
+    ? (schema as Record<string, unknown>)
     : EmptyObjectParameterSchema;
 }
 
 function formatAjvIssue(error: ErrorObject): string {
-  const path = [
-    ...jsonPointerPath(error.instancePath),
-    ...ajvParamPath(error),
-  ];
+  const path = [...jsonPointerPath(error.instancePath), ...ajvParamPath(error)];
   const location = path.length > 0 ? path.map(String).join(".") : "arguments";
   return `${location}: ${error.message ?? "JSON Schema validation failed"}`;
 }
@@ -442,19 +419,11 @@ function jsonPointerPath(pointer: string): Array<string | number> {
     });
 }
 
-function formatArgumentFailure(
-  call: AgentPiPlannedToolCall,
-  issues: readonly string[],
-): string {
-  return [
-    agentErrorMessage("pi.toolArgumentsUnsafe", { toolName: call.toolName }),
-    ...issues.slice(0, 6),
-  ].join("\n");
+function formatArgumentFailure(call: AgentPiPlannedToolCall, issues: readonly string[]): string {
+  return [agentErrorMessage("pi.toolArgumentsUnsafe", { toolName: call.toolName }), ...issues.slice(0, 6)].join("\n");
 }
 
-function resolveToolChoiceConstraint(
-  request: PiOpenAiChatCompletionRequest,
-): AgentPiToolChoiceConstraint {
+function resolveToolChoiceConstraint(request: PiOpenAiChatCompletionRequest): AgentPiToolChoiceConstraint {
   const requestTools = toolNames(request.tools ?? []);
   const allowedToolChoice = readAllowedToolChoice(request.tool_choice, requestTools);
   if (allowedToolChoice) {
@@ -506,13 +475,13 @@ function readAllowedToolChoice(
     return undefined;
   }
   const allowedToolsRecord = readRecord(record.allowed_tools);
-  const declaredTools = Array.isArray(allowedToolsRecord.tools)
-    ? allowedToolsRecord.tools
-    : [];
-  const declaredNames = new Set(declaredTools.flatMap((tool) => {
-    const name = readFunctionToolName(tool);
-    return name ? [name] : [];
-  }));
+  const declaredTools = Array.isArray(allowedToolsRecord.tools) ? allowedToolsRecord.tools : [];
+  const declaredNames = new Set(
+    declaredTools.flatMap((tool) => {
+      const name = readFunctionToolName(tool);
+      return name ? [name] : [];
+    }),
+  );
   return {
     mode: "allowed",
     allowedTools: requestTools.filter((name) => declaredNames.has(name)),
@@ -541,15 +510,10 @@ function readFunctionToolName(toolChoice: unknown): string | undefined {
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function validateActionToolChoice(
-  action: ParsedPiControllerAction,
-  toolChoice: AgentPiToolChoiceConstraint,
-): string[] {
+function validateActionToolChoice(action: ParsedPiControllerAction, toolChoice: AgentPiToolChoiceConstraint): string[] {
   const issues: string[] = [];
   if (toolChoice.mode === "none" && action.kind === "CallTools") {
     issues.push("tool_choice forbids tool calls.");

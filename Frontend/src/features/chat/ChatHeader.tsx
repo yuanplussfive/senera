@@ -1,5 +1,6 @@
 import { Lightbulb, PanelLeftOpen, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { IconButton, Tooltip } from "../../shared/ui";
 
@@ -20,8 +21,8 @@ export function ChatHeader({
     <div className="flex h-14 shrink-0 items-center gap-2 border-b border-ink-200/60 px-3 sm:px-6">
       {onOpenSessionPanel ? (
         <IconButton
-          label="打开会话"
-          tooltip="打开会话"
+          label={frontendMessage("session.headerExpand")}
+          tooltip={frontendMessage("session.headerExpand")}
           tooltipSide="bottom"
           onClick={onOpenSessionPanel}
           touchSafe
@@ -44,8 +45,8 @@ export function ChatHeader({
       <SandboxStatusBadge status={sandboxStatus} />
       {onOpenWorkflowPanel ? (
         <IconButton
-          label="打开思考过程"
-          tooltip="打开思考过程"
+          label={frontendMessage("workflow.panel.open")}
+          tooltip={frontendMessage("workflow.panel.open")}
           tooltipSide="bottom"
           onClick={onOpenWorkflowPanel}
           touchSafe
@@ -58,21 +59,13 @@ export function ChatHeader({
   );
 }
 
-function SandboxStatusBadge({
-  status,
-}: {
-  status?: SandboxStatusSnapshotData | null;
-}): JSX.Element {
+function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
   const presentation = readSandboxStatusPresentation(status);
   const Icon = presentation.Icon;
 
   return (
     <Tooltip
-      content={
-        <span className="max-w-[260px] whitespace-normal leading-5">
-          {presentation.tooltip}
-        </span>
-      }
+      content={<span className="max-w-[260px] whitespace-normal leading-5">{presentation.tooltip}</span>}
       side="bottom"
       align="end"
     >
@@ -97,43 +90,47 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
   className: string;
 } {
   const state = status?.state ?? "unknown";
-  const detail = status?.message ?? "沙箱运行时尚未同步状态。";
-  const fallbackSuffix = status?.effectiveMode === "fallback"
-    ? "允许回退的工具会继续使用本地执行边界。"
-    : "支持沙箱的工具会优先进入 microVM。";
+  const detail = status?.message ?? frontendMessage("sandbox.status.unsynced");
+  const fallbackSuffix =
+    status?.effectiveMode === "fallback"
+      ? frontendMessage("sandbox.status.fallbackSuffix")
+      : frontendMessage("sandbox.status.sandboxSuffix");
   const commonTooltip = `${detail} ${fallbackSuffix}`;
 
   const table = {
     unknown: {
-      label: "沙箱未检测",
+      label: frontendMessage("sandbox.status.unknown"),
       tooltip: commonTooltip,
       Icon: Shield,
       className: "border-ink-200 bg-paper-100 text-ink-500 hover:bg-ink-900/[0.04]",
     },
     preparing: {
-      label: "沙箱准备中",
+      label: frontendMessage("sandbox.status.preparing"),
       tooltip: commonTooltip,
       Icon: Shield,
       className: "border-umber-200 bg-umber-50/70 text-umber-700 hover:bg-umber-50",
     },
     ready: {
-      label: "沙箱可用",
+      label: frontendMessage("sandbox.status.ready"),
       tooltip: commonTooltip,
       Icon: ShieldCheck,
       className: "border-moss-200 bg-moss-50/70 text-moss-700 hover:bg-moss-50",
     },
     fallback: {
-      label: "本地回退",
+      label: frontendMessage("sandbox.status.fallback"),
       tooltip: commonTooltip,
       Icon: ShieldAlert,
       className: "border-brick-200 bg-brick-50/70 text-brick-700 hover:bg-brick-50",
     },
-  } satisfies Record<SandboxRuntimeState, {
-    label: string;
-    tooltip: string;
-    Icon: typeof Shield;
-    className: string;
-  }>;
+  } satisfies Record<
+    SandboxRuntimeState,
+    {
+      label: string;
+      tooltip: string;
+      Icon: typeof Shield;
+      className: string;
+    }
+  >;
 
   return table[state];
 }

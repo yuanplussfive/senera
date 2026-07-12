@@ -1,8 +1,5 @@
 import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
-import type {
-  AgentToolResultPresentation,
-  ExecutedToolCallResult,
-} from "../Types/ToolRuntimeTypes.js";
+import type { AgentToolResultPresentation, ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 
 /**
@@ -42,9 +39,7 @@ const MAX_PREVIEW_CHARS = 240;
 export function clampField(value: unknown): unknown {
   if (value === null || value === undefined) return undefined;
   if (typeof value === "string") {
-    return value.length > MAX_FIELD_BYTES
-      ? `${value.slice(0, MAX_FIELD_BYTES)}…[truncated]`
-      : value;
+    return value.length > MAX_FIELD_BYTES ? `${value.slice(0, MAX_FIELD_BYTES)}…[truncated]` : value;
   }
   if (typeof value === "number" || typeof value === "boolean") return value;
   try {
@@ -61,9 +56,7 @@ export function clampField(value: unknown): unknown {
 function clampPreview(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const normalized = value.replace(/\s+/g, " ").trim();
-  return normalized.length > MAX_PREVIEW_CHARS
-    ? `${normalized.slice(0, MAX_PREVIEW_CHARS)}…`
-    : normalized;
+  return normalized.length > MAX_PREVIEW_CHARS ? `${normalized.slice(0, MAX_PREVIEW_CHARS)}…` : normalized;
 }
 
 /** 执行结果 → 工具节点（一次工具调用一条）。 */
@@ -93,11 +86,7 @@ export function buildToolTraces(
 }
 
 /** 终结节点：生成回复 / 向用户提问。 */
-export function buildAnswerTrace(
-  step: number,
-  seq: number,
-  decisionKind: "final_answer" | "ask_user",
-): StepTrace {
+export function buildAnswerTrace(step: number, seq: number, decisionKind: "final_answer" | "ask_user"): StepTrace {
   return {
     step,
     seq,

@@ -110,18 +110,14 @@ export type AgentActionPlannerBamlFunctionArgs =
       input: AgentMemoryWriteResolutionPromptInput;
       invalidResolution: string;
       issues: string[];
-    }
-  ;
+    };
 
 export class AgentActionPlannerBamlPromptFactory {
   private readonly promptRegistry = createPromptRegistry();
 
   async buildPrompt(args: AgentActionPlannerBamlFunctionArgs): Promise<AgentBamlModelRequest> {
     const request = await this.buildBamlRequest(args);
-    const prompt = projectPromptForBamlFunction(
-      args.functionName,
-      request.body.json() as Record<string, unknown>,
-    );
+    const prompt = projectPromptForBamlFunction(args.functionName, request.body.json() as Record<string, unknown>);
     return {
       requestId: `action-planner:${args.functionName}`,
       step: 0,
@@ -201,10 +197,7 @@ export class AgentActionPlannerBamlPromptFactory {
           options,
         );
       case "AuditToolRisk":
-        return baml.request.AuditToolRisk(
-          buildBamlToolRiskAuditPromptJson(args.input),
-          options,
-        );
+        return baml.request.AuditToolRisk(buildBamlToolRiskAuditPromptJson(args.input), options);
       case "RepairToolRiskAudit":
         return baml.request.RepairToolRiskAudit(
           buildBamlToolRiskAuditPromptJson(args.input, {
@@ -289,16 +282,17 @@ function projectPromptForBamlFunction(
   return projectActionPlannerBamlRequestBody(body);
 }
 
-function buildPiPromptJson(
-  input: object,
-  directive: Record<string, unknown>,
-): string {
-  return JSON.stringify({
-    context: {
-      ...input,
+function buildPiPromptJson(input: object, directive: Record<string, unknown>): string {
+  return JSON.stringify(
+    {
+      context: {
+        ...input,
+      },
+      directive,
     },
-    directive,
-  }, null, 2);
+    null,
+    2,
+  );
 }
 
 function createPromptRegistry(): ClientRegistry {

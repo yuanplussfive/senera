@@ -1,13 +1,6 @@
-import type {
-  ToolArtifactPolicyManifest,
-  ToolArtifactWorkspaceManifest,
-} from "../Types/PluginManifestTypes.js";
-import type {
-  ExecutedToolCallResult,
-} from "../Types/ToolRuntimeTypes.js";
-import {
-  AgentWorkspaceArtifactWriter,
-} from "./AgentWorkspaceArtifactWriter.js";
+import type { ToolArtifactPolicyManifest, ToolArtifactWorkspaceManifest } from "../Types/PluginManifestTypes.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import { AgentWorkspaceArtifactWriter } from "./AgentWorkspaceArtifactWriter.js";
 
 export function writeToolWorkspaceArtifacts(input: {
   workspaceRoot: string;

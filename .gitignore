@@ -3,6 +3,7 @@
 *.local
 senera.config.json
 .npm-cache/
+.cache/
 Dist/
 Frontend/dist/
 coverage/

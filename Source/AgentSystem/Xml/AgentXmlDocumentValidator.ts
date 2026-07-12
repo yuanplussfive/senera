@@ -18,17 +18,22 @@ export function assertXmlDocumentSyntax(
     return;
   }
 
-  throw new AgentXmlParseError(`XML 格式无效：${validation.err.msg}`, [
-    sourceHelper.diagnosticFromLineColumn(
-      `XML 格式无效：${validation.err.msg}`,
-      validation.err.line,
-      validation.err.col,
-      "修复 XML 标签闭合、嵌套或非法字符。",
-    ),
-  ], AgentXmlErrorCodes.InvalidXmlSyntax, {
-    line: validation.err.line,
-    column: validation.err.col,
-  });
+  throw new AgentXmlParseError(
+    `XML 格式无效：${validation.err.msg}`,
+    [
+      sourceHelper.diagnosticFromLineColumn(
+        `XML 格式无效：${validation.err.msg}`,
+        validation.err.line,
+        validation.err.col,
+        "修复 XML 标签闭合、嵌套或非法字符。",
+      ),
+    ],
+    AgentXmlErrorCodes.InvalidXmlSyntax,
+    {
+      line: validation.err.line,
+      column: validation.err.col,
+    },
+  );
 }
 
 export function readSingleParsedRootName(options: {
@@ -46,9 +51,8 @@ export function readSingleParsedRootName(options: {
   const secondaryRoot = options.orderedRoots[1];
   const duplicateRootCount = secondaryRoot
     ? options.orderedRoots
-      .slice(0, 1 + options.orderedRoots.indexOf(secondaryRoot))
-      .filter((root) => root.name === secondaryRoot.name)
-      .length - 1
+        .slice(0, 1 + options.orderedRoots.indexOf(secondaryRoot))
+        .filter((root) => root.name === secondaryRoot.name).length - 1
     : 0;
   const diagnostic = secondaryRoot
     ? options.sourceHelper.diagnosticForRoot(message, secondaryRoot.name, suggestion, duplicateRootCount)
@@ -57,9 +61,7 @@ export function readSingleParsedRootName(options: {
         suggestion,
       };
 
-  throw new AgentXmlParseError(message, [
-    diagnostic,
-  ], AgentXmlErrorCodes.MultipleDecisionRoots, {
+  throw new AgentXmlParseError(message, [diagnostic], AgentXmlErrorCodes.MultipleDecisionRoots, {
     rootNames,
     pointer: diagnostic.pointer,
     line: diagnostic.position?.line,

@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
-import { AgentInteractionRunModes, type AgentInteractionRouteResult } from "../Source/AgentSystem/ActionPlanner/AgentInteractionRouter.js";
+import {
+  AgentInteractionRunModes,
+  type AgentInteractionRouteResult,
+} from "../Source/AgentSystem/ActionPlanner/AgentInteractionRouter.js";
 import type { AgentActionPlannerContextBuilder } from "../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
 import { AgentLoopEventFactory } from "../Source/AgentSystem/Loop/AgentLoopEventFactory.js";
 import type { AgentLoopCommand } from "../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
 import { AgentPlanningCommandHandler } from "../Source/AgentSystem/ActionPlanner/AgentPlanningCommandHandler.js";
 import type { AgentRootCommand } from "../Source/AgentSystem/AgentRootCommand.js";
-import { InteractionRunMode, TurnContextMode, type TurnUnderstanding } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
+import {
+  InteractionRunMode,
+  TurnContextMode,
+  type TurnUnderstanding,
+} from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import type { AgentActivatedSkill } from "../Source/AgentSystem/Skills/AgentSkillActivation.js";
 import type { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import type { LoadedToolsState } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
@@ -45,16 +52,35 @@ const result = await handler.routeInteraction(routeCommand());
 
 assert.equal(result.kind, "succeeded");
 assert.equal(result.output.kind, "interaction_routed");
-assert.deepEqual(observed.plannerActiveSkills.map((skill) => skill.name), ["ExecutionWorkflowSkill"]);
+assert.deepEqual(
+  observed.plannerActiveSkills.map((skill) => skill.name),
+  ["ExecutionWorkflowSkill"],
+);
 assert.equal(observed.resolveCalls.length, 2);
 assert.deepEqual(observed.resolveCalls[0]?.preferredTools, ["WorkspaceGrep"]);
-assert.deepEqual(observed.resolveCalls[1]?.preferredTools, ["WorkspaceGrep", "WorkspaceApplyPatch", "ShellCommandTool"]);
+assert.deepEqual(observed.resolveCalls[1]?.preferredTools, [
+  "WorkspaceGrep",
+  "WorkspaceApplyPatch",
+  "ShellCommandTool",
+]);
 assert.deepEqual(observed.rootPreferredTools, ["WorkspaceGrep", "WorkspaceApplyPatch", "ShellCommandTool"]);
-assert.deepEqual(result.output.activeSkills.map((skill) => skill.name), ["ExecutionWorkflowSkill"]);
-assert.deepEqual(result.output.loadedToolNames, ["SystemTool", "WorkspaceGrep", "WorkspaceApplyPatch", "ShellCommandTool"]);
+assert.deepEqual(
+  result.output.activeSkills.map((skill) => skill.name),
+  ["ExecutionWorkflowSkill"],
+);
+assert.deepEqual(result.output.loadedToolNames, [
+  "SystemTool",
+  "WorkspaceGrep",
+  "WorkspaceApplyPatch",
+  "ShellCommandTool",
+]);
 assert.deepEqual(observed.rememberedLoadedTools, result.output.loadedToolNames);
 assert.equal(result.output.rootCommand?.action, "use_tools");
-assert.deepEqual(result.output.rootCommand?.preferredTools, ["WorkspaceGrep", "WorkspaceApplyPatch", "ShellCommandTool"]);
+assert.deepEqual(result.output.rootCommand?.preferredTools, [
+  "WorkspaceGrep",
+  "WorkspaceApplyPatch",
+  "ShellCommandTool",
+]);
 
 console.log("Pi-native workflow resource routing verified.");
 
@@ -75,7 +101,10 @@ function fakeRuntime(): AgentSystemRuntime {
         recommendedSkillTools: () => ["WorkspaceApplyPatch", "ShellCommandTool"],
         plannerRoleplayPreset: async () => undefined,
         toolCatalog: () => [],
-        buildRootCommand: ({ decision, loadedToolNames }: {
+        buildRootCommand: ({
+          decision,
+          loadedToolNames,
+        }: {
           decision: { action: string; useTools?: { preferredTools?: string[]; instruction?: string } };
           loadedToolNames: LoadedToolsState;
         }) => {
@@ -105,10 +134,12 @@ function routeCommand(): Extract<AgentLoopCommand, { kind: "route_interaction" }
     requestId: "verify-pi-native-workflow-resource-routing",
     step: 1,
     input: "继续全面优化拓展",
-    messages: [{
-      role: "user",
-      content: "继续全面优化拓展",
-    }],
+    messages: [
+      {
+        role: "user",
+        content: "继续全面优化拓展",
+      },
+    ],
     conversationEntries: [],
     loadedToolNames: ["SystemTool"],
     plannerLedger: {
@@ -159,18 +190,17 @@ function workflowSkillFixture(): AgentActivatedSkill {
     evidenceRequirements: [],
     descriptionFile: "System/Plugins/AgentCapabilitySkillsPlugin/docs/ExecutionWorkflow.md",
     matchedTerms: ["workflow"],
-    matchedFields: [{
-      term: "workflow",
-      fields: ["summary"],
-    }],
+    matchedFields: [
+      {
+        term: "workflow",
+        fields: ["summary"],
+      },
+    ],
     score: 1,
   };
 }
 
-function rootCommandFixture(
-  loadedToolNames: LoadedToolsState,
-  preferredTools: readonly string[],
-): AgentRootCommand {
+function rootCommandFixture(loadedToolNames: LoadedToolsState, preferredTools: readonly string[]): AgentRootCommand {
   const toolNames = loadedToolNames === "all" ? [] : loadedToolNames;
   return {
     authority: "senera_runtime_root",

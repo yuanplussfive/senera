@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, Download, Eye, FileCode } from "lucide-react";
 import { cn } from "../../lib/util";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Dialog, DialogContent, Tooltip, useClipboardCopy } from "../ui";
 import { CodeArtifactSourceView } from "./CodeArtifactSourceView";
 import { type CodeArtifact } from "./CodeArtifactModel";
@@ -21,13 +22,10 @@ export function CodeArtifactViewer({
   initialView,
   onOpenChange,
 }: CodeArtifactViewerProps): JSX.Element {
-  const defaultView = useMemo<ArtifactView>(
-    () => (artifact.preview ? "preview" : "source"),
-    [artifact.preview],
-  );
+  const defaultView = useMemo<ArtifactView>(() => (artifact.preview ? "preview" : "source"), [artifact.preview]);
   const [view, setView] = useState<ArtifactView>(initialView ?? defaultView);
   const [wrapped, setWrapped] = useState(false);
-  const { copied, copyText } = useClipboardCopy({ successMessage: "代码已复制" });
+  const { copied, copyText } = useClipboardCopy({ successMessage: frontendMessage("code.copied") });
 
   useEffect(() => {
     if (!open) return;
@@ -52,7 +50,7 @@ export function CodeArtifactViewer({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title={artifact.filename}
-        description={`${artifact.language} · ${artifact.lineCount} lines`}
+        description={`${artifact.language} · ${frontendMessage("code.lineCount", { count: artifact.lineCount })}`}
         className="flex h-[min(860px,calc(100vh-28px))] w-[min(1180px,calc(100vw-28px))] max-h-[calc(100vh-28px)] flex-col"
         bodyClassName="min-h-0 flex-1"
       >
@@ -65,7 +63,7 @@ export function CodeArtifactViewer({
                 onClick={() => setView("source")}
               >
                 <FileCode className="h-3.5 w-3.5" />
-                源码
+                {frontendMessage("code.source")}
               </button>
               {artifact.preview ? (
                 <button
@@ -85,24 +83,24 @@ export function CodeArtifactViewer({
                 className={cn("code-artifact-viewer__button", wrapped && "is-active")}
                 onClick={() => setWrapped((value) => !value)}
               >
-                自动换行
+                {frontendMessage("code.wrap")}
               </button>
-              <Tooltip content={copied ? "已复制" : "复制"} side="top">
+              <Tooltip content={frontendMessage(copied ? "clipboard.copied" : "clipboard.copyToast")} side="top">
                 <button
                   type="button"
                   className="code-artifact-viewer__iconbtn"
                   onClick={copyCode}
-                  aria-label="复制代码"
+                  aria-label={frontendMessage("code.copy")}
                 >
                   {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
                 </button>
               </Tooltip>
-              <Tooltip content="下载" side="top">
+              <Tooltip content={frontendMessage("code.download")} side="top">
                 <button
                   type="button"
                   className="code-artifact-viewer__iconbtn"
                   onClick={downloadCode}
-                  aria-label="下载代码文件"
+                  aria-label={frontendMessage("code.downloadFile")}
                 >
                   <Download className="h-3.5 w-3.5" />
                 </button>
@@ -119,11 +117,7 @@ export function CodeArtifactViewer({
                 srcDoc={artifact.preview.source}
               />
             ) : (
-              <CodeArtifactSourceView
-                code={artifact.code}
-                language={artifact.language}
-                wrapped={wrapped}
-              />
+              <CodeArtifactSourceView code={artifact.code} language={artifact.language} wrapped={wrapped} />
             )}
           </div>
         </div>

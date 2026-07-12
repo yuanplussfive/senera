@@ -7,10 +7,7 @@
     "Entry": {
       "Kind": "Process",
       "Command": "npm",
-      "Args": [
-        "run",
-        "tool"
-      ],
+      "Args": ["run", "tool"],
       "Cwd": "."
     }
   },
@@ -25,15 +22,11 @@
   "Sandbox": {
     "Network": "Allow",
     "Workspace": {
-      "Read": [
-        "PluginConfig.toml"
-      ],
+      "Read": ["PluginConfig.toml"],
       "Write": []
     },
     "State": {
-      "Write": [
-        ".state"
-      ]
+      "Write": [".state"]
     }
   },
   "Prompting": {
@@ -45,22 +38,16 @@
       "Name": "TavilySearchTool",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
-      "Permissions": [
-        "network:https://api.tavily.com",
-        "filesystem:read:PluginConfig.toml",
-        "filesystem:write:.state"
-      ],
+      "Permissions": ["network:https://api.tavily.com", "filesystem:read:PluginConfig.toml", "filesystem:write:.state"],
       "Execution": {
-        "Boundary": "Sandbox",
+        "Boundary": "SandboxPreferred",
         "Network": "Allow",
         "Workspace": "ReadWrite",
         "LocalFallback": "Allow"
       },
       "Artifacts": {
         "Redact": {
-          "Paths": [
-            "$.apiKey"
-          ]
+          "Paths": ["$.apiKey"]
         },
         "Evidence": [
           {
@@ -75,9 +62,7 @@
               "favicon": "$.favicon"
             },
             "Identity": {
-              "Parts": [
-                "url"
-              ]
+              "Parts": ["url"]
             },
             "Presentation": {
               "Locator": "{{ url }}",
@@ -92,25 +77,11 @@
               "favicon": "$.favicon"
             },
             "ModelProjection": {
-              "Slots": [
-                "title",
-                "url",
-                "content",
-                "score",
-                "publishedDate"
-              ]
+              "Slots": ["title", "url", "content", "score", "publishedDate"]
             },
             "PlannerMemory": {
-              "Facts": [
-                "title",
-                "url",
-                "score",
-                "publishedDate"
-              ],
-              "ArtifactRefs": [
-                "evidence",
-                "projection"
-              ]
+              "Facts": ["title", "url", "score", "publishedDate"],
+              "ArtifactRefs": ["evidence", "projection"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.title }} - {{ e.slots.url }}\n{% endfor %}",
@@ -125,63 +96,25 @@
       },
       "Search": {
         "Summary": "联网搜索网页、新闻和实时事实信息。",
-        "Tags": [
-          "网页搜索",
-          "最新消息",
-          "外部资料",
-          "新闻查询",
-          "联网检索"
-        ],
+        "Tags": ["网页搜索", "最新消息", "外部资料", "新闻查询", "联网检索"],
         "Capabilities": [
           {
             "Id": "web.search",
             "Title": "Web search",
             "Description": "Search external web pages, current news, public documentation, and real-world facts.",
             "Facets": {
-              "Actions": [
-                "search",
-                "lookup",
-                "verify"
-              ],
-              "Targets": [
-                "web",
-                "news",
-                "public-documentation",
-                "current-fact",
-                "external-source"
-              ],
-              "Inputs": [
-                "query",
-                "domain",
-                "date-range",
-                "topic",
-                "country"
-              ],
-              "Outputs": [
-                "web-result",
-                "url",
-                "source-snippet",
-                "answer-summary"
-              ],
-              "Evidence": [
-                "web-result"
-              ],
-              "Effects": [
-                "network"
-              ]
+              "Actions": ["search", "lookup", "verify"],
+              "Targets": ["web", "news", "public-documentation", "current-fact", "external-source"],
+              "Inputs": ["query", "domain", "date-range", "topic", "country"],
+              "Outputs": ["web-result", "url", "source-snippet", "answer-summary"],
+              "Evidence": ["web-result"],
+              "Effects": ["network"]
             },
-            "Aliases": [
-              "联网搜索",
-              "网页搜索",
-              "latest news",
-              "official docs lookup"
-            ],
+            "Aliases": ["联网搜索", "网页搜索", "latest news", "official docs lookup"],
             "Risk": {
               "SideEffect": "network",
               "Permission": "external-api",
-              "Notes": [
-                "Sends the search query to Tavily."
-              ]
+              "Notes": ["Sends the search query to Tavily."]
             }
           }
         ],
@@ -189,15 +122,8 @@
           "需要查询当前新闻、官网资料、实时事件或外部网页时使用。",
           "需要比较产品、公司、政策、价格、发布时间等可能变化的信息时使用。"
         ],
-        "Examples": [
-          "OpenAI 最新新闻",
-          "Tavily API 文档",
-          "公司最近动态 对比",
-          "latest release notes web search"
-        ],
-        "Avoid": [
-          "不要用于搜索本地代码或读取工作区文件。"
-        ]
+        "Examples": ["OpenAI 最新新闻", "Tavily API 文档", "公司最近动态 对比", "latest release notes web search"],
+        "Avoid": ["不要用于搜索本地代码或读取工作区文件。"]
       }
     }
   ],
@@ -205,12 +131,8 @@
     "TrustLevel": "External",
     "Network": "Allow",
     "FileSystem": {
-      "Read": [
-        "PluginConfig.toml"
-      ],
-      "Write": [
-        ".state"
-      ]
+      "Read": ["PluginConfig.toml"],
+      "Write": [".state"]
     },
     "RequiresApproval": false
   }

@@ -11,39 +11,37 @@ const ToolArtifactConditionSchema = z
   .object({
     Selector: z.string().min(1),
     Exists: z.boolean().optional(),
-    Equals: z.union([
-      z.string(),
-      z.number(),
-      z.boolean(),
-      z.null(),
-    ]).optional(),
-    In: z.array(z.union([
-      z.string(),
-      z.number(),
-      z.boolean(),
-      z.null(),
-    ])).optional(),
+    Equals: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+    In: z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
   })
   .strict();
 
 const ToolArtifactEvidenceIdentitySchema = z
   .object({
-    Parts: z.array(z.union([
-      z.string().min(1),
-      z.object({
-        Slot: z.string().min(1),
-        Required: z.boolean().optional(),
-      }).strict(),
-    ])).min(1),
+    Parts: z
+      .array(
+        z.union([
+          z.string().min(1),
+          z
+            .object({
+              Slot: z.string().min(1),
+              Required: z.boolean().optional(),
+            })
+            .strict(),
+        ]),
+      )
+      .min(1),
   })
   .strict();
 
 const ToolArtifactEvidenceSlotSchema = z.union([
   z.string().min(1),
-  z.object({
-    Selector: z.string().min(1),
-    Scope: z.enum(["Record", "Root"]).optional(),
-  }).strict(),
+  z
+    .object({
+      Selector: z.string().min(1),
+      Scope: z.enum(["Record", "Root"]).optional(),
+    })
+    .strict(),
 ]);
 
 const ToolArtifactEvidencePresentationSchema = z
@@ -125,4 +123,3 @@ export const ToolArtifactPolicySchema = z
     Workspace: ToolArtifactWorkspaceSchema.optional(),
   })
   .strict();
-

@@ -1,13 +1,7 @@
-import {
-  ChevronDown,
-  Check,
-  Clock3,
-  ListTree,
-  Wrench,
-  X as XIcon,
-} from "lucide-react";
+import { ChevronDown, Check, Clock3, ListTree, Wrench, X as XIcon } from "lucide-react";
 import type { RunRecord } from "../../store/sessionStore";
 import { cn, formatDuration, formatTime } from "../../lib/util";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,30 +12,24 @@ import {
 } from "../../shared/ui";
 import type { RunSummary } from "./runSummary";
 
-export function RunSummaryStrip({
-  run,
-  summary,
-}: {
-  run: RunRecord;
-  summary: RunSummary;
-}): JSX.Element {
+export function RunSummaryStrip({ run, summary }: { run: RunRecord; summary: RunSummary }): JSX.Element {
   return (
     <div className="mb-2 grid grid-cols-3 gap-1.5">
       <MetricChip
         icon={<ListTree className="h-3 w-3" />}
-        label="节点"
+        label={frontendMessage("workflow.summary.nodes")}
         value={`${summary.completed}/${summary.total}`}
         tone={summary.failed > 0 ? "danger" : run.status === "running" ? "live" : "neutral"}
       />
       <MetricChip
         icon={<Wrench className="h-3 w-3" />}
-        label="工具"
+        label={frontendMessage("workflow.summary.tools")}
         value={`${summary.tools}`}
       />
       <MetricChip
         icon={<Clock3 className="h-3 w-3" />}
         label={summary.startedAt}
-        value={summary.duration || "进行中"}
+        value={summary.duration || frontendMessage("workflow.run.inProgress")}
       />
     </div>
   );
@@ -88,7 +76,8 @@ export function RunSelector({
   pinnedToHistory: boolean;
 }): JSX.Element {
   const current = runs.find((r) => r.requestId === currentRunId) ?? runs[runs.length - 1];
-  const reversed = [...runs].reverse(); // 最新在前
+  const reversed = [...runs].reverse();
+  const currentIndex = runs.indexOf(current) + 1;
   return (
     <div>
       <DropdownMenu>
@@ -102,22 +91,22 @@ export function RunSelector({
                 <RunStatusBadge status={current.status} />
                 <span>
                   {runs.length === 1
-                    ? "唯一一轮"
+                    ? frontendMessage("workflow.run.only")
                     : !pinnedToHistory
-                      ? "最新一轮"
-                      : `第 ${runs.indexOf(current) + 1} / ${runs.length} 轮`}
+                      ? frontendMessage("workflow.run.latest")
+                      : frontendMessage("workflow.run.index", { index: currentIndex, total: runs.length })}
                 </span>
                 <span>· {formatDuration(current.startedAt, current.endedAt)}</span>
               </MetaLabel>
               <div className="mt-1 line-clamp-2 text-[12.5px] text-ink-800">
-                {current.input || "（无输入）"}
+                {current.input || frontendMessage("workflow.run.emptyInput")}
               </div>
             </div>
             <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-400 transition group-data-[state=open]:rotate-180" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="max-h-[60vh] w-[420px] overflow-y-auto scrollbar-thin">
-          <DropdownMenuLabel>本会话所有运行 · {runs.length} 轮</DropdownMenuLabel>
+          <DropdownMenuLabel>{frontendMessage("workflow.run.allRuns", { count: runs.length })}</DropdownMenuLabel>
           {reversed.map((r, i) => {
             const isCurrent = r.requestId === current.requestId;
             const indexFromOldest = runs.indexOf(r) + 1;
@@ -125,17 +114,19 @@ export function RunSelector({
               <DropdownMenuItem
                 key={r.requestId}
                 onSelect={() => onSelect(r.requestId)}
-                icon={isCurrent ? <Check className="h-3.5 w-3.5 text-terra-500" /> : <span className="block h-3.5 w-3.5" />}
+                icon={
+                  isCurrent ? <Check className="h-3.5 w-3.5 text-terra-500" /> : <span className="block h-3.5 w-3.5" />
+                }
               >
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <span className="font-mono text-[10px] text-ink-400">
-                    {i === 0 ? "最新" : `#${indexFromOldest}`}
+                    {i === 0 ? frontendMessage("workflow.run.latestShort") : `#${indexFromOldest}`}
                   </span>
-                  <span className="truncate text-[12.5px]">{r.input || "（无输入）"}</span>
+                  <span className="truncate text-[12.5px]">
+                    {r.input || frontendMessage("workflow.run.emptyInput")}
+                  </span>
                 </div>
-                <span className="ml-2 font-mono text-[10px] text-ink-400">
-                  {formatTime(r.startedAt)}
-                </span>
+                <span className="ml-2 font-mono text-[10px] text-ink-400">{formatTime(r.startedAt)}</span>
               </DropdownMenuItem>
             );
           })}
@@ -147,25 +138,21 @@ export function RunSelector({
 
 function RunStatusBadge({ status }: { status: RunRecord["status"] }): JSX.Element {
   if (status === "running") {
-    return (
-      <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-umber-500 motion-safe:animate-pulse" />
-    );
+    return <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-umber-500 motion-safe:animate-pulse" />;
   }
   if (status === "failed") {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-brick-200/60 bg-brick-50/60 px-1.5 py-0.5 text-[10.5px] text-brick-600">
-        <XIcon className="h-2.5 w-2.5" /> failed
+        <XIcon className="h-2.5 w-2.5" /> {frontendMessage("workflow.run.status.failed")}
       </span>
     );
   }
   if (status === "cancelled") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-1.5 py-0.5 text-ink-500">
-        cancelled
+        {frontendMessage("workflow.run.status.cancelled")}
       </span>
     );
   }
-  return (
-    <Check className="h-3 w-3 text-moss-500" />
-  );
+  return <Check className="h-3 w-3 text-moss-500" />;
 }

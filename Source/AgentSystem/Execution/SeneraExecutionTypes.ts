@@ -17,8 +17,7 @@ export const SeneraExecutionErrorCodes = {
   Unknown: "unknown",
 } as const;
 
-export type SeneraExecutionErrorCode =
-  typeof SeneraExecutionErrorCodes[keyof typeof SeneraExecutionErrorCodes];
+export type SeneraExecutionErrorCode = (typeof SeneraExecutionErrorCodes)[keyof typeof SeneraExecutionErrorCodes];
 
 export class SeneraExecutionError extends Error {
   constructor(
@@ -64,5 +63,5 @@ export interface SeneraExecutionEnv extends ExecutionEnv {
     command: string,
     args: readonly string[],
     options: SeneraPersistentProcessSpawnOptions,
-  ): SeneraPersistentProcessChild;
+  ): Promise<SeneraPersistentProcessChild>;
 }

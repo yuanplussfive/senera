@@ -13,10 +13,16 @@ import type {
   ResolvedAgentModelProviderConfig,
 } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/PluginRuntimeTypes.js";
+import { AgentModelEndpointKinds } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelEndpointContract.js";
+import {
+  AgentPiProxyProtocol,
+  resolveAgentPiProxyBaseUrl,
+} from "../../../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
 
 describe("Pi projection behavior", () => {
-  test("projects Senera model providers through the local Pi proxy with compatibility metadata", () => {
+  test.each(AgentModelEndpointKinds)("projects %s providers through the local Pi proxy", (endpoint) => {
     const provider = createProvider({
+      Endpoint: endpoint,
       Capabilities: {
         Vision: true,
         Reasoning: true,
@@ -27,19 +33,14 @@ describe("Pi projection behavior", () => {
     });
     const projected = projectSeneraModelProviderToPi(provider, createConfig());
 
-    expect(projected.providerId).toBe("senera-pi-proxy");
-    expect(projected.apiKey).toBe("senera-local");
-    expect(projected.upstream).toMatchObject({
-      providerId: "main",
-      endpoint: "ChatCompletions",
-      baseUrl: "https://model.example/v1",
-      model: "test-model",
-    });
+    expect(projected.providerId).toBe(AgentPiProxyProtocol.providerId);
+    expect(projected.apiKey).toBe(AgentPiProxyProtocol.apiKey);
     expect(projected.model).toMatchObject({
       id: "test-model",
       name: "main",
-      api: "openai-completions",
-      provider: "senera-pi-proxy",
+      api: AgentPiProxyProtocol.modelApi,
+      provider: AgentPiProxyProtocol.providerId,
+      baseUrl: resolveAgentPiProxyBaseUrl(createConfig()),
       input: ["text", "image"],
       reasoning: true,
       contextWindow: 128_000,
@@ -68,16 +69,23 @@ describe("Pi projection behavior", () => {
         role: "toolResult",
         toolName: "WeatherTool",
         toolCallId: "call-weather",
-        content: [{ type: "text", text: JSON.stringify({
-          type: "senera.tool_observation.v1",
-          artifact_uri: "senera://artifact/weather",
-          evidence: [{
-            evidence_uri: "senera://evidence/weather-beijing",
-            kind: "weather",
-            label: "Beijing forecast",
-            facts: [{ name: "city", value: "Beijing" }],
-          }],
-        }) }],
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              type: "senera.tool_observation.v1",
+              artifact_uri: "senera://artifact/weather",
+              evidence: [
+                {
+                  evidence_uri: "senera://evidence/weather-beijing",
+                  kind: "weather",
+                  label: "Beijing forecast",
+                  facts: [{ name: "city", value: "Beijing" }],
+                },
+              ],
+            }),
+          },
+        ],
         isError: false,
         timestamp: Date.parse("2026-01-01T00:00:00.000Z"),
       } satisfies ToolResultMessage,
@@ -153,12 +161,14 @@ function createConfig(): AgentSystemConfig {
       Host: "127.0.0.1",
       Port: 8787,
     },
-    ModelProviders: [{
-      Id: "main",
-      ProviderId: "endpoint-1",
-      Endpoint: "ChatCompletions",
-      Model: "test-model",
-    }],
+    ModelProviders: [
+      {
+        Id: "main",
+        ProviderId: "endpoint-1",
+        Endpoint: "ChatCompletions",
+        Model: "test-model",
+      },
+    ],
   };
 }
 
@@ -204,14 +214,14 @@ function createRetrievalTool(name: string, capability: string): RegisteredTool {
 }
 
 function isContextMessage(message: AgentMessage): boolean {
-  return typeof message === "object"
-    && message !== null
-    && "customType" in message
-    && message.customType === AgentPiContextPolicyCustomType;
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    "customType" in message &&
+    message.customType === AgentPiContextPolicyCustomType
+  );
 }
 
 function readContextDetails(message: AgentMessage | undefined): unknown {
-  return typeof message === "object" && message !== null && "details" in message
-    ? message.details
-    : undefined;
+  return typeof message === "object" && message !== null && "details" in message ? message.details : undefined;
 }

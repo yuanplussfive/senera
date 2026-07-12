@@ -1,14 +1,10 @@
-import {
-  AgentEventKinds,
-  type AgentDomainEvent,
-} from "../Events/AgentEvent.js";
+import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import type { AgentSession, AgentSessionSnapshot } from "./AgentSession.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export class AgentSessionEventFactory {
-  constructor(
-    private readonly conversationPolicy = new AgentConversationPolicy(),
-  ) {}
+  constructor(private readonly conversationPolicy = new AgentConversationPolicy()) {}
 
   created(session: AgentSession): AgentDomainEvent {
     return {
@@ -57,15 +53,12 @@ export class AgentSessionEventFactory {
         activeRequestId: session.activeRequest?.requestId ?? "",
         rejectedRequestId,
         operation,
-        message: "会话当前仍在处理中。",
+        message: agentErrorMessage("session.stillBusy"),
       },
     };
   }
 
-  notFound(
-    sessionId: string,
-    operation: "session.message" | "session.close" | "session.history",
-  ): AgentDomainEvent {
+  notFound(sessionId: string, operation: "session.message" | "session.close" | "session.history"): AgentDomainEvent {
     return {
       kind: AgentEventKinds.SessionNotFound,
       context: {
@@ -74,7 +67,7 @@ export class AgentSessionEventFactory {
       data: {
         sessionId,
         operation,
-        message: "会话不存在。",
+        message: agentErrorMessage("session.notFound"),
       },
     };
   }

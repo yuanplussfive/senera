@@ -12,9 +12,7 @@ export interface AgentMemoryEpisodeSqlStatements {
   listCompletedEpisodesStmt: Database.Statement<[], EpisodeRow>;
 }
 
-export function prepareAgentMemoryEpisodeSqlStatements(
-  db: Database.Database,
-): AgentMemoryEpisodeSqlStatements {
+export function prepareAgentMemoryEpisodeSqlStatements(db: Database.Database): AgentMemoryEpisodeSqlStatements {
   return {
     upsertEpisodeStmt: db.prepare(`
       INSERT INTO memory_episodes (
@@ -110,4 +108,3 @@ export function prepareAgentMemoryEpisodeSqlStatements(
     `),
   };
 }
-

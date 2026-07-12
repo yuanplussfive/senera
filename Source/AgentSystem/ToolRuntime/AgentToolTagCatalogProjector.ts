@@ -1,10 +1,7 @@
 import type { AgentToolCatalogItem } from "./AgentToolCatalogProjector.js";
 
 export class AgentToolTagCatalogProjector {
-  project(options: {
-    tools: readonly AgentToolCatalogItem[];
-    includeSystem?: boolean;
-  }): string[] {
+  project(options: { tools: readonly AgentToolCatalogItem[]; includeSystem?: boolean }): string[] {
     const includeSystem = options.includeSystem ?? false;
     const tags = new Set<string>();
 

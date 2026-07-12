@@ -1,8 +1,5 @@
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
-import {
-  createInitialAgentLoopState,
-  type AgentLoopStartRequest,
-} from "./AgentLoopInitialState.js";
+import { createInitialAgentLoopState, type AgentLoopStartRequest } from "./AgentLoopInitialState.js";
 import { understandTurnCommand } from "./AgentLoopCommandBuilder.js";
 import { AgentLoopTransitionReducer } from "./AgentLoopTransitionReducer.js";
 import type {
@@ -16,9 +13,7 @@ export type { AgentLoopStartRequest } from "./AgentLoopInitialState.js";
 export class AgentLoopStateMachine {
   private readonly reducer: AgentLoopTransitionReducer;
 
-  constructor(
-    private readonly eventFactory = new AgentLoopEventFactory(),
-  ) {
+  constructor(private readonly eventFactory = new AgentLoopEventFactory()) {
     this.reducer = new AgentLoopTransitionReducer(eventFactory);
   }
 
@@ -28,18 +23,11 @@ export class AgentLoopStateMachine {
     return {
       state,
       command: understandTurnCommand(state),
-      events: request.emitRunStarted === false
-        ? []
-        : [
-            this.eventFactory.runStarted(request.requestId, request.input),
-          ],
+      events: request.emitRunStarted === false ? [] : [this.eventFactory.runStarted(request.requestId, request.input)],
     };
   }
 
-  consume(
-    state: RunningAgentLoopMachineState,
-    result: AgentLoopCommandResult,
-  ): AgentLoopTransition {
+  consume(state: RunningAgentLoopMachineState, result: AgentLoopCommandResult): AgentLoopTransition {
     return this.reducer.consume(state, result);
   }
 }

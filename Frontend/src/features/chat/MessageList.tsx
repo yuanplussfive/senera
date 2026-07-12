@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import type { ModelProviderListItem } from "../../api/eventTypes";
+import type { ApprovalResolutionScope } from "../../api/approvalEventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
@@ -11,10 +12,7 @@ import { MotionMessageItem } from "./MotionMessageItem";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { StreamingRow } from "./StreamingRow";
 import { useMessageHeightObserver } from "./useMessageHeightObserver";
-import {
-  readStreamingDisplayActivityRevision,
-  useStreamingDisplayTicker,
-} from "./useStreamingDisplayTicker";
+import { readStreamingDisplayActivityRevision, useStreamingDisplayTicker } from "./useStreamingDisplayTicker";
 import { useVirtuosoAutoStickToBottom } from "./useVirtuosoAutoStickToBottom";
 
 interface MessageListProps {
@@ -29,7 +27,7 @@ interface MessageListProps {
   onEditUserMessage: (m: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (m: ChatMessage) => void;
   onViewWorkflow: (m: ChatMessage) => void;
-  onResolveApproval?: (approvalId: string, status: "approved" | "denied") => void;
+  onResolveApproval?: (approvalId: string, status: "approved" | "denied", scope?: ApprovalResolutionScope) => void;
   approvalDisabled?: boolean;
 }
 
@@ -39,7 +37,9 @@ const MESSAGE_LIST_OVERSCAN_PX = 240;
 
 type MessageListItem = ChatMessage | { __streaming: true; run: RunRecord };
 
-function isStreamingListItem(item: MessageListItem | undefined): item is Extract<MessageListItem, { __streaming: true }> {
+function isStreamingListItem(
+  item: MessageListItem | undefined,
+): item is Extract<MessageListItem, { __streaming: true }> {
   if (!item) return false;
   return "__streaming" in item;
 }
@@ -50,9 +50,9 @@ export function readMessageListItemKey(item: MessageListItem | undefined, fallba
 }
 
 function readMeasuredMessageKey(element: HTMLElement): string | null {
-  return element.dataset.messageKey
-    ?? element.querySelector<HTMLElement>("[data-message-key]")?.dataset.messageKey
-    ?? null;
+  return (
+    element.dataset.messageKey ?? element.querySelector<HTMLElement>("[data-message-key]")?.dataset.messageKey ?? null
+  );
 }
 
 export function MessageList({
@@ -100,6 +100,7 @@ export function MessageList({
     activityKey: `${lastItemKey}:${displayActivityRevision}`,
     bottomThreshold: MESSAGE_LIST_BOTTOM_THRESHOLD,
   });
+  const setAutoScrollScroller = autoScroll.scrollerRef;
 
   useStreamingDisplayTicker(sessionId, runs);
 
@@ -137,9 +138,9 @@ export function MessageList({
       } else {
         chatScrollerRef.current = null;
       }
-      autoScroll.scrollerRef(target);
+      setAutoScrollScroller(target);
     },
-    [autoScroll.scrollerRef],
+    [setAutoScrollScroller],
   );
 
   useEffect(() => {

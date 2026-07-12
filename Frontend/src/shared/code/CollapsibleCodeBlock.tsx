@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { motionTimings, useMotionLevel } from "../motion";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { CodeArtifactSourceView } from "./CodeArtifactSourceView";
 
 interface CollapsibleCodeBlockProps {
@@ -28,19 +29,10 @@ export function CollapsibleCodeBlock({
   const { disableMotion } = useMotionLevel();
   const shouldCollapse = lineCount > collapseThreshold;
   const transition = disableMotion ? { duration: 0 } : motionTimings.fast;
-  const previewCode = useMemo(
-    () => readPreviewCode(code, previewLines),
-    [code, previewLines],
-  );
+  const previewCode = useMemo(() => readPreviewCode(code, previewLines), [code, previewLines]);
 
   if (!shouldCollapse) {
-    return (
-      <CodeArtifactSourceView
-        code={code}
-        language={language}
-        className={className}
-      />
-    );
+    return <CodeArtifactSourceView code={code} language={language} className={className} />;
   }
 
   return (
@@ -55,11 +47,7 @@ export function CollapsibleCodeBlock({
               exit={disableMotion ? undefined : { opacity: 0 }}
               transition={transition}
             >
-              <CodeArtifactSourceView
-                code={code}
-                language={language}
-                className={className}
-              />
+              <CodeArtifactSourceView code={code} language={language} className={className} />
             </motion.div>
           ) : (
             <motion.div
@@ -93,12 +81,12 @@ export function CollapsibleCodeBlock({
         {isExpanded ? (
           <>
             <ChevronUp className="h-3.5 w-3.5" />
-            收起代码
+            {frontendMessage("code.collapse")}
           </>
         ) : (
           <>
             <ChevronDown className="h-3.5 w-3.5" />
-            展开全部 {lineCount} 行
+            {frontendMessage("code.expandAll", { count: lineCount })}
           </>
         )}
       </button>

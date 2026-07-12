@@ -5,7 +5,7 @@ export const AgentActionPlannerStageNames = {
 } as const;
 
 export type AgentActionPlannerStageName =
-  typeof AgentActionPlannerStageNames[keyof typeof AgentActionPlannerStageNames];
+  (typeof AgentActionPlannerStageNames)[keyof typeof AgentActionPlannerStageNames];
 
 export interface AgentActionPlannerStageStarted {
   stage: AgentActionPlannerStageName;
@@ -28,5 +28,4 @@ export type AgentActionPlannerStageEvent =
   | ({ status: "completed" } & AgentActionPlannerStageCompleted)
   | ({ status: "failed" } & AgentActionPlannerStageFailed);
 
-export type AgentActionPlannerStageSink =
-  (event: AgentActionPlannerStageEvent) => void | Promise<void>;
+export type AgentActionPlannerStageSink = (event: AgentActionPlannerStageEvent) => void | Promise<void>;

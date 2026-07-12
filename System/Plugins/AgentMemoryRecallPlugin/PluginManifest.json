@@ -15,9 +15,7 @@
       "Name": "MemoryRecallTool",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
-      "Permissions": [
-        "memory:read"
-      ],
+      "Permissions": ["memory:read"],
       "Handler": {
         "Kind": "HostCapability",
         "Capability": "memory.recall"
@@ -26,7 +24,7 @@
         "Boundary": "Local",
         "Network": "Deny",
         "Workspace": "ReadOnly",
-        "LocalFallback": "Allow"
+        "LocalFallback": "Deny"
       },
       "Artifacts": {
         "Evidence": [
@@ -46,9 +44,7 @@
               "updatedAt": "$.updatedAt"
             },
             "Identity": {
-              "Parts": [
-                "memoryUri"
-              ]
+              "Parts": ["memoryUri"]
             },
             "Presentation": {
               "Locator": "{{ memoryUri }}",
@@ -76,18 +72,8 @@
               ]
             },
             "PlannerMemory": {
-              "Facts": [
-                "memoryUri",
-                "type",
-                "subject",
-                "claim",
-                "howToApply",
-                "sourceRefs"
-              ],
-              "ArtifactRefs": [
-                "projection",
-                "evidence"
-              ]
+              "Facts": ["memoryUri", "type", "subject", "claim", "howToApply", "sourceRefs"],
+              "ArtifactRefs": ["projection", "evidence"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.type }} memory {{ e.slots.subject }}: {{ e.slots.claim }}\n{% endfor %}",
@@ -111,9 +97,7 @@
               "completedAt": "$.completedAt"
             },
             "Identity": {
-              "Parts": [
-                "episodeUri"
-              ]
+              "Parts": ["episodeUri"]
             },
             "Presentation": {
               "Locator": "{{ episodeUri }}",
@@ -141,17 +125,8 @@
               ]
             },
             "PlannerMemory": {
-              "Facts": [
-                "episodeUri",
-                "requestId",
-                "userText",
-                "assistantText",
-                "sourceRefs"
-              ],
-              "ArtifactRefs": [
-                "projection",
-                "evidence"
-              ]
+              "Facts": ["episodeUri", "requestId", "userText", "assistantText", "sourceRefs"],
+              "ArtifactRefs": ["projection", "evidence"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} conversation {{ e.slots.requestId }}\n  user: {{ e.slots.userText }}\n  assistant: {{ e.slots.assistantText }}\n{% endfor %}",
@@ -172,11 +147,7 @@
             "Title": "长期记忆召回",
             "Description": "Recall durable memories from the local memory store, then fall back to ordinary conversation turns when no active long-term memory matches.",
             "Facets": {
-              "Actions": [
-                "read",
-                "recall",
-                "inspect"
-              ],
+              "Actions": ["read", "recall", "inspect"],
               "Targets": [
                 "long-term-memory",
                 "conversation-memory",
@@ -185,41 +156,19 @@
                 "knowledge",
                 "scene-state"
               ],
-              "Inputs": [
-                "natural-language-query",
-                "memory-ref",
-                "source-ref",
-                "artifact-ref"
-              ],
-              "Outputs": [
-                "memory-context",
-                "conversation-turns",
-                "source-refs",
-                "evidence"
-              ],
-              "Evidence": [
-                "memory_recall",
-                "conversation_recall"
-              ],
-              "Effects": [
-                "read-only"
-              ]
+              "Inputs": ["natural-language-query", "memory-ref", "source-ref", "artifact-ref"],
+              "Outputs": ["memory-context", "conversation-turns", "source-refs", "evidence"],
+              "Evidence": ["memory_recall", "conversation_recall"],
+              "Effects": ["read-only"]
             },
-            "Aliases": [
-              "回忆长期记忆",
-              "查询用户偏好",
-              "用户画像",
-              "记忆召回"
-            ],
+            "Aliases": ["回忆长期记忆", "查询用户偏好", "用户画像", "记忆召回"],
             "Risk": {
               "SideEffect": "read-only",
               "Permission": "memory-read"
             }
           }
         ],
-        "UseCases": [
-          "需要根据用户长期偏好、画像、知识或剧情状态调整回答；或需要回忆普通历史对话上下文。"
-        ],
+        "UseCases": ["需要根据用户长期偏好、画像、知识或剧情状态调整回答；或需要回忆普通历史对话上下文。"],
         "Examples": [
           "用户偏好怎么写代码",
           "用户喜欢什么饮料",
@@ -227,16 +176,8 @@
           "我刚才提过什么",
           "当前角色剧情状态"
         ],
-        "Avoid": [
-          "项目文件、网页事实、工具原始结果正文应使用对应工具读取。"
-        ],
-        "Tags": [
-          "长期记忆",
-          "用户偏好",
-          "用户画像",
-          "知识",
-          "剧情"
-        ]
+        "Avoid": ["项目文件、网页事实、工具原始结果正文应使用对应工具读取。"],
+        "Tags": ["长期记忆", "用户偏好", "用户画像", "知识", "剧情"]
       }
     }
   ],
@@ -244,16 +185,8 @@
     "TrustLevel": "System",
     "Network": "Allow",
     "FileSystem": {
-      "Read": [
-        ".senera/Memory.sqlite",
-        ".senera/Memory.sqlite-wal",
-        ".senera/Memory.sqlite-shm"
-      ],
-      "Write": [
-        ".senera/Memory.sqlite",
-        ".senera/Memory.sqlite-wal",
-        ".senera/Memory.sqlite-shm"
-      ]
+      "Read": [".senera/Memory.sqlite", ".senera/Memory.sqlite-wal", ".senera/Memory.sqlite-shm"],
+      "Write": [".senera/Memory.sqlite", ".senera/Memory.sqlite-wal", ".senera/Memory.sqlite-shm"]
     },
     "RequiresApproval": false
   }

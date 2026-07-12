@@ -1,13 +1,6 @@
-import {
-  parse as parseToml,
-  stringify as stringifyToml,
-  type TomlTableWithoutBigInt,
-} from "smol-toml";
-import type {
-  PluginConfigField,
-  PluginConfigFieldOptionValue,
-  PluginConfigSection,
-} from "../../api/eventTypes";
+import { parse as parseToml, stringify as stringifyToml, type TomlTableWithoutBigInt } from "smol-toml";
+import type { PluginConfigField, PluginConfigFieldOptionValue, PluginConfigSection } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export type EditableTomlTable = Record<string, unknown>;
 
@@ -26,20 +19,13 @@ export function parseDraftToml(toml: string): {
   }
 }
 
-export function writeDraftFieldValue(
-  toml: string,
-  field: PluginConfigField,
-  value: unknown,
-): string {
+export function writeDraftFieldValue(toml: string, field: PluginConfigField, value: unknown): string {
   const document = parseToml(toml || "") as EditableTomlTable;
   setValueAtPath(document, field.path, coerceFieldValue(field, value));
   return ensureFinalNewline(stringifyToml(document as TomlTableWithoutBigInt));
 }
 
-export function readDraftValue(
-  parsedDraft: TomlTableWithoutBigInt | undefined,
-  field: PluginConfigField,
-): unknown {
+export function readDraftValue(parsedDraft: TomlTableWithoutBigInt | undefined, field: PluginConfigField): unknown {
   let current: unknown = parsedDraft;
   for (const part of field.path) {
     current = isRecord(current) ? current[part] : undefined;
@@ -52,9 +38,7 @@ export function validatePluginConfigDraft(
   parsedDraft: TomlTableWithoutBigInt,
 ): string[] {
   return sections.flatMap((section) =>
-    section.fields.flatMap((field) =>
-      validatePluginConfigField(field, readDraftValue(parsedDraft, field))
-    )
+    section.fields.flatMap((field) => validatePluginConfigField(field, readDraftValue(parsedDraft, field))),
   );
 }
 
@@ -81,17 +65,11 @@ export function defaultArrayItem(itemType: string): unknown {
   return defaults[itemType as keyof typeof defaults] ?? "";
 }
 
-export function optionLabel(
-  field: PluginConfigField,
-  option: PluginConfigFieldOptionValue,
-): string {
+export function optionLabel(field: PluginConfigField, option: PluginConfigFieldOptionValue): string {
   return field.optionLabels?.[String(option)] ?? String(option);
 }
 
-export function sameOptionValue(
-  left: unknown,
-  right: PluginConfigFieldOptionValue,
-): boolean {
+export function sameOptionValue(left: unknown, right: PluginConfigFieldOptionValue): boolean {
   return String(left) === String(right);
 }
 
@@ -103,11 +81,7 @@ export function ensureFinalNewline(value: string): string {
   return value.endsWith("\n") ? value : `${value}\n`;
 }
 
-function setValueAtPath(
-  document: EditableTomlTable,
-  path: readonly string[],
-  value: unknown,
-): void {
+function setValueAtPath(document: EditableTomlTable, path: readonly string[], value: unknown): void {
   const [lastKey] = path.slice(-1);
   if (!lastKey) return;
 
@@ -124,33 +98,26 @@ function setValueAtPath(
 
 function validatePluginConfigField(field: PluginConfigField, value: unknown): string[] {
   const label = settingLabel(field);
-  const validators = [
-    validateRequiredField,
-    validatePrimitiveField,
-    validateOptionField,
-  ];
+  const validators = [validateRequiredField, validatePrimitiveField, validateOptionField];
   return validators.flatMap((validator) => validator(field, value, label));
 }
 
-type FieldValidator = (
-  field: PluginConfigField,
-  value: unknown,
-  label: string,
-) => string[];
+type FieldValidator = (field: PluginConfigField, value: unknown, label: string) => string[];
 
 const validateRequiredField: FieldValidator = (field, value, label) => {
   if (value !== undefined) return [];
-  return field.required === false ? [] : [`${label} 缺少必填配置`];
+  return field.required === false ? [] : [frontendMessage("config.validation.missingRequired", { label })];
 };
 
 const validatePrimitiveField: FieldValidator = (field, value, label) => {
   if (value === undefined) return [];
   const validators = {
-    boolean: () => typeof value === "boolean" ? [] : [`${label} 必须是布尔值`],
-    string: () => typeof value === "string" ? [] : [`${label} 必须是字符串`],
+    boolean: () =>
+      typeof value === "boolean" ? [] : [frontendMessage("config.validation.booleanExpected", { label })],
+    string: () => (typeof value === "string" ? [] : [frontendMessage("config.validation.stringExpected", { label })]),
     number: () => validateNumberFieldValue(field, value, label),
     array: () => validateArrayFieldValue(field, value, label),
-    table: () => isRecord(value) ? [] : [`${label} 必须是表格对象`],
+    table: () => (isRecord(value) ? [] : [frontendMessage("config.validation.tableExpected", { label })]),
   } satisfies Record<PluginConfigField["type"], () => string[]>;
   return validators[field.type]();
 };
@@ -160,68 +127,53 @@ const validateOptionField: FieldValidator = (field, value, label) => {
   const values = field.type === "array" && Array.isArray(value) ? value : [value];
   return values.flatMap((item, index) => {
     if (field.options?.some((option) => sameOptionValue(item, option))) return [];
-    const suffix = values.length > 1 ? ` 第 ${index + 1} 项` : "";
-    return [`${label}${suffix} 必须是允许的选项`];
+    const suffix = values.length > 1 ? frontendMessage("config.validation.optionItemSuffix", { index: index + 1 }) : "";
+    return [frontendMessage("config.validation.optionExpected", { label, suffix })];
   });
 };
 
-function validateNumberFieldValue(
-  field: PluginConfigField,
-  value: unknown,
-  label: string,
-): string[] {
+function validateNumberFieldValue(field: PluginConfigField, value: unknown, label: string): string[] {
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    return [`${label} 必须是数字`];
+    return [frontendMessage("config.validation.numberExpected", { label })];
   }
   return validateNumberField(field, value, label);
 }
 
-function validateArrayFieldValue(
-  field: PluginConfigField,
-  value: unknown,
-  label: string,
-): string[] {
-  if (!Array.isArray(value)) return [`${label} 必须是数组`];
+function validateArrayFieldValue(field: PluginConfigField, value: unknown, label: string): string[] {
+  if (!Array.isArray(value)) return [frontendMessage("config.validation.arrayExpected", { label })];
   return value.flatMap((item, index) => validateArrayItem(field, item, index, label));
 }
 
-function validateNumberField(
-  field: PluginConfigField,
-  value: number,
-  label: string,
-): string[] {
+function validateNumberField(field: PluginConfigField, value: number, label: string): string[] {
   return [
-    typeof field.min === "number" && value < field.min ? `${label} 不能小于 ${field.min}` : null,
-    typeof field.max === "number" && value > field.max ? `${label} 不能大于 ${field.max}` : null,
+    typeof field.min === "number" && value < field.min
+      ? frontendMessage("config.validation.min", { label, min: field.min })
+      : null,
+    typeof field.max === "number" && value > field.max
+      ? frontendMessage("config.validation.max", { label, max: field.max })
+      : null,
   ].filter((message): message is string => Boolean(message));
 }
 
-function validateArrayItem(
-  field: PluginConfigField,
-  value: unknown,
-  index: number,
-  label: string,
-): string[] {
-  const itemLabel = `${label} 第 ${index + 1} 项`;
+function validateArrayItem(field: PluginConfigField, value: unknown, index: number, label: string): string[] {
+  const itemLabel = frontendMessage("config.validation.itemLabel", { label, index: index + 1 });
   const itemType = field.itemType ?? "string";
   const validators = {
-    boolean: () => typeof value === "boolean" ? [] : [`${itemLabel} 必须是布尔值`],
+    boolean: () =>
+      typeof value === "boolean" ? [] : [frontendMessage("config.validation.booleanExpected", { label: itemLabel })],
     number: () => validateNumberFieldValue(field, value, itemLabel),
-    string: () => typeof value === "string" ? [] : [`${itemLabel} 必须是字符串`],
-    table: () => isRecord(value) ? [] : [`${itemLabel} 必须是表格对象`],
+    string: () =>
+      typeof value === "string" ? [] : [frontendMessage("config.validation.stringExpected", { label: itemLabel })],
+    table: () => (isRecord(value) ? [] : [frontendMessage("config.validation.tableExpected", { label: itemLabel })]),
   } satisfies Record<"boolean" | "number" | "string" | "table", () => string[]>;
-  return itemType in validators
-    ? validators[itemType as keyof typeof validators]()
-    : validators.string();
+  return itemType in validators ? validators[itemType as keyof typeof validators]() : validators.string();
 }
 
 function coerceFieldValue(field: PluginConfigField, value: unknown): unknown {
   const coercers = {
     boolean: () => Boolean(value),
-    number: () => typeof value === "number" && Number.isFinite(value) ? value : 0,
-    array: () => Array.isArray(value)
-      ? value.map((item) => coerceArrayItem(item, field.itemType ?? "string"))
-      : [],
+    number: () => (typeof value === "number" && Number.isFinite(value) ? value : 0),
+    array: () => (Array.isArray(value) ? value.map((item) => coerceArrayItem(item, field.itemType ?? "string")) : []),
     string: () => String(value ?? ""),
     table: () => value,
   } satisfies Record<PluginConfigField["type"], () => unknown>;
@@ -237,16 +189,11 @@ export function coerceArrayItem(value: unknown, itemType: string): unknown {
     boolean: () => Boolean(value),
     string: () => String(value ?? ""),
   } satisfies Record<"number" | "boolean" | "string", () => unknown>;
-  return itemType in coercers
-    ? coercers[itemType as keyof typeof coercers]()
-    : coercers.string();
+  return itemType in coercers ? coercers[itemType as keyof typeof coercers]() : coercers.string();
 }
 
 function isIncompleteNumberDraft(value: string): boolean {
-  return value === "-"
-    || value === "+"
-    || value.endsWith(".")
-    || /[eE][+-]?$/.test(value);
+  return value === "-" || value === "+" || value.endsWith(".") || /[eE][+-]?$/.test(value);
 }
 
 function isRecord(value: unknown): value is EditableTomlTable {

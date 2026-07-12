@@ -6,26 +6,11 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 const FormSchemaPath = path.join(moduleDirPath(import.meta.url), "AgentSystemConfig.form.json");
 
-const ConfigFormFieldTypeSchema = z.enum([
-  "boolean",
-  "string",
-  "number",
-  "array",
-  "table",
-  "record",
-]);
+const ConfigFormFieldTypeSchema = z.enum(["boolean", "string", "number", "array", "table", "record"]);
 
-const ConfigFormFieldOptionValueSchema = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-]);
+const ConfigFormFieldOptionValueSchema = z.union([z.string(), z.number(), z.boolean()]);
 
-const ConfigFormFieldLevelSchema = z.enum([
-  "basic",
-  "advanced",
-  "internal",
-]);
+const ConfigFormFieldLevelSchema = z.enum(["basic", "advanced", "internal"]);
 
 type ConfigFormFieldSchemaInput = {
   path: string[];
@@ -82,7 +67,7 @@ const ConfigFormFieldSchema: z.ZodType<ConfigFormFieldSchemaInput> = z.lazy(() =
       keyPlaceholder: z.string().min(1).optional(),
       valuePlaceholder: z.string().min(1).optional(),
     })
-    .strict()
+    .strict(),
 );
 
 const ConfigFormSectionSchema = z
@@ -117,13 +102,13 @@ export function readConfigFormDocument(): ConfigFormDocument {
     return cachedDocument;
   }
 
-  const result = ConfigFormDocumentSchema.safeParse(
-    JSON.parse(fs.readFileSync(FormSchemaPath, "utf8")),
-  );
+  const result = ConfigFormDocumentSchema.safeParse(JSON.parse(fs.readFileSync(FormSchemaPath, "utf8")));
   if (!result.success) {
-    throw new Error(agentErrorMessage("config.formDocumentInvalid", {
-      issues: result.error.issues.map(formatZodIssue).join("; "),
-    }));
+    throw new Error(
+      agentErrorMessage("config.formDocumentInvalid", {
+        issues: result.error.issues.map(formatZodIssue).join("; "),
+      }),
+    );
   }
 
   cachedDocument = result.data;

@@ -28,11 +28,13 @@ describe("ActionPlanner context behavior", () => {
 
     expect(original).toEqual(EmptyActionPlannerLedger);
     expect(first).toMatchObject({
-      calls: [expect.objectContaining({
-        toolName: "WorkspaceInspectTool",
-        status: ToolCallStatus.Success,
-        evidenceUris: ["senera://evidence/workspace"],
-      })],
+      calls: [
+        expect.objectContaining({
+          toolName: "WorkspaceInspectTool",
+          status: ToolCallStatus.Success,
+          evidenceUris: ["senera://evidence/workspace"],
+        }),
+      ],
       evidence: [expect.objectContaining({ key: "workspace", display: "workspace summary" })],
       lastNewEvidenceStep: 1,
     });
@@ -129,21 +131,23 @@ function toolResult(callId: string, summary: string): ExecutedToolCallResult {
       manifestPath: `.senera/artifacts/${callId}/manifest.json`,
       files: {},
       summary,
-      evidence: [{
-        key: "workspace",
-        evidenceUri: "senera://evidence/workspace",
-        kind: "workspace_summary",
-        locator: "workspace://.",
-        display: summary,
-        label: "workspace",
-        source: summary,
-        confidence: 1,
-        modelSlots: [{ name: "summary", value: summary }],
-        plannerMemory: {
-          facts: [{ name: "summary", value: summary }],
-          artifactRefs: ["projection"],
+      evidence: [
+        {
+          key: "workspace",
+          evidenceUri: "senera://evidence/workspace",
+          kind: "workspace_summary",
+          locator: "workspace://.",
+          display: summary,
+          label: "workspace",
+          source: summary,
+          confidence: 1,
+          modelSlots: [{ name: "summary", value: summary }],
+          plannerMemory: {
+            facts: [{ name: "summary", value: summary }],
+            artifactRefs: ["projection"],
+          },
         },
-      }],
+      ],
       delta: [],
     },
   };
@@ -163,23 +167,27 @@ function toolCatalogItem(name: string, title: string, evidence: string[]): Agent
     title,
     summary: `${title} summary`,
     rootKind: "System",
-    capabilities: [{
-      id: `${name}.capability`,
-      title,
-      description: `${title} capability`,
-      facets: { Evidence: evidence },
-    }],
+    capabilities: [
+      {
+        id: `${name}.capability`,
+        title,
+        description: `${title} capability`,
+        facets: { Evidence: evidence },
+      },
+    ],
     tags: [],
     useCases: [],
     examples: [],
     avoid: [],
     permissions: [],
-    evidenceCapabilities: [{
-      produces: evidence[0] ?? "",
-      quality: "verified",
-      satisfies: evidence,
-      kinds: evidence,
-      capabilityIds: [`${name}.capability`],
-    }],
+    evidenceCapabilities: [
+      {
+        produces: evidence[0] ?? "",
+        quality: "verified",
+        satisfies: evidence,
+        kinds: evidence,
+        capabilityIds: [`${name}.capability`],
+      },
+    ],
   };
 }

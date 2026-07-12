@@ -18,10 +18,7 @@ export class ModelRequestTimeoutError extends Error {
   }
 }
 
-export function normalizeModelHttpError(
-  config: ModelProviderConfig,
-  error: unknown,
-): Error {
+export function normalizeModelHttpError(config: ModelProviderConfig, error: unknown): Error {
   if (error instanceof ModelProviderHttpError) {
     return new Error(
       agentErrorMessage("model.requestFailedWithStatus", {

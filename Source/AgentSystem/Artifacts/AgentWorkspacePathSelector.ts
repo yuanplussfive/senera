@@ -1,8 +1,5 @@
 import path from "node:path";
-import {
-  assertInsideRoot,
-  toWorkspaceRelativePath,
-} from "./AgentArtifactLocator.js";
+import { assertInsideRoot, toWorkspaceRelativePath } from "./AgentArtifactLocator.js";
 import { selectJsonValues } from "./AgentArtifactJsonSelector.js";
 import type { ResolvedWorkspacePathRule } from "./AgentWorkspaceCaptureTypes.js";
 
@@ -13,10 +10,7 @@ export class AgentWorkspacePathSelector {
     this.workspaceRoot = path.resolve(workspaceRoot);
   }
 
-  selectDeclaredPaths(
-    root: unknown,
-    rules: readonly ResolvedWorkspacePathRule[],
-  ): Set<string> {
+  selectDeclaredPaths(root: unknown, rules: readonly ResolvedWorkspacePathRule[]): Set<string> {
     const paths = new Set<string>();
     for (const rule of rules) {
       const values = selectJsonValues(root, rule.selector);
@@ -34,22 +28,14 @@ export class AgentWorkspacePathSelector {
   }
 
   private resolveDeclaredPath(value: string, base: string | undefined): string {
-    const baseAbsolutePath = base
-      ? this.resolveInsideWorkspace(this.workspaceRoot, base)
-      : this.workspaceRoot;
+    const baseAbsolutePath = base ? this.resolveInsideWorkspace(this.workspaceRoot, base) : this.workspaceRoot;
     const targetPath = this.resolveInsideWorkspace(baseAbsolutePath, value);
     return toWorkspaceRelativePath(this.workspaceRoot, targetPath);
   }
 
   private resolveInsideWorkspace(basePath: string, value: string): string {
-    const target = path.isAbsolute(value)
-      ? path.resolve(value)
-      : path.resolve(basePath, value);
-    return assertInsideRoot(
-      this.workspaceRoot,
-      target,
-      `workspace snapshot 路径超出工作区：${value}`,
-    );
+    const target = path.isAbsolute(value) ? path.resolve(value) : path.resolve(basePath, value);
+    return assertInsideRoot(this.workspaceRoot, target, `workspace snapshot 路径超出工作区：${value}`);
   }
 }
 

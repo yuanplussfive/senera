@@ -48,9 +48,7 @@
           "Source": "None"
         }
       ],
-      "ForbiddenOutputs": [
-        "internal_context_xml"
-      ],
+      "ForbiddenOutputs": ["internal_context_xml"],
       "VisibleOutput": {
         "Audience": "user",
         "Start": "answer_body",
@@ -104,15 +102,10 @@
       "AllowedTools": [
         {
           "Source": "NamedLoaded",
-          "Names": [
-            "AskUserTool"
-          ]
+          "Names": ["AskUserTool"]
         }
       ],
-      "ForbiddenOutputs": [
-        "final_answer",
-        "unregistered_tools"
-      ],
+      "ForbiddenOutputs": ["final_answer", "unregistered_tools"],
       "VisibleOutput": {
         "Audience": "runtime",
         "Start": "pi_tool_turn",
@@ -164,11 +157,7 @@
           "Capability": "tool.search"
         }
       ],
-      "ForbiddenOutputs": [
-        "final_answer",
-        "business_tool_calls",
-        "unregistered_tools"
-      ],
+      "ForbiddenOutputs": ["final_answer", "business_tool_calls", "unregistered_tools"],
       "VisibleOutput": {
         "Audience": "runtime",
         "Start": "pi_tool_turn",
@@ -219,10 +208,7 @@
           "Source": "PreferredLoadedOrLoaded"
         }
       ],
-      "ForbiddenOutputs": [
-        "final_answer",
-        "unregistered_tools"
-      ],
+      "ForbiddenOutputs": ["final_answer", "unregistered_tools"],
       "VisibleOutput": {
         "Audience": "runtime",
         "Start": "pi_tool_turn",

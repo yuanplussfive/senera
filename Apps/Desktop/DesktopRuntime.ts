@@ -2,10 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import electron from "electron";
 import { syncDesktopRuntimeDirectory } from "./DesktopRuntimeAssetSync.js";
-import {
-  resolveDesktopResourceRoot,
-  resolveDesktopWorkspaceRoot,
-} from "./DesktopRuntimePathResolver.js";
+import { resolveDesktopResourceRoot, resolveDesktopWorkspaceRoot } from "./DesktopRuntimePathResolver.js";
 
 const { app } = electron;
 
@@ -76,10 +73,7 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
     pruneExtraneous: true,
   });
   syncPluginRuntimeDependencies({
-    pluginRoots: [
-      bundledSystemPlugins,
-      bundledUserPlugins,
-    ],
+    pluginRoots: [bundledSystemPlugins, bundledUserPlugins],
     sourceNodeModulesRoots: dependencySourceNodeModulesRoots(resourceRoot),
     targetNodeModulesRoot: path.join(desktopDataRoot, NodeModulesDirectoryName),
   });
@@ -135,10 +129,7 @@ function syncPluginRuntimeDependencies(options: {
     }
 
     visited.add(request.name);
-    const sourcePackageRoot = resolveDependencyPackageRoot(
-      options.sourceNodeModulesRoots,
-      request.name,
-    );
+    const sourcePackageRoot = resolveDependencyPackageRoot(options.sourceNodeModulesRoots, request.name);
     if (!sourcePackageRoot) {
       if (request.optional) {
         continue;
@@ -159,7 +150,8 @@ function readPluginPackageJsons(pluginRoot: string): PackageJson[] {
     return [];
   }
 
-  return fs.readdirSync(pluginRoot, { withFileTypes: true })
+  return fs
+    .readdirSync(pluginRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(pluginRoot, entry.name))
     .map(readPackageJson)
@@ -190,10 +182,7 @@ function packageDependencyRequests(
   ];
 }
 
-function dependencyEntries(
-  dependencies: Record<string, string> | undefined,
-  optional: boolean,
-): DependencyRequest[] {
+function dependencyEntries(dependencies: Record<string, string> | undefined, optional: boolean): DependencyRequest[] {
   return Object.keys(dependencies ?? {}).map((name) => ({
     name,
     optional,
@@ -222,7 +211,5 @@ function dependencySourceNodeModulesRoots(appRoot: string): string[] {
 }
 
 function unpackedAppRoot(appRoot: string): string {
-  return appRoot.endsWith(".asar")
-    ? appRoot.replace(/\.asar$/i, ".asar.unpacked")
-    : appRoot;
+  return appRoot.endsWith(".asar") ? appRoot.replace(/\.asar$/i, ".asar.unpacked") : appRoot;
 }

@@ -45,7 +45,6 @@ export interface ModelCapabilitiesDraft {
   Vision?: boolean;
   ImageOutput?: boolean;
   Reasoning?: boolean;
-  ToolCalling?: boolean;
   DeveloperRole?: boolean;
 }
 

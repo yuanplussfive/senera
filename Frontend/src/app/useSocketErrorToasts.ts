@@ -4,6 +4,8 @@ import { EventKinds, type EventEnvelope } from "../api/eventTypes";
 import { useStore } from "../store/sessionStore";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
+const ApprovalExpiredBackendMessage = "审批请求不存在或已结束";
+
 export type SocketErrorToastVariant = "error" | "warning";
 
 export interface SocketErrorToast {
@@ -21,22 +23,15 @@ export interface SocketErrorToastsHandle {
   notifySocketError: (env: EventEnvelope) => boolean;
 }
 
-export function resolveSocketErrorToast(
-  env: EventEnvelope,
-  state: SocketErrorToastState,
-): SocketErrorToast | null {
+export function resolveSocketErrorToast(env: EventEnvelope, state: SocketErrorToastState): SocketErrorToast | null {
   if (env.kind === EventKinds.RunFailed) {
     const session = env.sessionId ? state.sessions[env.sessionId] : null;
     const hasMatchingRun = session?.runs.some((run) => run.requestId === env.requestId) ?? false;
-    const isHistoryLoadFailure = Boolean(
-      env.sessionId && state.historyLoadingIds[env.sessionId] && !hasMatchingRun,
-    );
+    const isHistoryLoadFailure = Boolean(env.sessionId && state.historyLoadingIds[env.sessionId] && !hasMatchingRun);
 
     return {
       variant: "error",
-      title: isHistoryLoadFailure
-        ? frontendMessage("socket.historySyncFailed")
-        : frontendMessage("socket.runFailed"),
+      title: isHistoryLoadFailure ? frontendMessage("socket.historySyncFailed") : frontendMessage("socket.runFailed"),
       description: readDataString(env.data, "message") ?? "",
     };
   }
@@ -60,7 +55,7 @@ export function resolveSocketErrorToast(
 
   if (env.kind === EventKinds.RequestInvalid) {
     const message = readDataString(env.data, "message") ?? "";
-    if (message.includes("审批请求不存在或已结束")) {
+    if (message.includes(ApprovalExpiredBackendMessage)) {
       return {
         variant: "warning",
         title: frontendMessage("socket.approvalExpired"),

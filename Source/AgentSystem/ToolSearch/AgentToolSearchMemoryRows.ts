@@ -35,4 +35,3 @@ export interface StoredPatternAggregateRow {
   support: number;
   last_seen_at: number;
 }
-

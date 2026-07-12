@@ -1,15 +1,8 @@
 import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
 import { describeSessionHandle } from "../Core/AgentIds.js";
-import type {
-  AgentCompactEventDisplay,
-  AgentCompactEventFormatter,
-} from "./AgentEventDisplayTypes.js";
+import type { AgentCompactEventDisplay, AgentCompactEventFormatter } from "./AgentEventDisplayTypes.js";
 import { eventDisplayMessage } from "./AgentEventDisplayMessages.js";
-import {
-  normalizeRecord,
-  readRequestHandle,
-  readStringToken,
-} from "./AgentEventDisplayValueReaders.js";
+import { normalizeRecord, readRequestHandle, readStringToken } from "./AgentEventDisplayValueReaders.js";
 import {
   formatActiveRequestToken,
   formatCountToken,
@@ -44,10 +37,7 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
     const data = normalizeRecord(event.data);
     return {
       message: "行动规划阶段开始",
-      tokens: [
-        formatStepToken(event.step),
-        formatPlannerStageToken(data.stage),
-      ],
+      tokens: [formatStepToken(event.step), formatPlannerStageToken(data.stage)],
     };
   },
   "action.planner.stage.completed": (event) => {
@@ -58,7 +48,7 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
         formatStepToken(event.step),
         formatPlannerStageToken(data.stage),
         readStringToken(data.selectedAction),
-        Boolean(data.repaired) ? "已修复" : undefined,
+        data.repaired ? "已修复" : undefined,
       ],
     };
   },
@@ -66,11 +56,7 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
     const data = normalizeRecord(event.data);
     return {
       message: "行动规划阶段失败",
-      tokens: [
-        formatStepToken(event.step),
-        formatPlannerStageToken(data.stage),
-        readStringToken(data.message),
-      ],
+      tokens: [formatStepToken(event.step), formatPlannerStageToken(data.stage), readStringToken(data.message)],
     };
   },
   "interaction.routed": (event) => {
@@ -88,21 +74,14 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
     const data = normalizeRecord(event.data);
     return {
       message: "行动规划完成",
-      tokens: [
-        formatStepToken(event.step),
-        readStringToken(data.action),
-        readStringToken(data.status),
-      ],
+      tokens: [formatStepToken(event.step), readStringToken(data.action), readStringToken(data.status)],
     };
   },
   "model.started": (event) => {
     const data = normalizeRecord(event.data);
     return {
       message: "模型开始输出",
-      tokens: [
-        formatStepToken(event.step),
-        readStringToken(data.model),
-      ],
+      tokens: [formatStepToken(event.step), readStringToken(data.model)],
     };
   },
   "model.completed": (event) => ({
@@ -125,11 +104,7 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
     const data = normalizeRecord(event.data);
     return {
       message: "工具结果详情",
-      tokens: [
-        formatStepToken(event.step),
-        readStringToken(data.toolName),
-        readStringToken(data.callId),
-      ],
+      tokens: [formatStepToken(event.step), readStringToken(data.toolName), readStringToken(data.callId)],
     };
   },
   "sandbox.status.snapshot": (event) => {
@@ -148,20 +123,14 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
     const data = normalizeRecord(event.data);
     return {
       message: "安全沙箱初始化开始",
-      tokens: [
-        readStringToken(data.platform),
-        readStringToken(data.message),
-      ],
+      tokens: [readStringToken(data.platform), readStringToken(data.message)],
     };
   },
   "sandbox.install.completed": (event) => {
     const data = normalizeRecord(event.data);
     return {
       message: "安全沙箱初始化完成",
-      tokens: [
-        readStringToken(data.status),
-        readStringToken(data.message),
-      ],
+      tokens: [readStringToken(data.status), readStringToken(data.message)],
     };
   },
   "sandbox.install.failed": (event) => {
@@ -177,9 +146,7 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
   }),
 };
 
-export function fallbackCompactEventDisplay(
-  event: AgentEventEnvelope<string, unknown>,
-): AgentCompactEventDisplay {
+export function fallbackCompactEventDisplay(event: AgentEventEnvelope<string, unknown>): AgentCompactEventDisplay {
   const data = normalizeRecord(event.data);
   return {
     message: eventDisplayMessage(event.kind),
@@ -192,10 +159,7 @@ export function fallbackCompactEventDisplay(
   };
 }
 
-function sessionEventDisplay(
-  message: string,
-  event: AgentEventEnvelope<string, unknown>,
-): AgentCompactEventDisplay {
+function sessionEventDisplay(message: string, event: AgentEventEnvelope<string, unknown>): AgentCompactEventDisplay {
   const data = normalizeRecord(event.data);
 
   return {

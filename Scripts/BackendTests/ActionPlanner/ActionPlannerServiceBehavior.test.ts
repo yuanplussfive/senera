@@ -38,10 +38,7 @@ describe("ActionPlanner service behavior", () => {
   });
 
   test("repairs invalid turn understanding before routing", async () => {
-    const invalid = new AgentActionPlannerValidationError(
-      ["rawUserTurn: must match input"],
-      { rawUserTurn: "wrong" },
-    );
+    const invalid = new AgentActionPlannerValidationError(["rawUserTurn: must match input"], { rawUserTurn: "wrong" });
     const repaired = createTurnUnderstanding();
     const client = new FakePlannerClient(invalid, createInteractionRoute(), repaired);
     const planner = createPlanner(client);
@@ -59,12 +56,12 @@ describe("ActionPlanner service behavior", () => {
     cancelled.abort("stop now");
     const planner = createPlanner(new FakePlannerClient(createTurnUnderstanding()));
 
-    await expect(planner.route({ input: createActionPlanInput(), signal: cancelled.signal }))
-      .rejects.toMatchObject({ name: "AgentCancellationError" });
+    await expect(planner.route({ input: createActionPlanInput(), signal: cancelled.signal })).rejects.toMatchObject({
+      name: "AgentCancellationError",
+    });
 
     const failing = createPlanner(new FakePlannerClient(new Error("upstream unavailable")));
-    await expect(failing.understandTurn({ input: createActionPlanInput() }))
-      .rejects.toThrow(/upstream unavailable/);
+    await expect(failing.understandTurn({ input: createActionPlanInput() })).rejects.toThrow(/upstream unavailable/);
   });
 });
 

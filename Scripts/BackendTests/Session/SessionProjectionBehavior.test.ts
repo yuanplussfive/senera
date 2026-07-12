@@ -8,7 +8,11 @@ import {
   deriveAgentSessionTitle,
   rowToAgentSession,
 } from "../../../Source/AgentSystem/Session/AgentSqliteSessionMapper.js";
-import { AgentConversationEntryKinds, type AgentConversationEntry } from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
+import { agentErrorMessage } from "../../../Source/AgentSystem/I18n/AgentMessageCatalog.js";
+import {
+  AgentConversationEntryKinds,
+  type AgentConversationEntry,
+} from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
 import type { AgentSession } from "../../../Source/AgentSystem/Session/AgentSession.js";
 import type { SessionRow } from "../../../Source/AgentSystem/SessionPersistence/AgentSessionSqlRows.js";
 import type { StepTrace } from "../../../Source/AgentSystem/Runtime/AgentStepTrace.js";
@@ -41,14 +45,15 @@ describe("Session projection behavior", () => {
   });
 
   test("derives readable session titles and resets persisted running sessions to idle", () => {
-    expect(deriveAgentSessionTitle(createSession([
-      userEntry("request-1", "  这是一个很长的用户请求，需要被压缩成标题  "),
-    ]))).toBe("这是一个很长的用户请求，需要被压缩成标题");
-    expect(deriveAgentSessionTitle(createSession([]))).toBe("新对话");
+    expect(
+      deriveAgentSessionTitle(createSession([userEntry("request-1", "  这是一个很长的用户请求，需要被压缩成标题  ")])),
+    ).toBe("这是一个很长的用户请求，需要被压缩成标题");
+    expect(deriveAgentSessionTitle(createSession([]))).toBe(agentErrorMessage("session.defaultTitle"));
 
     expect(rowToAgentSession(createSessionRow({ status: "running" })).status).toBe("idle");
-    expect(rowToAgentSession(createSessionRow({ metadata: "{\"source\":\"sqlite\"}" })).metadata).toEqual({
+    expect(rowToAgentSession(createSessionRow({ metadata: '{"source":"sqlite"}' })).metadata).toEqual({
       source: "sqlite",
+      title: "Session",
     });
   });
 });

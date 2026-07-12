@@ -29,10 +29,7 @@ interface UseGlobalShortcutsInput {
   onToggleSessionPanel: () => void;
 }
 
-export function useGlobalShortcuts({
-  onNewSession,
-  onToggleSessionPanel,
-}: UseGlobalShortcutsInput): void {
+export function useGlobalShortcuts({ onNewSession, onToggleSessionPanel }: UseGlobalShortcutsInput): void {
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
       const action = resolveGlobalShortcut(event);

@@ -1,14 +1,9 @@
 import fs from "node:fs";
-import {
-  parseMarkdownSections,
-  type AgentMarkdownDocument,
-} from "../Xml/AgentMarkdownSections.js";
-import { AgentMarkdownPromptXmlRenderer } from "../Xml/AgentMarkdownPromptXmlRenderer.js";
+import { parseMarkdownSections, type AgentMarkdownDocument } from "../Xml/AgentMarkdownSections.js";
+import { type AgentMarkdownPromptXmlRenderer } from "../Xml/AgentMarkdownPromptXmlRenderer.js";
 
 export class AgentPromptDocumentationReader {
-  constructor(
-    private readonly markdownRenderer: AgentMarkdownPromptXmlRenderer,
-  ) {}
+  constructor(private readonly markdownRenderer: AgentMarkdownPromptXmlRenderer) {}
 
   readMarkdownSections(filePath: string | undefined): AgentMarkdownDocument {
     return filePath
@@ -17,10 +12,7 @@ export class AgentPromptDocumentationReader {
   }
 
   renderMarkdownFile(filePath: string): string {
-    return this.markdownRenderer.renderOrThrow(
-      fs.readFileSync(filePath, "utf8"),
-      filePath,
-    );
+    return this.markdownRenderer.renderOrThrow(fs.readFileSync(filePath, "utf8"), filePath);
   }
 
   renderOptionalMarkdownFile(filePath: string | undefined): string {

@@ -1,7 +1,4 @@
-import type {
-  PlannerEvidenceMemoryItem,
-  PlannerJournalItem,
-} from "../BamlClient/baml_client/types.js";
+import type { PlannerEvidenceMemoryItem, PlannerJournalItem } from "../BamlClient/baml_client/types.js";
 import {
   AgentConversationEntryKinds,
   createConversationEntryId,
@@ -9,13 +6,8 @@ import {
 } from "../Conversation/AgentConversation.js";
 import type { AgentActionPlanResult } from "../ActionPlanner/AgentActionPlannerTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import {
-  stableStringify,
-  uniqueStrings,
-} from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
-import {
-  normalizeAgentArtifactUri,
-} from "../Artifacts/AgentArtifactLocator.js";
+import { stableStringify, uniqueStrings } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
+import { normalizeAgentArtifactUri } from "../Artifacts/AgentArtifactLocator.js";
 
 export interface AgentPlannerJournalEntryRecord {
   requestId: string;
@@ -130,11 +122,7 @@ export class AgentPlannerMemoryProjector {
       }
 
       return {
-        id: createConversationEntryId(
-          options.requestId,
-          "evidence_memory",
-          `${options.step}:${index + 1}`,
-        ),
+        id: createConversationEntryId(options.requestId, "evidence_memory", `${options.step}:${index + 1}`),
         requestId: options.requestId,
         timestamp: createdAt,
         kind: AgentConversationEntryKinds.ToolEvidenceMemory,
@@ -163,15 +151,17 @@ export class AgentPlannerMemoryProjector {
   }
 
   private projectJournalRecord(record: AgentPlannerJournalEntryRecord): PlannerJournalItem[] {
-    return [{
-      requestId: record.requestId,
-      step: record.step,
-      selectedAction: record.selectedAction,
-      evidenceUris: uniqueStrings(record.evidenceUris),
-      artifactUris: uniqueStrings(record.artifactUris),
-      loadedTools: uniqueStrings(record.loadedTools),
-      outcome: record.result,
-    }];
+    return [
+      {
+        requestId: record.requestId,
+        step: record.step,
+        selectedAction: record.selectedAction,
+        evidenceUris: uniqueStrings(record.evidenceUris),
+        artifactUris: uniqueStrings(record.artifactUris),
+        loadedTools: uniqueStrings(record.loadedTools),
+        outcome: record.result,
+      },
+    ];
   }
 }
 

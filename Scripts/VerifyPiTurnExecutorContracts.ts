@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import type {
-  AgentEvent as AgentSessionEvent,
-  AgentHarness,
-} from "@earendil-works/pi-agent-core";
+import type { AgentEvent as AgentSessionEvent, AgentHarness } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentConversationEntryKinds } from "../Source/AgentSystem/Conversation/AgentConversation.js";
 import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
@@ -18,10 +15,7 @@ import type {
 } from "../Source/AgentSystem/Pi/AgentPiSubstrate.js";
 import { readPiProxyRuntimeContext } from "../Source/AgentSystem/PiProxy/AgentPiProxyRuntimeContext.js";
 import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
-import type {
-  AgentLoopCommand,
-  AgentLoopCommandResult,
-} from "../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
+import type { AgentLoopCommand, AgentLoopCommandResult } from "../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const modelProviderConfig: ResolvedAgentModelProviderConfig = {
@@ -64,23 +58,40 @@ async function main(): Promise<void> {
   assert.equal(output.responseText, "工具检查完成。");
   assert.deepEqual(pi.lastSessionOptions?.visibleToolNames, ["SeneraEchoTool"]);
   assert.equal(pi.lastSessionOptions?.sessionId, command.sessionId);
-  assert.deepEqual(pi.lastSessionOptions?.activeSkills?.map((skill) => skill.name), ["VerifyWorkspaceSkill"]);
+  assert.deepEqual(
+    pi.lastSessionOptions?.activeSkills?.map((skill) => skill.name),
+    ["VerifyWorkspaceSkill"],
+  );
   assert.equal(typeof pi.lastSessionOptions?.piProxyRuntimeContextId, "string");
   assert.equal(readPiProxyRuntimeContext(pi.lastSessionOptions?.piProxyRuntimeContextId), undefined);
 
   assert.deepEqual(pi.session.assignedHistoryTexts(), ["之前的上下文", "之前的回答"]);
   assert.deepEqual(pi.session.prompts, ["检查当前工作区"]);
-  assert.deepEqual(pi.session.promptOptions, [{
-    expandPromptTemplates: false,
-    source: "extension",
-  }]);
+  assert.deepEqual(pi.session.promptOptions, [
+    {
+      expandPromptTemplates: false,
+      source: "extension",
+    },
+  ]);
   assert.equal(pi.session.disposed, true);
   assert.equal(pi.session.unsubscribeCount, 1);
 
-  assert.equal(events.some((event) => event.kind === AgentEventKinds.ModelDelta), true);
-  assert.equal(events.some((event) => event.kind === AgentEventKinds.ToolCallStarted), true);
-  assert.equal(events.some((event) => event.kind === AgentEventKinds.ToolCallCompleted), true);
-  assert.equal(events.some((event) => event.kind === AgentEventKinds.ToolCallResultDetail), true);
+  assert.equal(
+    events.some((event) => event.kind === AgentEventKinds.ModelDelta),
+    true,
+  );
+  assert.equal(
+    events.some((event) => event.kind === AgentEventKinds.ToolCallStarted),
+    true,
+  );
+  assert.equal(
+    events.some((event) => event.kind === AgentEventKinds.ToolCallCompleted),
+    true,
+  );
+  assert.equal(
+    events.some((event) => event.kind === AgentEventKinds.ToolCallResultDetail),
+    true,
+  );
   assertPiTrace(events, "turn.started");
   assertPiTrace(events, "session.create.started");
   assertPiTrace(events, "session.create.completed");
@@ -99,18 +110,18 @@ async function main(): Promise<void> {
 
   assert.equal(output.conversationEntries.length, 2);
   assert.equal(output.conversationEntries[0]?.kind, AgentConversationEntryKinds.OpenAiTranscript);
-  assert.equal(output.conversationEntries.some((entry) =>
-    entry.kind === AgentConversationEntryKinds.ContextToolResults), false);
+  assert.equal(
+    output.conversationEntries.some((entry) => entry.kind === AgentConversationEntryKinds.ContextToolResults),
+    false,
+  );
   assert.equal(output.conversationEntries[1]?.kind, AgentConversationEntryKinds.ToolEvidenceMemory);
   const transcriptEntry = output.conversationEntries[0];
   assert.equal(transcriptEntry?.kind, AgentConversationEntryKinds.OpenAiTranscript);
   if (transcriptEntry?.kind === AgentConversationEntryKinds.OpenAiTranscript) {
-    assert.deepEqual(transcriptEntry.messages.map((message) => message.role), [
-      "user",
-      "assistant",
-      "tool",
-      "assistant",
-    ]);
+    assert.deepEqual(
+      transcriptEntry.messages.map((message) => message.role),
+      ["user", "assistant", "tool", "assistant"],
+    );
     assert.equal(transcriptEntry.messages[1]?.role, "assistant");
     assert.equal(
       transcriptEntry.messages[1]?.role === "assistant"
@@ -124,10 +135,12 @@ async function main(): Promise<void> {
   if (evidenceEntry?.kind === AgentConversationEntryKinds.ToolEvidenceMemory) {
     assert.equal(evidenceEntry.record.toolName, "SeneraEchoTool");
     assert.equal(evidenceEntry.record.evidence[0]?.evidenceUri, "senera://evidence/echo");
-    assert.deepEqual(evidenceEntry.record.evidence[0]?.facts, [{
-      name: "summary",
-      value: "workspace inspected",
-    }]);
+    assert.deepEqual(evidenceEntry.record.evidence[0]?.facts, [
+      {
+        name: "summary",
+        value: "workspace inspected",
+      },
+    ]);
   }
 
   await verifyAbortCleansContext(command);
@@ -158,9 +171,7 @@ function createRuntime(pi: FakePiRuntime): AgentPiTurnRuntimePort {
   };
 }
 
-async function verifyAbortCleansContext(
-  command: Extract<AgentLoopCommand, { kind: "run_pi_turn" }>,
-): Promise<void> {
+async function verifyAbortCleansContext(command: Extract<AgentLoopCommand, { kind: "run_pi_turn" }>): Promise<void> {
   const abortingPi = new FakePiRuntime();
   abortingPi.session.deferPrompt = true;
   const abortingRuntime = createRuntime(abortingPi);
@@ -240,28 +251,28 @@ async function verifyProviderFailureDoesNotSucceed(
 
 async function verifyHarnessSessionRejectsFailedAssistant(): Promise<void> {
   const session = new AgentPiHarnessSession(
-    new FakeHarness(createAssistantMessage({
-      stopReason: "error",
-      errorMessage: "500 Invalid option: expected one of system|user|assistant|tool",
-    })) as unknown as AgentHarness,
+    new FakeHarness(
+      createAssistantMessage({
+        stopReason: "error",
+        errorMessage: "500 Invalid option: expected one of system|user|assistant|tool",
+      }),
+    ) as unknown as AgentHarness,
     {
       model: new FakePiRuntime().model(),
       tools: [],
     },
   );
 
-  await assert.rejects(
-    session.prompt("hello"),
-    /Invalid option/,
-  );
+  await assert.rejects(session.prompt("hello"), /Invalid option/);
   assert.equal(session.getLastAssistantText(), undefined);
 }
 
-function readPiOutput(
-  result: AgentLoopCommandResult,
-): Extract<AgentLoopCommandResult, {
-  kind: "succeeded";
-}>["output"] & { kind: "pi_turn_completed" } {
+function readPiOutput(result: AgentLoopCommandResult): Extract<
+  AgentLoopCommandResult,
+  {
+    kind: "succeeded";
+  }
+>["output"] & { kind: "pi_turn_completed" } {
   assert.equal(result.kind, "succeeded");
   assert.equal(result.output.kind, "pi_turn_completed");
   return result.output;
@@ -279,23 +290,29 @@ function createRunPiTurnCommand(): Extract<AgentLoopCommand, { kind: "run_pi_tur
     step: 1,
     input: "检查当前工作区",
     prompt: "<agent_system>verification</agent_system>",
-    messages: [{
-      role: "user",
-      content: "之前的上下文",
-    }, {
-      role: "user",
-      content: "检查当前工作区",
-    }],
+    messages: [
+      {
+        role: "user",
+        content: "之前的上下文",
+      },
+      {
+        role: "user",
+        content: "检查当前工作区",
+      },
+    ],
     conversationEntries: [
       new AgentConversationProjector().projectOpenAiTranscript(
         "previous-request",
-        [{
-          role: "user",
-          content: "之前的上下文",
-        }, {
-          role: "assistant",
-          content: "之前的回答",
-        }],
+        [
+          {
+            role: "user",
+            content: "之前的上下文",
+          },
+          {
+            role: "assistant",
+            content: "之前的回答",
+          },
+        ],
         "2026-01-01T00:00:01.000Z",
       ),
       new AgentConversationProjector().projectUserInput(
@@ -306,22 +323,26 @@ function createRunPiTurnCommand(): Extract<AgentLoopCommand, { kind: "run_pi_tur
     ],
     rootCommand: rootCommand as Extract<AgentLoopCommand, { kind: "run_pi_turn" }>["rootCommand"],
     loadedToolNames: ["SeneraEchoTool"],
-    activeSkills: [{
-      name: "VerifyWorkspaceSkill",
-      title: "验证工作区技能",
-      summary: "用于验证 Pi Harness 能接收 Senera 激活技能。",
-      useCases: ["工作区验证"],
-      avoid: [],
-      recommendedTools: ["SeneraEchoTool"],
-      evidenceRequirements: [],
-      descriptionFile: "System/Plugins/AgentCapabilitySkillsPlugin/docs/WorkspaceInvestigation.md",
-      matchedTerms: ["workspace"],
-      matchedFields: [{
-        term: "workspace",
-        fields: ["summary"],
-      }],
-      score: 1,
-    }],
+    activeSkills: [
+      {
+        name: "VerifyWorkspaceSkill",
+        title: "验证工作区技能",
+        summary: "用于验证 Pi Harness 能接收 Senera 激活技能。",
+        useCases: ["工作区验证"],
+        avoid: [],
+        recommendedTools: ["SeneraEchoTool"],
+        evidenceRequirements: [],
+        descriptionFile: "System/Plugins/AgentCapabilitySkillsPlugin/docs/WorkspaceInvestigation.md",
+        matchedTerms: ["workspace"],
+        matchedFields: [
+          {
+            term: "workspace",
+            fields: ["summary"],
+          },
+        ],
+        score: 1,
+      },
+    ],
   };
 }
 
@@ -439,7 +460,7 @@ class FakePiSession {
     if (this.promptFailure) {
       throw this.promptFailure;
     }
-    this.emitScriptedEvents();
+    await this.emitScriptedEvents();
   }
 
   finishPrompt(): void {
@@ -461,36 +482,42 @@ class FakePiSession {
   assignedHistoryTexts(): string[] {
     return this.assignedHistory.flatMap((message) => {
       const record = message as { content?: Array<{ type?: string; text?: string }> };
-      return record.content?.flatMap((entry) =>
-        entry.type === "text" && typeof entry.text === "string" ? [entry.text] : [],
-      ) ?? [];
+      return (
+        record.content?.flatMap((entry) =>
+          entry.type === "text" && typeof entry.text === "string" ? [entry.text] : [],
+        ) ?? []
+      );
     });
   }
 
-  private emitScriptedEvents(): void {
-    this.emit({
+  private async emitScriptedEvents(): Promise<void> {
+    await this.emit({
       type: "message_update",
       message: {
         role: "assistant",
-        content: [{
-          type: "text",
-          text: "工具",
-        }],
+        content: [
+          {
+            type: "text",
+            text: "工具",
+          },
+        ],
       },
       assistantMessageEvent: {},
     } as unknown as AgentSessionEvent);
-    this.emit({
+    await this.emit({
       type: "message_update",
       message: {
         role: "assistant",
-        content: [{
-          type: "text",
-          text: "工具检查完成。",
-        }],
+        content: [
+          {
+            type: "text",
+            text: "工具检查完成。",
+          },
+        ],
       },
       assistantMessageEvent: {},
     } as AgentSessionEvent);
-    this.emit({
+    await this.emit({
       type: "tool_execution_start",
       toolCallId: "call_echo",
       toolName: "SeneraEchoTool",
@@ -498,67 +525,76 @@ class FakePiSession {
         text: "检查当前工作区",
       },
     });
-    this.emit({
+    await this.emit({
       type: "tool_execution_end",
       toolCallId: "call_echo",
       toolName: "SeneraEchoTool",
       result: projectPiToolResult(),
       isError: false,
     });
-    this.emit({
+    await this.emit({
       type: "turn_end",
       message: {
         role: "assistant",
-        content: [{
-          type: "text",
-          text: "我先调用工具检查工作区。",
-        }, {
-          type: "toolCall",
-          id: "call_echo",
-          name: "SeneraEchoTool",
-          arguments: {
-            text: "检查当前工作区",
+        content: [
+          {
+            type: "text",
+            text: "我先调用工具检查工作区。",
           },
-        }],
+          {
+            type: "toolCall",
+            id: "call_echo",
+            name: "SeneraEchoTool",
+            arguments: {
+              text: "检查当前工作区",
+            },
+          },
+        ],
       },
-      toolResults: [{
-        role: "toolResult",
-        toolCallId: "call_echo",
-        toolName: "SeneraEchoTool",
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            type: "senera.tool_observation.v1",
-            status: "success",
-            summary: "workspace inspected",
-          }),
-        }],
-        details: {
-          senera: {
-            toolName: "SeneraEchoTool",
-            executed: executedToolResult(),
+      toolResults: [
+        {
+          role: "toolResult",
+          toolCallId: "call_echo",
+          toolName: "SeneraEchoTool",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                type: "senera.tool_observation.v1",
+                status: "success",
+                summary: "workspace inspected",
+              }),
+            },
+          ],
+          details: {
+            senera: {
+              toolName: "SeneraEchoTool",
+              executed: executedToolResult(),
+            },
           },
+          isError: false,
+          timestamp: Date.now(),
         },
-        isError: false,
-        timestamp: Date.now(),
-      }],
+      ],
     } as AgentSessionEvent);
-    this.emit({
+    await this.emit({
       type: "turn_end",
       message: {
         role: "assistant",
-        content: [{
-          type: "text",
-          text: "工具检查完成。",
-        }],
+        content: [
+          {
+            type: "text",
+            text: "工具检查完成。",
+          },
+        ],
       },
       toolResults: [],
     } as unknown as AgentSessionEvent);
   }
 
-  private emit(event: AgentSessionEvent): void {
+  private async emit(event: AgentSessionEvent): Promise<void> {
     for (const listener of this.listeners) {
-      listener(event);
+      await listener(event);
     }
   }
 }
@@ -577,10 +613,12 @@ function createAssistantMessage(input: {
 }): AssistantMessage {
   return {
     role: "assistant",
-    content: [{
-      type: "text",
-      text: "",
-    }],
+    content: [
+      {
+        type: "text",
+        text: "",
+      },
+    ],
     api: "openai-completions",
     provider: "senera-pi-proxy",
     model: "verification-model",
@@ -606,10 +644,12 @@ function createAssistantMessage(input: {
 
 function projectPiToolResult(): unknown {
   return {
-    content: [{
-      type: "text",
-      text: "workspace inspected",
-    }],
+    content: [
+      {
+        type: "text",
+        text: "workspace inspected",
+      },
+    ],
     details: {
       senera: {
         toolName: "SeneraEchoTool",
@@ -644,27 +684,33 @@ function executedToolResult(): ExecutedToolCallResult {
         manifest: "E:/senera/.senera/artifacts/verification/manifest.json",
       },
       summary: "workspace inspected",
-      evidence: [{
-        key: "echo",
-        evidenceUri: "senera://evidence/echo",
-        kind: "workspace_summary",
-        locator: "workspace://.",
-        display: "workspace summary",
-        label: "workspace",
-        source: "workspace inspected",
-        confidence: 1,
-        modelSlots: [{
-          name: "summary",
-          value: "workspace inspected",
-        }],
-        plannerMemory: {
-          facts: [{
-            name: "summary",
-            value: "workspace inspected",
-          }],
-          artifactRefs: ["projection"],
+      evidence: [
+        {
+          key: "echo",
+          evidenceUri: "senera://evidence/echo",
+          kind: "workspace_summary",
+          locator: "workspace://.",
+          display: "workspace summary",
+          label: "workspace",
+          source: "workspace inspected",
+          confidence: 1,
+          modelSlots: [
+            {
+              name: "summary",
+              value: "workspace inspected",
+            },
+          ],
+          plannerMemory: {
+            facts: [
+              {
+                name: "summary",
+                value: "workspace inspected",
+              },
+            ],
+            artifactRefs: ["projection"],
+          },
         },
-      }],
+      ],
       delta: [],
     },
   };
@@ -672,19 +718,14 @@ function executedToolResult(): ExecutedToolCallResult {
 
 function assertPiTrace(events: readonly AgentDomainEvent[], eventType: string): void {
   assert.equal(
-    events.some((event) =>
-      event.kind === AgentEventKinds.PiTrace
-      && readRecord(event.data)?.eventType === eventType
-    ),
+    events.some((event) => event.kind === AgentEventKinds.PiTrace && readRecord(event.data)?.eventType === eventType),
     true,
     `Expected Pi trace event ${eventType}`,
   );
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 main().catch((error: unknown) => {

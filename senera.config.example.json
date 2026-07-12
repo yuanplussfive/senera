@@ -1,12 +1,8 @@
 {
   "Defaults": {
     "PluginRoots": {
-      "System": [
-        "./System/Plugins"
-      ],
-      "User": [
-        "./Plugins"
-      ]
+      "System": ["./System/Plugins"],
+      "User": ["./Plugins"]
     },
     "PluginDiscovery": {
       "ManifestFileName": "PluginManifest.json",
@@ -27,9 +23,7 @@
       "BaseDir": ".senera/sandbox-runtime",
       "BundleDir": ".senera/sandbox-bundles",
       "ImportBundlesOnStartup": true,
-      "Images": [
-        "alpine"
-      ]
+      "Images": ["alpine"]
     },
     "ToolSearch": {
       "Memory": {
@@ -106,11 +100,7 @@
         "WebSocketUrl": "ws://127.0.0.1:8787",
         "ModelLabel": "senera",
         "UserName": "you",
-        "EmptySuggestions": [
-          "整理今天的工作优先级",
-          "分析一段错误日志",
-          "把需求拆成可执行步骤"
-        ]
+        "EmptySuggestions": ["整理今天的工作优先级", "分析一段错误日志", "把需求拆成可执行步骤"]
       }
     },
     "ActionPlanner": {
@@ -126,7 +116,29 @@
       "Host": "127.0.0.1",
       "Port": 8787,
       "HotReload": true,
-      "RequestMaxBytes": 1048576
+      "RequestMaxBytes": 1048576,
+      "AccessControl": {
+        "Mode": "auto",
+        "AccountFile": ".senera/access/admin-account.json",
+        "AllowedOrigins": [],
+        "TrustedProxyAddresses": [],
+        "AllowInsecureLoopback": false,
+        "Session": {
+          "AbsoluteTtlHours": 72,
+          "IdleTtlHours": 12,
+          "MaxSessions": 8
+        },
+        "Limits": {
+          "MaxConnections": 64,
+          "MaxConnectionsPerClient": 8,
+          "UpgradeRequestsPerMinute": 30,
+          "HttpRequestsPerMinute": 60,
+          "MessagesPerMinute": 100,
+          "LoginAttemptsPerMinute": 5,
+          "HeartbeatIntervalSeconds": 30,
+          "IdleSocketTimeoutSeconds": 90
+        }
+      }
     },
     "Persistence": {
       "Kind": "sqlite",

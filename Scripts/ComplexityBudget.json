@@ -1,35 +1,12 @@
 {
-  "sourceRoots": [
-    "Apps",
-    "Build",
-    "Frontend/src",
-    "Scripts",
-    "Source"
-  ],
-  "fileExtensions": [
-    ".ts",
-    ".tsx",
-    ".js",
-    ".mjs"
-  ],
-  "ignoredGlobs": [
-    "Dist/**",
-    "node_modules/**",
-    "Frontend/src/generated/**",
-    "Source/AgentSystem/BamlClient/**"
-  ],
+  "sourceRoots": ["Apps", "Build", "Frontend/src", "Scripts", "Source"],
+  "fileExtensions": [".ts", ".tsx", ".js", ".mjs"],
+  "ignoredGlobs": ["Dist/**", "node_modules/**", "Frontend/src/generated/**", "Source/AgentSystem/BamlClient/**"],
   "lineBudget": {
     "maxLines": 800,
     "legacyAllowance": 25
   },
-  "legacyLargeFiles": [
-    {
-      "path": "Frontend/src/shared/config/JsonConfigForm.tsx",
-      "baselineLines": 891,
-      "owner": "frontend-shared-config",
-      "splitTarget": "把 form state、field renderer、array/object controls、validation display 拆开。"
-    }
-  ],
+  "legacyLargeFiles": [],
   "directoryBudgets": [
     {
       "path": "Source/AgentSystem",

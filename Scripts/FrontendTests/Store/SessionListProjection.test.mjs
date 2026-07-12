@@ -15,18 +15,17 @@ test("session list ingest preserves pending local creation and selects the first
     pendingCreatedSessionIds: { local: true },
   });
 
-  ingestSessionList(state, [
-    listItem("empty", { messageCount: 0 }),
-    listItem("active", { messageCount: 2 }),
-  ]);
+  ingestSessionList(state, [listItem("empty", { messageCount: 0 }), listItem("active", { messageCount: 2 })]);
 
   expect(state.sessionOrder).toEqual(["local", "empty", "active"]);
   expect(state.activeSessionId).toBe("local");
   expect(state.sessions.stale).toBeUndefined();
-  expect(state.sessions.active).toEqual(expect.objectContaining({
-    status: "ready",
-    messageCount: 2,
-  }));
+  expect(state.sessions.active).toEqual(
+    expect.objectContaining({
+      status: "ready",
+      messageCount: 2,
+    }),
+  );
 });
 
 test("pending deletion remains hidden until the server confirms removal", () => {

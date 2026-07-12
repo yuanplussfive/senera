@@ -2,28 +2,16 @@ import { XMLParser } from "fast-xml-parser";
 import type { AgentXmlProtocolPolicy } from "./AgentXmlPolicy.js";
 import { createXmlProtocolSpec } from "./AgentXmlPolicy.js";
 import { AgentXmlCodec } from "./AgentXmlCodec.js";
-import {
-  type AgentXmlParserOptions,
-  type ParsedXmlRoot,
-} from "./AgentXmlParserTypes.js";
+import { type AgentXmlParserOptions, type ParsedXmlRoot } from "./AgentXmlParserTypes.js";
 import { AgentXmlSourceHelper } from "./AgentXmlSourceHelper.js";
-import {
-  AgentOrderedXmlTreeParser,
-} from "./AgentOrderedXmlTree.js";
+import { AgentOrderedXmlTreeParser } from "./AgentOrderedXmlTree.js";
 import { AgentXmlSyntaxGuard } from "./AgentXmlSyntaxGuard.js";
 import { AgentXmlStructureValidator } from "./AgentXmlStructureValidator.js";
 import { assertXmlParserTextLimits } from "./AgentXmlParserTextLimits.js";
-import {
-  assertXmlDocumentSyntax,
-  readSingleParsedRootName,
-} from "./AgentXmlDocumentValidator.js";
+import { assertXmlDocumentSyntax, readSingleParsedRootName } from "./AgentXmlDocumentValidator.js";
 import { AgentXmlNodeNormalizer } from "./AgentXmlNodeNormalizer.js";
 
-export type {
-  AgentXmlParseErrorCode,
-  AgentXmlParserOptions,
-  ParsedXmlRoot,
-} from "./AgentXmlParserTypes.js";
+export type { AgentXmlParseErrorCode, AgentXmlParserOptions, ParsedXmlRoot } from "./AgentXmlParserTypes.js";
 export { AgentXmlParseError } from "./AgentXmlParserTypes.js";
 export { AgentXmlSourceHelper } from "./AgentXmlSourceHelper.js";
 
@@ -38,9 +26,7 @@ export class AgentXmlParser {
 
   constructor(private readonly options: AgentXmlParserOptions = {}) {
     this.policy = options.policy;
-    this.codec = new AgentXmlCodec(
-      options.policy?.protocol ?? createXmlProtocolSpec(),
-    );
+    this.codec = new AgentXmlCodec(options.policy?.protocol ?? createXmlProtocolSpec());
     this.parser = new XMLParser({
       ignoreAttributes: false,
       attributeNamePrefix: "@_",
@@ -56,12 +42,15 @@ export class AgentXmlParser {
       allowBooleanAttributes: options.policy?.allowBooleanAttributes ?? false,
     });
     this.syntaxGuard = new AgentXmlSyntaxGuard(this.policy);
-    this.structureValidator = new AgentXmlStructureValidator({
-      policy: this.policy,
-      maxDepth: options.maxDepth,
-      arrayElementNames: options.arrayElementNames,
-      arrayElementNameSuffix: options.arrayElementNameSuffix,
-    }, this.orderedTreeParser);
+    this.structureValidator = new AgentXmlStructureValidator(
+      {
+        policy: this.policy,
+        maxDepth: options.maxDepth,
+        arrayElementNames: options.arrayElementNames,
+        arrayElementNameSuffix: options.arrayElementNameSuffix,
+      },
+      this.orderedTreeParser,
+    );
   }
 
   parse(xmlText: string): ParsedXmlRoot {
@@ -103,9 +92,7 @@ export class AgentXmlParser {
   serialize(rootName: string, value: unknown): string {
     return this.codec.objectToXml(
       rootName,
-      value && typeof value === "object" && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : { value },
+      value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : { value },
     );
   }
 
@@ -118,5 +105,4 @@ export class AgentXmlParser {
     const suffix = this.policy?.arrayElementNameSuffix ?? this.options.arrayElementNameSuffix ?? "";
     return suffix.length > 0 && name.endsWith(suffix);
   }
-
 }

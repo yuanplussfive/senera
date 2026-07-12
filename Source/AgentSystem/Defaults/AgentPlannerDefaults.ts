@@ -16,10 +16,7 @@ export function resolveActionPlannerConfig(
   const defaults = resolveAgentDefaults(config);
   const provider = resolveModelProviderConfig(config, providerId);
   const configured = config.ActionPlanner;
-  const sharedClientConfig = mergeActionPlannerClientConfig(
-    defaults.ActionPlanner.Client,
-    configured?.Client,
-  );
+  const sharedClientConfig = mergeActionPlannerClientConfig(defaults.ActionPlanner.Client, configured?.Client);
   const sharedClient = resolveActionPlannerClientConfig({
     config,
     baseProvider: provider,
@@ -37,18 +34,12 @@ export function resolveActionPlannerConfig(
     TurnUnderstandingClient: resolveActionPlannerClientConfig({
       config,
       baseProvider: provider,
-      configuredClient: mergeActionPlannerClientConfig(
-        sharedClientConfig,
-        configured?.TurnUnderstandingClient,
-      ),
+      configuredClient: mergeActionPlannerClientConfig(sharedClientConfig, configured?.TurnUnderstandingClient),
     }),
     PlanningClient: resolveActionPlannerClientConfig({
       config,
       baseProvider: provider,
-      configuredClient: mergeActionPlannerClientConfig(
-        sharedClientConfig,
-        configured?.PlanningClient,
-      ),
+      configuredClient: mergeActionPlannerClientConfig(sharedClientConfig, configured?.PlanningClient),
     }),
   };
 }
@@ -60,9 +51,7 @@ export function resolveActionPlannerClientConfig(options: {
 }): ResolvedAgentActionPlannerClientConfig {
   const configured = options.configuredClient;
   const modelProviderId = configured.ModelProviderId;
-  const provider = modelProviderId
-    ? resolveModelProviderConfig(options.config, modelProviderId)
-    : options.baseProvider;
+  const provider = modelProviderId ? resolveModelProviderConfig(options.config, modelProviderId) : options.baseProvider;
   const configuredProvider = configured.Provider;
 
   return {

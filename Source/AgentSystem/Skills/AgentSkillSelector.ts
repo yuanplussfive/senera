@@ -1,8 +1,6 @@
 import crypto from "node:crypto";
 import MiniSearch from "minisearch";
-import type {
-  RegisteredSkill,
-} from "../Types/PluginRuntimeTypes.js";
+import type { RegisteredSkill } from "../Types/PluginRuntimeTypes.js";
 import { AgentToolSearchTokenizer } from "../ToolSearch/AgentToolSearchTokenizer.js";
 import {
   capabilityFacetEntries,
@@ -42,10 +40,7 @@ export interface AgentSkillSelectionMatchedField {
 export class AgentSkillSelector {
   private readonly tokenizer = new AgentToolSearchTokenizer();
 
-  select(options: {
-    query: string;
-    skills: readonly RegisteredSkill[];
-  }): AgentSkillSelectionResult[] {
+  select(options: { query: string; skills: readonly RegisteredSkill[] }): AgentSkillSelectionResult[] {
     const query = options.query.trim();
     if (!query || options.skills.length === 0) {
       return [];
@@ -93,8 +88,7 @@ export class AgentSkillSelector {
           : undefined;
       })
       .filter((result): result is AgentSkillSelectionResult => Boolean(result))
-      .sort((left, right) =>
-        right.score - left.score || this.compareSkillOrder(left.skill, right.skill));
+      .sort((left, right) => right.score - left.score || this.compareSkillOrder(left.skill, right.skill));
 
     return this.evidenceFrontier(ranked);
   }
@@ -103,17 +97,16 @@ export class AgentSkillSelector {
     const search = skill.search;
     const capabilities = search?.Capabilities ?? [];
     const capabilityText = capabilities
-      .map((capability) => capabilitySearchText(capability, {
-        includeRisk: false,
-      }))
+      .map((capability) =>
+        capabilitySearchText(capability, {
+          includeRisk: false,
+        }),
+      )
       .join(" ");
     const capabilityFacets = capabilities
-      .flatMap((capability) =>
-        capabilityFacetEntries(capability.Facets).flatMap((entry) => entry.values))
+      .flatMap((capability) => capabilityFacetEntries(capability.Facets).flatMap((entry) => entry.values))
       .join(" ");
-    const capabilityRiskDocumentText = capabilities
-      .map((capability) => capabilityRiskText(capability.Risk))
-      .join(" ");
+    const capabilityRiskDocumentText = capabilities.map((capability) => capabilityRiskText(capability.Risk)).join(" ");
     const tags = (search?.Tags ?? []).join(" ");
     const summary = search?.Summary ?? skill.plugin.manifest.Plugin.Description ?? "";
     const useCases = (search?.UseCases ?? []).join(" ");
@@ -139,32 +132,26 @@ export class AgentSkillSelector {
   }
 
   private compareSkillOrder(left: RegisteredSkill, right: RegisteredSkill): number {
-    return compareLoadedPluginsForPrompting(left.plugin, right.plugin)
-      || left.name.localeCompare(right.name);
+    return compareLoadedPluginsForPrompting(left.plugin, right.plugin) || left.name.localeCompare(right.name);
   }
 
-  private evidenceFrontier(
-    ranked: readonly AgentSkillSelectionResult[],
-  ): AgentSkillSelectionResult[] {
-    const termSets = new Map(
-      ranked.map((result) => [result.skill.name, new Set(result.matchedTerms)]),
-    );
+  private evidenceFrontier(ranked: readonly AgentSkillSelectionResult[]): AgentSkillSelectionResult[] {
+    const termSets = new Map(ranked.map((result) => [result.skill.name, new Set(result.matchedTerms)]));
 
     return ranked.filter((candidate) => {
       const candidateTerms = termSets.get(candidate.skill.name) ?? new Set<string>();
-      return !ranked.some((other) =>
-        other.skill.name !== candidate.skill.name
-        && other.score >= candidate.score
-        && isStrictSuperset(termSets.get(other.skill.name) ?? new Set<string>(), candidateTerms));
+      return !ranked.some(
+        (other) =>
+          other.skill.name !== candidate.skill.name &&
+          other.score >= candidate.score &&
+          isStrictSuperset(termSets.get(other.skill.name) ?? new Set<string>(), candidateTerms),
+      );
     });
   }
 }
 
 function stableSkillDocumentId(skill: RegisteredSkill): string {
-  return crypto
-    .createHash("sha1")
-    .update(`${skill.plugin.manifest.Plugin.Name}:${skill.name}`)
-    .digest("hex");
+  return crypto.createHash("sha1").update(`${skill.plugin.manifest.Plugin.Name}:${skill.name}`).digest("hex");
 }
 
 function isStrictSuperset(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {

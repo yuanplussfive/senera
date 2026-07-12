@@ -1,4 +1,5 @@
 import { cn } from "../../lib/util";
+import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import iconRules from "./ModelProviderIconRules.json";
 
 type IconRuleMatchKind = "exact" | "prefix" | "suffix" | "includes";
@@ -28,7 +29,12 @@ interface ModelProviderIconRuleDocument {
     values: string[];
   }>;
   modelGroups?: ModelProviderModelGroupRule[];
-  defaultModelGroup?: ModelProviderDefaultModelGroup;
+  defaultModelGroup?: {
+    id: string;
+    label?: string;
+    labelKey?: FrontendMessageKey;
+    icon?: string;
+  };
 }
 
 const ModelProviderIconRuleConfig = iconRules as ModelProviderIconRuleDocument;
@@ -61,10 +67,7 @@ export function ModelProviderIcon({ icon, className, size = 16 }: ModelProviderI
   );
 }
 
-export function readModelProviderIconSrc(
-  icon: string,
-  baseUrl: string = import.meta.env.BASE_URL,
-): string {
+export function readModelProviderIconSrc(icon: string, baseUrl: string = import.meta.env.BASE_URL): string {
   if (icon.startsWith("/")) return icon;
   const assetName = icon.endsWith(".svg") ? icon : `${icon}.svg`;
   return `${withTrailingSlash(baseUrl)}icons/model-providers/${assetName}`;
@@ -72,9 +75,10 @@ export function readModelProviderIconSrc(
 
 export function inferModelProviderIcon(value: string): ModelProviderIconName | undefined {
   const normalized = value.toLowerCase();
-  return ModelProviderIconRuleConfig.rules.find((rule) =>
-    iconRuleMatches(rule.match, normalized, rule.values)
-  )?.icon ?? ModelProviderIconRuleConfig.defaultIcon;
+  return (
+    ModelProviderIconRuleConfig.rules.find((rule) => iconRuleMatches(rule.match, normalized, rule.values))?.icon ??
+    ModelProviderIconRuleConfig.defaultIcon
+  );
 }
 
 export function readDefaultModelGroupRules(): ModelProviderModelGroupRule[] {
@@ -82,18 +86,24 @@ export function readDefaultModelGroupRules(): ModelProviderModelGroupRule[] {
 }
 
 export function readDefaultModelGroup(): ModelProviderDefaultModelGroup {
-  return ModelProviderIconRuleConfig.defaultModelGroup ?? {
+  const configured = ModelProviderIconRuleConfig.defaultModelGroup;
+  if (configured) {
+    return {
+      id: configured.id,
+      label: configured.labelKey
+        ? frontendMessage(configured.labelKey)
+        : (configured.label ?? frontendMessage("config.modelGroups.other")),
+      icon: configured.icon,
+    };
+  }
+  return {
     id: "other",
-    label: "其他模型",
+    label: frontendMessage("config.modelGroups.other"),
     icon: ModelProviderIconRuleConfig.defaultIcon,
   };
 }
 
-function iconRuleMatches(
-  match: IconRuleMatchKind,
-  source: string,
-  values: readonly string[],
-): boolean {
+function iconRuleMatches(match: IconRuleMatchKind, source: string, values: readonly string[]): boolean {
   return values.some((value) => {
     const normalized = value.toLowerCase();
     switch (match) {

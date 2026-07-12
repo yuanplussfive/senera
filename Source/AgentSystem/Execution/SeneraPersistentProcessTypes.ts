@@ -33,4 +33,4 @@ export type SeneraPersistentProcessSpawner = (
   command: string,
   args: readonly string[],
   options: SeneraPersistentProcessSpawnOptions,
-) => SeneraPersistentProcessChild;
+) => Promise<SeneraPersistentProcessChild>;

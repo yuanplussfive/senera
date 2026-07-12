@@ -12,13 +12,19 @@ globalThis.__SENERA_EMPTY_SUGGESTIONS__ = "整理日志|检查项目";
 globalThis.window.__SENERA_RUNTIME_CONFIG__ = {};
 
 test("chat header and empty state render stable first-screen copy", () => {
-  const header = renderToStaticMarkup(withUiProviders(React.createElement(ChatHeader, {
-    title: "会话标题",
-    runStatus: "failed",
-  })));
-  const empty = renderToStaticMarkup(React.createElement(EmptyChatState, {
-    onSelectSuggestion: () => undefined,
-  }));
+  const header = renderToStaticMarkup(
+    withUiProviders(
+      React.createElement(ChatHeader, {
+        title: "会话标题",
+        runStatus: "failed",
+      }),
+    ),
+  );
+  const empty = renderToStaticMarkup(
+    React.createElement(EmptyChatState, {
+      onSelectSuggestion: () => undefined,
+    }),
+  );
 
   expect(header).toMatch(/会话标题/);
   expect(header).toMatch(/failed/);
@@ -27,22 +33,30 @@ test("chat header and empty state render stable first-screen copy", () => {
 });
 
 test("approval strip SSR smoke covers pending action controls", () => {
-  const markup = renderToStaticMarkup(React.createElement(ApprovalRequestStrip, {
-    approvals: [{
-      approvalId: "approval_pending",
-      status: "pending",
-      title: "需要确认",
-      reason: "工具需要审批",
-      rule: "high-impact",
-      riskSignals: ["workspace-write", "shell"],
-      toolName: "ShellCommandTool",
-      createdAt: "2026-07-09T00:00:00.000Z",
-      arguments: {
-        command: "pnpm run build",
-      },
-    }],
-    onResolve: () => undefined,
-  }));
+  const markup = renderToStaticMarkup(
+    React.createElement(ApprovalRequestStrip, {
+      approvals: [
+        {
+          approvalId: "approval_pending",
+          status: "pending",
+          title: "需要确认",
+          reason: "工具需要审批",
+          rule: "high-impact",
+          riskSignals: ["workspace-write", "shell"],
+          approvalKind: "tool_call",
+          createdAt: "2026-07-09T00:00:00.000Z",
+          subject: {
+            kind: "tool_call",
+            toolName: "ShellCommandTool",
+            arguments: {
+              command: "pnpm run build",
+            },
+          },
+        },
+      ],
+      onResolve: () => undefined,
+    }),
+  );
 
   expect(markup).toMatch(/ShellCommandTool/);
   expect(markup).toMatch(/等待审批/);
@@ -52,10 +66,12 @@ test("approval strip SSR smoke covers pending action controls", () => {
 
 test("code artifact source SSR smoke covers source and preview metadata", () => {
   const artifact = readCodeArtifact("html", "<main><h1>Hello</h1></main>");
-  const markup = renderToStaticMarkup(React.createElement(CodeArtifactSourceView, {
-    code: artifact.code,
-    language: artifact.language,
-  }));
+  const markup = renderToStaticMarkup(
+    React.createElement(CodeArtifactSourceView, {
+      code: artifact.code,
+      language: artifact.language,
+    }),
+  );
 
   expect(artifact.filename).toBe("snippet.html");
   expect(artifact.preview?.id).toBe("html-document");
@@ -65,7 +81,11 @@ test("code artifact source SSR smoke covers source and preview metadata", () => 
 });
 
 function withUiProviders(element) {
-  return React.createElement(TooltipProvider, {
-    delayDuration: 0,
-  }, element);
+  return React.createElement(
+    TooltipProvider,
+    {
+      delayDuration: 0,
+    },
+    element,
+  );
 }

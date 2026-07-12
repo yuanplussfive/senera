@@ -7,10 +7,7 @@ import { AgentPromptContractRenderer } from "./AgentPromptContractRenderer.js";
 import { createPromptContractJsonSchema } from "./AgentPromptContractJsonSchema.js";
 import type { AgentPromptContractView } from "./AgentPromptContractTypes.js";
 
-export type {
-  AgentPromptContractProperty,
-  AgentPromptContractView,
-} from "./AgentPromptContractTypes.js";
+export type { AgentPromptContractProperty, AgentPromptContractView } from "./AgentPromptContractTypes.js";
 
 export class AgentPromptContractProjector {
   private readonly protocol = createXmlProtocolSpec();
@@ -41,13 +38,7 @@ export class AgentPromptContractProjector {
     rootName: string,
     typeName?: string,
   ): AgentPromptContractView {
-    const sourceFile = ts.createSourceFile(
-      sourceFilePath,
-      sourceText,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
-    );
+    const sourceFile = ts.createSourceFile(sourceFilePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const rootDeclaration = this.reader.readRootTypeDeclaration(sourceFile, typeName);
     const properties = this.reader.readProperties(rootDeclaration.type, sourceFile, rootName, 0);
 

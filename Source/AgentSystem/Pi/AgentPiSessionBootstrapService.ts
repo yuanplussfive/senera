@@ -1,17 +1,9 @@
 import { createOpaqueId } from "../Core/AgentIds.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
-import {
-  AgentEventKinds,
-  emitAgentEvent,
-  type AgentDomainEvent,
-  type AgentEventSink,
-} from "../Events/AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent, type AgentEventSink } from "../Events/AgentEvent.js";
 import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import { createPiTraceEvent } from "./AgentPiTraceProjector.js";
-import type {
-  AgentPiRuntimeService,
-  AgentPiSessionResult,
-} from "./AgentPiSubstrate.js";
+import type { AgentPiRuntimeService, AgentPiSessionResult } from "./AgentPiSubstrate.js";
 import { runAgentPiGuardedPhase } from "./AgentPiTurnGuard.js";
 
 export interface AgentPiSessionBootstrapRuntime {
@@ -68,10 +60,7 @@ export class AgentPiSessionBootstrapService implements AgentPiSessionBootstrapPo
             requestId,
             step,
             visibleToolNames: [],
-            onEvent: (event) => emitAgentEvent(
-              request.onEvent,
-              stripPersistentSessionContext(event),
-            ),
+            onEvent: (event) => emitAgentEvent(request.onEvent, stripPersistentSessionContext(event)),
           });
           return createSessionPromise;
         },
@@ -103,13 +92,16 @@ export class AgentPiSessionBootstrapService implements AgentPiSessionBootstrapPo
     eventType: string,
     payload: unknown,
   ): Promise<void> {
-    await emitAgentEvent(request.onEvent, createPiTraceEvent({
-      requestId,
-      step,
-      source: "substrate",
-      eventType,
-      payload,
-    }));
+    await emitAgentEvent(
+      request.onEvent,
+      createPiTraceEvent({
+        requestId,
+        step,
+        source: "substrate",
+        eventType,
+        payload,
+      }),
+    );
   }
 }
 

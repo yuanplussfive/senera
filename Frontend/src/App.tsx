@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Toaster, toast } from "sonner";
+import { Toaster } from "sonner";
 import { TooltipProvider } from "./shared/ui";
 import { useAgentSocket, type SocketStatus } from "./api/useAgentSocket";
-import { buildUploadUrl } from "./api/uploadClient";
-import { useStore } from "./store/sessionStore";
 import { ChatPanel } from "./features/chat";
 import { ThinkingTimeline } from "./features/workflow";
 import { AppShell } from "./layout/AppShell";
 import type { WsRequest } from "./api/eventTypes";
-import {
-  useChatCommands,
-  type LastSentMessage,
-  type PendingAfterTruncate,
-} from "./app/useChatCommands";
+import { useChatCommands, type LastSentMessage, type PendingAfterTruncate } from "./app/useChatCommands";
 import { AppSessionSurface, type AppSessionActions } from "./app/AppSessionSurfaces";
+import { useAppChatPanelBindings } from "./app/useAppChatPanelBindings";
 import { useAppPanelController } from "./app/useAppPanelController";
+import { useAppStoreBindings } from "./app/useAppStoreBindings";
 import { useConfigMutationController } from "./app/useConfigMutationController";
 import { useGlobalShortcuts } from "./app/useGlobalShortcuts";
 import { useSessionCommands } from "./app/useSessionCommands";
@@ -29,40 +25,38 @@ import { useSocketPostIngestEffects } from "./app/useSocketPostIngestEffects";
 import { useWorkflowNavigation } from "./app/useWorkflowNavigation";
 import { installCopyableToasts } from "./shared/ui/installCopyableToasts";
 import { resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
-import { frontendMessage } from "./i18n/frontendMessageCatalog";
-import type {
-  ChatMessageActions,
-  ChatModelConfig,
-  ChatNavigationActions,
-  ChatPluginConfig,
-  ChatPresetConfig,
-  ChatRuntimeState,
-  ChatSystemConfig,
-} from "./features/chat/ChatPanelContracts";
+import { ServerAuthenticationGate } from "./app/ServerAuthenticationGate";
+import { useServerAuthentication } from "./app/useServerAuthentication";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 installCopyableToasts();
 
 export function App(): JSX.Element {
-  const ingest = useStore((s) => s.ingest);
-  const registerSession = useStore((s) => s.registerCreatingSession);
-  const appendUserMessage = useStore((s) => s.appendUserMessage);
-  const activeId = useStore((s) => s.activeSessionId);
-  const modelProviders = useStore((s) => s.modelProviders);
-  const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
-  const selectModelProvider = useStore((s) => s.selectModelProvider);
-  const pluginConfigs = useStore((s) => s.pluginConfigs);
-  const configSnapshot = useStore((s) => s.configSnapshot);
-  const providerModelCatalogs = useStore((s) => s.providerModelCatalogs);
-  const providerModelErrors = useStore((s) => s.providerModelErrors);
-  const presets = useStore((s) => s.presets);
-  const activePresetName = useStore((s) => s.activePresetName);
-  const presetsEnabled = useStore((s) => s.presetsEnabled);
-  const presetRootDir = useStore((s) => s.presetRootDir);
-  const userProfile = useStore((s) => s.userProfile);
-  const markUserProfileSynced = useStore((s) => s.markUserProfileSynced);
-  const uploadUrl = useMemo(() => buildUploadUrl(WS_URL), []);
+  const authentication = useServerAuthentication(WS_URL);
+  if (authentication.state.status !== "authenticated") {
+    return (
+      <ServerAuthenticationGate
+        state={authentication.state}
+        onLogin={authentication.login}
+        onRetry={authentication.refresh}
+      />
+    );
+  }
+  return (
+    <AuthenticatedApp
+      uploadCsrfToken={authentication.state.authentication.csrfToken}
+      onLogout={authentication.logout}
+    />
+  );
+}
 
+function AuthenticatedApp({
+  uploadCsrfToken,
+  onLogout,
+}: {
+  uploadCsrfToken?: string;
+  onLogout: () => Promise<void>;
+}): JSX.Element {
   const sendRef = useRef<((req: WsRequest) => boolean) | null>(null);
   const statusRef = useRef<SocketStatus>("idle");
   const lastSendRef = useRef<LastSentMessage | null>(null);
@@ -83,33 +77,25 @@ export function App(): JSX.Element {
     sendRef,
     statusRef,
   });
+  const { sandboxStatus, ingestSandboxEvent } = useSandboxRuntimeStatus();
   const {
-    configOperation,
-    deletePreset,
-    fetchProviderModels,
-    ingestConfigMutationEvent,
-    pluginConfigOperations,
-    presetOperations,
-    providerModelLoadingIds,
-    refreshConfig,
-    refreshPluginConfigs,
-    refreshPresets,
-    saveConfig,
-    savePluginConfig,
-    savePreset,
-    setActivePreset,
-    setPluginEnabled,
-  } = configMutations;
-  const {
-    sandboxStatus,
-    ingestSandboxEvent,
-  } = useSandboxRuntimeStatus();
+    actions,
+    activeSessionId: activeId,
+    chatModelConfig,
+    chatPluginConfig,
+    chatPresetConfig,
+    chatSystemConfig,
+    selectedModelProviderId,
+    uploadUrl,
+    userProfile,
+  } = useAppStoreBindings({
+    configMutations,
+    wsUrl: WS_URL,
+  });
+  const { appendUserMessage, ingest, markUserProfileSynced, registerCreatingSession: registerSession } = actions;
 
-  const {
-    resetServerKnownSessions,
-    serverKnownSessionIdsRef,
-    syncServerKnownSessionFromEvent,
-  } = useServerKnownSessions();
+  const { resetServerKnownSessions, serverKnownSessionIdsRef, syncServerKnownSessionFromEvent } =
+    useServerKnownSessions();
   const { notifySocketError } = useSocketErrorToasts();
   const { handleSessionNotFound } = useSessionNotFoundRecovery({
     ingest,
@@ -141,14 +127,14 @@ export function App(): JSX.Element {
         notifySocketError(env);
         ingest(env);
         runSocketPostIngestEffects(env);
-        ingestConfigMutationEvent(env);
+        configMutations.ingestConfigMutationEvent(env);
         ingestSandboxEvent(env);
         replayAfterSessionTruncated(env);
       },
       [
+        configMutations,
         handleSessionNotFound,
         ingest,
-        ingestConfigMutationEvent,
         ingestSandboxEvent,
         notifySocketError,
         replayAfterSessionTruncated,
@@ -215,141 +201,51 @@ export function App(): JSX.Element {
     onToggleSessionPanel: handleToggleSessionPanelShortcut,
   });
 
-  const handleResolveApproval = useCallback(
-    (approvalId: string, approvalStatus: "approved" | "denied"): void => {
-      if (status !== "open") {
-        toast.error(frontendMessage("approval.resolveOffline"));
-        return;
-      }
-      const ok = send({
-        type: "approval.resolve",
-        approvalId,
-        status: approvalStatus,
-      });
-      if (!ok) {
-        toast.error(frontendMessage("approval.resolveDisconnected"));
-      }
+  const { chatMessageActions, chatNavigationActions, chatRuntime } = useAppChatPanelBindings({
+    messageHandlers: {
+      onSend: handleSend,
+      onCancel: handleCancel,
+      onRegenerate: handleRegenerate,
+      onEditUserMessage: handleEditUserMessage,
+      onDeleteFromMessage: handleDeleteFromMessage,
+      onViewWorkflow: handleViewWorkflow,
     },
-    [send, status],
+    navigationHandlers: {
+      onOpenSessionPanel: handleOpenSessionPanel,
+      onOpenWorkflowPanel: handleOpenWorkflowPanel,
+      onRetryHistory: requestSessionHistory,
+      showSessionPanelAction: appShellRenderPlan.showChatSessionPanelAction,
+      showWorkflowPanelAction: appShellRenderPlan.showChatWorkflowPanelAction,
+    },
+    runtime: {
+      sandboxStatus,
+      uploadUrl,
+      uploadCsrfToken,
+    },
+    send,
+    status,
+  });
+
+  const sessionActions = useMemo<AppSessionActions>(
+    () => ({
+      onNewSession: handleNewSession,
+      onCloseSession: handleCloseSession,
+      onCloseSessions: handleCloseSessions,
+      onRefreshSessions: refreshSessionCatalog,
+      onRenameSession: handleRenameSession,
+      onUpdateUserProfile: handleUpdateUserProfile,
+      onLogout,
+    }),
+    [
+      handleCloseSession,
+      handleCloseSessions,
+      handleNewSession,
+      handleRenameSession,
+      handleUpdateUserProfile,
+      onLogout,
+      refreshSessionCatalog,
+    ],
   );
-
-  const chatModelConfig = useMemo<ChatModelConfig>(() => ({
-    modelProviders,
-    selectedModelProviderId,
-    onSelectModelProvider: selectModelProvider,
-  }), [modelProviders, selectModelProvider, selectedModelProviderId]);
-
-  const chatPluginConfig = useMemo<ChatPluginConfig>(() => ({
-    pluginConfigs,
-    pluginConfigOperations,
-    onRefreshPluginConfigs: refreshPluginConfigs,
-    onSavePluginConfig: savePluginConfig,
-    onSetPluginEnabled: setPluginEnabled,
-  }), [
-    pluginConfigs,
-    pluginConfigOperations,
-    refreshPluginConfigs,
-    savePluginConfig,
-    setPluginEnabled,
-  ]);
-
-  const chatSystemConfig = useMemo<ChatSystemConfig>(() => ({
-    configSnapshot,
-    configOperation,
-    providerModelCatalogs,
-    providerModelErrors,
-    providerModelLoadingIds,
-    onRefreshConfig: refreshConfig,
-    onSaveConfig: saveConfig,
-    onFetchProviderModels: fetchProviderModels,
-  }), [
-    configOperation,
-    configSnapshot,
-    fetchProviderModels,
-    providerModelCatalogs,
-    providerModelErrors,
-    providerModelLoadingIds,
-    refreshConfig,
-    saveConfig,
-  ]);
-
-  const chatPresetConfig = useMemo<ChatPresetConfig>(() => ({
-    presets,
-    activePresetName,
-    presetsEnabled,
-    presetRootDir,
-    presetOperations,
-    onRefreshPresets: refreshPresets,
-    onSavePreset: savePreset,
-    onDeletePreset: deletePreset,
-    onSetActivePreset: setActivePreset,
-  }), [
-    activePresetName,
-    deletePreset,
-    presetRootDir,
-    presetOperations,
-    presets,
-    presetsEnabled,
-    refreshPresets,
-    savePreset,
-    setActivePreset,
-  ]);
-
-  const chatRuntime = useMemo<ChatRuntimeState>(() => ({
-    socketStatus: status,
-    sandboxStatus,
-    uploadUrl,
-  }), [sandboxStatus, status, uploadUrl]);
-
-  const chatMessageActions = useMemo<ChatMessageActions>(() => ({
-    onSend: handleSend,
-    onCancel: handleCancel,
-    onRegenerate: handleRegenerate,
-    onEditUserMessage: handleEditUserMessage,
-    onDeleteFromMessage: handleDeleteFromMessage,
-    onViewWorkflow: handleViewWorkflow,
-    onResolveApproval: handleResolveApproval,
-  }), [
-    handleCancel,
-    handleDeleteFromMessage,
-    handleEditUserMessage,
-    handleRegenerate,
-    handleResolveApproval,
-    handleSend,
-    handleViewWorkflow,
-  ]);
-
-  const chatNavigationActions = useMemo<ChatNavigationActions>(() => ({
-    onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction
-      ? handleOpenSessionPanel
-      : undefined,
-    onOpenWorkflowPanel: appShellRenderPlan.showChatWorkflowPanelAction
-      ? handleOpenWorkflowPanel
-      : undefined,
-    onRetryHistory: requestSessionHistory,
-  }), [
-    appShellRenderPlan.showChatSessionPanelAction,
-    appShellRenderPlan.showChatWorkflowPanelAction,
-    handleOpenSessionPanel,
-    handleOpenWorkflowPanel,
-    requestSessionHistory,
-  ]);
-
-  const sessionActions = useMemo<AppSessionActions>(() => ({
-    onNewSession: handleNewSession,
-    onCloseSession: handleCloseSession,
-    onCloseSessions: handleCloseSessions,
-    onRefreshSessions: refreshSessionCatalog,
-    onRenameSession: handleRenameSession,
-    onUpdateUserProfile: handleUpdateUserProfile,
-  }), [
-    handleCloseSession,
-    handleCloseSessions,
-    handleNewSession,
-    handleRenameSession,
-    handleUpdateUserProfile,
-    refreshSessionCatalog,
-  ]);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -404,8 +300,7 @@ export function App(): JSX.Element {
       <Toaster
         position="bottom-right"
         toastOptions={{
-          className:
-            "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
+          className: "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
         }}
       />
     </TooltipProvider>

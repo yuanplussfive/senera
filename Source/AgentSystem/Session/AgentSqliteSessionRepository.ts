@@ -29,16 +29,9 @@ import {
   prepareAgentSessionSqlStatements,
   type AgentSessionSqlStatements,
 } from "../SessionPersistence/AgentSessionSqlStatements.js";
-import {
-  deriveAgentSessionTitle,
-  rowToAgentSession,
-} from "./AgentSqliteSessionMapper.js";
+import { deriveAgentSessionTitle, rowToAgentSession } from "./AgentSqliteSessionMapper.js";
 import { AgentSqliteSessionTraceStore } from "./AgentSqliteSessionTraceStore.js";
-import type {
-  AgentSessionRepository,
-  StoredRunSnapshot,
-  StoredStepTraceRun,
-} from "./AgentSessionRepository.js";
+import type { AgentSessionRepository, StoredRunSnapshot, StoredStepTraceRun } from "./AgentSessionRepository.js";
 
 export { InMemorySessionRepository } from "../SessionPersistence/InMemorySessionRepository.js";
 export type {
@@ -116,10 +109,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     this.stmts.appendEntry.run(entryToRow(sessionId, entry, sequence));
   }
 
-  appendEntries(
-    sessionId: string,
-    entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,
-  ): void {
+  appendEntries(sessionId: string, entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>): void {
     this.traces.appendEntries(sessionId, entries);
   }
 

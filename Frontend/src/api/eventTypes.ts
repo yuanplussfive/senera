@@ -1,25 +1,9 @@
 // 协议类型。事件枚举从后端 AgentEventCatalog 生成，其他 DTO 保持前端消费视角。
-import {
-  EventKinds,
-  EventLayers,
-  EventPhases,
-} from "./generatedEventCatalog";
-import type {
-  EventKind,
-  EventLayer,
-  EventPhase,
-} from "./generatedEventCatalog";
+import { EventKinds, EventLayers, EventPhases } from "./generatedEventCatalog";
+import type { EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
 
-export {
-  EventKinds,
-  EventLayers,
-  EventPhases,
-};
-export type {
-  EventKind,
-  EventLayer,
-  EventPhase,
-} from "./generatedEventCatalog";
+export { EventKinds, EventLayers, EventPhases };
+export type { EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
 
 export interface EventEnvelope<TKind extends string = EventKind, TData = unknown> {
   channel: "agent.event";
@@ -198,7 +182,6 @@ export interface ModelCapabilitiesData {
   Vision?: boolean;
   ImageOutput?: boolean;
   Reasoning?: boolean;
-  ToolCalling?: boolean;
   DeveloperRole?: boolean;
 }
 
@@ -312,12 +295,7 @@ export interface PluginConfigSection {
   fields: PluginConfigField[];
 }
 
-export type PluginConfigFieldType =
-  | "boolean"
-  | "string"
-  | "number"
-  | "array"
-  | "table";
+export type PluginConfigFieldType = "boolean" | "string" | "number" | "array" | "table";
 
 export type PluginConfigFieldOptionValue = string | number | boolean;
 
@@ -451,13 +429,7 @@ export interface ConfigDiagnosticData {
   details?: unknown;
 }
 
-export type ConfigFormFieldType =
-  | "boolean"
-  | "string"
-  | "number"
-  | "array"
-  | "table"
-  | "record";
+export type ConfigFormFieldType = "boolean" | "string" | "number" | "array" | "table" | "record";
 
 export type ConfigFormFieldOptionValue = string | number | boolean;
 
@@ -622,9 +594,7 @@ export interface ActionPlannedData {
   reason?: string;
 }
 
-export type InteractionRunMode =
-  | "direct_response"
-  | "tool_agent_loop";
+export type InteractionRunMode = "direct_response" | "tool_agent_loop";
 
 export interface InteractionRoutedData {
   mode: InteractionRunMode;
@@ -743,11 +713,21 @@ export interface AssistantMessageCreatedData {
   reasonCode?: string;
 }
 
-export type {
-  ApprovalRequestedData,
-  ApprovalResolvedData,
-  ApprovalSubjectData,
-} from "./approvalEventTypes";
+export type { ApprovalRequestedData, ApprovalResolvedData, ApprovalSubjectData } from "./approvalEventTypes";
+
+export interface ExecutionFallbackStartedData {
+  toolCallId?: string;
+  pluginName: string;
+  pluginVersion: string;
+  toolName: string;
+  manifestDigest: string;
+  fromBackend: string;
+  toBackend: string;
+  reason: "sandbox_unavailable" | "persistent_sandbox_unsupported";
+  rule: string;
+  approvalId?: string;
+  scope?: "once" | "session";
+}
 
 export interface RunFailedData {
   message: string;

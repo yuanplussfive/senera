@@ -1,29 +1,10 @@
-import {
-  lazy,
-  Suspense,
-  useMemo,
-} from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { cva } from "class-variance-authority";
-import {
-  BadgeCheck,
-  Check,
-  CircleOff,
-  Loader2,
-  Power,
-  PowerOff,
-  Save,
-  ScrollText,
-  Trash2,
-} from "lucide-react";
-import type {
-  PresetFormat,
-  PresetItem,
-} from "../../api/eventTypes";
+import { BadgeCheck, Check, CircleOff, Loader2, Power, PowerOff, Save, ScrollText, Trash2 } from "lucide-react";
+import type { PresetFormat, PresetItem } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import {
-  Button,
-  ScrollArea,
-} from "../../shared/ui";
+import { Button, ScrollArea } from "../../shared/ui";
 import {
   PresetEditorLanguages,
   PresetFormatOptions,
@@ -168,21 +149,23 @@ export function PresetInspector({
       <div className="shrink-0 border-b border-ink-200/70 px-3.5 py-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[12px] font-semibold text-ink-900">概览</div>
+            <div className="text-[12px] font-semibold text-ink-900">{frontendMessage("preset.ui.overview")}</div>
             <div className="mt-1 truncate font-mono text-[11px] text-ink-500">
-              {displayName || "未命名预设"}
+              {displayName || frontendMessage("preset.ui.unnamed")}
             </div>
           </div>
-          <span className={cn(
-            "shrink-0 border px-1.5 py-0.5 text-[10.5px]",
-            jsonIssue
-              ? "border-brick-200 bg-brick-50 text-brick-700"
-              : dirty
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : active
-                  ? "border-terra-200 bg-terra-50 text-terra-700"
-                  : "border-ink-200 bg-paper-50 text-ink-500",
-          )}>
+          <span
+            className={cn(
+              "shrink-0 border px-1.5 py-0.5 text-[10.5px]",
+              jsonIssue
+                ? "border-brick-200 bg-brick-50 text-brick-700"
+                : dirty
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : active
+                    ? "border-terra-200 bg-terra-50 text-terra-700"
+                    : "border-ink-200 bg-paper-50 text-ink-500",
+            )}
+          >
             {statusLabel}
           </span>
         </div>
@@ -206,7 +189,9 @@ export function PresetInspector({
 
           {jsonIssue ? (
             <section className="px-3.5 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-brick-600">校验</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-brick-600">
+                {frontendMessage("preset.ui.validation")}
+              </div>
               <div className="mt-2 whitespace-pre-wrap border-l-2 border-brick-300 bg-brick-50/70 px-2.5 py-2 text-[11.5px] leading-5 text-brick-700">
                 {jsonIssue}
               </div>
@@ -264,7 +249,7 @@ function PresetToolbar({
             onChange={(event) => onNameChange(withPresetFormatExtension(event.currentTarget.value, draftFormat))}
             placeholder="preset"
             spellCheck={false}
-            aria-label="预设名称"
+            aria-label={frontendMessage("preset.ui.name")}
             className="h-9 min-w-0 flex-1 rounded-lg border border-ink-200 bg-paper-50 px-3 font-mono text-[12.5px] text-ink-800 shadow-sm outline-none transition placeholder:text-ink-400 focus:border-terra-300 focus:ring-2 focus:ring-terra-100"
           />
           <FormatSwitch value={draftFormat} onChange={onFormatChange} />
@@ -285,7 +270,7 @@ function PresetToolbar({
             ) : (
               <Power className="h-3.5 w-3.5" />
             )}
-            {selectedIsActive ? "关闭" : "启用"}
+            {frontendMessage(selectedIsActive ? "preset.ui.disable" : "preset.ui.enable")}
           </Button>
           <Button
             size="sm"
@@ -295,7 +280,7 @@ function PresetToolbar({
             className="h-9 text-brick-600 hover:bg-brick-50 hover:text-brick-700"
           >
             {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            删除
+            {frontendMessage("preset.ui.delete")}
           </Button>
           <span className="mx-0.5 hidden h-6 w-px bg-ink-200/80 sm:block" />
           <Button
@@ -306,16 +291,11 @@ function PresetToolbar({
             className="h-9 bg-paper-50"
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            保存
+            {frontendMessage("preset.ui.save")}
           </Button>
-          <Button
-            size="sm"
-            disabled={!currentName || saving || importing}
-            onClick={() => onSave(true)}
-            className="h-9"
-          >
+          <Button size="sm" disabled={!currentName || saving || importing} onClick={() => onSave(true)} className="h-9">
             <Check className="h-3.5 w-3.5" />
-            保存并启用
+            {frontendMessage("preset.ui.saveAndEnable")}
           </Button>
         </div>
       </div>
@@ -354,24 +334,21 @@ function PresetEditor({
           <span className="font-mono text-[11px] font-medium text-ink-600">{formatLabel}</span>
           {jsonIssue ? (
             <span className="truncate rounded-md bg-brick-50 px-1.5 py-0.5 text-[11px] text-brick-700">
-              JSON 未通过
+              {frontendMessage("preset.ui.jsonFailed")}
             </span>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2 font-mono text-[10.5px] text-ink-400">
           <span>{formatTokenState(tokenState)}</span>
-          <span>{formatInteger(stats.lines)} 行</span>
-          <span>{formatInteger(stats.characters)} 字符</span>
+          <span>{frontendMessage("preset.ui.lineCount", { count: formatInteger(stats.lines) })}</span>
+          <span>{frontendMessage("preset.ui.characterCount", { count: formatInteger(stats.characters) })}</span>
         </div>
       </div>
       <div className="min-h-0 flex-1">
         <Suspense fallback={<EditorLoading />}>
           <LazyCodeTextEditor
-            ariaLabel="角色预设内容"
-            className={cn(
-              "min-h-0 flex-1",
-              jsonIssue && "[&_.cm-editor]:bg-brick-50/20",
-            )}
+            ariaLabel={frontendMessage("preset.ui.content")}
+            className={cn("min-h-0 flex-1", jsonIssue && "[&_.cm-editor]:bg-brick-50/20")}
             disabled={disabled}
             language={language}
             onChange={onChange}
@@ -398,16 +375,16 @@ function PresetMetricGrid({
     <div className="shrink-0 border-b border-ink-200/70">
       <div className="grid grid-cols-2">
         <MetricCell label="Token" value={formatTokenState(tokenState)} />
-        <MetricCell label="字符" value={formatInteger(stats.characters)} />
-        <MetricCell label="行数" value={formatInteger(stats.lines)} />
-        <MetricCell label="字节" value={formatInteger(stats.bytes)} />
+        <MetricCell label={frontendMessage("preset.ui.characters")} value={formatInteger(stats.characters)} />
+        <MetricCell label={frontendMessage("preset.ui.lines")} value={formatInteger(stats.lines)} />
+        <MetricCell label={frontendMessage("preset.ui.bytes")} value={formatInteger(stats.bytes)} />
       </div>
       <div className="grid grid-cols-[72px_minmax(0,1fr)] border-t border-ink-200/70 px-3.5 py-2 text-[11.5px] leading-5">
-        <span className="text-ink-400">格式</span>
+        <span className="text-ink-400">{frontendMessage("preset.ui.format")}</span>
         <span className="min-w-0 truncate font-mono text-ink-700">{formatLabel}</span>
         {updatedAt ? (
           <>
-            <span className="text-ink-400">更新</span>
+            <span className="text-ink-400">{frontendMessage("preset.ui.updated")}</span>
             <span className="min-w-0 truncate text-ink-700">{formatPresetTime(updatedAt)}</span>
           </>
         ) : null}
@@ -416,13 +393,7 @@ function PresetMetricGrid({
   );
 }
 
-function MetricCell({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): JSX.Element {
+function MetricCell({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div className="border-r border-t border-ink-200/70 px-3.5 py-2 first:border-t-0 [&:nth-child(2)]:border-r-0 [&:nth-child(2)]:border-t-0 [&:nth-child(4)]:border-r-0">
       <div className="text-[10.5px] text-ink-400">{label}</div>
@@ -444,24 +415,25 @@ function PresetInfoSection({
 }): JSX.Element {
   return (
     <section className="px-3.5 py-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">文件信息</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+        {frontendMessage("preset.ui.fileInfo")}
+      </div>
       <dl className="mt-2 divide-y divide-ink-200/70 border-y border-ink-200/70">
-        <InfoRow label="名称" value={displayName || "未命名预设"} />
-        <InfoRow label="格式" value={formatLabel} />
-        <InfoRow label="状态" value={statusLabel} />
-        {updatedAt ? <InfoRow label="更新" value={formatPresetTime(updatedAt)} /> : null}
+        <InfoRow
+          label={frontendMessage("preset.ui.name")}
+          value={displayName || frontendMessage("preset.ui.unnamed")}
+        />
+        <InfoRow label={frontendMessage("preset.ui.format")} value={formatLabel} />
+        <InfoRow label={frontendMessage("preset.ui.status")} value={statusLabel} />
+        {updatedAt ? (
+          <InfoRow label={frontendMessage("preset.ui.updated")} value={formatPresetTime(updatedAt)} />
+        ) : null}
       </dl>
     </section>
   );
 }
 
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): JSX.Element {
+function InfoRow({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-2 py-1.5 text-[11.5px] leading-5">
       <dt className="text-ink-400">{label}</dt>
@@ -475,22 +447,16 @@ function EditorLoading(): JSX.Element {
     <div className="grid h-full min-h-0 place-items-center bg-[#fffdf8] text-[12px] text-ink-400">
       <span className="inline-flex items-center gap-2">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        加载编辑器
+        {frontendMessage("preset.ui.loadingEditor")}
       </span>
     </div>
   );
 }
 
-function StatusPill({
-  active,
-  dirty,
-  busy,
-}: {
-  active: boolean;
-  dirty: boolean;
-  busy: boolean;
-}): JSX.Element {
-  const label = busy ? "处理中" : dirty ? "未保存" : active ? "已启用" : "未启用";
+function StatusPill({ active, dirty, busy }: { active: boolean; dirty: boolean; busy: boolean }): JSX.Element {
+  const label = frontendMessage(
+    busy ? "preset.ui.processing" : dirty ? "preset.ui.unsaved" : active ? "preset.ui.enabled" : "preset.ui.disabled",
+  );
   const state = busy ? "busy" : dirty ? "dirty" : active ? "active" : "idle";
   return (
     <span className={statusPillClass({ state })}>
@@ -521,9 +487,7 @@ function FormatSwitch({
           type="button"
           className={cn(
             "inline-flex min-w-12 items-center justify-center rounded-md px-2 font-mono text-[11px] transition",
-            value === item.value
-              ? "bg-paper-50 text-ink-900 shadow-sm"
-              : "text-ink-500 hover:text-ink-800",
+            value === item.value ? "bg-paper-50 text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800",
           )}
           onClick={() => onChange(item.value)}
         >

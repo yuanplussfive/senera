@@ -1,13 +1,9 @@
 import type { AgentXmlProtocolPolicy } from "./AgentXmlPolicy.js";
 import { AgentXmlErrorCodes } from "./AgentXmlStatus.js";
-import {
-  AgentXmlParseError,
-  type AgentXmlParseErrorCode,
-  type XmlPath,
-} from "./AgentXmlParserTypes.js";
-import { AgentXmlSourceHelper } from "./AgentXmlSourceHelper.js";
+import { AgentXmlParseError, type AgentXmlParseErrorCode, type XmlPath } from "./AgentXmlParserTypes.js";
+import { type AgentXmlSourceHelper } from "./AgentXmlSourceHelper.js";
 import type { OrderedXmlNode } from "./AgentOrderedXmlTree.js";
-import { AgentOrderedXmlTreeParser } from "./AgentOrderedXmlTree.js";
+import { type AgentOrderedXmlTreeParser } from "./AgentOrderedXmlTree.js";
 import { AgentXmlParsedValueValidator } from "./AgentXmlParsedValueValidator.js";
 
 export class AgentXmlStructureValidator {
@@ -28,10 +24,7 @@ export class AgentXmlStructureValidator {
 
   private readonly parsedValueValidator: AgentXmlParsedValueValidator;
 
-  assertOrderedRoots(
-    roots: OrderedXmlNode[],
-    sourceHelper: AgentXmlSourceHelper,
-  ): void {
+  assertOrderedRoots(roots: OrderedXmlNode[], sourceHelper: AgentXmlSourceHelper): void {
     if (roots.length !== 1) {
       return;
     }
@@ -76,12 +69,15 @@ export class AgentXmlStructureValidator {
         second.path,
         `只有声明为数组的标签才允许重复。请合并或删除多余的 <${name}> 标签。`,
       );
-      throw new AgentXmlParseError(`XML 不允许重复标签：${name}。`, [
-        diagnostic,
-      ], AgentXmlErrorCodes.DuplicateSiblingTag, {
-        tagName: name,
-        pointer: diagnostic.pointer,
-      });
+      throw new AgentXmlParseError(
+        `XML 不允许重复标签：${name}。`,
+        [diagnostic],
+        AgentXmlErrorCodes.DuplicateSiblingTag,
+        {
+          tagName: name,
+          pointer: diagnostic.pointer,
+        },
+      );
     }
 
     for (const child of node.children) {
@@ -89,10 +85,7 @@ export class AgentXmlStructureValidator {
     }
   }
 
-  private assertRequiredCdataFields(
-    root: OrderedXmlNode,
-    sourceHelper: AgentXmlSourceHelper,
-  ): void {
+  private assertRequiredCdataFields(root: OrderedXmlNode, sourceHelper: AgentXmlSourceHelper): void {
     const rules = this.options.policy?.requiredCdataFieldRules ?? [];
 
     for (const rule of rules) {
@@ -106,8 +99,7 @@ export class AgentXmlStructureValidator {
       }
 
       const hasCdata = target.content.some((item) => item.kind === "cdata");
-      const hasPlainText = target.content.some((item) =>
-        item.kind === "text" && item.text.trim().length > 0);
+      const hasPlainText = target.content.some((item) => item.kind === "text" && item.text.trim().length > 0);
       const hasElements = target.content.some((item) => item.kind === "element");
       const readablePath = renderXmlPath(rule.root, [...rule.path]);
       const tagName = rule.path[rule.path.length - 1] ?? target.name;
@@ -186,9 +178,7 @@ export class AgentXmlStructureValidator {
       options.suggestion,
     );
 
-    return new AgentXmlParseError(options.message, [
-      diagnostic,
-    ], options.code, {
+    return new AgentXmlParseError(options.message, [diagnostic], options.code, {
       ...options.details,
       pointer: diagnostic.pointer,
       line: diagnostic.position?.line,
@@ -202,11 +192,8 @@ function renderXmlPath(rootName: string, path: XmlPath): string {
   let output = "";
 
   for (const segment of segments) {
-    output = typeof segment === "number"
-      ? `${output}[${segment}]`
-      : output.length === 0
-        ? segment
-        : `${output}.${segment}`;
+    output =
+      typeof segment === "number" ? `${output}[${segment}]` : output.length === 0 ? segment : `${output}.${segment}`;
   }
 
   return output;

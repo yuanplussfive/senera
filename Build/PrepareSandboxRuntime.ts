@@ -10,9 +10,7 @@ import {
 } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import { PluginManifestSchema } from "../Source/AgentSystem/Schemas/PluginManifestSchema.js";
 import { resolveAgentNodePluginRuntimeImage } from "../Source/AgentSystem/ToolRuntime/AgentPluginProcessExecutionProfile.js";
-import type {
-  ResolvedAgentSandboxRuntimeConfig,
-} from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { ResolvedAgentSandboxRuntimeConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { PluginManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
 
 export interface PrepareOptions {
@@ -37,10 +35,7 @@ if (isEntrypoint(import.meta.url, process.argv[1])) {
   });
 }
 
-export async function prepareSandboxRuntime(
-  options: PrepareOptions,
-  microsandbox?: MicrosandboxModule,
-): Promise<void> {
+export async function prepareSandboxRuntime(options: PrepareOptions, microsandbox?: MicrosandboxModule): Promise<void> {
   const config = buildSandboxRuntimeConfig(options);
   const images = normalizeSandboxImages(config.Images, discoverSandboxImages());
   process.stdout.write(`sandbox images: ${images.join(", ")}\n`);
@@ -60,13 +55,9 @@ export async function prepareSandboxRuntime(
 export function discoverSandboxImages(): string[] {
   const images = new Set<string>();
   for (const manifestPath of discoverPluginManifestPaths()) {
-    const manifest = new AgentJsonFileLoader().load(
-      manifestPath,
-      PluginManifestSchema,
-    ) as PluginManifest;
-    const sandboxTool = (manifest.Tools ?? []).some((tool) =>
-      tool.Execution.Boundary === "Sandbox"
-      || tool.Execution.Boundary === "SandboxPreferred",
+    const manifest = new AgentJsonFileLoader().load(manifestPath, PluginManifestSchema) as PluginManifest;
+    const sandboxTool = (manifest.Tools ?? []).some(
+      (tool) => tool.Execution.Boundary === "Sandbox" || tool.Execution.Boundary === "SandboxPreferred",
     );
     if (sandboxTool && manifest.Plugin.Entry?.Kind === "Process") {
       images.add(resolveAgentNodePluginRuntimeImage(manifest.Runtime));
@@ -97,14 +88,13 @@ function buildSandboxRuntimeConfig(options: PrepareOptions): ResolvedAgentSandbo
 }
 
 function discoverPluginManifestPaths(): string[] {
-  return fg.sync([
-    "System/Plugins/*/PluginManifest.json",
-    "Plugins/*/PluginManifest.json",
-  ], {
-    cwd: workspaceRoot,
-    absolute: true,
-    onlyFiles: true,
-  }).sort((left, right) => left.localeCompare(right));
+  return fg
+    .sync(["System/Plugins/*/PluginManifest.json", "Plugins/*/PluginManifest.json"], {
+      cwd: workspaceRoot,
+      absolute: true,
+      onlyFiles: true,
+    })
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function readOptionValue(args: readonly string[], name: string): string | undefined {
@@ -118,6 +108,5 @@ function errorMessage(error: unknown): string {
 }
 
 function isEntrypoint(moduleUrl: string, argvPath: string | undefined): boolean {
-  return argvPath !== undefined
-    && pathToFileURL(path.resolve(argvPath)).href === moduleUrl;
+  return argvPath !== undefined && pathToFileURL(path.resolve(argvPath)).href === moduleUrl;
 }

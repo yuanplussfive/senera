@@ -24,7 +24,5 @@ export function cosineSimilarity(left: readonly number[], right: readonly number
 
 export function normalizeVector(vector: readonly number[]): number[] {
   const norm = Math.sqrt(vector.reduce((total, value) => total + value * value, 0));
-  return norm === 0
-    ? vector.map(() => 0)
-    : vector.map((value) => value / norm);
+  return norm === 0 ? vector.map(() => 0) : vector.map((value) => value / norm);
 }

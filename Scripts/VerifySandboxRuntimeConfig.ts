@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import {
-  resolveAgentDefaults,
-  resolveSandboxRuntimeConfig,
-} from "../Source/AgentSystem/AgentDefaults.js";
+import { resolveAgentDefaults, resolveSandboxRuntimeConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import {
   normalizeSandboxImages,
   resolveAgentSandboxRuntimePaths,
@@ -21,17 +18,21 @@ const config = {
     BundleDir: ".sandbox/bundles",
     Images: ["node:22-bookworm-slim", "alpine"],
   },
-  ModelProviderEndpoints: [{
-    Id: "default",
-    BaseUrl: "https://example.invalid/v1",
-    ApiKey: "test",
-  }],
-  ModelProviders: [{
-    Id: "default",
-    ProviderId: "default",
-    Endpoint: "Responses",
-    Model: "model-a",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "default",
+      BaseUrl: "https://example.invalid/v1",
+      ApiKey: "test",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "default",
+      ProviderId: "default",
+      Endpoint: "Responses",
+      Model: "model-a",
+    },
+  ],
 } satisfies AgentSystemConfig;
 
 const resolved = resolveSandboxRuntimeConfig(config);
@@ -44,9 +45,10 @@ assert.equal(path.relative(workspaceRoot, paths.bundleDir), path.normalize(".san
 assert.ok(paths.msbPath.endsWith(process.platform === "win32" ? "msb.exe" : "msb"));
 assert.ok(paths.libkrunfwPath.includes("libkrunfw"));
 
-assert.deepEqual(
-  normalizeSandboxImages(["alpine", "node:22-bookworm-slim"], ["alpine", "python"]),
-  ["alpine", "node:22-bookworm-slim", "python"],
-);
+assert.deepEqual(normalizeSandboxImages(["alpine", "node:22-bookworm-slim"], ["alpine", "python"]), [
+  "alpine",
+  "node:22-bookworm-slim",
+  "python",
+]);
 
 console.log("Sandbox runtime config verification passed.");

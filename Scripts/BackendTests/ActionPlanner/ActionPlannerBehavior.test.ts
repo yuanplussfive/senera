@@ -48,15 +48,13 @@ describe("ActionPlanner behavior", () => {
       return createRoute();
     });
 
-    await expect(router.route(createActionPlanInput(), { signal: controller.signal }))
-      .rejects.toMatchObject({ name: "AgentCancellationError" });
+    await expect(router.route(createActionPlanInput(), { signal: controller.signal })).rejects.toMatchObject({
+      name: "AgentCancellationError",
+    });
   });
 
   test("classifies validation failures as repairable and preserves invalid output for repair", () => {
-    const validation = new AgentActionPlannerValidationError(
-      ["calls.0.toolName: required"],
-      { calls: [{}] },
-    );
+    const validation = new AgentActionPlannerValidationError(["calls.0.toolName: required"], { calls: [{}] });
     const zodError = z.object({ answer: z.string() }).safeParse({ answer: 1 }).error;
 
     expect(isRepairablePlanningFailure(validation)).toBe(true);

@@ -62,12 +62,16 @@ export const VectorModelsSchema = z
       Dimensions: disabledOrPositiveInteger("VectorModels.Embedding.Dimensions").optional(),
       BatchSize: z.number().int().min(1).optional(),
       InputMaxChars: disabledOrPositiveInteger("VectorModels.Embedding.InputMaxChars").optional(),
-    }).strict().optional(),
+    })
+      .strict()
+      .optional(),
     Rerank: VectorModelHttpSchema.extend({
       EndpointPath: z.string().min(1).optional(),
       CandidateLimit: z.number().int().min(1).optional(),
       TopK: z.number().int().min(1).optional(),
-    }).strict().optional(),
+    })
+      .strict()
+      .optional(),
   })
   .strict();
 

@@ -1,0 +1,161 @@
+name: Product Release
+
+env:
+  npm_config_cache: .npm-cache
+
+on:
+  workflow_run:
+    workflows:
+      - Verify
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing vX.Y.Z release tag to rebuild after a failed product release.
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+  packages: write
+  pull-requests: write
+
+concurrency:
+  group: product-release-${{ inputs.release_tag || github.event.workflow_run.head_sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Prepare Version Release
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: Build/Release/ReleasePleaseConfig.json
+          manifest-file: Build/Release/ReleasePleaseManifest.json
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+
+  metadata:
+    name: Verify Release Metadata
+    needs:
+      - release-please
+    if: >-
+      always() && !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.release-please.outputs.release_created == 'true'
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      desktop_artifact_name: ${{ steps.release.outputs.desktop_artifact_name }}
+      desktop_artifact_path: ${{ steps.release.outputs.desktop_artifact_path }}
+      container_version_tag: ${{ steps.release.outputs.container_version_tag }}
+      container_minor_tag: ${{ steps.release.outputs.container_minor_tag }}
+      source_sha: ${{ steps.source.outputs.sha }}
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || needs.release-please.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: ./.github/actions/setup-node
+      - id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - id: release
+        env:
+          SENERA_RELEASE_TAG: ${{ env.RELEASE_TAG }}
+          SENERA_RELEASE_SHA: ${{ steps.source.outputs.sha }}
+        run: npx tsx Build/ProductReleaseInfo.ts
+      - name: Require successful verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          successful_runs="$(gh run list --workflow verify.yml --commit "$SOURCE_SHA" --status success --limit 1 --json databaseId --jq 'length')"
+          test "$successful_runs" -ge 1
+
+  desktop:
+    name: Build Windows Installer
+    needs:
+      - metadata
+    runs-on: windows-latest
+    environment: release-stable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.tag }}
+      - uses: ./.github/actions/setup-node
+      - run: npm run desktop.pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.metadata.outputs.desktop_artifact_name }}
+          path: ${{ needs.metadata.outputs.desktop_artifact_path }}
+          if-no-files-found: error
+      - name: Attach installer to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          ARTIFACT_PATH: ${{ needs.metadata.outputs.desktop_artifact_path }}
+        run: gh release upload $env:RELEASE_TAG $env:ARTIFACT_PATH --clobber
+
+  container:
+    name: Publish Container Image
+    needs:
+      - metadata
+    runs-on: ubuntu-latest
+    environment: release-stable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.tag }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: image
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/senera
+          tags: |
+            type=raw,value=${{ needs.metadata.outputs.container_version_tag }}
+            type=raw,value=${{ needs.metadata.outputs.container_minor_tag }}
+            type=raw,value=sha-${{ needs.metadata.outputs.source_sha }}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.tags }}
+          labels: ${{ steps.image.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  publish:
+    name: Publish Verified Release
+    needs:
+      - metadata
+      - desktop
+      - container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish draft as the latest stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest

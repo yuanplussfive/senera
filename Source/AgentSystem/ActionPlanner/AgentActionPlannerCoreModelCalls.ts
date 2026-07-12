@@ -60,11 +60,14 @@ export class AgentActionPlannerCoreModelCalls {
     });
   }
 
-  async repairTurnUnderstanding(options: {
-    input: ActionPlanInput;
-    invalidUnderstanding: string;
-    issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlTurnUnderstanding> {
+  async repairTurnUnderstanding(
+    options: {
+      input: ActionPlanInput;
+      invalidUnderstanding: string;
+      issues: string[];
+    },
+    requestOptions: { signal?: AbortSignal } = {},
+  ): Promise<BamlTurnUnderstanding> {
     return this.caller.repair({
       functionName: "RepairTurnUnderstanding",
       args: {
@@ -97,11 +100,14 @@ export class AgentActionPlannerCoreModelCalls {
     });
   }
 
-  async repairPiAction(options: {
-    input: AgentPiControllerActionInput;
-    invalidAction: string;
-    issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlPiControllerAction> {
+  async repairPiAction(
+    options: {
+      input: AgentPiControllerActionInput;
+      invalidAction: string;
+      issues: string[];
+    },
+    requestOptions: { signal?: AbortSignal } = {},
+  ): Promise<BamlPiControllerAction> {
     return this.caller.repair({
       functionName: "RepairPiAction",
       args: {
@@ -172,11 +178,14 @@ export class AgentActionPlannerCoreModelCalls {
     });
   }
 
-  async repairToolRiskAudit(options: {
-    input: AgentBamlToolRiskAuditPromptInput;
-    invalidAudit: string;
-    issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlToolRiskAudit> {
+  async repairToolRiskAudit(
+    options: {
+      input: AgentBamlToolRiskAuditPromptInput;
+      invalidAudit: string;
+      issues: string[];
+    },
+    requestOptions: { signal?: AbortSignal } = {},
+  ): Promise<BamlToolRiskAudit> {
     return this.caller.repair({
       functionName: "RepairToolRiskAudit",
       args: {

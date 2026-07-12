@@ -10,10 +10,7 @@ import {
   buildUpdatedMemoryItem,
   directWriteAction,
 } from "./AgentMemoryRecordFactory.js";
-import {
-  buildMemoryItemVector,
-  memoryItemVectorKey,
-} from "./AgentMemoryRowMapper.js";
+import { buildMemoryItemVector, memoryItemVectorKey } from "./AgentMemoryRowMapper.js";
 import { projectMemoryTime as projectTime } from "./AgentMemoryTime.js";
 import type {
   AgentMemoryCandidateRecord,
@@ -50,8 +47,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
 
   recordMemoryCandidates(input: AgentMemoryCandidateWriteInput): AgentMemoryCandidateRecord[] {
     const learnedAt = input.learnedAt ?? new Date().toISOString();
-    const records = input.candidates.map((candidate) =>
-      buildMemoryCandidate(input.episode, candidate, learnedAt));
+    const records = input.candidates.map((candidate) => buildMemoryCandidate(input.episode, candidate, learnedAt));
     for (const record of records) {
       this.candidates.set(record.uri, record);
     }
@@ -175,8 +171,9 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
   }
 
   deleteFromSessionRequest(sessionId: string, requestId: string): void {
-    const target = [...this.episodes.values()]
-      .find((episode) => episode.sessionId === sessionId && episode.requestId === requestId);
+    const target = [...this.episodes.values()].find(
+      (episode) => episode.sessionId === sessionId && episode.requestId === requestId,
+    );
     if (!target) {
       return;
     }
@@ -213,11 +210,10 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
   }
 
   findEpisodesByUris(uris: readonly string[]): AgentMemoryEpisodeRecord[] {
-    return uniqueTrimmed(uris)
-      .flatMap((uri) => {
-        const episode = this.episodes.get(uri);
-        return episode ? [episode] : [];
-      });
+    return uniqueTrimmed(uris).flatMap((uri) => {
+      const episode = this.episodes.get(uri);
+      return episode ? [episode] : [];
+    });
   }
 
   listSources(episodeUri: string): AgentMemorySourceRecord[] {
@@ -228,19 +224,21 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
     const refSet = new Set(uniqueTrimmed(refs));
     return [...this.sourcesByEpisode.values()]
       .flat()
-      .filter((source) =>
-        refSet.has(source.uri)
-        || Boolean(source.evidenceUri && refSet.has(source.evidenceUri))
-        || Boolean(source.artifactUri && refSet.has(source.artifactUri)))
+      .filter(
+        (source) =>
+          refSet.has(source.uri) ||
+          Boolean(source.evidenceUri && refSet.has(source.evidenceUri)) ||
+          Boolean(source.artifactUri && refSet.has(source.artifactUri)),
+      )
       .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id));
   }
 
   listPendingMemoryCandidates(sessionId: string, type?: AgentMemoryType): AgentMemoryCandidateRecord[] {
     return [...this.candidates.values()]
-      .filter((candidate) =>
-        candidate.sessionId === sessionId
-        && candidate.status === "pending"
-        && (!type || candidate.type === type))
+      .filter(
+        (candidate) =>
+          candidate.sessionId === sessionId && candidate.status === "pending" && (!type || candidate.type === type),
+      )
       .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id));
   }
 
@@ -251,11 +249,10 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
   }
 
   findMemoryItemsByUris(uris: readonly string[]): AgentMemoryItemRecord[] {
-    return uniqueTrimmed(uris)
-      .flatMap((uri) => {
-        const item = this.items.get(uri);
-        return item ? [item] : [];
-      });
+    return uniqueTrimmed(uris).flatMap((uri) => {
+      const item = this.items.get(uri);
+      return item ? [item] : [];
+    });
   }
 
   listMemoryObservations(memoryUri: string): AgentMemoryObservationRecord[] {
@@ -287,11 +284,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
     return item;
   }
 
-  private markCandidatesPromoted(
-    candidateUris: readonly string[],
-    memoryUri: string,
-    updatedAt: string,
-  ): void {
+  private markCandidatesPromoted(candidateUris: readonly string[], memoryUri: string, updatedAt: string): void {
     const time = projectTime(updatedAt);
     for (const candidateUri of uniqueTrimmed(candidateUris)) {
       const candidate = this.candidates.get(candidateUri);
@@ -310,10 +303,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
     }
   }
 
-  private markCandidatesRejected(
-    candidateUris: readonly string[],
-    updatedAt: string,
-  ): void {
+  private markCandidatesRejected(candidateUris: readonly string[], updatedAt: string): void {
     const time = projectTime(updatedAt);
     for (const candidateUri of uniqueTrimmed(candidateUris)) {
       const candidate = this.candidates.get(candidateUri);

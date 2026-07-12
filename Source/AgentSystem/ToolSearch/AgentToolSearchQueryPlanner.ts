@@ -20,10 +20,7 @@ export function buildPlannedToolSearchQueries(
 
   const needTexts = (options.needs ?? []).map(capabilityNeedText).filter(Boolean);
   const facets = uniqueNonEmpty(needTexts.flatMap((text) => tokenize(text)));
-  return uniqueNonEmpty([
-    ...(options.queries ?? []),
-    ...needTexts,
-  ]).map((text) => ({
+  return uniqueNonEmpty([...(options.queries ?? []), ...needTexts]).map((text) => ({
     text,
     facets,
   }));
@@ -34,12 +31,7 @@ function uniqueNonEmpty(values: readonly string[]): string[] {
 }
 
 function capabilityNeedText(need: AgentActionCapabilityNeed): string {
-  return [
-    ...need.actions,
-    ...need.targets,
-    ...need.inputs,
-    ...need.outputs,
-    ...need.evidence,
-    ...need.effects,
-  ].join(" ");
+  return [...need.actions, ...need.targets, ...need.inputs, ...need.outputs, ...need.evidence, ...need.effects].join(
+    " ",
+  );
 }

@@ -3,7 +3,5 @@ export function quoteShellArguments(args: readonly string[]): string {
 }
 
 function quoteShellArgument(value: string): string {
-  return value.length === 0 || /[\s"'`$\\|&;<>()[\]{}!*?]/u.test(value)
-    ? `'${value.replace(/'/gu, "'\\''")}'`
-    : value;
+  return value.length === 0 || /[\s"'`$\\|&;<>()[\]{}!*?]/u.test(value) ? `'${value.replace(/'/gu, "'\\''")}'` : value;
 }

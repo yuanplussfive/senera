@@ -25,6 +25,59 @@ docker compose logs -f senera
 SENERA_PORT=18787 docker compose up -d
 ```
 
+## 管理员访问
+
+Senera 的公网服务是单管理员模式，不提供默认账号或默认密码。首次启动前需要在数据 volume 中创建管理员账户；账户文件只保存 `scrypt` 密码哈希，不保存明文密码。
+
+```bash
+docker compose run --rm -it senera node Dist/Apps/AdminAccess.js init
+```
+
+命令会依次询问登录用户名、显示名称和管理员密码。登录用户名用于认证，显示名称只用于界面展示。初始化完成后再启动服务：
+
+```bash
+docker compose up -d
+```
+
+浏览器和手机 Web 端登录后会获得 HttpOnly Cookie。会话最长 72 小时，连续 12 小时没有实际请求会失效；服务重启也会使所有会话重新登录。退出登录或重置密码会立即撤销会话。
+
+忘记密码时，必须在部署机器上执行重置命令。它会更新密码哈希；重启服务后原有会话不再有效：
+
+```bash
+docker compose run --rm -it senera node Dist/Apps/AdminAccess.js reset-password
+docker compose restart senera
+```
+
+本机源码运行时使用同一套命令：
+
+```bash
+npm run access.admin -- init --workspace .
+```
+
+桌面端不显示管理员登录页，它只绑定本机 loopback 运行时。
+
+## 本机与公网
+
+`compose.yaml` 默认只把端口发布到宿主机 `127.0.0.1`，适合在本机浏览器访问：
+
+```bash
+http://localhost:8787
+```
+
+本机发布会自动允许 `localhost` 和 `127.0.0.1` 的 HTTP Origin；这只是为了本机使用，不能当作公网 TLS 的替代方案。
+
+公网部署应让 HTTPS/WSS 反向代理面向互联网，Senera 容器保持在代理后面。需要显式设置发布地址和允许 Origin：
+
+```bash
+SENERA_BIND_ADDRESS=0.0.0.0 \
+SENERA_ALLOWED_ORIGINS=https://senera.example.com \
+docker compose up -d
+```
+
+远程服务不接受明文 HTTP 登录。若 TLS 在反向代理终止，配置中的 `Server.AccessControl.TrustedProxyAddresses` 只能填写实际代理的内部地址，不能信任任意 `X-Forwarded-Proto` 请求头。不要直接将容器端口暴露给公网。
+
+`Server.AccessControl` 提供会话、连接、握手和消息配额；密码、Cookie、管理员账户文件和 CSRF 值不属于该配置，也不应提交到仓库。WebSocket 和上传/Pi Proxy API 使用同一认证边界，外部协议见 [WebSocket 协议参考](API/WebSocketProtocol.md)。
+
 ## 首次配置
 
 第一次启动时，如果 `/data/senera.config.json` 不存在，容器会从内置的 `senera.config.example.json` 生成一份。
@@ -87,26 +140,38 @@ docker compose exec -T senera tar czf - -C /data . > senera-data-backup.tgz
 
 ## 发布与回滚
 
-GitHub 的验证和发布分开处理，避免每次提交都构建安装包或镜像。
+GitHub 的验证、版本决策和产物构建彼此分离。普通提交不会直接修改版本或构建正式安装包。
 
-- Pull Request：运行快速验证和 Windows 平台冒烟，尽快发现类型、测试和路径问题。
-- 合并到 `main`：额外计算前后端覆盖率；安全扫描会在主干和每周定时运行。
-- 发布预览：手动运行 `Container Release` 或 `Desktop Release`，选择 `preview`。工作流只接受已经通过 Verify 的提交。
-- 发布稳定版：在同一工作流中选择 `stable`。容器会把已存在的 `sha-<完整提交>` 镜像标记为 `stable` 和 `latest`；桌面端会把已有预览 Release 转为正式版。
+- Pull Request：运行类型检查、行为测试、前端测试和 Windows 平台验证。
+- 合并到 `main`：Verify 成功后，Release Please 根据 Conventional Commits 创建或更新发布 PR。
+- 合并发布 PR：自动更新根 `package.json`、`package-lock.json` 和 `CHANGELOG.md`，随后创建 `vX.Y.Z` 标签与草稿 GitHub Release。
+- 产品发布：`Product Release` 从该标签检出源码，验证标签与根包版本一致，然后并行构建桌面安装包和容器镜像；全部成功后才公开 Release 并标记为 latest。
 
-稳定版不重新构建，所以回滚就是把上一份已经验证的版本再次提升：
+提交类型决定 SemVer 变化：
 
-```text
-Container Release: channel=stable, source_sha=<上一份镜像对应的提交>
-Desktop Release: channel=stable, release_tag=<上一份 desktop-v... 标签>
+- `fix:` 发布 patch；
+- `feat:` 发布 minor；
+- `feat!:` 或正文中的 `BREAKING CHANGE:` 发布 major；
+- `docs:`、`test:`、`chore:` 默认不单独推进产品版本。
+
+Release Please 创建的 PR 需要正常通过 Verify。仓库应配置 `RELEASE_PLEASE_TOKEN`，使用可触发 Pull Request 工作流的 GitHub App token 或细粒度 PAT；未配置时工作流会回退到 `GITHUB_TOKEN`，但 GitHub 不会为该 token 创建的后续事件再次触发工作流。
+
+正式发布失败时，手动运行 `Product Release`，填写已经存在的 `vX.Y.Z`。工作流会重新验证并覆盖上传同一标签的产物，不会创建新版本。
+
+容器回退应直接固定上一完整版本，而不是重新标记源码：
+
+```yaml
+image: ghcr.io/<owner>/senera:1.2.3
 ```
 
-容器回滚完成后，部署机器拉取稳定标签即可：
+修改部署版本后重新拉取并启动：
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
+
+桌面端回退和数据兼容要求见 [升级指南](Upgrading.md)。
 
 ## 日志和健康状态
 

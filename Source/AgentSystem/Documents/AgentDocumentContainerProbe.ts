@@ -81,10 +81,7 @@ async function readZipEntryText(
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function parseContentTypesXml(
-  entryName: string,
-  xml: string,
-): AgentDocumentContentTypesProbeResult {
+function parseContentTypesXml(entryName: string, xml: string): AgentDocumentContentTypesProbeResult {
   const document = new DOMParser().parseFromString(xml, "application/xml");
   return {
     entryName,

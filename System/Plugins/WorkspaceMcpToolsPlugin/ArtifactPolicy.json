@@ -7,9 +7,7 @@
         "text": "$.text"
       },
       "Identity": {
-        "Parts": [
-          "text"
-        ]
+        "Parts": ["text"]
       },
       "Presentation": {
         "Locator": "mcp-result",
@@ -22,18 +20,11 @@
         "text": "$.text"
       },
       "ModelProjection": {
-        "Slots": [
-          "text"
-        ]
+        "Slots": ["text"]
       },
       "PlannerMemory": {
-        "Facts": [
-          "text"
-        ],
-        "ArtifactRefs": [
-          "evidence",
-          "projection"
-        ]
+        "Facts": ["text"],
+        "ArtifactRefs": ["evidence", "projection"]
       },
       "Projection": {
         "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} MCP result: {{ e.slots.text }}\n{% endfor %}",

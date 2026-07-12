@@ -3,17 +3,9 @@ import type { AgentConversationEntry } from "../Conversation/AgentConversation.j
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
 import type { AgentLanguageModel } from "../ModelEndpoints/AgentLanguageModel.js";
-import {
-  AgentLoopCommandExecutor,
-  type AgentLoopCommandExecutorOptions,
-} from "./AgentLoopCommandExecutor.js";
-import {
-  AgentLoopStateMachine,
-} from "./AgentLoopStateMachine.js";
-import type {
-  AgentLoopMachineState,
-  RunningAgentLoopMachineState,
-} from "./AgentLoopStateTypes.js";
+import { AgentLoopCommandExecutor, type AgentLoopCommandExecutorOptions } from "./AgentLoopCommandExecutor.js";
+import { AgentLoopStateMachine } from "./AgentLoopStateMachine.js";
+import type { AgentLoopMachineState, RunningAgentLoopMachineState } from "./AgentLoopStateTypes.js";
 import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
 import type { AgentCompletedRunResult } from "../Runtime/AgentExecutionProjector.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
@@ -62,8 +54,9 @@ export class AgentLoop {
       },
     });
 
-    const loadedToolNames = request.loadedToolNames
-      ?? this.options.runtime.services.retrieval.resolveInitialLoadedTools(
+    const loadedToolNames =
+      request.loadedToolNames ??
+      this.options.runtime.services.retrieval.resolveInitialLoadedTools(
         request.input,
         this.agentLoopConfig.LoadedTools,
       );
@@ -84,11 +77,7 @@ export class AgentLoop {
       // 命令间检查取消信号
       throwIfAborted(request.signal);
       const runningState = this.expectRunningState(transition.state);
-      const result = await this.commandExecutor.execute(
-        transition.command,
-        request.onEvent,
-        request.signal,
-      );
+      const result = await this.commandExecutor.execute(transition.command, request.onEvent, request.signal);
       transition = this.stateMachine.consume(runningState, result);
       await this.emitAll(request.onEvent, transition.events);
     }

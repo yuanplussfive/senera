@@ -43,12 +43,7 @@ export interface LoadedPluginConfigField {
   required?: boolean;
 }
 
-export type LoadedPluginConfigFieldType =
-  | "boolean"
-  | "string"
-  | "number"
-  | "array"
-  | "table";
+export type LoadedPluginConfigFieldType = "boolean" | "string" | "number" | "array" | "table";
 
 export type LoadedPluginConfigFieldOptionValue = string | number | boolean;
 
@@ -95,4 +90,3 @@ export interface AgentPluginConfigToolItem {
   summary?: string;
   enabled: boolean;
 }
-

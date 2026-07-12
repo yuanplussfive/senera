@@ -19,7 +19,7 @@ export function projectConfigFormField(options: {
       source: {},
       effectiveSource: {},
       basePath: fullPath,
-    })
+    }),
   );
 
   return {

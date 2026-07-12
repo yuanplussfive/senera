@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Plus, Trash2 } from "lucide-react";
 import type { PluginConfigField } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import {
   coerceArrayItem,
@@ -32,13 +33,9 @@ export function FieldControl({
     >
       <div className="min-w-0 pr-2">
         <div className="text-[13px] font-medium text-ink-900">{field.label}</div>
-        {field.description ? (
-          <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p>
-        ) : null}
+        {field.description ? <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>
-      <div className="min-w-0 md:justify-self-end">
-        {renderFieldInput(field, value, disabled, onChange)}
-      </div>
+      <div className="min-w-0 md:justify-self-end">{renderFieldInput(field, value, disabled, onChange)}</div>
     </div>
   );
 }
@@ -62,17 +59,10 @@ function renderFieldInput(
         enabled={Boolean(value)}
         disabled={disabled}
         label={settingLabel(field)}
-        onClick={() => onChange(!Boolean(value))}
+        onClick={() => onChange(!value)}
       />
     ),
-    number: () => (
-      <NumberFieldControl
-        field={field}
-        value={value}
-        disabled={disabled}
-        onChange={onChange}
-      />
-    ),
+    number: () => <NumberFieldControl field={field} value={value} disabled={disabled} onChange={onChange} />,
     array: () => (
       <ArrayFieldControl
         field={field}
@@ -81,14 +71,7 @@ function renderFieldInput(
         onChange={onChange}
       />
     ),
-    string: () => (
-      <StringFieldControl
-        field={field}
-        value={value}
-        disabled={disabled}
-        onChange={onChange}
-      />
-    ),
+    string: () => <StringFieldControl field={field} value={value} disabled={disabled} onChange={onChange} />,
     table: () => (
       <pre className="max-h-32 overflow-auto rounded-md border border-ink-200 bg-paper-50 p-2 font-mono text-[11px] leading-5 text-ink-600">
         {JSON.stringify(value, null, 2)}
@@ -97,14 +80,7 @@ function renderFieldInput(
   } satisfies Record<PluginConfigField["type"], () => JSX.Element>;
 
   if (field.options && field.options.length > 0) {
-    return (
-      <OptionControl
-        field={field}
-        value={value}
-        disabled={disabled}
-        onChange={onChange}
-      />
-    );
+    return <OptionControl field={field} value={value} disabled={disabled} onChange={onChange} />;
   }
 
   return controls[field.type]();
@@ -300,7 +276,7 @@ function ArrayFieldControl({
             type="button"
             disabled={disabled}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-ink-200 bg-paper-50 text-ink-500 transition hover:bg-brick-50 hover:text-brick-600 disabled:pointer-events-none disabled:opacity-50"
-            aria-label="删除"
+            aria-label={frontendMessage("pluginConfig.deleteArrayItem")}
             onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -314,7 +290,7 @@ function ArrayFieldControl({
         onClick={() => onChange([...value, defaultArrayItem(itemType)])}
       >
         <Plus className="h-3.5 w-3.5" />
-        添加
+        {frontendMessage("pluginConfig.addArrayItem")}
       </button>
     </div>
   );
@@ -342,14 +318,9 @@ function TogglePill({
         !disabled && "hover:bg-ink-900/[0.04]",
         disabled && "pointer-events-none opacity-45",
       )}
-      aria-label={`${enabled ? "关闭" : "开启"} ${label}`}
+      aria-label={frontendMessage(enabled ? "pluginConfig.disableLabel" : "pluginConfig.enableLabel", { label })}
     >
-      <span
-        className={cn(
-          "relative h-5 w-9 rounded-full transition",
-          enabled ? "bg-moss-500" : "bg-ink-300",
-        )}
-      >
+      <span className={cn("relative h-5 w-9 rounded-full transition", enabled ? "bg-moss-500" : "bg-ink-300")}>
         <span
           className={cn(
             "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
@@ -357,7 +328,7 @@ function TogglePill({
           )}
         />
       </span>
-      <span>{enabled ? "已启用" : "已关闭"}</span>
+      <span>{frontendMessage(enabled ? "pluginConfig.enabled" : "pluginConfig.disabled")}</span>
     </button>
   );
 }

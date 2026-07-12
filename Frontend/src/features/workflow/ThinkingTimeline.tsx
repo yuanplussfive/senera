@@ -1,33 +1,15 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Lightbulb,
-  Loader2,
-  Maximize2,
-  PanelRightClose,
-  PanelRightOpen,
-  Clock3,
-  ListTree,
-  Wrench,
-} from "lucide-react";
+import { Lightbulb, Loader2, Maximize2, PanelRightClose, PanelRightOpen, Clock3, ListTree, Wrench } from "lucide-react";
 import { useStore, type RunRecord } from "../../store/sessionStore";
 import { useResponsiveMode } from "../../shared/responsive";
 import { cn } from "../../lib/util";
-import {
-  Dialog,
-  DialogContent,
-  IconButton,
-  MetaLabel,
-} from "../../shared/ui";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { Dialog, DialogContent, IconButton, MetaLabel } from "../../shared/ui";
 import { summarizeRun } from "./runSummary";
 import { shouldLoadWorkflowCanvas } from "./canvasLoadPolicy";
 import { RunSelector, RunSummaryStrip } from "./WorkflowRunControls";
-import {
-  motionSprings,
-  motionTimings,
-  readFocusPanelVariants,
-  useMotionLevel,
-} from "../../shared/motion";
+import { motionSprings, motionTimings, readFocusPanelVariants, useMotionLevel } from "../../shared/motion";
 
 const LazyThinkingTimelineCanvas = lazy(() =>
   import("./ThinkingTimelineCanvas").then((module) => ({
@@ -56,13 +38,11 @@ function ThinkingPanel({
   const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
   const collapsed = useStore((s) => s.rightPanelCollapsed);
   const toggleCollapsed = useStore((s) => s.toggleRightPanel);
-  const viewedRunId = useStore((s) =>
-    activeId ? s.viewedRunIdBySession[activeId] : undefined,
-  );
+  const viewedRunId = useStore((s) => (activeId ? s.viewedRunIdBySession[activeId] : undefined));
   const setViewedRun = useStore((s) => s.setViewedRun);
   const [focusOpen, setFocusOpen] = useState(false);
 
-  const runs = session?.runs ?? [];
+  const runs = useMemo(() => session?.runs ?? [], [session?.runs]);
   const latestRun = runs[runs.length - 1];
   const selectedRun = useMemo(() => {
     if (!viewedRunId) return undefined;
@@ -93,8 +73,8 @@ function ThinkingPanel({
     return (
       <aside className="flex h-full w-[44px] shrink-0 flex-col items-center border-l border-ink-200/60 bg-paper-100/40 py-3">
         <IconButton
-          label="expand"
-          tooltip="展开思考过程"
+          label={frontendMessage("workflow.panel.expand")}
+          tooltip={frontendMessage("workflow.panel.expand")}
           tooltipSide="left"
           onClick={toggleCollapsed}
         >
@@ -107,10 +87,12 @@ function ThinkingPanel({
 
   return (
     <>
-      <aside className={cn(
-        "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
-        presentation === "panel" ? "w-full border-l-0" : "w-full",
-      )}>
+      <aside
+        className={cn(
+          "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
+          presentation === "panel" ? "w-full border-l-0" : "w-full",
+        )}
+      >
         <TopBar
           run={run}
           runs={runs}
@@ -171,8 +153,8 @@ function TopBar({
       <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 bg-paper-100/70 px-3">
         {onCollapse ? (
           <IconButton
-            label="collapse"
-            tooltip="收起思考过程"
+            label={frontendMessage("workflow.panel.collapse")}
+            tooltip={frontendMessage("workflow.panel.collapse")}
             tooltipSide="left"
             size="sm"
             className="h-7 w-7 text-ink-500"
@@ -184,7 +166,7 @@ function TopBar({
         {hideTitle ? null : (
           <>
             <Lightbulb className="h-4 w-4 text-terra-500" />
-            <span className="text-[13px] font-medium text-ink-800">思考过程</span>
+            <span className="text-[13px] font-medium text-ink-800">{frontendMessage("workflow.panel.title")}</span>
           </>
         )}
         <div className="ml-auto flex min-w-0 items-center gap-2">
@@ -192,24 +174,28 @@ function TopBar({
             {run ? (
               <span>
                 {summary?.completed}/{summary?.total}
-                {summary && summary.failed > 0 ? <span className="ml-1 text-brick-500">·{summary.failed} 失败</span> : null}
+                {summary && summary.failed > 0 ? (
+                  <span className="ml-1 text-brick-500">
+                    ·{frontendMessage("workflow.summary.failed", { count: summary.failed })}
+                  </span>
+                ) : null}
               </span>
             ) : null}
           </MetaLabel>
           {pinnedToHistory ? (
-          <div className="flex shrink-0 items-center gap-1 rounded-md border border-ink-200/60 bg-paper-50/80 p-0.5 shadow-[0_1px_0_rgba(28,26,23,0.04)]">
-            <button
-              type="button"
-              onClick={onFollowLatest}
-              className="h-7 rounded px-2 text-[11.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
-            >
-              跟随最新
-            </button>
-          </div>
+            <div className="flex shrink-0 items-center gap-1 rounded-md border border-ink-200/60 bg-paper-50/80 p-0.5 shadow-[0_1px_0_rgba(28,26,23,0.04)]">
+              <button
+                type="button"
+                onClick={onFollowLatest}
+                className="h-7 rounded px-2 text-[11.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+              >
+                {frontendMessage("workflow.panel.followLatest")}
+              </button>
+            </div>
           ) : null}
           <IconButton
-            label="放大查看"
-            tooltip="放大查看"
+            label={frontendMessage("workflow.panel.focus")}
+            tooltip={frontendMessage("workflow.panel.focus")}
             tooltipSide="bottom"
             aria-pressed={focusOpen}
             onClick={onToggleFocus}
@@ -223,12 +209,7 @@ function TopBar({
       {runs.length > 0 ? (
         <div className="border-b border-ink-200/40 bg-paper-50/70 px-3 py-2">
           {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
-          <RunSelector
-            runs={runs}
-            currentRunId={currentRunId}
-            onSelect={onSelect}
-            pinnedToHistory={pinnedToHistory}
-          />
+          <RunSelector runs={runs} currentRunId={currentRunId} onSelect={onSelect} pinnedToHistory={pinnedToHistory} />
         </div>
       ) : null}
     </>
@@ -260,8 +241,16 @@ function TimelineFocusDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="思考过程"
-        description={summary ? `${summary.completed}/${summary.total} 节点 · ${summary.tools} 工具` : undefined}
+        title={frontendMessage("workflow.panel.title")}
+        description={
+          summary
+            ? frontendMessage("workflow.summary.nodesAndTools", {
+                completed: summary.completed,
+                total: summary.total,
+                tools: summary.tools,
+              })
+            : undefined
+        }
         placement="inset"
         motionPreset="focus"
         frameClassName="bottom-3 left-3 right-3 top-3 sm:bottom-4 sm:left-4 sm:right-4 sm:top-4"
@@ -291,7 +280,7 @@ function TimelineFocusDialog({
                   onClick={onFollowLatest}
                   className="mt-2 h-8 rounded-md px-2.5 text-[12px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
                 >
-                  跟随最新
+                  {frontendMessage("workflow.panel.followLatest")}
                 </button>
               ) : null}
             </div>
@@ -305,13 +294,7 @@ function TimelineFocusDialog({
 
 // ---------- 画布 ----------
 
-function CanvasArea({
-  run,
-  focusVersion = 0,
-}: {
-  run?: RunRecord;
-  focusVersion?: number;
-}): JSX.Element {
+function CanvasArea({ run, focusVersion = 0 }: { run?: RunRecord; focusVersion?: number }): JSX.Element {
   if (!shouldLoadWorkflowCanvas(run)) {
     return (
       <div className="relative flex flex-1 items-center justify-center overflow-hidden">
@@ -332,7 +315,7 @@ function CanvasLoading(): JSX.Element {
     <div className="relative flex flex-1 items-center justify-center overflow-hidden">
       <div className="inline-flex items-center gap-2 rounded-md border border-ink-200/60 bg-paper-50/80 px-3 py-2 text-[12px] text-ink-500 shadow-bubble-ai">
         <Loader2 className="h-3.5 w-3.5 animate-spin text-umber-500" />
-        加载执行图
+        {frontendMessage("workflow.panel.loadingGraph")}
       </div>
     </div>
   );
@@ -353,20 +336,18 @@ function EmptyCanvas(): JSX.Element {
       <div className="grid h-11 w-11 place-items-center rounded-xl border border-ink-200/70 bg-paper-50 shadow-[0_1px_2px_rgba(28,26,23,0.04)]">
         <ListTree className="h-5 w-5 text-ink-500" />
       </div>
-      <p className="mt-3 text-[13px] font-medium text-ink-850">
-        执行图示
-      </p>
+      <p className="mt-3 text-[13px] font-medium text-ink-850">{frontendMessage("workflow.panel.emptyTitle")}</p>
       <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
-        这里会汇总理解、模型决策、工具调用和最终回复。
+        {frontendMessage("workflow.panel.emptyDescription")}
       </p>
       <div className="mt-3 grid w-full grid-cols-2 gap-1.5 text-left">
-        <EmptyHint icon={<ListTree className="h-3 w-3" />} label="节点详情" />
-        <EmptyHint icon={<Wrench className="h-3 w-3" />} label="工具链路" />
-        <EmptyHint icon={<Maximize2 className="h-3 w-3" />} label="放大查看" />
-        <EmptyHint icon={<Clock3 className="h-3 w-3" />} label="耗时统计" />
+        <EmptyHint icon={<ListTree className="h-3 w-3" />} label={frontendMessage("workflow.panel.emptyNodeDetails")} />
+        <EmptyHint icon={<Wrench className="h-3 w-3" />} label={frontendMessage("workflow.panel.emptyToolChain")} />
+        <EmptyHint icon={<Maximize2 className="h-3 w-3" />} label={frontendMessage("workflow.panel.focus")} />
+        <EmptyHint icon={<Clock3 className="h-3 w-3" />} label={frontendMessage("workflow.panel.emptyDuration")} />
       </div>
       <p className="mt-3 text-[11px] text-ink-400">
-        {isCoarsePointer ? "可拖拽节点，拖动画布，双指缩放。" : "可拖拽节点，滚轮平移，Ctrl+滚轮缩放。"}
+        {frontendMessage(isCoarsePointer ? "workflow.panel.touchHelp" : "workflow.panel.mouseHelp")}
       </p>
     </motion.div>
   );

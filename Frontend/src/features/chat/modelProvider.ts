@@ -1,4 +1,5 @@
 import type { ModelProviderListItem, ModelProviderMetadata } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export function readSelectedModelProvider(
   models: ModelProviderListItem[],
@@ -12,7 +13,7 @@ export function readChatModelProviders(models: readonly ModelProviderListItem[])
 }
 
 export function formatModelProviderName(provider?: ModelProviderMetadata | ModelProviderListItem): string {
-  if (!provider) return "AI 助手";
+  if (!provider) return frontendMessage("config.model.assistantFallback");
   const model = provider.model?.trim();
-  return model || "AI 助手";
+  return model || frontendMessage("config.model.assistantFallback");
 }

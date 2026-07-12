@@ -4,11 +4,7 @@ import path from "node:path";
 import ts from "typescript";
 import type { TestSuitePolicy } from "./TestCoveragePolicy.js";
 
-const ignoredDirectories = new Set([
-  "node_modules",
-  "dist",
-  "build",
-]);
+const ignoredDirectories = new Set(["node_modules", "dist", "build"]);
 
 export type TestGovernanceOptions = {
   workspaceRoot: string;
@@ -60,10 +56,7 @@ function assertRequiredLayers(
       return [`${layer.name} has no test files`];
     }
 
-    const cases = layerFiles.reduce(
-      (count, file) => count + countVitestCaseCalls(testSources.get(file) ?? ""),
-      0,
-    );
+    const cases = layerFiles.reduce((count, file) => count + countVitestCaseCalls(testSources.get(file) ?? ""), 0);
     return layer.minimumCases !== undefined && cases < layer.minimumCases
       ? [`${layer.name} has ${cases} cases, requires ${layer.minimumCases}`]
       : [];
@@ -71,14 +64,15 @@ function assertRequiredLayers(
   assert.deepEqual(violations, [], `${policy.label} test layer requirements failed: ${violations.join("; ")}`);
 }
 
-function assertTestFilesDeclareCases(
-  options: TestGovernanceOptions,
-  testSources: ReadonlyMap<string, string>,
-): void {
+function assertTestFilesDeclareCases(options: TestGovernanceOptions, testSources: ReadonlyMap<string, string>): void {
   const filesWithoutCases = [...testSources.entries()]
     .filter(([, source]) => countVitestCaseCalls(source) === 0)
     .map(([file]) => relativePath(options.workspaceRoot, file));
-  assert.deepEqual(filesWithoutCases, [], `${options.policy.label} test files must declare at least one Vitest test case.`);
+  assert.deepEqual(
+    filesWithoutCases,
+    [],
+    `${options.policy.label} test files must declare at least one Vitest test case.`,
+  );
 }
 
 function assertTestFilesStayInScripts(options: TestGovernanceOptions, sourceRoot: string, testRoot: string): void {
@@ -86,7 +80,11 @@ function assertTestFilesStayInScripts(options: TestGovernanceOptions, sourceRoot
     .filter((file) => options.policy.sourceLocalTestPattern.test(file))
     .map((file) => relativePath(options.workspaceRoot, file))
     .sort((left, right) => left.localeCompare(right));
-  assert.deepEqual(localTests, [], `${options.policy.label} verification tests must live under ${relativePath(options.workspaceRoot, testRoot)}.`);
+  assert.deepEqual(
+    localTests,
+    [],
+    `${options.policy.label} verification tests must live under ${relativePath(options.workspaceRoot, testRoot)}.`,
+  );
 }
 
 function assertLayerImportRules(
@@ -96,8 +94,9 @@ function assertLayerImportRules(
   testSources: ReadonlyMap<string, string>,
 ): void {
   const violations = testFiles.flatMap((file) => {
-    const layer = (options.policy.requiredLayers ?? [])
-      .find((candidate) => isUnderTestLayer(testRoot, file, candidate.name));
+    const layer = (options.policy.requiredLayers ?? []).find((candidate) =>
+      isUnderTestLayer(testRoot, file, candidate.name),
+    );
     const forbiddenImports = layer?.forbidsImportsFrom ?? [];
     if (forbiddenImports.length === 0) {
       return [];
@@ -116,10 +115,16 @@ function assertCoveragePolicy(policy: TestSuitePolicy): void {
   if (!hasCoveragePolicy(policy)) {
     return;
   }
-  assert.ok(policy.coverageInclude.length > 0, `${policy.label} coverage policy must include at least one source glob.`);
+  assert.ok(
+    policy.coverageInclude.length > 0,
+    `${policy.label} coverage policy must include at least one source glob.`,
+  );
   assert.ok(policy.coverageExclude.length > 0, `${policy.label} coverage policy must declare exclusions.`);
   for (const [metric, value] of Object.entries(policy.thresholds)) {
-    assert.ok(Number.isInteger(value) && value >= 0 && value <= 100, `${policy.label} coverage threshold ${metric} must be 0-100.`);
+    assert.ok(
+      Number.isInteger(value) && value >= 0 && value <= 100,
+      `${policy.label} coverage threshold ${metric} must be 0-100.`,
+    );
   }
 }
 
@@ -128,13 +133,15 @@ function hasCoveragePolicy(policy: TestSuitePolicy): policy is TestSuitePolicy &
   coverageExclude: readonly string[];
   thresholds: Record<string, number>;
 } {
-  return "coverageInclude" in policy &&
+  return (
+    "coverageInclude" in policy &&
     Array.isArray(policy.coverageInclude) &&
     "coverageExclude" in policy &&
     Array.isArray(policy.coverageExclude) &&
     "thresholds" in policy &&
     typeof policy.thresholds === "object" &&
-    policy.thresholds !== null;
+    policy.thresholds !== null
+  );
 }
 
 function readStaticImports(source: string): string[] {
@@ -151,9 +158,9 @@ function readStaticImports(source: string): string[] {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
       recordModuleSpecifier(node.moduleSpecifier);
     } else if (
-      ts.isCallExpression(node)
-      && node.expression.kind === ts.SyntaxKind.ImportKeyword
-      && node.arguments.length === 1
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1
     ) {
       recordModuleSpecifier(node.arguments[0]);
     }
@@ -193,13 +200,7 @@ function isVitestCaseExpression(expression: ts.Expression): boolean {
 }
 
 function parseTestSource(source: string): ts.SourceFile {
-  return ts.createSourceFile(
-    "test.tsx",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  return ts.createSourceFile("test.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 }
 
 function isUnderTestLayer(testRoot: string, file: string, layer: string): boolean {

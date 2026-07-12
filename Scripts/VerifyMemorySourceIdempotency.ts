@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AgentConversationEntryKinds, createConversationEntryId } from "../Source/AgentSystem/Conversation/AgentConversation.js";
+import {
+  AgentConversationEntryKinds,
+  createConversationEntryId,
+} from "../Source/AgentSystem/Conversation/AgentConversation.js";
 import { AgentConversationPolicy } from "../Source/AgentSystem/Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
 import { SqliteAgentMemorySourceRepository } from "../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import { AgentMemoryService } from "../Source/AgentSystem/Memory/AgentMemoryService.js";
-import type {
-  AgentMemoryCompletedTurnInput,
-  AgentMemorySourceRepository,
-} from "../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
+import type { AgentMemoryCompletedTurnInput } from "../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import type { AgentCompletedRunResult } from "../Source/AgentSystem/Runtime/AgentExecutionProjector.js";
 import { AgentSessionRunCoordinator } from "../Source/AgentSystem/Session/AgentSessionRunCoordinator.js";
 import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
@@ -45,8 +45,8 @@ function verifySqliteSourceIdempotency(): void {
     assert.equal(persisted.length, 4);
     assert.equal(persisted.filter((source) => source.evidenceUri === "evidence://duplicate").length, 1);
     assert.equal(
-      persisted.filter((source) =>
-        source.sourceKind === "artifact" && source.artifactUri === "artifact://duplicate").length,
+      persisted.filter((source) => source.sourceKind === "artifact" && source.artifactUri === "artifact://duplicate")
+        .length,
       1,
     );
   } finally {
@@ -68,20 +68,18 @@ async function verifyCoordinatorRecordsOnlyFreshEntries(): Promise<void> {
     conversationPolicy: new AgentConversationPolicy(),
     conversationProjector: new AgentConversationProjector(),
     memory,
-    loopFactory: () => ({
-      run: async (): Promise<AgentCompletedRunResult> => ({
-        terminal: {
-          kind: "FinalAnswer",
-          content: "Done.",
-        },
-        decisionXml: "<final_answer>Done.</final_answer>",
-        conversationEntries: [
-          historicalEntry,
-          evidenceEntry("fresh-request", "fresh-evidence", "artifact://fresh"),
-        ],
-        stepTraces: [],
-      }),
-    }) as unknown as AgentLoop,
+    loopFactory: () =>
+      ({
+        run: async (): Promise<AgentCompletedRunResult> => ({
+          terminal: {
+            kind: "FinalAnswer",
+            content: "Done.",
+          },
+          decisionXml: "<final_answer>Done.</final_answer>",
+          conversationEntries: [historicalEntry, evidenceEntry("fresh-request", "fresh-evidence", "artifact://fresh")],
+          stepTraces: [],
+        }),
+      }) as unknown as AgentLoop,
   });
 
   try {
@@ -116,17 +114,18 @@ async function verifyCoordinatorLogsMemoryFailures(): Promise<void> {
     conversationProjector: new AgentConversationProjector(),
     memory,
     logger: new AgentLogger({ output: output as unknown as NodeJS.WriteStream }),
-    loopFactory: () => ({
-      run: async (): Promise<AgentCompletedRunResult> => ({
-        terminal: {
-          kind: "FinalAnswer",
-          content: "Done.",
-        },
-        decisionXml: "<final_answer>Done.</final_answer>",
-        conversationEntries: [],
-        stepTraces: [],
-      }),
-    }) as unknown as AgentLoop,
+    loopFactory: () =>
+      ({
+        run: async (): Promise<AgentCompletedRunResult> => ({
+          terminal: {
+            kind: "FinalAnswer",
+            content: "Done.",
+          },
+          decisionXml: "<final_answer>Done.</final_answer>",
+          conversationEntries: [],
+          stepTraces: [],
+        }),
+      }) as unknown as AgentLoop,
   });
 
   try {

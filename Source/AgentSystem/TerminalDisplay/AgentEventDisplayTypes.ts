@@ -14,5 +14,4 @@ export interface AgentCompactEventDisplay {
   tokens?: Array<string | undefined>;
 }
 
-export type AgentCompactEventFormatter =
-  (event: AgentEventEnvelope<string, unknown>) => AgentCompactEventDisplay;
+export type AgentCompactEventFormatter = (event: AgentEventEnvelope<string, unknown>) => AgentCompactEventDisplay;

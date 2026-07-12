@@ -1,16 +1,6 @@
-import {
-  AgentEventChannels,
-  type AgentEventKind,
-  getAgentEventSpec,
-} from "./AgentEventCatalog.js";
-import type {
-  AgentEventContext,
-  AgentEventEnvelope,
-} from "./AgentEventBase.js";
-import type {
-  AgentDomainEvent,
-  AgentEventSink,
-} from "./AgentEventTypes.js";
+import { AgentEventChannels, type AgentEventKind, getAgentEventSpec } from "./AgentEventCatalog.js";
+import type { AgentEventContext, AgentEventEnvelope } from "./AgentEventBase.js";
+import type { AgentDomainEvent, AgentEventSink } from "./AgentEventTypes.js";
 
 export class AgentEventSequencer {
   private sequence = 0;
@@ -27,12 +17,7 @@ export function createEventDetailId(
   kind: AgentEventKind,
   suffix: string,
 ): string {
-  return [
-    requestId ?? "global",
-    step ?? "na",
-    kind,
-    suffix,
-  ].join(":");
+  return [requestId ?? "global", step ?? "na", kind, suffix].join(":");
 }
 
 export function toEventEnvelope(
@@ -60,29 +45,24 @@ export function toEventEnvelope(
   };
 }
 
-export async function emitAgentEvent(
-  sink: AgentEventSink | undefined,
-  event: AgentDomainEvent,
-): Promise<void> {
+export async function emitAgentEvent(sink: AgentEventSink | undefined, event: AgentDomainEvent): Promise<void> {
   await sink?.(event);
 }
 
-export function withEventContext(
-  event: AgentDomainEvent,
-  context: Partial<AgentEventContext>,
-): AgentDomainEvent {
+export function withEventContext(event: AgentDomainEvent, context: Partial<AgentEventContext>): AgentDomainEvent {
   const existingContext = event.context as AgentEventContext;
   return {
     ...event,
     context: {
       ...existingContext,
       ...context,
-      scope: context.scope || existingContext.scope
-        ? {
-          ...existingContext.scope,
-          ...context.scope,
-        }
-        : undefined,
+      scope:
+        context.scope || existingContext.scope
+          ? {
+              ...existingContext.scope,
+              ...context.scope,
+            }
+          : undefined,
     },
   } as AgentDomainEvent;
 }

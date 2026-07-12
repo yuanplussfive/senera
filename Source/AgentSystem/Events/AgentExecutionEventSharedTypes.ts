@@ -5,10 +5,5 @@ export type AgentTurnUnderstandingEventData = TurnUnderstanding;
 
 export type AgentActivatedSkillEventData = Pick<
   AgentActivatedSkill,
-  | "name"
-  | "title"
-  | "score"
-  | "matchedTerms"
-  | "matchedFields"
-  | "recommendedTools"
+  "name" | "title" | "score" | "matchedTerms" | "matchedFields" | "recommendedTools"
 >;

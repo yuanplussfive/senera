@@ -25,17 +25,17 @@ export type SessionMenuSection = {
 export const preferenceSections = [
   {
     id: "layout",
-    title: "界面",
+    title: frontendMessage("preferences.layout.title"),
     items: [
       {
         id: "sidebarCollapsed",
-        title: "默认收起左侧栏",
-        description: "保留当前侧栏状态，并在下次打开时恢复。",
+        title: frontendMessage("preferences.layout.sidebarCollapsed"),
+        description: frontendMessage("preferences.layout.sidebarCollapsedDescription"),
       },
       {
         id: "rightPanelCollapsed",
-        title: "默认收起思维面板",
-        description: "保留右侧执行图面板状态，并在下次打开时恢复。",
+        title: frontendMessage("preferences.layout.rightPanelCollapsed"),
+        description: frontendMessage("preferences.layout.rightPanelCollapsedDescription"),
       },
     ],
   },
@@ -46,17 +46,18 @@ export type LayoutPreferenceId = (typeof preferenceSections)[number]["items"][nu
 export const motionLevelOptions = [
   {
     id: "full",
-    title: "完整",
-    description: "结构变化、列表插入和轻触反馈都启用。",
+    title: frontendMessage("preferences.motion.full"),
+    description: frontendMessage("preferences.motion.fullDescription"),
   },
   {
     id: "reduced",
-    title: "轻量",
-    description: "保留淡入淡出，关闭位移和缩放。",
+    title: frontendMessage("preferences.motion.reduced"),
+    description: frontendMessage("preferences.motion.reducedDescription"),
   },
   {
     id: "none",
-    title: "关闭",
-    description: "关闭 Motion 和 CSS 动画。",
+    title: frontendMessage("preferences.motion.none"),
+    description: frontendMessage("preferences.motion.noneDescription"),
   },
 ] as const;
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";

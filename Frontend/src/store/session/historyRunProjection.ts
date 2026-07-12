@@ -1,8 +1,5 @@
-import type {
-  ConversationEntryDto,
-  SessionHistoryStepsData,
-  StepTraceDto,
-} from "../../api/eventTypes";
+import type { ConversationEntryDto, SessionHistoryStepsData, StepTraceDto } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { friendlyDecisionKind } from "./sessionPresentation";
 import { toolBatchForTrace } from "./timelineProjection";
 import type { ChatMessage, RunRecord, SessionRecord, TimelineStep } from "./types";
@@ -21,10 +18,7 @@ export type HistoryVisibleEntry = {
   text: string;
 };
 
-export function projectEntryToMessage(
-  entry: ConversationEntryDto,
-  visible?: HistoryVisibleEntry,
-): ChatMessage | null {
+export function projectEntryToMessage(entry: ConversationEntryDto, visible?: HistoryVisibleEntry): ChatMessage | null {
   if (entry.kind === "user.message") {
     return {
       id: `${entry.requestId}-user`,
@@ -59,10 +53,7 @@ function isTerminalAssistantEntry(entry: ConversationEntryDto): boolean {
   return Boolean(entry.metadata?.run);
 }
 
-export function upsertMessageByRequestId(
-  session: SessionRecord,
-  message: ChatMessage,
-): void {
+export function upsertMessageByRequestId(session: SessionRecord, message: ChatMessage): void {
   const idIndex = session.messages.findIndex((item) => item.id === message.id);
   if (idIndex >= 0) {
     session.messages[idIndex] = message;
@@ -76,9 +67,7 @@ export function upsertMessageByRequestId(
 
   const index = session.messages.findIndex(
     (item) =>
-      item.requestId === message.requestId &&
-      item.role === message.role &&
-      (item.kind ?? "") === (message.kind ?? ""),
+      item.requestId === message.requestId && item.role === message.role && (item.kind ?? "") === (message.kind ?? ""),
   );
 
   if (index >= 0) {
@@ -89,20 +78,14 @@ export function upsertMessageByRequestId(
   session.messages.push(message);
 }
 
-export function mergeHistoryMessages(
-  session: SessionRecord,
-  messages: readonly ChatMessage[],
-): void {
+export function mergeHistoryMessages(session: SessionRecord, messages: readonly ChatMessage[]): void {
   for (const message of messages) {
     upsertMessageByRequestId(session, message);
   }
   session.messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-export function mergeHistoryRuns(
-  session: SessionRecord,
-  runs: readonly RunRecord[],
-): void {
+export function mergeHistoryRuns(session: SessionRecord, runs: readonly RunRecord[]): void {
   for (const run of runs) {
     const index = session.runs.findIndex((item) => item.requestId === run.requestId);
     if (index >= 0) {
@@ -117,9 +100,7 @@ export function mergeHistoryRuns(
   session.runs.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 }
 
-export function rebuildRunFromHistory(
-  run: SessionHistoryStepsData["runs"][number],
-): RunRecord {
+export function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][number]): RunRecord {
   const record: RunRecord = {
     requestId: run.requestId,
     revision: 0,
@@ -144,19 +125,21 @@ export function rebuildRunFromHistory(
   return record;
 }
 
-function stepTraceToTimelineStep(
-  requestId: string,
-  trace: StepTraceDto,
-  fallbackTime: string,
-): TimelineStep {
+function stepTraceToTimelineStep(requestId: string, trace: StepTraceDto, fallbackTime: string): TimelineStep {
   const startedAt = trace.startedAt ?? fallbackTime;
   const endedAt = trace.endedAt ?? startedAt;
   return stepTraceProjectors[trace.kind]({ requestId, trace, startedAt, endedAt });
 }
 
 const toolTraceTitleByStatus = {
-  done: (trace: StepTraceDto) => `调用 ${trace.toolName ?? "工具"}`,
-  failed: (trace: StepTraceDto) => `调用 ${trace.toolName ?? "工具"} 失败`,
+  done: (trace: StepTraceDto) =>
+    frontendMessage("workflow.projection.toolCall", {
+      toolName: trace.toolName ?? frontendMessage("workflow.projection.defaultTool"),
+    }),
+  failed: (trace: StepTraceDto) =>
+    frontendMessage("workflow.projection.toolCallFailed", {
+      toolName: trace.toolName ?? frontendMessage("workflow.projection.defaultTool"),
+    }),
 } satisfies Record<StepTraceDto["status"], (trace: StepTraceDto) => string>;
 
 const stepTraceProjectors = {
@@ -180,7 +163,7 @@ const stepTraceProjectors = {
   answer: ({ trace, startedAt, endedAt }) => ({
     id: `${trace.step}-answer-${trace.seq}`,
     kind: "answer",
-    title: trace.title ?? "生成回复",
+    title: trace.title ?? frontendMessage("workflow.projection.assistantFinalAnswer"),
     status: trace.status,
     startedAt,
     endedAt,
@@ -189,7 +172,7 @@ const stepTraceProjectors = {
   retry: ({ trace, startedAt, endedAt }) => ({
     id: `retry-${trace.step}-${trace.seq}`,
     kind: "retry",
-    title: "重试",
+    title: frontendMessage("workflow.projection.historyRetry"),
     status: trace.status,
     startedAt,
     endedAt,
@@ -200,7 +183,7 @@ const stepTraceProjectors = {
   decision: ({ trace, startedAt, endedAt }) => ({
     id: `decision-${trace.step}-${trace.seq}`,
     kind: "decision",
-    title: "确定行动",
+    title: frontendMessage("workflow.projection.historyDecision"),
     description: trace.decisionKind ? friendlyDecisionKind(trace.decisionKind) : undefined,
     status: trace.status,
     startedAt,

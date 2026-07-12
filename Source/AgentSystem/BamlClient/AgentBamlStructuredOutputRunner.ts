@@ -1,14 +1,8 @@
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
-import {
-  createAgentStructuredIssue,
-  type AgentStructuredIssue,
-} from "../Diagnostics/AgentStructuredIssue.js";
-import {
-  buildBamlRawOutputDiagnostics,
-  formatBamlRawOutputRepairIssues,
-} from "./AgentBamlRawOutputDiagnostics.js";
+import { createAgentStructuredIssue, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
+import { buildBamlRawOutputDiagnostics, formatBamlRawOutputRepairIssues } from "./AgentBamlRawOutputDiagnostics.js";
 
 export interface AgentBamlModelRequest {
   requestId: string;
@@ -123,19 +117,21 @@ export class AgentBamlStructuredOutputRunner {
         const issues = this.describeIssues(error);
         const structuredIssues = this.describeStructuredIssues(error, issues);
         const diagnostics = this.describeRawOutputDiagnostics(rawOutput, structuredIssues);
-        attempts.push(await this.record({
-          functionName: options.functionName,
-          phase,
-          attempt,
-          requestId: request.requestId,
-          rawOutput,
-          status: "failed",
-          issues,
-          structuredIssues,
-          diagnostics,
-          request,
-          error,
-        }));
+        attempts.push(
+          await this.record({
+            functionName: options.functionName,
+            phase,
+            attempt,
+            requestId: request.requestId,
+            rawOutput,
+            status: "failed",
+            issues,
+            structuredIssues,
+            diagnostics,
+            request,
+            error,
+          }),
+        );
         throw new AgentBamlStructuredOutputError({
           functionName: options.functionName,
           attempts,
@@ -149,16 +145,18 @@ export class AgentBamlStructuredOutputRunner {
 
       try {
         const value = options.parse(rawOutput);
-        attempts.push(await this.record({
-          functionName: options.functionName,
-          phase,
-          attempt,
-          requestId: request.requestId,
-          rawOutput,
-          status: "success",
-          issues: [],
-          request,
-        }));
+        attempts.push(
+          await this.record({
+            functionName: options.functionName,
+            phase,
+            attempt,
+            requestId: request.requestId,
+            rawOutput,
+            status: "success",
+            issues: [],
+            request,
+          }),
+        );
         return {
           value,
           repaired: repairAttempt > 0,
@@ -168,25 +166,23 @@ export class AgentBamlStructuredOutputRunner {
         const issues = this.describeIssues(error);
         const structuredIssues = this.describeStructuredIssues(error, issues);
         const diagnostics = this.describeRawOutputDiagnostics(rawOutput, structuredIssues);
-        attempts.push(await this.record({
-          functionName: options.functionName,
-          phase,
-          attempt,
-          requestId: request.requestId,
-          rawOutput,
-          status: "failed",
-          issues,
-          structuredIssues,
-          diagnostics,
-          request,
-          error,
-        }));
+        attempts.push(
+          await this.record({
+            functionName: options.functionName,
+            phase,
+            attempt,
+            requestId: request.requestId,
+            rawOutput,
+            status: "failed",
+            issues,
+            structuredIssues,
+            diagnostics,
+            request,
+            error,
+          }),
+        );
 
-        if (
-          !options.repair
-          || repairAttempt >= this.options.maxRepairAttempts
-          || !this.isRepairable(error)
-        ) {
+        if (!options.repair || repairAttempt >= this.options.maxRepairAttempts || !this.isRepairable(error)) {
           throw new AgentBamlStructuredOutputError({
             functionName: options.functionName,
             attempts,
@@ -249,9 +245,7 @@ export class AgentBamlStructuredOutputRunner {
     return this.options.describeInvalidOutput?.(error, rawOutput) ?? rawOutput;
   }
 
-  private async record(
-    event: AgentBamlStructuredOutputTraceEvent,
-  ): Promise<AgentBamlStructuredOutputAttempt> {
+  private async record(event: AgentBamlStructuredOutputTraceEvent): Promise<AgentBamlStructuredOutputAttempt> {
     const recorded = await this.options.traceSink?.record(event);
     if (recorded) {
       return {

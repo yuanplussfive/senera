@@ -1,9 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
-import {
-  EventKinds,
-} from "../../../Frontend/src/api/eventTypes.ts";
+import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { ApprovalRequestStrip } from "../../../Frontend/src/features/chat/ApprovalRequestStrip.tsx";
 import {
   formatModelProviderName,
@@ -31,10 +29,7 @@ test("chat model provider helpers select chat-capable models and readable labels
     model("chat-selected", true, false),
   ];
 
-  expect(readChatModelProviders(models).map((item) => item.id)).toEqual([
-    "chat-default",
-    "chat-selected",
-  ]);
+  expect(readChatModelProviders(models).map((item) => item.id)).toEqual(["chat-default", "chat-selected"]);
   expect(readSelectedModelProvider(models, "chat-selected")?.id).toBe("chat-selected");
   expect(readSelectedModelProvider(models, "missing")?.id).toBe("chat-default");
   expect(formatModelProviderName(models[1])).toBe("chat-default-model");
@@ -73,13 +68,12 @@ test("workflow presentation maps run and step state without UI imports from stor
 
 test("approval strip renders pending approvals and hides resolved approvals in SSR", () => {
   const calls = [];
-  const markup = renderToStaticMarkup(React.createElement(ApprovalRequestStrip, {
-    approvals: [
-      approval("approval_pending", "pending"),
-      approval("approval_done", "approved"),
-    ],
-    onResolve: (approvalId, status) => calls.push([approvalId, status]),
-  }));
+  const markup = renderToStaticMarkup(
+    React.createElement(ApprovalRequestStrip, {
+      approvals: [approval("approval_pending", "pending"), approval("approval_done", "approved")],
+      onResolve: (approvalId, status) => calls.push([approvalId, status]),
+    }),
+  );
 
   expect(markup).toMatch(/ShellCommandTool/);
   expect(markup).toMatch(/等待审批/);
@@ -132,27 +126,31 @@ function createRun() {
     endedAt: "2026-07-09T00:00:03.000Z",
     status: "failed",
     input: "查天气",
-    steps: [{
-      id: "tool_a",
-      kind: "tool",
-      title: "WeatherTool",
-      status: "done",
-      startedAt: "2026-07-09T00:00:00.000Z",
-      toolName: "WeatherTool",
-    }, {
-      id: "tool_b",
-      kind: "tool",
-      title: "ShellCommandTool",
-      status: "failed",
-      startedAt: "2026-07-09T00:00:01.000Z",
-      toolName: "ShellCommandTool",
-    }, {
-      id: "answer",
-      kind: "answer",
-      title: "回复",
-      status: "running",
-      startedAt: "2026-07-09T00:00:02.000Z",
-    }],
+    steps: [
+      {
+        id: "tool_a",
+        kind: "tool",
+        title: "WeatherTool",
+        status: "done",
+        startedAt: "2026-07-09T00:00:00.000Z",
+        toolName: "WeatherTool",
+      },
+      {
+        id: "tool_b",
+        kind: "tool",
+        title: "ShellCommandTool",
+        status: "failed",
+        startedAt: "2026-07-09T00:00:01.000Z",
+        toolName: "ShellCommandTool",
+      },
+      {
+        id: "answer",
+        kind: "answer",
+        title: "回复",
+        status: "running",
+        startedAt: "2026-07-09T00:00:02.000Z",
+      },
+    ],
     streamingRaw: "",
     xmlPreview: "",
     visibleText: "",
@@ -172,11 +170,15 @@ function approval(approvalId, status) {
     reason: `${EventKinds.ApprovalRequested}: 工具需要审批`,
     rule: "high-impact",
     riskSignals: ["workspace-write", "shell"],
-    toolName: "ShellCommandTool",
+    approvalKind: "tool_call",
     createdAt: "2026-07-09T00:00:00.000Z",
-    arguments: {
-      command: "pnpm run build",
-      cwd: "E:/senera",
+    subject: {
+      kind: "tool_call",
+      toolName: "ShellCommandTool",
+      arguments: {
+        command: "pnpm run build",
+        cwd: "E:/senera",
+      },
     },
   };
 }

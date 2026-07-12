@@ -1,14 +1,21 @@
 import { cosineSimilarity } from "../Vector/AgentVectorSimilarity.js";
-import type { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
+import type {
+  AgentEmbeddingRequest,
+  AgentEmbeddingResult,
+  AgentRerankRequest,
+  AgentRerankResult,
+} from "../Vector/AgentVectorModelClient.js";
 import type {
   AgentMemoryItemRecord,
   AgentMemoryItemVectorWrite,
   AgentMemorySourceRepository,
 } from "./AgentMemorySourceRepository.js";
-import {
-  memoryItemEmbeddingText,
-  memoryItemRecallText,
-} from "./AgentMemoryText.js";
+import { memoryItemEmbeddingText, memoryItemRecallText } from "./AgentMemoryText.js";
+
+export interface AgentMemoryVectorClient {
+  embed(request: AgentEmbeddingRequest): Promise<AgentEmbeddingResult>;
+  rerank(request: AgentRerankRequest): Promise<AgentRerankResult>;
+}
 
 export interface AgentMemorySimilarityQuery {
   text: string;
@@ -25,7 +32,7 @@ export interface AgentMemorySimilarityResult {
 }
 
 export async function rankSimilarMemoryItems(
-  vectorClient: AgentVectorModelClient,
+  vectorClient: AgentMemoryVectorClient,
   repository: AgentMemorySourceRepository,
   query: AgentMemorySimilarityQuery,
 ): Promise<AgentMemorySimilarityResult[]> {
@@ -33,34 +40,33 @@ export async function rankSimilarMemoryItems(
     return [];
   }
 
-  await ensureMemoryItemVectors(
-    vectorClient,
-    repository,
-    query.items,
-    query.model,
-    query.signal,
-  );
+  await ensureMemoryItemVectors(vectorClient, repository, query.items, query.model, query.signal);
 
-  const vectors = new Map(
-    repository.listMemoryItemVectors(query.model)
-      .map((record) => [record.memoryUri, record]),
-  );
-  const queryEmbedding = (await vectorClient.embed({
-    input: [query.text],
-    signal: query.signal,
-  })).vectors[0];
+  const vectors = new Map(repository.listMemoryItemVectors(query.model).map((record) => [record.memoryUri, record]));
+  const queryEmbedding = (
+    await vectorClient.embed({
+      input: [query.text],
+      signal: query.signal,
+    })
+  ).vectors[0];
   if (!queryEmbedding) {
     return [];
   }
 
   const byUri = new Map(query.items.map((item) => [item.uri, item]));
-  const semanticRanked = query.items.flatMap((item) => {
-    const vector = vectors.get(item.uri);
-    return vector ? [{
-      item,
-      score: cosineSimilarity(queryEmbedding, vector.embedding),
-    }] : [];
-  }).filter((entry) => entry.score >= query.minSimilarity)
+  const semanticRanked = query.items
+    .flatMap((item) => {
+      const vector = vectors.get(item.uri);
+      return vector
+        ? [
+            {
+              item,
+              score: cosineSimilarity(queryEmbedding, vector.embedding),
+            },
+          ]
+        : [];
+    })
+    .filter((entry) => entry.score >= query.minSimilarity)
     .sort((left, right) => right.score - left.score || left.item.uri.localeCompare(right.item.uri))
     .slice(0, query.limit);
 
@@ -80,15 +86,19 @@ export async function rankSimilarMemoryItems(
 
   return reranked.results.flatMap((result) => {
     const item = byUri.get(result.id);
-    return item ? [{
-      item,
-      score: result.score,
-    }] : [];
+    return item
+      ? [
+          {
+            item,
+            score: result.score,
+          },
+        ]
+      : [];
   });
 }
 
 export async function ensureMemoryItemVectors(
-  vectorClient: AgentVectorModelClient,
+  vectorClient: AgentMemoryVectorClient,
   repository: AgentMemorySourceRepository,
   items: readonly AgentMemoryItemRecord[],
   model: string,
@@ -104,8 +114,9 @@ export async function ensureMemoryItemVectors(
     input: missing.map(memoryItemEmbeddingText),
     signal,
   });
-  repository.upsertMemoryItemVectors(missing.flatMap((item, index) =>
-    memoryItemVectorWrite(item, result.model, result.vectors[index])));
+  repository.upsertMemoryItemVectors(
+    missing.flatMap((item, index) => memoryItemVectorWrite(item, result.model, result.vectors[index])),
+  );
 }
 
 function memoryItemVectorWrite(
@@ -113,10 +124,14 @@ function memoryItemVectorWrite(
   model: string,
   embedding: number[] | undefined,
 ): AgentMemoryItemVectorWrite[] {
-  return embedding ? [{
-    memoryUri: item.uri,
-    model,
-    embedding,
-    updatedAt: item.updatedAt,
-  }] : [];
+  return embedding
+    ? [
+        {
+          memoryUri: item.uri,
+          model,
+          embedding,
+          updatedAt: item.updatedAt,
+        },
+      ]
+    : [];
 }

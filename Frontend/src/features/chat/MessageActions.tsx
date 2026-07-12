@@ -1,5 +1,6 @@
 import { Check, Copy, GitBranch, RotateCcw, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { IconButton, useClipboardCopy } from "../../shared/ui";
 
@@ -64,25 +65,30 @@ export function MessageActions({
         switch (intent) {
           case "copy":
             return (
-              <ActionBtn key={intent} label="复制" onClick={onCopy}>
+              <ActionBtn key={intent} label={frontendMessage("chat.action.copy")} onClick={onCopy}>
                 {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
               </ActionBtn>
             );
           case "viewWorkflow":
             return (
-              <ActionBtn key={intent} label="查看工作流" onClick={onViewWorkflow}>
+              <ActionBtn key={intent} label={frontendMessage("chat.action.viewWorkflow")} onClick={onViewWorkflow}>
                 <GitBranch className="h-3.5 w-3.5" />
               </ActionBtn>
             );
           case "regenerate":
             return (
-              <ActionBtn key={intent} label="从此处重新回答" onClick={onRegenerate}>
+              <ActionBtn key={intent} label={frontendMessage("chat.action.regenerateFromHere")} onClick={onRegenerate}>
                 <RotateCcw className="h-3.5 w-3.5" />
               </ActionBtn>
             );
           case "delete":
             return (
-              <ActionBtn key={intent} label="从此处删除" onClick={onDelete} destructive>
+              <ActionBtn
+                key={intent}
+                label={frontendMessage("chat.action.deleteFromHere")}
+                onClick={onDelete}
+                destructive
+              >
                 <Trash2 className="h-3.5 w-3.5" />
               </ActionBtn>
             );

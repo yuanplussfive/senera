@@ -5,6 +5,7 @@ import {
   type TimelineStepStatus,
 } from "../../store/sessionStore";
 import { truncate } from "../../store/session/sessionPresentation";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export type FeedItemKind = "tool" | "trace";
 
@@ -37,35 +38,38 @@ export interface FeedModel {
 
 const TimelineStatusPresentation = {
   running: {
-    label: "进行中",
+    labelKey: "workflow.feed.running",
     dotClass: "bg-umber-500 motion-safe:animate-pulse",
     textClass: "text-umber-600",
   },
   pending: {
-    label: "等待中",
+    labelKey: "workflow.feed.pending",
     dotClass: "bg-ink-300",
     textClass: "text-ink-400",
   },
   failed: {
-    label: "失败",
+    labelKey: "workflow.feed.failed",
     dotClass: "bg-brick-500",
     textClass: "text-brick-500",
   },
   done: {
-    label: "完成",
+    labelKey: "workflow.feed.done",
     dotClass: "bg-moss-500",
     textClass: "text-moss-600",
   },
   neutral: {
-    label: undefined,
+    labelKey: undefined,
     dotClass: "bg-ink-300",
     textClass: "text-ink-400",
   },
-} as const satisfies Record<TimelineStepStatus | "neutral", {
-  label?: string;
-  dotClass: string;
-  textClass: string;
-}>;
+} as const satisfies Record<
+  TimelineStepStatus | "neutral",
+  {
+    labelKey?: Parameters<typeof frontendMessage>[0];
+    dotClass: string;
+    textClass: string;
+  }
+>;
 
 export function deriveFeedModel(run: RunRecord): FeedModel {
   const latestStep = run.steps[run.steps.length - 1];
@@ -88,7 +92,7 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
   if (traceItems.length > 0) {
     groups.push({
       id: "trace",
-      label: "执行轨迹",
+      label: frontendMessage("workflow.feed.trace"),
       variant: "trace",
       items: traceItems,
     });
@@ -107,11 +111,14 @@ function collectRootToolGroups(rootSteps: TimelineStep[]): {
   groups: FeedGroup[];
   batchIds: Set<string>;
 } {
-  const groups = new Map<string, {
-    steps: TimelineStep[];
-    toolSteps: TimelineStep[];
-    firstIndex: number;
-  }>();
+  const groups = new Map<
+    string,
+    {
+      steps: TimelineStep[];
+      toolSteps: TimelineStep[];
+      firstIndex: number;
+    }
+  >();
 
   rootSteps.forEach((step, index) => {
     if (step.kind !== "tool") return;
@@ -134,31 +141,27 @@ function collectRootToolGroups(rootSteps: TimelineStep[]): {
   const entries = [...groups.entries()]
     .filter(([, group]) => group.toolSteps.length > 0)
     .sort((a, b) => a[1].firstIndex - b[1].firstIndex);
-  const feedGroups = entries
-    .map(([batchId, group], index) => {
-      batchIds.add(batchId);
-      const items = group.toolSteps.map((step) => mapToolItem(step));
-      const toolGroup = summarizeToolGroup(group.steps, items);
-      return {
-        id: `tools:${batchId}`,
-        label: toolGroup.label || `工具批次 ${index + 1}`,
-        variant: "tools" as const,
-        meta: toolGroup.meta,
-        items,
-        defaultExpanded: items.some((item) => item.status === "running" || item.status === "failed")
-          || index === entries.length - 1,
-        collapsible: true,
-      };
-    });
+  const feedGroups = entries.map(([batchId, group], index) => {
+    batchIds.add(batchId);
+    const items = group.toolSteps.map((step) => mapToolItem(step));
+    const toolGroup = summarizeToolGroup(group.steps, items);
+    return {
+      id: `tools:${batchId}`,
+      label: toolGroup.label || frontendMessage("workflow.feed.toolBatchFallback", { index: index + 1 }),
+      variant: "tools" as const,
+      meta: toolGroup.meta,
+      items,
+      defaultExpanded:
+        items.some((item) => item.status === "running" || item.status === "failed") || index === entries.length - 1,
+      collapsible: true,
+    };
+  });
 
   return { groups: feedGroups, batchIds };
 }
 
 function isGroupedToolPlan(step: TimelineStep, groupedBatchIds: ReadonlySet<string>): boolean {
-  return step.kind === "tool"
-    && !step.toolName
-    && !!step.toolBatch?.id
-    && groupedBatchIds.has(step.toolBatch.id);
+  return step.kind === "tool" && !step.toolName && !!step.toolBatch?.id && groupedBatchIds.has(step.toolBatch.id);
 }
 
 function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
@@ -191,27 +194,23 @@ function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
 }
 
 function scopedGroupKey(step: TimelineStep): string {
-  return [
-    "delegation",
-    step.scope?.workflowName,
-    step.scope?.role,
-    step.scope?.jobId,
-    step.scope?.agentName,
-  ]
+  return ["delegation", step.scope?.workflowName, step.scope?.role, step.scope?.jobId, step.scope?.agentName]
     .filter((value) => value !== undefined && value !== "")
     .join(":");
 }
 
 function scopedGroupLabel(step: TimelineStep): string {
-  if (step.scope?.role === "merge") return "结果合并";
-  return step.scope?.agentName ? `子代理 · ${step.scope.agentName}` : "子代理";
+  if (step.scope?.role === "merge") return frontendMessage("workflow.scope.merge");
+  return step.scope?.agentName
+    ? frontendMessage("workflow.scope.agentNamed", { name: step.scope.agentName })
+    : frontendMessage("workflow.scope.agent");
 }
 
 function scopedGroupMeta(items: FeedItem[], workflowName?: string): string | undefined {
   const done = items.filter((item) => item.status === "done").length;
   const failed = items.filter((item) => item.status === "failed").length;
   const progress = `${done}/${items.length}`;
-  const failedLabel = TimelineStatusPresentation.failed.label;
+  const failedLabel = statusLabel("failed");
   if (failed > 0) {
     return [workflowName, progress, `${failed} ${failedLabel}`].filter(Boolean).join(" · ");
   }
@@ -243,7 +242,7 @@ function mapHeadlineItem(
       id: activeStep.id,
       kind: "tool",
       status: activeStep.status,
-      title: `调用 ${activeStep.toolName}`,
+      title: frontendMessage("workflow.feed.callTool", { toolName: activeStep.toolName }),
       subtitle: summarizeToolSubtitle(activeStep),
       meta: activeStep.callId ? `call ${activeStep.callId.slice(0, 12)}` : undefined,
     };
@@ -255,8 +254,8 @@ function mapHeadlineItem(
       kind: "trace",
       status: "done",
       title: latestDecision?.decisionKind
-        ? `行动：${friendlyDecisionKind(latestDecision.decisionKind)}`
-        : "行动决策",
+        ? frontendMessage("workflow.feed.action", { kind: friendlyDecisionKind(latestDecision.decisionKind) })
+        : frontendMessage("workflow.feed.actionDecision"),
       subtitle: summarizeDecisionSubtitle(latestDecision),
     };
   }
@@ -266,7 +265,9 @@ function mapHeadlineItem(
       id: activeStep.id,
       kind: "trace",
       status: activeStep.status,
-      title: activeStep.modelName ? `模型 ${activeStep.modelName}` : activeStep.title,
+      title: activeStep.modelName
+        ? frontendMessage("workflow.feed.model", { modelName: activeStep.modelName })
+        : activeStep.title,
       subtitle: summarizeStepSubtitle(activeStep),
     };
   }
@@ -276,7 +277,7 @@ function mapHeadlineItem(
       id: latestDecision?.id ?? "final-answer",
       kind: "trace",
       status: "running",
-      title: "生成回复",
+      title: frontendMessage("workflow.feed.finalAnswer"),
       subtitle: summarizeDecisionSubtitle(latestDecision),
     };
   }
@@ -286,7 +287,7 @@ function mapHeadlineItem(
       id: latestDecision?.id ?? "ask-user",
       kind: "trace",
       status: "running",
-      title: "向用户提问",
+      title: frontendMessage("workflow.feed.askUser"),
       subtitle: summarizeDecisionSubtitle(latestDecision),
     };
   }
@@ -305,7 +306,7 @@ function mapHeadlineItem(
     id: "live",
     kind: "trace",
     status: "running",
-    title: "执行中",
+    title: frontendMessage("workflow.feed.executing"),
   };
 }
 
@@ -320,29 +321,26 @@ function mapToolItem(step: TimelineStep): FeedItem {
   };
 }
 
-function summarizeToolGroup(
-  steps: TimelineStep[],
-  items: FeedItem[],
-): { label: string; meta: string } {
+function summarizeToolGroup(steps: TimelineStep[], items: FeedItem[]): { label: string; meta: string } {
   const done = items.filter((item) => item.status === "done").length;
   const failed = items.filter((item) => item.status === "failed").length;
   const progress = `${done}/${items.length}`;
-  const plan = [...steps]
-    .reverse()
-    .find((step) => step.kind === "tool" && !step.toolName && step.toolBatch?.size);
+  const plan = [...steps].reverse().find((step) => step.kind === "tool" && !step.toolName && step.toolBatch?.size);
   const size = plan?.toolBatch?.size ?? items.length;
   const mode = plan?.toolBatch?.executionMode;
-  const label = mode === "parallel" && size > 1
-    ? `并发工具批次 · ${size} 个工具`
-    : mode === "sequential"
-      ? `${items.length} 个顺序工具调用`
-      : `${items.length} 个工具调用`;
-  const modeLabel = mode === "parallel" && size > 1
-    ? "并发"
-    : mode === "sequential"
-      ? "顺序"
-      : undefined;
-  const failedLabel = failed > 0 ? `${failed} 失败` : undefined;
+  const label =
+    mode === "parallel" && size > 1
+      ? frontendMessage("workflow.feed.parallelToolBatch", { count: size })
+      : mode === "sequential"
+        ? frontendMessage("workflow.feed.sequentialToolCalls", { count: items.length })
+        : frontendMessage("workflow.feed.toolCalls", { count: items.length });
+  const modeLabel =
+    mode === "parallel" && size > 1
+      ? frontendMessage("workflow.feed.parallel")
+      : mode === "sequential"
+        ? frontendMessage("workflow.feed.sequential")
+        : undefined;
+  const failedLabel = failed > 0 ? frontendMessage("workflow.feed.failedCount", { count: failed }) : undefined;
   return {
     label,
     meta: [modeLabel, progress, failedLabel].filter(Boolean).join(" · "),
@@ -402,7 +400,9 @@ function summarizeDecisionSubtitle(step?: TimelineStep): string | undefined {
     const toolCalls = record.tool_calls;
     if (Array.isArray(toolCalls) && toolCalls.length > 0) {
       const toolNames = toolCalls
-        .map((item) => (item && typeof item === "object" ? summarizeUnknown((item as Record<string, unknown>).name) : undefined))
+        .map((item) =>
+          item && typeof item === "object" ? summarizeUnknown((item as Record<string, unknown>).name) : undefined,
+        )
         .filter((value): value is string => !!value);
       if (toolNames.length > 0) {
         return toolNames.join(", ");
@@ -412,43 +412,49 @@ function summarizeDecisionSubtitle(step?: TimelineStep): string | undefined {
   return summarizeStepSubtitle(step);
 }
 
-function derivePendingLabel(
-  run: RunRecord,
-  activeStep?: TimelineStep,
-  latestDecision?: TimelineStep,
-): string {
+function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDecision?: TimelineStep): string {
   if (activeStep?.kind === "tool" && activeStep.toolName) {
     return activeStep.status === "running"
-      ? `正在执行 ${activeStep.toolName}`
-      : `准备执行 ${activeStep.toolName}`;
+      ? frontendMessage("workflow.feed.executingTool", { toolName: activeStep.toolName })
+      : frontendMessage("workflow.feed.preparingTool", { toolName: activeStep.toolName });
   }
 
   if (run.visibleKind === "tool_calls") {
     const tools = summarizeDecisionSubtitle(latestDecision);
-    return tools ? `正在准备工具调用：${tools}` : "正在准备工具调用";
+    return tools
+      ? frontendMessage("workflow.feed.preparingToolsWithNames", { tools })
+      : frontendMessage("workflow.feed.preparingTools");
   }
 
   if (run.visibleKind === "ask_user") {
-    return "正在整理需要确认的问题";
+    return frontendMessage("workflow.feed.preparingQuestion");
   }
 
   if (run.visibleKind === "final_answer") {
-    return "正在生成回复";
+    return frontendMessage("workflow.feed.generatingAnswer");
   }
 
   if (activeStep?.kind === "model") {
-    return activeStep.modelName ? `正在调用 ${activeStep.modelName}` : "正在调用模型";
+    return activeStep.modelName
+      ? frontendMessage("workflow.feed.callingModelNamed", { modelName: activeStep.modelName })
+      : frontendMessage("workflow.feed.callingModel");
   }
 
   if (activeStep?.kind === "pi") {
-    return activeStep.eventType ? `Pi 正在处理：${activeStep.eventType}` : "Pi 正在处理";
+    return activeStep.eventType
+      ? frontendMessage("workflow.feed.piProcessingWithEvent", { eventType: activeStep.eventType })
+      : frontendMessage("workflow.feed.piProcessing");
   }
 
   if (activeStep?.title) {
-    return activeStep.status === "running" ? `正在处理：${activeStep.title}` : activeStep.title;
+    return activeStep.status === "running"
+      ? frontendMessage("workflow.feed.processingStep", { title: activeStep.title })
+      : activeStep.title;
   }
 
-  return run.status === "running" ? "正在执行下一步" : "等待输出";
+  return run.status === "running"
+    ? frontendMessage("workflow.feed.nextStep")
+    : frontendMessage("workflow.feed.waitingOutput");
 }
 
 function summarizeStepSubtitle(step: TimelineStep): string | undefined {
@@ -456,13 +462,17 @@ function summarizeStepSubtitle(step: TimelineStep): string | undefined {
   if (step.errorMessage) return step.errorMessage;
   if (step.retryCode && step.description) return `${step.retryCode} · ${step.description}`;
   if (
-    typeof step.promptChars === "number"
-    || typeof step.promptLines === "number"
-    || typeof step.promptTokenCount === "number"
+    typeof step.promptChars === "number" ||
+    typeof step.promptLines === "number" ||
+    typeof step.promptTokenCount === "number"
   ) {
     return [
-      typeof step.promptChars === "number" ? `${step.promptChars} 字` : null,
-      typeof step.promptLines === "number" ? `${step.promptLines} 行` : null,
+      typeof step.promptChars === "number"
+        ? frontendMessage("workflow.node.charCount", { count: step.promptChars })
+        : null,
+      typeof step.promptLines === "number"
+        ? frontendMessage("workflow.node.lineCount", { count: step.promptLines })
+        : null,
       typeof step.promptTokenCount === "number" ? `${step.promptTokenCount} token` : null,
     ]
       .filter(Boolean)
@@ -496,7 +506,8 @@ function summarizeUnknown(value: unknown): string | undefined {
 }
 
 export function statusLabel(status: TimelineStepStatus | "neutral"): string | undefined {
-  return TimelineStatusPresentation[status].label;
+  const labelKey = TimelineStatusPresentation[status].labelKey;
+  return labelKey ? frontendMessage(labelKey) : undefined;
 }
 
 export function statusDotClass(status: TimelineStepStatus | "neutral", _pulse = false): string {

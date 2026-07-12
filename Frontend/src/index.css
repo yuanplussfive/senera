@@ -6,7 +6,9 @@
 :root {
   color-scheme: light;
   font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
-  font-feature-settings: "tnum" on, "ss01" on;
+  font-feature-settings:
+    "tnum" on,
+    "ss01" on;
   --icon-swap-dur: 200ms;
   --icon-swap-blur: 2px;
   --icon-swap-start-scale: 0.25;
@@ -138,12 +140,7 @@ html[data-motion-level="none"] *::after {
 
 /* ----- 流式骨架 shimmer ----- */
 .shimmer {
-  background: linear-gradient(
-    90deg,
-    rgba(28, 26, 23, 0.04) 25%,
-    rgba(28, 26, 23, 0.10) 50%,
-    rgba(28, 26, 23, 0.04) 75%
-  );
+  background: linear-gradient(90deg, rgba(28, 26, 23, 0.04) 25%, rgba(28, 26, 23, 0.1) 50%, rgba(28, 26, 23, 0.04) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.8s linear infinite;
 }

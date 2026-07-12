@@ -75,10 +75,11 @@ export class AgentPromptContextBuilder {
       ExecutionEnvironment: buildAgentExecutionEnvironmentContext(this.workspaceRoot),
       ToolCards: toolCards,
       ActiveSkills: this.skillContextProjector.projectActiveSkills(
-        options.activeSkills ?? this.skillActivation.activate({
-          input: options.skillQuery,
-          rootCommand,
-        }),
+        options.activeSkills ??
+          this.skillActivation.activate({
+            input: options.skillQuery,
+            rootCommand,
+          }),
       ),
       ToolDiscoveryToolName: this.resolveVisibleToolDiscoveryToolName(loadedTools, promptToolNameSet),
       RootCommand: rootCommand,
@@ -134,13 +135,11 @@ export class AgentPromptContextBuilder {
     loadedTools: readonly RegisteredTool[],
     promptToolNameSet: ReadonlySet<string>,
   ): string | null {
-    const toolDiscoveryToolName = loadedTools.find((tool) =>
-      tool.handler.kind === "HostCapability"
-      && tool.handler.capability === AgentHostCapabilityNames.ToolSearch
+    const toolDiscoveryToolName = loadedTools.find(
+      (tool) =>
+        tool.handler.kind === "HostCapability" && tool.handler.capability === AgentHostCapabilityNames.ToolSearch,
     )?.name;
-    return toolDiscoveryToolName && promptToolNameSet.has(toolDiscoveryToolName)
-      ? toolDiscoveryToolName
-      : null;
+    return toolDiscoveryToolName && promptToolNameSet.has(toolDiscoveryToolName) ? toolDiscoveryToolName : null;
   }
 
   private comparePromptPriority(left: LoadedPlugin, right: LoadedPlugin): number {

@@ -9,13 +9,8 @@ import type {
   SeneraMicrosandboxSdkAdapter,
   SeneraMicrosandboxSession,
 } from "../../../Source/AgentSystem/Execution/SeneraMicrosandboxTypes.js";
-import {
-  SeneraExecutionErrorCodes,
-} from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
-import {
-  createTemporaryDirectory,
-  removeDirectory,
-} from "../Support/AgentTestFixtures.js";
+import { SeneraExecutionErrorCodes } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
+import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -41,10 +36,12 @@ describe("Microsandbox backend behavior", () => {
       sandboxNameFactory: () => "sandbox-test",
     });
 
-    const result = await backend.executeProcess(processRequest(workspaceRoot, {
-      cwd: path.join(workspaceRoot, "Source", "AgentSystem"),
-      env: { DEFINED: "yes", EMPTY: undefined },
-    }));
+    const result = await backend.executeProcess(
+      processRequest(workspaceRoot, {
+        cwd: path.join(workspaceRoot, "Source", "AgentSystem"),
+        env: { DEFINED: "yes", EMPTY: undefined },
+      }),
+    );
 
     expect(result).toEqual({
       stdout: "sandbox output",
@@ -114,13 +111,17 @@ describe("Microsandbox backend behavior", () => {
       sdk: new RecordingMicrosandboxSdk(session),
     });
 
-    await expect(backend.executeProcess(processRequest(workspaceRoot, {
-      limits: {
-        timeoutMs: 5_000,
-        maxStdoutBytes: kind === "stdout" ? 3 : 1_024,
-        maxStderrBytes: kind === "stderr" ? 3 : 1_024,
-      },
-    }))).rejects.toMatchObject({ code });
+    await expect(
+      backend.executeProcess(
+        processRequest(workspaceRoot, {
+          limits: {
+            timeoutMs: 5_000,
+            maxStdoutBytes: kind === "stdout" ? 3 : 1_024,
+            maxStderrBytes: kind === "stderr" ? 3 : 1_024,
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code });
 
     expect(session.killCount).toBe(1);
     expect(session.stopCount).toBe(1);
@@ -167,12 +168,20 @@ describe("Microsandbox backend behavior", () => {
     const sdk = new RecordingMicrosandboxSdk(new ScriptedMicrosandboxSession([]));
     const backend = new SeneraMicrosandboxBackend({ workspaceRoot, sdk });
 
-    await expect(backend.executeProcess(processRequest(workspaceRoot, {
-      profile: { name: "local", kind: "shell", backend: "local" },
-    }))).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.SandboxUnavailable });
-    await expect(backend.executeProcess(processRequest(workspaceRoot, {
-      profile: { name: "plugin", kind: "plugin-process" },
-    }))).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.SandboxUnavailable });
+    await expect(
+      backend.executeProcess(
+        processRequest(workspaceRoot, {
+          profile: { name: "local", kind: "shell", backend: "local" },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.SandboxUnavailable });
+    await expect(
+      backend.executeProcess(
+        processRequest(workspaceRoot, {
+          profile: { name: "plugin", kind: "plugin-process" },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.SandboxUnavailable });
     expect(sdk.createRequests).toEqual([]);
   });
 });
@@ -241,6 +250,7 @@ class BlockingMicrosandboxSession implements SeneraMicrosandboxSession {
   async *exec(): AsyncIterable<SeneraMicrosandboxExecEvent> {
     this.resolveStarted();
     await this.gate;
+    yield* [];
   }
 
   async stop(): Promise<void> {

@@ -71,12 +71,8 @@ export function advanceStreamingDisplayText(
     };
   }
 
-  const remaining = Array.from(segmentGraphemes(
-    normalized.targetText.slice(normalized.displayText.length),
-  ));
-  const nextSegment = remaining
-    .slice(0, readGraphemesPerTick(remaining.length, policy))
-    .join("");
+  const remaining = Array.from(segmentGraphemes(normalized.targetText.slice(normalized.displayText.length)));
+  const nextSegment = remaining.slice(0, readGraphemesPerTick(remaining.length, policy)).join("");
   const displayText = normalized.displayText + nextSegment;
 
   return {
@@ -90,9 +86,7 @@ export function advanceStreamingDisplayText(
 export function alignStreamingDisplayTarget(state: StreamingDisplayState): StreamingDisplayState {
   const normalized = normalizeStreamingDisplayState(state);
   if (!normalized.targetText) {
-    return normalized.displayText
-      ? { ...normalized, displayText: "" }
-      : normalized;
+    return normalized.displayText ? { ...normalized, displayText: "" } : normalized;
   }
   return normalized;
 }
@@ -107,8 +101,7 @@ function normalizeStreamingDisplayState(state: StreamingDisplayState): Streaming
 }
 
 function readGraphemesPerTick(backlog: number, policy: StreamingDisplayPolicy): number {
-  const accelerated = policy.minGraphemesPerTick +
-    Math.floor(backlog / policy.backlogGraphemesPerAcceleration);
+  const accelerated = policy.minGraphemesPerTick + Math.floor(backlog / policy.backlogGraphemesPerAcceleration);
   return Math.min(policy.maxGraphemesPerTick, accelerated);
 }
 

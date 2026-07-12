@@ -14,17 +14,21 @@ import {
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const baseConfig = {
-  ModelProviderEndpoints: [{
-    Id: "test-endpoint",
-    BaseUrl: "https://example.test/v1",
-    ApiKey: "test",
-  }],
-  ModelProviders: [{
-    Id: "test",
-    ProviderId: "test-endpoint",
-    Endpoint: "Responses",
-    Model: "test-model",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "test-endpoint",
+      BaseUrl: "https://example.test/v1",
+      ApiKey: "test",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "test",
+      ProviderId: "test-endpoint",
+      Endpoint: "Responses",
+      Model: "test-model",
+    },
+  ],
 } satisfies AgentSystemConfig;
 
 function parseConfig(config: AgentSystemConfig): AgentSystemConfig {
@@ -72,10 +76,12 @@ const configuredDefaults = parseConfig({
       },
     },
   },
-  ModelProviders: [{
-    ...baseConfig.ModelProviders[0],
-    Temperature: 0.7,
-  }],
+  ModelProviders: [
+    {
+      ...baseConfig.ModelProviders[0],
+      Temperature: 0.7,
+    },
+  ],
   Frontend: {
     PreviewServer: {
       Port: 4174,
@@ -113,62 +119,76 @@ assert.equal(defaulted.TimeoutMs, 480000);
 assert.equal(defaulted.FirstTokenTimeoutMs, 240000);
 assert.equal(defaulted.MaxRequestMs, -1);
 
-const configured = resolveModelProviderConfig(parseConfig({
-  ...baseConfig,
-  ModelProviders: [{
-    ...baseConfig.ModelProviders[0],
-    TimeoutSeconds: 30,
-    FirstTokenTimeoutSeconds: 5,
-    MaxRequestSeconds: 180,
-  }],
-}));
+const configured = resolveModelProviderConfig(
+  parseConfig({
+    ...baseConfig,
+    ModelProviders: [
+      {
+        ...baseConfig.ModelProviders[0],
+        TimeoutSeconds: 30,
+        FirstTokenTimeoutSeconds: 5,
+        MaxRequestSeconds: 180,
+      },
+    ],
+  }),
+);
 assert.equal(configured.TimeoutMs, 30000);
 assert.equal(configured.FirstTokenTimeoutMs, 5000);
 assert.equal(configured.MaxRequestMs, 180000);
 
-const splitPlanner = resolveActionPlannerConfig(parseConfig({
-  ...baseConfig,
-  ModelProviders: [
-    {
-      Id: "gpt-planner",
-      ProviderId: "test-endpoint",
-      Endpoint: "Responses",
-      Model: "gpt-planner-model",
+const splitPlanner = resolveActionPlannerConfig(
+  parseConfig({
+    ...baseConfig,
+    ModelProviders: [
+      {
+        Id: "gpt-planner",
+        ProviderId: "test-endpoint",
+        Endpoint: "Responses",
+        Model: "gpt-planner-model",
+      },
+      {
+        Id: "mistral-large-latest",
+        ProviderId: "test-endpoint",
+        Endpoint: "ChatCompletions",
+        Model: "mistral-large-latest",
+      },
+    ],
+    ActionPlanner: {
+      PlanningClient: {
+        ModelProviderId: "gpt-planner",
+        Provider: "openai-responses",
+        Temperature: 0.1,
+        MaxTokens: 4096,
+      },
     },
-    {
-      Id: "mistral-large-latest",
-      ProviderId: "test-endpoint",
-      Endpoint: "ChatCompletions",
-      Model: "mistral-large-latest",
-    },
-  ],
-  ActionPlanner: {
-    PlanningClient: {
-      ModelProviderId: "gpt-planner",
-      Provider: "openai-responses",
-      Temperature: 0.1,
-      MaxTokens: 4096,
-    },
-  },
-}));
+  }),
+);
 assert.equal(splitPlanner.PlanningClient.Provider, "openai-responses");
 assert.equal(splitPlanner.PlanningClient.Model, "gpt-planner-model");
 assert.equal(splitPlanner.PlanningClient.MaxTokens, 4096);
 
-assert.throws(() => parseConfig({
-  ...baseConfig,
-  ModelProviders: [{
-    ...baseConfig.ModelProviders[0],
-    FirstTokenTimeoutSeconds: 0,
-  }],
-}));
+assert.throws(() =>
+  parseConfig({
+    ...baseConfig,
+    ModelProviders: [
+      {
+        ...baseConfig.ModelProviders[0],
+        FirstTokenTimeoutSeconds: 0,
+      },
+    ],
+  }),
+);
 
-assert.throws(() => parseConfig({
-  ...baseConfig,
-  ModelProviders: [{
-    ...baseConfig.ModelProviders[0],
-    MaxRequestSeconds: 0,
-  }],
-}));
+assert.throws(() =>
+  parseConfig({
+    ...baseConfig,
+    ModelProviders: [
+      {
+        ...baseConfig.ModelProviders[0],
+        MaxRequestSeconds: 0,
+      },
+    ],
+  }),
+);
 
 console.log("Model timeout config verification passed.");

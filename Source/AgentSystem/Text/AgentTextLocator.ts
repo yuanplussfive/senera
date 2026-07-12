@@ -40,30 +40,17 @@ export class AgentTextLocator {
 
   createOffsetMap(source: string): AgentSourceOffsetMap {
     return {
-      lineStarts: [
-        0,
-        ...Array.from(
-          source.matchAll(/\r\n|\r|\n/gu),
-          (entry) => (entry.index ?? 0) + entry[0].length,
-        ),
-      ],
+      lineStarts: [0, ...Array.from(source.matchAll(/\r\n|\r|\n/gu), (entry) => (entry.index ?? 0) + entry[0].length)],
     };
   }
 
-  offsetFromLineColumn(
-    source: string,
-    line: number,
-    column: number,
-  ): number {
+  offsetFromLineColumn(source: string, line: number, column: number): number {
     const map = this.createOffsetMap(source);
     const lineStart = map.lineStarts[Math.max(0, line - 1)] ?? source.length;
     return Math.min(source.length, lineStart + Math.max(0, column - 1));
   }
 
-  positionFromOffset(
-    source: string,
-    offset: number,
-  ): { line: number; column: number; position: number } {
+  positionFromOffset(source: string, offset: number): { line: number; column: number; position: number } {
     const boundedOffset = Math.max(0, Math.min(offset, source.length));
     const entry = this.createOffsetMap(source).lineStarts.reduce(
       (state, lineStart, index) =>

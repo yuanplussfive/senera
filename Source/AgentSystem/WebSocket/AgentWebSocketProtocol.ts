@@ -170,6 +170,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       approvalId: z.string().min(1),
       status: z.enum(["approved", "denied"]),
       message: z.string().optional(),
+      scope: z.enum(["once", "session"]).optional(),
     })
     .strict(),
   z
@@ -180,7 +181,9 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
 ]);
 
 export type AgentWebSocketRequest = z.infer<typeof AgentWebSocketRequestSchema>;
-export type AgentWebSocketRequestOf<TType extends AgentWebSocketRequest["type"]> =
-  Extract<AgentWebSocketRequest, { type: TType }>;
+export type AgentWebSocketRequestOf<TType extends AgentWebSocketRequest["type"]> = Extract<
+  AgentWebSocketRequest,
+  { type: TType }
+>;
 
 export { createRequestId };

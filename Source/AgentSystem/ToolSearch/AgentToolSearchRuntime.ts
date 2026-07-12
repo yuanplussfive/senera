@@ -11,13 +11,8 @@ import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { AgentToolSearchIndex, type AgentToolSearchResult } from "./AgentToolSearchIndex.js";
-import {
-  AgentToolSearchMemory,
-  type AgentToolUsePattern,
-} from "./AgentToolSearchMemory.js";
-import type {
-  LoadedToolsState,
-} from "./AgentToolSearchRuntimeTypes.js";
+import { AgentToolSearchMemory, type AgentToolUsePattern } from "./AgentToolSearchMemory.js";
+import type { LoadedToolsState } from "./AgentToolSearchRuntimeTypes.js";
 import {
   ToolSearchArgumentsSchema,
   invalidToolSearchArgumentsResult,
@@ -52,13 +47,7 @@ export class AgentToolSearchRuntime {
   ) {
     this.memory = new AgentToolSearchMemory(config, workspaceRoot);
     this.projectId = createProjectId(workspaceRoot);
-    this.learningRuntime = new AgentToolLearningRuntime(
-      registry,
-      model,
-      learningConfig,
-      this.memory,
-      logger,
-    );
+    this.learningRuntime = new AgentToolLearningRuntime(registry, model, learningConfig, this.memory, logger);
     this.usageMemory = new AgentToolSearchUsageMemory(
       this.memory,
       this.projectId,
@@ -106,9 +95,10 @@ export class AgentToolSearchRuntime {
     }
 
     const bootstrap = this.bootstrapToolNames();
-    const current = options.currentLoadedTools === "all"
-      ? this.registry.listTools().map((tool) => tool.name)
-      : options.currentLoadedTools ?? [];
+    const current =
+      options.currentLoadedTools === "all"
+        ? this.registry.listTools().map((tool) => tool.name)
+        : (options.currentLoadedTools ?? []);
     const preferred = this.existingToolNames(options.preferredTools ?? []);
     const discovered = buildPlannedToolSearchQueries(options, (text) => this.tokenize(text)).flatMap((query) =>
       this.search({
@@ -116,14 +106,10 @@ export class AgentToolSearchRuntime {
         plannerTags: query.facets,
         includeLoaded: false,
         loadedToolNames: [...bootstrap, ...preferred],
-      }).map((result) => result.toolName));
+      }).map((result) => result.toolName),
+    );
 
-    return this.capVisibleTools([
-      ...bootstrap,
-      ...current,
-      ...preferred,
-      ...discovered,
-    ]);
+    return this.capVisibleTools([...bootstrap, ...current, ...preferred, ...discovered]);
   }
 
   rememberAutoSearch(requestId: string, query: string, loadedToolNames: LoadedToolsState): void {
@@ -131,8 +117,7 @@ export class AgentToolSearchRuntime {
       return;
     }
 
-    const candidates = loadedToolNames
-      .filter((name) => !this.systemToolNames().includes(name));
+    const candidates = loadedToolNames.filter((name) => !this.systemToolNames().includes(name));
     if (candidates.length === 0) {
       return;
     }
@@ -153,11 +138,7 @@ export class AgentToolSearchRuntime {
     execution: { value: ExecutedToolCallResult[] };
     turnUnderstanding?: TurnUnderstanding;
   }): LoadedToolsState {
-    this.usageMemory.recordToolUsage(
-      options.requestId,
-      options.execution.value,
-      options.turnUnderstanding,
-    );
+    this.usageMemory.recordToolUsage(options.requestId, options.execution.value, options.turnUnderstanding);
     if (!options.dynamicTools || options.loadedTools === "all") {
       return options.loadedTools;
     }
@@ -187,10 +168,7 @@ export class AgentToolSearchRuntime {
     return this.searchIndex().tokenize(text);
   }
 
-  toolUsePatterns(options: {
-    input: string;
-    allowedTools: readonly string[];
-  }): AgentToolUsePattern[] {
+  toolUsePatterns(options: { input: string; allowedTools: readonly string[] }): AgentToolUsePattern[] {
     if (!this.learningConfig.Enabled) {
       return [];
     }
@@ -234,10 +212,7 @@ export class AgentToolSearchRuntime {
     return okToolSearchResult(result);
   }
 
-  private buildToolSearchResult(
-    args: ToolSearchArguments,
-    loadedToolNames: readonly string[],
-  ) {
+  private buildToolSearchResult(args: ToolSearchArguments, loadedToolNames: readonly string[]) {
     const results = this.search({
       query: args.query,
       includeLoaded: args.includeLoaded ?? false,
@@ -254,18 +229,11 @@ export class AgentToolSearchRuntime {
   private capVisibleTools(toolNames: readonly string[]): string[] {
     const unique = [...new Set(toolNames)].filter((name) => Boolean(this.registry.getTool(name)));
     const required = this.bootstrapToolNames();
-    return [
-      ...required,
-      ...unique.filter((name) => !required.includes(name)),
-    ];
+    return [...required, ...unique.filter((name) => !required.includes(name))];
   }
 
   private bootstrapToolNames(): string[] {
-    return [
-      ...new Set([
-        ...this.systemToolNames(),
-      ]),
-    ];
+    return [...new Set([...this.systemToolNames()])];
   }
 
   private systemToolNames(): string[] {

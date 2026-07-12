@@ -23,17 +23,21 @@ const config: AgentSystemConfig = {
     Port: 8787,
   },
   DefaultModelProviderId: "verification-model",
-  ModelProviderEndpoints: [{
-    Id: "verification-provider",
-    BaseUrl: "https://example.invalid/v1",
-    ApiKey: "verification-key",
-  }],
-  ModelProviders: [{
-    Id: "verification-model",
-    ProviderId: "verification-provider",
-    Endpoint: "ChatCompletions",
-    Model: "verification-model",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "verification-provider",
+      BaseUrl: "https://example.invalid/v1",
+      ApiKey: "verification-key",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "verification-model",
+      ProviderId: "verification-provider",
+      Endpoint: "ChatCompletions",
+      Model: "verification-model",
+    },
+  ],
 };
 
 const modelProvider: ResolvedAgentModelProviderConfig = {
@@ -115,27 +119,21 @@ assert.equal(first.piSessionId, sessionId);
 assert.equal(second.piSessionId, sessionId);
 assert.equal(first.historyMigrationRequired, true);
 assert.deepEqual(
-  tracePayloads(events, "core.agent.create.completed")
-    .map((payload) => payload.harnessStorage),
+  tracePayloads(events, "core.agent.create.completed").map((payload) => payload.harnessStorage),
   ["created", "existing"],
 );
 assert.deepEqual(
-  tracePayloads(events, "core.agent.create.completed")
-    .map((payload) => payload.piSessionStorage),
+  tracePayloads(events, "core.agent.create.completed").map((payload) => payload.piSessionStorage),
   ["created", "existing"],
 );
 assert.deepEqual(
-  tracePayloads(events, "core.agent.create.completed")
-    .map((payload) => payload.piSessionId),
+  tracePayloads(events, "core.agent.create.completed").map((payload) => payload.piSessionId),
   [sessionId, sessionId],
 );
 
 console.log("Pi harness session reuse verification passed.");
 
-function tracePayloads(
-  events: readonly AgentDomainEvent[],
-  eventType: string,
-): Record<string, unknown>[] {
+function tracePayloads(events: readonly AgentDomainEvent[], eventType: string): Record<string, unknown>[] {
   return events.flatMap((event) => {
     const data = readRecord(event.data);
     if (event.kind !== "pi.trace" || data.eventType !== eventType) {
@@ -146,9 +144,7 @@ function tracePayloads(
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function registerPlugin(registry: AgentPluginRegistry, relativeRootPath: string): void {

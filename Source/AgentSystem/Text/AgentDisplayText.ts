@@ -6,10 +6,7 @@ export interface AgentDisplayLineOptions {
 const CollapsedWhitespacePattern = /\s+/gu;
 const DefaultEllipsis = "...";
 
-export function projectDisplayLine(
-  value: string,
-  options: AgentDisplayLineOptions = {},
-): string {
+export function projectDisplayLine(value: string, options: AgentDisplayLineOptions = {}): string {
   return clampDisplayLine(collapseDisplayWhitespace(value), options);
 }
 
@@ -17,10 +14,7 @@ export function collapseDisplayWhitespace(value: string): string {
   return value.replace(CollapsedWhitespacePattern, " ").trim();
 }
 
-function clampDisplayLine(
-  value: string,
-  options: AgentDisplayLineOptions,
-): string {
+function clampDisplayLine(value: string, options: AgentDisplayLineOptions): string {
   const maxChars = options.maxChars;
   if (maxChars === undefined || maxChars <= 0) {
     return value;

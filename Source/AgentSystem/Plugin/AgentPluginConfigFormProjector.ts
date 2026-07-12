@@ -51,7 +51,7 @@ export function projectStrictPathDiagnostics(
       (section.fields ?? []).map((field) => ({
         path: field.path,
         recursive: false,
-      }))
+      })),
     ),
     ...(schema.form.allowedPaths ?? []),
     {
@@ -63,10 +63,9 @@ export function projectStrictPathDiagnostics(
       recursive: true,
     },
   ];
-  const unknownPaths = collectTomlLeafPaths(parsed)
-    .filter((leafPath) => !allowedPaths.some((allowedPath) =>
-      pathMatchesAllowedPath(leafPath, allowedPath)
-    ));
+  const unknownPaths = collectTomlLeafPaths(parsed).filter(
+    (leafPath) => !allowedPaths.some((allowedPath) => pathMatchesAllowedPath(leafPath, allowedPath)),
+  );
 
   return unknownPaths.map((unknownPath) => ({
     severity: "error" as const,
@@ -74,11 +73,8 @@ export function projectStrictPathDiagnostics(
   }));
 }
 
-export function validatePluginConfigSections(
-  sections: readonly LoadedPluginConfigSection[],
-): string[] {
-  return sections.flatMap((section) =>
-    section.fields.flatMap((field) => validatePluginConfigField(field)));
+export function validatePluginConfigSections(sections: readonly LoadedPluginConfigSection[]): string[] {
+  return sections.flatMap((section) => section.fields.flatMap((field) => validatePluginConfigField(field)));
 }
 
 function projectSchemaField(
@@ -144,22 +140,15 @@ function validatePluginConfigField(field: LoadedPluginConfigField): string[] {
   return errors;
 }
 
-function validateArrayConfigField(
-  field: LoadedPluginConfigField,
-  label: string,
-): string[] {
+function validateArrayConfigField(field: LoadedPluginConfigField, label: string): string[] {
   if (!Array.isArray(field.value)) {
     return [agentErrorMessage("plugin.configFieldMustBeArray", { label })];
   }
 
-  return field.value.flatMap((item, index) =>
-    validateArrayConfigItem(field, item, index, label));
+  return field.value.flatMap((item, index) => validateArrayConfigItem(field, item, index, label));
 }
 
-function validateOptionConfigField(
-  field: LoadedPluginConfigField,
-  label: string,
-): string[] {
+function validateOptionConfigField(field: LoadedPluginConfigField, label: string): string[] {
   if (!field.options || field.options.length === 0) {
     return [];
   }
@@ -175,11 +164,7 @@ function validateOptionConfigField(
   });
 }
 
-function validateNumberConfigField(
-  field: LoadedPluginConfigField,
-  value: number,
-  label: string,
-): string[] {
+function validateNumberConfigField(field: LoadedPluginConfigField, value: number, label: string): string[] {
   return [
     typeof field.min === "number" && value < field.min
       ? agentErrorMessage("plugin.configFieldMin", { label, min: field.min })
@@ -217,9 +202,6 @@ function validateArrayConfigItem(
   return [];
 }
 
-function sameConfigOptionValue(
-  left: unknown,
-  right: string | number | boolean,
-): boolean {
+function sameConfigOptionValue(left: unknown, right: string | number | boolean): boolean {
   return String(left) === String(right);
 }

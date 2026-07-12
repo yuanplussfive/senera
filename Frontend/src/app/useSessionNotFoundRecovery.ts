@@ -1,11 +1,7 @@
 import { useCallback, type MutableRefObject } from "react";
 import { toast } from "sonner";
-import {
-  EventKinds,
-  type EventEnvelope,
-  type SessionNotFoundData,
-  type WsRequest,
-} from "../api/eventTypes";
+import { EventKinds, type EventEnvelope, type SessionNotFoundData, type WsRequest } from "../api/eventTypes";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import type { StoreState } from "../store/sessionStore";
 import type { LastSentMessage } from "./useChatCommands";
 
@@ -61,8 +57,8 @@ export function resolveSessionNotFoundRecovery(
       sessionId,
       toast: {
         variant: "warning",
-        title: "该本地会话在后端不存在",
-        description: "已切换到仍存在历史的会话。旧的本地占位不会再被自动恢复成空会话。",
+        title: frontendMessage("session.missingBackendTitle"),
+        description: frontendMessage("session.missingBackendDescription"),
       },
     };
   }
@@ -74,23 +70,24 @@ export function resolveSessionNotFoundRecovery(
       listRequest: { type: "session.list" },
       toast: {
         variant: "info",
-        title: "会话已从本地列表移除",
-        description: "后端已不存在该会话。",
+        title: frontendMessage("session.localRemovedTitle"),
+        description: frontendMessage("session.localRemovedDescription"),
       },
     };
   }
 
-  const replayRequest = lastSentMessage && lastSentMessage.sessionId === sessionId
-    ? {
-        type: "session.message" as const,
-        sessionId,
-        requestId: lastSentMessage.requestId,
-        input: lastSentMessage.input,
-        attachments: lastSentMessage.attachments,
-        modelProviderId: lastSentMessage.modelProviderId,
-        queueMode: lastSentMessage.queueMode,
-      }
-    : undefined;
+  const replayRequest =
+    lastSentMessage && lastSentMessage.sessionId === sessionId
+      ? {
+          type: "session.message" as const,
+          sessionId,
+          requestId: lastSentMessage.requestId,
+          input: lastSentMessage.input,
+          attachments: lastSentMessage.attachments,
+          modelProviderId: lastSentMessage.modelProviderId,
+          queueMode: lastSentMessage.queueMode,
+        }
+      : undefined;
 
   return {
     kind: "message_recreate",
@@ -104,8 +101,8 @@ export function resolveSessionNotFoundRecovery(
     toast: replayRequest
       ? {
           variant: "info",
-          title: "已自动恢复会话",
-          description: "后端不再保留先前上下文，但消息记录在前端完整保留。",
+          title: frontendMessage("session.recreatedTitle"),
+          description: frontendMessage("session.recreatedDescription"),
         }
       : undefined,
   };
@@ -117,37 +114,40 @@ export function useSessionNotFoundRecovery({
   sendRef,
   serverKnownSessionIdsRef,
 }: UseSessionNotFoundRecoveryOptions): SessionNotFoundRecoveryHandle {
-  const handleSessionNotFound = useCallback((env: EventEnvelope): boolean => {
-    const send = sendRef.current;
-    if (!send) return false;
+  const handleSessionNotFound = useCallback(
+    (env: EventEnvelope): boolean => {
+      const send = sendRef.current;
+      if (!send) return false;
 
-    const plan = resolveSessionNotFoundRecovery(env, lastSendRef.current);
-    if (!plan) return false;
+      const plan = resolveSessionNotFoundRecovery(env, lastSendRef.current);
+      if (!plan) return false;
 
-    serverKnownSessionIdsRef.current.delete(plan.sessionId);
+      serverKnownSessionIdsRef.current.delete(plan.sessionId);
 
-    if (plan.kind === "history_missing") {
-      ingest(env);
-      showSessionNotFoundRecoveryToast(plan.toast);
+      if (plan.kind === "history_missing") {
+        ingest(env);
+        showSessionNotFoundRecoveryToast(plan.toast);
+        return true;
+      }
+
+      if (plan.kind === "close_missing") {
+        send(plan.listRequest);
+        showSessionNotFoundRecoveryToast(plan.toast);
+        return true;
+      }
+
+      send(plan.createRequest);
+      serverKnownSessionIdsRef.current.add(plan.sessionId);
+      if (plan.replayRequest) {
+        send(plan.replayRequest);
+      }
+      if (plan.toast) {
+        showSessionNotFoundRecoveryToast(plan.toast);
+      }
       return true;
-    }
-
-    if (plan.kind === "close_missing") {
-      send(plan.listRequest);
-      showSessionNotFoundRecoveryToast(plan.toast);
-      return true;
-    }
-
-    send(plan.createRequest);
-    serverKnownSessionIdsRef.current.add(plan.sessionId);
-    if (plan.replayRequest) {
-      send(plan.replayRequest);
-    }
-    if (plan.toast) {
-      showSessionNotFoundRecoveryToast(plan.toast);
-    }
-    return true;
-  }, [ingest, lastSendRef, sendRef, serverKnownSessionIdsRef]);
+    },
+    [ingest, lastSendRef, sendRef, serverKnownSessionIdsRef],
+  );
 
   return { handleSessionNotFound };
 }

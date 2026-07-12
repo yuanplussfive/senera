@@ -55,6 +55,7 @@ export const EventKinds = {
   AssistantMessageCreated: "assistant.message.created",
   ApprovalRequested: "approval.requested",
   ApprovalResolved: "approval.resolved",
+  ExecutionFallbackStarted: "execution.fallback.started",
   SandboxStatusSnapshot: "sandbox.status.snapshot",
   RunCompleted: "run.completed",
   RunFailed: "run.failed",

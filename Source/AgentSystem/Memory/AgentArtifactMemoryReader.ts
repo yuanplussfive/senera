@@ -6,18 +6,15 @@ import {
   parseAgentArtifactUri,
 } from "../Artifacts/AgentArtifactLocator.js";
 import {
-  ArtifactManifestRecord,
-  ArtifactMemoryContentItem,
-  ArtifactMemoryReadArguments,
-  ArtifactMemoryReadResultItem,
-  ReadableArtifactRef,
+  type ArtifactManifestRecord,
+  type ArtifactMemoryContentItem,
+  type ArtifactMemoryReadArguments,
+  type ArtifactMemoryReadResultItem,
+  type ReadableArtifactRef,
   ReadableArtifactRefDefinitions,
   ReadableArtifactRefs,
 } from "./AgentArtifactMemoryTypes.js";
-import {
-  decodeArtifactMemoryContent,
-  truncateUtf8,
-} from "./AgentArtifactMemoryProjection.js";
+import { decodeArtifactMemoryContent, truncateUtf8 } from "./AgentArtifactMemoryProjection.js";
 
 export async function readArtifactMemories(
   args: ArtifactMemoryReadArguments,
@@ -29,14 +26,16 @@ export async function readArtifactMemories(
   },
 ) {
   const refs = args.refs ?? ["projection"];
-  const artifacts = await Promise.all(args.artifactUris.map((uri) =>
-    readArtifactMemory(uri, refs, manifests, options)));
+  const artifacts = await Promise.all(
+    args.artifactUris.map((uri) => readArtifactMemory(uri, refs, manifests, options)),
+  );
 
   return {
     artifacts: {
       item: artifacts,
     },
-    guidance: "Use returned memories as evidence for the current turn. Request evidence when structured records are needed.",
+    guidance:
+      "Use returned memories as evidence for the current turn. Request evidence when structured records are needed.",
   };
 }
 
@@ -72,8 +71,7 @@ async function readArtifactMemory(
   }
 
   const availableRefs = await listAvailableRefs(manifest, options);
-  const memories = await Promise.all(refs.map((ref) =>
-    readArtifactRef(ref, manifest, options)));
+  const memories = await Promise.all(refs.map((ref) => readArtifactRef(ref, manifest, options)));
   return {
     artifactUri,
     artifactId,
@@ -84,7 +82,7 @@ async function readArtifactMemory(
     },
     availableRefCount: availableRefs.length,
     memories: {
-      item: memories.flatMap((entry) => entry ? [entry] : []),
+      item: memories.flatMap((entry) => (entry ? [entry] : [])),
     },
     memoryCount: memories.filter(Boolean).length,
   };
@@ -115,22 +113,24 @@ async function listAvailableRefs(
     artifactRoot: string;
   },
 ): Promise<Array<{ ref: ReadableArtifactRef; byteLength: number }>> {
-  const entries = await Promise.all(ReadableArtifactRefs.map(async (ref) => {
-    const filePath = readArtifactFilePath(manifest, ref, options.artifactRoot);
-    if (!filePath) {
-      return undefined;
-    }
+  const entries = await Promise.all(
+    ReadableArtifactRefs.map(async (ref) => {
+      const filePath = readArtifactFilePath(manifest, ref, options.artifactRoot);
+      if (!filePath) {
+        return undefined;
+      }
 
-    try {
-      const stat = await fs.stat(filePath);
-      return {
-        ref,
-        byteLength: stat.size,
-      };
-    } catch {
-      return undefined;
-    }
-  }));
+      try {
+        const stat = await fs.stat(filePath);
+        return {
+          ref,
+          byteLength: stat.size,
+        };
+      } catch {
+        return undefined;
+      }
+    }),
+  );
   return entries.filter((entry): entry is { ref: ReadableArtifactRef; byteLength: number } => Boolean(entry));
 }
 
@@ -178,4 +178,3 @@ function readArtifactFilePath(
     ? assertInsideRoot(artifactRoot, path.resolve(filePath), `artifact 文件超出 artifact 根目录：${ref}`)
     : undefined;
 }
-

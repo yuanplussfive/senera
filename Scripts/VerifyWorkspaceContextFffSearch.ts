@@ -16,9 +16,7 @@ try {
 }
 
 async function verifyWorkspaceMcpTools(): Promise<void> {
-  const workspaceTools = runtime.registry
-    .listTools()
-    .filter((tool) => tool.name.startsWith("Workspace"));
+  const workspaceTools = runtime.registry.listTools().filter((tool) => tool.name.startsWith("Workspace"));
 
   assert.deepEqual(
     workspaceTools.map((tool) => [tool.name, tool.handler.kind]),
@@ -36,49 +34,72 @@ async function verifyWorkspaceMcpTools(): Promise<void> {
     ],
   );
 
-  assertToolText(await executeWorkspaceTool("WorkspaceReadFile", {
-    path: `${workspaceRoot}/package.json`,
-    head: 3,
-  }), "\"name\": \"senera\"");
+  assertToolText(
+    await executeWorkspaceTool("WorkspaceReadFile", {
+      path: `${workspaceRoot}/package.json`,
+      head: 3,
+    }),
+    '"name": "senera"',
+  );
 
-  assertToolText(await executeWorkspaceTool("WorkspaceListDirectory", {
-    path: workspaceRoot,
-  }), "package.json");
+  assertToolText(
+    await executeWorkspaceTool("WorkspaceListDirectory", {
+      path: workspaceRoot,
+    }),
+    "package.json",
+  );
 
-  assertToolText(await executeWorkspaceTool("WorkspaceSearchFiles", {
-    path: workspaceRoot,
-    pattern: "**/*AgentToolRunner*",
-    excludePatterns: ["node_modules"],
-  }), "AgentToolRunner");
+  assertToolText(
+    await executeWorkspaceTool("WorkspaceSearchFiles", {
+      path: workspaceRoot,
+      pattern: "**/*AgentToolRunner*",
+      excludePatterns: ["node_modules"],
+    }),
+    "AgentToolRunner",
+  );
 
-  assertToolText(await executeWorkspaceTool("WorkspaceGrep", {
-    path: workspaceRoot,
-    pattern: "AgentToolRunner",
-    maxResults: 3,
-  }), "AgentToolRunner");
+  assertToolText(
+    await executeWorkspaceTool("WorkspaceGrep", {
+      path: workspaceRoot,
+      pattern: "AgentToolRunner",
+      maxResults: 3,
+    }),
+    "AgentToolRunner",
+  );
 
-  assertToolText(await executeWorkspaceTool("WorkspaceListFiles", {
-    path: workspaceRoot,
-    filePattern: "*.json",
-  }), "package.json");
+  assertToolText(
+    await executeWorkspaceTool("WorkspaceListFiles", {
+      path: workspaceRoot,
+      filePattern: "*.json",
+    }),
+    "package.json",
+  );
 
-  assertToolText(await executeWorkspaceTool("WorkspaceEditFile", {
-    path: `${workspaceRoot}/package.json`,
-    edits: [{
-      oldText: "\"name\": \"senera\"",
-      newText: "\"name\": \"senera\"",
-    }],
-    dryRun: true,
-  }), "package.json");
+  assertToolText(
+    await executeWorkspaceTool("WorkspaceEditFile", {
+      path: `${workspaceRoot}/package.json`,
+      edits: [
+        {
+          oldText: '"name": "senera"',
+          newText: '"name": "senera"',
+        },
+      ],
+      dryRun: true,
+    }),
+    "package.json",
+  );
 }
 
 async function executeWorkspaceTool(name: string, args: Record<string, unknown>): Promise<string> {
-  const result = await runtime.toolCallExecutor.execute({
-    name,
-    arguments: args,
-  }, {
-    loadedToolNames: "all",
-  });
+  const result = await runtime.toolCallExecutor.execute(
+    {
+      name,
+      arguments: args,
+    },
+    {
+      loadedToolNames: "all",
+    },
+  );
 
   assert.equal(result.kind, "ToolResults");
   const [toolResult] = result.value;
@@ -101,7 +122,5 @@ function assertToolText(actual: string, expectedFragment: string): void {
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }

@@ -1,8 +1,4 @@
-import {
-  InteractionRunMode,
-  type ActionPlanInput,
-  type InteractionRoute,
-} from "../BamlClient/baml_client/types.js";
+import { InteractionRunMode, type ActionPlanInput, type InteractionRoute } from "../BamlClient/baml_client/types.js";
 import { normalizeBamlOptionalFields } from "../BamlClient/AgentBamlOutputNormalizer.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 
@@ -11,8 +7,7 @@ export const AgentInteractionRunModes = {
   ToolAgentLoop: "tool_agent_loop",
 } as const;
 
-export type AgentInteractionRunMode =
-  typeof AgentInteractionRunModes[keyof typeof AgentInteractionRunModes];
+export type AgentInteractionRunMode = (typeof AgentInteractionRunModes)[keyof typeof AgentInteractionRunModes];
 
 export interface AgentInteractionRouteResult {
   mode: AgentInteractionRunMode;
@@ -35,10 +30,7 @@ export class AgentInteractionRouter {
     ) => Promise<InteractionRoute>,
   ) {}
 
-  async route(
-    input: ActionPlanInput,
-    options: { signal?: AbortSignal } = {},
-  ): Promise<AgentInteractionRouteResult> {
+  async route(input: ActionPlanInput, options: { signal?: AbortSignal } = {}): Promise<AgentInteractionRouteResult> {
     throwIfAborted(options.signal);
     const route = await this.routeInteraction(input, options);
     throwIfAborted(options.signal);

@@ -4,15 +4,9 @@ import type { AskUserControlResult } from "../ToolRuntime/AgentToolCallExecution
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { renderOpenAiToolObservationContent } from "../ToolRuntime/AgentToolObservationRenderer.js";
-import {
-  readRecord,
-  stringifyPreview,
-} from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
+import { readRecord, stringifyPreview } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
 import { readPiProxyToolCallBatchId } from "../PiProxy/AgentPiProxyRuntimeContext.js";
-import type {
-  AgentPiToolExecutionInput,
-  AgentPiToolResult,
-} from "./AgentPiTypes.js";
+import type { AgentPiToolExecutionInput, AgentPiToolResult } from "./AgentPiTypes.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
   executeToolCall: AgentToolCallExecutor["execute"];
@@ -36,10 +30,7 @@ export class AgentPiToolExecutionBridge {
   async execute(input: AgentPiToolExecutionInput): Promise<AgentPiToolResult> {
     const requestId = input.context.requestId ?? createRequestId();
     const step = input.context.step ?? 1;
-    const batchId = readPiProxyToolCallBatchId(
-      input.context.piProxyRuntimeContextId,
-      input.toolCallId,
-    );
+    const batchId = readPiProxyToolCallBatchId(input.context.piProxyRuntimeContextId, input.toolCallId);
     const execution = await this.options.executeToolCall(
       {
         name: input.tool.name,
@@ -74,15 +65,14 @@ export class AgentPiToolExecutionBridge {
     return this.projectToolResult(input.tool.name, result);
   }
 
-  private projectAskUser(
-    toolName: string,
-    result: AskUserControlResult,
-  ): AgentPiToolResult {
+  private projectAskUser(toolName: string, result: AskUserControlResult): AgentPiToolResult {
     return {
-      content: [{
-        type: "text",
-        text: `工具 ${toolName} 需要用户输入：${result.question}`,
-      }],
+      content: [
+        {
+          type: "text",
+          text: `工具 ${toolName} 需要用户输入：${result.question}`,
+        },
+      ],
       details: {
         senera: {
           toolName,
@@ -93,10 +83,7 @@ export class AgentPiToolExecutionBridge {
     };
   }
 
-  private projectToolResult(
-    toolName: string,
-    result: ExecutedToolCallResult | undefined,
-  ): AgentPiToolResult {
+  private projectToolResult(toolName: string, result: ExecutedToolCallResult | undefined): AgentPiToolResult {
     const content = result
       ? renderOpenAiToolObservationContent(projectToolObservation(result), {
           model: this.options.model,
@@ -109,10 +96,12 @@ export class AgentPiToolExecutionBridge {
         });
 
     return {
-      content: [{
-        type: "text",
-        text: content,
-      }],
+      content: [
+        {
+          type: "text",
+          text: content,
+        },
+      ],
       details: {
         senera: {
           toolName,

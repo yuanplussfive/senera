@@ -1,9 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type {
-  AgentEvent as AgentSessionEvent,
-  AgentMessage,
-  AgentState,
-} from "@earendil-works/pi-agent-core";
+import type { AgentEvent as AgentSessionEvent, AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
 import { AgentConversationEntryKinds } from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
 import { AgentConversationProjector } from "../../../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
@@ -12,9 +8,11 @@ import type {
   AgentPiSession,
   AgentPiSessionEventListener,
   AgentPiSessionOptions,
-  AgentPiSessionResult,
 } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
-import { AgentPiTurnExecutor, type AgentPiTurnRuntimePort } from "../../../Source/AgentSystem/Pi/AgentPiTurnExecutor.js";
+import {
+  AgentPiTurnExecutor,
+  type AgentPiTurnRuntimePort,
+} from "../../../Source/AgentSystem/Pi/AgentPiTurnExecutor.js";
 import type { AgentLoopCommand } from "../../../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
 import type { ResolvedAgentModelProviderConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
@@ -47,11 +45,9 @@ describe("Pi turn executor behavior", () => {
       expect.objectContaining({ kind: AgentConversationEntryKinds.OpenAiTranscript }),
     ]);
     expect(events.some((event) => event.kind === AgentEventKinds.ModelDelta)).toBe(true);
-    expect(traceTypes(events)).toEqual(expect.arrayContaining([
-      "turn.started",
-      "session.create.completed",
-      "turn.completed",
-    ]));
+    expect(traceTypes(events)).toEqual(
+      expect.arrayContaining(["turn.started", "session.create.completed", "turn.completed"]),
+    );
   });
 
   test("does not replay history into an existing Pi session", async () => {
@@ -101,9 +97,11 @@ describe("Pi turn executor behavior", () => {
     const fixture = new PiTurnRuntimeFixture({ promptFailure: new Error("provider rejected request") });
     const events: AgentDomainEvent[] = [];
 
-    await expect(new AgentPiTurnExecutor({ runtime: fixture.runtime }).run(createPiTurnCommand(), (event) => {
-      events.push(event);
-    })).rejects.toThrow("provider rejected request");
+    await expect(
+      new AgentPiTurnExecutor({ runtime: fixture.runtime }).run(createPiTurnCommand(), (event) => {
+        events.push(event);
+      }),
+    ).rejects.toThrow("provider rejected request");
 
     expect(fixture.session.disposed).toBe(true);
     expect(fixture.session.unsubscribeCount).toBe(1);
@@ -148,12 +146,14 @@ class PiTurnRuntimeFixture {
     this.resolveSessionCreateSettled = resolve;
   });
 
-  constructor(private readonly behavior: {
-    historyMigrationRequired?: boolean;
-    deferPrompt?: boolean;
-    deferSessionCreate?: boolean;
-    promptFailure?: Error;
-  } = {}) {
+  constructor(
+    private readonly behavior: {
+      historyMigrationRequired?: boolean;
+      deferPrompt?: boolean;
+      deferSessionCreate?: boolean;
+      promptFailure?: Error;
+    } = {},
+  ) {
     this.session = new ScriptedPiSession(behavior);
     this.runtime = {
       services: {
@@ -222,10 +222,12 @@ class ScriptedPiSession implements AgentPiSession {
     this.resolveDisposed = resolve;
   });
 
-  constructor(private readonly behavior: {
-    deferPrompt?: boolean;
-    promptFailure?: Error;
-  }) {}
+  constructor(
+    private readonly behavior: {
+      deferPrompt?: boolean;
+      promptFailure?: Error;
+    },
+  ) {}
 
   setHistory(messages: readonly AgentMessage[]): void {
     this.history.splice(0, this.history.length, ...messages);
@@ -287,7 +289,7 @@ class ScriptedPiSession implements AgentPiSession {
       if (!Array.isArray(content)) {
         return [];
       }
-      return content.flatMap((entry) => entry.type === "text" ? [entry.text] : []);
+      return content.flatMap((entry) => (entry.type === "text" ? [entry.text] : []));
     });
   }
 
@@ -336,19 +338,26 @@ function createPiTurnCommand(): Extract<AgentLoopCommand, { kind: "run_pi_turn" 
     prompt: "<agent_system>test</agent_system>",
     messages: [{ role: "user", content: "Inspect the workspace" }],
     conversationEntries: [
-      projector.projectOpenAiTranscript("previous-request", [{
-        role: "user",
-        content: "Earlier request",
-      }, {
-        role: "assistant",
-        content: "Earlier response",
-      }], "2026-01-01T00:00:00.000Z"),
+      projector.projectOpenAiTranscript(
+        "previous-request",
+        [
+          {
+            role: "user",
+            content: "Earlier request",
+          },
+          {
+            role: "assistant",
+            content: "Earlier response",
+          },
+        ],
+        "2026-01-01T00:00:00.000Z",
+      ),
       projector.projectUserInput("pi-test-request", "Inspect the workspace", "2026-01-01T00:01:00.000Z"),
     ],
     rootCommand: {
       authority: "senera_runtime_root",
       objective: "Inspect the workspace",
-    } as Extract<AgentLoopCommand, { kind: "run_pi_turn" }> ["rootCommand"],
+    } as Extract<AgentLoopCommand, { kind: "run_pi_turn" }>["rootCommand"],
     loadedToolNames: [],
     activeSkills: [],
   };

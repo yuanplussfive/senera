@@ -5,12 +5,10 @@ import {
   resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
-import type {
-  AgentSystemConfig,
-  ResolvedAgentMemoryLearningConfig,
-} from "../Types/AgentConfigTypes.js";
+import type { AgentSystemConfig, ResolvedAgentMemoryLearningConfig } from "../Types/AgentConfigTypes.js";
 import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
 import {
+  type AgentMemoryCandidateDraft,
   type AgentMemoryCandidateRecord,
   type AgentMemoryConsolidationActionRecord,
   type AgentMemoryRecordedTurn,
@@ -23,19 +21,62 @@ import {
   candidateSourceRefs,
 } from "./AgentMemoryLearningPromptProjector.js";
 import {
+  type AgentMemoryLearningVectorClient,
   rankSimilarPendingCandidates,
   recordMemoryItemEmbeddings,
   withMemoryCandidateEmbeddings,
 } from "./AgentMemoryLearningVectorRuntime.js";
 import { AgentMemoryLearningModelClient } from "./AgentMemoryLearningModelClient.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import type {
+  AgentMemoryConsolidationPromptInput,
+  AgentMemoryLearningPromptInput,
+} from "../ActionPlanner/AgentLearningPromptJson.js";
 
 export { buildMemoryLearningPromptInput } from "./AgentMemoryLearningPromptProjector.js";
+
+export interface AgentMemoryLearningClient {
+  learnAndValidate(
+    input: AgentMemoryLearningPromptInput,
+    options: {
+      supportingSourceRefs: readonly string[];
+    },
+  ): Promise<{ candidates: AgentMemoryCandidateDraft[] }>;
+  consolidateAndValidate(
+    input: AgentMemoryConsolidationPromptInput,
+    options: {
+      candidateSources: ReadonlyMap<string, readonly string[]>;
+      existingMemoryUris: readonly string[];
+    },
+  ): Promise<{ actions: AgentMemoryConsolidationActionRecord[] }>;
+}
+
+export interface AgentMemoryWriteDecisionResolver {
+  resolve(input: {
+    source: "automatic_learning";
+    requestId: string;
+    standaloneRequest: string;
+    proposed: AgentMemoryConsolidationActionRecord;
+  }): Promise<AgentMemoryConsolidationActionRecord>;
+}
+
+export interface AgentMemoryLearningRuntimeDependencies {
+  learningClient: AgentMemoryLearningClient;
+  vectorClient: AgentMemoryLearningVectorClient;
+  writeResolver: AgentMemoryWriteDecisionResolver;
+}
+
+export type AgentMemoryLearningRuntimeDependencyFactory = (input: {
+  systemConfig: AgentSystemConfig;
+  learningConfig: ReturnType<typeof resolveToolLearningConfig>;
+  memoryLearningConfig: ResolvedAgentMemoryLearningConfig;
+}) => AgentMemoryLearningRuntimeDependencies;
 
 export interface AgentMemoryLearningRuntimeOptions {
   repository: AgentMemorySourceRepository;
   configSnapshot: () => AgentSystemConfig;
   logger?: AgentLogger;
+  createDependencies?: AgentMemoryLearningRuntimeDependencyFactory;
 }
 
 export class AgentMemoryLearningRuntime {
@@ -51,7 +92,7 @@ export class AgentMemoryLearningRuntime {
     });
   }
 
-  private async learn(recordedTurn: AgentMemoryRecordedTurn): Promise<void> {
+  async learn(recordedTurn: AgentMemoryRecordedTurn): Promise<void> {
     const systemConfig = this.options.configSnapshot();
     const learningConfig = resolveToolLearningConfig(systemConfig);
     const memoryLearningConfig = resolveMemoryLearningConfig(systemConfig);
@@ -59,23 +100,10 @@ export class AgentMemoryLearningRuntime {
       return;
     }
 
-    const model = resolveModelProviderConfig(systemConfig);
-    const vectorConfig = resolveVectorModelsConfig(systemConfig);
-    const client = new AgentActionPlannerModelClient(model, learningConfig.Client, {
-      maxRepairAttempts: learningConfig.MaxRepairAttempts,
-    });
-    const learningClient = new AgentMemoryLearningModelClient({
-      client,
-      maxRepairAttempts: learningConfig.MaxRepairAttempts,
-    });
-    const vectorClient = new AgentVectorModelClient(vectorConfig);
-    const writeResolver = new AgentMemoryWriteResolver({
-      repository: this.options.repository,
-      client,
-      vectorClient,
+    const { learningClient, vectorClient, writeResolver } = this.createDependencies({
+      systemConfig,
+      learningConfig,
       memoryLearningConfig,
-      embeddingModel: vectorConfig.Embedding.Model,
-      maxRepairAttempts: learningConfig.MaxRepairAttempts,
     });
     const learningInput = buildMemoryLearningPromptInput(recordedTurn);
     const learned = await learningClient.learnAndValidate(learningInput, {
@@ -119,8 +147,8 @@ export class AgentMemoryLearningRuntime {
   }
 
   private async absorbCandidatesAgainstActiveMemories(input: {
-    writeResolver: AgentMemoryWriteResolver;
-    vectorClient: AgentVectorModelClient;
+    writeResolver: AgentMemoryWriteDecisionResolver;
+    vectorClient: AgentMemoryLearningVectorClient;
     recordedTurn: AgentMemoryRecordedTurn;
     candidates: readonly AgentMemoryCandidateRecord[];
   }): Promise<void> {
@@ -139,13 +167,12 @@ export class AgentMemoryLearningRuntime {
         episode: input.recordedTurn.episode,
         actions: [decision],
       });
-      await recordMemoryItemEmbeddings(input.vectorClient, this.options.repository, written)
-        .catch((error) => {
-          this.options.logger?.warn("memory.learning.embedding_skipped", {
-            requestId: input.recordedTurn.episode.requestId,
-            message: error instanceof Error ? error.message : String(error),
-          });
+      await recordMemoryItemEmbeddings(input.vectorClient, this.options.repository, written).catch((error) => {
+        this.options.logger?.warn("memory.learning.embedding_skipped", {
+          requestId: input.recordedTurn.episode.requestId,
+          message: error instanceof Error ? error.message : String(error),
         });
+      });
       this.options.logger?.info("memory.learning.candidate_absorbed", {
         requestId: input.recordedTurn.episode.requestId,
         operation: decision.operation,
@@ -161,16 +188,17 @@ export class AgentMemoryLearningRuntime {
     candidates: readonly AgentMemoryCandidateRecord[],
   ): AgentMemoryCandidateRecord[] {
     const pendingUris = new Set(
-      this.options.repository.listPendingMemoryCandidates(recordedTurn.episode.sessionId)
+      this.options.repository
+        .listPendingMemoryCandidates(recordedTurn.episode.sessionId)
         .map((candidate) => candidate.uri),
     );
     return candidates.filter((candidate) => pendingUris.has(candidate.uri));
   }
 
   private async promoteReadyCandidates(input: {
-    learningClient: AgentMemoryLearningModelClient;
-    vectorClient: AgentVectorModelClient;
-    writeResolver: AgentMemoryWriteResolver;
+    learningClient: AgentMemoryLearningClient;
+    vectorClient: AgentMemoryLearningVectorClient;
+    writeResolver: AgentMemoryWriteDecisionResolver;
     memoryLearningConfig: ResolvedAgentMemoryLearningConfig;
     recordedTurn: AgentMemoryRecordedTurn;
     candidates: readonly AgentMemoryCandidateRecord[];
@@ -194,11 +222,7 @@ export class AgentMemoryLearningRuntime {
       }
 
       const existingMemories = this.options.repository.listActiveMemoryItems();
-      const consolidationInput = buildMemoryConsolidationPromptInput(
-        input.recordedTurn,
-        cluster,
-        existingMemories,
-      );
+      const consolidationInput = buildMemoryConsolidationPromptInput(input.recordedTurn, cluster, existingMemories);
       const consolidated = await input.learningClient.consolidateAndValidate(consolidationInput, {
         candidateSources: candidateSourceRefs(cluster),
         existingMemoryUris: consolidationInput.existingMemories.map((memory) => memory.uri),
@@ -210,25 +234,26 @@ export class AgentMemoryLearningRuntime {
 
       const resolvedActions: AgentMemoryConsolidationActionRecord[] = [];
       for (const action of consolidated.actions) {
-        resolvedActions.push(await input.writeResolver.resolve({
-          source: "automatic_learning",
-          requestId: input.recordedTurn.episode.requestId,
-          standaloneRequest: input.recordedTurn.episode.standaloneRequest,
-          proposed: action,
-        }));
+        resolvedActions.push(
+          await input.writeResolver.resolve({
+            source: "automatic_learning",
+            requestId: input.recordedTurn.episode.requestId,
+            standaloneRequest: input.recordedTurn.episode.standaloneRequest,
+            proposed: action,
+          }),
+        );
       }
 
       const written = this.options.repository.applyMemoryLearning({
         episode: input.recordedTurn.episode,
         actions: resolvedActions,
       });
-      await recordMemoryItemEmbeddings(input.vectorClient, this.options.repository, written)
-        .catch((error) => {
-          this.options.logger?.warn("memory.learning.embedding_skipped", {
-            requestId: input.recordedTurn.episode.requestId,
-            message: error instanceof Error ? error.message : String(error),
-          });
+      await recordMemoryItemEmbeddings(input.vectorClient, this.options.repository, written).catch((error) => {
+        this.options.logger?.warn("memory.learning.embedding_skipped", {
+          requestId: input.recordedTurn.episode.requestId,
+          message: error instanceof Error ? error.message : String(error),
         });
+      });
       this.options.logger?.info("memory.learning.promoted", {
         requestId: input.recordedTurn.episode.requestId,
         count: written.length,
@@ -239,9 +264,42 @@ export class AgentMemoryLearningRuntime {
     }
   }
 
+  private createDependencies(input: {
+    systemConfig: AgentSystemConfig;
+    learningConfig: ReturnType<typeof resolveToolLearningConfig>;
+    memoryLearningConfig: ResolvedAgentMemoryLearningConfig;
+  }): AgentMemoryLearningRuntimeDependencies {
+    if (this.options.createDependencies) {
+      return this.options.createDependencies(input);
+    }
+
+    const model = resolveModelProviderConfig(input.systemConfig);
+    const vectorConfig = resolveVectorModelsConfig(input.systemConfig);
+    const client = new AgentActionPlannerModelClient(model, input.learningConfig.Client, {
+      maxRepairAttempts: input.learningConfig.MaxRepairAttempts,
+    });
+    const vectorClient = new AgentVectorModelClient(vectorConfig);
+    return {
+      learningClient: new AgentMemoryLearningModelClient({
+        client,
+        maxRepairAttempts: input.learningConfig.MaxRepairAttempts,
+      }),
+      vectorClient,
+      writeResolver: new AgentMemoryWriteResolver({
+        repository: this.options.repository,
+        client,
+        vectorClient,
+        memoryLearningConfig: input.memoryLearningConfig,
+        embeddingModel: vectorConfig.Embedding.Model,
+        maxRepairAttempts: input.learningConfig.MaxRepairAttempts,
+      }),
+    };
+  }
 }
 
-function candidateToProposedWrite(candidate: AgentMemoryCandidateRecord): AgentMemoryConsolidationActionRecord {
+export function candidateToProposedMemoryWrite(
+  candidate: AgentMemoryCandidateRecord,
+): AgentMemoryConsolidationActionRecord {
   return {
     operation: "create",
     type: candidate.type,
@@ -255,4 +313,8 @@ function candidateToProposedWrite(candidate: AgentMemoryCandidateRecord): AgentM
     reason: candidate.reason,
     confidence: candidate.confidence,
   };
+}
+
+function candidateToProposedWrite(candidate: AgentMemoryCandidateRecord): AgentMemoryConsolidationActionRecord {
+  return candidateToProposedMemoryWrite(candidate);
 }

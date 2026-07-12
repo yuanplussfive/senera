@@ -13,7 +13,7 @@ try {
 
   writeText(path.join(sourceRoot, "AgentDecisionPlugin", "docs", "ToolCalls.md"), "current docs");
   writeText(path.join(sourceRoot, "WeatherToolPlugin", "PluginManifest.json"), "{}");
-  writeText(path.join(targetRoot, "AgentDecisionPlugin", "PluginManifest.json"), "{\"DecisionActions\":[]}");
+  writeText(path.join(targetRoot, "AgentDecisionPlugin", "PluginManifest.json"), '{"DecisionActions":[]}');
   writeText(path.join(targetRoot, "AgentDecisionPlugin", "PluginConfig.toml"), "enabled = true");
   writeText(path.join(targetRoot, "AgentDecisionPlugin", "docs", "Old.md"), "old docs");
   writeText(path.join(targetRoot, "RemovedPlugin", "PluginManifest.json"), "{}");

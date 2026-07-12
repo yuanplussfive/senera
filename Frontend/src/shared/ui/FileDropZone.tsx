@@ -1,9 +1,5 @@
 import { useCallback, type ReactNode } from "react";
-import {
-  useDropzone,
-  type Accept,
-  type FileRejection,
-} from "react-dropzone";
+import { useDropzone, type Accept, type FileRejection } from "react-dropzone";
 import { cn } from "../../lib/util";
 
 export type FileDropZoneAccept = Accept;
@@ -37,13 +33,7 @@ export function FileDropZone({
     },
     [onFiles],
   );
-  const {
-    getInputProps,
-    getRootProps,
-    isDragActive,
-    isDragReject,
-    open,
-  } = useDropzone({
+  const { getInputProps, getRootProps, isDragActive, isDragReject, open } = useDropzone({
     accept,
     disabled,
     multiple,

@@ -1,10 +1,5 @@
 import type { RootCommandManifest } from "../Types/PluginManifestTypes.js";
-import type {
-  LoadedPlugin,
-  RegisteredSkill,
-  RegisteredTemplate,
-  RegisteredTool,
-} from "../Types/PluginRuntimeTypes.js";
+import type { LoadedPlugin, RegisteredSkill, RegisteredTemplate, RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import { isLoadedPluginAvailable } from "./AgentPluginConfig.js";
 import {
   AgentPluginRuntimeContractProjector,
@@ -63,16 +58,12 @@ export class AgentPluginRegistry {
   }
 
   validateAgentReferences(): void {
-    const issues = [
-      ...this.validateSkillToolReferences(),
-      ...this.validateRootCommandToolReferences(),
-    ];
+    const issues = [...this.validateSkillToolReferences(), ...this.validateRootCommandToolReferences()];
 
     if (issues.length > 0) {
-      throw new Error([
-        agentErrorMessage("plugin.referenceValidationFailed"),
-        ...issues.map((issue) => `- ${issue}`),
-      ].join("\n"));
+      throw new Error(
+        [agentErrorMessage("plugin.referenceValidationFailed"), ...issues.map((issue) => `- ${issue}`)].join("\n"),
+      );
     }
   }
 
@@ -92,10 +83,7 @@ export class AgentPluginRegistry {
     return [...this.rootCommandPolicies.values()];
   }
 
-  private registerRuntimeContributions(
-    plugin: LoadedPlugin,
-    contributions: AgentPluginRuntimeContributions,
-  ): void {
+  private registerRuntimeContributions(plugin: LoadedPlugin, contributions: AgentPluginRuntimeContributions): void {
     this.registerUnique(
       this.tools,
       contributions.tools,
@@ -132,10 +120,7 @@ export class AgentPluginRegistry {
     }
   }
 
-  private registerRootCommandPolicies(
-    plugin: LoadedPlugin,
-    policies: readonly RootCommandManifest[],
-  ): void {
+  private registerRootCommandPolicies(plugin: LoadedPlugin, policies: readonly RootCommandManifest[]): void {
     for (const policy of policies) {
       if (this.rootCommandPolicies.has(policy.Action)) {
         throw new Error(agentErrorMessage("plugin.duplicateRootCommandAction", { action: policy.Action }));
@@ -212,19 +197,13 @@ export class AgentPluginRegistry {
   }
 
   private hasHostCapabilityTool(capability: string): boolean {
-    return [...this.tools.values()].some((tool) =>
-      tool.handler.kind === "HostCapability"
-      && tool.handler.capability === capability
+    return [...this.tools.values()].some(
+      (tool) => tool.handler.kind === "HostCapability" && tool.handler.capability === capability,
     );
   }
 
-  private describePluginMember(
-    kind: string,
-    plugin: LoadedPlugin | undefined,
-    name: string,
-  ): string {
+  private describePluginMember(kind: string, plugin: LoadedPlugin | undefined, name: string): string {
     const pluginName = plugin?.manifest.Plugin.Name ?? "unknown";
     return `${kind} "${name}" in plugin "${pluginName}"`;
   }
-
 }

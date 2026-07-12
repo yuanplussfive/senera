@@ -9,21 +9,25 @@ import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigT
 
 const config: AgentSystemConfig = {
   DefaultModelProviderId: "chat-main",
-  ModelProviderEndpoints: [{
-    Id: "shared-provider",
-    BaseUrl: "https://provider.test/v1",
-    ApiKey: "provider-key",
-    Headers: {
-      "x-provider": "shared",
+  ModelProviderEndpoints: [
+    {
+      Id: "shared-provider",
+      BaseUrl: "https://provider.test/v1",
+      ApiKey: "provider-key",
+      Headers: {
+        "x-provider": "shared",
+      },
     },
-  }],
-  ModelProviders: [{
-    Id: "chat-main",
-    ProviderId: "shared-provider",
-    Endpoint: "ChatCompletions",
-    Model: "mistral-large-latest",
-    MaxOutputTokens: -1,
-  }],
+  ],
+  ModelProviders: [
+    {
+      Id: "chat-main",
+      ProviderId: "shared-provider",
+      Endpoint: "ChatCompletions",
+      Model: "mistral-large-latest",
+      MaxOutputTokens: -1,
+    },
+  ],
   ActionPlanner: {
     PlanningClient: {
       ModelProviderId: "chat-main",
@@ -66,45 +70,59 @@ assert.equal(vector.Rerank.BaseUrl, "https://provider.test/v1");
 assert.equal(vector.Rerank.ApiKey, "provider-key");
 assert.equal(vector.Rerank.Model, "qwen3-reranker-0.6b");
 
-assert.throws(() => resolveModelProviderConfig({
-  ...config,
-  ModelProviders: [{
-    Id: "broken",
-    ProviderId: "missing-provider",
-    Endpoint: "ChatCompletions",
-    Model: "broken",
-  }],
-}), /ProviderId=missing-provider/);
+assert.throws(
+  () =>
+    resolveModelProviderConfig({
+      ...config,
+      ModelProviders: [
+        {
+          Id: "broken",
+          ProviderId: "missing-provider",
+          Endpoint: "ChatCompletions",
+          Model: "broken",
+        },
+      ],
+    }),
+  /ProviderId=missing-provider/,
+);
 
 const overriddenDefaultEndpoint = resolveModelProviderEndpointCatalog({
   ...config,
-  ModelProviderEndpoints: [{
-    Id: "default",
-    BaseUrl: "https://default-override.test/v1",
-    ApiKey: "override-key",
-  }],
-  ModelProviders: [{
-    Id: "main",
-    ProviderId: "default",
-    Endpoint: "ChatCompletions",
-    Model: "mistral-large-latest",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "default",
+      BaseUrl: "https://default-override.test/v1",
+      ApiKey: "override-key",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "main",
+      ProviderId: "default",
+      Endpoint: "ChatCompletions",
+      Model: "mistral-large-latest",
+    },
+  ],
 }).resolve("default");
 assert.equal(overriddenDefaultEndpoint.BaseUrl, "https://default-override.test/v1");
 assert.equal(overriddenDefaultEndpoint.ApiKey, "override-key");
 
-assert.throws(() => resolveModelProviderEndpointCatalog({
-  ...config,
-  ModelProviderEndpoints: [
-    {
-      Id: "dup",
-      BaseUrl: "https://one.test/v1",
-    },
-    {
-      Id: "dup",
-      BaseUrl: "https://two.test/v1",
-    },
-  ],
-}), /ModelProviderEndpoints\[\]\.Id=dup/);
+assert.throws(
+  () =>
+    resolveModelProviderEndpointCatalog({
+      ...config,
+      ModelProviderEndpoints: [
+        {
+          Id: "dup",
+          BaseUrl: "https://one.test/v1",
+        },
+        {
+          Id: "dup",
+          BaseUrl: "https://two.test/v1",
+        },
+      ],
+    }),
+  /ModelProviderEndpoints\[\]\.Id=dup/,
+);
 
 console.log("Model provider endpoint config verification passed.");

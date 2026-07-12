@@ -28,7 +28,7 @@ async function findManifestFiles(root: string): Promise<string[]> {
   for (const entry of entries) {
     const entryPath = path.join(root, entry.name);
     if (entry.isDirectory()) {
-      result.push(...await findManifestFiles(entryPath));
+      result.push(...(await findManifestFiles(entryPath)));
       continue;
     }
     if (entry.isFile() && entry.name === AgentArtifactFileNames.manifest) {
@@ -51,9 +51,10 @@ async function readArtifactManifest(
   const value = JSON.parse(await fs.readFile(safeManifestPath, "utf8")) as Record<string, unknown>;
   const artifactId = typeof value.artifactId === "string" ? value.artifactId : "";
   const artifactUri = typeof value.artifactUri === "string" ? value.artifactUri : "";
-  const files = value.files && typeof value.files === "object" && !Array.isArray(value.files)
-    ? value.files as Record<string, string>
-    : {};
+  const files =
+    value.files && typeof value.files === "object" && !Array.isArray(value.files)
+      ? (value.files as Record<string, string>)
+      : {};
   const normalizedUri = normalizeAgentArtifactUri(artifactUri);
   if (!artifactId || !normalizedUri || parseAgentArtifactUri(normalizedUri) !== artifactId) {
     return undefined;
@@ -65,4 +66,3 @@ async function readArtifactManifest(
     files,
   };
 }
-

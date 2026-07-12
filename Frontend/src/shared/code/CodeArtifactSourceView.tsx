@@ -28,9 +28,10 @@ export function CodeArtifactSourceView({
   const bounded = typeof maxVisibleLines === "number" && Number.isFinite(maxVisibleLines);
   const visibleLines = bounded ? Math.max(1, Math.floor(maxVisibleLines)) : undefined;
   const sourceStyle = useMemo<CSSProperties | undefined>(
-    () => visibleLines === undefined
-      ? undefined
-      : { "--code-source-max-height": `${visibleLines + 2}lh` } as CSSProperties,
+    () =>
+      visibleLines === undefined
+        ? undefined
+        : ({ "--code-source-max-height": `${visibleLines + 2}lh` } as CSSProperties),
     [visibleLines],
   );
 
@@ -70,11 +71,7 @@ export function CodeArtifactSourceView({
       onTouchMove={stopNestedScroll}
     >
       <div className={cn("code-artifact-viewer__highlighted", wrapped && "is-wrapped", contentClassName)}>
-        <HighlightedCodeView
-          state={highlightedSource}
-          code={code}
-          language={language}
-        />
+        <HighlightedCodeView state={highlightedSource} code={code} language={language} />
       </div>
     </div>
   );
@@ -93,13 +90,7 @@ function HighlightedCodeView({
     return <div dangerouslySetInnerHTML={{ __html: state.html }} />;
   }
 
-  return (
-    <PlainSourceView
-      code={code}
-      language={language}
-      status={state.status}
-    />
-  );
+  return <PlainSourceView code={code} language={language} status={state.status} />;
 }
 
 function PlainSourceView({
@@ -112,10 +103,7 @@ function PlainSourceView({
   status: Exclude<HighlightedCodeState["status"], "ready">;
 }): JSX.Element {
   return (
-    <pre
-      className="code-artifact-viewer__plain"
-      data-highlight-status={status}
-    >
+    <pre className="code-artifact-viewer__plain" data-highlight-status={status}>
       <code data-language={language}>
         {readCodeLines(code).map((line, index) => (
           <span data-line="" key={index}>

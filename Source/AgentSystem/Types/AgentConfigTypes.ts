@@ -31,6 +31,11 @@ export type {
   AgentLoopConfig,
   AgentPresetsConfig,
   AgentSandboxRuntimeConfig,
+  AgentServerAccessControlConfig,
+  AgentServerAccessMode,
+  AgentServerConfig,
+  AgentServerConnectionLimitsConfig,
+  AgentServerSessionConfig,
   AgentToolExecutionConfig,
   AgentUploadsConfig,
   ResolvedAgentArtifactsConfig,
@@ -41,6 +46,8 @@ export type {
   ResolvedAgentPluginRootsConfig,
   ResolvedAgentPresetsConfig,
   ResolvedAgentSandboxRuntimeConfig,
+  ResolvedAgentServerAccessControlConfig,
+  ResolvedAgentServerConfig,
   ResolvedAgentToolExecutionConfig,
   ResolvedAgentUploadsConfig,
 } from "./AgentRuntimeConfigTypes.js";
@@ -60,7 +67,4 @@ export type {
   ResolvedAgentVectorModelsConfig,
   ResolvedAgentVectorRerankConfig,
 } from "./AgentToolAndMemoryConfigTypes.js";
-export type {
-  AgentDefaultsConfig,
-  AgentSystemConfig,
-} from "./AgentSystemConfigTypes.js";
+export type { AgentDefaultsConfig, AgentSystemConfig } from "./AgentSystemConfigTypes.js";

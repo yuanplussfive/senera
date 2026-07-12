@@ -9,10 +9,7 @@ import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { createDefaultHostCapabilityRegistry } from "../AgentDefaultHostCapabilities.js";
 import type { AgentToolHostCapabilityRegistry } from "./AgentToolHostCapabilityRegistry.js";
-import {
-  AgentToolRunner,
-  type AgentToolRunnerLike,
-} from "./AgentToolRunner.js";
+import { AgentToolRunner, type AgentToolRunnerLike } from "./AgentToolRunner.js";
 import type { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
 import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
@@ -47,23 +44,28 @@ export class AgentToolCallExecutor {
 
   constructor(private readonly options: AgentToolCallExecutorOptions) {
     const workspaceRoot = options.workspaceRoot ?? process.cwd();
-    const executionEnv = options.executionEnv ?? new SeneraLocalExecutionEnv({
-      workspaceRoot,
-    });
+    const executionEnv =
+      options.executionEnv ??
+      new SeneraLocalExecutionEnv({
+        workspaceRoot,
+      });
     this.emitLifecycleEvents = options.emitLifecycleEvents ?? true;
     this.workspaceCapture = new AgentWorkspaceChangeCapture({
       workspaceRoot,
     });
-    this.toolRunner = options.toolRunner ?? new AgentToolRunner(
-      options.config,
-      options.protocol,
-      workspaceRoot,
-      options.hostCapabilities ?? createDefaultHostCapabilityRegistry({
-        toolSearch: options.toolSearch,
-      }),
-      options.registry,
-      executionEnv,
-    );
+    this.toolRunner =
+      options.toolRunner ??
+      new AgentToolRunner(
+        options.config,
+        options.protocol,
+        workspaceRoot,
+        options.hostCapabilities ??
+          createDefaultHostCapabilityRegistry({
+            toolSearch: options.toolSearch,
+          }),
+        options.registry,
+        executionEnv,
+      );
   }
 
   async execute(
@@ -114,21 +116,20 @@ export class AgentToolCallExecutor {
 
     if (!context.batchId) {
       await this.emitLifecycle(context, () =>
-        this.events.toolCallsPlanned(
-          context.requestId!,
-          context.step!,
-          [tool.name],
-        ));
+        this.events.toolCallsPlanned(context.requestId!, context.step!, [tool.name]),
+      );
     }
     await this.emitLifecycle(context, () =>
       this.events.toolCallStarted(context.requestId!, context.step!, index, tool.name, callId, {
         batchId: context.batchId,
-      }));
+      }),
+    );
 
     throwIfAborted(context.signal);
     const execution = await this.toolRunner.run(tool, args, {
       requestId: context.requestId,
       step: context.step,
+      toolCallId: callId,
       configPath: this.options.configPath,
       onEvent: context.onEvent,
       visibleToolNames: context.loadedToolNames === "all" ? undefined : context.loadedToolNames,
@@ -136,9 +137,7 @@ export class AgentToolCallExecutor {
     });
     throwIfAborted(context.signal);
 
-    const result = execution.response.ok
-      ? execution.response.result
-      : { error: execution.response.error };
+    const result = execution.response.ok ? execution.response.result : { error: execution.response.error };
     const workspaceCapture = await capture.complete(result);
     const executedBase: ExecutedToolCallResult = {
       callId,
@@ -188,17 +187,13 @@ export class AgentToolCallExecutor {
             result.callId,
             result.presentation ?? projectAgentToolResultPresentation(result),
             { batchId: context.batchId },
-          ));
+          ),
+    );
     await this.emitLifecycle(context, () =>
-      this.events.toolCallResultDetail(
-        context.requestId!,
-        context.step!,
-        index,
-        result.name,
-        result.callId,
-        result,
-        { batchId: context.batchId },
-      ));
+      this.events.toolCallResultDetail(context.requestId!, context.step!, index, result.name, result.callId, result, {
+        batchId: context.batchId,
+      }),
+    );
   }
 
   private async emitLifecycle(
@@ -212,9 +207,7 @@ export class AgentToolCallExecutor {
     await emitAgentEvent(context.onEvent, create());
   }
 
-  private allowedToolNames(
-    loadedToolNames: AgentToolCallExecutionContext["loadedToolNames"],
-  ): Set<string> {
+  private allowedToolNames(loadedToolNames: AgentToolCallExecutionContext["loadedToolNames"]): Set<string> {
     const tools = this.options.registry.listTools();
     if (!loadedToolNames || loadedToolNames === "all") {
       return new Set(tools.map((tool) => tool.name));
@@ -232,11 +225,7 @@ function readAskUserControl(value: unknown): AskUserControlResult | undefined {
     return undefined;
   }
 
-  const question = readRequiredText(
-    record,
-    "question",
-    agentErrorMessage("tool.askUserControlMissingQuestion"),
-  );
+  const question = readRequiredText(record, "question", agentErrorMessage("tool.askUserControlMissingQuestion"));
   const reason = readOptionalText(record, "reason_code");
   return reason
     ? {
@@ -259,16 +248,10 @@ function readStructuredToolError(value: unknown): { code?: string; message: stri
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
-function readRequiredText(
-  value: Record<string, unknown>,
-  key: string,
-  message: string,
-): string {
+function readRequiredText(value: Record<string, unknown>, key: string, message: string): string {
   const text = readOptionalText(value, key);
   if (!text) {
     throw new Error(message);

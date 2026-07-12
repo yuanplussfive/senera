@@ -19,4 +19,3 @@
 - SQLite 表结构变化只放在 schema/migration 层。
 - JSON 容错只在持久化读取边界处理，业务层接收结构化对象。
 - 新增 conversation entry kind 时，同时补 entry 编解码和对应验证脚本。
-

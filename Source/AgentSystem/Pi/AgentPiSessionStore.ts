@@ -96,17 +96,10 @@ export class AgentPiSessionStore implements AgentPiSessionStorePort {
   }
 
   private openQueueKey(sessionId: string): string {
-    return JSON.stringify([
-      this.options.workspaceRoot,
-      this.options.sessionsRoot,
-      sessionId,
-    ]);
+    return JSON.stringify([this.options.workspaceRoot, this.options.sessionsRoot, sessionId]);
   }
 
-  private async openKnownSession(
-    sessionId: string,
-    metadata: JsonlSessionMetadata,
-  ): Promise<Session> {
+  private async openKnownSession(sessionId: string, metadata: JsonlSessionMetadata): Promise<Session> {
     try {
       return await this.repo.open(metadata);
     } catch (error) {
@@ -129,8 +122,9 @@ export class AgentPiSessionStore implements AgentPiSessionStorePort {
       return cached;
     }
 
-    const metadata = (await this.repo.list({ cwd: this.options.workspaceRoot }))
-      .find((entry) => entry.id === sessionId);
+    const metadata = (await this.repo.list({ cwd: this.options.workspaceRoot })).find(
+      (entry) => entry.id === sessionId,
+    );
     if (metadata) {
       this.metadataBySessionId.set(sessionId, metadata);
     }
@@ -139,16 +133,9 @@ export class AgentPiSessionStore implements AgentPiSessionStorePort {
 }
 
 function resolvePiSessionId(request: AgentPiOpenSessionRequest): string {
-  return request.sessionId?.trim()
-    || request.fallbackId?.trim()
-    || createRequestId();
+  return request.sessionId?.trim() || request.fallbackId?.trim() || createRequestId();
 }
 
 function isMissingSessionError(error: unknown): boolean {
-  return Boolean(
-    error
-      && typeof error === "object"
-      && "code" in error
-      && error.code === "not_found",
-  );
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === "not_found");
 }

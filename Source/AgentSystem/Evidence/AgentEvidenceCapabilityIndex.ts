@@ -1,8 +1,4 @@
-import type {
-  EvidenceSlot,
-  ToolCatalogItem,
-  ToolCapabilityFacets,
-} from "../BamlClient/baml_client/types.js";
+import type { EvidenceSlot, ToolCatalogItem, ToolCapabilityFacets } from "../BamlClient/baml_client/types.js";
 import type { AgentActionCapabilityNeed } from "../ActionPlanner/AgentActionPlannerTypes.js";
 
 export interface AgentEvidenceRequirementProfile {
@@ -85,8 +81,9 @@ export class AgentEvidenceCapabilityIndex {
     evidence: AgentEvidenceCandidateProfile,
     _requirement: AgentEvidenceRequirementProfile,
   ): AgentEvidenceCapabilityMatch[] {
-    const docs = (this.capabilityDocsByTool.get(evidence.toolName) ?? [])
-      .filter((doc) => this.kindCompatible(evidence, doc));
+    const docs = (this.capabilityDocsByTool.get(evidence.toolName) ?? []).filter((doc) =>
+      this.kindCompatible(evidence, doc),
+    );
 
     return docs.map((doc) => {
       const tool = this.toolsByName.get(doc.toolName);
@@ -110,16 +107,11 @@ export class AgentEvidenceCapabilityIndex {
     });
   }
 
-  projectCapabilityNeed(
-    facets: ToolCapabilityFacets,
-  ): AgentActionCapabilityNeed {
+  projectCapabilityNeed(facets: ToolCapabilityFacets): AgentActionCapabilityNeed {
     return projectFacets(facets);
   }
 
-  private kindCompatible(
-    evidence: AgentEvidenceCandidateProfile,
-    doc: EvidenceCapabilityDocument,
-  ): boolean {
+  private kindCompatible(evidence: AgentEvidenceCandidateProfile, doc: EvidenceCapabilityDocument): boolean {
     const kinds = doc.kindsList;
     return kinds.length === 0 || kinds.includes(evidence.kind);
   }
@@ -136,9 +128,7 @@ function projectFacets(facets: ToolCapabilityFacets): AgentActionCapabilityNeed 
   };
 }
 
-export function uniqueCapabilityNeeds(
-  needs: readonly AgentActionCapabilityNeed[],
-): AgentActionCapabilityNeed[] {
+export function uniqueCapabilityNeeds(needs: readonly AgentActionCapabilityNeed[]): AgentActionCapabilityNeed[] {
   const byKey = new Map<string, AgentActionCapabilityNeed>();
   for (const need of needs) {
     byKey.set(capabilityNeedKey(need), need);
@@ -147,14 +137,7 @@ export function uniqueCapabilityNeeds(
 }
 
 function capabilityNeedKey(need: AgentActionCapabilityNeed): string {
-  return JSON.stringify([
-    need.actions,
-    need.targets,
-    need.inputs,
-    need.outputs,
-    need.evidence,
-    need.effects,
-  ]);
+  return JSON.stringify([need.actions, need.targets, need.inputs, need.outputs, need.evidence, need.effects]);
 }
 
 function uniqueStrings(values: readonly string[]): string[] {

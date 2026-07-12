@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { ResolvedAgentSandboxRuntimeConfig } from "../Types/AgentConfigTypes.js";
 
 export interface AgentSandboxRuntimePaths {
@@ -91,7 +92,7 @@ export async function prepareAgentSandboxRuntime(
   };
 
   try {
-    const microsandbox = options.microsandbox ?? await loadMicrosandbox();
+    const microsandbox = options.microsandbox ?? (await loadMicrosandbox());
     await mkdir(paths.baseDir, { recursive: true });
     await mkdir(paths.bundleDir, { recursive: true });
     configureMicrosandboxRuntime(microsandbox, paths);
@@ -160,12 +161,13 @@ export function normalizeSandboxImages(
   configuredImages: readonly string[],
   extraImages: readonly string[] = [],
 ): string[] {
-  return [...new Set([...configuredImages, ...extraImages].map((image) => image.trim()).filter(Boolean))]
-    .sort((left, right) => left.localeCompare(right));
+  return [...new Set([...configuredImages, ...extraImages].map((image) => image.trim()).filter(Boolean))].sort(
+    (left, right) => left.localeCompare(right),
+  );
 }
 
 async function loadMicrosandbox(): Promise<MicrosandboxModule> {
-  return await import("microsandbox") as MicrosandboxModule;
+  return (await import("microsandbox")) as MicrosandboxModule;
 }
 
 async function installMicrosandboxRuntime(
@@ -252,7 +254,7 @@ async function exportSandboxBundle(
 ): Promise<string> {
   const image = preparedImages[0];
   if (!image) {
-    throw new Error("导出 sandbox bundle 前必须至少准备一个镜像。");
+    throw new Error(agentErrorMessage("sandbox.bundleImageRequired"));
   }
 
   const sandboxName = `${SandboxPreparePrefix}-${safeImageName(image)}-${process.pid}`;
@@ -292,9 +294,7 @@ async function exportSandboxBundle(
 }
 
 function resolveConfiguredPath(workspaceRoot: string, value: string): string {
-  return path.isAbsolute(value)
-    ? path.normalize(value)
-    : path.resolve(workspaceRoot, value);
+  return path.isAbsolute(value) ? path.normalize(value) : path.resolve(workspaceRoot, value);
 }
 
 function safeImageName(image: string): string {

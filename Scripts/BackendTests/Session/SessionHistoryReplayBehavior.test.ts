@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { AgentConversationEntryKinds, type AgentConversationEntry } from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
+import {
+  AgentConversationEntryKinds,
+  type AgentConversationEntry,
+} from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
 import { AgentConversationPolicy } from "../../../Source/AgentSystem/Conversation/AgentConversationPolicy.js";
 import {
   AgentEventChannels,
@@ -42,7 +45,7 @@ describe("Session history replay behavior", () => {
     const entries = Array.from({ length: 51 }, (_, index) => userEntry(`request-${index}`, `message-${index}`, index));
     fixture.store.persistEntries(sessionId, entries);
     Array.from({ length: AgentRunEventHistoryReplayChunkSize + 1 }, (_, index) =>
-      runEvent(sessionId, `request-${index}`, index)
+      runEvent(sessionId, `request-${index}`, index),
     ).forEach((event) => fixture.store.persistRunEvent(sessionId, event));
     const events: AgentDomainEvent[] = [];
 
@@ -69,11 +72,13 @@ describe("Session history replay behavior", () => {
       AgentRunEventHistoryReplayChunkSize,
       1,
     ]);
-    expect(events.at(0)?.data).toEqual(expect.objectContaining({
-      totalEntries: 51,
-      messageCount: 51,
-      refresh: true,
-    }));
+    expect(events.at(0)?.data).toEqual(
+      expect.objectContaining({
+        totalEntries: 51,
+        messageCount: 51,
+        refresh: true,
+      }),
+    );
   });
 
   test("merges persisted traces and lifecycle snapshots into stable history runs", () => {
@@ -88,14 +93,21 @@ describe("Session history replay behavior", () => {
       userEntry("request-failed", "Failed request", 5),
     ];
     fixture.store.persistEntries(sessionId, entries);
-    fixture.store.persistTurnArtifacts(sessionId, "request-complete", [], [{
-      step: 1,
-      seq: 0,
-      kind: "answer",
-      status: "done",
-      startedAt: "2026-01-01T00:00:01.000Z",
-      endedAt: "2026-01-01T00:00:02.000Z",
-    }]);
+    fixture.store.persistTurnArtifacts(
+      sessionId,
+      "request-complete",
+      [],
+      [
+        {
+          step: 1,
+          seq: 0,
+          kind: "answer",
+          status: "done",
+          startedAt: "2026-01-01T00:00:01.000Z",
+          endedAt: "2026-01-01T00:00:02.000Z",
+        },
+      ],
+    );
     fixture.store.persistRunSnapshot(snapshot(sessionId, "request-complete", "completed", 1));
     fixture.store.persistRunSnapshot(snapshot(sessionId, "request-missing-data", "completed", 3));
     fixture.store.persistRunSnapshot(snapshot(sessionId, "request-running", "running", 4));
@@ -103,26 +115,32 @@ describe("Session history replay behavior", () => {
 
     const runs = fixture.replay.buildStepRuns(sessionId, entries);
 
-    expect(runs.map((run) => ({
-      requestId: run.requestId,
-      status: run.status,
-      traces: run.traces.length,
-    }))).toEqual([
+    expect(
+      runs.map((run) => ({
+        requestId: run.requestId,
+        status: run.status,
+        traces: run.traces.length,
+      })),
+    ).toEqual([
       { requestId: "request-complete", status: "completed", traces: 1 },
       { requestId: "request-missing-data", status: "failed", traces: 1 },
       { requestId: "request-running", status: "running", traces: 0 },
       { requestId: "request-failed", status: "failed", traces: 1 },
     ]);
-    expect(runs[0]).toEqual(expect.objectContaining({
-      input: "Complete request",
-      endedAt: "2026-01-01T00:00:02.000Z",
-    }));
-    expect(runs[1]?.traces[0]).toEqual(expect.objectContaining({
-      kind: "answer",
-      status: "failed",
-      title: "回复数据丢失",
-      errorMessage: expect.stringContaining("重新发送请求"),
-    }));
+    expect(runs[0]).toEqual(
+      expect.objectContaining({
+        input: "Complete request",
+        endedAt: "2026-01-01T00:00:02.000Z",
+      }),
+    );
+    expect(runs[1]?.traces[0]).toEqual(
+      expect.objectContaining({
+        kind: "answer",
+        status: "failed",
+        title: "回复数据丢失",
+        errorMessage: expect.stringContaining("重新发送请求"),
+      }),
+    );
   });
 
   test("projects assistant decision entries as visible final answers", async () => {
@@ -159,7 +177,11 @@ function createReplayFixture() {
   return { replay, store };
 }
 
-function userEntry(requestId: string, content: string, offset: number): Extract<AgentConversationEntry, { kind: "user.message" }> {
+function userEntry(
+  requestId: string,
+  content: string,
+  offset: number,
+): Extract<AgentConversationEntry, { kind: "user.message" }> {
   return {
     id: `${requestId}:user`,
     requestId,
@@ -183,12 +205,7 @@ function assistantEntry(
   };
 }
 
-function snapshot(
-  sessionId: string,
-  requestId: string,
-  status: "running" | "completed" | "failed",
-  offset: number,
-) {
+function snapshot(sessionId: string, requestId: string, status: "running" | "completed" | "failed", offset: number) {
   return {
     sessionId,
     requestId,
@@ -224,7 +241,5 @@ function readArrayLength(value: unknown, key: string): number {
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }

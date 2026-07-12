@@ -61,10 +61,7 @@ export function deriveResponsiveMode(matches: ResponsiveQueryMatches): Responsiv
   };
 }
 
-export function areResponsiveQueryMatchesEqual(
-  left: ResponsiveQueryMatches,
-  right: ResponsiveQueryMatches,
-): boolean {
+export function areResponsiveQueryMatchesEqual(left: ResponsiveQueryMatches, right: ResponsiveQueryMatches): boolean {
   return (
     left.tabletUp === right.tabletUp &&
     left.desktopUp === right.desktopUp &&

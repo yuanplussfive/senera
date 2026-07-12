@@ -58,23 +58,23 @@ export default {
         },
         // 砖红——错误（柔和警告色，参考 Claude Code）
         brick: {
-          50: "#fef6ee",   // 极浅琥珀橙
-          100: "#fde8d7",  // 浅琥珀橙
-          200: "#fac9a4",  // 柔和橙
-          500: "#d97706",  // 琥珀橙（主色）
-          600: "#b45309",  // 深琥珀橙
-          700: "#92400e",  // 更深琥珀橙（高对比度）
+          50: "#fef6ee", // 极浅琥珀橙
+          100: "#fde8d7", // 浅琥珀橙
+          200: "#fac9a4", // 柔和橙
+          500: "#d97706", // 琥珀橙（主色）
+          600: "#b45309", // 深琥珀橙
+          700: "#92400e", // 更深琥珀橙（高对比度）
         },
       },
       boxShadow: {
         "bubble-user": "0 1px 0 rgba(28, 26, 23, 0.04)",
         "bubble-ai": "0 1px 0 rgba(28, 26, 23, 0.06), 0 0 0 1px rgba(28, 26, 23, 0.05)",
-        "panel": "0 0 0 1px rgba(28, 26, 23, 0.06)",
-        "soft": "0 8px 24px -12px rgba(28, 26, 23, 0.18)",
+        panel: "0 0 0 1px rgba(28, 26, 23, 0.06)",
+        soft: "0 8px 24px -12px rgba(28, 26, 23, 0.18)",
       },
       animation: {
-        "caret": "caret 1.1s ease-in-out infinite",
-        "shimmer": "shimmer 2s linear infinite",
+        caret: "caret 1.1s ease-in-out infinite",
+        shimmer: "shimmer 2s linear infinite",
         "fade-in": "fadeIn 0.18s ease-out both",
         // Dialog content must not animate transform, otherwise it overrides Tailwind translate centering.
         "dialog-in": "dialogIn 0.16s ease-out both",

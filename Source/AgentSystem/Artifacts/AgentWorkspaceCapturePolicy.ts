@@ -1,11 +1,5 @@
-import type {
-  ToolArtifactWorkspaceManifest,
-  ToolArtifactWorkspacePathManifest,
-} from "../Types/PluginManifestTypes.js";
-import type {
-  ResolvedWorkspacePathRule,
-  WorkspaceCaptureOptions,
-} from "./AgentWorkspaceCaptureTypes.js";
+import type { ToolArtifactWorkspaceManifest, ToolArtifactWorkspacePathManifest } from "../Types/PluginManifestTypes.js";
+import type { ResolvedWorkspacePathRule, WorkspaceCaptureOptions } from "./AgentWorkspaceCaptureTypes.js";
 
 const WorkspaceCaptureDefaults = {
   MaxFileBytes: 262144,
@@ -14,18 +8,16 @@ const WorkspaceCaptureDefaults = {
   CaptureContent: "text",
 } as const;
 
-export function resolveWorkspacePathRules(
-  workspace: ToolArtifactWorkspaceManifest,
-): ResolvedWorkspacePathRule[] {
-  return workspace.Paths?.map((entry: ToolArtifactWorkspacePathManifest) => ({
-    selector: entry.Selector,
-    base: entry.Base,
-  })) ?? [];
+export function resolveWorkspacePathRules(workspace: ToolArtifactWorkspaceManifest): ResolvedWorkspacePathRule[] {
+  return (
+    workspace.Paths?.map((entry: ToolArtifactWorkspacePathManifest) => ({
+      selector: entry.Selector,
+      base: entry.Base,
+    })) ?? []
+  );
 }
 
-export function resolveWorkspaceCaptureOptions(
-  workspace: ToolArtifactWorkspaceManifest,
-): WorkspaceCaptureOptions {
+export function resolveWorkspaceCaptureOptions(workspace: ToolArtifactWorkspaceManifest): WorkspaceCaptureOptions {
   return {
     maxFileBytes: workspace.MaxFileBytes ?? WorkspaceCaptureDefaults.MaxFileBytes,
     maxFiles: workspace.MaxFiles ?? WorkspaceCaptureDefaults.MaxFiles,

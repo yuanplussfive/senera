@@ -8,10 +8,7 @@ export interface AgentTextPreview {
   sha1?: string;
 }
 
-export function projectAgentTextPreview(
-  value: string,
-  maxChars: number,
-): AgentTextPreview {
+export function projectAgentTextPreview(value: string, maxChars: number): AgentTextPreview {
   const text = String(value);
   const limit = Math.max(0, Math.floor(maxChars));
   if (text.length <= limit) {

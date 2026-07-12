@@ -6,13 +6,8 @@ import type {
   InteractionRoute,
   TurnUnderstanding,
 } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
-import {
-  InteractionRunMode,
-  TurnContextMode,
-} from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
-import type {
-  AgentActionPlannerCoreClient,
-} from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerModelClient.js";
+import { InteractionRunMode, TurnContextMode } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
+import type { AgentActionPlannerCoreClient } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerModelClient.js";
 import type {
   ResolvedAgentActionPlannerConfig,
   ResolvedAgentModelProviderConfig,
@@ -86,7 +81,9 @@ export function createInteractionRoute(overrides: Partial<InteractionRoute> = {}
   };
 }
 
-export function createPlannerConfig(overrides: Partial<ResolvedAgentActionPlannerConfig> = {}): ResolvedAgentActionPlannerConfig {
+export function createPlannerConfig(
+  overrides: Partial<ResolvedAgentActionPlannerConfig> = {},
+): ResolvedAgentActionPlannerConfig {
   const client = {
     ModelProviderId: undefined,
     Provider: "openai-generic" as const,
@@ -109,7 +106,9 @@ export function createPlannerConfig(overrides: Partial<ResolvedAgentActionPlanne
   };
 }
 
-export function createModelProvider(overrides: Partial<ResolvedAgentModelProviderConfig> = {}): ResolvedAgentModelProviderConfig {
+export function createModelProvider(
+  overrides: Partial<ResolvedAgentModelProviderConfig> = {},
+): ResolvedAgentModelProviderConfig {
   return {
     Id: "test-provider",
     ProviderId: "test-endpoint",

@@ -1,10 +1,6 @@
-export {
-  DEFAULT_SESSION_TITLE,
-} from "./defaults";
+export { DEFAULT_SESSION_TITLE } from "./defaults";
 
-export {
-  DEFAULT_USER_PROFILE,
-} from "./userProfile";
+export { DEFAULT_USER_PROFILE } from "./userProfile";
 
 export type {
   ChatMessage,

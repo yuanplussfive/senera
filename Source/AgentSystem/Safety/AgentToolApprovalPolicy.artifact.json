@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 2,
+  "entrypoints": ["senera/tool/decision", "senera/execution/fallback"],
+  "compiler": {
+    "name": "opa",
+    "version": "1.18.2"
+  },
+  "assets": {
+    "policies": [
+      {
+        "file": "AgentToolApprovalPolicy.rego",
+        "sha256": "8609ae60158bec0ec4c8e77d0ce6f025f625097fa6908bd2f711f5d1e27f9bae"
+      },
+      {
+        "file": "AgentExecutionFallbackPolicy.rego",
+        "sha256": "8801d1e4509b8a1c7ae969da3c3b1a84bc92273bf80aad6319ab28a2a56b4d1d"
+      }
+    ],
+    "data": {
+      "file": "AgentToolApprovalPolicy.data.json",
+      "sha256": "09623d10d9493168eb3ff31a9a4d1b395b4a2277571401e1d7dc07cdf9d202ae"
+    },
+    "wasm": {
+      "file": "AgentToolApprovalPolicy.wasm",
+      "sha256": "baf3e46208dc64c6dd1c129e590bd6336da4a95ace07960ec1062ee3b236760d"
+    }
+  }
+}

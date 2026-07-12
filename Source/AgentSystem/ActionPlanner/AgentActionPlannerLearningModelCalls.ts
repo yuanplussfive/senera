@@ -37,11 +37,14 @@ export class AgentActionPlannerLearningModelCalls {
     });
   }
 
-  async repairToolLearning(options: {
-    input: AgentToolLearningPromptInput;
-    invalidLearning: string;
-    issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlToolLearningResult> {
+  async repairToolLearning(
+    options: {
+      input: AgentToolLearningPromptInput;
+      invalidLearning: string;
+      issues: string[];
+    },
+    requestOptions: { signal?: AbortSignal } = {},
+  ): Promise<BamlToolLearningResult> {
     return this.caller.repair({
       functionName: "RepairToolLearning",
       args: {
@@ -74,11 +77,14 @@ export class AgentActionPlannerLearningModelCalls {
     });
   }
 
-  async repairMemoryLearning(options: {
-    input: AgentMemoryLearningPromptInput;
-    invalidLearning: string;
-    issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlMemoryLearningResult> {
+  async repairMemoryLearning(
+    options: {
+      input: AgentMemoryLearningPromptInput;
+      invalidLearning: string;
+      issues: string[];
+    },
+    requestOptions: { signal?: AbortSignal } = {},
+  ): Promise<BamlMemoryLearningResult> {
     return this.caller.repair({
       functionName: "RepairMemoryLearning",
       args: {
@@ -111,11 +117,14 @@ export class AgentActionPlannerLearningModelCalls {
     });
   }
 
-  async repairMemoryConsolidation(options: {
-    input: AgentMemoryConsolidationPromptInput;
-    invalidConsolidation: string;
-    issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlMemoryConsolidationResult> {
+  async repairMemoryConsolidation(
+    options: {
+      input: AgentMemoryConsolidationPromptInput;
+      invalidConsolidation: string;
+      issues: string[];
+    },
+    requestOptions: { signal?: AbortSignal } = {},
+  ): Promise<BamlMemoryConsolidationResult> {
     return this.caller.repair({
       functionName: "RepairMemoryConsolidation",
       args: {
@@ -148,11 +157,14 @@ export class AgentActionPlannerLearningModelCalls {
     });
   }
 
-  async repairMemoryWriteResolution(options: {
-    input: AgentMemoryWriteResolutionPromptInput;
-    invalidResolution: string;
-    issues: string[];
-  }, requestOptions: { signal?: AbortSignal } = {}): Promise<BamlMemoryWriteResolutionResult> {
+  async repairMemoryWriteResolution(
+    options: {
+      input: AgentMemoryWriteResolutionPromptInput;
+      invalidResolution: string;
+      issues: string[];
+    },
+    requestOptions: { signal?: AbortSignal } = {},
+  ): Promise<BamlMemoryWriteResolutionResult> {
     return this.caller.repair({
       functionName: "RepairMemoryWriteResolution",
       args: {

@@ -56,15 +56,15 @@
 后端：
 
 ```bash
-npm run check
+npm run check.types
 npm run build
-npm run verifysuite -- workspace core
+npm run verify.suite -- workspace core
 ```
 
 前端：
 
 ```bash
-npm run frontendverify
+npm run test.frontend
 ```
 
 如果事件影响 session projector，优先补 projector 附近的测试，不要只测最终组件。

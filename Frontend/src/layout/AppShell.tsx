@@ -1,5 +1,6 @@
 import { motion, type Transition } from "framer-motion";
 import { useEffect, type ReactNode } from "react";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { Sheet, SheetContent } from "../shared/ui";
 import { motionTimings, useMotionLevel } from "../shared/motion";
 import { useStore } from "../store/sessionStore";
@@ -96,8 +97,7 @@ export function AppShell({
   const sidebarCollapsed = useStore((state) => state.sidebarCollapsed);
   const rightPanelCollapsed = useStore((state) => state.rightPanelCollapsed);
   const { reduceMotion, disableMotion } = useMotionLevel();
-  const panelResizeTransition: Transition =
-    disableMotion || reduceMotion ? { duration: 0 } : motionTimings.slow;
+  const panelResizeTransition: Transition = disableMotion || reduceMotion ? { duration: 0 } : motionTimings.slow;
   const renderPlan = readAppShellRenderPlan(responsiveMode);
   const workflowPanelWidth = readWorkflowPanelWidth(responsiveMode);
 
@@ -147,7 +147,7 @@ export function AppShell({
           open={sessionDrawerOpen}
           onOpenChange={onSessionDrawerOpenChange}
           side="left"
-          title="会话"
+          title={frontendMessage("session.section")}
           widthClassName={SESSION_DRAWER_WIDTH}
           focusContentOnOpen
           showClose={false}
@@ -162,7 +162,7 @@ export function AppShell({
           open={workflowDrawerOpen}
           onOpenChange={onWorkflowDrawerOpenChange}
           side="right"
-          title="思考过程"
+          title={frontendMessage("workflow.panel.title")}
           widthClassName={WORKFLOW_DRAWER_WIDTH}
         >
           {workflowDrawer}

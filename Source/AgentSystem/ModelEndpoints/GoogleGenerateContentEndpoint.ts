@@ -10,29 +10,39 @@ import { rawPathSegment } from "./ModelHttpClient.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
 
-const GooglePartSchema = z.object({
-  text: z.string().optional(),
-}).passthrough();
+const GooglePartSchema = z
+  .object({
+    text: z.string().optional(),
+  })
+  .passthrough();
 
-const GoogleGenerateContentBodySchema = z.object({
-  candidates: z.array(z.object({
-    content: z.object({
-      parts: z.array(GooglePartSchema).optional(),
-    }).passthrough().optional(),
-  }).passthrough()).optional(),
-}).passthrough();
+const GoogleGenerateContentBodySchema = z
+  .object({
+    candidates: z
+      .array(
+        z
+          .object({
+            content: z
+              .object({
+                parts: z.array(GooglePartSchema).optional(),
+              })
+              .passthrough()
+              .optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
 
 export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
   constructor(private readonly runtime: EndpointRuntime) {}
 
   async complete(request: AgentLanguageModelRequest): Promise<TextGenerationEndpointResult> {
     const body = GoogleGenerateContentBodySchema.parse(
-      await this.runtime.http.postJson(
-        this.path("generateContent"),
-        this.buildPayload(request),
-        this.authHeaders(),
-        { signal: request.signal },
-      ),
+      await this.runtime.http.postJson(this.path("generateContent"), this.buildPayload(request), this.authHeaders(), {
+        signal: request.signal,
+      }),
     );
 
     return { text: readGoogleText(body) };
@@ -91,8 +101,10 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
 }
 
 function readGoogleText(body: z.infer<typeof GoogleGenerateContentBodySchema>): string {
-  return body.candidates
-    ?.flatMap((candidate) => candidate.content?.parts ?? [])
-    .map((part) => part.text ?? "")
-    .join("") ?? "";
+  return (
+    body.candidates
+      ?.flatMap((candidate) => candidate.content?.parts ?? [])
+      .map((part) => part.text ?? "")
+      .join("") ?? ""
+  );
 }

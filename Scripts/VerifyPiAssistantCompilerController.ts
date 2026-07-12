@@ -37,25 +37,31 @@ async function verifyLargeOpenAiMessagesAreBudgetedForPlanning(): Promise<void> 
   const message = await compiler(client).compile({
     request: {
       ...requestWithTools(),
-      messages: [{
-        role: "user",
-        content: "Inspect the project.",
-      }, {
-        role: "assistant",
-        content: "I will search files.",
-        tool_calls: [{
-          id: "call_search",
-          type: "function",
-          function: {
-            name: "SearchTool",
-            arguments: "{\"query\":\"*\"}",
-          },
-        }],
-      }, {
-        role: "tool",
-        tool_call_id: "call_search",
-        content: hugeToolResult,
-      }],
+      messages: [
+        {
+          role: "user",
+          content: "Inspect the project.",
+        },
+        {
+          role: "assistant",
+          content: "I will search files.",
+          tool_calls: [
+            {
+              id: "call_search",
+              type: "function",
+              function: {
+                name: "SearchTool",
+                arguments: '{"query":"*"}',
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_search",
+          content: hugeToolResult,
+        },
+      ],
     },
   });
 
@@ -78,15 +84,18 @@ async function verifyConcurrentReadyArgumentFilling(): Promise<void> {
     action: {
       kind: "CallTools",
       preface: "Checking both sources.",
-      calls: [{
-        toolName: "SearchTool",
-        purpose: "Search for the requested item.",
-        required: true,
-      }, {
-        toolName: "LookupTool",
-        purpose: "Look up the requested item.",
-        required: true,
-      }],
+      calls: [
+        {
+          toolName: "SearchTool",
+          purpose: "Search for the requested item.",
+          required: true,
+        },
+        {
+          toolName: "LookupTool",
+          purpose: "Look up the requested item.",
+          required: true,
+        },
+      ],
     },
     fill: async (input) => {
       inFlight += 1;
@@ -94,9 +103,7 @@ async function verifyConcurrentReadyArgumentFilling(): Promise<void> {
       await delay(25);
       inFlight -= 1;
       return {
-        arguments: input.call.toolName === "SearchTool"
-          ? { query: "status" }
-          : { key: "status" },
+        arguments: input.call.toolName === "SearchTool" ? { query: "status" } : { key: "status" },
         missingInputs: [],
         assumptions: [],
       };
@@ -109,7 +116,10 @@ async function verifyConcurrentReadyArgumentFilling(): Promise<void> {
 
   assert.equal(message.kind, "tool_calls");
   assert.equal(message.content, "Checking both sources.");
-  assert.deepEqual(message.toolCalls.map((call) => call.name), ["SearchTool", "LookupTool"]);
+  assert.deepEqual(
+    message.toolCalls.map((call) => call.name),
+    ["SearchTool", "LookupTool"],
+  );
   assert.match(message.toolCalls[0]?.id ?? "", /^call_[a-f0-9]{8}$/);
   assert.equal(maxInFlight, 2);
 }
@@ -119,18 +129,21 @@ async function verifyHintsAndArgumentRepair(): Promise<void> {
     action: {
       kind: "CallTools",
       preface: "Preparing tool inputs.",
-      calls: [{
-        toolName: "SearchTool",
-        purpose: "Search directly from obvious user input.",
-        required: true,
-        argumentHints: {
-          query: "status",
+      calls: [
+        {
+          toolName: "SearchTool",
+          purpose: "Search directly from obvious user input.",
+          required: true,
+          argumentHints: {
+            query: "status",
+          },
         },
-      }, {
-        toolName: "LookupTool",
-        purpose: "Look up a normalized key.",
-        required: true,
-      }],
+        {
+          toolName: "LookupTool",
+          purpose: "Look up a normalized key.",
+          required: true,
+        },
+      ],
     },
     fill: () => ({
       arguments: {
@@ -154,10 +167,10 @@ async function verifyHintsAndArgumentRepair(): Promise<void> {
 
   assert.equal(client.fillCalls.length, 1);
   assert.equal(client.repairArgumentCalls.length, 1);
-  assert.deepEqual(message.toolCalls.map((call) => call.arguments), [
-    { query: "status" },
-    { key: "status" },
-  ]);
+  assert.deepEqual(
+    message.toolCalls.map((call) => call.arguments),
+    [{ query: "status" }, { key: "status" }],
+  );
 }
 
 async function verifyToolChoiceRepairAndParallelFalse(): Promise<void> {
@@ -169,21 +182,24 @@ async function verifyToolChoiceRepairAndParallelFalse(): Promise<void> {
     repairAction: {
       kind: "CallTools",
       preface: "Using the requested tool.",
-      calls: [{
-        toolName: "LookupTool",
-        purpose: "Use the forced lookup tool.",
-        required: true,
-        argumentHints: {
-          key: "status",
+      calls: [
+        {
+          toolName: "LookupTool",
+          purpose: "Use the forced lookup tool.",
+          required: true,
+          argumentHints: {
+            key: "status",
+          },
         },
-      }, {
-        toolName: "LookupTool",
-        purpose: "A second ready call that must be held back when parallel calls are disabled.",
-        required: false,
-        argumentHints: {
-          key: "extra",
+        {
+          toolName: "LookupTool",
+          purpose: "A second ready call that must be held back when parallel calls are disabled.",
+          required: false,
+          argumentHints: {
+            key: "extra",
+          },
         },
-      }],
+      ],
     },
   });
 
@@ -202,10 +218,19 @@ async function verifyToolChoiceRepairAndParallelFalse(): Promise<void> {
 
   assert.equal(client.repairActionCalls.length, 1);
   assert.deepEqual(client.selectInputs[0]?.allowedTools, ["LookupTool"]);
-  assert.deepEqual(client.selectInputs[0]?.candidateTools.map((tool) => tool.name), ["LookupTool"]);
+  assert.deepEqual(
+    client.selectInputs[0]?.candidateTools.map((tool) => tool.name),
+    ["LookupTool"],
+  );
   assert.equal(message.kind, "tool_calls");
-  assert.deepEqual(message.toolCalls.map((call) => call.name), ["LookupTool"]);
-  assert.deepEqual(message.toolCalls.map((call) => call.arguments), [{ key: "status" }]);
+  assert.deepEqual(
+    message.toolCalls.map((call) => call.name),
+    ["LookupTool"],
+  );
+  assert.deepEqual(
+    message.toolCalls.map((call) => call.arguments),
+    [{ key: "status" }],
+  );
 }
 
 async function verifyAllowedToolChoiceSubset(): Promise<void> {
@@ -213,26 +238,30 @@ async function verifyAllowedToolChoiceSubset(): Promise<void> {
     action: {
       kind: "CallTools",
       preface: "This first action uses a disallowed tool.",
-      calls: [{
-        toolName: "LookupTool",
-        purpose: "The allowed_tools subset does not include this tool.",
-        required: true,
-        argumentHints: {
-          key: "status",
+      calls: [
+        {
+          toolName: "LookupTool",
+          purpose: "The allowed_tools subset does not include this tool.",
+          required: true,
+          argumentHints: {
+            key: "status",
+          },
         },
-      }],
+      ],
     },
     repairAction: {
       kind: "CallTools",
       preface: "Using an allowed tool.",
-      calls: [{
-        toolName: "SearchTool",
-        purpose: "Use the allowed search tool.",
-        required: true,
-        argumentHints: {
-          query: "status",
+      calls: [
+        {
+          toolName: "SearchTool",
+          purpose: "Use the allowed search tool.",
+          required: true,
+          argumentHints: {
+            query: "status",
+          },
         },
-      }],
+      ],
     },
   });
 
@@ -243,12 +272,14 @@ async function verifyAllowedToolChoiceSubset(): Promise<void> {
         type: "allowed_tools",
         allowed_tools: {
           mode: "required",
-          tools: [{
-            type: "function",
-            function: {
-              name: "SearchTool",
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "SearchTool",
+              },
             },
-          }],
+          ],
         },
       },
     },
@@ -256,7 +287,10 @@ async function verifyAllowedToolChoiceSubset(): Promise<void> {
 
   assert.equal(client.repairActionCalls.length, 1);
   assert.deepEqual(client.selectInputs[0]?.allowedTools, ["SearchTool"]);
-  assert.deepEqual(message.toolCalls.map((call) => call.name), ["SearchTool"]);
+  assert.deepEqual(
+    message.toolCalls.map((call) => call.name),
+    ["SearchTool"],
+  );
 }
 
 async function verifyDependentCallsWaitForFutureTurns(): Promise<void> {
@@ -264,22 +298,25 @@ async function verifyDependentCallsWaitForFutureTurns(): Promise<void> {
     action: {
       kind: "CallTools",
       preface: "Search first, then read after the result is available.",
-      calls: [{
-        toolName: "SearchTool",
-        purpose: "Find the file.",
-        required: true,
-        argumentHints: {
-          query: "config",
+      calls: [
+        {
+          toolName: "SearchTool",
+          purpose: "Find the file.",
+          required: true,
+          argumentHints: {
+            query: "config",
+          },
         },
-      }, {
-        toolName: "LookupTool",
-        purpose: "Use the search result.",
-        required: true,
-        dependsOn: [0],
-        argumentHints: {
-          key: "from-search",
+        {
+          toolName: "LookupTool",
+          purpose: "Use the search result.",
+          required: true,
+          dependsOn: [0],
+          argumentHints: {
+            key: "from-search",
+          },
         },
-      }],
+      ],
     },
   });
 
@@ -288,7 +325,10 @@ async function verifyDependentCallsWaitForFutureTurns(): Promise<void> {
   });
 
   assert.equal(message.kind, "tool_calls");
-  assert.deepEqual(message.toolCalls.map((call) => call.name), ["SearchTool"]);
+  assert.deepEqual(
+    message.toolCalls.map((call) => call.name),
+    ["SearchTool"],
+  );
 }
 
 class FakePiCompilerClient implements AgentPiAssistantCompilerModelClient {
@@ -301,12 +341,14 @@ class FakePiCompilerClient implements AgentPiAssistantCompilerModelClient {
   }> = [];
   readonly repairArgumentCalls: AgentPiToolArgumentsRepairInput[] = [];
 
-  constructor(private readonly options: {
-    action: unknown;
-    repairAction?: unknown;
-    fill?: (input: AgentPiToolArgumentsInput) => unknown | Promise<unknown>;
-    repairArguments?: (input: AgentPiToolArgumentsRepairInput) => unknown | Promise<unknown>;
-  }) {}
+  constructor(
+    private readonly options: {
+      action: unknown;
+      repairAction?: unknown;
+      fill?: (input: AgentPiToolArgumentsInput) => unknown | Promise<unknown>;
+      repairArguments?: (input: AgentPiToolArgumentsRepairInput) => unknown | Promise<unknown>;
+    },
+  ) {}
 
   async selectPiAction(input: AgentPiControllerActionInput): Promise<unknown> {
     this.selectInputs.push(input);
@@ -324,20 +366,24 @@ class FakePiCompilerClient implements AgentPiAssistantCompilerModelClient {
 
   async fillPiToolArguments(input: AgentPiToolArgumentsInput): Promise<unknown> {
     this.fillCalls.push(input);
-    return this.options.fill?.(input) ?? {
-      arguments: {},
-      missingInputs: [],
-      assumptions: [],
-    };
+    return (
+      this.options.fill?.(input) ?? {
+        arguments: {},
+        missingInputs: [],
+        assumptions: [],
+      }
+    );
   }
 
   async repairPiToolArguments(input: AgentPiToolArgumentsRepairInput): Promise<unknown> {
     this.repairArgumentCalls.push(input);
-    return this.options.repairArguments?.(input) ?? {
-      arguments: input.invalidArguments,
-      missingInputs: [],
-      assumptions: [],
-    };
+    return (
+      this.options.repairArguments?.(input) ?? {
+        arguments: input.invalidArguments,
+        missingInputs: [],
+        assumptions: [],
+      }
+    );
   }
 }
 
@@ -352,39 +398,44 @@ function compiler(client: AgentPiAssistantCompilerModelClient): AgentPiAssistant
 function requestWithTools(): AgentPiAssistantCompileRequest["request"] {
   return {
     model: "test-model",
-    messages: [{
-      role: "user",
-      content: "Check status.",
-    }],
-    tools: [{
-      type: "function",
-      function: {
-        name: "SearchTool",
-        description: "Search by query.",
-        parameters: {
-          type: "object",
-          properties: {
-            query: { type: "string" },
+    messages: [
+      {
+        role: "user",
+        content: "Check status.",
+      },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "SearchTool",
+          description: "Search by query.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: { type: "string" },
+            },
+            required: ["query"],
+            additionalProperties: false,
           },
-          required: ["query"],
-          additionalProperties: false,
         },
       },
-    }, {
-      type: "function",
-      function: {
-        name: "LookupTool",
-        description: "Look up by key.",
-        parameters: {
-          type: "object",
-          properties: {
-            key: { type: "string" },
+      {
+        type: "function",
+        function: {
+          name: "LookupTool",
+          description: "Look up by key.",
+          parameters: {
+            type: "object",
+            properties: {
+              key: { type: "string" },
+            },
+            required: ["key"],
+            additionalProperties: false,
           },
-          required: ["key"],
-          additionalProperties: false,
         },
       },
-    }],
+    ],
   };
 }
 
@@ -405,9 +456,7 @@ const modelProvider: ResolvedAgentModelProviderConfig = {
   MaxRequestMs: 20_000,
   MaxNetworkRetries: 1,
   Headers: {},
-  Capabilities: {
-    ToolCalling: false,
-  },
+  Capabilities: {},
 };
 
 const actionPlannerConfig: ResolvedAgentActionPlannerConfig = {

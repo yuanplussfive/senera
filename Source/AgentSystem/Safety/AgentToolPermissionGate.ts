@@ -1,14 +1,8 @@
 import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
 import { AgentApprovalKinds } from "../Approvals/AgentApprovalTypes.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
-import {
-  AgentPermissionActions,
-  type AgentPermissionDecision,
-} from "./AgentSafetyTypes.js";
-import type {
-  AgentToolApprovalPolicy,
-  AgentToolApprovalPolicyInput,
-} from "./AgentToolApprovalPolicy.js";
+import { AgentPermissionActions, type AgentPermissionDecision } from "./AgentSafetyTypes.js";
+import type { AgentToolApprovalPolicy, AgentToolApprovalPolicyInput } from "./AgentToolApprovalPolicy.js";
 
 export class AgentToolPermissionDeniedError extends Error {
   constructor(
@@ -82,14 +76,11 @@ export class AgentToolPermissionGate {
       };
     }
 
-    throw new AgentToolPermissionDeniedError(
-      resolution.message ?? "用户拒绝了工具调用审批。",
-      {
-        action: AgentPermissionActions.Deny,
-        rule: decision.rule,
-        reason: resolution.message ?? "用户拒绝了工具调用审批。",
-        riskSignals: decision.riskSignals,
-      },
-    );
+    throw new AgentToolPermissionDeniedError(resolution.message ?? "用户拒绝了工具调用审批。", {
+      action: AgentPermissionActions.Deny,
+      rule: decision.rule,
+      reason: resolution.message ?? "用户拒绝了工具调用审批。",
+      riskSignals: decision.riskSignals,
+    });
   }
 }

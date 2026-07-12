@@ -1,9 +1,6 @@
 import type { AgentToolProcessError } from "../Types/ToolRuntimeTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { cancelledToolProcessResult } from "./AgentToolCancellation.js";
 import type {
   AgentToolProcessChild,
@@ -12,7 +9,7 @@ import type {
 } from "./AgentToolProcessTypes.js";
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
 import { failedToolProcessResult } from "./AgentToolProcessResultFactory.js";
-import { AgentToolProcessResponseParser } from "./AgentToolProcessResponseParser.js";
+import { type AgentToolProcessResponseParser } from "./AgentToolProcessResponseParser.js";
 import { SeneraProcessOutputBuffer } from "../Execution/SeneraProcessOutputBuffer.js";
 import {
   SeneraExecutionError,
@@ -42,19 +39,21 @@ export class AgentToolProcessSession {
   run(): Promise<AgentToolProcessRunResult> {
     const processLabel = [this.options.command, ...this.options.args].join(" ");
     if (this.options.signal?.aborted) {
-      return Promise.resolve(cancelledToolProcessResult({
-        signal: this.options.signal,
-        toolName: this.options.toolName,
-        phase: "before_spawn",
-        command: processLabel,
-        cwd: this.options.cwd,
-      }));
+      return Promise.resolve(
+        cancelledToolProcessResult({
+          signal: this.options.signal,
+          toolName: this.options.toolName,
+          phase: "before_spawn",
+          command: processLabel,
+          cwd: this.options.cwd,
+        }),
+      );
     }
 
     return new Promise((resolve) => {
       const output = new SeneraProcessOutputBuffer({ encoding: "auto" });
       let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined = undefined;
       let child: AgentToolProcessChild | undefined;
       const settle = (result: AgentToolProcessRunResult): void => {
         if (settled) {
@@ -73,13 +72,15 @@ export class AgentToolProcessSession {
       };
       const abortListener = (): void => {
         killChild();
-        settle(cancelledToolProcessResult({
-          signal: this.options.signal,
-          toolName: this.options.toolName,
-          phase: "runtime",
-          command: processLabel,
-          cwd: this.options.cwd,
-        }));
+        settle(
+          cancelledToolProcessResult({
+            signal: this.options.signal,
+            toolName: this.options.toolName,
+            phase: "runtime",
+            command: processLabel,
+            cwd: this.options.cwd,
+          }),
+        );
       };
 
       try {
@@ -113,19 +114,21 @@ export class AgentToolProcessSession {
 
       timer = setTimeout(() => {
         killChild();
-        settle(this.failure({
-          code: AgentExecutionErrorCodes.ToolProcessTimeout,
-          message: agentErrorMessage("toolProcess.timeout", {
-            timeoutMs: this.options.timeoutMs,
-            processLabel,
+        settle(
+          this.failure({
+            code: AgentExecutionErrorCodes.ToolProcessTimeout,
+            message: agentErrorMessage("toolProcess.timeout", {
+              timeoutMs: this.options.timeoutMs,
+              processLabel,
+            }),
+            details: {
+              phase: AgentToolProcessErrorPhases.RuntimeExecution,
+              modulePath: processLabel,
+              cwd: this.options.cwd,
+              timeoutMs: this.options.timeoutMs,
+            },
           }),
-          details: {
-            phase: AgentToolProcessErrorPhases.RuntimeExecution,
-            modulePath: processLabel,
-            cwd: this.options.cwd,
-            timeoutMs: this.options.timeoutMs,
-          },
-        }));
+        );
       }, this.options.timeoutMs);
 
       child.stdout.on("data", (chunk: Buffer) => {
@@ -136,20 +139,22 @@ export class AgentToolProcessSession {
         output.pushStdout(chunk);
         if (output.stdoutBytes > this.options.maxStdoutBytes) {
           killChild();
-          settle(this.failure({
-            code: AgentExecutionErrorCodes.ToolProcessStdoutLimitExceeded,
-            message: agentErrorMessage("toolProcess.stdoutLimitExceeded", {
-              maxStdoutBytes: this.options.maxStdoutBytes,
-              processLabel,
+          settle(
+            this.failure({
+              code: AgentExecutionErrorCodes.ToolProcessStdoutLimitExceeded,
+              message: agentErrorMessage("toolProcess.stdoutLimitExceeded", {
+                maxStdoutBytes: this.options.maxStdoutBytes,
+                processLabel,
+              }),
+              details: {
+                phase: AgentToolProcessErrorPhases.RuntimeExecution,
+                modulePath: processLabel,
+                cwd: this.options.cwd,
+                maxStdoutBytes: this.options.maxStdoutBytes,
+                actualBytes: output.stdoutBytes,
+              },
             }),
-            details: {
-              phase: AgentToolProcessErrorPhases.RuntimeExecution,
-              modulePath: processLabel,
-              cwd: this.options.cwd,
-              maxStdoutBytes: this.options.maxStdoutBytes,
-              actualBytes: output.stdoutBytes,
-            },
-          }));
+          );
         }
       });
 
@@ -161,20 +166,22 @@ export class AgentToolProcessSession {
         output.pushStderr(chunk);
         if (output.stderrBytes > this.options.maxStderrBytes) {
           killChild();
-          settle(this.failure({
-            code: AgentExecutionErrorCodes.ToolProcessStderrLimitExceeded,
-            message: agentErrorMessage("toolProcess.stderrLimitExceeded", {
-              maxStderrBytes: this.options.maxStderrBytes,
-              processLabel,
+          settle(
+            this.failure({
+              code: AgentExecutionErrorCodes.ToolProcessStderrLimitExceeded,
+              message: agentErrorMessage("toolProcess.stderrLimitExceeded", {
+                maxStderrBytes: this.options.maxStderrBytes,
+                processLabel,
+              }),
+              details: {
+                phase: AgentToolProcessErrorPhases.RuntimeExecution,
+                modulePath: processLabel,
+                cwd: this.options.cwd,
+                maxStderrBytes: this.options.maxStderrBytes,
+                actualBytes: output.stderrBytes,
+              },
             }),
-            details: {
-              phase: AgentToolProcessErrorPhases.RuntimeExecution,
-              modulePath: processLabel,
-              cwd: this.options.cwd,
-              maxStderrBytes: this.options.maxStderrBytes,
-              actualBytes: output.stderrBytes,
-            },
-          }));
+          );
         }
       });
 
@@ -223,9 +230,7 @@ export class AgentToolProcessSession {
         cwd: this.options.cwd,
         command: this.options.command,
         args: this.options.args,
-        seneraExecutionCode: error instanceof SeneraExecutionError
-          ? error.code
-          : undefined,
+        seneraExecutionCode: error instanceof SeneraExecutionError ? error.code : undefined,
       },
       diagnostics: [
         {
@@ -280,25 +285,29 @@ const SpawnFailureProjectionBySeneraCode = {
     phase: AgentToolProcessErrorPhases.ProcessSpawn,
     suggestion: agentErrorMessage("toolProcess.suggestion.unknown"),
   },
-} satisfies Record<SeneraExecutionErrorCode, {
-  code: typeof AgentExecutionErrorCodes[keyof typeof AgentExecutionErrorCodes];
-  phase: typeof AgentToolProcessErrorPhases[keyof typeof AgentToolProcessErrorPhases];
-  suggestion: string;
-}>;
+} satisfies Record<
+  SeneraExecutionErrorCode,
+  {
+    code: (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes];
+    phase: (typeof AgentToolProcessErrorPhases)[keyof typeof AgentToolProcessErrorPhases];
+    suggestion: string;
+  }
+>;
 
 function projectSpawnFailure(error: unknown): {
-  code: typeof AgentExecutionErrorCodes[keyof typeof AgentExecutionErrorCodes];
-  phase: typeof AgentToolProcessErrorPhases[keyof typeof AgentToolProcessErrorPhases];
+  code: (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes];
+  phase: (typeof AgentToolProcessErrorPhases)[keyof typeof AgentToolProcessErrorPhases];
   message: string;
   suggestion: string;
 } {
-  const base = error instanceof SeneraExecutionError
-    ? SpawnFailureProjectionBySeneraCode[error.code]
-    : {
-        code: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
-        phase: AgentToolProcessErrorPhases.ProcessSpawn,
-        suggestion: agentErrorMessage("toolProcess.suggestion.spawnFailed"),
-      };
+  const base =
+    error instanceof SeneraExecutionError
+      ? SpawnFailureProjectionBySeneraCode[error.code]
+      : {
+          code: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
+          phase: AgentToolProcessErrorPhases.ProcessSpawn,
+          suggestion: agentErrorMessage("toolProcess.suggestion.spawnFailed"),
+        };
 
   return {
     ...base,

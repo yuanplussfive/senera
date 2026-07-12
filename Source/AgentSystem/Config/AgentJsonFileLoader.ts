@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import parseJson from "json-parse-even-better-errors";
 import jsonSourceMap, { type JsonSourceLocation } from "json-source-map";
-import { ZodError, type ZodType } from "zod";
+import { type ZodError, type ZodType } from "zod";
 import type { AgentSourceFrame } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { AgentSourceDiagnosticBuilder } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
@@ -45,28 +45,34 @@ export class AgentJsonFileLoader {
         parseJson(text);
       } catch (error) {
         const parseError = error as Error & { position?: number };
-        throw new AgentJsonFileError(agentErrorMessage("json.syntaxError", {
-          filePath: absolutePath,
-        }), {
-          filePath: absolutePath,
-          message: parseError.message,
-          location:
-            typeof parseError.position === "number"
-              ? this.locationFromPosition(text, parseError.position)
-              : undefined,
-          frame:
-            typeof parseError.position === "number"
-              ? sourceBuilder.fromPosition(parseError.message, parseError.position).frame
-              : undefined,
-        });
+        throw new AgentJsonFileError(
+          agentErrorMessage("json.syntaxError", {
+            filePath: absolutePath,
+          }),
+          {
+            filePath: absolutePath,
+            message: parseError.message,
+            location:
+              typeof parseError.position === "number"
+                ? this.locationFromPosition(text, parseError.position)
+                : undefined,
+            frame:
+              typeof parseError.position === "number"
+                ? sourceBuilder.fromPosition(parseError.message, parseError.position).frame
+                : undefined,
+          },
+        );
       }
 
-      throw new AgentJsonFileError(agentErrorMessage("json.syntaxError", {
-        filePath: absolutePath,
-      }), {
-        filePath: absolutePath,
-        message: agentErrorMessage("json.parseFailed"),
-      });
+      throw new AgentJsonFileError(
+        agentErrorMessage("json.syntaxError", {
+          filePath: absolutePath,
+        }),
+        {
+          filePath: absolutePath,
+          message: agentErrorMessage("json.parseFailed"),
+        },
+      );
     }
 
     const result = schema.safeParse(mapped.data);
@@ -74,25 +80,28 @@ export class AgentJsonFileLoader {
       const firstIssue = result.error.issues[0];
       const pointer = firstIssue ? this.zodPathToPointer(firstIssue.path) : "";
       const sourceLocation = pointer
-        ? mapped.pointers[pointer]?.value ?? mapped.pointers[pointer]?.key
+        ? (mapped.pointers[pointer]?.value ?? mapped.pointers[pointer]?.key)
         : mapped.pointers[""]?.value;
 
-      throw new AgentJsonFileError(agentErrorMessage("json.validationError", {
-        filePath: absolutePath,
-      }), {
-        filePath: absolutePath,
-        message: this.formatZodError(result.error),
-        pointer,
-        location: sourceLocation ? this.fromJsonSourceLocation(sourceLocation) : undefined,
-        frame: sourceLocation
-          ? sourceBuilder.fromLineColumn(
-              firstIssue?.message ?? agentErrorMessage("json.validationErrorFallback"),
-              sourceLocation.line + 1,
-              sourceLocation.column + 1,
-            ).frame
-          : undefined,
-        issues: result.error.issues,
-      });
+      throw new AgentJsonFileError(
+        agentErrorMessage("json.validationError", {
+          filePath: absolutePath,
+        }),
+        {
+          filePath: absolutePath,
+          message: this.formatZodError(result.error),
+          pointer,
+          location: sourceLocation ? this.fromJsonSourceLocation(sourceLocation) : undefined,
+          frame: sourceLocation
+            ? sourceBuilder.fromLineColumn(
+                firstIssue?.message ?? agentErrorMessage("json.validationErrorFallback"),
+                sourceLocation.line + 1,
+                sourceLocation.column + 1,
+              ).frame
+            : undefined,
+          issues: result.error.issues,
+        },
+      );
     }
 
     return result.data;

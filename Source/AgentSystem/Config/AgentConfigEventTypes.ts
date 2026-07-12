@@ -1,17 +1,10 @@
-import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import type { AgentModelProviderListItem } from "../Types/AgentConfigTypes.js";
 import type { AgentPluginConfigSnapshotItem } from "../Types/PluginConfigTypes.js";
 import type { AgentUserProfile } from "../Session/AgentUserProfile.js";
-import type {
-  AgentPresetOperationResult,
-  AgentPresetSnapshot,
-} from "../Presets/AgentPresetTypes.js";
-import type {
-  AgentConfigDiagnostic,
-  AgentConfigSnapshot,
-  AgentConfigSnapshotSource,
-} from "./AgentConfigService.js";
+import type { AgentPresetOperationResult, AgentPresetSnapshot } from "../Presets/AgentPresetTypes.js";
+import type { AgentConfigDiagnostic, AgentConfigSnapshot, AgentConfigSnapshotSource } from "./AgentConfigService.js";
 import type { AgentProviderModelSnapshot } from "./AgentProviderModelDiscovery.js";
 
 export type AgentPluginConfigOperationKind = "list" | "update" | "set_enabled" | "config_update";

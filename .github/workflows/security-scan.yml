@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
-      - run: npm run securitycheck
+      - run: npm run quality.security
 
   codeql:
     name: CodeQL

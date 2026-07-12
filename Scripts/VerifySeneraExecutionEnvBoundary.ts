@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import path from "node:path";
-import { AgentHostCapabilityNames, createDefaultHostCapabilityRegistry } from "../Source/AgentSystem/AgentDefaultHostCapabilities.js";
+import {
+  AgentHostCapabilityNames,
+  createDefaultHostCapabilityRegistry,
+} from "../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import { SeneraLocalExecutionEnv } from "../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import type {
   SeneraShellExecutionRequest,
@@ -26,17 +29,21 @@ const VerificationConfig: AgentSystemConfig = {
     Port: 8787,
   },
   DefaultModelProviderId: "verification-model",
-  ModelProviderEndpoints: [{
-    Id: "verification-provider",
-    BaseUrl: "https://example.invalid/v1",
-    ApiKey: "verification-key",
-  }],
-  ModelProviders: [{
-    Id: "verification-model",
-    ProviderId: "verification-provider",
-    Endpoint: "ChatCompletions",
-    Model: "verification-model",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "verification-provider",
+      BaseUrl: "https://example.invalid/v1",
+      ApiKey: "verification-key",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "verification-model",
+      ProviderId: "verification-provider",
+      Endpoint: "ChatCompletions",
+      Model: "verification-model",
+    },
+  ],
   ToolExecution: {
     TimeoutSeconds: 5,
     MaxStdoutBytes: 1024 * 1024,
@@ -81,11 +88,13 @@ async function main(): Promise<void> {
     value: "through-env",
   });
   assert.equal(pluginResult.response.ok, true);
-  assert.deepEqual(spawned, [{
-    command: "node",
-    args: ["verify-plugin.js"],
-    cwd: WorkspaceRoot,
-  }]);
+  assert.deepEqual(spawned, [
+    {
+      command: "node",
+      args: ["verify-plugin.js"],
+      cwd: WorkspaceRoot,
+    },
+  ]);
   assert.deepEqual(JSON.parse(requests[0] ?? ""), {
     type: "tool_request",
     version: 1,
@@ -99,15 +108,15 @@ async function main(): Promise<void> {
     },
   });
 
-  const outsideCwdResult = await runner.run({
-    ...pluginTool,
-    plugin: createPlugin(".."),
-  }, {});
-  assert.equal(outsideCwdResult.response.ok, false);
-  assert.equal(
-    outsideCwdResult.response.error?.code,
-    AgentExecutionErrorCodes.ToolProcessConfigurationInvalid,
+  const outsideCwdResult = await runner.run(
+    {
+      ...pluginTool,
+      plugin: createPlugin(".."),
+    },
+    {},
   );
+  assert.equal(outsideCwdResult.response.ok, false);
+  assert.equal(outsideCwdResult.response.error?.code, AgentExecutionErrorCodes.ToolProcessConfigurationInvalid);
 
   console.log("Senera execution env boundary verification passed.");
 }
@@ -143,14 +152,19 @@ class FakeToolProcessChild extends EventEmitter implements AgentToolProcessChild
       end: (chunk?: string) => {
         this.onInput(chunk);
         queueMicrotask(() => {
-          this.stdout.emit("data", Buffer.from(`${JSON.stringify({
-            type: "tool_result",
-            version: 1,
-            ok: true,
-            result: {
-              source: "senera-execution-env",
-            },
-          })}\n`));
+          this.stdout.emit(
+            "data",
+            Buffer.from(
+              `${JSON.stringify({
+                type: "tool_result",
+                version: 1,
+                ok: true,
+                result: {
+                  source: "senera-execution-env",
+                },
+              })}\n`,
+            ),
+          );
           this.emit("close", 0, null);
         });
       },
@@ -167,11 +181,7 @@ function createFakeSpawner(
   spawned: Array<{ command: string; args: string[]; cwd: string }>,
   requests: string[],
 ): AgentToolProcessSpawner {
-  return (
-    command: string,
-    args: string[],
-    options: AgentToolProcessSpawnOptions,
-  ) => {
+  return (command: string, args: string[], options: AgentToolProcessSpawnOptions) => {
     spawned.push({
       command,
       args,
@@ -215,13 +225,15 @@ function createPlugin(cwd = "."): LoadedPlugin {
           Cwd: cwd,
         },
       },
-      Tools: [{
-        Name: "VerifyPluginProcessTool",
-        Handler: {
-          Kind: "PluginProcess",
+      Tools: [
+        {
+          Name: "VerifyPluginProcessTool",
+          Handler: {
+            Kind: "PluginProcess",
+          },
+          Execution: DefaultExecution,
         },
-        Execution: DefaultExecution,
-      }],
+      ],
     },
   };
 }
@@ -233,11 +245,7 @@ const DefaultExecution = {
   LocalFallback: "Allow",
 } as const;
 
-function createTool(
-  name: string,
-  plugin: LoadedPlugin,
-  handler: RegisteredTool["handler"],
-): RegisteredTool {
+function createTool(name: string, plugin: LoadedPlugin, handler: RegisteredTool["handler"]): RegisteredTool {
   return {
     plugin,
     name,

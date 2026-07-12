@@ -22,13 +22,8 @@ describe("Memory recall behavior", () => {
       createMemoryItem("mem://knowledge", { type: "knowledge" }),
     ];
 
-    expect(scopedMemoryItems(items, "all").map((item) => item.uri)).toEqual([
-      "mem://preference",
-      "mem://knowledge",
-    ]);
-    expect(scopedMemoryItems(items, "preference").map((item) => item.uri)).toEqual([
-      "mem://preference",
-    ]);
+    expect(scopedMemoryItems(items, "all").map((item) => item.uri)).toEqual(["mem://preference", "mem://knowledge"]);
+    expect(scopedMemoryItems(items, "preference").map((item) => item.uri)).toEqual(["mem://preference"]);
   });
 
   test("ranks direct and source-ref memory hits as exact matches", () => {
@@ -37,51 +32,47 @@ describe("Memory recall behavior", () => {
     const unrelated = createMemoryItem("mem://other");
     const source = createMemorySource("source://weather");
 
-    expect(exactRefMemoryRanking({
-      refs: [],
-      sources: [source],
-      items: [direct, sourced, unrelated],
-      directItems: [direct],
-    })).toEqual([
+    expect(
+      exactRefMemoryRanking({
+        refs: [],
+        sources: [source],
+        items: [direct, sourced, unrelated],
+        directItems: [direct],
+      }),
+    ).toEqual([
       { memoryUri: "mem://direct", score: 1 },
       { memoryUri: "mem://sourced", score: 1 },
     ]);
   });
 
   test("combines exact, keyword, and semantic rankings with exact references first and stable ties", () => {
-    const fused = fuseMemoryRankings([
-      {
-        name: "keyword",
-        entries: [
-          { memoryUri: "mem://b", score: 10 },
-          { memoryUri: "mem://a", score: 9 },
-          { memoryUri: "mem://b", score: 8 },
-        ],
-      },
-      {
-        name: "exact_ref",
-        entries: [
-          { memoryUri: "mem://c", score: 1 },
-        ],
-      },
-      {
-        name: "semantic",
-        entries: [
-          { memoryUri: "mem://a", score: 0.7 },
-          { memoryUri: "mem://b", score: 0.7 },
-        ],
-      },
-    ], 10);
+    const fused = fuseMemoryRankings(
+      [
+        {
+          name: "keyword",
+          entries: [
+            { memoryUri: "mem://b", score: 10 },
+            { memoryUri: "mem://a", score: 9 },
+            { memoryUri: "mem://b", score: 8 },
+          ],
+        },
+        {
+          name: "exact_ref",
+          entries: [{ memoryUri: "mem://c", score: 1 }],
+        },
+        {
+          name: "semantic",
+          entries: [
+            { memoryUri: "mem://a", score: 0.7 },
+            { memoryUri: "mem://b", score: 0.7 },
+          ],
+        },
+      ],
+      10,
+    );
 
-    expect(fused.map((entry) => entry.memoryUri)).toEqual([
-      "mem://c",
-      "mem://a",
-      "mem://b",
-    ]);
-    expect(fused.find((entry) => entry.memoryUri === "mem://b")?.matchedBy).toEqual([
-      "keyword",
-      "semantic",
-    ]);
+    expect(fused.map((entry) => entry.memoryUri)).toEqual(["mem://c", "mem://a", "mem://b"]);
+    expect(fused.find((entry) => entry.memoryUri === "mem://b")?.matchedBy).toEqual(["keyword", "semantic"]);
   });
 
   test("keyword recall searches subject, claim, tags, and triggers", () => {
@@ -121,10 +112,7 @@ describe("Memory recall behavior", () => {
   });
 });
 
-function createMemoryItem(
-  uri: string,
-  overrides: Partial<AgentMemoryItemRecord> = {},
-): AgentMemoryItemRecord {
+function createMemoryItem(uri: string, overrides: Partial<AgentMemoryItemRecord> = {}): AgentMemoryItemRecord {
   const now = "2026-01-01T00:00:00.000Z";
   return {
     id: uri.replace(/\W/g, "_"),

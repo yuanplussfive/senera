@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { AgentRuntimeModuleComposer, type AgentRuntimeModule } from "../Source/AgentSystem/Runtime/AgentRuntimeModule.js";
+import {
+  AgentRuntimeModuleComposer,
+  type AgentRuntimeModule,
+} from "../Source/AgentSystem/Runtime/AgentRuntimeModule.js";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import type { LoadedToolsState } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
 import { verificationConfigPath } from "./VerificationConfig.js";
@@ -27,24 +30,12 @@ assert.equal(
   workflowSkills.some((skill) => skill.name === "ExecutionWorkflowSkill"),
   true,
 );
-assert.ok(
-  runtime.services.promptContext
-    .recommendedSkillTools(workflowSkills)
-    .includes("WorkspaceApplyPatch"),
-);
-assert.ok(
-  runtime.services.promptContext
-    .recommendedSkillTools(workflowSkills)
-    .includes("ShellCommandTool"),
-);
+assert.ok(runtime.services.promptContext.recommendedSkillTools(workflowSkills).includes("WorkspaceApplyPatch"));
+assert.ok(runtime.services.promptContext.recommendedSkillTools(workflowSkills).includes("ShellCommandTool"));
 const investigationSkills = runtime.services.promptContext.activateSkills({
   input: "现在的 shell 工具怎么实现的，读取 SeneraShellPlatform 的片段并分析",
 });
-assert.ok(
-  runtime.services.promptContext
-    .recommendedSkillTools(investigationSkills)
-    .includes("ShellCommandTool"),
-);
+assert.ok(runtime.services.promptContext.recommendedSkillTools(investigationSkills).includes("ShellCommandTool"));
 
 const toolCatalog = runtime.services.promptContext.toolCatalog();
 assert.ok(toolCatalog.length > 0);
@@ -96,36 +87,36 @@ const loadedTools = runtime.services.retrieval.resolvePlannedLoadedTools({
 });
 assert.ok(loadedTools === "all" || Array.isArray(loadedTools));
 
-let observedAutoSearch: {
-  requestId: string;
-  query: string;
-  loadedToolNames: LoadedToolsState;
-} | undefined;
+let observedAutoSearch:
+  | {
+      requestId: string;
+      query: string;
+      loadedToolNames: LoadedToolsState;
+    }
+  | undefined;
 
 const runtimeModule: AgentRuntimeModule = {
   id: "verify.retrieval-observer",
-  services: ({ services }) => [{
-    service: "retrieval",
-    create: () => ({
-      ...services.retrieval,
-      rememberAutoSearch: (requestId, query, loadedToolNames) => {
-        observedAutoSearch = {
-          requestId,
-          query,
-          loadedToolNames,
-        };
-        return services.retrieval.rememberAutoSearch(requestId, query, loadedToolNames);
-      },
-    }),
-  }],
+  services: ({ services }) => [
+    {
+      service: "retrieval",
+      create: () => ({
+        ...services.retrieval,
+        rememberAutoSearch: (requestId, query, loadedToolNames) => {
+          observedAutoSearch = {
+            requestId,
+            query,
+            loadedToolNames,
+          };
+          return services.retrieval.rememberAutoSearch(requestId, query, loadedToolNames);
+        },
+      }),
+    },
+  ],
 };
 
 const services = new AgentRuntimeModuleComposer().compose(runtime.services, [runtimeModule]);
-services.retrieval.rememberAutoSearch(
-  "verify-runtime-services",
-  "项目结构",
-  loadedTools,
-);
+services.retrieval.rememberAutoSearch("verify-runtime-services", "项目结构", loadedTools);
 
 assert.deepEqual(observedAutoSearch, {
   requestId: "verify-runtime-services",
@@ -139,11 +130,7 @@ const runtimeWithModule = AgentSystemRuntime.load({
   configPath,
   runtimeModules: [runtimeModule],
 });
-runtimeWithModule.services.retrieval.rememberAutoSearch(
-  "verify-runtime-module",
-  "模块装配",
-  loadedTools,
-);
+runtimeWithModule.services.retrieval.rememberAutoSearch("verify-runtime-module", "模块装配", loadedTools);
 assert.deepEqual(observedAutoSearch, {
   requestId: "verify-runtime-module",
   query: "模块装配",

@@ -1,7 +1,4 @@
-import type {
-  AgentModelProviderEndpointConfig,
-  AgentSystemConfig,
-} from "../Types/AgentConfigTypes.js";
+import type { AgentModelProviderEndpointConfig, AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import {
   AgentDefaults,
   resolveActionPlannerConfig,
@@ -22,7 +19,6 @@ import {
 } from "../AgentDefaults.js";
 
 export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemConfig {
-  const defaults = resolveAgentDefaults(config);
   return {
     ...config,
     AgentLoop: resolveAgentLoopConfig(config),
@@ -80,16 +76,18 @@ function projectModelProviderEndpoints(config: AgentSystemConfig) {
 }
 
 function defaultModelProviderEndpointFields(id: string) {
-  return AgentDefaults.ModelProviderEndpoints.find((endpoint) => endpoint.Id === id) ?? {
-    Id: id,
-    Icon: "",
-    Enabled: true,
-    Kind: "OpenAICompatible" as const,
-    BaseUrl: "",
-    ApiKey: "",
-    ApiVersion: "2023-06-01",
-    Headers: {},
-  };
+  return (
+    AgentDefaults.ModelProviderEndpoints.find((endpoint) => endpoint.Id === id) ?? {
+      Id: id,
+      Icon: "",
+      Enabled: true,
+      Kind: "OpenAICompatible" as const,
+      BaseUrl: "",
+      ApiKey: "",
+      ApiVersion: "2023-06-01",
+      Headers: {},
+    }
+  );
 }
 
 function projectResolvedActionPlanner(config: AgentSystemConfig): NonNullable<AgentSystemConfig["ActionPlanner"]> {
@@ -104,9 +102,7 @@ function projectResolvedActionPlanner(config: AgentSystemConfig): NonNullable<Ag
   };
 }
 
-function projectResolvedPlannerClient(
-  client: ReturnType<typeof resolveActionPlannerConfig>["Client"],
-) {
+function projectResolvedPlannerClient(client: ReturnType<typeof resolveActionPlannerConfig>["Client"]) {
   return {
     ModelProviderId: client.ModelProviderId,
     Provider: client.Provider,
@@ -128,9 +124,10 @@ function projectResolvedToolLearning(config: AgentSystemConfig): NonNullable<Age
 function projectResolvedToolExecution(config: AgentSystemConfig): NonNullable<AgentSystemConfig["ToolExecution"]> {
   const resolved = resolveToolExecutionConfig(config);
   return {
-    TimeoutSeconds: config.ToolExecution?.TimeoutSeconds
-      ?? config.Defaults?.ToolExecution?.TimeoutSeconds
-      ?? AgentDefaults.ToolExecution.TimeoutSeconds,
+    TimeoutSeconds:
+      config.ToolExecution?.TimeoutSeconds ??
+      config.Defaults?.ToolExecution?.TimeoutSeconds ??
+      AgentDefaults.ToolExecution.TimeoutSeconds,
     MaxStdoutBytes: resolved.MaxStdoutBytes,
     MaxStderrBytes: resolved.MaxStderrBytes,
   };
@@ -142,12 +139,12 @@ function projectResolvedVectorModels(config: AgentSystemConfig): NonNullable<Age
   return {
     Embedding: {
       Enabled: resolved.Embedding.Enabled,
-      ProviderId: config.VectorModels?.Embedding?.ProviderId
-        ?? config.Defaults?.VectorModels?.Embedding?.ProviderId
-        ?? AgentDefaults.VectorModels.Embedding.ProviderId,
+      ProviderId:
+        config.VectorModels?.Embedding?.ProviderId ??
+        config.Defaults?.VectorModels?.Embedding?.ProviderId ??
+        AgentDefaults.VectorModels.Embedding.ProviderId,
       Model: resolved.Embedding.Model,
-      TimeoutSeconds: config.VectorModels?.Embedding?.TimeoutSeconds
-        ?? defaults.VectorModels.Embedding.TimeoutSeconds,
+      TimeoutSeconds: config.VectorModels?.Embedding?.TimeoutSeconds ?? defaults.VectorModels.Embedding.TimeoutSeconds,
       MaxNetworkRetries: resolved.Embedding.MaxNetworkRetries,
       Dimensions: resolved.Embedding.Dimensions,
       BatchSize: resolved.Embedding.BatchSize,
@@ -155,12 +152,12 @@ function projectResolvedVectorModels(config: AgentSystemConfig): NonNullable<Age
     },
     Rerank: {
       Enabled: resolved.Rerank.Enabled,
-      ProviderId: config.VectorModels?.Rerank?.ProviderId
-        ?? config.Defaults?.VectorModels?.Rerank?.ProviderId
-        ?? AgentDefaults.VectorModels.Rerank.ProviderId,
+      ProviderId:
+        config.VectorModels?.Rerank?.ProviderId ??
+        config.Defaults?.VectorModels?.Rerank?.ProviderId ??
+        AgentDefaults.VectorModels.Rerank.ProviderId,
       Model: resolved.Rerank.Model,
-      TimeoutSeconds: config.VectorModels?.Rerank?.TimeoutSeconds
-        ?? defaults.VectorModels.Rerank.TimeoutSeconds,
+      TimeoutSeconds: config.VectorModels?.Rerank?.TimeoutSeconds ?? defaults.VectorModels.Rerank.TimeoutSeconds,
       MaxNetworkRetries: resolved.Rerank.MaxNetworkRetries,
       EndpointPath: resolved.Rerank.EndpointPath,
       CandidateLimit: resolved.Rerank.CandidateLimit,

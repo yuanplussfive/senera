@@ -14,15 +14,9 @@ import {
 } from "../ToolRuntime/AgentToolArgumentNormalization.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
-import {
-  toolProcessFailureResult,
-  toolProcessSuccessResult,
-} from "../ToolRuntime/AgentToolProcessEnvelope.js";
+import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import {
   AgentMemoryTypes,
   DefaultAgentMemoryDatabasePath,
@@ -36,23 +30,12 @@ import {
 } from "./AgentMemorySourceRepository.js";
 import { memoryItemEmbeddingText } from "./AgentMemoryText.js";
 import { AgentMemoryWriteResolver } from "./AgentMemoryWriteResolver.js";
-import type {
-  AgentMemoryWriteResolutionRequest,
-  AgentMemoryWriteResolverOptions,
-} from "./AgentMemoryWriteResolver.js";
+import type { AgentMemoryWriteResolutionRequest, AgentMemoryWriteResolverOptions } from "./AgentMemoryWriteResolver.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 
-const MemoryWriteOperations = [
-  "create",
-  "reinforce",
-  "update",
-  "supersede",
-] as const;
+const MemoryWriteOperations = ["create", "reinforce", "update", "supersede"] as const;
 
-const StringArraySchema = z.preprocess(
-  normalizeToolArrayArgument,
-  z.array(z.string().trim().min(1)).min(1),
-);
+const StringArraySchema = z.preprocess(normalizeToolArrayArgument, z.array(z.string().trim().min(1)).min(1));
 
 const MemoryWriteArgumentsSchema = z
   .object({
@@ -70,8 +53,8 @@ const MemoryWriteArgumentsSchema = z
   .strict()
   .superRefine((value, context) => {
     if (
-      (value.operation === "reinforce" || value.operation === "update" || value.operation === "supersede")
-      && !value.targetMemoryUri
+      (value.operation === "reinforce" || value.operation === "update" || value.operation === "supersede") &&
+      !value.targetMemoryUri
     ) {
       context.addIssue({
         code: "custom",
@@ -142,7 +125,7 @@ export const writeMemoryHostTool: AgentHostToolHandler = async (args, context) =
       diagnostics: parsed.error.issues.map((issue) => ({
         message: issue.message,
         pointer: `/${issue.path.join("/")}`,
-        path: issue.path.map((entry) => typeof entry === "number" ? entry : String(entry)),
+        path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
       })),
     });
   }
@@ -152,12 +135,14 @@ export const writeMemoryHostTool: AgentHostToolHandler = async (args, context) =
   );
   try {
     throwIfAborted(context.signal);
-    return okMemoryWriteResult(await writeAgentMemory(parsed.data, {
-      repository,
-      config: context.config,
-      requestId: context.requestId,
-      signal: context.signal,
-    }));
+    return okMemoryWriteResult(
+      await writeAgentMemory(parsed.data, {
+        repository,
+        config: context.config,
+        requestId: context.requestId,
+        signal: context.signal,
+      }),
+    );
   } catch (error) {
     return memoryWriteFailure({
       code: AgentExecutionErrorCodes.PluginExecutionError,
@@ -226,8 +211,7 @@ async function resolveDirectMemoryWrite(
   options: AgentMemoryWriteOptions,
 ): Promise<AgentMemoryConsolidationActionRecord> {
   const proposed = directMemoryWriteProposedAction(args, operation);
-  const hasComparableMemory = options.repository.listActiveMemoryItems()
-    .some((item) => item.type === args.type);
+  const hasComparableMemory = options.repository.listActiveMemoryItems().some((item) => item.type === args.type);
   if (operation !== "create" || !hasComparableMemory) {
     return proposed;
   }
@@ -237,11 +221,9 @@ async function resolveDirectMemoryWrite(
   const vectorConfig = resolveVectorModelsConfig(options.config);
   const resolverOptions = {
     repository: options.repository,
-    client: new AgentActionPlannerModelClient(
-      resolveModelProviderConfig(options.config),
-      learningConfig.Client,
-      { maxRepairAttempts: learningConfig.MaxRepairAttempts },
-    ),
+    client: new AgentActionPlannerModelClient(resolveModelProviderConfig(options.config), learningConfig.Client, {
+      maxRepairAttempts: learningConfig.MaxRepairAttempts,
+    }),
     vectorClient: new AgentVectorModelClient(vectorConfig),
     memoryLearningConfig,
     embeddingModel: vectorConfig.Embedding.Model,
@@ -295,12 +277,14 @@ async function writeMemoryEmbedding(
     return;
   }
 
-  options.repository.upsertMemoryItemVectors([{
-    memoryUri: item.uri,
-    model: result.model,
-    embedding,
-    updatedAt: item.updatedAt,
-  }]);
+  options.repository.upsertMemoryItemVectors([
+    {
+      memoryUri: item.uri,
+      model: result.model,
+      embedding,
+      updatedAt: item.updatedAt,
+    },
+  ]);
 }
 
 function createAgentMemoryWriteDecisionResolver(

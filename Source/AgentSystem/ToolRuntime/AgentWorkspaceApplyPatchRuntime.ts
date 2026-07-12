@@ -5,16 +5,10 @@ import { z } from "zod";
 import { resolveWorkspacePath, workspaceRelativePath } from "../Execution/SeneraWorkspacePath.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
-import {
-  toolProcessFailureResult,
-  toolProcessSuccessResult,
-} from "./AgentToolProcessEnvelope.js";
+import { toolProcessFailureResult, toolProcessSuccessResult } from "./AgentToolProcessEnvelope.js";
 
 const MaxOperations = 64;
 const MaxFuzzFactor = 3;
@@ -24,42 +18,56 @@ const WorkspacePathSchema = z.string().trim().min(1);
 const HunkPatchSchema = z.string().trim().min(1);
 
 const WorkspacePatchOperationSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("add"),
-    path: WorkspacePathSchema,
-    content: z.string(),
-  }).strict(),
-  z.object({
-    kind: z.literal("update"),
-    path: WorkspacePathSchema,
-    patch: HunkPatchSchema,
-  }).strict(),
-  z.object({
-    kind: z.literal("delete"),
-    path: WorkspacePathSchema,
-  }).strict(),
-  z.object({
-    kind: z.literal("move"),
-    source: WorkspacePathSchema,
-    destination: WorkspacePathSchema,
-    patch: HunkPatchSchema.optional(),
-  }).strict(),
-  z.object({
-    kind: z.literal("createDirectory"),
-    path: WorkspacePathSchema,
-  }).strict(),
-  z.object({
-    kind: z.literal("deleteDirectory"),
-    path: WorkspacePathSchema,
-    recursive: z.boolean().optional(),
-  }).strict(),
+  z
+    .object({
+      kind: z.literal("add"),
+      path: WorkspacePathSchema,
+      content: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("update"),
+      path: WorkspacePathSchema,
+      patch: HunkPatchSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("delete"),
+      path: WorkspacePathSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("move"),
+      source: WorkspacePathSchema,
+      destination: WorkspacePathSchema,
+      patch: HunkPatchSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("createDirectory"),
+      path: WorkspacePathSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("deleteDirectory"),
+      path: WorkspacePathSchema,
+      recursive: z.boolean().optional(),
+    })
+    .strict(),
 ]);
 
-const WorkspaceApplyPatchArgumentsSchema = z.object({
-  operations: z.array(WorkspacePatchOperationSchema).min(1).max(MaxOperations),
-  dryRun: z.boolean().optional(),
-  fuzzFactor: z.number().int().min(0).max(MaxFuzzFactor).optional(),
-}).strict();
+const WorkspaceApplyPatchArgumentsSchema = z
+  .object({
+    operations: z.array(WorkspacePatchOperationSchema).min(1).max(MaxOperations),
+    dryRun: z.boolean().optional(),
+    fuzzFactor: z.number().int().min(0).max(MaxFuzzFactor).optional(),
+  })
+  .strict();
 
 type WorkspaceApplyPatchArguments = z.infer<typeof WorkspaceApplyPatchArgumentsSchema>;
 type WorkspacePatchOperation = z.infer<typeof WorkspacePatchOperationSchema>;
@@ -117,7 +125,7 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       diagnostics: parsed.error.issues.map((issue) => ({
         message: issue.message,
         pointer: `/${issue.path.join("/")}`,
-        path: issue.path.map((entry) => typeof entry === "number" ? entry : String(entry)),
+        path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
       })),
       details: {
         phase: AgentToolProcessErrorPhases.RuntimeExecution,
@@ -159,10 +167,7 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
   }
 };
 
-async function buildPatchPlan(
-  args: WorkspaceApplyPatchArguments,
-  workspaceRoot: string,
-): Promise<PatchPlan> {
+async function buildPatchPlan(args: WorkspaceApplyPatchArguments, workspaceRoot: string): Promise<PatchPlan> {
   const plan: PatchPlan = {
     dryRun: args.dryRun === true,
     fuzzFactor: args.fuzzFactor ?? 0,
@@ -218,12 +223,15 @@ async function planOperation(input: {
   }
 }
 
-async function planAddOperation(input: {
-  operation: Extract<WorkspacePatchOperation, { kind: "add" }>;
-  workspaceRoot: string;
-  plan: PatchPlan;
-  pendingFiles: Map<string, PendingFileState>;
-}, pointer: string): Promise<void> {
+async function planAddOperation(
+  input: {
+    operation: Extract<WorkspacePatchOperation, { kind: "add" }>;
+    workspaceRoot: string;
+    plan: PatchPlan;
+    pendingFiles: Map<string, PendingFileState>;
+  },
+  pointer: string,
+): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const existing = await lstatOrUndefined(target.absolutePath);
@@ -235,10 +243,15 @@ async function planAddOperation(input: {
     });
   }
 
-  addWrite(input.plan, input.pendingFiles, {
-    target,
-    content: input.operation.content,
-  }, `${pointer}/path`);
+  addWrite(
+    input.plan,
+    input.pendingFiles,
+    {
+      target,
+      content: input.operation.content,
+    },
+    `${pointer}/path`,
+  );
   input.plan.operations.push({
     kind: "add",
     path: target.relativePath,
@@ -246,12 +259,15 @@ async function planAddOperation(input: {
   });
 }
 
-async function planUpdateOperation(input: {
-  operation: Extract<WorkspacePatchOperation, { kind: "update" }>;
-  workspaceRoot: string;
-  plan: PatchPlan;
-  pendingFiles: Map<string, PendingFileState>;
-}, pointer: string): Promise<void> {
+async function planUpdateOperation(
+  input: {
+    operation: Extract<WorkspacePatchOperation, { kind: "update" }>;
+    workspaceRoot: string;
+    plan: PatchPlan;
+    pendingFiles: Map<string, PendingFileState>;
+  },
+  pointer: string,
+): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const content = await readExistingFile(target, `${pointer}/path`);
@@ -264,10 +280,15 @@ async function planUpdateOperation(input: {
     pointer: `${pointer}/patch`,
   });
 
-  addWrite(input.plan, input.pendingFiles, {
-    target,
-    content: patched,
-  }, `${pointer}/path`);
+  addWrite(
+    input.plan,
+    input.pendingFiles,
+    {
+      target,
+      content: patched,
+    },
+    `${pointer}/path`,
+  );
   input.plan.operations.push({
     kind: "update",
     path: target.relativePath,
@@ -275,12 +296,15 @@ async function planUpdateOperation(input: {
   });
 }
 
-async function planDeleteOperation(input: {
-  operation: Extract<WorkspacePatchOperation, { kind: "delete" }>;
-  workspaceRoot: string;
-  plan: PatchPlan;
-  pendingFiles: Map<string, PendingFileState>;
-}, pointer: string): Promise<void> {
+async function planDeleteOperation(
+  input: {
+    operation: Extract<WorkspacePatchOperation, { kind: "delete" }>;
+    workspaceRoot: string;
+    plan: PatchPlan;
+    pendingFiles: Map<string, PendingFileState>;
+  },
+  pointer: string,
+): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const stat = await requiredStat(target, `${pointer}/path`);
@@ -301,12 +325,15 @@ async function planDeleteOperation(input: {
   });
 }
 
-async function planMoveOperation(input: {
-  operation: Extract<WorkspacePatchOperation, { kind: "move" }>;
-  workspaceRoot: string;
-  plan: PatchPlan;
-  pendingFiles: Map<string, PendingFileState>;
-}, pointer: string): Promise<void> {
+async function planMoveOperation(
+  input: {
+    operation: Extract<WorkspacePatchOperation, { kind: "move" }>;
+    workspaceRoot: string;
+    plan: PatchPlan;
+    pendingFiles: Map<string, PendingFileState>;
+  },
+  pointer: string,
+): Promise<void> {
   const source = resolveTarget(input.workspaceRoot, input.operation.source, `${pointer}/source`);
   const destination = resolveTarget(input.workspaceRoot, input.operation.destination, `${pointer}/destination`);
   if (source.relativePath === destination.relativePath) {
@@ -339,10 +366,15 @@ async function planMoveOperation(input: {
 
   input.plan.deletes.set(source.relativePath, { target: source });
   input.pendingFiles.set(source.relativePath, DeleteFile);
-  addWrite(input.plan, input.pendingFiles, {
-    target: destination,
-    content: nextContent,
-  }, `${pointer}/destination`);
+  addWrite(
+    input.plan,
+    input.pendingFiles,
+    {
+      target: destination,
+      content: nextContent,
+    },
+    `${pointer}/destination`,
+  );
   input.plan.operations.push({
     kind: "move",
     source: source.relativePath,
@@ -351,17 +383,16 @@ async function planMoveOperation(input: {
   });
 }
 
-async function planCreateDirectoryOperation(input: {
-  operation: Extract<WorkspacePatchOperation, { kind: "createDirectory" }>;
-  workspaceRoot: string;
-  plan: PatchPlan;
-}, pointer: string): Promise<void> {
+async function planCreateDirectoryOperation(
+  input: {
+    operation: Extract<WorkspacePatchOperation, { kind: "createDirectory" }>;
+    workspaceRoot: string;
+    plan: PatchPlan;
+  },
+  pointer: string,
+): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensureNotWorkspaceRoot(
-    target,
-    `${pointer}/path`,
-    agentErrorMessage("workspacePatch.createDirectoryRoot"),
-  );
+  ensureNotWorkspaceRoot(target, `${pointer}/path`, agentErrorMessage("workspacePatch.createDirectoryRoot"));
   const existing = await lstatOrUndefined(target.absolutePath);
   if (existing && !existing.isDirectory()) {
     throw new WorkspaceApplyPatchError({
@@ -381,17 +412,16 @@ async function planCreateDirectoryOperation(input: {
   });
 }
 
-async function planDeleteDirectoryOperation(input: {
-  operation: Extract<WorkspacePatchOperation, { kind: "deleteDirectory" }>;
-  workspaceRoot: string;
-  plan: PatchPlan;
-}, pointer: string): Promise<void> {
+async function planDeleteDirectoryOperation(
+  input: {
+    operation: Extract<WorkspacePatchOperation, { kind: "deleteDirectory" }>;
+    workspaceRoot: string;
+    plan: PatchPlan;
+  },
+  pointer: string,
+): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensureNotWorkspaceRoot(
-    target,
-    `${pointer}/path`,
-    agentErrorMessage("workspacePatch.deleteDirectoryRoot"),
-  );
+  ensureNotWorkspaceRoot(target, `${pointer}/path`, agentErrorMessage("workspacePatch.deleteDirectoryRoot"));
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const stat = await requiredStat(target, `${pointer}/path`);
   if (!stat.isDirectory()) {
@@ -447,11 +477,7 @@ function applyHunkPatch(input: {
   pointer: string;
 }): string {
   const hunkPatch = normalizeHunkPatch(input.hunkPatch, input.pointer);
-  const patchText = [
-    `--- a/${input.oldPath}`,
-    `+++ b/${input.newPath}`,
-    hunkPatch,
-  ].join("\n");
+  const patchText = [`--- a/${input.oldPath}`, `+++ b/${input.newPath}`, hunkPatch].join("\n");
 
   try {
     const result = applyPatch(input.source, patchText, {
@@ -545,11 +571,7 @@ async function lstatOrUndefined(filePath: string): Promise<Awaited<ReturnType<ty
   }
 }
 
-function resolveTarget(
-  workspaceRoot: string,
-  value: string,
-  pointer: string,
-): ResolvedWorkspaceTarget {
+function resolveTarget(workspaceRoot: string, value: string, pointer: string): ResolvedWorkspaceTarget {
   if (value.includes("\0")) {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.pathContainsNul"),
@@ -600,10 +622,11 @@ function ensurePathUnused(
   if (options.allowExistingDirectoryCreate && plan.createDirectories.has(target.relativePath)) {
     return;
   }
-  const used = plan.writes.has(target.relativePath)
-    || plan.deletes.has(target.relativePath)
-    || plan.createDirectories.has(target.relativePath)
-    || plan.deleteDirectories.has(target.relativePath);
+  const used =
+    plan.writes.has(target.relativePath) ||
+    plan.deletes.has(target.relativePath) ||
+    plan.createDirectories.has(target.relativePath) ||
+    plan.deleteDirectories.has(target.relativePath);
   if (used) {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.duplicateOperation", { path: target.relativePath }),
@@ -633,7 +656,10 @@ function addWrite(
 function rejectDirectoryDeleteConflicts(plan: PatchPlan): void {
   for (const deletion of plan.deleteDirectories.values()) {
     for (const changedPath of collectChangedPaths(plan)) {
-      if (changedPath !== deletion.target.relativePath && isInsideDirectory(changedPath, deletion.target.relativePath)) {
+      if (
+        changedPath !== deletion.target.relativePath &&
+        isInsideDirectory(changedPath, deletion.target.relativePath)
+      ) {
         throw new WorkspaceApplyPatchError({
           message: agentErrorMessage("workspacePatch.directoryDeleteConflict", {
             directoryPath: deletion.target.relativePath,
@@ -663,16 +689,13 @@ function isInsideDirectory(filePath: string, directoryPath: string): boolean {
 
 async function atomicWriteFile(filePath: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const tempPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
-  );
+  const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
   await fs.writeFile(tempPath, content, "utf8");
   await fs.rename(tempPath, filePath);
 }
 
 function workspacePatchFailure(input: {
-  code: typeof AgentExecutionErrorCodes[keyof typeof AgentExecutionErrorCodes];
+  code: (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes];
   message: string;
   diagnostics?: AgentSourceDiagnostic[];
   details?: NonNullable<AgentToolProcessRunResult["response"]["error"]>["details"];
@@ -689,11 +712,7 @@ class WorkspaceApplyPatchError extends Error {
   readonly pointer: string;
   readonly suggestion?: string;
 
-  constructor(input: {
-    message: string;
-    pointer: string;
-    suggestion?: string;
-  }) {
+  constructor(input: { message: string; pointer: string; suggestion?: string }) {
     super(input.message);
     this.name = "WorkspaceApplyPatchError";
     this.pointer = input.pointer;
@@ -704,11 +723,13 @@ class WorkspaceApplyPatchError extends Error {
     return {
       code: AgentExecutionErrorCodes.InvalidToolArguments,
       message: this.message,
-      diagnostics: [{
-        message: this.message,
-        pointer: this.pointer,
-        suggestion: this.suggestion,
-      }],
+      diagnostics: [
+        {
+          message: this.message,
+          pointer: this.pointer,
+          suggestion: this.suggestion,
+        },
+      ],
       details: {
         phase: AgentToolProcessErrorPhases.RuntimeExecution,
         toolName,

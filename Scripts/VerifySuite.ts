@@ -31,10 +31,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  assert.ok(fs.existsSync(distScriptsRoot), [
-    `Compiled verification scripts were not found at ${relativePath(distScriptsRoot)}.`,
-    "Run npm run build before invoking verifysuite directly.",
-  ].join("\n"));
+  assert.ok(
+    fs.existsSync(distScriptsRoot),
+    [
+      `Compiled verification scripts were not found at ${relativePath(distScriptsRoot)}.`,
+      "Run npm run build before invoking verifysuite directly.",
+    ].join("\n"),
+  );
 
   const scripts = resolveSuiteScripts(selectedSuites);
   assert.ok(scripts.length > 0, `No verification scripts matched suites: ${selectedSuites.join(", ")}`);
@@ -92,12 +95,14 @@ function resolveSuiteDefinition(name: string, suite: VerifySuiteDefinition): str
   const unresolvedPatterns: string[] = [];
 
   for (const includePattern of includePatterns) {
-    const matches = fg.sync([includePattern, ...excludePatterns], {
-      cwd: distScriptsRoot,
-      absolute: true,
-      onlyFiles: true,
-      unique: true,
-    }).sort((left, right) => path.basename(left).localeCompare(path.basename(right)));
+    const matches = fg
+      .sync([includePattern, ...excludePatterns], {
+        cwd: distScriptsRoot,
+        absolute: true,
+        onlyFiles: true,
+        unique: true,
+      })
+      .sort((left, right) => path.basename(left).localeCompare(path.basename(right)));
 
     if (matches.length === 0) {
       unresolvedPatterns.push(includePattern);

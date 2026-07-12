@@ -15,9 +15,7 @@
       "Name": "ArtifactMemoryReadTool",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
-      "Permissions": [
-        "filesystem:read:artifacts"
-      ],
+      "Permissions": ["filesystem:read:artifacts"],
       "Handler": {
         "Kind": "HostCapability",
         "Capability": "artifact.memory.read"
@@ -26,7 +24,7 @@
         "Boundary": "Local",
         "Network": "Deny",
         "Workspace": "ReadOnly",
-        "LocalFallback": "Allow"
+        "LocalFallback": "Deny"
       },
       "Artifacts": {
         "Evidence": [
@@ -42,10 +40,7 @@
               "memoryCount": "$.memoryCount"
             },
             "Identity": {
-              "Parts": [
-                "artifactUri",
-                "status"
-              ]
+              "Parts": ["artifactUri", "status"]
             },
             "Presentation": {
               "Locator": "{{ artifactUri }}",
@@ -60,27 +55,11 @@
               "memoryCount": "$.memoryCount"
             },
             "ModelProjection": {
-              "Slots": [
-                "artifactUri",
-                "artifactId",
-                "status",
-                "message",
-                "availableRefCount",
-                "memoryCount"
-              ]
+              "Slots": ["artifactUri", "artifactId", "status", "message", "availableRefCount", "memoryCount"]
             },
             "PlannerMemory": {
-              "Facts": [
-                "artifactUri",
-                "artifactId",
-                "status",
-                "availableRefCount",
-                "memoryCount"
-              ],
-              "ArtifactRefs": [
-                "evidence",
-                "projection"
-              ]
+              "Facts": ["artifactUri", "artifactId", "status", "availableRefCount", "memoryCount"],
+              "ArtifactRefs": ["evidence", "projection"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.artifactUri }} (loaded {{ e.slots.memoryCount }} refs)\n{% endfor %}",
@@ -101,48 +80,21 @@
             "Title": "Artifact memory read",
             "Description": "Load persisted artifact projections or evidence records by canonical artifact URI.",
             "Facets": {
-              "Actions": [
-                "read",
-                "hydrate",
-                "inspect"
-              ],
-              "Targets": [
-                "artifact-memory",
-                "artifact-projection",
-                "artifact-evidence"
-              ],
-              "Inputs": [
-                "artifact-uri",
-                "artifact-uri-list",
-                "artifact-ref"
-              ],
-              "Outputs": [
-                "artifact-memory",
-                "projection-text",
-                "evidence-json"
-              ],
-              "Evidence": [
-                "artifact-memory"
-              ],
-              "Effects": [
-                "read-only"
-              ]
+              "Actions": ["read", "hydrate", "inspect"],
+              "Targets": ["artifact-memory", "artifact-projection", "artifact-evidence"],
+              "Inputs": ["artifact-uri", "artifact-uri-list", "artifact-ref"],
+              "Outputs": ["artifact-memory", "projection-text", "evidence-json"],
+              "Evidence": ["artifact-memory"],
+              "Effects": ["read-only"]
             },
-            "Aliases": [
-              "读取记忆",
-              "展开证据",
-              "load artifact memory",
-              "hydrate artifact evidence"
-            ],
+            "Aliases": ["读取记忆", "展开证据", "load artifact memory", "hydrate artifact evidence"],
             "Risk": {
               "SideEffect": "read-only",
               "Permission": "artifact-read"
             }
           }
         ],
-        "UseCases": [
-          "历史工具结果、网页搜索结果、artifact projection、evidence 结构化读取。"
-        ],
+        "UseCases": ["历史工具结果、网页搜索结果、artifact projection、evidence 结构化读取。"],
         "Examples": [
           "senera artifact projection",
           "artifactUri evidence.json",
@@ -153,12 +105,7 @@
           "artifactUri 缺失时先使用当前上下文或检索工具定位证据引用。",
           "只需要轻量 facts 就能回答时不要读取完整 artifact。"
         ],
-        "Tags": [
-          "证据读取",
-          "产物记忆",
-          "上下文恢复",
-          "历史资料"
-        ]
+        "Tags": ["证据读取", "产物记忆", "上下文恢复", "历史资料"]
       }
     }
   ],
@@ -166,9 +113,7 @@
     "TrustLevel": "System",
     "Network": "Deny",
     "FileSystem": {
-      "Read": [
-        ".senera/artifacts"
-      ],
+      "Read": [".senera/artifacts"],
       "Write": []
     },
     "RequiresApproval": false

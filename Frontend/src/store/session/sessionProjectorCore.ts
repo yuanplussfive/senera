@@ -1,18 +1,10 @@
 import { DEFAULT_SESSION_TITLE } from "./defaults";
 import { touchRun } from "./sessionRunProjection";
-import type {
-  RunRecord,
-  SessionRecord,
-  StoreState,
-  TimelineStep,
-} from "./types";
+import type { RunRecord, SessionRecord, StoreState, TimelineStep } from "./types";
 
 export const nowIso = (): string => new Date().toISOString();
 
-export function currentRun(
-  session: SessionRecord,
-  requestId?: string,
-): RunRecord | undefined {
+export function currentRun(session: SessionRecord, requestId?: string): RunRecord | undefined {
   if (!requestId) return session.runs[session.runs.length - 1];
   return session.runs.find((run) => run.requestId === requestId);
 }

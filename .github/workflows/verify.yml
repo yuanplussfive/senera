@@ -27,13 +27,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
-      - run: npm run bamlcheck
-      - run: npm run check
-      - run: npm run backendtest
-      - run: npm run frontendverify
-      - run: npm run e2etest
+      - run: npm run policy.verify
+      - run: npm run quality.baml
+      - run: npm run check.types
+      - run: npm run quality.lint
+      - run: npm run quality.format
+      - run: npm run test.backend
+      - run: npm run test.frontend
+      - run: npm run test.e2e
       - run: npm run build
-      - run: npm run verifysuite -- workspace core e2e release
+      - run: npm run verify.suite -- workspace core e2e release
 
   platform-windows:
     name: Windows Platform Smoke
@@ -42,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
       - run: npm run build
-      - run: npm run verifysuite -- platform
+      - run: npm run verify.suite -- platform
 
   coverage:
     name: Coverage Gate
@@ -54,13 +57,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
-      - run: npm run frontendcoverage
+      - run: npm run test.coverage.frontend
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage
           path: coverage/frontend
           if-no-files-found: error
-      - run: npm run backendcoverage
+      - run: npm run test.coverage.backend
       - uses: actions/upload-artifact@v4
         with:
           name: backend-coverage
@@ -74,4 +77,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
-      - run: npm run verifyall
+      - run: npm run verify.all

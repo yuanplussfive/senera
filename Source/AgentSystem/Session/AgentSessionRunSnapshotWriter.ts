@@ -1,17 +1,13 @@
-import { AgentCancellationError } from "../Core/AgentCancellation.js";
+import { type AgentCancellationError } from "../Core/AgentCancellation.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentSession } from "./AgentSession.js";
-import { AgentSessionStore } from "./AgentSessionStore.js";
+import { type AgentSessionStore } from "./AgentSessionStore.js";
 
 export class AgentSessionRunSnapshotWriter {
   constructor(private readonly store: AgentSessionStore) {}
 
-  running(input: {
-    sessionId: string;
-    requestId: string;
-    text: string;
-    startedAt: string;
-  }): void {
+  running(input: { sessionId: string; requestId: string; text: string; startedAt: string }): void {
     this.store.persistRunSnapshot({
       sessionId: input.sessionId,
       requestId: input.requestId,
@@ -62,13 +58,7 @@ export class AgentSessionRunSnapshotWriter {
     });
   }
 
-  failed(input: {
-    sessionId: string;
-    requestId: string;
-    text: string;
-    startedAt: string;
-    error: unknown;
-  }): void {
+  failed(input: { sessionId: string; requestId: string; text: string; startedAt: string; error: unknown }): void {
     const endedAt = new Date().toISOString();
     this.store.persistRunSnapshot({
       sessionId: input.sessionId,
@@ -97,7 +87,7 @@ export class AgentSessionRunSnapshotWriter {
       startedAt: activeRequest.startedAt,
       updatedAt: endedAt,
       endedAt,
-      errorMessage: "请求已被中断。",
+      errorMessage: agentErrorMessage("session.runCancelled"),
     });
   }
 
@@ -112,7 +102,7 @@ export class AgentSessionRunSnapshotWriter {
           status: "failed",
           updatedAt: now,
           endedAt: now,
-          errorMessage: "后端重启前该请求仍在运行，已标记为失败。",
+          errorMessage: agentErrorMessage("session.runOrphanedAfterRestart"),
         });
       }
     }
@@ -125,6 +115,6 @@ function readErrorMessage(error: unknown): string {
   try {
     return JSON.stringify(error);
   } catch {
-    return "未知错误";
+    return agentErrorMessage("session.runFailed");
   }
 }

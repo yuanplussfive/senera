@@ -22,6 +22,7 @@ export interface UploadProgress {
 
 export interface UploadFileOptions {
   onProgress?: (progress: UploadProgress) => void;
+  headers?: Readonly<Record<string, string>>;
 }
 
 export function buildUploadUrl(webSocketUrl: string): string {
@@ -83,6 +84,10 @@ export function uploadFile(
     });
 
     request.open("POST", uploadUrl);
+    request.withCredentials = true;
+    for (const [name, value] of Object.entries(options.headers ?? {})) {
+      request.setRequestHeader(name, value);
+    }
     request.send(form);
   });
 }
@@ -100,13 +105,10 @@ function parseUploadResponse(value: string): UploadResponse | UploadErrorRespons
   }
 }
 
-function isUploadSuccess(
-  status: number,
-  payload: UploadResponse | UploadErrorResponse,
-): payload is UploadResponse {
+function isUploadSuccess(status: number, payload: UploadResponse | UploadErrorResponse): payload is UploadResponse {
   return status >= 200 && status < 300 && payload.ok;
 }
 
 function readUploadErrorMessage(payload: UploadResponse | UploadErrorResponse): string {
-  return payload.ok ? frontendMessage("upload.failed") : payload.error?.message ?? frontendMessage("upload.failed");
+  return payload.ok ? frontendMessage("upload.failed") : (payload.error?.message ?? frontendMessage("upload.failed"));
 }

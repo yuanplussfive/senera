@@ -6,6 +6,7 @@ Objective:
 $ARGUMENTS
 
 Execution contract:
+
 - Maintain a private todo list for the current turn before choosing tools.
 - Keep todo items outcome-oriented, not narration-oriented.
 - Complete items in dependency order; revise the list when tool evidence changes the plan.

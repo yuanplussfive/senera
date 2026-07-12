@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { ZodError, type ZodType } from "zod";
+import { type ZodError, type ZodType } from "zod";
 import { toRuntimeModulePath } from "./AgentPath.js";
 
 export class AgentSchemaValidationError extends Error {
@@ -20,11 +20,7 @@ export class AgentSchemaValidator {
     const result = schema.safeParse(value);
 
     if (!result.success) {
-      throw new AgentSchemaValidationError(
-        `Zod 校验失败：${schemaPath}。`,
-        result.error.issues,
-        schemaPath,
-      );
+      throw new AgentSchemaValidationError(`Zod 校验失败：${schemaPath}。`, result.error.issues, schemaPath);
     }
 
     return result.data;

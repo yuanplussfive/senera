@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AgentDomainEvent, AgentEventSink } from "../Events/AgentEvent.js";
 import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export const AgentUserProfileLimits = {
   NameMaxLength: 48,
@@ -37,7 +38,7 @@ export interface AgentUserProfileRepository {
 
 export function createDefaultAgentUserProfile(updatedAt = new Date().toISOString()): AgentUserProfile {
   return {
-    name: "用户",
+    name: agentErrorMessage("session.profileDefaultName"),
     avatarDataUrl: null,
     updatedAt,
   };
@@ -74,10 +75,7 @@ export class AgentUserProfileManager {
     await emitAgentEvent(request.onEvent, this.snapshotEvent(this.repository.loadUserProfile()));
   }
 
-  async updateProfile(request: {
-    profile: AgentUserProfileInput;
-    onEvent?: AgentEventSink;
-  }): Promise<void> {
+  async updateProfile(request: { profile: AgentUserProfileInput; onEvent?: AgentEventSink }): Promise<void> {
     const profile = this.repository.saveUserProfile(request.profile);
     await emitAgentEvent(request.onEvent, this.snapshotEvent(profile));
   }

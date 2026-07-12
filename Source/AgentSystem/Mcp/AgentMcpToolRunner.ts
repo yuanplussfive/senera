@@ -1,14 +1,8 @@
 import { resolveToolExecutionConfig } from "../AgentDefaults.js";
 import path from "node:path";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
-import {
-  toolProcessFailureResult,
-  toolProcessSuccessResult,
-} from "../ToolRuntime/AgentToolProcessEnvelope.js";
+import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import type { AgentToolRunnerContext } from "../ToolRuntime/AgentToolRunner.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
@@ -16,6 +10,7 @@ import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { buildAgentMcpExecutionProfile } from "./AgentMcpExecutionProfile.js";
 import { resolveMcpServerManifest } from "./AgentMcpManifestResolver.js";
 import { withAgentMcpToolClient } from "./AgentMcpToolClient.js";
+import { bindAgentToolFallbackContext } from "../ToolRuntime/AgentToolFallbackContext.js";
 
 export interface AgentMcpToolRunnerOptions {
   config: AgentSystemConfig;
@@ -52,17 +47,28 @@ export class AgentMcpToolRunner {
         workspaceRoot: this.options.workspaceRoot,
         pluginRoot: tool.plugin.rootPath,
       });
-      const executionProfile = buildAgentMcpExecutionProfile(tool);
-      const result = await withAgentMcpToolClient({
-        server: resolvedServer,
-        requestTimeoutMs: toolExecution.TimeoutMs,
-        spawnPersistentProcess: this.options.executionEnv.spawnPersistentProcess,
-        executionProfile,
-        signal: context.signal,
-      }, (client) => client.callTool(handler.tool, normalizeMcpToolArguments(args, {
-        workspaceRoot: this.options.workspaceRoot,
-        serverId: handler.server,
-      })));
+      const executionProfile = bindAgentToolFallbackContext({
+        profile: buildAgentMcpExecutionProfile(tool),
+        tool,
+        correlation: context,
+      });
+      const result = await withAgentMcpToolClient(
+        {
+          server: resolvedServer,
+          requestTimeoutMs: toolExecution.TimeoutMs,
+          spawnPersistentProcess: this.options.executionEnv.spawnPersistentProcess,
+          executionProfile,
+          signal: context.signal,
+        },
+        (client) =>
+          client.callTool(
+            handler.tool,
+            normalizeMcpToolArguments(args, {
+              workspaceRoot: this.options.workspaceRoot,
+              serverId: handler.server,
+            }),
+          ),
+      );
 
       return toolProcessSuccessResult(projectMcpToolResult(result));
     } catch (error) {
@@ -86,10 +92,7 @@ function normalizeMcpToolArguments(
   return normalizers[context.serverId]?.() ?? args;
 }
 
-function normalizeWorkspacePathArgument(
-  args: Record<string, unknown>,
-  workspaceRoot: string,
-): Record<string, unknown> {
+function normalizeWorkspacePathArgument(args: Record<string, unknown>, workspaceRoot: string): Record<string, unknown> {
   const rawPath = typeof args.path === "string" ? args.path : undefined;
   if (!rawPath) {
     return args;
@@ -97,13 +100,9 @@ function normalizeWorkspacePathArgument(
 
   const absolute = path.isAbsolute(rawPath) ? path.resolve(rawPath) : path.resolve(workspaceRoot, rawPath);
   const relative = path.relative(workspaceRoot, absolute);
-  const normalizedPath = relative.length === 0
-    ? "."
-    : relative.split(path.sep).join("/");
+  const normalizedPath = relative.length === 0 ? "." : relative.split(path.sep).join("/");
 
-  return path.isAbsolute(rawPath)
-    ? { ...args, path: normalizedPath }
-    : args;
+  return path.isAbsolute(rawPath) ? { ...args, path: normalizedPath } : args;
 }
 
 function projectMcpToolResult(result: unknown): unknown {
@@ -128,15 +127,10 @@ function extractMcpText(value: unknown): string {
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function mcpToolFailure(
-  message: string,
-  details: Record<string, unknown>,
-): AgentToolProcessRunResult {
+function mcpToolFailure(message: string, details: Record<string, unknown>): AgentToolProcessRunResult {
   return toolProcessFailureResult({
     code: AgentExecutionErrorCodes.PluginExecutionError,
     message,

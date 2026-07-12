@@ -1,5 +1,6 @@
 import * as parse5 from "parse5";
 import { defaultTreeAdapter, type DefaultTreeAdapterTypes } from "parse5";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export interface CodePreview {
   id: string;
@@ -24,24 +25,24 @@ interface CodePreviewProvider {
 const previewProviders: readonly CodePreviewProvider[] = [
   {
     id: "html-document",
-    label: "预览",
+    label: frontendMessage("code.preview"),
     languages: ["html", "htm"],
     detect: ({ code }) => parseHtmlSource(code).hasRenderableContent,
     build: ({ code }) => ({
       id: "html-document",
-      label: "预览",
+      label: frontendMessage("code.preview"),
       source: buildPreviewDocument(code),
       sandbox: "allow-forms allow-modals allow-pointer-lock allow-popups",
     }),
   },
   {
     id: "svg-document",
-    label: "预览",
+    label: frontendMessage("code.preview"),
     languages: ["svg"],
     detect: ({ code }) => parseHtmlSource(code).hasElement("svg"),
     build: ({ code }) => ({
       id: "svg-document",
-      label: "预览",
+      label: frontendMessage("code.preview"),
       source: buildPreviewDocument(code),
       sandbox: "allow-pointer-lock allow-popups",
     }),
@@ -52,8 +53,7 @@ export function resolveCodePreview(language: string, code: string): CodePreview 
   const normalizedLanguage = normalizeLanguage(language);
   const context = { language: normalizedLanguage, code };
   const provider = previewProviders.find(
-    (candidate) =>
-      candidate.languages.includes(normalizedLanguage) && candidate.detect(context),
+    (candidate) => candidate.languages.includes(normalizedLanguage) && candidate.detect(context),
   );
   return provider ? provider.build(context) : null;
 }
@@ -110,8 +110,7 @@ function parseHtmlSource(code: string): {
 } {
   const fragment = parse5.parseFragment(code);
   const document = parse5.parse(code);
-  const hasElement = (tagName: string): boolean =>
-    hasNodeNamed(fragment, tagName) || hasNodeNamed(document, tagName);
+  const hasElement = (tagName: string): boolean => hasNodeNamed(fragment, tagName) || hasNodeNamed(document, tagName);
   return {
     hasRenderableContent: hasAnyElement(fragment) || hasAnyElement(document),
     hasElement,
@@ -121,9 +120,7 @@ function parseHtmlSource(code: string): {
 function buildPreviewDocument(code: string): string {
   const document = parse5.parse(code);
   const fragment = parse5.parseFragment(code);
-  const sourceDocument = isCompleteHtmlSource(fragment)
-    ? document
-    : createDocumentFromFragment(fragment);
+  const sourceDocument = isCompleteHtmlSource(fragment) ? document : createDocumentFromFragment(fragment);
   injectHeadStyle(sourceDocument, createPreviewScrollbarStyle());
   return parse5.serialize(sourceDocument);
 }
@@ -160,7 +157,7 @@ body {
 }
 
 function createDocumentFromFragment(fragment: ParseNode): DefaultTreeAdapterTypes.Document {
-  const document = parse5.parse("<!doctype html><html><head><meta charset=\"utf-8\"></head><body></body></html>");
+  const document = parse5.parse('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
   const body = findNodeNamed(document, "body");
   if (isParentNode(body) && isParentNode(fragment)) {
     body.childNodes = [...fragment.childNodes];

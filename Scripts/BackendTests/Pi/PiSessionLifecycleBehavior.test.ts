@@ -1,7 +1,5 @@
-import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import type {
-  AgentEvent,
   AgentHarnessResources,
   AgentMessage,
   AgentState,
@@ -27,11 +25,7 @@ import {
 } from "../../../Source/AgentSystem/Pi/AgentPiSessionStore.js";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import {
-  createModelProvider,
-  createTemporaryDirectory,
-  removeDirectory,
-} from "../Support/AgentTestFixtures.js";
+import { createModelProvider, createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -113,12 +107,14 @@ describe("Pi session lifecycle behavior", () => {
       { sessionId: "session-1", fallbackId: "request-1" },
       { sessionId: "session-1", fallbackId: "request-2" },
     ]);
-    expect(pool.leases.map((lease) => ({
-      sessionId: lease.sessionId,
-      requestId: lease.frame.requestId,
-      step: lease.frame.step,
-      activeToolNames: lease.activeToolNames,
-    }))).toEqual([
+    expect(
+      pool.leases.map((lease) => ({
+        sessionId: lease.sessionId,
+        requestId: lease.frame.requestId,
+        step: lease.frame.step,
+        activeToolNames: lease.activeToolNames,
+      })),
+    ).toEqual([
       { sessionId: "session-1", requestId: "request-1", step: 1, activeToolNames: [] },
       { sessionId: "session-1", requestId: "request-2", step: 2, activeToolNames: [] },
     ]);
@@ -137,17 +133,21 @@ const piTestConfig: AgentSystemConfig = {
     Host: "127.0.0.1",
     Port: 8787,
   },
-  ModelProviderEndpoints: [{
-    Id: "test-endpoint",
-    BaseUrl: "https://model.example/v1",
-    ApiKey: "test-key",
-  }],
-  ModelProviders: [{
-    Id: "test-provider",
-    ProviderId: "test-endpoint",
-    Endpoint: "ChatCompletions",
-    Model: "test-model",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "test-endpoint",
+      BaseUrl: "https://model.example/v1",
+      ApiKey: "test-key",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "test-provider",
+      ProviderId: "test-endpoint",
+      Endpoint: "ChatCompletions",
+      Model: "test-model",
+    },
+  ],
 };
 
 const unusedToolExecutor: AgentPiToolCallExecutorPort = {
@@ -184,7 +184,7 @@ class RecordingHarnessPool implements AgentPiHarnessSessionPoolPort {
     this.leases.push(input);
     return {
       session: new FakePiSession(),
-      storage: this.leases.length === 1 ? "created" as const : "existing" as const,
+      storage: this.leases.length === 1 ? ("created" as const) : ("existing" as const),
     };
   }
 
@@ -211,11 +211,17 @@ class FakePiSession implements AgentPiSession {
   async followUp(_text: string): Promise<void> {}
   async nextTurn(_text: string): Promise<void> {}
   async setResources(_resources: AgentHarnessResources<Skill, PromptTemplate>): Promise<void> {}
-  subscribe(_listener: AgentPiSessionEventListener): () => void { return () => {}; }
+  subscribe(_listener: AgentPiSessionEventListener): () => void {
+    return () => {};
+  }
   async abort(): Promise<void> {}
   dispose(): void {}
-  getLastAssistantText(): string | undefined { return undefined; }
-  getActiveToolNames(): string[] { return []; }
+  getLastAssistantText(): string | undefined {
+    return undefined;
+  }
+  getActiveToolNames(): string[] {
+    return [];
+  }
 }
 
 function sessionResult(

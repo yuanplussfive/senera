@@ -16,13 +16,15 @@ export function projectAgentConfigForm(config: AgentSystemConfig): AgentConfigFo
       .map((section) => {
         const fields = (section.fields ?? [])
           .filter((field) => field.level !== "internal")
-          .map((field) => projectConfigFormField({
-            field,
-            section: section.id,
-            source,
-            effectiveSource,
-            basePath: [],
-          }));
+          .map((field) =>
+            projectConfigFormField({
+              field,
+              section: section.id,
+              source,
+              effectiveSource,
+              basePath: [],
+            }),
+          );
         return {
           name: section.id,
           label: section.label,

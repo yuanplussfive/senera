@@ -5,18 +5,10 @@ import {
   SeneraExecutionErrorCodes,
   type SeneraShellExecutionResult,
 } from "./SeneraExecutionTypes.js";
-import {
-  createSeneraProcessRootfsBundle,
-} from "./SeneraProcessRootfsBundle.js";
+import { createSeneraProcessRootfsBundle } from "./SeneraProcessRootfsBundle.js";
 import { SeneraProcessOutputBuffer } from "./SeneraProcessOutputBuffer.js";
-import type {
-  SeneraProcessExecutionBackend,
-  SeneraProcessExecutionRequest,
-} from "./SeneraProcessExecutionBackend.js";
-import {
-  resolveSeneraMicrosandboxSettings,
-  type SeneraMicrosandboxSettings,
-} from "./SeneraMicrosandboxDefaults.js";
+import type { SeneraProcessExecutionBackend, SeneraProcessExecutionRequest } from "./SeneraProcessExecutionBackend.js";
+import { resolveSeneraMicrosandboxSettings, type SeneraMicrosandboxSettings } from "./SeneraMicrosandboxDefaults.js";
 import { projectMicrosandboxWorkspaceMount } from "./SeneraMicrosandboxPaths.js";
 import { SeneraMicrosandboxDynamicSdkAdapter } from "./SeneraMicrosandboxSdkAdapter.js";
 import type {
@@ -125,10 +117,10 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend 
         pullPolicy: settings.pullPolicy,
         runtime: this.runtimePaths
           ? {
-            baseDir: this.runtimePaths.baseDir,
-            msbPath: this.runtimePaths.msbPath,
-            libkrunfwPath: this.runtimePaths.libkrunfwPath,
-          }
+              baseDir: this.runtimePaths.baseDir,
+              msbPath: this.runtimePaths.msbPath,
+              libkrunfwPath: this.runtimePaths.libkrunfwPath,
+            }
           : undefined,
         maxDurationSeconds: timeoutSeconds(request.timeoutMs),
       });
@@ -178,13 +170,20 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend 
       cancellationError ??= error;
       void session.kill().catch(() => undefined);
     };
-    const timer = request.timeoutMs > 0
-      ? setTimeout(() => cancel(new SeneraExecutionError(
-          SeneraExecutionErrorCodes.Timeout,
-          `命令执行超时，超过 ${request.timeoutMs}ms。`,
-          { timeoutMs: request.timeoutMs, backend: this.kind },
-        )), request.timeoutMs)
-      : undefined;
+    const timer =
+      request.timeoutMs > 0
+        ? setTimeout(
+            () =>
+              cancel(
+                new SeneraExecutionError(
+                  SeneraExecutionErrorCodes.Timeout,
+                  `命令执行超时，超过 ${request.timeoutMs}ms。`,
+                  { timeoutMs: request.timeoutMs, backend: this.kind },
+                ),
+              ),
+            request.timeoutMs,
+          )
+        : undefined;
     const abortListener = (): void => {
       cancel(new SeneraExecutionError(SeneraExecutionErrorCodes.Aborted, "aborted"));
     };
@@ -280,9 +279,7 @@ function applyMicrosandboxExecEvent(input: {
       input.setExitCode(code);
     },
   } satisfies {
-    [K in SeneraMicrosandboxExecEvent["kind"]]: (
-      event: Extract<SeneraMicrosandboxExecEvent, { kind: K }>,
-    ) => void;
+    [K in SeneraMicrosandboxExecEvent["kind"]]: (event: Extract<SeneraMicrosandboxExecEvent, { kind: K }>) => void;
   };
 
   handlers[input.event.kind](input.event as never);
@@ -296,10 +293,12 @@ function enforceOutputLimit(input: {
   cancel: (error: SeneraExecutionError) => void;
 }): void {
   if (input.actualBytes <= input.maxBytes) return;
-  input.cancel(new SeneraExecutionError(input.code, input.message, {
-    maxBytes: input.maxBytes,
-    actualBytes: input.actualBytes,
-  }));
+  input.cancel(
+    new SeneraExecutionError(input.code, input.message, {
+      maxBytes: input.maxBytes,
+      actualBytes: input.actualBytes,
+    }),
+  );
 }
 
 function createMicrosandboxName(settings: SeneraMicrosandboxSettings): string {
@@ -313,8 +312,7 @@ function timeoutSeconds(timeoutMs: number): number {
 
 function definedEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(env ?? {}).flatMap(([key, value]) =>
-      typeof value === "string" ? [[key, value]] : []),
+    Object.entries(env ?? {}).flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : [])),
   );
 }
 
@@ -326,8 +324,7 @@ async function stopSession(session: SeneraMicrosandboxSession, timeoutMs: number
 
 async function prepareWritableMounts(request: SeneraProcessExecutionRequest): Promise<void> {
   await Promise.all(
-    (request.profile?.microsandbox?.writableMounts ?? [])
-      .map((mount) => mkdir(mount.hostPath, { recursive: true })),
+    (request.profile?.microsandbox?.writableMounts ?? []).map((mount) => mkdir(mount.hostPath, { recursive: true })),
   );
 }
 
@@ -361,10 +358,7 @@ async function materializeRootfsBundles(request: SeneraProcessExecutionRequest):
   };
 }
 
-function toExecutionError(
-  error: unknown,
-  request: SeneraProcessExecutionRequest,
-): SeneraExecutionError {
+function toExecutionError(error: unknown, request: SeneraProcessExecutionRequest): SeneraExecutionError {
   if (error instanceof SeneraExecutionError) return error;
   const cause = error instanceof Error ? error : new Error(String(error));
   return new SeneraExecutionError(

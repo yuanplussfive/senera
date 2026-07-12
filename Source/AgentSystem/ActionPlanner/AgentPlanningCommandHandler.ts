@@ -2,10 +2,7 @@ import type { AgentConversationEntry } from "../Conversation/AgentConversation.j
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import type { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
-import type {
-  AgentLoopCommand,
-  AgentLoopCommandResult,
-} from "../Loop/AgentLoopStateTypes.js";
+import type { AgentLoopCommand, AgentLoopCommandResult } from "../Loop/AgentLoopStateTypes.js";
 import type {
   AgentPlanningService,
   AgentPromptContextService,
@@ -30,17 +27,10 @@ export interface AgentPlanningCommandHandlerOptions {
 export interface AgentPlanningCommandRuntime {
   services: {
     planning: AgentPlanningService;
-    retrieval: Pick<
-      AgentRetrievalService,
-      "resolvePlannedLoadedTools" | "rememberAutoSearch"
-    >;
+    retrieval: Pick<AgentRetrievalService, "resolvePlannedLoadedTools" | "rememberAutoSearch">;
     promptContext: Pick<
       AgentPromptContextService,
-      | "activateSkills"
-      | "recommendedSkillTools"
-      | "buildRootCommand"
-      | "plannerRoleplayPreset"
-      | "toolCatalog"
+      "activateSkills" | "recommendedSkillTools" | "buildRootCommand" | "plannerRoleplayPreset" | "toolCatalog"
     >;
   };
   conversationPolicy: Pick<AgentConversationPolicy, "materialize">;
@@ -73,13 +63,7 @@ export class AgentPlanningCommandHandler {
     const understood = await this.options.runtime.services.planning.understandTurn({
       input,
       onStage: async (event) => {
-        await onEvent?.(
-          this.options.eventFactory.actionPlannerStage(
-            command.requestId,
-            command.step,
-            event,
-          ),
-        );
+        await onEvent?.(this.options.eventFactory.actionPlannerStage(command.requestId, command.step, event));
       },
       signal,
     });
@@ -104,11 +88,12 @@ export class AgentPlanningCommandHandler {
     const timelineMessages = this.buildActionPlannerTimelineMessages(command);
     const roleplayPreset = await this.options.runtime.services.promptContext.plannerRoleplayPreset();
     const preliminaryInput = command.turnUnderstanding?.standaloneRequest ?? command.input;
-    const preRouteSkills = command.activeSkills.length > 0
-      ? command.activeSkills
-      : this.options.runtime.services.promptContext.activateSkills({
-          input: preliminaryInput,
-        });
+    const preRouteSkills =
+      command.activeSkills.length > 0
+        ? command.activeSkills
+        : this.options.runtime.services.promptContext.activateSkills({
+            input: preliminaryInput,
+          });
     const input = this.options.actionPlannerContextBuilder.buildInput({
       requestId: command.requestId,
       userMessage: command.input,
@@ -126,13 +111,7 @@ export class AgentPlanningCommandHandler {
     const routed = await this.options.runtime.services.planning.routeWithInput({
       input,
       onStage: async (event) => {
-        await onEvent?.(
-          this.options.eventFactory.actionPlannerStage(
-            command.requestId,
-            command.step,
-            event,
-          ),
-        );
+        await onEvent?.(this.options.eventFactory.actionPlannerStage(command.requestId, command.step, event));
       },
       signal,
     });
@@ -140,14 +119,15 @@ export class AgentPlanningCommandHandler {
     const turnUnderstanding = projectTurnUnderstanding(routed.input.turnUnderstanding);
     const standaloneInput = turnUnderstanding?.standaloneRequest ?? command.input;
 
-    const initialLoadedToolNames = route.mode === AgentInteractionRunModes.ToolAgentLoop
-      ? this.resolveRouteLoadedTools({
-          input: standaloneInput,
-          currentLoadedTools: command.loadedToolNames,
-          preferredTools: route.preferredTools,
-          queries: route.discoveryQueries,
-        })
-      : [];
+    const initialLoadedToolNames =
+      route.mode === AgentInteractionRunModes.ToolAgentLoop
+        ? this.resolveRouteLoadedTools({
+            input: standaloneInput,
+            currentLoadedTools: command.loadedToolNames,
+            preferredTools: route.preferredTools,
+            queries: route.discoveryQueries,
+          })
+        : [];
     const initialRootCommand = this.buildRuntimeRootCommand(route, initialLoadedToolNames, route.preferredTools);
     const activeSkills = mergeActivatedSkills([
       ...preRouteSkills,
@@ -156,31 +136,25 @@ export class AgentPlanningCommandHandler {
         rootCommand: initialRootCommand,
       }),
     ]);
-    const skillRecommendedTools = this.options.runtime.services.promptContext
-      .recommendedSkillTools(activeSkills);
-    const preferredTools = uniqueText([
-      ...route.preferredTools,
-      ...skillRecommendedTools,
-    ]);
-    const loadedToolNames = route.mode === AgentInteractionRunModes.ToolAgentLoop
-      ? this.resolveRouteLoadedTools({
-          input: standaloneInput,
-          currentLoadedTools: initialLoadedToolNames,
-          preferredTools,
-          queries: route.discoveryQueries,
-        })
-      : [];
+    const skillRecommendedTools = this.options.runtime.services.promptContext.recommendedSkillTools(activeSkills);
+    const preferredTools = uniqueText([...route.preferredTools, ...skillRecommendedTools]);
+    const loadedToolNames =
+      route.mode === AgentInteractionRunModes.ToolAgentLoop
+        ? this.resolveRouteLoadedTools({
+            input: standaloneInput,
+            currentLoadedTools: initialLoadedToolNames,
+            preferredTools,
+            queries: route.discoveryQueries,
+          })
+        : [];
     if (route.mode === AgentInteractionRunModes.ToolAgentLoop) {
-      this.options.runtime.services.retrieval.rememberAutoSearch(
-        command.requestId,
-        standaloneInput,
-        loadedToolNames,
-      );
+      this.options.runtime.services.retrieval.rememberAutoSearch(command.requestId, standaloneInput, loadedToolNames);
     }
     const runtimeRootCommand = this.buildRuntimeRootCommand(route, loadedToolNames, preferredTools);
-    const rootCommand = route.mode === AgentInteractionRunModes.ToolAgentLoop
-      ? projectPiToolAgentRootCommand(runtimeRootCommand)
-      : runtimeRootCommand;
+    const rootCommand =
+      route.mode === AgentInteractionRunModes.ToolAgentLoop
+        ? projectPiToolAgentRootCommand(runtimeRootCommand)
+        : runtimeRootCommand;
 
     return {
       kind: "succeeded",
@@ -220,18 +194,19 @@ export class AgentPlanningCommandHandler {
     preferredTools: readonly string[],
   ) {
     return this.options.runtime.services.promptContext.buildRootCommand({
-      decision: route.mode === AgentInteractionRunModes.ToolAgentLoop
-        ? {
-            action: "use_tools",
-            useTools: {
-              preferredTools: [...preferredTools],
-              instruction: route.objective,
-              needs: [],
+      decision:
+        route.mode === AgentInteractionRunModes.ToolAgentLoop
+          ? {
+              action: "use_tools",
+              useTools: {
+                preferredTools: [...preferredTools],
+                instruction: route.objective,
+                needs: [],
+              },
+            }
+          : {
+              action: "answer",
             },
-          }
-        : {
-            action: "answer",
-          },
       loadedToolNames,
     });
   }
@@ -245,26 +220,21 @@ export class AgentPlanningCommandHandler {
       return command.messages;
     }
 
-    const messages = this.options.runtime.conversationPolicy.materialize(
-      command.conversationEntries,
-      {
-        toolResultsScope: {
-          kind: "request",
-          requestId: command.requestId,
-        },
-        evidenceMemoryScope: {
-          kind: "all",
-        },
+    const messages = this.options.runtime.conversationPolicy.materialize(command.conversationEntries, {
+      toolResultsScope: {
+        kind: "request",
+        requestId: command.requestId,
       },
-    );
+      evidenceMemoryScope: {
+        kind: "all",
+      },
+    });
 
     return messages.length > 0 ? messages : command.messages;
   }
 }
 
-function projectTurnUnderstanding(
-  value: TurnUnderstanding | null | undefined,
-): TurnUnderstanding | undefined {
+function projectTurnUnderstanding(value: TurnUnderstanding | null | undefined): TurnUnderstanding | undefined {
   return value ?? undefined;
 }
 
@@ -272,14 +242,14 @@ function uniqueText(values: readonly string[]): string[] {
   return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
-function mergeActivatedSkills(
-  skills: readonly AgentActivatedSkill[],
-): AgentActivatedSkill[] {
+function mergeActivatedSkills(skills: readonly AgentActivatedSkill[]): AgentActivatedSkill[] {
   return [
-    ...skills.reduce((byName, skill) => {
-      const current = byName.get(skill.name);
-      byName.set(skill.name, current && current.score >= skill.score ? current : skill);
-      return byName;
-    }, new Map<string, AgentActivatedSkill>()).values(),
+    ...skills
+      .reduce((byName, skill) => {
+        const current = byName.get(skill.name);
+        byName.set(skill.name, current && current.score >= skill.score ? current : skill);
+        return byName;
+      }, new Map<string, AgentActivatedSkill>())
+      .values(),
   ];
 }

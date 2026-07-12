@@ -56,10 +56,7 @@ export type {
   ToolSearchCapabilityRiskManifest,
   ToolSearchManifest,
 } from "./PluginSearchManifestTypes.js";
-export type {
-  SkillEvidenceRequirementManifest,
-  SkillManifest,
-} from "./PluginSkillManifestTypes.js";
+export type { SkillEvidenceRequirementManifest, SkillManifest } from "./PluginSkillManifestTypes.js";
 export type {
   ToolApprovalManifest,
   ToolEvidenceCapabilityManifest,

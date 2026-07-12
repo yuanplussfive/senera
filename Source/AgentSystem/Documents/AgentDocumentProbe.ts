@@ -9,10 +9,7 @@ import type {
   AgentDocumentProbeResult,
   AgentDocumentProbeSignal,
 } from "./AgentDocumentProbeTypes.js";
-import {
-  probeDocumentContainer,
-  type AgentDocumentContainerProbeOptions,
-} from "./AgentDocumentContainerProbe.js";
+import { probeDocumentContainer, type AgentDocumentContainerProbeOptions } from "./AgentDocumentContainerProbe.js";
 
 export interface AgentDocumentProbeOptions {
   sampleBytes: number;
@@ -123,9 +120,7 @@ async function readFileSample(filePath: string, fileSize: number, sampleBytes: n
   try {
     const buffer = Buffer.alloc(length);
     const result = await handle.read(buffer, 0, length, 0);
-    return result.bytesRead === buffer.byteLength
-      ? buffer
-      : buffer.subarray(0, result.bytesRead);
+    return result.bytesRead === buffer.byteLength ? buffer : buffer.subarray(0, result.bytesRead);
   } finally {
     await handle.close();
   }

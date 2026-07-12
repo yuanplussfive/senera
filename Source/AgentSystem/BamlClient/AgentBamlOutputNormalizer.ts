@@ -25,17 +25,11 @@ export function normalizeBamlOptionalFields<T>(value: T): T {
   return normalizeValue(value) as T;
 }
 
-export function parseNormalizedBamlOutput<T>(
-  schema: z.ZodType<T>,
-  value: unknown,
-): T {
+export function parseNormalizedBamlOutput<T>(schema: z.ZodType<T>, value: unknown): T {
   return schema.parse(normalizeBamlOptionalFields(value));
 }
 
-export function safeParseNormalizedBamlOutput<T>(
-  schema: z.ZodType<T>,
-  value: unknown,
-): AgentBamlParseResult<T> {
+export function safeParseNormalizedBamlOutput<T>(schema: z.ZodType<T>, value: unknown): AgentBamlParseResult<T> {
   const normalized = normalizeBamlOptionalFields(value);
   const parsed = schema.safeParse(normalized);
   if (parsed.success) {

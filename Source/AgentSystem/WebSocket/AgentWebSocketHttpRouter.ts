@@ -1,8 +1,10 @@
 import type http from "node:http";
 import type { AgentStaticFrontendHttpApi } from "./AgentStaticFrontendHttpApi.js";
-import { AgentUploadHttpApi } from "../Uploads/AgentUploadHttpApi.js";
+import { type AgentUploadHttpApi } from "../Uploads/AgentUploadHttpApi.js";
 import type { AgentPiProxyHttpApi } from "../PiProxy/AgentPiProxyHttpApi.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { type AgentAuthenticationHttpApi } from "../Auth/AgentAuthenticationHttpApi.js";
+import type { AgentAccessFailure, AgentServerAccessGuard } from "../Auth/AgentServerAccessGuard.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
@@ -10,19 +12,29 @@ export class AgentWebSocketHttpRouter {
       uploadApi: AgentUploadHttpApi;
       piProxyApi?: AgentPiProxyHttpApi;
       staticFrontendApi?: AgentStaticFrontendHttpApi;
+      authenticationApi?: AgentAuthenticationHttpApi;
+      accessGuard?: AgentServerAccessGuard;
     },
   ) {}
 
-  async handle(
-    request: http.IncomingMessage,
-    response: http.ServerResponse,
-  ): Promise<void> {
+  async handle(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
+    if (this.options.authenticationApi?.canHandle(request)) {
+      await this.options.authenticationApi.handle(request, response);
+      return;
+    }
+
     if (this.options.uploadApi.canHandle(request)) {
+      if (request.method !== "OPTIONS" && !this.authorize(request, response)) {
+        return;
+      }
       await this.options.uploadApi.handle(request, response);
       return;
     }
 
     if (this.options.piProxyApi?.canHandle(request)) {
+      if (!this.authorize(request, response)) {
+        return;
+      }
       await this.options.piProxyApi.handle(request, response);
       return;
     }
@@ -35,12 +47,47 @@ export class AgentWebSocketHttpRouter {
     response.writeHead(404, {
       "Content-Type": "application/json; charset=utf-8",
     });
-    response.end(JSON.stringify({
-      ok: false,
-      error: {
-        code: "not_found",
-        message: agentErrorMessage("websocket.httpRouteNotFound"),
-      },
-    }));
+    response.end(
+      JSON.stringify({
+        ok: false,
+        error: {
+          code: "not_found",
+          message: agentErrorMessage("websocket.httpRouteNotFound"),
+        },
+      }),
+    );
+  }
+
+  private authorize(request: http.IncomingMessage, response: http.ServerResponse): boolean {
+    if (!this.options.accessGuard) {
+      return true;
+    }
+    const result = this.options.accessGuard.authorizeHttp(request, {
+      requireCsrf: !["GET", "HEAD", "OPTIONS"].includes(request.method ?? ""),
+    });
+    if (result.ok) {
+      return true;
+    }
+    this.writeAccessFailure(response, result.failure);
+    return false;
+  }
+
+  private writeAccessFailure(response: http.ServerResponse, failure: AgentAccessFailure): void {
+    if (failure.retryAfterSeconds) {
+      response.setHeader("Retry-After", String(failure.retryAfterSeconds));
+    }
+    response.writeHead(failure.status, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    response.end(
+      JSON.stringify({
+        ok: false,
+        error: {
+          code: failure.code,
+          message: agentErrorMessage("auth.requestDenied"),
+        },
+      }),
+    );
   }
 }

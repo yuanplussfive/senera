@@ -1,7 +1,4 @@
-import type {
-  AgentLoopCommand,
-  RunningAgentLoopMachineState,
-} from "./AgentLoopStateTypes.js";
+import type { AgentLoopCommand, RunningAgentLoopMachineState } from "./AgentLoopStateTypes.js";
 
 export function understandTurnCommand(state: RunningAgentLoopMachineState): AgentLoopCommand {
   return {
@@ -44,10 +41,7 @@ export function renderPromptCommand(state: RunningAgentLoopMachineState): AgentL
   };
 }
 
-export function runPiTurnCommand(
-  state: RunningAgentLoopMachineState,
-  prompt: string,
-): AgentLoopCommand {
+export function runPiTurnCommand(state: RunningAgentLoopMachineState, prompt: string): AgentLoopCommand {
   return {
     kind: "run_pi_turn",
     sessionId: state.sessionId,

@@ -1,8 +1,5 @@
 import type { ExecEvent } from "microsandbox";
-import {
-  SeneraExecutionError,
-  SeneraExecutionErrorCodes,
-} from "./SeneraExecutionTypes.js";
+import { SeneraExecutionError, SeneraExecutionErrorCodes } from "./SeneraExecutionTypes.js";
 import type {
   SeneraMicrosandboxCreateRequest,
   SeneraMicrosandboxExecEvent,
@@ -109,42 +106,33 @@ export class SeneraMicrosandboxDynamicSdkAdapter implements SeneraMicrosandboxSd
       .disableMetricsSample()
       .quietLogs()
       .maxDuration(request.maxDurationSeconds)
-      .volume(
-        request.guestWorkspaceRoot,
-        (mount) => applyWorkspaceMountMode(
-          mount
-          .bind(request.workspaceRoot)
-          .nosuid()
-          .nodev(),
-          request.workspaceMount,
-        ),
+      .volume(request.guestWorkspaceRoot, (mount) =>
+        applyWorkspaceMountMode(mount.bind(request.workspaceRoot).nosuid().nodev(), request.workspaceMount),
       );
 
     const mounted = request.writableMounts.reduce(
-      (current, writableMount) => current.volume(
-        writableMount.guestPath,
-        (mount) => mount
-          .bind(writableMount.hostPath)
-          .nosuid()
-          .nodev()
-          .quota(writableMount.quotaMiB ?? 1),
-      ),
+      (current, writableMount) =>
+        current.volume(writableMount.guestPath, (mount) =>
+          mount
+            .bind(writableMount.hostPath)
+            .nosuid()
+            .nodev()
+            .quota(writableMount.quotaMiB ?? 1),
+        ),
       builder,
     );
 
-    const patched = request.rootfsCopies.length > 0
-      ? mounted.patch((patch) =>
-          request.rootfsCopies.reduce(
-            (current, copy) => current.copyDir(copy.hostPath, copy.guestPath, { replace: true }),
-            patch,
-          ))
-      : mounted;
+    const patched =
+      request.rootfsCopies.length > 0
+        ? mounted.patch((patch) =>
+            request.rootfsCopies.reduce(
+              (current, copy) => current.copyDir(copy.hostPath, copy.guestPath, { replace: true }),
+              patch,
+            ),
+          )
+        : mounted;
 
-    const sandbox = await (
-      request.network === "disabled"
-        ? patched.disableNetwork()
-        : patched
-    ).create();
+    const sandbox = await (request.network === "disabled" ? patched.disableNetwork() : patched).create();
 
     return new SeneraMicrosandboxSdkSession(sandbox);
   }
@@ -154,20 +142,16 @@ export class SeneraMicrosandboxDynamicSdkAdapter implements SeneraMicrosandboxSd
     return this.modulePromise;
   }
 
-  private prepareRuntime(
-    microsandbox: MicrosandboxModule,
-    request: SeneraMicrosandboxCreateRequest,
-  ): Promise<void> {
+  private prepareRuntime(microsandbox: MicrosandboxModule, request: SeneraMicrosandboxCreateRequest): Promise<void> {
     if (!request.runtime) {
       return Promise.resolve();
     }
 
     const runtime = request.runtime;
-    this.runtimePreparePromise ??= this.installRuntime(microsandbox, runtime)
-      .catch((error: unknown) => {
-        this.runtimePreparePromise = undefined;
-        throw error;
-      });
+    this.runtimePreparePromise ??= this.installRuntime(microsandbox, runtime).catch((error: unknown) => {
+      this.runtimePreparePromise = undefined;
+      throw error;
+    });
     return this.runtimePreparePromise;
   }
 
@@ -198,20 +182,15 @@ class SeneraMicrosandboxSdkSession implements SeneraMicrosandboxSession {
   constructor(private readonly sandbox: MicrosandboxSandbox) {}
 
   async *exec(request: SeneraMicrosandboxExecRequest): AsyncIterable<SeneraMicrosandboxExecEvent> {
-    const handle = await this.sandbox.execStreamWith(
-      request.command,
-      (builder) => {
-        const configured = builder
-          .args([...request.args])
-          .cwd(request.cwd)
-          .envs(request.env)
-          .timeout(request.timeoutMs)
-          .tty(false);
-        return request.stdin === undefined
-          ? configured.stdinNull()
-          : configured.stdinBytes(Buffer.from(request.stdin));
-      },
-    );
+    const handle = await this.sandbox.execStreamWith(request.command, (builder) => {
+      const configured = builder
+        .args([...request.args])
+        .cwd(request.cwd)
+        .envs(request.env)
+        .timeout(request.timeoutMs)
+        .tty(false);
+      return request.stdin === undefined ? configured.stdinNull() : configured.stdinBytes(Buffer.from(request.stdin));
+    });
 
     for await (const event of readMicrosandboxExecEvents(handle)) {
       const normalized = normalizeMicrosandboxExecEvent(event);
@@ -238,16 +217,20 @@ async function* readMicrosandboxExecEvents(handle: MicrosandboxExecHandle): Asyn
 
 const MicrosandboxExecEventProjectors = {
   started: (_event: Extract<ExecEvent, { kind: "started" }>): undefined => undefined,
-  stdout: (event: Extract<ExecEvent, { kind: "stdout" }>): SeneraMicrosandboxExecEvent =>
-    ({ kind: "stdout", data: Buffer.from(event.data) }),
-  stderr: (event: Extract<ExecEvent, { kind: "stderr" }>): SeneraMicrosandboxExecEvent =>
-    ({ kind: "stderr", data: Buffer.from(event.data) }),
-  exited: (event: Extract<ExecEvent, { kind: "exited" }>): SeneraMicrosandboxExecEvent =>
-    ({ kind: "exit", code: event.code }),
+  stdout: (event: Extract<ExecEvent, { kind: "stdout" }>): SeneraMicrosandboxExecEvent => ({
+    kind: "stdout",
+    data: Buffer.from(event.data),
+  }),
+  stderr: (event: Extract<ExecEvent, { kind: "stderr" }>): SeneraMicrosandboxExecEvent => ({
+    kind: "stderr",
+    data: Buffer.from(event.data),
+  }),
+  exited: (event: Extract<ExecEvent, { kind: "exited" }>): SeneraMicrosandboxExecEvent => ({
+    kind: "exit",
+    code: event.code,
+  }),
 } satisfies {
-  [K in ExecEvent["kind"]]: (
-    event: Extract<ExecEvent, { kind: K }>,
-  ) => SeneraMicrosandboxExecEvent | undefined;
+  [K in ExecEvent["kind"]]: (event: Extract<ExecEvent, { kind: K }>) => SeneraMicrosandboxExecEvent | undefined;
 };
 
 function normalizeMicrosandboxExecEvent(event: ExecEvent): SeneraMicrosandboxExecEvent | undefined {

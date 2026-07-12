@@ -1,12 +1,7 @@
-import {
-  AgentConversationEntryKinds,
-} from "../Conversation/AgentConversation.js";
+import { AgentConversationEntryKinds } from "../Conversation/AgentConversation.js";
 import { compactObject } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
 import type { AgentToolEvidenceMemoryEntryRecord } from "./AgentPlannerMemory.js";
-import {
-  memorySourceUri,
-  stableMemoryId,
-} from "./AgentMemoryIdentity.js";
+import { memorySourceUri, stableMemoryId } from "./AgentMemoryIdentity.js";
 import { projectMemoryTime } from "./AgentMemoryTime.js";
 import { previewAgentText } from "../Text/AgentTextProjection.js";
 import type {
@@ -59,45 +54,48 @@ export function buildSources(
     }
 
     if (entry.record.artifactUri) {
-      artifactSources.set(entry.record.artifactUri, buildSource({
-        input,
-        episode,
-        sourceKind: "artifact",
-        role: "tool",
-        key: entry.record.artifactUri,
-        conversationEntryId: entry.id,
-        artifactUri: entry.record.artifactUri,
-        toolName: entry.record.toolName,
-        createdAt: entry.timestamp,
-      }));
+      artifactSources.set(
+        entry.record.artifactUri,
+        buildSource({
+          input,
+          episode,
+          sourceKind: "artifact",
+          role: "tool",
+          key: entry.record.artifactUri,
+          conversationEntryId: entry.id,
+          artifactUri: entry.record.artifactUri,
+          toolName: entry.record.toolName,
+          createdAt: entry.timestamp,
+        }),
+      );
     }
 
     for (const evidence of entry.record.evidence) {
-      sources.push(buildSource({
-        input,
-        episode,
-        sourceKind: "tool_evidence",
-        role: "tool",
-        key: evidence.evidenceUri,
-        summary: evidence.display || evidence.label || evidence.kind,
-        conversationEntryId: entry.id,
-        evidenceUri: evidence.evidenceUri,
-        artifactUri: evidence.artifactUri,
-        toolName: evidence.toolName,
-        createdAt: entry.timestamp,
-        metadata: {
-          evidence: projectMemoryEvidenceSource(evidence),
-        },
-      }));
+      sources.push(
+        buildSource({
+          input,
+          episode,
+          sourceKind: "tool_evidence",
+          role: "tool",
+          key: evidence.evidenceUri,
+          summary: evidence.display || evidence.label || evidence.kind,
+          conversationEntryId: entry.id,
+          evidenceUri: evidence.evidenceUri,
+          artifactUri: evidence.artifactUri,
+          toolName: evidence.toolName,
+          createdAt: entry.timestamp,
+          metadata: {
+            evidence: projectMemoryEvidenceSource(evidence),
+          },
+        }),
+      );
     }
   }
 
   return uniqueSourcesByUri([...sources, ...artifactSources.values()]);
 }
 
-function uniqueSourcesByUri(
-  sources: readonly AgentMemorySourceRecord[],
-): AgentMemorySourceRecord[] {
+function uniqueSourcesByUri(sources: readonly AgentMemorySourceRecord[]): AgentMemorySourceRecord[] {
   const byUri = new Map<string, AgentMemorySourceRecord>();
   for (const source of sources) {
     if (!byUri.has(source.uri)) {
@@ -122,12 +120,7 @@ function buildSource(input: {
   createdAt: string;
   metadata?: Record<string, unknown>;
 }): AgentMemorySourceRecord {
-  const id = stableMemoryId("src", [
-    input.input.sessionId,
-    input.input.requestId,
-    input.sourceKind,
-    input.key,
-  ]);
+  const id = stableMemoryId("src", [input.input.sessionId, input.input.requestId, input.sourceKind, input.key]);
   const createdTime = projectMemoryTime(input.createdAt);
   return {
     id,
@@ -141,9 +134,7 @@ function buildSource(input: {
     textContent: input.textContent
       ? previewAgentText(input.textContent, MemorySourceTextLimits.textContentChars)
       : null,
-    summary: input.summary
-      ? previewAgentText(input.summary, MemorySourceTextLimits.summaryChars)
-      : null,
+    summary: input.summary ? previewAgentText(input.summary, MemorySourceTextLimits.summaryChars) : null,
     conversationEntryId: input.conversationEntryId,
     evidenceUri: input.evidenceUri ?? "",
     artifactUri: input.artifactUri ?? "",

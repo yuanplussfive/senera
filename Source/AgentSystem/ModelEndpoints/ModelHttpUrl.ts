@@ -27,7 +27,5 @@ function formatPathSegment(segment: ModelHttpPathSegment): string {
     return encodeURIComponent(segment);
   }
 
-  return segment.encode === "path"
-    ? encodeURI(segment.value)
-    : encodeURIComponent(segment.value);
+  return segment.encode === "path" ? encodeURI(segment.value) : encodeURIComponent(segment.value);
 }

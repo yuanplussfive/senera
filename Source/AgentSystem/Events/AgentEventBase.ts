@@ -1,9 +1,4 @@
-import type {
-  AgentEventChannel,
-  AgentEventKind,
-  AgentEventLayer,
-  AgentEventPhase,
-} from "./AgentEventCatalog.js";
+import type { AgentEventChannel, AgentEventKind, AgentEventLayer, AgentEventPhase } from "./AgentEventCatalog.js";
 
 export interface AgentEventEnvelope<TKind extends string = AgentEventKind, TData = unknown> {
   channel: AgentEventChannel;

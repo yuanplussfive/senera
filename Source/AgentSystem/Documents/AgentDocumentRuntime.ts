@@ -11,14 +11,8 @@ import { probeAgentDocument } from "./AgentDocumentProbe.js";
 import type { AgentDocumentProbeResult } from "./AgentDocumentProbeTypes.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
-import {
-  toolProcessFailureResult,
-  toolProcessSuccessResult,
-} from "../ToolRuntime/AgentToolProcessEnvelope.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import { normalizeAgentUploadUri } from "../Uploads/AgentUploadLocator.js";
 
@@ -45,10 +39,9 @@ const DocumentPluginConfigSchema = z
         modes: z.array(z.string().trim().min(1)).min(1),
       })
       .strict(),
-    extractors: z.record(z.string().trim().min(1), ExtractorSchema)
-      .refine((value) => Object.keys(value).length > 0, {
-        message: "DocumentTool 至少需要配置一个 extractor。",
-      }),
+    extractors: z.record(z.string().trim().min(1), ExtractorSchema).refine((value) => Object.keys(value).length > 0, {
+      message: "DocumentTool 至少需要配置一个 extractor。",
+    }),
     probe: z
       .object({
         sampleBytes: z.number().int().positive(),
@@ -100,7 +93,7 @@ export const documentHostTool: AgentHostToolHandler = async (args, context) => {
       diagnostics: parsed.error.issues.map((issue) => ({
         message: issue.message,
         pointer: `/${issue.path.join("/")}`,
-        path: issue.path.map((entry) => typeof entry === "number" ? entry : String(entry)),
+        path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
       })),
     });
   }
@@ -121,10 +114,7 @@ export const documentHostTool: AgentHostToolHandler = async (args, context) => {
   }
 };
 
-async function handleUploadedDocument(
-  args: DocumentArguments,
-  context: Parameters<AgentHostToolHandler>[1],
-) {
+async function handleUploadedDocument(args: DocumentArguments, context: Parameters<AgentHostToolHandler>[1]) {
   const pluginConfig = readDocumentPluginConfig(context.tool.plugin.config.toml);
   const mode = resolveDocumentMode(args.mode, pluginConfig);
   const uploads = resolveUploadsConfig(context.config);
@@ -187,20 +177,23 @@ async function handleUploadedDocument(
     };
   }
 
-  const extracted = await extractAgentDocument({
-    filePath: resolved.filePath,
-    uploadUri,
-    name: resolved.manifest.name,
-    declaredMime: resolved.manifest.declaredMime,
-    size: resolved.manifest.size,
-    sha256: resolved.manifest.sha256,
-    extractors: pluginConfig.extractors,
-    probe: toProbeOptions(pluginConfig),
-    signal: context.signal,
-  }, {
-    parse: pluginConfig.parse,
-    output: pluginConfig.output,
-  });
+  const extracted = await extractAgentDocument(
+    {
+      filePath: resolved.filePath,
+      uploadUri,
+      name: resolved.manifest.name,
+      declaredMime: resolved.manifest.declaredMime,
+      size: resolved.manifest.size,
+      sha256: resolved.manifest.sha256,
+      extractors: pluginConfig.extractors,
+      probe: toProbeOptions(pluginConfig),
+      signal: context.signal,
+    },
+    {
+      parse: pluginConfig.parse,
+      output: pluginConfig.output,
+    },
+  );
 
   return {
     documents: {
@@ -237,14 +230,17 @@ async function probeResolvedDocument(input: {
   resolved: ResolvedUpload;
   config: DocumentPluginConfig;
 }): Promise<AgentDocumentProbeResult> {
-  return probeAgentDocument({
-    filePath: input.resolved.filePath,
-    uploadUri: input.uploadUri,
-    name: input.resolved.manifest.name,
-    declaredMime: input.resolved.manifest.declaredMime,
-    size: input.resolved.manifest.size,
-    sha256: input.resolved.manifest.sha256,
-  }, toProbeOptions(input.config));
+  return probeAgentDocument(
+    {
+      filePath: input.resolved.filePath,
+      uploadUri: input.uploadUri,
+      name: input.resolved.manifest.name,
+      declaredMime: input.resolved.manifest.declaredMime,
+      size: input.resolved.manifest.size,
+      sha256: input.resolved.manifest.sha256,
+    },
+    toProbeOptions(input.config),
+  );
 }
 
 function toProbeRecord(input: {
@@ -282,10 +278,7 @@ function toProbeRecord(input: {
   };
 }
 
-function canExtractDocument(
-  probe: AgentDocumentProbeResult,
-  config: DocumentPluginConfig,
-): boolean {
+function canExtractDocument(probe: AgentDocumentProbeResult, config: DocumentPluginConfig): boolean {
   return Boolean(selectAgentDocumentExtractor(probe, config.extractors));
 }
 

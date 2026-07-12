@@ -1,11 +1,8 @@
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
-import {
-  AgentConversationEntryKinds,
-  type AgentConversationEntry,
-} from "../Conversation/AgentConversation.js";
-import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
-import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
+import { type AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
+import { type AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
+import { type AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentSession } from "./AgentSession.js";
 
@@ -18,13 +15,7 @@ export function projectSessionUserEntry(
   },
   timestamp: string,
 ): Extract<AgentConversationEntry, { kind: typeof AgentConversationEntryKinds.UserMessage }> {
-  return projector.projectUserInput(
-    requestId,
-    request.input,
-    timestamp,
-    undefined,
-    request.attachments,
-  );
+  return projector.projectUserInput(requestId, request.input, timestamp, undefined, request.attachments);
 }
 
 export function materializeSessionRunMessages(
@@ -82,12 +73,15 @@ export function mergeSessionConversationEntries(
   conversation: AgentSession["conversation"],
 ): AgentSession["conversation"] {
   const seen = new Set<string>();
-  return [...conversation].reverse().filter((entry) => {
-    if (seen.has(entry.id)) {
-      return false;
-    }
+  return [...conversation]
+    .reverse()
+    .filter((entry) => {
+      if (seen.has(entry.id)) {
+        return false;
+      }
 
-    seen.add(entry.id);
-    return true;
-  }).reverse();
+      seen.add(entry.id);
+      return true;
+    })
+    .reverse();
 }

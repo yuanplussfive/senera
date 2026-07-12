@@ -20,10 +20,7 @@ const DEFAULT_SUCCESS_MESSAGE = frontendMessage("clipboard.copied");
 const DEFAULT_ERROR_MESSAGE = frontendMessage("clipboard.copyFailed");
 const DEFAULT_RESET_DELAY_MS = 1200;
 
-export async function writeClipboardText(
-  text: string,
-  clipboard?: ClipboardWriter,
-): Promise<void> {
+export async function writeClipboardText(text: string, clipboard?: ClipboardWriter): Promise<void> {
   const writer = clipboard ?? navigator.clipboard;
   await writer.writeText(text);
 }
@@ -43,22 +40,25 @@ export function useClipboardCopy({
     resetTimerRef.current = undefined;
   }, []);
 
-  const copyText = useCallback(async (text: string): Promise<boolean> => {
-    try {
-      await writeClipboardText(text, clipboard);
-      setCopied(true);
-      toast.success(successMessage);
-      clearResetTimer();
-      resetTimerRef.current = window.setTimeout(() => {
-        setCopied(false);
-        resetTimerRef.current = undefined;
-      }, resetDelayMs);
-      return true;
-    } catch {
-      toast.error(errorMessage);
-      return false;
-    }
-  }, [clearResetTimer, clipboard, errorMessage, resetDelayMs, successMessage]);
+  const copyText = useCallback(
+    async (text: string): Promise<boolean> => {
+      try {
+        await writeClipboardText(text, clipboard);
+        setCopied(true);
+        toast.success(successMessage);
+        clearResetTimer();
+        resetTimerRef.current = window.setTimeout(() => {
+          setCopied(false);
+          resetTimerRef.current = undefined;
+        }, resetDelayMs);
+        return true;
+      } catch {
+        toast.error(errorMessage);
+        return false;
+      }
+    },
+    [clearResetTimer, clipboard, errorMessage, resetDelayMs, successMessage],
+  );
 
   useEffect(() => clearResetTimer, [clearResetTimer]);
 

@@ -15,9 +15,7 @@
       "Name": "MemoryWriteTool",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
-      "Permissions": [
-        "memory:write"
-      ],
+      "Permissions": ["memory:write"],
       "Handler": {
         "Kind": "HostCapability",
         "Capability": "memory.write"
@@ -26,7 +24,7 @@
         "Boundary": "Local",
         "Network": "Deny",
         "Workspace": "ReadWrite",
-        "LocalFallback": "Allow"
+        "LocalFallback": "Deny"
       },
       "Artifacts": {
         "Evidence": [
@@ -49,10 +47,7 @@
               "updatedAt": "$.updatedAt"
             },
             "Identity": {
-              "Parts": [
-                "memoryUri",
-                "operation"
-              ]
+              "Parts": ["memoryUri", "operation"]
             },
             "Presentation": {
               "Locator": "{{ memoryUri }}",
@@ -83,19 +78,8 @@
               ]
             },
             "PlannerMemory": {
-              "Facts": [
-                "memoryUri",
-                "operation",
-                "type",
-                "subject",
-                "claim",
-                "howToApply",
-                "status"
-              ],
-              "ArtifactRefs": [
-                "projection",
-                "evidence"
-              ]
+              "Facts": ["memoryUri", "operation", "type", "subject", "claim", "howToApply", "status"],
+              "ArtifactRefs": ["projection", "evidence"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.operation }} long-term memory {{ e.slots.subject }}: {{ e.slots.claim }}\n{% endfor %}",
@@ -116,68 +100,24 @@
             "Title": "长期记忆写入",
             "Description": "Write explicit user-requested memories directly into active long-term memory.",
             "Facets": {
-              "Actions": [
-                "write",
-                "remember",
-                "reinforce",
-                "update",
-                "supersede"
-              ],
-              "Targets": [
-                "long-term-memory",
-                "user-profile",
-                "preference",
-                "knowledge",
-                "scene-state"
-              ],
-              "Inputs": [
-                "explicit-memory",
-                "memory-type",
-                "memory-update"
-              ],
-              "Outputs": [
-                "memory_write",
-                "memory-item"
-              ],
-              "Evidence": [
-                "memory_write"
-              ],
-              "Effects": [
-                "persistent-write"
-              ]
+              "Actions": ["write", "remember", "reinforce", "update", "supersede"],
+              "Targets": ["long-term-memory", "user-profile", "preference", "knowledge", "scene-state"],
+              "Inputs": ["explicit-memory", "memory-type", "memory-update"],
+              "Outputs": ["memory_write", "memory-item"],
+              "Evidence": ["memory_write"],
+              "Effects": ["persistent-write"]
             },
-            "Aliases": [
-              "记住这个",
-              "记录偏好",
-              "以后都这样",
-              "写入长期记忆"
-            ],
+            "Aliases": ["记住这个", "记录偏好", "以后都这样", "写入长期记忆"],
             "Risk": {
               "SideEffect": "persistent-write",
               "Permission": "memory-write"
             }
           }
         ],
-        "UseCases": [
-          "用户明确要求记住偏好、画像、知识、设定或要求更新已有长期记忆。"
-        ],
-        "Examples": [
-          "记住我喜欢无糖咖啡",
-          "以后写代码不要硬编码",
-          "把这个设定长期保存",
-          "更新这条记忆"
-        ],
-        "Avoid": [
-          "没有用户明确要求记住时不要调用。",
-          "临时工具结果和普通任务结论不要直接写长期记忆。"
-        ],
-        "Tags": [
-          "长期记忆",
-          "记忆写入",
-          "用户偏好",
-          "用户画像",
-          "知识"
-        ]
+        "UseCases": ["用户明确要求记住偏好、画像、知识、设定或要求更新已有长期记忆。"],
+        "Examples": ["记住我喜欢无糖咖啡", "以后写代码不要硬编码", "把这个设定长期保存", "更新这条记忆"],
+        "Avoid": ["没有用户明确要求记住时不要调用。", "临时工具结果和普通任务结论不要直接写长期记忆。"],
+        "Tags": ["长期记忆", "记忆写入", "用户偏好", "用户画像", "知识"]
       }
     }
   ],
@@ -185,16 +125,8 @@
     "TrustLevel": "System",
     "Network": "Allow",
     "FileSystem": {
-      "Read": [
-        ".senera/Memory.sqlite",
-        ".senera/Memory.sqlite-wal",
-        ".senera/Memory.sqlite-shm"
-      ],
-      "Write": [
-        ".senera/Memory.sqlite",
-        ".senera/Memory.sqlite-wal",
-        ".senera/Memory.sqlite-shm"
-      ]
+      "Read": [".senera/Memory.sqlite", ".senera/Memory.sqlite-wal", ".senera/Memory.sqlite-shm"],
+      "Write": [".senera/Memory.sqlite", ".senera/Memory.sqlite-wal", ".senera/Memory.sqlite-shm"]
     },
     "RequiresApproval": false
   }

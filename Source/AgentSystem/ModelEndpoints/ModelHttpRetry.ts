@@ -1,10 +1,6 @@
 import type { ModelProviderConfig } from "./ModelEndpointTypes.js";
 import { combineAbortSignals, readAbortFailure } from "./ModelHttpAbort.js";
-import {
-  ModelProviderHttpError,
-  ModelRequestTimeoutError,
-  safeReadResponseBody,
-} from "./ModelHttpErrors.js";
+import { ModelProviderHttpError, ModelRequestTimeoutError, safeReadResponseBody } from "./ModelHttpErrors.js";
 
 export async function fetchModelHttpWithRetries(
   config: ModelProviderConfig,
@@ -17,10 +13,7 @@ export async function fetchModelHttpWithRetries(
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const timeout = new AbortController();
     const signal = combineAbortSignals(init.signal, timeout.signal);
-    const timer = setTimeout(
-      () => timeout.abort(new ModelRequestTimeoutError("request_header")),
-      config.TimeoutMs,
-    );
+    const timer = setTimeout(() => timeout.abort(new ModelRequestTimeoutError("request_header")), config.TimeoutMs);
 
     try {
       const response = await fetch(url, {

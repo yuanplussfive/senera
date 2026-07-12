@@ -7,20 +7,12 @@ import {
   stableStringify,
   uniqueStrings,
 } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
-import {
-  type AgentConversationEntry,
-} from "../Conversation/AgentConversation.js";
-import {
-  AgentPlannerMemoryProjector,
-} from "../Memory/AgentPlannerMemory.js";
+import { type AgentConversationEntry } from "../Conversation/AgentConversation.js";
+import { AgentPlannerMemoryProjector } from "../Memory/AgentPlannerMemory.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import type {
-  PlannerEvidenceMemoryItem,
-} from "../BamlClient/baml_client/types.js";
-import type {
-  AgentPiToolProjectionContext,
-} from "./AgentPiTypes.js";
+import type { PlannerEvidenceMemoryItem } from "../BamlClient/baml_client/types.js";
+import type { AgentPiToolProjectionContext } from "./AgentPiTypes.js";
 
 export const AgentPiContextPolicyEnvelopeType = "senera.pi_context_policy.v1";
 export const AgentPiContextPolicyCustomType = "senera.pi_context_policy";
@@ -138,10 +130,7 @@ export class AgentPiContextPolicy {
     };
   }
 
-  apply(
-    messages: readonly AgentMessage[],
-    frame: AgentPiContextPolicyFrame,
-  ): AgentMessage[] {
+  apply(messages: readonly AgentMessage[], frame: AgentPiContextPolicyFrame): AgentMessage[] {
     try {
       const baseMessages = messages.filter((message) => !isContextPolicyMessage(message));
       const currentEvidence = projectCurrentToolEvidence(baseMessages, this.tokenProjector);
@@ -150,10 +139,7 @@ export class AgentPiContextPolicy {
         return [...baseMessages];
       }
 
-      return [
-        createContextPolicyMessage(envelope, frame.createdAt, this.tokenProjector),
-        ...baseMessages,
-      ];
+      return [createContextPolicyMessage(envelope, frame.createdAt, this.tokenProjector), ...baseMessages];
     } catch {
       return [...messages];
     }
@@ -187,10 +173,9 @@ function buildContextEnvelope(
   frame: AgentPiContextPolicyFrame,
   currentEvidence: readonly AgentPiContextEvidenceItem[],
 ): AgentPiContextPolicyEnvelope {
-  const evidence = mergeEvidence([
-    ...frame.historicalEvidence,
-    ...currentEvidence,
-  ]).slice(-ContextPolicyLimits.maxEvidenceItems);
+  const evidence = mergeEvidence([...frame.historicalEvidence, ...currentEvidence]).slice(
+    -ContextPolicyLimits.maxEvidenceItems,
+  );
   const artifacts = projectArtifacts(evidence);
   return {
     type: AgentPiContextPolicyEnvelopeType,
@@ -203,7 +188,8 @@ function buildContextEnvelope(
     policy: {
       evidence: "Evidence entries are compact projections; do not treat them as complete raw tool output.",
       artifact: "Use an artifact retrieval tool when artifactUri/ref details are needed beyond the indexed facts.",
-      memory: "Use a memory retrieval tool when durable user preferences, profile, knowledge, or older conversation state are needed.",
+      memory:
+        "Use a memory retrieval tool when durable user preferences, profile, knowledge, or older conversation state are needed.",
     },
     stats: {
       historicalEvidence: frame.historicalEvidence.length,
@@ -217,8 +203,7 @@ function buildContextEnvelope(
 }
 
 function shouldInjectContextEnvelope(envelope: AgentPiContextPolicyEnvelope): boolean {
-  return envelope.evidence.length > 0
-    || envelope.artifacts.length > 0;
+  return envelope.evidence.length > 0 || envelope.artifacts.length > 0;
 }
 
 function createContextPolicyMessage(
@@ -237,17 +222,14 @@ function createContextPolicyMessage(
   } as AgentMessage;
 }
 
-function serializeContextEnvelope(
-  envelope: AgentPiContextPolicyEnvelope,
-  tokenProjector: AgentTokenProjector,
-): string {
+function serializeContextEnvelope(envelope: AgentPiContextPolicyEnvelope, tokenProjector: AgentTokenProjector): string {
   let current = envelope;
   let content = JSON.stringify(current, null, 2);
   let omittedEvidence = 0;
 
   while (
-    tokenProjector.previewText(content, ContextPolicyLimits.maxEnvelopeTokens).truncated
-    && current.evidence.length > 1
+    tokenProjector.previewText(content, ContextPolicyLimits.maxEnvelopeTokens).truncated &&
+    current.evidence.length > 1
   ) {
     const keep = Math.max(1, Math.floor(current.evidence.length * 0.75));
     omittedEvidence += current.evidence.length - keep;
@@ -279,8 +261,7 @@ function withEnvelopeEvidence(
 
 function isContextPolicyMessage(message: AgentMessage): boolean {
   const record = readRecord(message);
-  return record?.role === "custom"
-    && record.customType === AgentPiContextPolicyCustomType;
+  return record?.role === "custom" && record.customType === AgentPiContextPolicyCustomType;
 }
 
 function projectPlannerEvidence(
@@ -288,21 +269,24 @@ function projectPlannerEvidence(
   source: AgentPiContextEvidenceItem["source"],
   tokenProjector: AgentTokenProjector,
 ): AgentPiContextEvidenceItem {
-  return compactEvidence({
-    evidenceUri: evidence.evidenceUri,
-    kind: evidence.kind,
-    label: evidence.label,
-    display: evidence.display,
-    locator: evidence.locator,
-    toolName: evidence.toolName,
-    artifactUri: evidence.artifactUri,
-    facts: evidence.facts.map((fact) => ({
-      name: fact.name,
-      value: fact.value,
-    })),
-    artifactRefs: evidence.artifactRefs,
-    source,
-  }, tokenProjector);
+  return compactEvidence(
+    {
+      evidenceUri: evidence.evidenceUri,
+      kind: evidence.kind,
+      label: evidence.label,
+      display: evidence.display,
+      locator: evidence.locator,
+      toolName: evidence.toolName,
+      artifactUri: evidence.artifactUri,
+      facts: evidence.facts.map((fact) => ({
+        name: fact.name,
+        value: fact.value,
+      })),
+      artifactRefs: evidence.artifactRefs,
+      source,
+    },
+    tokenProjector,
+  );
 }
 
 function projectCurrentToolEvidence(
@@ -329,18 +313,21 @@ function projectCurrentToolEvidence(
         return [];
       }
 
-      return compactEvidence({
-        evidenceUri,
-        kind: readString(evidence?.kind) ?? "tool_observation",
-        label: readString(evidence?.label),
-        display: readString(evidence?.display),
-        locator: readString(evidence?.locator),
-        toolName,
-        artifactUri,
-        facts: readEvidenceFacts(evidence),
-        artifactRefs: [],
-        source: "current_tool_result",
-      }, tokenProjector);
+      return compactEvidence(
+        {
+          evidenceUri,
+          kind: readString(evidence?.kind) ?? "tool_observation",
+          label: readString(evidence?.label),
+          display: readString(evidence?.display),
+          locator: readString(evidence?.locator),
+          toolName,
+          artifactUri,
+          facts: readEvidenceFacts(evidence),
+          artifactRefs: [],
+          source: "current_tool_result",
+        },
+        tokenProjector,
+      );
     });
   });
 }
@@ -361,21 +348,18 @@ function readTextContent(content: unknown): string {
   return readArray(content)
     .flatMap((entry) => {
       const record = readRecord(entry);
-      return record?.type === "text" && typeof record.text === "string"
-        ? [record.text]
-        : [];
+      return record?.type === "text" && typeof record.text === "string" ? [record.text] : [];
     })
     .join("");
 }
 
 function readEvidenceFacts(evidence: Record<string, unknown> | undefined): AgentPiContextFactItem[] {
-  return readArray(evidence?.facts ?? evidence?.slots)
-    .flatMap((entry) => {
-      const fact = readRecord(entry);
-      const name = readString(fact?.name);
-      const value = readString(fact?.value);
-      return name && value ? [{ name, value }] : [];
-    });
+  return readArray(evidence?.facts ?? evidence?.slots).flatMap((entry) => {
+    const fact = readRecord(entry);
+    const name = readString(fact?.name);
+    const value = readString(fact?.value);
+    return name && value ? [{ name, value }] : [];
+  });
 }
 
 function compactEvidence(
@@ -451,15 +435,19 @@ function projectRetrievalTool(
     return [];
   }
 
-  return [{
-    toolName: tool.name,
-    capability: tool.handler.capability,
-    summary: clampOptionalText(tool.search?.Summary ?? tool.plugin.manifest.Plugin.Description, tokenProjector),
-    capabilityIds: uniqueStrings((tool.search?.Capabilities ?? []).map((capability) => capability.Id)),
-    inputs: uniqueStrings((tool.search?.Capabilities ?? []).flatMap((capability) => capability.Facets?.Inputs ?? [])),
-    outputs: uniqueStrings((tool.search?.Capabilities ?? []).flatMap((capability) => capability.Facets?.Outputs ?? [])),
-    evidenceKinds: uniqueStrings(tool.evidenceCapabilities.map((capability) => capability.Produces)),
-  }];
+  return [
+    {
+      toolName: tool.name,
+      capability: tool.handler.capability,
+      summary: clampOptionalText(tool.search?.Summary ?? tool.plugin.manifest.Plugin.Description, tokenProjector),
+      capabilityIds: uniqueStrings((tool.search?.Capabilities ?? []).map((capability) => capability.Id)),
+      inputs: uniqueStrings((tool.search?.Capabilities ?? []).flatMap((capability) => capability.Facets?.Inputs ?? [])),
+      outputs: uniqueStrings(
+        (tool.search?.Capabilities ?? []).flatMap((capability) => capability.Facets?.Outputs ?? []),
+      ),
+      evidenceKinds: uniqueStrings(tool.evidenceCapabilities.map((capability) => capability.Produces)),
+    },
+  ];
 }
 
 function isVisibleTool(

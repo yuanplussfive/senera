@@ -1,17 +1,16 @@
-import {
-  AgentEventKinds,
-  type AgentDomainEvent,
-} from "../Events/AgentEvent.js";
+import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { createRequestId } from "../Core/AgentIds.js";
 import type { AgentWebSocketRequest, AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 
-type ConfigMutationRequest = AgentWebSocketRequestOf<"config.update">
+type ConfigMutationRequest =
+  | AgentWebSocketRequestOf<"config.update">
   | AgentWebSocketRequestOf<"plugin.config.update">
   | AgentWebSocketRequestOf<"plugin.config.set_enabled">;
 
-type PresetRequest = AgentWebSocketRequestOf<"preset.list">
+type PresetRequest =
+  | AgentWebSocketRequestOf<"preset.list">
   | AgentWebSocketRequestOf<"preset.save">
   | AgentWebSocketRequestOf<"preset.delete">
   | AgentWebSocketRequestOf<"preset.set_active">;
@@ -54,21 +53,21 @@ function projectConfigFailure(
     kind: AgentEventKinds.ConfigFailed,
     context: {},
     data: {
-      configPath: request.type === "config.update"
-        ? context.configService?.snapshot().path ?? ""
-        : request.pluginName,
+      configPath:
+        request.type === "config.update" ? (context.configService?.snapshot().path ?? "") : request.pluginName,
       message: errorMessage(error),
       details: serializeError(error),
-      operation: request.type === "config.update"
-        ? {
-            requestId: request.requestId,
-            kind: "config_update",
-          }
-        : {
-            requestId: request.requestId,
-            kind: request.type === "plugin.config.update" ? "update" : "set_enabled",
-            pluginName: request.pluginName,
-          },
+      operation:
+        request.type === "config.update"
+          ? {
+              requestId: request.requestId,
+              kind: "config_update",
+            }
+          : {
+              requestId: request.requestId,
+              kind: request.type === "plugin.config.update" ? "update" : "set_enabled",
+              pluginName: request.pluginName,
+            },
     },
   };
 }
@@ -83,16 +82,14 @@ function projectPresetFailure(request: PresetRequest, error: unknown): AgentDoma
       operation: {
         requestId: "requestId" in request ? request.requestId : undefined,
         kind: PresetOperationKinds[request.type],
-        name: "name" in request ? request.name ?? null : undefined,
+        name: "name" in request ? (request.name ?? null) : undefined,
       },
     },
   };
 }
 
 function projectRunFailure(request: AgentWebSocketRequest, error: unknown): AgentDomainEvent {
-  const requestId = request.type === "session.message"
-    ? request.requestId ?? createRequestId()
-    : createRequestId();
+  const requestId = request.type === "session.message" ? (request.requestId ?? createRequestId()) : createRequestId();
   return {
     kind: AgentEventKinds.RunFailed,
     context: {

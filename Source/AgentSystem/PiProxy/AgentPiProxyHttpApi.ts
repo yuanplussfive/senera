@@ -1,22 +1,10 @@
 import type http from "node:http";
 import { z } from "zod";
-import {
-  AgentEventKinds,
-  type AgentEventSink,
-} from "../Events/AgentEvent.js";
-import {
-  resolveActionPlannerConfig,
-  resolveModelProviderConfig,
-  resolveServerConfig,
-} from "../AgentDefaults.js";
+import { AgentEventKinds, type AgentEventSink } from "../Events/AgentEvent.js";
+import { resolveActionPlannerConfig, resolveModelProviderConfig } from "../AgentDefaults.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import {
-  AgentPiAssistantCompiler,
-  type AgentPiAssistantCompilerPort,
-} from "./AgentPiAssistantCompiler.js";
-import {
-  PiOpenAiChatCompletionRequestSchema,
-} from "./AgentPiOpenAiWireTypes.js";
+import { AgentPiAssistantCompiler, type AgentPiAssistantCompilerPort } from "./AgentPiAssistantCompiler.js";
+import { PiOpenAiChatCompletionRequestSchema } from "./AgentPiOpenAiWireTypes.js";
 import {
   AgentPiProxyContextHeader,
   registerPiProxyToolCallBatch,
@@ -29,22 +17,24 @@ import {
   projectPiChatCompletionStreamEvents,
   projectPiModelsResponse,
 } from "./AgentPiOpenAiResponseProjector.js";
+import { AgentPiProxyProtocol } from "./AgentPiProxyContract.js";
 
 export interface AgentPiProxyHttpApiOptions {
   configSnapshot: () => AgentSystemConfig;
   compilerFactory?: (config: AgentSystemConfig) => AgentPiAssistantCompilerPort;
   onEvent?: AgentEventSink;
+  maxRequestBytes?: number;
 }
 
-type RouteHandler = (
-  request: http.IncomingMessage,
-  response: http.ServerResponse,
-) => Promise<void>;
+type RouteHandler = (request: http.IncomingMessage, response: http.ServerResponse) => Promise<void>;
 
 export class AgentPiProxyHttpApi {
   private readonly routes = new Map<string, RouteHandler>([
-    ["GET /v1/models", (_request, response) => this.handleModels(response)],
-    ["POST /v1/chat/completions", (request, response) => this.handleChatCompletions(request, response)],
+    [`GET ${AgentPiProxyProtocol.routes.models}`, (_request, response) => this.handleModels(response)],
+    [
+      `POST ${AgentPiProxyProtocol.routes.chatCompletions}`,
+      (request, response) => this.handleChatCompletions(request, response),
+    ],
   ]);
 
   constructor(private readonly options: AgentPiProxyHttpApiOptions) {}
@@ -53,10 +43,7 @@ export class AgentPiProxyHttpApi {
     return this.routes.has(routeKey(request));
   }
 
-  async handle(
-    request: http.IncomingMessage,
-    response: http.ServerResponse,
-  ): Promise<void> {
+  async handle(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
     const handler = this.routes.get(routeKey(request));
     if (!handler) {
       writeJson(response, 404, openAiError("not_found", "Pi proxy route not found."));
@@ -66,7 +53,9 @@ export class AgentPiProxyHttpApi {
     try {
       await handler(request, response);
     } catch (error) {
-      writeJson(response, 500, openAiError("senera_pi_proxy_error", errorMessage(error)));
+      const status = error instanceof PiProxyRequestTooLargeError ? 413 : 500;
+      const code = error instanceof PiProxyRequestTooLargeError ? "request_too_large" : "senera_pi_proxy_error";
+      writeJson(response, status, openAiError(code, errorMessage(error)));
     }
   }
 
@@ -74,12 +63,9 @@ export class AgentPiProxyHttpApi {
     writeJson(response, 200, projectPiModelsResponse(this.modelId()));
   }
 
-  private async handleChatCompletions(
-    request: http.IncomingMessage,
-    response: http.ServerResponse,
-  ): Promise<void> {
+  private async handleChatCompletions(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
     const payload = PiOpenAiChatCompletionRequestSchema.parse(
-      await readJsonBody(request),
+      await readJsonBody(request, this.options.maxRequestBytes ?? 1_048_576),
     );
     const compiler = this.compiler();
     const runtime = readPiProxyRuntimeContext(readSingleHeader(request.headers[AgentPiProxyContextHeader]));
@@ -134,14 +120,16 @@ export class AgentPiProxyHttpApi {
     payload: unknown,
   ): Promise<void> {
     const sink = runtime?.onEvent ?? this.options.onEvent;
-    await sink?.(createPiTraceEvent({
-      sessionId: runtime?.sessionId,
-      requestId: runtime?.requestId ?? "pi-proxy",
-      step: runtime?.step ?? 0,
-      source: "proxy",
-      eventType,
-      payload,
-    }));
+    await sink?.(
+      createPiTraceEvent({
+        sessionId: runtime?.sessionId,
+        requestId: runtime?.requestId ?? "pi-proxy",
+        step: runtime?.step ?? 0,
+        source: "proxy",
+        eventType,
+        payload,
+      }),
+    );
   }
 
   private async emitAssistantVisibleEvents(
@@ -160,7 +148,7 @@ export class AgentPiProxyHttpApi {
     registerPiProxyToolCallBatch(
       runtime,
       batchId,
-      assistantMessage.toolCalls.flatMap((call) => call.id ? [call.id] : []),
+      assistantMessage.toolCalls.flatMap((call) => (call.id ? [call.id] : [])),
     );
 
     if (content) {
@@ -178,7 +166,7 @@ export class AgentPiProxyHttpApi {
           terminal: false,
           toolCount: assistantMessage.toolCalls.length,
           batchId,
-          toolCallIds: assistantMessage.toolCalls.flatMap((call) => call.id ? [call.id] : []),
+          toolCallIds: assistantMessage.toolCalls.flatMap((call) => (call.id ? [call.id] : [])),
         },
       });
     }
@@ -216,30 +204,35 @@ function routeKey(request: http.IncomingMessage): string {
   return `${method} ${path}`;
 }
 
-async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+class PiProxyRequestTooLargeError extends Error {
+  constructor() {
+    super("Request body exceeds the configured limit.");
   }
-  const text = Buffer.concat(chunks).toString("utf8");
-  return text.trim() ? JSON.parse(text) as unknown : {};
 }
 
-function writeJson(
-  response: http.ServerResponse,
-  status: number,
-  payload: unknown,
-): void {
+async function readJsonBody(request: http.IncomingMessage, maximumBytes: number): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let receivedBytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    receivedBytes += buffer.length;
+    if (receivedBytes > maximumBytes) {
+      throw new PiProxyRequestTooLargeError();
+    }
+    chunks.push(buffer);
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
+  return text.trim() ? (JSON.parse(text) as unknown) : {};
+}
+
+function writeJson(response: http.ServerResponse, status: number, payload: unknown): void {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
   });
   response.end(JSON.stringify(payload));
 }
 
-function writeSse(
-  response: http.ServerResponse,
-  events: readonly unknown[],
-): void {
+function writeSse(response: http.ServerResponse, events: readonly unknown[]): void {
   response.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache",
@@ -266,18 +259,4 @@ function errorMessage(error: unknown): string {
     return error.issues.map((issue) => issue.message).join("; ");
   }
   return error instanceof Error ? error.message : String(error);
-}
-
-export function buildPiProxyBaseUrl(config: AgentSystemConfig): string {
-  const server = resolveServerConfig(config);
-  return `http://${clientHostForBindHost(server.Host)}:${server.Port}/v1`;
-}
-
-function clientHostForBindHost(host: string): string {
-  const bindAnyHostByName = new Map([
-    ["0.0.0.0", "127.0.0.1"],
-    ["::", "[::1]"],
-    ["[::]", "[::1]"],
-  ]);
-  return bindAnyHostByName.get(host) ?? host;
 }

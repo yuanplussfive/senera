@@ -51,17 +51,16 @@ const violations = [
 assert.deepEqual(
   violations,
   [],
-  [
-    "Complexity budget verification failed.",
-    ...violations.map((violation) => `- ${violation}`),
-  ].join("\n"),
+  ["Complexity budget verification failed.", ...violations.map((violation) => `- ${violation}`)].join("\n"),
 );
 
-console.log([
-  "Complexity budget verified",
-  `(${sourceFiles.length} files,`,
-  `${budget.legacyLargeFiles.length} legacy large-file budgets).`,
-].join(" "));
+console.log(
+  [
+    "Complexity budget verified",
+    `(${sourceFiles.length} files,`,
+    `${budget.legacyLargeFiles.length} legacy large-file budgets).`,
+  ].join(" "),
+);
 
 function inspectRequiredGuides(): string[] {
   return budget.requiredModuleGuides
@@ -74,9 +73,7 @@ function inspectLegacyBudgets(): string[] {
     const budgetedPath = normalizePath(entry.path);
     const file = sourceFilesByPath.get(budgetedPath);
     if (!file) {
-      return [
-        `${entry.path} legacy large-file budget references a missing or ignored source file.`,
-      ];
+      return [`${entry.path} legacy large-file budget references a missing or ignored source file.`];
     }
     if (file.lines <= budget.lineBudget.maxLines) {
       return [
@@ -107,53 +104,53 @@ function inspectLargeFiles(): string[] {
       return file.lines <= maxLines
         ? []
         : [
-          [
-            `${file.path} has ${file.lines} lines, above legacy budget ${maxLines}.`,
-            `baseline=${legacyBudget.baselineLines}, allowance=${budget.lineBudget.legacyAllowance}.`,
-            `owner=${legacyBudget.owner}.`,
-            legacyBudget.splitTarget,
-          ].join(" "),
-        ];
+            [
+              `${file.path} has ${file.lines} lines, above legacy budget ${maxLines}.`,
+              `baseline=${legacyBudget.baselineLines}, allowance=${budget.lineBudget.legacyAllowance}.`,
+              `owner=${legacyBudget.owner}.`,
+              legacyBudget.splitTarget,
+            ].join(" "),
+          ];
     }
 
     return file.lines <= budget.lineBudget.maxLines
       ? []
       : [
-        [
-          `${file.path} has ${file.lines} lines, above budget ${budget.lineBudget.maxLines}.`,
-          "Split the file or add an explicit legacyLargeFiles entry with owner and splitTarget.",
-        ].join(" "),
-      ];
+          [
+            `${file.path} has ${file.lines} lines, above budget ${budget.lineBudget.maxLines}.`,
+            "Split the file or add an explicit legacyLargeFiles entry with owner and splitTarget.",
+          ].join(" "),
+        ];
   });
 }
 
 function inspectDirectoryBudgets(): string[] {
   return budget.directoryBudgets.flatMap((entry) => {
     const directory = path.join(workspaceRoot, entry.path);
-    const rootFiles = fs.readdirSync(directory, { withFileTypes: true })
-      .filter((item) => item.isFile() && budget.fileExtensions.includes(path.extname(item.name)))
-      .length;
+    const rootFiles = fs
+      .readdirSync(directory, { withFileTypes: true })
+      .filter((item) => item.isFile() && budget.fileExtensions.includes(path.extname(item.name))).length;
 
     return rootFiles <= entry.maxRootFiles
       ? []
       : [
-        [
-          `${entry.path} has ${rootFiles} root source files, above budget ${entry.maxRootFiles}.`,
-          entry.message,
-        ].join(" "),
-      ];
+          [`${entry.path} has ${rootFiles} root source files, above budget ${entry.maxRootFiles}.`, entry.message].join(
+            " ",
+          ),
+        ];
   });
 }
 
 function readSourceFileMetrics(): SourceFileMetric[] {
   const patterns = budget.sourceRoots.map((root) => `${root.replaceAll("\\", "/")}/**/*`);
-  return fg.sync(patterns, {
-    cwd: workspaceRoot,
-    absolute: false,
-    onlyFiles: true,
-    unique: true,
-    ignore: budget.ignoredGlobs,
-  })
+  return fg
+    .sync(patterns, {
+      cwd: workspaceRoot,
+      absolute: false,
+      onlyFiles: true,
+      unique: true,
+      ignore: budget.ignoredGlobs,
+    })
     .filter((file) => budget.fileExtensions.includes(path.extname(file)))
     .sort((left, right) => left.localeCompare(right))
     .map((file) => ({

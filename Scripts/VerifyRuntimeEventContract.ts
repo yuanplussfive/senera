@@ -1,21 +1,10 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  FrontendEventCatalogPath,
-  renderFrontendEventCatalogSource,
-} from "../Build/FrontendEventCatalogSource.js";
+import { FrontendEventCatalogPath, renderFrontendEventCatalogSource } from "../Build/FrontendEventCatalogSource.js";
 
 const workspaceRoot = process.cwd();
-const IgnoredDirectories = new Set([
-  ".git",
-  ".sandbox",
-  "Dist",
-  "Release",
-  "build",
-  "dist",
-  "node_modules",
-]);
+const IgnoredDirectories = new Set([".git", ".sandbox", "Dist", "Release", "build", "dist", "node_modules"]);
 
 const generatedEventCatalogPath = path.join(workspaceRoot, ...FrontendEventCatalogPath.split("/"));
 assert.equal(
@@ -28,10 +17,7 @@ const backendKinds = parseConstObject(
   path.join(workspaceRoot, "Source", "AgentSystem", "Events", "AgentEventCatalog.ts"),
   "AgentEventKinds",
 );
-const frontendKinds = parseConstObject(
-  generatedEventCatalogPath,
-  "EventKinds",
-);
+const frontendKinds = parseConstObject(generatedEventCatalogPath, "EventKinds");
 
 assert.deepEqual(
   valuesOnlyIn(frontendKinds, backendKinds),
@@ -84,11 +70,7 @@ const retiredEventRefs = [
   "ToolResultsDetail",
 ];
 
-assert.deepEqual(
-  findRetiredEventReferences(retiredEventRefs),
-  [],
-  "Retired runtime event names are still referenced.",
-);
+assert.deepEqual(findRetiredEventReferences(retiredEventRefs), [], "Retired runtime event names are still referenced.");
 
 console.log("Runtime event contract verified.");
 
@@ -111,17 +93,17 @@ function parseConstObject(filePath: string, objectName: string): Map<string, str
 }
 
 function collectBackendEventProducers(): Map<string, string[]> {
-  const files = [
-    ...walk(path.join(workspaceRoot, "Source")),
-    ...walk(path.join(workspaceRoot, "Apps")),
-  ].filter((filePath) => !isBackendNonProducer(filePath));
+  const files = [...walk(path.join(workspaceRoot, "Source")), ...walk(path.join(workspaceRoot, "Apps"))].filter(
+    (filePath) => !isBackendNonProducer(filePath),
+  );
 
   return collectIdentifierReferences(files, /AgentEventKinds\.([A-Z]\w*)/g);
 }
 
 function collectFrontendEventConsumers(): Map<string, string[]> {
-  const files = walk(path.join(workspaceRoot, "Frontend", "src"))
-    .filter((filePath) => !normalizedPath(filePath).endsWith("Frontend/src/api/eventTypes.ts"));
+  const files = walk(path.join(workspaceRoot, "Frontend", "src")).filter(
+    (filePath) => !normalizedPath(filePath).endsWith("Frontend/src/api/eventTypes.ts"),
+  );
 
   return collectIdentifierReferences(files, /EventKinds\.([A-Z]\w*)/g);
 }
@@ -156,15 +138,11 @@ function valuesOnlyIn(left: Map<string, string>, right: Map<string, string>): st
 }
 
 function missingIds(ids: string[], references: Map<string, string[]>): string[] {
-  return ids
-    .filter((id) => !references.has(id))
-    .sort((left, right) => left.localeCompare(right));
+  return ids.filter((id) => !references.has(id)).sort((left, right) => left.localeCompare(right));
 }
 
 function findRetiredEventReferences(retiredNames: string[]): string[] {
-  const ignoredFiles = new Set([
-    "Scripts/VerifyRuntimeEventContract.ts",
-  ]);
+  const ignoredFiles = new Set(["Scripts/VerifyRuntimeEventContract.ts"]);
   const files = [
     ...walk(path.join(workspaceRoot, "Source")),
     ...walk(path.join(workspaceRoot, "Apps")),

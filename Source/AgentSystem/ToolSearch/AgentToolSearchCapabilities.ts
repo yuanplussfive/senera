@@ -4,10 +4,7 @@ import type {
   ToolSearchCapabilityManifest,
   ToolSearchCapabilityRiskManifest,
 } from "../Types/PluginManifestTypes.js";
-import type {
-  AgentToolSearchCapabilityMatch,
-  ToolSearchDocument,
-} from "./AgentToolSearchTypes.js";
+import type { AgentToolSearchCapabilityMatch, ToolSearchDocument } from "./AgentToolSearchTypes.js";
 
 export function matchToolCapabilities(
   doc: ToolSearchDocument,
@@ -34,28 +31,23 @@ export function capabilitySearchText(
     ...capabilityFacetEntries(capability.Facets).flatMap((entry) => entry.values),
     ...(capability.Aliases ?? []),
     ...(options.includeRisk ? [capabilityRiskText(capability.Risk)] : []),
-  ].filter(Boolean).join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function capabilityFacetEntries(
   facets: ToolSearchCapabilityFacetsManifest | undefined,
 ): Array<{ name: string; values: string[] }> {
   return facets
-    ? Object.entries(facets)
-      .flatMap(([name, values]) => Array.isArray(values) && values.length > 0
-        ? [{ name, values }]
-        : [])
+    ? Object.entries(facets).flatMap(([name, values]) =>
+        Array.isArray(values) && values.length > 0 ? [{ name, values }] : [],
+      )
     : [];
 }
 
-export function capabilityRiskText(
-  risk: ToolSearchCapabilityRiskManifest | undefined,
-): string {
-  return [
-    risk?.SideEffect,
-    risk?.Permission,
-    ...(risk?.Notes ?? []),
-  ].filter(Boolean).join(" ");
+export function capabilityRiskText(risk: ToolSearchCapabilityRiskManifest | undefined): string {
+  return [risk?.SideEffect, risk?.Permission, ...(risk?.Notes ?? [])].filter(Boolean).join(" ");
 }
 
 function matchCapability(
@@ -69,8 +61,7 @@ function matchCapability(
   const semanticText = capabilitySearchText(capability, {
     includeRisk: false,
   });
-  const semanticMatches = tokenizer.tokenize(semanticText)
-    .filter((token) => queryTokens.has(token)).length;
+  const semanticMatches = tokenizer.tokenize(semanticText).filter((token) => queryTokens.has(token)).length;
   const score = matchedFacets.length + semanticMatches * 0.2;
   if (score <= 0) {
     return undefined;
@@ -90,8 +81,7 @@ function facetMatchesQuery(
   queryTokens: Set<string>,
   tokenizer: AgentToolSearchTokenizer,
 ): boolean {
-  return values.some((value) =>
-    tokenizer.tokenize(value).some((token) => queryTokens.has(token)));
+  return values.some((value) => tokenizer.tokenize(value).some((token) => queryTokens.has(token)));
 }
 
 function projectCapabilityRisk(

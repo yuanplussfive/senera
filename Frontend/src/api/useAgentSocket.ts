@@ -44,7 +44,9 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   const retryTimerRef = useRef<number | null>(null);
   const closedByUserRef = useRef(false);
   const onEventRef = useRef(onEvent);
+  const onMalformedEventRef = useRef(onMalformedEvent);
   onEventRef.current = onEvent;
+  onMalformedEventRef.current = onMalformedEvent;
 
   // rAF 批量队列
   const pendingRef = useRef<EventEnvelope[]>([]);
@@ -81,18 +83,21 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     }
   }, [flush]);
 
-  const dispatch = useCallback((env: EventEnvelope): void => {
-    if (isBufferedStreamingEvent(env.kind)) {
-      pendingRef.current.push(env);
-      scheduleFlush();
-      return;
-    }
-    // 低频事件：先 flush 任何 pending（保证顺序），再立即派发
-    if (pendingRef.current.length > 0) {
-      flush();
-    }
-    onEventRef.current(env);
-  }, [flush, scheduleFlush]);
+  const dispatch = useCallback(
+    (env: EventEnvelope): void => {
+      if (isBufferedStreamingEvent(env.kind)) {
+        pendingRef.current.push(env);
+        scheduleFlush();
+        return;
+      }
+      // 低频事件：先 flush 任何 pending（保证顺序），再立即派发
+      if (pendingRef.current.length > 0) {
+        flush();
+      }
+      onEventRef.current(env);
+    },
+    [flush, scheduleFlush],
+  );
 
   const scheduleRetryRef = useRef<() => void>(() => undefined);
 
@@ -124,7 +129,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
         const env = parseAgentSocketEventData(evt.data);
         dispatch(env);
       } catch (error) {
-        onMalformedEvent?.(error);
+        onMalformedEventRef.current?.(error);
       }
     };
 

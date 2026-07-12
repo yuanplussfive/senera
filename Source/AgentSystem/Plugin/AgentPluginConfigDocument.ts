@@ -1,20 +1,11 @@
 import path from "node:path";
-import {
-  stringify as stringifyToml,
-  type TomlTableWithoutBigInt,
-} from "smol-toml";
-import type {
-  PluginConfigSchemaAllowedPath,
-} from "./AgentPluginConfigSchema.js";
+import { stringify as stringifyToml, type TomlTableWithoutBigInt } from "smol-toml";
+import type { PluginConfigSchemaAllowedPath } from "./AgentPluginConfigSchema.js";
 
 export type EditableTomlTable = Record<string, unknown>;
 
 export function defaultPluginConfigToml(): string {
-  return [
-    "[senera]",
-    "enabled = true",
-    "",
-  ].join("\n");
+  return ["[senera]", "enabled = true", ""].join("\n");
 }
 
 export function resolvePluginConfigTemplatePath(pluginRootPath: string, fileName: string): string {
@@ -29,11 +20,7 @@ export function resolvePluginConfigSchemaPath(pluginRootPath: string, fileName: 
   return path.join(pluginRootPath, `${baseName}.schema${extension}`);
 }
 
-export function setTomlValueAtPath(
-  document: EditableTomlTable,
-  pathParts: readonly string[],
-  value: unknown,
-): void {
+export function setTomlValueAtPath(document: EditableTomlTable, pathParts: readonly string[], value: unknown): void {
   const [lastKey] = pathParts.slice(-1);
   if (!lastKey) {
     return;
@@ -70,9 +57,7 @@ export function collectTomlLeafPaths(value: unknown, prefix: readonly string[] =
 
   return entries.flatMap(([key, child]) => {
     const pathParts = [...prefix, key];
-    return isPlainTomlTable(child)
-      ? collectTomlLeafPaths(child, pathParts)
-      : [pathParts];
+    return isPlainTomlTable(child) ? collectTomlLeafPaths(child, pathParts) : [pathParts];
   });
 }
 
@@ -98,8 +83,7 @@ export function isPlainTomlTable(value: unknown): value is TomlTableWithoutBigIn
 }
 
 function pathStartsWith(pathParts: readonly string[], prefix: readonly string[]): boolean {
-  return pathParts.length >= prefix.length
-    && prefix.every((part, index) => pathParts[index] === part);
+  return pathParts.length >= prefix.length && prefix.every((part, index) => pathParts[index] === part);
 }
 
 function sameStringArray(left: readonly string[], right: readonly string[]): boolean {

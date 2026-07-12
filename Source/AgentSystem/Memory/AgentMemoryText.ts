@@ -1,7 +1,4 @@
-import type {
-  AgentMemoryCandidateDraft,
-  AgentMemoryItemRecord,
-} from "./AgentMemorySourceRepository.js";
+import type { AgentMemoryCandidateDraft, AgentMemoryItemRecord } from "./AgentMemorySourceRepository.js";
 
 export function memoryCandidateEmbeddingText(candidate: AgentMemoryCandidateDraft): string {
   return [
@@ -15,22 +12,11 @@ export function memoryCandidateEmbeddingText(candidate: AgentMemoryCandidateDraf
 }
 
 export function memoryItemEmbeddingText(item: AgentMemoryItemRecord): string {
-  return [
-    item.type,
-    item.subject,
-    item.claim,
-    item.howToApply,
-    item.tags.join(" "),
-    item.triggers.join(" "),
-  ].join("\n");
+  return [item.type, item.subject, item.claim, item.howToApply, item.tags.join(" "), item.triggers.join(" ")].join(
+    "\n",
+  );
 }
 
 export function memoryItemRecallText(item: AgentMemoryItemRecord): string {
-  return [
-    item.subject,
-    item.claim,
-    item.howToApply,
-    item.tags.join(" "),
-    item.triggers.join(" "),
-  ].join("\n");
+  return [item.subject, item.claim, item.howToApply, item.tags.join(" "), item.triggers.join(" ")].join("\n");
 }

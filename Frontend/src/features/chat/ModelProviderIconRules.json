@@ -49,5 +49,5 @@
     { "id": "llama", "label": "Llama", "icon": "meta", "match": "includes", "values": ["llama"] },
     { "id": "moonshot", "label": "Moonshot", "icon": "moonshot", "match": "includes", "values": ["moonshot"] }
   ],
-  "defaultModelGroup": { "id": "other", "label": "其他模型", "icon": "openai" }
+  "defaultModelGroup": { "id": "other", "labelKey": "config.modelGroups.other", "icon": "openai" }
 }

@@ -61,12 +61,15 @@ export async function withAgentMcpFilesystemClient<TValue>(
     profile: options.executionProfile,
     spawnPersistentProcess: options.spawnPersistentProcess,
   });
-  const client = new Client({
-    name: "senera-mcp-filesystem-client",
-    version: "0.1.0",
-  }, {
-    capabilities: {},
-  });
+  const client = new Client(
+    {
+      name: "senera-mcp-filesystem-client",
+      version: "0.1.0",
+    },
+    {
+      capabilities: {},
+    },
+  );
 
   await client.connect(transport, mcpRequestOptions(options));
   try {
@@ -115,7 +118,10 @@ export class AgentMcpFilesystemClient {
     });
     return text === "No matches found"
       ? []
-      : text.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+      : text
+          .split(/\r?\n/u)
+          .map((line) => line.trim())
+          .filter(Boolean);
   }
 
   async getFileInfo(filePath: string): Promise<AgentMcpFileInfo> {
@@ -136,19 +142,17 @@ export class AgentMcpFilesystemClient {
   }
 
   listAllowedDirectories(): Promise<string[]> {
-    return this.callText(McpFilesystemToolNames.listAllowedDirectories, {})
-      .then((text) => text.split(/\r?\n/u).slice(1).map((line) => line.trim()).filter(Boolean));
+    return this.callText(McpFilesystemToolNames.listAllowedDirectories, {}).then((text) =>
+      text
+        .split(/\r?\n/u)
+        .slice(1)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
   }
 
-  private async callText(
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<string> {
-    const result = await this.client.callTool(
-      { name, arguments: args },
-      undefined,
-      mcpRequestOptions(this.options),
-    );
+  private async callText(name: string, args: Record<string, unknown>): Promise<string> {
+    const result = await this.client.callTool({ name, arguments: args }, undefined, mcpRequestOptions(this.options));
     return extractMcpText(result);
   }
 }
@@ -159,18 +163,18 @@ function resolveMcpFilesystemServerEntry(): string {
   const packageJson = nodeRequire(packageJsonPath) as NodePackageJson;
   const binEntry = readPackageBinEntry(packageJson);
   if (!binEntry) {
-    throw new Error(agentErrorMessage("mcp.packageMissingBin", {
-      packageName: McpFilesystemServerPackageName,
-    }));
+    throw new Error(
+      agentErrorMessage("mcp.packageMissingBin", {
+        packageName: McpFilesystemServerPackageName,
+      }),
+    );
   }
 
   return path.resolve(packageRoot, binEntry);
 }
 
 function readPackageBinEntry(packageJson: NodePackageJson): string | undefined {
-  return typeof packageJson.bin === "string"
-    ? packageJson.bin
-    : Object.values(packageJson.bin ?? {})[0];
+  return typeof packageJson.bin === "string" ? packageJson.bin : Object.values(packageJson.bin ?? {})[0];
 }
 
 function mcpRequestOptions(options: AgentMcpFilesystemClientOptions): RequestOptions {
@@ -206,13 +210,9 @@ function readDirectoryEntryLine(line: string): AgentMcpDirectoryEntry | undefine
 
 function readInfoLine(line: string): [string, string] | undefined {
   const separatorIndex = line.indexOf(":");
-  return separatorIndex > 0
-    ? [line.slice(0, separatorIndex).trim(), line.slice(separatorIndex + 1).trim()]
-    : undefined;
+  return separatorIndex > 0 ? [line.slice(0, separatorIndex).trim(), line.slice(separatorIndex + 1).trim()] : undefined;
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }

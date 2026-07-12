@@ -15,10 +15,7 @@
       "Name": "ImageVisionTool",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
-      "Permissions": [
-        "filesystem:read:uploads",
-        "network:model-provider"
-      ],
+      "Permissions": ["filesystem:read:uploads", "network:model-provider"],
       "Handler": {
         "Kind": "HostCapability",
         "Capability": "image.vision"
@@ -27,7 +24,7 @@
         "Boundary": "Local",
         "Network": "Allow",
         "Workspace": "ReadOnly",
-        "LocalFallback": "Allow"
+        "LocalFallback": "Deny"
       },
       "Artifacts": {
         "Evidence": [
@@ -73,31 +70,11 @@
               "providerModel": "$.providerModel"
             },
             "ModelProjection": {
-              "Slots": [
-                "uploadUri",
-                "status",
-                "task",
-                "question",
-                "name",
-                "mime",
-                "answer",
-                "providerModel",
-                "message"
-              ]
+              "Slots": ["uploadUri", "status", "task", "question", "name", "mime", "answer", "providerModel", "message"]
             },
             "PlannerMemory": {
-              "Facts": [
-                "uploadUri",
-                "status",
-                "task",
-                "question",
-                "name",
-                "mime",
-                "providerModel"
-              ],
-              "ArtifactRefs": [
-                "projection"
-              ]
+              "Facts": ["uploadUri", "status", "task", "question", "name", "mime", "providerModel"],
+              "ArtifactRefs": ["projection"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.name }} task={{ e.slots.task }}\n  answer: {{ e.slots.answer }}\n{% endfor %}",
@@ -112,73 +89,30 @@
       },
       "Search": {
         "Summary": "按 uploadUri 对用户上传图片、截图进行视觉识别、OCR 或问答。",
-        "Tags": [
-          "图片理解",
-          "视觉识别",
-          "截图分析",
-          "文字识别",
-          "附件处理"
-        ],
+        "Tags": ["图片理解", "视觉识别", "截图分析", "文字识别", "附件处理"],
         "Capabilities": [
           {
             "Id": "image.vision",
             "Title": "Image vision",
             "Description": "Analyze an uploaded image by resolving uploadUri and routing it to the configured vision model.",
             "Facets": {
-              "Actions": [
-                "inspect",
-                "describe",
-                "ocr",
-                "answer"
-              ],
-              "Targets": [
-                "uploaded-image",
-                "screenshot"
-              ],
-              "Inputs": [
-                "upload-uri",
-                "question",
-                "task"
-              ],
-              "Outputs": [
-                "visual-observations",
-                "visible-text",
-                "image-answer"
-              ],
-              "Evidence": [
-                "image-vision-result"
-              ],
-              "Effects": [
-                "model-call"
-              ]
+              "Actions": ["inspect", "describe", "ocr", "answer"],
+              "Targets": ["uploaded-image", "screenshot"],
+              "Inputs": ["upload-uri", "question", "task"],
+              "Outputs": ["visual-observations", "visible-text", "image-answer"],
+              "Evidence": ["image-vision-result"],
+              "Effects": ["model-call"]
             },
-            "Aliases": [
-              "看图",
-              "识别图片",
-              "读取截图",
-              "image OCR",
-              "answer about this image"
-            ],
+            "Aliases": ["看图", "识别图片", "读取截图", "image OCR", "answer about this image"],
             "Risk": {
               "SideEffect": "model-call",
               "Permission": "upload-read"
             }
           }
         ],
-        "UseCases": [
-          "上传图片视觉描述、OCR、截图错误识别。",
-          "UI 截图结构、文字、异常状态分析。"
-        ],
-        "Examples": [
-          "上传图片 OCR",
-          "截图错误识别",
-          "界面截图视觉检查",
-          "image upload vision analysis"
-        ],
-        "Avoid": [
-          "不要对非图片附件直接调用；先探测文件类型。",
-          "不要猜测 uploadUri。"
-        ]
+        "UseCases": ["上传图片视觉描述、OCR、截图错误识别。", "UI 截图结构、文字、异常状态分析。"],
+        "Examples": ["上传图片 OCR", "截图错误识别", "界面截图视觉检查", "image upload vision analysis"],
+        "Avoid": ["不要对非图片附件直接调用；先探测文件类型。", "不要猜测 uploadUri。"]
       }
     }
   ],
@@ -186,9 +120,7 @@
     "TrustLevel": "External",
     "Network": "Allow",
     "FileSystem": {
-      "Read": [
-        ".senera/uploads"
-      ],
+      "Read": [".senera/uploads"],
       "Write": []
     },
     "RequiresApproval": false

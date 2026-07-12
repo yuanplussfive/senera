@@ -1,21 +1,11 @@
 import fs from "node:fs";
-import type {
-  AgentHarnessResources,
-  PromptTemplate,
-  Skill,
-} from "@earendil-works/pi-agent-core";
+import type { AgentHarnessResources, PromptTemplate, Skill } from "@earendil-works/pi-agent-core";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
-import type {
-  RegisteredSkill,
-  RegisteredTemplate,
-} from "../Types/PluginRuntimeTypes.js";
-import {
-  AgentPiResourceSelector,
-  type AgentPiResourceSelection,
-} from "./AgentPiResourceSelector.js";
+import type { RegisteredSkill, RegisteredTemplate } from "../Types/PluginRuntimeTypes.js";
+import { AgentPiResourceSelector, type AgentPiResourceSelection } from "./AgentPiResourceSelector.js";
 
 export interface AgentPiResourceProjectionInput {
   input?: string;
@@ -52,17 +42,11 @@ export class AgentPiResourceProjector {
   }
 
   private projectSkills(activeSkills: readonly AgentActivatedSkill[] = []): Skill[] {
-    const registeredByName = new Map(
-      this.registry.listSkills().map((skill) => [skill.name, skill]),
-    );
-    return activeSkills.map((skill) =>
-      this.projectSkill(skill, registeredByName.get(skill.name)));
+    const registeredByName = new Map(this.registry.listSkills().map((skill) => [skill.name, skill]));
+    return activeSkills.map((skill) => this.projectSkill(skill, registeredByName.get(skill.name)));
   }
 
-  private projectSkill(
-    skill: AgentActivatedSkill,
-    registered: RegisteredSkill | undefined,
-  ): Skill {
+  private projectSkill(skill: AgentActivatedSkill, registered: RegisteredSkill | undefined): Skill {
     const descriptionFile = registered?.descriptionFile ?? skill.descriptionFile;
     return {
       name: skill.name,
@@ -73,15 +57,12 @@ export class AgentPiResourceProjector {
   }
 
   private skillDescription(skill: AgentActivatedSkill): string {
-    return [
-      skill.title,
-      skill.summary,
-      ...skill.useCases,
-    ].filter(hasText).join("\n");
+    return [skill.title, skill.summary, ...skill.useCases].filter(hasText).join("\n");
   }
 
   private projectPromptTemplates(): PromptTemplate[] {
-    return this.registry.listTemplates()
+    return this.registry
+      .listTemplates()
       .filter((template) => template.exposeToPi)
       .map((template) => this.projectPromptTemplate(template));
   }

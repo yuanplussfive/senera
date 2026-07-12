@@ -1,5 +1,10 @@
 import type { ResolvedAgentMemoryLearningConfig } from "../Types/AgentConfigTypes.js";
-import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
+import type {
+  AgentEmbeddingRequest,
+  AgentEmbeddingResult,
+  AgentRerankRequest,
+  AgentRerankResult,
+} from "../Vector/AgentVectorModelClient.js";
 import { cosineSimilarity } from "../Vector/AgentVectorSimilarity.js";
 import {
   type AgentMemoryCandidateDraft,
@@ -7,13 +12,15 @@ import {
   type AgentMemoryItemRecord,
   type AgentMemorySourceRepository,
 } from "./AgentMemorySourceRepository.js";
-import {
-  memoryCandidateEmbeddingText,
-  memoryItemEmbeddingText,
-} from "./AgentMemoryText.js";
+import { memoryCandidateEmbeddingText, memoryItemEmbeddingText } from "./AgentMemoryText.js";
+
+export interface AgentMemoryLearningVectorClient {
+  embed(request: AgentEmbeddingRequest): Promise<AgentEmbeddingResult>;
+  rerank(request: AgentRerankRequest): Promise<AgentRerankResult>;
+}
 
 export async function withMemoryCandidateEmbeddings(
-  vectorClient: AgentVectorModelClient,
+  vectorClient: AgentMemoryLearningVectorClient,
   candidates: readonly AgentMemoryCandidateDraft[],
 ): Promise<AgentMemoryCandidateDraft[]> {
   const result = await vectorClient.embed({
@@ -26,7 +33,7 @@ export async function withMemoryCandidateEmbeddings(
 }
 
 export async function recordMemoryItemEmbeddings(
-  vectorClient: AgentVectorModelClient,
+  vectorClient: AgentMemoryLearningVectorClient,
   repository: AgentMemorySourceRepository,
   items: readonly AgentMemoryItemRecord[],
 ): Promise<void> {
@@ -37,19 +44,25 @@ export async function recordMemoryItemEmbeddings(
   const result = await vectorClient.embed({
     input: items.map(memoryItemEmbeddingText),
   });
-  repository.upsertMemoryItemVectors(items.flatMap((item, index) => {
-    const embedding = result.vectors[index];
-    return embedding ? [{
-      memoryUri: item.uri,
-      model: result.model,
-      embedding,
-      updatedAt: item.updatedAt,
-    }] : [];
-  }));
+  repository.upsertMemoryItemVectors(
+    items.flatMap((item, index) => {
+      const embedding = result.vectors[index];
+      return embedding
+        ? [
+            {
+              memoryUri: item.uri,
+              model: result.model,
+              embedding,
+              updatedAt: item.updatedAt,
+            },
+          ]
+        : [];
+    }),
+  );
 }
 
 export async function rankSimilarPendingCandidates(
-  vectorClient: AgentVectorModelClient,
+  vectorClient: AgentMemoryLearningVectorClient,
   config: ResolvedAgentMemoryLearningConfig,
   target: AgentMemoryCandidateRecord,
   pending: readonly AgentMemoryCandidateRecord[],
@@ -60,10 +73,12 @@ export async function rankSimilarPendingCandidates(
       score: memoryCandidateSimilarity(target, candidate),
     }))
     .filter((item) => item.score >= config.Promotion.MinSimilarity)
-    .sort((left, right) =>
-      right.score - left.score
-      || left.candidate.createdAtMs - right.candidate.createdAtMs
-      || left.candidate.id.localeCompare(right.candidate.id))
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.candidate.createdAtMs - right.candidate.createdAtMs ||
+        left.candidate.id.localeCompare(right.candidate.id),
+    )
     .slice(0, config.Promotion.MaxClusterSize)
     .map((item) => item.candidate);
 
@@ -86,10 +101,7 @@ export async function rankSimilarPendingCandidates(
     .filter((candidate): candidate is AgentMemoryCandidateRecord => Boolean(candidate));
 }
 
-function memoryCandidateSimilarity(
-  left: AgentMemoryCandidateRecord,
-  right: AgentMemoryCandidateRecord,
-): number {
+function memoryCandidateSimilarity(left: AgentMemoryCandidateRecord, right: AgentMemoryCandidateRecord): number {
   if (left.uri === right.uri) {
     return 1;
   }

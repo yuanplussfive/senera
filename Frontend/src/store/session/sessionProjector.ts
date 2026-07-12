@@ -18,14 +18,8 @@ import {
 import { projectRunEvent } from "./runEventProjector";
 import { applyScopedRunEvent } from "./scopedRunProjector";
 import { projectSessionHistoryEvent } from "./sessionHistoryProjector";
-import {
-  ingestSessionList,
-  readFirstAvailableSessionId,
-} from "./sessionListProjection";
-import {
-  nowIso,
-  syncSessionCountsFromLoadedMessages,
-} from "./sessionProjectorCore";
+import { ingestSessionList, readFirstAvailableSessionId } from "./sessionListProjection";
+import { nowIso, syncSessionCountsFromLoadedMessages } from "./sessionProjectorCore";
 import { readChatModelProviders } from "../../features/chat/modelProvider";
 import type { StoreState } from "./types";
 
@@ -42,11 +36,7 @@ export { deleteSessionRuntimeState } from "./sessionListProjection";
 export function applyEvent(state: StoreState, env: EventEnvelope): void {
   const sessionId = env.sessionId;
 
-  if (
-    sessionId &&
-    state.pendingDeletedSessionIds[sessionId] &&
-    !isPendingDeleteResolutionEvent(env.kind)
-  ) {
+  if (sessionId && state.pendingDeletedSessionIds[sessionId] && !isPendingDeleteResolutionEvent(env.kind)) {
     return;
   }
 
@@ -68,15 +58,12 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       state.modelProviders = data.models;
       const chatModels = readChatModelProviders(data.models);
       const selectedId = state.selectedModelProviderId;
-      const selectedStillExists = selectedId
-        ? chatModels.some((model) => model.id === selectedId)
-        : false;
-      const defaultChatModel = chatModels.find((model) => model.id === data.defaultModelProviderId)
-        ?? chatModels.find((model) => model.isDefault)
-        ?? chatModels[0];
-      state.selectedModelProviderId = selectedStillExists
-        ? selectedId
-        : defaultChatModel?.id ?? null;
+      const selectedStillExists = selectedId ? chatModels.some((model) => model.id === selectedId) : false;
+      const defaultChatModel =
+        chatModels.find((model) => model.id === data.defaultModelProviderId) ??
+        chatModels.find((model) => model.isDefault) ??
+        chatModels[0];
+      state.selectedModelProviderId = selectedStillExists ? selectedId : (defaultChatModel?.id ?? null);
       return;
     }
 

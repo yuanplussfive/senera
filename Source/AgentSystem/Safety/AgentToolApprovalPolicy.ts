@@ -1,13 +1,6 @@
-import type {
-  PolicyClient,
-  PolicyDecision,
-} from "@ai-sdk/policy-opa";
+import type { PolicyClient, PolicyDecision } from "@ai-sdk/policy-opa";
 import { normalizeOpaDecision } from "@ai-sdk/policy-opa";
-import type {
-  AgentPermissionAction,
-  AgentPermissionDecision,
-  AgentToolPermissionRequest,
-} from "./AgentSafetyTypes.js";
+import type { AgentPermissionAction, AgentPermissionDecision, AgentToolPermissionRequest } from "./AgentSafetyTypes.js";
 import { AgentPermissionActions } from "./AgentSafetyTypes.js";
 import type { AgentToolGuardrailAuditor } from "./AgentToolGuardrailAudit.js";
 
@@ -40,9 +33,7 @@ export class AgentCompositeToolApprovalPolicy implements AgentToolApprovalPolicy
       return guardrailDecision;
     }
 
-    const opaDecision = this.options.opa
-      ? await this.decideWithOpa(input, this.options.opa)
-      : undefined;
+    const opaDecision = this.options.opa ? await this.decideWithOpa(input, this.options.opa) : undefined;
 
     return opaDecision ?? this.manifestPolicy.decideToolCall(input);
   }
@@ -185,9 +176,7 @@ function policyDecisionToPermissionDecision(
 }
 
 function readPolicyDecisionReason(decision: PolicyDecision): string | undefined {
-  return "reason" in decision
-    ? decision.reason
-    : undefined;
+  return "reason" in decision ? decision.reason : undefined;
 }
 
 function readPolicyReason(result: unknown): string | undefined {
@@ -207,15 +196,11 @@ function readPolicyRiskSignals(result: unknown): readonly string[] | undefined {
     return undefined;
   }
   const value = (result as Record<string, unknown>).riskSignals;
-  return Array.isArray(value)
-    ? value.flatMap((item) => readString(item) ?? [])
-    : undefined;
+  return Array.isArray(value) ? value.flatMap((item) => readString(item) ?? []) : undefined;
 }
 
 function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0
-    ? value
-    : undefined;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function manifestToolReason(toolName: string, action: AgentPermissionAction): string {

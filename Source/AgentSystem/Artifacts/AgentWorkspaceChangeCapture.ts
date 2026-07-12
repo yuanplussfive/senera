@@ -6,18 +6,12 @@ import {
   type PreparedWorkspaceCapture,
   type WorkspaceCaptureOptions,
 } from "./AgentWorkspaceCaptureTypes.js";
-import {
-  resolveWorkspaceCaptureOptions,
-  resolveWorkspacePathRules,
-} from "./AgentWorkspaceCapturePolicy.js";
+import { resolveWorkspaceCaptureOptions, resolveWorkspacePathRules } from "./AgentWorkspaceCapturePolicy.js";
 import { AgentWorkspacePathSelector } from "./AgentWorkspacePathSelector.js";
 import { AgentWorkspaceSnapshotBuilder } from "./AgentWorkspaceSnapshotBuilder.js";
 import { compareWorkspaceSnapshots } from "./AgentWorkspaceSnapshotDiff.js";
 
-export type {
-  AgentWorkspaceChangeCaptureOptions,
-  PreparedWorkspaceCapture,
-} from "./AgentWorkspaceCaptureTypes.js";
+export type { AgentWorkspaceChangeCaptureOptions, PreparedWorkspaceCapture } from "./AgentWorkspaceCaptureTypes.js";
 
 export class AgentWorkspaceChangeCapture {
   private readonly workspaceRoot: string;
@@ -44,10 +38,7 @@ export class AgentWorkspaceChangeCapture {
 
     return {
       complete: async (result: unknown) => {
-        const afterPaths = new Set([
-          ...beforePaths,
-          ...this.pathSelector.selectDeclaredPaths(result, rules),
-        ]);
+        const afterPaths = new Set([...beforePaths, ...this.pathSelector.selectDeclaredPaths(result, rules)]);
         const after = await this.snapshot(afterPaths, options);
         return {
           before,

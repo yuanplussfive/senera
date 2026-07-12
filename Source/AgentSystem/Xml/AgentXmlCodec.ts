@@ -27,9 +27,7 @@ export class AgentXmlCodec {
 
   normalizeForXml(value: unknown, keyName = "", path: string[] = []): unknown {
     if (Array.isArray(value)) {
-      const normalizedItems = value.map((item) =>
-        this.normalizeForXml(item, this.protocol.items.arrayItem, path),
-      );
+      const normalizedItems = value.map((item) => this.normalizeForXml(item, this.protocol.items.arrayItem, path));
       if (this.isArrayItemKey(keyName)) {
         return normalizedItems;
       }
@@ -53,9 +51,7 @@ export class AgentXmlCodec {
     }
 
     const text = String(value);
-    return this.requiresCdata(keyName, path)
-      ? { "#cdata": this.escapeCdata(text) }
-      : text;
+    return this.requiresCdata(keyName, path) ? { "#cdata": this.escapeCdata(text) } : text;
   }
 
   private isArrayItemKey(keyName: string): boolean {
@@ -79,10 +75,12 @@ export class AgentXmlCodec {
       return false;
     }
 
-    return this.requiredCdataRules.some((rule) =>
-      rule.root === path[0]
-      && rule.path.length === path.length - 1
-      && rule.path.every((segment, index) => segment === path[index + 1]));
+    return this.requiredCdataRules.some(
+      (rule) =>
+        rule.root === path[0] &&
+        rule.path.length === path.length - 1 &&
+        rule.path.every((segment, index) => segment === path[index + 1]),
+    );
   }
 
   private escapeCdata(value: string): string {

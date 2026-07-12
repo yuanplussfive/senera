@@ -1,5 +1,6 @@
 import { Check, CircleAlert } from "lucide-react";
 import { cn } from "../../lib/util";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Dialog, DialogActionButton, DialogActions, DialogContent, MetaLabel } from "../../shared/ui";
 import type { MotionLevel } from "../../shared/motion";
 import type { ConfirmationIntent, LayoutPreferenceId } from "./types";
@@ -23,7 +24,7 @@ export function RenameDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="重命名会话"
+        title={frontendMessage("session.renameDialogTitle")}
         description={title}
         className="w-[min(440px,calc(100vw-28px))]"
         bodyClassName="p-4"
@@ -42,9 +43,9 @@ export function RenameDialog({
             className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-terra-200/50"
           />
           <DialogActions>
-            <DialogActionButton close>取消</DialogActionButton>
+            <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
             <DialogActionButton type="submit" variant="primary">
-              保存
+              {frontendMessage("session.save")}
             </DialogActionButton>
           </DialogActions>
         </form>
@@ -81,7 +82,7 @@ export function ConfirmationDialog({
           </div>
         </div>
         <DialogActions className="mt-4">
-          <DialogActionButton close>取消</DialogActionButton>
+          <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
           <DialogActionButton
             onClick={() => {
               intent?.onConfirm();
@@ -115,8 +116,8 @@ export function PreferencesDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="偏好设置"
-        description="这些设置会保存在当前浏览器。"
+        title={frontendMessage("session.preferences")}
+        description={frontendMessage("preferences.description")}
         className="w-[min(520px,calc(100vw-28px))]"
         bodyClassName="p-4"
       >
@@ -142,7 +143,7 @@ export function PreferencesDialog({
           ))}
           <section>
             <MetaLabel as="div" size="sm" className="mb-2">
-              动画
+              {frontendMessage("preferences.motion")}
             </MetaLabel>
             <div className="grid grid-cols-3 gap-1.5 rounded-lg border border-ink-200/70 bg-paper-50 p-1">
               {motionLevelOptions.map((option) => (
@@ -219,12 +220,7 @@ function PreferenceToggle({
         <span className="block text-[13px] font-medium text-ink-900">{title}</span>
         <span className="mt-0.5 block text-[12px] leading-5 text-ink-500">{description}</span>
       </span>
-      <span
-        className={cn(
-          "relative h-5 w-9 shrink-0 rounded-full transition",
-          checked ? "bg-ink-900" : "bg-ink-200",
-        )}
-      >
+      <span className={cn("relative h-5 w-9 shrink-0 rounded-full transition", checked ? "bg-ink-900" : "bg-ink-200")}>
         <span
           className={cn(
             "absolute top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",

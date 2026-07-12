@@ -1,3 +1,5 @@
+import type { AgentModelEndpointKind } from "../ModelEndpoints/AgentModelEndpointContract.js";
+
 export interface AgentModelProviderConfig {
   Id: string;
   ProviderId: string;
@@ -5,7 +7,7 @@ export interface AgentModelProviderConfig {
   Capabilities?: AgentModelCapabilitiesConfig;
   ContextWindowTokens?: number;
   MaxModelOutputTokens?: number;
-  Endpoint: "Responses" | "ChatCompletions" | "ClaudeMessages" | "GoogleGenerateContent";
+  Endpoint: AgentModelEndpointKind;
   Model: string;
   Temperature?: number;
   MaxOutputTokens?: number;
@@ -23,7 +25,6 @@ export interface AgentModelCapabilitiesConfig {
   Vision?: boolean;
   ImageOutput?: boolean;
   Reasoning?: boolean;
-  ToolCalling?: boolean;
   DeveloperRole?: boolean;
 }
 
@@ -67,7 +68,7 @@ export interface ResolvedAgentModelProviderEndpointConfig {
 
 export interface AgentModelRuntimeDefaultsConfig {
   Kind: "OpenAICompatible";
-  Endpoint: "Responses" | "ChatCompletions" | "ClaudeMessages" | "GoogleGenerateContent";
+  Endpoint: AgentModelEndpointKind;
   Model: string;
   Capabilities: Required<AgentModelCapabilitiesConfig>;
   ContextWindowTokens: number;
@@ -89,7 +90,7 @@ export interface ResolvedAgentModelProviderConfig {
   ContextWindowTokens?: number;
   MaxModelOutputTokens?: number;
   Kind: "OpenAICompatible";
-  Endpoint: "Responses" | "ChatCompletions" | "ClaudeMessages" | "GoogleGenerateContent";
+  Endpoint: AgentModelEndpointKind;
   BaseUrl: string;
   ApiKey: string;
   ApiVersion: string;

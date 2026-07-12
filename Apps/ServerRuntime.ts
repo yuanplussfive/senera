@@ -25,10 +25,7 @@ import {
 } from "../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import { AgentMemoryLearningRuntime } from "../Source/AgentSystem/Memory/AgentMemoryLearningRuntime.js";
 import { AgentMemoryService } from "../Source/AgentSystem/Memory/AgentMemoryService.js";
-import {
-  AgentConfigService,
-  type AgentConfigSourceOptions,
-} from "../Source/AgentSystem/Config/AgentConfigService.js";
+import { AgentConfigService, type AgentConfigSourceOptions } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
 import { serializeError } from "../Source/AgentSystem/Diagnostics/AgentErrorSerializer.js";
 import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
@@ -62,7 +59,6 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
   const configSource = resolveConfigSource(workspaceRoot, options);
   const configPath = resolveRuntimeConfigPath(workspaceRoot, configSource);
-  let server: AgentWebSocketServer;
   let watchedConfigPath: string | undefined;
   const eventLogDetail = resolveServerEventLogDetail(process.env.SENERA_LOG_EVENTS);
   const logger = new AgentLogger({
@@ -151,7 +147,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     configSnapshot,
   });
 
-  server = new AgentWebSocketServer({
+  const server = new AgentWebSocketServer({
     config: initialConfig,
     workspaceRoot,
     staticFrontendRoot: options.staticFrontendRoot,
@@ -270,10 +266,7 @@ function createRepository(workspaceRoot: string, config: AgentSystemConfig): Age
   if (persistence.Kind === "memory") {
     return new InMemorySessionRepository();
   }
-  const dbPath = path.resolve(
-    workspaceRoot,
-    persistence.DatabasePath,
-  );
+  const dbPath = path.resolve(workspaceRoot, persistence.DatabasePath);
   return new SqliteSessionRepository(dbPath);
 }
 
@@ -288,10 +281,7 @@ function resolveServerEventLogDetail(value: string | undefined): ServerEventLogD
   return value?.trim().toLowerCase() === "verbose" ? "verbose" : "compact";
 }
 
-function resolveConfigSource(
-  workspaceRoot: string,
-  options: SeneraServerOptions,
-): AgentConfigSourceOptions {
+function resolveConfigSource(workspaceRoot: string, options: SeneraServerOptions): AgentConfigSourceOptions {
   if (options.configSource) {
     if (options.configPath) {
       throw new Error("startSeneraServer 不能同时传入 configPath 和 configSource。");
@@ -301,16 +291,11 @@ function resolveConfigSource(
 
   return {
     kind: "json",
-    configPath: options.configPath
-      ? path.resolve(workspaceRoot, options.configPath)
-      : resolveConfigPath(workspaceRoot),
+    configPath: options.configPath ? path.resolve(workspaceRoot, options.configPath) : resolveConfigPath(workspaceRoot),
   };
 }
 
-function normalizeConfigSource(
-  workspaceRoot: string,
-  source: AgentConfigSourceOptions,
-): AgentConfigSourceOptions {
+function normalizeConfigSource(workspaceRoot: string, source: AgentConfigSourceOptions): AgentConfigSourceOptions {
   if (source.kind === "json") {
     return {
       ...source,
@@ -326,17 +311,12 @@ function normalizeConfigSource(
   };
 }
 
-function resolveRuntimeConfigPath(
-  workspaceRoot: string,
-  source: AgentConfigSourceOptions,
-): string {
+function resolveRuntimeConfigPath(workspaceRoot: string, source: AgentConfigSourceOptions): string {
   return source.kind === "json"
     ? source.configPath
-    : source.label ?? resolveWorkspacePath(workspaceRoot, source.databasePath);
+    : (source.label ?? resolveWorkspacePath(workspaceRoot, source.databasePath));
 }
 
 function resolveWorkspacePath(workspaceRoot: string, value: string): string {
-  return path.isAbsolute(value)
-    ? path.normalize(value)
-    : path.resolve(workspaceRoot, value);
+  return path.isAbsolute(value) ? path.normalize(value) : path.resolve(workspaceRoot, value);
 }

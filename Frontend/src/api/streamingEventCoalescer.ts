@@ -10,13 +10,10 @@ export const StreamingEventFlushPolicy = {
 } as const;
 
 export const StreamingEventMaxLatencyMs = Math.ceil(
-  (1000 / StreamingEventFlushPolicy.targetFrameRateHz) *
-    StreamingEventFlushPolicy.maxPendingFrames,
+  (1000 / StreamingEventFlushPolicy.targetFrameRateHz) * StreamingEventFlushPolicy.maxPendingFrames,
 );
 
-const StreamingEventKinds: ReadonlySet<string> = new Set([
-  EventKinds.ModelDelta,
-]);
+const StreamingEventKinds: ReadonlySet<string> = new Set([EventKinds.ModelDelta]);
 
 export function isBufferedStreamingEvent(kind: string): boolean {
   return StreamingEventKinds.has(kind);
@@ -34,23 +31,14 @@ export function coalesceStreamingEvents(queue: readonly EventEnvelope[]): EventE
     byRun.set(key, bucket);
   }
 
-  return Array.from(byRun.values()).flatMap((bucket) => [
-    ...(bucket.model ? [bucket.model] : []),
-  ]);
+  return Array.from(byRun.values()).flatMap((bucket) => [...(bucket.model ? [bucket.model] : [])]);
 }
 
 function streamingEventKey(env: EventEnvelope): string {
-  return [
-    env.sessionId ?? "",
-    env.requestId ?? "",
-    env.step ?? "",
-  ].join("\u0000");
+  return [env.sessionId ?? "", env.requestId ?? "", env.step ?? ""].join("\u0000");
 }
 
-function mergeModelDelta(
-  previous: EventEnvelope | undefined,
-  current: EventEnvelope,
-): EventEnvelope {
+function mergeModelDelta(previous: EventEnvelope | undefined, current: EventEnvelope): EventEnvelope {
   if (!previous) return current;
   return {
     ...current,
@@ -63,7 +51,5 @@ function mergeModelDelta(
 }
 
 function readDeltaText(env: EventEnvelope): string {
-  return typeof (env.data as { text?: unknown }).text === "string"
-    ? (env.data as { text: string }).text
-    : "";
+  return typeof (env.data as { text?: unknown }).text === "string" ? (env.data as { text: string }).text : "";
 }

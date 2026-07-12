@@ -1,16 +1,7 @@
 import parseJson from "json-parse-even-better-errors";
-import type {
-  AgentToolProcessError,
-  AgentToolProcessResponse,
-} from "../Types/ToolRuntimeTypes.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
-import {
-  AgentToolProcessResponseEnvelope,
-  validateToolProcessResponseEnvelope,
-} from "./AgentToolProcessEnvelope.js";
+import type { AgentToolProcessError, AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
+import { AgentToolProcessResponseEnvelope, validateToolProcessResponseEnvelope } from "./AgentToolProcessEnvelope.js";
 import { failedToolProcessResponse } from "./AgentToolProcessResultFactory.js";
 import type { AgentToolProcessResponseParseContext } from "./AgentToolProcessTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
@@ -52,9 +43,7 @@ export class AgentToolProcessResponseParser {
   private parseJsonResponse(
     lastLine: string,
     context: AgentToolProcessResponseParseContext,
-  ):
-    | { ok: true; value: unknown }
-    | { ok: false; value: AgentToolProcessResponse } {
+  ): { ok: true; value: unknown } | { ok: false; value: AgentToolProcessResponse } {
     try {
       return {
         ok: true,
@@ -89,10 +78,7 @@ export class AgentToolProcessResponseParser {
     }
   }
 
-  private validateEnvelope(
-    response: unknown,
-    context: AgentToolProcessResponseParseContext,
-  ): AgentToolProcessResponse {
+  private validateEnvelope(response: unknown, context: AgentToolProcessResponseParseContext): AgentToolProcessResponse {
     const envelope = validateToolProcessResponseEnvelope(response);
     if (envelope.ok) {
       return envelope.response;
@@ -117,10 +103,13 @@ export class AgentToolProcessResponseParser {
       diagnostics: envelope.issues.map((issue) => ({
         message: issue.message,
         pointer: issue.pointer,
-        path: issue.pointer === "/"
-          ? []
-          : issue.pointer.slice(1).split("/").map((part) =>
-              part.replace(/~1/g, "/").replace(/~0/g, "~")),
+        path:
+          issue.pointer === "/"
+            ? []
+            : issue.pointer
+                .slice(1)
+                .split("/")
+                .map((part) => part.replace(/~1/g, "/").replace(/~0/g, "~")),
         suggestion: agentErrorMessage("toolProcess.responseEnvelopeSuggestion"),
       })),
     });

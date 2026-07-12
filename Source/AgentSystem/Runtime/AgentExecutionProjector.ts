@@ -18,8 +18,7 @@ export type AgentTerminalResult =
     };
 
 export interface AgentProjectedTerminalResult {
-  event:
-    Extract<AgentDomainEvent, { kind: typeof AgentEventKinds.AssistantMessageCreated }>;
+  event: Extract<AgentDomainEvent, { kind: typeof AgentEventKinds.AssistantMessageCreated }>;
   result: AgentTerminalResult;
 }
 

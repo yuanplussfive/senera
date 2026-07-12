@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Readable } from "node:stream";
 import busboy from "busboy";
+import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentUploadError, type AgentUploadStore } from "./AgentUploadStore.js";
 import type { AgentUploadAttachment } from "./AgentUploadTypes.js";
 
@@ -10,6 +12,7 @@ export const AgentUploadHttpRoutes = {
 
 export interface AgentUploadHttpApiOptions {
   storeFactory: () => AgentUploadStore;
+  isOriginAllowed?: (origin: string) => boolean;
 }
 
 export class AgentUploadHttpApi {
@@ -20,11 +23,24 @@ export class AgentUploadHttpApi {
   }
 
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    this.writeCorsHeaders(request, response);
+    if (
+      !applyCredentialedCors(request, response, {
+        allowedMethods: ["POST", "OPTIONS"],
+        isOriginAllowed: (origin) => this.options.isOriginAllowed?.(origin) ?? false,
+      })
+    ) {
+      this.sendJson(response, 403, {
+        ok: false,
+        error: {
+          code: "forbidden_origin",
+          message: agentErrorMessage("auth.requestDenied"),
+        },
+      });
+      return;
+    }
 
     if (request.method === "OPTIONS") {
-      response.writeHead(204);
-      response.end();
+      writeCorsPreflight(response);
       return;
     }
 
@@ -77,11 +93,13 @@ export class AgentUploadHttpApi {
         file.on("limit", () => {
           file.destroy(new AgentUploadError("上传文件超过大小限制。", "upload_too_large", 413));
         });
-        uploads.push(store.save({
-          stream: file as Readable,
-          originalName: info.filename,
-          declaredMime: info.mimeType,
-        }));
+        uploads.push(
+          store.save({
+            stream: file as Readable,
+            originalName: info.filename,
+            declaredMime: info.mimeType,
+          }),
+        );
       });
       parser.on("error", reject);
       parser.on("finish", () => {
@@ -96,14 +114,6 @@ export class AgentUploadHttpApi {
 
   private readPathname(request: IncomingMessage): string {
     return new URL(request.url ?? "/", "http://senera.local").pathname;
-  }
-
-  private writeCorsHeaders(request: IncomingMessage, response: ServerResponse): void {
-    const origin = request.headers.origin;
-    response.setHeader("Access-Control-Allow-Origin", typeof origin === "string" ? origin : "*");
-    response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    response.setHeader("Vary", "Origin");
   }
 
   private sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {

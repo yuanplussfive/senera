@@ -1,8 +1,5 @@
 import { createOpaqueId, createToolCallId } from "../Core/AgentIds.js";
-import type {
-  AgentPiAssistantMessage,
-  AgentPiAssistantToolCall,
-} from "./AgentPiAssistantMessageTypes.js";
+import type { AgentPiAssistantMessage, AgentPiAssistantToolCall } from "./AgentPiAssistantMessageTypes.js";
 import type {
   PiOpenAiChatCompletionResponse,
   PiOpenAiChatCompletionChoiceMessage,
@@ -13,12 +10,14 @@ import type {
 export function projectPiModelsResponse(modelId: string): PiOpenAiModelsResponse {
   return {
     object: "list",
-    data: [{
-      id: modelId,
-      object: "model",
-      created: unixNow(),
-      owned_by: "senera",
-    }],
+    data: [
+      {
+        id: modelId,
+        object: "model",
+        created: unixNow(),
+        owned_by: "senera",
+      },
+    ],
   };
 }
 
@@ -31,18 +30,17 @@ export function projectPiChatCompletionResponse(
     object: "chat.completion",
     created: unixNow(),
     model,
-    choices: [{
-      index: 0,
-      message: projectMessage(message),
-      finish_reason: message.kind === "tool_calls" ? "tool_calls" : "stop",
-    }],
+    choices: [
+      {
+        index: 0,
+        message: projectMessage(message),
+        finish_reason: message.kind === "tool_calls" ? "tool_calls" : "stop",
+      },
+    ],
   };
 }
 
-export function projectPiChatCompletionStreamEvents(
-  model: string,
-  message: AgentPiAssistantMessage,
-): unknown[] {
+export function projectPiChatCompletionStreamEvents(model: string, message: AgentPiAssistantMessage): unknown[] {
   const id = createOpaqueId("chatcmpl");
   const created = unixNow();
   const base = {
@@ -54,11 +52,13 @@ export function projectPiChatCompletionStreamEvents(
 
   const roleEvent = {
     ...base,
-    choices: [{
-      index: 0,
-      delta: { role: "assistant" },
-      finish_reason: null,
-    }],
+    choices: [
+      {
+        index: 0,
+        delta: { role: "assistant" },
+        finish_reason: null,
+      },
+    ],
   };
 
   if (message.kind === "tool_calls") {
@@ -68,11 +68,13 @@ export function projectPiChatCompletionStreamEvents(
       ...message.toolCalls.flatMap((call, index) => toolCallDeltaEvents(base, call, index)),
       {
         ...base,
-        choices: [{
-          index: 0,
-          delta: {},
-          finish_reason: "tool_calls",
-        }],
+        choices: [
+          {
+            index: 0,
+            delta: {},
+            finish_reason: "tool_calls",
+          },
+        ],
       },
     ];
   }
@@ -81,19 +83,23 @@ export function projectPiChatCompletionStreamEvents(
     roleEvent,
     {
       ...base,
-      choices: [{
-        index: 0,
-        delta: { content: message.content },
-        finish_reason: null,
-      }],
+      choices: [
+        {
+          index: 0,
+          delta: { content: message.content },
+          finish_reason: null,
+        },
+      ],
     },
     {
       ...base,
-      choices: [{
-        index: 0,
-        delta: {},
-        finish_reason: "stop",
-      }],
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: "stop",
+        },
+      ],
     },
   ];
 }
@@ -124,61 +130,66 @@ function projectToolCall(call: AgentPiAssistantToolCall): PiOpenAiToolCall {
   };
 }
 
-function contentDeltaEvents(
-  base: Record<string, unknown>,
-  content: string,
-): unknown[] {
+function contentDeltaEvents(base: Record<string, unknown>, content: string): unknown[] {
   return content.trim()
-    ? [{
-        ...base,
-        choices: [{
-          index: 0,
-          delta: { content },
-          finish_reason: null,
-        }],
-      }]
+    ? [
+        {
+          ...base,
+          choices: [
+            {
+              index: 0,
+              delta: { content },
+              finish_reason: null,
+            },
+          ],
+        },
+      ]
     : [];
 }
 
-function toolCallDeltaEvents(
-  base: Record<string, unknown>,
-  call: AgentPiAssistantToolCall,
-  index: number,
-): unknown[] {
+function toolCallDeltaEvents(base: Record<string, unknown>, call: AgentPiAssistantToolCall, index: number): unknown[] {
   const projected = projectToolCall(call);
   return [
     {
       ...base,
-      choices: [{
-        index: 0,
-        delta: {
-          tool_calls: [{
-            index,
-            id: projected.id,
-            type: "function",
-            function: {
-              name: projected.function.name,
-              arguments: "",
-            },
-          }],
+      choices: [
+        {
+          index: 0,
+          delta: {
+            tool_calls: [
+              {
+                index,
+                id: projected.id,
+                type: "function",
+                function: {
+                  name: projected.function.name,
+                  arguments: "",
+                },
+              },
+            ],
+          },
+          finish_reason: null,
         },
-        finish_reason: null,
-      }],
+      ],
     },
     {
       ...base,
-      choices: [{
-        index: 0,
-        delta: {
-          tool_calls: [{
-            index,
-            function: {
-              arguments: projected.function.arguments,
-            },
-          }],
+      choices: [
+        {
+          index: 0,
+          delta: {
+            tool_calls: [
+              {
+                index,
+                function: {
+                  arguments: projected.function.arguments,
+                },
+              },
+            ],
+          },
+          finish_reason: null,
         },
-        finish_reason: null,
-      }],
+      ],
     },
   ];
 }

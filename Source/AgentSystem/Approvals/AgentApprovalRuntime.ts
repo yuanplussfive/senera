@@ -1,9 +1,6 @@
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { createApprovalId } from "../Core/AgentIds.js";
-import {
-  AgentEventKinds,
-  emitAgentEvent,
-} from "../Events/AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
 import {
   AgentApprovalStatuses,
   type AgentApprovalRequest,
@@ -64,22 +61,20 @@ export class AgentApprovalRuntime implements AgentApprovalRuntimePort {
     return wait.promise;
   }
 
-  resolve(
-    resolution: Omit<AgentApprovalResolution, "resolvedAt">,
-  ): AgentApprovalResolution {
+  resolve(resolution: Omit<AgentApprovalResolution, "resolvedAt">): AgentApprovalResolution {
     const resolved = this.tryResolve(resolution);
     if (!resolved) {
-      throw new Error(agentErrorMessage("approval.requestNotPending", {
-        approvalId: resolution.approvalId,
-      }));
+      throw new Error(
+        agentErrorMessage("approval.requestNotPending", {
+          approvalId: resolution.approvalId,
+        }),
+      );
     }
 
     return resolved;
   }
 
-  tryResolve(
-    resolution: Omit<AgentApprovalResolution, "resolvedAt">,
-  ): AgentApprovalResolution | undefined {
+  tryResolve(resolution: Omit<AgentApprovalResolution, "resolvedAt">): AgentApprovalResolution | undefined {
     const pending = this.pending.get(resolution.approvalId);
     if (!pending) {
       return undefined;
@@ -112,10 +107,7 @@ export class AgentApprovalRuntime implements AgentApprovalRuntimePort {
     return this.pending.get(approvalId)?.approval;
   }
 
-  private waitForResolution(
-    approval: AgentApprovalRequest,
-    signal?: AbortSignal,
-  ): PendingApprovalWait {
+  private waitForResolution(approval: AgentApprovalRequest, signal?: AbortSignal): PendingApprovalWait {
     if (signal?.aborted) {
       throw new AgentCancellationError();
     }

@@ -5,10 +5,7 @@ import type {
   AgentDocumentExtractorHandler,
   AgentDocumentExtractorSelection,
 } from "./AgentDocumentExtractorTypes.js";
-import type {
-  AgentDocumentExtractOptions,
-  AgentDocumentExtractResult,
-} from "./AgentDocumentExtractTypes.js";
+import type { AgentDocumentExtractOptions, AgentDocumentExtractResult } from "./AgentDocumentExtractTypes.js";
 import { AgentDocumentOfficeExtractor } from "./AgentDocumentOfficeExtractor.js";
 import { AgentDocumentTextExtractor } from "./AgentDocumentTextExtractor.js";
 

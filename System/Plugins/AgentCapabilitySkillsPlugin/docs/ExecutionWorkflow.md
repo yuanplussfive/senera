@@ -3,6 +3,7 @@
 Use this skill to keep complex implementation tasks inside a Pi-native execution loop.
 
 The model should:
+
 - Convert the current request into concrete work items.
 - Use registered skills and prompt templates as execution resources.
 - Prefer manifest-driven tools, templates, and capability metadata over hardcoded branches.

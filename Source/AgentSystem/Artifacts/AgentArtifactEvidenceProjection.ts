@@ -4,9 +4,7 @@ import type {
   ToolArtifactEvidenceSlotManifest,
   ToolArtifactPolicyManifest,
 } from "../Types/PluginManifestTypes.js";
-import type {
-  ToolArtifactEvidenceRecord,
-} from "../Types/ToolRuntimeTypes.js";
+import type { ToolArtifactEvidenceRecord } from "../Types/ToolRuntimeTypes.js";
 import { selectJsonValues } from "./AgentArtifactJsonSelector.js";
 import { stableArtifactStringify } from "./AgentArtifactStableJson.js";
 import { createAgentEvidenceUri } from "./AgentEvidenceUri.js";
@@ -38,17 +36,11 @@ export function collectArtifactEvidence(
   return [...evidence.values()];
 }
 
-function projectEvidenceRule(
-  root: unknown,
-  rule: ToolArtifactEvidenceManifest,
-): ToolArtifactEvidenceRecord[] {
+function projectEvidenceRule(root: unknown, rule: ToolArtifactEvidenceManifest): ToolArtifactEvidenceRecord[] {
   return conditionMatches(root, rule.When) ? projectScopedEvidenceRule(root, rule) : [];
 }
 
-function projectScopedEvidenceRule(
-  root: unknown,
-  rule: ToolArtifactEvidenceManifest,
-): ToolArtifactEvidenceRecord[] {
+function projectScopedEvidenceRule(root: unknown, rule: ToolArtifactEvidenceManifest): ToolArtifactEvidenceRecord[] {
   return selectJsonValues(root, rule.Records).flatMap((record) => {
     const slots = projectSlots(root, record, rule.Slots);
     const identity = resolveIdentityValues(slots, rule.Identity.Parts);
@@ -73,23 +65,25 @@ function projectScopedEvidenceRule(
       return [];
     }
 
-    return [{
-      key,
-      evidenceUri: "",
-      kind: rule.Kind,
-      locator: previewAgentText(locator, EvidenceModelTextLimits.presentationChars),
-      display: previewAgentText(display, EvidenceModelTextLimits.presentationChars),
-      label: previewAgentText(label, EvidenceModelTextLimits.presentationChars),
-      source: previewAgentText(source, EvidenceModelTextLimits.presentationChars),
-      confidence: rule.Confidence,
-      slots,
-      modelSlots: projectModelSlots(slots, rule.ModelProjection.Slots),
-      plannerMemory: {
-        facts: projectModelSlots(slots, rule.PlannerMemory.Facts),
-        artifactRefs: [...(rule.PlannerMemory.ArtifactRefs ?? [])],
+    return [
+      {
+        key,
+        evidenceUri: "",
+        kind: rule.Kind,
+        locator: previewAgentText(locator, EvidenceModelTextLimits.presentationChars),
+        display: previewAgentText(display, EvidenceModelTextLimits.presentationChars),
+        label: previewAgentText(label, EvidenceModelTextLimits.presentationChars),
+        source: previewAgentText(source, EvidenceModelTextLimits.presentationChars),
+        confidence: rule.Confidence,
+        slots,
+        modelSlots: projectModelSlots(slots, rule.ModelProjection.Slots),
+        plannerMemory: {
+          facts: projectModelSlots(slots, rule.PlannerMemory.Facts),
+          artifactRefs: [...(rule.PlannerMemory.ArtifactRefs ?? [])],
+        },
+        metadata: projectSlots(root, record, rule.Metadata ?? {}),
       },
-      metadata: projectSlots(root, record, rule.Metadata ?? {}),
-    }];
+    ];
   });
 }
 
@@ -137,7 +131,7 @@ function readSlotSelector(slot: ToolArtifactEvidenceSlotManifest): string {
 }
 
 function readSlotScope(slot: ToolArtifactEvidenceSlotManifest): "Record" | "Root" {
-  return typeof slot === "string" ? "Record" : slot.Scope ?? "Record";
+  return typeof slot === "string" ? "Record" : (slot.Scope ?? "Record");
 }
 
 function resolveIdentityValues(
@@ -160,10 +154,7 @@ function resolveIdentityValues(
   return values.length > 0 ? values : undefined;
 }
 
-function conditionMatches(
-  root: unknown,
-  condition: ToolArtifactEvidenceManifest["When"],
-): boolean {
+function conditionMatches(root: unknown, condition: ToolArtifactEvidenceManifest["When"]): boolean {
   if (!condition) {
     return true;
   }
@@ -180,31 +171,23 @@ function conditionMatches(
     return values.some((value) => scalarEquals(value, condition.Equals));
   }
   if (condition.In) {
-    return values.some((value) =>
-      condition.In?.some((candidate) => scalarEquals(value, candidate)));
+    return values.some((value) => condition.In?.some((candidate) => scalarEquals(value, candidate)));
   }
 
   return values.some(Boolean);
 }
 
-function scalarEquals(
-  left: unknown,
-  right: ToolArtifactConditionManifest["Equals"],
-): boolean {
+function scalarEquals(left: unknown, right: ToolArtifactConditionManifest["Equals"]): boolean {
   return left === right;
 }
 
 function evidenceKey(kind: string, values: readonly string[]): string {
-  const normalized = values
-    .map((value) => value.trim())
-    .filter(Boolean);
+  const normalized = values.map((value) => value.trim()).filter(Boolean);
   if (normalized.length === 0) {
     return "";
   }
 
-  return normalized.length === 1
-    ? `${kind}:${normalized[0]}`
-    : `${kind}:${JSON.stringify(normalized)}`;
+  return normalized.length === 1 ? `${kind}:${normalized[0]}` : `${kind}:${JSON.stringify(normalized)}`;
 }
 
 function normalizeKeyPart(value: unknown): string | undefined {

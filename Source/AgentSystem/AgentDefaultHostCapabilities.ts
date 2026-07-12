@@ -19,9 +19,11 @@ export const AgentHostCapabilityNames = {
   WorkspaceApplyPatch: "workspace.apply_patch",
 } as const;
 
-export function createDefaultHostCapabilityRegistry(options: {
-  toolSearch?: AgentToolSearchRuntime;
-} = {}): AgentToolHostCapabilityRegistry {
+export function createDefaultHostCapabilityRegistry(
+  options: {
+    toolSearch?: AgentToolSearchRuntime;
+  } = {},
+): AgentToolHostCapabilityRegistry {
   const registry = new AgentToolHostCapabilityRegistry()
     .register(AgentHostCapabilityNames.ShellRun, runShellCommandHostTool)
     .register(AgentHostCapabilityNames.ArtifactMemoryRead, readArtifactMemoryHostTool)

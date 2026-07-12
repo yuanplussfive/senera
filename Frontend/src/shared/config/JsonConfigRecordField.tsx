@@ -1,9 +1,7 @@
 import { Plus, Trash2 } from "lucide-react";
-import type {
-  ConfigFormFieldData,
-  ConfigFormFieldOptionValue,
-} from "../../api/eventTypes";
+import type { ConfigFormFieldData, ConfigFormFieldOptionValue } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
+import { jsonConfigFormMessages } from "./jsonConfigFormMessages";
 
 export interface JsonConfigRecordFieldProps {
   field: ConfigFormFieldData;
@@ -23,17 +21,20 @@ export function JsonConfigRecordField({
   const entries = Object.entries(value);
   const updateEntryKey = (index: number, nextKey: string): void => {
     const nextEntries = entries.map((entry, entryIndex) =>
-      entryIndex === index ? [nextKey, entry[1]] as [string, unknown] : entry);
+      entryIndex === index ? ([nextKey, entry[1]] as [string, unknown]) : entry,
+    );
     onChange(Object.fromEntries(nextEntries.filter(([key]) => key.trim().length > 0)));
   };
   const updateEntryValue = (index: number, nextValue: string): void => {
     const nextEntries = entries.map(([key, entryValue], entryIndex) =>
-      entryIndex === index ? [key, coerceRecordItem(nextValue, field.itemType ?? "string")] : [key, entryValue]);
+      entryIndex === index ? [key, coerceRecordItem(nextValue, field.itemType ?? "string")] : [key, entryValue],
+    );
     onChange(Object.fromEntries(nextEntries));
   };
   const updateRawEntryValue = (index: number, nextValue: unknown): void => {
     const nextEntries = entries.map(([key, entryValue], entryIndex) =>
-      entryIndex === index ? [key, nextValue] : [key, entryValue]);
+      entryIndex === index ? [key, nextValue] : [key, entryValue],
+    );
     onChange(Object.fromEntries(nextEntries));
   };
 
@@ -58,7 +59,7 @@ export function JsonConfigRecordField({
             onTextChange={(nextValue) => updateEntryValue(index, nextValue)}
           />
           <IconAction
-            label="删除"
+            label={jsonConfigFormMessages.delete()}
             disabled={disabled}
             danger
             onClick={() => onChange(Object.fromEntries(entries.filter((_, itemIndex) => itemIndex !== index)))}
@@ -80,7 +81,7 @@ export function JsonConfigRecordField({
         }}
       >
         <Plus className="h-3.5 w-3.5" />
-        添加键值
+        {jsonConfigFormMessages.addRecord()}
       </button>
     </div>
   );
@@ -113,7 +114,9 @@ function RecordValueControl({
         }}
         className={inputClassName}
       >
-        <option value="" disabled>请选择</option>
+        <option value="" disabled>
+          {jsonConfigFormMessages.selectPlaceholder()}
+        </option>
         {options.map((option) => (
           <option key={String(option)} value={String(option)}>
             {optionLabel(field, option)}
@@ -201,9 +204,6 @@ function nextRecordKey(value: Record<string, unknown>): string {
   return `${base}${index}`;
 }
 
-function optionLabel(
-  field: ConfigFormFieldData,
-  option: ConfigFormFieldOptionValue,
-): string {
+function optionLabel(field: ConfigFormFieldData, option: ConfigFormFieldOptionValue): string {
   return field.optionLabels?.[String(option)] ?? String(option);
 }

@@ -1,7 +1,4 @@
-import {
-  EventKinds,
-  type PiTraceData,
-} from "../../api/eventTypes";
+import { EventKinds, type PiTraceData } from "../../api/eventTypes";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { upsertStep } from "./sessionProjectorCore";
 import { timelineScopeFromEvent } from "./timelineProjection";
@@ -38,21 +35,12 @@ export const runPiTraceEventHandlers = {
   },
 } satisfies RunEventHandlerMap;
 
-function buildPiTraceStepId(
-  data: PiTraceData,
-  lifecycle: PiTraceLifecycle,
-): string {
-  return [
-    "pi",
-    data.source,
-    lifecycle.baseEventType,
-  ].join(":");
+function buildPiTraceStepId(data: PiTraceData, lifecycle: PiTraceLifecycle): string {
+  return ["pi", data.source, lifecycle.baseEventType].join(":");
 }
 
 function readPiTraceTitle(data: PiTraceData): string {
-  return ["Pi", data.source, data.eventType]
-    .filter(Boolean)
-    .join(" · ");
+  return ["Pi", data.source, data.eventType].filter(Boolean).join(" · ");
 }
 
 function readPiTraceLifecycle(eventType: string): PiTraceLifecycle {
@@ -65,9 +53,7 @@ function readPiTraceLifecycle(eventType: string): PiTraceLifecycle {
     };
   }
 
-  const completed =
-    stripEventSuffix(eventType, ".completed")
-    ?? stripEventSuffix(eventType, ".ended");
+  const completed = stripEventSuffix(eventType, ".completed") ?? stripEventSuffix(eventType, ".ended");
   if (completed) {
     return {
       baseEventType: completed,
@@ -93,7 +79,5 @@ function readPiTraceLifecycle(eventType: string): PiTraceLifecycle {
 }
 
 function stripEventSuffix(value: string, suffix: string): string | undefined {
-  return value.endsWith(suffix)
-    ? value.slice(0, -suffix.length)
-    : undefined;
+  return value.endsWith(suffix) ? value.slice(0, -suffix.length) : undefined;
 }

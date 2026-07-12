@@ -1,15 +1,10 @@
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
-import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 
 type AgentRequestContext = Required<Pick<AgentEventContext, "requestId">>;
-type AgentVisibleAssistantContext =
-  AgentRequestContext
-  & Partial<Pick<AgentEventContext, "sessionId" | "step">>;
+type AgentVisibleAssistantContext = AgentRequestContext & Partial<Pick<AgentEventContext, "sessionId" | "step">>;
 
-export type AgentAssistantMessageKind =
-  | "tool_preface"
-  | "final_answer"
-  | "ask_user";
+export type AgentAssistantMessageKind = "tool_preface" | "final_answer" | "ask_user";
 
 export type AgentRunDomainEvent =
   | {

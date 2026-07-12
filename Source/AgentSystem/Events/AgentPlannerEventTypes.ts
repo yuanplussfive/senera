@@ -1,5 +1,5 @@
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
-import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentActionPlannerStageName } from "../ActionPlanner/AgentActionPlannerTelemetry.js";
 import type { AgentActionCapabilityNeed } from "../ActionPlanner/AgentActionPlannerTypes.js";
 import type { AgentInteractionRunMode } from "../ActionPlanner/AgentInteractionRouter.js";

@@ -7,6 +7,7 @@ import {
   type InteractionRoutedData,
   type PromptSummaryData,
 } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { upsertStep } from "./sessionProjectorCore";
 import {
@@ -29,8 +30,8 @@ export const runDecisionEventHandlers = {
     upsertStep(run, {
       id: `${run.requestId}-prompt-${env.step ?? 0}`,
       kind: "prompt",
-      title: "渲染 Prompt",
-      description: `第 ${env.step ?? 0} 步`,
+      title: frontendMessage("workflow.plan.promptRendered"),
+      description: frontendMessage("workflow.projection.stepIndex", { step: env.step ?? 0 }),
       status: "done",
       startedAt: env.timestamp,
       endedAt: env.timestamp,
@@ -99,7 +100,7 @@ export const runDecisionEventHandlers = {
     upsertStep(run, {
       id: `${run.requestId}-interaction-route-${env.step ?? 0}`,
       kind: "decision",
-      title: `选择路径 · ${InteractionModeTitle[data.mode]}`,
+      title: frontendMessage("workflow.plan.route", { mode: frontendMessage(InteractionModeTitle[data.mode]) }),
       description: summarizeInteractionRoute(data),
       status: "done",
       startedAt: env.timestamp,
@@ -114,9 +115,7 @@ export const runDecisionEventHandlers = {
     if (!run) return;
     const data = env.data as ActionPlannedData;
     const planned = data.status === "planned";
-    run.expectedOutputMode = planned
-      ? readExpectedOutputMode(data)
-      : "unknown";
+    run.expectedOutputMode = planned ? readExpectedOutputMode(data) : "unknown";
     if (hasPlannerStageForStep(run, env.step)) {
       return;
     }
@@ -124,8 +123,8 @@ export const runDecisionEventHandlers = {
       id: `${run.requestId}-action-plan-${env.step ?? 0}`,
       kind: "decision",
       title: planned
-        ? `规划行动 · ${friendlyDecisionKind(data.action ?? "")}`
-        : "规划行动 · 回退",
+        ? frontendMessage("workflow.plan.action", { action: friendlyDecisionKind(data.action ?? "") })
+        : frontendMessage("workflow.plan.actionFallback"),
       description: summarizeActionPlan(data),
       status: "done",
       startedAt: env.timestamp,

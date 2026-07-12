@@ -5,11 +5,8 @@ import type {
 } from "../ToolRuntime/AgentToolProcessTypes.js";
 import type { SeneraProcessExecutionBackend } from "./SeneraProcessExecutionBackend.js";
 
-export function createSeneraProcessBackendSpawner(
-  backend: SeneraProcessExecutionBackend,
-): AgentToolProcessSpawner {
-  return (command, args, options) =>
-    new SeneraProcessBackendChild(backend, command, args, options);
+export function createSeneraProcessBackendSpawner(backend: SeneraProcessExecutionBackend): AgentToolProcessSpawner {
+  return (command, args, options) => new SeneraProcessBackendChild(backend, command, args, options);
 }
 
 class SeneraProcessBackendChild implements AgentToolProcessChild {
@@ -21,10 +18,7 @@ class SeneraProcessBackendChild implements AgentToolProcessChild {
     },
   };
   private readonly errorListeners = new Set<(error: Error) => void>();
-  private readonly closeListeners = new Set<(
-    exitCode: number | null,
-    signal: NodeJS.Signals | null,
-  ) => void>();
+  private readonly closeListeners = new Set<(exitCode: number | null, signal: NodeJS.Signals | null) => void>();
   private readonly abortController = new AbortController();
   private started = false;
   private closed = false;
@@ -47,17 +41,12 @@ class SeneraProcessBackendChild implements AgentToolProcessChild {
   on(event: "close", listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void): this;
   on(
     event: "error" | "close",
-    listener:
-      | ((error: Error) => void)
-      | ((exitCode: number | null, signal: NodeJS.Signals | null) => void),
+    listener: ((error: Error) => void) | ((exitCode: number | null, signal: NodeJS.Signals | null) => void),
   ): this {
     if (event === "error") {
       this.errorListeners.add(listener as (error: Error) => void);
     } else {
-      this.closeListeners.add(listener as (
-        exitCode: number | null,
-        signal: NodeJS.Signals | null,
-      ) => void);
+      this.closeListeners.add(listener as (exitCode: number | null, signal: NodeJS.Signals | null) => void);
     }
     return this;
   }

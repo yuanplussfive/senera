@@ -1,7 +1,4 @@
-import type {
-  SeneraShellExecutionRequest,
-  SeneraShellExecutionResult,
-} from "./SeneraExecutionTypes.js";
+import type { SeneraShellExecutionRequest, SeneraShellExecutionResult } from "./SeneraExecutionTypes.js";
 import type { SeneraProcessExecutionProfile } from "./SeneraExecutionProfile.js";
 import type { SeneraShellInvocation } from "./SeneraShellPlatform.js";
 

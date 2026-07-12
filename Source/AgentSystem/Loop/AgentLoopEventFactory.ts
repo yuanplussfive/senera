@@ -21,12 +21,7 @@ export class AgentLoopEventFactory {
     return this.runEvents.runStarted(requestId, input);
   }
 
-  promptRendered(
-    requestId: string,
-    step: number,
-    prompt: string,
-    tokenCount: number,
-  ): AgentDomainEvent[] {
+  promptRendered(requestId: string, step: number, prompt: string, tokenCount: number): AgentDomainEvent[] {
     return this.promptEvents.promptRendered(requestId, step, prompt, tokenCount);
   }
 
@@ -38,14 +33,7 @@ export class AgentLoopEventFactory {
     rootCommand?: AgentRootCommand,
     activeSkills: readonly AgentActivatedSkill[] = [],
   ): AgentDomainEvent[] {
-    return this.plannerEvents.actionPlanned(
-      requestId,
-      step,
-      plan,
-      loadedToolNames,
-      rootCommand,
-      activeSkills,
-    );
+    return this.plannerEvents.actionPlanned(requestId, step, plan, loadedToolNames, rootCommand, activeSkills);
   }
 
   interactionRouted(
@@ -55,20 +43,10 @@ export class AgentLoopEventFactory {
     loadedToolNames: "all" | string[],
     rootCommand?: AgentRootCommand,
   ): AgentDomainEvent[] {
-    return this.plannerEvents.interactionRouted(
-      requestId,
-      step,
-      route,
-      loadedToolNames,
-      rootCommand,
-    );
+    return this.plannerEvents.interactionRouted(requestId, step, route, loadedToolNames, rootCommand);
   }
 
-  actionPlannerStage(
-    requestId: string,
-    step: number,
-    event: AgentActionPlannerStageEvent,
-  ): AgentDomainEvent {
+  actionPlannerStage(requestId: string, step: number, event: AgentActionPlannerStageEvent): AgentDomainEvent {
     return this.plannerEvents.actionPlannerStage(requestId, step, event);
   }
 
@@ -138,5 +116,4 @@ export class AgentLoopEventFactory {
   terminal(projected: AgentProjectedTerminalResult, requestId: string): AgentDomainEvent[] {
     return this.runEvents.terminal(projected, requestId);
   }
-
 }

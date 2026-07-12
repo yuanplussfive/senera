@@ -27,17 +27,22 @@ export async function extractAgentDocument(
     throw new Error(`文档超过抽取大小限制：${input.size} > ${options.output.maxFileBytes}`);
   }
 
-  const probe = await probeAgentDocument({
-    filePath: input.filePath,
-    name: input.name,
-    declaredMime: input.declaredMime,
-    size: input.size,
-    sha256: input.sha256,
-    uploadUri: input.uploadUri,
-  }, input.probe);
+  const probe = await probeAgentDocument(
+    {
+      filePath: input.filePath,
+      name: input.name,
+      declaredMime: input.declaredMime,
+      size: input.size,
+      sha256: input.sha256,
+      uploadUri: input.uploadUri,
+    },
+    input.probe,
+  );
   const selection = selectAgentDocumentExtractor(probe, input.extractors, registry);
   if (!selection) {
-    throw new Error(`没有匹配的文档抽取器。effectiveMime=${probe.effectiveMime} detectedExtension=${probe.detectedExtension ?? ""} namedExtension=${probe.namedExtension ?? ""}`);
+    throw new Error(
+      `没有匹配的文档抽取器。effectiveMime=${probe.effectiveMime} detectedExtension=${probe.detectedExtension ?? ""} namedExtension=${probe.namedExtension ?? ""}`,
+    );
   }
 
   return registry.extract({

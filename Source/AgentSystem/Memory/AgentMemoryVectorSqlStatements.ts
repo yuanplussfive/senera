@@ -6,9 +6,7 @@ export interface AgentMemoryVectorSqlStatements {
   listMemoryItemVectorsStmt: Database.Statement<[string], MemoryItemVectorRow>;
 }
 
-export function prepareAgentMemoryVectorSqlStatements(
-  db: Database.Database,
-): AgentMemoryVectorSqlStatements {
+export function prepareAgentMemoryVectorSqlStatements(db: Database.Database): AgentMemoryVectorSqlStatements {
   return {
     upsertMemoryItemVectorStmt: db.prepare(`
       INSERT INTO memory_item_vectors (
@@ -40,4 +38,3 @@ export function prepareAgentMemoryVectorSqlStatements(
     `),
   };
 }
-

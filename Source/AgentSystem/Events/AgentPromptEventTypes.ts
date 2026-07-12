@@ -1,5 +1,5 @@
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
-import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 
 type AgentStepContext = Required<Pick<AgentEventContext, "requestId" | "step">>;
 

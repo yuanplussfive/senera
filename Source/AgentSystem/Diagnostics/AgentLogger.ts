@@ -77,18 +77,16 @@ export class AgentLogger {
 
   fullTree(title: string, content: unknown, color: (value: string) => string = AgentConsoleTheme.frame): void {
     this.clearTransient();
-    this.writeLines(this.renderBlockLines(title, content, color, {
-      maxDepth: Number.MAX_SAFE_INTEGER,
-      maxArrayItems: Number.MAX_SAFE_INTEGER,
-      maxStringLength: Number.MAX_SAFE_INTEGER,
-    }));
+    this.writeLines(
+      this.renderBlockLines(title, content, color, {
+        maxDepth: Number.MAX_SAFE_INTEGER,
+        maxArrayItems: Number.MAX_SAFE_INTEGER,
+        maxStringLength: Number.MAX_SAFE_INTEGER,
+      }),
+    );
   }
 
-  replaceBlock(
-    title: string,
-    content: unknown,
-    color: (value: string) => string = AgentConsoleTheme.frame,
-  ): void {
+  replaceBlock(title: string, content: unknown, color: (value: string) => string = AgentConsoleTheme.frame): void {
     if (!this.output.isTTY) {
       return;
     }
@@ -96,18 +94,12 @@ export class AgentLogger {
     this.rewriteTransient(this.renderBlockLines(title, content, color));
   }
 
-  replaceLine(
-    label: string,
-    content: string,
-    color: (value: string) => string = AgentConsoleTheme.frame,
-  ): void {
+  replaceLine(label: string, content: string, color: (value: string) => string = AgentConsoleTheme.frame): void {
     if (!this.output.isTTY) {
       return;
     }
 
-    this.rewriteTransient([
-      `${color(label.padEnd(16))} ${AgentConsoleTheme.value(content)}`,
-    ]);
+    this.rewriteTransient([`${color(label.padEnd(16))} ${AgentConsoleTheme.value(content)}`]);
   }
 
   replaceView(lines: string[]): void {
@@ -155,9 +147,7 @@ export class AgentLogger {
 
   private padLabel(value: string, width: number): string {
     const currentWidth = measureTerminalWidth(value);
-    return currentWidth >= width
-      ? value
-      : `${value}${" ".repeat(width - currentWidth)}`;
+    return currentWidth >= width ? value : `${value}${" ".repeat(width - currentWidth)}`;
   }
 
   private key(value: string): string {
@@ -173,9 +163,7 @@ export class AgentLogger {
       return value.split(/\r?\n/);
     }
 
-    return options
-      ? new AgentConsoleTreeFormatter(options).format(value)
-      : this.treeFormatter.format(value);
+    return options ? new AgentConsoleTreeFormatter(options).format(value) : this.treeFormatter.format(value);
   }
 
   private renderBannerLines(title: string, details: Record<string, unknown>): string[] {
@@ -243,10 +231,7 @@ export class AgentLogger {
 
   private measureRenderedRows(lines: string[]): number {
     const columns = Math.max(this.output.columns ?? 120, 1);
-    return lines.reduce(
-      (count, line) => count + Math.max(1, Math.ceil(this.measureVisibleWidth(line) / columns)),
-      0,
-    );
+    return lines.reduce((count, line) => count + Math.max(1, Math.ceil(this.measureVisibleWidth(line) / columns)), 0);
   }
 
   private measureVisibleWidth(line: string): number {

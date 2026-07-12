@@ -1,10 +1,5 @@
-import type { ApprovalResolvedData } from "./approvalEventTypes";
-import type {
-  PresetFormat,
-  ProviderModelEndpointInput,
-  UploadAttachmentData,
-  UserProfileData,
-} from "./eventTypes";
+import type { ApprovalResolvedData, ApprovalResolutionScope } from "./approvalEventTypes";
+import type { PresetFormat, ProviderModelEndpointInput, UploadAttachmentData, UserProfileData } from "./eventTypes";
 
 type ApprovalResolveStatus = ApprovalResolvedData["status"];
 
@@ -38,5 +33,11 @@ export type WsRequest =
   | { type: "preset.set_active"; requestId?: string; name?: string | null }
   | { type: "profile.get" }
   | { type: "profile.update"; profile: Pick<UserProfileData, "name" | "avatarDataUrl"> }
-  | { type: "approval.resolve"; approvalId: string; status: ApprovalResolveStatus; message?: string }
+  | {
+      type: "approval.resolve";
+      approvalId: string;
+      status: ApprovalResolveStatus;
+      message?: string;
+      scope?: ApprovalResolutionScope;
+    }
   | { type: "sandbox.status" };

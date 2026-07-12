@@ -26,13 +26,12 @@ export interface AgentConversationEntryMetadata {
 
 export interface AgentSessionMetadata {
   lastRun?: AgentRunMetadata;
+  title?: string;
 }
 
 type ModelProviderConfig = ReturnType<typeof resolveModelProviderConfig>;
 
-export function createModelProviderMetadata(
-  config: ModelProviderConfig,
-): AgentModelProviderMetadata {
+export function createModelProviderMetadata(config: ModelProviderConfig): AgentModelProviderMetadata {
   return {
     id: config.Id,
     kind: config.Kind,

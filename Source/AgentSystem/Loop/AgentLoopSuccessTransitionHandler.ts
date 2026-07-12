@@ -1,11 +1,7 @@
 import { AgentEventKinds } from "../Events/AgentEvent.js";
 import { createAssistantMessageId } from "../Core/AgentIds.js";
 import { matchByKind } from "../Core/AgentMatch.js";
-import {
-  routeInteractionCommand,
-  renderPromptCommand,
-  runPiTurnCommand,
-} from "./AgentLoopCommandBuilder.js";
+import { routeInteractionCommand, renderPromptCommand, runPiTurnCommand } from "./AgentLoopCommandBuilder.js";
 import type { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import type {
   AgentLoopCommandSucceeded,
@@ -16,10 +12,7 @@ import type {
 export class AgentLoopSuccessTransitionHandler {
   constructor(private readonly eventFactory: AgentLoopEventFactory) {}
 
-  handle(
-    state: RunningAgentLoopMachineState,
-    output: AgentLoopCommandSucceeded,
-  ): AgentLoopTransition {
+  handle(state: RunningAgentLoopMachineState, output: AgentLoopCommandSucceeded): AgentLoopTransition {
     return matchByKind(output, {
       turn_understood: (entry) => {
         const nextState: RunningAgentLoopMachineState = {
@@ -57,12 +50,7 @@ export class AgentLoopSuccessTransitionHandler {
       prompt_rendered: (entry) => ({
         state,
         command: runPiTurnCommand(state, entry.prompt),
-        events: this.eventFactory.promptRendered(
-          entry.requestId,
-          entry.step,
-          entry.prompt,
-          entry.promptTokenCount,
-        ),
+        events: this.eventFactory.promptRendered(entry.requestId, entry.step, entry.prompt, entry.promptTokenCount),
       }),
       pi_turn_completed: (entry) => this.completePiTurn(state, entry),
     });
@@ -84,35 +72,32 @@ export class AgentLoopSuccessTransitionHandler {
           decisionXml: entry.responseText,
           modelProvider: entry.modelProvider,
           usage: entry.usage,
-          conversationEntries: [
-            ...state.conversationEntries,
-            ...entry.conversationEntries,
-          ],
+          conversationEntries: [...state.conversationEntries, ...entry.conversationEntries],
           turnUnderstanding: state.turnUnderstanding,
-          stepTraces: [
-            ...state.stepTraces,
-            ...entry.stepTraces,
-          ],
+          stepTraces: [...state.stepTraces, ...entry.stepTraces],
         },
       },
-      events: this.eventFactory.terminal({
-        event: {
-          kind: AgentEventKinds.AssistantMessageCreated,
-          context: {
-            requestId: entry.requestId,
+      events: this.eventFactory.terminal(
+        {
+          event: {
+            kind: AgentEventKinds.AssistantMessageCreated,
+            context: {
+              requestId: entry.requestId,
+            },
+            data: {
+              messageId: createAssistantMessageId(),
+              kind: "final_answer",
+              content: entry.responseText,
+              terminal: true,
+            },
           },
-          data: {
-            messageId: createAssistantMessageId(),
-            kind: "final_answer",
+          result: {
+            kind: "FinalAnswer",
             content: entry.responseText,
-            terminal: true,
           },
         },
-        result: {
-          kind: "FinalAnswer",
-          content: entry.responseText,
-        },
-      }, entry.requestId),
+        entry.requestId,
+      ),
     };
   }
 }

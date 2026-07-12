@@ -6,9 +6,7 @@ export interface AgentMemoryObservationSqlStatements {
   listMemoryObservationsStmt: Database.Statement<[string], MemoryObservationRow>;
 }
 
-export function prepareAgentMemoryObservationSqlStatements(
-  db: Database.Database,
-): AgentMemoryObservationSqlStatements {
+export function prepareAgentMemoryObservationSqlStatements(db: Database.Database): AgentMemoryObservationSqlStatements {
   return {
     insertMemoryObservationStmt: db.prepare(`
       INSERT INTO memory_observations (
@@ -57,4 +55,3 @@ export function prepareAgentMemoryObservationSqlStatements(
     `),
   };
 }
-

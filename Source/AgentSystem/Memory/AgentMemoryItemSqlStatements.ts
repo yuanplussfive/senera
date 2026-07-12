@@ -9,9 +9,7 @@ export interface AgentMemoryItemSqlStatements {
   listActiveMemoryItemsStmt: Database.Statement<[], MemoryItemRow>;
 }
 
-export function prepareAgentMemoryItemSqlStatements(
-  db: Database.Database,
-): AgentMemoryItemSqlStatements {
+export function prepareAgentMemoryItemSqlStatements(db: Database.Database): AgentMemoryItemSqlStatements {
   return {
     insertMemoryItemStmt: db.prepare(`
       INSERT INTO memory_items (
@@ -105,4 +103,3 @@ export function prepareAgentMemoryItemSqlStatements(
     `),
   };
 }
-

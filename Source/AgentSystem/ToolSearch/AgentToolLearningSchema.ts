@@ -2,24 +2,25 @@ import { z } from "zod";
 import type { ToolLearningResult as BamlToolLearningResult } from "../BamlClient/baml_client/types.js";
 import { parseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
 import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
-import {
-  createAgentStructuredIssue,
-  type AgentStructuredIssue,
-} from "../Diagnostics/AgentStructuredIssue.js";
+import { createAgentStructuredIssue, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
 
 const NonEmptyStringSchema = z.string().trim().min(1);
 const StringListSchema = z.array(NonEmptyStringSchema).transform(uniqueTrimmed);
 
 const ToolLearningResultSchema = z
   .object({
-    records: z.array(z.object({
-      toolName: NonEmptyStringSchema,
-      tags: StringListSchema,
-      sourceTerms: StringListSchema,
-      triggers: StringListSchema,
-      reason: NonEmptyStringSchema,
-      confidence: z.number().min(0).max(1),
-    }).strict()),
+    records: z.array(
+      z
+        .object({
+          toolName: NonEmptyStringSchema,
+          tags: StringListSchema,
+          sourceTerms: StringListSchema,
+          triggers: StringListSchema,
+          reason: NonEmptyStringSchema,
+          confidence: z.number().min(0).max(1),
+        })
+        .strict(),
+    ),
   })
   .strict();
 
@@ -40,34 +41,31 @@ export function parseToolLearningResult(
 
   parsed.records.forEach((record, index) => {
     if (!selectedTools.has(record.toolName)) {
-      issues.push(createAgentStructuredIssue(`不在 selectedTools 中：${record.toolName}`, [
-        "records",
-        index,
-        "toolName",
-      ]));
+      issues.push(
+        createAgentStructuredIssue(`不在 selectedTools 中：${record.toolName}`, ["records", index, "toolName"]),
+      );
       return;
     }
 
     const allowedTags = options.toolTagCatalogByTool.get(record.toolName) ?? new Set<string>();
     record.tags.forEach((tag, tagIndex) => {
       if (!allowedTags.has(tag)) {
-        issues.push(createAgentStructuredIssue(`标签不属于 ${record.toolName}：${tag}`, [
-          "records",
-          index,
-          "tags",
-          tagIndex,
-        ]));
+        issues.push(
+          createAgentStructuredIssue(`标签不属于 ${record.toolName}：${tag}`, ["records", index, "tags", tagIndex]),
+        );
       }
     });
 
     record.sourceTerms.forEach((term, termIndex) => {
       if (!sourceTerms.has(term)) {
-        issues.push(createAgentStructuredIssue(`源词不在 candidateSourceTerms 中：${term}`, [
-          "records",
-          index,
-          "sourceTerms",
-          termIndex,
-        ]));
+        issues.push(
+          createAgentStructuredIssue(`源词不在 candidateSourceTerms 中：${term}`, [
+            "records",
+            index,
+            "sourceTerms",
+            termIndex,
+          ]),
+        );
       }
     });
   });

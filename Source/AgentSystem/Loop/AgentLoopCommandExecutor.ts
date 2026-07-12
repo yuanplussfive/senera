@@ -7,10 +7,7 @@ import { AgentPiTurnExecutor } from "../Pi/AgentPiTurnExecutor.js";
 import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
 import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
-import type {
-  AgentLoopCommand,
-  AgentLoopCommandResult,
-} from "./AgentLoopStateTypes.js";
+import type { AgentLoopCommand, AgentLoopCommandResult } from "./AgentLoopStateTypes.js";
 
 export interface AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
@@ -81,9 +78,7 @@ export class AgentLoopCommandExecutor {
         },
       }),
     });
-    const renderedPrompt = command.systemPromptPreamble
-      ? `${command.systemPromptPreamble}\n\n${prompt}`
-      : prompt;
+    const renderedPrompt = command.systemPromptPreamble ? `${command.systemPromptPreamble}\n\n${prompt}` : prompt;
 
     return {
       kind: "succeeded",

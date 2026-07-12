@@ -1,10 +1,6 @@
 import { z } from "zod";
 import { FrontendSchema } from "./AgentAppConfigSchema.js";
-import {
-  ModelGroupSchema,
-  ModelProviderEndpointSchema,
-  ModelProviderSchema,
-} from "./AgentModelConfigSchema.js";
+import { ModelGroupSchema, ModelProviderEndpointSchema, ModelProviderSchema } from "./AgentModelConfigSchema.js";
 import { ActionPlannerSchema } from "./AgentPlannerConfigSchema.js";
 import {
   AgentLoopSchema,

@@ -1,15 +1,17 @@
-import {
-  AgentEventKinds,
-  AgentEventLayers,
-  AgentEventPhases,
-} from "./AgentEventCatalog.js";
+import { AgentEventKinds, AgentEventLayers, AgentEventPhases } from "./AgentEventCatalog.js";
 import type { AgentEventSpec } from "./AgentEventBase.js";
 
-export function summarizePrompt(prompt: string, tokenCount: number): AgentEventSpec<typeof AgentEventKinds.PromptSummary, {
-  chars: number;
-  lines: number;
-  tokenCount: number;
-}> {
+export function summarizePrompt(
+  prompt: string,
+  tokenCount: number,
+): AgentEventSpec<
+  typeof AgentEventKinds.PromptSummary,
+  {
+    chars: number;
+    lines: number;
+    tokenCount: number;
+  }
+> {
   return {
     kind: AgentEventKinds.PromptSummary,
     layer: AgentEventLayers.Progress,

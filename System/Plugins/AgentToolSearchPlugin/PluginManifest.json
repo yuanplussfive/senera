@@ -24,7 +24,7 @@
         "Boundary": "Local",
         "Network": "Deny",
         "Workspace": "ReadOnly",
-        "LocalFallback": "Allow"
+        "LocalFallback": "Deny"
       },
       "Artifacts": {
         "Evidence": [
@@ -39,9 +39,7 @@
               "reason": "$.reason"
             },
             "Identity": {
-              "Parts": [
-                "name"
-              ]
+              "Parts": ["name"]
             },
             "Presentation": {
               "Locator": "tool:{{ name }}",
@@ -55,25 +53,11 @@
               "reason": "$.reason"
             },
             "ModelProjection": {
-              "Slots": [
-                "name",
-                "title",
-                "summary",
-                "score",
-                "reason"
-              ]
+              "Slots": ["name", "title", "summary", "score", "reason"]
             },
             "PlannerMemory": {
-              "Facts": [
-                "name",
-                "title",
-                "score",
-                "reason"
-              ],
-              "ArtifactRefs": [
-                "evidence",
-                "projection"
-              ]
+              "Facts": ["name", "title", "score", "reason"],
+              "ArtifactRefs": ["evidence", "projection"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} tool: {{ e.slots.name }} - {{ e.slots.title }}\n{% endfor %}",
@@ -94,65 +78,24 @@
             "Title": "Tool catalog search",
             "Description": "Search registered tools and expose matching tool cards for later turns.",
             "Facets": {
-              "Actions": [
-                "search",
-                "discover",
-                "route"
-              ],
-              "Targets": [
-                "tool-catalog",
-                "capability-catalog",
-                "runtime-tools"
-              ],
-              "Inputs": [
-                "task",
-                "query",
-                "capability-need"
-              ],
-              "Outputs": [
-                "tool-candidate",
-                "matched-capability",
-                "routing-hint"
-              ],
-              "Evidence": [
-                "tool-candidate"
-              ],
-              "Effects": [
-                "read-only",
-                "context-load"
-              ]
+              "Actions": ["search", "discover", "route"],
+              "Targets": ["tool-catalog", "capability-catalog", "runtime-tools"],
+              "Inputs": ["task", "query", "capability-need"],
+              "Outputs": ["tool-candidate", "matched-capability", "routing-hint"],
+              "Evidence": ["tool-candidate"],
+              "Effects": ["read-only", "context-load"]
             },
-            "Aliases": [
-              "工具发现",
-              "查找能力",
-              "load matching tools",
-              "discover available tool"
-            ],
+            "Aliases": ["工具发现", "查找能力", "load matching tools", "discover available tool"],
             "Risk": {
               "SideEffect": "context-load",
               "Permission": "none",
-              "Notes": [
-                "Only searches registered tool metadata."
-              ]
+              "Notes": ["Only searches registered tool metadata."]
             }
           }
         ],
-        "UseCases": [
-          "不确定该调用哪个工具时先搜索工具目录。",
-          "需要把隐藏工具加载进下一轮提示词。"
-        ],
-        "Examples": [
-          "网页搜索工具发现",
-          "文件编辑工具发现",
-          "workspace code search tool",
-          "动态工具能力检索"
-        ],
-        "Tags": [
-          "能力发现",
-          "工具检索",
-          "动态加载",
-          "插件选择"
-        ]
+        "UseCases": ["不确定该调用哪个工具时先搜索工具目录。", "需要把隐藏工具加载进下一轮提示词。"],
+        "Examples": ["网页搜索工具发现", "文件编辑工具发现", "workspace code search tool", "动态工具能力检索"],
+        "Tags": ["能力发现", "工具检索", "动态加载", "插件选择"]
       }
     }
   ],

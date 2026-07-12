@@ -14,9 +14,7 @@ const files = {
   loop: readSource("Source/AgentSystem/Loop/AgentLoop.ts"),
   runtimeTypes: readSource("Source/AgentSystem/Types/AgentRuntimeConfigTypes.ts"),
 };
-const formDocument = JSON.parse(
-  readSource("Source/AgentSystem/Config/AgentSystemConfig.form.json"),
-) as {
+const formDocument = JSON.parse(readSource("Source/AgentSystem/Config/AgentSystemConfig.form.json")) as {
   form: {
     sections: Array<{
       fields: Array<{
@@ -86,12 +84,7 @@ function assertNoDeadMachineConfig() {
 }
 
 function assertPiRuntimeFieldsRemain() {
-  for (const field of [
-    "LoadedTools",
-    "PiSessionCreateTimeoutSeconds",
-    "PiSessions",
-    "PiSessionCreateTimeoutMs",
-  ]) {
+  for (const field of ["LoadedTools", "PiSessionCreateTimeoutSeconds", "PiSessions", "PiSessionCreateTimeoutMs"]) {
     assert.equal(
       files.runtimeTypes.includes(field) || field in AgentDefaults.AgentLoop,
       true,
@@ -114,8 +107,10 @@ function readSource(relativePath: string): string {
 function resolveWorkspaceRoot(): string {
   let current = path.dirname(fileURLToPath(import.meta.url));
   while (current !== path.dirname(current)) {
-    if (fs.existsSync(path.join(current, "package.json"))
-      && fs.existsSync(path.join(current, "Source", "AgentSystem"))) {
+    if (
+      fs.existsSync(path.join(current, "package.json")) &&
+      fs.existsSync(path.join(current, "Source", "AgentSystem"))
+    ) {
       return current;
     }
     current = path.dirname(current);

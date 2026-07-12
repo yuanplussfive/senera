@@ -11,11 +11,7 @@ export interface AgentActionPlannerEvidenceConfig {
   StalledStepLag?: number;
 }
 
-export type AgentActionPlannerClientProvider =
-  | "openai-generic"
-  | "openai-responses"
-  | "anthropic"
-  | "google-ai";
+export type AgentActionPlannerClientProvider = "openai-generic" | "openai-responses" | "anthropic" | "google-ai";
 
 export interface AgentActionPlannerClientConfig {
   ModelProviderId?: string;

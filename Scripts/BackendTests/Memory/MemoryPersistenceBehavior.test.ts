@@ -1,6 +1,9 @@
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { AgentConversationEntryKinds, type AgentConversationEntry } from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
+import {
+  AgentConversationEntryKinds,
+  type AgentConversationEntry,
+} from "../../../Source/AgentSystem/Conversation/AgentConversation.js";
 import { recallAgentMemories } from "../../../Source/AgentSystem/Memory/AgentMemoryRecallRuntime.js";
 import { SqliteAgentMemorySourceRepository } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import type {
@@ -8,10 +11,7 @@ import type {
   AgentMemoryConsolidationActionRecord,
 } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import {
-  createTemporaryDirectory,
-  removeDirectory,
-} from "../Support/AgentTestFixtures.js";
+import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -25,7 +25,9 @@ describe("Memory persistence behavior", () => {
   test("persists completed turns, sources, candidates, and promoted memory across repository instances", async () => {
     const databasePath = createDatabasePath();
     const firstRepository = new SqliteAgentMemorySourceRepository(databasePath);
-    const recorded = firstRepository.recordCompletedTurn(completedTurn("session-1", "request-1", "2026-01-01T00:00:00.000Z"));
+    const recorded = firstRepository.recordCompletedTurn(
+      completedTurn("session-1", "request-1", "2026-01-01T00:00:00.000Z"),
+    );
     const [candidate] = firstRepository.recordMemoryCandidates({
       episode: recorded.episode,
       learnedAt: "2026-01-01T00:01:00.000Z",
@@ -52,13 +54,16 @@ describe("Memory persistence behavior", () => {
         expect.objectContaining({ operation: "create", candidateUris: [candidate!.uri] }),
       ]);
 
-      const recalled = await recallAgentMemories({
-        query: "stable release",
-        limit: 3,
-      }, {
-        repository: reopened,
-        config: memoryTestConfig,
-      });
+      const recalled = await recallAgentMemories(
+        {
+          query: "stable release",
+          limit: 3,
+        },
+        {
+          repository: reopened,
+          config: memoryTestConfig,
+        },
+      );
       expect(recalled.memories.item).toEqual([
         expect.objectContaining({ memoryUri: memory!.uri, claim: "Prefer stable release promotion" }),
       ]);
@@ -71,30 +76,38 @@ describe("Memory persistence behavior", () => {
   test("reinforces, supersedes, and preserves vectors without leaving stale active items", () => {
     const repository = new SqliteAgentMemorySourceRepository(createDatabasePath());
     try {
-      const initial = repository.writeDirectMemory(directWrite("create", {
-        claim: "Use preview releases first",
-        confidence: 0.55,
-        tags: ["release"],
-      }));
-      const reinforced = repository.writeDirectMemory(directWrite("reinforce", {
-        targetMemoryUri: initial.uri,
-        confidence: 0.9,
-        tags: ["release", "preview"],
-        triggers: ["deploy"],
-        writtenAt: "2026-01-02T00:01:00.000Z",
-      }));
-      const replacement = repository.writeDirectMemory(directWrite("supersede", {
-        targetMemoryUri: initial.uri,
-        claim: "Promote verified previews without rebuilding",
-        confidence: 0.95,
-        writtenAt: "2026-01-02T00:02:00.000Z",
-      }));
-      repository.upsertMemoryItemVectors([{
-        memoryUri: replacement.uri,
-        model: "test-embedding",
-        embedding: [0.1, 0.9],
-        updatedAt: "2026-01-02T00:00:00.000Z",
-      }]);
+      const initial = repository.writeDirectMemory(
+        directWrite("create", {
+          claim: "Use preview releases first",
+          confidence: 0.55,
+          tags: ["release"],
+        }),
+      );
+      const reinforced = repository.writeDirectMemory(
+        directWrite("reinforce", {
+          targetMemoryUri: initial.uri,
+          confidence: 0.9,
+          tags: ["release", "preview"],
+          triggers: ["deploy"],
+          writtenAt: "2026-01-02T00:01:00.000Z",
+        }),
+      );
+      const replacement = repository.writeDirectMemory(
+        directWrite("supersede", {
+          targetMemoryUri: initial.uri,
+          claim: "Promote verified previews without rebuilding",
+          confidence: 0.95,
+          writtenAt: "2026-01-02T00:02:00.000Z",
+        }),
+      );
+      repository.upsertMemoryItemVectors([
+        {
+          memoryUri: replacement.uri,
+          model: "test-embedding",
+          embedding: [0.1, 0.9],
+          updatedAt: "2026-01-02T00:00:00.000Z",
+        },
+      ]);
 
       expect(reinforced.uri).toBe(initial.uri);
       expect(reinforced.confidence).toBe(0.9);
@@ -123,9 +136,7 @@ describe("Memory persistence behavior", () => {
 
       repository.deleteFromSessionRequest("session-1", "request-2");
 
-      expect(repository.listEpisodes("session-1").map((episode) => episode.requestId)).toEqual([
-        "request-1",
-      ]);
+      expect(repository.listEpisodes("session-1").map((episode) => episode.requestId)).toEqual(["request-1"]);
     } finally {
       repository.close();
     }
@@ -133,17 +144,21 @@ describe("Memory persistence behavior", () => {
 });
 
 const memoryTestConfig: AgentSystemConfig = {
-  ModelProviderEndpoints: [{
-    Id: "openai",
-    BaseUrl: "https://model.example/v1",
-    ApiKey: "test-key",
-  }],
-  ModelProviders: [{
-    Id: "test-model",
-    ProviderId: "openai",
-    Endpoint: "ChatCompletions",
-    Model: "test-model",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "openai",
+      BaseUrl: "https://model.example/v1",
+      ApiKey: "test-key",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "test-model",
+      ProviderId: "openai",
+      Endpoint: "ChatCompletions",
+      Model: "test-model",
+    },
+  ],
   VectorModels: {
     Embedding: { Enabled: false },
     Rerank: { Enabled: false },
@@ -200,7 +215,9 @@ function candidateDraft(sourceRef: string) {
   };
 }
 
-function learningAction(overrides: Partial<AgentMemoryConsolidationActionRecord> = {}): AgentMemoryConsolidationActionRecord {
+function learningAction(
+  overrides: Partial<AgentMemoryConsolidationActionRecord> = {},
+): AgentMemoryConsolidationActionRecord {
   return {
     operation: "create",
     type: "preference",
@@ -217,10 +234,7 @@ function learningAction(overrides: Partial<AgentMemoryConsolidationActionRecord>
   };
 }
 
-function directWrite(
-  operation: "create" | "reinforce" | "supersede",
-  overrides: Record<string, unknown> = {},
-) {
+function directWrite(operation: "create" | "reinforce" | "supersede", overrides: Record<string, unknown> = {}) {
   return {
     operation,
     type: "preference" as const,

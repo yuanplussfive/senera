@@ -18,9 +18,7 @@ export function shouldResumeAutoStickToBottom({
   hasScrollTowardBottomIntent: boolean;
   isScrollbarDragging: boolean;
 }): boolean {
-  return atBottom
-    && !isScrollbarDragging
-    && (!hasScrollAwayIntent || hasScrollTowardBottomIntent);
+  return atBottom && !isScrollbarDragging && (!hasScrollAwayIntent || hasScrollTowardBottomIntent);
 }
 
 export function useVirtuosoAutoStickToBottom({
@@ -84,29 +82,38 @@ export function useVirtuosoAutoStickToBottom({
     lastScrollTopRef.current = readScrollMetrics(target).scrollTop;
   }, []);
 
-  const scrollToBottom = useCallback((behavior: VirtuosoScrollBehavior = "auto") => {
-    const nextItemCount = itemCountRef.current;
-    if (nextItemCount <= 0) return;
-    cancelPendingScroll();
-    frameRef.current = window.requestAnimationFrame(() => {
-      frameRef.current = null;
-      ref.current?.scrollToIndex({
-        index: nextItemCount - 1,
-        align: "end",
-        behavior,
+  const scrollToBottom = useCallback(
+    (behavior: VirtuosoScrollBehavior = "auto") => {
+      const nextItemCount = itemCountRef.current;
+      if (nextItemCount <= 0) return;
+      cancelPendingScroll();
+      frameRef.current = window.requestAnimationFrame(() => {
+        frameRef.current = null;
+        ref.current?.scrollToIndex({
+          index: nextItemCount - 1,
+          align: "end",
+          behavior,
+        });
+        window.requestAnimationFrame(() => syncScrollPosition());
       });
-      window.requestAnimationFrame(() => syncScrollPosition());
-    });
-  }, [cancelPendingScroll, syncScrollPosition]);
+    },
+    [cancelPendingScroll, syncScrollPosition],
+  );
 
-  const scrollToBottomAndResume = useCallback((behavior: VirtuosoScrollBehavior = "auto") => {
-    resumeStickToBottom();
-    scrollToBottom(behavior);
-  }, [resumeStickToBottom, scrollToBottom]);
+  const scrollToBottomAndResume = useCallback(
+    (behavior: VirtuosoScrollBehavior = "auto") => {
+      resumeStickToBottom();
+      scrollToBottom(behavior);
+    },
+    [resumeStickToBottom, scrollToBottom],
+  );
 
-  const rememberScrollPosition = useCallback((target: HTMLElement | Window): void => {
-    syncScrollPosition(target);
-  }, [syncScrollPosition]);
+  const rememberScrollPosition = useCallback(
+    (target: HTMLElement | Window): void => {
+      syncScrollPosition(target);
+    },
+    [syncScrollPosition],
+  );
 
   const scrollerRef = useCallback(
     (target: HTMLElement | Window | null): void => {
@@ -129,12 +136,14 @@ export function useVirtuosoAutoStickToBottom({
     if (movedTowardBottom && scrollbarDragRef.current) markScrollTowardBottomIntent();
 
     if (metrics.distanceToBottom <= bottomThreshold) {
-      if (shouldResumeAutoStickToBottom({
-        atBottom: true,
-        hasScrollAwayIntent: userScrollAwayIntentRef.current,
-        hasScrollTowardBottomIntent: userScrollTowardBottomIntentRef.current,
-        isScrollbarDragging: scrollbarDragRef.current,
-      })) {
+      if (
+        shouldResumeAutoStickToBottom({
+          atBottom: true,
+          hasScrollAwayIntent: userScrollAwayIntentRef.current,
+          hasScrollTowardBottomIntent: userScrollTowardBottomIntentRef.current,
+          isScrollbarDragging: scrollbarDragRef.current,
+        })
+      ) {
         resumeStickToBottom();
       }
       return;
@@ -180,12 +189,14 @@ export function useVirtuosoAutoStickToBottom({
       scrollbarDragRef.current = false;
       lastPointerYRef.current = null;
       const metrics = readScrollMetrics(target);
-      if (shouldResumeAutoStickToBottom({
-        atBottom: metrics.distanceToBottom <= bottomThreshold,
-        hasScrollAwayIntent: userScrollAwayIntentRef.current,
-        hasScrollTowardBottomIntent: userScrollTowardBottomIntentRef.current,
-        isScrollbarDragging: false,
-      })) {
+      if (
+        shouldResumeAutoStickToBottom({
+          atBottom: metrics.distanceToBottom <= bottomThreshold,
+          hasScrollAwayIntent: userScrollAwayIntentRef.current,
+          hasScrollTowardBottomIntent: userScrollTowardBottomIntentRef.current,
+          isScrollbarDragging: false,
+        })
+      ) {
         resumeStickToBottom();
       }
     };
@@ -253,12 +264,14 @@ export function useVirtuosoAutoStickToBottom({
     scrollerRef,
     followOutput: () => (stickToBottomRef.current ? "auto" : false),
     atBottomStateChange: (atBottom) => {
-      if (shouldResumeAutoStickToBottom({
-        atBottom,
-        hasScrollAwayIntent: userScrollAwayIntentRef.current,
-        hasScrollTowardBottomIntent: userScrollTowardBottomIntentRef.current,
-        isScrollbarDragging: scrollbarDragRef.current,
-      })) {
+      if (
+        shouldResumeAutoStickToBottom({
+          atBottom,
+          hasScrollAwayIntent: userScrollAwayIntentRef.current,
+          hasScrollTowardBottomIntent: userScrollTowardBottomIntentRef.current,
+          isScrollbarDragging: scrollbarDragRef.current,
+        })
+      ) {
         resumeStickToBottom();
       }
     },
@@ -278,9 +291,7 @@ function readScrollMetrics(target: HTMLElement | Window): {
   distanceToBottom: number;
 } {
   const element =
-    target instanceof Window
-      ? target.document.scrollingElement ?? target.document.documentElement
-      : target;
+    target instanceof Window ? (target.document.scrollingElement ?? target.document.documentElement) : target;
   const scrollTop = target instanceof Window ? target.scrollY || element.scrollTop : element.scrollTop;
   const viewportHeight = target instanceof Window ? target.innerHeight : element.clientHeight;
   const distanceToBottom = Math.max(0, element.scrollHeight - scrollTop - viewportHeight);
@@ -298,10 +309,12 @@ function isPointerInVerticalScrollbar(event: PointerEvent, target: HTMLElement |
   if (target.scrollHeight <= target.clientHeight) return false;
   const rect = target.getBoundingClientRect();
   const scrollbarWidth = Math.max(SCROLLBAR_HIT_SLOP_PX, target.offsetWidth - target.clientWidth);
-  return event.clientX >= rect.right - scrollbarWidth
-    && event.clientX <= rect.right
-    && event.clientY >= rect.top
-    && event.clientY <= rect.bottom;
+  return (
+    event.clientX >= rect.right - scrollbarWidth &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom
+  );
 }
 
 function isScrollAwayKey(event: KeyboardEvent): boolean {

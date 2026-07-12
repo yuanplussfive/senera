@@ -36,8 +36,7 @@ const editorTheme = EditorView.theme({
     outline: "none",
   },
   ".cm-scroller": {
-    fontFamily:
-      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
     lineHeight: "1.65",
     scrollbarColor: "rgba(28, 26, 23, 0.16) transparent",
     scrollbarGutter: "stable",
@@ -102,11 +101,7 @@ const editorHighlightStyle = HighlightStyle.define([
   { tag: tags.invalid, color: "#b3441f" },
 ]);
 
-const editorBaseExtensions = [
-  editorTheme,
-  syntaxHighlighting(editorHighlightStyle),
-  EditorView.lineWrapping,
-];
+const editorBaseExtensions = [editorTheme, syntaxHighlighting(editorHighlightStyle), EditorView.lineWrapping];
 
 export function CodeTextEditor({
   ariaLabel,
@@ -116,10 +111,7 @@ export function CodeTextEditor({
   onChange,
   value,
 }: CodeTextEditorProps): JSX.Element {
-  const extensions = useMemo(
-    () => [...editorBaseExtensions, ...languageExtensions[language]()],
-    [language],
-  );
+  const extensions = useMemo(() => [...editorBaseExtensions, ...languageExtensions[language]()], [language]);
 
   return (
     <CodeMirror

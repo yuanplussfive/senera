@@ -107,12 +107,16 @@ async function postJson(
   config: ResolvedAgentVectorEmbeddingConfig | ResolvedAgentVectorRerankConfig,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const response = await fetchWithRetries(url, {
-    method: "POST",
-    headers: headers(config),
-    body: JSON.stringify(payload),
-    signal,
-  }, config);
+  const response = await fetchWithRetries(
+    url,
+    {
+      method: "POST",
+      headers: headers(config),
+      body: JSON.stringify(payload),
+      signal,
+    },
+    config,
+  );
   return response.json() as Promise<unknown>;
 }
 
@@ -156,9 +160,7 @@ async function fetchWithRetries(
   throw lastError;
 }
 
-function headers(
-  config: Pick<ResolvedAgentVectorEmbeddingConfig, "ApiKey" | "Headers">,
-): HeadersInit {
+function headers(config: Pick<ResolvedAgentVectorEmbeddingConfig, "ApiKey" | "Headers">): HeadersInit {
   return {
     "content-type": "application/json",
     ...authorizationHeader(config.ApiKey),
@@ -167,37 +169,39 @@ function headers(
 }
 
 function authorizationHeader(apiKey: string): HeadersInit {
-  return apiKey.trim()
-    ? { Authorization: `Bearer ${apiKey}` }
-    : {};
+  return apiKey.trim() ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
 function readEmbeddingVectors(value: unknown): number[][] {
   const record = readRecord(value, "embedding response");
   const data = readArray(record.data, "embedding response.data");
   return data.map((item, index) =>
-    readNumberArray(readRecord(item, `embedding response.data[${index}]`).embedding, `embedding response.data[${index}].embedding`));
+    readNumberArray(
+      readRecord(item, `embedding response.data[${index}]`).embedding,
+      `embedding response.data[${index}].embedding`,
+    ),
+  );
 }
 
 function readRerankResults(value: unknown, documents: readonly AgentRerankDocument[]): AgentRerankResultItem[] {
   const record = readRecord(value, "rerank response");
   const rows = readArray(record.results ?? record.data, "rerank response.results");
-  return rows.map((item, fallbackIndex) => {
-    const row = readRecord(item, `rerank response.results[${fallbackIndex}]`);
-    const index = readIndex(row, fallbackIndex);
-    return {
-      id: documents[index]?.id ?? String(index),
-      index,
-      score: readScore(row),
-    };
-  }).sort((left, right) => right.score - left.score || left.index - right.index);
+  return rows
+    .map((item, fallbackIndex) => {
+      const row = readRecord(item, `rerank response.results[${fallbackIndex}]`);
+      const index = readIndex(row, fallbackIndex);
+      return {
+        id: documents[index]?.id ?? String(index),
+        index,
+        score: readScore(row),
+      };
+    })
+    .sort((left, right) => right.score - left.score || left.index - right.index);
 }
 
 function readIndex(record: Record<string, unknown>, fallback: number): number {
   const value = record.index ?? record.document_index ?? record.documentIndex;
-  return typeof value === "number" && Number.isInteger(value)
-    ? value
-    : fallback;
+  return typeof value === "number" && Number.isInteger(value) ? value : fallback;
 }
 
 function readScore(record: Record<string, unknown>): number {

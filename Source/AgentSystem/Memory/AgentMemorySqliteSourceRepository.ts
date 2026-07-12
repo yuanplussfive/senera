@@ -27,14 +27,8 @@ import {
   rowToSource,
   sourceToRow,
 } from "./AgentMemoryRowMapper.js";
-import {
-  configureAgentMemoryDatabase,
-  installAgentMemorySchema,
-} from "./AgentMemorySqlSchema.js";
-import {
-  prepareAgentMemorySqlStatements,
-  type AgentMemorySqlStatements,
-} from "./AgentMemorySqlStatements.js";
+import { configureAgentMemoryDatabase, installAgentMemorySchema } from "./AgentMemorySqlSchema.js";
+import { prepareAgentMemorySqlStatements, type AgentMemorySqlStatements } from "./AgentMemorySqlStatements.js";
 import { projectMemoryTime as projectTime } from "./AgentMemoryTime.js";
 import type {
   AgentMemoryCandidateRecord,
@@ -83,8 +77,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
 
   recordMemoryCandidates(input: AgentMemoryCandidateWriteInput): AgentMemoryCandidateRecord[] {
     const learnedAt = input.learnedAt ?? new Date().toISOString();
-    const records = input.candidates.map((candidate) =>
-      buildMemoryCandidate(input.episode, candidate, learnedAt));
+    const records = input.candidates.map((candidate) => buildMemoryCandidate(input.episode, candidate, learnedAt));
     const persist = this.db.transaction(() => {
       for (const record of records) {
         this.statements.insertMemoryCandidateStmt.run(memoryCandidateToRow(record));
@@ -109,9 +102,9 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
           const item = buildReinforcedMemoryItem(input.episode, current, action, learnedAt);
           this.statements.updateMemoryItemStmt.run(memoryItemToRow(item));
           this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
-          this.statements.insertMemoryObservationStmt.run(memoryObservationToRow(
-            buildMemoryObservation(input.episode, item.uri, action, learnedAt),
-          ));
+          this.statements.insertMemoryObservationStmt.run(
+            memoryObservationToRow(buildMemoryObservation(input.episode, item.uri, action, learnedAt)),
+          );
           written.push(item);
           continue;
         }
@@ -121,9 +114,9 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
           const item = buildUpdatedMemoryItem(input.episode, current, action, learnedAt);
           this.statements.updateMemoryItemStmt.run(memoryItemToRow(item));
           this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
-          this.statements.insertMemoryObservationStmt.run(memoryObservationToRow(
-            buildMemoryObservation(input.episode, item.uri, action, learnedAt),
-          ));
+          this.statements.insertMemoryObservationStmt.run(
+            memoryObservationToRow(buildMemoryObservation(input.episode, item.uri, action, learnedAt)),
+          );
           written.push(item);
           continue;
         }
@@ -135,9 +128,9 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
         const item = buildNewMemoryItem(input.episode, action, learnedAt);
         this.statements.insertMemoryItemStmt.run(memoryItemToRow(item));
         this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
-        this.statements.insertMemoryObservationStmt.run(memoryObservationToRow(
-          buildMemoryObservation(input.episode, item.uri, action, learnedAt),
-        ));
+        this.statements.insertMemoryObservationStmt.run(
+          memoryObservationToRow(buildMemoryObservation(input.episode, item.uri, action, learnedAt)),
+        );
         written.push(item);
       }
     });
@@ -156,9 +149,9 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
         const current = this.readExistingMemory(action.targetMemoryUri);
         const item = buildReinforcedMemoryItem(anchor, current, action, writtenAt);
         this.statements.updateMemoryItemStmt.run(memoryItemToRow(item));
-        this.statements.insertMemoryObservationStmt.run(memoryObservationToRow(
-          buildMemoryObservation(anchor, item.uri, action, writtenAt),
-        ));
+        this.statements.insertMemoryObservationStmt.run(
+          memoryObservationToRow(buildMemoryObservation(anchor, item.uri, action, writtenAt)),
+        );
         written = item;
         return;
       }
@@ -167,9 +160,9 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
         const current = this.readExistingMemory(action.targetMemoryUri);
         const item = buildUpdatedMemoryItem(anchor, current, action, writtenAt);
         this.statements.updateMemoryItemStmt.run(memoryItemToRow(item));
-        this.statements.insertMemoryObservationStmt.run(memoryObservationToRow(
-          buildMemoryObservation(anchor, item.uri, action, writtenAt),
-        ));
+        this.statements.insertMemoryObservationStmt.run(
+          memoryObservationToRow(buildMemoryObservation(anchor, item.uri, action, writtenAt)),
+        );
         written = item;
         return;
       }
@@ -180,9 +173,9 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
 
       const item = buildNewMemoryItem(anchor, action, writtenAt);
       this.statements.insertMemoryItemStmt.run(memoryItemToRow(item));
-      this.statements.insertMemoryObservationStmt.run(memoryObservationToRow(
-        buildMemoryObservation(anchor, item.uri, action, writtenAt),
-      ));
+      this.statements.insertMemoryObservationStmt.run(
+        memoryObservationToRow(buildMemoryObservation(anchor, item.uri, action, writtenAt)),
+      );
       written = item;
     });
     persist();
@@ -214,11 +207,10 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
   }
 
   findEpisodesByUris(uris: readonly string[]): AgentMemoryEpisodeRecord[] {
-    return uniqueTrimmed(uris)
-      .flatMap((uri) => {
-        const row = this.statements.selectEpisodeByUriStmt.get(uri);
-        return row ? [rowToEpisode(row)] : [];
-      });
+    return uniqueTrimmed(uris).flatMap((uri) => {
+      const row = this.statements.selectEpisodeByUriStmt.get(uri);
+      return row ? [rowToEpisode(row)] : [];
+    });
   }
 
   listSources(episodeUri: string): AgentMemorySourceRecord[] {
@@ -239,8 +231,9 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
         byUri.set(row.uri, rowToSource(row));
       }
     }
-    return [...byUri.values()]
-      .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id));
+    return [...byUri.values()].sort(
+      (left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id),
+    );
   }
 
   listPendingMemoryCandidates(sessionId: string, type?: AgentMemoryType): AgentMemoryCandidateRecord[] {
@@ -255,11 +248,10 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
   }
 
   findMemoryItemsByUris(uris: readonly string[]): AgentMemoryItemRecord[] {
-    return uniqueTrimmed(uris)
-      .flatMap((uri) => {
-        const row = this.statements.selectMemoryItemByUriStmt.get(uri);
-        return row ? [rowToMemoryItem(row)] : [];
-      });
+    return uniqueTrimmed(uris).flatMap((uri) => {
+      const row = this.statements.selectMemoryItemByUriStmt.get(uri);
+      return row ? [rowToMemoryItem(row)] : [];
+    });
   }
 
   listMemoryObservations(memoryUri: string): AgentMemoryObservationRecord[] {
@@ -307,11 +299,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
     );
   }
 
-  private markCandidatesPromoted(
-    candidateUris: readonly string[],
-    memoryUri: string,
-    updatedAt: string,
-  ): void {
+  private markCandidatesPromoted(candidateUris: readonly string[], memoryUri: string, updatedAt: string): void {
     const time = projectTime(updatedAt);
     for (const candidateUri of uniqueTrimmed(candidateUris)) {
       this.statements.promoteMemoryCandidateStmt.run(
@@ -326,10 +314,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
     }
   }
 
-  private markCandidatesRejected(
-    candidateUris: readonly string[],
-    updatedAt: string,
-  ): void {
+  private markCandidatesRejected(candidateUris: readonly string[], updatedAt: string): void {
     const time = projectTime(updatedAt);
     for (const candidateUri of uniqueTrimmed(candidateUris)) {
       this.statements.rejectMemoryCandidateStmt.run(
@@ -348,7 +333,5 @@ export function resolveAgentMemoryDatabasePath(
   workspaceRoot: string,
   databasePath = DefaultAgentMemoryDatabasePath,
 ): string {
-  return path.isAbsolute(databasePath)
-    ? path.normalize(databasePath)
-    : path.resolve(workspaceRoot, databasePath);
+  return path.isAbsolute(databasePath) ? path.normalize(databasePath) : path.resolve(workspaceRoot, databasePath);
 }

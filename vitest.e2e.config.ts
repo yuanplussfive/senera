@@ -1,17 +1,13 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-
-const workspaceRoot = path.dirname(fileURLToPath(import.meta.url));
+import { E2eTestPolicy } from "./Scripts/TestCoveragePolicy.js";
+import frontendConfig from "./vitest.config.ts";
 
 export default defineConfig({
-  root: workspaceRoot,
+  ...frontendConfig,
   test: {
+    ...frontendConfig.test,
     environment: "node",
-    globals: false,
-    include: [
-      "Scripts/E2ETests/**/*.test.ts",
-    ],
+    include: [...E2eTestPolicy.testInclude],
     testTimeout: 15_000,
     hookTimeout: 15_000,
     pool: "forks",

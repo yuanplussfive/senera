@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from "react";
 import { ChevronRight, ExternalLink, FileText } from "lucide-react";
 import { cn } from "../../lib/util";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
 
 /**
@@ -33,23 +34,14 @@ function Node({ value, depth }: { value: unknown; depth: number }): JSX.Element 
 
 // ---------- 对象块 ----------
 
-function ObjectBlock({
-  entries,
-  depth,
-}: {
-  entries: Array<[string, unknown]>;
-  depth: number;
-}): JSX.Element {
+function ObjectBlock({ entries, depth }: { entries: Array<[string, unknown]>; depth: number }): JSX.Element {
   const items = useMemo(() => combineUnitPairs(entries), [entries]);
 
   if (entries.length === 0) {
     return <span className="font-mono text-[11.5px] italic text-ink-400">{`{}`}</span>;
   }
 
-  const wrapperClass =
-    depth > 0
-      ? "ml-1 border-l border-ink-200/50 pl-3"
-      : "";
+  const wrapperClass = depth > 0 ? "ml-1 border-l border-ink-200/50 pl-3" : "";
 
   return (
     <div className={wrapperClass}>
@@ -68,9 +60,7 @@ function ArrayBlock({ items, depth }: { items: unknown[]; depth: number }): JSX.
   }
 
   // 全是简单原始值 → chips 横排
-  const allPrimitive = items.every(
-    (it) => typeof it === "string" || typeof it === "number" || typeof it === "boolean",
-  );
+  const allPrimitive = items.every((it) => typeof it === "string" || typeof it === "number" || typeof it === "boolean");
   if (allPrimitive && items.length <= 12) {
     return (
       <div className="flex flex-wrap gap-1.5 py-1">
@@ -114,9 +104,7 @@ function Row({
 }): JSX.Element {
   const complex = !isPrimitive(value);
   const hasChildren =
-    complex &&
-    ((Array.isArray(value) && value.length > 0) ||
-      (isPlainObject(value) && Object.keys(value).length > 0));
+    complex && ((Array.isArray(value) && value.length > 0) || (isPlainObject(value) && Object.keys(value).length > 0));
   const [open, setOpen] = useState(depth === 0);
 
   // 没子节点（含空对象/空数组/原始值）：单行 key|value
@@ -139,12 +127,7 @@ function Row({
         onClick={() => setOpen((v) => !v)}
         className="-ml-3 flex items-center gap-1 rounded text-left transition hover:bg-ink-900/[0.03]"
       >
-        <ChevronRight
-          className={cn(
-            "h-3 w-3 shrink-0 text-ink-400 transition",
-            open && "rotate-90",
-          )}
-        />
+        <ChevronRight className={cn("h-3 w-3 shrink-0 text-ink-400 transition", open && "rotate-90")} />
         <KeyText name={keyName} indexLike={indexLike} />
         <CountHint value={value} />
       </button>
@@ -162,9 +145,7 @@ function KeyText({ name, indexLike }: { name: string; indexLike: boolean }): JSX
     <span
       className={cn(
         "shrink-0 self-start pt-px",
-        indexLike
-          ? "font-mono text-[11px] text-ink-400"
-          : "font-mono text-[11px] text-ink-500",
+        indexLike ? "font-mono text-[11px] text-ink-400" : "font-mono text-[11px] text-ink-500",
       )}
     >
       {humanizeAlgo(name)}
@@ -174,15 +155,11 @@ function KeyText({ name, indexLike }: { name: string; indexLike: boolean }): JSX
 
 function CountHint({ value }: { value: unknown }): JSX.Element | null {
   if (Array.isArray(value)) {
-    return (
-      <span className="font-mono text-[10.5px] text-ink-400">[{value.length}]</span>
-    );
+    return <span className="font-mono text-[10.5px] text-ink-400">[{value.length}]</span>;
   }
   if (isPlainObject(value)) {
     const n = Object.keys(value).length;
-    return (
-      <span className="font-mono text-[10.5px] text-ink-400">{`{${n}}`}</span>
-    );
+    return <span className="font-mono text-[10.5px] text-ink-400">{`{${n}}`}</span>;
   }
   return null;
 }
@@ -205,11 +182,9 @@ function SourceFrameBlock({ frame, depth }: { frame: SourceFrame; depth: number 
         <div className="flex min-w-0 items-center gap-2 border-b border-ink-200/70 bg-paper-100 px-3 py-2">
           <FileText className="h-3.5 w-3.5 shrink-0 text-ink-400" />
           <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink-700">
-            {frame.path ?? "source"}
+            {frame.path ?? frontendMessage("workflow.data.sourceFallback")}
           </span>
-          <span className="shrink-0 font-mono text-[10.5px] text-ink-400">
-            {formatLineRange(frame)}
-          </span>
+          <span className="shrink-0 font-mono text-[10.5px] text-ink-400">{formatLineRange(frame)}</span>
         </div>
         <pre className="max-h-[360px] overflow-auto bg-[#f6f2e8] px-0 py-2 font-mono text-[12px] leading-5 text-ink-900 scrollbar-thin">
           <code>
@@ -221,26 +196,19 @@ function SourceFrameBlock({ frame, depth }: { frame: SourceFrame; depth: number 
               return (
                 <span
                   key={`${lineNumber}:${index}`}
-                  className={cn(
-                    "grid grid-cols-[4.25rem_minmax(0,1fr)] px-3",
-                    focused && "bg-terra-50/80",
-                  )}
+                  className={cn("grid grid-cols-[4.25rem_minmax(0,1fr)] px-3", focused && "bg-terra-50/80")}
                 >
                   <span className="select-none border-r border-ink-200/70 pr-3 text-right text-ink-400">
                     {lineNumber}
                   </span>
-                  <span className="min-w-0 whitespace-pre-wrap break-words pl-3">
-                    {code.length > 0 ? code : " "}
-                  </span>
+                  <span className="min-w-0 whitespace-pre-wrap break-words pl-3">{code.length > 0 ? code : " "}</span>
                 </span>
               );
             })}
           </code>
         </pre>
       </div>
-      {frame.metadata.length > 0 ? (
-        <ObjectBlock entries={frame.metadata} depth={depth + 1} />
-      ) : null}
+      {frame.metadata.length > 0 ? <ObjectBlock entries={frame.metadata} depth={depth + 1} /> : null}
     </div>
   );
 }
@@ -397,11 +365,9 @@ function formatIsoDate(iso: string): string | null {
     if (Number.isNaN(d.getTime())) return null;
     const now = new Date();
     const sameDay =
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate();
+      d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
     const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    if (sameDay) return `今天 ${time}`;
+    if (sameDay) return frontendMessage("workflow.data.todayTime", { time });
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
   } catch {
     return null;
@@ -463,10 +429,7 @@ export function readSourceFrame(value: Record<string, unknown>): SourceFrame | n
   };
 }
 
-function findStringEntry(
-  value: Record<string, unknown>,
-  preferredKeys: string[],
-): [string, string] | null {
+function findStringEntry(value: Record<string, unknown>, preferredKeys: string[]): [string, string] | null {
   for (const key of preferredKeys) {
     const entry = value[key];
     if (typeof entry === "string" && entry.trim().length > 0) {
@@ -491,9 +454,7 @@ export function parseNumberedLine(line: string): { line: number; code: string } 
 
 export function formatLineRange(frame: SourceFrame): string {
   if (frame.startLine !== undefined && frame.endLine !== undefined) {
-    return frame.startLine === frame.endLine
-      ? `L${frame.startLine}`
-      : `L${frame.startLine}-L${frame.endLine}`;
+    return frame.startLine === frame.endLine ? `L${frame.startLine}` : `L${frame.startLine}-L${frame.endLine}`;
   }
   if (frame.focusLine !== undefined) return `L${frame.focusLine}`;
   return "source";

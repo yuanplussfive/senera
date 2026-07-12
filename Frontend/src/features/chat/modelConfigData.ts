@@ -1,4 +1,5 @@
 import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
+import { FrontendDefaultLocale, frontendMessage } from "../../i18n/frontendMessageCatalog";
 import {
   readDefaultModelGroup,
   readDefaultModelGroupRules,
@@ -97,30 +98,30 @@ export function copyModelRuntimeTemplate(template: Record<string, unknown>): Par
 }
 
 export function readProviderEndpoints(value: unknown): ProviderEndpointDraft[] {
-  return Array.isArray(value)
-    ? value.filter(isRecord).map((entry) => normalizeProviderEndpointDraft(entry))
-    : [];
+  return Array.isArray(value) ? value.filter(isRecord).map((entry) => normalizeProviderEndpointDraft(entry)) : [];
 }
 
 export function readModelProviders(value: unknown): ModelProviderDraft[] {
-  return Array.isArray(value)
-    ? value.filter(isRecord).map((entry) => normalizeModelProviderDraft(entry))
-    : [];
+  return Array.isArray(value) ? value.filter(isRecord).map((entry) => normalizeModelProviderDraft(entry)) : [];
 }
 
 export function readModelGroups(value: unknown): ModelGroupDraft[] {
   if (Array.isArray(value)) {
     return value.filter(isRecord).map((entry) => normalizeModelGroupDraft(entry));
   }
-  return readDefaultModelGroupRules().map((rule) => normalizeModelGroupDraft({
-    Id: rule.id,
-    Label: rule.label,
-    Icon: rule.icon,
-    Strategies: [{
-      Match: rule.match,
-      Values: rule.values,
-    }],
-  }));
+  return readDefaultModelGroupRules().map((rule) =>
+    normalizeModelGroupDraft({
+      Id: rule.id,
+      Label: rule.label,
+      Icon: rule.icon,
+      Strategies: [
+        {
+          Match: rule.match,
+          Values: rule.values,
+        },
+      ],
+    }),
+  );
 }
 
 export function normalizeProviderEndpointDraft(value: unknown): ProviderEndpointDraft {
@@ -144,10 +145,12 @@ export function normalizeModelGroupDraft(value: unknown): ModelGroupDraft {
   const record = isRecord(value) ? value : {};
   const strategies = Array.isArray(record.Strategies)
     ? record.Strategies.filter(isRecord).map(normalizeModelGroupStrategy)
-    : [normalizeModelGroupStrategy({
-      Match: record.Match,
-      Values: record.Values,
-    })];
+    : [
+        normalizeModelGroupStrategy({
+          Match: record.Match,
+          Values: record.Values,
+        }),
+      ];
   return {
     Id: readString(record.Id) ?? "",
     Label: readString(record.Label) ?? "",
@@ -171,7 +174,7 @@ export function createModelGroupDraft(
   return normalizeModelGroupDraft({
     ...template,
     Id: nextModelGroupId(groups),
-    Label: "新分组",
+    Label: frontendMessage("config.modelGroups.newGroup"),
     Strategies: [{ Match: "prefix", Values: [] }],
   });
 }
@@ -200,13 +203,15 @@ export function providerIdLabel(provider: ProviderEndpointDraft): string {
   return provider.Id;
 }
 
-export function sortProviderRows(providers: ProviderEndpointDraft[]): Array<{ provider: ProviderEndpointDraft; index: number }> {
+export function sortProviderRows(
+  providers: ProviderEndpointDraft[],
+): Array<{ provider: ProviderEndpointDraft; index: number }> {
   return providers
     .map((provider, index) => ({ provider, index }))
     .sort((left, right) => {
       const enabledDiff = Number(providerEnabled(right.provider)) - Number(providerEnabled(left.provider));
       if (enabledDiff !== 0) return enabledDiff;
-      return providerIdLabel(left.provider).localeCompare(providerIdLabel(right.provider), "zh-CN");
+      return providerIdLabel(left.provider).localeCompare(providerIdLabel(right.provider), FrontendDefaultLocale);
     });
 }
 
@@ -253,7 +258,6 @@ export function defaultModelCapabilities(template: Record<string, unknown>): Req
     Vision: readBoolean(capabilities.Vision) ?? false,
     ImageOutput: readBoolean(capabilities.ImageOutput) ?? false,
     Reasoning: readBoolean(capabilities.Reasoning) ?? false,
-    ToolCalling: readBoolean(capabilities.ToolCalling) ?? true,
     DeveloperRole: readBoolean(capabilities.DeveloperRole) ?? false,
   };
 }
@@ -263,8 +267,9 @@ export function filterProviderModels(models: ProviderModelInfo[], search: string
   if (!query) {
     return models;
   }
-  return models.filter((model) =>
-    model.id.toLowerCase().includes(query) || model.ownedBy?.toLowerCase().includes(query));
+  return models.filter(
+    (model) => model.id.toLowerCase().includes(query) || model.ownedBy?.toLowerCase().includes(query),
+  );
 }
 
 export function readProviderModelRows({
@@ -284,11 +289,11 @@ export function readProviderModelRows({
   const mergedRows = mergeProviderModelRows(catalogModels, configuredRows);
   const rows = configuredOnly
     ? filterConfiguredProviderModels({
-      rows: mergedRows,
-      models,
-      providerId,
-      configuredOnly,
-    })
+        rows: mergedRows,
+        models,
+        providerId,
+        configuredOnly,
+      })
     : mergedRows;
   return filterProviderModels(rows, search);
 }
@@ -336,9 +341,7 @@ export function filterConfiguredProviderModels({
     return rows;
   }
   const configuredModelNames = new Set(
-    models
-      .filter((model) => model.ProviderId === providerId)
-      .map((model) => model.Model),
+    models.filter((model) => model.ProviderId === providerId).map((model) => model.Model),
   );
   return rows.filter((row) => configuredModelNames.has(row.id));
 }
@@ -355,9 +358,7 @@ export function sortProviderModelRows({
   defaultModelId: string;
 }): ProviderModelInfo[] {
   const configuredByName = new Map(
-    models
-      .filter((model) => model.ProviderId === providerId)
-      .map((model) => [model.Model, model]),
+    models.filter((model) => model.ProviderId === providerId).map((model) => [model.Model, model]),
   );
   return rows
     .map((row, index) => ({
@@ -410,8 +411,8 @@ export function findModelGroupRule(
 ): ModelGroupDraft | undefined {
   const normalized = modelId.toLowerCase();
   return modelGroups.find((rule) =>
-    rule.Strategies.some((strategy) =>
-      modelGroupRuleMatches(strategy.Match, normalized, strategy.Values)));
+    rule.Strategies.some((strategy) => modelGroupRuleMatches(strategy.Match, normalized, strategy.Values)),
+  );
 }
 
 export function modelGroupRuleMatches(
@@ -439,7 +440,10 @@ export function modelConfigId(providerId: string, modelName: string): string {
 }
 
 export function nextProviderEndpointId(providers: readonly ProviderEndpointDraft[]): string {
-  return nextAvailableName("provider", providers.map((provider) => provider.Id));
+  return nextAvailableName(
+    "provider",
+    providers.map((provider) => provider.Id),
+  );
 }
 
 export function readNumberWithTemplate(
@@ -450,10 +454,7 @@ export function readNumberWithTemplate(
   return readNumber(value) ?? readNumber(template[key]);
 }
 
-export function readBooleanWithTemplate(
-  template: Record<string, unknown>,
-  key: string,
-): boolean | undefined {
+export function readBooleanWithTemplate(template: Record<string, unknown>, key: string): boolean | undefined {
   return readBoolean(template[key]);
 }
 
@@ -470,17 +471,17 @@ export function nextHeaderKey(headers: Record<string, string>): string {
 }
 
 export function cloneRecord(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? JSON.parse(JSON.stringify(value)) as Record<string, unknown> : {};
+  return isRecord(value) ? (JSON.parse(JSON.stringify(value)) as Record<string, unknown>) : {};
 }
 
 export function optionalString<TKey extends string>(key: TKey, value: unknown): Partial<Record<TKey, string>> {
   const text = readString(value);
-  return text === undefined ? {} : { [key]: text } as Partial<Record<TKey, string>>;
+  return text === undefined ? {} : ({ [key]: text } as Partial<Record<TKey, string>>);
 }
 
 export function optionalNumber<TKey extends string>(key: TKey, value: unknown): Partial<Record<TKey, number>> {
   const number = readNumber(value);
-  return number === undefined ? {} : { [key]: number } as Partial<Record<TKey, number>>;
+  return number === undefined ? {} : ({ [key]: number } as Partial<Record<TKey, number>>);
 }
 
 export function optionalCapabilities<TKey extends string>(
@@ -502,14 +503,12 @@ export function optionalCapabilities<TKey extends string>(
 
 export function readModelGroupMatch(value: unknown): ModelProviderRuleMatchKind {
   return ModelGroupMatchOptions.some((option) => option.value === value)
-    ? value as ModelProviderRuleMatchKind
+    ? (value as ModelProviderRuleMatchKind)
     : "prefix";
 }
 
 export function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 export function readStringArray(value: unknown): string[] {
@@ -526,13 +525,14 @@ export function parseDelimitedValues(value: string): string[] {
 }
 
 export function nextModelGroupId(groups: readonly ModelGroupDraft[]): string {
-  return nextAvailableName("group", groups.map((group) => group.Id));
+  return nextAvailableName(
+    "group",
+    groups.map((group) => group.Id),
+  );
 }
 
 export function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 export function readBoolean(value: unknown): boolean | undefined {
@@ -560,7 +560,7 @@ export function formatShortTime(iso: string): string {
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return date.toLocaleString("zh-CN", {
+  return date.toLocaleString(FrontendDefaultLocale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -575,13 +575,12 @@ export const ModelCapabilityKeys = [
   "Vision",
   "ImageOutput",
   "Reasoning",
-  "ToolCalling",
   "DeveloperRole",
 ] as const satisfies readonly (keyof ModelCapabilitiesDraft)[];
 
 export const ModelGroupMatchOptions = [
-  { value: "prefix", label: "前缀" },
-  { value: "includes", label: "包含" },
-  { value: "exact", label: "精确" },
-  { value: "suffix", label: "后缀" },
+  { value: "prefix", label: frontendMessage("config.modelGroups.matchPrefix") },
+  { value: "includes", label: frontendMessage("config.modelGroups.matchIncludes") },
+  { value: "exact", label: frontendMessage("config.modelGroups.matchExact") },
+  { value: "suffix", label: frontendMessage("config.modelGroups.matchSuffix") },
 ] as const satisfies readonly { value: ModelProviderRuleMatchKind; label: string }[];

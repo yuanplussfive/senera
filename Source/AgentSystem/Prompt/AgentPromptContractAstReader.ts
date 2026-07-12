@@ -1,8 +1,5 @@
 import ts from "typescript";
-import type {
-  ContractProjectionNode,
-  ResolvedTypeShape,
-} from "./AgentPromptContractTypes.js";
+import type { ContractProjectionNode, ResolvedTypeShape } from "./AgentPromptContractTypes.js";
 
 export class AgentPromptContractAstReader {
   constructor(
@@ -38,19 +35,18 @@ export class AgentPromptContractAstReader {
       return [];
     }
 
-    return shape.members
-      .filter(ts.isPropertySignature)
-      .flatMap((member) => {
-        const name = readPropertyName(member.name);
-        const type = member.type;
-        if (!name || !type) {
-          return [];
-        }
+    return shape.members.filter(ts.isPropertySignature).flatMap((member) => {
+      const name = readPropertyName(member.name);
+      const type = member.type;
+      if (!name || !type) {
+        return [];
+      }
 
-        const comment = readNodeComment(member, sourceFile) ?? "";
-        const xmlHint = extractXmlHint(comment) ?? "";
-        const propertyPath = joinPath(parentPath, name);
-        return [this.createNode({
+      const comment = readNodeComment(member, sourceFile) ?? "";
+      const xmlHint = extractXmlHint(comment) ?? "";
+      const propertyPath = joinPath(parentPath, name);
+      return [
+        this.createNode({
           name,
           path: propertyPath,
           depth: depth + 1,
@@ -60,8 +56,9 @@ export class AgentPromptContractAstReader {
           comment,
           xmlHint,
           sourceFile,
-        })];
-      });
+        }),
+      ];
+    });
   }
 
   private selectDefaultTypeDeclaration(
@@ -72,8 +69,7 @@ export class AgentPromptContractAstReader {
       return declarations[0];
     }
 
-    const argumentDeclarations = declarations.filter((declaration) =>
-      declaration.name.text.endsWith("Arguments"));
+    const argumentDeclarations = declarations.filter((declaration) => declaration.name.text.endsWith("Arguments"));
     if (argumentDeclarations.length === 1) {
       return argumentDeclarations[0];
     }
@@ -111,12 +107,7 @@ export class AgentPromptContractAstReader {
           required: options.required,
           comment: options.comment,
           xmlHint: options.xmlHint,
-          children: this.readProperties(
-            options.typeNode,
-            options.sourceFile,
-            options.path,
-            options.depth,
-          ),
+          children: this.readProperties(options.typeNode, options.sourceFile, options.path, options.depth),
           elements: [],
         }
       : shape.kind === "array"
@@ -271,9 +262,7 @@ function readPropertyName(name: ts.PropertyName): string | undefined {
 
 function readNodeComment(node: ts.Node, sourceFile: ts.SourceFile): string | undefined {
   const ranges = ts.getLeadingCommentRanges(sourceFile.text, node.pos) ?? [];
-  const lines = ranges.flatMap((range) =>
-    readCommentRangeLines(sourceFile.text, range),
-  );
+  const lines = ranges.flatMap((range) => readCommentRangeLines(sourceFile.text, range));
   const commentText = lines
     .map((line) => line.trim())
     .filter(Boolean)
@@ -282,28 +271,19 @@ function readNodeComment(node: ts.Node, sourceFile: ts.SourceFile): string | und
   return commentText.length > 0 ? commentText : undefined;
 }
 
-function readCommentRangeLines(
-  sourceText: string,
-  range: ts.CommentRange,
-): string[] {
+function readCommentRangeLines(sourceText: string, range: ts.CommentRange): string[] {
   const content = sourceText.slice(range.pos, range.end);
-  return range.kind === ts.SyntaxKind.SingleLineCommentTrivia
-    ? [content.slice(2)]
-    : readBlockCommentLines(content);
+  return range.kind === ts.SyntaxKind.SingleLineCommentTrivia ? [content.slice(2)] : readBlockCommentLines(content);
 }
 
 function readBlockCommentLines(comment: string): string[] {
   const body = comment.slice(2, Math.max(2, comment.length - 2));
-  return body
-    .split(/\r?\n/)
-    .map(normalizeBlockCommentLine);
+  return body.split(/\r?\n/).map(normalizeBlockCommentLine);
 }
 
 function normalizeBlockCommentLine(line: string): string {
   const trimmedStart = line.trimStart();
-  return trimmedStart.startsWith("*")
-    ? trimmedStart.slice(1).trimStart()
-    : trimmedStart;
+  return trimmedStart.startsWith("*") ? trimmedStart.slice(1).trimStart() : trimmedStart;
 }
 
 function extractXmlHint(comment: string | undefined): string | undefined {
@@ -320,14 +300,9 @@ function extractXmlHint(comment: string | undefined): string | undefined {
   return sentence.length > 0 ? sentence : undefined;
 }
 
-function partitionComment(
-  text: string,
-  marker: string,
-): [before: string, after?: string] {
+function partitionComment(text: string, marker: string): [before: string, after?: string] {
   const segments = text.split(marker, 2);
-  return segments.length === 2
-    ? [segments[0] ?? "", segments[1]?.trim()]
-    : [text];
+  return segments.length === 2 ? [segments[0] ?? "", segments[1]?.trim()] : [text];
 }
 
 function joinPath(parentPath: string, name: string): string {

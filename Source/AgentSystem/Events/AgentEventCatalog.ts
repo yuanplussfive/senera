@@ -5,8 +5,7 @@ export const AgentEventLayers = {
   Error: "error",
 } as const;
 
-export type AgentEventLayer =
-  typeof AgentEventLayers[keyof typeof AgentEventLayers];
+export type AgentEventLayer = (typeof AgentEventLayers)[keyof typeof AgentEventLayers];
 
 export const AgentEventPhases = {
   Request: "request",
@@ -21,8 +20,7 @@ export const AgentEventPhases = {
   Config: "config",
 } as const;
 
-export type AgentEventPhase =
-  typeof AgentEventPhases[keyof typeof AgentEventPhases];
+export type AgentEventPhase = (typeof AgentEventPhases)[keyof typeof AgentEventPhases];
 
 export const AgentEventKinds = {
   SessionCreated: "session.created",
@@ -56,6 +54,7 @@ export const AgentEventKinds = {
   AssistantMessageCreated: "assistant.message.created",
   ApprovalRequested: "approval.requested",
   ApprovalResolved: "approval.resolved",
+  ExecutionFallbackStarted: "execution.fallback.started",
   SandboxStatusSnapshot: "sandbox.status.snapshot",
   RunCompleted: "run.completed",
   RunFailed: "run.failed",
@@ -73,15 +72,13 @@ export const AgentEventKinds = {
   PresetFailed: "preset.failed",
 } as const;
 
-export type AgentEventKind =
-  typeof AgentEventKinds[keyof typeof AgentEventKinds];
+export type AgentEventKind = (typeof AgentEventKinds)[keyof typeof AgentEventKinds];
 
 export const AgentEventChannels = {
   AgentEvent: "agent.event",
 } as const;
 
-export type AgentEventChannel =
-  typeof AgentEventChannels[keyof typeof AgentEventChannels];
+export type AgentEventChannel = (typeof AgentEventChannels)[keyof typeof AgentEventChannels];
 
 export const AgentEventSpecTable: {
   [K in AgentEventKind]: {
@@ -210,6 +207,10 @@ export const AgentEventSpecTable: {
     phase: AgentEventPhases.Approval,
   },
   [AgentEventKinds.ApprovalResolved]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Approval,
+  },
+  [AgentEventKinds.ExecutionFallbackStarted]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Approval,
   },

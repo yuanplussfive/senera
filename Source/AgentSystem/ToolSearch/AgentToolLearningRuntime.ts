@@ -7,10 +7,7 @@ import type {
   AgentToolSearchLearnedKeyword,
   AgentToolSearchMemory,
 } from "./AgentToolSearchMemory.js";
-import type {
-  ResolvedAgentModelProviderConfig,
-  ResolvedAgentToolLearningConfig,
-} from "../Types/AgentConfigTypes.js";
+import type { ResolvedAgentModelProviderConfig, ResolvedAgentToolLearningConfig } from "../Types/AgentConfigTypes.js";
 import { parseToolLearningResult } from "./AgentToolLearningSchema.js";
 import {
   isRepairablePlanningFailure,
@@ -89,9 +86,7 @@ export class AgentToolLearningRuntime {
       },
     };
 
-    const allowedTags = new Map(
-      toolTagCatalogByTool.map((entry) => [entry.toolName, new Set(entry.tags)] as const),
-    );
+    const allowedTags = new Map(toolTagCatalogByTool.map((entry) => [entry.toolName, new Set(entry.tags)] as const));
     const parsed = await this.learnAndValidate(input, {
       selectedTools,
       candidateSourceTerms,
@@ -161,10 +156,7 @@ export class AgentToolLearningRuntime {
   }
 
   private projectToolTagsByName(): Map<string, string[]> {
-    return new Map(new AgentToolCatalogProjector(this.registry).list().map((tool) => [
-      tool.name,
-      tool.tags,
-    ]));
+    return new Map(new AgentToolCatalogProjector(this.registry).list().map((tool) => [tool.name, tool.tags]));
   }
 
   private candidateSourceTerms(draft: AgentToolLearningEpisodeDraft): string[] {

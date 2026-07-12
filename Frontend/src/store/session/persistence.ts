@@ -5,10 +5,12 @@ import type { MotionLevel } from "../../shared/motion";
 
 export const PERSIST_KEY = "senera-frontend@v1";
 
-type PersistedSessionState = Partial<Pick<
-  StoreState,
-  "motionLevel" | "rightPanelCollapsed" | "selectedModelProviderId" | "sidebarCollapsed" | "userProfile"
->>;
+type PersistedSessionState = Partial<
+  Pick<
+    StoreState,
+    "motionLevel" | "rightPanelCollapsed" | "selectedModelProviderId" | "sidebarCollapsed" | "userProfile"
+  >
+>;
 
 export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionState> = {
   name: PERSIST_KEY,

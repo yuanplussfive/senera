@@ -6,9 +6,7 @@ import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolCatalogItem } from "../ToolRuntime/AgentToolCatalogProjector.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { AgentPlannerRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
-import {
-  DefaultAgentArtifactRootDir,
-} from "../Artifacts/AgentArtifactLocator.js";
+import { DefaultAgentArtifactRootDir } from "../Artifacts/AgentArtifactLocator.js";
 import { AgentDefaults } from "../AgentDefaults.js";
 import {
   AgentActionPlannerLedgerUpdater,
@@ -16,9 +14,7 @@ import {
   type AgentActionPlannerLedger,
 } from "./AgentActionPlannerLedger.js";
 import { AgentActionPlannerTimelineProjector } from "./AgentActionPlannerTimelineProjector.js";
-import {
-  AgentPlannerMemoryProjector,
-} from "../Memory/AgentPlannerMemory.js";
+import { AgentPlannerMemoryProjector } from "../Memory/AgentPlannerMemory.js";
 import { AgentToolTagCatalogProjector } from "../ToolRuntime/AgentToolTagCatalogProjector.js";
 
 export type {
@@ -28,10 +24,7 @@ export type {
   PlannerRepeatedCallWarning,
   PlannerToolCallRecord,
 } from "./AgentActionPlannerLedger.js";
-export {
-  buildInitialActionPlannerLedger,
-  EmptyActionPlannerLedger,
-} from "./AgentActionPlannerLedger.js";
+export { buildInitialActionPlannerLedger, EmptyActionPlannerLedger } from "./AgentActionPlannerLedger.js";
 
 export class AgentActionPlannerContextBuilder {
   private readonly ledgerUpdater: AgentActionPlannerLedgerUpdater;
@@ -69,30 +62,28 @@ export class AgentActionPlannerContextBuilder {
     turnUnderstanding?: TurnUnderstanding;
     roleplayPreset?: AgentPlannerRoleplayPresetContext;
   }): ActionPlanInput {
-    const loadedTools = options.loadedToolNames === "all"
-      ? options.toolCatalog.map((tool) => tool.name)
-      : [...options.loadedToolNames];
+    const loadedTools =
+      options.loadedToolNames === "all" ? options.toolCatalog.map((tool) => tool.name) : [...options.loadedToolNames];
     const visibleTools = new Set(loadedTools);
     const memory = this.memoryProjector.project(options.conversationEntries ?? [], {
       excludeEvidenceRequestId: options.requestId,
     });
     const evidenceState = options.ledger.evidence.map((entry) => {
-        const call = options.ledger.calls.find((candidate) =>
-          candidate.evidenceUris.includes(entry.evidenceUri));
-        return {
-          evidenceUri: entry.evidenceUri,
-          kind: entry.kind,
-          toolName: call?.toolName ?? "",
-          artifactUri: entry.artifactUri,
-          locator: entry.locator,
-          display: entry.display,
-          label: entry.label,
-          source: entry.source,
-          confidence: entry.confidence,
-          facts: entry.modelSlots,
-          artifactRefs: [entry.artifactUri],
-        };
-      });
+      const call = options.ledger.calls.find((candidate) => candidate.evidenceUris.includes(entry.evidenceUri));
+      return {
+        evidenceUri: entry.evidenceUri,
+        kind: entry.kind,
+        toolName: call?.toolName ?? "",
+        artifactUri: entry.artifactUri,
+        locator: entry.locator,
+        display: entry.display,
+        label: entry.label,
+        source: entry.source,
+        confidence: entry.confidence,
+        facts: entry.modelSlots,
+        artifactRefs: [entry.artifactUri],
+      };
+    });
 
     return {
       currentUserTurn: {
@@ -136,8 +127,7 @@ export class AgentActionPlannerContextBuilder {
       toolTagCatalog: this.tagCatalogProjector.project({
         tools: options.toolCatalog,
       }),
-      compactToolCatalog: options.toolCatalog.map((tool) =>
-        projectCompactToolCatalogItem(tool, visibleTools)),
+      compactToolCatalog: options.toolCatalog.map((tool) => projectCompactToolCatalogItem(tool, visibleTools)),
       toolCatalog: options.toolCatalog.map((tool) => ({
         ...tool,
         loaded: visibleTools.has(tool.name),
@@ -164,11 +154,9 @@ function projectCompactToolCatalogItem(
     name: tool.name,
     title: tool.title,
     summary: tool.summary,
-    capabilities: uniqueStrings(tool.capabilities.flatMap((capability) => [
-      capability.id,
-      capability.title,
-      capability.description,
-    ])),
+    capabilities: uniqueStrings(
+      tool.capabilities.flatMap((capability) => [capability.id, capability.title, capability.description]),
+    ),
     evidence: uniqueStrings([
       ...tool.evidenceCapabilities.flatMap((capability) => [
         capability.produces,
@@ -177,10 +165,8 @@ function projectCompactToolCatalogItem(
       ]),
       ...tool.capabilities.flatMap((capability) => capability.facets.Evidence ?? []),
     ]),
-    effects: uniqueStrings(tool.capabilities.flatMap((capability) =>
-      capability.facets.Effects ?? [])),
-    outputs: uniqueStrings(tool.capabilities.flatMap((capability) =>
-      capability.facets.Outputs ?? [])),
+    effects: uniqueStrings(tool.capabilities.flatMap((capability) => capability.facets.Effects ?? [])),
+    outputs: uniqueStrings(tool.capabilities.flatMap((capability) => capability.facets.Outputs ?? [])),
     permissions: tool.permissions,
     loaded: visibleTools.has(tool.name),
     rootKind: tool.rootKind,

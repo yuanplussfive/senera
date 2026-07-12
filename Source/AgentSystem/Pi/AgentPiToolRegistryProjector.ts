@@ -7,10 +7,7 @@ import { AgentPromptContractProjector } from "../Prompt/AgentPromptContractProje
 import { AgentPromptDocumentationReader } from "../Prompt/AgentPromptDocumentationReader.js";
 import { resolveAgentPromptSections } from "../Prompt/AgentPromptSectionResolver.js";
 import type { AgentPiToolExecutionBridge } from "./AgentPiToolExecutionBridge.js";
-import type {
-  AgentPiToolDefinition,
-  AgentPiToolProjectionContext,
-} from "./AgentPiTypes.js";
+import type { AgentPiToolDefinition, AgentPiToolProjectionContext } from "./AgentPiTypes.js";
 
 export interface AgentPiToolRegistryProjectorOptions {
   config: AgentSystemConfig;
@@ -38,17 +35,14 @@ export class AgentPiToolRegistryProjector {
   }
 
   project(context: AgentPiToolProjectionContext = {}): AgentPiToolDefinition[] {
-    return this.visibleTools(context.visibleToolNames)
-      .map((tool) => this.projectTool(tool, context));
+    return this.visibleTools(context.visibleToolNames).map((tool) => this.projectTool(tool, context));
   }
 
   names(visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"]): string[] {
     return this.visibleTools(visibleToolNames).map((tool) => tool.name);
   }
 
-  private visibleTools(
-    visibleToolNames: AgentPiToolProjectionContext["visibleToolNames"] = "all",
-  ): RegisteredTool[] {
+  private visibleTools(visibleToolNames: AgentPiToolProjectionContext["visibleToolNames"] = "all"): RegisteredTool[] {
     if (visibleToolNames === "all") {
       return this.options.registry.listTools();
     }
@@ -57,10 +51,7 @@ export class AgentPiToolRegistryProjector {
     return this.options.registry.listTools().filter((tool) => visible.has(tool.name));
   }
 
-  private projectTool(
-    tool: RegisteredTool,
-    context: AgentPiToolProjectionContext,
-  ): AgentPiToolDefinition {
+  private projectTool(tool: RegisteredTool, context: AgentPiToolProjectionContext): AgentPiToolDefinition {
     return {
       name: tool.name,
       label: tool.plugin.manifest.Plugin.Title ?? tool.name,
@@ -85,31 +76,25 @@ export class AgentPiToolRegistryProjector {
     const trigger = normalizeMarkdownSectionText(document.sections.get(sections.trigger));
     const fallback = tool.search?.Summary ?? tool.plugin.manifest.Plugin.Description ?? "";
 
-    return [
-      summary || fallback,
-      trigger,
-      ...tool.permissions.map((permission) => `permission: ${permission}`),
-    ].filter(Boolean).join("\n\n");
+    return [summary || fallback, trigger, ...tool.permissions.map((permission) => `permission: ${permission}`)]
+      .filter(Boolean)
+      .join("\n\n");
   }
 
   private projectParameterSchema(tool: RegisteredTool): Record<string, unknown> {
-    return this.contractProjector.projectFromFile(
-      tool.signatureFile,
-      "arguments",
-      tool.signatureType,
-    )?.jsonSchema ?? { ...EmptyObjectParameterSchema };
+    return (
+      this.contractProjector.projectFromFile(tool.signatureFile, "arguments", tool.signatureType)?.jsonSchema ?? {
+        ...EmptyObjectParameterSchema,
+      }
+    );
   }
 }
 
 function normalizeToolParams(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function resolveConfiguredToolDescriptionSections(
-  config: AgentSystemConfig,
-) {
+function resolveConfiguredToolDescriptionSections(config: AgentSystemConfig) {
   const configured = config.PluginDocumentation?.ToolDescription;
   return resolveAgentPromptSections({
     summary: configured?.SummarySection,

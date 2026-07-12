@@ -1,10 +1,7 @@
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
-import type {
-  AgentModelProviderMetadata,
-  AgentModelUsage,
-} from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentModelProviderMetadata, AgentModelUsage } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentActionPlannerLedger } from "../ActionPlanner/AgentActionPlannerContext.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
@@ -37,9 +34,7 @@ export interface CompletedAgentLoopMachineState {
   result: AgentCompletedRunResult;
 }
 
-export type AgentLoopMachineState =
-  | RunningAgentLoopMachineState
-  | CompletedAgentLoopMachineState;
+export type AgentLoopMachineState = RunningAgentLoopMachineState | CompletedAgentLoopMachineState;
 
 export type AgentLoopCommand =
   | {

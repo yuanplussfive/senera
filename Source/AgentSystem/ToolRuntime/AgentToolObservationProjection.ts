@@ -8,9 +8,7 @@ import {
   uniqueStrings,
 } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
 import { renderToolObservationContent } from "./AgentToolObservationRenderer.js";
-import {
-  normalizeAgentArtifactUri,
-} from "../Artifacts/AgentArtifactLocator.js";
+import { normalizeAgentArtifactUri } from "../Artifacts/AgentArtifactLocator.js";
 import { AgentPlannerTimelinePayloadKeys } from "../ActionPlanner/AgentPlannerTimelinePayload.js";
 
 export interface ToolObservationProjection {
@@ -59,9 +57,7 @@ export class AgentToolObservationProjector {
     }
 
     const result = (value as Record<string, unknown>).result;
-    const items = Array.isArray(result)
-      ? result
-      : readArrayItems(result, this.protocol.items.toolResult);
+    const items = Array.isArray(result) ? result : readArrayItems(result, this.protocol.items.toolResult);
     return items.length > 0
       ? this.renderToolResultItems(items)
       : {
@@ -211,10 +207,9 @@ export class AgentToolObservationProjector {
             changeCount: patch.changeCount,
           })
         : undefined,
-      changes: readArrayItems(
-        readRecord(record.changes),
-        this.protocol.items.arrayItem,
-      ).map((entry) => this.projectWorkspaceChange(entry)),
+      changes: readArrayItems(readRecord(record.changes), this.protocol.items.arrayItem).map((entry) =>
+        this.projectWorkspaceChange(entry),
+      ),
     });
   }
 
@@ -241,5 +236,5 @@ export class AgentToolObservationProjector {
 }
 
 function readArtifactUri(value: string | undefined): string | undefined {
-  return value ? normalizeAgentArtifactUri(value) ?? value : undefined;
+  return value ? (normalizeAgentArtifactUri(value) ?? value) : undefined;
 }

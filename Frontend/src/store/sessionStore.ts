@@ -11,11 +11,7 @@ import {
   deleteSessionRuntimeState,
   truncate,
 } from "./session/sessionProjector";
-import {
-  DEFAULT_USER_PROFILE,
-  normalizeUserProfile,
-  type UserProfile,
-} from "./session/userProfile";
+import { DEFAULT_USER_PROFILE, normalizeUserProfile, type UserProfile } from "./session/userProfile";
 import type { MotionLevel } from "../shared/motion";
 import {
   type ConversationEntryDto,
@@ -24,6 +20,7 @@ import {
   type EventEnvelope,
   type ApprovalRequestedData,
   type ApprovalResolvedData,
+  type ApprovalSubjectData,
   type ModelProviderMetadata,
   type ModelProviderListItem,
   type PresetItem,
@@ -59,15 +56,7 @@ export interface ChatMessage {
 }
 
 export type TimelineStepKind =
-  | "understand"
-  | "prompt"
-  | "model"
-  | "pi"
-  | "decision"
-  | "tool"
-  | "retry"
-  | "answer"
-  | "error";
+  "understand" | "prompt" | "model" | "pi" | "decision" | "tool" | "retry" | "answer" | "error";
 
 export type TimelineStepStatus = "pending" | "running" | "done" | "failed";
 
@@ -146,16 +135,17 @@ export interface RunRecord {
 
 export interface ApprovalRunRecord {
   approvalId: string;
+  approvalKind: ApprovalRequestedData["approvalKind"];
   status: ApprovalRequestedData["status"] | ApprovalResolvedData["status"];
   title: string;
   reason: string;
   rule?: string;
   riskSignals?: string[];
-  toolName: string;
+  subject: ApprovalSubjectData;
   createdAt: string;
   resolvedAt?: string;
   message?: string;
-  arguments: Record<string, unknown>;
+  scope?: ApprovalResolvedData["scope"];
 }
 
 export interface SessionRecord {
@@ -284,196 +274,194 @@ export const useStore = create<StoreState>()(
       configSnapshot: null,
       userProfile: DEFAULT_USER_PROFILE,
 
-    selectSession: (id) =>
-      set((state) => {
-        state.activeSessionId = id;
-      }),
+      selectSession: (id) =>
+        set((state) => {
+          state.activeSessionId = id;
+        }),
 
-    toggleSidebar: () =>
-      set((state) => {
-        state.sidebarCollapsed = !state.sidebarCollapsed;
-      }),
+      toggleSidebar: () =>
+        set((state) => {
+          state.sidebarCollapsed = !state.sidebarCollapsed;
+        }),
 
-    toggleRightPanel: () =>
-      set((state) => {
-        state.rightPanelCollapsed = !state.rightPanelCollapsed;
-      }),
+      toggleRightPanel: () =>
+        set((state) => {
+          state.rightPanelCollapsed = !state.rightPanelCollapsed;
+        }),
 
-    setSidebarCollapsed: (collapsed) =>
-      set((state) => {
-        state.sidebarCollapsed = collapsed;
-      }),
+      setSidebarCollapsed: (collapsed) =>
+        set((state) => {
+          state.sidebarCollapsed = collapsed;
+        }),
 
-    setRightPanelCollapsed: (collapsed) =>
-      set((state) => {
-        state.rightPanelCollapsed = collapsed;
-      }),
+      setRightPanelCollapsed: (collapsed) =>
+        set((state) => {
+          state.rightPanelCollapsed = collapsed;
+        }),
 
-    setMotionLevel: (level) =>
-      set((state) => {
-        state.motionLevel = level;
-      }),
+      setMotionLevel: (level) =>
+        set((state) => {
+          state.motionLevel = level;
+        }),
 
-    setViewedRun: (sessionId, requestId) =>
-      set((state) => {
-        if (requestId) {
-          state.viewedRunIdBySession[sessionId] = requestId;
-        } else {
-          delete state.viewedRunIdBySession[sessionId];
-        }
-      }),
-
-    registerCreatingSession: (sessionId, title) =>
-      set((state) => {
-        delete state.pendingDeletedSessionIds[sessionId];
-        state.pendingCreatedSessionIds[sessionId] = true;
-        if (state.sessions[sessionId]) {
-          if (!state.sessionOrder.includes(sessionId)) {
-            state.sessionOrder.unshift(sessionId);
+      setViewedRun: (sessionId, requestId) =>
+        set((state) => {
+          if (requestId) {
+            state.viewedRunIdBySession[sessionId] = requestId;
+          } else {
+            delete state.viewedRunIdBySession[sessionId];
           }
+        }),
+
+      registerCreatingSession: (sessionId, title) =>
+        set((state) => {
+          delete state.pendingDeletedSessionIds[sessionId];
+          state.pendingCreatedSessionIds[sessionId] = true;
+          if (state.sessions[sessionId]) {
+            if (!state.sessionOrder.includes(sessionId)) {
+              state.sessionOrder.unshift(sessionId);
+            }
+            state.activeSessionId = sessionId;
+            return;
+          }
+          state.sessions[sessionId] = {
+            sessionId,
+            title: title ?? DEFAULT_SESSION_TITLE,
+            status: "creating",
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+            entryCount: 0,
+            messageCount: 0,
+            messages: [],
+            runs: [],
+          };
+          state.sessionOrder.unshift(sessionId);
           state.activeSessionId = sessionId;
-          return;
-        }
-        state.sessions[sessionId] = {
-          sessionId,
-          title: title ?? DEFAULT_SESSION_TITLE,
-          status: "creating",
-          createdAt: nowIso(),
-          updatedAt: nowIso(),
-          entryCount: 0,
-          messageCount: 0,
-          messages: [],
-          runs: [],
-        };
-        state.sessionOrder.unshift(sessionId);
-        state.activeSessionId = sessionId;
-      }),
+        }),
 
-    renameSession: (sessionId, title) =>
-      set((state) => {
-        const session = state.sessions[sessionId];
-        if (session) session.title = title;
-      }),
+      renameSession: (sessionId, title) =>
+        set((state) => {
+          const session = state.sessions[sessionId];
+          if (session) session.title = title;
+        }),
 
-    removeSession: (sessionId) =>
-      set((state) => {
-        state.pendingDeletedSessionIds[sessionId] = true;
-        delete state.pendingCreatedSessionIds[sessionId];
-        delete state.sessions[sessionId];
-        state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
-        if (state.activeSessionId === sessionId) {
-          state.activeSessionId = state.sessionOrder[0] ?? null;
-        }
-      }),
+      removeSession: (sessionId) =>
+        set((state) => {
+          state.pendingDeletedSessionIds[sessionId] = true;
+          delete state.pendingCreatedSessionIds[sessionId];
+          delete state.sessions[sessionId];
+          state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
+          if (state.activeSessionId === sessionId) {
+            state.activeSessionId = state.sessionOrder[0] ?? null;
+          }
+        }),
 
-    clearAllSessions: (sessionIds) =>
-      set((state) => {
-        const ids = sessionIds?.length ? sessionIds : state.sessionOrder;
-        for (const id of ids) {
-          state.pendingDeletedSessionIds[id] = true;
-          delete state.pendingCreatedSessionIds[id];
-          deleteSessionRuntimeState(state, id);
-        }
-        if (state.activeSessionId && !state.sessions[state.activeSessionId]) {
-          state.activeSessionId = state.sessionOrder[0] ?? null;
-        }
-      }),
+      clearAllSessions: (sessionIds) =>
+        set((state) => {
+          const ids = sessionIds?.length ? sessionIds : state.sessionOrder;
+          for (const id of ids) {
+            state.pendingDeletedSessionIds[id] = true;
+            delete state.pendingCreatedSessionIds[id];
+            deleteSessionRuntimeState(state, id);
+          }
+          if (state.activeSessionId && !state.sessions[state.activeSessionId]) {
+            state.activeSessionId = state.sessionOrder[0] ?? null;
+          }
+        }),
 
-    markHistoryLoading: (sessionId) =>
-      set((state) => {
-        state.historyLoadingIds[sessionId] = true;
-        state.historyReplayBuffers[sessionId] = [];
-        state.historyStepBuffers[sessionId] = [];
-        state.historyEventRunIds[sessionId] = {};
-        delete state.historyFailedIds[sessionId];
-      }),
+      markHistoryLoading: (sessionId) =>
+        set((state) => {
+          state.historyLoadingIds[sessionId] = true;
+          state.historyReplayBuffers[sessionId] = [];
+          state.historyStepBuffers[sessionId] = [];
+          state.historyEventRunIds[sessionId] = {};
+          delete state.historyFailedIds[sessionId];
+        }),
 
-    markHistoryLoadFailed: (sessionId) =>
-      set((state) => {
-        state.historyLoadingIds[sessionId] = false;
-        state.historyFailedIds[sessionId] = true;
-        delete state.historyReplayBuffers[sessionId];
-        delete state.historyStepBuffers[sessionId];
-        delete state.historyEventRunIds[sessionId];
-      }),
+      markHistoryLoadFailed: (sessionId) =>
+        set((state) => {
+          state.historyLoadingIds[sessionId] = false;
+          state.historyFailedIds[sessionId] = true;
+          delete state.historyReplayBuffers[sessionId];
+          delete state.historyStepBuffers[sessionId];
+          delete state.historyEventRunIds[sessionId];
+        }),
 
-    selectModelProvider: (id) =>
-      set((state) => {
-        state.selectedModelProviderId = id;
-      }),
+      selectModelProvider: (id) =>
+        set((state) => {
+          state.selectedModelProviderId = id;
+        }),
 
-    setUserProfile: (profile) =>
-      set((state) => {
-        state.userProfile = normalizeUserProfile({
-          ...profile,
-          updatedAt: new Date().toISOString(),
-          syncState: "pending",
-        });
-      }),
+      setUserProfile: (profile) =>
+        set((state) => {
+          state.userProfile = normalizeUserProfile({
+            ...profile,
+            updatedAt: new Date().toISOString(),
+            syncState: "pending",
+          });
+        }),
 
-    markUserProfileSynced: (profile) =>
-      set((state) => {
-        const snapshot = normalizeUserProfile(profile ?? state.userProfile);
-        const current = normalizeUserProfile(state.userProfile);
-        const isCurrentPending = current.syncState === "pending";
-        const snapshotMatchesCurrent =
-          snapshot.name === current.name &&
-          snapshot.avatarDataUrl === current.avatarDataUrl;
-        if (isCurrentPending && !snapshotMatchesCurrent) return;
-        state.userProfile = {
-          ...snapshot,
-          syncState: "synced",
-        };
-      }),
+      markUserProfileSynced: (profile) =>
+        set((state) => {
+          const snapshot = normalizeUserProfile(profile ?? state.userProfile);
+          const current = normalizeUserProfile(state.userProfile);
+          const isCurrentPending = current.syncState === "pending";
+          const snapshotMatchesCurrent =
+            snapshot.name === current.name && snapshot.avatarDataUrl === current.avatarDataUrl;
+          if (isCurrentPending && !snapshotMatchesCurrent) return;
+          state.userProfile = {
+            ...snapshot,
+            syncState: "synced",
+          };
+        }),
 
-    replaceWithDevMockData: (mockSessions, activeSessionId) =>
-      set((state) => {
-        if (!import.meta.env.DEV) return;
-        state.sessions = {};
-        state.sessionOrder = [];
-        state.viewedRunIdBySession = {};
-        state.historyLoadedIds = {};
-        state.historyLoadingIds = {};
-        state.historyFailedIds = {};
-        state.historyReplayBuffers = {};
-        state.historyStepBuffers = {};
-        state.historyEventRunIds = {};
-        state.missingOnServerIds = {};
-        state.pendingCreatedSessionIds = {};
-        state.pendingDeletedSessionIds = {};
-        for (const session of mockSessions) {
-          state.sessions[session.sessionId] = session;
-          state.sessionOrder.push(session.sessionId);
-          state.historyLoadedIds[session.sessionId] = true;
-        }
-        state.activeSessionId = activeSessionId && state.sessions[activeSessionId]
-          ? activeSessionId
-          : state.sessionOrder[0] ?? null;
-      }),
+      replaceWithDevMockData: (mockSessions, activeSessionId) =>
+        set((state) => {
+          if (!import.meta.env.DEV) return;
+          state.sessions = {};
+          state.sessionOrder = [];
+          state.viewedRunIdBySession = {};
+          state.historyLoadedIds = {};
+          state.historyLoadingIds = {};
+          state.historyFailedIds = {};
+          state.historyReplayBuffers = {};
+          state.historyStepBuffers = {};
+          state.historyEventRunIds = {};
+          state.missingOnServerIds = {};
+          state.pendingCreatedSessionIds = {};
+          state.pendingDeletedSessionIds = {};
+          for (const session of mockSessions) {
+            state.sessions[session.sessionId] = session;
+            state.sessionOrder.push(session.sessionId);
+            state.historyLoadedIds[session.sessionId] = true;
+          }
+          state.activeSessionId =
+            activeSessionId && state.sessions[activeSessionId] ? activeSessionId : (state.sessionOrder[0] ?? null);
+        }),
 
-    appendUserMessage: (sessionId, requestId, input, attachments, options) =>
-      set((state) => {
-        if (state.historyLoadingIds[sessionId]) return;
-        const session = state.sessions[sessionId];
-        if (!session) return;
-        if (session.messages.length === 0) {
-          session.title = truncate(input, 24);
-        }
-        session.updatedAt = nowIso();
-        session.messages.push({
-          id: `${requestId}-user`,
-          role: "user",
-          content: input,
-          attachments,
-          createdAt: nowIso(),
-          requestId,
-        });
-        bumpSessionMessageCount(session);
-        if (options?.createRun !== false) {
-          session.activeRequestId = requestId;
-          session.runs.push(createRunRecord({ requestId, startedAt: nowIso(), input }));
-        }
-      }),
+      appendUserMessage: (sessionId, requestId, input, attachments, options) =>
+        set((state) => {
+          if (state.historyLoadingIds[sessionId]) return;
+          const session = state.sessions[sessionId];
+          if (!session) return;
+          if (session.messages.length === 0) {
+            session.title = truncate(input, 24);
+          }
+          session.updatedAt = nowIso();
+          session.messages.push({
+            id: `${requestId}-user`,
+            role: "user",
+            content: input,
+            attachments,
+            createdAt: nowIso(),
+            requestId,
+          });
+          bumpSessionMessageCount(session);
+          if (options?.createRun !== false) {
+            session.activeRequestId = requestId;
+            session.runs.push(createRunRecord({ requestId, startedAt: nowIso(), input }));
+          }
+        }),
 
       advanceStreamingDisplay: (sessionId, requestId) => {
         let pending = false;

@@ -35,44 +35,49 @@ test("nested config writes are immutable and create missing parent records", () 
 });
 
 test("draft validation reports nested table, range, and option violations", () => {
-  const sections = [{
-    name: "runtime",
-    label: "Runtime",
-    fields: [{
-      path: ["Retries"],
-      label: "Retries",
-      type: "number",
-      min: 0,
-      max: 3,
-    }, {
-      path: ["Mode"],
-      label: "Mode",
-      type: "string",
-      options: ["safe", "fast"],
-    }, {
-      path: ["Providers"],
-      label: "Providers",
-      type: "array",
-      itemType: "table",
-      itemFields: [{
-        path: ["Providers", "Id"],
-        label: "Provider ID",
-        type: "string",
-        minLength: 2,
-      }],
-    }],
-  }];
+  const sections = [
+    {
+      name: "runtime",
+      label: "Runtime",
+      fields: [
+        {
+          path: ["Retries"],
+          label: "Retries",
+          type: "number",
+          min: 0,
+          max: 3,
+        },
+        {
+          path: ["Mode"],
+          label: "Mode",
+          type: "string",
+          options: ["safe", "fast"],
+        },
+        {
+          path: ["Providers"],
+          label: "Providers",
+          type: "array",
+          itemType: "table",
+          itemFields: [
+            {
+              path: ["Providers", "Id"],
+              label: "Provider ID",
+              type: "string",
+              minLength: 2,
+            },
+          ],
+        },
+      ],
+    },
+  ];
 
-  expect(validateJsonConfigDraft(sections, {
-    Retries: 9,
-    Mode: "unknown",
-    Providers: [{ Id: "" }, "invalid"],
-  })).toEqual([
-    "Retries 不能大于 3",
-    "Mode 必须是允许的选项",
-    "Provider ID 不能为空",
-    "Providers 第 2 项 必须是对象",
-  ]);
+  expect(
+    validateJsonConfigDraft(sections, {
+      Retries: 9,
+      Mode: "unknown",
+      Providers: [{ Id: "" }, "invalid"],
+    }),
+  ).toEqual(["Retries 不能大于 3", "Mode 必须是允许的选项", "Provider ID 不能为空", "Providers 第 2 项 必须是对象"]);
 });
 
 test("settings form updates boolean, option, number, array, and record controls", async () => {
@@ -92,22 +97,26 @@ test("settings form updates boolean, option, number, array, and record controls"
   expect(number).toHaveValue(3);
   const tagsSection = screen.getByText("Tags").closest("div.grid");
   expect(within(tagsSection).getAllByRole("textbox")).toHaveLength(2);
-  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
-    Enabled: true,
-    Mode: "safe",
-    Retries: 3,
-    Tags: ["release", ""],
-    Headers: { existing: "value", key: "" },
-  }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      Enabled: true,
+      Mode: "safe",
+      Retries: 3,
+      Tags: ["release", ""],
+      Headers: { existing: "value", key: "" },
+    }),
+  );
 });
 
 test("disabled settings form blocks every mutable control", () => {
-  render(React.createElement(JsonConfigSettingsView, {
-    sections: configSections,
-    value: initialConfig,
-    disabled: true,
-    onChange: vi.fn(),
-  }));
+  render(
+    React.createElement(JsonConfigSettingsView, {
+      sections: configSections,
+      value: initialConfig,
+      disabled: true,
+      onChange: vi.fn(),
+    }),
+  );
 
   for (const control of screen.getAllByRole("button")) {
     expect(control).toBeDisabled();
@@ -137,41 +146,49 @@ const initialConfig = {
   Headers: { existing: "value" },
 };
 
-const configSections = [{
-  name: "runtime",
-  label: "Runtime",
-  description: "Runtime settings",
-  fields: [{
-    path: ["Enabled"],
-    label: "Enabled",
-    type: "boolean",
-    effectiveValue: false,
-  }, {
-    path: ["Mode"],
-    label: "Mode",
-    type: "string",
-    options: ["fast", "safe"],
-    optionLabels: { fast: "Fast", safe: "Safe" },
-    effectiveValue: "fast",
-  }, {
-    path: ["Retries"],
-    label: "Retries",
-    type: "number",
-    min: 0,
-    max: 5,
-    effectiveValue: 1,
-  }, {
-    path: ["Tags"],
-    label: "Tags",
-    type: "array",
-    itemType: "string",
-    addLabel: "添加标签",
-    effectiveValue: ["release"],
-  }, {
-    path: ["Headers"],
-    label: "Headers",
-    type: "record",
-    itemType: "string",
-    effectiveValue: { existing: "value" },
-  }],
-}];
+const configSections = [
+  {
+    name: "runtime",
+    label: "Runtime",
+    description: "Runtime settings",
+    fields: [
+      {
+        path: ["Enabled"],
+        label: "Enabled",
+        type: "boolean",
+        effectiveValue: false,
+      },
+      {
+        path: ["Mode"],
+        label: "Mode",
+        type: "string",
+        options: ["fast", "safe"],
+        optionLabels: { fast: "Fast", safe: "Safe" },
+        effectiveValue: "fast",
+      },
+      {
+        path: ["Retries"],
+        label: "Retries",
+        type: "number",
+        min: 0,
+        max: 5,
+        effectiveValue: 1,
+      },
+      {
+        path: ["Tags"],
+        label: "Tags",
+        type: "array",
+        itemType: "string",
+        addLabel: "添加标签",
+        effectiveValue: ["release"],
+      },
+      {
+        path: ["Headers"],
+        label: "Headers",
+        type: "record",
+        itemType: "string",
+        effectiveValue: { existing: "value" },
+      },
+    ],
+  },
+];

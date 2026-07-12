@@ -1,6 +1,6 @@
 import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
 import {
-  AgentTerminalActivityTone,
+  type AgentTerminalActivityTone,
   type AgentTerminalActivityGroup,
   type AgentTerminalActivityView,
   type AgentTerminalDetailMode,
@@ -28,15 +28,17 @@ export function patchWithStepActivity(
 ): AgentTerminalTimelinePatch {
   return {
     groups: group ? [group] : undefined,
-    upserts: [{
-      key: activityKey(event, activity.slot),
-      groupKey: group?.key,
-      title: activity.title,
-      summary: activity.summary,
-      detail: activity.detail,
-      tone: activity.tone,
-      state: activity.state,
-    }],
+    upserts: [
+      {
+        key: activityKey(event, activity.slot),
+        groupKey: group?.key,
+        title: activity.title,
+        summary: activity.summary,
+        detail: activity.detail,
+        tone: activity.tone,
+        state: activity.state,
+      },
+    ],
     silent,
   };
 }
@@ -73,15 +75,17 @@ export function keepExistingStepActivity(
   const key = activityKey(event, slot);
   const existing = state.activities.get(key);
   return {
-    upserts: [{
-      key,
-      groupKey: existing?.groupKey ?? statefulStepGroup(event)?.key,
-      title,
-      summary: existing?.summary ?? compactSummary(formatStep(event.step)),
-      detail: existing?.detail,
-      tone,
-      state: "completed",
-    }],
+    upserts: [
+      {
+        key,
+        groupKey: existing?.groupKey ?? statefulStepGroup(event)?.key,
+        title,
+        summary: existing?.summary ?? compactSummary(formatStep(event.step)),
+        detail: existing?.detail,
+        tone,
+        state: "completed",
+      },
+    ],
   };
 }
 
@@ -101,10 +105,7 @@ export function activityKey(event: AgentEventEnvelope<string, unknown>, slot: st
   return step === undefined ? slot : `step:${step}:${slot}`;
 }
 
-export function shouldRenderDetails(
-  mode: AgentTerminalDetailMode,
-  category: "errors" | "tools" | "xml",
-): boolean {
+export function shouldRenderDetails(mode: AgentTerminalDetailMode, category: "errors" | "tools" | "xml"): boolean {
   const catalog: Record<AgentTerminalDetailMode, string[]> = {
     none: [],
     errors: ["errors"],
@@ -123,9 +124,7 @@ export function silentPatch(): AgentTerminalTimelinePatch {
 }
 
 export function normalizeRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 export function compactSummary(...values: Array<string | undefined>): string | undefined {
@@ -153,15 +152,11 @@ export function formatCallHandle(value: unknown): string | undefined {
 }
 
 export function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 export function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 export function readRequestHandle(value: unknown): string | undefined {

@@ -1,15 +1,6 @@
-import {
-  EventKinds,
-  type RunFailedData,
-  type RunStartedData,
-  type SessionBusyData,
-} from "../../api/eventTypes";
-import {
-  bumpSessionMessageCount,
-  currentRun,
-  ensureSession,
-  upsertStep,
-} from "./sessionProjectorCore";
+import { EventKinds, type RunFailedData, type RunStartedData, type SessionBusyData } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { bumpSessionMessageCount, currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
 import { createRunRecord, touchRun } from "./sessionRunProjection";
 import { truncate } from "./sessionPresentation";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
@@ -35,7 +26,7 @@ export const runLifecycleEventHandlers = {
     upsertStep(run, {
       id: `${run.requestId}-understand`,
       kind: "understand",
-      title: "理解用户问题",
+      title: frontendMessage("workflow.projection.understandUser"),
       description: truncate(data.input, 60),
       status: "done",
       startedAt: env.timestamp,
@@ -67,8 +58,8 @@ export const runLifecycleEventHandlers = {
     const run = currentRun(session, env.requestId);
     if (!run && state.historyLoadingIds[sessionId]) {
       if (
-        (env.requestId && state.historyEventRunIds[sessionId]?.[env.requestId])
-        || hasHistoryTraceRun(state, sessionId, env.requestId)
+        (env.requestId && state.historyEventRunIds[sessionId]?.[env.requestId]) ||
+        hasHistoryTraceRun(state, sessionId, env.requestId)
       ) {
         return;
       }
@@ -87,7 +78,7 @@ export const runLifecycleEventHandlers = {
       upsertStep(run, {
         id: `${run.requestId}-error`,
         kind: "error",
-        title: "运行失败",
+        title: frontendMessage("workflow.projection.runFailed"),
         description: data.message,
         status: "failed",
         startedAt: env.timestamp,
@@ -122,7 +113,7 @@ export const runLifecycleEventHandlers = {
       upsertStep(run, {
         id: `${run.requestId}-busy`,
         kind: "error",
-        title: "会话正忙",
+        title: frontendMessage("workflow.projection.runBusy"),
         description: data.message,
         status: "failed",
         startedAt: env.timestamp,
@@ -152,8 +143,8 @@ export const runLifecycleEventHandlers = {
       upsertStep(run, {
         id: `${run.requestId}-cancelled`,
         kind: "error",
-        title: "已取消",
-        description: "用户中断了本次运行。",
+        title: frontendMessage("workflow.projection.cancelled"),
+        description: frontendMessage("workflow.projection.cancelledDescription"),
         status: "failed",
         startedAt: env.timestamp,
         endedAt: env.timestamp,

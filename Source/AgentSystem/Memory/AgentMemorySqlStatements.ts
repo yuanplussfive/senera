@@ -25,7 +25,8 @@ import {
 } from "./AgentMemoryVectorSqlStatements.js";
 
 export interface AgentMemorySqlStatements
-  extends AgentMemoryEpisodeSqlStatements,
+  extends
+    AgentMemoryEpisodeSqlStatements,
     AgentMemorySourceSqlStatements,
     AgentMemoryCandidateSqlStatements,
     AgentMemoryItemSqlStatements,
@@ -42,4 +43,3 @@ export function prepareAgentMemorySqlStatements(db: Database.Database): AgentMem
     ...prepareAgentMemoryVectorSqlStatements(db),
   };
 }
-

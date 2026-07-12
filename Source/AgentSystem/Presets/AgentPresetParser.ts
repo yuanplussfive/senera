@@ -1,9 +1,5 @@
 import path from "node:path";
-import type {
-  AgentPresetFormat,
-  AgentParsedPresetDocument,
-  AgentPresetFileRecord,
-} from "./AgentPresetTypes.js";
+import type { AgentPresetFormat, AgentParsedPresetDocument, AgentPresetFileRecord } from "./AgentPresetTypes.js";
 
 export class AgentPresetParser {
   parse(record: AgentPresetFileRecord): AgentParsedPresetDocument {

@@ -1,8 +1,4 @@
-export function matchByField<
-  TField extends string,
-  TValue extends Record<TField, string>,
-  TResult,
->(
+export function matchByField<TField extends string, TValue extends Record<TField, string>, TResult>(
   value: TValue,
   field: TField,
   handlers: {

@@ -58,40 +58,37 @@ export class AgentMcpStdioTransport implements Transport {
         this.onerror?.(error);
       };
 
-      try {
-        this.child = this.options.spawnPersistentProcess(
-          this.options.command,
-          this.options.args ?? [],
-          {
-            cwd: this.options.cwd,
-            env: {
-              ...getDefaultEnvironment(),
-              ...(this.options.env ?? {}),
-            },
-            windowsHide: true,
-            signal: this.options.signal,
-            profile: this.options.profile,
+      void this.options
+        .spawnPersistentProcess(this.options.command, this.options.args ?? [], {
+          cwd: this.options.cwd,
+          env: {
+            ...getDefaultEnvironment(),
+            ...(this.options.env ?? {}),
           },
-        );
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error(String(error)));
-        return;
-      }
-
-      this.child.on("error", reportError);
-      this.child.on("close", () => {
-        this.child = undefined;
-        this.onclose?.();
-      });
-      this.child.stdout.on("data", (chunk) => {
-        this.readBuffer.append(chunk);
-        this.processReadBuffer();
-      });
-      this.child.stdout.on("error", reportError);
-      this.child.stderr?.on("data", (chunk) => {
-        this.stderrStream?.write(chunk);
-      });
-      queueMicrotask(() => settleStart(resolve));
+          windowsHide: true,
+          signal: this.options.signal,
+          profile: this.options.profile,
+        })
+        .then((child) => {
+          this.child = child;
+          child.on("error", reportError);
+          child.on("close", () => {
+            this.child = undefined;
+            this.onclose?.();
+          });
+          child.stdout.on("data", (chunk) => {
+            this.readBuffer.append(chunk);
+            this.processReadBuffer();
+          });
+          child.stdout.on("error", reportError);
+          child.stderr?.on("data", (chunk) => {
+            this.stderrStream?.write(chunk);
+          });
+          queueMicrotask(() => settleStart(resolve));
+        })
+        .catch((error: unknown) => {
+          settleStart(() => reject(error instanceof Error ? error : new Error(String(error))));
+        });
     });
   }
 

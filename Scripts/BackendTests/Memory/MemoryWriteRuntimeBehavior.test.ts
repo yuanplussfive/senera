@@ -7,10 +7,7 @@ import {
 } from "../../../Source/AgentSystem/Memory/AgentMemoryWriteRuntime.js";
 import { SqliteAgentMemorySourceRepository } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import {
-  createTemporaryDirectory,
-  removeDirectory,
-} from "../Support/AgentTestFixtures.js";
+import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -34,10 +31,12 @@ describe("Memory write runtime behavior", () => {
         status: "written",
         warnings: { item: [] },
         memories: {
-          item: [expect.objectContaining({
-            operation: "create",
-            claim: "Promote verified previews without rebuilding",
-          })],
+          item: [
+            expect.objectContaining({
+              operation: "create",
+              claim: "Promote verified previews without rebuilding",
+            }),
+          ],
         },
       });
       expect(repository.listActiveMemoryItems()).toHaveLength(1);
@@ -54,22 +53,31 @@ describe("Memory write runtime behavior", () => {
       const memoryUri = created.memories.item[0]?.memoryUri;
       expect(memoryUri).toBeTruthy();
 
-      await writeAgentMemory(memoryArguments({
-        operation: "reinforce",
-        targetMemoryUri: memoryUri,
-        confidence: 0.9,
-        tags: ["release", "verified"],
-      }), { repository, config: memoryWriteConfig });
-      const updated = await writeAgentMemory(memoryArguments({
-        operation: "update",
-        targetMemoryUri: memoryUri,
-        claim: "Promote a verified preview after all checks pass",
-      }), { repository, config: memoryWriteConfig });
-      const superseded = await writeAgentMemory(memoryArguments({
-        operation: "supersede",
-        targetMemoryUri: updated.memories.item[0]?.memoryUri,
-        claim: "Promote the signed release candidate after verification",
-      }), { repository, config: memoryWriteConfig });
+      await writeAgentMemory(
+        memoryArguments({
+          operation: "reinforce",
+          targetMemoryUri: memoryUri,
+          confidence: 0.9,
+          tags: ["release", "verified"],
+        }),
+        { repository, config: memoryWriteConfig },
+      );
+      const updated = await writeAgentMemory(
+        memoryArguments({
+          operation: "update",
+          targetMemoryUri: memoryUri,
+          claim: "Promote a verified preview after all checks pass",
+        }),
+        { repository, config: memoryWriteConfig },
+      );
+      const superseded = await writeAgentMemory(
+        memoryArguments({
+          operation: "supersede",
+          targetMemoryUri: updated.memories.item[0]?.memoryUri,
+          claim: "Promote the signed release candidate after verification",
+        }),
+        { repository, config: memoryWriteConfig },
+      );
 
       const active = repository.listActiveMemoryItems();
       expect(active).toEqual([
@@ -107,19 +115,24 @@ describe("Memory write runtime behavior", () => {
         },
       });
 
-      const result = await writeAgentMemory(memoryArguments({
-        claim: "Keep promoting verified previews before stable releases",
-      }), {
-        repository,
-        config: memoryWriteConfig,
-        requestId: "write-2",
-        createDecisionResolver,
-      });
+      const result = await writeAgentMemory(
+        memoryArguments({
+          claim: "Keep promoting verified previews before stable releases",
+        }),
+        {
+          repository,
+          config: memoryWriteConfig,
+          requestId: "write-2",
+          createDecisionResolver,
+        },
+      );
 
-      expect(resolutions).toEqual([{
-        requestId: "write-2",
-        claim: "Keep promoting verified previews before stable releases",
-      }]);
+      expect(resolutions).toEqual([
+        {
+          requestId: "write-2",
+          claim: "Keep promoting verified previews before stable releases",
+        },
+      ]);
       expect(result.memories.item[0]).toMatchObject({
         memoryUri: targetMemoryUri,
         operation: "reinforce",
@@ -143,18 +156,23 @@ describe("Memory write runtime behavior", () => {
         }),
       });
 
-      const result = await writeAgentMemory(memoryArguments({
-        claim: "This one-off release is happening today",
-      }), {
-        repository,
-        config: memoryWriteConfig,
-        createDecisionResolver,
-      });
+      const result = await writeAgentMemory(
+        memoryArguments({
+          claim: "This one-off release is happening today",
+        }),
+        {
+          repository,
+          config: memoryWriteConfig,
+          createDecisionResolver,
+        },
+      );
 
-      expect(result).toEqual(expect.objectContaining({
-        status: "skipped",
-        memories: { item: [] },
-      }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: "skipped",
+          memories: { item: [] },
+        }),
+      );
       expect(repository.listActiveMemoryItems()).toHaveLength(1);
     } finally {
       repository.close();
@@ -163,17 +181,21 @@ describe("Memory write runtime behavior", () => {
 });
 
 const memoryWriteConfig: AgentSystemConfig = {
-  ModelProviderEndpoints: [{
-    Id: "test-endpoint",
-    BaseUrl: "https://model.example/v1",
-    ApiKey: "test-key",
-  }],
-  ModelProviders: [{
-    Id: "test-model",
-    ProviderId: "test-endpoint",
-    Endpoint: "ChatCompletions",
-    Model: "test-model",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "test-endpoint",
+      BaseUrl: "https://model.example/v1",
+      ApiKey: "test-key",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "test-model",
+      ProviderId: "test-endpoint",
+      Endpoint: "ChatCompletions",
+      Model: "test-model",
+    },
+  ],
   VectorModels: {
     Embedding: { Enabled: false },
     Rerank: { Enabled: false },

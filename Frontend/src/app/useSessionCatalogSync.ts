@@ -75,11 +75,14 @@ export function useSessionCatalogSync({
 
     if (!hydrationToastShownRef.current && state.sessionOrder.length > 0) {
       hydrationToastShownRef.current = true;
-      toast.success(frontendMessage("session.hydrated", {
-        count: state.sessionOrder.length,
-      }), {
-        description: frontendMessage("session.hydratingDescription"),
-      });
+      toast.success(
+        frontendMessage("session.hydrated", {
+          count: state.sessionOrder.length,
+        }),
+        {
+          description: frontendMessage("session.hydratingDescription"),
+        },
+      );
     }
   }, [onServerSessionsReset, send, status]);
 

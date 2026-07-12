@@ -1,7 +1,5 @@
 import type { PlannerTimelineTurn } from "../BamlClient/baml_client/types.js";
-import {
-  AgentToolObservationProjector,
-} from "../ToolRuntime/AgentToolObservationProjection.js";
+import { AgentToolObservationProjector } from "../ToolRuntime/AgentToolObservationProjection.js";
 import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import {
   compactObject,
@@ -11,10 +9,7 @@ import {
   readString,
   stringifyPreview,
 } from "./AgentActionPlannerProjectionUtils.js";
-import {
-  AgentPlannerTimelinePayloadKeys,
-  encodePlannerTimelinePayload,
-} from "./AgentPlannerTimelinePayload.js";
+import { AgentPlannerTimelinePayloadKeys, encodePlannerTimelinePayload } from "./AgentPlannerTimelinePayload.js";
 
 export class AgentPlannerTimelineXmlProjector {
   private readonly toolObservationProjector: AgentToolObservationProjector;
@@ -23,11 +18,7 @@ export class AgentPlannerTimelineXmlProjector {
     this.toolObservationProjector = new AgentToolObservationProjector(protocol);
   }
 
-  projectRoot(
-    rootName: string,
-    value: unknown,
-    source: string,
-  ): Array<Omit<PlannerTimelineTurn, "index">> {
+  projectRoot(rootName: string, value: unknown, source: string): Array<Omit<PlannerTimelineTurn, "index">> {
     if (rootName === this.protocol.roots.readOnlyEvidence) {
       const projected = this.projectReadOnlyEvidence(value);
       return projected ? [projected] : [];
@@ -35,16 +26,18 @@ export class AgentPlannerTimelineXmlProjector {
 
     if (rootName === this.protocol.roots.currentUserMessage) {
       const payload = this.projectCurrentUserMessage(value);
-      return [{
-        role: "user",
-        kind: "user_message",
-        content: this.readUserMessageContent(payload),
-        payloadJson: this.payloadJson({
-          [AgentPlannerTimelinePayloadKeys.UserMessage]: payload,
-        }),
-        evidenceUris: [],
-        artifactUris: [],
-      }];
+      return [
+        {
+          role: "user",
+          kind: "user_message",
+          content: this.readUserMessageContent(payload),
+          payloadJson: this.payloadJson({
+            [AgentPlannerTimelinePayloadKeys.UserMessage]: payload,
+          }),
+          evidenceUris: [],
+          artifactUris: [],
+        },
+      ];
     }
 
     if (rootName === this.protocol.roots.historicalUserTurn) {
@@ -66,42 +59,48 @@ export class AgentPlannerTimelineXmlProjector {
 
     if (rootName === this.protocol.roots.toolCalls) {
       const calls = this.toolObservationProjector.projectToolCalls(value);
-      return [{
-        role: "assistant",
-        kind: "tool_call",
-        content: stringifyPreview(calls),
-        payloadJson: this.payloadJson({
-          [AgentPlannerTimelinePayloadKeys.Calls]: calls,
-        }),
-        evidenceUris: [],
-        artifactUris: [],
-      }];
+      return [
+        {
+          role: "assistant",
+          kind: "tool_call",
+          content: stringifyPreview(calls),
+          payloadJson: this.payloadJson({
+            [AgentPlannerTimelinePayloadKeys.Calls]: calls,
+          }),
+          evidenceUris: [],
+          artifactUris: [],
+        },
+      ];
     }
 
     if (rootName === this.protocol.roots.toolResults) {
       const observation = this.toolObservationProjector.projectToolResults(value);
-      return [{
-        role: "user",
-        kind: "tool_observation",
-        content: observation.content,
-        payloadJson: this.payloadJson(observation.payload),
-        evidenceUris: observation.evidenceUris,
-        artifactUris: observation.artifactUris,
-      }];
+      return [
+        {
+          role: "user",
+          kind: "tool_observation",
+          content: observation.content,
+          payloadJson: this.payloadJson(observation.payload),
+          evidenceUris: observation.evidenceUris,
+          artifactUris: observation.artifactUris,
+        },
+      ];
     }
 
     return source.trimStart().startsWith(`<${rootName}`)
-      ? [{
-          role: "user",
-          kind: "xml_observation",
-          content: stringifyPreview(value),
-          payloadJson: this.payloadJson({
-            [AgentPlannerTimelinePayloadKeys.XmlRoot]: rootName,
-            [AgentPlannerTimelinePayloadKeys.Value]: value,
-          }),
-          evidenceUris: [],
-          artifactUris: [],
-        }]
+      ? [
+          {
+            role: "user",
+            kind: "xml_observation",
+            content: stringifyPreview(value),
+            payloadJson: this.payloadJson({
+              [AgentPlannerTimelinePayloadKeys.XmlRoot]: rootName,
+              [AgentPlannerTimelinePayloadKeys.Value]: value,
+            }),
+            evidenceUris: [],
+            artifactUris: [],
+          },
+        ]
       : [];
   }
 
@@ -216,14 +215,16 @@ export class AgentPlannerTimelineXmlProjector {
       return [];
     }
 
-    return [{
-      role: "user",
-      kind: "tool_observation",
-      content: observation.content,
-      payloadJson: this.payloadJson(observation.payload),
-      evidenceUris: observation.evidenceUris,
-      artifactUris: observation.artifactUris,
-    }];
+    return [
+      {
+        role: "user",
+        kind: "tool_observation",
+        content: observation.content,
+        payloadJson: this.payloadJson(observation.payload),
+        evidenceUris: observation.evidenceUris,
+        artifactUris: observation.artifactUris,
+      },
+    ];
   }
 
   private projectAttachments(value: unknown): Record<string, unknown>[] {
@@ -235,14 +236,16 @@ export class AgentPlannerTimelineXmlProjector {
     return readArrayItems(record, this.protocol.items.arrayItem)
       .map((entry) => readRecord(entry))
       .filter((entry): entry is Record<string, unknown> => Boolean(entry))
-      .map((entry) => compactObject({
-        evidenceUri: entry.evidenceUri,
-        uploadUri: entry.uploadUri,
-        name: entry.name,
-        mime: entry.mime,
-        size: entry.size,
-        status: entry.status,
-      }));
+      .map((entry) =>
+        compactObject({
+          evidenceUri: entry.evidenceUri,
+          uploadUri: entry.uploadUri,
+          name: entry.name,
+          mime: entry.mime,
+          size: entry.size,
+          status: entry.status,
+        }),
+      );
   }
 
   private readUserMessageContent(payload: Record<string, unknown>): string {

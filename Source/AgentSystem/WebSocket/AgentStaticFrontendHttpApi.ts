@@ -19,8 +19,7 @@ export class AgentStaticFrontendHttpApi {
   }
 
   canHandle(request: IncomingMessage): boolean {
-    return (request.method === "GET" || request.method === "HEAD")
-      && !this.isApiRoute(request);
+    return (request.method === "GET" || request.method === "HEAD") && !this.isApiRoute(request);
   }
 
   handle(request: IncomingMessage, response: ServerResponse): void {
@@ -63,8 +62,9 @@ export class AgentStaticFrontendHttpApi {
   }
 
   private resolveResponseFile(requestedPath: string): string | undefined {
-    return this.resolveExistingFile(requestedPath)
-      ?? (isFrontendRoute(requestedPath) ? this.indexFilePath() : undefined);
+    return (
+      this.resolveExistingFile(requestedPath) ?? (isFrontendRoute(requestedPath) ? this.indexFilePath() : undefined)
+    );
   }
 
   private resolveSafePath(requestedPath: string): string | undefined {
@@ -114,13 +114,15 @@ export class AgentStaticFrontendHttpApi {
     response.writeHead(404, {
       "Content-Type": "application/json; charset=utf-8",
     });
-    response.end(JSON.stringify({
-      ok: false,
-      error: {
-        code: "not_found",
-        message: agentErrorMessage("websocket.frontendAssetMissing"),
-      },
-    }));
+    response.end(
+      JSON.stringify({
+        ok: false,
+        error: {
+          code: "not_found",
+          message: agentErrorMessage("websocket.frontendAssetMissing"),
+        },
+      }),
+    );
   }
 }
 

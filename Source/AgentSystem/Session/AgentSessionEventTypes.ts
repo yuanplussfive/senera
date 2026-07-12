@@ -1,4 +1,4 @@
-import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext, AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";

@@ -7,13 +7,7 @@ type EncodingApi = {
   isWithinTokenLimit(input: string, tokenLimit: number): false | number;
 };
 
-type EncodingName =
-  | "cl100k_base"
-  | "o200k_base"
-  | "o200k_harmony"
-  | "p50k_base"
-  | "p50k_edit"
-  | "r50k_base";
+type EncodingName = "cl100k_base" | "o200k_base" | "o200k_harmony" | "p50k_base" | "p50k_edit" | "r50k_base";
 
 interface TokenizerMappingModule {
   DEFAULT_ENCODING: EncodingName;
@@ -54,10 +48,7 @@ export type AgentTextBudgetSnapshot =
       exceededTokens: number;
     };
 
-export type AgentExceededTextBudgetSnapshot = Extract<
-  AgentTextBudgetSnapshot,
-  { state: "limit_reached" }
->;
+export type AgentExceededTextBudgetSnapshot = Extract<AgentTextBudgetSnapshot, { state: "limit_reached" }>;
 
 export interface AgentTextBudgetEvaluator {
   measure(text: string): AgentTextBudgetSnapshot;
@@ -219,8 +210,6 @@ function resolveEncodingContext(model: string): ResolvedEncodingContext {
     api: EncodingApiRegistry[encodingName],
     model,
     encodingName,
-    resolution: Object.prototype.hasOwnProperty.call(KnownModelEncodingMap, model)
-      ? "model_map"
-      : "default_encoding",
+    resolution: Object.prototype.hasOwnProperty.call(KnownModelEncodingMap, model) ? "model_map" : "default_encoding",
   };
 }

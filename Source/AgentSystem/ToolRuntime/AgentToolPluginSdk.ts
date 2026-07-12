@@ -2,7 +2,6 @@ export {
   runToolPlugin,
   runToolPluginSuite,
   type ToolPluginDefinition as AgentToolPluginDefinition,
-  type ToolPluginRuntimeOptions as AgentToolPluginSdkOptions,
 } from "./ToolPluginRuntime.js";
 
 export {
@@ -13,8 +12,4 @@ export {
   type ReadPluginTomlConfigOptions,
 } from "./AgentToolPluginConfig.js";
 
-export {
-  z,
-  ZodError,
-  type ZodType,
-} from "zod";
+export { z, ZodError, type ZodType } from "zod";

@@ -17,14 +17,9 @@ export const SeneraMicrosandboxDefaults = {
   unavailableRetryDelayMs: 60_000,
 } as const;
 
-export type SeneraMicrosandboxNetworkMode =
-  typeof SeneraMicrosandboxDefaults.network
-  | "default";
+export type SeneraMicrosandboxNetworkMode = typeof SeneraMicrosandboxDefaults.network | "default";
 
-export type SeneraMicrosandboxPullPolicy =
-  typeof SeneraMicrosandboxDefaults.pullPolicy
-  | "always"
-  | "never";
+export type SeneraMicrosandboxPullPolicy = typeof SeneraMicrosandboxDefaults.pullPolicy | "always" | "never";
 
 export interface SeneraMicrosandboxSettings {
   image: string;

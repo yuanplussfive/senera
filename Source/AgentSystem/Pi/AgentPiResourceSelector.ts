@@ -88,17 +88,18 @@ export class AgentPiResourceSelector {
           const document = documentById.get(String(result.id));
           const template = document ? templateByName.get(document.templateName) : undefined;
           return template
-            ? [{
-                template,
-                score: result.score,
-                matchedTerms: [...new Set(result.queryTerms)],
-                resourceKinds: templateResourceMetadata(template, "PiResourceKind"),
-                workflowRoles: templateResourceMetadata(template, "PiWorkflowRole"),
-              }]
+            ? [
+                {
+                  template,
+                  score: result.score,
+                  matchedTerms: [...new Set(result.queryTerms)],
+                  resourceKinds: templateResourceMetadata(template, "PiResourceKind"),
+                  workflowRoles: templateResourceMetadata(template, "PiWorkflowRole"),
+                },
+              ]
             : [];
         })
-        .sort((left, right) =>
-          right.score - left.score || left.template.name.localeCompare(right.template.name)),
+        .sort((left, right) => right.score - left.score || left.template.name.localeCompare(right.template.name)),
     };
   }
 
@@ -119,12 +120,9 @@ export class AgentPiResourceSelector {
         .map((capability) => capabilitySearchText(capability, { includeRisk: false }))
         .join(" "),
       capabilityFacets: capabilities
-        .flatMap((capability) =>
-          capabilityFacetEntries(capability.Facets).flatMap((entry) => entry.values))
+        .flatMap((capability) => capabilityFacetEntries(capability.Facets).flatMap((entry) => entry.values))
         .join(" "),
-      capabilityRiskText: capabilities
-        .map((capability) => capabilityRiskText(capability.Risk))
-        .join(" "),
+      capabilityRiskText: capabilities.map((capability) => capabilityRiskText(capability.Risk)).join(" "),
     };
   }
 
@@ -154,14 +152,13 @@ export class AgentPiResourceSelector {
         ...skill.recommendedTools,
         ...skill.matchedTerms,
       ]) ?? []),
-    ].filter(hasText).join("\n");
+    ]
+      .filter(hasText)
+      .join("\n");
   }
 }
 
-function templateResourceMetadata(
-  template: RegisteredTemplate,
-  key: string,
-): string[] {
+function templateResourceMetadata(template: RegisteredTemplate, key: string): string[] {
   return [
     ...new Set(
       (template.search?.Capabilities ?? []).flatMap((capability) => {
@@ -173,10 +170,7 @@ function templateResourceMetadata(
 }
 
 function stableTemplateDocumentId(template: RegisteredTemplate): string {
-  return crypto
-    .createHash("sha1")
-    .update(`${template.plugin.manifest.Plugin.Name}:${template.name}`)
-    .digest("hex");
+  return crypto.createHash("sha1").update(`${template.plugin.manifest.Plugin.Name}:${template.name}`).digest("hex");
 }
 
 function hasText(value: string | undefined | null): value is string {

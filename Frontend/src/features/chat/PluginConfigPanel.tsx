@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, BrainCircuit, RefreshCw, Save, Search } from "lucide-react";
-import type {
-  PluginConfigField,
-  PluginConfigItem,
-  PluginConfigMutationState,
-} from "../../api/eventTypes";
+import type { PluginConfigField, PluginConfigItem, PluginConfigMutationState } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { Button, Dialog, DialogContent, ScrollArea, Tooltip } from "../../shared/ui";
 import {
@@ -15,17 +11,9 @@ import {
   type ConfigView,
   ViewSwitch,
 } from "./PluginConfigViews";
-import {
-  parseDraftToml,
-  validatePluginConfigDraft,
-  writeDraftFieldValue,
-} from "./pluginConfigDraft";
+import { parseDraftToml, validatePluginConfigDraft, writeDraftFieldValue } from "./pluginConfigDraft";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-export {
-  readNumberDraftCommitValue,
-  validatePluginConfigDraft,
-  writeDraftFieldValue,
-} from "./pluginConfigDraft";
+export { readNumberDraftCommitValue, validatePluginConfigDraft, writeDraftFieldValue } from "./pluginConfigDraft";
 
 export function PluginConfigControl({
   disabled,
@@ -52,21 +40,16 @@ export function PluginConfigControl({
   const [toggleRequestId, setToggleRequestId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const configurablePlugins = useMemo(
-    () => plugins.filter((plugin) => plugin.rootKind === "User"),
-    [plugins],
-  );
+  const configurablePlugins = useMemo(() => plugins.filter((plugin) => plugin.rootKind === "User"), [plugins]);
 
   const selected = useMemo(
-    () => configurablePlugins.find((plugin) => plugin.name === selectedName)
-      ?? configurablePlugins[0]
-      ?? null,
+    () => configurablePlugins.find((plugin) => plugin.name === selectedName) ?? configurablePlugins[0] ?? null,
     [configurablePlugins, selectedName],
   );
 
   const activePlugins = configurablePlugins.filter((plugin) => plugin.available).length;
   const hasErrors = configurablePlugins.some((plugin) =>
-    plugin.diagnostics.some((diagnostic) => diagnostic.severity === "error")
+    plugin.diagnostics.some((diagnostic) => diagnostic.severity === "error"),
   );
   const needsConfiguration = configurablePlugins.some((plugin) => plugin.needsUserConfig);
   const filteredPlugins = useMemo(() => {
@@ -74,16 +57,12 @@ export function PluginConfigControl({
     if (!query) {
       return configurablePlugins;
     }
-    return configurablePlugins.filter((plugin) =>
-      pluginSearchText(plugin).includes(query)
-    );
+    return configurablePlugins.filter((plugin) => pluginSearchText(plugin).includes(query));
   }, [configurablePlugins, filterText]);
   const parsedDraft = useMemo(() => parseDraftToml(draft), [draft]);
   const visibleSections = selected?.sections.filter((section) => section.fields.length > 0) ?? [];
   const draftValidationErrors = useMemo(
-    () => selected && parsedDraft.value
-      ? validatePluginConfigDraft(selected.sections, parsedDraft.value)
-      : [],
+    () => (selected && parsedDraft.value ? validatePluginConfigDraft(selected.sections, parsedDraft.value) : []),
     [parsedDraft.value, selected],
   );
   const saveOperation = saveRequestId ? operations[saveRequestId] : undefined;
@@ -114,7 +93,7 @@ export function PluginConfigControl({
     setToggleRequestId(null);
     setSaveError(null);
     setView("settings");
-  }, [selected?.name]);
+  }, [selected]);
 
   useEffect(() => {
     if (!selected) return;
@@ -132,13 +111,13 @@ export function PluginConfigControl({
     }
     if (dirty) return;
     setDraft(selected.toml);
-  }, [dirty, saveOperation?.message, saveOperation?.status, selected?.toml]);
+  }, [dirty, saveOperation?.message, saveOperation?.status, selected]);
 
   useEffect(() => {
     if (!toggleOperation) return;
     if (toggleOperation.status === "pending") return;
     setToggleRequestId(null);
-  }, [toggleOperation?.status]);
+  }, [toggleOperation]);
 
   const save = (): void => {
     if (!selected || !dirty || hasDraftErrors || saving) return;
@@ -177,7 +156,7 @@ export function PluginConfigControl({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Tooltip content="技能配置" side="top">
+      <Tooltip content={frontendMessage("pluginConfig.title")} side="top">
         <button
           type="button"
           className={cn(
@@ -186,12 +165,12 @@ export function PluginConfigControl({
             "focus:outline-none focus:ring-2 focus:ring-terra-200/60",
             disabled && "pointer-events-none opacity-55",
           )}
-          aria-label="技能配置"
+          aria-label={frontendMessage("pluginConfig.title")}
           disabled={disabled}
           onClick={() => setOpen(true)}
         >
           <BrainCircuit className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">技能</span>
+          <span className="hidden sm:inline">{frontendMessage("pluginConfig.shortTitle")}</span>
           {hasErrors || needsConfiguration ? (
             <AlertTriangle className={cn("h-3.5 w-3.5", hasErrors ? "text-brick-500" : "text-amber-500")} />
           ) : null}
@@ -199,8 +178,8 @@ export function PluginConfigControl({
       </Tooltip>
 
       <DialogContent
-        title="技能配置"
-        description="外部技能参数"
+        title={frontendMessage("pluginConfig.title")}
+        description={frontendMessage("pluginConfig.description")}
         motionPreset="focus"
         className="h-[min(760px,calc(100dvh_-_16px))] max-h-none w-[min(1120px,calc(100vw_-_16px))] max-w-none rounded-lg bg-paper-100 sm:h-[min(760px,calc(100dvh_-_32px))] sm:w-[min(1120px,calc(100vw_-_32px))]"
         bodyClassName="flex min-h-0 flex-1 bg-paper-100"
@@ -209,17 +188,22 @@ export function PluginConfigControl({
           <aside className="min-h-0 border-b border-ink-200/70 bg-paper-200/45 lg:border-b-0 lg:border-r">
             <div className="flex min-h-12 items-center justify-between gap-2 px-3 py-2 sm:px-4 lg:min-h-14">
               <div className="min-w-0">
-                <div className="text-[12.5px] font-semibold text-ink-900">外部技能</div>
+                <div className="text-[12.5px] font-semibold text-ink-900">
+                  {frontendMessage("pluginConfig.externalPlugins")}
+                </div>
                 <div className="mt-0.5 text-[11px] text-ink-500">
-                  {activePlugins}/{configurablePlugins.length || 0} 可用
+                  {frontendMessage("pluginConfig.availableCount", {
+                    active: activePlugins,
+                    total: configurablePlugins.length || 0,
+                  })}
                 </div>
               </div>
-              <Tooltip content="刷新技能配置" side="bottom">
+              <Tooltip content={frontendMessage("pluginConfig.refresh")} side="bottom">
                 <button
                   type="button"
                   className="grid h-8 w-8 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
                   onClick={onRefresh}
-                  aria-label="刷新技能配置"
+                  aria-label={frontendMessage("pluginConfig.refresh")}
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                 </button>
@@ -232,7 +216,7 @@ export function PluginConfigControl({
                 <input
                   value={filterText}
                   onChange={(event) => setFilterText(event.currentTarget.value)}
-                  placeholder="搜索技能..."
+                  placeholder={frontendMessage("pluginConfig.searchPlaceholder")}
                   className="min-w-0 flex-1 bg-transparent text-[12px] text-ink-800 outline-none placeholder:text-ink-400"
                 />
               </label>
@@ -262,33 +246,29 @@ export function PluginConfigControl({
                             ? "bg-brick-500"
                             : plugin.needsUserConfig
                               ? "bg-amber-500"
-                            : plugin.available
-                              ? "bg-emerald-500"
-                              : "bg-ink-300",
+                              : plugin.available
+                                ? "bg-emerald-500"
+                                : "bg-ink-300",
                         )}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-medium">
-                          {pluginDisplayTitle(plugin)}
-                        </span>
+                        <span className="block truncate text-[13px] font-medium">{pluginDisplayTitle(plugin)}</span>
                         <span
-                          className={cn(
-                            "mt-0.5 block truncate text-[11px]",
-                            active ? "text-ink-500" : "text-ink-400",
-                          )}
+                          className={cn("mt-0.5 block truncate text-[11px]", active ? "text-ink-500" : "text-ink-400")}
                         >
-                          {plugin.enabledToolCount}/{plugin.toolCount} 个技能启用
+                          {frontendMessage("pluginConfig.enabledToolCount", {
+                            enabled: plugin.enabledToolCount,
+                            total: plugin.toolCount,
+                          })}
                         </span>
                       </span>
-                      {active ? (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-terra-500" />
-                      ) : null}
+                      {active ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-terra-500" /> : null}
                     </button>
                   );
                 })}
                 {filteredPlugins.length === 0 ? (
                   <div className="w-full px-3 py-5 text-center text-[12px] text-ink-400 lg:py-8">
-                    没有匹配的技能
+                    {frontendMessage("pluginConfig.noMatches")}
                   </div>
                 ) : null}
               </div>
@@ -305,21 +285,26 @@ export function PluginConfigControl({
                         {pluginDisplayTitle(selected)}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-ink-500">
-                        <span>{selected.enabledToolCount}/{selected.toolCount} 个技能启用</span>
+                        <span>
+                          {frontendMessage("pluginConfig.enabledToolCount", {
+                            enabled: selected.enabledToolCount,
+                            total: selected.toolCount,
+                          })}
+                        </span>
                         {saving ? (
                           <>
                             <span className="text-ink-300">/</span>
-                            <span className="text-terra-700">正在保存</span>
+                            <span className="text-terra-700">{frontendMessage("pluginConfig.saving")}</span>
                           </>
                         ) : selected.needsUserConfig ? (
                           <>
                             <span className="text-ink-300">/</span>
-                            <span className="text-amber-700">需要配置</span>
+                            <span className="text-amber-700">{frontendMessage("pluginConfig.needsConfiguration")}</span>
                           </>
                         ) : dirty ? (
                           <>
                             <span className="text-ink-300">/</span>
-                            <span className="text-terra-700">有未保存修改</span>
+                            <span className="text-terra-700">{frontendMessage("pluginConfig.unsavedChanges")}</span>
                           </>
                         ) : null}
                       </div>
@@ -330,7 +315,7 @@ export function PluginConfigControl({
                       <TogglePill
                         enabled={selected.enabled}
                         disabled={dirty || toggling}
-                        label="技能"
+                        label={frontendMessage("pluginConfig.plugin")}
                         onClick={() => {
                           const requestId = onSetEnabled(selected.name, !selected.enabled);
                           if (requestId) {
@@ -346,7 +331,7 @@ export function PluginConfigControl({
                         className="h-8"
                       >
                         <Save className="h-3.5 w-3.5" />
-                        {saving ? "正在保存" : "保存"}
+                        {frontendMessage(saving ? "pluginConfig.saving" : "pluginConfig.save")}
                       </Button>
                     </div>
                   </div>
@@ -371,15 +356,12 @@ export function PluginConfigControl({
                     onUpdateField={updateField}
                   />
                 ) : (
-                  <TomlView
-                    draft={draft}
-                    onChange={updateDraft}
-                  />
+                  <TomlView draft={draft} onChange={updateDraft} />
                 )}
               </>
             ) : (
               <div className="grid flex-1 place-items-center text-[13px] text-ink-400">
-                未发现外部技能配置
+                {frontendMessage("pluginConfig.empty")}
               </div>
             )}
           </section>
@@ -411,14 +393,9 @@ function TogglePill({
         !disabled && "hover:bg-ink-900/[0.04]",
         disabled && "pointer-events-none opacity-45",
       )}
-      aria-label={`${enabled ? "关闭" : "开启"} ${label}`}
+      aria-label={frontendMessage(enabled ? "pluginConfig.disableLabel" : "pluginConfig.enableLabel", { label })}
     >
-      <span
-        className={cn(
-          "relative h-5 w-9 rounded-full transition",
-          enabled ? "bg-moss-500" : "bg-ink-300",
-        )}
-      >
+      <span className={cn("relative h-5 w-9 rounded-full transition", enabled ? "bg-moss-500" : "bg-ink-300")}>
         <span
           className={cn(
             "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
@@ -426,13 +403,13 @@ function TogglePill({
           )}
         />
       </span>
-      <span>{enabled ? "已启用" : "已关闭"}</span>
+      <span>{frontendMessage(enabled ? "pluginConfig.enabled" : "pluginConfig.disabled")}</span>
     </button>
   );
 }
 
 function confirmDiscardDirtyDraft(): boolean {
-  return window.confirm("当前技能配置有未保存修改，切换后会丢失这些修改。确定切换吗？");
+  return window.confirm(frontendMessage("pluginConfig.discardConfirm"));
 }
 
 function pluginSearchText(plugin: PluginConfigItem): string {
@@ -441,28 +418,18 @@ function pluginSearchText(plugin: PluginConfigItem): string {
       section.name,
       section.label,
       section.description ?? "",
-      ...section.fields.flatMap((field) => [
-        field.key,
-        field.label,
-        field.description ?? "",
-      ]),
+      ...section.fields.flatMap((field) => [field.key, field.label, field.description ?? ""]),
     ])
     .join(" ");
-  const toolText = plugin.tools
-    .flatMap((tool) => [tool.name, tool.summary ?? ""])
-    .join(" ");
+  const toolText = plugin.tools.flatMap((tool) => [tool.name, tool.summary ?? ""]).join(" ");
 
-  return [
-    plugin.name,
-    pluginDisplayTitle(plugin),
-    plugin.description ?? "",
-    toolText,
-    fieldText,
-  ].join(" ").toLocaleLowerCase();
+  return [plugin.name, pluginDisplayTitle(plugin), plugin.description ?? "", toolText, fieldText]
+    .join(" ")
+    .toLocaleLowerCase();
 }
 
 function pluginDisplayTitle(plugin: PluginConfigItem): string {
   const title = plugin.title.trim();
   const name = plugin.name.trim();
-  return title && title !== plugin.name ? title : name || "未命名技能";
+  return title && title !== plugin.name ? title : name || frontendMessage("pluginConfig.unnamed");
 }

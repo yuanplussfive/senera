@@ -12,6 +12,7 @@ import {
   FileVideo,
   type LucideIcon,
 } from "lucide-react";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export interface FilePreviewInput {
   name: string;
@@ -35,7 +36,7 @@ interface FilePreviewProfile extends FilePreviewDescriptor {
 
 const DefaultFilePreview: FilePreviewDescriptor = {
   id: "file",
-  label: "文件",
+  label: frontendMessage("file.type.file"),
   Icon: File,
   iconClassName: "text-ink-500",
   badgeClassName: "border-ink-200 bg-paper-100 text-ink-500",
@@ -53,7 +54,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   },
   {
     id: "word",
-    label: "文档",
+    label: frontendMessage("file.type.document"),
     Icon: FileType2,
     iconClassName: "text-blue-600",
     badgeClassName: "border-blue-100 bg-blue-50 text-blue-700",
@@ -69,7 +70,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   },
   {
     id: "spreadsheet",
-    label: "表格",
+    label: frontendMessage("file.type.spreadsheet"),
     Icon: FileSpreadsheet,
     iconClassName: "text-emerald-600",
     badgeClassName: "border-emerald-100 bg-emerald-50 text-emerald-700",
@@ -84,7 +85,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   },
   {
     id: "presentation",
-    label: "演示",
+    label: frontendMessage("file.type.presentation"),
     Icon: FileChartColumn,
     iconClassName: "text-amber-600",
     badgeClassName: "border-amber-100 bg-amber-50 text-amber-700",
@@ -107,19 +108,11 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   },
   {
     id: "code",
-    label: "代码",
+    label: frontendMessage("file.type.code"),
     Icon: FileCode2,
     iconClassName: "text-sky-600",
     badgeClassName: "border-sky-100 bg-sky-50 text-sky-700",
-    names: [
-      "dockerfile",
-      "makefile",
-      "go.mod",
-      "go.sum",
-      "package-lock.json",
-      "pnpm-lock.yaml",
-      "yarn.lock",
-    ],
+    names: ["dockerfile", "makefile", "go.mod", "go.sum", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"],
     extensions: [
       ".astro",
       ".c",
@@ -173,7 +166,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   },
   {
     id: "text",
-    label: "文本",
+    label: frontendMessage("file.type.text"),
     Icon: FileText,
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-50 text-ink-650",
@@ -182,7 +175,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   },
   {
     id: "image",
-    label: "图片",
+    label: frontendMessage("file.type.image"),
     Icon: FileImage,
     iconClassName: "text-fuchsia-600",
     badgeClassName: "border-fuchsia-100 bg-fuchsia-50 text-fuchsia-700",
@@ -191,7 +184,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   },
   {
     id: "audio",
-    label: "音频",
+    label: frontendMessage("file.type.audio"),
     Icon: FileAudio,
     iconClassName: "text-indigo-600",
     badgeClassName: "border-indigo-100 bg-indigo-50 text-indigo-700",
@@ -200,7 +193,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   },
   {
     id: "video",
-    label: "视频",
+    label: frontendMessage("file.type.video"),
     Icon: FileVideo,
     iconClassName: "text-rose-600",
     badgeClassName: "border-rose-100 bg-rose-50 text-rose-700",
@@ -209,7 +202,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   },
   {
     id: "archive",
-    label: "压缩包",
+    label: frontendMessage("file.type.archive"),
     Icon: FileArchive,
     iconClassName: "text-orange-600",
     badgeClassName: "border-orange-100 bg-orange-50 text-orange-700",
@@ -234,20 +227,24 @@ export function resolveFilePreview(input: FilePreviewInput): FilePreviewDescript
   const mime = normalizeToken(input.mime);
   const extension = readFileExtension(name);
 
-  return (name ? ProfilesByName.get(name) : undefined)
-    ?? (mime ? ProfilesByMime.get(mime) : undefined)
-    ?? (mime ? FilePreviewProfiles.find((profile) =>
-      profile.mimePrefixes?.some((prefix) => mime.startsWith(prefix))) : undefined)
-    ?? (extension ? ProfilesByExtension.get(extension) : undefined)
-    ?? DefaultFilePreview;
+  return (
+    (name ? ProfilesByName.get(name) : undefined) ??
+    (mime ? ProfilesByMime.get(mime) : undefined) ??
+    (mime
+      ? FilePreviewProfiles.find((profile) => profile.mimePrefixes?.some((prefix) => mime.startsWith(prefix)))
+      : undefined) ??
+    (extension ? ProfilesByExtension.get(extension) : undefined) ??
+    DefaultFilePreview
+  );
 }
 
 function indexProfiles(
   profiles: readonly FilePreviewProfile[],
   key: "names" | "extensions" | "mimes",
 ): ReadonlyMap<string, FilePreviewProfile> {
-  return new Map(profiles.flatMap((profile) =>
-    (profile[key] ?? []).map((value) => [normalizeToken(value), profile] as const)));
+  return new Map(
+    profiles.flatMap((profile) => (profile[key] ?? []).map((value) => [normalizeToken(value), profile] as const)),
+  );
 }
 
 function readFileExtension(name: string): string {

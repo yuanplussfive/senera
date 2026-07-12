@@ -1,9 +1,7 @@
 export const AgentToolArgumentArrayItemKey = "item";
 
 export function normalizeToolStringArgument(value: unknown): unknown {
-  return typeof value === "number" || typeof value === "boolean"
-    ? String(value)
-    : value;
+  return typeof value === "number" || typeof value === "boolean" ? String(value) : value;
 }
 
 export function normalizeToolNumberArgument(value: unknown): unknown {

@@ -1,0 +1,2607 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.create"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelProviderId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.message"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelProviderId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "uploadUri": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mime": {
+                "type": "string",
+                "minLength": 1
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "sha256": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "const": "uploaded"
+              }
+            },
+            "required": [
+              "uploadUri",
+              "name",
+              "mime",
+              "size",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "queueMode": {
+          "type": "string",
+          "enum": [
+            "steer",
+            "follow_up"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.close"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.cancel"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.truncate_from"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.list"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.history"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "refresh": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.rename"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "model.list"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "provider.models.fetch"
+        },
+        "providerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "force": {
+          "type": "boolean"
+        },
+        "endpoint": {
+          "type": "object",
+          "properties": {
+            "Id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "Icon": {
+              "type": "string"
+            },
+            "Enabled": {
+              "type": "boolean"
+            },
+            "Kind": {
+              "type": "string",
+              "const": "OpenAICompatible"
+            },
+            "BaseUrl": {
+              "type": "string"
+            },
+            "ApiKey": {
+              "type": "string"
+            },
+            "ApiVersion": {
+              "type": "string"
+            },
+            "Headers": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "Id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "providerId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "config.get"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "config.update"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "type": "object",
+          "properties": {
+            "Defaults": {
+              "type": "object",
+              "properties": {
+                "PluginRoots": {
+                  "type": "object",
+                  "properties": {
+                    "System": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "User": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "PluginDiscovery": {
+                  "type": "object",
+                  "properties": {
+                    "ManifestFileName": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "ConfigFileName": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "ToolExecution": {
+                  "type": "object",
+                  "properties": {
+                    "TimeoutSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "MaxStdoutBytes": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "MaxStderrBytes": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "SandboxRuntime": {
+                  "type": "object",
+                  "properties": {
+                    "BaseDir": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "BundleDir": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "ImportBundlesOnStartup": {
+                      "type": "boolean"
+                    },
+                    "Images": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "AgentLoop": {
+                  "type": "object",
+                  "properties": {
+                    "LoadedTools": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "all"
+                        },
+                        {
+                          "type": "string",
+                          "const": "dynamic"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      ]
+                    },
+                    "PiSessionCreateTimeoutSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "PiSessions": {
+                      "type": "object",
+                      "properties": {
+                        "RootDir": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "ToolSearch": {
+                  "type": "object",
+                  "properties": {
+                    "Embedding": {
+                      "type": "object",
+                      "properties": {
+                        "Enabled": {
+                          "type": "boolean"
+                        },
+                        "ModelProviderId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Model": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Dimensions": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "BatchSize": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "InputMaxChars": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "ScoreThreshold": {
+                          "type": "number",
+                          "minimum": -1,
+                          "maximum": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Memory": {
+                      "type": "object",
+                      "properties": {
+                        "Kind": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "const": "sqlite"
+                            },
+                            {
+                              "type": "string",
+                              "const": "memory"
+                            }
+                          ]
+                        },
+                        "DatabasePath": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "MaxEpisodes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "HalfLifeDays": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Ranking": {
+                      "type": "object",
+                      "properties": {
+                        "RrfK": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "MmrLambda": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "MmrCandidateScoreRatio": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "MinScore": {
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Rerank": {
+                      "type": "object",
+                      "properties": {
+                        "Enabled": {
+                          "type": "boolean"
+                        },
+                        "CandidateLimit": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "ScoreScale": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "FeatureWeights": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "VectorModels": {
+                  "type": "object",
+                  "properties": {
+                    "Embedding": {
+                      "type": "object",
+                      "properties": {
+                        "Enabled": {
+                          "type": "boolean"
+                        },
+                        "ProviderId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Model": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "TimeoutSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "MaxNetworkRetries": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "Dimensions": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "BatchSize": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "InputMaxChars": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Rerank": {
+                      "type": "object",
+                      "properties": {
+                        "Enabled": {
+                          "type": "boolean"
+                        },
+                        "ProviderId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Model": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "TimeoutSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "MaxNetworkRetries": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "EndpointPath": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "CandidateLimit": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "TopK": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "ToolLearning": {
+                  "type": "object",
+                  "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
+                    "MaxRepairAttempts": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "Client": {
+                      "type": "object",
+                      "properties": {
+                        "ModelProviderId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Provider": {
+                          "type": "string",
+                          "enum": [
+                            "openai-generic",
+                            "openai-responses",
+                            "anthropic",
+                            "google-ai"
+                          ]
+                        },
+                        "Temperature": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 2
+                        },
+                        "MaxTokens": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Patterns": {
+                      "type": "object",
+                      "properties": {
+                        "MinSupport": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "MaxPromptPatterns": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "MemoryLearning": {
+                  "type": "object",
+                  "properties": {
+                    "Promotion": {
+                      "type": "object",
+                      "properties": {
+                        "MinSupport": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "MaxClusterSize": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "MinSimilarity": {
+                          "type": "number",
+                          "minimum": -1,
+                          "maximum": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Presets": {
+                  "type": "object",
+                  "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
+                    "RootDir": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "StateFile": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Artifacts": {
+                  "type": "object",
+                  "properties": {
+                    "RootDir": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "SummaryMaxChars": {
+                      "type": "integer",
+                      "minimum": 256,
+                      "maximum": 9007199254740991
+                    },
+                    "RawJsonMaxBytes": {
+                      "type": "integer",
+                      "minimum": 1024,
+                      "maximum": 9007199254740991
+                    },
+                    "TextFileMaxBytes": {
+                      "type": "integer",
+                      "minimum": 1024,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Uploads": {
+                  "type": "object",
+                  "properties": {
+                    "RootDir": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "MaxFileBytes": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "ActionPlanner": {
+                  "type": "object",
+                  "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
+                    "MaxRepairAttempts": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "Evidence": {
+                      "type": "object",
+                      "properties": {
+                        "StalledStepLag": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Client": {
+                      "type": "object",
+                      "properties": {
+                        "ModelProviderId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Provider": {
+                          "type": "string",
+                          "enum": [
+                            "openai-generic",
+                            "openai-responses",
+                            "anthropic",
+                            "google-ai"
+                          ]
+                        },
+                        "Temperature": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 2
+                        },
+                        "MaxTokens": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "TurnUnderstandingClient": {
+                      "type": "object",
+                      "properties": {
+                        "ModelProviderId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Provider": {
+                          "type": "string",
+                          "enum": [
+                            "openai-generic",
+                            "openai-responses",
+                            "anthropic",
+                            "google-ai"
+                          ]
+                        },
+                        "Temperature": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 2
+                        },
+                        "MaxTokens": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "PlanningClient": {
+                      "type": "object",
+                      "properties": {
+                        "ModelProviderId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Provider": {
+                          "type": "string",
+                          "enum": [
+                            "openai-generic",
+                            "openai-responses",
+                            "anthropic",
+                            "google-ai"
+                          ]
+                        },
+                        "Temperature": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 2
+                        },
+                        "MaxTokens": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Frontend": {
+                  "type": "object",
+                  "properties": {
+                    "DevServer": {
+                      "type": "object",
+                      "properties": {
+                        "Host": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Port": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 65535
+                        },
+                        "StrictPort": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "PreviewServer": {
+                      "type": "object",
+                      "properties": {
+                        "Host": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "Port": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 65535
+                        },
+                        "StrictPort": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Client": {
+                      "type": "object",
+                      "properties": {
+                        "WebSocketUrl": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "ModelLabel": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "UserName": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "EmptySuggestions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Server": {
+                  "type": "object",
+                  "properties": {
+                    "Host": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Port": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 65535
+                    },
+                    "HotReload": {
+                      "type": "boolean"
+                    },
+                    "RequestMaxBytes": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "AccessControl": {
+                      "type": "object",
+                      "properties": {
+                        "Mode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "required",
+                            "disabled"
+                          ]
+                        },
+                        "AccountFile": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "AllowedOrigins": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uri"
+                          }
+                        },
+                        "TrustedProxyAddresses": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "AllowInsecureLoopback": {
+                          "type": "boolean"
+                        },
+                        "Session": {
+                          "type": "object",
+                          "properties": {
+                            "AbsoluteTtlHours": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 72
+                            },
+                            "IdleTtlHours": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 72
+                            },
+                            "MaxSessions": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "Limits": {
+                          "type": "object",
+                          "properties": {
+                            "MaxConnections": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 10000
+                            },
+                            "MaxConnectionsPerClient": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000
+                            },
+                            "UpgradeRequestsPerMinute": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100000
+                            },
+                            "HttpRequestsPerMinute": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100000
+                            },
+                            "MessagesPerMinute": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100000
+                            },
+                            "LoginAttemptsPerMinute": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 10000
+                            },
+                            "HeartbeatIntervalSeconds": {
+                              "type": "integer",
+                              "minimum": 5,
+                              "maximum": 3600
+                            },
+                            "IdleSocketTimeoutSeconds": {
+                              "type": "integer",
+                              "minimum": 10,
+                              "maximum": 86400
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Persistence": {
+                  "type": "object",
+                  "properties": {
+                    "Kind": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "sqlite"
+                        },
+                        {
+                          "type": "string",
+                          "const": "memory"
+                        }
+                      ]
+                    },
+                    "DatabasePath": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "ConfigStore": {
+                  "type": "object",
+                  "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
+                    "Kind": {
+                      "type": "string",
+                      "const": "sqlite"
+                    },
+                    "DatabasePath": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "MirrorJson": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "PluginRoots": {
+              "type": "object",
+              "properties": {
+                "System": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "User": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "PluginDiscovery": {
+              "type": "object",
+              "properties": {
+                "ManifestFileName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "ConfigFileName": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "XmlProtocol": {
+              "type": "object",
+              "properties": {
+                "MaxDepth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "MaxTextLength": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "MaxDecisionTokens": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "MaxToolCalls": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "ArrayElementNames": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "ArrayElementNameSuffix": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "ToolExecution": {
+              "type": "object",
+              "properties": {
+                "TimeoutSeconds": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "MaxStdoutBytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "MaxStderrBytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            },
+            "SandboxRuntime": {
+              "type": "object",
+              "properties": {
+                "BaseDir": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "BundleDir": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "ImportBundlesOnStartup": {
+                  "type": "boolean"
+                },
+                "Images": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "PluginDocumentation": {
+              "type": "object",
+              "properties": {
+                "Markdown": {
+                  "type": "object",
+                  "properties": {
+                    "MinNonEmptyLines": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "ExcludePathFragments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "MinNonEmptyLines",
+                    "ExcludePathFragments"
+                  ],
+                  "additionalProperties": false
+                },
+                "ToolDescription": {
+                  "type": "object",
+                  "properties": {
+                    "MinNonEmptyLines": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "SummarySection": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "TriggerSection": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "AvoidSection": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "RequiredSections": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "MinNonEmptyLines",
+                    "SummarySection",
+                    "TriggerSection",
+                    "AvoidSection",
+                    "RequiredSections"
+                  ],
+                  "additionalProperties": false
+                },
+                "PromptXml": {
+                  "type": "object",
+                  "properties": {
+                    "XmlFenceLanguages": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "CodeFenceLanguages": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "ToolDescription"
+              ],
+              "additionalProperties": false
+            },
+            "DefaultModelProviderId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ModelProviderEndpoints": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "Id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "Icon": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "Enabled": {
+                    "type": "boolean"
+                  },
+                  "Kind": {
+                    "type": "string",
+                    "const": "OpenAICompatible"
+                  },
+                  "BaseUrl": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "ApiKey": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "ApiVersion": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "Headers": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "Id"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "ModelProviders": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "Id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "ProviderId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "Icon": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "Capabilities": {
+                    "type": "object",
+                    "properties": {
+                      "Chat": {
+                        "type": "boolean"
+                      },
+                      "Embedding": {
+                        "type": "boolean"
+                      },
+                      "Rerank": {
+                        "type": "boolean"
+                      },
+                      "Vision": {
+                        "type": "boolean"
+                      },
+                      "ImageOutput": {
+                        "type": "boolean"
+                      },
+                      "Reasoning": {
+                        "type": "boolean"
+                      },
+                      "DeveloperRole": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "ContextWindowTokens": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "MaxModelOutputTokens": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "Endpoint": {
+                    "type": "string",
+                    "enum": [
+                      "Responses",
+                      "ChatCompletions",
+                      "ClaudeMessages",
+                      "GoogleGenerateContent"
+                    ]
+                  },
+                  "Model": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "Temperature": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2
+                  },
+                  "MaxOutputTokens": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "Stream": {
+                    "type": "boolean"
+                  },
+                  "TimeoutSeconds": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "FirstTokenTimeoutSeconds": {
+                    "type": "number"
+                  },
+                  "MaxRequestSeconds": {
+                    "type": "number"
+                  },
+                  "MaxNetworkRetries": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "Id",
+                  "ProviderId",
+                  "Endpoint",
+                  "Model"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "ModelGroups": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "Id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "Label": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "Icon": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "Match": {
+                    "type": "string",
+                    "enum": [
+                      "exact",
+                      "prefix",
+                      "suffix",
+                      "includes"
+                    ]
+                  },
+                  "Values": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "Strategies": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "Match": {
+                          "type": "string",
+                          "enum": [
+                            "exact",
+                            "prefix",
+                            "suffix",
+                            "includes"
+                          ]
+                        },
+                        "Values": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "required": [
+                        "Match",
+                        "Values"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "Id",
+                  "Label"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "AgentLoop": {
+              "type": "object",
+              "properties": {
+                "LoadedTools": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "all"
+                    },
+                    {
+                      "type": "string",
+                      "const": "dynamic"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  ]
+                },
+                "PiSessionCreateTimeoutSeconds": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "PiSessions": {
+                  "type": "object",
+                  "properties": {
+                    "RootDir": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "ToolSearch": {
+              "type": "object",
+              "properties": {
+                "Embedding": {
+                  "type": "object",
+                  "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
+                    "ModelProviderId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Model": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Dimensions": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "BatchSize": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "InputMaxChars": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "ScoreThreshold": {
+                      "type": "number",
+                      "minimum": -1,
+                      "maximum": 1
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Memory": {
+                  "type": "object",
+                  "properties": {
+                    "Kind": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "sqlite"
+                        },
+                        {
+                          "type": "string",
+                          "const": "memory"
+                        }
+                      ]
+                    },
+                    "DatabasePath": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "MaxEpisodes": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "HalfLifeDays": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Ranking": {
+                  "type": "object",
+                  "properties": {
+                    "RrfK": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "MmrLambda": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "MmrCandidateScoreRatio": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "MinScore": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Rerank": {
+                  "type": "object",
+                  "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
+                    "CandidateLimit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "ScoreScale": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "FeatureWeights": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "VectorModels": {
+              "type": "object",
+              "properties": {
+                "Embedding": {
+                  "type": "object",
+                  "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
+                    "ProviderId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Model": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "TimeoutSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "MaxNetworkRetries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "Dimensions": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "BatchSize": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "InputMaxChars": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Rerank": {
+                  "type": "object",
+                  "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
+                    "ProviderId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Model": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "TimeoutSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "MaxNetworkRetries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "EndpointPath": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "CandidateLimit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "TopK": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "ToolLearning": {
+              "type": "object",
+              "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                },
+                "MaxRepairAttempts": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "Client": {
+                  "type": "object",
+                  "properties": {
+                    "ModelProviderId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Provider": {
+                      "type": "string",
+                      "enum": [
+                        "openai-generic",
+                        "openai-responses",
+                        "anthropic",
+                        "google-ai"
+                      ]
+                    },
+                    "Temperature": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 2
+                    },
+                    "MaxTokens": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Patterns": {
+                  "type": "object",
+                  "properties": {
+                    "MinSupport": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "MaxPromptPatterns": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "MemoryLearning": {
+              "type": "object",
+              "properties": {
+                "Promotion": {
+                  "type": "object",
+                  "properties": {
+                    "MinSupport": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "MaxClusterSize": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "MinSimilarity": {
+                      "type": "number",
+                      "minimum": -1,
+                      "maximum": 1
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "Presets": {
+              "type": "object",
+              "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                },
+                "RootDir": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "StateFile": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "Artifacts": {
+              "type": "object",
+              "properties": {
+                "RootDir": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "SummaryMaxChars": {
+                  "type": "integer",
+                  "minimum": 256,
+                  "maximum": 9007199254740991
+                },
+                "RawJsonMaxBytes": {
+                  "type": "integer",
+                  "minimum": 1024,
+                  "maximum": 9007199254740991
+                },
+                "TextFileMaxBytes": {
+                  "type": "integer",
+                  "minimum": 1024,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            },
+            "Uploads": {
+              "type": "object",
+              "properties": {
+                "RootDir": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "MaxFileBytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            },
+            "ActionPlanner": {
+              "type": "object",
+              "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                },
+                "MaxRepairAttempts": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "Evidence": {
+                  "type": "object",
+                  "properties": {
+                    "StalledStepLag": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Client": {
+                  "type": "object",
+                  "properties": {
+                    "ModelProviderId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Provider": {
+                      "type": "string",
+                      "enum": [
+                        "openai-generic",
+                        "openai-responses",
+                        "anthropic",
+                        "google-ai"
+                      ]
+                    },
+                    "Temperature": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 2
+                    },
+                    "MaxTokens": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "TurnUnderstandingClient": {
+                  "type": "object",
+                  "properties": {
+                    "ModelProviderId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Provider": {
+                      "type": "string",
+                      "enum": [
+                        "openai-generic",
+                        "openai-responses",
+                        "anthropic",
+                        "google-ai"
+                      ]
+                    },
+                    "Temperature": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 2
+                    },
+                    "MaxTokens": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "PlanningClient": {
+                  "type": "object",
+                  "properties": {
+                    "ModelProviderId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Provider": {
+                      "type": "string",
+                      "enum": [
+                        "openai-generic",
+                        "openai-responses",
+                        "anthropic",
+                        "google-ai"
+                      ]
+                    },
+                    "Temperature": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 2
+                    },
+                    "MaxTokens": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "Frontend": {
+              "type": "object",
+              "properties": {
+                "DevServer": {
+                  "type": "object",
+                  "properties": {
+                    "Host": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Port": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 65535
+                    },
+                    "StrictPort": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "PreviewServer": {
+                  "type": "object",
+                  "properties": {
+                    "Host": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "Port": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 65535
+                    },
+                    "StrictPort": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Client": {
+                  "type": "object",
+                  "properties": {
+                    "WebSocketUrl": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "ModelLabel": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "UserName": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "EmptySuggestions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "Server": {
+              "type": "object",
+              "properties": {
+                "Host": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "Port": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "HotReload": {
+                  "type": "boolean"
+                },
+                "RequestMaxBytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "AccessControl": {
+                  "type": "object",
+                  "properties": {
+                    "Mode": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "required",
+                        "disabled"
+                      ]
+                    },
+                    "AccountFile": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "AllowedOrigins": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      }
+                    },
+                    "TrustedProxyAddresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "AllowInsecureLoopback": {
+                      "type": "boolean"
+                    },
+                    "Session": {
+                      "type": "object",
+                      "properties": {
+                        "AbsoluteTtlHours": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 72
+                        },
+                        "IdleTtlHours": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 72
+                        },
+                        "MaxSessions": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Limits": {
+                      "type": "object",
+                      "properties": {
+                        "MaxConnections": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000
+                        },
+                        "MaxConnectionsPerClient": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        },
+                        "UpgradeRequestsPerMinute": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100000
+                        },
+                        "HttpRequestsPerMinute": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100000
+                        },
+                        "MessagesPerMinute": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100000
+                        },
+                        "LoginAttemptsPerMinute": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000
+                        },
+                        "HeartbeatIntervalSeconds": {
+                          "type": "integer",
+                          "minimum": 5,
+                          "maximum": 3600
+                        },
+                        "IdleSocketTimeoutSeconds": {
+                          "type": "integer",
+                          "minimum": 10,
+                          "maximum": 86400
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "Persistence": {
+              "type": "object",
+              "properties": {
+                "Kind": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "sqlite"
+                    },
+                    {
+                      "type": "string",
+                      "const": "memory"
+                    }
+                  ]
+                },
+                "DatabasePath": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "ConfigStore": {
+              "type": "object",
+              "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                },
+                "Kind": {
+                  "type": "string",
+                  "const": "sqlite"
+                },
+                "DatabasePath": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "MirrorJson": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "ModelProviders"
+          ],
+          "additionalProperties": false
+        },
+        "mirrorJson": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "config"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "plugin.config.list"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "plugin.config.update"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pluginName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toml": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "pluginName",
+        "toml"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "plugin.config.set_enabled"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pluginName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toolName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "pluginName",
+        "enabled"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "preset.list"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "preset.save"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "markdown",
+            "text"
+          ]
+        },
+        "content": {
+          "type": "string"
+        },
+        "activate": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "name",
+        "format",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "preset.delete"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "preset.set_active"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "profile.get"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "profile.update"
+        },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 48
+            },
+            "avatarDataUrl": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 524288,
+                  "pattern": "^data:image\\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=\\s]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "profile"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "approval.resolve"
+        },
+        "approvalId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "denied"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "once",
+            "session"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "approvalId",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "sandbox.status"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

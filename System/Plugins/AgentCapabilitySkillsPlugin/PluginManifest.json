@@ -29,48 +29,14 @@
             "Title": "TDD style execution",
             "Description": "Apply a test-first or verification-first implementation loop for code-changing work.",
             "Facets": {
-              "Actions": [
-                "implement",
-                "fix",
-                "refactor",
-                "verify",
-                "test"
-              ],
-              "Targets": [
-                "source-code",
-                "frontend",
-                "backend",
-                "plugin",
-                "runtime"
-              ],
-              "Inputs": [
-                "user-request",
-                "task-frame",
-                "root-command",
-                "workspace-evidence"
-              ],
-              "Outputs": [
-                "code-change",
-                "test-result",
-                "verification-summary"
-              ],
-              "Evidence": [
-                "test-output",
-                "type-check",
-                "build-output",
-                "workspace-read"
-              ],
-              "Effects": [
-                "file-write",
-                "workspace-change"
-              ]
+              "Actions": ["implement", "fix", "refactor", "verify", "test"],
+              "Targets": ["source-code", "frontend", "backend", "plugin", "runtime"],
+              "Inputs": ["user-request", "task-frame", "root-command", "workspace-evidence"],
+              "Outputs": ["code-change", "test-result", "verification-summary"],
+              "Evidence": ["test-output", "type-check", "build-output", "workspace-read"],
+              "Effects": ["file-write", "workspace-change"]
             },
-            "Aliases": [
-              "测试优先",
-              "实现验证闭环",
-              "代码修改验证",
-              "until done"
-            ],
+            "Aliases": ["测试优先", "实现验证闭环", "代码修改验证", "until done"],
             "Risk": {
               "SideEffect": "workspace-change",
               "Permission": "write"
@@ -81,16 +47,8 @@
             }
           }
         ],
-        "Tags": [
-          "代码实现",
-          "测试验证",
-          "重构",
-          "修复",
-          "落地"
-        ],
-        "Avoid": [
-          "纯解释、闲聊、无需文件变更或无需确定性验证的回答。"
-        ]
+        "Tags": ["代码实现", "测试验证", "重构", "修复", "落地"],
+        "Avoid": ["纯解释、闲聊、无需文件变更或无需确定性验证的回答。"]
       }
     },
     {
@@ -111,48 +69,14 @@
             "Title": "Pi todo workflow",
             "Description": "Guide Pi to maintain an internal task checklist and complete multi-step work without a parallel Senera goal planner.",
             "Facets": {
-              "Actions": [
-                "plan",
-                "execute",
-                "track",
-                "verify",
-                "complete"
-              ],
-              "Targets": [
-                "multi-step-task",
-                "workflow",
-                "todo",
-                "agent-loop",
-                "implementation"
-              ],
-              "Inputs": [
-                "user-request",
-                "root-command",
-                "tool-evidence",
-                "session-context"
-              ],
-              "Outputs": [
-                "completed-work",
-                "verification-summary",
-                "blocked-items"
-              ],
-              "Evidence": [
-                "tool-result",
-                "workspace-read",
-                "test-output"
-              ],
-              "Effects": [
-                "internal-planning",
-                "tool-loop"
-              ]
+              "Actions": ["plan", "execute", "track", "verify", "complete"],
+              "Targets": ["multi-step-task", "workflow", "todo", "agent-loop", "implementation"],
+              "Inputs": ["user-request", "root-command", "tool-evidence", "session-context"],
+              "Outputs": ["completed-work", "verification-summary", "blocked-items"],
+              "Evidence": ["tool-result", "workspace-read", "test-output"],
+              "Effects": ["internal-planning", "tool-loop"]
             },
-            "Aliases": [
-              "todo",
-              "任务清单",
-              "继续直到完成",
-              "until done",
-              "workflow"
-            ],
+            "Aliases": ["todo", "任务清单", "继续直到完成", "until done", "workflow"],
             "Risk": {
               "SideEffect": "internal-planning",
               "Permission": "internal"
@@ -163,16 +87,8 @@
             }
           }
         ],
-        "Tags": [
-          "todo",
-          "工作流",
-          "复杂任务",
-          "持续执行",
-          "收口"
-        ],
-        "Avoid": [
-          "简单一次性回答、无需工具、无需多步骤跟踪时不要使用。"
-        ]
+        "Tags": ["todo", "工作流", "复杂任务", "持续执行", "收口"],
+        "Avoid": ["简单一次性回答、无需工具、无需多步骤跟踪时不要使用。"]
       }
     },
     {
@@ -193,49 +109,14 @@
             "Title": "Pi implementation workflow",
             "Description": "Guide Pi through code investigation, scoped edits, runtime integration, and verification.",
             "Facets": {
-              "Actions": [
-                "implement",
-                "integrate",
-                "refactor",
-                "optimize",
-                "verify"
-              ],
-              "Targets": [
-                "source-code",
-                "runtime",
-                "plugin",
-                "frontend-protocol",
-                "pi-resource"
-              ],
-              "Inputs": [
-                "workspace-evidence",
-                "manifest-metadata",
-                "typed-contract",
-                "user-request"
-              ],
-              "Outputs": [
-                "code-change",
-                "resource-adaptation",
-                "verification-result"
-              ],
-              "Evidence": [
-                "workspace-read",
-                "type-check",
-                "verify-suite",
-                "build-output"
-              ],
-              "Effects": [
-                "workspace-change",
-                "runtime-contract-change"
-              ]
+              "Actions": ["implement", "integrate", "refactor", "optimize", "verify"],
+              "Targets": ["source-code", "runtime", "plugin", "frontend-protocol", "pi-resource"],
+              "Inputs": ["workspace-evidence", "manifest-metadata", "typed-contract", "user-request"],
+              "Outputs": ["code-change", "resource-adaptation", "verification-result"],
+              "Evidence": ["workspace-read", "type-check", "verify-suite", "build-output"],
+              "Effects": ["workspace-change", "runtime-contract-change"]
             },
-            "Aliases": [
-              "优化拓展",
-              "代码质量",
-              "去硬编码",
-              "Pi native",
-              "产品化落地"
-            ],
+            "Aliases": ["优化拓展", "代码质量", "去硬编码", "Pi native", "产品化落地"],
             "Risk": {
               "SideEffect": "workspace-change",
               "Permission": "write"
@@ -246,16 +127,8 @@
             }
           }
         ],
-        "Tags": [
-          "实现",
-          "集成",
-          "重构",
-          "Pi-native",
-          "代码质量"
-        ],
-        "Avoid": [
-          "纯概念解释、无需修改代码或无需运行验证时不要使用。"
-        ]
+        "Tags": ["实现", "集成", "重构", "Pi-native", "代码质量"],
+        "Avoid": ["纯概念解释、无需修改代码或无需运行验证时不要使用。"]
       }
     }
   ],
@@ -279,48 +152,14 @@
             "Title": "Pi execution workflow",
             "Description": "Keep multi-step work inside Pi resources and tool loops with task tracking and verification.",
             "Facets": {
-              "Actions": [
-                "plan",
-                "execute",
-                "implement",
-                "verify",
-                "complete"
-              ],
-              "Targets": [
-                "workflow",
-                "todo",
-                "tdd",
-                "pi-resource",
-                "runtime"
-              ],
-              "Inputs": [
-                "user-request",
-                "root-command",
-                "workspace-evidence"
-              ],
-              "Outputs": [
-                "completed-work",
-                "verification-summary"
-              ],
-              "Evidence": [
-                "tool-result",
-                "test-output",
-                "build-output"
-              ],
-              "Effects": [
-                "internal-planning",
-                "workspace-change"
-              ]
+              "Actions": ["plan", "execute", "implement", "verify", "complete"],
+              "Targets": ["workflow", "todo", "tdd", "pi-resource", "runtime"],
+              "Inputs": ["user-request", "root-command", "workspace-evidence"],
+              "Outputs": ["completed-work", "verification-summary"],
+              "Evidence": ["tool-result", "test-output", "build-output"],
+              "Effects": ["internal-planning", "workspace-change"]
             },
-            "Aliases": [
-              "继续优化",
-              "全面落地",
-              "不要硬编码",
-              "workflow",
-              "todo",
-              "TDD",
-              "until done"
-            ],
+            "Aliases": ["继续优化", "全面落地", "不要硬编码", "workflow", "todo", "TDD", "until done"],
             "Risk": {
               "SideEffect": "workspace-change",
               "Permission": "write"
@@ -331,29 +170,14 @@
           "用户要求继续全面优化拓展、提高代码质量、去硬编码并验证。",
           "任务需要跨多个步骤推进，而不是一次性回答。"
         ],
-        "Tags": [
-          "执行工作流",
-          "todo",
-          "TDD",
-          "Pi-native",
-          "持续落地"
-        ],
-        "Avoid": [
-          "单步说明、闲聊或无需工具闭环的回答。"
-        ]
+        "Tags": ["执行工作流", "todo", "TDD", "Pi-native", "持续落地"],
+        "Avoid": ["单步说明、闲聊或无需工具闭环的回答。"]
       },
       "EvidenceRequirements": [
         {
           "Need": "completed work verification",
-          "Accepts": [
-            "test output",
-            "type check",
-            "build output",
-            "workspace evidence"
-          ],
-          "MinimumQuality": [
-            "observed"
-          ],
+          "Accepts": ["test output", "type check", "build output", "workspace evidence"],
+          "MinimumQuality": ["observed"],
           "Minimum": 1,
           "Purpose": "复杂落地任务需要用实际工具结果或源码读取证明进度与完成状态。"
         }
@@ -379,46 +203,14 @@
             "Title": "Workspace investigation",
             "Description": "Guide local code investigation through search, candidate reading, query refinement, and evidence-backed conclusions.",
             "Facets": {
-              "Actions": [
-                "investigate",
-                "search",
-                "read",
-                "verify"
-              ],
-              "Targets": [
-                "workspace",
-                "source-code",
-                "configuration",
-                "prompt-template",
-                "ui-code"
-              ],
-              "Inputs": [
-                "natural-language",
-                "identifier",
-                "path",
-                "error-text",
-                "ui-description"
-              ],
-              "Outputs": [
-                "source-location",
-                "evidence-backed-summary",
-                "next-edit-target"
-              ],
-              "Evidence": [
-                "workspace-search-match",
-                "workspace-read"
-              ],
-              "Effects": [
-                "read-only",
-                "index-cache"
-              ]
+              "Actions": ["investigate", "search", "read", "verify"],
+              "Targets": ["workspace", "source-code", "configuration", "prompt-template", "ui-code"],
+              "Inputs": ["natural-language", "identifier", "path", "error-text", "ui-description"],
+              "Outputs": ["source-location", "evidence-backed-summary", "next-edit-target"],
+              "Evidence": ["workspace-search-match", "workspace-read"],
+              "Effects": ["read-only", "index-cache"]
             },
-            "Aliases": [
-              "代码调查",
-              "搜索读取闭环",
-              "find code and verify",
-              "search read refine"
-            ],
+            "Aliases": ["代码调查", "搜索读取闭环", "find code and verify", "search read refine"],
             "Risk": {
               "SideEffect": "index-cache",
               "Permission": "read"
@@ -437,16 +229,8 @@
           "项目用途 README package",
           "代码库入口模块"
         ],
-        "Avoid": [
-          "无需本地工作区事实的闲聊、解释或纯设计讨论。"
-        ],
-        "Tags": [
-          "项目调查",
-          "代码理解",
-          "工作区检索",
-          "文件阅读",
-          "问题定位"
-        ]
+        "Avoid": ["无需本地工作区事实的闲聊、解释或纯设计讨论。"],
+        "Tags": ["项目调查", "代码理解", "工作区检索", "文件阅读", "问题定位"]
       },
       "EvidenceRequirements": [
         {
@@ -458,9 +242,7 @@
             "implementation detail",
             "source behavior"
           ],
-          "MinimumQuality": [
-            "observed"
-          ],
+          "MinimumQuality": ["observed"],
           "Minimum": 1,
           "Purpose": "本地工作区结论需要来自已读取的文件、目录读取或源码片段；项目地图和搜索候选只用于定位，不满足最终回答。"
         }
@@ -485,77 +267,31 @@
             "Title": "Change review",
             "Description": "Guide review of local or PR changes with risk-first findings, source references, and verification gaps.",
             "Facets": {
-              "Actions": [
-                "review",
-                "inspect",
-                "verify"
-              ],
-              "Targets": [
-                "diff",
-                "pull-request",
-                "workspace-change",
-                "test-coverage"
-              ],
-              "Inputs": [
-                "diff",
-                "commit",
-                "changed-files",
-                "user-claim"
-              ],
-              "Outputs": [
-                "findings",
-                "risk-summary",
-                "test-gap"
-              ],
-              "Evidence": [
-                "workspace-read",
-                "workspace-search-match"
-              ],
-              "Effects": [
-                "read-only"
-              ]
+              "Actions": ["review", "inspect", "verify"],
+              "Targets": ["diff", "pull-request", "workspace-change", "test-coverage"],
+              "Inputs": ["diff", "commit", "changed-files", "user-claim"],
+              "Outputs": ["findings", "risk-summary", "test-gap"],
+              "Evidence": ["workspace-read", "workspace-search-match"],
+              "Effects": ["read-only"]
             },
-            "Aliases": [
-              "PR 审查",
-              "代码审查",
-              "review changes",
-              "diff review"
-            ],
+            "Aliases": ["PR 审查", "代码审查", "review changes", "diff review"],
             "Risk": {
               "SideEffect": "none",
               "Permission": "read"
             }
           }
         ],
-        "UseCases": [
-          "PR、合并变更、未提交 diff、风险、回归、测试缺口审查。"
-        ],
-        "Examples": [
-          "PR 变更风险审查",
-          "合并变更框架影响",
-          "diff regression risk"
-        ],
-        "Avoid": [
-          "纯需求分析或无需检查实际变更时不要激活。"
-        ],
-        "Tags": [
-          "代码审查",
-          "变更分析",
-          "风险评估",
-          "回归检查",
-          "测试建议"
-        ]
+        "UseCases": ["PR、合并变更、未提交 diff、风险、回归、测试缺口审查。"],
+        "Examples": ["PR 变更风险审查", "合并变更框架影响", "diff regression risk"],
+        "Avoid": ["纯需求分析或无需检查实际变更时不要激活。"],
+        "Tags": ["代码审查", "变更分析", "风险评估", "回归检查", "测试建议"]
       }
     },
     {
       "Name": "FrontendExperienceInspectionSkill",
       "Title": "前端体验检查",
       "DescriptionFile": "./docs/FrontendExperienceInspection.md",
-      "RecommendedTools": [
-        "WorkspaceGrep",
-        "WorkspaceReadFile",
-        "WorkspaceSearchFiles"
-      ],
+      "RecommendedTools": ["WorkspaceGrep", "WorkspaceReadFile", "WorkspaceSearchFiles"],
       "Search": {
         "Summary": "处理前端 UI、交互、布局、视觉抖动、文件图标、上传进度和体验问题时，按状态、布局、样式、事件流检查。",
         "Capabilities": [
@@ -564,79 +300,31 @@
             "Title": "Frontend experience inspection",
             "Description": "Guide UI investigation through component state, event flow, layout constraints, and visual verification.",
             "Facets": {
-              "Actions": [
-                "inspect",
-                "debug",
-                "verify"
-              ],
-              "Targets": [
-                "frontend",
-                "component",
-                "layout",
-                "interaction",
-                "visual-state"
-              ],
-              "Inputs": [
-                "ui-description",
-                "screenshot",
-                "component-name",
-                "css-class"
-              ],
-              "Outputs": [
-                "ui-cause",
-                "implementation-target",
-                "verification-plan"
-              ],
-              "Evidence": [
-                "workspace-read",
-                "workspace-search-match"
-              ],
-              "Effects": [
-                "read-only"
-              ]
+              "Actions": ["inspect", "debug", "verify"],
+              "Targets": ["frontend", "component", "layout", "interaction", "visual-state"],
+              "Inputs": ["ui-description", "screenshot", "component-name", "css-class"],
+              "Outputs": ["ui-cause", "implementation-target", "verification-plan"],
+              "Evidence": ["workspace-read", "workspace-search-match"],
+              "Effects": ["read-only"]
             },
-            "Aliases": [
-              "UI 排查",
-              "前端体验",
-              "layout investigation",
-              "visual regression"
-            ],
+            "Aliases": ["UI 排查", "前端体验", "layout investigation", "visual regression"],
             "Risk": {
               "SideEffect": "none",
               "Permission": "read"
             }
           }
         ],
-        "UseCases": [
-          "前端 UI、交互卡顿、布局抖动、状态显示、视觉验证问题。"
-        ],
-        "Examples": [
-          "思考过程折叠视觉问题",
-          "上传进度百分比显示",
-          "对话展开布局抖动",
-          "文件图标预览显示"
-        ],
-        "Avoid": [
-          "与界面无关的纯服务端问题。"
-        ],
-        "Tags": [
-          "前端体验",
-          "界面检查",
-          "布局交互",
-          "样式问题",
-          "性能观感"
-        ]
+        "UseCases": ["前端 UI、交互卡顿、布局抖动、状态显示、视觉验证问题。"],
+        "Examples": ["思考过程折叠视觉问题", "上传进度百分比显示", "对话展开布局抖动", "文件图标预览显示"],
+        "Avoid": ["与界面无关的纯服务端问题。"],
+        "Tags": ["前端体验", "界面检查", "布局交互", "样式问题", "性能观感"]
       }
     },
     {
       "Name": "DocumentUnderstandingSkill",
       "Title": "文件理解",
       "DescriptionFile": "./docs/DocumentUnderstanding.md",
-      "RecommendedTools": [
-        "DocumentTool",
-        "ArtifactMemoryReadTool",
-        "ImageVisionTool"
-      ],
+      "RecommendedTools": ["DocumentTool", "ArtifactMemoryReadTool", "ImageVisionTool"],
       "Search": {
         "Summary": "处理上传文件、文档解析、预览、切片、视觉识别和按需读取时，先登记文件，再按任务选择文本、结构或视觉路径。",
         "Capabilities": [
@@ -645,79 +333,31 @@
             "Title": "Document understanding",
             "Description": "Guide uploaded document handling through registration, media detection, preview projection, extraction, and evidence reading.",
             "Facets": {
-              "Actions": [
-                "register",
-                "extract",
-                "read",
-                "inspect"
-              ],
-              "Targets": [
-                "upload",
-                "document",
-                "pdf",
-                "office-file",
-                "image"
-              ],
-              "Inputs": [
-                "upload-uri",
-                "absolute-path",
-                "question",
-                "file-metadata"
-              ],
-              "Outputs": [
-                "document-preview",
-                "content-evidence",
-                "artifact-reference"
-              ],
-              "Evidence": [
-                "document-summary",
-                "artifact-memory"
-              ],
-              "Effects": [
-                "read-only",
-                "artifact-write"
-              ]
+              "Actions": ["register", "extract", "read", "inspect"],
+              "Targets": ["upload", "document", "pdf", "office-file", "image"],
+              "Inputs": ["upload-uri", "absolute-path", "question", "file-metadata"],
+              "Outputs": ["document-preview", "content-evidence", "artifact-reference"],
+              "Evidence": ["document-summary", "artifact-memory"],
+              "Effects": ["read-only", "artifact-write"]
             },
-            "Aliases": [
-              "文档解析",
-              "上传文件理解",
-              "PDF 阅读",
-              "image vision"
-            ],
+            "Aliases": ["文档解析", "上传文件理解", "PDF 阅读", "image vision"],
             "Risk": {
               "SideEffect": "artifact-write",
               "Permission": "read"
             }
           }
         ],
-        "UseCases": [
-          "上传文件、docx、ppt、pdf、excel、图片解析、索引、预览、读取。"
-        ],
-        "Examples": [
-          "上传文件媒体类型识别",
-          "PDF 文档按需读取",
-          "图片识别插件路径",
-          "文档预览切片策略"
-        ],
-        "Avoid": [
-          "没有文件、上传 URI 或文档处理需求时不要激活。"
-        ],
-        "Tags": [
-          "文档理解",
-          "附件处理",
-          "图片识别",
-          "内容抽取",
-          "文件预览"
-        ]
+        "UseCases": ["上传文件、docx、ppt、pdf、excel、图片解析、索引、预览、读取。"],
+        "Examples": ["上传文件媒体类型识别", "PDF 文档按需读取", "图片识别插件路径", "文档预览切片策略"],
+        "Avoid": ["没有文件、上传 URI 或文档处理需求时不要激活。"],
+        "Tags": ["文档理解", "附件处理", "图片识别", "内容抽取", "文件预览"]
       }
     },
     {
       "Name": "MemoryFormationSkill",
       "Title": "长期记忆形成",
       "DescriptionFile": "./docs/MemoryFormation.md",
-      "RecommendedTools": [
-        "ArtifactMemoryReadTool"
-      ],
+      "RecommendedTools": ["ArtifactMemoryReadTool"],
       "Search": {
         "Summary": "设计长期记忆、用户画像、偏好、知识点和关系网络时，区分事实、偏好、项目规则、候选记忆和证据来源。",
         "Capabilities": [
@@ -726,69 +366,24 @@
             "Title": "Memory formation",
             "Description": "Guide durable memory design through candidate extraction, evidence linking, consolidation, conflict handling, and recall projection.",
             "Facets": {
-              "Actions": [
-                "extract",
-                "classify",
-                "consolidate",
-                "link"
-              ],
-              "Targets": [
-                "long-term-memory",
-                "user-profile",
-                "preference",
-                "knowledge-graph",
-                "project-convention"
-              ],
-              "Inputs": [
-                "conversation",
-                "tool-evidence",
-                "user-correction",
-                "repeated-behavior"
-              ],
-              "Outputs": [
-                "candidate-memory",
-                "memory-policy",
-                "relationship-edge",
-                "recall-projection"
-              ],
-              "Evidence": [
-                "conversation-evidence",
-                "artifact-reference"
-              ],
-              "Effects": [
-                "memory-write"
-              ]
+              "Actions": ["extract", "classify", "consolidate", "link"],
+              "Targets": ["long-term-memory", "user-profile", "preference", "knowledge-graph", "project-convention"],
+              "Inputs": ["conversation", "tool-evidence", "user-correction", "repeated-behavior"],
+              "Outputs": ["candidate-memory", "memory-policy", "relationship-edge", "recall-projection"],
+              "Evidence": ["conversation-evidence", "artifact-reference"],
+              "Effects": ["memory-write"]
             },
-            "Aliases": [
-              "记忆系统",
-              "用户偏好",
-              "知识网络",
-              "memory extraction"
-            ],
+            "Aliases": ["记忆系统", "用户偏好", "知识网络", "memory extraction"],
             "Risk": {
               "SideEffect": "memory-write",
               "Permission": "internal"
             }
           }
         ],
-        "UseCases": [
-          "长期记忆、用户画像、偏好学习、候选记忆、知识图谱、记忆压缩策略。"
-        ],
-        "Examples": [
-          "硬编码偏好长期记忆",
-          "知识网络关系形成",
-          "用户画像自动完善",
-          "memory candidate extraction"
-        ],
-        "Avoid": [
-          "普通代码修改、无需跨会话持久化时不要激活。"
-        ],
-        "Tags": [
-          "长期记忆",
-          "用户画像",
-          "偏好学习",
-          "知识关系"
-        ]
+        "UseCases": ["长期记忆、用户画像、偏好学习、候选记忆、知识图谱、记忆压缩策略。"],
+        "Examples": ["硬编码偏好长期记忆", "知识网络关系形成", "用户画像自动完善", "memory candidate extraction"],
+        "Avoid": ["普通代码修改、无需跨会话持久化时不要激活。"],
+        "Tags": ["长期记忆", "用户画像", "偏好学习", "知识关系"]
       }
     }
   ],

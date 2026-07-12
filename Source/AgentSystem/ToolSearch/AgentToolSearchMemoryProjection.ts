@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
+import { type AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import type {
   AgentToolLearningProjection,
   AgentToolLearningTermAggregate,
@@ -71,15 +71,15 @@ export function patternFromAggregate(
 
   return {
     toolName: pattern.toolName,
-    triggerSummary: terms.length > 0
-      ? `相关触发词：${terms.join("、")}`
-      : "历史成功样本显示当前请求与该工具相关。",
-    argumentGuidance: pattern.argumentKeys.length > 0
-      ? `按当前用户目标填写这些历史有效参数：${pattern.argumentKeys.join("、")}。`
-      : "按工具签名和当前用户目标构造参数。",
-    evidenceGoal: pattern.evidenceKinds.length > 0
-      ? `历史成功结果通常产生：${pattern.evidenceKinds.join("、")}。`
-      : "以工具结果能支持当前回答为准。",
+    triggerSummary: terms.length > 0 ? `相关触发词：${terms.join("、")}` : "历史成功样本显示当前请求与该工具相关。",
+    argumentGuidance:
+      pattern.argumentKeys.length > 0
+        ? `按当前用户目标填写这些历史有效参数：${pattern.argumentKeys.join("、")}。`
+        : "按工具签名和当前用户目标构造参数。",
+    evidenceGoal:
+      pattern.evidenceKinds.length > 0
+        ? `历史成功结果通常产生：${pattern.evidenceKinds.join("、")}。`
+        : "以工具结果能支持当前回答为准。",
     confidence,
     supportCount,
     successCount: pattern.support,
@@ -126,25 +126,17 @@ export function mergePatternAggregate(
 }
 
 export function termAggregateKey(term: AgentToolLearningTermAggregate): string {
-  return [
-    term.projectId,
-    term.toolName,
-    term.source,
-    term.term,
-  ].join("\u0000");
+  return [term.projectId, term.toolName, term.source, term.term].join("\u0000");
 }
 
 export function patternAggregateKey(pattern: AgentToolUsePatternAggregate): string {
-  return [
-    pattern.projectId,
-    pattern.toolName,
-    pattern.patternKey,
-  ].join("\u0000");
+  return [pattern.projectId, pattern.toolName, pattern.patternKey].join("\u0000");
 }
 
 export function uniqueSorted(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
-    .sort((left, right) => left.localeCompare(right));
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right),
+  );
 }
 
 function addWeightedTerm(
@@ -208,38 +200,36 @@ function projectPatternAggregates(
     if (triggerTerms.length === 0) {
       return [];
     }
-    return [{
-      projectId: episode.projectId,
-      toolName: call.toolName,
-      patternKey: patternKey(call),
-      triggerTerms,
-      argumentKeys: uniqueSorted(call.argumentKeys),
-      evidenceKinds: uniqueSorted(call.evidenceKinds),
-      support: AgentToolSearchMemorySuccessEvidence,
-      lastSeenAt: episode.timestamp,
-    }];
+    return [
+      {
+        projectId: episode.projectId,
+        toolName: call.toolName,
+        patternKey: patternKey(call),
+        triggerTerms,
+        argumentKeys: uniqueSorted(call.argumentKeys),
+        evidenceKinds: uniqueSorted(call.evidenceKinds),
+        support: AgentToolSearchMemorySuccessEvidence,
+        lastSeenAt: episode.timestamp,
+      },
+    ];
   });
 }
 
 function isSuccessfulEpisode(episode: AgentToolSearchEpisode): boolean {
-  return episode.outcome === "success"
-    && episode.finalScore > 0
-    && episode.finalOutcome.toolExecutionSucceeded
-    && (
-      episode.finalOutcome.producedEvidence
-      || episode.finalOutcome.producedArtifact
-      || episode.finalOutcome.changedWorkspace
-    );
+  return (
+    episode.outcome === "success" &&
+    episode.finalScore > 0 &&
+    episode.finalOutcome.toolExecutionSucceeded &&
+    (episode.finalOutcome.producedEvidence ||
+      episode.finalOutcome.producedArtifact ||
+      episode.finalOutcome.changedWorkspace)
+  );
 }
 
 function isSuccessfulCall(call: AgentToolSearchEpisodeCall): boolean {
-  return call.status === "success"
-    && call.score > 0
-    && (
-      call.hasEvidence
-      || call.hasArtifact
-      || call.hasWorkspaceChanges
-    );
+  return (
+    call.status === "success" && call.score > 0 && (call.hasEvidence || call.hasArtifact || call.hasWorkspaceChanges)
+  );
 }
 
 function topWeightedKeys(values: Map<string, number>): string[] {
@@ -259,18 +249,22 @@ function mergeLearnedKeywords(
     const previous = byKey.get(key);
     byKey.set(key, previous && previous.weight >= keyword.weight ? previous : keyword);
   }
-  return [...byKey.values()].sort((left, right) =>
-    left.toolName.localeCompare(right.toolName)
-    || left.source.localeCompare(right.source)
-    || left.value.localeCompare(right.value));
+  return [...byKey.values()].sort(
+    (left, right) =>
+      left.toolName.localeCompare(right.toolName) ||
+      left.source.localeCompare(right.source) ||
+      left.value.localeCompare(right.value),
+  );
 }
 
 function patternKey(call: AgentToolSearchEpisodeCall): string {
   return crypto
     .createHash("sha1")
-    .update(JSON.stringify({
-      arguments: call.argumentKeys,
-      evidence: call.evidenceKinds,
-    }))
+    .update(
+      JSON.stringify({
+        arguments: call.argumentKeys,
+        evidence: call.evidenceKinds,
+      }),
+    )
     .digest("hex");
 }

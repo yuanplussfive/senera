@@ -25,16 +25,19 @@ async function main(): Promise<void> {
       assert.equal(tool?.plugin.rootKind, "User");
       assert.equal(tool.plugin.manifest.Security?.TrustLevel, "External");
 
-      const result = await runtime.services.execution.executeToolCall({
-        name: "VerifyExternalMicroVmTool",
-        arguments: {
-          marker: "microvm",
+      const result = await runtime.services.execution.executeToolCall(
+        {
+          name: "VerifyExternalMicroVmTool",
+          arguments: {
+            marker: "microvm",
+          },
         },
-      }, {
-        requestId: "verify-external-microvm",
-        step: 1,
-        loadedToolNames: "all",
-      });
+        {
+          requestId: "verify-external-microvm",
+          step: 1,
+          loadedToolNames: "all",
+        },
+      );
 
       assert.equal(result.kind, "ToolResults");
       const execution = result.value[0];
@@ -59,70 +62,80 @@ async function main(): Promise<void> {
 async function writeVerificationPlugin(pluginRoot: string): Promise<void> {
   await writeFile(
     path.join(pluginRoot, "package.json"),
-    JSON.stringify({
-      type: "module",
-      scripts: {
-        tool: "node index.js",
+    JSON.stringify(
+      {
+        type: "module",
+        scripts: {
+          tool: "node index.js",
+        },
+        dependencies: {},
       },
-      dependencies: {},
-    }, null, 2),
+      null,
+      2,
+    ),
     "utf8",
   );
   await writeFile(
     path.join(pluginRoot, "PluginManifest.json"),
-    JSON.stringify({
-      Plugin: {
-        Name: "VerifyExternalPlugin",
-        Version: "0.0.0",
-        Kind: "Tool",
-        Entry: {
-          Kind: "Process",
-          Command: "npm",
-          Args: ["run", "tool"],
-          Cwd: ".",
+    JSON.stringify(
+      {
+        Plugin: {
+          Name: "VerifyExternalPlugin",
+          Version: "0.0.0",
+          Kind: "Tool",
+          Entry: {
+            Kind: "Process",
+            Command: "npm",
+            Args: ["run", "tool"],
+            Cwd: ".",
+          },
         },
-      },
-      Runtime: {
-        Kind: "Node",
-        NodeVersion: "22",
-        PackageManager: "npm",
-        Install: "none",
-        Script: "tool",
-        SandboxProfile: "node-plugin",
-      },
-      Sandbox: {
-        Network: "Deny",
-        Workspace: {
-          Read: [],
-          Write: [],
+        Runtime: {
+          Kind: "Node",
+          NodeVersion: "22",
+          PackageManager: "npm",
+          Install: "none",
+          Script: "tool",
+          SandboxProfile: "node-plugin",
         },
-        State: {
-          Write: [],
-        },
-      },
-      Tools: [{
-        Name: "VerifyExternalMicroVmTool",
-        Handler: {
-          Kind: "PluginProcess",
-        },
-        Execution: {
-          Boundary: "Sandbox",
+        Sandbox: {
           Network: "Deny",
-          Workspace: "ReadOnly",
-          LocalFallback: "Deny",
+          Workspace: {
+            Read: [],
+            Write: [],
+          },
+          State: {
+            Write: [],
+          },
         },
-        Permissions: [],
-      }],
-      Security: {
-        TrustLevel: "External",
-        Network: "Deny",
-        FileSystem: {
-          Read: [],
-          Write: [],
+        Tools: [
+          {
+            Name: "VerifyExternalMicroVmTool",
+            Handler: {
+              Kind: "PluginProcess",
+            },
+            Execution: {
+              Boundary: "Sandbox",
+              Network: "Deny",
+              Workspace: "ReadOnly",
+              LocalFallback: "Deny",
+            },
+            Permissions: [],
+          },
+        ],
+        Security: {
+          TrustLevel: "External",
+          Network: "Deny",
+          FileSystem: {
+            Read: [],
+            Write: [],
+          },
+          RequiresApproval: false,
         },
-        RequiresApproval: false,
       },
-    }, null, 2),
+      null,
+      2,
+    ),
     "utf8",
   );
   await writeFile(
@@ -159,17 +172,21 @@ function verificationConfig(userPluginsRoot: string): AgentSystemConfig {
       Port: 8787,
     },
     DefaultModelProviderId: "verification-model",
-    ModelProviderEndpoints: [{
-      Id: "verification-provider",
-      BaseUrl: "https://example.invalid/v1",
-      ApiKey: "verification-key",
-    }],
-    ModelProviders: [{
-      Id: "verification-model",
-      ProviderId: "verification-provider",
-      Endpoint: "ChatCompletions",
-      Model: "verification-model",
-    }],
+    ModelProviderEndpoints: [
+      {
+        Id: "verification-provider",
+        BaseUrl: "https://example.invalid/v1",
+        ApiKey: "verification-key",
+      },
+    ],
+    ModelProviders: [
+      {
+        Id: "verification-model",
+        ProviderId: "verification-provider",
+        Endpoint: "ChatCompletions",
+        Model: "verification-model",
+      },
+    ],
     ToolExecution: {
       TimeoutSeconds: 30,
       MaxStdoutBytes: 1024 * 1024,

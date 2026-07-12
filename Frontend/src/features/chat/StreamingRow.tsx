@@ -1,4 +1,5 @@
 import type { ModelProviderListItem } from "../../api/eventTypes";
+import type { ApprovalResolutionScope } from "../../api/approvalEventTypes";
 import type { RunRecord } from "../../store/sessionStore";
 import { AgentExecutionFeed } from "../workflow/AgentExecutionFeed";
 import { ApprovalRequestStrip } from "./ApprovalRequestStrip";
@@ -10,7 +11,7 @@ export interface StreamingRowProps {
   assistantAvatarIcon?: string;
   selectedModelProvider?: ModelProviderListItem;
   approvalDisabled?: boolean;
-  onResolveApproval?: (approvalId: string, status: "approved" | "denied") => void;
+  onResolveApproval?: (approvalId: string, status: "approved" | "denied", scope?: ApprovalResolutionScope) => void;
 }
 
 export function StreamingRow({
@@ -24,15 +25,12 @@ export function StreamingRow({
     <div className="flex items-start gap-3">
       <MessageAvatar role="assistant" icon={assistantAvatarIcon} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <MessageMeta
-          title={readRunDisplayName(run, selectedModelProvider)}
-          timestamp={run.startedAt}
-        />
+        <MessageMeta title={readRunDisplayName(run, selectedModelProvider)} timestamp={run.startedAt} />
         <div className="mt-1">
           <ApprovalRequestStrip
             approvals={run.approvals ?? []}
             disabled={approvalDisabled || !onResolveApproval}
-            onResolve={(approvalId, approvalStatus) => onResolveApproval?.(approvalId, approvalStatus)}
+            onResolve={(approvalId, approvalStatus, scope) => onResolveApproval?.(approvalId, approvalStatus, scope)}
           />
           <AgentExecutionFeed run={run} />
         </div>

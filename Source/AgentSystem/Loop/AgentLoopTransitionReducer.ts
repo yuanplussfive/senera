@@ -11,25 +11,17 @@ import type {
 export class AgentLoopTransitionReducer {
   private readonly successHandler: AgentLoopSuccessTransitionHandler;
 
-  constructor(
-    eventFactory = new AgentLoopEventFactory(),
-  ) {
+  constructor(eventFactory = new AgentLoopEventFactory()) {
     this.successHandler = new AgentLoopSuccessTransitionHandler(eventFactory);
   }
 
-  consume(
-    state: RunningAgentLoopMachineState,
-    result: AgentLoopCommandResult,
-  ): AgentLoopTransition {
+  consume(state: RunningAgentLoopMachineState, result: AgentLoopCommandResult): AgentLoopTransition {
     return matchByKind(result, {
       succeeded: ({ output }) => this.afterSuccess(state, output),
     });
   }
 
-  private afterSuccess(
-    state: RunningAgentLoopMachineState,
-    output: AgentLoopCommandSucceeded,
-  ): AgentLoopTransition {
+  private afterSuccess(state: RunningAgentLoopMachineState, output: AgentLoopCommandSucceeded): AgentLoopTransition {
     return this.successHandler.handle(state, output);
   }
 }

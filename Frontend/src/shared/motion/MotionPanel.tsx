@@ -4,13 +4,7 @@ import { cn } from "../../lib/util";
 import { useMotionLevel } from "./MotionProvider";
 import { motionSprings, motionTimings } from "./presets";
 
-export function MotionPanel({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}): JSX.Element {
+export function MotionPanel({ children, className }: { children: ReactNode; className?: string }): JSX.Element {
   const { reduceMotion, disableMotion } = useMotionLevel();
   return (
     <motion.div

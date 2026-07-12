@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motionTimings, readTapScale, useMotionLevel } from "../../shared/motion";
 import { FilePreviewIcon } from "./FilePreviewIcon";
 import { MessageActions } from "./MessageActions";
@@ -33,12 +34,7 @@ export function UserMessageRow({
   return (
     <div className="group/msg flex items-start justify-end gap-3">
       <div className="flex min-w-0 max-w-[620px] flex-col items-end">
-        <MessageMeta
-          align="right"
-          title={userProfile.name}
-          timestamp={message.createdAt}
-          order="time-first"
-        />
+        <MessageMeta align="right" title={userProfile.name} timestamp={message.createdAt} order="time-first" />
         {message.attachments && message.attachments.length > 0 ? (
           <MessageAttachments attachments={message.attachments} />
         ) : null}
@@ -53,7 +49,7 @@ export function UserMessageRow({
               ? "cursor-text hover:bg-ink-800 focus:outline-none focus:ring-2 focus:ring-terra-200/60"
               : "cursor-default",
           )}
-          aria-label="编辑这条消息"
+          aria-label={frontendMessage("chat.editMessage")}
         >
           {message.content}
         </motion.button>
@@ -73,11 +69,7 @@ export function UserMessageRow({
   );
 }
 
-function MessageAttachments({
-  attachments,
-}: {
-  attachments: NonNullable<ChatMessage["attachments"]>;
-}): JSX.Element {
+function MessageAttachments({ attachments }: { attachments: NonNullable<ChatMessage["attachments"]> }): JSX.Element {
   return (
     <div className="mt-1 flex max-w-full flex-col items-end gap-1">
       {attachments.map((attachment) => (

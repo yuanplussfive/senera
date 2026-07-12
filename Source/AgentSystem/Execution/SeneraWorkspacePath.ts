@@ -9,9 +9,7 @@ export function resolveWorkspacePath(
   const relative = path.relative(root, absolutePath);
   const inside = relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 
-  return inside
-    ? { ok: true, absolutePath }
-    : { ok: false, message: `路径超出工作区：${value ?? "."}` };
+  return inside ? { ok: true, absolutePath } : { ok: false, message: `路径超出工作区：${value ?? "."}` };
 }
 
 export function workspaceRelativePath(workspaceRoot: string, absolutePath: string): string {

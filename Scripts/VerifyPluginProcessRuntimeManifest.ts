@@ -37,10 +37,7 @@ interface PackageJsonForVerification {
 }
 
 async function main(): Promise<void> {
-  const manifestPaths = await fg([
-    "System/Plugins/*/PluginManifest.json",
-    "Plugins/*/PluginManifest.json",
-  ], {
+  const manifestPaths = await fg(["System/Plugins/*/PluginManifest.json", "Plugins/*/PluginManifest.json"], {
     cwd: process.cwd(),
     absolute: true,
   });
@@ -92,11 +89,7 @@ function assertProcessToolsDeclareExecution(
       /^(Local|Sandbox|SandboxPreferred)$/,
       `${label}: Tool.Execution.Boundary 必须声明执行边界。`,
     );
-    assert.match(
-      tool.Execution?.Network ?? "",
-      /^(Allow|Deny)$/,
-      `${label}: Tool.Execution.Network 必须显式声明。`,
-    );
+    assert.match(tool.Execution?.Network ?? "", /^(Allow|Deny)$/, `${label}: Tool.Execution.Network 必须显式声明。`);
     assert.match(
       tool.Execution?.Workspace ?? "",
       /^(ReadOnly|ReadWrite)$/,

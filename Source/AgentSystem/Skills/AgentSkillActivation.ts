@@ -44,9 +44,7 @@ export class AgentSkillActivationService {
     rootCommand?: AgentRootCommand | null;
   }): AgentActivatedSkill[] {
     const query = this.buildActivationQuery(options);
-    const catalogByName = new Map(
-      this.projector.list().map((skill) => [skill.name, skill]),
-    );
+    const catalogByName = new Map(this.projector.list().map((skill) => [skill.name, skill]));
 
     return this.selector
       .select({
@@ -54,8 +52,7 @@ export class AgentSkillActivationService {
         skills: this.registry.listSkills(),
       })
       .map((selection) => {
-        const catalog = catalogByName.get(selection.skill.name)
-          ?? this.projector.project(selection.skill);
+        const catalog = catalogByName.get(selection.skill.name) ?? this.projector.project(selection.skill);
         return {
           name: selection.skill.name,
           title: catalog.title,
@@ -73,11 +70,7 @@ export class AgentSkillActivationService {
   }
 
   recommendedToolNames(skills: readonly AgentActivatedSkill[]): string[] {
-    return [
-      ...new Set(
-        skills.flatMap((skill) => skill.recommendedTools),
-      ),
-    ];
+    return [...new Set(skills.flatMap((skill) => skill.recommendedTools))];
   }
 
   private buildActivationQuery(options: {
@@ -89,7 +82,9 @@ export class AgentSkillActivationService {
       options.input,
       ...this.decisionQuerySegments(options.decision),
       ...this.rootCommandQuerySegments(options.rootCommand),
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
 
   private decisionQuerySegments(decision: AgentActionDecision | undefined): string[] {
@@ -122,9 +117,7 @@ export class AgentSkillActivationService {
     ];
   }
 
-  private capabilityNeedSegments(
-    needs: readonly ReturnType<typeof agentActionCapabilityNeeds>[number][],
-  ): string[] {
+  private capabilityNeedSegments(needs: readonly ReturnType<typeof agentActionCapabilityNeeds>[number][]): string[] {
     return needs.flatMap((need) => [
       ...need.actions,
       ...need.targets,

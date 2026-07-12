@@ -20,15 +20,13 @@ export function createAgentStructuredIssueList(
   issues: readonly (string | AgentStructuredIssue)[],
 ): AgentStructuredIssue[] {
   return issues.map((issue) =>
-    typeof issue === "string"
-      ? createAgentStructuredIssue(issue)
-      : normalizeAgentStructuredIssue(issue));
+    typeof issue === "string" ? createAgentStructuredIssue(issue) : normalizeAgentStructuredIssue(issue),
+  );
 }
 
 export function formatAgentStructuredIssue(issue: AgentStructuredIssue): string {
-  const target = issue.path && issue.path.length > 0
-    ? formatAgentStructuredIssuePath(issue.path)
-    : issue.pointer ?? "/";
+  const target =
+    issue.path && issue.path.length > 0 ? formatAgentStructuredIssuePath(issue.path) : (issue.pointer ?? "/");
   return `${target}: ${issue.message}`;
 }
 
@@ -40,17 +38,11 @@ export function agentStructuredIssueToPointer(issue: AgentStructuredIssue): stri
   return issue.pointer ?? agentStructuredIssuePathToPointer(issue.path ?? []);
 }
 
-export function agentStructuredIssuePathToPointer(
-  path: readonly AgentStructuredIssuePathSegment[],
-): string {
-  return path.length === 0
-    ? ""
-    : `/${path.map(escapeJsonPointerSegment).join("/")}`;
+export function agentStructuredIssuePathToPointer(path: readonly AgentStructuredIssuePathSegment[]): string {
+  return path.length === 0 ? "" : `/${path.map(escapeJsonPointerSegment).join("/")}`;
 }
 
-export function formatAgentStructuredIssuePath(
-  path: readonly AgentStructuredIssuePathSegment[],
-): string {
+export function formatAgentStructuredIssuePath(path: readonly AgentStructuredIssuePathSegment[]): string {
   if (path.length === 0) {
     return "/";
   }
@@ -69,8 +61,7 @@ export function zodIssueToAgentStructuredIssue(issue: {
 }): AgentStructuredIssue {
   return createAgentStructuredIssue(
     issue.message,
-    issue.path.flatMap((part) =>
-      typeof part === "string" || typeof part === "number" ? [part] : []),
+    issue.path.flatMap((part) => (typeof part === "string" || typeof part === "number" ? [part] : [])),
   );
 }
 

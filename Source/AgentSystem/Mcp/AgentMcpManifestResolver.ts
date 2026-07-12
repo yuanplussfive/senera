@@ -60,20 +60,21 @@ export function resolveMcpServerManifest(
 }
 
 function resolveServerArgs(args: readonly string[], context: AgentMcpManifestTemplateContext): string[] {
-  const resolved = args.reduce<ResolvedMcpServerArgs>((state, arg) => {
-    const next = resolveArgTemplate(arg, context);
-    return {
-      values: [...state.values, next.value],
-      requiresTsxLoader: state.requiresTsxLoader || next.requiresTsxLoader,
-    };
-  }, {
-    values: [],
-    requiresTsxLoader: false,
-  });
+  const resolved = args.reduce<ResolvedMcpServerArgs>(
+    (state, arg) => {
+      const next = resolveArgTemplate(arg, context);
+      return {
+        values: [...state.values, next.value],
+        requiresTsxLoader: state.requiresTsxLoader || next.requiresTsxLoader,
+      };
+    },
+    {
+      values: [],
+      requiresTsxLoader: false,
+    },
+  );
 
-  return resolved.requiresTsxLoader
-    ? ["--import", "tsx", ...resolved.values]
-    : resolved.values;
+  return resolved.requiresTsxLoader ? ["--import", "tsx", ...resolved.values] : resolved.values;
 }
 
 function resolvePathTemplate(value: string, context: AgentMcpManifestTemplateContext): string {
@@ -82,10 +83,12 @@ function resolvePathTemplate(value: string, context: AgentMcpManifestTemplateCon
 }
 
 function resolveTemplate(value: string, context: AgentMcpManifestTemplateContext): string {
-  return TemplateResolvers
-    .reduce((current, resolver) => current.replace(resolver.pattern, resolver.resolve(context)), value)
-    .replace(PackageBinPattern, (_match, packageName: string, binName: string | undefined) =>
-      resolveNodePackageBin(packageName, binName));
+  return TemplateResolvers.reduce(
+    (current, resolver) => current.replace(resolver.pattern, resolver.resolve(context)),
+    value,
+  ).replace(PackageBinPattern, (_match, packageName: string, binName: string | undefined) =>
+    resolveNodePackageBin(packageName, binName),
+  );
 }
 
 function resolveArgTemplate(value: string, context: AgentMcpManifestTemplateContext): ResolvedRuntimeModulePath {

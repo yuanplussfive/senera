@@ -45,9 +45,7 @@ const RunEventHistoryDataProjectors = new Map<AgentEventKind, RunEventHistoryDat
 
 export const AgentRunEventHistoryReplayChunkSize = 120;
 
-export function projectAgentRunEventForHistory(
-  envelope: AgentEventEnvelope,
-): AgentEventEnvelope | undefined {
+export function projectAgentRunEventForHistory(envelope: AgentEventEnvelope): AgentEventEnvelope | undefined {
   if (!shouldPersistRunEvent(envelope)) {
     return undefined;
   }
@@ -75,9 +73,7 @@ function shouldPersistRunEvent(envelope: AgentEventEnvelope): boolean {
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function readString(value: unknown): string {

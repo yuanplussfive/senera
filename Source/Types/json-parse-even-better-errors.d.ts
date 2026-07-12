@@ -7,16 +7,8 @@ declare module "json-parse-even-better-errors" {
 
   interface ParseJson {
     (text: string | Buffer, reviver?: (key: string, value: unknown) => unknown): unknown;
-    JSONParseError: new (
-      error: Error,
-      text: string,
-      context?: number,
-      caller?: unknown,
-    ) => JsonParseError;
-    noExceptions: (
-      text: string | Buffer,
-      reviver?: (key: string, value: unknown) => unknown,
-    ) => unknown;
+    JSONParseError: new (error: Error, text: string, context?: number, caller?: unknown) => JsonParseError;
+    noExceptions: (text: string | Buffer, reviver?: (key: string, value: unknown) => unknown) => unknown;
   }
 
   const parseJson: ParseJson;

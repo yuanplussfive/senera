@@ -1,18 +1,9 @@
-import { ToolCallStatus } from "../BamlClient/baml_client/types.js";
-import type {
-  EvidenceSlot,
-  PlannerEvidenceMemoryItem,
-} from "../BamlClient/baml_client/types.js";
+import type { EvidenceSlot, PlannerEvidenceMemoryItem } from "../BamlClient/baml_client/types.js";
 import type {
   AgentPlannerJournalEntryRecord,
   AgentToolEvidenceMemoryEntryRecord,
 } from "../Memory/AgentPlannerMemory.js";
-import {
-  readNumberField,
-  readRecords,
-  readStringArray,
-  readStringField,
-} from "./AgentSessionJsonCodec.js";
+import { readNumberField, readStringArray, readStringField } from "./AgentSessionJsonCodec.js";
 
 export function parsePlannerJournalRecord(
   value: unknown,
@@ -78,24 +69,12 @@ export function parseToolEvidenceMemoryRecord(
   };
 }
 
-function readPlannerToolCallStatus(value: unknown): ToolCallStatus {
-  if (value === ToolCallStatus.Failure) {
-    return ToolCallStatus.Failure;
-  }
-  if (value === ToolCallStatus.Empty) {
-    return ToolCallStatus.Empty;
-  }
-  return ToolCallStatus.Success;
-}
-
 function readEvidenceMemoryItems(value: unknown): PlannerEvidenceMemoryItem[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return value
-    .map(readEvidenceMemoryItem)
-    .filter((entry): entry is PlannerEvidenceMemoryItem => Boolean(entry));
+  return value.map(readEvidenceMemoryItem).filter((entry): entry is PlannerEvidenceMemoryItem => Boolean(entry));
 }
 
 function readEvidenceMemoryItem(value: unknown): PlannerEvidenceMemoryItem | undefined {

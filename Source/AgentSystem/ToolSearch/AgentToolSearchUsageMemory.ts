@@ -1,13 +1,7 @@
 import type { ResolvedAgentToolLearningConfig } from "../Types/AgentConfigTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import type {
-  AgentToolSearchEpisode,
-  AgentToolSearchMemory,
-} from "./AgentToolSearchMemory.js";
-import {
-  PendingToolSearch,
-  ToolSearchToolName,
-} from "./AgentToolSearchRuntimeTypes.js";
+import type { AgentToolSearchEpisode, AgentToolSearchMemory } from "./AgentToolSearchMemory.js";
+import { type PendingToolSearch, ToolSearchToolName } from "./AgentToolSearchRuntimeTypes.js";
 import { readToolNamesFromSearchResult } from "./AgentToolSearchResultProjector.js";
 import { assessToolSearchEpisode } from "./AgentToolSearchEpisodeScorer.js";
 import type { AgentToolLearningEpisodeDraft } from "./AgentToolLearningRuntime.js";
@@ -32,19 +26,13 @@ export class AgentToolSearchUsageMemory {
     this.pendingSearches.set(requestId, [...entries, search]);
   }
 
-  recordToolUsage(
-    requestId: string,
-    results: ExecutedToolCallResult[],
-    turnUnderstanding?: TurnUnderstanding,
-  ): void {
+  recordToolUsage(requestId: string, results: ExecutedToolCallResult[], turnUnderstanding?: TurnUnderstanding): void {
     if (!this.learningConfig.Enabled) {
       this.pendingSearches.delete(requestId);
       return;
     }
 
-    const chosenTools = results
-      .map((result) => result.name)
-      .filter((name) => name !== ToolSearchToolName);
+    const chosenTools = results.map((result) => result.name).filter((name) => name !== ToolSearchToolName);
     if (chosenTools.length === 0) {
       return;
     }
@@ -61,9 +49,7 @@ export class AgentToolSearchUsageMemory {
       return;
     }
 
-    const assessment = assessToolSearchEpisode(
-      results.filter((result) => result.name !== ToolSearchToolName),
-    );
+    const assessment = assessToolSearchEpisode(results.filter((result) => result.name !== ToolSearchToolName));
     if (assessment.outcome !== "success") {
       this.pendingSearches.delete(requestId);
       return;

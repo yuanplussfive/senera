@@ -16,8 +16,8 @@ import {
 } from "./AgentUploadLocator.js";
 import { detectAgentUploadMime } from "./AgentUploadMime.js";
 import {
-  AgentUploadAttachment,
-  AgentUploadManifest,
+  type AgentUploadAttachment,
+  type AgentUploadManifest,
   AgentUploadManifestSchema,
   AgentUploadStatus,
   type AgentResolvedUpload,
@@ -106,9 +106,7 @@ export class AgentUploadStore {
     const uploadRoot = this.resolveRoot();
     const uploadDir = resolveAgentUploadDir(uploadRoot, uploadId);
     const manifestPath = resolveAgentUploadFile(uploadRoot, uploadId, AgentUploadFileNames.Manifest);
-    const manifest = AgentUploadManifestSchema.parse(
-      JSON.parse(await fsp.readFile(manifestPath, "utf8")),
-    );
+    const manifest = AgentUploadManifestSchema.parse(JSON.parse(await fsp.readFile(manifestPath, "utf8")));
     if (manifest.uploadUri !== normalizedUri || manifest.uploadId !== uploadId) {
       return undefined;
     }

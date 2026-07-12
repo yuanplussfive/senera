@@ -10,10 +10,7 @@ import {
   type ToolValidationResult,
 } from "ai-sdk-guardrails";
 import { moduleDirPath } from "../Core/AgentPath.js";
-import {
-  AgentPermissionActions,
-  type AgentPermissionDecision,
-} from "./AgentSafetyTypes.js";
+import { AgentPermissionActions, type AgentPermissionDecision } from "./AgentSafetyTypes.js";
 import type { AgentToolApprovalPolicyInput } from "./AgentToolApprovalPolicy.js";
 import type { AgentToolGuardrailAuditor } from "./AgentToolGuardrailAudit.js";
 
@@ -58,22 +55,20 @@ interface AgentGuardrailDecisionTrace {
   readonly result?: ToolValidationResult;
 }
 
-type BuiltInGuardrailFactory = (
-  spec: AgentAiSdkBuiltInToolGuardrailSpec,
-) => AiSdkBuiltInToolGuardrail;
+type BuiltInGuardrailFactory = (spec: AgentAiSdkBuiltInToolGuardrailSpec) => AiSdkBuiltInToolGuardrail;
 
 const BuiltInGuardrailFactories = {
   PathTraversal: () => pathTraversalGuardrail(),
   SqlInjection: () => sqlInjectionGuardrail(),
-  ParameterLength: (spec) => parameterLengthGuardrail({
-    maxLength: spec.Kind === "ParameterLength" ? spec.MaxLength : undefined,
-  }),
+  ParameterLength: (spec) =>
+    parameterLengthGuardrail({
+      maxLength: spec.Kind === "ParameterLength" ? spec.MaxLength : undefined,
+    }),
 } satisfies Record<AgentAiSdkBuiltInToolGuardrailSpec["Kind"], BuiltInGuardrailFactory>;
 
-const ApprovalActionByStatus: Partial<Record<
-  NormalizedAiSdkGuardrailApprovalStatus["type"],
-  AiSdkGuardrailAuditDecision
->> = {
+const ApprovalActionByStatus: Partial<
+  Record<NormalizedAiSdkGuardrailApprovalStatus["type"], AiSdkGuardrailAuditDecision>
+> = {
   denied: AgentPermissionActions.Deny,
   "user-approval": AgentPermissionActions.Ask,
 };
@@ -88,14 +83,10 @@ export class AgentAiSdkGuardrailAuditor implements AgentToolGuardrailAuditor {
 
   constructor(options: AgentAiSdkGuardrailAuditorOptions = {}) {
     this.profile = options.profile ?? readDefaultProfile();
-    this.guardrails = this.profile.BuiltInToolGuardrails.map((spec) =>
-      BuiltInGuardrailFactories[spec.Kind](spec)
-    );
+    this.guardrails = this.profile.BuiltInToolGuardrails.map((spec) => BuiltInGuardrailFactories[spec.Kind](spec));
   }
 
-  async auditToolCall(
-    input: AgentToolApprovalPolicyInput,
-  ): Promise<AgentPermissionDecision | undefined> {
+  async auditToolCall(input: AgentToolApprovalPolicyInput): Promise<AgentPermissionDecision | undefined> {
     let trace: AgentGuardrailDecisionTrace | undefined;
     const approval = guardrailApproval(this.guardrails, {
       denyAtOrAbove: this.profile.ToolApproval.DenyAtOrAbove,
@@ -105,13 +96,15 @@ export class AgentAiSdkGuardrailAuditor implements AgentToolGuardrailAuditor {
         trace = decisionTrace;
       },
     });
-    const status = normalizeApprovalStatus(await approval({
-      toolCall: {
-        toolName: input.toolName,
-        toolCallId: input.toolCallId ?? toolCallIdForInput(input),
-        input: input.arguments,
-      },
-    }));
+    const status = normalizeApprovalStatus(
+      await approval({
+        toolCall: {
+          toolName: input.toolName,
+          toolCallId: input.toolCallId ?? toolCallIdForInput(input),
+          input: input.arguments,
+        },
+      }),
+    );
     const action = ApprovalActionByStatus[status.type];
 
     return action
@@ -129,9 +122,7 @@ export function createAgentAiSdkGuardrailAuditor(): AgentAiSdkGuardrailAuditor {
   return new AgentAiSdkGuardrailAuditor();
 }
 
-function projectRequestContext(
-  input: AgentToolApprovalPolicyInput,
-): Record<string, unknown> {
+function projectRequestContext(input: AgentToolApprovalPolicyInput): Record<string, unknown> {
   return {
     requestId: input.requestId,
     step: input.step,
@@ -148,7 +139,7 @@ function readDecisionReason(
 ): string {
   return status.reason
     ? status.reason
-    : trace?.result?.message ?? `工具调用触发 ${trace?.guardrail ?? "AI SDK Guardrails"} 审计。`;
+    : (trace?.result?.message ?? `工具调用触发 ${trace?.guardrail ?? "AI SDK Guardrails"} 审计。`);
 }
 
 function riskSignals(
@@ -162,9 +153,7 @@ function riskSignals(
   ];
 }
 
-function normalizeApprovalStatus(
-  status: AiSdkGuardrailApprovalStatus,
-): NormalizedAiSdkGuardrailApprovalStatus {
+function normalizeApprovalStatus(status: AiSdkGuardrailApprovalStatus): NormalizedAiSdkGuardrailApprovalStatus {
   return typeof status === "string"
     ? { type: status }
     : {

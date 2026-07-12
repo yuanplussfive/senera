@@ -4,16 +4,14 @@ import {
   type TurnUnderstanding,
 } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { AgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
-import type { ResolvedAgentActionPlannerClientConfig, ResolvedAgentActionPlannerConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
-import type { AgentLoopStateMachine } from "../Source/AgentSystem/Loop/AgentLoopStateMachine.js";
 import type {
-  AgentLoopTransition,
-  RunningAgentLoopMachineState,
-} from "../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
+  ResolvedAgentActionPlannerClientConfig,
+  ResolvedAgentActionPlannerConfig,
+} from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { AgentLoopStateMachine } from "../Source/AgentSystem/Loop/AgentLoopStateMachine.js";
+import type { AgentLoopTransition } from "../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
 
-export function createActionPlanInputFixture(
-  userMessage = "inspect project",
-): ActionPlanInput {
+export function createActionPlanInputFixture(userMessage = "inspect project"): ActionPlanInput {
   return {
     currentUserTurn: {
       content: userMessage,
@@ -44,14 +42,16 @@ export function createActionPlanInputFixture(
       warnings: [],
       calls: [],
     },
-    timeline: [{
-      index: 0,
-      role: "user",
-      kind: "user_message",
-      content: userMessage,
-      evidenceUris: [],
-      artifactUris: [],
-    }],
+    timeline: [
+      {
+        index: 0,
+        role: "user",
+        kind: "user_message",
+        content: userMessage,
+        evidenceUris: [],
+        artifactUris: [],
+      },
+    ],
     evidenceMemory: [],
     evidenceState: [],
     plannerJournal: [],

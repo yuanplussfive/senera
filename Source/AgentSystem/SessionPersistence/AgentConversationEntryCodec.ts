@@ -1,18 +1,9 @@
-import {
-  AgentConversationEntryKinds,
-  type AgentConversationEntry,
-} from "../Conversation/AgentConversation.js";
+import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import { parseAgentOpenAiTranscriptMessages } from "../Conversation/AgentOpenAiTranscript.js";
-import {
-  AgentUploadAttachmentListSchema,
-  type AgentUploadAttachment,
-} from "../Uploads/AgentUploadTypes.js";
+import { AgentUploadAttachmentListSchema, type AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { EntryRow } from "./AgentSessionSqlRows.js";
-import {
-  parsePlannerJournalRecord,
-  parseToolEvidenceMemoryRecord,
-} from "./AgentPlannerRecordCodec.js";
+import { parsePlannerJournalRecord, parseToolEvidenceMemoryRecord } from "./AgentPlannerRecordCodec.js";
 
 export interface EncodedEntryRow {
   id: string;
@@ -24,11 +15,7 @@ export interface EncodedEntryRow {
   data: string;
 }
 
-export function entryToRow(
-  sessionId: string,
-  entry: AgentConversationEntry,
-  sequence: number,
-): EncodedEntryRow {
+export function entryToRow(sessionId: string, entry: AgentConversationEntry, sequence: number): EncodedEntryRow {
   const data = encodeEntryData(entry);
   if (entry.metadata) {
     data.metadata = entry.metadata;
@@ -115,9 +102,7 @@ function encodeEntryData(entry: AgentConversationEntry): Record<string, unknown>
     case AgentConversationEntryKinds.UserMessage:
       return {
         content: entry.content,
-        ...(entry.attachments && entry.attachments.length > 0
-          ? { attachments: entry.attachments }
-          : {}),
+        ...(entry.attachments && entry.attachments.length > 0 ? { attachments: entry.attachments } : {}),
       };
     case AgentConversationEntryKinds.OpenAiTranscript:
       return { messages: entry.messages };
@@ -132,7 +117,7 @@ function encodeEntryData(entry: AgentConversationEntry): Record<string, unknown>
 
 function parseEntryMetadata(value: unknown): AgentConversationEntryMetadata | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as AgentConversationEntryMetadata
+    ? (value as AgentConversationEntryMetadata)
     : undefined;
 }
 

@@ -18,9 +18,7 @@ export function validateToolSignatureArguments(input: {
   path: Array<string | number>;
 }): string[] {
   const validate = validatorFor(input.contract.jsonSchema);
-  return validate(input.args)
-    ? []
-    : (validate.errors ?? []).map((error) => formatAjvIssue(error, input.path));
+  return validate(input.args) ? [] : (validate.errors ?? []).map((error) => formatAjvIssue(error, input.path));
 }
 
 function validatorFor(schema: Record<string, unknown>): ValidateFunction {
@@ -35,11 +33,7 @@ function validatorFor(schema: Record<string, unknown>): ValidateFunction {
 }
 
 function formatAjvIssue(error: ErrorObject, rootPath: readonly (string | number)[]): string {
-  const path = formatIssuePath([
-    ...rootPath,
-    ...jsonPointerPath(error.instancePath),
-    ...ajvParamPath(error),
-  ]);
+  const path = formatIssuePath([...rootPath, ...jsonPointerPath(error.instancePath), ...ajvParamPath(error)]);
   return `${path}: ${error.message ?? "JSON Schema validation failed"}`;
 }
 
@@ -61,5 +55,5 @@ function jsonPointerPath(pointer: string): Array<string | number> {
 }
 
 function formatIssuePath(path: readonly (string | number)[]): string {
-  return path.map((part) => typeof part === "number" ? `[${part}]` : part).join(".");
+  return path.map((part) => (typeof part === "number" ? `[${part}]` : part)).join(".");
 }

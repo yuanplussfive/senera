@@ -1,17 +1,19 @@
 import dagre from "@dagrejs/dagre";
 import { type Edge, type Node, Position } from "@xyflow/react";
 import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
-export type StepNodeData = Record<string, unknown> & (
-  | {
-    kind: "step";
-    step: TimelineStep;
-  }
-  | {
-    kind: "scope";
-    group: ScopeNodeData;
-  }
-);
+export type StepNodeData = Record<string, unknown> &
+  (
+    | {
+        kind: "step";
+        step: TimelineStep;
+      }
+    | {
+        kind: "scope";
+        group: ScopeNodeData;
+      }
+  );
 
 export interface ScopeNodeData {
   id: string;
@@ -66,11 +68,7 @@ export function layoutSteps(steps: TimelineStep[]): {
   const edges: Edge[] = [];
   const edgeIds = new Set<string>();
 
-  const addEdge = (
-    source: string | null | undefined,
-    target: string,
-    status: TimelineStep["status"],
-  ): void => {
+  const addEdge = (source: string | null | undefined, target: string, status: TimelineStep["status"]): void => {
     if (!source || source === target) return;
     const id = `${source}->${target}`;
     if (edgeIds.has(id)) return;
@@ -149,14 +147,9 @@ export function layoutSteps(steps: TimelineStep[]): {
   let previousMainId: string | null = null;
   let openTails: string[] = [];
 
-  const sources = (): Array<string | null> => openTails.length > 0
-    ? openTails
-    : [previousMainId];
+  const sources = (): Array<string | null> => (openTails.length > 0 ? openTails : [previousMainId]);
 
-  const connectSources = (
-    targets: readonly string[],
-    status: TimelineStep["status"],
-  ): void => {
+  const connectSources = (targets: readonly string[], status: TimelineStep["status"]): void => {
     for (const source of sources()) {
       for (const target of targets) {
         addEdge(source, target, status);
@@ -169,7 +162,10 @@ export function layoutSteps(steps: TimelineStep[]): {
       for (const step of entry.steps) {
         addStepNode(step);
       }
-      connectSources(entry.steps.map((step) => step.id), aggregateStatus(entry.steps));
+      connectSources(
+        entry.steps.map((step) => step.id),
+        aggregateStatus(entry.steps),
+      );
       openTails = entry.steps.map((step) => step.id);
       continue;
     }
@@ -237,21 +233,21 @@ export function layoutSteps(steps: TimelineStep[]): {
 
 type LayoutEntry =
   | {
-    kind: "root";
-    step: TimelineStep;
-  }
+      kind: "root";
+      step: TimelineStep;
+    }
   | {
-    kind: "toolBatch";
-    steps: TimelineStep[];
-  }
+      kind: "toolBatch";
+      steps: TimelineStep[];
+    }
   | {
-    kind: "scope";
-    group: ScopeStepGroup;
-  }
+      kind: "scope";
+      group: ScopeStepGroup;
+    }
   | {
-    kind: "scopeParallel";
-    groups: ScopeStepGroup[];
-  };
+      kind: "scopeParallel";
+      groups: ScopeStepGroup[];
+    };
 
 interface ScopeStepGroup {
   id: string;
@@ -266,10 +262,7 @@ interface ToolBatchGroup {
   firstIndex: number;
 }
 
-function groupLayoutEntries(
-  steps: TimelineStep[],
-  scopeGroups: ReadonlyMap<string, ScopeStepGroup>,
-): LayoutEntry[] {
+function groupLayoutEntries(steps: TimelineStep[], scopeGroups: ReadonlyMap<string, ScopeStepGroup>): LayoutEntry[] {
   const rawEntries: LayoutEntry[] = [];
   const emittedScopeGroups = new Set<string>();
   const toolBatches = collectToolBatches(steps);
@@ -358,33 +351,23 @@ function compareToolBatchSteps(left: TimelineStep, right: TimelineStep): number 
 }
 
 function aggregateStatus(steps: readonly TimelineStep[]): TimelineStep["status"] {
-  return steps.reduce<TimelineStep["status"]>(
-    (status, step) => mergeNodeStatus(status, step.status),
-    "done",
-  );
+  return steps.reduce<TimelineStep["status"]>((status, step) => mergeNodeStatus(status, step.status), "done");
 }
 
 function scopeNodeId(step: TimelineStep): string {
-  return [
-    "scope",
-    step.scope?.workflowName,
-    step.scope?.role,
-    step.scope?.jobId,
-    step.scope?.agentName,
-  ]
+  return ["scope", step.scope?.workflowName, step.scope?.role, step.scope?.jobId, step.scope?.agentName]
     .filter((value) => value !== undefined && value !== "")
     .join(":");
 }
 
 function scopeNodeLabel(step: TimelineStep): string {
-  if (step.scope?.role === "merge") return "结果合并";
-  return step.scope?.agentName ? `子代理 · ${step.scope.agentName}` : "子代理";
+  if (step.scope?.role === "merge") return frontendMessage("workflow.scope.merge");
+  return step.scope?.agentName
+    ? frontendMessage("workflow.scope.agentNamed", { name: step.scope.agentName })
+    : frontendMessage("workflow.scope.agent");
 }
 
-function mergeNodeStatus(
-  current: TimelineStep["status"],
-  next: TimelineStep["status"],
-): TimelineStep["status"] {
+function mergeNodeStatus(current: TimelineStep["status"], next: TimelineStep["status"]): TimelineStep["status"] {
   if (current === "failed" || next === "failed") return "failed";
   if (current === "running" || next === "running") return "running";
   if (current === "pending" || next === "pending") return "pending";

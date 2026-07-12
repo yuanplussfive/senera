@@ -1,30 +1,15 @@
 import type { ActionPlanInput } from "../BamlClient/baml_client/types.js";
-import type {
-  ResolvedAgentActionPlannerConfig,
-  ResolvedAgentModelProviderConfig,
-} from "../Types/AgentConfigTypes.js";
-import {
-  AgentActionPlannerModelClient,
-  type AgentActionPlannerCoreClient,
-} from "./AgentActionPlannerModelClient.js";
-import {
-  summarizePlannerFailure,
-} from "./AgentActionPlannerFailure.js";
+import type { ResolvedAgentActionPlannerConfig, ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import { AgentActionPlannerModelClient, type AgentActionPlannerCoreClient } from "./AgentActionPlannerModelClient.js";
+import { summarizePlannerFailure } from "./AgentActionPlannerFailure.js";
 import type { AgentActionPlannerStageSink } from "./AgentActionPlannerTelemetry.js";
 import { AgentCancellationError, throwIfAborted } from "../Core/AgentCancellation.js";
-import {
-  projectInteractionRoute,
-  type AgentInteractionRouteResult,
-} from "./AgentInteractionRouter.js";
+import { projectInteractionRoute, type AgentInteractionRouteResult } from "./AgentInteractionRouter.js";
 import { AgentActionPlannerUnderstanding } from "./AgentActionPlannerUnderstanding.js";
 import { isActionPlannerReady } from "./AgentActionPlannerReadiness.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
-export type {
-  AgentActionCapabilityNeed,
-  AgentActionDecision,
-  AgentActionKind,
-} from "./AgentActionPlannerTypes.js";
+export type { AgentActionCapabilityNeed, AgentActionDecision, AgentActionKind } from "./AgentActionPlannerTypes.js";
 export {
   agentActionCapabilityNeeds,
   agentActionInstruction,
@@ -46,10 +31,7 @@ export class AgentActionPlanner {
     const createClient = dependencies.createClient ?? createAgentActionPlannerClient;
     this.turnUnderstandingClient = createClient(model, config.TurnUnderstandingClient, config.MaxRepairAttempts);
     this.planningClient = createClient(model, config.PlanningClient, config.MaxRepairAttempts);
-    this.understanding = new AgentActionPlannerUnderstanding(
-      this.turnUnderstandingClient,
-      config.MaxRepairAttempts,
-    );
+    this.understanding = new AgentActionPlannerUnderstanding(this.turnUnderstandingClient, config.MaxRepairAttempts);
   }
 
   async understandTurn(options: {
@@ -63,25 +45,21 @@ export class AgentActionPlanner {
 
     try {
       throwIfAborted(options.signal);
-      return await this.understanding.understandWithStage(
-        options.input,
-        options.onStage,
-        options.signal,
-      );
+      return await this.understanding.understandWithStage(options.input, options.onStage, options.signal);
     } catch (error) {
       if (error instanceof AgentCancellationError || options.signal?.aborted) {
         throw error instanceof AgentCancellationError ? error : new AgentCancellationError();
       }
-      throw new Error(agentErrorMessage("actionPlanner.turnUnderstandingFailed", {
-        reason: summarizePlannerFailure(error),
-      }));
+      throw new Error(
+        agentErrorMessage("actionPlanner.turnUnderstandingFailed", {
+          reason: summarizePlannerFailure(error),
+        }),
+        { cause: error },
+      );
     }
   }
 
-  async route(options: {
-    input: ActionPlanInput;
-    signal?: AbortSignal;
-  }): Promise<AgentInteractionRouteResult> {
+  async route(options: { input: ActionPlanInput; signal?: AbortSignal }): Promise<AgentInteractionRouteResult> {
     return (await this.routeWithInput(options)).route;
   }
 
@@ -101,18 +79,23 @@ export class AgentActionPlanner {
       throwIfAborted(options.signal);
       const input = await this.understanding.understandWithStage(options.input, options.onStage, options.signal);
       return {
-        route: projectInteractionRoute(await this.planningClient.routeInteraction(input, {
-          signal: options.signal,
-        })),
+        route: projectInteractionRoute(
+          await this.planningClient.routeInteraction(input, {
+            signal: options.signal,
+          }),
+        ),
         input,
       };
     } catch (error) {
       if (error instanceof AgentCancellationError || options.signal?.aborted) {
         throw error instanceof AgentCancellationError ? error : new AgentCancellationError();
       }
-      throw new Error(agentErrorMessage("actionPlanner.interactionRouterFailed", {
-        reason: summarizePlannerFailure(error),
-      }));
+      throw new Error(
+        agentErrorMessage("actionPlanner.interactionRouterFailed", {
+          reason: summarizePlannerFailure(error),
+        }),
+        { cause: error },
+      );
     }
   }
 

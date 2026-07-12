@@ -1,10 +1,7 @@
 import type { SessionListItem } from "../../api/eventTypes";
 import type { SessionRecord, StoreState } from "./types";
 
-export function ingestSessionList(
-  state: StoreState,
-  items: readonly SessionListItem[],
-): void {
+export function ingestSessionList(state: StoreState, items: readonly SessionListItem[]): void {
   const serverIds = new Set(items.map((item) => item.sessionId));
 
   for (const pendingId of Object.keys(state.pendingDeletedSessionIds)) {
@@ -35,17 +32,16 @@ export function ingestSessionList(
   pruneLocalSessionsNotOnServer(state, visibleServerIds);
 }
 
-export function readFirstAvailableSessionId(
-  state: StoreState,
-  excludedSessionId?: string,
-): string | null {
-  return state.sessionOrder.find(
-    (id) =>
-      id !== excludedSessionId &&
-      Boolean(state.sessions[id]) &&
-      !state.missingOnServerIds[id] &&
-      !state.pendingDeletedSessionIds[id],
-  ) ?? null;
+export function readFirstAvailableSessionId(state: StoreState, excludedSessionId?: string): string | null {
+  return (
+    state.sessionOrder.find(
+      (id) =>
+        id !== excludedSessionId &&
+        Boolean(state.sessions[id]) &&
+        !state.missingOnServerIds[id] &&
+        !state.pendingDeletedSessionIds[id],
+    ) ?? null
+  );
 }
 
 export function deleteSessionRuntimeState(state: StoreState, sessionId: string): void {
@@ -94,9 +90,7 @@ function settleStaleHistoryLoading(state: StoreState, session: SessionRecord): v
     return;
   }
 
-  const hasRecoveringRun = session.runs.some(
-    (run) => run.status === "running" && run.recoverySource === "history",
-  );
+  const hasRecoveringRun = session.runs.some((run) => run.status === "running" && run.recoverySource === "history");
   const hasMissingMessages = session.messageCount > 0 && session.messages.length === 0;
   if (hasRecoveringRun || hasMissingMessages) {
     return;
@@ -108,10 +102,7 @@ function settleStaleHistoryLoading(state: StoreState, session: SessionRecord): v
   delete state.historyEventRunIds[session.sessionId];
 }
 
-function syncActiveSessionAfterListIngest(
-  state: StoreState,
-  visibleItems: readonly SessionListItem[],
-): void {
+function syncActiveSessionAfterListIngest(state: StoreState, visibleItems: readonly SessionListItem[]): void {
   const fallbackActiveSessionId = readPreferredActiveSessionId(state, visibleItems);
   const activeId = state.activeSessionId;
   const activeInOrder = activeId ? state.sessionOrder.includes(activeId) : false;
@@ -131,23 +122,13 @@ function syncActiveSessionAfterListIngest(
   }
 }
 
-function readPreferredActiveSessionId(
-  state: StoreState,
-  visibleItems: readonly SessionListItem[],
-): string | null {
-  const pendingCreatedId = state.sessionOrder.find(
-    (id) => state.pendingCreatedSessionIds[id] && state.sessions[id],
-  );
+function readPreferredActiveSessionId(state: StoreState, visibleItems: readonly SessionListItem[]): string | null {
+  const pendingCreatedId = state.sessionOrder.find((id) => state.pendingCreatedSessionIds[id] && state.sessions[id]);
   if (pendingCreatedId) return pendingCreatedId;
-  return visibleItems.find((item) => item.messageCount > 0)?.sessionId
-    ?? visibleItems[0]?.sessionId
-    ?? null;
+  return visibleItems.find((item) => item.messageCount > 0)?.sessionId ?? visibleItems[0]?.sessionId ?? null;
 }
 
-function pruneLocalSessionsNotOnServer(
-  state: StoreState,
-  visibleServerIds: ReadonlySet<string>,
-): void {
+function pruneLocalSessionsNotOnServer(state: StoreState, visibleServerIds: ReadonlySet<string>): void {
   for (const localId of Object.keys(state.sessions)) {
     const shouldKeep =
       visibleServerIds.has(localId) ||

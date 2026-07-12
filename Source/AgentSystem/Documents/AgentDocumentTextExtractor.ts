@@ -1,23 +1,11 @@
 import fs from "node:fs/promises";
 import iconv from "iconv-lite";
 import { z } from "zod";
-import type {
-  AgentDocumentExtractChunk,
-  AgentDocumentExtractOptions,
-} from "./AgentDocumentExtractTypes.js";
+import type { AgentDocumentExtractChunk, AgentDocumentExtractOptions } from "./AgentDocumentExtractTypes.js";
 import type { AgentDocumentProbeResult } from "./AgentDocumentProbeTypes.js";
-import type {
-  AgentDocumentExtractorConfig,
-  AgentDocumentExtractorHandler,
-} from "./AgentDocumentExtractorTypes.js";
-import {
-  matchesProbeSelector,
-  normalizeToken,
-} from "./AgentDocumentExtractorMatching.js";
-import {
-  countLines,
-  limitText,
-} from "./AgentDocumentExtractUtils.js";
+import type { AgentDocumentExtractorConfig, AgentDocumentExtractorHandler } from "./AgentDocumentExtractorTypes.js";
+import { matchesProbeSelector, normalizeToken } from "./AgentDocumentExtractorMatching.js";
+import { countLines, limitText } from "./AgentDocumentExtractUtils.js";
 
 interface AgentDocumentTextDecodeOptions {
   defaultEncoding: string;
@@ -56,9 +44,9 @@ export const AgentDocumentTextExtractor: AgentDocumentExtractorHandler = {
     const config = readTextExtractorConfig(input.config);
     return matchesProbeSelector(input.probe, config.match)
       ? {
-        name: input.name,
-        config: input.config,
-      }
+          name: input.name,
+          config: input.config,
+        }
       : undefined;
   },
   async extract({ input, options, probe, selection }) {
@@ -102,10 +90,7 @@ function resolveTextEncoding(
   probe: AgentDocumentProbeResult,
   options: AgentDocumentTextDecodeOptions | undefined,
 ): string {
-  const candidates = [
-    probe.charset,
-    options?.defaultEncoding,
-  ];
+  const candidates = [probe.charset, options?.defaultEncoding];
 
   for (const candidate of candidates) {
     const encoding = normalizeToken(candidate);
@@ -117,10 +102,7 @@ function resolveTextEncoding(
   throw new Error("文本抽取器没有可用编码配置。");
 }
 
-function projectTextChunks(
-  text: string,
-  options: AgentDocumentExtractOptions,
-): AgentDocumentExtractChunk[] {
+function projectTextChunks(text: string, options: AgentDocumentExtractOptions): AgentDocumentExtractChunk[] {
   if (options.output.maxChunks <= 0 || options.output.maxChunkChars <= 0 || text.length === 0) {
     return [];
   }

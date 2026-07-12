@@ -1,10 +1,7 @@
 import { spawn } from "node:child_process";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { rgPath } from "@vscode/ripgrep";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
@@ -20,14 +17,17 @@ interface RipgrepExecutionResult {
   signal: NodeJS.Signals | null;
 }
 
-const server = new Server({
-  name: "senera-ripgrep-mcp",
-  version: "0.1.0",
-}, {
-  capabilities: {
-    tools: {},
+const server = new Server(
+  {
+    name: "senera-ripgrep-mcp",
+    version: "0.1.0",
   },
-});
+  {
+    capabilities: {
+      tools: {},
+    },
+  },
+);
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -67,9 +67,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const args = readRecord(request.params.arguments);
   const result = await runRipgrep(ripgrepArgs(request.params.name, args));
-  const text = result.stderr && result.exitCode !== 0
-    ? `${result.stdout}${result.stderr}`
-    : result.stdout;
+  const text = result.stderr && result.exitCode !== 0 ? `${result.stdout}${result.stderr}` : result.stdout;
 
   return {
     content: [{ type: "text", text }],
@@ -138,12 +136,14 @@ function runRipgrep(args: readonly string[]): Promise<RipgrepExecutionResult> {
     child.stdout.on("data", (chunk: Buffer) => chunks.stdout.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => chunks.stderr.push(chunk));
     child.on("error", reject);
-    child.on("close", (exitCode, signal) => resolve({
-      stdout: Buffer.concat(chunks.stdout).toString("utf8"),
-      stderr: Buffer.concat(chunks.stderr).toString("utf8"),
-      exitCode,
-      signal,
-    }));
+    child.on("close", (exitCode, signal) =>
+      resolve({
+        stdout: Buffer.concat(chunks.stdout).toString("utf8"),
+        stderr: Buffer.concat(chunks.stderr).toString("utf8"),
+        exitCode,
+        signal,
+      }),
+    );
   });
 }
 
@@ -170,19 +170,13 @@ function readString(value: unknown): string | undefined {
 }
 
 function readPositiveInteger(value: unknown): string | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value > 0
-    ? String(value)
-    : undefined;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? String(value) : undefined;
 }
 
 function readNonNegativeInteger(value: unknown): string | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0
-    ? String(value)
-    : undefined;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? String(value) : undefined;
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }

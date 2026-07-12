@@ -2,16 +2,12 @@ import { uniqueTrimmed } from "./AgentMemoryCollections.js";
 
 export function parseMemoryRowJsonObject(value: string): Record<string, unknown> {
   const parsed = JSON.parse(value) as unknown;
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown>
-    : {};
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
 }
 
 export function parseMemoryRowStringArray(value: string): string[] {
   const parsed = JSON.parse(value) as unknown;
-  return Array.isArray(parsed)
-    ? uniqueTrimmed(parsed.filter((item): item is string => typeof item === "string"))
-    : [];
+  return Array.isArray(parsed) ? uniqueTrimmed(parsed.filter((item): item is string => typeof item === "string")) : [];
 }
 
 export function parseMemoryRowNumberArray(value: string): number[] | undefined {

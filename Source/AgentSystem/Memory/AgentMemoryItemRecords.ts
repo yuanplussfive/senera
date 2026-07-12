@@ -1,9 +1,5 @@
 import { mergeUnique, uniqueTrimmed } from "./AgentMemoryCollections.js";
-import {
-  memoryItemUri,
-  memoryObservationUri,
-  randomMemoryId,
-} from "./AgentMemoryIdentity.js";
+import { memoryItemUri, memoryObservationUri, randomMemoryId } from "./AgentMemoryIdentity.js";
 import { projectMemoryTime } from "./AgentMemoryTime.js";
 import type {
   AgentMemoryConsolidationActionRecord,

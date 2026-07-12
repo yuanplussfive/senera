@@ -3,9 +3,7 @@ import path from "node:path";
 import { buildAgentPluginProcessExecutionPlan } from "../Source/AgentSystem/ToolRuntime/AgentPluginProcessExecutionProfile.js";
 import { resolveAgentToolExecutionPolicy } from "../Source/AgentSystem/ToolRuntime/AgentToolExecutionPolicy.js";
 import type { LoadedPlugin, RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
-import type {
-  ToolExecutionManifest,
-} from "../Source/AgentSystem/Types/PluginManifestTypes.js";
+import type { ToolExecutionManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
 
 const workspaceRoot = process.cwd();
 
@@ -101,18 +99,12 @@ function main(): void {
     ...localTool,
     execution: undefined,
   } as unknown as RegisteredTool;
-  assert.throws(
-    () => resolveAgentToolExecutionPolicy(missingExecutionTool),
-    /工具缺少 Execution 配置/,
-  );
+  assert.throws(() => resolveAgentToolExecutionPolicy(missingExecutionTool), /工具缺少 Execution 配置/);
 
   console.log("Tool execution policy verification passed.");
 }
 
-function createPlugin(input: {
-  rootKind: LoadedPlugin["rootKind"];
-  pluginRoot: string;
-}): LoadedPlugin {
+function createPlugin(input: { rootKind: LoadedPlugin["rootKind"]; pluginRoot: string }): LoadedPlugin {
   return {
     rootPath: input.pluginRoot,
     rootKind: input.rootKind,
@@ -152,10 +144,12 @@ function createPlugin(input: {
         Script: "tool",
         SandboxProfile: "node-plugin",
       },
-      Tools: [{
-        Name: "VerifyTool",
-        Execution: DefaultExecution,
-      }],
+      Tools: [
+        {
+          Name: "VerifyTool",
+          Execution: DefaultExecution,
+        },
+      ],
     },
   };
 }

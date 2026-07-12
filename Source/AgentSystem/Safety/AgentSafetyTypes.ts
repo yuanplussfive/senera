@@ -11,8 +11,7 @@ export const AgentPermissionActions = {
   Deny: "deny",
 } as const;
 
-export type AgentPermissionAction =
-  typeof AgentPermissionActions[keyof typeof AgentPermissionActions];
+export type AgentPermissionAction = (typeof AgentPermissionActions)[keyof typeof AgentPermissionActions];
 
 export interface AgentToolPermissionRequest {
   requestId: string;

@@ -39,9 +39,7 @@ export interface SeneraMicrosandboxExecRequest {
 }
 
 export type SeneraMicrosandboxExecEvent =
-  | { kind: "stdout"; data: Buffer }
-  | { kind: "stderr"; data: Buffer }
-  | { kind: "exit"; code: number };
+  { kind: "stdout"; data: Buffer } | { kind: "stderr"; data: Buffer } | { kind: "exit"; code: number };
 
 export interface SeneraMicrosandboxSession {
   exec(request: SeneraMicrosandboxExecRequest): AsyncIterable<SeneraMicrosandboxExecEvent>;

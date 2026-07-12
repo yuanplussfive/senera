@@ -1,8 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BrainCircuit,
@@ -25,13 +21,7 @@ import type {
   ProviderModelsSnapshotData,
 } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  ScrollArea,
-  Tooltip,
-} from "../../shared/ui";
+import { Button, Dialog, DialogContent, ScrollArea, Tooltip } from "../../shared/ui";
 import {
   JsonConfigSettingsView,
   validateJsonConfigDraft,
@@ -71,11 +61,10 @@ export function SystemConfigControl({
   const [saveRequestId, setSaveRequestId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const currentSnapshotVersion = snapshot?.version;
-  const sectionList = snapshot?.form.sections ?? [];
+  const sectionList = useMemo(() => snapshot?.form.sections ?? [], [snapshot?.form.sections]);
   const visibleSections = useMemo(
-    () => selectedSection
-      ? sectionList.filter((section) => section.name === selectedSection)
-      : sectionList.slice(0, 1),
+    () =>
+      selectedSection ? sectionList.filter((section) => section.name === selectedSection) : sectionList.slice(0, 1),
     [sectionList, selectedSection],
   );
   const saveOperation = saveRequestId && operation?.requestId === saveRequestId ? operation : null;
@@ -84,7 +73,7 @@ export function SystemConfigControl({
   const diagnostics = snapshot?.diagnostics ?? [];
   const hasDiagnostics = diagnostics.length > 0;
   const formValidationErrors = useMemo(
-    () => snapshot ? validateJsonConfigDraft(snapshot.form.sections, draft) : [],
+    () => (snapshot ? validateJsonConfigDraft(snapshot.form.sections, draft) : []),
     [draft, snapshot],
   );
 
@@ -106,7 +95,8 @@ export function SystemConfigControl({
     setSelectedSection((current) =>
       current && snapshot.form.sections.some((section) => section.name === current)
         ? current
-        : snapshot.form.sections[0]?.name ?? null);
+        : (snapshot.form.sections[0]?.name ?? null),
+    );
     setSaveRequestId(null);
     setLocalError(null);
   }, [currentSnapshotVersion, open, snapshot]);
@@ -159,7 +149,7 @@ export function SystemConfigControl({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Tooltip content="主配置" side="top">
+      <Tooltip content={frontendMessage("config.main.title")} side="top">
         <button
           type="button"
           className={cn(
@@ -168,35 +158,27 @@ export function SystemConfigControl({
             "focus:outline-none focus:ring-2 focus:ring-terra-200/60",
             disabled && "pointer-events-none opacity-55",
           )}
-          aria-label="主配置"
+          aria-label={frontendMessage("config.main.title")}
           disabled={disabled}
           onClick={() => setOpen(true)}
         >
           <Settings className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">配置</span>
+          <span className="hidden sm:inline">{frontendMessage("config.main.shortTitle")}</span>
           {hasDiagnostics ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
         </button>
       </Tooltip>
 
       <DialogContent
-        title="主配置"
-        description={snapshot?.path ?? "等待配置快照"}
+        title={frontendMessage("config.main.title")}
+        description={snapshot?.path ?? frontendMessage("config.main.awaitingSnapshot")}
         motionPreset="focus"
         className="h-[min(900px,calc(100dvh_-_20px))] max-h-none w-[min(1280px,calc(100vw_-_20px))] max-w-none rounded-xl bg-paper-100 sm:w-[min(1280px,calc(100vw_-_32px))]"
         bodyClassName="flex min-h-0 flex-1 bg-paper-100"
       >
         <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[#f7f3ea] lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
-          <ConfigSectionNav
-            sections={sectionList}
-            selectedSection={selectedSection}
-            onSelect={setSelectedSection}
-          />
+          <ConfigSectionNav sections={sectionList} selectedSection={selectedSection} onSelect={setSelectedSection} />
           <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-ink-200/70 bg-paper-50 lg:border-b-0">
-            <MobileSectionNav
-              sections={sectionList}
-              selectedSection={selectedSection}
-              onSelect={setSelectedSection}
-            />
+            <MobileSectionNav sections={sectionList} selectedSection={selectedSection} onSelect={setSelectedSection} />
             <ConfigToolbar
               dirty={dirty}
               disabled={!snapshot || formValidationErrors.length > 0 || saving}
@@ -207,11 +189,7 @@ export function SystemConfigControl({
               onRefresh={refreshOrRestore}
               onSave={save}
             />
-            <Diagnostics
-              diagnostics={diagnostics}
-              localError={localError}
-              validationErrors={formValidationErrors}
-            />
+            <Diagnostics diagnostics={diagnostics} localError={localError} validationErrors={formValidationErrors} />
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               {!contentReady ? (
                 <ConfigPanelSkeleton />
@@ -251,7 +229,7 @@ export function SystemConfigControl({
                 )
               ) : (
                 <div className="grid h-full place-items-center text-[13px] text-ink-400">
-                  后端连接后会加载主配置
+                  {frontendMessage("config.main.loadAfterConnect")}
                 </div>
               )}
             </div>
@@ -267,7 +245,7 @@ function ConfigPanelSkeleton(): JSX.Element {
     <div className="grid h-full min-h-0 place-items-center bg-paper-50 text-[12.5px] text-ink-400">
       <div className="grid gap-2 text-center">
         <span className="mx-auto h-8 w-8 rounded-full border border-ink-200 bg-paper-100" />
-        <span>加载配置面板</span>
+        <span>{frontendMessage("config.main.loadingPanel")}</span>
       </div>
     </div>
   );
@@ -293,23 +271,23 @@ function ConfigToolbar({
   onSave: () => void;
 }): JSX.Element {
   const invalid = localError || validationErrors.length > 0;
-  const statusLabel = invalid
-    ? "需要修复"
-    : dirty
-      ? "未保存"
-      : "已同步";
+  const statusLabel = frontendMessage(
+    invalid ? "config.main.statusInvalid" : dirty ? "config.main.statusDirty" : "config.main.statusSynced",
+  );
 
   return (
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-ink-200/70 bg-[#f3eee5] px-3.5 py-3">
       <div className="flex min-w-0 items-center gap-2">
-        <span className={cn(
-          "grid h-8 w-8 place-items-center border",
-          invalid
-            ? "border-brick-200 bg-brick-50 text-brick-600"
-            : dirty
-              ? "border-amber-200 bg-amber-50 text-amber-700"
-              : "border-terra-200 bg-terra-50 text-terra-700",
-        )}>
+        <span
+          className={cn(
+            "grid h-8 w-8 place-items-center border",
+            invalid
+              ? "border-brick-200 bg-brick-50 text-brick-600"
+              : dirty
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-terra-200 bg-terra-50 text-terra-700",
+          )}
+        >
           {invalid ? (
             <AlertTriangle className="h-4 w-4" />
           ) : dirty ? (
@@ -320,9 +298,7 @@ function ConfigToolbar({
         </span>
         <div className="min-w-0">
           <div className="text-[13px] font-semibold text-ink-900">{statusLabel}</div>
-          <div className="mt-0.5 text-[11px] text-ink-500">
-            按板块填写，未填写的项目会使用系统默认值
-          </div>
+          <div className="mt-0.5 text-[11px] text-ink-500">{frontendMessage("config.main.defaultValuesHint")}</div>
         </div>
       </div>
 
@@ -333,19 +309,14 @@ function ConfigToolbar({
           disabled={refreshDisabled}
           onClick={onRefresh}
           className="h-8"
-          title={dirty ? "放弃未保存修改并还原当前快照" : "刷新配置快照"}
+          title={frontendMessage(dirty ? "config.main.restoreTooltip" : "config.main.refreshTooltip")}
         >
           <RefreshCw className={cn("h-3.5 w-3.5", saving && "animate-spin")} />
-          {dirty ? "还原" : "刷新"}
+          {frontendMessage(dirty ? "config.main.restore" : "config.main.refresh")}
         </Button>
-        <Button
-          size="sm"
-          disabled={!dirty || disabled}
-          onClick={onSave}
-          className="h-8"
-        >
+        <Button size="sm" disabled={!dirty || disabled} onClick={onSave} className="h-8">
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          保存
+          {frontendMessage("config.main.save")}
         </Button>
       </div>
     </div>
@@ -364,8 +335,8 @@ function ConfigSectionNav({
   return (
     <aside className="hidden min-h-0 border-r border-ink-200/70 bg-[#f2ece2] lg:flex lg:flex-col">
       <div className="shrink-0 border-b border-ink-200/70 px-3.5 py-3.5">
-        <div className="text-[12px] font-semibold text-ink-900">配置板块</div>
-        <div className="mt-1 text-[11px] text-ink-500">按功能分组填写</div>
+        <div className="text-[12px] font-semibold text-ink-900">{frontendMessage("config.main.sections")}</div>
+        <div className="mt-1 text-[11px] text-ink-500">{frontendMessage("config.main.sectionsHint")}</div>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1 p-2">
@@ -385,10 +356,14 @@ function ConfigSectionNav({
                 onClick={() => onSelect(section.name)}
               >
                 <span className="flex min-w-0 items-start gap-2">
-                  <span className={cn(
-                    "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border",
-                    active ? "border-terra-200 bg-terra-50 text-terra-700" : "border-ink-200 bg-paper-100 text-ink-450",
-                  )}>
+                  <span
+                    className={cn(
+                      "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border",
+                      active
+                        ? "border-terra-200 bg-terra-50 text-terra-700"
+                        : "border-ink-200 bg-paper-100 text-ink-450",
+                    )}
+                  >
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                   <span className="min-w-0">
@@ -496,7 +471,9 @@ function Diagnostics({
         </div>
       ))}
       {items.length > 4 ? (
-        <div className="px-1 text-[11px] text-ink-400">还有 {items.length - 4} 条诊断</div>
+        <div className="px-1 text-[11px] text-ink-400">
+          {frontendMessage("config.main.moreDiagnostics", { count: items.length - 4 })}
+        </div>
       ) : null}
     </div>
   );

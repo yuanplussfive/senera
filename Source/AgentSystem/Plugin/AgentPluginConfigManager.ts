@@ -1,10 +1,6 @@
 import { AgentPluginScanner } from "./AgentPluginScanner.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import {
-  projectPluginConfigSnapshot,
-  setPluginConfigEnabled,
-  writePluginConfigToml,
-} from "./AgentPluginConfig.js";
+import { projectPluginConfigSnapshot, setPluginConfigEnabled, writePluginConfigToml } from "./AgentPluginConfig.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentPluginConfigSnapshotItem } from "../Types/PluginConfigTypes.js";
 import type { LoadedPlugin } from "../Types/PluginRuntimeTypes.js";
@@ -27,20 +23,13 @@ export class AgentPluginConfigManager {
     };
   }
 
-  updatePluginConfig(input: {
-    pluginName: string;
-    toml: string;
-  }): AgentPluginConfigSnapshot {
+  updatePluginConfig(input: { pluginName: string; toml: string }): AgentPluginConfigSnapshot {
     const plugin = this.findPlugin(input.pluginName);
     writePluginConfigToml(plugin.config.path, input.toml);
     return this.snapshot();
   }
 
-  setPluginEnabled(input: {
-    pluginName: string;
-    enabled: boolean;
-    toolName?: string;
-  }): AgentPluginConfigSnapshot {
+  setPluginEnabled(input: { pluginName: string; enabled: boolean; toolName?: string }): AgentPluginConfigSnapshot {
     const plugin = this.findPlugin(input.pluginName);
     const toml = setPluginConfigEnabled(plugin.config, {
       enabled: input.enabled,
@@ -51,9 +40,7 @@ export class AgentPluginConfigManager {
   }
 
   private findPlugin(pluginName: string): LoadedPlugin {
-    const plugin = this.configurablePlugins().find(
-      (item) => item.manifest.Plugin.Name === pluginName,
-    );
+    const plugin = this.configurablePlugins().find((item) => item.manifest.Plugin.Name === pluginName);
     if (!plugin) {
       throw new Error(agentErrorMessage("plugin.configurablePluginMissing", { pluginName }));
     }
@@ -65,9 +52,6 @@ export class AgentPluginConfigManager {
   }
 
   private scanPlugins(): LoadedPlugin[] {
-    return new AgentPluginScanner(
-      this.options.workspaceRoot,
-      this.options.configSnapshot(),
-    ).scan();
+    return new AgentPluginScanner(this.options.workspaceRoot, this.options.configSnapshot()).scan();
   }
 }

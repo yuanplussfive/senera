@@ -7,8 +7,7 @@ export const AgentConversationEntryKinds = {
   ToolEvidenceMemory: "tool.evidence_memory",
 } as const;
 
-export type AgentConversationEntryKind =
-  typeof AgentConversationEntryKinds[keyof typeof AgentConversationEntryKinds];
+export type AgentConversationEntryKind = (typeof AgentConversationEntryKinds)[keyof typeof AgentConversationEntryKinds];
 
 interface AgentConversationEntryBase {
   id: string;

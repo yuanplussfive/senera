@@ -25,14 +25,14 @@ npm run dev        # 默认 http://127.0.0.1:5173
 
 前端默认读取仓库根目录的 `senera.config.json`，配置入口是 `Defaults.Frontend` 或顶层 `Frontend`。顶层配置会覆盖 `Defaults.Frontend`。
 
-| 字段 | 默认 | 含义 |
-|---|---|---|
-| `Frontend.DevServer.Host` | `127.0.0.1` | Vite dev host |
-| `Frontend.DevServer.Port` | `5173` | Vite dev 端口 |
-| `Frontend.DevServer.StrictPort` | `false` | dev 端口被占用时允许 Vite 自动切换到下一个可用端口 |
-| `Frontend.PreviewServer.Port` | `4173` | Vite preview 端口 |
-| `Frontend.Client.WebSocketUrl` | 根据 `Server.Host`/`Server.Port` 推导 | 浏览器连接后端的 WS 地址 |
-| `Frontend.Client.EmptySuggestions` | 内置三条建议 | 启动空状态建议 |
+| 字段                               | 默认                                  | 含义                                               |
+| ---------------------------------- | ------------------------------------- | -------------------------------------------------- |
+| `Frontend.DevServer.Host`          | `127.0.0.1`                           | Vite dev host                                      |
+| `Frontend.DevServer.Port`          | `5173`                                | Vite dev 端口                                      |
+| `Frontend.DevServer.StrictPort`    | `false`                               | dev 端口被占用时允许 Vite 自动切换到下一个可用端口 |
+| `Frontend.PreviewServer.Port`      | `4173`                                | Vite preview 端口                                  |
+| `Frontend.Client.WebSocketUrl`     | 根据 `Server.Host`/`Server.Port` 推导 | 浏览器连接后端的 WS 地址                           |
+| `Frontend.Client.EmptySuggestions` | 内置三条建议                          | 启动空状态建议                                     |
 
 ## 目录
 
@@ -59,14 +59,14 @@ src/
 
 ## 三栏映射的事件源
 
-| 区域 | 数据来源（后端事件） |
-|---|---|
-| 左栏会话标题 | 首条用户消息客户端截取 24 字 |
-| 中栏用户气泡 | 本地立即渲染 |
-| 中栏助手气泡 | `assistant.message.created` |
-| 中栏"正在生成" | `model.delta` 流式占位 |
-| 右栏卡片 | `run.started` / `prompt.summary` / `model.*` / `pi.trace` / `tool.*` / `assistant.message.created` |
-| 右栏 callId 关联 | `tool.call.started.callId` ↔ `tool.call.result.detail.callId` |
+| 区域             | 数据来源（后端事件）                                                                               |
+| ---------------- | -------------------------------------------------------------------------------------------------- |
+| 左栏会话标题     | 首条用户消息客户端截取 24 字                                                                       |
+| 中栏用户气泡     | 本地立即渲染                                                                                       |
+| 中栏助手气泡     | `assistant.message.created`                                                                        |
+| 中栏"正在生成"   | `model.delta` 流式占位                                                                             |
+| 右栏卡片         | `run.started` / `prompt.summary` / `model.*` / `pi.trace` / `tool.*` / `assistant.message.created` |
+| 右栏 callId 关联 | `tool.call.started.callId` ↔ `tool.call.result.detail.callId`                                      |
 
 ## 协议同步
 

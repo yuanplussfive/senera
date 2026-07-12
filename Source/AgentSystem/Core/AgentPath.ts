@@ -45,10 +45,7 @@ export function toRuntimeModulePath(filePath: string): string {
 
 function runtimePluginRelativePath(filePath: string): string | undefined {
   const normalized = path.normalize(filePath);
-  for (const marker of [
-    `${path.sep}System${path.sep}Plugins${path.sep}`,
-    `${path.sep}Plugins${path.sep}`,
-  ]) {
+  for (const marker of [`${path.sep}System${path.sep}Plugins${path.sep}`, `${path.sep}Plugins${path.sep}`]) {
     const index = normalized.lastIndexOf(marker);
     if (index >= 0) {
       return normalized.slice(index + path.sep.length);

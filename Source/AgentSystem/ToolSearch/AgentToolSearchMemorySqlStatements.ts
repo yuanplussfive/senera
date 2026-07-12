@@ -17,9 +17,7 @@ export interface ToolSearchMemorySqlStatements {
   pruneEpisodes: Database.Statement<[number]>;
 }
 
-export function prepareToolSearchMemorySqlStatements(
-  db: Database.Database,
-): ToolSearchMemorySqlStatements {
+export function prepareToolSearchMemorySqlStatements(db: Database.Database): ToolSearchMemorySqlStatements {
   return {
     insertEpisode: db.prepare(`
       INSERT INTO tool_search_episodes
@@ -181,4 +179,3 @@ export function prepareToolSearchMemorySqlStatements(
     `),
   };
 }
-

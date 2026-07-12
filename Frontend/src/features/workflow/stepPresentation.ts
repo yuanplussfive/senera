@@ -1,9 +1,5 @@
-import type {
-  RunRecord,
-  TimelineStep,
-  TimelineStepKind,
-  TimelineStepStatus,
-} from "../../store/sessionStore";
+import type { RunRecord, TimelineStep, TimelineStepKind, TimelineStepStatus } from "../../store/sessionStore";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export type StepStatusTone = "default" | "warn" | "ok" | "live";
 
@@ -14,30 +10,32 @@ export interface StepAccent {
 }
 
 export const stepKindLabels = {
-  understand: "理解",
-  prompt: "提示",
-  model: "模型",
-  pi: "Pi",
-  decision: "决策",
-  tool: "工具",
-  retry: "重试",
-  answer: "回复",
-  error: "错误",
-} as const satisfies Record<TimelineStepKind, string>;
+  understand: "workflow.step.kind.understand",
+  prompt: "workflow.step.kind.prompt",
+  model: "workflow.step.kind.model",
+  pi: "workflow.step.kind.pi",
+  decision: "workflow.step.kind.decision",
+  tool: "workflow.step.kind.tool",
+  retry: "workflow.step.kind.retry",
+  answer: "workflow.step.kind.answer",
+  error: "workflow.step.kind.error",
+} as const satisfies Record<TimelineStepKind, Parameters<typeof frontendMessage>[0]>;
 
 export function readStepKindLabel(kind: TimelineStepKind): string {
-  return stepKindLabels[kind];
+  return frontendMessage(stepKindLabels[kind]);
 }
 
 export function readStepStatusLabel(status: TimelineStepStatus): string {
-  return (
-    {
-      pending: "等待",
-      running: "进行中",
-      done: "已完成",
-      failed: "失败",
-    } satisfies Record<TimelineStepStatus, string>
-  )[status];
+  return frontendMessage(
+    (
+      {
+        pending: "workflow.step.status.pending",
+        running: "workflow.step.status.running",
+        done: "workflow.step.status.done",
+        failed: "workflow.step.status.failed",
+      } satisfies Record<TimelineStepStatus, Parameters<typeof frontendMessage>[0]>
+    )[status],
+  );
 }
 
 export function readStepStatusTone(status: TimelineStepStatus): StepStatusTone {
@@ -52,14 +50,16 @@ export function readStepStatusTone(status: TimelineStepStatus): StepStatusTone {
 }
 
 export function readRunStatusLabel(status: RunRecord["status"]): string {
-  return (
-    {
-      running: "进行中",
-      completed: "已完成",
-      failed: "失败",
-      cancelled: "已取消",
-    } satisfies Record<RunRecord["status"], string>
-  )[status];
+  return frontendMessage(
+    (
+      {
+        running: "workflow.run.status.running",
+        completed: "workflow.run.status.completed",
+        failed: "workflow.run.status.failed",
+        cancelled: "workflow.run.status.cancelled",
+      } satisfies Record<RunRecord["status"], Parameters<typeof frontendMessage>[0]>
+    )[status],
+  );
 }
 
 export function readStepAccent(step: Pick<TimelineStep, "kind" | "status">): StepAccent {

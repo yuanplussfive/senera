@@ -6,20 +6,14 @@ import type {
   AgentDocumentExtractWarning,
 } from "./AgentDocumentExtractTypes.js";
 import type { AgentDocumentProbeResult } from "./AgentDocumentProbeTypes.js";
-import type {
-  AgentDocumentExtractorConfig,
-  AgentDocumentExtractorHandler,
-} from "./AgentDocumentExtractorTypes.js";
+import type { AgentDocumentExtractorConfig, AgentDocumentExtractorHandler } from "./AgentDocumentExtractorTypes.js";
 import {
   collectProbeExtensions,
   collectProbeMimes,
   normalizeExtension,
   normalizeToken,
 } from "./AgentDocumentExtractorMatching.js";
-import {
-  limitText,
-  toJsonObject,
-} from "./AgentDocumentExtractUtils.js";
+import { limitText, toJsonObject } from "./AgentDocumentExtractUtils.js";
 
 type OfficeIssueLike = {
   type: "warning" | "info" | "error";
@@ -58,18 +52,17 @@ export const AgentDocumentOfficeExtractor: AgentDocumentExtractorHandler<OfficeS
     const fileType = selectOfficeParserFileType(input.probe, config.fileTypes ?? {});
     return fileType
       ? {
-        name: input.name,
-        config: input.config,
-        data: {
-          fileType,
-        },
-      }
+          name: input.name,
+          config: input.config,
+          data: {
+            fileType,
+          },
+        }
       : undefined;
   },
   async extract({ input, options, probe, selection }) {
     const config = readOfficeExtractorConfig(selection.config);
-    const fileType = selection.data?.fileType
-      ?? selectOfficeParserFileType(probe, config.fileTypes ?? {});
+    const fileType = selection.data?.fileType ?? selectOfficeParserFileType(probe, config.fileTypes ?? {});
     if (!fileType) {
       throw new Error("配置的 officeparser 抽取器无法处理当前文档。");
     }
@@ -94,9 +87,7 @@ export const AgentDocumentOfficeExtractor: AgentDocumentExtractorHandler<OfficeS
     const markdownResult = await ast.to("md");
     const markdown = String(markdownResult.value);
     const chunkResult = options.output.maxChunks > 0 ? await ast.to("chunks") : undefined;
-    const chunks = Array.isArray(chunkResult?.value)
-      ? projectOfficeChunks(chunkResult.value, options)
-      : [];
+    const chunks = Array.isArray(chunkResult?.value) ? projectOfficeChunks(chunkResult.value, options) : [];
 
     return {
       status: "extracted",
@@ -110,12 +101,8 @@ export const AgentDocumentOfficeExtractor: AgentDocumentExtractorHandler<OfficeS
       structure: {
         topLevelNodeCount: ast.content.length,
         attachmentCount: ast.attachments.length,
-        warningCount: [
-          ...warnings,
-          ...ast.warnings,
-          ...markdownResult.messages,
-          ...(chunkResult?.messages ?? []),
-        ].length,
+        warningCount: [...warnings, ...ast.warnings, ...markdownResult.messages, ...(chunkResult?.messages ?? [])]
+          .length,
       },
       chunks,
       warnings: projectWarnings([
@@ -151,10 +138,7 @@ function selectOfficeParserFileType(
   return undefined;
 }
 
-function projectOfficeChunks(
-  chunks: OfficeChunk[],
-  options: AgentDocumentExtractOptions,
-): AgentDocumentExtractChunk[] {
+function projectOfficeChunks(chunks: OfficeChunk[], options: AgentDocumentExtractOptions): AgentDocumentExtractChunk[] {
   return chunks.slice(0, options.output.maxChunks).map((chunk, index) => ({
     index,
     text: limitText(chunk.text, options.output.maxChunkChars),

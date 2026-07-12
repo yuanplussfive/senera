@@ -1,27 +1,15 @@
 import type { ReactNode } from "react";
-import {
-  ArrowUpDown,
-  BrainCircuit,
-  Database,
-  Eye,
-  ImageIcon,
-  MessageCircle,
-  ShieldCheck,
-  Wrench,
-} from "lucide-react";
+import { ArrowUpDown, BrainCircuit, Database, Eye, ImageIcon, MessageCircle, ShieldCheck } from "lucide-react";
 import { cn } from "../../lib/util";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ModelCapabilitiesDraft } from "./modelConfigTypes";
 
-export function CapabilityIconStrip({
-  capabilities,
-}: {
-  capabilities: Required<ModelCapabilitiesDraft>;
-}): JSX.Element {
+export function CapabilityIconStrip({ capabilities }: { capabilities: Required<ModelCapabilitiesDraft> }): JSX.Element {
   const enabledItems = ModelCapabilityIconItems.filter((item) => capabilities[item.key]);
   if (enabledItems.length === 0) {
     return (
       <span className="rounded-full border border-ink-200 bg-ink-900/[0.035] px-1.5 py-0.5 text-[10px] text-ink-400">
-        无能力
+        {frontendMessage("config.model.noCapabilities")}
       </span>
     );
   }
@@ -30,10 +18,7 @@ export function CapabilityIconStrip({
       {enabledItems.map((item) => (
         <span
           key={item.key}
-          className={cn(
-            "grid h-5 min-w-5 place-items-center rounded-full border px-1 text-[10px]",
-            item.className,
-          )}
+          className={cn("grid h-5 min-w-5 place-items-center rounded-full border px-1 text-[10px]", item.className)}
           title={item.label}
           aria-label={item.label}
         >
@@ -79,14 +64,13 @@ export function CapabilityToggle({
         </span>
         <span className="truncate text-[12.5px] font-medium">{label}</span>
       </span>
-      <span className={cn(
-        "relative h-5 w-9 rounded-full transition",
-        active ? "bg-moss-500" : "bg-ink-300",
-      )}>
-        <span className={cn(
-          "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-          active && "translate-x-4",
-        )} />
+      <span className={cn("relative h-5 w-9 rounded-full transition", active ? "bg-moss-500" : "bg-ink-300")}>
+        <span
+          className={cn(
+            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
+            active && "translate-x-4",
+          )}
+        />
       </span>
       <span className={cn("col-span-2 text-[10.5px] font-semibold", active ? "text-moss-700" : "text-ink-400")}>
         {active ? "ON" : "OFF"}
@@ -98,45 +82,39 @@ export function CapabilityToggle({
 export const ModelCapabilityIconItems = [
   {
     key: "Chat",
-    label: "对话",
+    label: frontendMessage("config.model.capability.chat"),
     icon: <MessageCircle className="h-3 w-3" />,
     className: "border-lime-200 bg-lime-50 text-lime-700",
   },
   {
     key: "Embedding",
-    label: "向量嵌入",
+    label: frontendMessage("config.model.capability.embedding"),
     icon: <Database className="h-3 w-3" />,
     className: "border-sky-200 bg-sky-50 text-sky-700",
   },
   {
     key: "Rerank",
-    label: "重排序",
+    label: frontendMessage("config.model.capability.rerank"),
     icon: <ArrowUpDown className="h-3 w-3" />,
     className: "border-indigo-200 bg-indigo-50 text-indigo-700",
   },
   {
     key: "Vision",
-    label: "识图",
+    label: frontendMessage("config.model.capability.vision"),
     icon: <Eye className="h-3 w-3" />,
     className: "border-violet-200 bg-violet-50 text-violet-700",
   },
   {
     key: "ImageOutput",
-    label: "图像输出",
+    label: frontendMessage("config.model.capability.imageOutput"),
     icon: <ImageIcon className="h-3 w-3" />,
     className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
   },
   {
     key: "Reasoning",
-    label: "推理",
+    label: frontendMessage("config.model.capability.reasoning"),
     icon: <BrainCircuit className="h-3 w-3" />,
     className: "border-terra-200 bg-terra-50 text-terra-700",
-  },
-  {
-    key: "ToolCalling",
-    label: "工具调用",
-    icon: <Wrench className="h-3 w-3" />,
-    className: "border-amber-200 bg-amber-50 text-amber-700",
   },
   {
     key: "DeveloperRole",

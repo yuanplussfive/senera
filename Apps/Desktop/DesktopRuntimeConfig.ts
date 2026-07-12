@@ -7,10 +7,7 @@ export interface DesktopPluginRoots {
   sandboxBundleRoot: string;
 }
 
-export function projectDesktopRuntimeConfig(
-  paths: DesktopPluginRoots,
-  config: AgentSystemConfig,
-): AgentSystemConfig {
+export function projectDesktopRuntimeConfig(paths: DesktopPluginRoots, config: AgentSystemConfig): AgentSystemConfig {
   return {
     ...config,
     PluginRoots: {

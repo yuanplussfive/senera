@@ -53,10 +53,12 @@ export class AgentToolResultXmlRenderer {
                 workspace: entry.artifact.workspace
                   ? {
                       patch: {
-                        generated: entry.artifact.workspace.changes.some((change) =>
-                          change.patch?.status === "generated"),
-                        changeCount: entry.artifact.workspace.changes.filter((change) =>
-                          change.patch?.status === "generated").length,
+                        generated: entry.artifact.workspace.changes.some(
+                          (change) => change.patch?.status === "generated",
+                        ),
+                        changeCount: entry.artifact.workspace.changes.filter(
+                          (change) => change.patch?.status === "generated",
+                        ).length,
                       },
                       changes: {
                         item: entry.artifact.workspace.changes.map((change) => ({

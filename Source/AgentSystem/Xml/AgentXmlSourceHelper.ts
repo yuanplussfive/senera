@@ -8,12 +8,7 @@ export class AgentXmlSourceHelper {
     this.builder = new AgentSourceDiagnosticBuilder(source);
   }
 
-  diagnosticForRoot(
-    message: string,
-    rootName: string,
-    suggestion?: string,
-    occurrence = 0,
-  ): AgentSourceDiagnostic {
+  diagnosticForRoot(message: string, rootName: string, suggestion?: string, occurrence = 0): AgentSourceDiagnostic {
     const position = this.builder.findXmlTag(rootName, occurrence);
     if (!position) {
       return {
@@ -55,12 +50,7 @@ export class AgentXmlSourceHelper {
     });
   }
 
-  diagnosticFromLineColumn(
-    message: string,
-    line: number,
-    column: number,
-    suggestion?: string,
-  ): AgentSourceDiagnostic {
+  diagnosticFromLineColumn(message: string, line: number, column: number, suggestion?: string): AgentSourceDiagnostic {
     return this.builder.fromLineColumn(message, line, column, {
       suggestion,
     });

@@ -10,10 +10,7 @@
         "operationCount": "$.operationCount"
       },
       "Identity": {
-        "Parts": [
-          "text",
-          "operationCount"
-        ]
+        "Parts": ["text", "operationCount"]
       },
       "Presentation": {
         "Locator": "workspace-patch",
@@ -28,26 +25,11 @@
         "operationCount": "$.operationCount"
       },
       "ModelProjection": {
-        "Slots": [
-          "text",
-          "applied",
-          "dryRun",
-          "operationCount"
-        ]
+        "Slots": ["text", "applied", "dryRun", "operationCount"]
       },
       "PlannerMemory": {
-        "Facts": [
-          "text",
-          "applied",
-          "dryRun",
-          "operationCount"
-        ],
-        "ArtifactRefs": [
-          "evidence",
-          "projection",
-          "workspaceDiff",
-          "workspacePatch"
-        ]
+        "Facts": ["text", "applied", "dryRun", "operationCount"],
+        "ArtifactRefs": ["evidence", "projection", "workspaceDiff", "workspacePatch"]
       },
       "Projection": {
         "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace patch: {{ e.slots.text }}\n{% endfor %}",

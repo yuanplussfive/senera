@@ -1,5 +1,5 @@
 import {
-  AgentTerminalActivityTone,
+  type AgentTerminalActivityTone,
   type AgentTerminalActivityGroup,
   type AgentTerminalActivityView,
   type AgentTerminalPreviewView,
@@ -29,10 +29,7 @@ export class AgentTerminalTimelineRenderer {
     };
   }
 
-  applyPatch(
-    state: AgentTerminalTimelineViewState,
-    patch: AgentTerminalTimelinePatch,
-  ): AgentTerminalTimelineViewState {
+  applyPatch(state: AgentTerminalTimelineViewState, patch: AgentTerminalTimelinePatch): AgentTerminalTimelineViewState {
     patch.groups?.forEach((group) => {
       state.groups.set(group.key, group);
     });
@@ -68,16 +65,12 @@ export class AgentTerminalTimelineRenderer {
 
   renderWithHistory(state: AgentTerminalTimelineViewState): string[] {
     const current = this.render(state);
-    return this.committedLines.length > 0
-      ? [...this.committedLines, "", ...current]
-      : current;
+    return this.committedLines.length > 0 ? [...this.committedLines, "", ...current] : current;
   }
 
   commit(state: AgentTerminalTimelineViewState): string[] {
     const current = this.render(state);
-    this.committedLines = this.committedLines.length > 0
-      ? [...this.committedLines, "", ...current]
-      : [...current];
+    this.committedLines = this.committedLines.length > 0 ? [...this.committedLines, "", ...current] : [...current];
     return this.committedLines;
   }
 
@@ -110,10 +103,13 @@ export class AgentTerminalTimelineRenderer {
         buckets.set(activity.groupKey, bucket);
       });
 
-    const grouped = Array.from(buckets.entries()).map(([groupKey, activities]) => [
-      state.groups.get(groupKey),
-      activities,
-    ] as [AgentTerminalActivityGroup | undefined, AgentTerminalActivityView[]]);
+    const grouped = Array.from(buckets.entries()).map(
+      ([groupKey, activities]) =>
+        [state.groups.get(groupKey), activities] as [
+          AgentTerminalActivityGroup | undefined,
+          AgentTerminalActivityView[],
+        ],
+    );
 
     return [
       ...grouped,
@@ -207,12 +203,12 @@ export class AgentTerminalTimelineRenderer {
   }
 
   private color(tone: AgentTerminalActivityTone): (value: string) => string {
-    return ({
+    return {
       progress: AgentConsoleTheme.accent,
       success: AgentConsoleTheme.success,
       warning: AgentConsoleTheme.warning,
       error: AgentConsoleTheme.error,
       neutral: AgentConsoleTheme.muted,
-    })[tone];
+    }[tone];
   }
 }

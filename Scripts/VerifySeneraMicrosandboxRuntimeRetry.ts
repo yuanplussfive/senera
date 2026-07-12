@@ -1,18 +1,13 @@
 import assert from "node:assert/strict";
 import { SeneraMicrosandboxDynamicSdkAdapter } from "../Source/AgentSystem/Execution/SeneraMicrosandboxSdkAdapter.js";
-import type {
-  SeneraMicrosandboxCreateRequest,
-} from "../Source/AgentSystem/Execution/SeneraMicrosandboxTypes.js";
+import type { SeneraMicrosandboxCreateRequest } from "../Source/AgentSystem/Execution/SeneraMicrosandboxTypes.js";
 
 async function main(): Promise<void> {
   const microsandbox = new FakeMicrosandboxModule();
   const adapter = new SeneraMicrosandboxDynamicSdkAdapter(() => Promise.resolve(microsandbox));
   const request = createRequest();
 
-  await assert.rejects(
-    () => adapter.createSandbox(request),
-    /runtime install failed/,
-  );
+  await assert.rejects(() => adapter.createSandbox(request), /runtime install failed/);
   assert.equal(microsandbox.installAttempts, 1);
   assert.equal(microsandbox.createAttempts, 0);
 
@@ -91,18 +86,42 @@ class FakeSetupBuilder {
 class FakeSandboxBuilder {
   constructor(private readonly module: FakeMicrosandboxModule) {}
 
-  image(_image: string): this { return this; }
-  cpus(_cpus: number): this { return this; }
-  memory(_memoryMiB: number): this { return this; }
-  pullPolicy(_policy: string): this { return this; }
-  workdir(_workdir: string): this { return this; }
-  envs(_env: Record<string, string>): this { return this; }
-  ephemeral(_enabled: boolean): this { return this; }
-  replace(): this { return this; }
-  disableMetricsSample(): this { return this; }
-  quietLogs(): this { return this; }
-  maxDuration(_seconds: number): this { return this; }
-  disableNetwork(): this { return this; }
+  image(_image: string): this {
+    return this;
+  }
+  cpus(_cpus: number): this {
+    return this;
+  }
+  memory(_memoryMiB: number): this {
+    return this;
+  }
+  pullPolicy(_policy: string): this {
+    return this;
+  }
+  workdir(_workdir: string): this {
+    return this;
+  }
+  envs(_env: Record<string, string>): this {
+    return this;
+  }
+  ephemeral(_enabled: boolean): this {
+    return this;
+  }
+  replace(): this {
+    return this;
+  }
+  disableMetricsSample(): this {
+    return this;
+  }
+  quietLogs(): this {
+    return this;
+  }
+  maxDuration(_seconds: number): this {
+    return this;
+  }
+  disableNetwork(): this {
+    return this;
+  }
 
   volume(_path: string, apply: (mount: FakeMount) => FakeMount): this {
     apply(new FakeMount());
@@ -121,11 +140,21 @@ class FakeSandboxBuilder {
 }
 
 class FakeMount {
-  bind(_path: string): this { return this; }
-  nosuid(): this { return this; }
-  nodev(): this { return this; }
-  readonly(): this { return this; }
-  quota(_value: number): this { return this; }
+  bind(_path: string): this {
+    return this;
+  }
+  nosuid(): this {
+    return this;
+  }
+  nodev(): this {
+    return this;
+  }
+  readonly(): this {
+    return this;
+  }
+  quota(_value: number): this {
+    return this;
+  }
 }
 
 class FakeRootfsPatch {

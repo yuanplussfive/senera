@@ -56,7 +56,10 @@ if (piTurn.command?.kind !== "run_pi_turn") {
   throw new Error("Expected run_pi_turn command.");
 }
 assert.deepEqual(piTurn.command.loadedToolNames, ["WorkspaceListDirectory"]);
-assert.equal(piTurn.events.some((event) => event.kind === AgentEventKinds.PromptSummary), true);
+assert.equal(
+  piTurn.events.some((event) => event.kind === AgentEventKinds.PromptSummary),
+  true,
+);
 
 const completed = machine.consume(piTurn.state, {
   kind: "succeeded",
@@ -78,38 +81,50 @@ const completed = machine.consume(piTurn.state, {
       outputTokens: 1,
       totalTokens: 2,
     },
-    messages: [{
-      role: "user",
-      content: "使用工具检查项目",
-    }, {
-      role: "assistant",
-      content: "Pi 底座完成回复。",
-    }],
+    messages: [
+      {
+        role: "user",
+        content: "使用工具检查项目",
+      },
+      {
+        role: "assistant",
+        content: "Pi 底座完成回复。",
+      },
+    ],
     conversationEntries: [],
-    stepTraces: [{
-      step: 1,
-      seq: 0,
-      kind: "tool",
-      status: "done",
-      toolName: "WorkspaceListDirectory",
-      callId: "call_verify",
-    }, {
-      step: 1,
-      seq: 1,
-      kind: "answer",
-      status: "done",
-      decisionKind: "final_answer",
-    }],
+    stepTraces: [
+      {
+        step: 1,
+        seq: 0,
+        kind: "tool",
+        status: "done",
+        toolName: "WorkspaceListDirectory",
+        callId: "call_verify",
+      },
+      {
+        step: 1,
+        seq: 1,
+        kind: "answer",
+        status: "done",
+        decisionKind: "final_answer",
+      },
+    ],
     executedTools: [],
   },
 });
 
 assert.equal(completed.state.kind, "completed");
 assert.equal(completed.command, undefined);
-assert.equal(completed.events.some((event) =>
-  event.kind === AgentEventKinds.AssistantMessageCreated
-  && event.data.kind === "final_answer"), true);
-assert.equal(completed.events.some((event) => event.kind === AgentEventKinds.RunCompleted), true);
+assert.equal(
+  completed.events.some(
+    (event) => event.kind === AgentEventKinds.AssistantMessageCreated && event.data.kind === "final_answer",
+  ),
+  true,
+);
+assert.equal(
+  completed.events.some((event) => event.kind === AgentEventKinds.RunCompleted),
+  true,
+);
 if (completed.state.kind === "completed") {
   assert.equal(completed.state.result.terminal.kind, "FinalAnswer");
   assert.equal(completed.state.result.stepTraces.length, 2);

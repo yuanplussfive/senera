@@ -1,12 +1,7 @@
 import type { ActionPlanInput } from "../BamlClient/baml_client/types.js";
 import type { ResolvedAgentActionPlannerConfig } from "../Types/AgentConfigTypes.js";
-import {
-  parseTurnUnderstanding,
-} from "./AgentActionPlannerSchema.js";
-import {
-  AgentActionPlannerStageNames,
-  type AgentActionPlannerStageSink,
-} from "./AgentActionPlannerTelemetry.js";
+import { parseTurnUnderstanding } from "./AgentActionPlannerSchema.js";
+import { AgentActionPlannerStageNames, type AgentActionPlannerStageSink } from "./AgentActionPlannerTelemetry.js";
 import { runAgentActionPlannerStage } from "./AgentActionPlannerStageRunner.js";
 import { runAgentActionPlannerRepairLoop } from "./AgentActionPlannerRepairLoop.js";
 import type { AgentActionPlannerCoreClient } from "./AgentActionPlannerModelClient.js";
@@ -36,19 +31,13 @@ export class AgentActionPlannerUnderstanding {
     );
   }
 
-  private async understand(
-    input: ActionPlanInput,
-    signal?: AbortSignal,
-  ): Promise<ActionPlanInput> {
+  private async understand(input: ActionPlanInput, signal?: AbortSignal): Promise<ActionPlanInput> {
     if (input.turnUnderstanding) {
       return input;
     }
 
     try {
-      const understanding = parseTurnUnderstanding(
-        await this.client.understandUserTurn(input, { signal }),
-        input,
-      );
+      const understanding = parseTurnUnderstanding(await this.client.understandUserTurn(input, { signal }), input);
       return {
         ...input,
         turnUnderstanding: understanding,
@@ -71,11 +60,14 @@ export class AgentActionPlannerUnderstanding {
       maxAttempts: this.maxRepairAttempts,
       signal,
       repair: async ({ invalidOutput, issues }) => {
-        const repaired = await this.client.repairTurnUnderstanding({
-          input,
-          invalidUnderstanding: invalidOutput,
-          issues,
-        }, { signal });
+        const repaired = await this.client.repairTurnUnderstanding(
+          {
+            input,
+            invalidUnderstanding: invalidOutput,
+            issues,
+          },
+          { signal },
+        );
         return parseTurnUnderstanding(repaired, input);
       },
     });

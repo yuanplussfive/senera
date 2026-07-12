@@ -7,14 +7,8 @@ export interface ServerKnownSessionsHandle {
   syncServerKnownSessionFromEvent: (env: EventEnvelope) => boolean;
 }
 
-export function applyServerKnownSessionEvent(
-  knownSessionIds: Set<string>,
-  env: EventEnvelope,
-): boolean {
-  if (
-    (env.kind === EventKinds.SessionCreated || env.kind === EventKinds.SessionSnapshot) &&
-    env.sessionId
-  ) {
+export function applyServerKnownSessionEvent(knownSessionIds: Set<string>, env: EventEnvelope): boolean {
+  if ((env.kind === EventKinds.SessionCreated || env.kind === EventKinds.SessionSnapshot) && env.sessionId) {
     knownSessionIds.add(env.sessionId);
     return true;
   }

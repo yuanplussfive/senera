@@ -54,11 +54,7 @@ export function ContextSessionMenuItems({ actions, separateLast = false }: Sessi
   );
 }
 
-export function DropdownSessionMenuSections({
-  sections,
-}: {
-  sections: readonly SessionMenuSection[];
-}): JSX.Element {
+export function DropdownSessionMenuSections({ sections }: { sections: readonly SessionMenuSection[] }): JSX.Element {
   return (
     <>
       {sections.map((section, index) => (

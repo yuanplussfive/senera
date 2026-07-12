@@ -27,18 +27,14 @@ export function resolveSeneraShellInvocation(command: string): SeneraShellInvoca
       };
 }
 
-export function resolveSeneraShellPlatform(
-  platform: NodeJS.Platform = process.platform,
-): SeneraShellPlatform {
+export function resolveSeneraShellPlatform(platform: NodeJS.Platform = process.platform): SeneraShellPlatform {
   if (platform === "win32") {
     const command = resolveWindowsPowerShellCommand(platform);
     return {
       family: "powershell",
       command,
       invocation: `${command} -NoLogo -NoProfile -NonInteractive -Command <command>`,
-      version: command.toLowerCase().startsWith("pwsh")
-        ? "powershell-core"
-        : "windows-powershell",
+      version: command.toLowerCase().startsWith("pwsh") ? "powershell-core" : "windows-powershell",
     };
   }
 
@@ -55,23 +51,19 @@ function resolveWindowsPowerShellCommand(platform: NodeJS.Platform): string {
     return "pwsh.exe";
   }
 
-  resolvedWindowsShellCommand ??= isCommandAvailable("pwsh.exe")
-    ? "pwsh.exe"
-    : "powershell.exe";
+  resolvedWindowsShellCommand ??= isCommandAvailable("pwsh.exe") ? "pwsh.exe" : "powershell.exe";
   return resolvedWindowsShellCommand;
 }
 
 function isCommandAvailable(command: string): boolean {
-  const result = spawnSync(command, [
-    "-NoLogo",
-    "-NoProfile",
-    "-NonInteractive",
-    "-Command",
-    "$PSVersionTable.PSVersion.ToString()",
-  ], {
-    stdio: "ignore",
-    windowsHide: true,
-  });
+  const result = spawnSync(
+    command,
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()"],
+    {
+      stdio: "ignore",
+      windowsHide: true,
+    },
+  );
   return !result.error;
 }
 

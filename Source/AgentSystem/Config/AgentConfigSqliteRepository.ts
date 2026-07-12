@@ -36,12 +36,16 @@ export class AgentConfigSqliteRepository {
   }
 
   latestRevision(): AgentConfigRevisionRecord | undefined {
-    const row = this.db.prepare([
-      "SELECT revision, config_json, source, created_at",
-      "FROM config_revisions",
-      "ORDER BY revision DESC",
-      "LIMIT 1",
-    ].join(" ")).get() as ConfigRevisionRow | undefined;
+    const row = this.db
+      .prepare(
+        [
+          "SELECT revision, config_json, source, created_at",
+          "FROM config_revisions",
+          "ORDER BY revision DESC",
+          "LIMIT 1",
+        ].join(" "),
+      )
+      .get() as ConfigRevisionRow | undefined;
     return row ? rowToRevision(row) : undefined;
   }
 
@@ -49,16 +53,20 @@ export class AgentConfigSqliteRepository {
     const createdAt = input.createdAt ?? new Date().toISOString();
     const insert = this.db.transaction(() => {
       const nextRevision = this.nextRevision();
-      this.db.prepare([
-        "INSERT INTO config_revisions",
-        "(revision, config_json, source, created_at)",
-        "VALUES (@revision, @config_json, @source, @created_at)",
-      ].join(" ")).run({
-        revision: nextRevision,
-        config_json: JSON.stringify(input.config),
-        source: input.source,
-        created_at: createdAt,
-      });
+      this.db
+        .prepare(
+          [
+            "INSERT INTO config_revisions",
+            "(revision, config_json, source, created_at)",
+            "VALUES (@revision, @config_json, @source, @created_at)",
+          ].join(" "),
+        )
+        .run({
+          revision: nextRevision,
+          config_json: JSON.stringify(input.config),
+          source: input.source,
+          created_at: createdAt,
+        });
       return nextRevision;
     });
 
@@ -80,8 +88,9 @@ export class AgentConfigSqliteRepository {
   }
 
   private nextRevision(): number {
-    const row = this.db.prepare("SELECT COALESCE(MAX(revision), 0) + 1 AS revision FROM config_revisions")
-      .get() as { revision: number };
+    const row = this.db.prepare("SELECT COALESCE(MAX(revision), 0) + 1 AS revision FROM config_revisions").get() as {
+      revision: number;
+    };
     return row.revision;
   }
 }
@@ -107,11 +116,13 @@ function installConfigSchema(db: Database.Database): void {
     );
   `);
 
-  db.prepare([
-    "INSERT INTO config_metadata (key, value)",
-    "VALUES ('schema_version', @schemaVersion)",
-    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-  ].join(" ")).run({ schemaVersion: SchemaVersion });
+  db.prepare(
+    [
+      "INSERT INTO config_metadata (key, value)",
+      "VALUES ('schema_version', @schemaVersion)",
+      "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ].join(" "),
+  ).run({ schemaVersion: SchemaVersion });
 }
 
 function rowToRevision(row: ConfigRevisionRow): AgentConfigRevisionRecord {

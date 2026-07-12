@@ -1,9 +1,5 @@
-import {
-  AgentTerminalActivityTone,
-} from "./AgentTerminalActivity.js";
-import type {
-  AgentTerminalActivityProjectorCatalog,
-} from "./AgentTerminalActivityProjectorTypes.js";
+import { AgentTerminalActivityTone } from "./AgentTerminalActivity.js";
+import type { AgentTerminalActivityProjectorCatalog } from "./AgentTerminalActivityProjectorTypes.js";
 import {
   activityKey,
   compactSummary,
@@ -27,21 +23,13 @@ export const AgentTerminalToolActivityProjectors: AgentTerminalActivityProjector
       : [];
     const status = typeof data.status === "string" ? data.status : "planned";
     const reason = typeof data.reason === "string" ? data.reason : undefined;
-    const title = status === "discovery_escalated"
-      ? "自动发现工具"
-      : status === "blocked"
-        ? "工具调用受阻"
-        : "准备调用工具";
+    const title =
+      status === "discovery_escalated" ? "自动发现工具" : status === "blocked" ? "工具调用受阻" : "准备调用工具";
 
     return patchWithStepActivity(event, statefulStepGroup(event), {
       slot: "tools",
       title,
-      summary: compactSummary(
-        formatStep(event.step),
-        formatCount(data.toolCount, "个工具"),
-        reason,
-        tools.join(", "),
-      ),
+      summary: compactSummary(formatStep(event.step), formatCount(data.toolCount, "个工具"), reason, tools.join(", ")),
       detail: shouldRenderDetails(detailMode, "tools") ? tools : undefined,
       tone: AgentTerminalActivityTone.Progress,
       state: "active",
@@ -51,75 +39,82 @@ export const AgentTerminalToolActivityProjectors: AgentTerminalActivityProjector
     const data = normalizeRecord(event.data);
     const current = state.activities.get(activityKey(event, "tools"));
     return {
-      upserts: [{
-        key: activityKey(event, "tools"),
-        groupKey: current?.groupKey ?? statefulStepGroup(event)?.key,
-        title: "正在调用工具",
-        summary: compactSummary(
-          formatStep(event.step),
-          formatToolIndex(data.index),
-          readString(data.toolName),
-          formatCallHandle(data.callId),
-        ),
-        detail: current?.detail,
-        tone: AgentTerminalActivityTone.Progress,
-        state: "active",
-      }],
+      upserts: [
+        {
+          key: activityKey(event, "tools"),
+          groupKey: current?.groupKey ?? statefulStepGroup(event)?.key,
+          title: "正在调用工具",
+          summary: compactSummary(
+            formatStep(event.step),
+            formatToolIndex(data.index),
+            readString(data.toolName),
+            formatCallHandle(data.callId),
+          ),
+          detail: current?.detail,
+          tone: AgentTerminalActivityTone.Progress,
+          state: "active",
+        },
+      ],
     };
   },
   "tool.call.completed": (event, state, detailMode) => {
     const data = normalizeRecord(event.data);
     const current = state.activities.get(activityKey(event, "tools"));
     return {
-      upserts: [{
-        key: activityKey(event, "tools"),
-        groupKey: current?.groupKey ?? statefulStepGroup(event)?.key,
-        title: "工具返回结果",
-        summary: compactSummary(
-          formatStep(event.step),
-          formatToolIndex(data.index),
-          readString(data.toolName),
-          formatCallHandle(data.callId),
-          readPresentationHeadline(data.presentation),
-        ),
-        detail: shouldRenderDetails(detailMode, "tools") ? current?.detail : undefined,
-        tone: AgentTerminalActivityTone.Success,
-        state: "active",
-      }],
+      upserts: [
+        {
+          key: activityKey(event, "tools"),
+          groupKey: current?.groupKey ?? statefulStepGroup(event)?.key,
+          title: "工具返回结果",
+          summary: compactSummary(
+            formatStep(event.step),
+            formatToolIndex(data.index),
+            readString(data.toolName),
+            formatCallHandle(data.callId),
+            readPresentationHeadline(data.presentation),
+          ),
+          detail: shouldRenderDetails(detailMode, "tools") ? current?.detail : undefined,
+          tone: AgentTerminalActivityTone.Success,
+          state: "active",
+        },
+      ],
     };
   },
   "tool.call.failed": (event, state) => {
     const data = normalizeRecord(event.data);
     const current = state.activities.get(activityKey(event, "tools"));
     return {
-      upserts: [{
-        key: activityKey(event, "tools"),
-        groupKey: current?.groupKey ?? statefulStepGroup(event)?.key,
-        title: "工具调用失败",
-        summary: compactSummary(
-          formatStep(event.step),
-          formatToolIndex(data.index),
-          readString(data.toolName),
-          formatCallHandle(data.callId),
-          readString(data.code),
-        ),
-        detail: {
-          message: readString(data.message),
+      upserts: [
+        {
+          key: activityKey(event, "tools"),
+          groupKey: current?.groupKey ?? statefulStepGroup(event)?.key,
+          title: "工具调用失败",
+          summary: compactSummary(
+            formatStep(event.step),
+            formatToolIndex(data.index),
+            readString(data.toolName),
+            formatCallHandle(data.callId),
+            readString(data.code),
+          ),
+          detail: {
+            message: readString(data.message),
+          },
+          tone: AgentTerminalActivityTone.Error,
+          state: "completed",
         },
-        tone: AgentTerminalActivityTone.Error,
-        state: "completed",
-      }],
+      ],
     };
   },
-  "tool.call.result.detail": (event, _state, detailMode) => shouldRenderDetails(detailMode, "tools")
-    ? patchWithStepActivity(event, statefulStepGroup(event), {
-        slot: `tools.detail:${readString(normalizeRecord(event.data).callId) || event.detailId || event.sequence}`,
-        title: "工具结果详情",
-        detail: normalizeRecord(event.data).value,
-        tone: AgentTerminalActivityTone.Neutral,
-        state: "completed",
-      })
-    : silentPatch(),
+  "tool.call.result.detail": (event, _state, detailMode) =>
+    shouldRenderDetails(detailMode, "tools")
+      ? patchWithStepActivity(event, statefulStepGroup(event), {
+          slot: `tools.detail:${readString(normalizeRecord(event.data).callId) || event.detailId || event.sequence}`,
+          title: "工具结果详情",
+          detail: normalizeRecord(event.data).value,
+          tone: AgentTerminalActivityTone.Neutral,
+          state: "completed",
+        })
+      : silentPatch(),
   "assistant.message.created": (event) => {
     const data = normalizeRecord(event.data);
     const messageKind = readString(data.kind) ?? "";

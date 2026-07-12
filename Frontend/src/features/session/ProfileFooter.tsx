@@ -19,20 +19,22 @@ export function UserFooter({
   profile,
   socketStatus,
   onUpdateProfile,
+  onLogout,
 }: {
   profile: UserProfile;
   socketStatus: string;
   onUpdateProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+  onLogout: () => Promise<void>;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const statusLabel =
     socketStatus === "open"
-      ? "已连接"
+      ? frontendMessage("connection.open")
       : socketStatus === "connecting" || socketStatus === "idle"
-        ? "连接中"
+        ? frontendMessage("connection.connecting")
         : socketStatus === "error"
-          ? "连接错误"
-          : "已断开";
+          ? frontendMessage("connection.error")
+          : frontendMessage("connection.closed");
   const statusColor =
     socketStatus === "open"
       ? "bg-moss-500"
@@ -65,15 +67,20 @@ export function UserFooter({
           setOpen(false);
           toast.success(frontendMessage("profile.saved"));
         }}
+        onLogout={async () => {
+          try {
+            await onLogout();
+          } catch {
+            toast.error(frontendMessage("auth.logoutFailed"));
+          }
+        }}
       />
     </>
   );
 }
 
 function UserAvatar({ profile, size = "normal" }: { profile: UserProfile; size?: "normal" | "large" }): JSX.Element {
-  const className = size === "large"
-    ? "h-14 w-14 rounded-full text-[18px]"
-    : "h-8 w-8 rounded-full text-[12px]";
+  const className = size === "large" ? "h-14 w-14 rounded-full text-[18px]" : "h-8 w-8 rounded-full text-[12px]";
   const initial = profile.name.trim().slice(0, 1).toUpperCase();
 
   return (
@@ -99,11 +106,13 @@ function ProfileDialog({
   profile,
   onOpenChange,
   onSubmit,
+  onLogout,
 }: {
   open: boolean;
   profile: UserProfile;
   onOpenChange: (open: boolean) => void;
   onSubmit: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+  onLogout: () => Promise<void>;
 }): JSX.Element {
   const [draftName, setDraftName] = useState(profile.name);
   const [draftAvatar, setDraftAvatar] = useState<string | null>(profile.avatarDataUrl);
@@ -154,8 +163,8 @@ function ProfileDialog({
       }}
     >
       <DialogContent
-        title="用户资料"
-        description="名称和头像会同步到消息展示。"
+        title={frontendMessage("profile.title")}
+        description={frontendMessage("profile.description")}
         className="w-[min(420px,calc(100vw-28px))]"
         bodyClassName="p-4"
       >
@@ -193,21 +202,26 @@ function ProfileDialog({
           )}
 
           <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-ink-600">显示名称</span>
+            <span className="mb-1.5 block text-[12px] font-medium text-ink-600">
+              {frontendMessage("profile.displayName")}
+            </span>
             <input
               autoFocus
               value={draftName}
               maxLength={48}
               onChange={(event) => setDraftName(event.target.value)}
               className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-terra-200/50"
-              placeholder="输入你的名称"
+              placeholder={frontendMessage("profile.namePlaceholder")}
             />
           </label>
 
           <DialogActions>
-            <DialogActionButton close>取消</DialogActionButton>
+            <DialogActionButton className="mr-auto text-brick-700 hover:bg-brick-50" onClick={() => void onLogout()}>
+              {frontendMessage("auth.signOut")}
+            </DialogActionButton>
+            <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
             <DialogActionButton type="submit" variant="primary">
-              保存
+              {frontendMessage("profile.save")}
             </DialogActionButton>
           </DialogActions>
         </form>
@@ -232,19 +246,14 @@ function AvatarPicker({
   return (
     <div className="overflow-hidden rounded-xl border border-ink-200/70 bg-paper-100/65">
       <div className="flex items-center gap-4 p-3">
-        <UserAvatar
-          profile={{ name, avatarDataUrl, updatedAt }}
-          size="large"
-        />
+        <UserAvatar profile={{ name, avatarDataUrl, updatedAt }} size="large" />
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium text-ink-900">头像</div>
-          <div className="mt-1 text-[12px] leading-5 text-ink-500">
-            选择图片后可移动和缩放裁切。
-          </div>
+          <div className="text-[13px] font-medium text-ink-900">{frontendMessage("profile.avatar")}</div>
+          <div className="mt-1 text-[12px] leading-5 text-ink-500">{frontendMessage("profile.avatarHint")}</div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-ink-900 px-3 text-[12.5px] font-medium text-paper-50 transition hover:bg-ink-800">
               <Camera className="h-3.5 w-3.5" />
-              选择图片
+              {frontendMessage("profile.selectImage")}
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/gif"
@@ -262,7 +271,7 @@ function AvatarPicker({
                 onClick={onRemove}
                 className="h-8 rounded-md px-2.5 text-[12.5px] text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900"
               >
-                移除
+                {frontendMessage("profile.removeAvatar")}
               </button>
             ) : null}
           </div>
@@ -287,7 +296,7 @@ function AvatarCropper({
   const frameRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const geometry = useMemo(
-    () => image ? resolveAvatarCropGeometry(image, crop, AVATAR_PREVIEW_SIZE) : null,
+    () => (image ? resolveAvatarCropGeometry(image, crop, AVATAR_PREVIEW_SIZE) : null),
     [crop, image],
   );
 
@@ -355,7 +364,7 @@ function AvatarCropper({
           {geometry ? (
             <img
               src={crop.source}
-              alt="头像裁切预览"
+              alt={frontendMessage("profile.cropPreview")}
               draggable={false}
               className="absolute left-1/2 top-1/2 max-w-none"
               style={{
@@ -366,7 +375,7 @@ function AvatarCropper({
             />
           ) : (
             <div className="grid h-full w-full place-items-center text-[12px] text-paper-50/70">
-              加载图片中
+              {frontendMessage("profile.loadingImage")}
             </div>
           )}
           <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-paper-50/65" />
@@ -374,7 +383,7 @@ function AvatarCropper({
 
         <label className="mt-4 w-full">
           <div className="mb-2 flex items-center justify-between text-[12px] text-ink-500">
-            <span>缩放</span>
+            <span>{frontendMessage("profile.zoom")}</span>
             <span className="font-mono">{Math.round(crop.scale * 100)}%</span>
           </div>
           <input
@@ -394,7 +403,7 @@ function AvatarCropper({
             onClick={onCancel}
             className="h-8 rounded-md px-3 text-[12.5px] text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900"
           >
-            取消裁切
+            {frontendMessage("profile.cancelCrop")}
           </button>
           <button
             type="button"
@@ -402,7 +411,7 @@ function AvatarCropper({
             onClick={handleApply}
             className="h-8 rounded-md bg-ink-900 px-3 text-[12.5px] font-medium text-paper-50 transition hover:bg-ink-800 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            使用头像
+            {frontendMessage("profile.useAvatar")}
           </button>
         </div>
       </div>

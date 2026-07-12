@@ -19,9 +19,7 @@ export function resolvePluginRootsConfig(config: AgentSystemConfig): ResolvedAge
   };
 }
 
-export function resolvePluginDiscoveryConfig(
-  config: AgentSystemConfig,
-): ResolvedAgentPluginDiscoveryConfig {
+export function resolvePluginDiscoveryConfig(config: AgentSystemConfig): ResolvedAgentPluginDiscoveryConfig {
   const defaults = resolveAgentDefaults(config);
   return {
     ...defaults.PluginDiscovery,
@@ -74,6 +72,24 @@ export function resolveServerConfig(config: AgentSystemConfig) {
   return {
     ...defaults.Server,
     ...config.Server,
+    AccessControl: {
+      ...defaults.Server.AccessControl,
+      ...config.Server?.AccessControl,
+      AllowedOrigins: [
+        ...(config.Server?.AccessControl?.AllowedOrigins ?? defaults.Server.AccessControl.AllowedOrigins),
+      ],
+      TrustedProxyAddresses: [
+        ...(config.Server?.AccessControl?.TrustedProxyAddresses ?? defaults.Server.AccessControl.TrustedProxyAddresses),
+      ],
+      Session: {
+        ...defaults.Server.AccessControl.Session,
+        ...config.Server?.AccessControl?.Session,
+      },
+      Limits: {
+        ...defaults.Server.AccessControl.Limits,
+        ...config.Server?.AccessControl?.Limits,
+      },
+    },
   };
 }
 

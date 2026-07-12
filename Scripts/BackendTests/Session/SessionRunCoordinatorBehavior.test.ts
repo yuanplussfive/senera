@@ -66,7 +66,11 @@ describe("Session run coordinator behavior", () => {
 
   test("stores failure state and emits a contextual failure event", async () => {
     const fixture = createCoordinatorFixture({
-      loop: { run: async () => { throw new Error("model transport failed"); } },
+      loop: {
+        run: async () => {
+          throw new Error("model transport failed");
+        },
+      },
     });
     const events: AgentDomainEvent[] = [];
 
@@ -108,22 +112,23 @@ describe("Session run coordinator behavior", () => {
     await pendingLoop.started;
 
     expect(fixture.coordinator.assertAvailable(fixture.session).kind).toBe("busy");
-    await expect(fixture.coordinator.cancelActiveRun({
-      sessionId: fixture.session.id,
-      onEvent: (event) => {
-        events.push(event);
-      },
-    })).resolves.toBe(true);
+    await expect(
+      fixture.coordinator.cancelActiveRun({
+        sessionId: fixture.session.id,
+        onEvent: (event) => {
+          events.push(event);
+        },
+      }),
+    ).resolves.toBe(true);
     await run;
 
     expect(await fixture.coordinator.cancelActiveRun({ sessionId: fixture.session.id })).toBe(false);
     expect(fixture.session.status).toBe(AgentSessionStatuses.Idle);
     expect(fixture.store.loadConversation(fixture.session.id)).toEqual([]);
     expect(fixture.store.loadRunSnapshots(fixture.session.id)).toEqual([]);
-    expect(events.map((event) => event.kind)).toEqual(expect.arrayContaining([
-      AgentEventKinds.RunCancelled,
-      AgentEventKinds.SessionTruncated,
-    ]));
+    expect(events.map((event) => event.kind)).toEqual(
+      expect.arrayContaining([AgentEventKinds.RunCancelled, AgentEventKinds.SessionTruncated]),
+    );
   });
 
   test("routes steer and follow-up input to the active Pi session", async () => {
@@ -144,20 +149,24 @@ describe("Session run coordinator behavior", () => {
     });
     const events: AgentDomainEvent[] = [];
 
-    await expect(fixture.coordinator.steerActiveRun({
-      session: fixture.session,
-      requestId: "request-steer",
-      input: "Check the package manifest first",
-      onEvent: (event) => {
-        events.push(event);
-      },
-    })).resolves.toBe(true);
-    await expect(fixture.coordinator.steerActiveRun({
-      session: fixture.session,
-      requestId: "request-follow-up",
-      input: "Then summarize the release scripts",
-      queueMode: "follow_up",
-    })).resolves.toBe(true);
+    await expect(
+      fixture.coordinator.steerActiveRun({
+        session: fixture.session,
+        requestId: "request-steer",
+        input: "Check the package manifest first",
+        onEvent: (event) => {
+          events.push(event);
+        },
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      fixture.coordinator.steerActiveRun({
+        session: fixture.session,
+        requestId: "request-follow-up",
+        input: "Then summarize the release scripts",
+        queueMode: "follow_up",
+      }),
+    ).resolves.toBe(true);
 
     expect(pi.steered).toEqual(["Check the package manifest first"]);
     expect(pi.followUps).toEqual(["Then summarize the release scripts"]);
@@ -166,9 +175,7 @@ describe("Session run coordinator behavior", () => {
       "request-steer",
       "request-follow-up",
     ]);
-    expect(events).toEqual([
-      expect.objectContaining({ kind: AgentEventKinds.PiTrace }),
-    ]);
+    expect(events).toEqual([expect.objectContaining({ kind: AgentEventKinds.PiTrace })]);
 
     unregister();
     await fixture.coordinator.cancelActiveRun({ sessionId: fixture.session.id });
@@ -203,10 +210,7 @@ describe("Session run coordinator behavior", () => {
   });
 });
 
-function createCoordinatorFixture(options: {
-  loop: AgentLoopRunner;
-  piSessions?: AgentPiActiveSessionRegistry;
-}) {
+function createCoordinatorFixture(options: { loop: AgentLoopRunner; piSessions?: AgentPiActiveSessionRegistry }) {
   const sessionRepository = new InMemorySessionRepository();
   const store = new AgentSessionStore({ repository: sessionRepository });
   const session = store.open("session-test").session;
@@ -235,10 +239,18 @@ function completedRun(requestId: string): AgentCompletedRunResult {
       model: "test-model",
     },
     usage: { source: "local_estimate", inputTokens: 10, outputTokens: 4 },
-    conversationEntries: [projector.projectOpenAiTranscript(requestId, [{
-      role: "assistant",
-      content: "Inspection complete.",
-    }], "2026-01-01T00:01:00.000Z")],
+    conversationEntries: [
+      projector.projectOpenAiTranscript(
+        requestId,
+        [
+          {
+            role: "assistant",
+            content: "Inspection complete.",
+          },
+        ],
+        "2026-01-01T00:01:00.000Z",
+      ),
+    ],
     stepTraces: [{ step: 1, seq: 0, kind: "answer", status: "done" }],
   };
 }
@@ -254,11 +266,8 @@ function createPendingLoop(): { loop: AgentLoopRunner; started: Promise<void> } 
       run: async (request) => {
         markStarted();
         return new Promise<AgentCompletedRunResult>((_resolve, reject) => {
-          const rejectCancellation = () => reject(
-            request.signal?.reason instanceof Error
-              ? request.signal.reason
-              : new AgentCancellationError(),
-          );
+          const rejectCancellation = () =>
+            reject(request.signal?.reason instanceof Error ? request.signal.reason : new AgentCancellationError());
           if (request.signal?.aborted) {
             rejectCancellation();
             return;

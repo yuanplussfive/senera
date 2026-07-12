@@ -146,8 +146,7 @@ export function createXmlProtocolSpec(
       ...AgentDefaultXmlProtocolSpec.toolResult,
     },
     arrayElementNameSuffix:
-      config?.XmlProtocol?.ArrayElementNameSuffix
-      ?? AgentDefaultXmlProtocolSpec.arrayElementNameSuffix,
+      config?.XmlProtocol?.ArrayElementNameSuffix ?? AgentDefaultXmlProtocolSpec.arrayElementNameSuffix,
   };
 }
 
@@ -155,58 +154,40 @@ export function listXmlArrayElementNames(
   protocol: AgentXmlProtocolSpec,
   configuredNames: readonly string[] = [],
 ): string[] {
-  return [...new Set([
-    ...configuredNames,
-    protocol.items.arrayItem,
-    protocol.items.toolCall,
-    protocol.items.toolResult,
-  ])];
+  return [
+    ...new Set([...configuredNames, protocol.items.arrayItem, protocol.items.toolCall, protocol.items.toolResult]),
+  ];
 }
 
-export function listRuntimeOnlyDecisionFieldRules(
-  protocol: AgentXmlProtocolSpec,
-): AgentXmlDecisionRuntimeFieldRule[] {
+export function listRuntimeOnlyDecisionFieldRules(protocol: AgentXmlProtocolSpec): AgentXmlDecisionRuntimeFieldRule[] {
   return [
     {
       root: protocol.roots.toolCalls,
-      path: [
-        protocol.items.toolCall,
-        AgentXmlPathWildcard,
-        protocol.toolResult.callId,
-      ],
+      path: [protocol.items.toolCall, AgentXmlPathWildcard, protocol.toolResult.callId],
     },
     {
       root: protocol.roots.toolCalls,
-      path: [
-        protocol.items.toolCall,
-        AgentXmlPathWildcard,
-        protocol.toolResult.runtime,
-      ],
+      path: [protocol.items.toolCall, AgentXmlPathWildcard, protocol.toolResult.runtime],
     },
   ];
 }
 
-export function listRequiredCdataFieldRules(
-  protocol: AgentXmlProtocolSpec,
-): AgentXmlRequiredCdataFieldRule[] {
+export function listRequiredCdataFieldRules(protocol: AgentXmlProtocolSpec): AgentXmlRequiredCdataFieldRule[] {
   void protocol;
   return [];
 }
 
-export function createXmlProtocolPolicy(
-  config: AgentSystemConfig,
-): AgentXmlProtocolPolicy {
+export function createXmlProtocolPolicy(config: AgentSystemConfig): AgentXmlProtocolPolicy {
   const protocol = createXmlProtocolSpec(config);
 
   return {
     protocol,
-    arrayElementNames: new Set(
-      listXmlArrayElementNames(protocol, config.XmlProtocol?.ArrayElementNames ?? []),
-    ),
+    arrayElementNames: new Set(listXmlArrayElementNames(protocol, config.XmlProtocol?.ArrayElementNames ?? [])),
     arrayElementNameSuffix: protocol.arrayElementNameSuffix,
     xmlFenceLanguages: new Set(
-      ["", "xml", ...(config.PluginDocumentation?.PromptXml?.XmlFenceLanguages ?? [])]
-        .map((item) => item.trim().toLowerCase()),
+      ["", "xml", ...(config.PluginDocumentation?.PromptXml?.XmlFenceLanguages ?? [])].map((item) =>
+        item.trim().toLowerCase(),
+      ),
     ),
     forbiddenSyntaxRules: [
       { pattern: /<!DOCTYPE/i, label: "DOCTYPE" },
@@ -217,9 +198,7 @@ export function createXmlProtocolPolicy(
     allowBooleanAttributes: false,
     maxDepth: config.XmlProtocol?.MaxDepth ?? AgentXmlProtocolDefaults.maxDepth,
     maxTextLength: config.XmlProtocol?.MaxTextLength,
-    maxDecisionTokens:
-      config.XmlProtocol?.MaxDecisionTokens
-      ?? AgentXmlProtocolDefaults.maxDecisionTokens,
+    maxDecisionTokens: config.XmlProtocol?.MaxDecisionTokens ?? AgentXmlProtocolDefaults.maxDecisionTokens,
     runtimeOnlyDecisionFieldRules: listRuntimeOnlyDecisionFieldRules(protocol),
     requiredCdataFieldRules: listRequiredCdataFieldRules(protocol),
   };

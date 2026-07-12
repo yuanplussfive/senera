@@ -30,9 +30,7 @@ export const Tooltip = forwardRef<HTMLButtonElement, TooltipProps>(
           )}
         >
           {content}
-          {shortcut ? (
-            <span className="font-mono text-[10px] text-ink-300">{shortcut}</span>
-          ) : null}
+          {shortcut ? <span className="font-mono text-[10px] text-ink-300">{shortcut}</span> : null}
           <TooltipPrimitive.Arrow className="fill-ink-900" width={8} height={4} />
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>

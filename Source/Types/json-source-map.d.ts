@@ -17,11 +17,7 @@ declare module "json-source-map" {
     pointers: Record<string, JsonSourcePointer>;
   }
 
-  export function parse<T = unknown>(
-    source: string,
-    reviver?: unknown,
-    options?: unknown,
-  ): JsonSourceMapResult<T>;
+  export function parse<T = unknown>(source: string, reviver?: unknown, options?: unknown): JsonSourceMapResult<T>;
 
   export function stringify(
     data: unknown,

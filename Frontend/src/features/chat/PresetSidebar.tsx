@@ -1,26 +1,10 @@
 import { cva } from "class-variance-authority";
-import {
-  AlertTriangle,
-  BookUser,
-  Check,
-  FileUp,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Search,
-} from "lucide-react";
+import { AlertTriangle, BookUser, Check, FileUp, Loader2, Plus, RefreshCw, Search } from "lucide-react";
 import type { PresetItem } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import {
-  Button,
-  IconButton,
-  ScrollArea,
-} from "../../shared/ui";
-import {
-  PresetFormatOptions,
-  formatPresetTime,
-  readPresetDisplayName,
-} from "./presetPanelUtils";
+import { Button, IconButton, ScrollArea } from "../../shared/ui";
+import { PresetFormatOptions, formatPresetTime, readPresetDisplayName } from "./presetPanelUtils";
 
 const presetListItemClass = cva(
   "flex min-w-[220px] items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition lg:w-full lg:min-w-0",
@@ -70,16 +54,20 @@ export function PresetSidebar({
       <div className="shrink-0 border-b border-ink-200/60 px-3.5 py-3.5">
         <div className="min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[13px] font-semibold text-ink-900">本地预设</span>
-            <span className={cn(
-              "inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[10.5px]",
-              enabled ? "bg-terra-50 text-terra-700" : "bg-ink-900/[0.045] text-ink-400",
-            )}>
-              {enabled ? "已启用" : "未启用"}
+            <span className="text-[13px] font-semibold text-ink-900">{frontendMessage("preset.ui.localPresets")}</span>
+            <span
+              className={cn(
+                "inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[10.5px]",
+                enabled ? "bg-terra-50 text-terra-700" : "bg-ink-900/[0.045] text-ink-400",
+              )}
+            >
+              {frontendMessage(enabled ? "preset.ui.enabled" : "preset.ui.disabled")}
             </span>
           </div>
           <div className="mt-1.5 min-w-0 truncate text-[11px] text-ink-500">
-            {activePreset ? readPresetDisplayName(activePreset.title || activePreset.name) : `${totalPresets} 个文件`}
+            {activePreset
+              ? readPresetDisplayName(activePreset.title || activePreset.name)
+              : frontendMessage("preset.ui.fileCount", { count: totalPresets })}
           </div>
         </div>
 
@@ -92,11 +80,11 @@ export function PresetSidebar({
             className="h-8 justify-start bg-paper-50 px-2.5"
           >
             {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileUp className="h-3.5 w-3.5" />}
-            导入
+            {frontendMessage("preset.ui.import")}
           </Button>
           <IconButton
-            label="新建预设"
-            tooltip="新建预设"
+            label={frontendMessage("preset.ui.create")}
+            tooltip={frontendMessage("preset.ui.create")}
             size="md"
             tone="muted"
             className="bg-paper-50"
@@ -106,8 +94,8 @@ export function PresetSidebar({
             <Plus className="h-3.5 w-3.5" />
           </IconButton>
           <IconButton
-            label="刷新预设"
-            tooltip="刷新预设"
+            label={frontendMessage("preset.ui.refresh")}
+            tooltip={frontendMessage("preset.ui.refresh")}
             size="md"
             tone="muted"
             className="bg-paper-50"
@@ -123,7 +111,7 @@ export function PresetSidebar({
           <input
             value={filterText}
             onChange={(event) => onFilterTextChange(event.currentTarget.value)}
-            placeholder="搜索预设"
+            placeholder={frontendMessage("preset.ui.searchPlaceholder")}
             spellCheck={false}
             className="h-8 w-full rounded-lg border border-ink-200 bg-paper-50 pl-8 pr-2.5 text-[12px] text-ink-800 shadow-sm outline-none transition placeholder:text-ink-400 focus:border-terra-300 focus:ring-2 focus:ring-terra-100"
           />
@@ -165,27 +153,25 @@ function PresetListItem({
   const displayName = readPresetDisplayName(preset.title || preset.name);
   const formatLabel = PresetFormatOptions.find((option) => option.value === preset.format)?.label ?? preset.format;
   return (
-    <button
-      type="button"
-      className={presetListItemClass({ active })}
-      onClick={onClick}
-    >
-      <span className={cn(
-        "grid h-8 w-8 shrink-0 place-items-center rounded-md",
-        preset.active ? "bg-terra-100 text-terra-700" : "bg-ink-900/[0.045] text-ink-400",
-      )}>
+    <button type="button" className={presetListItemClass({ active })} onClick={onClick}>
+      <span
+        className={cn(
+          "grid h-8 w-8 shrink-0 place-items-center rounded-md",
+          preset.active ? "bg-terra-100 text-terra-700" : "bg-ink-900/[0.045] text-ink-400",
+        )}
+      >
         <BookUser className="h-3.5 w-3.5" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium">{displayName || "未命名预设"}</span>
+        <span className="block truncate text-[13px] font-medium">
+          {displayName || frontendMessage("preset.ui.unnamed")}
+        </span>
         <span className="mt-0.5 block truncate font-mono text-[10.5px] text-ink-400">
           {formatLabel} · {formatPresetTime(preset.updatedAt)}
         </span>
       </span>
       {preset.active ? <Check className="h-3.5 w-3.5 shrink-0 text-terra-500" /> : null}
-      {preset.diagnostics.length > 0 ? (
-        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-      ) : null}
+      {preset.diagnostics.length > 0 ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" /> : null}
     </button>
   );
 }
@@ -193,7 +179,7 @@ function PresetListItem({
 function EmptyPresetList({ filtered }: { filtered: boolean }): JSX.Element {
   return (
     <div className="flex min-h-20 min-w-[220px] items-center justify-center rounded-lg border border-dashed border-ink-200 bg-paper-50/60 px-3 text-[12px] text-ink-400 lg:min-w-0">
-      {filtered ? "没有匹配项" : "暂无预设"}
+      {frontendMessage(filtered ? "preset.ui.noMatches" : "preset.ui.empty")}
     </div>
   );
 }

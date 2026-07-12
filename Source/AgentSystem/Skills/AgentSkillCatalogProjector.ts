@@ -1,8 +1,6 @@
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { RegisteredSkill } from "../Types/PluginRuntimeTypes.js";
-import type {
-  ToolSearchCapabilityFacetsManifest,
-} from "../Types/PluginManifestTypes.js";
+import type { ToolSearchCapabilityFacetsManifest } from "../Types/PluginManifestTypes.js";
 
 export interface AgentSkillCatalogItem {
   name: string;
@@ -32,9 +30,7 @@ export class AgentSkillCatalogProjector {
   constructor(private readonly registry: AgentPluginRegistry) {}
 
   list(): AgentSkillCatalogItem[] {
-    return this.registry
-      .listSkills()
-      .map((skill) => this.project(skill));
+    return this.registry.listSkills().map((skill) => this.project(skill));
   }
 
   project(skill: RegisteredSkill): AgentSkillCatalogItem {

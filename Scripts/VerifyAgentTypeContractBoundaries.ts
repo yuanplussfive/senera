@@ -10,7 +10,8 @@ const removedCompatibilityBarrels = [
   {
     target: path.join(agentSystemRoot, "Types.ts"),
     label: "deleted AgentSystem Types compatibility barrel",
-    guidance: "import from Types/AgentConfigTypes.js, Types/PluginManifestTypes.js, Types/PluginConfigTypes.js, Types/PluginRuntimeTypes.js, or Types/ToolRuntimeTypes.js",
+    guidance:
+      "import from Types/AgentConfigTypes.js, Types/PluginManifestTypes.js, Types/PluginConfigTypes.js, Types/PluginRuntimeTypes.js, or Types/ToolRuntimeTypes.js",
   },
   {
     target: path.join(agentSystemRoot, "Types", "PluginContractTypes.ts"),
@@ -22,29 +23,17 @@ const removedCompatibilityBarrels = [
   target: normalizePath(policy.target),
 }));
 
-const moduleBoundaryFiles = fg.sync([
-  "Source/**/*.ts",
-  "Scripts/**/*.ts",
-  "Frontend/**/*.ts",
-  "Frontend/**/*.tsx",
-], {
+const moduleBoundaryFiles = fg.sync(["Source/**/*.ts", "Scripts/**/*.ts", "Frontend/**/*.ts", "Frontend/**/*.tsx"], {
   cwd: workspaceRoot,
   absolute: true,
   onlyFiles: true,
-  ignore: [
-    "Frontend/node_modules/**",
-    "Source/AgentSystem/BamlClient/baml_client/**",
-  ],
+  ignore: ["Frontend/node_modules/**", "Source/AgentSystem/BamlClient/baml_client/**"],
 });
-const handWrittenAgentSystemFiles = fg.sync([
-  "Source/AgentSystem/**/*.ts",
-], {
+const handWrittenAgentSystemFiles = fg.sync(["Source/AgentSystem/**/*.ts"], {
   cwd: workspaceRoot,
   absolute: true,
   onlyFiles: true,
-  ignore: [
-    "Source/AgentSystem/BamlClient/baml_client/**",
-  ],
+  ignore: ["Source/AgentSystem/BamlClient/baml_client/**"],
 });
 
 const violations = [
@@ -53,14 +42,7 @@ const violations = [
   ...removedCompatibilityBarrels.flatMap((barrel) => inspectRemovedBarrel(barrel)),
 ];
 
-assert.deepEqual(
-  violations,
-  [],
-  [
-    "Agent type contract boundary verification failed.",
-    ...violations,
-  ].join("\n"),
-);
+assert.deepEqual(violations, [], ["Agent type contract boundary verification failed.", ...violations].join("\n"));
 
 console.log("Agent type contract boundaries verified.");
 
@@ -91,11 +73,13 @@ function inspectModuleBoundary(file: string): string[] {
     }
 
     const location = source.getLineAndCharacterOfPosition(node.moduleSpecifier.getStart(source));
-    issues.push([
-      `${relativePath(file)}:${location.line + 1}:${location.character + 1}`,
-      `must not import ${policy.label}`,
-      policy.guidance,
-    ].join(" - "));
+    issues.push(
+      [
+        `${relativePath(file)}:${location.line + 1}:${location.character + 1}`,
+        `must not import ${policy.label}`,
+        policy.guidance,
+      ].join(" - "),
+    );
   });
 
   return issues;
@@ -115,24 +99,21 @@ function inspectExplicitAny(file: string): string[] {
     root.forEachChild((node) => {
       if (node.kind === ts.SyntaxKind.AnyKeyword) {
         const location = source.getLineAndCharacterOfPosition(node.getStart(source));
-        issues.push([
-          `${relativePath(file)}:${location.line + 1}:${location.character + 1}`,
-          "must not use explicit any",
-          "use unknown, a concrete generic bound, or a typed boundary adapter.",
-        ].join(" - "));
+        issues.push(
+          [
+            `${relativePath(file)}:${location.line + 1}:${location.character + 1}`,
+            "must not use explicit any",
+            "use unknown, a concrete generic bound, or a typed boundary adapter.",
+          ].join(" - "),
+        );
       }
       inspectNode(node);
     });
   }
 }
 
-function inspectRemovedBarrel(policy: {
-  target: string;
-  label: string;
-}): string[] {
-  return ts.sys.fileExists(policy.target)
-    ? [`${relativePath(policy.target)} - ${policy.label} must not exist`]
-    : [];
+function inspectRemovedBarrel(policy: { target: string; label: string }): string[] {
+  return ts.sys.fileExists(policy.target) ? [`${relativePath(policy.target)} - ${policy.label} must not exist`] : [];
 }
 
 function resolveTypeScriptModulePath(importer: string, specifier: string): string | undefined {

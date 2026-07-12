@@ -6,19 +6,10 @@ import { useConfigMutationController } from "../../../Frontend/src/app/useConfig
 import { useSandboxRuntimeStatus } from "../../../Frontend/src/app/useSandboxRuntimeStatus.ts";
 import { useSessionCatalogSync } from "../../../Frontend/src/app/useSessionCatalogSync.ts";
 import { useSocketPostIngestEffects } from "../../../Frontend/src/app/useSocketPostIngestEffects.ts";
-import {
-  clearTestToastCalls,
-  readTestToastCalls,
-} from "../mocks/sonner.mjs";
-import {
-  resolveSocketErrorToast,
-  useSocketErrorToasts,
-} from "../../../Frontend/src/app/useSocketErrorToasts.ts";
-import {
-  clearPersistedStore,
-  DEFAULT_USER_PROFILE,
-  useStore,
-} from "../../../Frontend/src/store/sessionStore.ts";
+import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
+import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
+import { resolveSocketErrorToast, useSocketErrorToasts } from "../../../Frontend/src/app/useSocketErrorToasts.ts";
+import { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } from "../../../Frontend/src/store/sessionStore.ts";
 
 beforeEach(() => {
   installLocalStorage();
@@ -43,17 +34,21 @@ test("useSandboxRuntimeStatus ingests only sandbox status snapshots", async () =
   expect(handleRef.current.sandboxStatus).toBe(null);
 
   await act(async () => {
-    expect(handleRef.current.ingestSandboxEvent(event(EventKinds.SandboxStatusSnapshot, "sandbox", {
-      provider: "microsandbox",
-      platform: "win32",
-      state: "ready",
-      supported: true,
-      effectiveMode: "sandbox",
-      dependencies: { errors: [], warnings: [] },
-      diagnostics: [],
-      message: "ready",
-      updatedAt: "2026-07-09T00:00:00.000Z",
-    }))).toBe(true);
+    expect(
+      handleRef.current.ingestSandboxEvent(
+        event(EventKinds.SandboxStatusSnapshot, "sandbox", {
+          provider: "microsandbox",
+          platform: "win32",
+          state: "ready",
+          supported: true,
+          effectiveMode: "sandbox",
+          dependencies: { errors: [], warnings: [] },
+          diagnostics: [],
+          message: "ready",
+          updatedAt: "2026-07-09T00:00:00.000Z",
+        }),
+      ),
+    ).toBe(true);
   });
 
   expect(handleRef.current.sandboxStatus.state).toBe("ready");
@@ -75,12 +70,14 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
   });
   const handleRef = { current: null };
 
-  render(React.createElement(CatalogSyncHarness, {
-    status: "open",
-    send,
-    onServerSessionsReset,
-    handleRef,
-  }));
+  render(
+    React.createElement(CatalogSyncHarness, {
+      status: "open",
+      send,
+      onServerSessionsReset,
+      handleRef,
+    }),
+  );
 
   expect(onServerSessionsReset).toHaveBeenCalledTimes(1);
   expect(send.mock.calls.map(([request]) => request.type)).toEqual([
@@ -118,11 +115,13 @@ test("useSocketPostIngestEffects runs config reload requests and profile sync", 
   const markUserProfileSynced = vi.fn();
   const handleRef = { current: null };
 
-  render(React.createElement(PostIngestHarness, {
-    send,
-    markUserProfileSynced,
-    handleRef,
-  }));
+  render(
+    React.createElement(PostIngestHarness, {
+      send,
+      markUserProfileSynced,
+      handleRef,
+    }),
+  );
 
   act(() => {
     expect(handleRef.current.runSocketPostIngestEffects(event(EventKinds.ConfigReloaded, "config", {}))).toBe(true);
@@ -141,7 +140,9 @@ test("useSocketPostIngestEffects runs config reload requests and profile sync", 
     updatedAt: "2026-07-09T00:00:00.000Z",
   };
   act(() => {
-    expect(handleRef.current.runSocketPostIngestEffects(event(EventKinds.ProfileSnapshot, "config", profile))).toBe(true);
+    expect(handleRef.current.runSocketPostIngestEffects(event(EventKinds.ProfileSnapshot, "config", profile))).toBe(
+      true,
+    );
   });
   expect(markUserProfileSynced).toHaveBeenCalledWith(profile);
 });
@@ -167,19 +168,28 @@ test("useSocketErrorToasts resolves history failures and tool failures from stor
 
   render(React.createElement(SocketErrorToastHarness, { handleRef }));
 
-  const failure = event(EventKinds.RunFailed, "run", { message: "history failed" }, {
-    sessionId: "session_history",
-    requestId: "missing_request",
-  });
+  const failure = event(
+    EventKinds.RunFailed,
+    "run",
+    { message: "history failed" },
+    {
+      sessionId: "session_history",
+      requestId: "missing_request",
+    },
+  );
   expect(resolveSocketErrorToast(failure, useStore.getState()).title).toBe("历史同步失败");
   act(() => {
     expect(handleRef.current.notifySocketError(failure)).toBe(true);
   });
   act(() => {
-    expect(handleRef.current.notifySocketError(event(EventKinds.ToolCallFailed, "tool", {
-      toolName: "ShellCommandTool",
-      message: "exit 1",
-    }))).toBe(true);
+    expect(
+      handleRef.current.notifySocketError(
+        event(EventKinds.ToolCallFailed, "tool", {
+          toolName: "ShellCommandTool",
+          message: "exit 1",
+        }),
+      ),
+    ).toBe(true);
   });
 
   expect(readTestToastCalls()).toEqual([
@@ -198,11 +208,13 @@ test("useConfigMutationController tracks plugin config requests through success 
   const send = vi.fn(() => true);
   const handleRef = { current: null };
 
-  render(React.createElement(ConfigMutationHarness, {
-    send,
-    status: "open",
-    handleRef,
-  }));
+  render(
+    React.createElement(ConfigMutationHarness, {
+      send,
+      status: "open",
+      handleRef,
+    }),
+  );
 
   let requestId = null;
   await act(async () => {
@@ -216,42 +228,111 @@ test("useConfigMutationController tracks plugin config requests through success 
     pluginName: "WeatherToolPlugin",
     toml: "Enabled = true",
   });
-  expect(handleRef.current.pluginConfigOperations[requestId]).toEqual(expect.objectContaining({
-    pluginName: "WeatherToolPlugin",
-    kind: "update",
-    status: "pending",
-  }));
+  expect(handleRef.current.pluginConfigOperations[requestId]).toEqual(
+    expect.objectContaining({
+      pluginName: "WeatherToolPlugin",
+      kind: "update",
+      status: "pending",
+    }),
+  );
 
   await act(async () => {
-    expect(handleRef.current.ingestConfigMutationEvent(event(EventKinds.PluginConfigSnapshot, "config", {
-      plugins: [],
-      operation: {
-        requestId,
-        kind: "update",
-        pluginName: "WeatherToolPlugin",
-      },
-    }))).toBe(true);
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(EventKinds.PluginConfigSnapshot, "config", {
+          plugins: [],
+          operation: {
+            requestId,
+            kind: "update",
+            pluginName: "WeatherToolPlugin",
+          },
+        }),
+      ),
+    ).toBe(true);
   });
 
-  expect(handleRef.current.pluginConfigOperations[requestId]).toEqual(expect.objectContaining({
-    kind: "update",
-    status: "success",
-  }));
-  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({
-    variant: "success",
-    title: "插件配置已保存",
-  }));
+  expect(handleRef.current.pluginConfigOperations[requestId]).toEqual(
+    expect.objectContaining({
+      kind: "update",
+      status: "success",
+    }),
+  );
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "success",
+      title: "插件配置已保存",
+    }),
+  );
+});
+
+test("useConfigMutationController routes preset and main config acknowledgements to their owning domains", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  render(
+    React.createElement(ConfigMutationHarness, {
+      send,
+      status: "open",
+      handleRef,
+    }),
+  );
+
+  let presetRequestId = null;
+  let configRequestId = null;
+  await act(async () => {
+    presetRequestId = handleRef.current.savePreset({
+      name: "Release notes",
+      format: "markdown",
+      content: "# Notes",
+      activate: true,
+    });
+    configRequestId = handleRef.current.saveConfig({ AgentLoop: { Mode: "automatic" } });
+  });
+
+  expect(presetRequestId).toEqual(expect.any(String));
+  expect(configRequestId).toEqual(expect.any(String));
+  expect(handleRef.current.presetOperations[presetRequestId]).toMatchObject({ status: "pending", kind: "save" });
+  expect(handleRef.current.configOperation).toMatchObject({ status: "pending", kind: "config_update" });
+
+  await act(async () => {
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(EventKinds.PresetSnapshot, "config", {
+          presets: [],
+          operation: { requestId: presetRequestId, kind: "save", name: "Release notes" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(EventKinds.ConfigSnapshot, "config", {
+          config: {},
+          operation: { requestId: configRequestId, kind: "config_update" },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  expect(handleRef.current.presetOperations[presetRequestId]).toMatchObject({ status: "success", kind: "save" });
+  expect(handleRef.current.configOperation).toMatchObject({ status: "success", kind: "config_update" });
+  expect(readTestToastCalls()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ variant: "success", title: frontendMessage("preset.saved") }),
+      expect.objectContaining({ variant: "success", title: frontendMessage("config.mainSaved") }),
+    ]),
+  );
 });
 
 test("useConfigMutationController rolls back disconnected sends and records provider failures", async () => {
   const send = vi.fn(() => false);
   const handleRef = { current: null };
 
-  render(React.createElement(ConfigMutationHarness, {
-    send,
-    status: "open",
-    handleRef,
-  }));
+  render(
+    React.createElement(ConfigMutationHarness, {
+      send,
+      status: "open",
+      handleRef,
+    }),
+  );
 
   let requestId = "not-run";
   await act(async () => {
@@ -260,10 +341,12 @@ test("useConfigMutationController rolls back disconnected sends and records prov
 
   expect(requestId).toBe(null);
   expect(handleRef.current.configOperation).toBe(null);
-  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({
-    variant: "error",
-    title: "主配置保存失败，连接可能已断开",
-  }));
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "error",
+      title: "主配置保存失败，连接可能已断开",
+    }),
+  );
 
   send.mockReturnValue(true);
   await act(async () => {
@@ -272,19 +355,25 @@ test("useConfigMutationController rolls back disconnected sends and records prov
   expect(handleRef.current.providerModelLoadingIds.openai).toBe(true);
 
   await act(async () => {
-    expect(handleRef.current.ingestConfigMutationEvent(event(EventKinds.ProviderModelsFailed, "config", {
-      providerId: "openai",
-      message: "bad endpoint",
-      models: [],
-    }))).toBe(true);
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(EventKinds.ProviderModelsFailed, "config", {
+          providerId: "openai",
+          message: "bad endpoint",
+          models: [],
+        }),
+      ),
+    ).toBe(true);
   });
 
   expect(handleRef.current.providerModelLoadingIds.openai).toBeUndefined();
-  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({
-    variant: "error",
-    title: "模型列表检测失败",
-    options: { description: "bad endpoint" },
-  }));
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "error",
+      title: "模型列表检测失败",
+      options: { description: "bad endpoint" },
+    }),
+  );
 });
 
 function SandboxHarness({ handleRef }) {

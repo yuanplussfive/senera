@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FileRejection } from "react-dropzone";
 import type { PresetFormat } from "../../api/eventTypes";
+import { FrontendDefaultLocale, frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { CodeTextEditorLanguage } from "../../shared/code/CodeTextEditor";
 
 export type PresetImportEntry = {
@@ -23,7 +24,7 @@ export type PresetTokenState = {
 type TokenCounter = (content: string) => number;
 
 const PresetTokenCountDelayMs = 120;
-const zhNumberFormatter = new Intl.NumberFormat("zh-CN");
+const numberFormatter = new Intl.NumberFormat(FrontendDefaultLocale);
 let tokenCounterPromise: Promise<TokenCounter> | null = null;
 
 export const PresetFormatOptions: Array<{
@@ -80,7 +81,11 @@ export function validateDraft(format: PresetFormat, content: string): string | n
 }
 
 export function describeRejectedImports(rejections: readonly FileRejection[]): string[] {
-  return rejections.map((rejection) => `${rejection.file.name}: 只支持 .json、.md、.txt`);
+  return rejections.map((rejection) =>
+    frontendMessage("preset.ui.unsupportedFile", {
+      name: rejection.file.name,
+    }),
+  );
 }
 
 export function usePresetTokenCount(content: string, enabled: boolean): PresetTokenState {
@@ -143,23 +148,25 @@ export function readPresetStatusLabel({
   dirty: boolean;
   jsonIssue: string | null;
 }): string {
-  if (jsonIssue) return "JSON 异常";
-  if (dirty) return "未保存";
-  return active ? "已启用" : "未启用";
+  if (jsonIssue) return frontendMessage("preset.ui.jsonInvalid");
+  if (dirty) return frontendMessage("preset.ui.unsaved");
+  return frontendMessage(active ? "preset.ui.enabled" : "preset.ui.disabled");
 }
 
 export function formatInteger(value: number): string {
-  return zhNumberFormatter.format(value);
+  return numberFormatter.format(value);
 }
 
 export function formatTokenState(state: PresetTokenState): string {
   if (state.status === "ready" && state.count !== null) {
-    return `${formatInteger(state.count)} token`;
+    return frontendMessage("preset.ui.tokenCount", { count: formatInteger(state.count) });
   }
   if (state.status === "error") {
-    return "token 读取失败";
+    return frontendMessage("preset.ui.tokenFailed");
   }
-  return state.count !== null ? `${formatInteger(state.count)} token` : "计算中";
+  return state.count !== null
+    ? frontendMessage("preset.ui.tokenCount", { count: formatInteger(state.count) })
+    : frontendMessage("preset.ui.calculating");
 }
 
 export function readPresetDisplayName(name: string): string {
@@ -181,7 +188,7 @@ export function formatPresetTime(value: string): string {
     return value;
   }
 
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(FrontendDefaultLocale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -191,9 +198,7 @@ export function formatPresetTime(value: string): string {
 
 function readPresetFileFormat(file: File): PresetFormat | null {
   const name = file.name.toLowerCase();
-  const option = PresetFormatOptions.find((item) =>
-    item.extensions.some((extension) => name.endsWith(extension))
-  );
+  const option = PresetFormatOptions.find((item) => item.extensions.some((extension) => name.endsWith(extension)));
   return option?.value ?? null;
 }
 
@@ -204,9 +209,9 @@ function loadTokenCounter(): Promise<TokenCounter> {
 
 function removePresetExtension(name: string): string {
   const lowerName = name.toLocaleLowerCase();
-  const extension = PresetFormatOptions
-    .flatMap((option) => option.extensions)
-    .find((candidate) => lowerName.endsWith(candidate));
+  const extension = PresetFormatOptions.flatMap((option) => option.extensions).find((candidate) =>
+    lowerName.endsWith(candidate),
+  );
   return extension ? name.slice(0, -extension.length) : name;
 }
 

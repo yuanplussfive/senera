@@ -2,7 +2,7 @@ import net from "node:net";
 import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { WebSocket } from "ws";
+import { WebSocket, type ClientOptions } from "ws";
 import { AgentWebSocketServer } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketServer.js";
 import type { AgentWebSocketRequest } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketProtocol.js";
 import { AgentSessionManager } from "../../../Source/AgentSystem/Session/AgentSessionManager.js";
@@ -17,6 +17,7 @@ import type { AgentDomainEvent, AgentEventEnvelope } from "../../../Source/Agent
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentCompletedRunResult } from "../../../Source/AgentSystem/Runtime/AgentExecutionProjector.js";
 import type { AgentRunRequest } from "../../../Source/AgentSystem/Loop/AgentLoop.js";
+import { AgentLocalAdminAccountStore } from "../../../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
 
 export interface AgentProtocolE2eHarness {
   readonly workspaceRoot: string;
@@ -25,13 +26,30 @@ export interface AgentProtocolE2eHarness {
   stop(): void;
 }
 
+export interface AgentProtocolE2eAuthentication {
+  readonly loginName?: string;
+  readonly displayName?: string;
+  readonly password?: string;
+  readonly origin?: string;
+}
+
 type ScriptedLoopHandler = (request: AgentRunRequest) => Promise<AgentCompletedRunResult>;
 
 export async function createAgentProtocolE2eHarness(
   handler: ScriptedLoopHandler = defaultScriptedLoopHandler,
+  options: { authentication?: AgentProtocolE2eAuthentication } = {},
 ): Promise<AgentProtocolE2eHarness> {
   const workspaceRoot = mkdtempSync(path.join(os.tmpdir(), "senera-e2e-"));
-  const config = createE2eConfig(await reserveTcpPort());
+  const authentication = options.authentication;
+  const config = createE2eConfig(await reserveTcpPort(), authentication);
+  if (authentication) {
+    const accountFile = path.join(workspaceRoot, ".senera", "access", "admin-account.json");
+    await new AgentLocalAdminAccountStore(accountFile).initialize({
+      loginName: authentication.loginName ?? "owner",
+      displayName: authentication.displayName ?? "Owner",
+      password: authentication.password ?? "a long administrator password",
+    });
+  }
   const repository = new InMemorySessionRepository();
   const store = new AgentSessionStore({ repository });
   const approvalRuntime = new AgentApprovalRuntime();
@@ -58,7 +76,14 @@ export async function createAgentProtocolE2eHarness(
   server.start();
 
   const websocketUrl = `ws://${config.Defaults?.Server?.Host}:${config.Defaults?.Server?.Port}`;
-  const client = await AgentProtocolE2eClient.connect(websocketUrl);
+  const client = authentication
+    ? await AgentProtocolE2eClient.connectAuthenticated({
+        websocketUrl,
+        origin: authentication.origin ?? "http://app.test",
+        loginName: authentication.loginName ?? "owner",
+        password: authentication.password ?? "a long administrator password",
+      })
+    : await AgentProtocolE2eClient.connect(websocketUrl);
   return {
     workspaceRoot,
     websocketUrl,
@@ -83,13 +108,48 @@ export class AgentProtocolE2eClient {
     });
   }
 
-  static async connect(url: string): Promise<AgentProtocolE2eClient> {
-    const socket = new WebSocket(url);
+  static async connect(url: string, options: ClientOptions = {}): Promise<AgentProtocolE2eClient> {
+    const socket = new WebSocket(url, options);
     await new Promise<void>((resolve, reject) => {
       socket.once("open", resolve);
       socket.once("error", reject);
     });
     return new AgentProtocolE2eClient(socket);
+  }
+
+  static async connectAuthenticated(input: {
+    websocketUrl: string;
+    origin: string;
+    loginName: string;
+    password: string;
+  }): Promise<AgentProtocolE2eClient> {
+    const httpUrl = new URL(input.websocketUrl);
+    httpUrl.protocol = httpUrl.protocol === "wss:" ? "https:" : "http:";
+    httpUrl.pathname = "/api/auth/login";
+    const response = await fetch(httpUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: input.origin,
+      },
+      body: JSON.stringify({
+        loginName: input.loginName,
+        password: input.password,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Authentication setup failed with HTTP ${response.status}.`);
+    }
+    const cookie = readSetCookie(response);
+    if (!cookie) {
+      throw new Error("Authentication setup did not return a session cookie.");
+    }
+    return this.connect(input.websocketUrl, {
+      headers: {
+        Cookie: cookie,
+        Origin: input.origin,
+      },
+    });
   }
 
   send(request: AgentWebSocketRequest): void {
@@ -111,8 +171,9 @@ export class AgentProtocolE2eClient {
     const timeoutMs = options.timeoutMs ?? 5_000;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() <= deadline) {
-      const matches = this.events.filter((event) =>
-        event.sequence > (options.afterSequence ?? 0) && kinds.includes(event.kind));
+      const matches = this.events.filter(
+        (event) => event.sequence > (options.afterSequence ?? 0) && kinds.includes(event.kind),
+      );
       if (new Set(matches.map((event) => event.kind)).size === new Set(kinds).size) {
         return matches;
       }
@@ -129,8 +190,9 @@ export class AgentProtocolE2eClient {
     const timeoutMs = options.timeoutMs ?? 5_000;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() <= deadline) {
-      const found = this.events.find((event) =>
-        event.sequence > (options.afterSequence ?? 0) && event.kind === kind && predicate(event));
+      const found = this.events.find(
+        (event) => event.sequence > (options.afterSequence ?? 0) && event.kind === kind && predicate(event),
+      );
       if (found) return found;
       await this.waitForNextEvent(Math.max(1, deadline - Date.now()));
     }
@@ -212,16 +274,13 @@ async function defaultScriptedLoopHandler(request: AgentRunRequest): Promise<Age
   };
 }
 
-async function emitAll(
-  request: AgentRunRequest,
-  events: readonly AgentDomainEvent[],
-): Promise<void> {
+async function emitAll(request: AgentRunRequest, events: readonly AgentDomainEvent[]): Promise<void> {
   for (const event of events) {
     await request.onEvent?.(event);
   }
 }
 
-function createE2eConfig(port: number): AgentSystemConfig {
+function createE2eConfig(port: number, authentication?: AgentProtocolE2eAuthentication): AgentSystemConfig {
   return {
     Defaults: {
       Server: {
@@ -229,6 +288,20 @@ function createE2eConfig(port: number): AgentSystemConfig {
         Port: port,
         HotReload: false,
         RequestMaxBytes: 1_048_576,
+        ...(authentication
+          ? {
+              AccessControl: {
+                Mode: "required" as const,
+                AccountFile: ".senera/access/admin-account.json",
+                AllowedOrigins: [authentication.origin ?? "http://app.test"],
+                Limits: {
+                  LoginAttemptsPerMinute: 20,
+                  HttpRequestsPerMinute: 100,
+                  UpgradeRequestsPerMinute: 100,
+                },
+              },
+            }
+          : {}),
       },
       Persistence: {
         Kind: "memory",
@@ -268,6 +341,11 @@ function createE2eConfig(port: number): AgentSystemConfig {
   };
 }
 
+function readSetCookie(response: Response): string | undefined {
+  const cookie = response.headers.get("set-cookie");
+  return cookie?.split(";")[0];
+}
+
 async function reserveTcpPort(): Promise<number> {
   const server = net.createServer();
   await new Promise<void>((resolve, reject) => {
@@ -279,14 +357,11 @@ async function reserveTcpPort(): Promise<number> {
     throw new Error("Failed to reserve a TCP port.");
   }
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   return address.port;
 }
 
 function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }

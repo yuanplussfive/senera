@@ -6,7 +6,7 @@ default decision := {
   "decision": "not-applicable",
   "reason": "没有匹配的工具审批策略。",
   "rule": "default.not_applicable",
-  "riskSignals": risk_signals,
+  "riskSignals": [],
 }
 
 decision := {
@@ -16,54 +16,35 @@ decision := {
   "riskSignals": risk_signals,
 } if {
   input.tool.approval.Mode == "deny"
-}
-
-decision := {
-  "decision": "requires-approval",
-  "reason": approval_reason(data.senera.tool_approval.Reasons.ManifestAsk),
-  "rule": "tool.manifest.ask",
-  "riskSignals": risk_signals,
-} if {
-  input.tool.approval.Mode == "ask"
-}
-
-decision := {
-  "decision": "allow",
-  "reason": approval_reason(data.senera.tool_approval.Reasons.ManifestAllow),
-  "rule": "tool.manifest.allow",
-  "riskSignals": risk_signals,
-} if {
-  input.tool.approval.Mode == "allow"
-}
-
-decision := {
+} else := {
   "decision": "requires-approval",
   "reason": data.senera.tool_approval.Reasons.MissingTool,
   "rule": "tool.registry.missing",
   "riskSignals": risk_signals,
 } if {
   not input.tool.registered
-}
-
-decision := {
+} else := {
+  "decision": "requires-approval",
+  "reason": approval_reason(data.senera.tool_approval.Reasons.ManifestAsk),
+  "rule": "tool.manifest.ask",
+  "riskSignals": risk_signals,
+} if {
+  input.tool.approval.Mode == "ask"
+} else := {
   "decision": "requires-approval",
   "reason": data.senera.tool_approval.Reasons.RequiresApproval,
   "rule": "plugin.security.requires_approval",
   "riskSignals": risk_signals,
 } if {
   input.tool.security.RequiresApproval == true
-}
-
-decision := {
+} else := {
   "decision": "requires-approval",
   "reason": data.senera.tool_approval.Reasons.Untrusted,
   "rule": "plugin.security.untrusted",
   "riskSignals": risk_signals,
 } if {
   input.tool.security.TrustLevel == "Untrusted"
-}
-
-decision := {
+} else := {
   "decision": "requires-approval",
   "reason": data.senera.tool_approval.Reasons.RiskPermission,
   "rule": "risk.permission.high_impact",
@@ -71,9 +52,7 @@ decision := {
 } if {
   some permission in risk_permissions
   permission in data.senera.tool_approval.HighImpact.RiskPermissions
-}
-
-decision := {
+} else := {
   "decision": "requires-approval",
   "reason": data.senera.tool_approval.Reasons.RiskSideEffect,
   "rule": "risk.side_effect.persistent_or_process",
@@ -81,9 +60,7 @@ decision := {
 } if {
   some side_effect in risk_side_effects
   side_effect in data.senera.tool_approval.HighImpact.RiskSideEffects
-}
-
-decision := {
+} else := {
   "decision": "requires-approval",
   "reason": data.senera.tool_approval.Reasons.ToolPermission,
   "rule": "tool.permission.high_impact",
@@ -92,9 +69,14 @@ decision := {
   some permission in input.tool.permissions
   some term in data.senera.tool_approval.HighImpact.ToolPermissionTerms
   contains(permission, term)
-}
-
-decision := {
+} else := {
+  "decision": "allow",
+  "reason": approval_reason(data.senera.tool_approval.Reasons.ManifestAllow),
+  "rule": "tool.manifest.allow",
+  "riskSignals": risk_signals,
+} if {
+  input.tool.approval.Mode == "allow"
+} else := {
   "decision": "allow",
   "reason": data.senera.tool_approval.Reasons.DefaultAllow,
   "rule": "risk.default.allow",

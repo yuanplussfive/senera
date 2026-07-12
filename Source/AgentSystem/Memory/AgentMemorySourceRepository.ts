@@ -1,6 +1,4 @@
-import {
-  type AgentConversationEntry,
-} from "../Conversation/AgentConversation.js";
+import { type AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentTerminalResult } from "../Runtime/AgentExecutionProjector.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
@@ -13,36 +11,13 @@ export {
   SqliteAgentMemorySourceRepository,
 } from "./AgentMemorySqliteSourceRepository.js";
 
-export type AgentMemoryEpisodeStatus =
-  | "completed"
-  | "memory_anchor";
-export type AgentMemorySourceKind =
-  | "user_message"
-  | "assistant_final"
-  | "tool_evidence"
-  | "artifact";
-export const AgentMemoryTypes = [
-  "profile",
-  "preference",
-  "knowledge",
-  "scene",
-] as const;
-export type AgentMemoryType = typeof AgentMemoryTypes[number];
-export type AgentMemoryItemStatus =
-  | "active"
-  | "superseded"
-  | "archived"
-  | "needs_review";
-export type AgentMemoryCandidateStatus =
-  | "pending"
-  | "promoted"
-  | "rejected";
-export type AgentMemoryLearningOperation =
-  | "create"
-  | "reinforce"
-  | "update"
-  | "supersede"
-  | "reject";
+export type AgentMemoryEpisodeStatus = "completed" | "memory_anchor";
+export type AgentMemorySourceKind = "user_message" | "assistant_final" | "tool_evidence" | "artifact";
+export const AgentMemoryTypes = ["profile", "preference", "knowledge", "scene"] as const;
+export type AgentMemoryType = (typeof AgentMemoryTypes)[number];
+export type AgentMemoryItemStatus = "active" | "superseded" | "archived" | "needs_review";
+export type AgentMemoryCandidateStatus = "pending" | "promoted" | "rejected";
+export type AgentMemoryLearningOperation = "create" | "reinforce" | "update" | "supersede" | "reject";
 
 export interface AgentMemoryEpisodeRecord {
   id: string;
@@ -134,11 +109,7 @@ export interface AgentMemoryItemVectorWrite {
   updatedAt?: string;
 }
 
-export type AgentMemoryDirectWriteOperation =
-  | "create"
-  | "reinforce"
-  | "update"
-  | "supersede";
+export type AgentMemoryDirectWriteOperation = "create" | "reinforce" | "update" | "supersede";
 
 export interface AgentMemoryDirectWriteInput {
   operation: AgentMemoryDirectWriteOperation;

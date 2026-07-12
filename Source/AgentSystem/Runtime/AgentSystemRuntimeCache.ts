@@ -69,13 +69,6 @@ function runtimeCacheKey(modelProviderId: string | undefined): string {
   return modelProviderId?.trim() || "<default>";
 }
 
-function runtimeFingerprint(
-  snapshot: AgentSystemRuntimeCacheSnapshot,
-  modelProviderId: string | undefined,
-): string {
-  return [
-    snapshot.version,
-    snapshot.revision ?? "json",
-    runtimeCacheKey(modelProviderId),
-  ].join(":");
+function runtimeFingerprint(snapshot: AgentSystemRuntimeCacheSnapshot, modelProviderId: string | undefined): string {
+  return [snapshot.version, snapshot.revision ?? "json", runtimeCacheKey(modelProviderId)].join(":");
 }

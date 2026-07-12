@@ -1,13 +1,7 @@
 import parseJson from "json-parse-even-better-errors";
 import jsonSourceMap, { type JsonSourceLocation } from "json-source-map";
-import {
-  AgentSourceDiagnosticBuilder,
-  type AgentSourceDiagnostic,
-} from "../Diagnostics/AgentSourceDiagnostic.js";
-import {
-  agentStructuredIssueToPointer,
-  type AgentStructuredIssue,
-} from "../Diagnostics/AgentStructuredIssue.js";
+import { AgentSourceDiagnosticBuilder, type AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
+import { agentStructuredIssueToPointer, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
 
 const RawOutputParseSuggestion = "输出一个合法 JSON 对象，不要包裹 Markdown、解释文本或额外前后缀。";
 const RawOutputFieldSuggestion = "修复该字段，使 BAML 输出满足目标结构和语义校验。";
@@ -17,9 +11,7 @@ export interface AgentBamlRawOutputDiagnosticsInput {
   readonly issues: readonly AgentStructuredIssue[];
 }
 
-export function buildBamlRawOutputDiagnostics(
-  input: AgentBamlRawOutputDiagnosticsInput,
-): AgentSourceDiagnostic[] {
+export function buildBamlRawOutputDiagnostics(input: AgentBamlRawOutputDiagnosticsInput): AgentSourceDiagnostic[] {
   if (input.rawOutput.trim().length === 0) {
     return [];
   }
@@ -53,9 +45,8 @@ function diagnosticsFromMappedJson(
   mapped: ReturnType<typeof jsonSourceMap.parse>,
   issues: readonly AgentStructuredIssue[],
 ): AgentSourceDiagnostic[] {
-  const targets = issues.length > 0
-    ? issues
-    : [{ message: "BAML 输出结构无效。", path: [] }] satisfies AgentStructuredIssue[];
+  const targets =
+    issues.length > 0 ? issues : ([{ message: "BAML 输出结构无效。", path: [] }] satisfies AgentStructuredIssue[]);
 
   return targets.map((issue) => {
     const pointer = agentStructuredIssueToPointer(issue);
@@ -83,7 +74,9 @@ function findJsonSourceLocation(
   return entry?.value ?? entry?.key;
 }
 
-function parseJsonSourceMap(rawOutput: string):
+function parseJsonSourceMap(
+  rawOutput: string,
+):
   | { readonly ok: true; readonly value: ReturnType<typeof jsonSourceMap.parse> }
   | { readonly ok: false; readonly error: unknown } {
   try {
@@ -123,9 +116,7 @@ function diagnosticFromJsonParseFailure(
   }
 
   return {
-    message: sourceMapError instanceof Error
-      ? sourceMapError.message
-      : "BAML raw output JSON source map 构建失败。",
+    message: sourceMapError instanceof Error ? sourceMapError.message : "BAML raw output JSON source map 构建失败。",
     pointer: "/",
     path: [],
     suggestion: RawOutputParseSuggestion,

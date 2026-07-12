@@ -28,10 +28,7 @@ import { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecut
 import { AgentSkillActivationService } from "../Skills/AgentSkillActivation.js";
 import { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import { AgentRuntimeModuleComposer, type AgentRuntimeModule } from "./AgentRuntimeModule.js";
-import {
-  createDefaultAgentRuntimeServices,
-  type AgentRuntimeServices,
-} from "./AgentRuntimeServices.js";
+import { createDefaultAgentRuntimeServices, type AgentRuntimeServices } from "./AgentRuntimeServices.js";
 import { AgentPiSubstrate } from "../Pi/AgentPiSubstrate.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
@@ -42,6 +39,7 @@ import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlann
 import { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import { createSeneraExecutionEnv } from "../Execution/SeneraExecutionEnvFactory.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
+import { AgentExecutionFallbackAuthorizer } from "../Safety/AgentExecutionFallbackAuthorizer.js";
 import { resolveAgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
 
 export class AgentSystemRuntime {
@@ -92,13 +90,14 @@ export class AgentSystemRuntime {
     this.executionEnv = createSeneraExecutionEnv({
       workspaceRoot: this.workspaceRoot,
       resourcesPath: this.resourcesPath,
-      sandboxRuntimePaths: resolveAgentSandboxRuntimePaths(
-        this.workspaceRoot,
-        sandboxRuntimeConfig,
-      ),
+      sandboxRuntimePaths: resolveAgentSandboxRuntimePaths(this.workspaceRoot, sandboxRuntimeConfig),
       microsandboxSettings: {
         image: sandboxRuntimeConfig.Images[0],
       },
+      fallbackAuthorizer: new AgentExecutionFallbackAuthorizer({
+        registry: this.registry,
+        approvalRuntime: this.approvalRuntime,
+      }),
     });
     this.modelProviderConfig = resolveModelProviderConfig(config, modelProviderId);
     this.agentLoopConfig = resolveAgentLoopConfig(config);
@@ -131,23 +130,15 @@ export class AgentSystemRuntime {
       workspaceRoot: this.workspaceRoot,
       config: this.presetsConfig,
     });
-    this.actionPlanner = new AgentActionPlanner(
-      this.actionPlannerConfig,
-      this.modelProviderConfig,
-      this.toolCatalog,
-    );
+    this.actionPlanner = new AgentActionPlanner(this.actionPlannerConfig, this.modelProviderConfig, this.toolCatalog);
     this.toolPermissionGate = new AgentToolPermissionGate({
       policy: createAgentToolApprovalPolicy({
         registry: this.registry,
         auditors: [
           createAgentBamlToolRiskAuditor({
-            client: new AgentActionPlannerModelClient(
-              this.modelProviderConfig,
-              this.actionPlannerConfig.Client,
-              {
-                maxRepairAttempts: this.actionPlannerConfig.MaxRepairAttempts,
-              },
-            ),
+            client: new AgentActionPlannerModelClient(this.modelProviderConfig, this.actionPlannerConfig.Client, {
+              maxRepairAttempts: this.actionPlannerConfig.MaxRepairAttempts,
+            }),
           }),
         ],
       }),
@@ -201,21 +192,20 @@ export class AgentSystemRuntime {
     this.toolSearch.close();
   }
 
-  static load(options: {
-    workspaceRoot?: string;
-    configPath?: string;
-    modelProviderId?: string;
-    runtimeModules?: readonly AgentRuntimeModule[];
-    logger?: AgentLogger;
-    approvalRuntime?: AgentApprovalRuntime;
-    piSessionRegistry?: AgentPiActiveSessionRegistry;
-    resourcesPath?: string;
-  } = {}): AgentSystemRuntime {
+  static load(
+    options: {
+      workspaceRoot?: string;
+      configPath?: string;
+      modelProviderId?: string;
+      runtimeModules?: readonly AgentRuntimeModule[];
+      logger?: AgentLogger;
+      approvalRuntime?: AgentApprovalRuntime;
+      piSessionRegistry?: AgentPiActiveSessionRegistry;
+      resourcesPath?: string;
+    } = {},
+  ): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
-    const configPath = path.resolve(
-      workspaceRoot,
-      options.configPath ?? "senera.config.json",
-    );
+    const configPath = path.resolve(workspaceRoot, options.configPath ?? "senera.config.json");
 
     const runtime = new AgentSystemRuntime(
       workspaceRoot,
@@ -249,10 +239,7 @@ export class AgentSystemRuntime {
     resourcesPath?: string;
   }): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
-    const configPath = path.resolve(
-      workspaceRoot,
-      options.configPath ?? "senera.config.json",
-    );
+    const configPath = path.resolve(workspaceRoot, options.configPath ?? "senera.config.json");
 
     const runtime = new AgentSystemRuntime(
       workspaceRoot,

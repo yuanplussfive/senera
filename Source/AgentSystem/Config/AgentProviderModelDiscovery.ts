@@ -55,15 +55,19 @@ export class AgentProviderModelDiscovery {
     }
 
     if (!endpoint.Enabled) {
-      throw new Error(agentErrorMessage("model.listProviderDisabled", {
-        providerId: endpoint.Id,
-      }));
+      throw new Error(
+        agentErrorMessage("model.listProviderDisabled", {
+          providerId: endpoint.Id,
+        }),
+      );
     }
 
     if (!endpoint.BaseUrl.trim()) {
-      throw new Error(agentErrorMessage("model.listBaseUrlEmpty", {
-        providerId: endpoint.Id,
-      }));
+      throw new Error(
+        agentErrorMessage("model.listBaseUrlEmpty", {
+          providerId: endpoint.Id,
+        }),
+      );
     }
 
     const response = await this.fetchImpl(modelsUrl(endpoint.BaseUrl), {
@@ -72,11 +76,13 @@ export class AgentProviderModelDiscovery {
     });
 
     if (!response.ok) {
-      throw new Error(agentErrorMessage("model.listRequestFailed", {
-        providerId: endpoint.Id,
-        status: response.status,
-        statusText: response.statusText,
-      }));
+      throw new Error(
+        agentErrorMessage("model.listRequestFailed", {
+          providerId: endpoint.Id,
+          status: response.status,
+          statusText: response.statusText,
+        }),
+      );
     }
 
     const snapshot: AgentProviderModelSnapshot = {
@@ -96,9 +102,7 @@ export class AgentProviderModelDiscovery {
   private resolveEndpoint(providerId: string): ResolvedAgentModelProviderEndpointConfig {
     const config = this.options.configSnapshot();
     const direct = config.ModelProviderEndpoints?.find((endpoint) => endpoint.Id === providerId);
-    return direct
-      ? resolveConfiguredEndpoint(direct)
-      : resolveModelProviderEndpointCatalog(config).resolve(providerId);
+    return direct ? resolveConfiguredEndpoint(direct) : resolveModelProviderEndpointCatalog(config).resolve(providerId);
   }
 }
 
@@ -198,9 +202,7 @@ function withTrailingSlash(value: string): string {
 }
 
 function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

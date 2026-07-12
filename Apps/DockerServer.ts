@@ -9,9 +9,7 @@ import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigT
 
 const AppRoot = resolveAppRoot();
 const WorkspaceRoot = path.resolve(process.env.SENERA_WORKSPACE_ROOT?.trim() || "/data");
-const ConfigPath = resolveWorkspacePath(
-  process.env.AGENT_CONFIG_PATH?.trim() || "senera.config.json",
-);
+const ConfigPath = resolveWorkspacePath(process.env.AGENT_CONFIG_PATH?.trim() || "senera.config.json");
 const FrontendRoot = path.join(AppRoot, "Frontend", "dist");
 const ExampleConfigPath = path.join(AppRoot, "senera.config.example.json");
 const RuntimeConfigFileName = "senera-runtime-config.js";
@@ -86,6 +84,11 @@ function createDockerRuntimeProjection(): (config: AgentSystemConfig) => AgentSy
       ...config.Server,
       Host: resolveDockerHost(),
       Port: resolveDockerPort(),
+      AccessControl: {
+        ...config.Server?.AccessControl,
+        AllowedOrigins: resolveDockerAllowedOrigins(),
+        AllowInsecureLoopback: isLoopbackAddress(resolveDockerBindAddress()),
+      },
     },
   });
 }
@@ -116,6 +119,30 @@ function resolveDockerHost(): string {
   return process.env.SENERA_SERVER_HOST?.trim() || "0.0.0.0";
 }
 
+function resolveDockerBindAddress(): string {
+  return process.env.SENERA_BIND_ADDRESS?.trim() || "127.0.0.1";
+}
+
+function resolveDockerAllowedOrigins(): string[] {
+  const configured = process.env.SENERA_ALLOWED_ORIGINS?.trim();
+  if (configured) {
+    return configured
+      .split(",")
+      .map((value) => new URL(value.trim()).origin)
+      .filter((value, index, values) => values.indexOf(value) === index);
+  }
+  if (!isLoopbackAddress(resolveDockerBindAddress())) {
+    return [];
+  }
+  const port = resolveDockerPort();
+  return [`http://localhost:${port}`, `http://127.0.0.1:${port}`];
+}
+
+function isLoopbackAddress(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
+}
+
 function resolveDockerPort(): number {
   return readPort(process.env.SENERA_SERVER_PORT, 8787);
 }
@@ -126,18 +153,14 @@ function readPort(value: string | undefined, defaultValue: number): number {
 }
 
 function resolveWorkspacePath(value: string): string {
-  return path.isAbsolute(value)
-    ? path.normalize(value)
-    : path.resolve(WorkspaceRoot, value);
+  return path.isAbsolute(value) ? path.normalize(value) : path.resolve(WorkspaceRoot, value);
 }
 
 function resolveAppRoot(): string {
   const currentDir = moduleDirPath(import.meta.url);
   const distSegment = `${path.sep}Dist${path.sep}`;
   const distIndex = currentDir.lastIndexOf(distSegment);
-  return distIndex >= 0
-    ? currentDir.slice(0, distIndex)
-    : path.resolve(currentDir, "..");
+  return distIndex >= 0 ? currentDir.slice(0, distIndex) : path.resolve(currentDir, "..");
 }
 
 function writeJsonLine(payload: unknown): void {

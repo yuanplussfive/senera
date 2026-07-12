@@ -109,7 +109,6 @@
                 "Vision": false,
                 "ImageOutput": false,
                 "Reasoning": false,
-                "ToolCalling": true,
                 "DeveloperRole": false
               },
               "ContextWindowTokens": -1,
@@ -174,12 +173,6 @@
               {
                 "path": ["Capabilities", "Reasoning"],
                 "label": "推理",
-                "type": "boolean",
-                "required": false
-              },
-              {
-                "path": ["Capabilities", "ToolCalling"],
-                "label": "工具调用",
                 "type": "boolean",
                 "required": false
               },

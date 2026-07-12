@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
+import { type AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
 import { AgentEventKinds, type AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
 import type {
   AgentPiSessionBootstrapPort,

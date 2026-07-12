@@ -68,10 +68,12 @@ function verifyHistoricalEvidenceAndRetrievalTools(): void {
   assert.equal(envelope.evidence.length, 1);
   assert.equal(envelope.evidence[0]?.source, "history");
   assert.equal(envelope.evidence[0]?.artifactUri, "senera://artifact/weather");
-  assert.deepEqual(envelope.evidence[0]?.facts, [{
-    name: "city",
-    value: "北京",
-  }]);
+  assert.deepEqual(envelope.evidence[0]?.facts, [
+    {
+      name: "city",
+      value: "北京",
+    },
+  ]);
   assert.deepEqual(
     envelope.retrievalTools.map((tool) => tool.toolName),
     ["ArtifactReader", "MemoryLookup"],
@@ -86,10 +88,7 @@ function verifyCurrentToolResultEvidenceAndDeduplication(): void {
     registeredTools: [],
     createdAt: "2026-01-01T00:00:01.000Z",
   });
-  const messages: AgentMessage[] = [
-    userMessage("查一下"),
-    toolResultMessage(),
-  ];
+  const messages: AgentMessage[] = [userMessage("查一下"), toolResultMessage()];
 
   const transformed = policy.apply(messages, frame);
   const transformedAgain = policy.apply(transformed, frame);
@@ -100,11 +99,13 @@ function verifyCurrentToolResultEvidenceAndDeduplication(): void {
   assert.equal(envelope.evidence.length, 1);
   assert.equal(envelope.evidence[0]?.source, "current_tool_result");
   assert.equal(envelope.evidence[0]?.artifactUri, "senera://artifact/current");
-  assert.deepEqual(envelope.artifacts, [{
-    artifactUri: "senera://artifact/current",
-    evidenceUris: ["senera://evidence/current"],
-    refs: [],
-  }]);
+  assert.deepEqual(envelope.artifacts, [
+    {
+      artifactUri: "senera://artifact/current",
+      evidenceUris: ["senera://evidence/current"],
+      refs: [],
+    },
+  ]);
 }
 
 function verifyVisibleToolFiltering(): void {
@@ -130,9 +131,7 @@ function verifyEmptyEvidenceDoesNotInjectPolicy(): void {
     requestId: "current",
     model: "test-model",
     conversationEntries: [],
-    registeredTools: [
-      registeredToolFixture("MemoryLookup", AgentHostCapabilityNames.MemoryRecall),
-    ],
+    registeredTools: [registeredToolFixture("MemoryLookup", AgentHostCapabilityNames.MemoryRecall)],
     visibleToolNames: "all",
   });
 
@@ -166,9 +165,9 @@ function verifyOversizedEnvelopeRemainsJson(): void {
 }
 
 function readPolicyEnvelope(messages: readonly AgentMessage[]): PolicyEnvelopeFixture {
-  const message = messages.find((entry) =>
-    readRecord(entry).role === "custom"
-    && readRecord(entry).customType === AgentPiContextPolicyCustomType);
+  const message = messages.find(
+    (entry) => readRecord(entry).role === "custom" && readRecord(entry).customType === AgentPiContextPolicyCustomType,
+  );
   assert.ok(message, "context policy message was injected");
   const content = readRecord(message).content;
   assert.equal(typeof content, "string");
@@ -176,9 +175,9 @@ function readPolicyEnvelope(messages: readonly AgentMessage[]): PolicyEnvelopeFi
 }
 
 function countPolicyMessages(messages: readonly AgentMessage[]): number {
-  return messages.filter((entry) =>
-    readRecord(entry).role === "custom"
-    && readRecord(entry).customType === AgentPiContextPolicyCustomType).length;
+  return messages.filter(
+    (entry) => readRecord(entry).role === "custom" && readRecord(entry).customType === AgentPiContextPolicyCustomType,
+  ).length;
 }
 
 function userMessage(text: string): AgentMessage {
@@ -194,22 +193,28 @@ function toolResultMessage(): AgentMessage {
     role: "toolResult",
     toolCallId: "call_current",
     toolName: "WeatherTool",
-    content: [{
-      type: "text",
-      text: JSON.stringify({
-        type: "senera.tool_observation.v1",
-        status: "success",
-        artifact_uri: "senera://artifact/current",
-        evidence: [{
-          evidence_uri: "senera://evidence/current",
-          kind: "weather",
-          facts: [{
-            name: "city",
-            value: "上海",
-          }],
-        }],
-      }),
-    }],
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          type: "senera.tool_observation.v1",
+          status: "success",
+          artifact_uri: "senera://artifact/current",
+          evidence: [
+            {
+              evidence_uri: "senera://evidence/current",
+              kind: "weather",
+              facts: [
+                {
+                  name: "city",
+                  value: "上海",
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    ],
     isError: false,
     timestamp: Date.now(),
   } as AgentMessage;
@@ -234,27 +239,33 @@ function executedToolResultFixture(): ExecutedToolCallResult {
       manifestPath: ".senera/artifacts/weather/manifest.json",
       files: {},
       summary: "北京晴。",
-      evidence: [{
-        key: "weather-beijing",
-        evidenceUri: "senera://evidence/weather/beijing",
-        kind: "weather",
-        locator: "北京",
-        display: "北京天气",
-        label: "北京",
-        source: "WeatherTool",
-        confidence: 0.9,
-        modelSlots: [{
-          name: "city",
-          value: "北京",
-        }],
-        plannerMemory: {
-          facts: [{
-            name: "city",
-            value: "北京",
-          }],
-          artifactRefs: ["projection"],
+      evidence: [
+        {
+          key: "weather-beijing",
+          evidenceUri: "senera://evidence/weather/beijing",
+          kind: "weather",
+          locator: "北京",
+          display: "北京天气",
+          label: "北京",
+          source: "WeatherTool",
+          confidence: 0.9,
+          modelSlots: [
+            {
+              name: "city",
+              value: "北京",
+            },
+          ],
+          plannerMemory: {
+            facts: [
+              {
+                name: "city",
+                value: "北京",
+              },
+            ],
+            artifactRefs: ["projection"],
+          },
         },
-      }],
+      ],
       delta: [],
     },
   };
@@ -269,23 +280,27 @@ function registeredToolFixture(name: string, capability: string): RegisteredTool
     },
     execution: DefaultExecution,
     permissions: [],
-    evidenceCapabilities: [{
-      Produces: capability,
-      Quality: "high",
-      Satisfies: [],
-      Kinds: [],
-      CapabilityIds: [capability],
-    }],
+    evidenceCapabilities: [
+      {
+        Produces: capability,
+        Quality: "high",
+        Satisfies: [],
+        Kinds: [],
+        CapabilityIds: [capability],
+      },
+    ],
     search: {
       Summary: `${name} summary`,
-      Capabilities: [{
-        Id: capability,
-        Facets: {
-          Inputs: ["uri"],
-          Outputs: ["projection"],
-          Evidence: [capability],
+      Capabilities: [
+        {
+          Id: capability,
+          Facets: {
+            Inputs: ["uri"],
+            Outputs: ["projection"],
+            Evidence: [capability],
+          },
         },
-      }],
+      ],
     },
     plugin: {
       rootPath: "",
@@ -313,21 +328,21 @@ function registeredToolFixture(name: string, capability: string): RegisteredTool
           Kind: "Tool",
           Description: `${name} description`,
         },
-        Tools: [{
-          Name: name,
-          Handler: {
-            Kind: "HostCapability",
-            Capability: capability,
+        Tools: [
+          {
+            Name: name,
+            Handler: {
+              Kind: "HostCapability",
+              Capability: capability,
+            },
+            Execution: DefaultExecution,
           },
-          Execution: DefaultExecution,
-        }],
+        ],
       },
     },
   };
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }

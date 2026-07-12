@@ -1,15 +1,7 @@
 import { z } from "zod";
 import { ToolSearchSchema } from "./PluginSearchManifestSchema.js";
 
-export const PluginKindSchema = z.enum([
-  "System",
-  "Tool",
-  "Resource",
-  "Prompt",
-  "Skill",
-  "Adapter",
-  "Provider",
-]);
+export const PluginKindSchema = z.enum(["System", "Tool", "Resource", "Prompt", "Skill", "Adapter", "Provider"]);
 
 export const PluginEntrySchema = z
   .object({

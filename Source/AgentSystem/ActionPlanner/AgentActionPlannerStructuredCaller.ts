@@ -5,14 +5,16 @@ import {
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { issueDetails, issueMessages } from "./AgentActionPlannerFailure.js";
 import {
-  AgentActionPlannerBamlFunctionArgs,
+  type AgentActionPlannerBamlFunctionArgs,
   AgentActionPlannerBamlPromptFactory,
 } from "./AgentActionPlannerBamlPromptFactory.js";
 import type { AgentActionPlannerModelTransport } from "./AgentActionPlannerModelTransport.js";
 
 type BamlFunctionName = AgentActionPlannerBamlFunctionArgs["functionName"];
-type BamlFunctionArgs<TName extends BamlFunctionName> =
-  Extract<AgentActionPlannerBamlFunctionArgs, { functionName: TName }>;
+type BamlFunctionArgs<TName extends BamlFunctionName> = Extract<
+  AgentActionPlannerBamlFunctionArgs,
+  { functionName: TName }
+>;
 type BamlRepairArgs = AgentActionPlannerBamlFunctionArgs;
 
 export class AgentActionPlannerStructuredCaller {
@@ -52,11 +54,14 @@ export class AgentActionPlannerStructuredCaller {
       signal: options.signal,
       parse: options.parse,
       repair: options.repair
-        ? (failure) => this.promptFactory.buildPrompt(options.repair?.({
-            invalidOutput: failure.invalidOutput,
-            issues: failure.issues,
-            diagnostics: failure.diagnostics,
-          }) ?? options.args)
+        ? (failure) =>
+            this.promptFactory.buildPrompt(
+              options.repair?.({
+                invalidOutput: failure.invalidOutput,
+                issues: failure.issues,
+                diagnostics: failure.diagnostics,
+              }) ?? options.args,
+            )
         : undefined,
     });
     return result.value;

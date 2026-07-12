@@ -8,8 +8,7 @@ export const AgentTerminalActivityTone = {
   Neutral: "neutral",
 } as const;
 
-export type AgentTerminalActivityTone =
-  typeof AgentTerminalActivityTone[keyof typeof AgentTerminalActivityTone];
+export type AgentTerminalActivityTone = (typeof AgentTerminalActivityTone)[keyof typeof AgentTerminalActivityTone];
 
 export const AgentTerminalDetailMode = {
   None: "none",
@@ -19,8 +18,7 @@ export const AgentTerminalDetailMode = {
   All: "all",
 } as const;
 
-export type AgentTerminalDetailMode =
-  typeof AgentTerminalDetailMode[keyof typeof AgentTerminalDetailMode];
+export type AgentTerminalDetailMode = (typeof AgentTerminalDetailMode)[keyof typeof AgentTerminalDetailMode];
 
 export interface AgentTerminalActivityGroup {
   readonly key: string;
@@ -63,8 +61,7 @@ export interface AgentTerminalTimelinePatch {
   readonly silent?: boolean;
 }
 
-export type AgentTerminalActivityProjector =
-  (
-    event: AgentEventEnvelope<string, unknown>,
-    state: AgentTerminalTimelineViewState,
-  ) => AgentTerminalTimelinePatch;
+export type AgentTerminalActivityProjector = (
+  event: AgentEventEnvelope<string, unknown>,
+  state: AgentTerminalTimelineViewState,
+) => AgentTerminalTimelinePatch;

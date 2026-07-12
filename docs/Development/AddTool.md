@@ -99,9 +99,9 @@ PluginConfig.example.toml
 常规验证：
 
 ```bash
-npm run check
+npm run check.types
 npm run build
-npm run verifysuite -- workspace core
+npm run verify.suite -- workspace core
 ```
 
 工具契约相关重点验证：
@@ -115,7 +115,7 @@ node Dist/Scripts/VerifyToolSignatureMappingAndPlanValidation.js
 如果工具输出会影响前端显示，还要跑：
 
 ```bash
-npm run frontendverify
+npm run test.frontend
 ```
 
 ## 上线前检查

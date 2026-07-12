@@ -24,7 +24,6 @@ export type RegisteredToolHandler =
       tool: string;
     };
 
-
 export interface LoadedPlugin {
   rootPath: string;
   rootKind: PluginRootKind;
@@ -32,7 +31,6 @@ export interface LoadedPlugin {
   config: LoadedPluginConfig;
   manifest: PluginManifest;
 }
-
 
 export interface RegisteredTool {
   plugin: LoadedPlugin;

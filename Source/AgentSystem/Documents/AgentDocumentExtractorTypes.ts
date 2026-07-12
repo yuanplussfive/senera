@@ -1,9 +1,6 @@
 import type { probeAgentDocument } from "./AgentDocumentProbe.js";
 import type { AgentDocumentProbeResult } from "./AgentDocumentProbeTypes.js";
-import type {
-  AgentDocumentExtractOptions,
-  AgentDocumentExtractResult,
-} from "./AgentDocumentExtractTypes.js";
+import type { AgentDocumentExtractOptions, AgentDocumentExtractResult } from "./AgentDocumentExtractTypes.js";
 
 export interface AgentDocumentExtractInput {
   filePath: string;

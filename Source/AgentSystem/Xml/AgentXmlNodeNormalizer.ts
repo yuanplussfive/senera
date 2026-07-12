@@ -1,17 +1,9 @@
 import { AgentXmlErrorCodes } from "./AgentXmlStatus.js";
-import {
-  AgentXmlParseError,
-  type AgentXmlParseErrorCode,
-  type XmlPath,
-} from "./AgentXmlParserTypes.js";
+import { AgentXmlParseError, type AgentXmlParseErrorCode, type XmlPath } from "./AgentXmlParserTypes.js";
 import type { AgentXmlSourceHelper } from "./AgentXmlSourceHelper.js";
 
 export class AgentXmlNodeNormalizer {
-  normalize(options: {
-    rootName: string;
-    value: unknown;
-    sourceHelper: AgentXmlSourceHelper;
-  }): unknown {
+  normalize(options: { rootName: string; value: unknown; sourceHelper: AgentXmlSourceHelper }): unknown {
     return this.normalizeNode(options.value, {
       rootName: options.rootName,
       path: [],
@@ -32,7 +24,8 @@ export class AgentXmlNodeNormalizer {
         this.normalizeNode(item, {
           ...context,
           path: [...context.path, index],
-        }));
+        }),
+      );
     }
 
     if (node && typeof node === "object") {
@@ -55,9 +48,7 @@ export class AgentXmlNodeNormalizer {
     const textKeys = keys.filter((key) => key === "#text" || key === "#cdata");
 
     if (textKeys.length > 0 && textKeys.length === keys.length) {
-      return textKeys
-        .map((key) => this.normalizeTextNodeValue(record[key]))
-        .join("");
+      return textKeys.map((key) => this.normalizeTextNodeValue(record[key])).join("");
     }
 
     if (textKeys.length > 0 && keys.length > textKeys.length) {
@@ -101,9 +92,7 @@ export class AgentXmlNodeNormalizer {
       options.suggestion,
     );
 
-    return new AgentXmlParseError(options.message, [
-      diagnostic,
-    ], options.code, {
+    return new AgentXmlParseError(options.message, [diagnostic], options.code, {
       ...options.details,
       pointer: diagnostic.pointer,
       line: diagnostic.position?.line,

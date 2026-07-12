@@ -50,21 +50,25 @@ export function useMessageHeightObserver(
   }, []);
 
   useEffect(() => {
+    const observedElements = observedElementsRef.current;
     return () => {
       observerRef.current?.disconnect();
       observerRef.current = null;
-      observedElementsRef.current.clear();
+      observedElements.clear();
     };
   }, [enabled]);
 
-  return useCallback((element: HTMLElement | null) => {
-    pruneDisconnectedElements();
-    if (!element) return;
+  return useCallback(
+    (element: HTMLElement | null) => {
+      pruneDisconnectedElements();
+      if (!element) return;
 
-    const key = element.getAttribute("data-message-key");
-    if (!key) return;
+      const key = element.getAttribute("data-message-key");
+      if (!key) return;
 
-    observedElementsRef.current.set(element, key);
-    ensureObserver()?.observe(element);
-  }, [ensureObserver, pruneDisconnectedElements]);
+      observedElementsRef.current.set(element, key);
+      ensureObserver()?.observe(element);
+    },
+    [ensureObserver, pruneDisconnectedElements],
+  );
 }

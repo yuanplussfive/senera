@@ -1,16 +1,21 @@
-import fs from "node:fs";
-import path from "node:path";
-import {
-  wasmPolicyClient,
-  type PolicyClient,
-} from "@ai-sdk/policy-opa";
+import type { PolicyClient } from "@ai-sdk/policy-opa";
 import { moduleDirPath } from "../Core/AgentPath.js";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
+import {
+  AgentToolApprovalPolicyArtifactContract,
+  type AgentToolApprovalPolicyArtifactBundle,
+  type AgentToolApprovalPolicyData,
+  readAgentToolApprovalPolicyArtifact,
+  readAgentToolApprovalPolicyData,
+} from "./AgentToolApprovalPolicyArtifact.js";
+import { projectAgentToolFallbackSubject } from "../ToolRuntime/AgentToolFallbackContext.js";
+import { createAgentOpaWasmPolicyClient } from "./AgentOpaWasmPolicyClient.js";
 
 export interface AgentSeneraOpaPolicyClientOptions {
   readonly registry: AgentPluginRegistry;
-  readonly policyData?: AgentToolApprovalPolicyData;
+  readonly artifactLoader?: () =>
+    AgentToolApprovalPolicyArtifactBundle | Promise<AgentToolApprovalPolicyArtifactBundle>;
 }
 
 export type AgentSeneraOpaDecision =
@@ -42,6 +47,7 @@ export type AgentSeneraOpaDecision =
 interface AgentToolApprovalPolicyInputShape {
   readonly tool?: {
     readonly name?: unknown;
+    readonly registered?: unknown;
     readonly approval?: {
       readonly Mode?: unknown;
       readonly Reason?: unknown;
@@ -58,28 +64,16 @@ interface AgentToolApprovalPolicyInputShape {
   };
 }
 
-export interface AgentToolApprovalPolicyData {
-  readonly Entrypoints: {
-    readonly ToolDecision: string;
+interface AgentExecutionFallbackPolicyInputShape {
+  readonly tool?: {
+    readonly name?: unknown;
+    readonly registered?: unknown;
+    readonly plugin?: {
+      readonly manifestDigest?: unknown;
+      readonly [key: string]: unknown;
+    };
   };
-  readonly Reasons: Record<
-    | "ManifestDeny"
-    | "ManifestAsk"
-    | "ManifestAllow"
-    | "MissingTool"
-    | "RequiresApproval"
-    | "Untrusted"
-    | "RiskPermission"
-    | "RiskSideEffect"
-    | "ToolPermission"
-    | "DefaultAllow",
-    string
-  >;
-  readonly HighImpact: {
-    readonly RiskPermissions: readonly string[];
-    readonly RiskSideEffects: readonly string[];
-    readonly ToolPermissionTerms: readonly string[];
-  };
+  readonly execution?: Record<string, unknown>;
 }
 
 interface AgentToolApprovalFacts {
@@ -93,108 +87,123 @@ interface AgentToolApprovalFacts {
   readonly riskSideEffects: readonly string[];
 }
 
-type LocalPolicyRule = (
-  facts: AgentToolApprovalFacts,
-  data: AgentToolApprovalPolicyData,
-) => AgentSeneraOpaDecision | undefined;
-
-const PolicyDataFileName = "AgentToolApprovalPolicy.data.json";
-const PolicyWasmFileName = "AgentToolApprovalPolicy.wasm";
-
-const LocalPolicyRules: readonly LocalPolicyRule[] = [
-  (facts, data) => facts.approvalMode === "deny"
-    ? decision("deny", "tool.manifest.deny", facts.approvalReason ?? data.Reasons.ManifestDeny, facts)
-    : undefined,
-  (facts, data) => facts.approvalMode === "ask"
-    ? decision("requires-approval", "tool.manifest.ask", facts.approvalReason ?? data.Reasons.ManifestAsk, facts)
-    : undefined,
-  (facts, data) => facts.approvalMode === "allow"
-    ? decision("allow", "tool.manifest.allow", facts.approvalReason ?? data.Reasons.ManifestAllow, facts)
-    : undefined,
-  (facts, data) => !facts.toolRegistered
-    ? decision("requires-approval", "tool.registry.missing", data.Reasons.MissingTool, facts)
-    : undefined,
-  (facts, data) => facts.securityRequiresApproval
-    ? decision("requires-approval", "plugin.security.requires_approval", data.Reasons.RequiresApproval, facts)
-    : undefined,
-  (facts, data) => facts.trustLevel === "Untrusted"
-    ? decision("requires-approval", "plugin.security.untrusted", data.Reasons.Untrusted, facts)
-    : undefined,
-  (facts, data) => intersects(facts.riskPermissions, data.HighImpact.RiskPermissions)
-    ? decision("requires-approval", "risk.permission.high_impact", data.Reasons.RiskPermission, facts)
-    : undefined,
-  (facts, data) => intersects(facts.riskSideEffects, data.HighImpact.RiskSideEffects)
-    ? decision("requires-approval", "risk.side_effect.persistent_or_process", data.Reasons.RiskSideEffect, facts)
-    : undefined,
-  (facts, data) => containsAnyText(facts.toolPermissions, data.HighImpact.ToolPermissionTerms)
-    ? decision("requires-approval", "tool.permission.high_impact", data.Reasons.ToolPermission, facts)
-    : undefined,
-  (facts, data) => facts.toolRegistered
-    ? decision("allow", "risk.default.allow", data.Reasons.DefaultAllow, facts)
-    : undefined,
-];
-
 export class AgentSeneraOpaPolicyClient implements PolicyClient {
   private readonly policyData: AgentToolApprovalPolicyData;
-  private readonly wasmPath = path.join(moduleDirPath(import.meta.url), PolicyWasmFileName);
   private wasmClient: Promise<PolicyClient | undefined> | undefined;
+  private wasmLoadFailure: string | undefined;
 
   constructor(private readonly options: AgentSeneraOpaPolicyClientOptions) {
-    this.policyData = options.policyData ?? readDefaultPolicyData();
+    this.policyData = readAgentToolApprovalPolicyData(moduleDirPath(import.meta.url));
   }
 
-  async evaluate<TInput = unknown, TResult = unknown>(
-    pathName: string,
-    input: TInput,
-  ): Promise<TResult> {
-    const policyInput = enrichPolicyInput(readPolicyInput(input), this.options.registry);
+  async evaluate<TInput = unknown, TResult = unknown>(pathName: string, input: TInput): Promise<TResult> {
+    const policyInput = projectPolicyInput(pathName, input, this.options.registry);
     const wasmClient = await this.loadWasmClient();
     const result = wasmClient
       ? await wasmClient.evaluate(pathName, policyInput)
-      : evaluateLocalPolicy(pathName, policyInput, this.policyData);
+      : evaluateFailClosedPolicy(pathName, policyInput, this.policyData, this.wasmLoadFailure);
 
     return result as TResult;
   }
 
   private async loadWasmClient(): Promise<PolicyClient | undefined> {
-    this.wasmClient ??= fs.existsSync(this.wasmPath)
-      ? fs.promises.readFile(this.wasmPath)
-        .then((wasm) => wasmPolicyClient({
-          wasm,
-          data: {
-            senera: {
-              tool_approval: this.policyData,
-            },
-          },
-        }))
-      : Promise.resolve(undefined);
+    this.wasmClient ??= this.createWasmClient();
     return this.wasmClient;
+  }
+
+  private async createWasmClient(): Promise<PolicyClient | undefined> {
+    try {
+      const artifact = await (this.options.artifactLoader?.() ??
+        readAgentToolApprovalPolicyArtifact(moduleDirPath(import.meta.url)));
+      return await createAgentOpaWasmPolicyClient({
+        wasm: artifact.wasm,
+        data: {
+          senera: {
+            tool_approval: artifact.data,
+          },
+        },
+      });
+    } catch (error) {
+      this.wasmLoadFailure = error instanceof Error ? error.message : String(error);
+      return undefined;
+    }
   }
 }
 
-function evaluateLocalPolicy(
+function evaluateFailClosedPolicy(
   pathName: string,
   input: AgentToolApprovalPolicyInputShape,
   data: AgentToolApprovalPolicyData,
+  loadFailure: string | undefined,
 ): AgentSeneraOpaDecision {
+  const facts = buildFacts(input);
+  if (pathName === data.Entrypoints.ExecutionFallback) {
+    return decision("deny", "execution.fallback.policy_unavailable", data.Reasons.FallbackDefaultDeny, facts);
+  }
   if (pathName !== data.Entrypoints.ToolDecision) {
-    return {
-      decision: "not-applicable",
-      reason: `未注册策略入口：${pathName}`,
-      rule: "entrypoint.not_registered",
-    };
+    return decision("deny", "policy.entrypoint.mismatch", data.Reasons.EntrypointMismatch, facts);
   }
 
-  const facts = buildFacts(input);
-  return LocalPolicyRules
-    .map((rule) => rule(facts, data))
-    .find((result) => Boolean(result))
-    ?? {
-      decision: "not-applicable",
-      reason: "没有匹配的工具审批策略。",
-      rule: "default.not_applicable",
-      riskSignals: riskSignals(facts),
-    };
+  if (facts.approvalMode === "deny") {
+    return decision("deny", "tool.manifest.deny", facts.approvalReason ?? data.Reasons.ManifestDeny, facts);
+  }
+
+  return decision(
+    "requires-approval",
+    "policy.artifact.unavailable",
+    [data.Reasons.PolicyUnavailable, loadFailure].filter(Boolean).join(" "),
+    facts,
+  );
+}
+
+function projectPolicyInput(
+  pathName: string,
+  input: unknown,
+  registry: AgentPluginRegistry,
+): AgentToolApprovalPolicyInputShape | AgentExecutionFallbackPolicyInputShape {
+  if (pathName === AgentToolApprovalPolicyArtifactContract.entrypoints.toolDecision) {
+    return enrichPolicyInput(readPolicyInput(input), registry);
+  }
+  if (pathName === AgentToolApprovalPolicyArtifactContract.entrypoints.executionFallback) {
+    return enrichFallbackPolicyInput(readFallbackPolicyInput(input), registry);
+  }
+  return readPolicyInput(input);
+}
+
+function enrichFallbackPolicyInput(
+  input: AgentExecutionFallbackPolicyInputShape,
+  registry: AgentPluginRegistry,
+): AgentExecutionFallbackPolicyInputShape {
+  const toolName = readString(input.tool?.name);
+  const tool = toolName ? registry.getTool(toolName) : undefined;
+  const subject = tool ? projectAgentToolFallbackSubject(tool) : undefined;
+  const suppliedDigest = readString(input.tool?.plugin?.manifestDigest);
+  const registered = Boolean(subject && suppliedDigest === subject.manifestDigest);
+
+  return {
+    tool: {
+      name: toolName,
+      registered,
+      plugin: subject
+        ? {
+            name: subject.pluginName,
+            title: subject.pluginTitle,
+            version: subject.pluginVersion,
+            manifestDigest: subject.manifestDigest,
+            rootKind: subject.rootKind,
+            trustLevel: subject.trustLevel,
+          }
+        : undefined,
+    },
+    execution: {
+      ...input.execution,
+      boundary: subject?.boundary,
+      localFallback: tool?.execution.LocalFallback,
+      network: subject?.network,
+      workspace: subject?.workspace,
+      permissions: subject?.permissions ?? [],
+    },
+  };
 }
 
 function enrichPolicyInput(
@@ -203,10 +212,7 @@ function enrichPolicyInput(
 ): AgentToolApprovalPolicyInputShape {
   const toolName = readString(input.tool?.name);
   const tool = toolName ? registry.getTool(toolName) : undefined;
-  const risks = [
-    ...readRiskRecords(input.tool?.capabilities?.risks),
-    ...registeredToolRisks(tool),
-  ];
+  const risks = [...readRiskRecords(input.tool?.capabilities?.risks), ...registeredToolRisks(tool)];
   const effects = [
     ...readStringArray(input.tool?.capabilities?.effects),
     ...registeredToolEffects(tool),
@@ -219,16 +225,13 @@ function enrichPolicyInput(
       ...input.tool,
       name: toolName,
       registered: Boolean(tool),
-      approval: input.tool?.approval ?? tool?.approval,
-      permissions: uniqueStrings([
-        ...readStringArray(input.tool?.permissions),
-        ...(tool?.permissions ?? []),
-      ]),
+      approval: tool?.approval ?? input.tool?.approval,
+      permissions: uniqueStrings([...readStringArray(input.tool?.permissions), ...(tool?.permissions ?? [])]),
       capabilities: {
         risks,
         effects: uniqueStrings(effects),
       },
-      security: input.tool?.security ?? tool?.plugin.manifest.Security,
+      security: tool?.plugin.manifest.Security ?? input.tool?.security,
     } as AgentToolApprovalPolicyInputShape["tool"] & { registered: boolean },
   };
 }
@@ -241,9 +244,7 @@ function buildFacts(input: AgentToolApprovalPolicyInputShape): AgentToolApproval
   return {
     approvalMode: readString(approval?.Mode),
     approvalReason: readString(approval?.Reason),
-    toolRegistered: input.tool && "registered" in input.tool
-      ? input.tool.registered === true
-      : false,
+    toolRegistered: input.tool && "registered" in input.tool ? input.tool.registered === true : false,
     securityRequiresApproval: security?.RequiresApproval === true,
     trustLevel: readString(security?.TrustLevel),
     toolPermissions: readStringArray(input.tool?.permissions),
@@ -283,23 +284,22 @@ function registeredToolRisks(tool: RegisteredTool | undefined): Array<{
   readonly Permission?: unknown;
   readonly SideEffect?: unknown;
 }> {
-  return (tool?.search?.Capabilities ?? []).flatMap((capability) =>
-    capability.Risk ? [capability.Risk] : []
-  );
+  return (tool?.search?.Capabilities ?? []).flatMap((capability) => (capability.Risk ? [capability.Risk] : []));
 }
 
 function registeredToolEffects(tool: RegisteredTool | undefined): string[] {
   return (tool?.search?.Capabilities ?? []).flatMap((capability) => capability.Facets?.Effects ?? []);
 }
 
-function readDefaultPolicyData(): AgentToolApprovalPolicyData {
-  const filePath = path.join(moduleDirPath(import.meta.url), PolicyDataFileName);
-  return JSON.parse(fs.readFileSync(filePath, "utf8")) as AgentToolApprovalPolicyData;
-}
-
 function readPolicyInput(input: unknown): AgentToolApprovalPolicyInputShape {
   return input && typeof input === "object" && !Array.isArray(input)
-    ? input as AgentToolApprovalPolicyInputShape
+    ? (input as AgentToolApprovalPolicyInputShape)
+    : {};
+}
+
+function readFallbackPolicyInput(input: unknown): AgentExecutionFallbackPolicyInputShape {
+  return input && typeof input === "object" && !Array.isArray(input)
+    ? (input as AgentExecutionFallbackPolicyInputShape)
     : {};
 }
 
@@ -310,17 +310,8 @@ function readRiskRecords(values: readonly unknown[] | undefined): Array<{
   return (values ?? []).flatMap((value) =>
     value && typeof value === "object" && !Array.isArray(value)
       ? [value as { readonly Permission?: unknown; readonly SideEffect?: unknown }]
-      : []
+      : [],
   );
-}
-
-function intersects(left: readonly string[], right: readonly string[]): boolean {
-  const values = new Set(left);
-  return right.some((value) => values.has(value));
-}
-
-function containsAnyText(values: readonly string[], needles: readonly string[]): boolean {
-  return values.some((value) => needles.some((needle) => value.includes(needle)));
 }
 
 function readStringArray(values: readonly unknown[] | undefined): string[] {
@@ -332,7 +323,5 @@ function uniqueStrings(values: readonly string[]): string[] {
 }
 
 function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0
-    ? value
-    : undefined;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

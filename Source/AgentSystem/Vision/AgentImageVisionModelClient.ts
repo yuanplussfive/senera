@@ -5,42 +5,79 @@ import { ModelHttpClient } from "../ModelEndpoints/ModelHttpClient.js";
 import { shouldSendMaxOutputTokens } from "../ModelEndpoints/ModelPayloadOptions.js";
 import type { AgentImageVisionRequest, AgentImageVisionResponse } from "./AgentImageVisionTypes.js";
 
-const TextPartSchema = z.object({
-  text: z.string().optional(),
-}).passthrough();
-
-const OpenAiResponsesBodySchema = z.object({
-  output_text: z.string().optional(),
-  output: z.array(z.object({
-    content: z.array(TextPartSchema).optional(),
-  }).passthrough()).optional(),
-}).passthrough();
-
-const OpenAiChatBodySchema = z.object({
-  choices: z.array(z.object({
-    message: z.object({
-      content: z.union([
-        z.string(),
-        z.array(TextPartSchema),
-      ]).nullish(),
-    }).passthrough().optional(),
-  }).passthrough()).optional(),
-}).passthrough();
-
-const ClaudeBodySchema = z.object({
-  content: z.array(z.object({
-    type: z.string().optional(),
+const TextPartSchema = z
+  .object({
     text: z.string().optional(),
-  }).passthrough()).optional(),
-}).passthrough();
+  })
+  .passthrough();
 
-const GoogleBodySchema = z.object({
-  candidates: z.array(z.object({
-    content: z.object({
-      parts: z.array(TextPartSchema).optional(),
-    }).passthrough().optional(),
-  }).passthrough()).optional(),
-}).passthrough();
+const OpenAiResponsesBodySchema = z
+  .object({
+    output_text: z.string().optional(),
+    output: z
+      .array(
+        z
+          .object({
+            content: z.array(TextPartSchema).optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
+
+const OpenAiChatBodySchema = z
+  .object({
+    choices: z
+      .array(
+        z
+          .object({
+            message: z
+              .object({
+                content: z.union([z.string(), z.array(TextPartSchema)]).nullish(),
+              })
+              .passthrough()
+              .optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
+
+const ClaudeBodySchema = z
+  .object({
+    content: z
+      .array(
+        z
+          .object({
+            type: z.string().optional(),
+            text: z.string().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
+
+const GoogleBodySchema = z
+  .object({
+    candidates: z
+      .array(
+        z
+          .object({
+            content: z
+              .object({
+                parts: z.array(TextPartSchema).optional(),
+              })
+              .passthrough()
+              .optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
 
 export class AgentImageVisionModelClient {
   async complete(request: AgentImageVisionRequest): Promise<AgentImageVisionResponse> {
@@ -57,10 +94,7 @@ export class AgentImageVisionModelClient {
     };
   }
 
-  private completeByEndpoint(
-    request: AgentImageVisionRequest,
-    http: ModelHttpClient,
-  ): Promise<string> {
+  private completeByEndpoint(request: AgentImageVisionRequest, http: ModelHttpClient): Promise<string> {
     switch (request.provider.Endpoint) {
       case "Responses":
         return this.completeOpenAiResponses(request, http);
@@ -73,10 +107,7 @@ export class AgentImageVisionModelClient {
     }
   }
 
-  private async completeOpenAiResponses(
-    request: AgentImageVisionRequest,
-    http: ModelHttpClient,
-  ): Promise<string> {
+  private async completeOpenAiResponses(request: AgentImageVisionRequest, http: ModelHttpClient): Promise<string> {
     const payload: Record<string, unknown> = {
       model: request.provider.Model,
       input: [
@@ -109,16 +140,17 @@ export class AgentImageVisionModelClient {
         signal: request.signal,
       }),
     );
-    return body.output_text ?? body.output
-      ?.flatMap((output) => output.content ?? [])
-      .map((content) => content.text ?? "")
-      .join("") ?? "";
+    return (
+      body.output_text ??
+      body.output
+        ?.flatMap((output) => output.content ?? [])
+        .map((content) => content.text ?? "")
+        .join("") ??
+      ""
+    );
   }
 
-  private async completeOpenAiChat(
-    request: AgentImageVisionRequest,
-    http: ModelHttpClient,
-  ): Promise<string> {
+  private async completeOpenAiChat(request: AgentImageVisionRequest, http: ModelHttpClient): Promise<string> {
     const payload: Record<string, unknown> = {
       model: request.provider.Model,
       messages: [
@@ -156,10 +188,7 @@ export class AgentImageVisionModelClient {
     return readTextContent(body.choices?.[0]?.message?.content);
   }
 
-  private async completeClaude(
-    request: AgentImageVisionRequest,
-    http: ModelHttpClient,
-  ): Promise<string> {
+  private async completeClaude(request: AgentImageVisionRequest, http: ModelHttpClient): Promise<string> {
     const payload: Record<string, unknown> = {
       model: request.provider.Model,
       system: request.systemPrompt,
@@ -189,24 +218,28 @@ export class AgentImageVisionModelClient {
     }
 
     const body = ClaudeBodySchema.parse(
-      await http.postJson(["messages"], payload, {
-        "x-api-key": request.provider.ApiKey,
-        "anthropic-version": request.provider.ApiVersion,
-        ...request.provider.Headers,
-      }, {
-        signal: request.signal,
-      }),
+      await http.postJson(
+        ["messages"],
+        payload,
+        {
+          "x-api-key": request.provider.ApiKey,
+          "anthropic-version": request.provider.ApiVersion,
+          ...request.provider.Headers,
+        },
+        {
+          signal: request.signal,
+        },
+      ),
     );
-    return body.content
-      ?.filter((content) => content.type === "text")
-      .map((content) => content.text ?? "")
-      .join("") ?? "";
+    return (
+      body.content
+        ?.filter((content) => content.type === "text")
+        .map((content) => content.text ?? "")
+        .join("") ?? ""
+    );
   }
 
-  private async completeGoogle(
-    request: AgentImageVisionRequest,
-    http: ModelHttpClient,
-  ): Promise<string> {
+  private async completeGoogle(request: AgentImageVisionRequest, http: ModelHttpClient): Promise<string> {
     const generationConfig: Record<string, unknown> = {
       temperature: request.provider.Temperature,
     };
@@ -246,10 +279,12 @@ export class AgentImageVisionModelClient {
         },
       ),
     );
-    return body.candidates
-      ?.flatMap((candidate) => candidate.content?.parts ?? [])
-      .map((part) => part.text ?? "")
-      .join("") ?? "";
+    return (
+      body.candidates
+        ?.flatMap((candidate) => candidate.content?.parts ?? [])
+        .map((part) => part.text ?? "")
+        .join("") ?? ""
+    );
   }
 }
 
@@ -265,7 +300,5 @@ function dataUri(request: AgentImageVisionRequest): string {
 }
 
 function readTextContent(value: string | Array<{ text?: string | null }> | null | undefined): string {
-  return typeof value === "string"
-    ? value
-    : value?.map((item) => item.text ?? "").join("") ?? "";
+  return typeof value === "string" ? value : (value?.map((item) => item.text ?? "").join("") ?? "");
 }

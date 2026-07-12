@@ -4,19 +4,13 @@ import type { AgentToolProcessRequest } from "../Types/ToolRuntimeTypes.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import { resolveToolExecutionConfig } from "../AgentDefaults.js";
-import {
-  AgentToolProcessEntryResolver,
-} from "./AgentToolProcessEntryResolver.js";
+import { AgentToolProcessEntryResolver } from "./AgentToolProcessEntryResolver.js";
 import { buildAgentPluginProcessExecutionPlan } from "./AgentPluginProcessExecutionProfile.js";
 import { createToolProcessRequestEnvelope } from "./AgentToolProcessRequestEnvelope.js";
 import { AgentToolProcessResponseParser } from "./AgentToolProcessResponseParser.js";
 import { AgentToolProcessSession } from "./AgentToolProcessSession.js";
-import type {
-  AgentToolProcessChild,
-  AgentToolProcessRunResult,
-  AgentToolProcessSpawner,
-  AgentToolProcessSpawnOptions,
-} from "./AgentToolProcessTypes.js";
+import type { AgentToolProcessRunResult, AgentToolProcessSpawner } from "./AgentToolProcessTypes.js";
+import { bindAgentToolFallbackContext, type AgentToolExecutionCorrelation } from "./AgentToolFallbackContext.js";
 
 export type {
   AgentToolProcessChild,
@@ -41,7 +35,7 @@ export class AgentToolProcessRunner {
   async run(
     tool: RegisteredTool,
     args: Record<string, unknown>,
-    context: { signal?: AbortSignal } = {},
+    context: AgentToolExecutionCorrelation & { signal?: AbortSignal } = {},
   ): Promise<AgentToolProcessRunResult> {
     const entry = this.entryResolver.resolve(tool);
     if (!entry.ok) {
@@ -72,7 +66,11 @@ export class AgentToolProcessRunner {
       maxStdoutBytes: toolExecution.MaxStdoutBytes,
       maxStderrBytes: toolExecution.MaxStderrBytes,
       signal: context.signal,
-      executionProfile: executionPlan.profile,
+      executionProfile: bindAgentToolFallbackContext({
+        profile: executionPlan.profile,
+        tool,
+        correlation: context,
+      }),
     }).run();
   }
 

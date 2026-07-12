@@ -1,16 +1,13 @@
 import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
 import { AgentEventKinds } from "../Events/AgentEvent.js";
-import { AgentLogger } from "./AgentLogger.js";
+import { type AgentLogger } from "./AgentLogger.js";
 
 export interface AgentServerEventLoggerOptions {
   logger: AgentLogger;
   detail?: "compact" | "verbose";
 }
 
-const HiddenCompactEvents = new Set<string>([
-  AgentEventKinds.ModelDelta,
-  AgentEventKinds.ToolCallResultDetail,
-]);
+const HiddenCompactEvents = new Set<string>([AgentEventKinds.ModelDelta, AgentEventKinds.ToolCallResultDetail]);
 
 const FullPayloadEvents = new Set<string>([
   AgentEventKinds.PiTrace,

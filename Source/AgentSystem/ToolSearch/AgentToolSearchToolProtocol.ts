@@ -1,13 +1,7 @@
 import { z } from "zod";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
-import {
-  toolProcessFailureResult,
-  toolProcessSuccessResult,
-} from "../ToolRuntime/AgentToolProcessEnvelope.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { ToolSearchToolName } from "./AgentToolSearchRuntimeTypes.js";
 
 export const ToolSearchArgumentsSchema = z
@@ -33,7 +27,7 @@ export function invalidToolSearchArgumentsResult(
     diagnostics: issues.map((issue) => ({
       message: issue.message,
       pointer: `/${issue.path.join("/")}`,
-      path: issue.path.map((entry) => typeof entry === "number" ? entry : String(entry)),
+      path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
     })),
   });
 }

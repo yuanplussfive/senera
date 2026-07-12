@@ -7,9 +7,7 @@
         "text": "$.text"
       },
       "Identity": {
-        "Parts": [
-          "text"
-        ]
+        "Parts": ["text"]
       },
       "Presentation": {
         "Locator": "workspace-write",
@@ -22,20 +20,11 @@
         "text": "$.text"
       },
       "ModelProjection": {
-        "Slots": [
-          "text"
-        ]
+        "Slots": ["text"]
       },
       "PlannerMemory": {
-        "Facts": [
-          "text"
-        ],
-        "ArtifactRefs": [
-          "evidence",
-          "projection",
-          "workspaceDiff",
-          "workspacePatch"
-        ]
+        "Facts": ["text"],
+        "ArtifactRefs": ["evidence", "projection", "workspaceDiff", "workspacePatch"]
       },
       "Projection": {
         "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace write: {{ e.slots.text }}\n{% endfor %}",

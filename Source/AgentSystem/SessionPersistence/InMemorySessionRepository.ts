@@ -1,7 +1,4 @@
-import {
-  AgentConversationEntryKinds,
-  type AgentConversationEntry,
-} from "../Conversation/AgentConversation.js";
+import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import {
   createAgentUserProfile,
@@ -20,10 +17,7 @@ import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 export class InMemorySessionRepository implements AgentSessionRepository {
   private readonly sessions = new Map<string, AgentSession>();
   private readonly entries = new Map<string, AgentConversationEntry[]>();
-  private readonly stepTraces = new Map<
-    string,
-    Array<{ requestId: string; turnSequence: number; trace: StepTrace }>
-  >();
+  private readonly stepTraces = new Map<string, Array<{ requestId: string; turnSequence: number; trace: StepTrace }>>();
   private readonly runEvents = new Map<string, AgentEventEnvelope[]>();
   private readonly runSnapshots = new Map<string, Map<string, StoredRunSnapshot>>();
   private userProfile = createDefaultAgentUserProfile();
@@ -74,10 +68,7 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     this.entries.set(sessionId, list);
   }
 
-  appendEntries(
-    sessionId: string,
-    entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,
-  ): void {
+  appendEntries(sessionId: string, entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>): void {
     for (const { entry } of entries) this.appendEntry(sessionId, entry);
   }
 
@@ -195,8 +186,7 @@ export class InMemorySessionRepository implements AgentSessionRepository {
 
     const removedRequestIds = new Set(entries.slice(idx).map((entry) => entry.requestId));
     const events = this.runEvents.get(sessionId) ?? [];
-    const retained = events.filter((event) =>
-      !event.requestId || !removedRequestIds.has(event.requestId));
+    const retained = events.filter((event) => !event.requestId || !removedRequestIds.has(event.requestId));
     this.runEvents.set(sessionId, retained);
     return events.length - retained.length;
   }

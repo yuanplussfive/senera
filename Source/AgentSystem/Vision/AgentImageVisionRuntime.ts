@@ -7,14 +7,8 @@ import { AgentPromptRenderer } from "../Prompt/AgentPromptRenderer.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
-import {
-  toolProcessFailureResult,
-  toolProcessSuccessResult,
-} from "../ToolRuntime/AgentToolProcessEnvelope.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import { normalizeAgentUploadUri } from "../Uploads/AgentUploadLocator.js";
 import { AgentImageVisionModelClient } from "./AgentImageVisionModelClient.js";
@@ -39,27 +33,28 @@ const ImageVisionPluginConfigSchema = z
           .object({
             id: z.string().trim(),
             kind: z.literal("OpenAICompatible"),
-            endpoint: z.enum([
-              "Responses",
-              "ChatCompletions",
-              "ClaudeMessages",
-              "GoogleGenerateContent",
-            ]),
+            endpoint: z.enum(["Responses", "ChatCompletions", "ClaudeMessages", "GoogleGenerateContent"]),
             baseUrl: z.string().trim(),
             apiKey: z.string(),
             apiVersion: z.string().trim(),
             model: z.string().trim(),
             temperature: z.number().min(0).max(2),
-            maxOutputTokens: z.number().int().refine((value) => value === -1 || value >= 1, {
-              message: "maxOutputTokens 必须为 -1，或大于等于 1。",
-            }),
+            maxOutputTokens: z
+              .number()
+              .int()
+              .refine((value) => value === -1 || value >= 1, {
+                message: "maxOutputTokens 必须为 -1，或大于等于 1。",
+              }),
             timeoutSeconds: z.number().positive(),
             firstTokenTimeoutSeconds: z.number().refine((value) => value === -1 || value > 0, {
               message: "firstTokenTimeoutSeconds 必须为 -1，或大于 0。",
             }),
-            maxRequestSeconds: z.number().refine((value) => value === -1 || value > 0, {
-              message: "maxRequestSeconds 必须为 -1，或大于 0。",
-            }).optional(),
+            maxRequestSeconds: z
+              .number()
+              .refine((value) => value === -1 || value > 0, {
+                message: "maxRequestSeconds 必须为 -1，或大于 0。",
+              })
+              .optional(),
             maxNetworkRetries: z.number().int().min(0),
             headers: z.record(z.string(), z.string()),
           })
@@ -77,9 +72,7 @@ interface ImageVisionPluginConfig {
     maxImageBytes: number;
     provider: Omit<
       RawImageVisionPluginConfig["vision"]["provider"],
-      | "timeoutSeconds"
-      | "firstTokenTimeoutSeconds"
-      | "maxRequestSeconds"
+      "timeoutSeconds" | "firstTokenTimeoutSeconds" | "maxRequestSeconds"
     > & {
       timeoutMs: number;
       firstTokenTimeoutMs: number;
@@ -102,7 +95,7 @@ export const imageVisionHostTool: AgentHostToolHandler = async (args, context) =
       diagnostics: parsed.error.issues.map((issue) => ({
         message: issue.message,
         pointer: `/${issue.path.join("/")}`,
-        path: issue.path.map((entry) => typeof entry === "number" ? entry : String(entry)),
+        path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
       })),
     });
   }
@@ -123,10 +116,7 @@ export const imageVisionHostTool: AgentHostToolHandler = async (args, context) =
   }
 };
 
-async function inspectImage(
-  args: ImageVisionArguments,
-  context: Parameters<AgentHostToolHandler>[1],
-) {
+async function inspectImage(args: ImageVisionArguments, context: Parameters<AgentHostToolHandler>[1]) {
   const pluginConfig = readImageVisionPluginConfig(context.tool.plugin.config.toml);
   const uploads = resolveUploadsConfig(context.config);
   const store = new AgentUploadStore({
@@ -195,11 +185,7 @@ async function inspectImage(
   };
 }
 
-function ensureImageAllowed(
-  mime: string,
-  size: number,
-  config: ImageVisionPluginConfig,
-): void {
+function ensureImageAllowed(mime: string, size: number, config: ImageVisionPluginConfig): void {
   if (!config.vision.allowedMimes.includes(mime)) {
     throw new Error(`当前图片 MIME 未被 ImageVisionTool 配置允许：${mime}`);
   }
@@ -244,10 +230,7 @@ function readMegabytesAsBytes(valueMb: number, fieldName: string): number {
   return value;
 }
 
-function readSecondsAsMilliseconds(
-  valueSeconds: number,
-  fieldName: string,
-): number {
+function readSecondsAsMilliseconds(valueSeconds: number, fieldName: string): number {
   const value = Math.round(valueSeconds * 1000);
   if (value < 1) {
     throw new Error(`ImageVisionTool 配置缺失或无效：${fieldName}`);
@@ -255,22 +238,15 @@ function readSecondsAsMilliseconds(
   return value;
 }
 
-function readOptionalSecondsAsMilliseconds(
-  valueSeconds: number | undefined,
-  fieldName: string,
-): number {
-  const value = valueSeconds === undefined || valueSeconds === -1
-    ? -1
-    : Math.round(valueSeconds * 1000);
+function readOptionalSecondsAsMilliseconds(valueSeconds: number | undefined, fieldName: string): number {
+  const value = valueSeconds === undefined || valueSeconds === -1 ? -1 : Math.round(valueSeconds * 1000);
   if (value === undefined || (value !== -1 && value < 1)) {
     throw new Error(`ImageVisionTool 配置缺失或无效：${fieldName}`);
   }
   return value;
 }
 
-function resolveImageVisionProvider(
-  config: ImageVisionPluginConfig,
-): ResolvedAgentModelProviderConfig {
+function resolveImageVisionProvider(config: ImageVisionPluginConfig): ResolvedAgentModelProviderConfig {
   const provider = config.vision.provider;
   assertConfiguredProvider(provider);
   return {
@@ -293,9 +269,7 @@ function resolveImageVisionProvider(
   };
 }
 
-function assertConfiguredProvider(
-  provider: ImageVisionPluginConfig["vision"]["provider"],
-): void {
+function assertConfiguredProvider(provider: ImageVisionPluginConfig["vision"]["provider"]): void {
   const missing = [
     provider.id ? undefined : "vision.provider.id",
     provider.baseUrl ? undefined : "vision.provider.baseUrl",

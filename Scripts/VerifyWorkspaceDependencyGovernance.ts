@@ -7,11 +7,14 @@ import { E2eTestPolicy, ProjectTestCoveragePolicies } from "./TestCoveragePolicy
 interface PackageJson {
   name?: string;
   type?: string;
-  workspaces?: string[] | {
-    packages?: string[];
-  };
+  workspaces?:
+    | string[]
+    | {
+        packages?: string[];
+      };
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   exports?: Record<string, PackageExportConditions>;
   build?: ElectronBuilderConfig;
@@ -20,14 +23,17 @@ interface PackageJson {
 interface PackageLockJson {
   name?: string;
   lockfileVersion?: number;
-  packages?: Record<string, {
-    name?: string;
-    version?: string;
-    resolved?: string;
-    link?: boolean;
-    workspaces?: unknown;
-    optionalDependencies?: Record<string, string>;
-  }>;
+  packages?: Record<
+    string,
+    {
+      name?: string;
+      version?: string;
+      resolved?: string;
+      link?: boolean;
+      workspaces?: unknown;
+      optionalDependencies?: Record<string, string>;
+    }
+  >;
 }
 
 interface PackageExportConditions {
@@ -59,15 +65,31 @@ interface WorkspacePackage {
 const workspaceRoot = process.cwd();
 const rootPackage = readPackageJson(path.join(workspaceRoot, "package.json"));
 const rootLockfilePath = path.join(workspaceRoot, "package-lock.json");
-const rootLockfile = fs.existsSync(rootLockfilePath)
-  ? readPackageLockJson(rootLockfilePath)
-  : undefined;
+const rootLockfile = fs.existsSync(rootLockfilePath) ? readPackageLockJson(rootLockfilePath) : undefined;
 const workspacePatterns = readWorkspacePatterns(rootPackage);
 const expectedWorkspaces = discoverWorkspacePackages(workspacePatterns);
+const rootOwnedToolchainDependencies = new Map(
+  Object.entries({
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    autoprefixer: "^10.4.20",
+    jsdom: "^29.1.1",
+    postcss: "^8.4.49",
+    tailwindcss: "^3.4.17",
+    tsx: "^4.22.4",
+    typescript: "^6.0.3",
+    vite: "^7.3.6",
+    vitest: "^4.1.10",
+  }),
+);
 const verifyWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "verify.yml"));
 const securityScanWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "security-scan.yml"));
-const containerReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "container-release.yml"));
-const desktopReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "desktop-release.yml"));
+const productReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "release.yml"));
 const violations = [
   ...inspectWorkspaceCoverage(),
   ...inspectLockfileWorkspaceState(),
@@ -79,6 +101,8 @@ const violations = [
   ...inspectRootScripts(),
   ...inspectModuleSystemBoundary(),
   ...inspectRootRuntimeDependencies(),
+  ...inspectRootToolchainDependencies(),
+  ...inspectWorkspaceToolchainDependencyBoundaries(),
   ...inspectRetiredRootScripts(),
   ...inspectApplicationEntrypoints(),
   ...inspectTestGovernanceEntrypoints(),
@@ -91,19 +115,14 @@ const violations = [
 assert.deepEqual(
   violations,
   [],
-  [
-    "Workspace dependency governance failed.",
-    ...violations.map((violation) => `- ${violation}`),
-  ].join("\n"),
+  ["Workspace dependency governance failed.", ...violations.map((violation) => `- ${violation}`)].join("\n"),
 );
 
 console.log(`Workspace dependency governance verified (${expectedWorkspaces.length} workspaces).`);
 
 function inspectWorkspaceCoverage(): string[] {
   const locations = new Set(expectedWorkspaces.map((workspace) => workspace.location));
-  return locations.has("Frontend")
-    ? []
-    : ["Frontend/package.json is not covered by the root package.json workspaces."];
+  return locations.has("Frontend") ? [] : ["Frontend/package.json is not covered by the root package.json workspaces."];
 }
 
 function inspectLockfileWorkspaceState(): string[] {
@@ -136,9 +155,7 @@ function inspectNativeOptionalDependencyClosure(): string[] {
       dependencyName,
       bindings: packages[`node_modules/${dependencyName}`]?.optionalDependencies ?? {},
     }))
-    .filter(({ bindings }) =>
-      Object.keys(bindings).some((packageName) => declaredBindingNames.has(packageName))
-    );
+    .filter(({ bindings }) => Object.keys(bindings).some((packageName) => declaredBindingNames.has(packageName)));
 
   return nativeEntrypoints.flatMap(({ dependencyName, bindings }) => {
     const bindingEntries = Object.entries(bindings);
@@ -162,62 +179,92 @@ function inspectNativeOptionalDependencyClosure(): string[] {
 
 function inspectRootScripts(): string[] {
   const expectedScripts = {
-    "clean": "rimraf Dist",
-    "bamlcheck": "baml check --from baml_src",
-    "bamlgenerate": "baml generate --from baml_src",
-    "compileopapolicy": "tsx Build/CompileOpaPolicy.ts",
-    "sandboxprepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
-    "securitycheck": "npm audit --audit-level=high",
-    "build": "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
-    "dev": "concurrently -k -n server,frontend -c blue,green \"npm run serverwatch\" \"npm run frontend\"",
-    "dockerup": "docker compose pull && docker compose up -d",
-    "dockerdown": "docker compose down",
-    "dockerlogs": "docker compose logs -f senera",
-    "frontend": "npm --workspace senera-frontend run dev",
-    "frontendcheck": "npm --workspace senera-frontend run check",
-    "frontendtest": "npm --workspace senera-frontend run test",
-    "frontendcoverage": "npm --workspace senera-frontend run coverage",
-    "frontendverify": "npm --workspace senera-frontend run verify",
-    "backendtest": vitestRunCommand(ProjectTestCoveragePolicies.backend.vitestConfig),
-    "backendcoverage": vitestRunCommand(ProjectTestCoveragePolicies.backend.vitestConfig, "--coverage"),
-    "e2etest": vitestRunCommand(E2eTestPolicy.vitestConfig),
-    "coverage": "npm run frontendcoverage && npm run backendcoverage",
-    "server": "npm run build && node Dist/Apps/Server.js",
-    "serverwatch": "tsx Apps/ServerWatch.ts",
-    "serverwatchdry": "tsx Apps/ServerWatch.ts --dry-run",
-    "desktop": "npm run build && npm --workspace senera-frontend run build && electron Dist/Apps/Desktop/Main.js",
-    "desktoppack": "tsx Apps/Desktop/PackageDesktop.ts",
-    "desktoprestore": "npm rebuild better-sqlite3",
-    "verifysuite": "node Dist/Scripts/VerifySuite.js",
-    "verifysuites": "node Dist/Scripts/VerifySuite.js --list",
-    "verifyworkspace": "npm run build && npm run verifysuite -- workspace",
-    "verifycontracts": "npm run build && npm run verifysuite -- contracts",
-    "verify": "npm run build && npm run verifysuite -- core",
-    "verifyplatform": "npm run build && npm run verifysuite -- platform",
-    "verifyrelease": "npm run build && npm run verifysuite -- release",
-    "verifyall": "npm run build && npm run verifysuite -- all-local",
-    "ci": "npm run securitycheck && npm run bamlcheck && npm run check && npm run backendtest && npm run frontendverify && npm run e2etest && npm run build && npm run verifysuite -- workspace core e2e platform release && npm run frontendcoverage && npm run backendcoverage",
+    clean: "rimraf Dist",
+    "quality.baml": "baml check --from baml_src",
+    "quality.baml.generate": "baml generate --from baml_src",
+    "quality.security": "npm audit --audit-level=high",
+    "quality.coverage": "npm run test.coverage.frontend && npm run test.coverage.backend",
+    "policy.compile": "tsx Build/CompileOpaPolicy.ts",
+    "policy.verify": "tsx Build/CompileOpaPolicy.ts --check",
+    "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
+    "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
+    "check.types": "tsc --noEmit",
+    build: "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
+    dev: 'concurrently -k -n server,frontend -c blue,green "npm run dev.server" "npm run dev.frontend"',
+    "docker.up": "docker compose pull && docker compose up -d",
+    "docker.down": "docker compose down",
+    "docker.logs": "docker compose logs -f senera",
+    "dev.frontend": "npm --workspace senera-frontend run dev",
+    "check.frontend-types": "npm --workspace senera-frontend run check.types",
+    "test.frontend": "npm --workspace senera-frontend run test",
+    "test.coverage.frontend": "npm --workspace senera-frontend run test.coverage",
+    "test.backend": vitestRunCommand(ProjectTestCoveragePolicies.backend.vitestConfig),
+    "test.coverage.backend": vitestRunCommand(ProjectTestCoveragePolicies.backend.vitestConfig, "--coverage"),
+    "test.e2e": vitestRunCommand(E2eTestPolicy.vitestConfig),
+    "test.all": "npm test && npm run test.e2e",
+    server: "npm run build && node Dist/Apps/Server.js",
+    "dev.server": "tsx Apps/ServerWatch.ts",
+    "dev.server.dry-run": "tsx Apps/ServerWatch.ts --dry-run",
+    desktop: "npm run build && npm --workspace senera-frontend run build && electron Dist/Apps/Desktop/Main.js",
+    "desktop.pack": "tsx Apps/Desktop/PackageDesktop.ts",
+    "desktop.restore": "npm rebuild better-sqlite3",
+    "verify.suite": "node Dist/Scripts/VerifySuite.js",
+    "verify.suites": "node Dist/Scripts/VerifySuite.js --list",
+    "verify.workspace": "npm run build && npm run verify.suite -- workspace",
+    "verify.contracts": "npm run build && npm run verify.suite -- contracts",
+    "verify.core": "npm run build && npm run verify.suite -- core",
+    "verify.platform": "npm run build && npm run verify.suite -- platform",
+    "verify.release": "npm run build && npm run verify.suite -- release",
+    "verify.all": "npm run build && npm run verify.suite -- all-local",
   };
 
   return [
     ...inspectScripts(rootPackage, "package.json", expectedScripts),
     ...inspectScriptSequence(rootPackage, "package.json", "ci", [
-      "securitycheck",
-      "bamlcheck",
-      "check",
-      "backendtest",
-      "frontendverify",
-      "e2etest",
+      "quality.security",
+      "quality.baml",
+      "policy.verify",
+      "check.types",
+      "test.backend",
+      "test.frontend",
+      "test.e2e",
       "build",
-      "frontendcoverage",
-      "backendcoverage",
+      "quality.coverage",
     ]),
   ];
 }
 
 function inspectRootRuntimeDependencies(): string[] {
-  return inspectDependencies(rootPackage, "package.json", {
-    "@senera/tool-plugin-sdk": "file:Packages/ToolPluginSdk",
+  return inspectDependencies(
+    rootPackage,
+    "package.json",
+    {
+      "@senera/tool-plugin-sdk": "file:Packages/ToolPluginSdk",
+    },
+    "dependencies",
+  );
+}
+
+function inspectRootToolchainDependencies(): string[] {
+  return inspectDependencies(
+    rootPackage,
+    "package.json",
+    Object.fromEntries(rootOwnedToolchainDependencies),
+    "devDependencies",
+  );
+}
+
+function inspectWorkspaceToolchainDependencyBoundaries(): string[] {
+  const toolchainNames = new Set(rootOwnedToolchainDependencies.keys());
+  return expectedWorkspaces.flatMap((workspace) => {
+    const packagePath = path.join(workspaceRoot, workspace.location, "package.json");
+    const packageJson = readPackageJson(packagePath);
+    return [...Object.keys(packageJson.dependencies ?? {}), ...Object.keys(packageJson.devDependencies ?? {})]
+      .filter((dependencyName) => toolchainNames.has(dependencyName))
+      .map(
+        (dependencyName) =>
+          `${workspace.location}/package.json must not declare root-owned toolchain dependency ${dependencyName}.`,
+      );
   });
 }
 
@@ -226,13 +273,10 @@ function inspectModuleSystemBoundary(): string[] {
     ...inspectPackageType(rootPackage, "package.json", "module"),
     ...inspectRootPackageExports(),
     ...inspectWorkspacePackageTypes({
-      "Frontend": "module",
+      Frontend: "module",
       "Packages/ToolPluginSdk": "commonjs",
     }),
-    ...inspectWorkspacePackageTypeByPrefix([
-      "Plugins/",
-      "System/Plugins/",
-    ], "commonjs"),
+    ...inspectWorkspacePackageTypeByPrefix(["Plugins/", "System/Plugins/"], "commonjs"),
   ];
 }
 
@@ -254,17 +298,17 @@ function inspectWorkspacePackageTypes(expectedTypes: Record<string, string>): st
 function inspectWorkspacePackageTypeByPrefix(prefixes: readonly string[], expectedType: string): string[] {
   return expectedWorkspaces
     .filter((workspace) => prefixes.some((prefix) => workspace.location.startsWith(prefix)))
-    .flatMap((workspace) => inspectPackageType(
-      readPackageJson(path.join(workspaceRoot, workspace.location, "package.json")),
-      `${workspace.location}/package.json`,
-      expectedType,
-    ));
+    .flatMap((workspace) =>
+      inspectPackageType(
+        readPackageJson(path.join(workspaceRoot, workspace.location, "package.json")),
+        `${workspace.location}/package.json`,
+        expectedType,
+      ),
+    );
 }
 
 function inspectPackageType(packageJson: PackageJson, packagePath: string, expectedType: string): string[] {
-  return packageJson.type === expectedType
-    ? []
-    : [`${packagePath} type must be: ${expectedType}`];
+  return packageJson.type === expectedType ? [] : [`${packagePath} type must be: ${expectedType}`];
 }
 
 function inspectRetiredRootScripts(): string[] {
@@ -282,10 +326,7 @@ function inspectApplicationEntrypoints(): string[] {
     "Apps/Desktop/PackageDesktop.ts",
     "Build/CopyRuntimeAssets.ts",
   ];
-  const retiredFiles = [
-    "Scripts/SeneraServer.ts",
-    "Scripts/CopyRuntimeAssets.ts",
-  ];
+  const retiredFiles = ["Scripts/SeneraServer.ts", "Scripts/CopyRuntimeAssets.ts"];
 
   return [
     ...expectedFiles
@@ -301,11 +342,11 @@ function inspectTestGovernanceEntrypoints(): string[] {
   const expectedFiles = [
     "Scripts/TestCoveragePolicy.ts",
     "Scripts/TestGovernance.ts",
-    ...Object.values(ProjectTestCoveragePolicies).flatMap((policy) => [
-      policy.verifyEntrypoint,
-      policy.runnerEntrypoint,
-      policy.vitestConfig,
-    ].filter((file): file is string => Boolean(file))),
+    ...Object.values(ProjectTestCoveragePolicies).flatMap((policy) =>
+      [policy.verifyEntrypoint, policy.runnerEntrypoint, policy.vitestConfig].filter((file): file is string =>
+        Boolean(file),
+      ),
+    ),
   ].filter(uniqueString);
   return expectedFiles
     .filter((file) => !fs.existsSync(path.join(workspaceRoot, file)))
@@ -314,11 +355,9 @@ function inspectTestGovernanceEntrypoints(): string[] {
 
 function inspectDesktopPackageConfig(): string[] {
   return [
-    ...(
-      rootPackage.build?.extraMetadata?.main === "Dist/Apps/Desktop/Main.js"
-        ? []
-        : ["package.json build.extraMetadata.main must point to Dist/Apps/Desktop/Main.js."]
-    ),
+    ...(rootPackage.build?.extraMetadata?.main === "Dist/Apps/Desktop/Main.js"
+      ? []
+      : ["package.json build.extraMetadata.main must point to Dist/Apps/Desktop/Main.js."]),
     ...inspectDesktopPackageScript(),
     ...inspectDesktopFileSet("Packages/ToolPluginSdk", "node_modules/@senera/tool-plugin-sdk"),
     ...inspectDesktopAsarUnpack([
@@ -359,11 +398,11 @@ function inspectDesktopAsarUnpack(expectedEntries: readonly string[]): string[] 
 function inspectFrontendScripts(): string[] {
   const frontendPackage = readPackageJson(path.join(workspaceRoot, "Frontend", "package.json"));
   return inspectScripts(frontendPackage, "Frontend/package.json", {
-    "arch:check": "node --import tsx ../Scripts/VerifyFrontendArchitecture.ts",
-    "check": "tsc --noEmit",
-    "test": `node --import tsx ../${ProjectTestCoveragePolicies.frontend.runnerEntrypoint}`,
-    "coverage": vitestRunCommand(`../${ProjectTestCoveragePolicies.frontend.vitestConfig}`, "--coverage"),
-    "verify": `npm run arch:check && npm run check && node --import tsx ../${ProjectTestCoveragePolicies.frontend.verifyEntrypoint} && npm run test`,
+    "check.types": "tsc --noEmit",
+    "check.governance": `node --import tsx ../${ProjectTestCoveragePolicies.frontend.verifyEntrypoint}`,
+    "test.behavior": `node --import tsx ../${ProjectTestCoveragePolicies.frontend.runnerEntrypoint}`,
+    "test.coverage": vitestRunCommand(`../${ProjectTestCoveragePolicies.frontend.vitestConfig}`, "--coverage"),
+    test: "npm run check.types && npm run check.governance && npm run test.behavior",
   });
 }
 
@@ -405,14 +444,14 @@ function inspectVerifyWorkflow(): string[] {
     "name: Windows Platform Smoke",
     "name: Coverage Gate",
     "./.github/actions/setup-node",
-    "npm run backendtest",
-    "npm run frontendverify",
-    "npm run e2etest",
-    "npm run verifysuite -- workspace core e2e release",
-    "npm run verifysuite -- platform",
+    "npm run test.backend",
+    "npm run test.frontend",
+    "npm run test.e2e",
+    "npm run verify.suite -- workspace core e2e release",
+    "npm run verify.suite -- platform",
     "github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'",
-    "npm run frontendcoverage",
-    "npm run backendcoverage",
+    "npm run test.coverage.frontend",
+    "npm run test.coverage.backend",
     "inputs.full_suite",
   ]);
 }
@@ -424,67 +463,69 @@ function inspectSecurityScanWorkflow(): string[] {
     "queries: security-extended,security-and-quality",
     "actions/dependency-review-action@v4",
     "aquasecurity/trivy-action@0.35.0",
-    "exit-code: \"1\"",
+    'exit-code: "1"',
     "github/codeql-action/upload-sarif@v3",
     "if: github.event_name != 'pull_request'",
-    "npm run securitycheck",
+    "npm run quality.security",
   ]);
 }
 
 function inspectReleaseWorkflowGates(): string[] {
-  return [
-    ...inspectTextIncludes(containerReleaseWorkflow, ".github/workflows/container-release.yml", [
-      "workflow_dispatch:",
-      "channel:",
-      "source_sha:",
-      "Require successful verification",
-      "gh run list --workflow verify.yml",
-      "type=raw,value=sha-${{ needs.source.outputs.sha }}",
-      "type=raw,value=preview",
-      "Promote immutable image without rebuilding",
-      "--tag \"$IMAGE:latest\"",
-    ]),
-    ...inspectTextIncludes(desktopReleaseWorkflow, ".github/workflows/desktop-release.yml", [
-      "workflow_dispatch:",
-      "channel:",
-      "release_tag:",
-      "Require successful verification",
-      "gh run list --workflow verify.yml",
-      "--prerelease",
-      "Promote preview release without rebuilding",
-      "--prerelease=false",
-    ]),
-  ];
+  return inspectTextIncludes(productReleaseWorkflow, ".github/workflows/release.yml", [
+    "workflow_run:",
+    "workflow_dispatch:",
+    "release_tag:",
+    "googleapis/release-please-action@v4",
+    "needs.release-please.outputs.release_created == 'true'",
+    "Build/ProductReleaseInfo.ts",
+    "Require successful verification",
+    "gh run list --workflow verify.yml",
+    "npm run desktop.pack",
+    "gh release upload",
+    "type=raw,value=${{ needs.metadata.outputs.container_version_tag }}",
+    "type=raw,value=${{ needs.metadata.outputs.container_minor_tag }}",
+    "type=raw,value=sha-${{ needs.metadata.outputs.source_sha }}",
+    "type=raw,value=latest",
+    "cache-from: type=gha",
+    "cache-to: type=gha,mode=max",
+    "Publish Verified Release",
+    "--draft=false --latest",
+  ]);
 }
 
 function inspectWorkspaceNpmrcFiles(): string[] {
   return expectedWorkspaces
     .map((workspace) => path.join(workspaceRoot, workspace.location, ".npmrc"))
     .filter((file) => fs.existsSync(file))
-    .map((file) => [
-      `${relativePath(file)} is ignored by npm workspace execution.`,
-      "Move shared npm install policy to the repository root or remove it.",
-    ].join(" "));
+    .map((file) =>
+      [
+        `${relativePath(file)} is ignored by npm workspace execution.`,
+        "Move shared npm install policy to the repository root or remove it.",
+      ].join(" "),
+    );
 }
 
 function inspectWorkspaceLockFiles(): string[] {
   return expectedWorkspaces
     .map((workspace) => path.join(workspaceRoot, workspace.location, "package-lock.json"))
     .filter((file) => fs.existsSync(file))
-    .map((file) => [
-      `${relativePath(file)} creates a second npm install boundary.`,
-      "Keep dependency resolution in the root package-lock.json; do not commit workspace-local package-lock.json files.",
-    ].join(" "));
+    .map((file) =>
+      [
+        `${relativePath(file)} creates a second npm install boundary.`,
+        "Keep dependency resolution in the root package-lock.json; do not commit workspace-local package-lock.json files.",
+      ].join(" "),
+    );
 }
 
 function inspectDependencies(
   packageJson: PackageJson,
   packagePath: string,
   expectedDependencies: Record<string, string>,
+  dependencyField: "dependencies" | "devDependencies" = "dependencies",
 ): string[] {
   return Object.entries(expectedDependencies)
-    .filter(([name, version]) => packageJson.dependencies?.[name] !== version)
-    .map(([name, version]) => `${packagePath} dependency ${name} must be: ${version}`);
+    .filter(([name, version]) => packageJson[dependencyField]?.[name] !== version)
+    .map(([name, version]) => `${packagePath} ${dependencyField} ${name} must be: ${version}`);
 }
 
 function isElectronBuilderFileSet(value: string | ElectronBuilderFileSet): value is ElectronBuilderFileSet {
@@ -516,9 +557,7 @@ function inspectScriptSequence(
     .split("&&")
     .map((command) => command.trim())
     .filter(Boolean);
-  const missingSteps = expectedSteps
-    .map((step) => `npm run ${step}`)
-    .filter((command) => !commands.includes(command));
+  const missingSteps = expectedSteps.map((step) => `npm run ${step}`).filter((command) => !commands.includes(command));
 
   return missingSteps.length === 0
     ? []
@@ -526,13 +565,7 @@ function inspectScriptSequence(
 }
 
 function vitestRunCommand(configPath: string, ...args: readonly string[]): string {
-  return [
-    "vitest",
-    "run",
-    "--config",
-    configPath,
-    ...args,
-  ].join(" ");
+  return ["vitest", "run", "--config", configPath, ...args].join(" ");
 }
 
 function uniqueString(value: string, index: number, values: readonly string[]): boolean {
@@ -540,15 +573,15 @@ function uniqueString(value: string, index: number, values: readonly string[]): 
 }
 
 function discoverWorkspacePackages(patterns: readonly string[]): WorkspacePackage[] {
-  const packageFiles = fg.sync(patterns.map(toPackageJsonPattern), {
-    cwd: workspaceRoot,
-    absolute: true,
-    onlyFiles: true,
-    unique: true,
-    ignore: [
-      "**/node_modules/**",
-    ],
-  }).sort((left, right) => relativePath(left).localeCompare(relativePath(right)));
+  const packageFiles = fg
+    .sync(patterns.map(toPackageJsonPattern), {
+      cwd: workspaceRoot,
+      absolute: true,
+      onlyFiles: true,
+      unique: true,
+      ignore: ["**/node_modules/**"],
+    })
+    .sort((left, right) => relativePath(left).localeCompare(relativePath(right)));
 
   assert.ok(packageFiles.length > 0, "Root package.json workspaces did not match any package.json files.");
 
@@ -586,7 +619,8 @@ function readPackageLockJson(file: string): PackageLockJson {
 
 function readNpmrcSettings(file: string): Map<string, string> {
   return new Map(
-    fs.readFileSync(file, "utf8")
+    fs
+      .readFileSync(file, "utf8")
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith("#"))
@@ -602,7 +636,7 @@ function readNpmrcSettings(file: string): Map<string, string> {
 function readLockfileWorkspacePatterns(lockfile: PackageLockJson): string[] {
   const workspaces = lockfile.packages?.[""]?.workspaces;
   return Array.isArray(workspaces)
-    ? workspaces.flatMap((workspace) => typeof workspace === "string" ? [workspace] : [])
+    ? workspaces.flatMap((workspace) => (typeof workspace === "string" ? [workspace] : []))
     : [];
 }
 
@@ -615,15 +649,11 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
 }
 
 function inspectTextIncludes(source: string, label: string, expectedTerms: readonly string[]): string[] {
-  return expectedTerms
-    .filter((term) => !source.includes(term))
-    .map((term) => `${label} must include ${term}.`);
+  return expectedTerms.filter((term) => !source.includes(term)).map((term) => `${label} must include ${term}.`);
 }
 
 function toPackageJsonPattern(pattern: string): string {
-  return pattern.endsWith("package.json")
-    ? pattern
-    : path.posix.join(normalizeRelativePath(pattern), "package.json");
+  return pattern.endsWith("package.json") ? pattern : path.posix.join(normalizeRelativePath(pattern), "package.json");
 }
 
 function normalizeRelativePath(value: string): string {

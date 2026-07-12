@@ -1,19 +1,15 @@
 import { z } from "zod";
 import { disabledOrPositiveInteger } from "./AgentConfigSchemaPrimitives.js";
 
-export const ActionPlannerClientSchema = (path: string) => z
-  .object({
-    ModelProviderId: z.string().min(1).optional(),
-    Provider: z.enum([
-      "openai-generic",
-      "openai-responses",
-      "anthropic",
-      "google-ai",
-    ]).optional(),
-    Temperature: z.number().min(0).max(2).optional(),
-    MaxTokens: disabledOrPositiveInteger(`${path}.MaxTokens`).optional(),
-  })
-  .strict();
+export const ActionPlannerClientSchema = (path: string) =>
+  z
+    .object({
+      ModelProviderId: z.string().min(1).optional(),
+      Provider: z.enum(["openai-generic", "openai-responses", "anthropic", "google-ai"]).optional(),
+      Temperature: z.number().min(0).max(2).optional(),
+      MaxTokens: disabledOrPositiveInteger(`${path}.MaxTokens`).optional(),
+    })
+    .strict();
 
 export const ActionPlannerSchema = z
   .object({

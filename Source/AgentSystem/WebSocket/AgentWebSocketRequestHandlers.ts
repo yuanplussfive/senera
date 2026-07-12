@@ -1,15 +1,9 @@
-import {
-  AgentEventKinds,
-  type AgentDomainEvent,
-} from "../Events/AgentEvent.js";
+import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { resolveModelProviderCatalog } from "../AgentDefaults.js";
 import { projectAgentConfigForm } from "../Config/AgentConfigFormProjector.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
-import type {
-  AgentWebSocketEventSender,
-  AgentWebSocketRequestContext,
-} from "./AgentWebSocketTypes.js";
+import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export class AgentWebSocketSessionRequestHandlers {
@@ -41,10 +35,7 @@ export class AgentWebSocketSessionRequestHandlers {
     });
   }
 
-  async close(
-    request: AgentWebSocketRequestOf<"session.close">,
-    sendEvent: AgentWebSocketEventSender,
-  ): Promise<void> {
+  async close(request: AgentWebSocketRequestOf<"session.close">, sendEvent: AgentWebSocketEventSender): Promise<void> {
     await this.context.sessionManager.closeSession({
       sessionId: request.sessionId,
       onEvent: sendEvent,
@@ -169,10 +160,7 @@ export class AgentWebSocketConfigRequestHandlers {
     });
   }
 
-  updateConfig(
-    request: AgentWebSocketRequestOf<"config.update">,
-    sendEvent: AgentWebSocketEventSender,
-  ): void {
+  updateConfig(request: AgentWebSocketRequestOf<"config.update">, sendEvent: AgentWebSocketEventSender): void {
     if (!this.context.configService) {
       throw new Error(agentErrorMessage("websocket.configServiceDisabled"));
     }
@@ -271,10 +259,7 @@ export class AgentWebSocketPresetRequestHandlers {
     });
   }
 
-  async save(
-    request: AgentWebSocketRequestOf<"preset.save">,
-    sendEvent: AgentWebSocketEventSender,
-  ): Promise<void> {
+  async save(request: AgentWebSocketRequestOf<"preset.save">, sendEvent: AgentWebSocketEventSender): Promise<void> {
     sendEvent({
       kind: AgentEventKinds.PresetSnapshot,
       context: {},
@@ -288,10 +273,7 @@ export class AgentWebSocketPresetRequestHandlers {
     });
   }
 
-  async delete(
-    request: AgentWebSocketRequestOf<"preset.delete">,
-    sendEvent: AgentWebSocketEventSender,
-  ): Promise<void> {
+  async delete(request: AgentWebSocketRequestOf<"preset.delete">, sendEvent: AgentWebSocketEventSender): Promise<void> {
     sendEvent({
       kind: AgentEventKinds.PresetSnapshot,
       context: {},
@@ -340,10 +322,7 @@ export class AgentWebSocketProfileRequestHandlers {
 export class AgentWebSocketApprovalRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
 
-  resolve(
-    request: AgentWebSocketRequestOf<"approval.resolve">,
-    sendEvent: AgentWebSocketEventSender,
-  ): void {
+  resolve(request: AgentWebSocketRequestOf<"approval.resolve">, sendEvent: AgentWebSocketEventSender): void {
     const approvalRuntime = this.context.approvalRuntime;
     if (!approvalRuntime) {
       throw new Error(agentErrorMessage("websocket.approvalServiceDisabled"));
@@ -367,6 +346,7 @@ export class AgentWebSocketApprovalRequestHandlers {
       approvalId: request.approvalId,
       status: request.status,
       message: request.message,
+      scope: request.scope,
     });
     if (!resolution) {
       sendEvent({
@@ -398,6 +378,7 @@ export class AgentWebSocketApprovalRequestHandlers {
         createdAt: pending.createdAt,
         status: resolution.status,
         message: resolution.message,
+        scope: resolution.scope,
         resolvedAt: resolution.resolvedAt,
       },
     });

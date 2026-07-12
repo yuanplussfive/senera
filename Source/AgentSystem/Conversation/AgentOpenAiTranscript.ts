@@ -25,31 +25,41 @@ export type AgentOpenAiTranscriptMessage =
       content: string;
     };
 
-const FunctionToolCallSchema = z.object({
-  id: z.string().trim().min(1),
-  type: z.literal("function"),
-  function: z.object({
-    name: z.string().trim().min(1),
-    arguments: z.string(),
-  }).strict(),
-}).strict();
+const FunctionToolCallSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    type: z.literal("function"),
+    function: z
+      .object({
+        name: z.string().trim().min(1),
+        arguments: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
 
-const TextMessageSchema = z.object({
-  role: z.enum(["system", "developer", "user"]),
-  content: z.string(),
-}).strict();
+const TextMessageSchema = z
+  .object({
+    role: z.enum(["system", "developer", "user"]),
+    content: z.string(),
+  })
+  .strict();
 
-const AssistantMessageSchema = z.object({
-  role: z.literal("assistant"),
-  content: z.string().nullable(),
-  tool_calls: z.array(FunctionToolCallSchema).optional(),
-}).strict();
+const AssistantMessageSchema = z
+  .object({
+    role: z.literal("assistant"),
+    content: z.string().nullable(),
+    tool_calls: z.array(FunctionToolCallSchema).optional(),
+  })
+  .strict();
 
-const ToolMessageSchema = z.object({
-  role: z.literal("tool"),
-  tool_call_id: z.string().trim().min(1),
-  content: z.string(),
-}).strict();
+const ToolMessageSchema = z
+  .object({
+    role: z.literal("tool"),
+    tool_call_id: z.string().trim().min(1),
+    content: z.string(),
+  })
+  .strict();
 
 export const AgentOpenAiTranscriptMessageSchema = z.union([
   TextMessageSchema,
@@ -57,9 +67,7 @@ export const AgentOpenAiTranscriptMessageSchema = z.union([
   ToolMessageSchema,
 ]);
 
-export function parseAgentOpenAiTranscriptMessages(
-  value: unknown,
-): AgentOpenAiTranscriptMessage[] {
+export function parseAgentOpenAiTranscriptMessages(value: unknown): AgentOpenAiTranscriptMessage[] {
   const parsed = z.array(AgentOpenAiTranscriptMessageSchema).safeParse(value);
   return parsed.success ? parsed.data : [];
 }

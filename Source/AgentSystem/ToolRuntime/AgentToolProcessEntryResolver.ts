@@ -2,10 +2,7 @@ import path from "node:path";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { PluginEntryManifest } from "../Types/PluginManifestTypes.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import { failedToolProcessResult } from "./AgentToolProcessResultFactory.js";
 
@@ -79,8 +76,6 @@ export class AgentToolProcessEntryResolver {
 
   private resolveEntryCwd(tool: RegisteredTool, entry: PluginEntryManifest): string {
     const cwd = entry.Cwd ?? ".";
-    return path.isAbsolute(cwd)
-      ? path.normalize(cwd)
-      : path.resolve(tool.plugin.rootPath, cwd);
+    return path.isAbsolute(cwd) ? path.normalize(cwd) : path.resolve(tool.plugin.rootPath, cwd);
   }
 }

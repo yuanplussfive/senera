@@ -11,32 +11,42 @@ import type {
 } from "./AgentToolSearchMemoryRows.js";
 
 const StringArrayColumnSchema = z.array(z.string());
-const LearnedKeywordColumnSchema = z.array(z.object({
-  toolName: z.string().min(1),
-  value: z.string().min(1),
-  source: z.string().min(1),
-  weight: z.number(),
-}).strict());
-const ToolCallColumnSchema = z.array(z.object({
-  toolName: z.string().min(1),
-  argumentKeys: z.array(z.string()),
-  evidenceKinds: z.array(z.string()).default([]),
-  status: z.enum(["success", "failure", "empty"]),
-  evidenceUris: z.array(z.string()),
-  artifactUris: z.array(z.string()),
-  hasArtifact: z.boolean(),
-  hasEvidence: z.boolean(),
-  hasWorkspaceChanges: z.boolean(),
-  errorCode: z.string().default(""),
-  error: z.string(),
-  score: z.number(),
-}).strict());
-const FinalOutcomeColumnSchema = z.object({
-  toolExecutionSucceeded: z.boolean(),
-  producedEvidence: z.boolean(),
-  producedArtifact: z.boolean(),
-  changedWorkspace: z.boolean(),
-}).strict();
+const LearnedKeywordColumnSchema = z.array(
+  z
+    .object({
+      toolName: z.string().min(1),
+      value: z.string().min(1),
+      source: z.string().min(1),
+      weight: z.number(),
+    })
+    .strict(),
+);
+const ToolCallColumnSchema = z.array(
+  z
+    .object({
+      toolName: z.string().min(1),
+      argumentKeys: z.array(z.string()),
+      evidenceKinds: z.array(z.string()).default([]),
+      status: z.enum(["success", "failure", "empty"]),
+      evidenceUris: z.array(z.string()),
+      artifactUris: z.array(z.string()),
+      hasArtifact: z.boolean(),
+      hasEvidence: z.boolean(),
+      hasWorkspaceChanges: z.boolean(),
+      errorCode: z.string().default(""),
+      error: z.string(),
+      score: z.number(),
+    })
+    .strict(),
+);
+const FinalOutcomeColumnSchema = z
+  .object({
+    toolExecutionSucceeded: z.boolean(),
+    producedEvidence: z.boolean(),
+    producedArtifact: z.boolean(),
+    changedWorkspace: z.boolean(),
+  })
+  .strict();
 
 export function episodeRecord(episode: AgentToolSearchEpisode): Record<string, unknown> {
   return {
@@ -129,4 +139,3 @@ function stringifyJsonColumn<T>(schema: z.ZodType<T>, value: T): string {
 function parseJsonColumn<T>(schema: z.ZodType<T>, value: string): T {
   return schema.parse(JSON.parse(value) as unknown);
 }
-

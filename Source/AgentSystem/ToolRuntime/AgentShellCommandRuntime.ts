@@ -1,14 +1,8 @@
 import { z } from "zod";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
-import {
-  createToolProcessSuccessResponse,
-  toolProcessFailureResult,
-} from "./AgentToolProcessEnvelope.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { createToolProcessSuccessResponse, toolProcessFailureResult } from "./AgentToolProcessEnvelope.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { cancelledToolProcessResult } from "./AgentToolCancellation.js";
 import { resolveToolExecutionConfig } from "../AgentDefaults.js";
 import { resolveWorkspacePath } from "../Execution/SeneraWorkspacePath.js";
@@ -27,12 +21,15 @@ const ShellCommandArgumentsSchema = z
   .object({
     command: z.string().trim().min(1),
     cwd: z.string().trim().min(1).optional(),
-    timeoutMs: z.coerce.number().int().positive().max(30 * 60 * 1000).optional(),
+    timeoutMs: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(30 * 60 * 1000)
+      .optional(),
     justification: z.string().trim().min(1).optional(),
   })
   .strict();
-
-type ShellCommandArguments = z.infer<typeof ShellCommandArgumentsSchema>;
 
 export const runShellCommandHostTool: AgentHostToolHandler = async (args, context) => {
   const parsed = ShellCommandArgumentsSchema.safeParse(args);
@@ -48,7 +45,7 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
       diagnostics: parsed.error.issues.map((issue) => ({
         message: issue.message,
         pointer: `/${issue.path.join("/")}`,
-        path: issue.path.map((entry) => typeof entry === "number" ? entry : String(entry)),
+        path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
       })),
     });
   }
@@ -157,22 +154,22 @@ function shellExecutionFailure(input: {
 
   return shellFailure({
     code,
-    message: code === AgentExecutionErrorCodes.ToolProcessTimeout
-      ? agentErrorMessage("tool.shellCommandTimeout", {
-          timeoutMs: input.timeoutMs,
-          command: input.command,
-        })
-      : message,
+    message:
+      code === AgentExecutionErrorCodes.ToolProcessTimeout
+        ? agentErrorMessage("tool.shellCommandTimeout", {
+            timeoutMs: input.timeoutMs,
+            command: input.command,
+          })
+        : message,
     details: {
-      phase: code === AgentExecutionErrorCodes.ToolProcessSpawnFailed
-        ? AgentToolProcessErrorPhases.ProcessSpawn
-        : AgentToolProcessErrorPhases.RuntimeExecution,
+      phase:
+        code === AgentExecutionErrorCodes.ToolProcessSpawnFailed
+          ? AgentToolProcessErrorPhases.ProcessSpawn
+          : AgentToolProcessErrorPhases.RuntimeExecution,
       cwd: input.cwd,
       command: input.command,
       timeoutMs: input.timeoutMs,
-      seneraExecutionCode: input.error instanceof SeneraExecutionError
-        ? input.error.code
-        : undefined,
+      seneraExecutionCode: input.error instanceof SeneraExecutionError ? input.error.code : undefined,
     },
   });
 }
@@ -186,9 +183,9 @@ const AgentShellErrorCodeBySeneraCode = {
   [SeneraExecutionErrorCodes.SandboxUnavailable]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
   [SeneraExecutionErrorCodes.SpawnFailed]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
   [SeneraExecutionErrorCodes.Unknown]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
-} satisfies Record<SeneraExecutionErrorCode, typeof AgentExecutionErrorCodes[keyof typeof AgentExecutionErrorCodes]>;
+} satisfies Record<SeneraExecutionErrorCode, (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes]>;
 
-function shellErrorCode(error: unknown): typeof AgentExecutionErrorCodes[keyof typeof AgentExecutionErrorCodes] {
+function shellErrorCode(error: unknown): (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes] {
   return error instanceof SeneraExecutionError
     ? AgentShellErrorCodeBySeneraCode[error.code]
     : AgentExecutionErrorCodes.ToolProcessSpawnFailed;

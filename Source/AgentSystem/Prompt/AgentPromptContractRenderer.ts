@@ -1,8 +1,5 @@
-import { AgentXmlCodec } from "../Xml/AgentXmlCodec.js";
-import type {
-  AgentPromptContractProperty,
-  ContractProjectionNode,
-} from "./AgentPromptContractTypes.js";
+import { type AgentXmlCodec } from "../Xml/AgentXmlCodec.js";
+import type { AgentPromptContractProperty, ContractProjectionNode } from "./AgentPromptContractTypes.js";
 
 export class AgentPromptContractRenderer {
   constructor(
@@ -13,11 +10,7 @@ export class AgentPromptContractRenderer {
   ) {}
 
   renderTsHintLines(rootName: string, properties: ContractProjectionNode[]): string[] {
-    return [
-      `${rootName}: {`,
-      ...properties.flatMap((property) => this.renderTsHintProperty(property, 1)),
-      "}",
-    ];
+    return [`${rootName}: {`, ...properties.flatMap((property) => this.renderTsHintProperty(property, 1)), "}"];
   }
 
   renderXmlPreview(rootName: string, properties: ContractProjectionNode[]): string {
@@ -85,9 +78,7 @@ export class AgentPromptContractRenderer {
     return property.kind === "scalar"
       ? this.renderLeafPreviewValue(property)
       : property.kind === "object"
-        ? Object.fromEntries(
-            property.children.map((child) => [child.name, this.renderXmlPreviewValue(child)]),
-          )
+        ? Object.fromEntries(property.children.map((child) => [child.name, this.renderXmlPreviewValue(child)]))
         : [property.element ? this.renderXmlArrayElementValue(property.element) : this.options.arrayItemName];
   }
 
@@ -95,9 +86,7 @@ export class AgentPromptContractRenderer {
     return property.kind === "scalar"
       ? this.renderLeafPreviewValue(property)
       : property.kind === "object"
-        ? Object.fromEntries(
-            property.children.map((child) => [child.name, this.renderXmlPreviewValue(child)]),
-          )
+        ? Object.fromEntries(property.children.map((child) => [child.name, this.renderXmlPreviewValue(child)]))
         : [property.element ? this.renderXmlArrayElementValue(property.element) : this.options.arrayItemName];
   }
 
@@ -108,9 +97,11 @@ export class AgentPromptContractRenderer {
 
 function sampleScalar(typeText: string): string | undefined {
   const normalized = typeText.trim();
-  return ({
-    string: "text",
-    number: "0",
-    boolean: "false",
-  } as const)[normalized];
+  return (
+    {
+      string: "text",
+      number: "0",
+      boolean: "false",
+    } as const
+  )[normalized];
 }

@@ -1,19 +1,8 @@
-import type {
-  AgentMessage,
-} from "@earendil-works/pi-agent-core";
-import type {
-  AssistantMessage,
-  Message,
-  ToolResultMessage,
-  Usage,
-} from "@earendil-works/pi-ai";
-import type {
-  AgentConversationEntry,
-} from "../Conversation/AgentConversation.js";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage, Message, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
+import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import { AgentConversationEntryKinds } from "../Conversation/AgentConversation.js";
-import type {
-  AgentOpenAiTranscriptMessage,
-} from "../Conversation/AgentOpenAiTranscript.js";
+import type { AgentOpenAiTranscriptMessage } from "../Conversation/AgentOpenAiTranscript.js";
 import type { AgentPiModelProjection } from "./AgentPiTypes.js";
 
 export interface AgentPiOpenAiTranscriptProjection {
@@ -62,9 +51,8 @@ export class AgentPiOpenAiTranscriptProjector {
     currentRequestId: string,
   ): AgentOpenAiTranscriptMessage[] {
     return this.groupTurns(entries).flatMap((turn) =>
-      turn.requestId === currentRequestId
-        ? []
-        : this.materializeHistoricalTurn(turn));
+      turn.requestId === currentRequestId ? [] : this.materializeHistoricalTurn(turn),
+    );
   }
 
   private materializeHistoricalTurn(turn: ConversationTurn): AgentOpenAiTranscriptMessage[] {
@@ -75,10 +63,12 @@ export class AgentPiOpenAiTranscriptProjector {
 
     const user = turn.users.at(0);
     return user
-      ? [{
-          role: "user",
-          content: projectUserContent(user),
-        }]
+      ? [
+          {
+            role: "user",
+            content: projectUserContent(user),
+          },
+        ]
       : [];
   }
 
@@ -104,14 +94,12 @@ export class AgentPiOpenAiTranscriptProjector {
     return projected;
   }
 
-  private currentUserContent(
-    entries: readonly AgentConversationEntry[],
-    requestId: string,
-  ): string | undefined {
+  private currentUserContent(entries: readonly AgentConversationEntry[], requestId: string): string | undefined {
     const current = entries
-      .filter((entry): entry is Extract<AgentConversationEntry, { kind: "user.message" }> =>
-        entry.kind === AgentConversationEntryKinds.UserMessage
-        && entry.requestId === requestId)
+      .filter(
+        (entry): entry is Extract<AgentConversationEntry, { kind: "user.message" }> =>
+          entry.kind === AgentConversationEntryKinds.UserMessage && entry.requestId === requestId,
+      )
       .at(-1);
     return current ? projectUserContent(current) : undefined;
   }
@@ -178,10 +166,12 @@ function projectOpenAiMessageToPi(
     role: "assistant",
     content: [
       ...(message.content
-        ? [{
-            type: "text" as const,
-            text: message.content,
-          }]
+        ? [
+            {
+              type: "text" as const,
+              text: message.content,
+            },
+          ]
         : []),
       ...toolCalls.map((call) => ({
         type: "toolCall" as const,
@@ -199,16 +189,18 @@ function projectOpenAiMessageToPi(
   } satisfies AssistantMessage;
 }
 
-function projectUserContent(
-  entry: Extract<AgentConversationEntry, { kind: "user.message" }>,
-): string {
+function projectUserContent(entry: Extract<AgentConversationEntry, { kind: "user.message" }>): string {
   if (!entry.attachments || entry.attachments.length === 0) {
     return entry.content;
   }
-  return JSON.stringify({
-    content: entry.content,
-    attachments: entry.attachments,
-  }, null, 2);
+  return JSON.stringify(
+    {
+      content: entry.content,
+      attachments: entry.attachments,
+    },
+    null,
+    2,
+  );
 }
 
 function parseToolArguments(value: string): Record<string, unknown> {
@@ -230,7 +222,5 @@ function readToolMessageIsError(content: string): boolean {
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }

@@ -8,9 +8,7 @@ import {
   ToolSearchDocumentStoreFields,
 } from "./AgentToolSearchDocumentBuilder.js";
 import { AgentToolSearchRankPipeline } from "./AgentToolSearchRankPipeline.js";
-import {
-  matchToolCapabilities,
-} from "./AgentToolSearchCapabilities.js";
+import { matchToolCapabilities } from "./AgentToolSearchCapabilities.js";
 import type {
   AgentToolSearchOptions,
   AgentToolSearchRankedEntry,
@@ -63,11 +61,8 @@ export class AgentToolSearchIndex {
 
   search(options: AgentToolSearchOptions): AgentToolSearchResult[] {
     const ranked = this.rankPipeline.rank(options);
-    const memoryByTool = new Map(
-      (options.memoryEvidence ?? []).map((entry) => [entry.toolName, entry]),
-    );
-    return ranked.entries.map((entry) =>
-      this.toResult(entry, ranked.rankers, ranked.queryTokens, memoryByTool));
+    const memoryByTool = new Map((options.memoryEvidence ?? []).map((entry) => [entry.toolName, entry]));
+    return ranked.entries.map((entry) => this.toResult(entry, ranked.rankers, ranked.queryTokens, memoryByTool));
   }
 
   getToolNames(): string[] {
@@ -89,14 +84,12 @@ export class AgentToolSearchIndex {
       throw new Error(`工具搜索索引缺少文档：${entry.toolName}`);
     }
 
-    const matchedTerms = queryTokens.filter((token) =>
-      this.tokenizer.tokenize(doc.coreText).includes(token));
+    const matchedTerms = queryTokens.filter((token) => this.tokenizer.tokenize(doc.coreText).includes(token));
     const ranks = Object.fromEntries(
-      (Object.keys(rankers) as AgentToolSearchRankerName[])
-        .flatMap((name) => {
-          const rank = rankers[name].get(entry.toolName);
-          return rank === undefined ? [] : [[name, rank] as const];
-        }),
+      (Object.keys(rankers) as AgentToolSearchRankerName[]).flatMap((name) => {
+        const rank = rankers[name].get(entry.toolName);
+        return rank === undefined ? [] : [[name, rank] as const];
+      }),
     );
 
     return {

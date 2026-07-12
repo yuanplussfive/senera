@@ -6,10 +6,7 @@ import {
   type SeneraShellExecutionResult,
 } from "./SeneraExecutionTypes.js";
 import { SeneraProcessOutputBuffer } from "./SeneraProcessOutputBuffer.js";
-import type {
-  SeneraProcessExecutionBackend,
-  SeneraProcessExecutionRequest,
-} from "./SeneraProcessExecutionBackend.js";
+import type { SeneraProcessExecutionBackend, SeneraProcessExecutionRequest } from "./SeneraProcessExecutionBackend.js";
 
 export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
   readonly kind = "node-local";
@@ -30,7 +27,7 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
       });
       const output = new SeneraProcessOutputBuffer({ encoding: "auto" });
       let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined = undefined;
 
       const killChild = (): void => {
         if (child.pid === undefined) return;
@@ -58,61 +55,76 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
         return;
       }
 
-      timer = request.timeoutMs > 0
-        ? setTimeout(() =>
-            rejectWith(new SeneraExecutionError(
-              SeneraExecutionErrorCodes.Timeout,
-              `命令执行超时，超过 ${request.timeoutMs}ms。`,
-              { timeoutMs: request.timeoutMs },
-            )),
-          request.timeoutMs)
-        : undefined;
+      timer =
+        request.timeoutMs > 0
+          ? setTimeout(
+              () =>
+                rejectWith(
+                  new SeneraExecutionError(
+                    SeneraExecutionErrorCodes.Timeout,
+                    `命令执行超时，超过 ${request.timeoutMs}ms。`,
+                    { timeoutMs: request.timeoutMs },
+                  ),
+                ),
+              request.timeoutMs,
+            )
+          : undefined;
 
       child.stdout?.on("data", (chunk: Buffer) => {
         output.pushStdout(chunk);
         if (output.stdoutBytes > request.limits.maxStdoutBytes) {
-          rejectWith(new SeneraExecutionError(
-            SeneraExecutionErrorCodes.StdoutLimitExceeded,
-            `stdout 超过 ${request.limits.maxStdoutBytes} 字节。`,
-            {
-              maxStdoutBytes: request.limits.maxStdoutBytes,
-              actualBytes: output.stdoutBytes,
-            },
-          ));
+          rejectWith(
+            new SeneraExecutionError(
+              SeneraExecutionErrorCodes.StdoutLimitExceeded,
+              `stdout 超过 ${request.limits.maxStdoutBytes} 字节。`,
+              {
+                maxStdoutBytes: request.limits.maxStdoutBytes,
+                actualBytes: output.stdoutBytes,
+              },
+            ),
+          );
         }
       });
       child.stderr?.on("data", (chunk: Buffer) => {
         output.pushStderr(chunk);
         if (output.stderrBytes > request.limits.maxStderrBytes) {
-          rejectWith(new SeneraExecutionError(
-            SeneraExecutionErrorCodes.StderrLimitExceeded,
-            `stderr 超过 ${request.limits.maxStderrBytes} 字节。`,
-            {
-              maxStderrBytes: request.limits.maxStderrBytes,
-              actualBytes: output.stderrBytes,
-            },
-          ));
+          rejectWith(
+            new SeneraExecutionError(
+              SeneraExecutionErrorCodes.StderrLimitExceeded,
+              `stderr 超过 ${request.limits.maxStderrBytes} 字节。`,
+              {
+                maxStderrBytes: request.limits.maxStderrBytes,
+                actualBytes: output.stderrBytes,
+              },
+            ),
+          );
         }
       });
       child.on("error", (error) => {
-        settle(() => reject(new SeneraExecutionError(
-          SeneraExecutionErrorCodes.SpawnFailed,
-          error instanceof Error ? error.message : String(error),
-          {
-            command: request.command,
-            args: request.args,
-            cwd: request.cwd,
-          },
-          error instanceof Error ? error : undefined,
-        )));
+        settle(() =>
+          reject(
+            new SeneraExecutionError(
+              SeneraExecutionErrorCodes.SpawnFailed,
+              error instanceof Error ? error.message : String(error),
+              {
+                command: request.command,
+                args: request.args,
+                cwd: request.cwd,
+              },
+              error instanceof Error ? error : undefined,
+            ),
+          ),
+        );
       });
       child.on("close", (exitCode, signal) => {
-        settle(() => resolve({
-          stdout: output.stdout(),
-          stderr: output.stderr(),
-          exitCode,
-          signal,
-        }));
+        settle(() =>
+          resolve({
+            stdout: output.stdout(),
+            stderr: output.stderr(),
+            exitCode,
+            signal,
+          }),
+        );
       });
 
       child.stdin?.end(request.stdin);

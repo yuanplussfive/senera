@@ -1,8 +1,5 @@
 import { XMLBuilder } from "fast-xml-parser";
-import type {
-  AgentParsedPresetDocument,
-  AgentRoleplayPresetDocumentContext,
-} from "./AgentPresetTypes.js";
+import type { AgentParsedPresetDocument, AgentRoleplayPresetDocumentContext } from "./AgentPresetTypes.js";
 
 export class AgentPresetXmlProjector {
   private readonly builder = new XMLBuilder({
@@ -83,4 +80,3 @@ export class AgentPresetXmlProjector {
     };
   }
 }
-

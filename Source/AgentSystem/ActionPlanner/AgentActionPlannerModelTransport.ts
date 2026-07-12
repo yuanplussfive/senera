@@ -12,10 +12,7 @@ export class AgentActionPlannerModelTransport {
   constructor(private readonly provider: ResolvedAgentModelProviderConfig) {
     this.endpoint = createModelEndpoint(provider.Endpoint, {
       config: provider,
-      http: new ModelHttpClient(
-        provider,
-        createModelProviderMetadata(provider),
-      ),
+      http: new ModelHttpClient(provider, createModelProviderMetadata(provider)),
     });
   }
 

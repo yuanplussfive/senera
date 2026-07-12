@@ -10,11 +10,9 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 }));
 
 const { SessionList } = await import("../../../Frontend/src/features/session/SessionList.tsx");
-const {
-  clearPersistedStore,
-  DEFAULT_USER_PROFILE,
-  useStore,
-} = await import("../../../Frontend/src/store/sessionStore.ts");
+const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
+const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
+  await import("../../../Frontend/src/store/sessionStore.ts");
 
 beforeEach(() => {
   clearPersistedStore();
@@ -50,14 +48,19 @@ test("rail presentation exposes direct expansion and new-session actions", async
   const onNewSession = vi.fn();
   const onOpenSessionPanel = vi.fn();
   const user = userEvent.setup();
-  renderWithFrontendProviders(React.createElement(SessionList, createProps({
-    presentation: "rail",
-    onNewSession,
-    onOpenSessionPanel,
-  })));
+  renderWithFrontendProviders(
+    React.createElement(
+      SessionList,
+      createProps({
+        presentation: "rail",
+        onNewSession,
+        onOpenSessionPanel,
+      }),
+    ),
+  );
 
-  await user.click(screen.getByRole("button", { name: "expand" }));
-  await user.click(screen.getByRole("button", { name: "new" }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.new") }));
 
   expect(onOpenSessionPanel).toHaveBeenCalledTimes(1);
   expect(onNewSession).toHaveBeenCalledTimes(1);
@@ -74,11 +77,11 @@ test("session row menu submits a trimmed rename", async () => {
   renderWithFrontendProviders(React.createElement(SessionList, createProps({ onRenameSession })));
 
   await user.click(screen.getByRole("button", { name: "more" }));
-  await user.click(await screen.findByRole("menuitem", { name: "重命名" }));
+  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.rename") }));
   const input = screen.getByRole("textbox");
   await user.clear(input);
   await user.type(input, "  New title  ");
-  await user.click(screen.getByRole("button", { name: "保存" }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.save") }));
 
   expect(onRenameSession).toHaveBeenCalledWith("first", "New title");
 });
@@ -94,9 +97,9 @@ test("session row deletion requires explicit confirmation", async () => {
   renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSession })));
 
   await user.click(screen.getByRole("button", { name: "more" }));
-  await user.click(await screen.findByRole("menuitem", { name: "删除历史" }));
-  expect(screen.getByRole("dialog", { name: "删除当前会话" })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "永久删除" }));
+  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.deleteCurrentHistory") }));
+  expect(screen.getByRole("dialog", { name: frontendMessage("session.deleteCurrentTitle") })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteCurrentConfirm") }));
 
   expect(onCloseSession).toHaveBeenCalledWith("first");
 });

@@ -17,10 +17,7 @@ import {
   rowToTermAggregate,
   termAggregateRecord,
 } from "./AgentToolSearchMemoryCodec.js";
-import {
-  configureToolSearchMemoryDatabase,
-  installToolSearchMemorySchema,
-} from "./AgentToolSearchMemorySqlSchema.js";
+import { configureToolSearchMemoryDatabase, installToolSearchMemorySchema } from "./AgentToolSearchMemorySqlSchema.js";
 import {
   prepareToolSearchMemorySqlStatements,
   type ToolSearchMemorySqlStatements,
@@ -69,14 +66,8 @@ export class SqliteToolSearchMemoryStore implements AgentToolSearchMemoryStore {
   }
 
   private upsertPattern(pattern: AgentToolUsePatternAggregate): void {
-    const current = this.stmts.selectPattern.get(
-      pattern.projectId,
-      pattern.toolName,
-      pattern.patternKey,
-    );
-    const merged = current
-      ? mergePatternAggregate(rowToPatternAggregate(current), pattern)
-      : pattern;
+    const current = this.stmts.selectPattern.get(pattern.projectId, pattern.toolName, pattern.patternKey);
+    const merged = current ? mergePatternAggregate(rowToPatternAggregate(current), pattern) : pattern;
     const record = patternAggregateRecord(merged);
 
     if (current) {
@@ -87,4 +78,3 @@ export class SqliteToolSearchMemoryStore implements AgentToolSearchMemoryStore {
     this.stmts.insertPattern.run(record);
   }
 }
-

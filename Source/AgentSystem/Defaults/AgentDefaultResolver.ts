@@ -1,10 +1,7 @@
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentDefaults } from "./AgentDefaultValues.js";
 import type { ResolvedAgentDefaultsConfig } from "./AgentDefaultValues.js";
-import {
-  disabledOrSecondsToMilliseconds,
-  secondsToMilliseconds,
-} from "./AgentTimeDefaults.js";
+import { disabledOrSecondsToMilliseconds, secondsToMilliseconds } from "./AgentTimeDefaults.js";
 
 export function resolveAgentDefaults(
   config: Pick<AgentSystemConfig, "Defaults"> | undefined,
@@ -27,8 +24,7 @@ export function resolveAgentDefaults(
     },
     ToolExecution: {
       TimeoutMs: secondsToMilliseconds(
-        defaults?.ToolExecution?.TimeoutSeconds
-          ?? AgentDefaults.ToolExecution.TimeoutSeconds,
+        defaults?.ToolExecution?.TimeoutSeconds ?? AgentDefaults.ToolExecution.TimeoutSeconds,
       ),
       MaxStdoutBytes: defaults?.ToolExecution?.MaxStdoutBytes ?? AgentDefaults.ToolExecution.MaxStdoutBytes,
       MaxStderrBytes: defaults?.ToolExecution?.MaxStderrBytes ?? AgentDefaults.ToolExecution.MaxStderrBytes,
@@ -36,12 +32,7 @@ export function resolveAgentDefaults(
     SandboxRuntime: {
       ...AgentDefaults.SandboxRuntime,
       ...defaults?.SandboxRuntime,
-      Images: [
-        ...new Set([
-          ...AgentDefaults.SandboxRuntime.Images,
-          ...(defaults?.SandboxRuntime?.Images ?? []),
-        ]),
-      ],
+      Images: [...new Set([...AgentDefaults.SandboxRuntime.Images, ...(defaults?.SandboxRuntime?.Images ?? [])])],
     },
     AgentLoop: {
       ...AgentDefaults.AgentLoop,
@@ -51,8 +42,7 @@ export function resolveAgentDefaults(
         ...defaults?.AgentLoop?.PiSessions,
       },
       PiSessionCreateTimeoutMs: secondsToMilliseconds(
-        defaults?.AgentLoop?.PiSessionCreateTimeoutSeconds
-          ?? AgentDefaults.AgentLoop.PiSessionCreateTimeoutSeconds,
+        defaults?.AgentLoop?.PiSessionCreateTimeoutSeconds ?? AgentDefaults.AgentLoop.PiSessionCreateTimeoutSeconds,
       ),
     },
     ToolSearch: {
@@ -82,16 +72,14 @@ export function resolveAgentDefaults(
         ...AgentDefaults.VectorModels.Embedding,
         ...defaults?.VectorModels?.Embedding,
         TimeoutMs: secondsToMilliseconds(
-          defaults?.VectorModels?.Embedding?.TimeoutSeconds
-            ?? AgentDefaults.VectorModels.Embedding.TimeoutSeconds,
+          defaults?.VectorModels?.Embedding?.TimeoutSeconds ?? AgentDefaults.VectorModels.Embedding.TimeoutSeconds,
         ),
       },
       Rerank: {
         ...AgentDefaults.VectorModels.Rerank,
         ...defaults?.VectorModels?.Rerank,
         TimeoutMs: secondsToMilliseconds(
-          defaults?.VectorModels?.Rerank?.TimeoutSeconds
-            ?? AgentDefaults.VectorModels.Rerank.TimeoutSeconds,
+          defaults?.VectorModels?.Rerank?.TimeoutSeconds ?? AgentDefaults.VectorModels.Rerank.TimeoutSeconds,
         ),
       },
     },
@@ -162,6 +150,25 @@ export function resolveAgentDefaults(
     Server: {
       ...AgentDefaults.Server,
       ...defaults?.Server,
+      AccessControl: {
+        ...AgentDefaults.Server.AccessControl,
+        ...defaults?.Server?.AccessControl,
+        AllowedOrigins: [
+          ...(defaults?.Server?.AccessControl?.AllowedOrigins ?? AgentDefaults.Server.AccessControl.AllowedOrigins),
+        ],
+        TrustedProxyAddresses: [
+          ...(defaults?.Server?.AccessControl?.TrustedProxyAddresses ??
+            AgentDefaults.Server.AccessControl.TrustedProxyAddresses),
+        ],
+        Session: {
+          ...AgentDefaults.Server.AccessControl.Session,
+          ...defaults?.Server?.AccessControl?.Session,
+        },
+        Limits: {
+          ...AgentDefaults.Server.AccessControl.Limits,
+          ...defaults?.Server?.AccessControl?.Limits,
+        },
+      },
     },
     Persistence: {
       ...AgentDefaults.Persistence,
@@ -174,9 +181,7 @@ export function resolveAgentDefaults(
   };
 }
 
-function defaultModelRuntimeMilliseconds(
-  runtime: typeof AgentDefaults.ModelRuntime,
-): {
+function defaultModelRuntimeMilliseconds(runtime: typeof AgentDefaults.ModelRuntime): {
   TimeoutMs: number;
   FirstTokenTimeoutMs: number;
   MaxRequestMs: number;

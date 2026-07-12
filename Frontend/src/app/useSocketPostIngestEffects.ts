@@ -1,18 +1,18 @@
 import { useCallback, type MutableRefObject } from "react";
-import {
-  EventKinds,
-  type EventEnvelope,
-  type UserProfileData,
-  type WsRequest,
-} from "../api/eventTypes";
+import { EventKinds, type EventEnvelope, type UserProfileData, type WsRequest } from "../api/eventTypes";
 import type { StoreState } from "../store/sessionStore";
 
 export type SocketPostIngestEffectPlan =
   | {
       kind: "config_reloaded";
-      requests: Array<Extract<WsRequest, {
-        type: "config.get" | "model.list" | "plugin.config.list" | "preset.list" | "sandbox.status";
-      }>>;
+      requests: Array<
+        Extract<
+          WsRequest,
+          {
+            type: "config.get" | "model.list" | "plugin.config.list" | "preset.list" | "sandbox.status";
+          }
+        >
+      >;
     }
   | {
       kind: "profile_snapshot";
@@ -56,20 +56,23 @@ export function useSocketPostIngestEffects({
   markUserProfileSynced,
   sendRef,
 }: UseSocketPostIngestEffectsOptions): SocketPostIngestEffectsHandle {
-  const runSocketPostIngestEffects = useCallback((env: EventEnvelope): boolean => {
-    const plan = resolveSocketPostIngestEffect(env);
-    if (!plan) return false;
+  const runSocketPostIngestEffects = useCallback(
+    (env: EventEnvelope): boolean => {
+      const plan = resolveSocketPostIngestEffect(env);
+      if (!plan) return false;
 
-    if (plan.kind === "config_reloaded") {
-      for (const request of plan.requests) {
-        sendRef.current?.(request);
+      if (plan.kind === "config_reloaded") {
+        for (const request of plan.requests) {
+          sendRef.current?.(request);
+        }
+        return true;
       }
-      return true;
-    }
 
-    markUserProfileSynced(plan.profile);
-    return true;
-  }, [markUserProfileSynced, sendRef]);
+      markUserProfileSynced(plan.profile);
+      return true;
+    },
+    [markUserProfileSynced, sendRef],
+  );
 
   return { runSocketPostIngestEffects };
 }

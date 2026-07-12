@@ -23,11 +23,9 @@ export interface AgentPiSelectedPromptTemplateFrame {
 }
 
 export function renderPiHarnessSystemPrompt(input: AgentPiPromptFrameInput): string {
-  return [
-    input.systemPrompt,
-    formatSkillsForSystemPrompt([...input.skills]),
-    renderSelectedPromptTemplateFrame(input),
-  ].filter(hasPromptText).join("\n\n");
+  return [input.systemPrompt, formatSkillsForSystemPrompt([...input.skills]), renderSelectedPromptTemplateFrame(input)]
+    .filter(hasPromptText)
+    .join("\n\n");
 }
 
 export function projectSelectedPromptTemplateFrame(input: {
@@ -41,10 +39,7 @@ export function projectSelectedPromptTemplateFrame(input: {
   return {
     name: input.template.name,
     description: input.template.description,
-    content: formatPromptTemplateInvocation(
-      input.template,
-      input.objective ? [input.objective] : [],
-    ),
+    content: formatPromptTemplateInvocation(input.template, input.objective ? [input.objective] : []),
     matchedTerms: [...input.matchedTerms],
     resourceKinds: [...(input.resourceKinds ?? [])],
     workflowRoles: [...(input.workflowRoles ?? [])],
@@ -88,7 +83,9 @@ function renderSelectedPromptTemplate(frame: AgentPiSelectedPromptTemplateFrame)
     encodeXML(frame.content),
     "    </content>",
     "  </frame>",
-  ].filter(hasPromptText).join("\n");
+  ]
+    .filter(hasPromptText)
+    .join("\n");
 }
 
 function hasPromptText(value: string): boolean {

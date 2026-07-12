@@ -1,12 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  PencilLine,
-  Plug,
-  RotateCw,
-  Settings2,
-  SquarePen,
-  Trash2,
-} from "lucide-react";
+import { PencilLine, Plug, RotateCw, Settings2, SquarePen, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useStore, type SessionRecord, type UserProfile } from "../../store/sessionStore";
@@ -26,6 +19,7 @@ interface Props {
   onRenameSession: (id: string, title: string) => void;
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+  onLogout: () => Promise<void>;
   socketStatus: string;
   presentation?: "auto" | "panel" | "rail";
   onSessionSelected?: () => void;
@@ -46,6 +40,7 @@ export function SessionList({
   onRenameSession,
   userProfile,
   onUpdateUserProfile,
+  onLogout,
   socketStatus,
   presentation = "auto",
   onSessionSelected,
@@ -98,11 +93,14 @@ export function SessionList({
 
   const confirmDeleteSession = (session: SessionRecord): void => {
     setConfirmation({
-      title: "删除当前会话",
-      description: `「${session.title}」会从后端历史中永久删除。`,
-      confirmLabel: "永久删除",
+      title: frontendMessage("session.deleteCurrentTitle"),
+      description: frontendMessage("session.deleteCurrentDescription", { title: session.title }),
+      confirmLabel: frontendMessage("session.deleteCurrentConfirm"),
       tone: "danger",
-      details: ["删除后会话列表、消息历史和后端 SQLite 记录都会移除。", "这个操作不能通过刷新恢复。"],
+      details: [
+        frontendMessage("session.deleteCurrentDetailRecords"),
+        frontendMessage("session.deleteCurrentDetailRefresh"),
+      ],
       onConfirm: () => {
         onCloseSession(session.sessionId);
         toast.success(frontendMessage("session.deleteRequested"));
@@ -114,11 +112,11 @@ export function SessionList({
     const ids = sessionList.map((session) => session.sessionId);
     if (ids.length === 0) return;
     setConfirmation({
-      title: "删除全部历史会话",
-      description: `将永久删除 ${ids.length} 个后端会话。`,
-      confirmLabel: "全部永久删除",
+      title: frontendMessage("session.deleteAllHistory"),
+      description: frontendMessage("session.deleteAllDescription", { count: ids.length }),
+      confirmLabel: frontendMessage("session.deleteAllConfirm"),
       tone: "danger",
-      details: ["每个会话都会发送后端删除请求。", "删除完成后，刷新也不会恢复这些历史。"],
+      details: [frontendMessage("session.deleteAllDetailRequests"), frontendMessage("session.deleteAllDetailRefresh")],
       onConfirm: () => {
         onCloseSessions(ids);
         toast.success(frontendMessage("session.bulkDeleteRequested", { count: ids.length }));
@@ -141,11 +139,11 @@ export function SessionList({
 
   const menuSections = [
     {
-      section: "对话",
+      section: frontendMessage("session.section"),
       items: [
         {
           id: "new",
-          label: "新建对话",
+          label: frontendMessage("session.new"),
           icon: <SquarePen className="h-3.5 w-3.5" />,
           shortcut: "⌘N",
           disabled: false,
@@ -153,14 +151,14 @@ export function SessionList({
         },
         {
           id: "rename",
-          label: "重命名当前",
+          label: frontendMessage("session.renameCurrent"),
           icon: <PencilLine className="h-3.5 w-3.5" />,
           disabled: !activeSession,
           onSelect: () => activeSession && openRename(activeSession),
         },
         {
           id: "delete-current",
-          label: "删除当前历史",
+          label: frontendMessage("session.deleteCurrentHistory"),
           icon: <Plug className="h-3.5 w-3.5" />,
           destructive: true,
           disabled: !activeSession,
@@ -169,25 +167,25 @@ export function SessionList({
       ],
     },
     {
-      section: "应用",
+      section: frontendMessage("session.appSection"),
       items: [
         {
           id: "preferences",
-          label: "偏好设置",
+          label: frontendMessage("session.preferences"),
           icon: <Settings2 className="h-3.5 w-3.5" />,
           disabled: false,
           onSelect: () => setPreferencesOpen(true),
         },
         {
           id: "sync",
-          label: "重新同步会话",
+          label: frontendMessage("session.sync"),
           icon: <RotateCw className="h-3.5 w-3.5" />,
           disabled: socketStatus !== "open",
           onSelect: onRefreshSessions,
         },
         {
           id: "delete-all",
-          label: "删除全部历史",
+          label: frontendMessage("session.deleteAllHistory"),
           icon: <Trash2 className="h-3.5 w-3.5" />,
           destructive: true,
           disabled: sessionList.length === 0,
@@ -202,11 +200,7 @@ export function SessionList({
   const handleOpenFromRail = onOpenSessionPanel ?? toggleSidebar;
 
   const content = isRail ? (
-    <SessionRail
-      socketStatus={socketStatus}
-      onNewSession={onNewSession}
-      onOpenSessionPanel={handleOpenFromRail}
-    />
+    <SessionRail socketStatus={socketStatus} onNewSession={onNewSession} onOpenSessionPanel={handleOpenFromRail} />
   ) : (
     <aside className={cn("flex h-full shrink-0 flex-col border-r border-ink-200/70 bg-paper-100/70", panelWidthClass)}>
       <SessionHeader
@@ -233,6 +227,7 @@ export function SessionList({
         profile={userProfile}
         socketStatus={socketStatus}
         onUpdateProfile={onUpdateUserProfile}
+        onLogout={onLogout}
       />
     </aside>
   );

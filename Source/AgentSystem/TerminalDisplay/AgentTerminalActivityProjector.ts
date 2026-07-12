@@ -4,21 +4,11 @@ import {
   type AgentTerminalDetailMode as AgentTerminalDetailModeType,
   type AgentTerminalTimelinePatch,
 } from "./AgentTerminalActivity.js";
-import {
-  AgentTerminalDecisionActivityProjectors,
-} from "./AgentTerminalDecisionActivityProjectors.js";
-import {
-  AgentTerminalLifecycleActivityProjectors,
-} from "./AgentTerminalLifecycleActivityProjectors.js";
-import type {
-  AgentTerminalActivityProjectorCatalog,
-} from "./AgentTerminalActivityProjectorTypes.js";
-import {
-  silentPatch,
-} from "./AgentTerminalActivityProjectorUtils.js";
-import {
-  AgentTerminalToolActivityProjectors,
-} from "./AgentTerminalToolActivityProjectors.js";
+import { AgentTerminalDecisionActivityProjectors } from "./AgentTerminalDecisionActivityProjectors.js";
+import { AgentTerminalLifecycleActivityProjectors } from "./AgentTerminalLifecycleActivityProjectors.js";
+import type { AgentTerminalActivityProjectorCatalog } from "./AgentTerminalActivityProjectorTypes.js";
+import { silentPatch } from "./AgentTerminalActivityProjectorUtils.js";
+import { AgentTerminalToolActivityProjectors } from "./AgentTerminalToolActivityProjectors.js";
 
 export interface AgentTerminalActivityProjectorOptions {
   detailMode?: AgentTerminalDetailModeType;

@@ -1,13 +1,6 @@
 import type { ToolSearchManifest } from "./PluginSearchManifestTypes.js";
 
-export type PluginKind =
-  | "System"
-  | "Tool"
-  | "Resource"
-  | "Prompt"
-  | "Skill"
-  | "Adapter"
-  | "Provider";
+export type PluginKind = "System" | "Tool" | "Resource" | "Prompt" | "Skill" | "Adapter" | "Provider";
 
 export type PluginRootKind = "System" | "User";
 

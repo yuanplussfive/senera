@@ -15,17 +15,13 @@ export interface AgentPiProxyRuntimeContext {
 
 const contexts = new Map<string, AgentPiProxyRuntimeContext>();
 
-export function registerPiProxyRuntimeContext(
-  context: AgentPiProxyRuntimeContext,
-): string {
+export function registerPiProxyRuntimeContext(context: AgentPiProxyRuntimeContext): string {
   const id = createOpaqueId("pictx");
   contexts.set(id, context);
   return id;
 }
 
-export function readPiProxyRuntimeContext(
-  id: string | undefined,
-): AgentPiProxyRuntimeContext | undefined {
+export function readPiProxyRuntimeContext(id: string | undefined): AgentPiProxyRuntimeContext | undefined {
   return id ? contexts.get(id) : undefined;
 }
 

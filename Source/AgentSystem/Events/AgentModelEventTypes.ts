@@ -1,10 +1,9 @@
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
-import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 
-type AgentStepContext =
-  Required<Pick<AgentEventContext, "requestId" | "step">>
-  & Partial<Pick<AgentEventContext, "sessionId">>;
+type AgentStepContext = Required<Pick<AgentEventContext, "requestId" | "step">> &
+  Partial<Pick<AgentEventContext, "sessionId">>;
 
 export type AgentModelDomainEvent =
   | {

@@ -141,17 +141,15 @@ export class AgentWorkspaceSnapshotBuilder {
       kind: "file",
       size: stat.size,
       mtimeMs: stat.mtimeMs,
-      hash: content.state === "captured" && content.text !== undefined
-        ? hashWorkspaceText(content.text)
-        : await hashWorkspaceFile(absolutePath),
+      hash:
+        content.state === "captured" && content.text !== undefined
+          ? hashWorkspaceText(content.text)
+          : await hashWorkspaceFile(absolutePath),
       content,
     };
   }
 
-  private async captureFileContent(
-    absolutePath: string,
-    size: number,
-  ): Promise<ToolWorkspaceFileContentSnapshot> {
+  private async captureFileContent(absolutePath: string, size: number): Promise<ToolWorkspaceFileContentSnapshot> {
     if (this.options.captureContent === "none") {
       return {
         state: "omitted",

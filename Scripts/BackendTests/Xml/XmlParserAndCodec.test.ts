@@ -3,6 +3,7 @@ import { AgentXmlCodec } from "../../../Source/AgentSystem/Xml/AgentXmlCodec.js"
 import { AgentXmlParser } from "../../../Source/AgentSystem/Xml/AgentXmlParser.js";
 import { createXmlProtocolPolicy } from "../../../Source/AgentSystem/Xml/AgentXmlPolicy.js";
 import { AgentXmlParseError } from "../../../Source/AgentSystem/Xml/AgentXmlParserTypes.js";
+import { AgentXmlErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("XML parser and codec", () => {
@@ -62,21 +63,66 @@ describe("XML parser and codec", () => {
     expect(parsed.rootName).toBe("answer");
     expect(parsed.value).toEqual({ value: "done" });
   });
+
+  test.each([
+    {
+      name: "an incomplete document",
+      xml: "<root>",
+      expectedCode: AgentXmlErrorCodes.InvalidXmlSyntax,
+    },
+    {
+      name: "multiple roots",
+      xml: "<first /><second />",
+      expectedCode: AgentXmlErrorCodes.InvalidXmlSyntax,
+    },
+    {
+      name: "text after the root",
+      xml: "<root /> trailing",
+      expectedCode: AgentXmlErrorCodes.InvalidXmlSyntax,
+    },
+    {
+      name: "a Markdown-fenced document",
+      xml: "```xml\n<root />\n```",
+      expectedCode: AgentXmlErrorCodes.InvalidXmlSyntax,
+    },
+  ])("rejects $name", ({ xml, expectedCode }) => {
+    const parser = new AgentXmlParser();
+    const error = captureXmlParseError(() => parser.parse(xml));
+
+    expect(error.code).toBe(expectedCode);
+  });
 });
+
+function captureXmlParseError(action: () => unknown): AgentXmlParseError {
+  try {
+    action();
+  } catch (error) {
+    if (error instanceof AgentXmlParseError) {
+      return error;
+    }
+    throw error;
+  }
+
+  throw new Error("Expected XML parsing to fail.");
+}
 
 function createConfig(): AgentSystemConfig {
   return {
     DefaultModelProviderId: "main",
-    ModelProviderEndpoints: [{
-      Id: "main",
-      BaseUrl: "https://example.invalid/v1",
-      ApiKey: "test",
-    }],
-    ModelProviders: [{
-      Id: "main",
-      ProviderId: "main",
-      Endpoint: "ChatCompletions",
-      Model: "test-model",
-    }],
+    ModelProviderEndpoints: [
+      {
+        Id: "main",
+        BaseUrl: "https://example.invalid/v1",
+        ApiKey: "test",
+      },
+    ],
+    ModelProviders: [
+      {
+        Id: "main",
+        ProviderId: "main",
+        Endpoint: "ChatCompletions",
+        Model: "test-model",
+      },
+    ],
   };
 }

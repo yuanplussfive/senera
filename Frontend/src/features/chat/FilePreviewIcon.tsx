@@ -8,22 +8,13 @@ interface FilePreviewIconProps {
   iconClassName?: string;
 }
 
-export function FilePreviewIcon({
-  name,
-  mime,
-  className,
-  iconClassName,
-}: FilePreviewIconProps): JSX.Element {
+export function FilePreviewIcon({ name, mime, className, iconClassName }: FilePreviewIconProps): JSX.Element {
   const preview = resolveFilePreview({ name, mime });
   const Icon = preview.Icon;
 
   return (
     <span
-      className={cn(
-        "grid h-6 w-6 shrink-0 place-items-center rounded-md border",
-        preview.badgeClassName,
-        className,
-      )}
+      className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-md border", preview.badgeClassName, className)}
       title={preview.label}
       aria-label={preview.label}
     >

@@ -14,9 +14,13 @@ const NodePluginRuntimeDefaults = {
   defaultStateQuotaMiB: 256,
 } as const;
 
-export function resolveAgentNodePluginRuntimeImage(runtime: {
-  NodeVersion?: string;
-} | undefined): string {
+export function resolveAgentNodePluginRuntimeImage(
+  runtime:
+    | {
+        NodeVersion?: string;
+      }
+    | undefined,
+): string {
   return nodeRuntimeImage(runtime?.NodeVersion ?? NodePluginRuntimeDefaults.nodeVersion);
 }
 
@@ -35,7 +39,6 @@ export function buildAgentPluginProcessExecutionPlan(input: {
   const plugin = input.tool.plugin;
   const runtime = plugin.manifest.Runtime;
   const sandbox = plugin.manifest.Sandbox;
-  const nodeVersion = runtime?.NodeVersion ?? NodePluginRuntimeDefaults.nodeVersion;
   const sandboxProfile = runtime?.SandboxProfile ?? NodePluginRuntimeDefaults.sandboxProfile;
   const executionPolicy = resolveAgentToolExecutionPolicy(input.tool);
   if (executionPolicy.mode === "local") {
@@ -70,16 +73,15 @@ export function buildAgentPluginProcessExecutionPlan(input: {
         writableMounts: projectWritableMounts({
           workspaceRoot: input.workspaceRoot,
           pluginRoot: plugin.rootPath,
-          paths: [
-            ...(sandbox?.Workspace?.Write ?? []),
-            ...(sandbox?.State?.Write ?? []),
-          ],
+          paths: [...(sandbox?.Workspace?.Write ?? []), ...(sandbox?.State?.Write ?? [])],
         }),
-        rootfsBundles: [{
-          workspaceRoot: input.workspaceRoot,
-          packageRoot: plugin.rootPath,
-          guestPath: NodePluginRuntimeDefaults.guestRuntimeRoot,
-        }],
+        rootfsBundles: [
+          {
+            workspaceRoot: input.workspaceRoot,
+            packageRoot: plugin.rootPath,
+            guestPath: NodePluginRuntimeDefaults.guestRuntimeRoot,
+          },
+        ],
         env: {
           SENERA_TOOL_CONTEXT_WORKSPACE_ROOT: NodePluginRuntimeDefaults.guestWorkspaceRoot,
           SENERA_TOOL_CONTEXT_PLUGIN_ROOT: guestPluginRoot,
@@ -107,16 +109,16 @@ function projectWritableMounts(input: {
     .filter(Boolean)
     .map((value) => ({
       value,
-      hostPath: path.isAbsolute(value)
-        ? path.resolve(value)
-        : path.resolve(input.pluginRoot, value),
+      hostPath: path.isAbsolute(value) ? path.resolve(value) : path.resolve(input.pluginRoot, value),
     }))
     .filter(({ hostPath }) => isPathInside(input.workspaceRoot, hostPath))
-    .map((value) => resolvePluginWritableMount({
-      workspaceRoot: input.workspaceRoot,
-      pluginRoot: input.pluginRoot,
-      hostPath: value.hostPath,
-    }));
+    .map((value) =>
+      resolvePluginWritableMount({
+        workspaceRoot: input.workspaceRoot,
+        pluginRoot: input.pluginRoot,
+        hostPath: value.hostPath,
+      }),
+    );
 }
 
 function resolvePluginWritableMount(input: {

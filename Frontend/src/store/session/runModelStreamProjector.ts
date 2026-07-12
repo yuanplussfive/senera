@@ -1,15 +1,8 @@
-import {
-  EventKinds,
-  type ModelDeltaData,
-  type ModelStartedData,
-} from "../../api/eventTypes";
+import { EventKinds, type ModelDeltaData, type ModelStartedData } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { upsertStep } from "./sessionProjectorCore";
-import {
-  alignRunDisplayTarget,
-  projectStreamingVisibility,
-  touchRun,
-} from "./sessionRunProjection";
+import { alignRunDisplayTarget, projectStreamingVisibility, touchRun } from "./sessionRunProjection";
 
 export const runModelStreamEventHandlers = {
   [EventKinds.ModelStarted]: (state, env) => {
@@ -27,8 +20,8 @@ export const runModelStreamEventHandlers = {
     upsertStep(run, {
       id: `${run.requestId}-model-${env.step ?? 0}`,
       kind: "model",
-      title: "调用模型",
-      description: `第 ${env.step ?? 0} 步`,
+      title: frontendMessage("workflow.feed.callingModel"),
+      description: frontendMessage("workflow.projection.stepIndex", { step: env.step ?? 0 }),
       status: "running",
       startedAt: env.timestamp,
       modelName,

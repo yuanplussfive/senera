@@ -4,10 +4,7 @@ import path from "node:path";
 import type { ToolWorkspaceFileSnapshot } from "../Types/ToolRuntimeTypes.js";
 import { toPosixPath } from "./AgentArtifactLocator.js";
 
-export function missingWorkspaceSnapshot(
-  filePath: string,
-  absolutePath: string,
-): ToolWorkspaceFileSnapshot {
+export function missingWorkspaceSnapshot(filePath: string, absolutePath: string): ToolWorkspaceFileSnapshot {
   return {
     path: filePath,
     absolutePath,
@@ -56,8 +53,7 @@ export function isProbablyBinary(buffer: Buffer): boolean {
   }
 
   const sample = buffer.subarray(0, Math.min(buffer.length, 8192));
-  const suspicious = sample.reduce((count, byte) =>
-    count + (byte < 8 || (byte > 13 && byte < 32) ? 1 : 0), 0);
+  const suspicious = sample.reduce((count, byte) => count + (byte < 8 || (byte > 13 && byte < 32) ? 1 : 0), 0);
   return suspicious / sample.length > 0.3;
 }
 
@@ -65,7 +61,5 @@ export function countLines(value: string): number {
   if (value.length === 0) {
     return 0;
   }
-  return value.endsWith("\n")
-    ? value.slice(0, -1).split("\n").length
-    : value.split("\n").length;
+  return value.endsWith("\n") ? value.slice(0, -1).split("\n").length : value.split("\n").length;
 }

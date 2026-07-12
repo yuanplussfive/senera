@@ -2,9 +2,7 @@ import type {
   AgentToolProcessResponseType,
   AgentToolProcessResponseVersion,
 } from "../ToolRuntime/AgentToolProcessEnvelope.js";
-import type {
-  RegisteredTool,
-} from "./PluginRuntimeTypes.js";
+import type { RegisteredTool } from "./PluginRuntimeTypes.js";
 import type { ToolArtifactPolicyManifest } from "./PluginManifestTypes.js";
 import type { AgentToolResultSummary } from "./AgentToolResultSummaryTypes.js";
 

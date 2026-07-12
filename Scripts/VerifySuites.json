@@ -3,15 +3,11 @@
   "suites": {
     "workspace": {
       "description": "Root workspace dependency and install-boundary governance.",
-      "patterns": [
-        "VerifyWorkspaceDependencyGovernance.js"
-      ]
+      "patterns": ["VerifyWorkspaceDependencyGovernance.js"]
     },
     "contracts": {
       "description": "Static architecture contracts that should fail before runtime tests.",
-      "patterns": [
-        "VerifyAgentTypeContractBoundaries.js"
-      ]
+      "patterns": ["VerifyAgentTypeContractBoundaries.js"]
     },
     "core": {
       "description": "Agent runtime and plugin contracts without browser, E2E, or OS-specific checks.",
@@ -20,12 +16,14 @@
         "VerifyBackendTestCoverage.js",
         "VerifyPluginConfigSchema.js",
         "VerifyRuntimeEventContract.js",
+        "VerifyWebSocketProtocolReference.js",
         "VerifyAgentErrorI18n.js",
         "VerifyFrontendErrorI18n.js",
+        "VerifyAgentRuntimeI18n.js",
+        "VerifyFrontendRuntimeI18n.js",
         "VerifyPluginArtifactPolicies.js",
         "VerifyPluginReferenceValidation.js",
         "VerifyPluginProcessRuntimeManifest.js",
-        "VerifyExternalPluginFallbackPolicy.js",
         "VerifyToolExecutionPolicy.js",
         "VerifyWorkspaceApplyPatchTool.js",
         "VerifyPluginProcessBundleProjection.js",
@@ -59,17 +57,12 @@
       ]
     },
     "frontend": {
-      "description": "Frontend architecture and test governance; frontendverify runs the Vitest suite.",
-      "patterns": [
-        "VerifyFrontendArchitecture.js",
-        "VerifyFrontendTestCoverage.js"
-      ]
+      "description": "Frontend test governance and UI behavior through Vitest.",
+      "patterns": ["VerifyFrontendTestCoverage.js"]
     },
     "e2e": {
-      "description": "End-to-end test governance; e2etest runs the protocol suite.",
-      "patterns": [
-        "VerifyE2eTestCoverage.js"
-      ]
+      "description": "End-to-end test governance and protocol behavior.",
+      "patterns": ["VerifyE2eTestCoverage.js"]
     },
     "platform": {
       "description": "Cross-platform execution, sandbox, and desktop path smoke checks.",
@@ -77,7 +70,6 @@
         "VerifySeneraExecutionEnvBoundary.js",
         "VerifySeneraMicrosandboxBackend.js",
         "VerifySeneraMicrosandboxRuntimeRetry.js",
-        "VerifySeneraExecutionBackendFallback.js",
         "VerifySeneraSandboxRuntimeService.js",
         "VerifySandboxRuntimeConfig.js",
         "VerifySandboxPrepareRuntime.js",
@@ -89,17 +81,11 @@
     },
     "release": {
       "description": "Container and desktop release metadata and runtime policies.",
-      "patterns": [
-        "VerifyDockerRuntimeSandboxPolicy.js",
-        "VerifyDesktopReleaseInfo.js"
-      ]
+      "patterns": ["VerifyDockerRuntimeSandboxPolicy.js", "VerifyProductReleaseInfo.js"]
     },
     "all-local": {
       "description": "Every maintained local verification script except the suite runner.",
-      "patterns": [
-        "Verify*.js",
-        "!VerifySuite.js"
-      ]
+      "patterns": ["Verify*.js", "!VerifySuite.js"]
     }
   }
 }

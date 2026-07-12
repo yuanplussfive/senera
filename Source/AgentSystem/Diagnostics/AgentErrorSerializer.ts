@@ -1,9 +1,7 @@
 type SerializedPrimitive = string | number | boolean | null;
 
 export type SerializedErrorValue =
-  | SerializedPrimitive
-  | SerializedErrorValue[]
-  | { [key: string]: SerializedErrorValue | undefined };
+  SerializedPrimitive | SerializedErrorValue[] | { [key: string]: SerializedErrorValue | undefined };
 
 type SerializedErrorObject = {
   name?: string;
@@ -17,16 +15,13 @@ export function serializeError(error: unknown): SerializedErrorValue {
   return serializeUnknown(error, new WeakSet<object>());
 }
 
-function serializeUnknown(
-  value: unknown,
-  seen: WeakSet<object>,
-): SerializedErrorValue {
+function serializeUnknown(value: unknown, seen: WeakSet<object>): SerializedErrorValue {
   return (
-    serializePrimitive(value)
-    ?? serializeErrorInstance(value, seen)
-    ?? serializeArray(value, seen)
-    ?? serializeObject(value, seen)
-    ?? String(value)
+    serializePrimitive(value) ??
+    serializeErrorInstance(value, seen) ??
+    serializeArray(value, seen) ??
+    serializeObject(value, seen) ??
+    String(value)
   );
 }
 
@@ -38,10 +33,7 @@ function serializePrimitive(value: unknown): SerializedPrimitive | undefined {
       : undefined;
 }
 
-function serializeErrorInstance(
-  value: unknown,
-  seen: WeakSet<object>,
-): SerializedErrorObject | undefined {
+function serializeErrorInstance(value: unknown, seen: WeakSet<object>): SerializedErrorObject | undefined {
   if (!(value instanceof Error)) {
     return undefined;
   }
@@ -66,24 +58,14 @@ function serializeErrorInstance(
     .filter((key) => typeof key === "string" && !["name", "message", "stack", "cause"].includes(key))
     .map((key) => [key, serializeUnknown(Reflect.get(value, key), seen)] as const);
 
-  return Object.fromEntries(
-    [...baseEntries, ...extraEntries].filter(([, item]) => item !== undefined),
-  );
+  return Object.fromEntries([...baseEntries, ...extraEntries].filter(([, item]) => item !== undefined));
 }
 
-function serializeArray(
-  value: unknown,
-  seen: WeakSet<object>,
-): SerializedErrorValue[] | undefined {
-  return Array.isArray(value)
-    ? value.map((item) => serializeUnknown(item, seen))
-    : undefined;
+function serializeArray(value: unknown, seen: WeakSet<object>): SerializedErrorValue[] | undefined {
+  return Array.isArray(value) ? value.map((item) => serializeUnknown(item, seen)) : undefined;
 }
 
-function serializeObject(
-  value: unknown,
-  seen: WeakSet<object>,
-): SerializedErrorObject | undefined {
+function serializeObject(value: unknown, seen: WeakSet<object>): SerializedErrorObject | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }
@@ -96,7 +78,5 @@ function serializeObject(
 
   seen.add(value);
 
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, serializeUnknown(item, seen)]),
-  );
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serializeUnknown(item, seen)]));
 }

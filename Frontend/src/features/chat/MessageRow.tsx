@@ -57,10 +57,7 @@ export function MessageRow({
     <div className="group/msg flex items-start gap-3">
       <MessageAvatar role="assistant" icon={assistantAvatarIcon} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <MessageMeta
-          title={readAssistantDisplayName(message, selectedModelProvider)}
-          timestamp={message.createdAt}
-        />
+        <MessageMeta title={readAssistantDisplayName(message, selectedModelProvider)} timestamp={message.createdAt} />
         <AssistantMessageBody
           message={{ ...message, content: displayContent }}
           run={run}

@@ -1,11 +1,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import type {
-  AgentPresetFileRecord,
-  AgentPresetFormat,
-  AgentPresetState,
-} from "./AgentPresetTypes.js";
+import type { AgentPresetFileRecord, AgentPresetFormat, AgentPresetState } from "./AgentPresetTypes.js";
 
 export interface AgentPresetRepositoryOptions {
   workspaceRoot: string;
@@ -77,9 +73,7 @@ export class AgentPresetRepository {
     }
     const parsed = JSON.parse(await fsp.readFile(stateFile, "utf8")) as Partial<AgentPresetState>;
     return {
-      activePresetName: typeof parsed.activePresetName === "string"
-        ? parsed.activePresetName
-        : null,
+      activePresetName: typeof parsed.activePresetName === "string" ? parsed.activePresetName : null,
     };
   }
 
@@ -95,10 +89,7 @@ export class AgentPresetRepository {
     if (!format) {
       throw new Error(`不支持的预设文件格式：${fileName}`);
     }
-    const [content, stat] = await Promise.all([
-      fsp.readFile(filePath, "utf8"),
-      fsp.stat(filePath),
-    ]);
+    const [content, stat] = await Promise.all([fsp.readFile(filePath, "utf8"), fsp.stat(filePath)]);
     return {
       name: fileName,
       path: filePath,
@@ -115,9 +106,7 @@ export class AgentPresetRepository {
 
   private resolveWritablePresetFileName(name: string, format: AgentPresetFormat): string {
     const trimmed = name.trim();
-    const withExtension = formatFromFileName(trimmed)
-      ? trimmed
-      : `${trimmed}${extensionForFormat(format)}`;
+    const withExtension = formatFromFileName(trimmed) ? trimmed : `${trimmed}${extensionForFormat(format)}`;
     const fileName = normalizePlainFileName(withExtension);
     const resolvedFormat = formatFromFileName(fileName);
     if (!resolvedFormat) {
@@ -192,4 +181,3 @@ const PresetExtensionByFormat = {
   markdown: ".md",
   text: ".txt",
 } as const satisfies Record<AgentPresetFormat, string>;
-

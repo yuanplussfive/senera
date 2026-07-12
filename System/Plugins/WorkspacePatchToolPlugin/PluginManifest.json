@@ -23,76 +23,31 @@
         "Boundary": "Local",
         "Network": "Deny",
         "Workspace": "ReadWrite",
-        "LocalFallback": "Allow"
+        "LocalFallback": "Deny"
       },
       "ArtifactPolicyFile": "./WorkspacePatchArtifactPolicy.json",
-      "Permissions": [
-        "filesystem:read:workspace",
-        "filesystem:write:workspace"
-      ],
+      "Permissions": ["filesystem:read:workspace", "filesystem:write:workspace"],
       "Approval": {
         "Mode": "ask",
         "Reason": "应用工作区文件补丁。"
       },
       "Search": {
         "Summary": "对工作区应用 Codex-like 高层补丁，支持新增、hunk 更新、删除、移动文件以及目录创建/删除。",
-        "Tags": [
-          "文件编辑",
-          "代码修改",
-          "apply_patch",
-          "unified diff",
-          "工作区写入"
-        ],
+        "Tags": ["文件编辑", "代码修改", "apply_patch", "unified diff", "工作区写入"],
         "Capabilities": [
           {
             "Id": "workspace.apply-patch",
             "Title": "Workspace apply patch",
             "Description": "Apply high-level workspace patch operations without oldText/newText replacement.",
             "Facets": {
-              "Actions": [
-                "patch",
-                "edit",
-                "add",
-                "delete",
-                "move",
-                "mkdir"
-              ],
-              "Targets": [
-                "workspace",
-                "file",
-                "directory",
-                "source-code",
-                "configuration",
-                "documentation"
-              ],
-              "Inputs": [
-                "operations",
-                "unified-hunk",
-                "content",
-                "dryRun",
-                "fuzzFactor"
-              ],
-              "Outputs": [
-                "workspace-patch-result",
-                "workspace-file-change",
-                "workspace-diff"
-              ],
-              "Evidence": [
-                "workspace-patch-result",
-                "workspace-diff"
-              ],
-              "Effects": [
-                "write-workspace"
-              ]
+              "Actions": ["patch", "edit", "add", "delete", "move", "mkdir"],
+              "Targets": ["workspace", "file", "directory", "source-code", "configuration", "documentation"],
+              "Inputs": ["operations", "unified-hunk", "content", "dryRun", "fuzzFactor"],
+              "Outputs": ["workspace-patch-result", "workspace-file-change", "workspace-diff"],
+              "Evidence": ["workspace-patch-result", "workspace-diff"],
+              "Effects": ["write-workspace"]
             },
-            "Aliases": [
-              "apply patch",
-              "应用补丁",
-              "修改代码",
-              "新增文件",
-              "删除文件",
-              "移动文件"
-            ],
+            "Aliases": ["apply patch", "应用补丁", "修改代码", "新增文件", "删除文件", "移动文件"],
             "Risk": {
               "SideEffect": "write-workspace",
               "Permission": "write",
@@ -126,12 +81,8 @@
     "TrustLevel": "System",
     "Network": "Deny",
     "FileSystem": {
-      "Read": [
-        "../.."
-      ],
-      "Write": [
-        "../.."
-      ]
+      "Read": ["../.."],
+      "Write": ["../.."]
     },
     "RequiresApproval": false
   }

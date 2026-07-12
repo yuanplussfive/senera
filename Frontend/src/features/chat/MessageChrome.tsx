@@ -16,24 +16,11 @@ export function MessageMeta({
   align = "left",
   order = "title-first",
 }: MessageMetaProps): JSX.Element {
-  const titleNode = (
-    <span className="min-w-0 truncate text-[13px] font-semibold text-ink-850">
-      {title}
-    </span>
-  );
-  const timeNode = (
-    <span className="shrink-0 font-mono text-[10.5px] text-ink-400">
-      {formatTime(timestamp)}
-    </span>
-  );
+  const titleNode = <span className="min-w-0 truncate text-[13px] font-semibold text-ink-850">{title}</span>;
+  const timeNode = <span className="shrink-0 font-mono text-[10.5px] text-ink-400">{formatTime(timestamp)}</span>;
 
   return (
-    <div
-      className={cn(
-        "flex min-w-0 items-baseline gap-2",
-        align === "right" && "justify-end",
-      )}
-    >
+    <div className={cn("flex min-w-0 items-baseline gap-2", align === "right" && "justify-end")}>
       {order === "time-first" ? timeNode : titleNode}
       {order === "time-first" ? titleNode : timeNode}
     </div>
@@ -46,11 +33,7 @@ export interface MessageAvatarProps {
   profile?: UserProfile;
 }
 
-export function MessageAvatar({
-  role,
-  icon,
-  profile,
-}: MessageAvatarProps): JSX.Element {
+export function MessageAvatar({ role, icon, profile }: MessageAvatarProps): JSX.Element {
   if (role === "user") {
     const fallback = readUserInitial(profile?.name);
     return (

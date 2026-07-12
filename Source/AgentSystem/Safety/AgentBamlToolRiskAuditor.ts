@@ -4,10 +4,7 @@ import { ToolRiskAuditDecision, ToolRiskLevel } from "../BamlClient/baml_client/
 import type { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
 import { AgentCancellationError, throwIfAborted } from "../Core/AgentCancellation.js";
 import { moduleDirPath } from "../Core/AgentPath.js";
-import {
-  AgentPermissionActions,
-  type AgentPermissionDecision,
-} from "./AgentSafetyTypes.js";
+import { AgentPermissionActions, type AgentPermissionDecision } from "./AgentSafetyTypes.js";
 import type { AgentToolApprovalPolicyInput } from "./AgentToolApprovalPolicy.js";
 import type { AgentToolGuardrailAuditor } from "./AgentToolGuardrailAudit.js";
 import type { AgentBamlToolRiskAuditProfile } from "./AgentBamlToolRiskAuditPromptJson.js";
@@ -16,10 +13,7 @@ import { parseToolRiskAudit, parseToolRiskAuditProfile } from "./AgentBamlToolRi
 
 const ProfileFileName = "AgentBamlToolRiskAuditProfile.json";
 
-type InterruptingToolRiskDecision = Exclude<
-  ToolRiskAuditDecision,
-  typeof ToolRiskAuditDecision.Allow
->;
+type InterruptingToolRiskDecision = Exclude<ToolRiskAuditDecision, typeof ToolRiskAuditDecision.Allow>;
 
 const PermissionActionByAuditDecision = {
   [ToolRiskAuditDecision.Ask]: AgentPermissionActions.Ask,
@@ -38,20 +32,20 @@ export class AgentBamlToolRiskAuditor implements AgentToolGuardrailAuditor {
     this.profile = options.profile ?? readDefaultProfile();
   }
 
-  async auditToolCall(
-    input: AgentToolApprovalPolicyInput,
-  ): Promise<AgentPermissionDecision | undefined> {
+  async auditToolCall(input: AgentToolApprovalPolicyInput): Promise<AgentPermissionDecision | undefined> {
     try {
       throwIfAborted(input.signal);
-      const audit = parseToolRiskAudit(await this.options.client.auditToolRisk(
-        projectToolRiskAuditPromptInput({
-          input,
-          profile: this.profile,
-        }),
-        {
-          signal: input.signal,
-        },
-      ));
+      const audit = parseToolRiskAudit(
+        await this.options.client.auditToolRisk(
+          projectToolRiskAuditPromptInput({
+            input,
+            profile: this.profile,
+          }),
+          {
+            signal: input.signal,
+          },
+        ),
+      );
 
       return audit.decision === ToolRiskAuditDecision.Allow
         ? undefined
@@ -70,17 +64,13 @@ export class AgentBamlToolRiskAuditor implements AgentToolGuardrailAuditor {
   }
 }
 
-export function createAgentBamlToolRiskAuditor(
-  options: AgentBamlToolRiskAuditorOptions,
-): AgentBamlToolRiskAuditor {
+export function createAgentBamlToolRiskAuditor(options: AgentBamlToolRiskAuditorOptions): AgentBamlToolRiskAuditor {
   return new AgentBamlToolRiskAuditor(options);
 }
 
 function readDefaultProfile(): AgentBamlToolRiskAuditProfile {
   return parseToolRiskAuditProfile(
-    JSON.parse(
-      fs.readFileSync(path.join(moduleDirPath(import.meta.url), ProfileFileName), "utf8"),
-    ),
+    JSON.parse(fs.readFileSync(path.join(moduleDirPath(import.meta.url), ProfileFileName), "utf8")),
   );
 }
 
@@ -95,7 +85,5 @@ function riskSignals(audit: ReturnType<typeof parseToolRiskAudit>): string[] {
 }
 
 function criticalitySignals(level: ToolRiskLevel): string[] {
-  return level === ToolRiskLevel.Critical
-    ? ["baml.critical"]
-    : [];
+  return level === ToolRiskLevel.Critical ? ["baml.critical"] : [];
 }

@@ -1,17 +1,8 @@
-export type AgentConfigFormFieldType =
-  | "boolean"
-  | "string"
-  | "number"
-  | "array"
-  | "table"
-  | "record";
+export type AgentConfigFormFieldType = "boolean" | "string" | "number" | "array" | "table" | "record";
 
 export type AgentConfigFormFieldOptionValue = string | number | boolean;
 
-export type AgentConfigFormFieldLevel =
-  | "basic"
-  | "advanced"
-  | "internal";
+export type AgentConfigFormFieldLevel = "basic" | "advanced" | "internal";
 
 export interface AgentConfigFormSnapshot {
   version: 1;

@@ -3,11 +3,7 @@ import path from "node:path";
 
 const DesktopProjectLayout = {
   files: ["package.json"],
-  directories: [
-    "Apps/Desktop",
-    "Frontend",
-    "System/Plugins",
-  ],
+  directories: ["Apps/Desktop", "Frontend", "System/Plugins"],
 } as const;
 
 export interface DesktopResourceRootResolutionInput {
@@ -20,17 +16,12 @@ export interface DesktopResourceRootResolutionInput {
  * Packaged applications load resources from Electron's app path. Development
  * runs resolve the checked-in project layout rather than user-local config.
  */
-export function resolveDesktopResourceRoot(
-  input: DesktopResourceRootResolutionInput,
-): string {
+export function resolveDesktopResourceRoot(input: DesktopResourceRootResolutionInput): string {
   if (input.isPackaged) {
     return path.resolve(input.appPath);
   }
 
-  const root = findDesktopProjectRoot([
-    input.launchRoot,
-    input.appPath,
-  ]);
+  const root = findDesktopProjectRoot([input.launchRoot, input.appPath]);
   if (root) {
     return root;
   }
@@ -46,9 +37,7 @@ export function resolveDesktopWorkspaceRoot(input: {
   resourceRoot: string;
   userDataRoot: string;
 }): string {
-  return input.isPackaged
-    ? path.resolve(input.userDataRoot)
-    : path.resolve(input.resourceRoot);
+  return input.isPackaged ? path.resolve(input.userDataRoot) : path.resolve(input.resourceRoot);
 }
 
 export class DesktopRuntimePathResolutionError extends Error {
@@ -91,8 +80,10 @@ function findDesktopProjectRootFrom(startPath: string): string | undefined {
 }
 
 function matchesDesktopProjectLayout(root: string): boolean {
-  return DesktopProjectLayout.files.every((entry) => isFile(path.join(root, entry)))
-    && DesktopProjectLayout.directories.every((entry) => isDirectory(path.join(root, entry)));
+  return (
+    DesktopProjectLayout.files.every((entry) => isFile(path.join(root, entry))) &&
+    DesktopProjectLayout.directories.every((entry) => isDirectory(path.join(root, entry)))
+  );
 }
 
 function resolveDirectoryPath(value: string): string {

@@ -21,9 +21,7 @@ export function resolveRuntimeWebSocketUrl(buildTimeUrl: string): string {
 export function resolveRuntimeEmptySuggestions(buildTimeValue?: string): string[] | undefined {
   const runtimeSuggestions = readSeneraRuntimeConfig().emptySuggestions;
   if (runtimeSuggestions) {
-    return runtimeSuggestions
-      .map((suggestion) => suggestion.trim())
-      .filter(Boolean);
+    return runtimeSuggestions.map((suggestion) => suggestion.trim()).filter(Boolean);
   }
 
   return buildTimeValue

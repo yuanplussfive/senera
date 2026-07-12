@@ -9,9 +9,7 @@ export interface AgentMemoryCandidateSqlStatements {
   rejectMemoryCandidateStmt: Database.Statement<[string, number, string, string, string, string]>;
 }
 
-export function prepareAgentMemoryCandidateSqlStatements(
-  db: Database.Database,
-): AgentMemoryCandidateSqlStatements {
+export function prepareAgentMemoryCandidateSqlStatements(db: Database.Database): AgentMemoryCandidateSqlStatements {
   return {
     insertMemoryCandidateStmt: db.prepare(`
       INSERT INTO memory_candidates (
@@ -100,4 +98,3 @@ export function prepareAgentMemoryCandidateSqlStatements(
     `),
   };
 }
-

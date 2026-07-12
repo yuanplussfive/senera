@@ -5,77 +5,91 @@ import type { RootCommandToolSelectorManifest } from "../Source/AgentSystem/Type
 import type { LoadedPlugin } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
 
 const registry = new AgentPluginRegistry();
-registry.registerPlugin(pluginFixture({
-  name: "ValidPluginReferences",
-  tools: ["KnownTool", "AskUserTool"],
-  recommendedTools: ["KnownTool"],
-  rootCommandToolNames: ["AskUserTool"],
-}));
+registry.registerPlugin(
+  pluginFixture({
+    name: "ValidPluginReferences",
+    tools: ["KnownTool", "AskUserTool"],
+    recommendedTools: ["KnownTool"],
+    rootCommandToolNames: ["AskUserTool"],
+  }),
+);
 assert.doesNotThrow(() => registry.validateAgentReferences());
 
 const optionalRecommendedTool = new AgentPluginRegistry();
-optionalRecommendedTool.registerPlugin(pluginFixture({
-  name: "OptionalToolProvider",
-  tools: ["OptionalTool"],
-  recommendedTools: [],
-  rootCommandToolNames: [],
-  available: false,
-  rootKind: "User",
-}));
-optionalRecommendedTool.registerPlugin(pluginFixture({
-  name: "OptionalToolConsumer",
-  tools: ["KnownTool"],
-  recommendedTools: ["KnownTool", "OptionalTool"],
-  rootCommandToolNames: [],
-}));
+optionalRecommendedTool.registerPlugin(
+  pluginFixture({
+    name: "OptionalToolProvider",
+    tools: ["OptionalTool"],
+    recommendedTools: [],
+    rootCommandToolNames: [],
+    available: false,
+    rootKind: "User",
+  }),
+);
+optionalRecommendedTool.registerPlugin(
+  pluginFixture({
+    name: "OptionalToolConsumer",
+    tools: ["KnownTool"],
+    recommendedTools: ["KnownTool", "OptionalTool"],
+    rootCommandToolNames: [],
+  }),
+);
 assert.equal(optionalRecommendedTool.getTool("OptionalTool"), undefined);
 assert.doesNotThrow(() => optionalRecommendedTool.validateAgentReferences());
 
 const missingSkillTool = new AgentPluginRegistry();
-missingSkillTool.registerPlugin(pluginFixture({
-  name: "MissingSkillToolReference",
-  tools: ["KnownTool"],
-  recommendedTools: ["MissingTool"],
-  rootCommandToolNames: [],
-}));
+missingSkillTool.registerPlugin(
+  pluginFixture({
+    name: "MissingSkillToolReference",
+    tools: ["KnownTool"],
+    recommendedTools: ["MissingTool"],
+    rootCommandToolNames: [],
+  }),
+);
 assert.throws(
   () => missingSkillTool.validateAgentReferences(),
   /Skill "ReferenceSkill" in plugin "MissingSkillToolReference".*MissingTool/s,
 );
 
 const missingRootCommandTool = new AgentPluginRegistry();
-missingRootCommandTool.registerPlugin(pluginFixture({
-  name: "MissingRootCommandToolReference",
-  tools: ["KnownTool"],
-  recommendedTools: ["KnownTool"],
-  rootCommandToolNames: ["MissingTool"],
-}));
+missingRootCommandTool.registerPlugin(
+  pluginFixture({
+    name: "MissingRootCommandToolReference",
+    tools: ["KnownTool"],
+    recommendedTools: ["KnownTool"],
+    rootCommandToolNames: ["MissingTool"],
+  }),
+);
 assert.throws(
   () => missingRootCommandTool.validateAgentReferences(),
   /RootCommand "ask_user" in plugin "MissingRootCommandToolReference".*MissingTool/s,
 );
 
 const hostCapabilityReference = new AgentPluginRegistry();
-hostCapabilityReference.registerPlugin(pluginFixture({
-  name: "ValidHostCapabilityReference",
-  tools: ["ToolSearchTool"],
-  toolCapabilities: {
-    ToolSearchTool: "tool.search",
-  },
-  recommendedTools: [],
-  rootCommandToolNames: [],
-  rootCommandHostCapability: "tool.search",
-}));
+hostCapabilityReference.registerPlugin(
+  pluginFixture({
+    name: "ValidHostCapabilityReference",
+    tools: ["ToolSearchTool"],
+    toolCapabilities: {
+      ToolSearchTool: "tool.search",
+    },
+    recommendedTools: [],
+    rootCommandToolNames: [],
+    rootCommandHostCapability: "tool.search",
+  }),
+);
 assert.doesNotThrow(() => hostCapabilityReference.validateAgentReferences());
 
 const missingHostCapability = new AgentPluginRegistry();
-missingHostCapability.registerPlugin(pluginFixture({
-  name: "MissingHostCapabilityReference",
-  tools: ["KnownTool"],
-  recommendedTools: ["KnownTool"],
-  rootCommandToolNames: [],
-  rootCommandHostCapability: "missing.capability",
-}));
+missingHostCapability.registerPlugin(
+  pluginFixture({
+    name: "MissingHostCapabilityReference",
+    tools: ["KnownTool"],
+    recommendedTools: ["KnownTool"],
+    rootCommandToolNames: [],
+    rootCommandHostCapability: "missing.capability",
+  }),
+);
 assert.throws(
   () => missingHostCapability.validateAgentReferences(),
   /RootCommand "ask_user" in plugin "MissingHostCapabilityReference".*missing\.capability/s,
@@ -94,11 +108,7 @@ function pluginFixture(options: {
   rootKind?: LoadedPlugin["rootKind"];
 }): LoadedPlugin {
   const rootKind = options.rootKind ?? "System";
-  const rootPath = path.join(
-    process.cwd(),
-    rootKind === "System" ? "System" : "Plugins",
-    options.name,
-  );
+  const rootPath = path.join(process.cwd(), rootKind === "System" ? "System" : "Plugins", options.name);
   return {
     rootPath,
     rootKind,
@@ -123,31 +133,35 @@ function pluginFixture(options: {
           LocalFallback: "Deny",
         },
       })),
-      Skills: [{
-        Name: "ReferenceSkill",
-        DescriptionFile: "./ReferenceSkill.md",
-        RecommendedTools: [...options.recommendedTools],
-      }],
-      RootCommands: [{
-        Action: "ask_user",
-        OutputMode: "open",
-        ToolAccess: "restricted",
-        Objective: "Verify named tool references.",
-        InsufficiencyPolicy: "Stop when the named tool is unavailable.",
-        AllowedTools: rootCommandAllowedTools(options),
-        ForbiddenOutputs: [],
-        VisibleOutput: {
-          Audience: "runtime",
-          Start: "tool_call",
-          Format: "tool_call",
-          Rules: [],
-          Repair: {
-            Instruction: "Repair the tool call.",
-            Rules: [],
-          },
+      Skills: [
+        {
+          Name: "ReferenceSkill",
+          DescriptionFile: "./ReferenceSkill.md",
+          RecommendedTools: [...options.recommendedTools],
         },
-        IncludeToolCatalog: false,
-      }],
+      ],
+      RootCommands: [
+        {
+          Action: "ask_user",
+          OutputMode: "open",
+          ToolAccess: "restricted",
+          Objective: "Verify named tool references.",
+          InsufficiencyPolicy: "Stop when the named tool is unavailable.",
+          AllowedTools: rootCommandAllowedTools(options),
+          ForbiddenOutputs: [],
+          VisibleOutput: {
+            Audience: "runtime",
+            Start: "tool_call",
+            Format: "tool_call",
+            Rules: [],
+            Repair: {
+              Instruction: "Repair the tool call.",
+              Rules: [],
+            },
+          },
+          IncludeToolCatalog: false,
+        },
+      ],
     },
   };
 }
@@ -157,17 +171,21 @@ function rootCommandAllowedTools(options: {
   rootCommandHostCapability?: string;
 }): RootCommandToolSelectorManifest[] {
   if (options.rootCommandToolNames.length > 0) {
-    return [{
-      Source: "NamedLoaded",
-      Names: [...options.rootCommandToolNames],
-    }];
+    return [
+      {
+        Source: "NamedLoaded",
+        Names: [...options.rootCommandToolNames],
+      },
+    ];
   }
 
   if (options.rootCommandHostCapability) {
-    return [{
-      Source: "HostCapability",
-      Capability: options.rootCommandHostCapability,
-    }];
+    return [
+      {
+        Source: "HostCapability",
+        Capability: options.rootCommandHostCapability,
+      },
+    ];
   }
 
   return [{ Source: "None" }];

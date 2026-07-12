@@ -4,10 +4,7 @@ import {
   ToolRiskLevel,
   type ToolRiskAudit as BamlToolRiskAudit,
 } from "../BamlClient/baml_client/index.js";
-import {
-  parseNormalizedBamlOutput,
-  safeParseNormalizedBamlOutput,
-} from "../BamlClient/AgentBamlOutputNormalizer.js";
+import { parseNormalizedBamlOutput, safeParseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
 import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
 
 const NonEmptyStringSchema = z.string().trim().min(1);
@@ -34,9 +31,9 @@ const ToolRiskAuditSchema = z
       });
     }
     if (
-      audit.decision === ToolRiskAuditDecision.Allow
-      && [ToolRiskLevel.High, ToolRiskLevel.Critical].includes(audit.riskLevel)
-      && audit.confidence < 0.85
+      audit.decision === ToolRiskAuditDecision.Allow &&
+      [ToolRiskLevel.High, ToolRiskLevel.Critical].includes(audit.riskLevel) &&
+      audit.confidence < 0.85
     ) {
       context.addIssue({
         code: "custom",
@@ -58,21 +55,41 @@ export function parseToolRiskAuditProfile(value: unknown) {
   return parseNormalizedBamlOutput(ToolRiskAuditProfileSchema, value);
 }
 
-const ToolRiskAuditProfileSchema = z.object({
-  riskScale: z.array(z.object({
-    level: NonEmptyStringSchema,
-    meaning: NonEmptyStringSchema,
-  }).strict()).min(1),
-  decisionRubric: z.array(z.object({
-    decision: NonEmptyStringSchema,
-    when: StringListSchema,
-  }).strict()).min(1),
-  concernCatalog: z.array(z.object({
-    id: NonEmptyStringSchema,
-    title: NonEmptyStringSchema,
-    description: NonEmptyStringSchema,
-  }).strict()).min(1),
-}).strict();
+const ToolRiskAuditProfileSchema = z
+  .object({
+    riskScale: z
+      .array(
+        z
+          .object({
+            level: NonEmptyStringSchema,
+            meaning: NonEmptyStringSchema,
+          })
+          .strict(),
+      )
+      .min(1),
+    decisionRubric: z
+      .array(
+        z
+          .object({
+            decision: NonEmptyStringSchema,
+            when: StringListSchema,
+          })
+          .strict(),
+      )
+      .min(1),
+    concernCatalog: z
+      .array(
+        z
+          .object({
+            id: NonEmptyStringSchema,
+            title: NonEmptyStringSchema,
+            description: NonEmptyStringSchema,
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();
 
 function uniqueTrimmed(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];

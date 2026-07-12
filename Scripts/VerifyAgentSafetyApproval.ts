@@ -13,10 +13,7 @@ import { AgentBamlToolRiskAuditor } from "../Source/AgentSystem/Safety/AgentBaml
 import { AgentCompositeToolApprovalPolicy } from "../Source/AgentSystem/Safety/AgentToolApprovalPolicy.js";
 import { createAgentToolApprovalPolicy } from "../Source/AgentSystem/Safety/AgentToolApprovalPolicyFactory.js";
 import { AgentToolPermissionGate } from "../Source/AgentSystem/Safety/AgentToolPermissionGate.js";
-import type {
-  ToolApprovalManifest,
-  ToolExecutionManifest,
-} from "../Source/AgentSystem/Types/PluginManifestTypes.js";
+import type { ToolApprovalManifest, ToolExecutionManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
 import type { LoadedPlugin, RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
 
 const DefaultExecution = {
@@ -103,10 +100,12 @@ async function verifyAutomaticRiskApprovalFlow(): Promise<void> {
     registry: createRegistry([
       createToolFixture("AutoRiskWriteTool", {
         permissions: ["filesystem:write:workspace"],
-        risks: [{
-          SideEffect: "write-workspace",
-          Permission: "write",
-        }],
+        risks: [
+          {
+            SideEffect: "write-workspace",
+            Permission: "write",
+          },
+        ],
         effects: ["write-workspace"],
       }),
     ]),
@@ -206,15 +205,15 @@ async function verifyBamlToolRiskAskApproval(): Promise<void> {
   const events: AgentDomainEvent[] = [];
   const hook = createHook({
     approvalRuntime: runtime,
-    registry: createRegistry([
-      createToolFixture("SemanticRiskTool"),
-    ]),
-    policy: createBamlRiskPolicy(createToolRiskAudit({
-      decision: ToolRiskAuditDecision.Ask,
-      riskLevel: ToolRiskLevel.High,
-      reason: "语义审计要求用户确认高影响工具调用。",
-      matchedConcerns: ["destructive-effect"],
-    })),
+    registry: createRegistry([createToolFixture("SemanticRiskTool")]),
+    policy: createBamlRiskPolicy(
+      createToolRiskAudit({
+        decision: ToolRiskAuditDecision.Ask,
+        riskLevel: ToolRiskLevel.High,
+        reason: "语义审计要求用户确认高影响工具调用。",
+        matchedConcerns: ["destructive-effect"],
+      }),
+    ),
   });
 
   const pending = hook.authorize(createHookContext(events, "verify-baml-risk-ask"), {
@@ -240,15 +239,15 @@ async function verifyBamlToolRiskAskApproval(): Promise<void> {
 
 async function verifyBamlToolRiskDenyBlocksExecution(): Promise<void> {
   const hook = createHook({
-    registry: createRegistry([
-      createToolFixture("SemanticDeniedTool"),
-    ]),
-    policy: createBamlRiskPolicy(createToolRiskAudit({
-      decision: ToolRiskAuditDecision.Deny,
-      riskLevel: ToolRiskLevel.Critical,
-      reason: "语义审计拒绝越界工具调用。",
-      matchedConcerns: ["workspace-boundary"],
-    })),
+    registry: createRegistry([createToolFixture("SemanticDeniedTool")]),
+    policy: createBamlRiskPolicy(
+      createToolRiskAudit({
+        decision: ToolRiskAuditDecision.Deny,
+        riskLevel: ToolRiskLevel.Critical,
+        reason: "语义审计拒绝越界工具调用。",
+        matchedConcerns: ["workspace-boundary"],
+      }),
+    ),
   });
 
   assert.deepEqual(
@@ -269,9 +268,7 @@ async function verifyBamlToolRiskAllowFallsThroughToOpa(): Promise<void> {
   const events: AgentDomainEvent[] = [];
   const hook = createHook({
     approvalRuntime: runtime,
-    registry: createRegistry([
-      createToolFixture("OpaAfterBamlTool"),
-    ]),
+    registry: createRegistry([createToolFixture("OpaAfterBamlTool")]),
     policy: createBamlRiskPolicy(
       createToolRiskAudit({
         decision: ToolRiskAuditDecision.Allow,
@@ -428,15 +425,16 @@ async function verifyPiBamlRuntimeContextReachesApprovalPolicy(): Promise<void> 
   const runtime = new AgentApprovalRuntime();
   const events: AgentDomainEvent[] = [];
   let capturedRuntimeContext: Record<string, unknown> | undefined;
-  const policyClient = createPolicyClient({
-    decision: "requires-approval",
-    reason: "运行上下文已进入 policy-opa 输入。",
-  }, (input) => {
-    capturedRuntimeContext = readRecord(readRecord(input).runtimeContext);
-  });
-  const registry = createRegistry([
-    createToolFixture("ContextAwareTool"),
-  ]);
+  const policyClient = createPolicyClient(
+    {
+      decision: "requires-approval",
+      reason: "运行上下文已进入 policy-opa 输入。",
+    },
+    (input) => {
+      capturedRuntimeContext = readRecord(readRecord(input).runtimeContext);
+    },
+  );
+  const registry = createRegistry([createToolFixture("ContextAwareTool")]);
   const hook = createHook({
     approvalRuntime: runtime,
     registry,
@@ -448,39 +446,42 @@ async function verifyPiBamlRuntimeContextReachesApprovalPolicy(): Promise<void> 
     }),
   });
 
-  const pending = hook.authorize({
-    ...createHookContext(events, "verify-runtime-context"),
-    rootCommand: {
-      authority: "senera_runtime_root",
-      action: "use_tools",
-      outputMode: "open",
-      toolAccess: "restricted",
-      objective: "验证运行上下文",
-      instruction: "让策略看到 root command。",
-      allowedTools: [],
-      forbiddenOutputs: [],
-      insufficiencyPolicy: "验证缺口。",
-      preferredTools: ["ContextAwareTool"],
-      toolSearchQueries: [],
-      needs: [],
-      includeToolCatalog: true,
-      visibleOutput: {
-        audience: "user",
-        start: "answer",
-        format: "markdown",
-        rules: [],
-        repair: {
-          instruction: "repair",
+  const pending = hook.authorize(
+    {
+      ...createHookContext(events, "verify-runtime-context"),
+      rootCommand: {
+        authority: "senera_runtime_root",
+        action: "use_tools",
+        outputMode: "open",
+        toolAccess: "restricted",
+        objective: "验证运行上下文",
+        instruction: "让策略看到 root command。",
+        allowedTools: [],
+        forbiddenOutputs: [],
+        insufficiencyPolicy: "验证缺口。",
+        preferredTools: ["ContextAwareTool"],
+        toolSearchQueries: [],
+        needs: [],
+        includeToolCatalog: true,
+        visibleOutput: {
+          audience: "user",
+          start: "answer",
+          format: "markdown",
           rules: [],
+          repair: {
+            instruction: "repair",
+            rules: [],
+          },
         },
       },
+      activeSkills: [],
     },
-    activeSkills: [],
-  }, {
-    toolCallId: "call_context",
-    toolName: "ContextAwareTool",
-    input: {},
-  });
+    {
+      toolCallId: "call_context",
+      toolName: "ContextAwareTool",
+      input: {},
+    },
+  );
 
   await waitForApproval(events);
   assert.equal(readRecord(capturedRuntimeContext?.rootCommand).objective, "验证运行上下文");
@@ -547,9 +548,11 @@ function createHook(options: {
     registry: options.registry,
     permissionGate: new AgentToolPermissionGate({
       approvalRuntime: options.approvalRuntime,
-      policy: options.policy ?? createAgentToolApprovalPolicy({
-        registry: options.registry,
-      }),
+      policy:
+        options.policy ??
+        createAgentToolApprovalPolicy({
+          registry: options.registry,
+        }),
     }),
   });
 }
@@ -565,10 +568,7 @@ function createHookContext(events: AgentDomainEvent[], requestId: string) {
   };
 }
 
-function createPolicyClient(
-  decision: Record<string, unknown>,
-  onEvaluate?: (input: unknown) => void,
-): PolicyClient {
+function createPolicyClient(decision: Record<string, unknown>, onEvaluate?: (input: unknown) => void): PolicyClient {
   return {
     async evaluate(_path, input) {
       assert.equal(readRecord(input).tool && typeof readRecord(input).tool === "object", true);
@@ -578,10 +578,7 @@ function createPolicyClient(
   };
 }
 
-function createBamlRiskPolicy(
-  audit: ToolRiskAudit | Error,
-  opa?: PolicyClient,
-): AgentCompositeToolApprovalPolicy {
+function createBamlRiskPolicy(audit: ToolRiskAudit | Error, opa?: PolicyClient): AgentCompositeToolApprovalPolicy {
   return new AgentCompositeToolApprovalPolicy({
     auditors: [
       new AgentBamlToolRiskAuditor({
@@ -595,12 +592,14 @@ function createBamlRiskPolicy(
         },
       }),
     ],
-    ...(opa ? {
-      opa: {
-        client: opa,
-        path: "senera/tool/decision",
-      },
-    } : {}),
+    ...(opa
+      ? {
+          opa: {
+            client: opa,
+            path: "senera/tool/decision",
+          },
+        }
+      : {}),
   });
 }
 
@@ -728,9 +727,7 @@ function readApprovalEvent(events: readonly AgentDomainEvent[]): Record<string, 
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function readArray(value: unknown): unknown[] {

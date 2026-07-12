@@ -1,12 +1,7 @@
 import { expect, test } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
-import {
-  createEvent,
-  createTestState,
-  TestRequestId,
-  TestSessionId,
-} from "./sessionProjectorTestUtils.mjs";
+import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
 
 test("scoped tool events attach to parent run with scoped step ids", () => {
   const state = createTestState();
@@ -20,32 +15,46 @@ test("scoped tool events attach to parent run with scoped step ids", () => {
     role: "childAgent",
   };
 
-  applyEvent(state, createEvent(EventKinds.ToolCallStarted, {
-    index: 0,
-    toolName: "WorkspaceReadFile",
-    callId: "call_child_read",
-    batchId: "batch_child",
-  }, {
-    requestId: "child_request",
-    step: 2,
-    sequence: 2,
-    phase: "tool",
-    scope,
-  }));
-  applyEvent(state, createEvent(EventKinds.ToolCallResultDetail, {
-    detailId: "detail_child",
-    index: 0,
-    toolName: "WorkspaceReadFile",
-    callId: "call_child_read",
-    batchId: "batch_child",
-    value: { result: { text: "child file" } },
-  }, {
-    requestId: "child_request",
-    step: 2,
-    sequence: 3,
-    phase: "tool",
-    scope,
-  }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ToolCallStarted,
+      {
+        index: 0,
+        toolName: "WorkspaceReadFile",
+        callId: "call_child_read",
+        batchId: "batch_child",
+      },
+      {
+        requestId: "child_request",
+        step: 2,
+        sequence: 2,
+        phase: "tool",
+        scope,
+      },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ToolCallResultDetail,
+      {
+        detailId: "detail_child",
+        index: 0,
+        toolName: "WorkspaceReadFile",
+        callId: "call_child_read",
+        batchId: "batch_child",
+        value: { result: { text: "child file" } },
+      },
+      {
+        requestId: "child_request",
+        step: 2,
+        sequence: 3,
+        phase: "tool",
+        scope,
+      },
+    ),
+  );
 
   const run = state.sessions[TestSessionId]?.runs.find((item) => item.requestId === TestRequestId);
   expect(run).toBeTruthy();

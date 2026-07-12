@@ -12,16 +12,11 @@ import {
   type ReactNode,
   type TableHTMLAttributes,
 } from "react";
-import {
-  Check,
-  Copy,
-  ExternalLink,
-  Eye,
-  Maximize2,
-} from "lucide-react";
+import { Check, Copy, ExternalLink, Eye, Maximize2 } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/util";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Tooltip, useClipboardCopy } from "../ui";
 import { CollapsibleCodeBlock } from "./CollapsibleCodeBlock";
 import { type CodeArtifact, readCodeArtifact } from "./CodeArtifactModel";
@@ -52,11 +47,7 @@ export function MarkdownRenderer({
   compact = false,
   lightweightCode = false,
 }: MarkdownRendererProps): JSX.Element {
-  const rendererClassName = cn(
-    "markdown-renderer",
-    compact && "markdown-renderer--compact",
-    contentClassName,
-  );
+  const rendererClassName = cn("markdown-renderer", compact && "markdown-renderer--compact", contentClassName);
 
   return (
     <div className={className}>
@@ -65,9 +56,7 @@ export function MarkdownRenderer({
         remarkPlugins={[remarkGfm]}
         components={{
           a: MarkdownLink,
-          pre: lightweightCode
-            ? LightweightCodeBlock
-            : CodeBlock,
+          pre: lightweightCode ? LightweightCodeBlock : CodeBlock,
           table: MarkdownTable,
         }}
       >
@@ -77,11 +66,7 @@ export function MarkdownRenderer({
   );
 }
 
-function LightweightCodeBlock({
-  children,
-  className,
-  ...props
-}: ComponentPropsWithoutRef<"pre">): JSX.Element {
+function LightweightCodeBlock({ children, className, ...props }: ComponentPropsWithoutRef<"pre">): JSX.Element {
   const code = findChildByTag(children, "code");
   const language = code ? readCodeLanguage(code) : "text";
   const codeText = readNodeText(code?.props.children ?? children).replace(/\n$/, "");
@@ -125,11 +110,7 @@ function MarkdownTable({ children, className, ...props }: TableHTMLAttributes<HT
   );
 }
 
-function CodeBlock({
-  children,
-  className,
-  ...props
-}: ComponentPropsWithoutRef<"pre">): JSX.Element {
+function CodeBlock({ children, className, ...props }: ComponentPropsWithoutRef<"pre">): JSX.Element {
   const code = findChildByTag(children, "code");
   const language = code ? readCodeLanguage(code) : "text";
   const codeText = readNodeText(code?.props.children ?? children).replace(/\n$/, "");
@@ -144,7 +125,7 @@ function PreviewCodeBlock({
 }: ComponentPropsWithoutRef<"pre"> & {
   artifact: CodeArtifact;
 }): JSX.Element {
-  const { copied, copyText } = useClipboardCopy({ successMessage: "代码已复制" });
+  const { copied, copyText } = useClipboardCopy({ successMessage: frontendMessage("code.copied") });
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerInitialView, setViewerInitialView] = useState<"source" | "preview">("source");
 
@@ -158,7 +139,10 @@ function PreviewCodeBlock({
   };
 
   return (
-    <figure className={cn("markdown-renderer__code-block markdown-renderer__code-block--artifact", className)} {...props}>
+    <figure
+      className={cn("markdown-renderer__code-block markdown-renderer__code-block--artifact", className)}
+      {...props}
+    >
       <figcaption className="markdown-renderer__code-header">
         <CodeBlockHeader
           language={artifact.language}
@@ -261,7 +245,7 @@ function CodeBlockHeader({
           </Tooltip>
         ) : null}
         {onOpenViewer ? (
-          <Tooltip content="查看源码" side="top">
+          <Tooltip content={frontendMessage("code.viewSource")} side="top">
             <button
               type="button"
               onClick={(event) => {
@@ -270,13 +254,13 @@ function CodeBlockHeader({
               }}
               onPointerDown={stopButtonEvent}
               className="markdown-renderer__code-iconbtn"
-              aria-label="打开代码查看器"
+              aria-label={frontendMessage("code.openViewer")}
             >
               <Maximize2 className="h-3.5 w-3.5" />
             </button>
           </Tooltip>
         ) : null}
-        <Tooltip content={copied ? "已复制" : "复制"} side="top">
+        <Tooltip content={frontendMessage(copied ? "clipboard.copied" : "clipboard.copyToast")} side="top">
           <button
             type="button"
             onClick={(event) => {
@@ -285,7 +269,7 @@ function CodeBlockHeader({
             }}
             onPointerDown={stopButtonEvent}
             className="markdown-renderer__code-iconbtn"
-            aria-label={`复制 ${language} 代码`}
+            aria-label={frontendMessage("code.copyLanguage", { language })}
           >
             {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
           </button>

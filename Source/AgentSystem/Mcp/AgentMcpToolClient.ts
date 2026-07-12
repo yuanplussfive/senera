@@ -26,12 +26,15 @@ export async function withAgentMcpToolClient<TValue>(
     profile: options.executionProfile,
     spawnPersistentProcess: options.spawnPersistentProcess,
   });
-  const client = new Client({
-    name: "senera-mcp-tool-client",
-    version: "0.1.0",
-  }, {
-    capabilities: {},
-  });
+  const client = new Client(
+    {
+      name: "senera-mcp-tool-client",
+      version: "0.1.0",
+    },
+    {
+      capabilities: {},
+    },
+  );
 
   await client.connect(transport, mcpRequestOptions(options));
   try {
@@ -48,11 +51,7 @@ export class AgentMcpToolClient {
   ) {}
 
   callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-    return this.client.callTool(
-      { name, arguments: args },
-      undefined,
-      mcpRequestOptions(this.options),
-    );
+    return this.client.callTool({ name, arguments: args }, undefined, mcpRequestOptions(this.options));
   }
 }
 

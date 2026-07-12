@@ -1,10 +1,6 @@
 import { z } from "zod";
 
-export const LoadedToolsSchema = z.union([
-  z.literal("all"),
-  z.literal("dynamic"),
-  z.array(z.string().min(1)),
-]);
+export const LoadedToolsSchema = z.union([z.literal("all"), z.literal("dynamic"), z.array(z.string().min(1))]);
 
 export const AgentLoopSchema = z
   .object({
@@ -75,6 +71,37 @@ export const ServerSchema = z
     Port: z.number().int().min(1).max(65535).optional(),
     HotReload: z.boolean().optional(),
     RequestMaxBytes: z.number().int().min(1).optional(),
+    AccessControl: z
+      .object({
+        Mode: z.enum(["auto", "required", "disabled"]).optional(),
+        AccountFile: z.string().min(1).optional(),
+        AllowedOrigins: z.array(z.string().url()).optional(),
+        TrustedProxyAddresses: z.array(z.string().min(1)).optional(),
+        AllowInsecureLoopback: z.boolean().optional(),
+        Session: z
+          .object({
+            AbsoluteTtlHours: z.number().int().min(1).max(72).optional(),
+            IdleTtlHours: z.number().int().min(1).max(72).optional(),
+            MaxSessions: z.number().int().min(1).max(100).optional(),
+          })
+          .strict()
+          .optional(),
+        Limits: z
+          .object({
+            MaxConnections: z.number().int().min(1).max(10_000).optional(),
+            MaxConnectionsPerClient: z.number().int().min(1).max(1_000).optional(),
+            UpgradeRequestsPerMinute: z.number().int().min(1).max(100_000).optional(),
+            HttpRequestsPerMinute: z.number().int().min(1).max(100_000).optional(),
+            MessagesPerMinute: z.number().int().min(1).max(100_000).optional(),
+            LoginAttemptsPerMinute: z.number().int().min(1).max(10_000).optional(),
+            HeartbeatIntervalSeconds: z.number().int().min(5).max(3_600).optional(),
+            IdleSocketTimeoutSeconds: z.number().int().min(10).max(86_400).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

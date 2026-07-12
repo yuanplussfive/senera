@@ -15,7 +15,8 @@ export class AgentToolSearchTokenizer {
 
   tokenize(text: string): string[] {
     const normalized = this.normalize(text);
-    const tokens = this.segmenter.cutForSearch(normalized, true)
+    const tokens = this.segmenter
+      .cutForSearch(normalized, true)
       .map((token) => this.normalizeToken(token))
       .filter((token) => SearchCharacterPattern.test(token));
     return [...new Set(tokens)];
@@ -28,11 +29,9 @@ export class AgentToolSearchTokenizer {
       return [];
     }
 
-    const keywords = this.keywordExtractor.extractKeywords(
-      this.segmenter,
-      normalized,
-      tokenLimit,
-    ).map((entry) => this.normalizeToken(entry.keyword))
+    const keywords = this.keywordExtractor
+      .extractKeywords(this.segmenter, normalized, tokenLimit)
+      .map((entry) => this.normalizeToken(entry.keyword))
       .filter((token) => SearchCharacterPattern.test(token));
     return [...new Set(keywords)];
   }

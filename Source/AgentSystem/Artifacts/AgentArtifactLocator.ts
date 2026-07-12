@@ -74,9 +74,7 @@ export class AgentArtifactPathResolver {
   }
 }
 
-export function createAgentArtifactLocator(
-  input: AgentArtifactLocatorInput,
-): AgentArtifactLocator {
+export function createAgentArtifactLocator(input: AgentArtifactLocatorInput): AgentArtifactLocator {
   const workspaceRoot = path.resolve(input.workspaceRoot);
   const rootDir = normalizeRelativeRootDir(input.rootDir ?? DefaultAgentArtifactRootDir);
   const requestId = safePathSegment(input.requestId ?? "anonymous", {
@@ -99,24 +97,23 @@ export function createAgentArtifactLocator(
     argsHash,
     resultHash,
   });
-  const relativeDir = toPosixPath(path.join(
-    rootDir,
-    requestId,
-    "steps",
-    stepSegment,
-    "calls",
-    `${callSegment}-${toolSegment}-${artifactId.slice(4, 16)}`,
-  ));
+  const relativeDir = toPosixPath(
+    path.join(
+      rootDir,
+      requestId,
+      "steps",
+      stepSegment,
+      "calls",
+      `${callSegment}-${toolSegment}-${artifactId.slice(4, 16)}`,
+    ),
+  );
   const absoluteDir = assertInsideRoot(
     workspaceRoot,
     path.resolve(workspaceRoot, relativeDir),
     `artifact 目录超出工作区：${relativeDir}`,
   );
   const files = Object.fromEntries(
-    Object.entries(AgentArtifactFileNames).map(([name, fileName]) => [
-      name,
-      path.join(absoluteDir, fileName),
-    ]),
+    Object.entries(AgentArtifactFileNames).map(([name, fileName]) => [name, path.join(absoluteDir, fileName)]),
   );
 
   const locator = {
@@ -163,11 +160,7 @@ export function toPosixPath(value: string): string {
 
 export function toWorkspaceRelativePath(workspaceRoot: string, absolutePath: string): string {
   const root = path.resolve(workspaceRoot);
-  const target = assertInsideRoot(
-    root,
-    path.resolve(absolutePath),
-    `路径超出工作区：${absolutePath}`,
-  );
+  const target = assertInsideRoot(root, path.resolve(absolutePath), `路径超出工作区：${absolutePath}`);
   return toPosixPath(path.relative(root, target));
 }
 

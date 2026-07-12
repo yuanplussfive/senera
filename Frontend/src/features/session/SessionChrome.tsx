@@ -1,4 +1,5 @@
 import { ChevronDown, PanelLeftClose, PanelLeftOpen, SquarePen } from "lucide-react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../../shared/responsive";
 import {
@@ -25,16 +26,12 @@ interface SessionHeaderProps {
   onToggleSidebar: () => void;
 }
 
-export function SessionRail({
-  socketStatus,
-  onNewSession,
-  onOpenSessionPanel,
-}: SessionRailProps): JSX.Element {
+export function SessionRail({ socketStatus, onNewSession, onOpenSessionPanel }: SessionRailProps): JSX.Element {
   return (
     <aside className="flex h-full w-[56px] shrink-0 flex-col items-center border-r border-ink-200/70 bg-paper-100/60 py-3">
       <IconButton
-        label="expand"
-        tooltip="展开侧栏"
+        label={frontendMessage("session.headerExpand")}
+        tooltip={frontendMessage("session.headerExpand")}
         tooltipSide="right"
         tooltipShortcut="⌘B"
         onClick={onOpenSessionPanel}
@@ -45,7 +42,13 @@ export function SessionRail({
       <div className="my-2 flex flex-col items-center">
         <LogoMark size={22} />
       </div>
-      <IconButton label="new" tooltip="新建对话" tooltipSide="right" onClick={onNewSession} touchSafe>
+      <IconButton
+        label={frontendMessage("session.new")}
+        tooltip={frontendMessage("session.new")}
+        tooltipSide="right"
+        onClick={onNewSession}
+        touchSafe
+      >
         <SquarePen className="h-4 w-4" />
       </IconButton>
       <div className="mt-auto pb-1">
@@ -55,18 +58,14 @@ export function SessionRail({
   );
 }
 
-export function SessionHeader({
-  menuSections,
-  onNewSession,
-  onToggleSidebar,
-}: SessionHeaderProps): JSX.Element {
+export function SessionHeader({ menuSections, onNewSession, onToggleSidebar }: SessionHeaderProps): JSX.Element {
   const { isCoarsePointer } = useResponsiveMode();
 
   return (
     <div className="flex h-14 items-center gap-1.5 px-2.5">
       <IconButton
-        label="collapse"
-        tooltip="收起侧栏"
+        label={frontendMessage("session.headerCollapse")}
+        tooltip={frontendMessage("session.headerCollapse")}
         tooltipSide="bottom"
         tooltipShortcut="⌘B"
         onClick={onToggleSidebar}
@@ -95,8 +94,8 @@ export function SessionHeader({
       </DropdownMenu>
 
       <IconButton
-        label="new"
-        tooltip="新建对话"
+        label={frontendMessage("session.new")}
+        tooltip={frontendMessage("session.new")}
         tooltipSide="bottom"
         tooltipShortcut="⌘N"
         onClick={onNewSession}
@@ -117,10 +116,10 @@ function ConnectionDot({ status }: { status: string }): JSX.Element {
         : "bg-brick-500";
   const label =
     status === "open"
-      ? "已连接"
+      ? frontendMessage("connection.open")
       : status === "connecting" || status === "idle"
-        ? "连接中"
-        : "未连接";
+        ? frontendMessage("connection.connecting")
+        : frontendMessage("connection.closed");
   return (
     <Tooltip content={label} side="right">
       <button type="button" className="grid h-6 w-6 place-items-center">

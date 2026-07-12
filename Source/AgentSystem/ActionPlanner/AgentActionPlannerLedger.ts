@@ -1,19 +1,10 @@
 import crypto from "node:crypto";
-import type {
-  EvidenceSlot,
-} from "../BamlClient/baml_client/types.js";
+import type { EvidenceSlot } from "../BamlClient/baml_client/types.js";
 import { ExecutionDeltaOp, ToolCallStatus } from "../BamlClient/baml_client/types.js";
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import {
-  DefaultAgentArtifactRootDir,
-  createAgentArtifactLocator,
-} from "../Artifacts/AgentArtifactLocator.js";
-import {
-  readString,
-  stableStringify,
-  stringifyPreview,
-} from "./AgentActionPlannerProjectionUtils.js";
+import { DefaultAgentArtifactRootDir, createAgentArtifactLocator } from "../Artifacts/AgentArtifactLocator.js";
+import { readString, stableStringify, stringifyPreview } from "./AgentActionPlannerProjectionUtils.js";
 
 export interface AgentActionPlannerLedger {
   calls: PlannerToolCallRecord[];
@@ -118,7 +109,9 @@ export class AgentActionPlannerLedgerUpdater {
     const { result, step } = options;
     const argsHash = stableHash(result.arguments);
     const resultHash = stableHash(result.result);
-    const locator = result.artifact ?? createAgentArtifactLocator({
+    const locator =
+      result.artifact ??
+      createAgentArtifactLocator({
         workspaceRoot: this.workspaceRoot,
         rootDir: this.artifactRootDir,
         requestId: options.requestId,
@@ -225,15 +218,11 @@ export function isActionPlannerLedgerStalled(
   }
 
   const firstCallStep = Math.min(...ledger.calls.map((call) => call.step));
-  const progressAnchor = ledger.lastNewEvidenceStep > 0
-    ? ledger.lastNewEvidenceStep
-    : firstCallStep;
+  const progressAnchor = ledger.lastNewEvidenceStep > 0 ? ledger.lastNewEvidenceStep : firstCallStep;
   return currentStep - progressAnchor >= options.stalledStepLag;
 }
 
-function collectRepeatedWarnings(
-  calls: readonly PlannerToolCallRecord[],
-): PlannerRepeatedCallWarning[] {
+function collectRepeatedWarnings(calls: readonly PlannerToolCallRecord[]): PlannerRepeatedCallWarning[] {
   const bySignature = new Map<string, PlannerRepeatedCallWarning>();
   for (const call of calls) {
     const key = `${call.toolName}:${call.argsHash}`;
@@ -284,7 +273,7 @@ function readErrorMessage(value: unknown): string {
 
   const error = (value as Record<string, unknown>).error;
   return error && typeof error === "object" && !Array.isArray(error)
-    ? readString((error as Record<string, unknown>).message) ?? stringifyPreview(error)
+    ? (readString((error as Record<string, unknown>).message) ?? stringifyPreview(error))
     : stringifyPreview(error);
 }
 
@@ -298,9 +287,5 @@ function readResultKind(value: unknown): string {
 }
 
 function stableHash(value: unknown): string {
-  return crypto
-    .createHash("sha1")
-    .update(stableStringify(value))
-    .digest("hex")
-    .slice(0, 16);
+  return crypto.createHash("sha1").update(stableStringify(value)).digest("hex").slice(0, 16);
 }

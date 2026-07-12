@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import type { AgentToolExecutionArtifactRecorder } from "../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
 import type { AgentToolCallExecutionContext } from "../Source/AgentSystem/ToolRuntime/AgentToolCallExecutionTypes.js";
 import {
   AgentPiToolExecutionBridge,
@@ -36,10 +35,11 @@ async function verifyToolResultProjection(): Promise<void> {
         value: [executed],
       };
     },
-    recordToolArtifacts: async ({ results }) => results.map((result) => ({
-      ...result,
-      artifact: artifactFixture(),
-    })),
+    recordToolArtifacts: async ({ results }) =>
+      results.map((result) => ({
+        ...result,
+        artifact: artifactFixture(),
+      })),
   });
 
   const result = await bridge.execute({
@@ -83,27 +83,34 @@ async function verifyLargeToolResultProjectionIsBudgeted(): Promise<void> {
     model: "test-model",
     executeToolCall: async () => ({
       kind: "ToolResults",
-      value: [executedToolResult({
-        callId: "call_large",
-        result: {
-          text: hugeText,
-        },
-      })],
+      value: [
+        executedToolResult({
+          callId: "call_large",
+          result: {
+            text: hugeText,
+          },
+        }),
+      ],
     }),
-    recordToolArtifacts: async ({ results }) => results.map((result) => ({
-      ...result,
-      artifact: {
-        ...artifact,
-        summary: hugeText,
-        evidence: [{
-          ...evidence,
-          modelSlots: [{
-            name: "text",
-            value: hugeText,
-          }],
-        }],
-      },
-    })),
+    recordToolArtifacts: async ({ results }) =>
+      results.map((result) => ({
+        ...result,
+        artifact: {
+          ...artifact,
+          summary: hugeText,
+          evidence: [
+            {
+              ...evidence,
+              modelSlots: [
+                {
+                  name: "text",
+                  value: hugeText,
+                },
+              ],
+            },
+          ],
+        },
+      })),
   });
 
   const result = await bridge.execute({
@@ -151,16 +158,18 @@ async function verifyStructuredToolErrorProjection(): Promise<void> {
     model: "test-model",
     executeToolCall: async () => ({
       kind: "ToolResults",
-      value: [executedToolResult({
-        callId: "call_error",
-        result: {
-          error: {
-            code: "ToolFailed",
-            message: "工具执行失败",
+      value: [
+        executedToolResult({
+          callId: "call_error",
+          result: {
+            error: {
+              code: "ToolFailed",
+              message: "工具执行失败",
+            },
           },
-        },
-        exitCode: 1,
-      })],
+          exitCode: 1,
+        }),
+      ],
     }),
     recordToolArtifacts: async ({ results }) => [...results],
   });
@@ -172,9 +181,7 @@ async function verifyStructuredToolErrorProjection(): Promise<void> {
       params: {},
       context: {},
     }),
-    (error: unknown) =>
-      error instanceof AgentPiToolExecutionError
-      && error.message === "工具执行失败",
+    (error: unknown) => error instanceof AgentPiToolExecutionError && error.message === "工具执行失败",
   );
 }
 
@@ -210,11 +217,7 @@ function createToolFixture(name: string): RegisteredTool {
   } as unknown as RegisteredTool;
 }
 
-function executedToolResult(options: {
-  callId?: string;
-  result: unknown;
-  exitCode?: number;
-}): ExecutedToolCallResult {
+function executedToolResult(options: { callId?: string; result: unknown; exitCode?: number }): ExecutedToolCallResult {
   return {
     callId: options.callId ?? "call_echo",
     name: "SeneraEchoTool",
@@ -242,27 +245,33 @@ function artifactFixtureRequired(): ExecutedToolCallArtifact {
     },
     summary: "done",
     projection: "complete current projection",
-    evidence: [{
-      key: "echo",
-      evidenceUri: "senera://evidence/echo",
-      kind: "workspace_summary",
-      locator: "workspace://.",
-      display: "workspace summary",
-      label: "workspace",
-      source: "done",
-      confidence: 1,
-      modelSlots: [{
-        name: "summary",
-        value: "done",
-      }],
-      plannerMemory: {
-        facts: [{
-          name: "summary",
-          value: "done",
-        }],
-        artifactRefs: ["projection"],
+    evidence: [
+      {
+        key: "echo",
+        evidenceUri: "senera://evidence/echo",
+        kind: "workspace_summary",
+        locator: "workspace://.",
+        display: "workspace summary",
+        label: "workspace",
+        source: "done",
+        confidence: 1,
+        modelSlots: [
+          {
+            name: "summary",
+            value: "done",
+          },
+        ],
+        plannerMemory: {
+          facts: [
+            {
+              name: "summary",
+              value: "done",
+            },
+          ],
+          artifactRefs: ["projection"],
+        },
       },
-    }],
+    ],
     delta: [],
   };
 }

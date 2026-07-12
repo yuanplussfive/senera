@@ -106,9 +106,11 @@ function renderToolObservationItem(item: Record<string, unknown>): string {
     lines.push("delta:");
     for (const entry of delta) {
       const record = readRecord(entry);
-      lines.push(record
-        ? `- ${String(record.kind ?? "")}: ${String(record.status ?? "")} ${String(record.summary ?? "")}`.trim()
-        : `- ${stringifyPreview(entry)}`);
+      lines.push(
+        record
+          ? `- ${String(record.kind ?? "")}: ${String(record.status ?? "")} ${String(record.summary ?? "")}`.trim()
+          : `- ${stringifyPreview(entry)}`,
+      );
     }
   }
 
@@ -138,9 +140,11 @@ function renderEvidenceBlock(value: unknown): string[] {
     lines.push("  slots:");
     for (const slot of slots) {
       const slotRecord = readRecord(slot);
-      lines.push(slotRecord
-        ? `  - ${String(slotRecord.name ?? "")}: ${previewObservationValue(slotRecord.value)}`
-        : `  - ${previewObservationValue(slot)}`);
+      lines.push(
+        slotRecord
+          ? `  - ${String(slotRecord.name ?? "")}: ${previewObservationValue(slotRecord.value)}`
+          : `  - ${previewObservationValue(slot)}`,
+      );
     }
   }
 
@@ -186,10 +190,7 @@ function projectOpenAiDelta(value: unknown): unknown {
   });
 }
 
-function projectOpenAiProjection(
-  value: unknown,
-  context: AgentToolObservationProjectionContext,
-): unknown {
+function projectOpenAiProjection(value: unknown, context: AgentToolObservationProjectionContext): unknown {
   if (typeof value !== "string" || value.trim().length === 0) {
     return undefined;
   }
@@ -201,10 +202,7 @@ function projectOpenAiProjection(
   });
 }
 
-function readObservationStatus(
-  item: Record<string, unknown>,
-  response: Record<string, unknown> | undefined,
-): string {
+function readObservationStatus(item: Record<string, unknown>, response: Record<string, unknown> | undefined): string {
   if (item.error || response?.error) {
     return "failure";
   }
@@ -297,11 +295,14 @@ function previewObservationValue(value: unknown): string {
   return previewAgentText(text, ToolObservationTextLimits.lineValueChars);
 }
 
-function previewProjectionText(input: string, options: {
-  chars: number;
-  tokens: number;
-  context: AgentToolObservationProjectionContext;
-}): string {
+function previewProjectionText(
+  input: string,
+  options: {
+    chars: number;
+    tokens: number;
+    context: AgentToolObservationProjectionContext;
+  },
+): string {
   return options.context.tokenProjector
     ? options.context.tokenProjector.previewText(input, options.tokens).text
     : previewAgentText(input, options.chars);

@@ -29,11 +29,7 @@ export function createActionPlannerBamlClient(
   };
 }
 
-type BamlProvider =
-  | "openai-generic"
-  | "openai-responses"
-  | "anthropic"
-  | "google-ai";
+type BamlProvider = "openai-generic" | "openai-responses" | "anthropic" | "google-ai";
 
 function resolveBamlProvider(
   model: ResolvedAgentModelProviderConfig,
@@ -67,34 +63,22 @@ function buildProviderOptions(
 }
 
 const ProviderOptions = {
-  "openai-generic": (
-    base: Record<string, unknown>,
-    options: { temperature: number; maxTokens: number },
-  ) => ({
+  "openai-generic": (base: Record<string, unknown>, options: { temperature: number; maxTokens: number }) => ({
     ...base,
     temperature: options.temperature,
     ...tokenLimit("max_tokens", options.maxTokens),
   }),
-  "openai-responses": (
-    base: Record<string, unknown>,
-    options: { temperature: number; maxTokens: number },
-  ) => ({
+  "openai-responses": (base: Record<string, unknown>, options: { temperature: number; maxTokens: number }) => ({
     ...base,
     temperature: options.temperature,
     ...tokenLimit("max_output_tokens", options.maxTokens),
   }),
-  anthropic: (
-    base: Record<string, unknown>,
-    options: { temperature: number; maxTokens: number },
-  ) => ({
+  anthropic: (base: Record<string, unknown>, options: { temperature: number; maxTokens: number }) => ({
     ...base,
     temperature: options.temperature,
     ...tokenLimit("max_tokens", options.maxTokens),
   }),
-  "google-ai": (
-    base: Record<string, unknown>,
-    options: { temperature: number; maxTokens: number },
-  ) => ({
+  "google-ai": (base: Record<string, unknown>, options: { temperature: number; maxTokens: number }) => ({
     ...base,
     generationConfig: {
       temperature: options.temperature,
@@ -103,17 +87,12 @@ const ProviderOptions = {
   }),
 } as const satisfies Record<
   BamlProvider,
-  (
-    base: Record<string, unknown>,
-    options: { temperature: number; maxTokens: number },
-  ) => Record<string, unknown>
+  (base: Record<string, unknown>, options: { temperature: number; maxTokens: number }) => Record<string, unknown>
 >;
 
 function normalizeBaseUrl(provider: BamlProvider, value: string): string {
   const trimmed = value.replace(/\/+$/, "");
-  return provider === "anthropic"
-    ? trimmed.replace(/\/v1$/i, "")
-    : trimmed;
+  return provider === "anthropic" ? trimmed.replace(/\/v1$/i, "") : trimmed;
 }
 
 function tokenLimit(key: string, value: number): Record<string, number> {

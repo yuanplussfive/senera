@@ -1,11 +1,6 @@
-import {
-  parse as parseToml,
-  type TomlTableWithoutBigInt,
-} from "smol-toml";
+import { parse as parseToml, type TomlTableWithoutBigInt } from "smol-toml";
 import { z } from "zod";
-import type {
-  LoadedPluginConfigDiagnostic,
-} from "../Types/PluginConfigTypes.js";
+import type { LoadedPluginConfigDiagnostic } from "../Types/PluginConfigTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export const AgentPluginConfigDefaults = {
@@ -31,25 +26,11 @@ export const PluginConfigDocumentSchema = z
   })
   .passthrough();
 
-const ConfigFieldTypeSchema = z.enum([
-  "boolean",
-  "string",
-  "number",
-  "array",
-  "table",
-]);
+const ConfigFieldTypeSchema = z.enum(["boolean", "string", "number", "array", "table"]);
 
-const ConfigFieldOptionValueSchema = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-]);
+const ConfigFieldOptionValueSchema = z.union([z.string(), z.number(), z.boolean()]);
 
-const ConfigFieldLevelSchema = z.enum([
-  "basic",
-  "advanced",
-  "internal",
-]);
+const ConfigFieldLevelSchema = z.enum(["basic", "advanced", "internal"]);
 
 const ConfigSchemaFieldSchema = z
   .object({
@@ -114,21 +95,21 @@ export interface ParseLoadedPluginConfigTomlOptions {
   requireSchema?: boolean;
 }
 
-export function parsePluginConfigSchema(
-  options: ParseLoadedPluginConfigTomlOptions,
-): {
+export function parsePluginConfigSchema(options: ParseLoadedPluginConfigTomlOptions): {
   schema?: PluginConfigSchemaDocument;
   diagnostics: LoadedPluginConfigDiagnostic[];
 } {
   if (!options.schemaToml) {
     return {
       diagnostics: options.requireSchema
-        ? [{
-          severity: "warning",
-          message: options.schemaPath
-            ? agentErrorMessage("plugin.configSchemaMissingAtPath", { schemaPath: options.schemaPath })
-            : agentErrorMessage("plugin.configSchemaMissing"),
-        }]
+        ? [
+            {
+              severity: "warning",
+              message: options.schemaPath
+                ? agentErrorMessage("plugin.configSchemaMissingAtPath", { schemaPath: options.schemaPath })
+                : agentErrorMessage("plugin.configSchemaMissing"),
+            },
+          ]
         : [],
     };
   }
@@ -138,24 +119,28 @@ export function parsePluginConfigSchema(
     parsed = parseToml(options.schemaToml) as TomlTableWithoutBigInt;
   } catch (error) {
     return {
-      diagnostics: [{
-        severity: "error",
-        message: agentErrorMessage("plugin.configSchemaTomlInvalid", {
-          message: error instanceof Error ? error.message : String(error),
-        }),
-      }],
+      diagnostics: [
+        {
+          severity: "error",
+          message: agentErrorMessage("plugin.configSchemaTomlInvalid", {
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        },
+      ],
     };
   }
 
   const result = PluginConfigSchemaDocumentSchema.safeParse(parsed);
   if (!result.success) {
     return {
-      diagnostics: [{
-        severity: "error",
-        message: agentErrorMessage("plugin.configSchemaInvalid", {
-          issues: result.error.issues.map(formatZodIssue).join("; "),
-        }),
-      }],
+      diagnostics: [
+        {
+          severity: "error",
+          message: agentErrorMessage("plugin.configSchemaInvalid", {
+            issues: result.error.issues.map(formatZodIssue).join("; "),
+          }),
+        },
+      ],
     };
   }
 

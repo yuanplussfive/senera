@@ -26,17 +26,21 @@ const config: AgentSystemConfig = {
     Port: 8787,
   },
   DefaultModelProviderId: "verification-model",
-  ModelProviderEndpoints: [{
-    Id: "verification-provider",
-    BaseUrl: "https://example.invalid/v1",
-    ApiKey: "verification-key",
-  }],
-  ModelProviders: [{
-    Id: "verification-model",
-    ProviderId: "verification-provider",
-    Endpoint: "ChatCompletions",
-    Model: "verification-model",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "verification-provider",
+      BaseUrl: "https://example.invalid/v1",
+      ApiKey: "verification-key",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "verification-model",
+      ProviderId: "verification-provider",
+      Endpoint: "ChatCompletions",
+      Model: "verification-model",
+    },
+  ],
 };
 
 const modelProvider: ResolvedAgentModelProviderConfig = {
@@ -56,9 +60,7 @@ const modelProvider: ResolvedAgentModelProviderConfig = {
   MaxRequestMs: 20_000,
   MaxNetworkRetries: 1,
   Headers: {},
-  Capabilities: {
-    ToolCalling: true,
-  },
+  Capabilities: {},
 };
 
 const events: unknown[] = [];
@@ -67,22 +69,26 @@ registerPlugin(registry, "System/Plugins/AgentCapabilitySkillsPlugin");
 const executionEnv = new SeneraLocalExecutionEnv({
   workspaceRoot: process.cwd(),
 });
-const activeSkills = [{
-  name: "WorkspaceInvestigationSkill",
-  title: "工作区调查",
-  summary: "确认 Senera 激活技能能进入 Pi Harness 资源。",
-  useCases: ["验证 Pi 会话启动"],
-  avoid: [],
-  recommendedTools: [],
-  evidenceRequirements: [],
-  descriptionFile: path.resolve("System/Plugins/AgentCapabilitySkillsPlugin/docs/WorkspaceInvestigation.md"),
-  matchedTerms: ["bootstrap"],
-  matchedFields: [{
-    term: "bootstrap",
-    fields: ["summary"],
-  }],
-  score: 1,
-}];
+const activeSkills = [
+  {
+    name: "WorkspaceInvestigationSkill",
+    title: "工作区调查",
+    summary: "确认 Senera 激活技能能进入 Pi Harness 资源。",
+    useCases: ["验证 Pi 会话启动"],
+    avoid: [],
+    recommendedTools: [],
+    evidenceRequirements: [],
+    descriptionFile: path.resolve("System/Plugins/AgentCapabilitySkillsPlugin/docs/WorkspaceInvestigation.md"),
+    matchedTerms: ["bootstrap"],
+    matchedFields: [
+      {
+        term: "bootstrap",
+        fields: ["summary"],
+      },
+    ],
+    score: 1,
+  },
+];
 const substrate = new AgentPiSubstrate({
   workspaceRoot: process.cwd(),
   config,
@@ -143,8 +149,9 @@ assertContainsAll(readStringArray(piTracePayload("core.agent.create.completed")?
   "ImplementationWorkflow",
 ]);
 assert.equal(
-  readSelectedTemplatePayloads("core.agent.create.completed")
-    .some((template) => readStringArray(template.resourceKinds).includes("todo-workflow")),
+  readSelectedTemplatePayloads("core.agent.create.completed").some((template) =>
+    readStringArray(template.resourceKinds).includes("todo-workflow"),
+  ),
   true,
 );
 const projectedSkill = resources.harnessResources.skills?.[0];
@@ -153,11 +160,10 @@ const projectedTemplateByName = new Map(
   resources.harnessResources.promptTemplates?.map((template) => [template.name, template]) ?? [],
 );
 assert.match(projectedTemplateByName.get("TddExecution")?.content ?? "", /Execution contract/);
-assertContainsAll(resources.selection.promptTemplates.map((selection) => selection.template.name), [
-  "TddExecution",
-  "TodoWorkflow",
-  "ImplementationWorkflow",
-]);
+assertContainsAll(
+  resources.selection.promptTemplates.map((selection) => selection.template.name),
+  ["TddExecution", "TodoWorkflow", "ImplementationWorkflow"],
+);
 const prompt = renderPiHarnessSystemPrompt({
   systemPrompt: "<agent_system></agent_system>",
   skills: [projectedSkill!],
@@ -169,7 +175,8 @@ const prompt = renderPiHarnessSystemPrompt({
       resourceKinds: selection.resourceKinds,
       workflowRoles: selection.workflowRoles,
       selectionScore: selection.score,
-    })),
+    }),
+  ),
 });
 assert.match(prompt, /WorkspaceInvestigationSkill/);
 assert.match(prompt, /pi_execution_resources/);
@@ -177,9 +184,11 @@ assert.match(prompt, /todo-workflow/);
 assert.match(prompt, /implementation-workflow/);
 assert.match(prompt, /Execution contract/);
 assert.equal(
-  substrate.toolDefinitions({
-    visibleToolNames: "all",
-  }).every((tool) => tool.executionMode === "sequential"),
+  substrate
+    .toolDefinitions({
+      visibleToolNames: "all",
+    })
+    .every((tool) => tool.executionMode === "sequential"),
   true,
 );
 result.session.dispose();
@@ -205,21 +214,15 @@ function piTracePayload(eventType: string): Record<string, unknown> | undefined 
 
 function readSelectedTemplatePayloads(eventType: string): Record<string, unknown>[] {
   const templates = piTracePayload(eventType)?.selectedPromptTemplates;
-  return Array.isArray(templates)
-    ? templates.map(readRecord)
-    : [];
+  return Array.isArray(templates) ? templates.map(readRecord) : [];
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function readStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function assertContainsAll(actual: readonly string[], expected: readonly string[]): void {

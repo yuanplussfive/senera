@@ -8,21 +8,20 @@ const workspaceRoot = resolveWorkspaceRoot();
 const vitestBin = path.join(workspaceRoot, "node_modules", "vitest", "vitest.mjs");
 
 await new Promise<void>((resolve, reject) => {
-  const child = spawn(process.execPath, [
-    vitestBin,
-    "run",
-    "--config",
-    path.join(workspaceRoot, FrontendTestCoveragePolicy.vitestConfig),
-  ], {
-    cwd: workspaceRoot,
-    env: {
-      ...process.env,
-      FORCE_COLOR: "0",
-      NO_COLOR: "1",
+  const child = spawn(
+    process.execPath,
+    [vitestBin, "run", "--config", path.join(workspaceRoot, FrontendTestCoveragePolicy.vitestConfig)],
+    {
+      cwd: workspaceRoot,
+      env: {
+        ...process.env,
+        FORCE_COLOR: "0",
+        NO_COLOR: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     },
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
+  );
 
   child.stdout?.on("data", (chunk) => {
     process.stdout.write(chunk);

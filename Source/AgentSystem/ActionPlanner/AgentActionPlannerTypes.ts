@@ -1,10 +1,6 @@
 import type { ActionPlanInput } from "../BamlClient/baml_client/index.js";
 
-export type AgentActionKind =
-  | "answer"
-  | "ask_user"
-  | "discover_tools"
-  | "use_tools";
+export type AgentActionKind = "answer" | "ask_user" | "discover_tools" | "use_tools";
 
 export type AgentActionDecision =
   | {

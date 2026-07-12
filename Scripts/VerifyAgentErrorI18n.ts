@@ -9,18 +9,9 @@ import {
 
 const workspaceRoot = process.cwd();
 
-assert.equal(
-  agentErrorMessage("plugin.duplicateName", { pluginName: "VerifyPlugin" }),
-  "插件名重复：VerifyPlugin",
-);
-assert.equal(
-  formatAgentMessage("missing {known} {unknown}", { known: "value" }),
-  "missing value {unknown}",
-);
-assert.equal(
-  readAgentErrorMessageTemplate("tool.executionMissingConfig"),
-  "工具缺少 Execution 配置：{toolName}",
-);
+assert.equal(agentErrorMessage("plugin.duplicateName", { pluginName: "VerifyPlugin" }), "插件名重复：VerifyPlugin");
+assert.equal(formatAgentMessage("missing {known} {unknown}", { known: "value" }), "missing value {unknown}");
+assert.equal(readAgentErrorMessageTemplate("tool.executionMissingConfig"), "工具缺少 Execution 配置：{toolName}");
 
 const migratedRuntimeFiles = [
   ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "ActionPlanner")),
@@ -33,7 +24,8 @@ const migratedRuntimeFiles = [
   ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "ToolRuntime")),
   ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "WebSocket")),
   path.join(workspaceRoot, "Source", "AgentSystem", "AgentRootCommand.ts"),
-].map((file) => path.relative(workspaceRoot, file).replaceAll(path.sep, "/"))
+]
+  .map((file) => path.relative(workspaceRoot, file).replaceAll(path.sep, "/"))
   .filter((file) => !file.includes("/I18n/"))
   .filter((file) => !file.includes("/PiProxy/AgentPiProxyPrompts.ts"));
 
@@ -42,12 +34,12 @@ for (const relativeFile of migratedRuntimeFiles) {
   assert.doesNotMatch(
     text,
     /(?:throw new Error|message:|suggestion:|createAgentStructuredIssue)\s*\(\s*(?:`[^`]*[\p{Script=Han}]|"[^"]*[\p{Script=Han}])/u,
-    `${relativeFile} contains a direct Chinese runtime error message; use AgentErrorMessages.zh-CN.ts.`,
+    `${relativeFile} contains a direct Chinese runtime error message; use I18n/messages.zh-CN.json.`,
   );
   assert.doesNotMatch(
     text,
     /(?:message|suggestion):\s*(?:`[^`]*[\p{Script=Han}]|"[^"]*[\p{Script=Han}])/u,
-    `${relativeFile} contains a direct Chinese diagnostic message; use AgentErrorMessages.zh-CN.ts.`,
+    `${relativeFile} contains a direct Chinese diagnostic message; use I18n/messages.zh-CN.json.`,
   );
 }
 

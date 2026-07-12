@@ -1,16 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import {
-  parse as parseToml,
-  type TomlTableWithoutBigInt,
-} from "smol-toml";
+import { parse as parseToml, type TomlTableWithoutBigInt } from "smol-toml";
 import { resolvePluginDiscoveryConfig } from "../AgentDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import type {
-  LoadedPluginConfig,
-  LoadedPluginConfigDiagnostic,
-} from "../Types/PluginConfigTypes.js";
+import type { LoadedPluginConfig, LoadedPluginConfigDiagnostic } from "../Types/PluginConfigTypes.js";
 import {
   defaultPluginConfigToml,
   ensureFinalNewline,
@@ -32,22 +26,14 @@ import {
   PluginConfigDocumentSchema,
   type ParseLoadedPluginConfigTomlOptions,
 } from "./AgentPluginConfigSchema.js";
-import {
-  disabledPluginRuntimeConfig,
-  isLoadedPluginAvailable,
-  isLoadedPluginToolEnabled,
-  projectPluginConfigSnapshot,
-  projectPluginRuntimeConfig,
-} from "./AgentPluginConfigRuntime.js";
+import { disabledPluginRuntimeConfig, projectPluginRuntimeConfig } from "./AgentPluginConfigRuntime.js";
 
 export {
   defaultPluginConfigToml,
   resolvePluginConfigSchemaPath,
   resolvePluginConfigTemplatePath,
 } from "./AgentPluginConfigDocument.js";
-export {
-  AgentPluginConfigDefaults,
-} from "./AgentPluginConfigSchema.js";
+export { AgentPluginConfigDefaults } from "./AgentPluginConfigSchema.js";
 export {
   isLoadedPluginAvailable,
   isLoadedPluginToolEnabled,
@@ -58,10 +44,7 @@ export function resolvePluginConfigFileName(config: AgentSystemConfig): string {
   return resolvePluginDiscoveryConfig(config).ConfigFileName;
 }
 
-export function readLoadedPluginConfig(
-  pluginRootPath: string,
-  config: AgentSystemConfig,
-): LoadedPluginConfig {
+export function readLoadedPluginConfig(pluginRootPath: string, config: AgentSystemConfig): LoadedPluginConfig {
   const fileName = resolvePluginConfigFileName(config);
   const configPath = path.join(pluginRootPath, fileName);
   const templatePath = resolvePluginConfigTemplatePath(pluginRootPath, fileName);
@@ -97,10 +80,7 @@ export function readLoadedPluginConfig(
 export function parseLoadedPluginConfigToml(
   toml: string,
   options: ParseLoadedPluginConfigTomlOptions = {},
-): Pick<
-  LoadedPluginConfig,
-  "runtime" | "sections" | "diagnostics"
-> {
+): Pick<LoadedPluginConfig, "runtime" | "sections" | "diagnostics"> {
   const schemaResult = parsePluginConfigSchema(options);
   const parsed = parsePluginConfigDocument(toml, schemaResult.diagnostics);
   if (parsed.kind === "error") {
@@ -122,9 +102,7 @@ export function parseLoadedPluginConfigToml(
     };
   }
 
-  const sections = schemaResult.schema
-    ? projectPluginConfigSections(parsed.document, schemaResult.schema)
-    : [];
+  const sections = schemaResult.schema ? projectPluginConfigSections(parsed.document, schemaResult.schema) : [];
   const diagnostics: LoadedPluginConfigDiagnostic[] = [
     ...schemaResult.diagnostics,
     ...projectStrictPathDiagnostics(parsed.document, schemaResult.schema),
@@ -145,13 +123,13 @@ export function validatePluginConfigTomlForWrite(toml: string, configPath?: stri
   const schemaPath = configPath
     ? resolvePluginConfigSchemaPath(path.dirname(configPath), path.basename(configPath))
     : undefined;
-  const schemaToml = schemaPath && fs.existsSync(schemaPath)
-    ? fs.readFileSync(schemaPath, "utf8")
-    : undefined;
+  const schemaToml = schemaPath && fs.existsSync(schemaPath) ? fs.readFileSync(schemaPath, "utf8") : undefined;
   if (configPath && !schemaToml) {
-    throw new Error(agentErrorMessage("plugin.configTomlInvalidMissingSchema", {
-      schemaPath: schemaPath ?? configPath,
-    }));
+    throw new Error(
+      agentErrorMessage("plugin.configTomlInvalidMissingSchema", {
+        schemaPath: schemaPath ?? configPath,
+      }),
+    );
   }
 
   const parsed = parseLoadedPluginConfigToml(toml, {
@@ -187,13 +165,15 @@ export function setPluginConfigEnabled(
 function parsePluginConfigDocument(
   toml: string,
   schemaDiagnostics: readonly LoadedPluginConfigDiagnostic[],
-): {
-  kind: "ok";
-  document: TomlTableWithoutBigInt;
-} | {
-  kind: "error";
-  result: Pick<LoadedPluginConfig, "runtime" | "sections" | "diagnostics">;
-} {
+):
+  | {
+      kind: "ok";
+      document: TomlTableWithoutBigInt;
+    }
+  | {
+      kind: "error";
+      result: Pick<LoadedPluginConfig, "runtime" | "sections" | "diagnostics">;
+    } {
   try {
     return {
       kind: "ok",

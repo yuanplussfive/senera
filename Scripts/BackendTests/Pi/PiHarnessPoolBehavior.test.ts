@@ -1,15 +1,14 @@
 import { afterEach, describe, expect, test } from "vitest";
 import type { AgentHarnessResources, PromptTemplate, Skill } from "@earendil-works/pi-agent-core";
-import { AgentPiHarnessSessionPool, type AgentPiHarnessLeaseInput } from "../../../Source/AgentSystem/Pi/AgentPiHarnessSessionPool.js";
+import {
+  AgentPiHarnessSessionPool,
+  type AgentPiHarnessLeaseInput,
+} from "../../../Source/AgentSystem/Pi/AgentPiHarnessSessionPool.js";
 import { AgentPiSessionStore } from "../../../Source/AgentSystem/Pi/AgentPiSessionStore.js";
 import { projectSeneraModelProviderToPi } from "../../../Source/AgentSystem/Pi/AgentPiModelProjector.js";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import {
-  createModelProvider,
-  createTemporaryDirectory,
-  removeDirectory,
-} from "../Support/AgentTestFixtures.js";
+import { createModelProvider, createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -38,7 +37,8 @@ describe("Pi harness pool behavior", () => {
 
     const first = await pool.lease(leaseInput(persistent.sessionId, persistent.session, "request-1"));
     let secondResolved = false;
-    const secondPromise = pool.lease(leaseInput(persistent.sessionId, persistent.session, "request-2"))
+    const secondPromise = pool
+      .lease(leaseInput(persistent.sessionId, persistent.session, "request-2"))
       .then((lease) => {
         secondResolved = true;
         return lease;
@@ -88,17 +88,21 @@ const config: AgentSystemConfig = {
     Host: "127.0.0.1",
     Port: 8787,
   },
-  ModelProviderEndpoints: [{
-    Id: "test-endpoint",
-    BaseUrl: "https://model.example/v1",
-    ApiKey: "test-key",
-  }],
-  ModelProviders: [{
-    Id: "test-provider",
-    ProviderId: "test-endpoint",
-    Endpoint: "ChatCompletions",
-    Model: "test-model",
-  }],
+  ModelProviderEndpoints: [
+    {
+      Id: "test-endpoint",
+      BaseUrl: "https://model.example/v1",
+      ApiKey: "test-key",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "test-provider",
+      ProviderId: "test-endpoint",
+      Endpoint: "ChatCompletions",
+      Model: "test-model",
+    },
+  ],
 };
 
 function leaseInput(

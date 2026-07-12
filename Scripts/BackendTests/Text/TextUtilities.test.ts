@@ -1,8 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  previewAgentText,
-  projectAgentTextPreview,
-} from "../../../Source/AgentSystem/Text/AgentTextProjection.js";
+import { previewAgentText, projectAgentTextPreview } from "../../../Source/AgentSystem/Text/AgentTextProjection.js";
 import { AgentTextLocator } from "../../../Source/AgentSystem/Text/AgentTextLocator.js";
 import {
   matchesEveryTextRule,
@@ -52,21 +49,29 @@ describe("Text utilities", () => {
   });
 
   test("evaluates text predicate groups", () => {
-    expect(matchesTextRule("workspace write", {
-      kind: "starts_with",
-      value: "workspace",
-    })).toBe(true);
-    expect(matchesTextRule("workspace write", {
-      kind: "includes",
-      value: "write",
-    })).toBe(true);
-    expect(matchesEveryTextRule("workspace write", [
-      { kind: "starts_with", value: "workspace" },
-      { kind: "includes", value: "write" },
-    ])).toBe(true);
-    expect(matchesSomeTextRule("workspace write", [
-      { kind: "starts_with", value: "shell" },
-      { kind: "includes", value: "write" },
-    ])).toBe(true);
+    expect(
+      matchesTextRule("workspace write", {
+        kind: "starts_with",
+        value: "workspace",
+      }),
+    ).toBe(true);
+    expect(
+      matchesTextRule("workspace write", {
+        kind: "includes",
+        value: "write",
+      }),
+    ).toBe(true);
+    expect(
+      matchesEveryTextRule("workspace write", [
+        { kind: "starts_with", value: "workspace" },
+        { kind: "includes", value: "write" },
+      ]),
+    ).toBe(true);
+    expect(
+      matchesSomeTextRule("workspace write", [
+        { kind: "starts_with", value: "shell" },
+        { kind: "includes", value: "write" },
+      ]),
+    ).toBe(true);
   });
 });

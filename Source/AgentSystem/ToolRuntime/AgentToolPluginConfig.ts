@@ -14,9 +14,7 @@ export function resolvePluginConfigPath(
   fileName = "PluginConfig.toml",
   options: ReadPluginTomlConfigOptions = {},
 ): string {
-  return path.isAbsolute(fileName)
-    ? fileName
-    : path.resolve(options.cwd ?? process.cwd(), fileName);
+  return path.isAbsolute(fileName) ? fileName : path.resolve(options.cwd ?? process.cwd(), fileName);
 }
 
 export function readPluginTomlConfig<TConfig = PluginTomlConfig>(
@@ -31,10 +29,12 @@ export function readPluginTomlConfig<TConfig = PluginTomlConfig>(
           configFileName: path.basename(configPath),
         })
       : "";
-    throw new Error(agentErrorMessage("plugin.configFileMissing", {
-      configPath,
-      hint: exampleHint,
-    }));
+    throw new Error(
+      agentErrorMessage("plugin.configFileMissing", {
+        configPath,
+        hint: exampleHint,
+      }),
+    );
   }
 
   try {
@@ -50,8 +50,6 @@ export function readPluginTomlConfig<TConfig = PluginTomlConfig>(
   }
 }
 
-export function parsePluginTomlConfig<TConfig = PluginTomlConfig>(
-  content: string,
-): TConfig {
+export function parsePluginTomlConfig<TConfig = PluginTomlConfig>(content: string): TConfig {
   return parseToml(content) as TConfig;
 }

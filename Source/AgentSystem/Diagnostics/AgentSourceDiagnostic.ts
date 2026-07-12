@@ -73,11 +73,7 @@ export class AgentSourceDiagnosticBuilder {
     };
   }
 
-  findXmlTag(
-    tagName: string,
-    occurrence = 0,
-    fromOffset = 0,
-  ): AgentSourcePosition | undefined {
+  findXmlTag(tagName: string, occurrence = 0, fromOffset = 0): AgentSourcePosition | undefined {
     const pattern = new RegExp(`<\\s*${this.escapeRegExp(tagName)}(?:\\s|>|/)`, "g");
     pattern.lastIndex = fromOffset;
 

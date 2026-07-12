@@ -2,6 +2,8 @@ import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { SeneraExecutionError, SeneraExecutionErrorCodes } from "./SeneraExecutionTypes.js";
 
 const RootfsBundleDefaults = {
   tempPrefix: "senera-rootfs-bundle-",
@@ -18,6 +20,7 @@ export async function createSeneraProcessRootfsBundle(input: {
   workspaceRoot: string;
   packageRoot: string;
 }): Promise<SeneraProcessRootfsBundle> {
+  assertPackageRootInsideWorkspace(input);
   const bundleRoot = mkdtempSync(path.join(tmpdir(), RootfsBundleDefaults.tempPrefix));
   try {
     copySourceTree({
@@ -48,6 +51,19 @@ export async function createSeneraProcessRootfsBundle(input: {
     cleanupBundle(bundleRoot);
     throw error;
   }
+}
+
+function assertPackageRootInsideWorkspace(input: { workspaceRoot: string; packageRoot: string }): void {
+  if (isPathInside(input.workspaceRoot, input.packageRoot)) return;
+
+  throw new SeneraExecutionError(
+    SeneraExecutionErrorCodes.InvalidWorkspacePath,
+    agentErrorMessage("execution.packageRootOutsideWorkspace"),
+    {
+      workspaceRoot: path.resolve(input.workspaceRoot),
+      packageRoot: path.resolve(input.packageRoot),
+    },
+  );
 }
 
 interface SeneraDependencyPackage {
@@ -101,30 +117,24 @@ function resolveDependencyRoot(input: {
   const resolved = input.spec.startsWith("file:")
     ? path.resolve(input.packageRoot, input.spec.slice("file:".length))
     : path.resolve(input.workspaceRoot, "node_modules", ...input.name.split("/"));
-  return isPathInside(input.workspaceRoot, resolved)
-    && existsSync(path.join(resolved, RootfsBundleDefaults.packageJsonFileName))
-      ? {
-          name: input.name,
-          rootPath: resolved,
-        }
-      : undefined;
+  return isPathInside(input.workspaceRoot, resolved) &&
+    existsSync(path.join(resolved, RootfsBundleDefaults.packageJsonFileName))
+    ? {
+        name: input.name,
+        rootPath: resolved,
+      }
+    : undefined;
 }
 
 function uniqueDependencies(dependencies: readonly SeneraDependencyPackage[]): SeneraDependencyPackage[] {
   return [
     ...new Map(
-      dependencies.map((dependency) => [
-        `${dependency.name}\u0000${path.resolve(dependency.rootPath)}`,
-        dependency,
-      ]),
+      dependencies.map((dependency) => [`${dependency.name}\u0000${path.resolve(dependency.rootPath)}`, dependency]),
     ).values(),
   ];
 }
 
-function copySourceTree(input: {
-  source: string;
-  target: string;
-}): void {
+function copySourceTree(input: { source: string; target: string }): void {
   cpSync(input.source, input.target, {
     recursive: true,
     force: true,

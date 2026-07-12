@@ -1,10 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  readAgentToolApprovalPolicyArtifact,
+  resolveAgentToolApprovalPolicyArtifactDirectory,
+} from "../Source/AgentSystem/Safety/AgentToolApprovalPolicyArtifact.js";
 
 const workspaceRoot = process.cwd();
 const sourceRoot = path.join(workspaceRoot, "Source");
 const distSourceRoot = path.join(workspaceRoot, "Dist", "Source");
 
+readAgentToolApprovalPolicyArtifact(resolveAgentToolApprovalPolicyArtifactDirectory(sourceRoot));
 const runtimeAssets = discoverRuntimeAssets(sourceRoot);
 
 for (const sourcePath of runtimeAssets) {
@@ -12,6 +17,8 @@ for (const sourcePath of runtimeAssets) {
   const targetPath = path.join(distSourceRoot, relativePath);
   copyFile(sourcePath, targetPath);
 }
+
+readAgentToolApprovalPolicyArtifact(resolveAgentToolApprovalPolicyArtifactDirectory(distSourceRoot));
 
 process.stdout.write(`Runtime assets copied: ${runtimeAssets.length}\n`);
 
@@ -25,9 +32,7 @@ function discoverRuntimeAssets(root: string): string[] {
 function walkFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(directory, entry.name);
-    return entry.isDirectory()
-      ? walkFiles(entryPath)
-      : [entryPath];
+    return entry.isDirectory() ? walkFiles(entryPath) : [entryPath];
   });
 }
 

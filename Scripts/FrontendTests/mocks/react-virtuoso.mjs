@@ -13,11 +13,13 @@ export const Virtuoso = React.forwardRef(function TestVirtuoso(props, ref) {
     "div",
     { "data-testid": "virtuoso" },
     Header ? React.createElement(Header) : null,
-    ...data.map((item, index) => React.createElement(
-      "div",
-      { key: props.computeItemKey?.(index, item) ?? index },
-      props.itemContent?.(index, item),
-    )),
+    ...data.map((item, index) =>
+      React.createElement(
+        "div",
+        { key: props.computeItemKey?.(index, item) ?? index },
+        props.itemContent?.(index, item),
+      ),
+    ),
     Footer ? React.createElement(Footer) : null,
   );
 });

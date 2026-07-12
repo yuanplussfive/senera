@@ -7,16 +7,11 @@ import type {
   AgentLanguageModelStreamChunk,
 } from "./AgentLanguageModel.js";
 import { resolveModelProviderConfig } from "../AgentDefaults.js";
-import {
-  createModelProviderMetadata,
-  type AgentModelProviderMetadata,
-} from "./AgentModelMetadata.js";
+import { createModelProviderMetadata, type AgentModelProviderMetadata } from "./AgentModelMetadata.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { ModelHttpClient } from "./ModelHttpClient.js";
-import type {
-  TextGenerationEndpoint,
-} from "./ModelEndpointTypes.js";
+import type { TextGenerationEndpoint } from "./ModelEndpointTypes.js";
 import { createModelEndpoint } from "./ModelEndpointTypes.js";
 
 type ModelProviderConfig = ReturnType<typeof resolveModelProviderConfig>;
@@ -30,9 +25,11 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
   constructor(config: AgentSystemConfig, modelProviderId?: string) {
     this.providerConfig = resolveModelProviderConfig(config, modelProviderId);
     if (!this.providerConfig.ApiKey?.trim()) {
-      throw new Error(agentErrorMessage("model.apiKeyMissing", {
-        providerId: this.providerConfig.Id,
-      }));
+      throw new Error(
+        agentErrorMessage("model.apiKeyMissing", {
+          providerId: this.providerConfig.Id,
+        }),
+      );
     }
 
     this.metadata = createModelProviderMetadata(this.providerConfig);
@@ -70,7 +67,7 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
     const stream = await this.endpoint.stream(request);
 
     let accumulatedText = "";
-    const self = this;
+    const metadata = this.metadata;
     const chunks = (async function* (): AsyncGenerator<AgentLanguageModelStreamChunk> {
       for await (const chunk of stream) {
         accumulatedText += chunk.textDelta;
@@ -92,7 +89,7 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
     })();
 
     return {
-      metadata: self.metadata,
+      metadata,
       abort: () => stream.abort(),
       [Symbol.asyncIterator]: () => chunks,
     };

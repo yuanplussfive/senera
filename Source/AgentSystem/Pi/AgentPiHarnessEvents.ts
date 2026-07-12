@@ -1,16 +1,8 @@
-import type {
-  AgentEvent,
-  AgentHarnessEvent,
-  PromptTemplate,
-  Skill,
-} from "@earendil-works/pi-agent-core";
+import type { AgentEvent, AgentHarnessEvent, PromptTemplate, Skill } from "@earendil-works/pi-agent-core";
 import { createPiTraceEvent } from "./AgentPiTraceProjector.js";
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
 
-export type AgentPiHarnessEvent = AgentHarnessEvent<
-  Skill,
-  PromptTemplate
->;
+export type AgentPiHarnessEvent = AgentHarnessEvent<Skill, PromptTemplate>;
 
 export interface AgentPiHarnessTraceContext {
   sessionId?: string;
@@ -31,9 +23,9 @@ const CoreAgentEventTypes = new Set<AgentEvent["type"]>([
   "tool_execution_end",
 ]);
 
-const HarnessEventSummaries: Partial<Record<AgentPiHarnessEvent["type"], (
-  event: AgentPiHarnessEvent,
-) => Record<string, unknown> | undefined>> = {
+const HarnessEventSummaries: Partial<
+  Record<AgentPiHarnessEvent["type"], (event: AgentPiHarnessEvent) => Record<string, unknown> | undefined>
+> = {
   before_agent_start: (event) => ({
     promptChars: readText(event, "prompt").length,
     systemPromptChars: readText(event, "systemPrompt").length,
@@ -70,10 +62,10 @@ const HarnessEventSummaries: Partial<Record<AgentPiHarnessEvent["type"], (
     details: readRecord(event)?.details,
   }),
   resources_update: (event) => ({
-    skills: readArray(readRecord(readRecord(event)?.resources)?.skills)
-      .map((skill) => readRecord(skill)?.name),
-    previousSkills: readArray(readRecord(readRecord(event)?.previousResources)?.skills).map((skill) =>
-      readRecord(skill)?.name),
+    skills: readArray(readRecord(readRecord(event)?.resources)?.skills).map((skill) => readRecord(skill)?.name),
+    previousSkills: readArray(readRecord(readRecord(event)?.previousResources)?.skills).map(
+      (skill) => readRecord(skill)?.name,
+    ),
   }),
   queue_update: (event) => ({
     steer: readArray(readRecord(event)?.steer).length,
@@ -114,9 +106,7 @@ export function projectPiHarnessTraceEvent(
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 function readArray(value: unknown): unknown[] {

@@ -6,16 +6,10 @@ import type {
   AgentPiToolCard,
   AgentPiToolTranscriptItem,
 } from "./AgentPiAssistantMessageTypes.js";
-import type {
-  PiOpenAiChatCompletionRequest,
-  PiOpenAiTool,
-} from "./AgentPiOpenAiWireTypes.js";
+import type { PiOpenAiChatCompletionRequest, PiOpenAiTool } from "./AgentPiOpenAiWireTypes.js";
 
 export interface AgentPiOpenAiPlanningProjectorOptions {
-  modelProvider: Pick<
-    ResolvedAgentModelProviderConfig,
-    "ContextWindowTokens" | "MaxOutputTokens" | "Model"
-  >;
+  modelProvider: Pick<ResolvedAgentModelProviderConfig, "ContextWindowTokens" | "MaxOutputTokens" | "Model">;
 }
 
 export interface AgentPiOpenAiPlanningProjectionStats {
@@ -69,9 +63,7 @@ export class AgentPiOpenAiPlanningProjector {
     this.tokenProjector = new AgentTokenProjector(options.modelProvider.Model);
   }
 
-  project(
-    request: PiOpenAiChatCompletionRequest,
-  ): AgentPiAssistantMessageCompileInput["openAiRequest"] {
+  project(request: PiOpenAiChatCompletionRequest): AgentPiAssistantMessageCompileInput["openAiRequest"] {
     const stats: ProjectionStatsAccumulator = {
       truncatedTextFields: 0,
       truncatedJsonFields: 0,
@@ -164,9 +156,10 @@ export class AgentPiOpenAiPlanningProjector {
     }
     return Object.fromEntries(
       Object.entries(part).flatMap(([key, value]) => {
-        const projected = key === "text" && typeof value === "string"
-          ? this.previewTextField(value, this.limits.textPartTokens, stats)
-          : this.projectUnknownForPlanning(value, this.limits.jsonTokens, stats);
+        const projected =
+          key === "text" && typeof value === "string"
+            ? this.previewTextField(value, this.limits.textPartTokens, stats)
+            : this.projectUnknownForPlanning(value, this.limits.jsonTokens, stats);
         return projected === undefined ? [] : [[key, projected]];
       }),
     );
@@ -181,19 +174,12 @@ export class AgentPiOpenAiPlanningProjector {
       type: call.type,
       function: {
         name: call.function.name,
-        arguments: this.projectUnknownForPlanning(
-          call.function.arguments,
-          this.limits.jsonTokens,
-          stats,
-        ),
+        arguments: this.projectUnknownForPlanning(call.function.arguments, this.limits.jsonTokens, stats),
       },
     });
   }
 
-  private projectToolForPlanning(
-    tool: PiOpenAiTool,
-    stats: ProjectionStatsAccumulator,
-  ): PiOpenAiTool {
+  private projectToolForPlanning(tool: PiOpenAiTool, stats: ProjectionStatsAccumulator): PiOpenAiTool {
     return {
       ...tool,
       function: {
@@ -201,20 +187,13 @@ export class AgentPiOpenAiPlanningProjector {
         description: tool.function.description
           ? this.previewTextField(tool.function.description, this.limits.toolDescriptionTokens, stats)
           : undefined,
-        parameters: this.projectUnknownForPlanning(
-          tool.function.parameters,
-          this.limits.toolSchemaTokens,
-          stats,
-        ) as Record<string, unknown> | undefined,
+        parameters: this.projectUnknownForPlanning(tool.function.parameters, this.limits.toolSchemaTokens, stats) as
+          Record<string, unknown> | undefined,
       },
     };
   }
 
-  private projectUnknownForPlanning(
-    value: unknown,
-    tokenLimit: number,
-    stats: ProjectionStatsAccumulator,
-  ): unknown {
+  private projectUnknownForPlanning(value: unknown, tokenLimit: number, stats: ProjectionStatsAccumulator): unknown {
     if (value === undefined || value === null) {
       return value;
     }
@@ -265,10 +244,7 @@ export class AgentPiOpenAiPlanningProjector {
     return [...calls.values()].filter((entry) => entry.callId.trim().length > 0);
   }
 
-  private projectToolArgumentsJson(
-    value: unknown,
-    stats: ProjectionStatsAccumulator,
-  ): string {
+  private projectToolArgumentsJson(value: unknown, stats: ProjectionStatsAccumulator): string {
     const canonical = canonicalizeToolArguments(value);
     const projected = this.previewTextField(canonical, this.limits.jsonTokens, stats);
     return typeof projected === "string" ? projected : JSON.stringify(projected);
@@ -282,19 +258,16 @@ export class AgentPiOpenAiPlanningProjector {
     return {
       status: readToolObservationStatus(parsed),
       content: this.previewTextField(content, this.limits.toolMessageTokens, stats),
-      summary: typeof parsed?.summary === "string"
-        ? this.previewTextField(parsed.summary, this.limits.toolMessageTokens, stats)
-        : undefined,
+      summary:
+        typeof parsed?.summary === "string"
+          ? this.previewTextField(parsed.summary, this.limits.toolMessageTokens, stats)
+          : undefined,
       artifactUri: readString(parsed?.artifact_uri ?? parsed?.artifactUri),
       evidenceUris: readEvidenceUris(parsed),
     };
   }
 
-  private previewTextField(
-    value: string,
-    tokenLimit: number,
-    stats: ProjectionStatsAccumulator,
-  ): string {
+  private previewTextField(value: string, tokenLimit: number, stats: ProjectionStatsAccumulator): string {
     const preview = this.tokenProjector.previewText(value, tokenLimit);
     if (preview.truncated) {
       stats.truncatedTextFields += 1;
@@ -306,10 +279,10 @@ export class AgentPiOpenAiPlanningProjector {
 function resolvePlanningProjectionLimits(
   provider: Pick<ResolvedAgentModelProviderConfig, "ContextWindowTokens" | "MaxOutputTokens">,
 ): AgentPiOpenAiPlanningProjectionLimits {
-  const contextWindowTokens = positiveInteger(provider.ContextWindowTokens)
-    ?? PiPlanningBudgetPolicy.unknownContextWindowTokens;
-  const outputReserveTokens = positiveInteger(provider.MaxOutputTokens)
-    ?? PiPlanningBudgetPolicy.defaultOutputReserveTokens;
+  const contextWindowTokens =
+    positiveInteger(provider.ContextWindowTokens) ?? PiPlanningBudgetPolicy.unknownContextWindowTokens;
+  const outputReserveTokens =
+    positiveInteger(provider.MaxOutputTokens) ?? PiPlanningBudgetPolicy.defaultOutputReserveTokens;
   const usableInputTokens = Math.max(
     PiPlanningBudgetPolicy.minProjectedMessages * PiPlanningBudgetPolicy.messagesPerTokenChunk,
     contextWindowTokens - outputReserveTokens,
@@ -363,18 +336,16 @@ function clampInteger(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function readOpenAiContentAsText(
-  content: PiOpenAiChatCompletionRequest["messages"][number]["content"],
-): string {
+function readOpenAiContentAsText(content: PiOpenAiChatCompletionRequest["messages"][number]["content"]): string {
   if (typeof content === "string") {
     return content;
   }
   if (!Array.isArray(content)) {
     return "";
   }
-  return content.flatMap((part) =>
-    part?.type === "text" && typeof part.text === "string" ? [part.text] : [],
-  ).join("");
+  return content
+    .flatMap((part) => (part?.type === "text" && typeof part.text === "string" ? [part.text] : []))
+    .join("");
 }
 
 function canonicalizeToolArguments(value: unknown): string {
@@ -412,8 +383,9 @@ function readEvidenceUris(value: Record<string, unknown> | undefined): string[] 
   }
   return uniqueStrings([
     ...readStringArray(value.evidence_uris ?? value.evidenceUris),
-    ...readArray(value.evidence).flatMap((entry) =>
-      readString(readRecord(entry)?.evidence_uri ?? readRecord(entry)?.evidenceUri) ?? []),
+    ...readArray(value.evidence).flatMap(
+      (entry) => readString(readRecord(entry)?.evidence_uri ?? readRecord(entry)?.evidenceUri) ?? [],
+    ),
   ]);
 }
 
@@ -423,9 +395,7 @@ function readRecordFromJson(value: string): Record<string, unknown> | undefined 
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 function readString(value: unknown): string | undefined {
@@ -451,9 +421,8 @@ function uniqueStrings(values: readonly string[]): string[] {
 
 function compactPiProjection<T extends Record<string, unknown>>(value: T): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(value).filter(([, entry]) =>
-      entry !== undefined
-      && entry !== ""
-      && !(Array.isArray(entry) && entry.length === 0)),
+    Object.entries(value).filter(
+      ([, entry]) => entry !== undefined && entry !== "" && !(Array.isArray(entry) && entry.length === 0),
+    ),
   );
 }

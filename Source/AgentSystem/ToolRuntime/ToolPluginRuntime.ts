@@ -1,20 +1,12 @@
 import { ZodError, type ZodType } from "zod";
-import {
-  createToolProcessFailureResponse,
-  createToolProcessSuccessResponse,
-} from "./AgentToolProcessEnvelope.js";
+import { createToolProcessFailureResponse, createToolProcessSuccessResponse } from "./AgentToolProcessEnvelope.js";
 import {
   AgentToolProcessRequestEnvelope,
   type AgentToolProcessRequestEnvelopeDocument,
 } from "./AgentToolProcessRequestEnvelope.js";
-import type {
-  AgentSourceDiagnostic,
-} from "../Diagnostics/AgentSourceDiagnostic.js";
+import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import type { AgentToolProcessContext, AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export interface ToolPluginDefinition<TArguments, TResult> {
@@ -31,26 +23,22 @@ type RunnableToolPluginDefinition = {
   execute: (args: unknown, context: AgentToolProcessContext) => Promise<unknown> | unknown;
 };
 
-export interface ToolPluginRuntimeOptions {}
-
 export async function runToolPlugin<TArguments, TResult>(
   definition: ToolPluginDefinition<TArguments, TResult>,
-  options: ToolPluginRuntimeOptions = {},
 ): Promise<void> {
-  return runToolPluginSuite([definition as RunnableToolPluginDefinition], options);
+  return runToolPluginSuite([definition as RunnableToolPluginDefinition]);
 }
 
-export async function runToolPluginSuite(
-  definitions: readonly RunnableToolPluginDefinition[],
-  options: ToolPluginRuntimeOptions = {},
-): Promise<void> {
+export async function runToolPluginSuite(definitions: readonly RunnableToolPluginDefinition[]): Promise<void> {
   try {
-    const request = parseToolCallRequest(await readStdin(), options);
+    const request = parseToolCallRequest(await readStdin());
     const definition = definitions.find((item) => item.toolName === request.toolName);
     if (!definition) {
-      throw new Error(agentErrorMessage("toolPlugin.unsupportedTool", {
-        toolName: request.toolName,
-      }));
+      throw new Error(
+        agentErrorMessage("toolPlugin.unsupportedTool", {
+          toolName: request.toolName,
+        }),
+      );
     }
 
     const args = definition.argumentSchema.parse(request.arguments);
@@ -73,10 +61,7 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function parseToolCallRequest(
-  input: string,
-  options: ToolPluginRuntimeOptions,
-): {
+function parseToolCallRequest(input: string): {
   toolName: string;
   arguments: Record<string, unknown>;
   context: AgentToolProcessContext;
@@ -85,11 +70,16 @@ function parseToolCallRequest(
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(agentErrorMessage("toolPlugin.requestMustBeJsonObject"));
   }
-  if (parsed.type !== AgentToolProcessRequestEnvelope.Type || parsed.version !== AgentToolProcessRequestEnvelope.Version) {
-    throw new Error(agentErrorMessage("toolPlugin.unsupportedEnvelope", {
-      type: String(parsed.type),
-      version: String(parsed.version),
-    }));
+  if (
+    parsed.type !== AgentToolProcessRequestEnvelope.Type ||
+    parsed.version !== AgentToolProcessRequestEnvelope.Version
+  ) {
+    throw new Error(
+      agentErrorMessage("toolPlugin.unsupportedEnvelope", {
+        type: String(parsed.type),
+        version: String(parsed.version),
+      }),
+    );
   }
 
   return {
@@ -103,9 +93,8 @@ function parseToolCallRequest(
 }
 
 function normalizeToolProcessContext(value: unknown): AgentToolProcessContext {
-  const context = value && typeof value === "object" && !Array.isArray(value)
-    ? value as Partial<AgentToolProcessContext>
-    : {};
+  const context =
+    value && typeof value === "object" && !Array.isArray(value) ? (value as Partial<AgentToolProcessContext>) : {};
   return {
     workspaceRoot: process.env.SENERA_TOOL_CONTEXT_WORKSPACE_ROOT ?? context.workspaceRoot ?? "",
     pluginRoot: process.env.SENERA_TOOL_CONTEXT_PLUGIN_ROOT ?? context.pluginRoot ?? "",
@@ -116,17 +105,16 @@ function writeResponse(response: AgentToolProcessResponse): void {
   process.stdout.write(`${JSON.stringify(response)}\n`);
 }
 
-function normalizeToolPluginError(
-  error: unknown,
-): NonNullable<AgentToolProcessResponse["error"]> {
+function normalizeToolPluginError(error: unknown): NonNullable<AgentToolProcessResponse["error"]> {
   return error instanceof ZodError
     ? {
         code: AgentExecutionErrorCodes.InvalidToolArguments,
         message: error.message,
         diagnostics: error.issues.map((issue) => ({
           message: issue.message,
-          path: issue.path.filter((part): part is string | number =>
-            typeof part === "string" || typeof part === "number"),
+          path: issue.path.filter(
+            (part): part is string | number => typeof part === "string" || typeof part === "number",
+          ),
           pointer: zodPathToPointer(issue.path),
         })),
         details: {
@@ -137,12 +125,13 @@ function normalizeToolPluginError(
     : {
         code: AgentExecutionErrorCodes.PluginExecutionError,
         message: error instanceof Error ? error.message : String(error),
-        diagnostics: normalizeRuntimeDiagnostics(error)
-          ?? [{
-              message: error instanceof Error ? error.message : String(error),
-              path: [],
-              pointer: "/",
-            }],
+        diagnostics: normalizeRuntimeDiagnostics(error) ?? [
+          {
+            message: error instanceof Error ? error.message : String(error),
+            path: [],
+            pointer: "/",
+          },
+        ],
         details: {
           phase: AgentToolProcessErrorPhases.RuntimeExecution,
         },
@@ -156,8 +145,9 @@ function normalizeRuntimeDiagnostics(error: unknown): AgentSourceDiagnostic[] | 
 
   const diagnostics = (error as { diagnostics?: unknown }).diagnostics;
   return Array.isArray(diagnostics)
-    ? diagnostics.filter((item): item is AgentSourceDiagnostic =>
-        Boolean(item) && typeof item === "object" && "message" in item)
+    ? diagnostics.filter(
+        (item): item is AgentSourceDiagnostic => Boolean(item) && typeof item === "object" && "message" in item,
+      )
     : undefined;
 }
 

@@ -5,6 +5,7 @@ import {
 } from "./AgentSandboxRuntimeTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { resolveSandboxRuntimeConfig } from "../AgentDefaults.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { resolveAgentSandboxRuntimePaths } from "./AgentSandboxRuntimePreparation.js";
 
 export interface AgentSandboxRuntimePreparationStatus {
@@ -63,7 +64,7 @@ export class AgentSandboxRuntimeService {
     };
   }
 
-  markPreparing(message = "正在准备 microsandbox 沙箱运行时。"): void {
+  markPreparing(message = agentErrorMessage("sandbox.preparing.statusMessage")): void {
     this.preparationStatus = {
       state: "preparing",
       message,
@@ -71,7 +72,7 @@ export class AgentSandboxRuntimeService {
     };
   }
 
-  markReady(message = "microsandbox 沙箱运行时已可用。"): void {
+  markReady(message = agentErrorMessage("sandbox.ready.statusMessage")): void {
     this.preparationStatus = {
       state: "ready",
       message,
@@ -79,7 +80,7 @@ export class AgentSandboxRuntimeService {
     };
   }
 
-  markFallback(error: unknown, message = "microsandbox 沙箱运行时不可用，已回落到本地执行边界。"): void {
+  markFallback(error: unknown, message = agentErrorMessage("sandbox.fallback.statusMessage")): void {
     this.preparationStatus = {
       state: "fallback",
       message,
@@ -94,16 +95,10 @@ export class AgentSandboxRuntimeService {
       return undefined;
     }
 
-    return resolveAgentSandboxRuntimePaths(
-      this.workspaceRoot,
-      resolveSandboxRuntimeConfig(config),
-    );
+    return resolveAgentSandboxRuntimePaths(this.workspaceRoot, resolveSandboxRuntimeConfig(config));
   }
 
-  private dependencyErrors(
-    supported: boolean,
-    state: AgentSandboxRuntimeState,
-  ): string[] {
+  private dependencyErrors(supported: boolean, state: AgentSandboxRuntimeState): string[] {
     if (!supported) {
       return ["microsandbox package is not resolvable"];
     }
@@ -113,10 +108,7 @@ export class AgentSandboxRuntimeService {
     return [];
   }
 
-  private dependencyWarnings(
-    supported: boolean,
-    state: AgentSandboxRuntimeState,
-  ): string[] {
+  private dependencyWarnings(supported: boolean, state: AgentSandboxRuntimeState): string[] {
     if (!supported) {
       return [];
     }
@@ -132,10 +124,7 @@ export class AgentSandboxRuntimeService {
     return [];
   }
 
-  private diagnostics(
-    supported: boolean,
-    state: AgentSandboxRuntimeState,
-  ): AgentSandboxRuntimeSnapshot["diagnostics"] {
+  private diagnostics(supported: boolean, state: AgentSandboxRuntimeState): AgentSandboxRuntimeSnapshot["diagnostics"] {
     if (!supported) {
       return [microsandboxMissingDiagnostic()];
     }
@@ -151,23 +140,20 @@ export class AgentSandboxRuntimeService {
     return [microsandboxConfiguredDiagnostic()];
   }
 
-  private message(
-    supported: boolean,
-    state: AgentSandboxRuntimeState,
-  ): string {
+  private message(supported: boolean, state: AgentSandboxRuntimeState): string {
     if (!supported) {
-      return "microsandbox 包不可用，当前使用本地执行边界。";
+      return agentErrorMessage("sandbox.missing.snapshotMessage");
     }
     if (state === "ready") {
-      return this.preparationStatus.message ?? "microsandbox 沙箱运行时已可用。";
+      return this.preparationStatus.message ?? agentErrorMessage("sandbox.ready.statusMessage");
     }
     if (state === "preparing") {
-      return this.preparationStatus.message ?? "正在准备 microsandbox 沙箱运行时。";
+      return this.preparationStatus.message ?? agentErrorMessage("sandbox.preparing.statusMessage");
     }
     if (state === "fallback") {
-      return this.preparationStatus.message ?? "microsandbox 沙箱运行时不可用，当前使用本地执行边界。";
+      return this.preparationStatus.message ?? agentErrorMessage("sandbox.fallback.snapshotMessage");
     }
-    return "microsandbox 沙箱后端已配置，命令执行会优先进入 microVM。";
+    return agentErrorMessage("sandbox.configured.snapshotMessage");
   }
 }
 
@@ -175,12 +161,12 @@ function microsandboxConfiguredDiagnostic(): AgentSandboxRuntimeSnapshot["diagno
   return {
     code: "microsandbox_backend_configured",
     severity: "warning",
-    message: "microsandbox 后端已接入。",
-    recommendation: "首次执行时会由 microsandbox SDK 检查本机运行时；不可用时自动回落到本地执行后端。",
+    message: agentErrorMessage("sandbox.configured.message"),
+    recommendation: agentErrorMessage("sandbox.configured.recommendation"),
     details: [
-      "默认使用只读工作区挂载。",
-      "默认禁用沙箱网络。",
-      "不会再触发旧的 Windows UAC 安装或修复流程。",
+      agentErrorMessage("sandbox.configured.detail.readOnlyWorkspace"),
+      agentErrorMessage("sandbox.configured.detail.sandboxNetworkDenied"),
+      agentErrorMessage("sandbox.configured.detail.uacNotUsed"),
     ],
   };
 }
@@ -189,11 +175,11 @@ function microsandboxPreparingDiagnostic(): AgentSandboxRuntimeSnapshot["diagnos
   return {
     code: "microsandbox_runtime_preparing",
     severity: "warning",
-    message: "microsandbox 沙箱运行时正在准备。",
-    recommendation: "可继续使用 Senera；准备完成前允许 fallback 的工具会使用本地执行边界。",
+    message: agentErrorMessage("sandbox.preparing.message"),
+    recommendation: agentErrorMessage("sandbox.preparing.recommendation"),
     details: [
-      "桌面端首次启动会自动检查并准备沙箱运行时。",
-      "首次使用沙箱镜像可能需要网络。",
+      agentErrorMessage("sandbox.preparing.detail.desktopStartup"),
+      agentErrorMessage("sandbox.preparing.detail.networkMayBeRequired"),
     ],
   };
 }
@@ -202,11 +188,11 @@ function microsandboxReadyDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics
   return {
     code: "microsandbox_runtime_ready",
     severity: "warning",
-    message: "microsandbox 沙箱运行时可用。",
-    recommendation: "支持沙箱的工具会优先进入 microVM；工具策略允许时仍可在不可用时 fallback。",
+    message: agentErrorMessage("sandbox.ready.message"),
+    recommendation: agentErrorMessage("sandbox.ready.recommendation"),
     details: [
-      "默认使用只读工作区挂载。",
-      "默认禁用沙箱网络，除非工具策略声明允许网络。",
+      agentErrorMessage("sandbox.ready.detail.readOnlyWorkspace"),
+      agentErrorMessage("sandbox.ready.detail.networkPolicy"),
     ],
   };
 }
@@ -215,12 +201,12 @@ function microsandboxFallbackDiagnostic(error: string | undefined): AgentSandbox
   return {
     code: "microsandbox_runtime_fallback",
     severity: "warning",
-    message: "microsandbox 沙箱运行时不可用。",
-    recommendation: "如需 OS 沙箱隔离，请启用系统虚拟化能力后重启 Senera。",
+    message: agentErrorMessage("sandbox.fallback.message"),
+    recommendation: agentErrorMessage("sandbox.fallback.recommendation"),
     details: [
-      "Senera 会继续使用本地执行边界、工作区路径守卫和审批系统。",
-      "Windows 通常需要启用 Windows Hypervisor Platform / Virtual Machine Platform。",
-      ...(error ? [`最近一次准备错误：${error}`] : []),
+      agentErrorMessage("sandbox.fallback.detail.continueLocal"),
+      agentErrorMessage("sandbox.fallback.detail.windowsVirtualization"),
+      ...(error ? [agentErrorMessage("sandbox.fallback.detail.lastError", { error })] : []),
     ],
   };
 }
@@ -229,11 +215,9 @@ function microsandboxMissingDiagnostic(): AgentSandboxRuntimeSnapshot["diagnosti
   return {
     code: "microsandbox_package_missing",
     severity: "warning",
-    message: "microsandbox 包不可解析。",
-    recommendation: "运行 npm install 同步依赖后重启服务。",
-    details: [
-      "Senera 会继续使用本地执行边界、工作区路径守卫和审批系统。",
-    ],
+    message: agentErrorMessage("sandbox.missing.message"),
+    recommendation: agentErrorMessage("sandbox.missing.recommendation"),
+    details: [agentErrorMessage("sandbox.fallback.detail.continueLocal")],
   };
 }
 

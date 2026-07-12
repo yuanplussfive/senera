@@ -1,13 +1,6 @@
 import { createSessionId } from "../Core/AgentIds.js";
-import {
-  AgentSessionStatuses,
-  type AgentSession,
-} from "./AgentSession.js";
-import type {
-  AgentSessionRepository,
-  StoredRunSnapshot,
-  StoredStepTraceRun,
-} from "./AgentSqliteSessionRepository.js";
+import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
+import type { AgentSessionRepository, StoredRunSnapshot, StoredStepTraceRun } from "./AgentSqliteSessionRepository.js";
 import { InMemorySessionRepository } from "./AgentSqliteSessionRepository.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
@@ -92,9 +85,7 @@ export class AgentSessionStore {
 
   get(sessionId: string): AgentSessionLookupResult {
     const session = this.sessions.get(sessionId);
-    return session
-      ? { kind: "found", session }
-      : { kind: "missing", sessionId };
+    return session ? { kind: "found", session } : { kind: "missing", sessionId };
   }
 
   hasPersistedSession(sessionId: string): boolean {

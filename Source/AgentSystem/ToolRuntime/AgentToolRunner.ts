@@ -5,10 +5,7 @@ import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type { AgentPluginRegistryLike } from "../Types/ToolRuntimeTypes.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { toolProcessFailureResult } from "./AgentToolProcessEnvelope.js";
 import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
@@ -26,6 +23,7 @@ export interface AgentToolRunnerLike {
 export interface AgentToolRunnerContext {
   requestId?: string;
   step?: number;
+  toolCallId?: string;
   configPath?: string;
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
@@ -45,12 +43,8 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     private readonly executionEnv: SeneraExecutionEnv,
     processRunner?: AgentToolProcessRunner,
   ) {
-    this.processRunner = processRunner ?? new AgentToolProcessRunner(
-      config,
-      protocol,
-      workspaceRoot,
-      executionEnv.spawnProcess,
-    );
+    this.processRunner =
+      processRunner ?? new AgentToolProcessRunner(config, protocol, workspaceRoot, executionEnv.spawnProcess);
     this.mcpRunner = new AgentMcpToolRunner({
       config,
       workspaceRoot,
@@ -64,9 +58,10 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     context: AgentToolRunnerContext = {},
   ): Promise<AgentToolProcessRunResult> {
     const runners = {
-      PluginProcess: () => this.processRunner.run(tool, args, {
-        signal: context.signal,
-      }),
+      PluginProcess: () =>
+        this.processRunner.run(tool, args, {
+          ...context,
+        }),
       HostCapability: () => this.runHostCapability(tool, args, context),
       McpTool: () => this.mcpRunner.run(tool, args, context),
     } satisfies Record<RegisteredTool["handler"]["kind"], () => Promise<AgentToolProcessRunResult>>;
@@ -80,12 +75,9 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     context: AgentToolRunnerContext,
   ): Promise<AgentToolProcessRunResult> {
     if (tool.handler.kind !== "HostCapability") {
-      return this.failure(
-        agentErrorMessage("tool.notHostCapability", { toolName: tool.name }),
-        {
-          toolName: tool.name,
-        },
-      );
+      return this.failure(agentErrorMessage("tool.notHostCapability", { toolName: tool.name }), {
+        toolName: tool.name,
+      });
     }
 
     const handler = this.hostCapabilities.get(tool.handler.capability);
@@ -116,10 +108,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     });
   }
 
-  private failure(
-    message: string,
-    details: Record<string, unknown>,
-  ): AgentToolProcessRunResult {
+  private failure(message: string, details: Record<string, unknown>): AgentToolProcessRunResult {
     return toolProcessFailureResult({
       code: AgentExecutionErrorCodes.ToolProcessConfigurationInvalid,
       message,

@@ -1,7 +1,5 @@
 import { createParser } from "eventsource-parser";
-import type {
-  AgentLanguageModelStreamChunk,
-} from "./AgentLanguageModel.js";
+import type { AgentLanguageModelStreamChunk } from "./AgentLanguageModel.js";
 import type { JsonObject } from "./ModelEndpointTypes.js";
 import { readAbortFailure } from "./ModelHttpAbort.js";
 import { ModelRequestTimeoutError } from "./ModelHttpErrors.js";
@@ -32,12 +30,13 @@ export async function* parseModelEventStreamText(
   let accumulatedText = "";
   let firstTokenSeen = false;
   const firstTokenController = new AbortController();
-  const firstTokenTimer = options.firstTokenTimeoutMs === -1
-    ? undefined
-    : setTimeout(
-        () => firstTokenController.abort(new ModelRequestTimeoutError("first_token")),
-        options.firstTokenTimeoutMs,
-      );
+  const firstTokenTimer =
+    options.firstTokenTimeoutMs === -1
+      ? undefined
+      : setTimeout(
+          () => firstTokenController.abort(new ModelRequestTimeoutError("first_token")),
+          options.firstTokenTimeoutMs,
+        );
 
   try {
     while (true) {
@@ -94,9 +93,12 @@ function readStreamChunk(
     const onAbort = (): void => reject(readAbortFailure(firstTokenSignal, requestSignal)?.reason);
     requestSignal.addEventListener("abort", onAbort, { once: true });
     firstTokenSignal?.addEventListener("abort", onAbort, { once: true });
-    reader.read().then(resolve, reject).finally(() => {
-      requestSignal.removeEventListener("abort", onAbort);
-      firstTokenSignal?.removeEventListener("abort", onAbort);
-    });
+    reader
+      .read()
+      .then(resolve, reject)
+      .finally(() => {
+        requestSignal.removeEventListener("abort", onAbort);
+        firstTokenSignal?.removeEventListener("abort", onAbort);
+      });
   });
 }

@@ -38,4 +38,6 @@ export interface SeneraProcessExecutionProfile {
   backend?: SeneraProcessBackendPreference;
   localFallback?: SeneraProcessLocalFallback;
   microsandbox?: SeneraProcessMicrosandboxProfile;
+  fallbackContext?: SeneraProcessFallbackContext;
 }
+import type { SeneraProcessFallbackContext } from "./SeneraProcessFallbackAuthorization.js";

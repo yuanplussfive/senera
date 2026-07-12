@@ -2,13 +2,8 @@ import MiniSearch from "minisearch";
 import { resolveVectorModelsConfig } from "../AgentDefaults.js";
 import { AgentToolSearchTokenizer } from "../ToolSearch/AgentToolSearchTokenizer.js";
 import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
-import type {
-  AgentMemoryEpisodeRecord,
-  AgentMemorySourceRecord,
-} from "./AgentMemorySourceRepository.js";
-import {
-  exactRank,
-} from "./AgentMemoryRecallRanker.js";
+import type { AgentMemoryEpisodeRecord, AgentMemorySourceRecord } from "./AgentMemorySourceRepository.js";
+import { exactRank } from "./AgentMemoryRecallRanker.js";
 import {
   MemoryRecallPolicy,
   type ConversationRecallRankedEntry,
@@ -16,9 +11,7 @@ import {
   type MemoryRecallOptions,
   type MemoryRecallTurnEntry,
 } from "./AgentMemoryRecallTypes.js";
-import {
-  projectConversationTurnResult,
-} from "./AgentMemoryRecallProjector.js";
+import { projectConversationTurnResult } from "./AgentMemoryRecallProjector.js";
 import { unique } from "./AgentMemoryRecallUtils.js";
 
 interface ConversationRecallDocument {
@@ -47,7 +40,8 @@ export async function recallConversationTurns(input: {
         refs: input.refs,
         sources: input.exactSources,
         episodes,
-        directEpisodes: input.options.repository.findEpisodesByUris(input.refs)
+        directEpisodes: input.options.repository
+          .findEpisodesByUris(input.refs)
           .filter((episode) => episodesByUri.has(episode.uri)),
       }),
     },
@@ -56,28 +50,23 @@ export async function recallConversationTurns(input: {
       entries: conversationKeywordRanking(input.query, episodes),
     },
   ];
-  const candidateEpisodeUris = fuseConversationRankings(initialRankings, input.candidateLimit)
-    .map((entry) => entry.episodeUri);
-  const reranked = await rerankConversationTurns(
-    input.query,
-    candidateEpisodeUris,
-    episodesByUri,
-    input.options,
+  const candidateEpisodeUris = fuseConversationRankings(initialRankings, input.candidateLimit).map(
+    (entry) => entry.episodeUri,
   );
-  return fuseConversationRankings([
-    ...initialRankings,
-    {
-      name: "rerank",
-      entries: reranked,
-    },
-  ], input.limit).flatMap((entry) => {
+  const reranked = await rerankConversationTurns(input.query, candidateEpisodeUris, episodesByUri, input.options);
+  return fuseConversationRankings(
+    [
+      ...initialRankings,
+      {
+        name: "rerank",
+        entries: reranked,
+      },
+    ],
+    input.limit,
+  ).flatMap((entry) => {
     const episode = episodesByUri.get(entry.episodeUri);
     return episode
-      ? [projectConversationTurnResult(
-        episode,
-        input.options.repository.listSources(episode.uri),
-        entry,
-      )]
+      ? [projectConversationTurnResult(episode, input.options.repository.listSources(episode.uri), entry)]
       : [];
   });
 }
@@ -111,26 +100,22 @@ function conversationKeywordRanking(
   const tokenizer = new AgentToolSearchTokenizer();
   const index = new MiniSearch<ConversationRecallDocument>({
     idField: "id",
-    fields: [
-      "rawUserText",
-      "standaloneRequest",
-      "topic",
-      "summary",
-      "contextBasis",
-    ],
+    fields: ["rawUserText", "standaloneRequest", "topic", "summary", "contextBasis"],
     storeFields: ["id"],
     tokenize: (text) => tokenizer.tokenize(text),
     processTerm: (term) => term,
   });
   index.addAll(episodes.map(conversationSearchDocument));
-  return index.search(query, {
-    prefix: true,
-    fuzzy: 0.2,
-    combineWith: "OR",
-  }).map((entry) => ({
-    episodeUri: String(entry.id),
-    score: entry.score,
-  }));
+  return index
+    .search(query, {
+      prefix: true,
+      fuzzy: 0.2,
+      combineWith: "OR",
+    })
+    .map((entry) => ({
+      episodeUri: String(entry.id),
+      score: entry.score,
+    }));
 }
 
 async function rerankConversationTurns(
@@ -148,10 +133,14 @@ async function rerankConversationTurns(
     query,
     documents: episodeUris.flatMap((episodeUri) => {
       const episode = episodesByUri.get(episodeUri);
-      return episode ? [{
-        id: episodeUri,
-        text: conversationTurnRecallText(episode),
-      }] : [];
+      return episode
+        ? [
+            {
+              id: episodeUri,
+              text: conversationTurnRecallText(episode),
+            },
+          ]
+        : [];
     }),
     topK: episodeUris.length,
     signal: options.signal,
@@ -166,11 +155,14 @@ function fuseConversationRankings(
   rankings: readonly ConversationRecallRanking[],
   limit: number,
 ): Array<ConversationRecallRankedEntry & { matchedBy: string[] }> {
-  const scores = new Map<string, {
-    episodeUri: string;
-    score: number;
-    matchedBy: string[];
-  }>();
+  const scores = new Map<
+    string,
+    {
+      episodeUri: string;
+      score: number;
+      matchedBy: string[];
+    }
+  >();
 
   for (const ranking of rankings) {
     const seenInRanking = new Set<string>();
@@ -187,19 +179,18 @@ function fuseConversationRankings(
       scores.set(entry.episodeUri, {
         episodeUri: entry.episodeUri,
         score: current.score + 1 / (MemoryRecallPolicy.rrfK + index + 1),
-        matchedBy: unique([
-          ...current.matchedBy,
-          ranking.name,
-        ]),
+        matchedBy: unique([...current.matchedBy, ranking.name]),
       });
     });
   }
 
   return [...scores.values()]
-    .sort((left, right) =>
-      exactRank(right) - exactRank(left)
-      || right.score - left.score
-      || left.episodeUri.localeCompare(right.episodeUri))
+    .sort(
+      (left, right) =>
+        exactRank(right) - exactRank(left) ||
+        right.score - left.score ||
+        left.episodeUri.localeCompare(right.episodeUri),
+    )
     .slice(0, limit);
 }
 
@@ -215,11 +206,7 @@ function conversationSearchDocument(episode: AgentMemoryEpisodeRecord): Conversa
 }
 
 function conversationTurnRecallText(episode: AgentMemoryEpisodeRecord): string {
-  return [
-    episode.rawUserText,
-    episode.standaloneRequest,
-    episode.topic,
-    episode.summary,
-    episode.contextBasis,
-  ].join("\n");
+  return [episode.rawUserText, episode.standaloneRequest, episode.topic, episode.summary, episode.contextBasis].join(
+    "\n",
+  );
 }

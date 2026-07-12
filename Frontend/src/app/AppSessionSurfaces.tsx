@@ -9,6 +9,7 @@ export interface AppSessionActions {
   onRefreshSessions: () => void;
   onRenameSession: (id: string, title: string) => void;
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+  onLogout: () => Promise<void>;
 }
 
 export interface AppSessionSurfaceProps {
@@ -40,6 +41,7 @@ export function AppSessionSurface({
       onRenameSession={actions.onRenameSession}
       userProfile={userProfile}
       onUpdateUserProfile={actions.onUpdateUserProfile}
+      onLogout={actions.onLogout}
       socketStatus={socketStatus}
       onOpenSessionPanel={onOpenSessionPanel}
       onClosePanel={onClosePanel}

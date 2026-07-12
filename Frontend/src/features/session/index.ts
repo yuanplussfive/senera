@@ -3,10 +3,6 @@ export { SessionHeader, SessionRail } from "./SessionChrome";
 export { ConfirmationDialog, PreferencesDialog, RenameDialog } from "./SessionDialogs";
 export { EmptyState, SessionRow } from "./SessionRows";
 export { UserFooter } from "./ProfileFooter";
-export {
-  ContextSessionMenuItems,
-  DropdownSessionMenuItems,
-  DropdownSessionMenuSections,
-} from "./SessionMenuActions";
+export { ContextSessionMenuItems, DropdownSessionMenuItems, DropdownSessionMenuSections } from "./SessionMenuActions";
 export { formatSessionSubtitle } from "./sessionPresentation";
 export type { ConfirmationIntent, LayoutPreferenceId, SessionMenuAction, SessionMenuSection } from "./types";

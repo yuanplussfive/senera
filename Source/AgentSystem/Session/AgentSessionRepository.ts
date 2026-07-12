@@ -31,10 +31,7 @@ export interface AgentSessionRepository extends AgentUserProfileRepository {
   loadAll(): AgentSession[];
   upsertSession(session: AgentSession): void;
   appendEntry(sessionId: string, entry: AgentConversationEntry, sequence: number): void;
-  appendEntries(
-    sessionId: string,
-    entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,
-  ): void;
+  appendEntries(sessionId: string, entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>): void;
   persistTurnArtifacts(
     sessionId: string,
     entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,

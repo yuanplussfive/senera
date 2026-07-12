@@ -52,4 +52,3 @@ export function installToolSearchMemorySchema(db: Database.Database): void {
       ON tool_use_patterns(project_id, tool_name);
   `);
 }
-

@@ -1,12 +1,7 @@
-import type {
-  AgentToolSearchResult,
-} from "./AgentToolSearchIndex.js";
+import type { AgentToolSearchResult } from "./AgentToolSearchIndex.js";
 import type { ToolSearchArguments } from "./AgentToolSearchToolProtocol.js";
 
-export function buildToolSearchResultProjection(
-  args: ToolSearchArguments,
-  results: readonly AgentToolSearchResult[],
-) {
+export function buildToolSearchResultProjection(args: ToolSearchArguments, results: readonly AgentToolSearchResult[]) {
   return {
     query: args.query,
     tools: {
@@ -45,9 +40,10 @@ export function buildToolSearchResultProjection(
         reason: renderSearchReason(result),
       })),
     },
-    guidance: results.length > 0
-      ? "这些工具会在下一轮提示词中展开完整能力卡片；下一步需要工具时只调用其中最匹配的工具。"
-      : "没有找到匹配工具；换更具体的任务、对象、路径、错误文本或能力关键词重新搜索。",
+    guidance:
+      results.length > 0
+        ? "这些工具会在下一轮提示词中展开完整能力卡片；下一步需要工具时只调用其中最匹配的工具。"
+        : "没有找到匹配工具；换更具体的任务、对象、路径、错误文本或能力关键词重新搜索。",
   };
 }
 
@@ -77,18 +73,17 @@ export function readToolNamesFromSearchResult(result: unknown): string[] {
 }
 
 function renderSearchReason(result: AgentToolSearchResult): string {
-  const capabilities = result.matchedCapabilities
-    .map((capability) => capability.matchedFacets.length > 0
-      ? `${capability.id} (${capability.matchedFacets.join(", ")})`
-      : capability.id);
-  const terms = result.matchedTerms.length > 0
-    ? `terms: ${result.matchedTerms.join(", ")}`
-    : "";
+  const capabilities = result.matchedCapabilities.map((capability) =>
+    capability.matchedFacets.length > 0 ? `${capability.id} (${capability.matchedFacets.join(", ")})` : capability.id,
+  );
+  const terms = result.matchedTerms.length > 0 ? `terms: ${result.matchedTerms.join(", ")}` : "";
   return [
     capabilities.length > 0 ? `capabilities: ${capabilities.join("; ")}` : "",
     terms,
     result.learningSignals.length > 0
       ? `learning: ${result.learningSignals.map((signal) => signal.term).join(", ")}`
       : "",
-  ].filter(Boolean).join("; ");
+  ]
+    .filter(Boolean)
+    .join("; ");
 }

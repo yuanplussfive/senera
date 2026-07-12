@@ -85,9 +85,9 @@ endpoint 必须返回 Senera 内部统一的模型结果形态，不能把供应
 基础验证：
 
 ```bash
-npm run check
+npm run check.types
 npm run build
-npm run verifysuite -- workspace core
+npm run verify.suite -- workspace core
 ```
 
 模型相关重点验证：
@@ -108,4 +108,3 @@ node Dist/Scripts/VerifyVectorModelClient.js
 - schema、defaults、form projection、前端 UI 保持一致。
 - timeout、retry、max output token 的语义一致。
 - 验证覆盖端点路由、超时、配置投影、前端选择逻辑。
-

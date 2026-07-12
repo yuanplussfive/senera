@@ -1,15 +1,7 @@
-import {
-  summarizePrompt,
-  type AgentDomainEvent,
-} from "../Events/AgentEvent.js";
+import { summarizePrompt, type AgentDomainEvent } from "../Events/AgentEvent.js";
 
 export class AgentLoopPromptEventFactory {
-  promptRendered(
-    requestId: string,
-    step: number,
-    prompt: string,
-    tokenCount: number,
-  ): AgentDomainEvent[] {
+  promptRendered(requestId: string, step: number, prompt: string, tokenCount: number): AgentDomainEvent[] {
     const summary = summarizePrompt(prompt, tokenCount);
 
     return [

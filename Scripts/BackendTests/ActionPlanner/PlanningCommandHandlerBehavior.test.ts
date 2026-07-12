@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { AgentPlanningCommandHandler, type AgentPlanningCommandRuntime } from "../../../Source/AgentSystem/ActionPlanner/AgentPlanningCommandHandler.js";
+import {
+  AgentPlanningCommandHandler,
+  type AgentPlanningCommandRuntime,
+} from "../../../Source/AgentSystem/ActionPlanner/AgentPlanningCommandHandler.js";
 import { EmptyActionPlannerLedger } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
 import { projectInteractionRoute } from "../../../Source/AgentSystem/ActionPlanner/AgentInteractionRouter.js";
 import { AgentLoopEventFactory } from "../../../Source/AgentSystem/Loop/AgentLoopEventFactory.js";
@@ -62,11 +65,13 @@ describe("Planning command handler behavior", () => {
       ["WorkspaceReadFile"],
       ["WorkspaceReadFile", "ArtifactMemoryReadTool"],
     ]);
-    expect(fixture.autoSearches).toEqual([{
-      requestId: "request-1",
-      input: "Inspect the release workflow",
-      loadedToolNames: ["WorkspaceReadFile", "ArtifactMemoryReadTool"],
-    }]);
+    expect(fixture.autoSearches).toEqual([
+      {
+        requestId: "request-1",
+        input: "Inspect the release workflow",
+        loadedToolNames: ["WorkspaceReadFile", "ArtifactMemoryReadTool"],
+      },
+    ]);
   });
 
   test("uses materialized conversation history and keeps direct responses free of tool discovery", async () => {
@@ -90,13 +95,15 @@ describe("Planning command handler behavior", () => {
       step: 1,
       input: "Explain the current state",
       messages: [{ role: "user", content: "fallback message" }],
-      conversationEntries: [{
-        id: "request-1:user",
-        requestId: "request-1",
-        timestamp: "2026-01-01T00:00:00.000Z",
-        kind: "user.message",
-        content: "Previous question",
-      }],
+      conversationEntries: [
+        {
+          id: "request-1:user",
+          requestId: "request-1",
+          timestamp: "2026-01-01T00:00:00.000Z",
+          kind: "user.message",
+          content: "Previous question",
+        },
+      ],
       loadedToolNames: [],
       plannerLedger: EmptyActionPlannerLedger,
       activeSkills: [],
@@ -121,9 +128,11 @@ const dynamicLoopConfig: ResolvedAgentLoopConfig = {
   PiSessions: { RootDir: ".senera/pi-sessions" },
 };
 
-function createRuntimeFixture(options: {
-  route?: ReturnType<typeof createInteractionRoute>;
-} = {}) {
+function createRuntimeFixture(
+  options: {
+    route?: ReturnType<typeof createInteractionRoute>;
+  } = {},
+) {
   const contextMessages: AgentLanguageModelMessage[][] = [];
   const resolveRequests: Array<{ preferredTools: readonly string[] }> = [];
   const autoSearches: Array<{ requestId: string; input: string; loadedToolNames: "all" | string[] }> = [];
@@ -166,7 +175,8 @@ function createRuntimeFixture(options: {
           activationCount += 1;
           return activationCount === 1 ? [initialSkill] : [enrichedSkill, evidenceSkill];
         },
-        recommendedSkillTools: (skills: readonly AgentActivatedSkill[]) => skills.flatMap((entry) => entry.recommendedTools),
+        recommendedSkillTools: (skills: readonly AgentActivatedSkill[]) =>
+          skills.flatMap((entry) => entry.recommendedTools),
         toolCatalog: () => [],
         buildRootCommand: ({ decision, loadedToolNames }: AgentPromptRootCommandOptions) =>
           rootCommand(decision.action, loadedToolNames),

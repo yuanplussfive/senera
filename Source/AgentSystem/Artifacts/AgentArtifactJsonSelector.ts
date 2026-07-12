@@ -20,9 +20,7 @@ function selectPath(values: unknown, segments: readonly string[]): unknown[] {
 
   const [head, ...tail] = segments;
   if (head === "*") {
-    return Array.isArray(values)
-      ? values.flatMap((entry) => selectPath(entry, tail))
-      : [];
+    return Array.isArray(values) ? values.flatMap((entry) => selectPath(entry, tail)) : [];
   }
 
   if (!values || typeof values !== "object" || Array.isArray(values)) {

@@ -2,7 +2,6 @@ import crossSpawn from "cross-spawn";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { readDesktopPackageVersionOverride } from "../../Build/DesktopReleaseInfo.js";
 import { isMainModule } from "../../Source/AgentSystem/Core/AgentPath.js";
 
 const { sync: spawnSync } = crossSpawn;
@@ -15,12 +14,10 @@ interface CommandInvocation {
 const steps = [
   command("npm", ["run", "build"]),
   command("npm", ["--workspace", "senera-frontend", "run", "build"]),
-  command("electron-builder", electronBuilderArguments()),
+  command("electron-builder"),
 ];
 
-const nativeModules = [
-  "better-sqlite3",
-];
+const nativeModules = ["better-sqlite3"];
 
 if (isMainModule(import.meta.url)) {
   process.exitCode = packageDesktop();
@@ -73,21 +70,9 @@ function command(name: string, args: readonly string[] = []): CommandInvocation 
   };
 }
 
-function electronBuilderArguments(): string[] {
-  const version = readDesktopPackageVersionOverride();
-  return version ? [`-c.extraMetadata.version=${version}`] : [];
-}
-
 function clearNativeRebuildMetadata(): void {
   for (const moduleName of nativeModules) {
-    const metadataPath = path.join(
-      process.cwd(),
-      "node_modules",
-      moduleName,
-      "build",
-      "Release",
-      ".forge-meta",
-    );
+    const metadataPath = path.join(process.cwd(), "node_modules", moduleName, "build", "Release", ".forge-meta");
     if (fs.existsSync(metadataPath)) {
       fs.rmSync(metadataPath, { force: true });
     }

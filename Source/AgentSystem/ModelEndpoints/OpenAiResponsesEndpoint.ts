@@ -1,29 +1,37 @@
 import { z } from "zod";
 import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "./AgentLanguageModel.js";
-import type {
-  EndpointRuntime,
-  TextGenerationEndpoint,
-  TextGenerationEndpointResult,
-} from "./ModelEndpointTypes.js";
+import type { EndpointRuntime, TextGenerationEndpoint, TextGenerationEndpointResult } from "./ModelEndpointTypes.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { resolveAgentModelCompatibility } from "./ModelCompatibility.js";
 import { buildOpenAiInput } from "./OpenAiMessageProjection.js";
 
-const TextPartSchema = z.object({
-  text: z.string().optional(),
-}).passthrough();
+const TextPartSchema = z
+  .object({
+    text: z.string().optional(),
+  })
+  .passthrough();
 
-const ResponsesBodySchema = z.object({
-  output_text: z.string().optional(),
-  output: z.array(z.object({
-    content: z.array(TextPartSchema).optional(),
-  }).passthrough()).optional(),
-}).passthrough();
+const ResponsesBodySchema = z
+  .object({
+    output_text: z.string().optional(),
+    output: z
+      .array(
+        z
+          .object({
+            content: z.array(TextPartSchema).optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
 
-const ResponsesStreamEventSchema = z.object({
-  type: z.string().optional(),
-  delta: z.string().optional(),
-}).passthrough();
+const ResponsesStreamEventSchema = z
+  .object({
+    type: z.string().optional(),
+    delta: z.string().optional(),
+  })
+  .passthrough();
 
 export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
   constructor(private readonly runtime: EndpointRuntime) {}
@@ -44,10 +52,13 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
     );
 
     return {
-      text: body.output_text ?? body.output
-        ?.flatMap((output) => output.content ?? [])
-        .map((content) => content.text ?? "")
-        .join("") ?? "",
+      text:
+        body.output_text ??
+        body.output
+          ?.flatMap((output) => output.content ?? [])
+          .map((content) => content.text ?? "")
+          .join("") ??
+        "",
     };
   }
 
@@ -62,14 +73,21 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
       payload.max_output_tokens = this.runtime.config.MaxOutputTokens;
     }
 
-    return this.runtime.http.postSseStream(["responses"], payload, this.authHeaders(), (event) => {
-      const parsed = ResponsesStreamEventSchema.parse(event);
-      return parsed.type === "response.output_text.delta" || parsed.type === "response_output_text_delta"
-        ? parsed.delta ?? ""
-        : "";
-    }, undefined, {
-      signal: request.signal,
-    });
+    return this.runtime.http.postSseStream(
+      ["responses"],
+      payload,
+      this.authHeaders(),
+      (event) => {
+        const parsed = ResponsesStreamEventSchema.parse(event);
+        return parsed.type === "response.output_text.delta" || parsed.type === "response_output_text_delta"
+          ? (parsed.delta ?? "")
+          : "";
+      },
+      undefined,
+      {
+        signal: request.signal,
+      },
+    );
   }
 
   private authHeaders(): HeadersInit {

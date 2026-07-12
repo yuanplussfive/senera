@@ -1,10 +1,7 @@
 import { Code2, Settings2 } from "lucide-react";
 import type { TomlTableWithoutBigInt } from "smol-toml";
-import type {
-  PluginConfigField,
-  PluginConfigItem,
-  PluginConfigSection,
-} from "../../api/eventTypes";
+import type { PluginConfigField, PluginConfigItem, PluginConfigSection } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { ScrollArea } from "../../shared/ui";
 import { FieldControl } from "./PluginConfigFields";
@@ -20,8 +17,12 @@ export function ViewSwitch({
   onChange: (value: ConfigView) => void;
 }): JSX.Element {
   const items: Array<{ value: ConfigView; label: string; icon: JSX.Element }> = [
-    { value: "settings", label: "设置", icon: <Settings2 className="h-3.5 w-3.5" /> },
-    { value: "toml", label: "源码", icon: <Code2 className="h-3.5 w-3.5" /> },
+    {
+      value: "settings",
+      label: frontendMessage("pluginConfig.viewSettings"),
+      icon: <Settings2 className="h-3.5 w-3.5" />,
+    },
+    { value: "toml", label: frontendMessage("pluginConfig.viewSource"), icon: <Code2 className="h-3.5 w-3.5" /> },
   ];
 
   return (
@@ -32,9 +33,7 @@ export function ViewSwitch({
           type="button"
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-md px-2 text-[12px] transition",
-            value === item.value
-              ? "bg-paper-50 text-ink-900 shadow-sm"
-              : "text-ink-500 hover:text-ink-800",
+            value === item.value ? "bg-paper-50 text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800",
           )}
           onClick={() => onChange(item.value)}
         >
@@ -68,7 +67,7 @@ export function SettingsView({
       <div className="mx-auto min-h-full w-full max-w-[820px] px-4 py-5 sm:px-5 sm:py-8">
         {parseError ? (
           <div className="mb-5 rounded-xl border border-brick-100 bg-brick-50 px-3 py-2 text-[12.5px] text-brick-700">
-            配置源码解析失败，修复后才能使用设置视图。
+            {frontendMessage("pluginConfig.sourceParseFailed")}
           </div>
         ) : null}
 
@@ -98,7 +97,7 @@ export function SettingsView({
               onSetToolEnabled={onSetToolEnabled}
             />
             <div className="grid min-h-64 place-items-center rounded-xl border border-ink-200/70 bg-paper-50 text-[13px] text-ink-400 shadow-panel">
-              该技能没有可视化配置项
+              {frontendMessage("pluginConfig.noVisualFields")}
             </div>
           </div>
         )}
@@ -107,13 +106,7 @@ export function SettingsView({
   );
 }
 
-export function TomlView({
-  draft,
-  onChange,
-}: {
-  draft: string;
-  onChange: (value: string) => void;
-}): JSX.Element {
+export function TomlView({ draft, onChange }: { draft: string; onChange: (value: string) => void }): JSX.Element {
   return (
     <div className="min-h-0 flex-1 bg-paper-50 px-4 py-4 sm:px-5 sm:py-6">
       <textarea
@@ -181,7 +174,7 @@ export function ConfigSourceNotice({ plugin }: { plugin: PluginConfigItem }): JS
 
   return (
     <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[12px] leading-5 text-amber-800">
-      当前显示 {templateName} 模板草稿，保存后会创建实际配置文件。
+      {frontendMessage("pluginConfig.templateDraftNotice", { templateName })}
     </div>
   );
 }
@@ -203,12 +196,17 @@ function PluginToolsSection({
     <section className="space-y-3">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h3 className="text-[13px] font-semibold text-ink-900">工具开关</h3>
+          <h3 className="text-[13px] font-semibold text-ink-900">{frontendMessage("pluginConfig.toolSwitches")}</h3>
           <p className="mt-0.5 text-[12px] leading-5 text-ink-500">
-            控制该技能提供的工具是否允许模型调用。
+            {frontendMessage("pluginConfig.toolSwitchesDescription")}
           </p>
         </div>
-        <span className="pb-0.5 text-[11px] text-ink-400">{plugin.enabledToolCount}/{plugin.toolCount} 启用</span>
+        <span className="pb-0.5 text-[11px] text-ink-400">
+          {frontendMessage("pluginConfig.enabledCount", {
+            enabled: plugin.enabledToolCount,
+            total: plugin.toolCount,
+          })}
+        </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {plugin.tools.map((tool) => (
@@ -218,9 +216,7 @@ function PluginToolsSection({
             disabled={disabled}
             className={cn(
               "flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition",
-              tool.enabled
-                ? "border-moss-200 bg-moss-50/70 text-ink-900"
-                : "border-ink-200 bg-paper-50 text-ink-600",
+              tool.enabled ? "border-moss-200 bg-moss-50/70 text-ink-900" : "border-ink-200 bg-paper-50 text-ink-600",
               !disabled && "hover:border-terra-200 hover:bg-terra-50/40",
               disabled && "pointer-events-none opacity-55",
             )}
@@ -269,16 +265,14 @@ function SettingsSection({
     <section className="space-y-3">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h3 className="text-[13px] font-semibold text-ink-900">
-            {sectionDisplayTitle(section, sectionIndex)}
-          </h3>
+          <h3 className="text-[13px] font-semibold text-ink-900">{sectionDisplayTitle(section, sectionIndex)}</h3>
           {section.description ? (
-            <p className="mt-0.5 text-[12px] leading-5 text-ink-500">
-              {section.description}
-            </p>
+            <p className="mt-0.5 text-[12px] leading-5 text-ink-500">{section.description}</p>
           ) : null}
         </div>
-        <span className="pb-0.5 text-[11px] text-ink-400">{section.fields.length} 项</span>
+        <span className="pb-0.5 text-[11px] text-ink-400">
+          {frontendMessage("pluginConfig.fieldCount", { count: section.fields.length })}
+        </span>
       </div>
       <div className="divide-y divide-ink-200/70 overflow-hidden rounded-xl border border-ink-200/70 bg-paper-50 shadow-panel">
         {section.fields.map((field) => (

@@ -1,38 +1,11 @@
 import { useState } from "react";
-import {
-  BrainCircuit,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Server,
-  Settings2,
-  Trash2,
-} from "lucide-react";
-import type {
-  ProviderModelsFailedData,
-  ProviderModelsSnapshotData,
-} from "../../api/eventTypes";
+import { BrainCircuit, Eye, EyeOff, KeyRound, Loader2, Plus, RefreshCw, Server, Settings2, Trash2 } from "lucide-react";
+import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import {
-  Button,
-  ScrollArea,
-  Tooltip,
-} from "../../shared/ui";
-import {
-  inferModelProviderIcon,
-  ModelProviderIcon,
-  ModelProviderIconNames,
-} from "./ModelProviderIcon";
-import {
-  formatShortTime,
-  nextHeaderKey,
-  providerEnabled,
-  providerIdLabel,
-  sortProviderRows,
-} from "./modelConfigData";
+import { Button, ScrollArea, Tooltip } from "../../shared/ui";
+import { inferModelProviderIcon, ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
+import { formatShortTime, nextHeaderKey, providerEnabled, providerIdLabel, sortProviderRows } from "./modelConfigData";
 import type { ProviderEndpointDraft } from "./modelConfigTypes";
 import {
   DetailTitle,
@@ -78,45 +51,45 @@ export function ProviderList({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <ListHeader
-        title="供应商"
-        subtitle={`${providers.length} 个端点`}
-        action={(
+        title={frontendMessage("config.provider.title")}
+        subtitle={frontendMessage("config.provider.endpointCount", { count: providers.length })}
+        action={
           <div className="flex items-center gap-1.5">
-            <Tooltip content="供应商设置" side="top">
+            <Tooltip content={frontendMessage("config.provider.settings")} side="top">
               <button
                 type="button"
                 disabled={disabled || providers.length === 0}
                 className={iconButtonClassName}
                 onClick={onOpenSettings}
-                aria-label="供应商设置"
+                aria-label={frontendMessage("config.provider.settings")}
               >
                 <Settings2 className="h-3.5 w-3.5" />
               </button>
             </Tooltip>
-            <Tooltip content="删除供应商" side="top">
+            <Tooltip content={frontendMessage("config.provider.delete")} side="top">
               <button
                 type="button"
                 disabled={disabled || providers.length === 0}
                 className={cn(iconButtonClassName, "hover:border-brick-200 hover:bg-brick-50 hover:text-brick-600")}
                 onClick={() => onRemove(selectedIndex)}
-                aria-label="删除供应商"
+                aria-label={frontendMessage("config.provider.delete")}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </Tooltip>
-            <Tooltip content="添加供应商" side="top">
+            <Tooltip content={frontendMessage("config.provider.add")} side="top">
               <button
                 type="button"
                 disabled={disabled}
                 className={iconButtonClassName}
                 onClick={onAdd}
-                aria-label="添加供应商"
+                aria-label={frontendMessage("config.provider.add")}
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
             </Tooltip>
           </div>
-        )}
+        }
       />
       <ScrollArea className="min-h-0 flex-1 overflow-hidden" viewportClassName="h-full">
         {providers.length > 0 ? (
@@ -152,16 +125,23 @@ export function ProviderList({
                     <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-450">
                       <ProviderStatusIcon loading={loading} catalog={catalog} error={error} />
                       <span className="truncate">
-                        {catalog ? `${catalog.models.length} 个模型 · ${formatShortTime(catalog.fetchedAt)}` : provider.Id || "未设置 ID"}
+                        {catalog
+                          ? frontendMessage("config.provider.catalogSummary", {
+                              count: catalog.models.length,
+                              time: formatShortTime(catalog.fetchedAt),
+                            })
+                          : provider.Id || frontendMessage("config.provider.idUnset")}
                       </span>
                     </span>
                   </span>
-                  <span className={cn(
-                    "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                    enabled
-                      ? "border-lime-200 bg-lime-50 text-lime-700"
-                      : "border-ink-200 bg-ink-900/[0.035] text-ink-450",
-                  )}>
+                  <span
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                      enabled
+                        ? "border-lime-200 bg-lime-50 text-lime-700"
+                        : "border-ink-200 bg-ink-900/[0.035] text-ink-450",
+                    )}
+                  >
                     {enabled ? "ON" : "OFF"}
                   </span>
                 </button>
@@ -169,7 +149,7 @@ export function ProviderList({
             })}
           </div>
         ) : (
-          <EmptyList text="添加供应商后填写接口地址" />
+          <EmptyList text={frontendMessage("config.provider.emptyList")} />
         )}
       </ScrollArea>
     </div>
@@ -201,7 +181,13 @@ export function ProviderEditor({
   const iconOptions = ModelProviderIconNames.map((icon) => ({ value: icon, label: icon }));
 
   if (!provider) {
-    return <EmptyDetail icon={<Server className="h-5 w-5" />} title="选择供应商" text="添加供应商后填写接口地址并检测模型。" />;
+    return (
+      <EmptyDetail
+        icon={<Server className="h-5 w-5" />}
+        title={frontendMessage("config.provider.select")}
+        text={frontendMessage("config.provider.emptyDetail")}
+      />
+    );
   }
 
   const enabled = providerEnabled(provider);
@@ -213,8 +199,8 @@ export function ProviderEditor({
         <DetailTitle
           icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={22} />}
           title={providerId}
-          subtitle={enabled ? "供应商已启用" : "供应商已关闭"}
-          actions={(
+          subtitle={frontendMessage(enabled ? "config.provider.enabled" : "config.provider.disabled")}
+          actions={
             <>
               <Button
                 size="sm"
@@ -223,42 +209,49 @@ export function ProviderEditor({
                 onClick={() => onFetch(true)}
               >
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                检测
+                {frontendMessage("config.provider.check")}
               </Button>
-              <IconAction label="删除供应商" danger disabled={disabled} onClick={() => onRemove(providerIndex)}>
+              <IconAction
+                label={frontendMessage("config.provider.delete")}
+                danger
+                disabled={disabled}
+                onClick={() => onRemove(providerIndex)}
+              >
                 <Trash2 className="h-3.5 w-3.5" />
               </IconAction>
             </>
-          )}
+          }
         />
 
         <SettingsTable>
           <ToggleRow
-            label="启用供应商"
+            label={frontendMessage("config.provider.enable")}
             enabled={enabled}
             disabled={disabled}
             onChange={(Enabled) => onChange(providerIndex, { Enabled })}
           />
           <TextRow
             icon={<Server className="h-3.5 w-3.5" />}
-            label="供应商"
+            label={frontendMessage("config.provider.name")}
             value={provider.Id}
             disabled={disabled}
-            placeholder="唯一供应商名称"
+            placeholder={frontendMessage("config.provider.namePlaceholder")}
             onChange={(Id) => onChange(providerIndex, { Id })}
           />
-          <MenuRow icon={<BrainCircuit className="h-3.5 w-3.5" />} label="图标">
+          <MenuRow icon={<BrainCircuit className="h-3.5 w-3.5" />} label={frontendMessage("config.provider.icon")}>
             <MenuSelect
               value={provider.Icon ?? ""}
-              placeholder="选择图标"
+              placeholder={frontendMessage("config.provider.selectIcon")}
               options={iconOptions}
               disabled={disabled}
-              renderValue={(value) => value ? (
-                <span className="inline-flex min-w-0 items-center gap-2">
-                  <ModelProviderIcon icon={value} size={18} />
-                  <span className="truncate">{value}</span>
-                </span>
-              ) : null}
+              renderValue={(value) =>
+                value ? (
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    <ModelProviderIcon icon={value} size={18} />
+                    <span className="truncate">{value}</span>
+                  </span>
+                ) : null
+              }
               renderOption={(option) => (
                 <span className="inline-flex min-w-0 items-center gap-2">
                   <ModelProviderIcon icon={option.value} size={16} />
@@ -283,24 +276,24 @@ export function ProviderEditor({
             disabled={disabled}
             secret={!showKey}
             placeholder="sk-..."
-            trailing={(
+            trailing={
               <button
                 type="button"
                 className="grid h-8 w-8 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800"
                 onClick={() => setShowKey((current) => !current)}
-                aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
+                aria-label={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
               >
                 {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               </button>
-            )}
+            }
             onChange={(ApiKey) => onChange(providerIndex, { ApiKey })}
           />
           <TextRow
             icon={<Settings2 className="h-3.5 w-3.5" />}
-            label="API 版本"
+            label={frontendMessage("config.provider.apiVersion")}
             value={provider.ApiVersion ?? ""}
             disabled={disabled}
-            placeholder="需要时填写"
+            placeholder={frontendMessage("config.provider.optionalPlaceholder")}
             onChange={(ApiVersion) => onChange(providerIndex, { ApiVersion })}
           />
           <HeadersRow
@@ -329,7 +322,7 @@ function HeadersRow({
 }): JSX.Element {
   const entries = Object.entries(headers);
   return (
-    <SettingRow icon={<Settings2 className="h-3.5 w-3.5" />} label="请求头">
+    <SettingRow icon={<Settings2 className="h-3.5 w-3.5" />} label={frontendMessage("config.provider.headers")}>
       <div className="grid gap-2">
         {entries.map(([key, value], index) => (
           <div key={`${key}:${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
@@ -356,7 +349,7 @@ function HeadersRow({
               }}
             />
             <IconAction
-              label="删除请求头"
+              label={frontendMessage("config.provider.deleteHeader")}
               danger
               disabled={disabled}
               onClick={() => onChange(Object.fromEntries(entries.filter((_, entryIndex) => entryIndex !== index)))}
@@ -372,7 +365,7 @@ function HeadersRow({
           onClick={() => onChange({ ...headers, [nextHeaderKey(headers)]: "" })}
         >
           <Plus className="h-3.5 w-3.5" />
-          添加请求头
+          {frontendMessage("config.provider.addHeader")}
         </button>
       </div>
     </SettingRow>

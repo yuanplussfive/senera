@@ -21,19 +21,17 @@ export function matchesProbeSelector(
 }
 
 export function collectProbeMimes(probe: AgentDocumentProbeResult): Set<string> {
-  return new Set([
-    probe.effectiveMime,
-    probe.detectedMime,
-    probe.declaredMime,
-    probe.namedMime,
-  ].flatMap((value) => compactNormalizedTokens([value])));
+  return new Set(
+    [probe.effectiveMime, probe.detectedMime, probe.declaredMime, probe.namedMime].flatMap((value) =>
+      compactNormalizedTokens([value]),
+    ),
+  );
 }
 
 export function collectProbeExtensions(probe: AgentDocumentProbeResult): Set<string> {
-  return new Set([
-    probe.detectedExtension,
-    probe.namedExtension,
-  ].flatMap((value) => compactNormalizedExtensions([value])));
+  return new Set(
+    [probe.detectedExtension, probe.namedExtension].flatMap((value) => compactNormalizedExtensions([value])),
+  );
 }
 
 export function normalizeToken(value: string | undefined): string | undefined {
@@ -61,8 +59,7 @@ function matchesAnyMimePrefix(probe: AgentDocumentProbeResult, values: readonly 
   }
 
   const mimes = [...collectProbeMimes(probe)];
-  return compactNormalizedTokens(values)
-    .some((prefix) => mimes.some((mime) => mime.startsWith(prefix)));
+  return compactNormalizedTokens(values).some((prefix) => mimes.some((mime) => mime.startsWith(prefix)));
 }
 
 function matchesAnyExtension(probe: AgentDocumentProbeResult, values: readonly string[]): boolean {

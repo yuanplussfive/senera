@@ -1,9 +1,5 @@
 import { useCallback, useState } from "react";
-import {
-  EventKinds,
-  type EventEnvelope,
-  type SandboxStatusSnapshotData,
-} from "../api/eventTypes";
+import { EventKinds, type EventEnvelope, type SandboxStatusSnapshotData } from "../api/eventTypes";
 
 export interface SandboxRuntimeStatusHandle {
   sandboxStatus: SandboxStatusSnapshotData | null;

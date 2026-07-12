@@ -1,8 +1,4 @@
-import {
-  AgentCancellationError,
-  readAbortMessage,
-  throwIfAborted,
-} from "../Core/AgentCancellation.js";
+import { AgentCancellationError, readAbortMessage, throwIfAborted } from "../Core/AgentCancellation.js";
 
 export interface AgentPiTurnGuardOptions<T> {
   phase: string;
@@ -22,9 +18,7 @@ export class AgentPiTurnPhaseTimeoutError extends Error {
   }
 }
 
-export async function runAgentPiGuardedPhase<T>(
-  options: AgentPiTurnGuardOptions<T>,
-): Promise<T> {
+export async function runAgentPiGuardedPhase<T>(options: AgentPiTurnGuardOptions<T>): Promise<T> {
   throwIfAborted(options.signal);
 
   const task = Promise.resolve().then(options.run);
@@ -41,9 +35,7 @@ interface InterruptionPromise extends Promise<never> {
   dispose(): void;
 }
 
-function createInterruptionPromise<T>(
-  options: AgentPiTurnGuardOptions<T>,
-): InterruptionPromise {
+function createInterruptionPromise<T>(options: AgentPiTurnGuardOptions<T>): InterruptionPromise {
   const disposers: Array<() => void> = [];
   const promise = new Promise<never>((_resolve, reject) => {
     const rejectWith = (error: Error) => {

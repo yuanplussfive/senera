@@ -1,7 +1,5 @@
 export { AgentDefaults } from "./Defaults/AgentDefaultValues.js";
-export type {
-  ResolvedAgentDefaultsConfig,
-} from "./Defaults/AgentDefaultValues.js";
+export type { ResolvedAgentDefaultsConfig } from "./Defaults/AgentDefaultValues.js";
 
 export { resolveAgentDefaults } from "./Defaults/AgentDefaultResolver.js";
 
@@ -16,10 +14,7 @@ export {
   resolveUploadsConfig,
 } from "./Defaults/AgentAppDefaults.js";
 
-export {
-  resolveModelProviderCatalog,
-  resolveModelProviderConfig,
-} from "./Defaults/AgentModelProviderDefaults.js";
+export { resolveModelProviderCatalog, resolveModelProviderConfig } from "./Defaults/AgentModelProviderDefaults.js";
 
 export { resolveActionPlannerConfig } from "./Defaults/AgentPlannerDefaults.js";
 

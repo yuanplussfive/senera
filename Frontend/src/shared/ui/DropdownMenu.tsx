@@ -9,8 +9,7 @@ export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 
-interface ContentProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> {
+interface ContentProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> {
   className?: string;
 }
 
@@ -35,8 +34,7 @@ export const DropdownMenuContent = forwardRef<HTMLDivElement, ContentProps>(
 );
 DropdownMenuContent.displayName = "DropdownMenuContent";
 
-interface ItemProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> {
+interface ItemProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> {
   icon?: ReactNode;
   destructive?: boolean;
   shortcut?: string;
@@ -53,8 +51,7 @@ export const DropdownMenuItem = forwardRef<HTMLDivElement, ItemProps>(
           "group flex h-8 cursor-default select-none items-center gap-2.5 rounded-md px-2.5 text-[13px] outline-none transition-colors",
           isCoarsePointer && "min-h-11",
           "text-ink-800 data-[highlighted]:bg-ink-900/[0.045] data-[highlighted]:text-ink-900",
-          destructive &&
-            "text-brick-500 data-[highlighted]:bg-brick-50 data-[highlighted]:text-brick-600",
+          destructive && "text-brick-500 data-[highlighted]:bg-brick-50 data-[highlighted]:text-brick-600",
           "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
           className,
         )}
@@ -66,11 +63,7 @@ export const DropdownMenuItem = forwardRef<HTMLDivElement, ItemProps>(
           </span>
         ) : null}
         <span className="flex-1 truncate">{children}</span>
-        {shortcut ? (
-          <span className="ml-3 text-[10.5px] font-mono tracking-tight text-ink-400">
-            {shortcut}
-          </span>
-        ) : null}
+        {shortcut ? <span className="ml-3 text-[10.5px] font-mono tracking-tight text-ink-400">{shortcut}</span> : null}
       </DropdownMenuPrimitive.Item>
     );
   },
@@ -81,11 +74,7 @@ export const DropdownMenuSeparator = forwardRef<
   HTMLDivElement,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>
 >(({ className, ...props }, ref) => (
-  <DropdownMenuPrimitive.Separator
-    ref={ref}
-    className={cn("my-1 h-px bg-ink-200/60", className)}
-    {...props}
-  />
+  <DropdownMenuPrimitive.Separator ref={ref} className={cn("my-1 h-px bg-ink-200/60", className)} {...props} />
 ));
 DropdownMenuSeparator.displayName = "DropdownMenuSeparator";
 
@@ -95,10 +84,7 @@ export const DropdownMenuLabel = forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Label
     ref={ref}
-    className={cn(
-      metaLabelClassName("md", "px-2.5 py-1.5"),
-      className,
-    )}
+    className={cn(metaLabelClassName("md", "px-2.5 py-1.5"), className)}
     {...props}
   />
 ));

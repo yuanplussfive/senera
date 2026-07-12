@@ -36,10 +36,9 @@ export function projectPiToolAgentRootCommand(rootCommand: AgentRootCommand): Ag
   return {
     ...rootCommand,
     outputMode: PiRootCommandPolicy.OutputMode,
-    forbiddenOutputs: mergeUnique(
-      rootCommand.forbiddenOutputs,
-      PiRootCommandPolicy.ForbiddenOutputs.Add,
-    ).filter((item) => !PiRootCommandPolicy.ForbiddenOutputs.Remove.includes(item)),
+    forbiddenOutputs: mergeUnique(rootCommand.forbiddenOutputs, PiRootCommandPolicy.ForbiddenOutputs.Add).filter(
+      (item) => !PiRootCommandPolicy.ForbiddenOutputs.Remove.includes(item),
+    ),
     includeToolCatalog: PiRootCommandPolicy.IncludeToolCatalog,
     visibleOutput: {
       ...rootCommand.visibleOutput,
@@ -57,10 +56,7 @@ export function projectPiToolAgentRootCommand(rootCommand: AgentRootCommand): Ag
 
 function readPiRootCommandPolicy(): AgentPiRootCommandPolicy {
   return JSON.parse(
-    fs.readFileSync(
-      path.join(moduleDirPath(import.meta.url), "AgentPiRootCommandPolicy.json"),
-      "utf8",
-    ),
+    fs.readFileSync(path.join(moduleDirPath(import.meta.url), "AgentPiRootCommandPolicy.json"), "utf8"),
   ) as AgentPiRootCommandPolicy;
 }
 

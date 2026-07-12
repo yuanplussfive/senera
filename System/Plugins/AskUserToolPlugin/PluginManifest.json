@@ -7,10 +7,7 @@
     "Entry": {
       "Kind": "Process",
       "Command": "npm",
-      "Args": [
-        "run",
-        "tool"
-      ],
+      "Args": ["run", "tool"],
       "Cwd": "."
     }
   },
@@ -46,7 +43,7 @@
         "Boundary": "Local",
         "Network": "Deny",
         "Workspace": "ReadOnly",
-        "LocalFallback": "Allow"
+        "LocalFallback": "Deny"
       },
       "Artifacts": {
         "Evidence": [
@@ -78,20 +75,11 @@
               "reasonCode": "$.reason_code"
             },
             "ModelProjection": {
-              "Slots": [
-                "question",
-                "reasonCode"
-              ]
+              "Slots": ["question", "reasonCode"]
             },
             "PlannerMemory": {
-              "Facts": [
-                "question",
-                "reasonCode"
-              ],
-              "ArtifactRefs": [
-                "evidence",
-                "projection"
-              ]
+              "Facts": ["question", "reasonCode"],
+              "ArtifactRefs": ["evidence", "projection"]
             },
             "Projection": {
               "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} ask user: {{ e.slots.question }}\n{% endfor %}",
@@ -106,68 +94,35 @@
       },
       "Search": {
         "Summary": "向用户提出一个简短澄清问题，等待用户补充关键信息。",
-        "Tags": [
-          "用户确认",
-          "信息补充",
-          "问题澄清",
-          "选择决策"
-        ],
+        "Tags": ["用户确认", "信息补充", "问题澄清", "选择决策"],
         "Capabilities": [
           {
             "Id": "conversation.ask-user",
             "Title": "Ask user",
             "Description": "Ask the user for missing essential information, confirmation, or disambiguation.",
             "Facets": {
-              "Actions": [
-                "ask",
-                "clarify",
-                "confirm"
-              ],
-              "Targets": [
-                "user",
-                "conversation",
-                "missing-information"
-              ],
-              "Inputs": [
-                "question",
-                "reason-code"
-              ],
-              "Outputs": [
-                "clarification-request",
-                "user-question"
-              ],
-              "Evidence": [
-                "clarification-request"
-              ],
-              "Effects": [
-                "blocks-run",
-                "user-visible"
-              ]
+              "Actions": ["ask", "clarify", "confirm"],
+              "Targets": ["user", "conversation", "missing-information"],
+              "Inputs": ["question", "reason-code"],
+              "Outputs": ["clarification-request", "user-question"],
+              "Evidence": ["clarification-request"],
+              "Effects": ["blocks-run", "user-visible"]
             },
-            "Aliases": [
-              "问用户",
-              "澄清问题",
-              "ask for clarification",
-              "confirm with user"
-            ],
+            "Aliases": ["问用户", "澄清问题", "ask for clarification", "confirm with user"],
             "Risk": {
               "SideEffect": "user-visible",
               "Permission": "none"
             }
           }
         ],
-        "UseCases": [
-          "缺少必要参数、目标不明确或继续执行有歧义时使用。"
-        ],
+        "UseCases": ["缺少必要参数、目标不明确或继续执行有歧义时使用。"],
         "Examples": [
           "缺少搜索关键词确认",
           "删除目标二次确认",
           "ask user for missing location",
           "ambiguous required parameter"
         ],
-        "Avoid": [
-          "如果已经可以直接回答或直接调用工具，不要再询问用户。"
-        ]
+        "Avoid": ["如果已经可以直接回答或直接调用工具，不要再询问用户。"]
       }
     }
   ],

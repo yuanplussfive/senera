@@ -3,9 +3,7 @@ import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 export function parseJsonObject(value: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
   }
@@ -19,11 +17,11 @@ export function parseStoredRunEvent(value: string): AgentEventEnvelope | undefin
     }
 
     const record = parsed as Partial<AgentEventEnvelope>;
-    return typeof record.kind === "string"
-      && typeof record.timestamp === "string"
-      && typeof record.sequence === "number"
-      && typeof record.channel === "string"
-      ? record as AgentEventEnvelope
+    return typeof record.kind === "string" &&
+      typeof record.timestamp === "string" &&
+      typeof record.sequence === "number" &&
+      typeof record.channel === "string"
+      ? (record as AgentEventEnvelope)
       : undefined;
   } catch {
     return undefined;
@@ -32,8 +30,10 @@ export function parseStoredRunEvent(value: string): AgentEventEnvelope | undefin
 
 export function readRecords(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
-    ? value.filter((entry): entry is Record<string, unknown> =>
-        Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
+    ? value.filter(
+        (entry): entry is Record<string, unknown> =>
+          Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+      )
     : [];
 }
 
@@ -46,8 +46,5 @@ export function readNumberField(value: unknown): number {
 }
 
 export function readStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string")
-    : [];
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 }
-

@@ -15,10 +15,12 @@ import type {
   ResolvedAgentPluginRootsConfig,
   ResolvedAgentPresetsConfig,
   ResolvedAgentSandboxRuntimeConfig,
+  ResolvedAgentServerConfig,
   ResolvedAgentToolExecutionConfig,
   ResolvedAgentToolSearchConfig,
   ResolvedAgentUploadsConfig,
 } from "../Types/AgentConfigTypes.js";
+import type { AgentModelEndpointKind } from "../ModelEndpoints/AgentModelEndpointContract.js";
 
 export interface AgentVectorModelsDefaultsConfig {
   Embedding: Required<AgentVectorEmbeddingConfig>;
@@ -27,7 +29,7 @@ export interface AgentVectorModelsDefaultsConfig {
 
 export type AgentModelRuntimeDefaultsConfig = {
   Kind: "OpenAICompatible";
-  Endpoint: "Responses" | "ChatCompletions" | "ClaudeMessages" | "GoogleGenerateContent";
+  Endpoint: AgentModelEndpointKind;
   Model: string;
   Capabilities: Required<NonNullable<AgentSystemConfig["ModelProviders"][number]["Capabilities"]>>;
   ContextWindowTokens: number;
@@ -55,28 +57,24 @@ export type ResolvedAgentVectorRerankDefaultsConfig = Required<AgentVectorRerank
   TimeoutMs: number;
 };
 
-export type AgentActionPlannerClientDefaultsConfig =
-  Required<Omit<NonNullable<AgentActionPlannerConfig["Client"]>, "ModelProviderId">>
-  & Pick<NonNullable<AgentActionPlannerConfig["Client"]>, "ModelProviderId">;
+export type AgentActionPlannerClientDefaultsConfig = Required<
+  Omit<NonNullable<AgentActionPlannerConfig["Client"]>, "ModelProviderId">
+> &
+  Pick<NonNullable<AgentActionPlannerConfig["Client"]>, "ModelProviderId">;
 
-export type AgentToolLearningDefaultsConfig =
-  Required<Omit<AgentToolLearningConfig, "Client" | "Patterns">>
-  & {
-    Client: AgentActionPlannerClientDefaultsConfig;
-    Patterns: Required<NonNullable<AgentToolLearningConfig["Patterns"]>>;
-  };
+export type AgentToolLearningDefaultsConfig = Required<Omit<AgentToolLearningConfig, "Client" | "Patterns">> & {
+  Client: AgentActionPlannerClientDefaultsConfig;
+  Patterns: Required<NonNullable<AgentToolLearningConfig["Patterns"]>>;
+};
 
-export type AgentActionPlannerDefaultsConfig =
-  Required<Omit<
-    AgentActionPlannerConfig,
-    "Evidence" | "Client" | "TurnUnderstandingClient" | "PlanningClient"
-  >>
-  & {
-    Evidence: Required<NonNullable<AgentActionPlannerConfig["Evidence"]>>;
-    Client: AgentActionPlannerClientDefaultsConfig;
-    TurnUnderstandingClient: AgentActionPlannerClientDefaultsConfig;
-    PlanningClient: AgentActionPlannerClientDefaultsConfig;
-  };
+export type AgentActionPlannerDefaultsConfig = Required<
+  Omit<AgentActionPlannerConfig, "Evidence" | "Client" | "TurnUnderstandingClient" | "PlanningClient">
+> & {
+  Evidence: Required<NonNullable<AgentActionPlannerConfig["Evidence"]>>;
+  Client: AgentActionPlannerClientDefaultsConfig;
+  TurnUnderstandingClient: AgentActionPlannerClientDefaultsConfig;
+  PlanningClient: AgentActionPlannerClientDefaultsConfig;
+};
 
 export interface ResolvedAgentDefaultsConfig {
   PluginRoots: ResolvedAgentPluginRootsConfig;
@@ -98,7 +96,7 @@ export interface ResolvedAgentDefaultsConfig {
   Artifacts: ResolvedAgentArtifactsConfig;
   Uploads: ResolvedAgentUploadsConfig;
   Frontend: ResolvedAgentFrontendConfig;
-  Server: Required<NonNullable<AgentSystemConfig["Server"]>>;
+  Server: ResolvedAgentServerConfig;
   Persistence: ResolvedAgentPersistenceConfig;
   ConfigStore: ResolvedAgentConfigStoreConfig;
 }

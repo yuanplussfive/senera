@@ -1,7 +1,4 @@
-import {
-  decodeSeneraProcessOutput,
-  type SeneraProcessOutputDecoderOptions,
-} from "./SeneraProcessOutputDecoder.js";
+import { decodeSeneraProcessOutput, type SeneraProcessOutputDecoderOptions } from "./SeneraProcessOutputDecoder.js";
 
 export class SeneraProcessOutputBuffer {
   private readonly stdoutChunks: Buffer[] = [];

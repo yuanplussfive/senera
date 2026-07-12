@@ -31,9 +31,9 @@ export function shouldRequestActiveSessionHistory({
   status: SocketStatus;
 }): boolean {
   if (status !== "open" || !activeSessionId) return false;
-  return !missingOnServerIds[activeSessionId]
-    && !historyLoadedIds[activeSessionId]
-    && !historyLoadingIds[activeSessionId];
+  return (
+    !missingOnServerIds[activeSessionId] && !historyLoadedIds[activeSessionId] && !historyLoadingIds[activeSessionId]
+  );
 }
 
 export function readRecoveryPollingKey({
@@ -47,12 +47,14 @@ export function readRecoveryPollingKey({
     .flatMap((session) =>
       session.runs
         .filter((run) => run.status === "running" && run.recoverySource === "history")
-        .map((run) => [
-          session.sessionId,
-          run.requestId,
-          String(run.revision),
-          historyLoadingIds[session.sessionId] ? "loading" : "idle",
-        ].join("\u0001")),
+        .map((run) =>
+          [
+            session.sessionId,
+            run.requestId,
+            String(run.revision),
+            historyLoadingIds[session.sessionId] ? "loading" : "idle",
+          ].join("\u0001"),
+        ),
     )
     .sort()
     .join("\u0000");
@@ -91,13 +93,15 @@ export function useSessionHistoryRecovery({
     if (!sessionId) return;
 
     const state = useStore.getState();
-    if (!shouldRequestActiveSessionHistory({
-      activeSessionId: sessionId,
-      historyLoadedIds: state.historyLoadedIds,
-      historyLoadingIds: state.historyLoadingIds,
-      missingOnServerIds: state.missingOnServerIds,
-      status,
-    })) {
+    if (
+      !shouldRequestActiveSessionHistory({
+        activeSessionId: sessionId,
+        historyLoadedIds: state.historyLoadedIds,
+        historyLoadingIds: state.historyLoadingIds,
+        missingOnServerIds: state.missingOnServerIds,
+        status,
+      })
+    ) {
       return;
     }
     requestSessionHistory(sessionId);
@@ -110,7 +114,12 @@ export function useSessionHistoryRecovery({
     }
 
     const sessionIds = [
-      ...new Set(recoveryPollingKey.split("\u0000").map((entry) => entry.split("\u0001")[0]).filter(Boolean)),
+      ...new Set(
+        recoveryPollingKey
+          .split("\u0000")
+          .map((entry) => entry.split("\u0001")[0])
+          .filter(Boolean),
+      ),
     ];
     const idleSessionIds = sessionIds.filter((sessionId) => !useStore.getState().historyLoadingIds[sessionId]);
     if (idleSessionIds.length === 0) {

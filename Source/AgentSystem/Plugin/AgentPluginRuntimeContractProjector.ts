@@ -3,11 +3,7 @@ import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { isLoadedPluginToolEnabled } from "./AgentPluginConfig.js";
 import { ToolArtifactPolicySchema } from "../Schemas/PluginManifestSchema.js";
-import type {
-  RootCommandManifest,
-  ToolArtifactPolicyManifest,
-  ToolManifest,
-} from "../Types/PluginManifestTypes.js";
+import type { RootCommandManifest, ToolArtifactPolicyManifest, ToolManifest } from "../Types/PluginManifestTypes.js";
 import type {
   LoadedPlugin,
   RegisteredSkill,
@@ -39,12 +35,8 @@ export class AgentPluginRuntimeContractProjector {
       .map((tool) => ({
         plugin,
         name: tool.Name,
-        descriptionFile: tool.DescriptionFile
-          ? resolveFrom(plugin.rootPath, tool.DescriptionFile)
-          : undefined,
-        signatureFile: tool.SignatureFile
-          ? resolveFrom(plugin.rootPath, tool.SignatureFile)
-          : undefined,
+        descriptionFile: tool.DescriptionFile ? resolveFrom(plugin.rootPath, tool.DescriptionFile) : undefined,
+        signatureFile: tool.SignatureFile ? resolveFrom(plugin.rootPath, tool.SignatureFile) : undefined,
         signatureType: tool.SignatureType,
         permissions: tool.Permissions ?? [],
         handler: readToolHandler(tool),
@@ -80,15 +72,12 @@ export class AgentPluginRuntimeContractProjector {
   }
 }
 
-function readToolArtifactPolicy(
-  plugin: LoadedPlugin,
-  tool: ToolManifest,
-): ToolArtifactPolicyManifest | undefined {
+function readToolArtifactPolicy(plugin: LoadedPlugin, tool: ToolManifest): ToolArtifactPolicyManifest | undefined {
   const fromFile = tool.ArtifactPolicyFile
-    ? new AgentJsonFileLoader().load(
+    ? (new AgentJsonFileLoader().load(
         resolveFrom(plugin.rootPath, tool.ArtifactPolicyFile),
         ToolArtifactPolicySchema,
-      ) as ToolArtifactPolicyManifest
+      ) as ToolArtifactPolicyManifest)
     : undefined;
 
   return mergeArtifactPolicy(fromFile, tool.Artifacts);
@@ -102,22 +91,10 @@ function mergeArtifactPolicy(
     return undefined;
   }
 
-  const redactionKeys = [
-    ...(base?.Redact?.Keys ?? []),
-    ...(override?.Redact?.Keys ?? []),
-  ];
-  const redactionPaths = [
-    ...(base?.Redact?.Paths ?? []),
-    ...(override?.Redact?.Paths ?? []),
-  ];
-  const evidence = [
-    ...(base?.Evidence ?? []),
-    ...(override?.Evidence ?? []),
-  ];
-  const workspacePaths = [
-    ...(base?.Workspace?.Paths ?? []),
-    ...(override?.Workspace?.Paths ?? []),
-  ];
+  const redactionKeys = [...(base?.Redact?.Keys ?? []), ...(override?.Redact?.Keys ?? [])];
+  const redactionPaths = [...(base?.Redact?.Paths ?? []), ...(override?.Redact?.Paths ?? [])];
+  const evidence = [...(base?.Evidence ?? []), ...(override?.Evidence ?? [])];
+  const workspacePaths = [...(base?.Workspace?.Paths ?? []), ...(override?.Workspace?.Paths ?? [])];
   const merged: ToolArtifactPolicyManifest = {};
 
   if (base?.Redact || override?.Redact) {
@@ -154,14 +131,21 @@ function mergeArtifactPolicy(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
-function readToolHandler(
-  tool: ToolManifest,
-): RegisteredToolHandler {
+function readToolHandler(tool: ToolManifest): RegisteredToolHandler {
   const handler = tool.Handler;
 
   const handlers = {
-    HostCapability: () => ({ kind: "HostCapability", capability: handler?.Kind === "HostCapability" ? handler.Capability : "" }) satisfies RegisteredToolHandler,
-    McpTool: () => ({ kind: "McpTool", server: handler?.Kind === "McpTool" ? handler.Server : "", tool: handler?.Kind === "McpTool" ? handler.Tool : "" }) satisfies RegisteredToolHandler,
+    HostCapability: () =>
+      ({
+        kind: "HostCapability",
+        capability: handler?.Kind === "HostCapability" ? handler.Capability : "",
+      }) satisfies RegisteredToolHandler,
+    McpTool: () =>
+      ({
+        kind: "McpTool",
+        server: handler?.Kind === "McpTool" ? handler.Server : "",
+        tool: handler?.Kind === "McpTool" ? handler.Tool : "",
+      }) satisfies RegisteredToolHandler,
     PluginProcess: () => ({ kind: "PluginProcess" }) satisfies RegisteredToolHandler,
   } satisfies Record<NonNullable<ToolManifest["Handler"]>["Kind"] | "PluginProcess", () => RegisteredToolHandler>;
 

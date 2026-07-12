@@ -78,10 +78,18 @@ export class AgentToolResultSummaryCompiler {
       this.policy.headlineTokens,
     );
     const limitations = this.projectLimitations([
-      ...(summaryPreview.truncated ? ["Summary was token-truncated; retrieve the artifact for the full projection."] : []),
-      ...(projectedFacts.omitted > 0 ? [`${projectedFacts.omitted} evidence facts were omitted from the context projection.`] : []),
-      ...(projectedChanges.omitted > 0 ? [`${projectedChanges.omitted} change records were omitted from the context projection.`] : []),
-      ...(input.deterministicSummary.trim() ? [] : ["No plugin summary template produced a dedicated summary for this result."]),
+      ...(summaryPreview.truncated
+        ? ["Summary was token-truncated; retrieve the artifact for the full projection."]
+        : []),
+      ...(projectedFacts.omitted > 0
+        ? [`${projectedFacts.omitted} evidence facts were omitted from the context projection.`]
+        : []),
+      ...(projectedChanges.omitted > 0
+        ? [`${projectedChanges.omitted} change records were omitted from the context projection.`]
+        : []),
+      ...(input.deterministicSummary.trim()
+        ? []
+        : ["No plugin summary template produced a dedicated summary for this result."]),
     ]);
 
     return {
@@ -151,27 +159,28 @@ export class AgentToolResultSummaryCompiler {
     return `${lines.join("\n").trimEnd()}\n`;
   }
 
-  private projectFacts(
-    evidence: readonly ToolArtifactEvidenceRecord[],
-  ): { items: AgentToolResultSummaryFact[]; omitted: number } {
+  private projectFacts(evidence: readonly ToolArtifactEvidenceRecord[]): {
+    items: AgentToolResultSummaryFact[];
+    omitted: number;
+  } {
     const facts = evidence.flatMap((entry) => {
-      const sourceFacts = entry.plannerMemory.facts.length > 0
-        ? entry.plannerMemory.facts
-        : entry.modelSlots;
+      const sourceFacts = entry.plannerMemory.facts.length > 0 ? entry.plannerMemory.facts : entry.modelSlots;
       return sourceFacts.flatMap((fact) => {
         const name = fact.name.trim();
         const value = fact.value.trim();
         if (!name || !value) {
           return [];
         }
-        return [{
-          name,
-          value: this.tokenProjector.previewText(value, this.policy.factValueTokens).text,
-          evidenceUri: entry.evidenceUri,
-          kind: entry.kind,
-          confidence: entry.confidence,
-          artifactRefs: [...entry.plannerMemory.artifactRefs],
-        } satisfies AgentToolResultSummaryFact];
+        return [
+          {
+            name,
+            value: this.tokenProjector.previewText(value, this.policy.factValueTokens).text,
+            evidenceUri: entry.evidenceUri,
+            kind: entry.kind,
+            confidence: entry.confidence,
+            artifactRefs: [...entry.plannerMemory.artifactRefs],
+          } satisfies AgentToolResultSummaryFact,
+        ];
       });
     });
     return limitItems(facts, this.policy.maxFacts);
@@ -181,25 +190,34 @@ export class AgentToolResultSummaryCompiler {
     delta: readonly ToolArtifactDeltaRecord[],
     workspace: ToolWorkspaceCaptureResult | undefined,
   ): { items: AgentToolResultSummaryChange[]; omitted: number } {
-    const deltaChanges = delta.map((entry) => ({
-      kind: entry.kind,
-      status: entry.status,
-      key: entry.kind === "evidence" ? entry.summary : entry.key,
-      summary: this.tokenProjector.previewText(entry.summary, this.policy.changeSummaryTokens).text,
-    } satisfies AgentToolResultSummaryChange));
-    const workspaceChanges = (workspace?.changes ?? []).map((entry) => ({
-      kind: "workspace",
-      status: entry.status,
-      key: entry.path,
-      summary: this.tokenProjector.previewText(`${entry.status}: ${entry.path}`, this.policy.changeSummaryTokens).text,
-    } satisfies AgentToolResultSummaryChange));
+    const deltaChanges = delta.map(
+      (entry) =>
+        ({
+          kind: entry.kind,
+          status: entry.status,
+          key: entry.kind === "evidence" ? entry.summary : entry.key,
+          summary: this.tokenProjector.previewText(entry.summary, this.policy.changeSummaryTokens).text,
+        }) satisfies AgentToolResultSummaryChange,
+    );
+    const workspaceChanges = (workspace?.changes ?? []).map(
+      (entry) =>
+        ({
+          kind: "workspace",
+          status: entry.status,
+          key: entry.path,
+          summary: this.tokenProjector.previewText(`${entry.status}: ${entry.path}`, this.policy.changeSummaryTokens)
+            .text,
+        }) satisfies AgentToolResultSummaryChange,
+    );
     return limitItems(uniqueChanges([...deltaChanges, ...workspaceChanges]), this.policy.maxChanges);
   }
 
-  private buildSourceSummary(input: AgentToolResultSummaryCompilerInput & {
-    facts: readonly AgentToolResultSummaryFact[];
-    changes: readonly AgentToolResultSummaryChange[];
-  }): string {
+  private buildSourceSummary(
+    input: AgentToolResultSummaryCompilerInput & {
+      facts: readonly AgentToolResultSummaryFact[];
+      changes: readonly AgentToolResultSummaryChange[];
+    },
+  ): string {
     const deterministic = input.deterministicSummary.trim();
     if (deterministic) {
       return deterministic;
@@ -244,8 +262,9 @@ export class AgentToolResultSummaryCompiler {
   }
 
   private projectLimitations(values: readonly string[]): string[] {
-    return uniqueStrings(values)
-      .map((value) => this.tokenProjector.previewText(value, this.policy.limitationTokens).text);
+    return uniqueStrings(values).map(
+      (value) => this.tokenProjector.previewText(value, this.policy.limitationTokens).text,
+    );
   }
 
   private retrievalRefs(

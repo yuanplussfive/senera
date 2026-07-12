@@ -18,10 +18,12 @@ export function projectOpenAiCompatibleTextMessages(
   request: AgentLanguageModelRequest,
   options: OpenAiCompatibleMessageProjectionOptions,
 ): OpenAiCompatibleTextMessage[] {
-  const instructionBlocks: SystemInstructionBlock[] = [{
-    kind: "system",
-    content: request.systemPrompt,
-  }];
+  const instructionBlocks: SystemInstructionBlock[] = [
+    {
+      kind: "system",
+      content: request.systemPrompt,
+    },
+  ];
   const conversation: OpenAiCompatibleTextMessage[] = [];
 
   for (const message of request.messages) {
@@ -38,10 +40,7 @@ export function projectOpenAiCompatibleTextMessages(
     });
   }
 
-  return [
-    ...projectInstructionBlocks(instructionBlocks, options),
-    ...conversation,
-  ];
+  return [...projectInstructionBlocks(instructionBlocks, options), ...conversation];
 }
 
 function projectInstructionBlocks(
@@ -51,11 +50,14 @@ function projectInstructionBlocks(
   if (options.developerRole === "native") {
     return blocks.flatMap((block) =>
       block.content.trim().length > 0
-        ? [{
-            role: block.kind,
-            content: block.content,
-          }]
-        : []);
+        ? [
+            {
+              role: block.kind,
+              content: block.content,
+            },
+          ]
+        : [],
+    );
   }
 
   const content = blocks
@@ -63,18 +65,16 @@ function projectInstructionBlocks(
     .map(renderSystemCompatibleInstructionBlock)
     .join("\n\n");
   return content
-    ? [{
-        role: "system",
-        content,
-      }]
+    ? [
+        {
+          role: "system",
+          content,
+        },
+      ]
     : [];
 }
 
 function renderSystemCompatibleInstructionBlock(block: SystemInstructionBlock): string {
   const tag = block.kind === "developer" ? "developer_instructions" : "system_instructions";
-  return [
-    `<${tag}>`,
-    block.content,
-    `</${tag}>`,
-  ].join("\n");
+  return [`<${tag}>`, block.content, `</${tag}>`].join("\n");
 }

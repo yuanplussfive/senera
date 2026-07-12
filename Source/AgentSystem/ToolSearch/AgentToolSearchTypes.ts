@@ -1,6 +1,4 @@
-import type {
-  ToolSearchCapabilityManifest,
-} from "../Types/PluginManifestTypes.js";
+import type { ToolSearchCapabilityManifest } from "../Types/PluginManifestTypes.js";
 import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
 import type { AgentToolSearchRerankDocument } from "./AgentToolSearchReranker.js";
 

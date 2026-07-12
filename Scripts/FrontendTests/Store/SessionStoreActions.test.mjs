@@ -2,11 +2,8 @@ import { beforeEach, expect, test } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 
 installLocalStorage();
-const {
-  clearPersistedStore,
-  DEFAULT_SESSION_TITLE,
-  useStore,
-} = await import("../../../Frontend/src/store/sessionStore.ts");
+const { clearPersistedStore, DEFAULT_SESSION_TITLE, useStore } =
+  await import("../../../Frontend/src/store/sessionStore.ts");
 
 beforeEach(() => {
   clearPersistedStore();
@@ -79,16 +76,18 @@ test("ingest applies model snapshots and keeps selected provider stable", () => 
     timestamp: "2026-07-09T00:00:00.000Z",
     data: {
       defaultModelProviderId: "provider_b",
-      models: [{
-        id: "provider_a",
-        icon: "mistral",
-        capabilities: { Chat: true },
-        kind: "OpenAICompatible",
-        endpoint: "ChatCompletions",
-        baseUrl: "https://example.invalid/v1",
-        model: "mistral-large-latest",
-        isDefault: false,
-      }],
+      models: [
+        {
+          id: "provider_a",
+          icon: "mistral",
+          capabilities: { Chat: true },
+          kind: "OpenAICompatible",
+          endpoint: "ChatCompletions",
+          baseUrl: "https://example.invalid/v1",
+          model: "mistral-large-latest",
+          isDefault: false,
+        },
+      ],
     },
   });
 

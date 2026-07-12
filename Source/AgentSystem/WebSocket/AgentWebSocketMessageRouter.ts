@@ -1,13 +1,7 @@
-import { WebSocket, type RawData } from "ws";
-import {
-  AgentEventKinds,
-  type AgentDomainEvent,
-} from "../Events/AgentEvent.js";
+import { type WebSocket, type RawData } from "ws";
+import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { matchByType } from "../Core/AgentMatch.js";
-import {
-  AgentWebSocketRequestSchema,
-  type AgentWebSocketRequest,
-} from "./AgentWebSocketProtocol.js";
+import { AgentWebSocketRequestSchema, type AgentWebSocketRequest } from "./AgentWebSocketProtocol.js";
 import { projectAgentWebSocketRequestFailure } from "./AgentWebSocketRequestFailures.js";
 import {
   AgentWebSocketApprovalRequestHandlers,
@@ -17,10 +11,7 @@ import {
   AgentWebSocketSandboxRequestHandlers,
   AgentWebSocketSessionRequestHandlers,
 } from "./AgentWebSocketRequestHandlers.js";
-import type {
-  AgentWebSocketEventSender,
-  AgentWebSocketRequestContext,
-} from "./AgentWebSocketTypes.js";
+import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export class AgentWebSocketMessageRouter {
@@ -63,10 +54,7 @@ export class AgentWebSocketMessageRouter {
     }
   }
 
-  private async dispatch(
-    request: AgentWebSocketRequest,
-    sendEvent: AgentWebSocketEventSender,
-  ): Promise<void> {
+  private async dispatch(request: AgentWebSocketRequest, sendEvent: AgentWebSocketEventSender): Promise<void> {
     await matchByType(request, {
       "session.create": (entry) => this.session.create(entry, sendEvent),
       "session.message": (entry) => this.session.message(entry, sendEvent),
@@ -94,13 +82,15 @@ export class AgentWebSocketMessageRouter {
     });
   }
 
-  private parseMessage(data: RawData): {
-    ok: true;
-    request: AgentWebSocketRequest;
-  } | {
-    ok: false;
-    event: AgentDomainEvent;
-  } {
+  private parseMessage(data: RawData):
+    | {
+        ok: true;
+        request: AgentWebSocketRequest;
+      }
+    | {
+        ok: false;
+        event: AgentDomainEvent;
+      } {
     let rawRequest: unknown;
     try {
       rawRequest = JSON.parse(data.toString("utf8"));
@@ -129,10 +119,7 @@ export class AgentWebSocketMessageRouter {
   }
 }
 
-function requestInvalidEvent(data: {
-  message: string;
-  details?: unknown;
-}): AgentDomainEvent {
+function requestInvalidEvent(data: { message: string; details?: unknown }): AgentDomainEvent {
   return {
     kind: AgentEventKinds.RequestInvalid,
     context: {},

@@ -1,10 +1,9 @@
-import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
+import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
 
-type AgentToolEventContext =
-  Required<Pick<AgentEventContext, "requestId" | "step">>
-  & Partial<Pick<AgentEventContext, "sessionId">>;
+type AgentToolEventContext = Required<Pick<AgentEventContext, "requestId" | "step">> &
+  Partial<Pick<AgentEventContext, "sessionId">>;
 
 export type AgentToolDomainEvent =
   | {

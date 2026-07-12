@@ -41,9 +41,12 @@ export class AgentToolSearchMemory {
     private readonly config: ResolvedAgentToolSearchConfig,
     workspaceRoot: string,
   ) {
-    this.store = config.Memory.Kind === "sqlite"
-      ? new SqliteToolSearchMemoryStore(resolveToolSearchMemoryDatabasePath(workspaceRoot, config.Memory.DatabasePath))
-      : new InMemoryToolSearchMemoryStore();
+    this.store =
+      config.Memory.Kind === "sqlite"
+        ? new SqliteToolSearchMemoryStore(
+            resolveToolSearchMemoryDatabasePath(workspaceRoot, config.Memory.DatabasePath),
+          )
+        : new InMemoryToolSearchMemoryStore();
   }
 
   record(episode: AgentToolSearchEpisode): void {
@@ -57,16 +60,16 @@ export class AgentToolSearchMemory {
       return [];
     }
 
-    const evidence = new Map<string, {
-      alpha: number;
-      mass: number;
-      signals: AgentToolLearningSignal[];
-    }>();
+    const evidence = new Map<
+      string,
+      {
+        alpha: number;
+        mass: number;
+        signals: AgentToolLearningSignal[];
+      }
+    >();
     for (const term of this.store.terms(projectId)) {
-      const similarity = weightedSimilarity(
-        querySet,
-        singleTermWeights(term.term, term.weight, this.tokenizer),
-      );
+      const similarity = weightedSimilarity(querySet, singleTermWeights(term.term, term.weight, this.tokenizer));
       if (similarity <= 0) {
         continue;
       }
@@ -131,10 +134,7 @@ export class AgentToolSearchMemory {
       if (!allowed.has(pattern.toolName)) {
         continue;
       }
-      const similarity = weightedSimilarity(
-        querySet,
-        learnedKeywordWeights(pattern.triggerTerms, this.tokenizer),
-      );
+      const similarity = weightedSimilarity(querySet, learnedKeywordWeights(pattern.triggerTerms, this.tokenizer));
       if (similarity <= 0) {
         continue;
       }
@@ -143,8 +143,7 @@ export class AgentToolSearchMemory {
 
     return matches
       .filter((pattern) => pattern.successCount >= options.minSupport)
-      .sort((left, right) =>
-        right.score - left.score || left.toolName.localeCompare(right.toolName))
+      .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName))
       .slice(0, options.limit)
       .map(({ score: _score, ...pattern }) => pattern);
   }

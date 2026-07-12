@@ -3,21 +3,19 @@ import { AgentEventKinds, emitAgentEvent, withEventContext } from "../Events/Age
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { createRequestId } from "../Core/AgentIds.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
-import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
-import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
+import { type AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
+import { type AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentLoopRunner } from "../Loop/AgentLoopRunner.js";
-import { AgentMemoryService } from "../Memory/AgentMemoryService.js";
+import { type AgentMemoryService } from "../Memory/AgentMemoryService.js";
 import type { AgentMemoryCompletedTurnInput } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentPiSession } from "../Pi/AgentPiSubstrate.js";
 import { createPiTraceEvent } from "../Pi/AgentPiTraceProjector.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
-import {
-  AgentSessionStatuses,
-  type AgentSession,
-} from "./AgentSession.js";
+import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
 import {
   collectFreshConversationEntries,
   materializeSessionRunMessages,
@@ -26,7 +24,7 @@ import {
   stampSessionStepTraces,
 } from "./AgentSessionRunProjection.js";
 import { AgentSessionRunSnapshotWriter } from "./AgentSessionRunSnapshotWriter.js";
-import { AgentSessionStore } from "./AgentSessionStore.js";
+import { type AgentSessionStore } from "./AgentSessionStore.js";
 
 export interface AgentSessionRunCoordinatorOptions {
   store: AgentSessionStore;
@@ -40,8 +38,7 @@ export interface AgentSessionRunCoordinatorOptions {
 }
 
 export type AgentSessionAvailability =
-  | { kind: "available"; current: AgentSession }
-  | { kind: "busy"; current: AgentSession };
+  { kind: "available"; current: AgentSession } | { kind: "busy"; current: AgentSession };
 
 export class AgentSessionRunCoordinator {
   private readonly activeRuns = new Map<string, ActiveSessionRun>();
@@ -81,17 +78,8 @@ export class AgentSessionRunCoordinator {
   ): Promise<void> {
     const requestId = request.requestId?.trim() || createRequestId();
     const timestamp = new Date().toISOString();
-    const userEntry = projectSessionUserEntry(
-      this.options.conversationProjector,
-      requestId,
-      request,
-      timestamp,
-    );
-    const messages = materializeSessionRunMessages(
-      this.options.conversationPolicy,
-      session,
-      userEntry,
-    );
+    const userEntry = projectSessionUserEntry(this.options.conversationProjector, requestId, request, timestamp);
+    const messages = materializeSessionRunMessages(this.options.conversationPolicy, session, userEntry);
 
     this.markSessionRunning(session, {
       requestId,
@@ -115,10 +103,7 @@ export class AgentSessionRunCoordinator {
         requestId,
         input: request.input,
         messages,
-        conversationEntries: [
-          ...session.conversation,
-          userEntry,
-        ],
+        conversationEntries: [...session.conversation, userEntry],
         signal: run.controller.signal,
         onEvent: async (event) => {
           if (!this.isActiveRun(session.id, run)) {
@@ -149,13 +134,10 @@ export class AgentSessionRunCoordinator {
           : undefined,
       );
 
-      const freshEntries = collectFreshConversationEntries([
-        ...session.conversation,
-        userEntry,
-      ], [
-        ...result.conversationEntries,
-        assistantEntry,
-      ]);
+      const freshEntries = collectFreshConversationEntries(
+        [...session.conversation, userEntry],
+        [...result.conversationEntries, assistantEntry],
+      );
       this.options.store.persistTurnArtifacts(
         session.id,
         requestId,
@@ -244,10 +226,7 @@ export class AgentSessionRunCoordinator {
     }
   }
 
-  async cancelActiveRun(request: {
-    sessionId: string;
-    onEvent?: AgentEventSink;
-  }): Promise<boolean> {
+  async cancelActiveRun(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<boolean> {
     const run = this.activeRuns.get(request.sessionId);
     if (!run) {
       return false;
@@ -302,18 +281,10 @@ export class AgentSessionRunCoordinator {
 
     const requestId = request.requestId?.trim() || createRequestId();
     const timestamp = new Date().toISOString();
-    const userEntry = projectSessionUserEntry(
-      this.options.conversationProjector,
-      requestId,
-      request,
-      timestamp,
-    );
+    const userEntry = projectSessionUserEntry(this.options.conversationProjector, requestId, request, timestamp);
 
     this.options.store.persistEntries(request.session.id, [userEntry]);
-    request.session.conversation = mergeSessionConversationEntries([
-      ...request.session.conversation,
-      userEntry,
-    ]);
+    request.session.conversation = mergeSessionConversationEntries([...request.session.conversation, userEntry]);
     request.session.updatedAt = timestamp;
     this.options.store.persistMetadata(request.session);
 
@@ -352,21 +323,14 @@ export class AgentSessionRunCoordinator {
     this.snapshots.failOrphanedRunningSnapshots();
   }
 
-  private markSessionRunning(
-    session: AgentSession,
-    activeRequest: NonNullable<AgentSession["activeRequest"]>,
-  ): void {
+  private markSessionRunning(session: AgentSession, activeRequest: NonNullable<AgentSession["activeRequest"]>): void {
     session.status = AgentSessionStatuses.Running;
     session.updatedAt = activeRequest.startedAt;
     session.activeRequest = activeRequest;
     this.options.store.persistMetadata(session);
   }
 
-  private registerActiveRun(
-    sessionId: string,
-    requestId: string,
-    onEvent?: AgentEventSink,
-  ): ActiveSessionRun {
+  private registerActiveRun(sessionId: string, requestId: string, onEvent?: AgentEventSink): ActiveSessionRun {
     this.activeRuns.get(sessionId)?.controller.abort();
     const run: ActiveSessionRun = {
       requestId,
@@ -377,11 +341,7 @@ export class AgentSessionRunCoordinator {
     return run;
   }
 
-  private async emitRunCancelled(
-    sessionId: string,
-    requestId: string,
-    onEvent?: AgentEventSink,
-  ): Promise<void> {
+  private async emitRunCancelled(sessionId: string, requestId: string, onEvent?: AgentEventSink): Promise<void> {
     const event = {
       kind: AgentEventKinds.RunCancelled,
       context: { sessionId, requestId },
@@ -421,7 +381,7 @@ export class AgentSessionRunCoordinator {
 function readErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
-  return "任务运行失败";
+  return agentErrorMessage("session.runFailed");
 }
 
 interface ActiveSessionRun {
@@ -437,11 +397,6 @@ const ActiveRunQueueEventTypes = {
 } as const;
 
 const ActiveRunQueueHandlers = {
-  steer: (session: AgentPiSession, input: string) =>
-    session.steer(input),
-  follow_up: (session: AgentPiSession, input: string) =>
-    session.followUp(input),
-} satisfies Record<
-  keyof typeof ActiveRunQueueEventTypes,
-  (session: AgentPiSession, input: string) => Promise<void>
->;
+  steer: (session: AgentPiSession, input: string) => session.steer(input),
+  follow_up: (session: AgentPiSession, input: string) => session.followUp(input),
+} satisfies Record<keyof typeof ActiveRunQueueEventTypes, (session: AgentPiSession, input: string) => Promise<void>>;

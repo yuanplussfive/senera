@@ -78,11 +78,7 @@ export class AgentConsoleTreeFormatter {
     return this.formatScalarLines(value).map((line) => `${prefix}${line}`);
   }
 
-  private formatChildren(
-    entries: Array<[string, unknown]>,
-    prefix: string,
-    path: TreePath,
-  ): string[] {
+  private formatChildren(entries: Array<[string, unknown]>, prefix: string, path: TreePath): string[] {
     const definedEntries = entries.filter(([, value]) => value !== undefined);
     const visibleEntries = definedEntries.slice(0, this.maxArrayItems);
 
@@ -111,9 +107,7 @@ export class AgentConsoleTreeFormatter {
 
     const hiddenCount = definedEntries.length - visibleEntries.length;
     if (hiddenCount > 0) {
-      lines.push(
-        `${prefix}${AgentConsoleTheme.dim("└─")} ${AgentConsoleTheme.muted(`还有 ${hiddenCount} 项未显示`)}`,
-      );
+      lines.push(`${prefix}${AgentConsoleTheme.dim("└─")} ${AgentConsoleTheme.muted(`还有 ${hiddenCount} 项未显示`)}`);
     }
 
     return lines;

@@ -19,10 +19,7 @@ export interface AgentRuntimeModule {
 }
 
 export class AgentRuntimeModuleComposer {
-  compose(
-    baseServices: AgentRuntimeServices,
-    modules: readonly AgentRuntimeModule[],
-  ): AgentRuntimeServices {
+  compose(baseServices: AgentRuntimeServices, modules: readonly AgentRuntimeModule[]): AgentRuntimeServices {
     const services: AgentRuntimeServices = { ...baseServices };
 
     for (const runtimeModule of modules) {
@@ -35,9 +32,7 @@ export class AgentRuntimeModuleComposer {
   }
 }
 
-function assignServiceContribution<
-  ServiceName extends AgentRuntimeServiceName,
->(
+function assignServiceContribution<ServiceName extends AgentRuntimeServiceName>(
   services: AgentRuntimeServices,
   contribution: AgentRuntimeServiceContribution<ServiceName>,
 ): void {

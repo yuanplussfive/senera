@@ -3,20 +3,12 @@ import path from "node:path";
 import { resolveFrom } from "../Core/AgentPath.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import type {
-  PluginManifest,
-  PluginRootKind,
-} from "../Types/PluginManifestTypes.js";
-import type {
-  LoadedPlugin,
-} from "../Types/PluginRuntimeTypes.js";
+import type { PluginManifest, PluginRootKind } from "../Types/PluginManifestTypes.js";
+import type { LoadedPlugin } from "../Types/PluginRuntimeTypes.js";
 import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { PluginManifestSchema } from "../Schemas/PluginManifestSchema.js";
 import { readLoadedPluginConfig } from "./AgentPluginConfig.js";
-import {
-  resolvePluginDiscoveryConfig,
-  resolvePluginRootsConfig,
-} from "../AgentDefaults.js";
+import { resolvePluginDiscoveryConfig, resolvePluginRootsConfig } from "../AgentDefaults.js";
 
 export class AgentPluginScanner {
   constructor(
@@ -58,10 +50,7 @@ export class AgentPluginScanner {
           continue;
         }
 
-        const manifest = new AgentJsonFileLoader().load(
-          manifestPath,
-          PluginManifestSchema,
-        ) as PluginManifest;
+        const manifest = new AgentJsonFileLoader().load(manifestPath, PluginManifestSchema) as PluginManifest;
         this.assertManifest(manifest, manifestPath);
 
         plugins.push({
@@ -74,9 +63,7 @@ export class AgentPluginScanner {
       }
     }
 
-    return plugins.sort((a, b) =>
-      a.manifest.Plugin.Name.localeCompare(b.manifest.Plugin.Name),
-    );
+    return plugins.sort((a, b) => a.manifest.Plugin.Name.localeCompare(b.manifest.Plugin.Name));
   }
 
   private assertManifest(manifest: PluginManifest, manifestPath: string): void {

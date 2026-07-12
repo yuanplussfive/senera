@@ -12,7 +12,5 @@ export function projectHostPathToGuestPath(input: SeneraGuestPathProjectionInput
     .split(path.sep)
     .filter(Boolean);
 
-  return parts.length === 0
-    ? input.guestRoot
-    : path.posix.join(input.guestRoot, ...parts);
+  return parts.length === 0 ? input.guestRoot : path.posix.join(input.guestRoot, ...parts);
 }

@@ -40,10 +40,7 @@ export class AgentPresetManager {
   }
 
   async snapshot(operation?: AgentPresetOperationResult): Promise<AgentPresetSnapshot> {
-    const [records, state] = await Promise.all([
-      this.repository.list(),
-      this.repository.readState(),
-    ]);
+    const [records, state] = await Promise.all([this.repository.list(), this.repository.readState()]);
     const activePresetName = records.some((record) => record.name === state.activePresetName)
       ? state.activePresetName
       : null;
@@ -142,13 +139,15 @@ export class AgentPresetManager {
     return {
       enabled: true,
       activePresetName: record.name,
-      documents: [{
-        name: record.name,
-        format: record.format,
-        title: parsed.title,
-        updatedAt: record.updatedAt,
-        content: this.projectPlannerContent(parsed),
-      }],
+      documents: [
+        {
+          name: record.name,
+          format: record.format,
+          title: parsed.title,
+          updatedAt: record.updatedAt,
+          content: this.projectPlannerContent(parsed),
+        },
+      ],
     };
   }
 
@@ -177,17 +176,17 @@ export class AgentPresetManager {
         updatedAt: record.updatedAt,
         active: record.name === activePresetName,
         content: record.content,
-        diagnostics: [{
-          severity: "error",
-          message: error instanceof Error ? error.message : String(error),
-        }],
+        diagnostics: [
+          {
+            severity: "error",
+            message: error instanceof Error ? error.message : String(error),
+          },
+        ],
       };
     }
   }
 
-  private projectPlannerContent(
-    document: ReturnType<AgentPresetParser["parse"]>,
-  ): string {
+  private projectPlannerContent(document: ReturnType<AgentPresetParser["parse"]>): string {
     if (document.format !== "json") {
       return document.content;
     }

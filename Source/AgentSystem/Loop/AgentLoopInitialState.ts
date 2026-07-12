@@ -16,9 +16,7 @@ export interface AgentLoopStartRequest {
   emitRunStarted?: boolean;
 }
 
-export function createInitialAgentLoopState(
-  request: AgentLoopStartRequest,
-): RunningAgentLoopMachineState {
+export function createInitialAgentLoopState(request: AgentLoopStartRequest): RunningAgentLoopMachineState {
   const fallbackMessages: AgentLanguageModelMessage[] = [
     {
       role: "user",
@@ -32,9 +30,7 @@ export function createInitialAgentLoopState(
     requestId: request.requestId,
     input: request.input,
     step: 1,
-    messages: request.messages && request.messages.length > 0
-      ? request.messages
-      : fallbackMessages,
+    messages: request.messages && request.messages.length > 0 ? request.messages : fallbackMessages,
     conversationEntries: [...(request.conversationEntries ?? [])],
     loadedToolNames: request.loadedToolNames,
     plannerLedger: buildInitialActionPlannerLedger(request.messages),

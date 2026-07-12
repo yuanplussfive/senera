@@ -106,15 +106,9 @@ function watchDirectoryTree(directory: string): fs.FSWatcher[] {
   return active;
 }
 
-function watchEntry(
-  target: string,
-  eventBaseDir: string,
-  options: { recursive?: boolean } = {},
-): fs.FSWatcher {
+function watchEntry(target: string, eventBaseDir: string, options: { recursive?: boolean } = {}): fs.FSWatcher {
   return fs.watch(target, options, (_eventType, filename) => {
-    const changedPath = filename
-      ? path.resolve(eventBaseDir, filename.toString())
-      : target;
+    const changedPath = filename ? path.resolve(eventBaseDir, filename.toString()) : target;
     if (isIgnoredPath(changedPath) || !hasPathStateChanged(changedPath)) {
       return;
     }
@@ -221,15 +215,11 @@ function isIgnoredPath(absolutePath: string): boolean {
   if (!relative || relative.startsWith("..")) {
     return false;
   }
-  return relative
-    .split(path.sep)
-    .some((segment) => IgnoredPathSegments.has(segment));
+  return relative.split(path.sep).some((segment) => IgnoredPathSegments.has(segment));
 }
 
 function isRecursiveWatchUnsupported(error: unknown): boolean {
-  const code = error && typeof error === "object"
-    ? (error as { code?: unknown }).code
-    : undefined;
+  const code = error && typeof error === "object" ? (error as { code?: unknown }).code : undefined;
   return code === "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM" || code === "ERR_INVALID_ARG_VALUE";
 }
 

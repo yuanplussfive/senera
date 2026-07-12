@@ -24,21 +24,25 @@ const config: AgentSystemConfig = {
     },
   },
   DefaultModelProviderId: "main",
-  ModelProviderEndpoints: [{
-    Id: "main-provider",
-    BaseUrl: "https://provider.test/v1",
-    ApiKey: "secret",
-    Headers: {
-      "x-provider": "test",
+  ModelProviderEndpoints: [
+    {
+      Id: "main-provider",
+      BaseUrl: "https://provider.test/v1",
+      ApiKey: "secret",
+      Headers: {
+        "x-provider": "test",
+      },
     },
-  }],
-  ModelProviders: [{
-    Id: "main",
-    ProviderId: "main-provider",
-    Endpoint: "ChatCompletions",
-    Model: "mistral-large-latest",
-    MaxOutputTokens: -1,
-  }],
+  ],
+  ModelProviders: [
+    {
+      Id: "main",
+      ProviderId: "main-provider",
+      Endpoint: "ChatCompletions",
+      Model: "mistral-large-latest",
+      MaxOutputTokens: -1,
+    },
+  ],
 };
 
 const form = projectAgentConfigForm(config);
@@ -58,9 +62,7 @@ assert.deepEqual(endpoints.value, config.ModelProviderEndpoints);
 const models = findField(form, ["ModelProviders"]);
 assert.equal(models.type, "array");
 assert.equal(models.itemType, "table");
-assert.ok(models.itemFields?.some((field) =>
-  field.key === "Endpoint" && field.options?.includes("ChatCompletions")
-));
+assert.ok(models.itemFields?.some((field) => field.key === "Endpoint" && field.options?.includes("ChatCompletions")));
 
 const loadedTools = findField(form, ["AgentLoop", "LoadedTools"]);
 assert.equal(loadedTools.type, "string");
@@ -73,10 +75,7 @@ assert.ok(plannerProvider.options?.includes("openai-generic"));
 
 console.log("Agent config form projection verified.");
 
-function findField(
-  form: ReturnType<typeof projectAgentConfigForm>,
-  path: readonly string[],
-) {
+function findField(form: ReturnType<typeof projectAgentConfigForm>, path: readonly string[]) {
   const field = form.sections
     .flatMap((section) => section.fields)
     .find((candidate) => candidate.path.join(".") === path.join("."));

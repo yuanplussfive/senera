@@ -1,12 +1,6 @@
 import { createModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
-import type {
-  AgentLoopCommand,
-  AgentLoopCommandResult,
-} from "../Loop/AgentLoopStateTypes.js";
-import {
-  emitAgentEvent,
-  type AgentEventSink,
-} from "../Events/AgentEvent.js";
+import type { AgentLoopCommand, AgentLoopCommandResult } from "../Loop/AgentLoopStateTypes.js";
+import { emitAgentEvent, type AgentEventSink } from "../Events/AgentEvent.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { createToolEvidenceMemoryEntries } from "../Memory/AgentPlannerMemory.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
@@ -16,10 +10,7 @@ import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { buildAnswerTrace } from "../Runtime/AgentStepTrace.js";
 import { AgentPiRunCollector } from "./AgentPiRunCollector.js";
 import { AgentPiOpenAiTranscriptProjector } from "./AgentPiOpenAiTranscriptProjector.js";
-import type {
-  AgentPiRuntimeService,
-  AgentPiSessionResult,
-} from "./AgentPiSubstrate.js";
+import type { AgentPiRuntimeService, AgentPiSessionResult } from "./AgentPiSubstrate.js";
 import type { AgentPiActiveSessionRegistry } from "./AgentPiActiveSessionRegistry.js";
 import { withPiProxyRuntimeContext } from "../PiProxy/AgentPiProxyRuntimeContext.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
@@ -37,10 +28,7 @@ export interface AgentPiTurnRuntimePort {
   tokenEstimator: {
     estimate(text: string): { tokenCount: number };
   };
-  conversationProjector: Pick<
-    AgentConversationProjector,
-    "projectOpenAiTranscript"
-  >;
+  conversationProjector: Pick<AgentConversationProjector, "projectOpenAiTranscript">;
 }
 
 export interface AgentPiTurnExecutorOptions {
@@ -82,30 +70,26 @@ export class AgentPiTurnExecutor {
       conversationEntries: command.conversationEntries,
       model,
     });
-    return withPiProxyRuntimeContext({
-      sessionId: command.sessionId,
-      requestId: command.requestId,
-      step: command.step,
-      onEvent,
-      rootCommand: command.rootCommand,
-      activeSkills: [...command.activeSkills],
-    }, (piProxyRuntimeContextId) => {
-      const collector = new AgentPiRunCollector({
+    return withPiProxyRuntimeContext(
+      {
+        sessionId: command.sessionId,
         requestId: command.requestId,
         step: command.step,
         onEvent,
-        streamModelDeltas: true,
-        piProxyRuntimeContextId,
-      });
-      return this.runWithContext(
-        command,
-        collector,
-        projected,
-        piProxyRuntimeContextId,
-        signal,
-        onEvent,
-      );
-    });
+        rootCommand: command.rootCommand,
+        activeSkills: [...command.activeSkills],
+      },
+      (piProxyRuntimeContextId) => {
+        const collector = new AgentPiRunCollector({
+          requestId: command.requestId,
+          step: command.step,
+          onEvent,
+          streamModelDeltas: true,
+          piProxyRuntimeContextId,
+        });
+        return this.runWithContext(command, collector, projected, piProxyRuntimeContextId, signal, onEvent);
+      },
+    );
   }
 
   private async runWithContext(
@@ -123,34 +107,45 @@ export class AgentPiTurnExecutor {
     const sessionCreateTimeoutMs = this.options.runtime.agentLoopConfig.PiSessionCreateTimeoutMs;
 
     try {
-      await this.emitTrace(command, PiTurnTraceEvents.TurnStarted, {
-        model: this.options.runtime.services.pi.model().id,
-        inputChars: projected.input.length,
-        historyMessages: projected.history.length,
-        visibleTools: summarizeVisibleTools(command.loadedToolNames),
-        sessionCreateTimeoutMs,
-        modelTimeoutMs,
-      }, onEvent);
+      await this.emitTrace(
+        command,
+        PiTurnTraceEvents.TurnStarted,
+        {
+          model: this.options.runtime.services.pi.model().id,
+          inputChars: projected.input.length,
+          historyMessages: projected.history.length,
+          visibleTools: summarizeVisibleTools(command.loadedToolNames),
+          sessionCreateTimeoutMs,
+          modelTimeoutMs,
+        },
+        onEvent,
+      );
 
-      await this.emitTrace(command, PiTurnTraceEvents.SessionCreateStarted, {
-        visibleTools: summarizeVisibleTools(command.loadedToolNames),
-      }, onEvent);
+      await this.emitTrace(
+        command,
+        PiTurnTraceEvents.SessionCreateStarted,
+        {
+          visibleTools: summarizeVisibleTools(command.loadedToolNames),
+        },
+        onEvent,
+      );
       const sessionResult = await this.createSessionWithGuard(
-        () => this.options.runtime.services.pi.createSession({
-          requestId: command.requestId,
-          sessionId: command.sessionId,
-          step: command.step,
-          input: command.input,
-          systemPrompt: command.prompt,
-          conversationEntries: command.conversationEntries,
-          visibleToolNames: command.loadedToolNames,
-          onEvent,
-          signal,
-          piProxyRuntimeContextId,
-          activeSkills: command.activeSkills,
-          rootCommand: command.rootCommand,
-          turnUnderstanding: command.turnUnderstanding,
-        }),
+        () =>
+          this.options.runtime.services.pi.createSession({
+            requestId: command.requestId,
+            sessionId: command.sessionId,
+            step: command.step,
+            input: command.input,
+            systemPrompt: command.prompt,
+            conversationEntries: command.conversationEntries,
+            visibleToolNames: command.loadedToolNames,
+            onEvent,
+            signal,
+            piProxyRuntimeContextId,
+            activeSkills: command.activeSkills,
+            rootCommand: command.rootCommand,
+            turnUnderstanding: command.turnUnderstanding,
+          }),
         sessionCreateTimeoutMs,
         signal,
       );
@@ -163,11 +158,16 @@ export class AgentPiTurnExecutor {
             session,
           })
         : undefined;
-      await this.emitTrace(command, PiTurnTraceEvents.SessionCreateCompleted, {
-        piSessionId: sessionResult.piSessionId,
-        historyMigrationRequired: sessionResult.historyMigrationRequired,
-        activeTools: readSessionActiveToolNames(session),
-      }, onEvent);
+      await this.emitTrace(
+        command,
+        PiTurnTraceEvents.SessionCreateCompleted,
+        {
+          piSessionId: sessionResult.piSessionId,
+          historyMigrationRequired: sessionResult.historyMigrationRequired,
+          activeTools: readSessionActiveToolNames(session),
+        },
+        onEvent,
+      );
 
       unsubscribe = session.subscribe((event) => {
         void collector.collect(event);
@@ -177,18 +177,24 @@ export class AgentPiTurnExecutor {
         await session.setHistory(projected.history);
       }
 
-      await this.emitTrace(command, PiTurnTraceEvents.PromptStarted, {
-        inputChars: projected.input.length,
-      }, onEvent);
+      await this.emitTrace(
+        command,
+        PiTurnTraceEvents.PromptStarted,
+        {
+          inputChars: projected.input.length,
+        },
+        onEvent,
+      );
       await runAgentPiGuardedPhase({
         phase: PiTurnPhases.Prompt,
         timeoutMs: modelTimeoutMs,
         signal,
         abort: () => session?.abort().catch(() => undefined),
-        run: () => session!.prompt(projected.input, {
-          expandPromptTemplates: false,
-          source: "extension",
-        }),
+        run: () =>
+          session!.prompt(projected.input, {
+            expandPromptTemplates: false,
+            source: "extension",
+          }),
       });
       await this.emitTrace(command, PiTurnTraceEvents.PromptCompleted, undefined, onEvent);
 
@@ -212,10 +218,15 @@ export class AgentPiTurnExecutor {
         runtimeProjection.executedTools,
         runtimeProjection.openAiMessages,
       );
-      await this.emitTrace(command, PiTurnTraceEvents.TurnCompleted, {
-        responseChars: responseText.length,
-        toolCalls: runtimeProjection.executedTools.length,
-      }, onEvent);
+      await this.emitTrace(
+        command,
+        PiTurnTraceEvents.TurnCompleted,
+        {
+          responseChars: responseText.length,
+          toolCalls: runtimeProjection.executedTools.length,
+        },
+        onEvent,
+      );
 
       return {
         kind: "succeeded",
@@ -240,11 +251,7 @@ export class AgentPiTurnExecutor {
           ],
           stepTraces: [
             ...runtimeProjection.traces,
-            buildAnswerTrace(
-              command.step,
-              runtimeProjection.traces.length,
-              "final_answer",
-            ),
+            buildAnswerTrace(command.step, runtimeProjection.traces.length, "final_answer"),
           ],
           executedTools: runtimeProjection.executedTools,
         },
@@ -290,14 +297,17 @@ export class AgentPiTurnExecutor {
     payload: unknown,
     onEvent?: AgentEventSink,
   ): Promise<void> {
-    await emitAgentEvent(onEvent, createPiTraceEvent({
-      sessionId: command.sessionId,
-      requestId: command.requestId,
-      step: command.step,
-      source: "substrate",
-      eventType,
-      payload,
-    }));
+    await emitAgentEvent(
+      onEvent,
+      createPiTraceEvent({
+        sessionId: command.sessionId,
+        requestId: command.requestId,
+        step: command.step,
+        source: "substrate",
+        eventType,
+        payload,
+      }),
+    );
   }
 
   private buildConversationEntries(
@@ -364,9 +374,7 @@ function errorPayload(error: unknown): Record<string, unknown> {
       };
 }
 
-function readSessionActiveToolNames(
-  session: AgentPiSessionResult["session"],
-): string[] | undefined {
+function readSessionActiveToolNames(session: AgentPiSessionResult["session"]): string[] | undefined {
   const candidate = session as { getActiveToolNames?: () => string[] };
   return candidate.getActiveToolNames?.();
 }

@@ -7,21 +7,14 @@ import {
   type ToolCallStartedData,
   type ToolCallsPlannedData,
 } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { upsertMessageByRequestId } from "./historyRunProjection";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
-import {
-  bumpSessionMessageCount,
-  currentRun,
-  ensureSession,
-  upsertStep,
-} from "./sessionProjectorCore";
+import { bumpSessionMessageCount, currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
 import { alignRunDisplayTarget, touchRun } from "./sessionRunProjection";
 import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
 import { toolBatchFromEvent } from "./timelineProjection";
-import {
-  mergeToolResultPresentation,
-  readToolResultPresentation,
-} from "./toolResultPresentation";
+import { mergeToolResultPresentation, readToolResultPresentation } from "./toolResultPresentation";
 
 export const runToolAndAnswerEventHandlers = {
   [EventKinds.AssistantMessageCreated]: (state, env) => {
@@ -41,9 +34,7 @@ export const runToolAndAnswerEventHandlers = {
       createdAt: env.timestamp,
       kind: chatMessageKindForAssistantMessage(data.kind),
       requestId: env.requestId,
-      metadata: run?.modelProvider
-        ? { run: { modelProvider: run.modelProvider } }
-        : undefined,
+      metadata: run?.modelProvider ? { run: { modelProvider: run.modelProvider } } : undefined,
     });
     bumpSessionMessageCount(session);
 
@@ -97,7 +88,7 @@ export const runToolAndAnswerEventHandlers = {
     upsertStep(run, {
       id: `tool-${data.callId}`,
       kind: "tool",
-      title: `调用 ${data.toolName}`,
+      title: frontendMessage("workflow.projection.toolCall", { toolName: data.toolName }),
       status: "running",
       startedAt: env.timestamp,
       toolName: data.toolName,
@@ -136,7 +127,7 @@ export const runToolAndAnswerEventHandlers = {
     upsertStep(run, {
       id: `tool-${data.callId}`,
       kind: "tool",
-      title: `调用 ${data.toolName} 失败`,
+      title: frontendMessage("workflow.projection.toolCallFailed", { toolName: data.toolName }),
       status: "failed",
       startedAt: env.timestamp,
       endedAt: env.timestamp,
@@ -164,25 +155,25 @@ export const runToolAndAnswerEventHandlers = {
   },
 } satisfies RunEventHandlerMap;
 
-function chatMessageKindForAssistantMessage(
-  kind: AssistantMessageCreatedData["kind"],
-) {
+function chatMessageKindForAssistantMessage(kind: AssistantMessageCreatedData["kind"]) {
   const map = {
     tool_preface: "AssistantToolPreface",
     final_answer: "AssistantFinal",
     ask_user: "AssistantAsk",
-  } as const satisfies Record<AssistantMessageCreatedData["kind"], "AssistantToolPreface" | "AssistantFinal" | "AssistantAsk">;
+  } as const satisfies Record<
+    AssistantMessageCreatedData["kind"],
+    "AssistantToolPreface" | "AssistantFinal" | "AssistantAsk"
+  >;
   return map[kind];
 }
 
-
 function assistantStepTitle(kind: AssistantMessageCreatedData["kind"]): string {
   const map = {
-    tool_preface: "工具调用前回复",
-    final_answer: "生成回复",
-    ask_user: "向用户提问",
-  } as const satisfies Record<AssistantMessageCreatedData["kind"], string>;
-  return map[kind];
+    tool_preface: "workflow.projection.assistantToolPreface",
+    final_answer: "workflow.projection.assistantFinalAnswer",
+    ask_user: "workflow.projection.assistantAskUser",
+  } as const satisfies Record<AssistantMessageCreatedData["kind"], Parameters<typeof frontendMessage>[0]>;
+  return frontendMessage(map[kind]);
 }
 
 function projectAssistantMessageRunState(
@@ -207,6 +198,9 @@ function visibleKindForAssistantMessage(
     tool_preface: "tool_calls",
     final_answer: "final_answer",
     ask_user: "ask_user",
-  } as const satisfies Record<AssistantMessageCreatedData["kind"], NonNullable<ReturnType<typeof currentRun>>["visibleKind"]>;
+  } as const satisfies Record<
+    AssistantMessageCreatedData["kind"],
+    NonNullable<ReturnType<typeof currentRun>>["visibleKind"]
+  >;
   return map[kind];
 }

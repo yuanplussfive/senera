@@ -10,9 +10,7 @@ import type { AgentActionPlannerStageEvent } from "../ActionPlanner/AgentActionP
 import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
-import {
-  projectTurnUnderstandingForEvent,
-} from "./AgentLoopEventProjection.js";
+import { projectTurnUnderstandingForEvent } from "./AgentLoopEventProjection.js";
 
 export class AgentLoopPlannerEventFactory {
   actionPlanned(
@@ -89,11 +87,7 @@ export class AgentLoopPlannerEventFactory {
     ];
   }
 
-  actionPlannerStage(
-    requestId: string,
-    step: number,
-    event: AgentActionPlannerStageEvent,
-  ): AgentDomainEvent {
+  actionPlannerStage(requestId: string, step: number, event: AgentActionPlannerStageEvent): AgentDomainEvent {
     const context = { requestId, step };
 
     switch (event.status) {

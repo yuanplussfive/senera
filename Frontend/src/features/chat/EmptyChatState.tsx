@@ -1,5 +1,6 @@
 import { LogoMark } from "../../shared/ui";
 import { resolveRuntimeEmptySuggestions } from "../../config/runtimeConfig";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { parseEmptySuggestions } from "./emptySuggestions";
 
 export function EmptyChatState({
@@ -12,14 +13,12 @@ export function EmptyChatState({
     <div className="flex max-w-xl flex-col items-center text-center">
       <LogoMark size={34} />
       <h2 className="mt-5 font-serif text-[26px] italic text-ink-900" style={{ fontWeight: 500 }}>
-        今天想做点什么？
+        {frontendMessage("chat.empty.title")}
       </h2>
-      <p className="mt-1 text-[13.5px] text-ink-500">
-        senera 用行动决策协议帮你完成工作
-      </p>
+      <p className="mt-1 text-[13.5px] text-ink-500">{frontendMessage("chat.empty.subtitle")}</p>
       {suggestions.length > 0 ? (
         <div className="mt-7 flex flex-wrap items-center justify-center gap-2">
-          {suggestions.map((suggestion) => (
+          {suggestions.map((suggestion) =>
             onSelectSuggestion ? (
               <button
                 key={suggestion}
@@ -36,8 +35,8 @@ export function EmptyChatState({
               >
                 {suggestion}
               </span>
-            )
-          ))}
+            ),
+          )}
         </div>
       ) : null}
     </div>

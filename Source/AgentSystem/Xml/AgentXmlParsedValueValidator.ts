@@ -1,11 +1,7 @@
 import type { AgentXmlProtocolPolicy } from "./AgentXmlPolicy.js";
 import { AgentXmlErrorCodes } from "./AgentXmlStatus.js";
-import {
-  AgentXmlParseError,
-  type AgentXmlParseErrorCode,
-  type XmlPath,
-} from "./AgentXmlParserTypes.js";
-import { AgentXmlSourceHelper } from "./AgentXmlSourceHelper.js";
+import { AgentXmlParseError, type AgentXmlParseErrorCode, type XmlPath } from "./AgentXmlParserTypes.js";
+import { type AgentXmlSourceHelper } from "./AgentXmlSourceHelper.js";
 
 export class AgentXmlParsedValueValidator {
   constructor(
@@ -26,10 +22,14 @@ export class AgentXmlParsedValueValidator {
       ...context,
       path: [],
     });
-    this.assertDepth(value, {
-      ...context,
-      path: [],
-    }, 1);
+    this.assertDepth(
+      value,
+      {
+        ...context,
+        path: [],
+      },
+      1,
+    );
   }
 
   private assertNoAttributes(
@@ -45,7 +45,8 @@ export class AgentXmlParsedValueValidator {
         this.assertNoAttributes(item, {
           ...context,
           path: [...context.path, index],
-        }));
+        }),
+      );
       return;
     }
 
@@ -107,10 +108,15 @@ export class AgentXmlParsedValueValidator {
 
     if (Array.isArray(node)) {
       node.forEach((item, index) =>
-        this.assertDepth(item, {
-          ...context,
-          path: [...context.path, index],
-        }, depth + 1));
+        this.assertDepth(
+          item,
+          {
+            ...context,
+            path: [...context.path, index],
+          },
+          depth + 1,
+        ),
+      );
       return;
     }
 
@@ -119,10 +125,14 @@ export class AgentXmlParsedValueValidator {
     }
 
     for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-      this.assertDepth(value, {
-        ...context,
-        path: [...context.path, key],
-      }, depth + 1);
+      this.assertDepth(
+        value,
+        {
+          ...context,
+          path: [...context.path, key],
+        },
+        depth + 1,
+      );
     }
   }
 
@@ -142,9 +152,7 @@ export class AgentXmlParsedValueValidator {
       options.suggestion,
     );
 
-    return new AgentXmlParseError(options.message, [
-      diagnostic,
-    ], options.code, {
+    return new AgentXmlParseError(options.message, [diagnostic], options.code, {
       ...options.details,
       pointer: diagnostic.pointer,
       line: diagnostic.position?.line,
@@ -158,11 +166,8 @@ function renderXmlPath(rootName: string, path: XmlPath): string {
   let output = "";
 
   for (const segment of segments) {
-    output = typeof segment === "number"
-      ? `${output}[${segment}]`
-      : output.length === 0
-        ? segment
-        : `${output}.${segment}`;
+    output =
+      typeof segment === "number" ? `${output}[${segment}]` : output.length === 0 ? segment : `${output}.${segment}`;
   }
 
   return output;

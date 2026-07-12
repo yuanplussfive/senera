@@ -13,18 +13,24 @@ async function main(): Promise<void> {
     mkdirSync(path.join(pluginRoot, "node_modules", "leaked"), { recursive: true });
     mkdirSync(path.join(pluginRoot, ".state"), { recursive: true });
     mkdirSync(packageRoot, { recursive: true });
-    await writeFile(path.join(pluginRoot, "package.json"), JSON.stringify({
-      name: "@senera/plugin-verify",
-      dependencies: {
-        "@senera/tool-plugin-sdk": "file:../../Packages/ToolPluginSdk",
-      },
-    }));
+    await writeFile(
+      path.join(pluginRoot, "package.json"),
+      JSON.stringify({
+        name: "@senera/plugin-verify",
+        dependencies: {
+          "@senera/tool-plugin-sdk": "file:../../Packages/ToolPluginSdk",
+        },
+      }),
+    );
     await writeFile(path.join(pluginRoot, "index.js"), "module.exports = true;\n");
     await writeFile(path.join(pluginRoot, "node_modules", "leaked", "index.js"), "leak\n");
     await writeFile(path.join(pluginRoot, ".state", "index.json"), "{}\n");
-    await writeFile(path.join(packageRoot, "package.json"), JSON.stringify({
-      name: "@senera/tool-plugin-sdk",
-    }));
+    await writeFile(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({
+        name: "@senera/tool-plugin-sdk",
+      }),
+    );
     await writeFile(path.join(packageRoot, "index.js"), "exports.ok = true;\n");
 
     const bundle = await createSeneraProcessRootfsBundle({

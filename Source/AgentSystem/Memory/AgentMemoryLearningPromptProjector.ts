@@ -33,15 +33,16 @@ const MemoryLearningSourcePolicies = {
     timelineRole: "user",
     timelineKind: "memory_artifact",
   },
-} as const satisfies Record<AgentMemorySourceKind, {
-  memoryRole: "support" | "context";
-  timelineRole: "user" | "assistant";
-  timelineKind: string;
-}>;
+} as const satisfies Record<
+  AgentMemorySourceKind,
+  {
+    memoryRole: "support" | "context";
+    timelineRole: "user" | "assistant";
+    timelineKind: string;
+  }
+>;
 
-export function buildMemoryLearningPromptInput(
-  recordedTurn: AgentMemoryRecordedTurn,
-): AgentMemoryLearningPromptInput {
+export function buildMemoryLearningPromptInput(recordedTurn: AgentMemoryRecordedTurn): AgentMemoryLearningPromptInput {
   const sources = recordedTurn.sources.map(projectSource);
   return {
     memoryTypes: [...AgentMemoryTypes],
@@ -50,12 +51,8 @@ export function buildMemoryLearningPromptInput(
       .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id))
       .map(projectTimelineSource),
     sourceCatalog: sources,
-    supportingSourceRefs: sources
-      .filter((source) => source.memoryRole === "support")
-      .map((source) => source.sourceRef),
-    contextSourceRefs: sources
-      .filter((source) => source.memoryRole === "context")
-      .map((source) => source.sourceRef),
+    supportingSourceRefs: sources.filter((source) => source.memoryRole === "support").map((source) => source.sourceRef),
+    contextSourceRefs: sources.filter((source) => source.memoryRole === "context").map((source) => source.sourceRef),
   };
 }
 

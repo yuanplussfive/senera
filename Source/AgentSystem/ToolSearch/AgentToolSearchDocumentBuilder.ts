@@ -3,11 +3,7 @@ import crypto from "node:crypto";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import { AgentPromptContractProjector } from "../Prompt/AgentPromptContractProjector.js";
 import type { ToolSearchDocument } from "./AgentToolSearchTypes.js";
-import {
-  capabilityFacetEntries,
-  capabilityRiskText,
-  capabilitySearchText,
-} from "./AgentToolSearchCapabilities.js";
+import { capabilityFacetEntries, capabilityRiskText, capabilitySearchText } from "./AgentToolSearchCapabilities.js";
 
 export const ToolSearchDocumentSearchFields = [
   "toolName",
@@ -40,26 +36,23 @@ export class AgentToolSearchDocumentBuilder {
   build(tool: RegisteredTool): ToolSearchDocument {
     const search = tool.search;
     const title = tool.plugin.manifest.Plugin.Title ?? tool.name;
-    const summary = search?.Summary
-      ?? tool.plugin.manifest.Plugin.Description
-      ?? "";
+    const summary = search?.Summary ?? tool.plugin.manifest.Plugin.Description ?? "";
     const whenToUse = (search?.UseCases ?? []).join(" ");
     const examples = (search?.Examples ?? []).join(" ");
     const avoid = (search?.Avoid ?? []).join(" ");
     const tags = (search?.Tags ?? []).join(" ");
     const capabilities = search?.Capabilities ?? [];
     const capabilityText = capabilities
-      .map((capability) => capabilitySearchText(capability, {
-        includeRisk: false,
-      }))
+      .map((capability) =>
+        capabilitySearchText(capability, {
+          includeRisk: false,
+        }),
+      )
       .join(" ");
     const capabilityFacets = capabilities
-      .flatMap((capability) =>
-        capabilityFacetEntries(capability.Facets).flatMap((entry) => entry.values))
+      .flatMap((capability) => capabilityFacetEntries(capability.Facets).flatMap((entry) => entry.values))
       .join(" ");
-    const capabilityRiskDocumentText = capabilities
-      .map((capability) => capabilityRiskText(capability.Risk))
-      .join(" ");
+    const capabilityRiskDocumentText = capabilities.map((capability) => capabilityRiskText(capability.Risk)).join(" ");
     const params = this.readSignatureParams(tool);
     const permissions = tool.permissions.join(" ");
     const coreText = [
@@ -75,7 +68,9 @@ export class AgentToolSearchDocumentBuilder {
       capabilityFacets,
       params,
       permissions,
-    ].filter(Boolean).join(" ");
+    ]
+      .filter(Boolean)
+      .join(" ");
 
     return {
       id: stableToolDocumentId(tool),
@@ -105,11 +100,7 @@ export class AgentToolSearchDocumentBuilder {
     }
 
     try {
-      const contract = this.contractProjector.projectFromFile(
-        tool.signatureFile,
-        "arguments",
-        tool.signatureType,
-      );
+      const contract = this.contractProjector.projectFromFile(tool.signatureFile, "arguments", tool.signatureType);
       const fields = contract?.properties.flatMap(readContractPropertyTokens) ?? [];
       return fields.map((field) => field.name).join(" ");
     } catch {
@@ -133,8 +124,5 @@ function readContractPropertyTokens(
 }
 
 function stableToolDocumentId(tool: RegisteredTool): string {
-  return crypto
-    .createHash("sha1")
-    .update(`${tool.plugin.manifest.Plugin.Name}:${tool.name}`)
-    .digest("hex");
+  return crypto.createHash("sha1").update(`${tool.plugin.manifest.Plugin.Name}:${tool.name}`).digest("hex");
 }

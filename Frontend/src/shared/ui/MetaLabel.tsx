@@ -17,11 +17,7 @@ const metaLabelSizeClasses: Record<MetaLabelSize, string> = {
 };
 
 export function metaLabelClassName(size: MetaLabelSize = "md", className?: string): string {
-  return cn(
-    "font-mono uppercase tracking-wider text-ink-400",
-    metaLabelSizeClasses[size],
-    className,
-  );
+  return cn("font-mono uppercase tracking-wider text-ink-400", metaLabelSizeClasses[size], className);
 }
 
 export function MetaLabel({
@@ -32,10 +28,7 @@ export function MetaLabel({
   ...props
 }: MetaLabelProps): JSX.Element {
   return (
-    <Component
-      className={metaLabelClassName(size, className)}
-      {...props}
-    >
+    <Component className={metaLabelClassName(size, className)} {...props}>
       {children}
     </Component>
   );

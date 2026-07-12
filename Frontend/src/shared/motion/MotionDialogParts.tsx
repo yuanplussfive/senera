@@ -28,27 +28,25 @@ function readRadixState(props: { "data-state"?: string }): RadixPresenceState {
   return props["data-state"] === "closed" ? "closed" : "open";
 }
 
-export const MotionDialogOverlay = forwardRef<HTMLDivElement, MotionDialogOverlayProps>(
-  ({ style, ...props }, ref) => {
-    const { level, reduceMotion, disableMotion } = useMotionLevel();
-    const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
-    const state = readRadixState(props);
-    const variants = readOverlayVariants(effectiveLevel);
-    const animationState = state === "closed" ? "exit" : "show";
-    const pointerEvents = state === "closed" ? "none" : style?.pointerEvents;
-    return (
-      <motion.div
-        ref={ref}
-        variants={variants}
-        initial={variants.hidden}
-        animate={variants[animationState]}
-        transition={readOverlayTransition(effectiveLevel, animationState)}
-        style={{ ...style, pointerEvents, willChange: "opacity" }}
-        {...props}
-      />
-    );
-  },
-);
+export const MotionDialogOverlay = forwardRef<HTMLDivElement, MotionDialogOverlayProps>(({ style, ...props }, ref) => {
+  const { level, reduceMotion, disableMotion } = useMotionLevel();
+  const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
+  const state = readRadixState(props);
+  const variants = readOverlayVariants(effectiveLevel);
+  const animationState = state === "closed" ? "exit" : "show";
+  const pointerEvents = state === "closed" ? "none" : style?.pointerEvents;
+  return (
+    <motion.div
+      ref={ref}
+      variants={variants}
+      initial={variants.hidden}
+      animate={variants[animationState]}
+      transition={readOverlayTransition(effectiveLevel, animationState)}
+      style={{ ...style, pointerEvents, willChange: "opacity" }}
+      {...props}
+    />
+  );
+});
 MotionDialogOverlay.displayName = "MotionDialogOverlay";
 
 export const MotionDialogContent = forwardRef<HTMLDivElement, MotionDialogContentProps>(

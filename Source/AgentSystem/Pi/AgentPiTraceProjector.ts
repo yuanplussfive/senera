@@ -109,10 +109,12 @@ function readAssistantText(event: AgentSessionEvent): string {
   const message = readRecord(event)?.message;
   const content = readRecord(message)?.content;
   return Array.isArray(content)
-    ? content.flatMap((entry) => {
-      const record = readRecord(entry);
-      return record?.type === "text" && typeof record.text === "string" ? [record.text] : [];
-    }).join("")
+    ? content
+        .flatMap((entry) => {
+          const record = readRecord(entry);
+          return record?.type === "text" && typeof record.text === "string" ? [record.text] : [];
+        })
+        .join("")
     : "";
 }
 
@@ -121,7 +123,5 @@ function summarizeText(value: string, maxLength = 1200): string {
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }

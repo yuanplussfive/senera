@@ -1,8 +1,4 @@
-import {
-  readFiniteNumber,
-  readNonEmptyString,
-  readRequestHandle,
-} from "./AgentEventDisplayValueReaders.js";
+import { readFiniteNumber, readNonEmptyString, readRequestHandle } from "./AgentEventDisplayValueReaders.js";
 
 const NumberFormatter = new Intl.NumberFormat("zh-CN");
 

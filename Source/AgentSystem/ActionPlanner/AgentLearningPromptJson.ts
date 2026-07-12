@@ -137,10 +137,14 @@ export function buildToolLearningPromptJson(
   input: AgentToolLearningPromptInput,
   directive: AgentToolLearningPromptStage,
 ): string {
-  return JSON.stringify({
-    context: input,
-    directive,
-  }, null, 2);
+  return JSON.stringify(
+    {
+      context: input,
+      directive,
+    },
+    null,
+    2,
+  );
 }
 
 export type AgentMemoryLearningPromptStage =
@@ -157,10 +161,14 @@ export function buildMemoryLearningPromptJson(
   input: AgentMemoryLearningPromptInput,
   directive: AgentMemoryLearningPromptStage,
 ): string {
-  return JSON.stringify({
-    context: input,
-    directive,
-  }, null, 2);
+  return JSON.stringify(
+    {
+      context: input,
+      directive,
+    },
+    null,
+    2,
+  );
 }
 
 export type AgentMemoryConsolidationPromptStage =
@@ -177,10 +185,14 @@ export function buildMemoryConsolidationPromptJson(
   input: AgentMemoryConsolidationPromptInput,
   directive: AgentMemoryConsolidationPromptStage,
 ): string {
-  return JSON.stringify({
-    context: input,
-    directive,
-  }, null, 2);
+  return JSON.stringify(
+    {
+      context: input,
+      directive,
+    },
+    null,
+    2,
+  );
 }
 
 export type AgentMemoryWriteResolutionPromptStage =
@@ -197,8 +209,12 @@ export function buildMemoryWriteResolutionPromptJson(
   input: AgentMemoryWriteResolutionPromptInput,
   directive: AgentMemoryWriteResolutionPromptStage,
 ): string {
-  return JSON.stringify({
-    context: input,
-    directive,
-  }, null, 2);
+  return JSON.stringify(
+    {
+      context: input,
+      directive,
+    },
+    null,
+    2,
+  );
 }

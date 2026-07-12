@@ -79,20 +79,26 @@ async function main(): Promise<void> {
         guestWorkdir: "/opt/senera/runtime/System/Plugins/AskUserToolPlugin",
         workspaceMount: "readonly",
         network: "disabled",
-        rootfsCopies: [{
-          hostPath: path.join(workspaceRoot, "System", "Plugins", "AskUserToolPlugin"),
-          guestPath: "/opt/senera/runtime",
-        }],
-        rootfsBundles: [{
-          workspaceRoot,
-          packageRoot: path.join(workspaceRoot, "Plugins", "WeatherToolPlugin"),
-          guestPath: "/opt/senera/bundles",
-        }],
-        writableMounts: [{
-          hostPath: path.join(workspaceRoot, "Plugins", "WeatherToolPlugin", ".state"),
-          guestPath: "/workspace/Plugins/WeatherToolPlugin/.state",
-          quotaMiB: 256,
-        }],
+        rootfsCopies: [
+          {
+            hostPath: path.join(workspaceRoot, "System", "Plugins", "AskUserToolPlugin"),
+            guestPath: "/opt/senera/runtime",
+          },
+        ],
+        rootfsBundles: [
+          {
+            workspaceRoot,
+            packageRoot: path.join(workspaceRoot, "Plugins", "WeatherToolPlugin"),
+            guestPath: "/opt/senera/bundles",
+          },
+        ],
+        writableMounts: [
+          {
+            hostPath: path.join(workspaceRoot, "Plugins", "WeatherToolPlugin", ".state"),
+            guestPath: "/workspace/Plugins/WeatherToolPlugin/.state",
+            quotaMiB: 256,
+          },
+        ],
         env: {
           SENERA_TOOL_CONTEXT_WORKSPACE_ROOT: "/workspace",
           SENERA_TOOL_CONTEXT_PLUGIN_ROOT: "/opt/senera/runtime/System/Plugins/AskUserToolPlugin",
@@ -102,13 +108,16 @@ async function main(): Promise<void> {
   });
   assert.equal(sdk.createRequests[1]?.image, "node:22-bookworm-slim");
   assert.equal(sdk.createRequests[1]?.guestWorkdir, "/opt/senera/runtime/System/Plugins/AskUserToolPlugin");
-  assert.deepEqual(sdk.createRequests[1]?.rootfsCopies, [{
-    hostPath: path.join(workspaceRoot, "System", "Plugins", "AskUserToolPlugin"),
-    guestPath: "/opt/senera/runtime",
-  }, {
-    hostPath: sdk.createRequests[1]?.rootfsCopies[1]?.hostPath ?? "",
-    guestPath: "/opt/senera/bundles",
-  }]);
+  assert.deepEqual(sdk.createRequests[1]?.rootfsCopies, [
+    {
+      hostPath: path.join(workspaceRoot, "System", "Plugins", "AskUserToolPlugin"),
+      guestPath: "/opt/senera/runtime",
+    },
+    {
+      hostPath: sdk.createRequests[1]?.rootfsCopies[1]?.hostPath ?? "",
+      guestPath: "/opt/senera/bundles",
+    },
+  ]);
   assert.match(sdk.createRequests[1]?.rootfsCopies[1]?.hostPath ?? "", /senera-rootfs-bundle-/);
   assert.deepEqual(sdk.createRequests[1]?.env, {
     SENERA_TOOL_CONTEXT_WORKSPACE_ROOT: "/workspace",
@@ -144,58 +153,54 @@ async function main(): Promise<void> {
   await assert.rejects(
     () => unavailableBackend.executeProcess(unavailableRequest),
     (error: unknown) =>
-      error instanceof SeneraExecutionError
-      && error.code === SeneraExecutionErrorCodes.SandboxUnavailable,
+      error instanceof SeneraExecutionError && error.code === SeneraExecutionErrorCodes.SandboxUnavailable,
   );
   await assert.rejects(
     () => unavailableBackend.executeProcess(unavailableRequest),
     (error: unknown) =>
-      error instanceof SeneraExecutionError
-      && error.code === SeneraExecutionErrorCodes.SandboxUnavailable,
+      error instanceof SeneraExecutionError && error.code === SeneraExecutionErrorCodes.SandboxUnavailable,
   );
   assert.equal(unavailableSdk.createCount, 1);
 
   await assert.rejects(
-    () => new SeneraMicrosandboxBackend({
-      workspaceRoot,
-      sdk: new UnavailableMicrosandboxSdkAdapter(),
-    }).executeProcess({
-      command: "/bin/sh",
-      args: ["-lc", "true"],
-      cwd: workspaceRoot,
-      timeoutMs: 5_000,
-      limits: {
+    () =>
+      new SeneraMicrosandboxBackend({
+        workspaceRoot,
+        sdk: new UnavailableMicrosandboxSdkAdapter(),
+      }).executeProcess({
+        command: "/bin/sh",
+        args: ["-lc", "true"],
+        cwd: workspaceRoot,
         timeoutMs: 5_000,
-        maxStdoutBytes: 1024,
-        maxStderrBytes: 1024,
-      },
-    }),
+        limits: {
+          timeoutMs: 5_000,
+          maxStdoutBytes: 1024,
+          maxStderrBytes: 1024,
+        },
+      }),
     (error: unknown) =>
-      error instanceof SeneraExecutionError
-      && error.code === SeneraExecutionErrorCodes.SandboxUnavailable,
+      error instanceof SeneraExecutionError && error.code === SeneraExecutionErrorCodes.SandboxUnavailable,
   );
 
-  const limitSession = new FakeMicrosandboxSession([
-    { kind: "stdout", data: Buffer.from("too-large") },
-  ]);
+  const limitSession = new FakeMicrosandboxSession([{ kind: "stdout", data: Buffer.from("too-large") }]);
   await assert.rejects(
-    () => new SeneraMicrosandboxBackend({
-      workspaceRoot,
-      sdk: new FakeMicrosandboxSdkAdapter(limitSession),
-    }).executeProcess({
-      command: "/bin/sh",
-      args: ["-lc", "echo too-large"],
-      cwd: workspaceRoot,
-      timeoutMs: 5_000,
-      limits: {
+    () =>
+      new SeneraMicrosandboxBackend({
+        workspaceRoot,
+        sdk: new FakeMicrosandboxSdkAdapter(limitSession),
+      }).executeProcess({
+        command: "/bin/sh",
+        args: ["-lc", "echo too-large"],
+        cwd: workspaceRoot,
         timeoutMs: 5_000,
-        maxStdoutBytes: 3,
-        maxStderrBytes: 1024,
-      },
-    }),
+        limits: {
+          timeoutMs: 5_000,
+          maxStdoutBytes: 3,
+          maxStderrBytes: 1024,
+        },
+      }),
     (error: unknown) =>
-      error instanceof SeneraExecutionError
-      && error.code === SeneraExecutionErrorCodes.StdoutLimitExceeded,
+      error instanceof SeneraExecutionError && error.code === SeneraExecutionErrorCodes.StdoutLimitExceeded,
   );
   assert.equal(limitSession.killCount, 1);
 
@@ -206,10 +211,12 @@ class FakeMicrosandboxSdkAdapter implements SeneraMicrosandboxSdkAdapter {
   readonly createRequests: SeneraMicrosandboxCreateRequest[] = [];
   readonly execRequests: SeneraMicrosandboxExecRequest[] = [];
 
-  constructor(private readonly session = new FakeMicrosandboxSession([
-    { kind: "stdout", data: Buffer.from("sandbox-ok") },
-    { kind: "exit", code: 0 },
-  ])) {}
+  constructor(
+    private readonly session = new FakeMicrosandboxSession([
+      { kind: "stdout", data: Buffer.from("sandbox-ok") },
+      { kind: "exit", code: 0 },
+    ]),
+  ) {}
 
   async isInstalled(): Promise<boolean> {
     return true;

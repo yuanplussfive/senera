@@ -1,10 +1,7 @@
 import { z } from "zod";
 import { AgentActionPlannerValidationError } from "../ActionPlanner/AgentActionPlannerSchema.js";
 import { safeParseNormalizedBamlOutput } from "../BamlClient/AgentBamlOutputNormalizer.js";
-import {
-  createAgentStructuredIssue,
-  type AgentStructuredIssue,
-} from "../Diagnostics/AgentStructuredIssue.js";
+import { createAgentStructuredIssue, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 type JsonValue = string | number | boolean | JsonValue[] | JsonObject;
@@ -14,35 +11,36 @@ interface JsonObject {
 }
 
 const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.array(JsonValueSchema),
-    z.record(z.string(), JsonValueSchema),
-  ]));
+  z.union([z.string(), z.number(), z.boolean(), z.array(JsonValueSchema), z.record(z.string(), JsonValueSchema)]),
+);
 
-const PiPlannedToolCallSchema = z.object({
-  toolName: z.string().trim().min(1),
-  purpose: z.string().trim().min(1),
-  required: z.boolean(),
-  dependsOn: z.array(z.number().int().nonnegative()).optional(),
-  argumentHints: z.record(z.string(), JsonValueSchema).optional(),
-}).strict();
+const PiPlannedToolCallSchema = z
+  .object({
+    toolName: z.string().trim().min(1),
+    purpose: z.string().trim().min(1),
+    required: z.boolean(),
+    dependsOn: z.array(z.number().int().nonnegative()).optional(),
+    argumentHints: z.record(z.string(), JsonValueSchema).optional(),
+  })
+  .strict();
 
-const PiControllerActionSchema = z.object({
-  kind: z.enum(["FinalAnswer", "AskUser", "CallTools"]),
-  answer: z.string().optional(),
-  question: z.string().optional(),
-  preface: z.string().optional(),
-  calls: z.array(PiPlannedToolCallSchema).optional(),
-}).strict();
+const PiControllerActionSchema = z
+  .object({
+    kind: z.enum(["FinalAnswer", "AskUser", "CallTools"]),
+    answer: z.string().optional(),
+    question: z.string().optional(),
+    preface: z.string().optional(),
+    calls: z.array(PiPlannedToolCallSchema).optional(),
+  })
+  .strict();
 
-const PiToolArgumentsDraftSchema = z.object({
-  arguments: z.record(z.string(), JsonValueSchema),
-  missingInputs: z.array(z.string()),
-  assumptions: z.array(z.string()),
-}).strict();
+const PiToolArgumentsDraftSchema = z
+  .object({
+    arguments: z.record(z.string(), JsonValueSchema),
+    missingInputs: z.array(z.string()),
+    assumptions: z.array(z.string()),
+  })
+  .strict();
 
 export type ParsedPiControllerAction = z.infer<typeof PiControllerActionSchema>;
 export type ParsedPiToolArgumentsDraft = z.infer<typeof PiToolArgumentsDraftSchema>;
@@ -66,9 +64,7 @@ export function parsePiControllerAction(
   return parsed.data;
 }
 
-export function parsePiToolArgumentsDraft(
-  value: unknown,
-): ParsedPiToolArgumentsDraft {
+export function parsePiToolArgumentsDraft(value: unknown): ParsedPiToolArgumentsDraft {
   const parsed = safeParseNormalizedBamlOutput(PiToolArgumentsDraftSchema, value);
   if (!parsed.success) {
     throw new AgentActionPlannerValidationError(parsed.structuredIssues, parsed.normalized);
@@ -117,22 +113,25 @@ function validatePiControllerAction(
   validators[action.kind]();
   calls.forEach((call, index) => {
     if (!allowedTools.has(call.toolName)) {
-      issues.push(createAgentStructuredIssue(agentErrorMessage("pi.toolNotAllowed", {
-        toolName: call.toolName,
-      }), [
-        "calls",
-        index,
-        "toolName",
-      ]));
+      issues.push(
+        createAgentStructuredIssue(
+          agentErrorMessage("pi.toolNotAllowed", {
+            toolName: call.toolName,
+          }),
+          ["calls", index, "toolName"],
+        ),
+      );
     }
 
     for (const dependency of call.dependsOn ?? []) {
       if (dependency >= index) {
-        issues.push(createAgentStructuredIssue(agentErrorMessage("pi.dependsOnMustReferenceEarlierCall"), [
-          "calls",
-          index,
-          "dependsOn",
-        ]));
+        issues.push(
+          createAgentStructuredIssue(agentErrorMessage("pi.dependsOnMustReferenceEarlierCall"), [
+            "calls",
+            index,
+            "dependsOn",
+          ]),
+        );
       }
     }
   });

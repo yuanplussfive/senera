@@ -1,19 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createTwoFilesPatch } from "diff";
-import type {
-  ToolArtifactWorkspaceManifest,
-} from "../Types/PluginManifestTypes.js";
+import type { ToolArtifactWorkspaceManifest } from "../Types/PluginManifestTypes.js";
 import type {
   ToolWorkspaceCaptureResult,
   ToolWorkspaceChange,
   ToolWorkspaceFileSnapshot,
   ToolWorkspaceSnapshot,
 } from "../Types/ToolRuntimeTypes.js";
-import {
-  assertInsideRoot,
-  toPosixPath,
-} from "./AgentArtifactLocator.js";
+import { assertInsideRoot, toPosixPath } from "./AgentArtifactLocator.js";
 
 export interface AgentWorkspaceArtifactWriterOptions {
   workspaceRoot: string;
@@ -55,7 +50,8 @@ export class AgentWorkspaceArtifactWriter {
       relativeRoot: "workspace/after",
     });
     const changes = this.options.workspaceCapture.changes.map((change) =>
-      this.annotatePatchReference(change, before.byPath, after.byPath));
+      this.annotatePatchReference(change, before.byPath, after.byPath),
+    );
     const patchText = this.buildUnifiedPatch(changes, before.byPath, after.byPath);
     await writeText(this.options.files.workspacePatch, patchText);
 

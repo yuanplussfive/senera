@@ -1,22 +1,14 @@
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
-import {
-  toolProcessFailureResult,
-  toolProcessSuccessResult,
-} from "../ToolRuntime/AgentToolProcessEnvelope.js";
-import {
-  AgentExecutionErrorCodes,
-  AgentToolProcessErrorPhases,
-} from "../Xml/AgentXmlStatus.js";
+import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
+import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import {
   DefaultAgentMemoryDatabasePath,
   resolveAgentMemoryDatabasePath,
   SqliteAgentMemorySourceRepository,
 } from "./AgentMemorySourceRepository.js";
-import {
-  recallConversationTurns,
-} from "./AgentMemoryConversationRecall.js";
+import { recallConversationTurns } from "./AgentMemoryConversationRecall.js";
 import {
   exactRefMemoryRanking,
   fuseMemoryRankings,
@@ -39,10 +31,7 @@ import {
   type MemoryRecallResult,
   type MemoryRecallToolArguments,
 } from "./AgentMemoryRecallTypes.js";
-import {
-  readErrorMessage,
-  unique,
-} from "./AgentMemoryRecallUtils.js";
+import { readErrorMessage, unique } from "./AgentMemoryRecallUtils.js";
 
 export type {
   MemoryRecallOptions,
@@ -65,7 +54,7 @@ export const recallMemoryHostTool: AgentHostToolHandler = async (args, context) 
       diagnostics: parsed.error.issues.map((issue) => ({
         message: issue.message,
         pointer: `/${issue.path.join("/")}`,
-        path: issue.path.map((entry) => typeof entry === "number" ? entry : String(entry)),
+        path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
       })),
     });
   }
@@ -75,11 +64,13 @@ export const recallMemoryHostTool: AgentHostToolHandler = async (args, context) 
   );
   try {
     throwIfAborted(context.signal);
-    return okMemoryRecallResult(await recallAgentMemories(parsed.data, {
-      repository,
-      config: context.config,
-      signal: context.signal,
-    }));
+    return okMemoryRecallResult(
+      await recallAgentMemories(parsed.data, {
+        repository,
+        config: context.config,
+        signal: context.signal,
+      }),
+    );
   } catch (error) {
     return memoryRecallFailure({
       code: AgentExecutionErrorCodes.PluginExecutionError,
@@ -108,9 +99,7 @@ export async function recallAgentMemories(
   const warnings: string[] = [];
   const items = scopedMemoryItems(options.repository.listActiveMemoryItems(), scope);
   const itemsByUri = new Map(items.map((item) => [item.uri, item]));
-  const exactSources = refs.length > 0
-    ? options.repository.findMemorySourcesByRefs(refs)
-    : [];
+  const exactSources = refs.length > 0 ? options.repository.findMemorySourcesByRefs(refs) : [];
 
   const initialRankings: MemoryRecallRanking[] = [
     {
@@ -119,8 +108,7 @@ export async function recallAgentMemories(
         refs,
         sources: exactSources,
         items,
-        directItems: options.repository.findMemoryItemsByUris(refs)
-          .filter((item) => itemsByUri.has(item.uri)),
+        directItems: options.repository.findMemoryItemsByUris(refs).filter((item) => itemsByUri.has(item.uri)),
       }),
     },
     {
@@ -129,57 +117,57 @@ export async function recallAgentMemories(
     },
   ];
 
-  const semantic = await semanticMemoryRanking(args.query, items, options)
-    .catch((error) => {
-      warnings.push(`semantic recall unavailable: ${readErrorMessage(error)}`);
-      return [];
-    });
+  const semantic = await semanticMemoryRanking(args.query, items, options).catch((error) => {
+    warnings.push(`semantic recall unavailable: ${readErrorMessage(error)}`);
+    return [];
+  });
   initialRankings.push({
     name: "semantic",
     entries: semantic,
   });
 
-  const candidateUris = fuseMemoryRankings(initialRankings, candidateLimit)
-    .map((entry) => entry.memoryUri);
-  const reranked = await rerankMemories(args.query, candidateUris, itemsByUri, options)
-    .catch((error) => {
-      warnings.push(`memory rerank unavailable: ${readErrorMessage(error)}`);
-      return [];
-    });
+  const candidateUris = fuseMemoryRankings(initialRankings, candidateLimit).map((entry) => entry.memoryUri);
+  const reranked = await rerankMemories(args.query, candidateUris, itemsByUri, options).catch((error) => {
+    warnings.push(`memory rerank unavailable: ${readErrorMessage(error)}`);
+    return [];
+  });
 
-  const ranked = fuseMemoryRankings([
-    ...initialRankings,
-    {
-      name: "rerank",
-      entries: reranked,
-    },
-  ], limit);
+  const ranked = fuseMemoryRankings(
+    [
+      ...initialRankings,
+      {
+        name: "rerank",
+        entries: reranked,
+      },
+    ],
+    limit,
+  );
   const results = ranked.flatMap((entry) => {
     const item = itemsByUri.get(entry.memoryUri);
-    return item
-      ? [projectMemoryResult(item, entry)]
-      : [];
+    return item ? [projectMemoryResult(item, entry)] : [];
   });
-  const turns = results.length === 0
-    ? await recallConversationTurns({
-      query: args.query,
-      refs,
-      limit,
-      candidateLimit,
-      exactSources,
-      options,
-    }).catch((error) => {
-      warnings.push(`conversation recall unavailable: ${readErrorMessage(error)}`);
-      return [];
-    })
-    : [];
+  const turns =
+    results.length === 0
+      ? await recallConversationTurns({
+          query: args.query,
+          refs,
+          limit,
+          candidateLimit,
+          exactSources,
+          options,
+        }).catch((error) => {
+          warnings.push(`conversation recall unavailable: ${readErrorMessage(error)}`);
+          return [];
+        })
+      : [];
   const returnedSourceRefs = unique([
     ...results.flatMap((entry) => entry.sourceRefs.item),
     ...turns.flatMap((entry) => entry.sourceRefs.item),
   ]);
-  const returnedSources = returnedSourceRefs.length > 0
-    ? options.repository.findMemorySourcesByRefs(returnedSourceRefs).map(projectSourceResult)
-    : [];
+  const returnedSources =
+    returnedSourceRefs.length > 0
+      ? options.repository.findMemorySourcesByRefs(returnedSourceRefs).map(projectSourceResult)
+      : [];
   const fallback = {
     used: results.length === 0,
     reason: fallbackReason(results, turns),

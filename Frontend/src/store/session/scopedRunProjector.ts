@@ -16,6 +16,7 @@ import {
   type ToolCallStartedData,
   type ToolCallsPlannedData,
 } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import {
   friendlyDecisionKind,
   InteractionModeTitle,
@@ -30,10 +31,7 @@ import {
 import { currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
 import { touchRun } from "./sessionRunProjection";
 import { timelineScopeFromEvent, toolBatchFromEvent } from "./timelineProjection";
-import {
-  mergeToolResultPresentation,
-  readToolResultPresentation,
-} from "./toolResultPresentation";
+import { mergeToolResultPresentation, readToolResultPresentation } from "./toolResultPresentation";
 import type { StoreState } from "./types";
 
 export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): boolean {
@@ -55,8 +53,14 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       upsertStep(run, {
         id: scopedStepId(env, "prompt"),
         kind: "prompt",
-        title: scopedStepTitle(env, "渲染 Prompt"),
-        description: scopedStepDescription(env, `${data.chars} 字 · ${data.lines} 行`),
+        title: scopedStepTitle(env, frontendMessage("workflow.plan.promptRendered")),
+        description: scopedStepDescription(
+          env,
+          frontendMessage("workflow.projection.promptStats", {
+            chars: data.chars,
+            lines: data.lines,
+          }),
+        ),
         status: "done",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
@@ -123,7 +127,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       upsertStep(run, {
         id: scopedStepId(env, "interaction-route"),
         kind: "decision",
-        title: scopedStepTitle(env, `选择路径 · ${InteractionModeTitle[data.mode]}`),
+        title: scopedStepTitle(env, frontendMessage("workflow.plan.route", { mode: InteractionModeTitle[data.mode] })),
         description: scopedStepDescription(env, summarizeInteractionRoute(data)),
         status: "done",
         startedAt: env.timestamp,
@@ -140,9 +144,12 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       upsertStep(run, {
         id: scopedStepId(env, "action-plan"),
         kind: "decision",
-        title: scopedStepTitle(env, data.status === "planned"
-          ? `规划行动 · ${friendlyDecisionKind(data.action ?? "")}`
-          : "规划行动 · 回退"),
+        title: scopedStepTitle(
+          env,
+          data.status === "planned"
+            ? frontendMessage("workflow.plan.action", { action: friendlyDecisionKind(data.action ?? "") })
+            : frontendMessage("workflow.plan.actionFallback"),
+        ),
         description: scopedStepDescription(env, summarizeActionPlan(data)),
         status: "done",
         startedAt: env.timestamp,
@@ -160,7 +167,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       upsertStep(run, {
         id: scopedStepId(env, "model"),
         kind: "model",
-        title: scopedStepTitle(env, "调用模型"),
+        title: scopedStepTitle(env, frontendMessage("workflow.feed.callingModel")),
         description: scopedStepDescription(env, modelName),
         status: "running",
         startedAt: env.timestamp,
@@ -201,7 +208,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       upsertStep(run, {
         id: scopedStepId(env, "tool", data.callId),
         kind: "tool",
-        title: scopedStepTitle(env, `调用 ${data.toolName}`),
+        title: scopedStepTitle(env, frontendMessage("workflow.projection.toolCall", { toolName: data.toolName })),
         status: "running",
         startedAt: env.timestamp,
         toolName: data.toolName,
@@ -238,7 +245,10 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         upsertStep(run, {
           id,
           kind: "tool",
-          title: scopedStepTitle(env, `调用 ${data.toolName} 失败`),
+          title: scopedStepTitle(
+            env,
+            frontendMessage("workflow.projection.toolCallFailed", { toolName: data.toolName }),
+          ),
           status: "failed",
           startedAt: env.timestamp,
           endedAt: env.timestamp,
@@ -268,11 +278,12 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
     }
     case EventKinds.AssistantMessageCreated: {
       const data = env.data as AssistantMessageCreatedData;
-      const title = data.kind === "ask_user"
-        ? "提出问题"
-        : data.kind === "tool_preface"
-          ? "工具调用前回复"
-          : "生成回复";
+      const title =
+        data.kind === "ask_user"
+          ? frontendMessage("workflow.projection.assistantAskUser")
+          : data.kind === "tool_preface"
+            ? frontendMessage("workflow.projection.assistantToolPreface")
+            : frontendMessage("workflow.projection.assistantFinalAnswer");
       upsertStep(run, {
         id: scopedStepId(env, "assistant-message", data.messageId),
         kind: data.kind === "tool_preface" ? "decision" : "answer",
@@ -292,7 +303,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       upsertStep(run, {
         id: scopedStepId(env, "error"),
         kind: "error",
-        title: scopedStepTitle(env, "运行失败"),
+        title: scopedStepTitle(env, frontendMessage("workflow.projection.runFailed")),
         description: scopedStepDescription(env, data.message),
         status: "failed",
         startedAt: env.timestamp,
@@ -314,36 +325,18 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
   }
 }
 
-
-function scopedStepId(
-  env: EventEnvelope,
-  slot: string,
-  detail?: string | number,
-): string {
-  return [
-    env.scope?.workflowName,
-    env.scope?.role,
-    env.scope?.jobId,
-    env.requestId,
-    env.step ?? 0,
-    slot,
-    detail,
-  ]
+function scopedStepId(env: EventEnvelope, slot: string, detail?: string | number): string {
+  return [env.scope?.workflowName, env.scope?.role, env.scope?.jobId, env.requestId, env.step ?? 0, slot, detail]
     .filter((value) => value !== undefined && value !== "")
     .join(":");
 }
 
 function scopedStepTitle(env: EventEnvelope, title: string): string {
-  const owner = env.scope?.role === "merge"
-    ? "合并"
-    : env.scope?.agentName;
+  const owner = env.scope?.role === "merge" ? frontendMessage("workflow.scope.merge") : env.scope?.agentName;
   return owner ? `${owner} · ${title}` : title;
 }
 
-function scopedStepDescription(
-  env: EventEnvelope,
-  description?: string,
-): string | undefined {
+function scopedStepDescription(env: EventEnvelope, description?: string): string | undefined {
   const workflowName = env.scope?.workflowName;
   if (!workflowName) return description;
   return description ? `${workflowName} · ${description}` : workflowName;

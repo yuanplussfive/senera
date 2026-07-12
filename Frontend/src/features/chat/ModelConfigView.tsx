@@ -1,9 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "react";
 import type { ProviderModelInfo } from "../../api/eventTypes";
-import {
-  Dialog,
-  DialogContent,
-} from "../../shared/ui";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { Dialog, DialogContent } from "../../shared/ui";
 import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
 import {
   cloneRecord,
@@ -36,10 +34,7 @@ import type {
 } from "./modelConfigTypes";
 import { ModelGroupsDialog } from "./ModelGroupsDialog";
 import { ModelOptionsDialog } from "./ModelOptionsDialog";
-import {
-  ProviderEditor,
-  ProviderList,
-} from "./ModelProviderPanels";
+import { ProviderEditor, ProviderList } from "./ModelProviderPanels";
 import { ProviderModelList } from "./ModelProviderModelList";
 
 export function ModelConfigView({
@@ -79,23 +74,22 @@ export function ModelConfigView({
   const modelTemplate = useMemo(() => cloneRecord(modelField?.defaultItem ?? {}), [modelField]);
   const selectedProviderCatalog = selectedProvider?.Id ? catalogs[selectedProvider.Id] : undefined;
   const selectedProviderError = selectedProvider?.Id ? errors[selectedProvider.Id] : undefined;
-  const selectedProviderLoading = selectedProvider?.Id
-    ? Boolean(loadingProviderIds[selectedProvider.Id])
-    : false;
+  const selectedProviderLoading = selectedProvider?.Id ? Boolean(loadingProviderIds[selectedProvider.Id]) : false;
   const selectedProviderEnabled = providerEnabled(selectedProvider);
   const providerModelRows = useMemo(
-    () => sortProviderModelRows({
-      rows: readProviderModelRows({
-        catalogModels: selectedProviderCatalog?.models ?? [],
+    () =>
+      sortProviderModelRows({
+        rows: readProviderModelRows({
+          catalogModels: selectedProviderCatalog?.models ?? [],
+          models,
+          providerId: selectedProvider?.Id ?? "",
+          search: deferredModelSearch,
+          configuredOnly: showConfiguredOnly,
+        }),
         models,
         providerId: selectedProvider?.Id ?? "",
-        search: deferredModelSearch,
-        configuredOnly: showConfiguredOnly,
+        defaultModelId,
       }),
-      models,
-      providerId: selectedProvider?.Id ?? "",
-      defaultModelId,
-    }),
     [defaultModelId, deferredModelSearch, models, selectedProvider?.Id, selectedProviderCatalog, showConfiguredOnly],
   );
   const providerModelGroups = useMemo(
@@ -103,10 +97,7 @@ export function ModelConfigView({
     [modelGroups, providerModelRows],
   );
 
-  const writeProviders = (
-    nextProviders: ProviderEndpointDraft[],
-    nextModels: ModelProviderDraft[] = models,
-  ): void => {
+  const writeProviders = (nextProviders: ProviderEndpointDraft[], nextModels: ModelProviderDraft[] = models): void => {
     onChange({
       ...value,
       ModelProviderEndpoints: nextProviders.map(normalizeProviderEndpointDraft),
@@ -114,10 +105,7 @@ export function ModelConfigView({
     });
   };
 
-  const writeModels = (
-    nextModels: ModelProviderDraft[],
-    requestedDefaultModelId = defaultModelId,
-  ): void => {
+  const writeModels = (nextModels: ModelProviderDraft[], requestedDefaultModelId = defaultModelId): void => {
     const normalizedModels = nextModels.map(normalizeModelProviderDraft);
     const resolvedDefault = normalizedModels.some((model) => model.Id === requestedDefaultModelId)
       ? requestedDefaultModelId
@@ -154,12 +142,12 @@ export function ModelConfigView({
     if (!previous) return;
     const nextProvider = normalizeProviderEndpointDraft({ ...previous, ...patch });
     const nextProviders = providers.map((provider, providerIndex) =>
-      providerIndex === index ? nextProvider : provider);
-    const nextModels = previous.Id !== nextProvider.Id
-      ? models.map((model) => model.ProviderId === previous.Id
-        ? { ...model, ProviderId: nextProvider.Id }
-        : model)
-      : models;
+      providerIndex === index ? nextProvider : provider,
+    );
+    const nextModels =
+      previous.Id !== nextProvider.Id
+        ? models.map((model) => (model.ProviderId === previous.Id ? { ...model, ProviderId: nextProvider.Id } : model))
+        : models;
     writeProviders(nextProviders, nextModels);
   };
 
@@ -187,8 +175,9 @@ export function ModelConfigView({
 
   const configureModelFromCatalog = (modelInfo: ProviderModelInfo): void => {
     if (!selectedProvider?.Id) return;
-    const existingIndex = models.findIndex((model) =>
-      model.ProviderId === selectedProvider.Id && model.Model === modelInfo.id);
+    const existingIndex = models.findIndex(
+      (model) => model.ProviderId === selectedProvider.Id && model.Model === modelInfo.id,
+    );
     if (existingIndex >= 0) {
       setOptionsModelState({
         model: models[existingIndex],
@@ -220,19 +209,21 @@ export function ModelConfigView({
     const previous = models[optionsModelState.index];
     const nextDefault = previous && defaultModelId === previous.Id ? nextModel.Id : defaultModelId;
     writeModels(
-      models.map((model, modelIndex) => modelIndex === optionsModelState.index ? nextModel : model),
+      models.map((model, modelIndex) => (modelIndex === optionsModelState.index ? nextModel : model)),
       nextDefault,
     );
     setOptionsModelState(null);
   };
 
   const updateModelDraft = (patch: Partial<ModelProviderDraft>): void => {
-    setOptionsModelState((current) => current
-      ? {
-        ...current,
-        model: normalizeModelProviderDraft({ ...current.model, ...patch }),
-      }
-      : current);
+    setOptionsModelState((current) =>
+      current
+        ? {
+            ...current,
+            model: normalizeModelProviderDraft({ ...current.model, ...patch }),
+          }
+        : current,
+    );
   };
 
   const removeModel = (index: number): void => {
@@ -240,7 +231,11 @@ export function ModelConfigView({
     writeModels(nextModels);
     if (optionsModelState?.index === index) {
       setOptionsModelState(null);
-    } else if (optionsModelState?.index !== null && optionsModelState?.index !== undefined && optionsModelState.index > index) {
+    } else if (
+      optionsModelState?.index !== null &&
+      optionsModelState?.index !== undefined &&
+      optionsModelState.index > index
+    ) {
       setOptionsModelState({
         ...optionsModelState,
         index: optionsModelState.index - 1,
@@ -283,19 +278,19 @@ export function ModelConfigView({
             onSearch={setModelSearch}
             onConfiguredOnlyChange={setShowConfiguredOnly}
             onOpenModelGroups={() => setModelGroupsOpen(true)}
-            onFetch={(force) => selectedProvider?.Id && selectedProviderEnabled && onFetchProviderModels(
-              selectedProvider.Id,
-              force,
-              toProviderEndpointInput(selectedProvider),
-            )}
+            onFetch={(force) =>
+              selectedProvider?.Id &&
+              selectedProviderEnabled &&
+              onFetchProviderModels(selectedProvider.Id, force, toProviderEndpointInput(selectedProvider))
+            }
             onConfigureModel={configureModelFromCatalog}
           />
         </section>
       </div>
       <Dialog open={providerSettingsOpen} onOpenChange={setProviderSettingsOpen}>
         <DialogContent
-          title="供应商设置"
-          description={selectedProvider ? providerIdLabel(selectedProvider) : "选择供应商"}
+          title={frontendMessage("config.provider.settings")}
+          description={selectedProvider ? providerIdLabel(selectedProvider) : frontendMessage("config.provider.select")}
           motionPreset="focus"
           className="h-[min(780px,calc(100dvh_-_48px))] w-[min(860px,calc(100vw_-_32px))] max-w-none rounded-xl bg-paper-50"
           bodyClassName="min-h-0 flex-1"
@@ -312,11 +307,11 @@ export function ModelConfigView({
               removeProvider(index);
               setProviderSettingsOpen(false);
             }}
-            onFetch={(force) => selectedProvider?.Id && selectedProviderEnabled && onFetchProviderModels(
-              selectedProvider.Id,
-              force,
-              toProviderEndpointInput(selectedProvider),
-            )}
+            onFetch={(force) =>
+              selectedProvider?.Id &&
+              selectedProviderEnabled &&
+              onFetchProviderModels(selectedProvider.Id, force, toProviderEndpointInput(selectedProvider))
+            }
           />
         </DialogContent>
       </Dialog>

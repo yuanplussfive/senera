@@ -63,52 +63,66 @@ export function useSessionCommands({
     serverKnownSessionIdsRef.current.add(sessionId);
   }, [registerSession, selectedModelProviderId, send, serverKnownSessionIdsRef, status]);
 
-  const closeSession = useCallback((sessionId: string): void => {
-    const ok = send({ type: "session.close", sessionId });
-    if (!ok) {
-      toast.error(frontendMessage("session.deleteDisconnected"));
-      return;
-    }
-    removeSession(sessionId);
-  }, [removeSession, send]);
-
-  const closeSessions = useCallback((sessionIds: string[]): void => {
-    const uniqueIds = readUniqueSessionIds(sessionIds);
-    if (uniqueIds.length === 0) return;
-
-    const sentIds: string[] = [];
-    uniqueIds.forEach((sessionId) => {
+  const closeSession = useCallback(
+    (sessionId: string): void => {
       const ok = send({ type: "session.close", sessionId });
-      if (ok) {
-        sentIds.push(sessionId);
-        serverKnownSessionIdsRef.current.delete(sessionId);
+      if (!ok) {
+        toast.error(frontendMessage("session.deleteDisconnected"));
+        return;
       }
-    });
+      removeSession(sessionId);
+    },
+    [removeSession, send],
+  );
 
-    if (sentIds.length > 0) {
-      clearAllSessions(sentIds);
-    }
-    if (sentIds.length < uniqueIds.length) {
-      toast.error(frontendMessage("session.bulkDeletePartialFailed", {
-        count: uniqueIds.length - sentIds.length,
-      }));
-    }
-  }, [clearAllSessions, send, serverKnownSessionIdsRef]);
+  const closeSessions = useCallback(
+    (sessionIds: string[]): void => {
+      const uniqueIds = readUniqueSessionIds(sessionIds);
+      if (uniqueIds.length === 0) return;
 
-  const renameSession = useCallback((sessionId: string, title: string): void => {
-    const nextTitle = normalizeSessionTitle(title);
-    if (!nextTitle) return;
+      const sentIds: string[] = [];
+      uniqueIds.forEach((sessionId) => {
+        const ok = send({ type: "session.close", sessionId });
+        if (ok) {
+          sentIds.push(sessionId);
+          serverKnownSessionIdsRef.current.delete(sessionId);
+        }
+      });
 
-    renameStoreSession(sessionId, nextTitle);
-    send({ type: "session.rename", sessionId, title: nextTitle });
-  }, [renameStoreSession, send]);
+      if (sentIds.length > 0) {
+        clearAllSessions(sentIds);
+      }
+      if (sentIds.length < uniqueIds.length) {
+        toast.error(
+          frontendMessage("session.bulkDeletePartialFailed", {
+            count: uniqueIds.length - sentIds.length,
+          }),
+        );
+      }
+    },
+    [clearAllSessions, send, serverKnownSessionIdsRef],
+  );
 
-  const updateUserProfile = useCallback((profile: Pick<UserProfile, "name" | "avatarDataUrl">): void => {
-    setUserProfile(profile);
-    if (status === "open") {
-      send({ type: "profile.update", profile });
-    }
-  }, [send, setUserProfile, status]);
+  const renameSession = useCallback(
+    (sessionId: string, title: string): void => {
+      const nextTitle = normalizeSessionTitle(title);
+      if (!nextTitle) return;
+
+      renameStoreSession(sessionId, nextTitle);
+      send({ type: "session.rename", sessionId, title: nextTitle });
+    },
+    [renameStoreSession, send],
+  );
+
+  const updateUserProfile = useCallback(
+    (profile: Pick<UserProfile, "name" | "avatarDataUrl">): void => {
+      setUserProfile(profile);
+      if (status === "open") {
+        send({ type: "profile.update", profile });
+      }
+    },
+    [send, setUserProfile, status],
+  );
 
   return {
     closeSession,

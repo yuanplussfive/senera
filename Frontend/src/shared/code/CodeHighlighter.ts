@@ -8,9 +8,7 @@ export interface HighlightedCodeRequest {
 }
 
 export type HighlightedCodeState =
-  | { status: "loading" }
-  | { status: "ready"; html: string }
-  | { status: "failed"; reason: unknown };
+  { status: "loading" } | { status: "ready"; html: string } | { status: "failed"; reason: unknown };
 
 const CODE_HIGHLIGHT_THEME = "github-light";
 const codeHighlightCache = new LruCache<string, Promise<string>>(80);
@@ -178,10 +176,7 @@ async function createHighlightRuntime() {
   const [
     { createBundledHighlighter, createSingletonShorthands, guessEmbeddedLanguages },
     { createJavaScriptRegexEngine },
-  ] = await Promise.all([
-    import("@shikijs/core"),
-    import("@shikijs/engine-javascript"),
-  ]);
+  ] = await Promise.all([import("@shikijs/core"), import("@shikijs/engine-javascript")]);
   const createHighlighter = createBundledHighlighter({
     langs: HIGHLIGHT_LANGUAGE_LOADERS,
     themes: HIGHLIGHT_THEMES,
@@ -193,5 +188,4 @@ async function createHighlightRuntime() {
   return { codeToHtml };
 }
 
-function noop(): void {
-}
+function noop(): void {}

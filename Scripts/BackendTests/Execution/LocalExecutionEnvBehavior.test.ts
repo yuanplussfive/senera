@@ -10,10 +10,7 @@ import {
   SeneraExecutionError,
   SeneraExecutionErrorCodes,
 } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
-import {
-  createTemporaryDirectory,
-  removeDirectory,
-} from "../Support/AgentTestFixtures.js";
+import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -28,7 +25,10 @@ describe("Local execution environment behavior", () => {
     const workspaceRoot = createWorkspace();
     const env = new SeneraLocalExecutionEnv({ workspaceRoot });
 
-    await expect(env.writeFile("notes/release.txt", "alpha\nbeta\ngamma")).resolves.toEqual({ ok: true, value: undefined });
+    await expect(env.writeFile("notes/release.txt", "alpha\nbeta\ngamma")).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
     await expect(env.appendFile("notes/release.txt", "\ndelta")).resolves.toEqual({ ok: true, value: undefined });
     const text = await env.readTextFile("notes/release.txt");
     const lines = await env.readTextLines("notes/release.txt", { maxLines: 2 });
@@ -40,15 +40,21 @@ describe("Local execution environment behavior", () => {
     expect(text).toEqual({ ok: true, value: "alpha\nbeta\ngamma\ndelta" });
     expect(lines).toEqual({ ok: true, value: ["alpha", "beta"] });
     expect(binary.ok && Buffer.from(binary.value).toString("utf8")).toBe("alpha\nbeta\ngamma\ndelta");
-    expect(info).toEqual(expect.objectContaining({
-      ok: true,
-      value: expect.objectContaining({ name: "release.txt", kind: "file" }),
-    }));
-    expect(listing).toEqual(expect.objectContaining({
-      ok: true,
-      value: [expect.objectContaining({ name: "release.txt", kind: "file" })],
-    }));
-    expect(canonical).toEqual(expect.objectContaining({ ok: true, value: path.join(workspaceRoot, "notes", "release.txt") }));
+    expect(info).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({ name: "release.txt", kind: "file" }),
+      }),
+    );
+    expect(listing).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: [expect.objectContaining({ name: "release.txt", kind: "file" })],
+      }),
+    );
+    expect(canonical).toEqual(
+      expect.objectContaining({ ok: true, value: path.join(workspaceRoot, "notes", "release.txt") }),
+    );
     await expect(env.exists("notes/release.txt")).resolves.toEqual({ ok: true, value: true });
     await expect(env.remove("notes/release.txt")).resolves.toEqual({ ok: true, value: undefined });
     await expect(env.exists("notes/release.txt")).resolves.toEqual({ ok: true, value: false });
@@ -59,19 +65,25 @@ describe("Local execution environment behavior", () => {
     const env = new SeneraLocalExecutionEnv({ workspaceRoot });
     const outside = path.resolve(workspaceRoot, "..", "outside.txt");
 
-    await expect(env.absolutePath(outside)).resolves.toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({ code: "permission_denied" }),
-    }));
-    await expect(env.writeFile(outside, "blocked")).resolves.toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({ code: "permission_denied" }),
-    }));
-    await expect(env.executeShell({
-      command: "pwd",
-      cwd: outside,
-      limits: executionLimits(),
-    })).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.InvalidWorkspacePath });
+    await expect(env.absolutePath(outside)).resolves.toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: "permission_denied" }),
+      }),
+    );
+    await expect(env.writeFile(outside, "blocked")).resolves.toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: "permission_denied" }),
+      }),
+    );
+    await expect(
+      env.executeShell({
+        command: "pwd",
+        cwd: outside,
+        limits: executionLimits(),
+      }),
+    ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.InvalidWorkspacePath });
   });
 
   test("honors aborted file requests before touching the filesystem", async () => {
@@ -80,14 +92,18 @@ describe("Local execution environment behavior", () => {
     const controller = new AbortController();
     controller.abort("cancelled");
 
-    await expect(env.writeFile("cancelled.txt", "content", controller.signal)).resolves.toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({ code: "aborted" }),
-    }));
-    await expect(env.createDir("cancelled", { abortSignal: controller.signal })).resolves.toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({ code: "aborted" }),
-    }));
+    await expect(env.writeFile("cancelled.txt", "content", controller.signal)).resolves.toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: "aborted" }),
+      }),
+    );
+    await expect(env.createDir("cancelled", { abortSignal: controller.signal })).resolves.toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: "aborted" }),
+      }),
+    );
     expect(fs.existsSync(path.join(workspaceRoot, "cancelled.txt"))).toBe(false);
   });
 
@@ -122,10 +138,12 @@ describe("Local execution environment behavior", () => {
 
     backend.failure = new SeneraExecutionError(SeneraExecutionErrorCodes.Timeout, "execution timed out");
     const failed = await env.exec("slow command");
-    expect(failed).toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({ code: "timeout", message: "execution timed out" }),
-    }));
+    expect(failed).toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: "timeout", message: "execution timed out" }),
+      }),
+    );
   });
 
   test("removes all owned temporary roots during idempotent cleanup", async () => {

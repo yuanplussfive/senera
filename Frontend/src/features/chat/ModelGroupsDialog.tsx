@@ -1,23 +1,8 @@
-import {
-  BrainCircuit,
-  Database,
-  Plus,
-  Search,
-  Tags,
-  Trash2,
-} from "lucide-react";
+import { BrainCircuit, Database, Plus, Search, Tags, Trash2 } from "lucide-react";
 import { cn } from "../../lib/util";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  ScrollArea,
-} from "../../shared/ui";
-import {
-  ModelProviderIcon,
-  ModelProviderIconNames,
-  type ModelProviderRuleMatchKind,
-} from "./ModelProviderIcon";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { Button, Dialog, DialogContent, ScrollArea } from "../../shared/ui";
+import { ModelProviderIcon, ModelProviderIconNames, type ModelProviderRuleMatchKind } from "./ModelProviderIcon";
 import {
   createModelGroupDraft,
   normalizeModelGroupDraft,
@@ -25,10 +10,7 @@ import {
   parseDelimitedValues,
   ModelGroupMatchOptions,
 } from "./modelConfigData";
-import type {
-  ModelGroupDraft,
-  ModelGroupStrategyDraft,
-} from "./modelConfigTypes";
+import type { ModelGroupDraft, ModelGroupStrategyDraft } from "./modelConfigTypes";
 import {
   IconAction,
   MenuRow,
@@ -59,20 +41,20 @@ export function ModelGroupsDialog({
   const iconOptions = ModelProviderIconNames.map((icon) => ({ value: icon, label: icon }));
 
   const updateGroup = (index: number, patch: Partial<ModelGroupDraft>): void => {
-    onChange(groups.map((group, groupIndex) =>
-      groupIndex === index ? normalizeModelGroupDraft({ ...group, ...patch }) : group));
+    onChange(
+      groups.map((group, groupIndex) =>
+        groupIndex === index ? normalizeModelGroupDraft({ ...group, ...patch }) : group,
+      ),
+    );
   };
 
-  const updateStrategy = (
-    groupIndex: number,
-    strategyIndex: number,
-    patch: Partial<ModelGroupStrategyDraft>,
-  ): void => {
+  const updateStrategy = (groupIndex: number, strategyIndex: number, patch: Partial<ModelGroupStrategyDraft>): void => {
     const group = groups[groupIndex];
     if (!group) return;
     updateGroup(groupIndex, {
       Strategies: group.Strategies.map((strategy, index) =>
-        index === strategyIndex ? normalizeModelGroupStrategy({ ...strategy, ...patch }) : strategy),
+        index === strategyIndex ? normalizeModelGroupStrategy({ ...strategy, ...patch }) : strategy,
+      ),
     });
   };
 
@@ -103,23 +85,23 @@ export function ModelGroupsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="模型分组"
-        description="按模型名称规则自动归类，默认规则来自模型图标规则。"
+        title={frontendMessage("config.modelGroups.title")}
+        description={frontendMessage("config.modelGroups.description")}
         motionPreset="focus"
         className="h-[min(760px,calc(100dvh_-_48px))] w-[min(880px,calc(100vw_-_32px))] max-w-none rounded-xl bg-paper-50"
         bodyClassName="flex min-h-0 flex-col"
       >
         <div className="flex shrink-0 items-center justify-between border-b border-ink-200/70 bg-paper-100 px-5 py-3">
           <div className="min-w-0 text-[12px] text-ink-500">
-            {groups.length} 个分组，按顺序匹配，第一个命中的分组生效。
+            {frontendMessage("config.modelGroups.summary", { count: groups.length })}
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" disabled={disabled} onClick={onResetDefault}>
-              恢复默认
+              {frontendMessage("config.modelGroups.restoreDefault")}
             </Button>
             <Button size="sm" disabled={disabled} onClick={addGroup}>
               <Plus className="h-3.5 w-3.5" />
-              新增
+              {frontendMessage("config.modelGroups.add")}
             </Button>
           </div>
         </div>
@@ -131,20 +113,25 @@ export function ModelGroupsDialog({
                   <div className="flex min-w-0 items-center gap-2">
                     <ModelProviderIcon icon={group.Icon} size={18} className="rounded" />
                     <span className="truncate text-[13px] font-semibold text-ink-850">
-                      {group.Label || group.Id || "未命名分组"}
+                      {group.Label || group.Id || frontendMessage("config.modelGroups.unnamed")}
                     </span>
                   </div>
-                  <IconAction label="删除分组" danger disabled={disabled} onClick={() => removeGroup(index)}>
+                  <IconAction
+                    label={frontendMessage("config.modelGroups.delete")}
+                    danger
+                    disabled={disabled}
+                    onClick={() => removeGroup(index)}
+                  >
                     <Trash2 className="h-3.5 w-3.5" />
                   </IconAction>
                 </div>
                 <SettingsTable>
                   <TextRow
                     icon={<Tags className="h-3.5 w-3.5" />}
-                    label="名称"
+                    label={frontendMessage("config.modelGroups.name")}
                     value={group.Label}
                     disabled={disabled}
-                    placeholder="分组名称"
+                    placeholder={frontendMessage("config.modelGroups.namePlaceholder")}
                     onChange={(Label) => updateGroup(index, { Label })}
                   />
                   <TextRow
@@ -152,21 +139,26 @@ export function ModelGroupsDialog({
                     label="ID"
                     value={group.Id}
                     disabled={disabled}
-                    placeholder="唯一 ID"
+                    placeholder={frontendMessage("config.modelGroups.idPlaceholder")}
                     onChange={(Id) => updateGroup(index, { Id })}
                   />
-                  <MenuRow icon={<BrainCircuit className="h-3.5 w-3.5" />} label="图标">
+                  <MenuRow
+                    icon={<BrainCircuit className="h-3.5 w-3.5" />}
+                    label={frontendMessage("config.provider.icon")}
+                  >
                     <MenuSelect
                       value={group.Icon ?? ""}
-                      placeholder="选择图标"
+                      placeholder={frontendMessage("config.provider.selectIcon")}
                       options={iconOptions}
                       disabled={disabled}
-                      renderValue={(value) => value ? (
-                        <span className="inline-flex min-w-0 items-center gap-2">
-                          <ModelProviderIcon icon={value} size={18} />
-                          <span className="truncate">{value}</span>
-                        </span>
-                      ) : null}
+                      renderValue={(value) =>
+                        value ? (
+                          <span className="inline-flex min-w-0 items-center gap-2">
+                            <ModelProviderIcon icon={value} size={18} />
+                            <span className="truncate">{value}</span>
+                          </span>
+                        ) : null
+                      }
                       renderOption={(option) => (
                         <span className="inline-flex min-w-0 items-center gap-2">
                           <ModelProviderIcon icon={option.value} size={16} />
@@ -176,7 +168,10 @@ export function ModelGroupsDialog({
                       onChange={(Icon) => updateGroup(index, { Icon })}
                     />
                   </MenuRow>
-                  <SettingRow icon={<Search className="h-3.5 w-3.5" />} label="策略">
+                  <SettingRow
+                    icon={<Search className="h-3.5 w-3.5" />}
+                    label={frontendMessage("config.modelGroups.strategies")}
+                  >
                     <div className="grid gap-2">
                       {group.Strategies.map((strategy, strategyIndex) => (
                         <div
@@ -185,25 +180,29 @@ export function ModelGroupsDialog({
                         >
                           <MenuSelect
                             value={strategy.Match}
-                            placeholder="匹配方式"
+                            placeholder={frontendMessage("config.modelGroups.matchType")}
                             options={[...ModelGroupMatchOptions]}
                             disabled={disabled}
-                            onChange={(Match) => updateStrategy(index, strategyIndex, {
-                              Match: Match as ModelProviderRuleMatchKind,
-                            })}
+                            onChange={(Match) =>
+                              updateStrategy(index, strategyIndex, {
+                                Match: Match as ModelProviderRuleMatchKind,
+                              })
+                            }
                           />
                           <input
                             type="text"
                             value={strategy.Values.join(", ")}
                             disabled={disabled}
-                            placeholder="多个词用逗号分隔"
+                            placeholder={frontendMessage("config.modelGroups.valuesPlaceholder")}
                             className={cn(inputClassName, "rounded-md border border-ink-200 bg-paper-50")}
-                            onChange={(event) => updateStrategy(index, strategyIndex, {
-                              Values: parseDelimitedValues(event.currentTarget.value),
-                            })}
+                            onChange={(event) =>
+                              updateStrategy(index, strategyIndex, {
+                                Values: parseDelimitedValues(event.currentTarget.value),
+                              })
+                            }
                           />
                           <IconAction
-                            label="删除策略"
+                            label={frontendMessage("config.modelGroups.deleteStrategy")}
                             danger
                             disabled={disabled || group.Strategies.length <= 1}
                             onClick={() => removeStrategy(index, strategyIndex)}
@@ -219,7 +218,7 @@ export function ModelGroupsDialog({
                         onClick={() => addStrategy(index)}
                       >
                         <Plus className="h-3.5 w-3.5" />
-                        新增策略
+                        {frontendMessage("config.modelGroups.addStrategy")}
                       </button>
                     </div>
                   </SettingRow>

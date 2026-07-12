@@ -38,8 +38,7 @@ export class AgentToolSearchRankPipeline {
       keywordTokens.length > 0 ? keywordTokens : this.tokenizer.tokenize(options.query),
     );
     const visible = new Set(options.loadedToolNames ?? []);
-    const candidates = this.docs.filter((doc) =>
-      options.includeLoaded !== false || !visible.has(doc.toolName));
+    const candidates = this.docs.filter((doc) => options.includeLoaded !== false || !visible.has(doc.toolName));
     const initialNames = new Set(candidates.map((doc) => doc.toolName));
     const rankers = this.rankers(options, queryTokens, initialNames);
     const candidateNames = this.relevantCandidates(rankers, queryTokens);
@@ -67,9 +66,7 @@ export class AgentToolSearchRankPipeline {
     candidateNames: Set<string>,
   ): Record<AgentToolSearchRankerName, AgentToolSearchRankMap> {
     const bm25 = this.bm25Rank(options.query, candidateNames);
-    const lexicalCandidates = bm25.size > 0
-      ? new Set(bm25.keys())
-      : candidateNames;
+    const lexicalCandidates = bm25.size > 0 ? new Set(bm25.keys()) : candidateNames;
 
     return {
       bm25,
@@ -96,8 +93,7 @@ export class AgentToolSearchRankPipeline {
         score: this.exactScore(querySet, this.docsByTool.get(toolName)),
       }))
       .filter((entry) => entry.score > 0)
-      .sort((left, right) =>
-        right.score - left.score || left.toolName.localeCompare(right.toolName));
+      .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName));
 
     return toRankMap(scored.map((entry) => entry.toolName));
   }
@@ -109,9 +105,7 @@ export class AgentToolSearchRankPipeline {
 
     const documentTokens = new Set(this.tokenizer.tokenize(doc.coreText));
     return [...queryTokens].reduce((total, token) => {
-      return documentTokens.has(token)
-        ? total + this.inverseDocumentFrequency(token)
-        : total;
+      return documentTokens.has(token) ? total + this.inverseDocumentFrequency(token) : total;
     }, 0);
   }
 
@@ -122,8 +116,7 @@ export class AgentToolSearchRankPipeline {
     return toRankMap(
       evidence
         .filter((entry) => candidateNames.has(entry.toolName))
-        .sort((left, right) =>
-          right.rankScore - left.rankScore || left.toolName.localeCompare(right.toolName))
+        .sort((left, right) => right.rankScore - left.rankScore || left.toolName.localeCompare(right.toolName))
         .map((entry) => entry.toolName),
     );
   }
@@ -132,8 +125,7 @@ export class AgentToolSearchRankPipeline {
     const ranked = [...candidateNames]
       .map((toolName) => this.docsByTool.get(toolName))
       .filter((doc): doc is ToolSearchDocument => Boolean(doc))
-      .sort((left, right) =>
-        left.priority - right.priority || left.toolName.localeCompare(right.toolName));
+      .sort((left, right) => left.priority - right.priority || left.toolName.localeCompare(right.toolName));
     return toRankMap(ranked.map((doc) => doc.toolName));
   }
 
@@ -152,36 +144,33 @@ export class AgentToolSearchRankPipeline {
         }, 0),
       }))
       .filter((entry) => entry.score > 0)
-      .sort((left, right) =>
-        right.score - left.score || left.toolName.localeCompare(right.toolName));
+      .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName));
   }
 
-  private diversify(
-    entries: AgentToolSearchRankedEntry[],
-    queryTokens: string[],
-  ): AgentToolSearchRankedEntry[] {
+  private diversify(entries: AgentToolSearchRankedEntry[], queryTokens: string[]): AgentToolSearchRankedEntry[] {
     const selected: AgentToolSearchRankedEntry[] = [];
     const remaining = [...entries];
     const querySet = new Set(queryTokens);
 
     while (remaining.length > 0) {
       const bestScore = Math.max(...remaining.map((entry) => entry.score));
-      const pool = remaining.filter((entry) =>
-        entry.score >= bestScore * this.config.Ranking.MmrCandidateScoreRatio);
+      const pool = remaining.filter((entry) => entry.score >= bestScore * this.config.Ranking.MmrCandidateScoreRatio);
       const next = pool
         .map((entry) => ({
           entry,
           score: this.diversifiedScore(entry, selected, querySet),
         }))
-        .sort((left, right) =>
-          right.score - left.score || left.entry.toolName.localeCompare(right.entry.toolName))[0];
+        .sort((left, right) => right.score - left.score || left.entry.toolName.localeCompare(right.entry.toolName))[0];
 
       if (!next) {
         break;
       }
 
       selected.push(next.entry);
-      remaining.splice(remaining.findIndex((entry) => entry.toolName === next.entry.toolName), 1);
+      remaining.splice(
+        remaining.findIndex((entry) => entry.toolName === next.entry.toolName),
+        1,
+      );
     }
 
     return selected;
@@ -199,10 +188,14 @@ export class AgentToolSearchRankPipeline {
 
     const lambda = this.config.Ranking.MmrLambda;
     const relevance = entry.score + this.queryCoverage(doc, queryTokens) * 0.01;
-    const redundancy = selected.length === 0
-      ? 0
-      : Math.max(...selected.map((selectedEntry) =>
-          this.documentSimilarity(doc, this.docsByTool.get(selectedEntry.toolName))));
+    const redundancy =
+      selected.length === 0
+        ? 0
+        : Math.max(
+            ...selected.map((selectedEntry) =>
+              this.documentSimilarity(doc, this.docsByTool.get(selectedEntry.toolName)),
+            ),
+          );
     return lambda * relevance - (1 - lambda) * redundancy;
   }
 
@@ -249,9 +242,8 @@ export class AgentToolSearchRankPipeline {
       .map((token) => this.inverseDocumentFrequency(token))
       .sort((left, right) => left - right);
     const pivot = information[Math.floor(information.length / 2)];
-    const selected = pivot === undefined
-      ? []
-      : present.filter((token) => this.inverseDocumentFrequency(token) >= pivot);
+    const selected =
+      pivot === undefined ? [] : present.filter((token) => this.inverseDocumentFrequency(token) >= pivot);
     return selected.length > 0 ? selected : present;
   }
 

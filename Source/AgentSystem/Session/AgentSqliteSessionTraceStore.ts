@@ -11,18 +11,13 @@ export class AgentSqliteSessionTraceStore {
     private readonly stmts: AgentSessionSqlStatements,
   ) {}
 
-  appendEntries(
-    sessionId: string,
-    entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>,
-  ): void {
+  appendEntries(sessionId: string, entries: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>): void {
     if (entries.length === 0) return;
-    const insert = this.db.transaction(
-      (items: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>) => {
-        for (const { entry, sequence } of items) {
-          this.stmts.appendEntry.run(entryToRow(sessionId, entry, sequence));
-        }
-      },
-    );
+    const insert = this.db.transaction((items: ReadonlyArray<{ entry: AgentConversationEntry; sequence: number }>) => {
+      for (const { entry, sequence } of items) {
+        this.stmts.appendEntry.run(entryToRow(sessionId, entry, sequence));
+      }
+    });
     insert(entries);
   }
 

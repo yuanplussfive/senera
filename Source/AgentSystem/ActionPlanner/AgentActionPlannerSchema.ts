@@ -32,24 +32,36 @@ export function parseTurnUnderstanding(
 ): BamlTurnUnderstanding {
   const parsed = parseNormalizedBamlOutput(TurnUnderstandingSchema, understanding);
   if (parsed.rawUserTurn !== input.currentUserTurn.content) {
-    throw new AgentActionPlannerValidationError([
-      createAgentStructuredIssue(agentErrorMessage("actionPlanner.rawUserTurnMustMatch"), ["rawUserTurn"]),
-    ], parsed);
+    throw new AgentActionPlannerValidationError(
+      [createAgentStructuredIssue(agentErrorMessage("actionPlanner.rawUserTurnMustMatch"), ["rawUserTurn"])],
+      parsed,
+    );
   }
   if (parsed.contextMode === TurnContextMode.None && (parsed.contextBasis || parsed.missingContext)) {
-    throw new AgentActionPlannerValidationError([
-      createAgentStructuredIssue(agentErrorMessage("actionPlanner.contextNoneMustHaveNoContextFields"), ["contextMode"]),
-    ], parsed);
+    throw new AgentActionPlannerValidationError(
+      [
+        createAgentStructuredIssue(agentErrorMessage("actionPlanner.contextNoneMustHaveNoContextFields"), [
+          "contextMode",
+        ]),
+      ],
+      parsed,
+    );
   }
   if (parsed.contextMode !== TurnContextMode.Insufficient && parsed.missingContext) {
-    throw new AgentActionPlannerValidationError([
-      createAgentStructuredIssue(agentErrorMessage("actionPlanner.missingContextOnlyForInsufficient"), ["missingContext"]),
-    ], parsed);
+    throw new AgentActionPlannerValidationError(
+      [
+        createAgentStructuredIssue(agentErrorMessage("actionPlanner.missingContextOnlyForInsufficient"), [
+          "missingContext",
+        ]),
+      ],
+      parsed,
+    );
   }
   if (parsed.contextMode !== TurnContextMode.None && !parsed.contextBasis) {
-    throw new AgentActionPlannerValidationError([
-      createAgentStructuredIssue(agentErrorMessage("actionPlanner.contextBasisRequired"), ["contextBasis"]),
-    ], parsed);
+    throw new AgentActionPlannerValidationError(
+      [createAgentStructuredIssue(agentErrorMessage("actionPlanner.contextBasisRequired"), ["contextBasis"])],
+      parsed,
+    );
   }
   return parsed;
 }

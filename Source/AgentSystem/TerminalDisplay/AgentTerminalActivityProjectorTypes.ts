@@ -5,11 +5,10 @@ import type {
   AgentTerminalTimelineViewState,
 } from "./AgentTerminalActivity.js";
 
-export type AgentTerminalActivityEventProjector =
-  (
-    event: AgentEventEnvelope<string, unknown>,
-    state: AgentTerminalTimelineViewState,
-    detailMode: AgentTerminalDetailMode,
-  ) => AgentTerminalTimelinePatch;
+export type AgentTerminalActivityEventProjector = (
+  event: AgentEventEnvelope<string, unknown>,
+  state: AgentTerminalTimelineViewState,
+  detailMode: AgentTerminalDetailMode,
+) => AgentTerminalTimelinePatch;
 
 export type AgentTerminalActivityProjectorCatalog = Partial<Record<string, AgentTerminalActivityEventProjector>>;

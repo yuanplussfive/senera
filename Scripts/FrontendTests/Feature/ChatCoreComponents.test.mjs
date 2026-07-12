@@ -12,11 +12,8 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 const { ChatPanel } = await import("../../../Frontend/src/features/chat/ChatPanel.tsx");
 const { ChatComposer } = await import("../../../Frontend/src/features/chat/ChatComposer.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
-const {
-  clearPersistedStore,
-  DEFAULT_USER_PROFILE,
-  useStore,
-} = await import("../../../Frontend/src/store/sessionStore.ts");
+const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
+  await import("../../../Frontend/src/store/sessionStore.ts");
 
 afterEach(() => {
   cleanup();
@@ -29,20 +26,30 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
   const onCancel = vi.fn();
   const user = userEvent.setup();
 
-  const { rerender } = renderWithFrontendProviders(React.createElement(ChatComposer, createComposerProps({
-    onSend,
-    onCancel,
-  })));
+  const { rerender } = renderWithFrontendProviders(
+    React.createElement(
+      ChatComposer,
+      createComposerProps({
+        onSend,
+        onCancel,
+      }),
+    ),
+  );
 
   await user.type(screen.getByRole("textbox"), "  hello project  ");
   await user.click(screen.getByRole("button", { name: "send" }));
   expect(onSend).toHaveBeenLastCalledWith("hello project", undefined, undefined);
 
-  rerender(React.createElement(ChatComposer, createComposerProps({
-    running: true,
-    onSend,
-    onCancel,
-  })));
+  rerender(
+    React.createElement(
+      ChatComposer,
+      createComposerProps({
+        running: true,
+        onSend,
+        onCancel,
+      }),
+    ),
+  );
 
   await user.type(screen.getByRole("textbox"), "steer now");
   await user.keyboard("{Enter}");
@@ -77,12 +84,17 @@ test("chat panel routes grouped message actions through the empty state", async 
     },
   });
 
-  renderWithFrontendProviders(React.createElement(ChatPanel, createChatPanelProps({
-    messageActions: {
-      ...createMessageActions(),
-      onSend,
-    },
-  })));
+  renderWithFrontendProviders(
+    React.createElement(
+      ChatPanel,
+      createChatPanelProps({
+        messageActions: {
+          ...createMessageActions(),
+          onSend,
+        },
+      }),
+    ),
+  );
 
   await user.click(screen.getByRole("button", { name: "整理日志" }));
 
@@ -107,12 +119,17 @@ test("message list renders messages and streaming run as stable keyed items", ()
     displayText: "正在执行工具",
   });
 
-  renderWithFrontendProviders(React.createElement(MessageList, createMessageListProps({
-    messages: [userMessage, assistantMessage],
-    runs: [runningRun],
-    currentRun: runningRun,
-    onViewWorkflow,
-  })));
+  renderWithFrontendProviders(
+    React.createElement(
+      MessageList,
+      createMessageListProps({
+        messages: [userMessage, assistantMessage],
+        runs: [runningRun],
+        currentRun: runningRun,
+        onViewWorkflow,
+      }),
+    ),
+  );
 
   expect(screen.getByText("帮我检查项目")).toBeInTheDocument();
   expect(screen.getByText("我准备读取文件。")).toBeInTheDocument();

@@ -1,7 +1,5 @@
 import { Liquid } from "liquidjs";
-import type {
-  ToolArtifactPolicyManifest,
-} from "../Types/PluginManifestTypes.js";
+import type { ToolArtifactPolicyManifest } from "../Types/PluginManifestTypes.js";
 import type {
   ExecutedToolCallArtifact,
   ToolArtifactDeltaRecord,
@@ -30,9 +28,7 @@ export function buildArtifactSummary(input: {
   workspace: unknown;
 }): string {
   const template = input.policy?.Summary?.Template;
-  return template
-    ? renderArtifactTemplate(template, createArtifactTemplateScope(input)) ?? ""
-    : "";
+  return template ? (renderArtifactTemplate(template, createArtifactTemplateScope(input)) ?? "") : "";
 }
 
 export function buildArtifactProjection(input: {
@@ -45,47 +41,34 @@ export function buildArtifactProjection(input: {
 }): string {
   const template = input.policy?.Summary?.ArtifactTemplate;
   return template
-    ? renderArtifactTemplate(template, createArtifactTemplateScope({
-        toolName: input.toolName,
-        callId: input.callId,
-        args: input.args,
-        result: input.result,
-        evidence: input.artifact.evidence,
-        delta: input.artifact.delta,
-        policy: input.policy,
-        artifact: {
-          artifactId: input.artifact.artifactId,
-          artifactUri: input.artifact.artifactUri,
-          artifactPath: input.artifact.artifactPath,
-          relativePath: input.artifact.relativePath,
-        },
-        workspace: input.artifact.workspace,
-      })) ?? ""
+    ? (renderArtifactTemplate(
+        template,
+        createArtifactTemplateScope({
+          toolName: input.toolName,
+          callId: input.callId,
+          args: input.args,
+          result: input.result,
+          evidence: input.artifact.evidence,
+          delta: input.artifact.delta,
+          policy: input.policy,
+          artifact: {
+            artifactId: input.artifact.artifactId,
+            artifactUri: input.artifact.artifactUri,
+            artifactPath: input.artifact.artifactPath,
+            relativePath: input.artifact.relativePath,
+          },
+          workspace: input.artifact.workspace,
+        }),
+      ) ?? "")
     : "";
 }
 
-export function renderEvidenceTemplate(
-  template: string,
-  data: Record<string, unknown>,
-): string | undefined {
-  return renderTemplate(
-    EvidencePresentationRenderer,
-    template,
-    data,
-    "Evidence presentation template failed",
-  );
+export function renderEvidenceTemplate(template: string, data: Record<string, unknown>): string | undefined {
+  return renderTemplate(EvidencePresentationRenderer, template, data, "Evidence presentation template failed");
 }
 
-function renderArtifactTemplate(
-  template: string,
-  data: Record<string, unknown>,
-): string | undefined {
-  return renderTemplate(
-    ArtifactTemplateRenderer,
-    template,
-    data,
-    "Artifact template failed",
-  );
+function renderArtifactTemplate(template: string, data: Record<string, unknown>): string | undefined {
+  return renderTemplate(ArtifactTemplateRenderer, template, data, "Artifact template failed");
 }
 
 function createArtifactTemplateScope(input: {
@@ -109,10 +92,7 @@ function createArtifactTemplateScope(input: {
     artifact: input.artifact,
     evidence,
     evidenceByKind: Object.fromEntries(
-      (input.policy?.Evidence ?? []).map((rule) => [
-        rule.Kind,
-        evidence.filter((entry) => entry.kind === rule.Kind),
-      ]),
+      (input.policy?.Evidence ?? []).map((rule) => [rule.Kind, evidence.filter((entry) => entry.kind === rule.Kind)]),
     ),
     projections,
     delta: input.delta,
@@ -155,12 +135,14 @@ function buildEvidenceProjectionBlocks(
       count: records.length,
       evidence: records,
     };
-    return [{
-      kind: rule.Kind,
-      count: records.length,
-      summary: renderEvidenceTemplate(rule.Projection.SummaryTemplate, data) ?? "",
-      artifact: renderEvidenceTemplate(rule.Projection.ArtifactTemplate, data) ?? "",
-    }];
+    return [
+      {
+        kind: rule.Kind,
+        count: records.length,
+        summary: renderEvidenceTemplate(rule.Projection.SummaryTemplate, data) ?? "",
+        artifact: renderEvidenceTemplate(rule.Projection.ArtifactTemplate, data) ?? "",
+      },
+    ];
   });
 }
 
@@ -174,6 +156,6 @@ function renderTemplate(
     const text = String(renderer.parseAndRenderSync(template, data)).trim();
     return text.length > 0 ? text : undefined;
   } catch (error) {
-    throw new Error(`${errorPrefix}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`${errorPrefix}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }

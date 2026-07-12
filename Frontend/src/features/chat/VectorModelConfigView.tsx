@@ -1,24 +1,13 @@
-import {
-  BrainCircuit,
-  Layers3,
-  RefreshCw,
-  Server,
-  SlidersHorizontal,
-} from "lucide-react";
+import { BrainCircuit, Layers3, RefreshCw, Server, SlidersHorizontal } from "lucide-react";
 import { cn } from "../../lib/util";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  ScrollArea,
-} from "../../shared/ui";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, ScrollArea } from "../../shared/ui";
 import {
   JsonConfigSettingsView,
   writeJsonConfigFieldValue,
   type JsonConfigObject,
 } from "../../shared/config/JsonConfigForm";
 import type { ConfigFormSectionData } from "../../api/eventTypes";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { ModelProviderIcon, inferModelProviderIcon } from "./ModelProviderIcon";
 
 interface ProviderEndpointDraft {
@@ -53,10 +42,12 @@ export function VectorModelConfigView({
 }): JSX.Element {
   const providers = readProviders(value.ModelProviderEndpoints);
   const models = readModels(value.ModelProviders);
-  const nonVectorSection = section ? {
-    ...section,
-    fields: section.fields.filter((field) => field.path[0] !== "VectorModels"),
-  } : undefined;
+  const nonVectorSection = section
+    ? {
+        ...section,
+        fields: section.fields.filter((field) => field.path[0] !== "VectorModels"),
+      }
+    : undefined;
 
   return (
     <ScrollArea className="h-full min-h-0 flex-1 bg-paper-50" viewportClassName="h-full">
@@ -65,13 +56,13 @@ export function VectorModelConfigView({
           <section>
             <SectionTitle
               icon={<BrainCircuit className="h-4 w-4" />}
-              title="向量模型"
-              description="模型下拉只显示已在模型服务里标记对应能力的模型。"
+              title={frontendMessage("config.vector.title")}
+              description={frontendMessage("config.vector.description")}
             />
             <div className="grid gap-3 lg:grid-cols-2">
               <VectorModelCard
-                title="嵌入模型"
-                description="用于长期记忆、语义检索和相似度计算。"
+                title={frontendMessage("config.vector.embeddingTitle")}
+                description={frontendMessage("config.vector.embeddingDescription")}
                 capability="Embedding"
                 providers={providers}
                 models={models}
@@ -80,8 +71,8 @@ export function VectorModelConfigView({
                 onChange={(patch) => onChange(writeVectorConfig(value, "Embedding", patch))}
               />
               <VectorModelCard
-                title="重排模型"
-                description="用于对候选结果做相关性重排序。"
+                title={frontendMessage("config.vector.rerankTitle")}
+                description={frontendMessage("config.vector.rerankDescription")}
                 capability="Rerank"
                 providers={providers}
                 models={models}
@@ -131,10 +122,7 @@ function VectorModelCard({
     .filter((provider) => provider.Id && provider.Enabled !== false)
     .map((provider) => ({ value: provider.Id, label: provider.Id, icon: provider.Icon }));
   const modelOptions = models
-    .filter((model) =>
-      model.ProviderId === providerId
-      && model.Model
-      && model.Capabilities?.[capability] === true)
+    .filter((model) => model.ProviderId === providerId && model.Model && model.Capabilities?.[capability] === true)
     .map((model) => ({
       value: model.Model,
       label: model.Model,
@@ -156,44 +144,90 @@ function VectorModelCard({
       </div>
 
       <div className="divide-y divide-ink-200/70">
-        <SettingLine icon={<Server className="h-3.5 w-3.5" />} label="供应商">
+        <SettingLine icon={<Server className="h-3.5 w-3.5" />} label={frontendMessage("config.vector.provider")}>
           <MenuSelect
             value={providerId}
-            placeholder="选择供应商"
+            placeholder={frontendMessage("config.vector.selectProvider")}
             options={providerOptions}
             disabled={disabled || !enabled || providerOptions.length === 0}
             onChange={(ProviderId) => onChange({ ProviderId, Model: "" })}
           />
         </SettingLine>
-        <SettingLine icon={<BrainCircuit className="h-3.5 w-3.5" />} label="模型">
+        <SettingLine icon={<BrainCircuit className="h-3.5 w-3.5" />} label={frontendMessage("config.vector.model")}>
           <MenuSelect
             value={readString(value.Model) ?? ""}
-            placeholder={providerId ? "选择模型" : "先选择供应商"}
+            placeholder={frontendMessage(
+              providerId ? "config.vector.selectModel" : "config.vector.selectProviderFirst",
+            )}
             options={modelOptions}
             disabled={disabled || !enabled || !providerId || modelOptions.length === 0}
             onChange={(Model) => onChange({ Model })}
           />
           {providerId && modelOptions.length === 0 ? (
             <div className="mt-1.5 text-[11px] text-amber-700">
-              当前供应商没有标记为{capability === "Embedding" ? "向量嵌入" : "重排序"}的模型。
+              {frontendMessage("config.vector.noCapableModel", {
+                capability: frontendMessage(
+                  capability === "Embedding" ? "config.vector.embeddingCapability" : "config.vector.rerankCapability",
+                ),
+              })}
             </div>
           ) : null}
         </SettingLine>
         {capability === "Embedding" ? (
           <>
-            <NumberLine label="维度" value={readNumber(value.Dimensions)} disabled={disabled || !enabled} onChange={(Dimensions) => onChange({ Dimensions })} />
-            <NumberLine label="批量" value={readNumber(value.BatchSize)} disabled={disabled || !enabled} onChange={(BatchSize) => onChange({ BatchSize })} />
-            <NumberLine label="输入上限" value={readNumber(value.InputMaxChars)} disabled={disabled || !enabled} onChange={(InputMaxChars) => onChange({ InputMaxChars })} />
+            <NumberLine
+              label={frontendMessage("config.vector.dimensions")}
+              value={readNumber(value.Dimensions)}
+              disabled={disabled || !enabled}
+              onChange={(Dimensions) => onChange({ Dimensions })}
+            />
+            <NumberLine
+              label={frontendMessage("config.vector.batchSize")}
+              value={readNumber(value.BatchSize)}
+              disabled={disabled || !enabled}
+              onChange={(BatchSize) => onChange({ BatchSize })}
+            />
+            <NumberLine
+              label={frontendMessage("config.vector.inputLimit")}
+              value={readNumber(value.InputMaxChars)}
+              disabled={disabled || !enabled}
+              onChange={(InputMaxChars) => onChange({ InputMaxChars })}
+            />
           </>
         ) : (
           <>
-            <TextLine label="接口路径" value={readString(value.EndpointPath) ?? ""} disabled={disabled || !enabled} onChange={(EndpointPath) => onChange({ EndpointPath })} />
-            <NumberLine label="候选上限" value={readNumber(value.CandidateLimit)} disabled={disabled || !enabled} onChange={(CandidateLimit) => onChange({ CandidateLimit })} />
-            <NumberLine label="TopK" value={readNumber(value.TopK)} disabled={disabled || !enabled} onChange={(TopK) => onChange({ TopK })} />
+            <TextLine
+              label={frontendMessage("config.vector.endpointPath")}
+              value={readString(value.EndpointPath) ?? ""}
+              disabled={disabled || !enabled}
+              onChange={(EndpointPath) => onChange({ EndpointPath })}
+            />
+            <NumberLine
+              label={frontendMessage("config.vector.candidateLimit")}
+              value={readNumber(value.CandidateLimit)}
+              disabled={disabled || !enabled}
+              onChange={(CandidateLimit) => onChange({ CandidateLimit })}
+            />
+            <NumberLine
+              label="TopK"
+              value={readNumber(value.TopK)}
+              disabled={disabled || !enabled}
+              onChange={(TopK) => onChange({ TopK })}
+            />
           </>
         )}
-        <NumberLine label="超时(s)" value={readNumber(value.TimeoutSeconds)} disabled={disabled || !enabled} onChange={(TimeoutSeconds) => onChange({ TimeoutSeconds })} />
-        <NumberLine label="网络重试" value={readNumber(value.MaxNetworkRetries)} disabled={disabled || !enabled} onChange={(MaxNetworkRetries) => onChange({ MaxNetworkRetries })} />
+        <NumberLine
+          label={frontendMessage("config.vector.timeoutSeconds")}
+          value={readNumber(value.TimeoutSeconds)}
+          disabled={disabled || !enabled}
+          onChange={(TimeoutSeconds) => onChange({ TimeoutSeconds })}
+        />
+        <NumberLine
+          label={frontendMessage("config.vector.networkRetries")}
+          value={readNumber(value.MaxNetworkRetries)}
+          disabled={disabled || !enabled}
+          onChange={(MaxNetworkRetries) => onChange({ MaxNetworkRetries })}
+        />
       </div>
     </div>
   );
@@ -354,16 +388,21 @@ function MenuSelect({
           </span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto">
-        {options.length > 0 ? options.map((option) => (
-          <DropdownMenuItem key={option.value} onSelect={() => onChange(option.value)}>
-            <span className="inline-flex min-w-0 items-center gap-2">
-              {option.icon ? <ModelProviderIcon icon={option.icon} size={16} /> : null}
-              <span className="truncate">{option.label}</span>
-            </span>
-          </DropdownMenuItem>
-        )) : (
-          <DropdownMenuItem disabled>没有可选项</DropdownMenuItem>
+      <DropdownMenuContent
+        align="start"
+        className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
+      >
+        {options.length > 0 ? (
+          options.map((option) => (
+            <DropdownMenuItem key={option.value} onSelect={() => onChange(option.value)}>
+              <span className="inline-flex min-w-0 items-center gap-2">
+                {option.icon ? <ModelProviderIcon icon={option.icon} size={16} /> : null}
+                <span className="truncate">{option.label}</span>
+              </span>
+            </DropdownMenuItem>
+          ))
+        ) : (
+          <DropdownMenuItem disabled>{frontendMessage("config.vector.noOptions")}</DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -390,27 +429,27 @@ function writeVectorConfig(
 function readProviders(value: unknown): ProviderEndpointDraft[] {
   return Array.isArray(value)
     ? value.filter(isRecord).map((entry) => ({
-      Id: readString(entry.Id) ?? "",
-      Icon: readString(entry.Icon),
-      Enabled: readBoolean(entry.Enabled),
-    }))
+        Id: readString(entry.Id) ?? "",
+        Icon: readString(entry.Icon),
+        Enabled: readBoolean(entry.Enabled),
+      }))
     : [];
 }
 
 function readModels(value: unknown): ModelProviderDraft[] {
   return Array.isArray(value)
     ? value.filter(isRecord).map((entry) => ({
-      Id: readString(entry.Id) ?? "",
-      ProviderId: readString(entry.ProviderId) ?? "",
-      Model: readString(entry.Model) ?? "",
-      Icon: readString(entry.Icon),
-      Capabilities: isRecord(entry.Capabilities)
-        ? {
-          Embedding: readBoolean(entry.Capabilities.Embedding),
-          Rerank: readBoolean(entry.Capabilities.Rerank),
-        }
-        : undefined,
-    }))
+        Id: readString(entry.Id) ?? "",
+        ProviderId: readString(entry.ProviderId) ?? "",
+        Model: readString(entry.Model) ?? "",
+        Icon: readString(entry.Icon),
+        Capabilities: isRecord(entry.Capabilities)
+          ? {
+              Embedding: readBoolean(entry.Capabilities.Embedding),
+              Rerank: readBoolean(entry.Capabilities.Rerank),
+            }
+          : undefined,
+      }))
     : [];
 }
 
