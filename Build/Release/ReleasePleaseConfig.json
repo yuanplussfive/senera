@@ -1,0 +1,56 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "2ea079f6faacb2dfca6f251c3a72fc3984504b5e",
+  "release-type": "node",
+  "draft": true,
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "pull-request-title-pattern": "chore: 发布 ${version}",
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "新增功能"
+    },
+    {
+      "type": "fix",
+      "section": "问题修复"
+    },
+    {
+      "type": "perf",
+      "section": "性能优化"
+    },
+    {
+      "type": "refactor",
+      "section": "内部重构"
+    },
+    {
+      "type": "docs",
+      "section": "文档"
+    },
+    {
+      "type": "test",
+      "section": "测试",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "section": "构建与发布"
+    },
+    {
+      "type": "ci",
+      "section": "持续集成",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "维护",
+      "hidden": true
+    }
+  ],
+  "packages": {
+    ".": {
+      "package-name": "senera",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

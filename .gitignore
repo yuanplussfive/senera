@@ -24,4 +24,8 @@ Plugins/*/package-lock.json
 System/Plugins/*/node_modules/
 System/Plugins/*/package-lock.json
 Release/
+!Build/Release/
+Build/Release/*
+!Build/Release/ReleasePleaseConfig.json
+!Build/Release/ReleasePleaseManifest.json
 论题.txt
