@@ -29,8 +29,9 @@
     "quality.coverage": "npm run test.coverage.frontend && npm run test.coverage.backend",
     "quality.lint": "eslint . --cache --cache-location .cache/eslint/.eslintcache --max-warnings=0",
     "quality.lint.fix": "npm run quality.lint -- --fix",
-    "quality.format": "prettier ./ --check",
-    "quality.format.fix": "prettier ./ --write",
+    "quality.commits": "commitlint",
+    "quality.format": "prettier \"**/*\" --check --ignore-unknown",
+    "quality.format.fix": "prettier \"**/*\" --write --ignore-unknown",
     "policy.compile": "tsx Build/CompileOpaPolicy.ts",
     "policy.verify": "tsx Build/CompileOpaPolicy.ts --check",
     "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
@@ -180,6 +181,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.1",
+    "@commitlint/config-conventional": "^21.2.0",
     "@eslint/js": "^10.0.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
