@@ -15,4 +15,5 @@ senera-evaluation/
 tmp/
 
 package-lock.json
+CHANGELOG.md
 *.wasm
