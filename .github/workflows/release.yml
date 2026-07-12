@@ -37,15 +37,47 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+      tag_name: ${{ steps.release.outputs.tag_name || steps.release-state.outputs.current_tag }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - id: release-state
+        name: Inspect Current Release State
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          current_version="$(node --input-type=module -e 'import fs from "node:fs"; const manifest = JSON.parse(fs.readFileSync("Build/Release/ReleasePleaseManifest.json", "utf8")); console.log(manifest["."]);')"
+          current_tag="v${current_version}"
+
+          echo "current_version=${current_version}" >> "$GITHUB_OUTPUT"
+          echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${current_tag}" >/dev/null 2>&1; then
+            echo "skip_pull_request=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_pull_request=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Git tag ${current_tag} is missing; release PR creation is disabled until the current manifest release is recovered."
+          fi
       - id: release
         uses: googleapis/release-please-action@v4
         with:
           config-file: Build/Release/ReleasePleaseConfig.json
           manifest-file: Build/Release/ReleasePleaseManifest.json
+          skip-github-pull-request: ${{ steps.release-state.outputs.skip_pull_request }}
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+      - name: Require current manifest release before opening the next release PR
+        if: >-
+          steps.release-state.outputs.skip_pull_request == 'true' &&
+          steps.release.outputs.release_created != 'true'
+        env:
+          CURRENT_TAG: ${{ steps.release-state.outputs.current_tag }}
+        run: |
+          echo "::error::Release Please manifest points to ${CURRENT_TAG}, but that GitHub release/tag is missing. Create or recover ${CURRENT_TAG}, then rerun Product Release."
+          exit 1
       - name: Enable auto-merge for the generated release pull request
+        if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           BASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
