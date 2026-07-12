@@ -224,5 +224,6 @@ jobs:
       - name: Publish draft as the latest stable release
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
-        run: gh release edit "$RELEASE_TAG" --draft=false --latest
+        run: gh release edit "$RELEASE_TAG" --repo "$REPOSITORY" --draft=false --latest
