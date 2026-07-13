@@ -66,6 +66,46 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
   expect(onCancel).toHaveBeenCalledTimes(1);
 });
 
+test("chat model selector keeps the current conversation choice and exposes the current default", async () => {
+  const onApplyDefaultModel = vi.fn();
+  const user = userEvent.setup();
+  renderWithFrontendProviders(
+    React.createElement(
+      ChatComposer,
+      createComposerProps({
+        modelConfig: {
+          modelProviders: [
+            {
+              id: "openai:gpt-4o",
+              icon: "openai",
+              capabilities: { Chat: true },
+              model: "gpt-4o",
+              isDefault: false,
+            },
+            {
+              id: "anthropic:sonnet",
+              icon: "anthropic",
+              capabilities: { Chat: true },
+              model: "claude-sonnet",
+              isDefault: true,
+            },
+          ],
+          selectedModelProviderId: "openai:gpt-4o",
+          defaultModelProviderId: "anthropic:sonnet",
+          onSelectModelProvider: vi.fn(),
+          onApplyDefaultModel,
+        },
+      }),
+    ),
+  );
+
+  await user.click(screen.getByRole("button", { name: "选择模型" }));
+  expect(screen.getByText("当前对话模型")).toBeInTheDocument();
+  expect(screen.getByText("默认模型：claude-sonnet")).toBeInTheDocument();
+  await user.click(screen.getByRole("menuitem", { name: "恢复为默认" }));
+  expect(onApplyDefaultModel).toHaveBeenCalledTimes(1);
+});
+
 test("chat panel routes grouped message actions through the empty state", async () => {
   const onSend = vi.fn();
   const user = userEvent.setup();

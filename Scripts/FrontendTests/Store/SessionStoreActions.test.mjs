@@ -23,6 +23,10 @@ beforeEach(() => {
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
+    modelProviders: [],
+    selectedModelProviderId: null,
+    defaultModelProviderId: null,
+    selectedModelProviderIdsBySession: {},
   });
 });
 
@@ -61,6 +65,62 @@ test("history loading gates local message appends and failure state is explicit"
   expect(state.historyLoadingIds.session_history).toBe(false);
   expect(state.historyFailedIds.session_history).toBe(true);
   expect(state.historyReplayBuffers.session_history).toBe(undefined);
+});
+
+test("keeps the active conversation model independent from a later default-model change", () => {
+  const store = useStore.getState();
+  const snapshot = (defaultModelProviderId) => ({
+    channel: "agent.event",
+    kind: EventKinds.ModelListSnapshot,
+    layer: "snapshot",
+    phase: "config",
+    sequence: 1,
+    timestamp: "2026-07-13T00:00:00.000Z",
+    data: {
+      defaultModelProviderId,
+      models: [
+        {
+          id: "provider_a",
+          icon: "mistral",
+          capabilities: { Chat: true },
+          kind: "OpenAICompatible",
+          endpoint: "ChatCompletions",
+          baseUrl: "https://example.invalid/v1",
+          model: "mistral-large-latest",
+          isDefault: defaultModelProviderId === "provider_a",
+        },
+        {
+          id: "provider_b",
+          icon: "openai",
+          capabilities: { Chat: true },
+          kind: "OpenAICompatible",
+          endpoint: "ChatCompletions",
+          baseUrl: "https://example.invalid/v1",
+          model: "gpt-4.1",
+          isDefault: defaultModelProviderId === "provider_b",
+        },
+      ],
+    },
+  });
+
+  store.ingest(snapshot("provider_b"));
+  store.registerCreatingSession("session_a", undefined, "provider_a");
+  store.registerCreatingSession("session_b", undefined, "provider_b");
+  store.selectSession("session_a");
+  expect(useStore.getState().selectedModelProviderId).toBe("provider_a");
+
+  store.ingest(snapshot("provider_a"));
+  expect(useStore.getState().defaultModelProviderId).toBe("provider_a");
+  expect(useStore.getState().selectedModelProviderId).toBe("provider_a");
+
+  store.selectSession("session_b");
+  expect(useStore.getState().selectedModelProviderId).toBe("provider_b");
+  store.applyDefaultModelToActiveSession();
+  expect(useStore.getState().selectedModelProviderId).toBe("provider_a");
+  expect(useStore.getState().selectedModelProviderIdsBySession).toMatchObject({
+    session_a: "provider_a",
+    session_b: "provider_a",
+  });
 });
 
 test("ingest applies model snapshots and keeps selected provider stable", () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowUp, Check, ChevronDown, Loader2, Paperclip, Square, X } from "lucide-react";
+import { AlertCircle, ArrowUp, Check, ChevronDown, Loader2, Paperclip, RotateCcw, Square, X } from "lucide-react";
 import { toast } from "sonner";
 import type {
   UploadAttachmentData,
@@ -365,7 +365,9 @@ export function ChatComposer({
               disabled={disabled || running}
               models={modelConfig.modelProviders}
               selectedId={modelConfig.selectedModelProviderId}
+              defaultModelId={modelConfig.defaultModelProviderId}
               onSelect={modelConfig.onSelectModelProvider}
+              onUseDefault={modelConfig.onApplyDefaultModel}
               prefersCompactControls={prefersCompactControls}
             />
           </span>
@@ -487,13 +489,17 @@ function ModelSelector({
   disabled,
   models,
   selectedId,
+  defaultModelId,
   onSelect,
+  onUseDefault,
   prefersCompactControls,
 }: {
   disabled: boolean;
   models: ModelProviderListItem[];
   selectedId: string | null;
+  defaultModelId?: string | null;
   onSelect: (id: string) => void;
+  onUseDefault?: () => void;
   prefersCompactControls: boolean;
 }): JSX.Element {
   const chatModels = useMemo(
@@ -505,6 +511,11 @@ function ModelSelector({
     [chatModels, selectedId],
   );
   const label = readModelSelectorLabel(selected);
+  const defaultModel = useMemo(
+    () => readSelectedModelProvider(chatModels, defaultModelId ?? null) ?? null,
+    [chatModels, defaultModelId],
+  );
+  const usesDefault = Boolean(defaultModel && defaultModel.id === selected?.id);
 
   return (
     <DropdownMenu>
@@ -529,7 +540,7 @@ function ModelSelector({
         </MotionButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="top" className="w-[min(280px,calc(100vw-24px))]">
-        <DropdownMenuLabel>{frontendMessage("runtime.migrated.features.chat.ChatComposer.533.28")}</DropdownMenuLabel>
+        <DropdownMenuLabel>{frontendMessage("chat.model.currentConversation")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {chatModels.map((model) => {
           const active = model.id === selected?.id;
@@ -553,6 +564,23 @@ function ModelSelector({
             </DropdownMenuItem>
           );
         })}
+        {!usesDefault && defaultModel && onUseDefault ? (
+          <>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5 text-[11px] text-ink-450">
+              {frontendMessage("chat.model.defaultHint", { model: readModelSelectorLabel(defaultModel) })}
+            </div>
+            <DropdownMenuItem
+              onSelect={onUseDefault}
+              className="h-10 py-2"
+              icon={<RotateCcw className="h-3.5 w-3.5 text-terra-500" />}
+            >
+              <span className="min-w-0 truncate text-[13px] text-ink-850">
+                {frontendMessage("chat.model.useDefault")}
+              </span>
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

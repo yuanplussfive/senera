@@ -11,12 +11,13 @@ type PersistedSessionState = Partial<Pick<
   | "defaultSidebarCollapsed"
   | "motionLevel"
   | "selectedModelProviderId"
+  | "selectedModelProviderIdsBySession"
   | "userProfile"
 >>;
 
 export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionState> = {
   name: PERSIST_KEY,
-  version: 4,
+  version: 5,
   storage: createJSONStorage(() => localStorage),
   // 后端是 SSOT；前端只缓存 UI 偏好 + 会话元数据（标题/时间）。
   // messages 不持久化 —— 后端 session.history 会权威回放。
@@ -25,6 +26,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     defaultRightPanelCollapsed: state.defaultRightPanelCollapsed,
     motionLevel: state.motionLevel,
     selectedModelProviderId: state.selectedModelProviderId,
+    selectedModelProviderIdsBySession: state.selectedModelProviderIdsBySession,
     userProfile: state.userProfile,
   }),
   // 旧版本 localStorage 干净迁移
@@ -37,6 +39,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       defaultRightPanelCollapsed: readPersistedBoolean(p.defaultRightPanelCollapsed, false),
       motionLevel,
       selectedModelProviderId: p.selectedModelProviderId,
+      selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
       userProfile: p.userProfile,
     };
   },
@@ -53,6 +56,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       defaultRightPanelCollapsed,
       motionLevel: readPersistedMotionLevel(p.motionLevel),
       selectedModelProviderId: p.selectedModelProviderId ?? null,
+      selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
       userProfile: normalizeUserProfile(p.userProfile),
       modelProviders: [],
       providerModelCatalogs: {},
@@ -74,6 +78,16 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     };
   },
 };
+
+
+function readPersistedModelSelectionBySession(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string" && Boolean(entry[1]),
+    ),
+  );
+}
 
 function readPersistedMotionLevel(value: unknown): MotionLevel {
   return value === "reduced" || value === "none" || value === "full" ? value : "full";
@@ -98,6 +112,7 @@ export function readPersistedSessionPreferences(rawValue: string | null): Persis
         : undefined,
       motionLevel: readPersistedMotionLevel(state.motionLevel),
       selectedModelProviderId: typeof state.selectedModelProviderId === "string" ? state.selectedModelProviderId : undefined,
+      selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(state.selectedModelProviderIdsBySession),
       userProfile: state.userProfile,
     };
   } catch {

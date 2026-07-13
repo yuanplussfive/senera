@@ -25,7 +25,7 @@ export interface UseChatCommandsOptions {
   ) => void;
   lastSendRef: MutableRefObject<LastSentMessage | null>;
   pendingAfterTruncateRef: MutableRefObject<PendingAfterTruncate[]>;
-  registerSession: (sessionId: string) => void;
+  registerSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
   send: (request: WsRequest) => boolean;
   serverKnownSessionIdsRef: MutableRefObject<Set<string>>;
   status: SocketStatus;
@@ -324,7 +324,7 @@ export function useChatCommands({
           toast.error(frontendMessage("chat.createSessionDisconnected"));
           return;
         }
-        registerSession(targetSessionId);
+        registerSession(targetSessionId, undefined, modelProviderId);
         serverKnownSessionIdsRef.current.add(targetSessionId);
       }
 

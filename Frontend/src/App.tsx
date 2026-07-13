@@ -45,7 +45,9 @@ export function App(): JSX.Element {
   const setSidebarCollapsed = useStore((s) => s.setSidebarCollapsed);
   const modelProviders = useStore((s) => s.modelProviders);
   const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
+  const defaultModelProviderId = useStore((s) => s.defaultModelProviderId);
   const selectModelProvider = useStore((s) => s.selectModelProvider);
+  const applyDefaultModelToActiveSession = useStore((s) => s.applyDefaultModelToActiveSession);
   const userProfile = useStore((s) => s.userProfile);
   const markUserProfileSynced = useStore((s) => s.markUserProfileSynced);
   const responsiveMode = useResponsiveMode();
@@ -163,7 +165,7 @@ export function App(): JSX.Element {
     renameSession: handleRenameSession,
     updateUserProfile: handleUpdateUserProfile,
   } = useSessionCommands({
-    selectedModelProviderId,
+    defaultModelProviderId,
     send,
     serverKnownSessionIdsRef,
     status,
@@ -260,7 +262,9 @@ export function App(): JSX.Element {
               modelConfig={{
                 modelProviders,
                 selectedModelProviderId,
+                defaultModelProviderId,
                 onSelectModelProvider: selectModelProvider,
+                onApplyDefaultModel: applyDefaultModelToActiveSession,
               }}
               presetConfig={{
                 presets: presetCommands.presets,

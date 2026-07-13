@@ -12,6 +12,11 @@ import {
   truncate,
 } from "./session/sessionProjector";
 import {
+  applyDefaultModelToActiveSession,
+  selectModelForActiveSession,
+  syncActiveSessionModelSelection,
+} from "./session/sessionModelSelection";
+import {
   DEFAULT_USER_PROFILE,
   normalizeUserProfile,
   type UserProfile,
@@ -210,7 +215,12 @@ export interface StoreState {
   modelProviders: ModelProviderListItem[];
   providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
   providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
+  /** Current active conversation's model. Kept for existing command/UI contracts. */
   selectedModelProviderId: string | null;
+  /** Authoritative default model from model.list; used when creating a new conversation. */
+  defaultModelProviderId: string | null;
+  /** Local per-conversation selections. The backend still receives the chosen id per request. */
+  selectedModelProviderIdsBySession: Record<string, string>;
   pluginConfigs: PluginConfigItem[];
   presets: PresetItem[];
   activePresetName: string | null;
@@ -228,7 +238,7 @@ export interface StoreState {
   setDefaultRightPanelCollapsed: (collapsed: boolean) => void;
   setMotionLevel: (level: MotionLevel) => void;
   setViewedRun: (sessionId: string, requestId: string | undefined) => void;
-  registerCreatingSession: (sessionId: string, title?: string) => void;
+  registerCreatingSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
   renameSession: (sessionId: string, title: string) => void;
   appendUserMessage: (
     sessionId: string,
@@ -244,6 +254,7 @@ export interface StoreState {
   markHistoryLoading: (sessionId: string) => void;
   markHistoryLoadFailed: (sessionId: string) => void;
   selectModelProvider: (id: string) => void;
+  applyDefaultModelToActiveSession: () => void;
   setUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   markUserProfileSynced: (profile?: UserProfileData) => void;
   replaceWithDevMockData: (sessions: SessionRecord[], activeSessionId?: string) => void;
@@ -284,6 +295,8 @@ export const useStore = create<StoreState>()(
       providerModelCatalogs: {},
       providerModelErrors: {},
       selectedModelProviderId: null,
+      defaultModelProviderId: null,
+      selectedModelProviderIdsBySession: {},
       pluginConfigs: [],
       presets: [],
       activePresetName: null,
@@ -295,6 +308,7 @@ export const useStore = create<StoreState>()(
     selectSession: (id) =>
       set((state) => {
         state.activeSessionId = id;
+        syncActiveSessionModelSelection(state);
       }),
 
     toggleSidebar: () =>
@@ -343,15 +357,20 @@ export const useStore = create<StoreState>()(
         }
       }),
 
-    registerCreatingSession: (sessionId, title) =>
+    registerCreatingSession: (sessionId, title, modelProviderId) =>
       set((state) => {
         delete state.pendingDeletedSessionIds[sessionId];
         state.pendingCreatedSessionIds[sessionId] = true;
+        const initialModelId = modelProviderId ?? state.defaultModelProviderId;
+        if (initialModelId) {
+          state.selectedModelProviderIdsBySession[sessionId] = initialModelId;
+        }
         if (state.sessions[sessionId]) {
           if (!state.sessionOrder.includes(sessionId)) {
             state.sessionOrder.unshift(sessionId);
           }
           state.activeSessionId = sessionId;
+          syncActiveSessionModelSelection(state);
           return;
         }
         state.sessions[sessionId] = {
@@ -367,6 +386,7 @@ export const useStore = create<StoreState>()(
         };
         state.sessionOrder.unshift(sessionId);
         state.activeSessionId = sessionId;
+        syncActiveSessionModelSelection(state);
       }),
 
     renameSession: (sessionId, title) =>
@@ -380,10 +400,12 @@ export const useStore = create<StoreState>()(
         state.pendingDeletedSessionIds[sessionId] = true;
         delete state.pendingCreatedSessionIds[sessionId];
         delete state.sessions[sessionId];
+        delete state.selectedModelProviderIdsBySession[sessionId];
         state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
         if (state.activeSessionId === sessionId) {
           state.activeSessionId = state.sessionOrder[0] ?? null;
         }
+        syncActiveSessionModelSelection(state);
       }),
 
     clearAllSessions: (sessionIds) =>
@@ -392,11 +414,13 @@ export const useStore = create<StoreState>()(
         for (const id of ids) {
           state.pendingDeletedSessionIds[id] = true;
           delete state.pendingCreatedSessionIds[id];
+          delete state.selectedModelProviderIdsBySession[id];
           deleteSessionRuntimeState(state, id);
         }
         if (state.activeSessionId && !state.sessions[state.activeSessionId]) {
           state.activeSessionId = state.sessionOrder[0] ?? null;
         }
+        syncActiveSessionModelSelection(state);
       }),
 
     markHistoryLoading: (sessionId) =>
@@ -419,7 +443,12 @@ export const useStore = create<StoreState>()(
 
     selectModelProvider: (id) =>
       set((state) => {
-        state.selectedModelProviderId = id;
+        selectModelForActiveSession(state, id);
+      }),
+
+    applyDefaultModelToActiveSession: () =>
+      set((state) => {
+        applyDefaultModelToActiveSession(state);
       }),
 
     setUserProfile: (profile) =>
@@ -461,6 +490,7 @@ export const useStore = create<StoreState>()(
         state.missingOnServerIds = {};
         state.pendingCreatedSessionIds = {};
         state.pendingDeletedSessionIds = {};
+        state.selectedModelProviderIdsBySession = {};
         for (const session of mockSessions) {
           state.sessions[session.sessionId] = session;
           state.sessionOrder.push(session.sessionId);
@@ -469,6 +499,7 @@ export const useStore = create<StoreState>()(
         state.activeSessionId = activeSessionId && state.sessions[activeSessionId]
           ? activeSessionId
           : state.sessionOrder[0] ?? null;
+        syncActiveSessionModelSelection(state);
       }),
 
     appendUserMessage: (sessionId, requestId, input, attachments, options) =>
@@ -508,6 +539,7 @@ export const useStore = create<StoreState>()(
       ingest: (env) =>
         set((state) => {
           applyEvent(state, env);
+          syncActiveSessionModelSelection(state);
         }),
     })),
     sessionPersistOptions,
@@ -524,11 +556,14 @@ if (typeof window !== "undefined") {
     const nextDefaultRightPanelCollapsed = preferences.defaultRightPanelCollapsed ?? state.defaultRightPanelCollapsed;
     const nextMotionLevel = preferences.motionLevel ?? state.motionLevel;
     const nextSelectedModelProviderId = preferences.selectedModelProviderId ?? state.selectedModelProviderId;
+    const nextSelectedModelProviderIdsBySession = preferences.selectedModelProviderIdsBySession
+      ?? state.selectedModelProviderIdsBySession;
     if (
       nextDefaultSidebarCollapsed === state.defaultSidebarCollapsed
       && nextDefaultRightPanelCollapsed === state.defaultRightPanelCollapsed
       && nextMotionLevel === state.motionLevel
       && nextSelectedModelProviderId === state.selectedModelProviderId
+      && nextSelectedModelProviderIdsBySession === state.selectedModelProviderIdsBySession
     ) {
       return;
     }
@@ -539,6 +574,7 @@ if (typeof window !== "undefined") {
       rightPanelCollapsed: nextDefaultRightPanelCollapsed,
       motionLevel: nextMotionLevel,
       selectedModelProviderId: nextSelectedModelProviderId,
+      selectedModelProviderIdsBySession: nextSelectedModelProviderIdsBySession,
     });
   });
 }

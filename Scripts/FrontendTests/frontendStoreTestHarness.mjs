@@ -42,6 +42,8 @@ export function resetFrontendStore(overrides = {}) {
     providerModelCatalogs: {},
     providerModelErrors: {},
     selectedModelProviderId: null,
+    defaultModelProviderId: null,
+    selectedModelProviderIdsBySession: {},
     pluginConfigs: [],
     presets: [],
     activePresetName: null,

@@ -12,6 +12,7 @@ describe("session persistence migration", () => {
             defaultRightPanelCollapsed: true,
             motionLevel: "none",
             selectedModelProviderId: "provider-1",
+            selectedModelProviderIdsBySession: { "legacy-active": "provider-1", invalid: 42 },
             userProfile: {
                 name: "Ada",
                 avatarDataUrl: null,
@@ -29,6 +30,7 @@ describe("session persistence migration", () => {
             defaultRightPanelCollapsed: true,
             motionLevel: "full",
             selectedModelProviderId: "provider-1",
+            selectedModelProviderIdsBySession: { "legacy-active": "provider-1" },
             userProfile: {
                 name: "Ada",
                 avatarDataUrl: null,
@@ -74,12 +76,14 @@ describe("readPersistedSessionPreferences", () => {
                 defaultRightPanelCollapsed: false,
                 motionLevel: "reduced",
                 selectedModelProviderId: "main",
+                selectedModelProviderIdsBySession: { topic_a: "main", invalid: 1 },
             },
         }))).toEqual({
             defaultSidebarCollapsed: true,
             defaultRightPanelCollapsed: false,
             motionLevel: "reduced",
             selectedModelProviderId: "main",
+            selectedModelProviderIdsBySession: { topic_a: "main" },
             userProfile: undefined,
         });
     });

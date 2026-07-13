@@ -21,7 +21,11 @@ import type { ChatMessage, UserProfile } from "../../store/sessionStore";
 export interface ChatModelConfig {
   modelProviders: ModelProviderListItem[];
   selectedModelProviderId: string | null;
+  /** Server-configured default used for new conversations. */
+  defaultModelProviderId?: string | null;
   onSelectModelProvider: (id: string) => void;
+  /** Restores the active conversation to the current default model. */
+  onApplyDefaultModel?: () => void;
 }
 
 

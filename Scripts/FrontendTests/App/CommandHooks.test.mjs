@@ -171,7 +171,7 @@ test("useSessionCommands creates, renames, and synchronizes sessions only after 
   const handleRef = { current: null };
   renderSessionCommands({
     handleRef,
-    selectedModelProviderId: "model-session",
+    defaultModelProviderId: "model-session",
     send,
     serverKnownSessionIdsRef,
     status: "open",
@@ -271,7 +271,7 @@ function ChatCommandsHarness({ handleRef, ...options }) {
 
 function renderSessionCommands({
   handleRef,
-  selectedModelProviderId = null,
+  defaultModelProviderId = null,
   send,
   serverKnownSessionIdsRef = { current: new Set() },
   status,
@@ -279,7 +279,7 @@ function renderSessionCommands({
   return render(
     React.createElement(SessionCommandsHarness, {
       handleRef,
-      selectedModelProviderId,
+      defaultModelProviderId,
       send,
       serverKnownSessionIdsRef,
       status,
