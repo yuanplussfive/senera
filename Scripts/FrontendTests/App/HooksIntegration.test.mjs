@@ -3,6 +3,10 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { useConfigMutationController } from "../../../Frontend/src/app/useConfigMutationController.ts";
+import { resolvePluginSettingsEvent } from "../../../Frontend/src/app/usePluginSettingsCommands.ts";
+import { resolvePresetEvent } from "../../../Frontend/src/app/usePresetCommands.ts";
+import { resolveConfigSettingsEvent } from "../../../Frontend/src/app/useConfigSettingsCommands.ts";
+import { useConfigMutationTransport } from "../../../Frontend/src/app/useConfigMutationTransport.ts";
 import { useSandboxRuntimeStatus } from "../../../Frontend/src/app/useSandboxRuntimeStatus.ts";
 import { useSessionCatalogSync } from "../../../Frontend/src/app/useSessionCatalogSync.ts";
 import { useSocketPostIngestEffects } from "../../../Frontend/src/app/useSocketPostIngestEffects.ts";
@@ -263,6 +267,224 @@ test("useConfigMutationController tracks plugin config requests through success 
       title: "插件配置已保存",
     }),
   );
+});
+
+test("useConfigMutationController handles offline commands and unmatched events without claiming them", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+
+  render(
+    React.createElement(ConfigMutationHarness, {
+      send,
+      status: "idle",
+      handleRef,
+    }),
+  );
+
+  await act(async () => {
+    expect(handleRef.current.saveConfig({ AgentLoop: {} })).toBe(null);
+    expect(handleRef.current.fetchProviderModels("openai")).toBeUndefined();
+    expect(handleRef.current.savePluginConfig("demo", "enabled = true")).toBe(null);
+    expect(handleRef.current.savePreset({ name: "default", format: "toml", content: "x = 1" })).toBe(null);
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: "unknown", kind: "config_update" } }),
+      ),
+    ).toBe(false);
+  });
+
+  expect(send).not.toHaveBeenCalled();
+  expect(readTestToastCalls()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ title: frontendMessage("config.mainOffline") }),
+      expect.objectContaining({ title: frontendMessage("config.providerModelsOffline") }),
+      expect.objectContaining({ title: frontendMessage("pluginConfig.saveOffline") }),
+      expect.objectContaining({ title: frontendMessage("preset.updateOffline") }),
+    ]),
+  );
+});
+
+test("useConfigMutationController sends refresh commands and cleans up failed sends", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
+
+  await act(async () => {
+    handleRef.current.refreshConfig();
+    handleRef.current.refreshPluginConfigs();
+    handleRef.current.refreshPresets();
+  });
+  expect(send.mock.calls.map(([request]) => request)).toEqual([
+    { type: "config.get" },
+    { type: "plugin.config.list" },
+    { type: "preset.list" },
+  ]);
+
+  send.mockImplementation(() => false);
+  await act(async () => {
+    expect(handleRef.current.savePluginConfig("demo", "enabled = true")).toBe(null);
+    expect(handleRef.current.savePreset({ name: "default", format: "toml", content: "x = 1" })).toBe(null);
+  });
+  expect(handleRef.current.pluginConfigOperations).toEqual({});
+  expect(handleRef.current.presetOperations).toEqual({});
+});
+
+test("useConfigMutationController covers enabled plugins, preset mutations, and failed catalog sends", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
+
+  let enabledRequest;
+  let deletePresetRequest;
+  let activePresetRequest;
+  await act(async () => {
+    enabledRequest = handleRef.current.setPluginEnabled("demo", true, "tool");
+    deletePresetRequest = handleRef.current.deletePreset("old");
+    activePresetRequest = handleRef.current.setActivePreset(null);
+  });
+  expect(enabledRequest).toBeTypeOf("string");
+  expect(deletePresetRequest).toBeTypeOf("string");
+  expect(activePresetRequest).toBeTypeOf("string");
+
+  await act(async () => {
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(EventKinds.ConfigFailed, "config", {
+          message: "plugin rejected",
+          operation: { requestId: enabledRequest, kind: "set_enabled" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(EventKinds.PresetSnapshot, "config", {
+          operation: { requestId: deletePresetRequest, name: "old" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(EventKinds.PresetFailed, "config", {
+          message: "cannot activate",
+          operation: { requestId: activePresetRequest, name: null },
+        }),
+      ),
+    ).toBe(true);
+  });
+  expect(handleRef.current.pluginConfigOperations[enabledRequest]).toMatchObject({ status: "error", kind: "set_enabled" });
+  expect(handleRef.current.presetOperations[deletePresetRequest]).toMatchObject({ status: "success", kind: "delete" });
+  expect(handleRef.current.presetOperations[activePresetRequest]).toMatchObject({ status: "error", kind: "set_active" });
+
+  send.mockReturnValue(false);
+  await act(async () => {
+    handleRef.current.fetchProviderModels("openai", true);
+  });
+  expect(handleRef.current.providerModelLoadingIds).toEqual({});
+});
+
+test("useConfigMutationController rejects provider model mutations without config and ignores unmatched model events", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
+
+  await act(async () => {
+    expect(
+      handleRef.current.upsertProviderModel({
+        model: { Id: "gpt-test", ProviderId: "openai", Name: "GPT Test" },
+      }),
+    ).toBe(null);
+    expect(
+      handleRef.current.ingestConfigMutationEvent(
+        event(EventKinds.ConfigSnapshot, "config", {
+          operation: { requestId: "unknown-model", kind: "provider.model.upsert" },
+        }),
+      ),
+    ).toBe(false);
+  });
+  expect(send).not.toHaveBeenCalled();
+  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({ title: frontendMessage("config.mainFailed") }));
+});
+
+test("useConfigMutationController covers provider model commands and acknowledgements", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  const configSnapshot = { path: "Config.toml", version: 1, revision: 4, value: {}, source: "sqlite", diagnostics: [], form: { version: 1, sections: [] } };
+  render(React.createElement(ConfigMutationHarness, { configSnapshot, send, status: "open", handleRef }));
+
+  let upsertId;
+  let deleteId;
+  let defaultId;
+  await act(async () => {
+    upsertId = handleRef.current.upsertProviderModel({ model: { Id: "gpt", ProviderId: "openai", Name: "GPT" }, group: "chat" });
+    deleteId = handleRef.current.deleteProviderModel({ modelId: "old", providerId: "openai" });
+    defaultId = handleRef.current.setDefaultProviderModel("gpt");
+  });
+  expect(send).toHaveBeenCalledTimes(3);
+  await act(async () => {
+    handleRef.current.ingestConfigMutationEvent(event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: upsertId, kind: "provider.model.upsert" } }));
+    handleRef.current.ingestConfigMutationEvent(event(EventKinds.ConfigFailed, "config", { message: "delete failed", operation: { requestId: deleteId, kind: "provider.model.delete" } }));
+    handleRef.current.ingestConfigMutationEvent(event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: defaultId, kind: "provider.defaultModel.set" } }));
+  });
+  expect(handleRef.current.providerModelOperations.gpt.status).toBe("success");
+  expect(handleRef.current.providerModelOperations.old.status).toBe("error");
+});
+
+test("useConfigMutationController confirms enabled-plugin and active-preset successes", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
+  let pluginId;
+  let presetId;
+  await act(async () => {
+    pluginId = handleRef.current.setPluginEnabled("demo", false);
+    presetId = handleRef.current.setActivePreset("default");
+  });
+  await act(async () => {
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.PluginConfigSnapshot, "config", { operation: { requestId: pluginId } }),
+    );
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.PresetSnapshot, "config", { operation: { requestId: presetId, name: "default" } }),
+    );
+  });
+  expect(handleRef.current.pluginConfigOperations[pluginId]).toMatchObject({ status: "success", kind: "set_enabled" });
+  expect(handleRef.current.presetOperations[presetId]).toMatchObject({ status: "success", kind: "set_active" });
+});
+
+test("useConfigMutationController rolls back provider model sends that disconnect", async () => {
+  const send = vi.fn(() => false);
+  const handleRef = { current: null };
+  const configSnapshot = { path: "Config.toml", version: 1, revision: 4, value: {}, source: "sqlite", diagnostics: [], form: { version: 1, sections: [] } };
+  render(React.createElement(ConfigMutationHarness, { configSnapshot, send, status: "open", handleRef }));
+  await act(async () => {
+    expect(handleRef.current.deleteProviderModel({ modelId: "old", providerId: "openai" })).toBe(null);
+  });
+  expect(handleRef.current.providerModelOperations).toEqual({});
+  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({ title: frontendMessage("config.mainDisconnected") }));
+});
+
+test("plugin event resolver ignores unrelated events", () => {
+  expect(resolvePluginSettingsEvent(event(EventKinds.RunStarted, "run", { input: "x" }), new Set())).toBe(null);
+});
+
+test("app mutation event resolvers cover success and failure projections", () => {
+  const pending = new Set(["request-1"]);
+  expect(resolvePluginSettingsEvent(event(EventKinds.PluginConfigSnapshot, "config", { operation: { requestId: "request-1" } }), pending)).toMatchObject({ kind: "plugin_config_success" });
+  expect(resolvePresetEvent(event(EventKinds.PresetSnapshot, "config", { operation: { requestId: "request-1", name: "default" } }), pending)).toMatchObject({ kind: "preset_success" });
+  expect(resolveConfigSettingsEvent(event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: "request-1", kind: "config_update" } }), pending)).toMatchObject({ kind: "config_update_success" });
+});
+
+test("useConfigMutationTransport exposes open and offline transport paths", () => {
+  const send = vi.fn(() => true);
+  const sendRef = { current: send };
+  const statusRef = { current: "open" };
+  const handleRef = { current: null };
+  render(React.createElement(TransportHarness, { sendRef, statusRef, handleRef }));
+  expect(handleRef.current.sendWhenOpen({ type: "config.get" })).toBe(true);
+  expect(handleRef.current.readOpenTransport("offline")).toBe(send);
+  statusRef.current = "idle";
+  expect(handleRef.current.sendWhenOpen({ type: "config.get" })).toBe(false);
+  expect(handleRef.current.readOpenTransport("offline")).toBe(null);
 });
 
 test("useConfigMutationController routes preset and main config acknowledgements to their owning domains", async () => {
@@ -557,6 +779,14 @@ function ConfigMutationHarness({ configSnapshot = null, send, status, handleRef 
     sendRef,
     statusRef,
   });
+  useEffect(() => {
+    handleRef.current = handle;
+  });
+  return null;
+}
+
+function TransportHarness({ sendRef, statusRef, handleRef }) {
+  const handle = useConfigMutationTransport({ sendRef, statusRef });
   useEffect(() => {
     handleRef.current = handle;
   });
