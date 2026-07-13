@@ -6,12 +6,17 @@ export const Virtuoso = React.forwardRef(function TestVirtuoso(props, ref) {
     scrollToIndex: () => undefined,
   }));
 
+  const setScrollerRef = React.useCallback((node) => {
+    props.scrollerRef?.(node);
+    if (node) props.scrollerRef?.(node);
+  }, [props.scrollerRef]);
+
   const Header = props.components?.Header;
   const Footer = props.components?.Footer;
   const data = props.data ?? [];
   return React.createElement(
     "div",
-    { "data-testid": "virtuoso" },
+    { "data-testid": "virtuoso", ref: setScrollerRef },
     Header ? React.createElement(Header) : null,
     ...data.map((item, index) =>
       React.createElement(

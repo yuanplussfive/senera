@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -18,6 +18,7 @@ const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
   clearPersistedStore();
 });
 
@@ -36,7 +37,9 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
     ),
   );
 
-  await user.type(screen.getByRole("textbox"), "  hello project  ");
+  const composer = screen.getByRole("textbox", { name: "输入消息" });
+  expect(composer).toHaveClass("focus-visible:ring-2");
+  await user.type(composer, "  hello project  ");
   await user.click(screen.getByRole("button", { name: "send" }));
   expect(onSend).toHaveBeenLastCalledWith("hello project", undefined, undefined);
 
@@ -51,11 +54,11 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
     ),
   );
 
-  await user.type(screen.getByRole("textbox"), "steer now");
+  await user.type(screen.getByRole("textbox", { name: "输入消息" }), "steer now");
   await user.keyboard("{Enter}");
   expect(onSend).toHaveBeenLastCalledWith("steer now", undefined, "steer");
 
-  await user.type(screen.getByRole("textbox"), "follow later");
+  await user.type(screen.getByRole("textbox", { name: "输入消息" }), "follow later");
   await user.keyboard("{Alt>}{Enter}{/Alt}");
   expect(onSend).toHaveBeenLastCalledWith("follow later", undefined, "follow_up");
 
@@ -102,6 +105,52 @@ test("chat panel routes grouped message actions through the empty state", async 
   expect(onSend).toHaveBeenCalledWith("整理日志");
 });
 
+test("chat panel mounts and updates aggregate state without external-store warnings", () => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const initialMessage = createMessage({ id: "message-selector", content: "Initial selector message" });
+  const updatedMessage = { ...initialMessage, content: "Updated selector message" };
+  resetChatStore({
+    activeSessionId: "session-selector",
+    sessionOrder: ["session-selector"],
+    sessions: {
+      "session-selector": {
+        sessionId: "session-selector",
+        title: "Selector session",
+        status: "ready",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        entryCount: 1,
+        messageCount: 1,
+        messages: [initialMessage],
+        runs: [],
+      },
+    },
+  });
+
+  renderWithFrontendProviders(React.createElement(ChatPanel, createChatPanelProps()));
+  expect(screen.getByText("Initial selector message")).toBeInTheDocument();
+
+  act(() => {
+    useStore.setState((state) => ({
+      sessions: {
+        ...state.sessions,
+        "session-selector": {
+          ...state.sessions["session-selector"],
+          messageCount: 2,
+          messages: [updatedMessage],
+        },
+      },
+    }));
+  });
+
+  expect(screen.getByText("Updated selector message")).toBeInTheDocument();
+  expect(
+    consoleError.mock.calls.some(([message]) =>
+      /maximum update depth|getSnapshot should be cached|external store/i.test(String(message)),
+    ),
+  ).toBe(false);
+});
+
 test("message list renders messages and streaming run as stable keyed items", () => {
   const onViewWorkflow = vi.fn();
   const userMessage = createMessage({
@@ -137,6 +186,63 @@ test("message list renders messages and streaming run as stable keyed items", ()
   expect(readMessageListItemKey(undefined, 4)).toBe("__placeholder__:4");
   expect(readMessageListItemKey(userMessage)).toBe("message-user");
   expect(readMessageListItemKey({ __streaming: true, run: runningRun })).toBe("__streaming__");
+});
+
+test("message list accepts repeated scroller refs without a render loop", () => {
+  renderWithFrontendProviders(React.createElement(MessageList, createMessageListProps({
+    messages: [createMessage({ id: "message-repeat", role: "user", content: "keep scrolling" })],
+  })));
+
+  expect(screen.getByText("keep scrolling")).toBeInTheDocument();
+});
+
+test("message list refreshes profile and selected provider presentation", () => {
+  const userMessage = createMessage({ id: "message-user-profile", role: "user", content: "hello" });
+  const assistantMessage = createMessage({ id: "message-provider", role: "assistant", content: "answer" });
+  const { rerender } = renderWithFrontendProviders(React.createElement(MessageList, createMessageListProps({
+    assistantAvatarIcon: "sparkles",
+    messages: [userMessage, assistantMessage],
+    selectedModelProvider: createProvider("Alpha"),
+    userProfile: createUserProfile("Ada"),
+  })));
+
+  expect(screen.getByAltText("Ada")).toBeInTheDocument();
+  expect(screen.getByText("Alpha")).toBeInTheDocument();
+
+  rerender(React.createElement(MessageList, createMessageListProps({
+    assistantAvatarIcon: "bot",
+    messages: [userMessage, assistantMessage],
+    selectedModelProvider: createProvider("Beta"),
+    userProfile: createUserProfile("Grace"),
+  })));
+
+  expect(screen.getByAltText("Grace")).toBeInTheDocument();
+  expect(screen.getByText("Beta")).toBeInTheDocument();
+});
+
+test("streaming approvals refresh when their content changes at the same length", () => {
+  const initialRun = createRun({
+    approvals: [createApproval({ subject: { kind: "tool_call", toolName: "Read config", arguments: {} } })],
+    revision: 1,
+  });
+  const { rerender } = renderWithFrontendProviders(React.createElement(MessageList, createMessageListProps({
+    currentRun: initialRun,
+    runs: [initialRun],
+  })));
+
+  expect(screen.getByText("Read config")).toBeInTheDocument();
+
+  const updatedRun = {
+    ...initialRun,
+    approvals: [createApproval({ subject: { kind: "tool_call", toolName: "Write config", arguments: {} } })],
+  };
+  rerender(React.createElement(MessageList, createMessageListProps({
+    currentRun: updatedRun,
+    runs: [updatedRun],
+  })));
+
+  expect(screen.getByText("Write config")).toBeInTheDocument();
+  expect(screen.queryByText("Read config")).not.toBeInTheDocument();
 });
 
 function createComposerProps(overrides = {}) {
@@ -283,6 +389,43 @@ function createMessage(overrides = {}) {
     requestId: "request-1",
     role: "assistant",
     content: "message",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function createProvider(model) {
+  return {
+    id: model.toLowerCase(),
+    capabilities: { Chat: true },
+    kind: "openai-compatible",
+    endpoint: "chat",
+    baseUrl: "https://example.test",
+    model,
+    isDefault: false,
+  };
+}
+
+function createUserProfile(name) {
+  return {
+    name,
+    avatarDataUrl: "data:image/png;base64,avatar",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function createApproval(overrides = {}) {
+  return {
+    approvalId: "approval-1",
+    status: "pending",
+    approvalKind: "tool_call",
+    title: "Review tool call",
+    reason: "The tool needs approval.",
+    subject: {
+      kind: "tool_call",
+      toolName: "Read config",
+      arguments: {},
+    },
     createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };

@@ -86,7 +86,7 @@ test("provider discovery forwards the normalized endpoint without leaking empty 
     ),
   );
 
-  await user.click(screen.getByRole("button", { name: "检测模型" }));
+  await user.click(screen.getByRole("button", { name: "获取模型列表" }));
 
   expect(onFetchProviderModels).toHaveBeenCalledWith("provider-a", true, {
     Id: "provider-a",
@@ -121,7 +121,7 @@ test("catalog model configuration saves a new default model", async () => {
   );
 
   await user.click(screen.getByRole("button", { name: "配置模型" }));
-  await user.click(screen.getByRole("button", { name: "保存" }));
+  await user.click(screen.getByRole("button", { name: "添加到草稿" }));
 
   expect(onChange).toHaveBeenLastCalledWith(
     expect.objectContaining({

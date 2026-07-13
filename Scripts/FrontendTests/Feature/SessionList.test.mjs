@@ -37,7 +37,7 @@ test("session panel renders store sessions and selects a row", async () => {
   });
   renderWithFrontendProviders(React.createElement(SessionList, createProps({ onSessionSelected })));
 
-  await user.click(screen.getByText("Second session"));
+  await user.click(screen.getByRole("button", { name: "打开会话：Second session" }));
 
   expect(useStore.getState().activeSessionId).toBe("second");
   expect(onSessionSelected).toHaveBeenCalledTimes(1);
@@ -97,7 +97,7 @@ test("session row deletion requires explicit confirmation", async () => {
   renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSession })));
 
   await user.click(screen.getByRole("button", { name: "more" }));
-  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.deleteCurrentHistory") }));
+  await user.click(await screen.findByRole("menuitem", { name: "删除历史" }));
   expect(screen.getByRole("dialog", { name: frontendMessage("session.deleteCurrentTitle") })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteCurrentConfirm") }));
 

@@ -6,7 +6,20 @@
     "maxLines": 800,
     "legacyAllowance": 25
   },
-  "legacyLargeFiles": [],
+  "legacyLargeFiles": [
+    {
+      "path": "Frontend/src/features/settings/SettingsWorkbench.tsx",
+      "baselineLines": 916,
+      "owner": "frontend-settings",
+      "splitTarget": "Extract section rendering and interaction adapters behind the existing SettingsWorkbench navigation and shared draft contract; preserve current settings layout and flows."
+    },
+    {
+      "path": "Frontend/src/shared/config/JsonConfigForm.tsx",
+      "baselineLines": 908,
+      "owner": "frontend-config",
+      "splitTarget": "Extract schema field-family renderers into shared config subcomponents while preserving ConfigSnapshot field order, draft ownership, and validation behavior."
+    }
+  ],
   "directoryBudgets": [
     {
       "path": "Source/AgentSystem",
