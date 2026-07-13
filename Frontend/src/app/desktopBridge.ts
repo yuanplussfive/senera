@@ -1,4 +1,4 @@
-import type { SettingsSectionId } from "../features/settings/types";
+import { defaultSettingsSectionId, type SettingsSectionId } from "../features/settings/types";
 
 const migratedSettingsSections = [
   "model-service",
@@ -52,7 +52,7 @@ export interface OpenSettingsSurfaceOptions {
 export async function openSettingsSurface({
   bridge = readDesktopBridge(),
   fallback,
-  section = "general",
+  section = defaultSettingsSectionId,
   location = typeof window === "undefined" ? undefined : window.location,
 }: OpenSettingsSurfaceOptions): Promise<"desktop" | "web" | "fallback"> {
   if (!isMigratedSettingsSection(section)) {

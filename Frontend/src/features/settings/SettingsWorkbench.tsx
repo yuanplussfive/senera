@@ -51,6 +51,7 @@ import { ModelServiceSection } from "./sections/ModelServiceSection";
 import { DefaultModelSection } from "./sections/DefaultModelSection";
 import { SkillSettingsSection } from "./sections/SkillSettingsSection";
 import {
+  defaultSettingsSectionId,
   settingsSections,
   settingsShellIcon,
   type SettingsSectionDefinition,
@@ -68,7 +69,7 @@ export interface SettingsWorkbenchProps {
 }
 
 export function SettingsWorkbench({
-  initialSection = "appearance",
+  initialSection = defaultSettingsSectionId,
   values,
   motionLevel,
   onValueChange,
@@ -203,9 +204,9 @@ export function SettingsWorkbench({
             summary={activeSectionSummary}
           />
         )}
-        <ScrollArea className="min-h-0 flex-1" viewportClassName="p-2 sm:p-4">
-          {isWorkspaceSection(activeSection.id) ? (
-            <SettingsWorkspaceFrame>
+        {activeSection.id === "model-service" ? (
+          <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-4">
+            <SettingsWorkspaceFrame className="h-full min-h-0">
               {renderSettingsContent({
                 activeSection,
                 configDraftState,
@@ -217,17 +218,34 @@ export function SettingsWorkbench({
                 values,
               })}
             </SettingsWorkspaceFrame>
-          ) : renderSettingsContent({
-            activeSection,
-            configDraftState,
-            motionLevel,
-            onMotionLevelChange,
-            onValueChange,
-            pluginSettings,
-            systemConfig,
-            values,
-          })}
-        </ScrollArea>
+          </div>
+        ) : (
+          <ScrollArea className="min-h-0 flex-1" viewportClassName="p-2 sm:p-4">
+            {isWorkspaceSection(activeSection.id) ? (
+              <SettingsWorkspaceFrame>
+                {renderSettingsContent({
+                  activeSection,
+                  configDraftState,
+                  motionLevel,
+                  onMotionLevelChange,
+                  onValueChange,
+                  pluginSettings,
+                  systemConfig,
+                  values,
+                })}
+              </SettingsWorkspaceFrame>
+            ) : renderSettingsContent({
+              activeSection,
+              configDraftState,
+              motionLevel,
+              onMotionLevelChange,
+              onValueChange,
+              pluginSettings,
+              systemConfig,
+              values,
+            })}
+          </ScrollArea>
+        )}
       </main>
     </div>
   );

@@ -6,6 +6,19 @@ import {
 } from "../../../Frontend/src/app/desktopBridge.ts";
 
 describe("openDesktopSettingsOrFallback", () => {
+  it("opens the first settings section when no target is specified", async () => {
+    const openSettings = vi.fn().mockResolvedValue(undefined);
+    const fallback = vi.fn();
+
+    await expect(openSettingsSurface({
+      bridge: { isDesktop: true, openSettings },
+      fallback,
+    })).resolves.toBe("desktop");
+
+    expect(openSettings).toHaveBeenCalledWith({ section: "model-service" });
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
   it("opens the desktop settings window for migrated sections", async () => {
     const openSettings = vi.fn().mockResolvedValue(undefined);
     const fallback = vi.fn();

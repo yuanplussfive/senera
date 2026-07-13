@@ -1,4 +1,4 @@
-import { isSettingsSectionId, type SettingsSectionId } from "../features/settings/types";
+import { defaultSettingsSectionId, isSettingsSectionId, type SettingsSectionId } from "../features/settings/types";
 
 export type AppSurface = "main" | "settings";
 
@@ -20,5 +20,5 @@ export function resolveSettingsSection(location: Pick<Location, "hash" | "search
   const [, hashSection] = hash.split("/");
   if (isSettingsSectionId(hashSection)) return hashSection;
 
-  return "general";
+  return defaultSettingsSectionId;
 }

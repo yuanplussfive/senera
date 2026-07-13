@@ -4,6 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
+const { openSettingsSurface } = vi.hoisted(() => ({ openSettingsSurface: vi.fn(() => Promise.resolve()) }));
+
+vi.mock("../../../Frontend/src/app/desktopBridge.ts", () => ({ openSettingsSurface }));
+
 vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
   TooltipProvider: ({ children }) => React.createElement(React.Fragment, null, children),
   Tooltip: ({ children }) => React.createElement(React.Fragment, null, children),
@@ -44,7 +48,7 @@ test("session panel renders store sessions and selects a row", async () => {
   expect(screen.getByText("最近 · 2")).toBeInTheDocument();
 });
 
-test("rail presentation exposes direct expansion and new-session actions", async () => {
+test("rail presentation exposes expansion, new-session, and settings actions without a connection dot", async () => {
   const onNewSession = vi.fn();
   const onOpenSessionPanel = vi.fn();
   const user = userEvent.setup();
@@ -61,9 +65,15 @@ test("rail presentation exposes direct expansion and new-session actions", async
 
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
   await user.click(screen.getByRole("button", { name: frontendMessage("session.new") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("pluginConfig.viewSettings") }));
 
   expect(onOpenSessionPanel).toHaveBeenCalledTimes(1);
   expect(onNewSession).toHaveBeenCalledTimes(1);
+  expect(openSettingsSurface).toHaveBeenCalledWith(expect.objectContaining({
+    fallback: expect.any(Function),
+  }));
+  expect(openSettingsSurface).toHaveBeenCalledWith(expect.not.objectContaining({ section: expect.anything() }));
+  expect(screen.queryByTitle(frontendMessage("connection.open"))).not.toBeInTheDocument();
 });
 
 test("session row menu submits a trimmed rename", async () => {

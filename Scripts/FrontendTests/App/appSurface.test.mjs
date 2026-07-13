@@ -18,8 +18,8 @@ describe("resolveAppSurface", () => {
 });
 
 describe("resolveSettingsSection", () => {
-  it("uses general as the default settings section", () => {
-    expect(resolveSettingsSection({ search: "?surface=settings", hash: "" })).toBe("general");
+  it("uses the first settings section as the default", () => {
+    expect(resolveSettingsSection({ search: "?surface=settings", hash: "" })).toBe("model-service");
   });
 
   it("uses a valid settings section from query parameters", () => {
@@ -31,10 +31,10 @@ describe("resolveSettingsSection", () => {
   });
 
   it("falls back for retired providers/models section IDs", () => {
-    expect(resolveSettingsSection({ search: "?surface=settings&section=providers", hash: "" })).toBe("general");
-    expect(resolveSettingsSection({ search: "?surface=settings&section=models", hash: "" })).toBe("general");
-    expect(resolveSettingsSection({ search: "", hash: "#/settings/providers" })).toBe("general");
-    expect(resolveSettingsSection({ search: "", hash: "#/settings/models" })).toBe("general");
+    expect(resolveSettingsSection({ search: "?surface=settings&section=providers", hash: "" })).toBe("model-service");
+    expect(resolveSettingsSection({ search: "?surface=settings&section=models", hash: "" })).toBe("model-service");
+    expect(resolveSettingsSection({ search: "", hash: "#/settings/providers" })).toBe("model-service");
+    expect(resolveSettingsSection({ search: "", hash: "#/settings/models" })).toBe("model-service");
   });
 
   it("accepts the dedicated default-model route", () => {

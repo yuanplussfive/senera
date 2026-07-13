@@ -178,7 +178,6 @@ export function SessionList({
 
   const content = isRail ? (
     <SessionRail
-      socketStatus={socketStatus}
       onNewSession={onNewSession}
       onOpenSessionPanel={handleOpenFromRail}
     />

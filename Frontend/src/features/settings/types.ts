@@ -51,6 +51,8 @@ export const settingsSectionIds = [
   "about",
 ] as const satisfies readonly SettingsSectionId[];
 
+export const defaultSettingsSectionId = settingsSectionIds[0];
+
 export function isSettingsSectionId(value: string | null | undefined): value is SettingsSectionId {
   return settingsSectionIds.includes(value as SettingsSectionId);
 }

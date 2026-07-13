@@ -103,7 +103,7 @@ function registerDesktopIpc(): void {
 }
 
 function resolveSettingsSection(section: string | undefined): string {
-  if (!settingsSectionIds.has(section ?? "")) return "appearance";
+  if (!settingsSectionIds.has(section ?? "")) return "model-service";
   return section as string;
 }
 
