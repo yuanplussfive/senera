@@ -3,8 +3,19 @@ import { createRequestId } from "../Core/AgentIds.js";
 import { AgentUserProfileInputSchema } from "../Session/AgentUserProfile.js";
 import { AgentUploadAttachmentListSchema } from "../Uploads/AgentUploadTypes.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
+import {
+  ModelProviderEndpointSchema,
+  ModelProviderSchema,
+} from "../Schemas/AgentModelConfigSchema.js";
 
 const AgentPresetFormatSchema = z.enum(["json", "markdown", "text"]);
+
+const AgentConfigRevisionGuardRequestSchema = {
+  requestId: z.string().min(1).optional(),
+  expectedRevision: z.number().int().min(1).optional(),
+  expectedVersion: z.number().int().min(1).optional(),
+  mirrorJson: z.boolean().optional(),
+} as const;
 
 const AgentProviderModelEndpointRequestSchema = z
   .object({
@@ -18,6 +29,19 @@ const AgentProviderModelEndpointRequestSchema = z
     Headers: z.record(z.string(), z.string()).optional(),
   })
   .strict();
+
+const AgentProviderModelGroupAssignmentRequestSchema = z
+  .object({
+    groupId: z.string().min(1),
+    label: z.string().min(1).optional(),
+    icon: z.string().min(1).optional(),
+  })
+  .strict();
+
+const AgentProviderModelBulkImportGroupAssignmentRequestSchema =
+  AgentProviderModelGroupAssignmentRequestSchema.extend({
+    modelId: z.string().min(1),
+  });
 
 export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
@@ -100,6 +124,62 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       requestId: z.string().min(1).optional(),
       config: AgentSystemConfigSchema,
       mirrorJson: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("provider.endpoint.upsert"),
+      ...AgentConfigRevisionGuardRequestSchema,
+      endpoint: ModelProviderEndpointSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("provider.endpoint.delete"),
+      ...AgentConfigRevisionGuardRequestSchema,
+      providerId: z.string().min(1),
+      cascadeModels: z.boolean().optional(),
+      replacementDefaultModelId: z.string().min(1).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("provider.endpoint.rename"),
+      ...AgentConfigRevisionGuardRequestSchema,
+      providerId: z.string().min(1),
+      nextProviderId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("provider.model.upsert"),
+      ...AgentConfigRevisionGuardRequestSchema,
+      model: ModelProviderSchema,
+      group: AgentProviderModelGroupAssignmentRequestSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("provider.model.delete"),
+      ...AgentConfigRevisionGuardRequestSchema,
+      modelId: z.string().min(1),
+      replacementDefaultModelId: z.string().min(1).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("provider.model.bulkImport"),
+      ...AgentConfigRevisionGuardRequestSchema,
+      models: z.array(ModelProviderSchema),
+      overwriteExisting: z.boolean().optional(),
+      groupAssignments: z.array(AgentProviderModelBulkImportGroupAssignmentRequestSchema).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("provider.defaultModel.set"),
+      ...AgentConfigRevisionGuardRequestSchema,
+      modelId: z.string().min(1),
     })
     .strict(),
   z

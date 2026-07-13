@@ -239,8 +239,12 @@ try {
       Mode: "SandboxPreferred",
       TimeoutSeconds: 30,
     },
+    ActionPlanner: {
+      MaxRepairAttempts: 7,
+    },
     AgentLoop: {
       MaxSteps: -1,
+      MaxRepairAttempts: 4,
       LoadedTools: "dynamic",
     },
   } as unknown as AgentSystemConfig;
@@ -269,15 +273,23 @@ try {
   const migratedSnapshot = reloaded.snapshot();
   assert.equal(migratedSnapshot.revision, 5);
   assert.equal(migratedSnapshot.value.ToolExecution?.TimeoutSeconds, 30);
+  assert.equal(migratedSnapshot.value.ActionPlanner?.MaxRepairAttempts, 7);
   assert.equal("Mode" in (migratedSnapshot.value.ToolExecution ?? {}), false);
   assert.equal(migratedSnapshot.value.AgentLoop?.LoadedTools, "dynamic");
   assert.equal("MaxSteps" in (migratedSnapshot.value.AgentLoop ?? {}), false);
+  assert.equal("MaxRepairAttempts" in (migratedSnapshot.value.AgentLoop ?? {}), false);
   assert.equal("Cli" in (migratedSnapshot.value.Defaults ?? {}), false);
+  assert.equal(migratedSnapshot.value.Defaults?.ActionPlanner?.MaxRepairAttempts, 2);
   assert.equal("Mode" in (migratedSnapshot.value.Defaults?.ToolExecution ?? {}), false);
   assert.equal("MaxRepairAttempts" in (migratedSnapshot.value.Defaults?.AgentLoop ?? {}), false);
+  assert.equal(migratedSnapshot.value.ModelProviders[0].Id, "desktop/updated-model");
+  assert.equal(migratedSnapshot.value.ModelProviderEndpoints?.[0]?.BaseUrl, "https://desktop.example.invalid/v1");
   assert.deepEqual(migratedSnapshot.diagnostics, []);
   reloaded.close();
   reloaded = undefined;
+  const migratedRepository = new AgentConfigSqliteRepository(desktopDatabasePath);
+  assert.equal(migratedRepository.latestRevision()?.source, "migration");
+  migratedRepository.close();
 
   console.log("Config service SQLite source verification passed.");
 } finally {

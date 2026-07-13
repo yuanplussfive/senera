@@ -39,6 +39,13 @@
 | `preset.set_active` | 设置当前激活预设，`name: null` 表示取消激活。 |
 | `profile.get` | 获取用户画像。 |
 | `profile.update` | 更新用户名称和头像等画像字段。 |
+| `provider.defaultModel.set` | 设置当前默认模型。 |
+| `provider.endpoint.delete` | 删除一个模型服务端点，并按请求处理关联模型。 |
+| `provider.endpoint.rename` | 重命名模型服务端点，同时保持关联模型一致。 |
+| `provider.endpoint.upsert` | 创建或更新一个模型服务端点。 |
+| `provider.model.bulkImport` | 批量导入模型服务中的模型。 |
+| `provider.model.delete` | 删除一个模型，并按请求处理默认模型。 |
+| `provider.model.upsert` | 创建或更新一个模型服务中的模型。 |
 | `provider.models.fetch` | 从指定模型端点刷新可用模型列表。 |
 | `sandbox.status` | 获取当前沙箱运行时状态和降级信息。 |
 | `session.cancel` | 取消会话当前正在执行的请求。 |

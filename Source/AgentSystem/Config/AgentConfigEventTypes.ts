@@ -7,7 +7,18 @@ import type { AgentPresetOperationResult, AgentPresetSnapshot } from "../Presets
 import type { AgentConfigDiagnostic, AgentConfigSnapshot, AgentConfigSnapshotSource } from "./AgentConfigService.js";
 import type { AgentProviderModelSnapshot } from "./AgentProviderModelDiscovery.js";
 
-export type AgentPluginConfigOperationKind = "list" | "update" | "set_enabled" | "config_update";
+export type AgentPluginConfigOperationKind =
+  | "list"
+  | "update"
+  | "set_enabled"
+  | "config_update"
+  | "provider.endpoint.upsert"
+  | "provider.endpoint.delete"
+  | "provider.endpoint.rename"
+  | "provider.model.upsert"
+  | "provider.model.delete"
+  | "provider.model.bulkImport"
+  | "provider.defaultModel.set";
 
 export interface AgentPluginConfigOperationResult {
   requestId?: string;

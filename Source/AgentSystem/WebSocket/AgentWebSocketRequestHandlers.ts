@@ -2,6 +2,7 @@ import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js"
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { resolveModelProviderCatalog } from "../AgentDefaults.js";
 import { projectAgentConfigForm } from "../Config/AgentConfigFormProjector.js";
+import type { AgentProviderModelConfigOperationKind } from "../Config/AgentProviderModelConfigCommands.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
@@ -194,6 +195,83 @@ export class AgentWebSocketConfigRequestHandlers {
     });
   }
 
+  upsertProviderEndpoint(
+    request: AgentWebSocketRequestOf<"provider.endpoint.upsert">,
+    sendEvent: AgentWebSocketEventSender,
+  ): void {
+    this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().upsertProviderEndpoint(request),
+      request,
+      sendEvent,
+    );
+  }
+
+  deleteProviderEndpoint(
+    request: AgentWebSocketRequestOf<"provider.endpoint.delete">,
+    sendEvent: AgentWebSocketEventSender,
+  ): void {
+    this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().deleteProviderEndpoint(request),
+      request,
+      sendEvent,
+    );
+  }
+
+  renameProviderEndpoint(
+    request: AgentWebSocketRequestOf<"provider.endpoint.rename">,
+    sendEvent: AgentWebSocketEventSender,
+  ): void {
+    this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().renameProviderEndpoint(request),
+      request,
+      sendEvent,
+    );
+  }
+
+  upsertProviderModel(
+    request: AgentWebSocketRequestOf<"provider.model.upsert">,
+    sendEvent: AgentWebSocketEventSender,
+  ): void {
+    this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().upsertProviderModel(request),
+      request,
+      sendEvent,
+    );
+  }
+
+  deleteProviderModel(
+    request: AgentWebSocketRequestOf<"provider.model.delete">,
+    sendEvent: AgentWebSocketEventSender,
+  ): void {
+    this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().deleteProviderModel(request),
+      request,
+      sendEvent,
+    );
+  }
+
+  bulkImportProviderModels(
+    request: AgentWebSocketRequestOf<"provider.model.bulkImport">,
+    sendEvent: AgentWebSocketEventSender,
+  ): void {
+    this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().bulkImportProviderModels(request),
+      request,
+      sendEvent,
+    );
+  }
+
+  setDefaultProviderModel(
+    request: AgentWebSocketRequestOf<"provider.defaultModel.set">,
+    sendEvent: AgentWebSocketEventSender,
+  ): void {
+    this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().setDefaultProviderModel(request),
+      request,
+      sendEvent,
+    );
+  }
+
   listPluginConfig(sendEvent: AgentWebSocketEventSender): void {
     sendEvent({
       kind: AgentEventKinds.PluginConfigSnapshot,
@@ -241,6 +319,45 @@ export class AgentWebSocketConfigRequestHandlers {
           kind: "set_enabled",
           pluginName: request.pluginName,
         },
+      },
+    });
+  }
+
+  private requireConfigService() {
+    if (!this.context.configService) {
+      throw new Error(agentErrorMessage("websocket.configServiceDisabled"));
+    }
+    return this.context.configService;
+  }
+
+  private sendProviderModelConfigSnapshot(
+    snapshot: ReturnType<NonNullable<AgentWebSocketRequestContext["configService"]>["snapshot"]>,
+    request: {
+      requestId?: string;
+      type: AgentProviderModelConfigOperationKind;
+    },
+    sendEvent: AgentWebSocketEventSender,
+  ): void {
+    sendEvent({
+      kind: AgentEventKinds.ConfigSnapshot,
+      context: {},
+      data: {
+        ...snapshot,
+        operation: {
+          requestId: request.requestId,
+          kind: request.type,
+        },
+      },
+    });
+    sendEvent({
+      kind: AgentEventKinds.ConfigReloaded,
+      context: {},
+      data: {
+        configPath: snapshot.path,
+        source: snapshot.source,
+        revision: snapshot.revision,
+        databasePath: snapshot.databasePath,
+        diagnostics: snapshot.diagnostics,
       },
     });
   }
