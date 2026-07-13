@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { DEFAULT_SESSION_TITLE } from "./session/defaults";
-import { clearPersistedStore, sessionPersistOptions } from "./session/persistence";
+import { PERSIST_KEY, clearPersistedStore, readPersistedSessionPreferences, sessionPersistOptions } from "./session/persistence";
 import {
   advanceRunDisplayText,
   applyEvent,
@@ -11,7 +11,11 @@ import {
   deleteSessionRuntimeState,
   truncate,
 } from "./session/sessionProjector";
-import { DEFAULT_USER_PROFILE, normalizeUserProfile, type UserProfile } from "./session/userProfile";
+import {
+  DEFAULT_USER_PROFILE,
+  normalizeUserProfile,
+  type UserProfile,
+} from "./session/userProfile";
 import type { MotionLevel } from "../shared/motion";
 import {
   type ConversationEntryDto,
@@ -56,7 +60,15 @@ export interface ChatMessage {
 }
 
 export type TimelineStepKind =
-  "understand" | "prompt" | "model" | "pi" | "decision" | "tool" | "retry" | "answer" | "error";
+  | "understand"
+  | "prompt"
+  | "model"
+  | "pi"
+  | "decision"
+  | "tool"
+  | "retry"
+  | "answer"
+  | "error";
 
 export type TimelineStepStatus = "pending" | "running" | "done" | "failed";
 
@@ -172,6 +184,8 @@ export interface StoreState {
   activeSessionId: string | null;
   sidebarCollapsed: boolean;
   rightPanelCollapsed: boolean;
+  defaultSidebarCollapsed: boolean;
+  defaultRightPanelCollapsed: boolean;
   motionLevel: MotionLevel;
   /** 每个 session 当前在右栏查看的 run requestId；不存在则用最新 run */
   viewedRunIdBySession: Record<string, string>;
@@ -210,6 +224,8 @@ export interface StoreState {
   toggleRightPanel: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
+  setDefaultSidebarCollapsed: (collapsed: boolean) => void;
+  setDefaultRightPanelCollapsed: (collapsed: boolean) => void;
   setMotionLevel: (level: MotionLevel) => void;
   setViewedRun: (sessionId: string, requestId: string | undefined) => void;
   registerCreatingSession: (sessionId: string, title?: string) => void;
@@ -251,6 +267,8 @@ export const useStore = create<StoreState>()(
       activeSessionId: null,
       sidebarCollapsed: false,
       rightPanelCollapsed: false,
+      defaultSidebarCollapsed: false,
+      defaultRightPanelCollapsed: false,
       motionLevel: "full",
       viewedRunIdBySession: {},
       historyLoadedIds: {},
@@ -274,194 +292,208 @@ export const useStore = create<StoreState>()(
       configSnapshot: null,
       userProfile: DEFAULT_USER_PROFILE,
 
-      selectSession: (id) =>
-        set((state) => {
-          state.activeSessionId = id;
-        }),
+    selectSession: (id) =>
+      set((state) => {
+        state.activeSessionId = id;
+      }),
 
-      toggleSidebar: () =>
-        set((state) => {
-          state.sidebarCollapsed = !state.sidebarCollapsed;
-        }),
+    toggleSidebar: () =>
+      set((state) => {
+        state.sidebarCollapsed = !state.sidebarCollapsed;
+      }),
 
-      toggleRightPanel: () =>
-        set((state) => {
-          state.rightPanelCollapsed = !state.rightPanelCollapsed;
-        }),
+    toggleRightPanel: () =>
+      set((state) => {
+        state.rightPanelCollapsed = !state.rightPanelCollapsed;
+      }),
 
-      setSidebarCollapsed: (collapsed) =>
-        set((state) => {
-          state.sidebarCollapsed = collapsed;
-        }),
+    setSidebarCollapsed: (collapsed) =>
+      set((state) => {
+        state.sidebarCollapsed = collapsed;
+      }),
 
-      setRightPanelCollapsed: (collapsed) =>
-        set((state) => {
-          state.rightPanelCollapsed = collapsed;
-        }),
+    setRightPanelCollapsed: (collapsed) =>
+      set((state) => {
+        state.rightPanelCollapsed = collapsed;
+      }),
 
-      setMotionLevel: (level) =>
-        set((state) => {
-          state.motionLevel = level;
-        }),
+    setDefaultSidebarCollapsed: (collapsed) =>
+      set((state) => {
+        state.defaultSidebarCollapsed = collapsed;
+        state.sidebarCollapsed = collapsed;
+      }),
 
-      setViewedRun: (sessionId, requestId) =>
-        set((state) => {
-          if (requestId) {
-            state.viewedRunIdBySession[sessionId] = requestId;
-          } else {
-            delete state.viewedRunIdBySession[sessionId];
+    setDefaultRightPanelCollapsed: (collapsed) =>
+      set((state) => {
+        state.defaultRightPanelCollapsed = collapsed;
+        state.rightPanelCollapsed = collapsed;
+      }),
+
+    setMotionLevel: (level) =>
+      set((state) => {
+        state.motionLevel = level;
+      }),
+
+    setViewedRun: (sessionId, requestId) =>
+      set((state) => {
+        if (requestId) {
+          state.viewedRunIdBySession[sessionId] = requestId;
+        } else {
+          delete state.viewedRunIdBySession[sessionId];
+        }
+      }),
+
+    registerCreatingSession: (sessionId, title) =>
+      set((state) => {
+        delete state.pendingDeletedSessionIds[sessionId];
+        state.pendingCreatedSessionIds[sessionId] = true;
+        if (state.sessions[sessionId]) {
+          if (!state.sessionOrder.includes(sessionId)) {
+            state.sessionOrder.unshift(sessionId);
           }
-        }),
-
-      registerCreatingSession: (sessionId, title) =>
-        set((state) => {
-          delete state.pendingDeletedSessionIds[sessionId];
-          state.pendingCreatedSessionIds[sessionId] = true;
-          if (state.sessions[sessionId]) {
-            if (!state.sessionOrder.includes(sessionId)) {
-              state.sessionOrder.unshift(sessionId);
-            }
-            state.activeSessionId = sessionId;
-            return;
-          }
-          state.sessions[sessionId] = {
-            sessionId,
-            title: title ?? DEFAULT_SESSION_TITLE,
-            status: "creating",
-            createdAt: nowIso(),
-            updatedAt: nowIso(),
-            entryCount: 0,
-            messageCount: 0,
-            messages: [],
-            runs: [],
-          };
-          state.sessionOrder.unshift(sessionId);
           state.activeSessionId = sessionId;
-        }),
+          return;
+        }
+        state.sessions[sessionId] = {
+          sessionId,
+          title: title ?? DEFAULT_SESSION_TITLE,
+          status: "creating",
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+          entryCount: 0,
+          messageCount: 0,
+          messages: [],
+          runs: [],
+        };
+        state.sessionOrder.unshift(sessionId);
+        state.activeSessionId = sessionId;
+      }),
 
-      renameSession: (sessionId, title) =>
-        set((state) => {
-          const session = state.sessions[sessionId];
-          if (session) session.title = title;
-        }),
+    renameSession: (sessionId, title) =>
+      set((state) => {
+        const session = state.sessions[sessionId];
+        if (session) session.title = title;
+      }),
 
-      removeSession: (sessionId) =>
-        set((state) => {
-          state.pendingDeletedSessionIds[sessionId] = true;
-          delete state.pendingCreatedSessionIds[sessionId];
-          delete state.sessions[sessionId];
-          state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
-          if (state.activeSessionId === sessionId) {
-            state.activeSessionId = state.sessionOrder[0] ?? null;
-          }
-        }),
+    removeSession: (sessionId) =>
+      set((state) => {
+        state.pendingDeletedSessionIds[sessionId] = true;
+        delete state.pendingCreatedSessionIds[sessionId];
+        delete state.sessions[sessionId];
+        state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
+        if (state.activeSessionId === sessionId) {
+          state.activeSessionId = state.sessionOrder[0] ?? null;
+        }
+      }),
 
-      clearAllSessions: (sessionIds) =>
-        set((state) => {
-          const ids = sessionIds?.length ? sessionIds : state.sessionOrder;
-          for (const id of ids) {
-            state.pendingDeletedSessionIds[id] = true;
-            delete state.pendingCreatedSessionIds[id];
-            deleteSessionRuntimeState(state, id);
-          }
-          if (state.activeSessionId && !state.sessions[state.activeSessionId]) {
-            state.activeSessionId = state.sessionOrder[0] ?? null;
-          }
-        }),
+    clearAllSessions: (sessionIds) =>
+      set((state) => {
+        const ids = sessionIds?.length ? sessionIds : state.sessionOrder;
+        for (const id of ids) {
+          state.pendingDeletedSessionIds[id] = true;
+          delete state.pendingCreatedSessionIds[id];
+          deleteSessionRuntimeState(state, id);
+        }
+        if (state.activeSessionId && !state.sessions[state.activeSessionId]) {
+          state.activeSessionId = state.sessionOrder[0] ?? null;
+        }
+      }),
 
-      markHistoryLoading: (sessionId) =>
-        set((state) => {
-          state.historyLoadingIds[sessionId] = true;
-          state.historyReplayBuffers[sessionId] = [];
-          state.historyStepBuffers[sessionId] = [];
-          state.historyEventRunIds[sessionId] = {};
-          delete state.historyFailedIds[sessionId];
-        }),
+    markHistoryLoading: (sessionId) =>
+      set((state) => {
+        state.historyLoadingIds[sessionId] = true;
+        state.historyReplayBuffers[sessionId] = [];
+        state.historyStepBuffers[sessionId] = [];
+        state.historyEventRunIds[sessionId] = {};
+        delete state.historyFailedIds[sessionId];
+      }),
 
-      markHistoryLoadFailed: (sessionId) =>
-        set((state) => {
-          state.historyLoadingIds[sessionId] = false;
-          state.historyFailedIds[sessionId] = true;
-          delete state.historyReplayBuffers[sessionId];
-          delete state.historyStepBuffers[sessionId];
-          delete state.historyEventRunIds[sessionId];
-        }),
+    markHistoryLoadFailed: (sessionId) =>
+      set((state) => {
+        state.historyLoadingIds[sessionId] = false;
+        state.historyFailedIds[sessionId] = true;
+        delete state.historyReplayBuffers[sessionId];
+        delete state.historyStepBuffers[sessionId];
+        delete state.historyEventRunIds[sessionId];
+      }),
 
-      selectModelProvider: (id) =>
-        set((state) => {
-          state.selectedModelProviderId = id;
-        }),
+    selectModelProvider: (id) =>
+      set((state) => {
+        state.selectedModelProviderId = id;
+      }),
 
-      setUserProfile: (profile) =>
-        set((state) => {
-          state.userProfile = normalizeUserProfile({
-            ...profile,
-            updatedAt: new Date().toISOString(),
-            syncState: "pending",
-          });
-        }),
+    setUserProfile: (profile) =>
+      set((state) => {
+        state.userProfile = normalizeUserProfile({
+          ...profile,
+          updatedAt: new Date().toISOString(),
+          syncState: "pending",
+        });
+      }),
 
-      markUserProfileSynced: (profile) =>
-        set((state) => {
-          const snapshot = normalizeUserProfile(profile ?? state.userProfile);
-          const current = normalizeUserProfile(state.userProfile);
-          const isCurrentPending = current.syncState === "pending";
-          const snapshotMatchesCurrent =
-            snapshot.name === current.name && snapshot.avatarDataUrl === current.avatarDataUrl;
-          if (isCurrentPending && !snapshotMatchesCurrent) return;
-          state.userProfile = {
-            ...snapshot,
-            syncState: "synced",
-          };
-        }),
+    markUserProfileSynced: (profile) =>
+      set((state) => {
+        const snapshot = normalizeUserProfile(profile ?? state.userProfile);
+        const current = normalizeUserProfile(state.userProfile);
+        const isCurrentPending = current.syncState === "pending";
+        const snapshotMatchesCurrent =
+          snapshot.name === current.name &&
+          snapshot.avatarDataUrl === current.avatarDataUrl;
+        if (isCurrentPending && !snapshotMatchesCurrent) return;
+        state.userProfile = {
+          ...snapshot,
+          syncState: "synced",
+        };
+      }),
 
-      replaceWithDevMockData: (mockSessions, activeSessionId) =>
-        set((state) => {
-          if (!import.meta.env.DEV) return;
-          state.sessions = {};
-          state.sessionOrder = [];
-          state.viewedRunIdBySession = {};
-          state.historyLoadedIds = {};
-          state.historyLoadingIds = {};
-          state.historyFailedIds = {};
-          state.historyReplayBuffers = {};
-          state.historyStepBuffers = {};
-          state.historyEventRunIds = {};
-          state.missingOnServerIds = {};
-          state.pendingCreatedSessionIds = {};
-          state.pendingDeletedSessionIds = {};
-          for (const session of mockSessions) {
-            state.sessions[session.sessionId] = session;
-            state.sessionOrder.push(session.sessionId);
-            state.historyLoadedIds[session.sessionId] = true;
-          }
-          state.activeSessionId =
-            activeSessionId && state.sessions[activeSessionId] ? activeSessionId : (state.sessionOrder[0] ?? null);
-        }),
+    replaceWithDevMockData: (mockSessions, activeSessionId) =>
+      set((state) => {
+        if (!import.meta.env.DEV) return;
+        state.sessions = {};
+        state.sessionOrder = [];
+        state.viewedRunIdBySession = {};
+        state.historyLoadedIds = {};
+        state.historyLoadingIds = {};
+        state.historyFailedIds = {};
+        state.historyReplayBuffers = {};
+        state.historyStepBuffers = {};
+        state.historyEventRunIds = {};
+        state.missingOnServerIds = {};
+        state.pendingCreatedSessionIds = {};
+        state.pendingDeletedSessionIds = {};
+        for (const session of mockSessions) {
+          state.sessions[session.sessionId] = session;
+          state.sessionOrder.push(session.sessionId);
+          state.historyLoadedIds[session.sessionId] = true;
+        }
+        state.activeSessionId = activeSessionId && state.sessions[activeSessionId]
+          ? activeSessionId
+          : state.sessionOrder[0] ?? null;
+      }),
 
-      appendUserMessage: (sessionId, requestId, input, attachments, options) =>
-        set((state) => {
-          if (state.historyLoadingIds[sessionId]) return;
-          const session = state.sessions[sessionId];
-          if (!session) return;
-          if (session.messages.length === 0) {
-            session.title = truncate(input, 24);
-          }
-          session.updatedAt = nowIso();
-          session.messages.push({
-            id: `${requestId}-user`,
-            role: "user",
-            content: input,
-            attachments,
-            createdAt: nowIso(),
-            requestId,
-          });
-          bumpSessionMessageCount(session);
-          if (options?.createRun !== false) {
-            session.activeRequestId = requestId;
-            session.runs.push(createRunRecord({ requestId, startedAt: nowIso(), input }));
-          }
-        }),
+    appendUserMessage: (sessionId, requestId, input, attachments, options) =>
+      set((state) => {
+        if (state.historyLoadingIds[sessionId]) return;
+        const session = state.sessions[sessionId];
+        if (!session) return;
+        if (session.messages.length === 0) {
+          session.title = truncate(input, 24);
+        }
+        session.updatedAt = nowIso();
+        session.messages.push({
+          id: `${requestId}-user`,
+          role: "user",
+          content: input,
+          attachments,
+          createdAt: nowIso(),
+          requestId,
+        });
+        bumpSessionMessageCount(session);
+        if (options?.createRun !== false) {
+          session.activeRequestId = requestId;
+          session.runs.push(createRunRecord({ requestId, startedAt: nowIso(), input }));
+        }
+      }),
 
       advanceStreamingDisplay: (sessionId, requestId) => {
         let pending = false;
@@ -481,4 +513,33 @@ export const useStore = create<StoreState>()(
     sessionPersistOptions,
   ),
 );
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== PERSIST_KEY) return;
+    const preferences = readPersistedSessionPreferences(event.newValue);
+    if (!preferences) return;
+    const state = useStore.getState();
+    const nextDefaultSidebarCollapsed = preferences.defaultSidebarCollapsed ?? state.defaultSidebarCollapsed;
+    const nextDefaultRightPanelCollapsed = preferences.defaultRightPanelCollapsed ?? state.defaultRightPanelCollapsed;
+    const nextMotionLevel = preferences.motionLevel ?? state.motionLevel;
+    const nextSelectedModelProviderId = preferences.selectedModelProviderId ?? state.selectedModelProviderId;
+    if (
+      nextDefaultSidebarCollapsed === state.defaultSidebarCollapsed
+      && nextDefaultRightPanelCollapsed === state.defaultRightPanelCollapsed
+      && nextMotionLevel === state.motionLevel
+      && nextSelectedModelProviderId === state.selectedModelProviderId
+    ) {
+      return;
+    }
+    useStore.setState({
+      defaultSidebarCollapsed: nextDefaultSidebarCollapsed,
+      defaultRightPanelCollapsed: nextDefaultRightPanelCollapsed,
+      sidebarCollapsed: nextDefaultSidebarCollapsed,
+      rightPanelCollapsed: nextDefaultRightPanelCollapsed,
+      motionLevel: nextMotionLevel,
+      selectedModelProviderId: nextSelectedModelProviderId,
+    });
+  });
+}
 export { clearPersistedStore };

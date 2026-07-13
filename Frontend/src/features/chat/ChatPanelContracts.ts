@@ -24,6 +24,7 @@ export interface ChatModelConfig {
   onSelectModelProvider: (id: string) => void;
 }
 
+
 export interface ChatPluginConfig {
   pluginConfigs: PluginConfigItem[];
   pluginConfigOperations: Record<string, PluginConfigMutationState>;
@@ -42,7 +43,6 @@ export interface ChatSystemConfig {
   onSaveConfig: (config: Record<string, unknown>) => string | null;
   onFetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
 }
-
 export interface ChatPresetConfig {
   presets: PresetItem[];
   activePresetName: string | null;
@@ -81,8 +81,6 @@ export interface ChatNavigationActions {
 export interface ChatPanelProps {
   userProfile: UserProfile;
   modelConfig: ChatModelConfig;
-  pluginConfig: ChatPluginConfig;
-  systemConfig: ChatSystemConfig;
   presetConfig: ChatPresetConfig;
   runtime: ChatRuntimeState;
   messageActions: ChatMessageActions;

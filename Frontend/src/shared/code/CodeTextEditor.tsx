@@ -27,8 +27,8 @@ const languageExtensions: Record<CodeTextEditorLanguage, () => Extension[]> = {
 
 const editorTheme = EditorView.theme({
   "&": {
-    backgroundColor: "#fffdf8",
-    color: "#211f1b",
+    backgroundColor: "var(--theme-code-editor-bg)",
+    color: "var(--theme-code-editor-fg)",
     fontSize: "13px",
     height: "100%",
   },
@@ -38,7 +38,7 @@ const editorTheme = EditorView.theme({
   ".cm-scroller": {
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
     lineHeight: "1.65",
-    scrollbarColor: "rgba(28, 26, 23, 0.16) transparent",
+    scrollbarColor: "var(--scrollbar-thumb) var(--scrollbar-track)",
     scrollbarGutter: "stable",
   },
   ".cm-scroller::-webkit-scrollbar": {
@@ -46,17 +46,17 @@ const editorTheme = EditorView.theme({
     width: "8px",
   },
   ".cm-scroller::-webkit-scrollbar-thumb": {
-    background: "rgba(28, 26, 23, 0.16)",
+    background: "var(--scrollbar-thumb)",
     backgroundClip: "padding-box",
     border: "2px solid transparent",
     borderRadius: "999px",
   },
   ".cm-scroller::-webkit-scrollbar-thumb:hover": {
-    background: "rgba(28, 26, 23, 0.26)",
+    background: "var(--scrollbar-thumb-hover)",
     backgroundClip: "padding-box",
   },
   ".cm-content": {
-    caretColor: "#8c4d22",
+    caretColor: "var(--theme-code-editor-caret)",
     minHeight: "100%",
     paddingBottom: "16px",
     paddingTop: "16px",
@@ -66,9 +66,9 @@ const editorTheme = EditorView.theme({
     paddingRight: "18px",
   },
   ".cm-gutters": {
-    backgroundColor: "#f5efe4",
-    borderRight: "1px solid rgba(28, 26, 23, 0.1)",
-    color: "rgba(28, 26, 23, 0.42)",
+    backgroundColor: "var(--theme-code-editor-gutter-bg)",
+    borderRight: "1px solid var(--theme-code-editor-gutter-border)",
+    color: "var(--theme-code-editor-gutter-fg)",
   },
   ".cm-lineNumbers .cm-gutterElement": {
     minWidth: "40px",
@@ -76,29 +76,29 @@ const editorTheme = EditorView.theme({
     paddingRight: "10px",
   },
   ".cm-activeLine": {
-    backgroundColor: "rgba(176, 111, 65, 0.07)",
+    backgroundColor: "var(--theme-code-editor-active-line-bg)",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "rgba(176, 111, 65, 0.09)",
-    color: "#6b4a35",
+    backgroundColor: "var(--theme-code-editor-active-gutter-bg)",
+    color: "var(--theme-code-editor-active-gutter-fg)",
   },
   ".cm-selectionBackground, .cm-content ::selection": {
-    backgroundColor: "rgba(176, 111, 65, 0.18) !important",
+    backgroundColor: "var(--theme-code-editor-selection-bg) !important",
   },
   ".cm-cursor": {
-    borderLeftColor: "#8c4d22",
+    borderLeftColor: "var(--theme-code-editor-caret)",
   },
 });
 
 const editorHighlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: "#8c4d22", fontWeight: "600" },
-  { tag: [tags.string, tags.special(tags.string)], color: "#50683c" },
-  { tag: tags.propertyName, color: "#6f5f45", fontWeight: "600" },
-  { tag: [tags.number, tags.bool, tags.null], color: "#276b75" },
-  { tag: [tags.comment, tags.docComment], color: "#8c8578", fontStyle: "italic" },
-  { tag: [tags.name, tags.variableName], color: "#2f3437" },
-  { tag: tags.punctuation, color: "#8d8678" },
-  { tag: tags.invalid, color: "#b3441f" },
+  { tag: tags.keyword, color: "var(--theme-code-token-keyword)", fontWeight: "600" },
+  { tag: [tags.string, tags.special(tags.string)], color: "var(--theme-code-token-string)" },
+  { tag: tags.propertyName, color: "var(--theme-code-token-property)", fontWeight: "600" },
+  { tag: [tags.number, tags.bool, tags.null], color: "var(--theme-code-token-literal)" },
+  { tag: [tags.comment, tags.docComment], color: "var(--theme-code-token-comment)", fontStyle: "italic" },
+  { tag: [tags.name, tags.variableName], color: "var(--theme-code-token-name)" },
+  { tag: tags.punctuation, color: "var(--theme-code-token-punctuation)" },
+  { tag: tags.invalid, color: "var(--theme-code-token-invalid)" },
 ]);
 
 const editorBaseExtensions = [editorTheme, syntaxHighlighting(editorHighlightStyle), EditorView.lineWrapping];

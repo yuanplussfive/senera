@@ -1,5 +1,7 @@
 import {
   AgentHarness,
+  type AgentEvent,
+  type AgentHarnessOptions,
   type AgentHarnessResources,
   type PromptTemplate,
   type Skill,
@@ -12,13 +14,36 @@ import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import { AgentPiProxyContextHeader } from "../PiProxy/AgentPiProxyRuntimeContext.js";
-import type { AgentPiHarnessEvent, AgentPiHarnessTraceContext } from "./AgentPiHarnessEvents.js";
-import { isPiCoreAgentEvent, projectPiHarnessTraceEvent } from "./AgentPiHarnessEvents.js";
+import type {
+  AgentPiHarnessEvent,
+  AgentPiHarnessTraceContext,
+} from "./AgentPiHarnessEvents.js";
+import {
+  isPiCoreAgentEvent,
+  projectPiHarnessTraceEvent,
+} from "./AgentPiHarnessEvents.js";
 import { AgentPiHarnessSession } from "./AgentPiHarnessSession.js";
 import type { AgentPiSession } from "./AgentPiSubstrate.js";
-import { renderPiHarnessSystemPrompt, type AgentPiSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
-import { applyAgentPiContextPolicy, type AgentPiContextPolicyFrame } from "./AgentPiContextPolicy.js";
-import type { AgentPiProviderProjection, AgentPiToolDefinition } from "./AgentPiTypes.js";
+import {
+  renderPiHarnessSystemPrompt,
+  type AgentPiSelectedPromptTemplateFrame,
+} from "./AgentPiPromptFrameProjector.js";
+import {
+  applyAgentPiContextPolicy,
+  type AgentPiContextPolicyFrame,
+} from "./AgentPiContextPolicy.js";
+import type {
+  AgentPiModelProjection,
+  AgentPiProviderProjection,
+  AgentPiToolDefinition,
+} from "./AgentPiTypes.js";
+
+type AgentPiHarness = AgentHarness<Skill, PromptTemplate, AgentPiToolDefinition>;
+type AgentPiHarnessOptions = AgentHarnessOptions<
+  Skill,
+  PromptTemplate,
+  AgentPiToolDefinition
+>;
 
 export interface AgentPiHarnessSessionFrame {
   sessionId?: string;
@@ -38,11 +63,13 @@ export interface AgentPiHarnessSessionPoolOptions {
   env: SeneraExecutionEnv;
   provider: AgentPiProviderProjection;
   modelProvider: ResolvedAgentModelProviderConfig;
+  maxIdleSessions?: number;
+  harnessFactory?: (options: AgentPiHarnessOptions) => AgentPiHarness;
 }
 
 export interface AgentPiHarnessLeaseInput {
   sessionId: string;
-  session: ConstructorParameters<typeof AgentHarness>[0]["session"];
+  session: AgentPiHarnessOptions["session"];
   tools: readonly AgentPiToolDefinition[];
   activeToolNames: readonly string[];
   resources: AgentHarnessResources<Skill, PromptTemplate>;
@@ -54,22 +81,37 @@ export interface AgentPiHarnessLeaseInput {
   }) => Promise<{ block?: boolean; reason?: string } | undefined>;
 }
 
+export interface AgentPiHarnessSessionPoolPort {
+  lease(input: AgentPiHarnessLeaseInput): Promise<AgentPiHarnessLeaseResult>;
+  close(): void;
+}
 export interface AgentPiHarnessLeaseResult {
   session: AgentPiSession;
   storage: "created" | "existing";
 }
 
-export interface AgentPiHarnessSessionPoolPort {
-  lease(input: AgentPiHarnessLeaseInput): Promise<AgentPiHarnessLeaseResult>;
-  close(): void;
+export function composePiProxyRequestHeaders(
+  providerHeaders: Readonly<Record<string, string>>,
+  piProxyRuntimeContextId?: string,
+): Record<string, string> {
+  return piProxyRuntimeContextId
+    ? {
+        ...providerHeaders,
+        [AgentPiProxyContextHeader]: piProxyRuntimeContextId,
+      }
+    : { ...providerHeaders };
 }
 
+const DefaultMaxIdleSessions = 8;
+
 interface PooledHarness {
-  readonly harness: AgentHarness<Skill, PromptTemplate, AgentPiToolDefinition>;
+  readonly harness: AgentPiHarness;
   readonly frame: AgentPiMutableHarnessFrame;
   readonly disposeTrace: () => void;
   readonly disposeContextPolicy: () => void;
   disposePreflight?: () => void;
+  activeLeases: number;
+  lastAccess: number;
 }
 
 class AgentPiMutableHarnessFrame {
@@ -88,17 +130,24 @@ class AgentPiMutableHarnessFrame {
   }
 }
 
-export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort {
+export class AgentPiHarnessSessionPool {
   private readonly sessions = new Map<string, PooledHarness>();
   private readonly leaseQueues = new Map<string, Promise<void>>();
+  private readonly maxIdleSessions: number;
+  private accessSequence = 0;
 
-  constructor(private readonly options: AgentPiHarnessSessionPoolOptions) {}
+  constructor(private readonly options: AgentPiHarnessSessionPoolOptions) {
+    this.maxIdleSessions = normalizeMaxIdleSessions(options.maxIdleSessions);
+  }
 
   async lease(input: AgentPiHarnessLeaseInput): Promise<AgentPiHarnessLeaseResult> {
     const releaseLease = await this.acquireLease(input.sessionId);
+    let pooled: PooledHarness | undefined;
     try {
       const leased = await this.openOrCreate(input);
-      const pooled = leased.value;
+      pooled = leased.value;
+      pooled.activeLeases += 1;
+      pooled.lastAccess = this.nextAccessSequence();
       await this.configurePooledHarness(pooled, input);
 
       return {
@@ -106,21 +155,22 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
         session: new AgentPiHarnessSession(pooled.harness, {
           model: this.options.provider.model,
           tools: input.tools,
-          release: releaseLease,
+          release: () => this.releasePooledHarness(input.sessionId, pooled!, releaseLease),
         }),
       };
     } catch (error) {
-      releaseLease();
+      if (pooled) {
+        this.releasePooledHarness(input.sessionId, pooled, releaseLease);
+      } else {
+        releaseLease();
+      }
       throw error;
     }
   }
 
   close(): void {
     for (const pooled of this.sessions.values()) {
-      pooled.disposePreflight?.();
-      pooled.disposeContextPolicy();
-      pooled.disposeTrace();
-      void pooled.harness.abort().catch(() => undefined);
+      this.disposePooledHarness(pooled);
     }
     this.sessions.clear();
   }
@@ -164,7 +214,7 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
     }
 
     const frame = new AgentPiMutableHarnessFrame(input.frame);
-    const harness = new AgentHarness<Skill, PromptTemplate, AgentPiToolDefinition>({
+    const harnessOptions: AgentPiHarnessOptions = {
       env: this.options.env,
       session: input.session,
       tools: [...input.tools],
@@ -188,18 +238,24 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
           skills: resources.skills ?? [],
           selectedPromptTemplates: frame.snapshot().selectedPromptTemplates,
         }),
-    });
-    const disposeTrace = harness.subscribe((event) => {
-      void this.emitHarnessTrace(frame.snapshot(), event as AgentPiHarnessEvent);
-    });
+    };
+    const harness = this.options.harnessFactory?.(harnessOptions)
+      ?? new AgentHarness<Skill, PromptTemplate, AgentPiToolDefinition>(harnessOptions);
+    const disposeTrace = harness.subscribe((event) =>
+      this.emitHarnessTrace(frame.snapshot(), event as AgentPiHarnessEvent));
     const disposeContextPolicy = harness.on("context", (event) => ({
-      messages: applyAgentPiContextPolicy(event.messages, frame.snapshot().contextPolicy),
+      messages: applyAgentPiContextPolicy(
+        event.messages,
+        frame.snapshot().contextPolicy,
+      ),
     }));
     const pooled: PooledHarness = {
       harness,
       frame,
       disposeTrace,
       disposeContextPolicy,
+      activeLeases: 0,
+      lastAccess: this.nextAccessSequence(),
     };
     this.sessions.set(input.sessionId, pooled);
     return {
@@ -208,7 +264,10 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
     };
   }
 
-  private async configurePooledHarness(pooled: PooledHarness, input: AgentPiHarnessLeaseInput): Promise<void> {
+  private async configurePooledHarness(
+    pooled: PooledHarness,
+    input: AgentPiHarnessLeaseInput,
+  ): Promise<void> {
     pooled.frame.update(input.frame);
     pooled.disposePreflight?.();
     pooled.disposePreflight = pooled.harness.on("tool_call", (event) =>
@@ -216,8 +275,7 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         input: event.input,
-      }),
-    );
+      }));
 
     await pooled.harness.waitForIdle();
     await pooled.harness.setTools([...input.tools], [...input.activeToolNames]);
@@ -235,15 +293,57 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
   }
 
   private providerHeaders(frame: AgentPiHarnessSessionFrame): Record<string, string> {
-    return frame.piProxyRuntimeContextId
-      ? {
-          ...this.options.provider.headers,
-          [AgentPiProxyContextHeader]: frame.piProxyRuntimeContextId,
-        }
-      : { ...this.options.provider.headers };
+    return composePiProxyRequestHeaders(
+      this.options.provider.headers,
+      frame.piProxyRuntimeContextId,
+    );
   }
 
-  private async emitHarnessTrace(frame: AgentPiHarnessSessionFrame, event: AgentPiHarnessEvent): Promise<void> {
+  private releasePooledHarness(
+    sessionId: string,
+    pooled: PooledHarness,
+    releaseLease: () => void,
+  ): void {
+    pooled.activeLeases = Math.max(0, pooled.activeLeases - 1);
+    pooled.lastAccess = this.nextAccessSequence();
+    releaseLease();
+    // Let a queued lease for this session claim the harness before eviction runs.
+    queueMicrotask(() => this.trimIdleSessions());
+  }
+
+  private trimIdleSessions(): void {
+    const idleSessions = [...this.sessions.entries()]
+      .filter(([, pooled]) => pooled.activeLeases === 0)
+      .sort(([, left], [, right]) => right.lastAccess - left.lastAccess);
+    for (const [sessionId, pooled] of idleSessions.slice(this.maxIdleSessions)) {
+      this.evictPooledHarness(sessionId, pooled);
+    }
+  }
+
+  private evictPooledHarness(sessionId: string, pooled: PooledHarness): void {
+    if (this.sessions.get(sessionId) !== pooled) {
+      return;
+    }
+    this.sessions.delete(sessionId);
+    this.disposePooledHarness(pooled);
+  }
+
+  private disposePooledHarness(pooled: PooledHarness): void {
+    pooled.disposePreflight?.();
+    pooled.disposeContextPolicy();
+    pooled.disposeTrace();
+    void pooled.harness.abort().catch(() => undefined);
+  }
+
+  private nextAccessSequence(): number {
+    this.accessSequence += 1;
+    return this.accessSequence;
+  }
+
+  private async emitHarnessTrace(
+    frame: AgentPiHarnessSessionFrame,
+    event: AgentPiHarnessEvent,
+  ): Promise<void> {
     if (isPiCoreAgentEvent(event)) {
       return;
     }
@@ -253,6 +353,13 @@ export class AgentPiHarnessSessionPool implements AgentPiHarnessSessionPoolPort 
       await emitAgentEvent(frame.onEvent, projected);
     }
   }
+}
+
+function normalizeMaxIdleSessions(value: number | undefined): number {
+  if (value === undefined) {
+    return DefaultMaxIdleSessions;
+  }
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : DefaultMaxIdleSessions;
 }
 
 function traceContextFromFrame(frame: AgentPiHarnessSessionFrame): AgentPiHarnessTraceContext {

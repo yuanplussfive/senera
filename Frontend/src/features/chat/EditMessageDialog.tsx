@@ -54,7 +54,7 @@ export function EditMessageDialog({
           </div>
 
           <ScrollArea className="flex-1" viewportClassName="px-4 pb-4">
-            <div className="overflow-hidden rounded-lg border border-ink-200/80 bg-paper-100/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
+            <div className="overflow-hidden rounded-lg border border-ink-200/80 bg-paper-100/55 shadow-[var(--theme-inset-highlight)]">
               <textarea
                 value={draft}
                 onChange={(e) => onDraftChange(e.target.value)}

@@ -18,6 +18,10 @@ import {
   AgentPiProxyProtocol,
   resolveAgentPiProxyBaseUrl,
 } from "../../../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
+import {
+  AgentPiProxyModelProviderHeader,
+  encodePiProxyModelProviderHeaderValue,
+} from "../../../Source/AgentSystem/PiProxy/AgentPiProxyRuntimeContext.js";
 
 describe("Pi projection behavior", () => {
   test.each(AgentModelEndpointKinds)("projects %s providers through the local Pi proxy", (endpoint) => {
@@ -49,6 +53,26 @@ describe("Pi projection behavior", () => {
         supportsDeveloperRole: false,
       },
     });
+  });
+
+  test("encodes non-ASCII model provider ids before passing them through Pi proxy headers", () => {
+    const provider = createProvider({
+      Id: "测试2/deepseek-v4-flash",
+      Model: "deepseek-v4-flash",
+    });
+    const projected = projectSeneraModelProviderToPi(provider, createConfig({
+      ModelProviders: [{
+        Id: "测试2/deepseek-v4-flash",
+        ProviderId: "main",
+        Endpoint: "ChatCompletions",
+        Model: "deepseek-v4-flash",
+      }],
+    }));
+
+    expect(projected.headers[AgentPiProxyModelProviderHeader]).toBe(
+      encodePiProxyModelProviderHeaderValue("测试2/deepseek-v4-flash"),
+    );
+    expect(projected.headers[AgentPiProxyModelProviderHeader]).toMatch(/^[\x00-\x7F]*$/);
   });
 
   test("injects a single hidden runtime context message with current tool evidence and retrieval tools", () => {
@@ -155,7 +179,7 @@ function createProvider(overrides: Partial<ResolvedAgentModelProviderConfig> = {
   };
 }
 
-function createConfig(): AgentSystemConfig {
+function createConfig(overrides: Partial<AgentSystemConfig> = {}): AgentSystemConfig {
   return {
     Server: {
       Host: "127.0.0.1",
@@ -169,6 +193,7 @@ function createConfig(): AgentSystemConfig {
         Model: "test-model",
       },
     ],
+    ...overrides,
   };
 }
 

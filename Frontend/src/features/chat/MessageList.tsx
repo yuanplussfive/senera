@@ -5,6 +5,7 @@ import type { ApprovalResolutionScope } from "../../api/approvalEventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
+import { PerformanceMonitor } from "../../app/PerformanceMonitor";
 import { DeleteMessageDialog } from "./DeleteMessageDialog";
 import { EditMessageDialog } from "./EditMessageDialog";
 import { MessageRow } from "./MessageRow";
@@ -173,8 +174,9 @@ export function MessageList({
   const showScrollButton = !isAtBottom && items.length > 0;
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      <Virtuoso
+    <PerformanceMonitor id="MessageList" enabled={import.meta.env.DEV}>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <Virtuoso
         ref={autoScroll.ref}
         scrollerRef={setChatContainerScrollerRef}
         style={{ flex: 1, minHeight: 0 }}
@@ -278,5 +280,6 @@ export function MessageList({
         }}
       />
     </div>
+    </PerformanceMonitor>
   );
 }

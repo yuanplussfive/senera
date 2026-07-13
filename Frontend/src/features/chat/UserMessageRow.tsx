@@ -44,9 +44,9 @@ export function UserMessageRow({
           whileTap={tapScale ? { scale: tapScale } : undefined}
           transition={motionTimings.fast}
           className={cn(
-            "mt-1 whitespace-pre-wrap rounded-2xl rounded-tr-md bg-ink-900 px-4 py-2.5 text-left text-[14.5px] leading-relaxed text-paper-50 shadow-bubble-user transition",
+            "mt-1 whitespace-pre-wrap rounded-2xl rounded-tr-md bg-[var(--theme-chat-user-bg)] px-4 py-2.5 text-left text-[length:var(--theme-chat-user-font-size)] leading-[var(--theme-chat-user-line-height)] text-[var(--theme-chat-user-fg)] shadow-bubble-user transition",
             message.requestId
-              ? "cursor-text hover:bg-ink-800 focus:outline-none focus:ring-2 focus:ring-terra-200/60"
+              ? "cursor-text hover:bg-[var(--theme-chat-user-hover-bg)] focus:outline-none focus:ring-2 focus:ring-terra-200/60"
               : "cursor-default",
           )}
           aria-label={frontendMessage("chat.editMessage")}

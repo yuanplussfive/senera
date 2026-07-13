@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
+import { useChatState } from "../../store/selectors/chatSelectors";
+import { ErrorBoundary } from "../../shared/ui";
 import { ChatComposer } from "./ChatComposer";
 import { ChatHeader } from "./ChatHeader";
 import { EmptyChatState } from "./EmptyChatState";
@@ -13,17 +15,13 @@ import type { ChatPanelProps } from "./ChatPanelContracts";
 export function ChatPanel({
   userProfile,
   modelConfig,
-  pluginConfig,
-  systemConfig,
   presetConfig,
   runtime,
   messageActions,
   navigationActions,
 }: ChatPanelProps): JSX.Element {
   const activeId = useStore((s) => s.activeSessionId);
-  const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
-  const historyLoading = useStore((s) => (activeId ? !!s.historyLoadingIds[activeId] : false));
-  const historyFailed = useStore((s) => (activeId ? !!s.historyFailedIds[activeId] : false));
+  const { session, historyLoading, historyFailed } = useChatState(activeId);
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveMotionLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
 
@@ -78,21 +76,23 @@ export function ChatPanel({
           </ChatContentMotion>
         ) : (
           <ChatContentMotion key={`messages:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
-            <MessageList
-              sessionId={session?.sessionId ?? activeId ?? ""}
-              messages={messages}
-              runs={session?.runs ?? []}
-              currentRun={isRunning ? currentRun : undefined}
-              assistantAvatarIcon={assistantAvatarIcon}
-              selectedModelProvider={selectedModelProvider}
-              userProfile={userProfile}
-              onRegenerate={messageActions.onRegenerate}
-              onEditUserMessage={messageActions.onEditUserMessage}
-              onDeleteFromMessage={messageActions.onDeleteFromMessage}
-              onViewWorkflow={messageActions.onViewWorkflow}
-              onResolveApproval={messageActions.onResolveApproval}
-              approvalDisabled={runtime.socketStatus !== "open"}
-            />
+            <ErrorBoundary resetKey={activeId}>
+              <MessageList
+                sessionId={session?.sessionId ?? activeId ?? ""}
+                messages={messages}
+                runs={session?.runs ?? []}
+                currentRun={isRunning ? currentRun : undefined}
+                assistantAvatarIcon={assistantAvatarIcon}
+                selectedModelProvider={selectedModelProvider}
+                userProfile={userProfile}
+                onRegenerate={messageActions.onRegenerate}
+                onEditUserMessage={messageActions.onEditUserMessage}
+                onDeleteFromMessage={messageActions.onDeleteFromMessage}
+                onViewWorkflow={messageActions.onViewWorkflow}
+                onResolveApproval={messageActions.onResolveApproval}
+                approvalDisabled={runtime.socketStatus !== "open"}
+              />
+            </ErrorBoundary>
           </ChatContentMotion>
         )}
       </AnimatePresence>
@@ -100,8 +100,6 @@ export function ChatPanel({
         disabled={composerDisabled}
         running={!!isRunning}
         modelConfig={modelConfig}
-        pluginConfig={pluginConfig}
-        systemConfig={systemConfig}
         presetConfig={presetConfig}
         runtime={{
           socketStatus: runtime.socketStatus,

@@ -53,7 +53,7 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
     <div
       className={cn(
         "group relative w-[240px] cursor-pointer rounded-xl border bg-paper-50 px-3 py-2.5 transition-all",
-        "shadow-[0_1px_2px_rgba(28,26,23,0.04)] hover:shadow-[0_4px_12px_rgba(28,26,23,0.10)]",
+        "shadow-[var(--theme-node-shadow)] hover:shadow-[var(--theme-node-shadow)]",
         accent.border,
         selected ? "ring-2 ring-terra-400 ring-offset-2 ring-offset-paper-100" : "",
       )}
@@ -123,7 +123,7 @@ function ScopeNode({
     <div
       className={cn(
         "group relative w-[240px] cursor-default rounded-xl border px-3 py-2.5 transition-all",
-        "shadow-[0_1px_2px_rgba(28,26,23,0.04)]",
+        "shadow-[var(--shadow-bubble-user)]",
         accent,
         selected ? "ring-2 ring-terra-400 ring-offset-2 ring-offset-paper-100" : "",
       )}

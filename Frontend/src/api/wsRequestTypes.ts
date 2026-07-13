@@ -1,5 +1,11 @@
-import type { ApprovalResolvedData, ApprovalResolutionScope } from "./approvalEventTypes";
-import type { PresetFormat, ProviderModelEndpointInput, UploadAttachmentData, UserProfileData } from "./eventTypes";
+import type { ApprovalResolvedData } from "./approvalEventTypes";
+import type {
+  PresetFormat,
+  ProviderModelEndpointInput,
+  UploadAttachmentData,
+  UserProfileData,
+} from "./eventTypes";
+import type { ProviderModelConfigRequest } from "./providerModelCommandTypes";
 
 type ApprovalResolveStatus = ApprovalResolvedData["status"];
 
@@ -24,6 +30,7 @@ export type WsRequest =
   | { type: "provider.models.fetch"; providerId: string; force?: boolean; endpoint?: ProviderModelEndpointInput }
   | { type: "config.get" }
   | { type: "config.update"; requestId?: string; config: Record<string, unknown>; mirrorJson?: boolean }
+  | ProviderModelConfigRequest
   | { type: "plugin.config.list" }
   | { type: "plugin.config.update"; requestId?: string; pluginName: string; toml: string }
   | { type: "plugin.config.set_enabled"; requestId?: string; pluginName: string; toolName?: string; enabled: boolean }
@@ -33,11 +40,5 @@ export type WsRequest =
   | { type: "preset.set_active"; requestId?: string; name?: string | null }
   | { type: "profile.get" }
   | { type: "profile.update"; profile: Pick<UserProfileData, "name" | "avatarDataUrl"> }
-  | {
-      type: "approval.resolve";
-      approvalId: string;
-      status: ApprovalResolveStatus;
-      message?: string;
-      scope?: ApprovalResolutionScope;
-    }
+  | { type: "approval.resolve"; approvalId: string; status: ApprovalResolveStatus; message?: string }
   | { type: "sandbox.status" };

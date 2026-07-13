@@ -34,12 +34,21 @@ export function ThinkingTimelineCanvas({
   );
 }
 
-function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: number }): JSX.Element {
+function CanvasArea({
+  run,
+  focusVersion = 0,
+}: {
+  run: RunRecord;
+  focusVersion?: number;
+}): JSX.Element {
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [flowReady, setFlowReady] = useState(false);
   const rf = useReactFlow<Node<StepNodeData>>();
   const steps = run.steps;
-  const selectedStep = useMemo(() => steps.find((step) => step.id === selectedStepId) ?? null, [steps, selectedStepId]);
+  const selectedStep = useMemo(
+    () => steps.find((step) => step.id === selectedStepId) ?? null,
+    [steps, selectedStepId],
+  );
 
   const { nodes, edges, translateExtent } = useMemo(() => {
     const { nodes, edges } = layoutSteps(steps);
@@ -74,19 +83,16 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
     };
   }, [steps]);
 
-  const fitCanvas = useCallback(
-    (duration = FIT_VIEW_DURATION_MS): void => {
-      if (!flowReady || nodes.length === 0) return;
-      window.requestAnimationFrame(() => {
-        try {
-          void rf.fitView({ padding: FIT_VIEW_PADDING, duration });
-        } catch {
-          /* ignore */
-        }
-      });
-    },
-    [flowReady, nodes.length, rf],
-  );
+  const fitCanvas = useCallback((duration = FIT_VIEW_DURATION_MS): void => {
+    if (!flowReady || nodes.length === 0) return;
+    window.requestAnimationFrame(() => {
+      try {
+        void rf.fitView({ padding: FIT_VIEW_PADDING, duration });
+      } catch {
+        /* ignore */
+      }
+    });
+  }, [flowReady, nodes.length, rf]);
 
   useEffect(() => {
     if (!flowReady || nodes.length === 0) return;
@@ -146,7 +152,12 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
           });
         }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="rgba(28,26,23,0.10)" />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={18}
+          size={1}
+          color="var(--theme-canvas-grid)"
+        />
         <Controls
           position="bottom-left"
           showInteractive={false}

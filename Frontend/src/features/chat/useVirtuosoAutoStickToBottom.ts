@@ -117,6 +117,7 @@ export function useVirtuosoAutoStickToBottom({
 
   const scrollerRef = useCallback(
     (target: HTMLElement | Window | null): void => {
+      if (scrollerTargetRef.current === target) return; // Prevent redundant setState calls
       scrollerTargetRef.current = target;
       setScroller(target);
       if (target) rememberScrollPosition(target);

@@ -36,6 +36,7 @@ export interface ChatCommandsHandle {
   deleteFromMessage: (message: ChatMessage) => void;
   editUserMessage: (message: ChatMessage, nextContent: string) => void;
   regenerateMessage: (message: ChatMessage) => void;
+  resolveApproval: (approvalId: string, status: "approved" | "denied") => void;
   sendMessage: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
   sendAfterTruncate: (pending: PendingAfterTruncate) => boolean;
 }
@@ -361,11 +362,21 @@ export function useChatCommands({
     [activeSessionId, appendUserMessage, lastSendRef, registerSession, send, serverKnownSessionIdsRef],
   );
 
+  const resolveApproval = useCallback((approvalId: string, approvalStatus: "approved" | "denied"): void => {
+    if (!activeSessionId || status !== "open") return;
+    send({
+      type: "approval.resolve",
+      approvalId,
+      status: approvalStatus,
+    });
+  }, [activeSessionId, send, status]);
+
   return {
     cancelActiveSession,
     deleteFromMessage,
     editUserMessage,
     regenerateMessage,
+    resolveApproval,
     sendMessage,
     sendAfterTruncate,
   };

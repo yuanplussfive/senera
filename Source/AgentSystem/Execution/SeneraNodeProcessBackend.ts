@@ -27,6 +27,7 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
       });
       const output = new SeneraProcessOutputBuffer({ encoding: "auto" });
       let settled = false;
+      let terminalError: SeneraExecutionError | undefined;
       let timer: ReturnType<typeof setTimeout> | undefined = undefined;
 
       const killChild = (): void => {
@@ -41,12 +42,12 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
         callback();
       };
       const abortListener = (): void => {
-        killChild();
-        settle(() => reject(new SeneraExecutionError(SeneraExecutionErrorCodes.Aborted, "aborted")));
+        rejectWith(new SeneraExecutionError(SeneraExecutionErrorCodes.Aborted, "aborted"));
       };
       const rejectWith = (error: SeneraExecutionError): void => {
+        if (settled || terminalError) return;
+        terminalError = error;
         killChild();
-        settle(() => reject(error));
       };
 
       request.signal?.addEventListener("abort", abortListener, { once: true });
@@ -101,6 +102,10 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
         }
       });
       child.on("error", (error) => {
+        if (terminalError) {
+          settle(() => reject(terminalError!));
+          return;
+        }
         settle(() =>
           reject(
             new SeneraExecutionError(
@@ -117,6 +122,10 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
         );
       });
       child.on("close", (exitCode, signal) => {
+        if (terminalError) {
+          settle(() => reject(terminalError!));
+          return;
+        }
         settle(() =>
           resolve({
             stdout: output.stdout(),

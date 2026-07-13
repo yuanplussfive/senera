@@ -10,7 +10,9 @@ export interface HighlightedCodeRequest {
 export type HighlightedCodeState =
   { status: "loading" } | { status: "ready"; html: string } | { status: "failed"; reason: unknown };
 
-const CODE_HIGHLIGHT_THEME = "github-light";
+const CODE_HIGHLIGHT_LIGHT_THEME = "github-light";
+const CODE_HIGHLIGHT_DARK_THEME = "github-dark-dimmed";
+const CODE_HIGHLIGHT_THEME_KEY = `${CODE_HIGHLIGHT_LIGHT_THEME}+${CODE_HIGHLIGHT_DARK_THEME}`;
 const codeHighlightCache = new LruCache<string, Promise<string>>(80);
 const HIGHLIGHT_LANGUAGE_LOADERS = {
   c: () => import("@shikijs/langs/c"),
@@ -70,7 +72,8 @@ const HIGHLIGHT_LANGUAGE_ALIASES: Record<string, SupportedHighlightLanguage> = {
   zsh: "shellscript",
 };
 const HIGHLIGHT_THEMES = {
-  [CODE_HIGHLIGHT_THEME]: () => import("@shikijs/themes/github-light"),
+  [CODE_HIGHLIGHT_LIGHT_THEME]: () => import("@shikijs/themes/github-light"),
+  [CODE_HIGHLIGHT_DARK_THEME]: () => import("@shikijs/themes/github-dark-dimmed"),
 } as const;
 
 type SupportedHighlightLanguage = keyof typeof HIGHLIGHT_LANGUAGE_LOADERS;
@@ -126,7 +129,7 @@ export function loadingHighlightedCode(): HighlightedCodeState {
 
 export function readHighlightCacheKey({ code, language }: HighlightedCodeRequest): string {
   const languageKey = resolveSupportedHighlightLanguage(language) ?? normalizeLanguage(language);
-  return [CODE_HIGHLIGHT_THEME, languageKey, code].join("\u0000");
+  return [CODE_HIGHLIGHT_THEME_KEY, languageKey, code].join("\u0000");
 }
 
 export function resolveSupportedHighlightLanguage(language: string): SupportedHighlightLanguage | null {
@@ -149,10 +152,14 @@ async function highlightCodeWithRuntime(request: HighlightedCodeRequest): Promis
   };
   return codeToHtml(request.code, {
     lang: language,
-    theme: CODE_HIGHLIGHT_THEME,
+    themes: {
+      light: CODE_HIGHLIGHT_LIGHT_THEME,
+      dark: CODE_HIGHLIGHT_DARK_THEME,
+    },
     colorReplacements: {
       "#ffffff": "transparent",
       "#fff": "transparent",
+      "#22272e": "transparent",
     },
     transformers: [codeLineAttributesTransformer],
   });
