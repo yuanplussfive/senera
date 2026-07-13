@@ -1,14 +1,14 @@
-import type { ElementType, HTMLAttributes, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ElementType, ReactNode } from "react";
 import { cn } from "../../lib/util";
 
 export type MetaLabelSize = "xs" | "sm" | "md";
 
-export interface MetaLabelProps extends HTMLAttributes<HTMLElement> {
-  as?: ElementType;
+export type MetaLabelProps<T extends ElementType = "span"> = {
+  as?: T;
   children: ReactNode;
   className?: string;
   size?: MetaLabelSize;
-}
+} & Omit<ComponentPropsWithoutRef<T>, "as" | "children" | "className">;
 
 const metaLabelSizeClasses: Record<MetaLabelSize, string> = {
   xs: "text-[9.5px]",
@@ -20,13 +20,14 @@ export function metaLabelClassName(size: MetaLabelSize = "md", className?: strin
   return cn("font-mono uppercase tracking-wider text-ink-400", metaLabelSizeClasses[size], className);
 }
 
-export function MetaLabel({
-  as: Component = "span",
+export function MetaLabel<T extends ElementType = "span">({
+  as,
   children,
   className,
   size = "md",
   ...props
-}: MetaLabelProps): JSX.Element {
+}: MetaLabelProps<T>): JSX.Element {
+  const Component = as ?? "span";
   return (
     <Component className={metaLabelClassName(size, className)} {...props}>
       {children}

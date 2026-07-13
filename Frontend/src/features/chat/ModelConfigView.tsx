@@ -1,9 +1,13 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "react";
 import type { ProviderModelInfo } from "../../api/eventTypes";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { Dialog, DialogContent } from "../../shared/ui";
-import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
 import {
+  Dialog,
+  DialogContent,
+} from "../../shared/ui";
+import { cn } from "../../lib/util";
+import {
+  applyModelProvidersDraft,
   cloneRecord,
   createModelDraft,
   createProviderDraft,
@@ -34,13 +38,18 @@ import type {
 } from "./modelConfigTypes";
 import { ModelGroupsDialog } from "./ModelGroupsDialog";
 import { ModelOptionsDialog } from "./ModelOptionsDialog";
-import { ProviderEditor, ProviderList } from "./ModelProviderPanels";
+import {
+  ProviderEditor,
+  ProviderList,
+} from "./ModelProviderPanels";
 import { ProviderModelList } from "./ModelProviderModelList";
+import { RemoteModelPickerDialog } from "./RemoteModelPickerDialog";
 
 export function ModelConfigView({
   value,
   section,
   disabled = false,
+  layoutMode = "panel",
   catalogs,
   errors,
   loadingProviderIds,
@@ -59,6 +68,7 @@ export function ModelConfigView({
   const [optionsModelState, setOptionsModelState] = useState<ModelOptionsState | null>(null);
   const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
   const [modelGroupsOpen, setModelGroupsOpen] = useState(false);
+  const [remoteModelPickerOpen, setRemoteModelPickerOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
   const [showConfiguredOnly, setShowConfiguredOnly] = useState(false);
   const deferredModelSearch = useDeferredValue(modelSearch);
@@ -74,22 +84,23 @@ export function ModelConfigView({
   const modelTemplate = useMemo(() => cloneRecord(modelField?.defaultItem ?? {}), [modelField]);
   const selectedProviderCatalog = selectedProvider?.Id ? catalogs[selectedProvider.Id] : undefined;
   const selectedProviderError = selectedProvider?.Id ? errors[selectedProvider.Id] : undefined;
-  const selectedProviderLoading = selectedProvider?.Id ? Boolean(loadingProviderIds[selectedProvider.Id]) : false;
+  const selectedProviderLoading = selectedProvider?.Id
+    ? Boolean(loadingProviderIds[selectedProvider.Id])
+    : false;
   const selectedProviderEnabled = providerEnabled(selectedProvider);
   const providerModelRows = useMemo(
-    () =>
-      sortProviderModelRows({
-        rows: readProviderModelRows({
-          catalogModels: selectedProviderCatalog?.models ?? [],
-          models,
-          providerId: selectedProvider?.Id ?? "",
-          search: deferredModelSearch,
-          configuredOnly: showConfiguredOnly,
-        }),
+    () => sortProviderModelRows({
+      rows: readProviderModelRows({
+        catalogModels: selectedProviderCatalog?.models ?? [],
         models,
         providerId: selectedProvider?.Id ?? "",
-        defaultModelId,
+        search: deferredModelSearch,
+        configuredOnly: showConfiguredOnly,
       }),
+      models,
+      providerId: selectedProvider?.Id ?? "",
+      defaultModelId,
+    }),
     [defaultModelId, deferredModelSearch, models, selectedProvider?.Id, selectedProviderCatalog, showConfiguredOnly],
   );
   const providerModelGroups = useMemo(
@@ -97,7 +108,10 @@ export function ModelConfigView({
     [modelGroups, providerModelRows],
   );
 
-  const writeProviders = (nextProviders: ProviderEndpointDraft[], nextModels: ModelProviderDraft[] = models): void => {
+  const writeProviders = (
+    nextProviders: ProviderEndpointDraft[],
+    nextModels: ModelProviderDraft[] = models,
+  ): void => {
     onChange({
       ...value,
       ModelProviderEndpoints: nextProviders.map(normalizeProviderEndpointDraft),
@@ -105,21 +119,15 @@ export function ModelConfigView({
     });
   };
 
-  const writeModels = (nextModels: ModelProviderDraft[], requestedDefaultModelId = defaultModelId): void => {
-    const normalizedModels = nextModels.map(normalizeModelProviderDraft);
-    const resolvedDefault = normalizedModels.some((model) => model.Id === requestedDefaultModelId)
-      ? requestedDefaultModelId
-      : normalizedModels[0]?.Id;
-    const nextValue: JsonConfigObject = {
-      ...value,
-      ModelProviders: normalizedModels,
-    };
-    if (resolvedDefault) {
-      nextValue.DefaultModelProviderId = resolvedDefault;
-    } else {
-      delete nextValue.DefaultModelProviderId;
-    }
-    onChange(nextValue);
+  const writeModels = (
+    nextModels: ModelProviderDraft[],
+    requestedDefaultModelId = defaultModelId,
+  ): void => {
+    onChange(applyModelProvidersDraft({
+      models: nextModels,
+      requestedDefaultModelId,
+      value,
+    }));
   };
 
   const writeModelGroups = (nextGroups: ModelGroupDraft[]): void => {
@@ -142,12 +150,12 @@ export function ModelConfigView({
     if (!previous) return;
     const nextProvider = normalizeProviderEndpointDraft({ ...previous, ...patch });
     const nextProviders = providers.map((provider, providerIndex) =>
-      providerIndex === index ? nextProvider : provider,
-    );
-    const nextModels =
-      previous.Id !== nextProvider.Id
-        ? models.map((model) => (model.ProviderId === previous.Id ? { ...model, ProviderId: nextProvider.Id } : model))
-        : models;
+      providerIndex === index ? nextProvider : provider);
+    const nextModels = previous.Id !== nextProvider.Id
+      ? models.map((model) => model.ProviderId === previous.Id
+        ? { ...model, ProviderId: nextProvider.Id }
+        : model)
+      : models;
     writeProviders(nextProviders, nextModels);
   };
 
@@ -156,28 +164,21 @@ export function ModelConfigView({
     if (!provider) return;
     const nextProviders = providers.filter((_, providerIndex) => providerIndex !== index);
     const nextModels = models.filter((model) => model.ProviderId !== provider.Id);
-    const resolvedDefault = nextModels.some((model) => model.Id === defaultModelId)
-      ? defaultModelId
-      : nextModels[0]?.Id;
-    const nextValue: JsonConfigObject = {
-      ...value,
+    onChange({
+      ...applyModelProvidersDraft({
+        models: nextModels,
+        requestedDefaultModelId: defaultModelId,
+        value,
+      }),
       ModelProviderEndpoints: nextProviders.map(normalizeProviderEndpointDraft),
-      ModelProviders: nextModels.map(normalizeModelProviderDraft),
-    };
-    if (resolvedDefault) {
-      nextValue.DefaultModelProviderId = resolvedDefault;
-    } else {
-      delete nextValue.DefaultModelProviderId;
-    }
-    onChange(nextValue);
+    });
     setSelectedProviderIndex(Math.max(0, Math.min(index, nextProviders.length - 1)));
   };
 
   const configureModelFromCatalog = (modelInfo: ProviderModelInfo): void => {
     if (!selectedProvider?.Id) return;
-    const existingIndex = models.findIndex(
-      (model) => model.ProviderId === selectedProvider.Id && model.Model === modelInfo.id,
-    );
+    const existingIndex = models.findIndex((model) =>
+      model.ProviderId === selectedProvider.Id && model.Model === modelInfo.id);
     if (existingIndex >= 0) {
       setOptionsModelState({
         model: models[existingIndex],
@@ -209,21 +210,19 @@ export function ModelConfigView({
     const previous = models[optionsModelState.index];
     const nextDefault = previous && defaultModelId === previous.Id ? nextModel.Id : defaultModelId;
     writeModels(
-      models.map((model, modelIndex) => (modelIndex === optionsModelState.index ? nextModel : model)),
+      models.map((model, modelIndex) => modelIndex === optionsModelState.index ? nextModel : model),
       nextDefault,
     );
     setOptionsModelState(null);
   };
 
   const updateModelDraft = (patch: Partial<ModelProviderDraft>): void => {
-    setOptionsModelState((current) =>
-      current
-        ? {
-            ...current,
-            model: normalizeModelProviderDraft({ ...current.model, ...patch }),
-          }
-        : current,
-    );
+    setOptionsModelState((current) => current
+      ? {
+        ...current,
+        model: normalizeModelProviderDraft({ ...current.model, ...patch }),
+      }
+      : current);
   };
 
   const removeModel = (index: number): void => {
@@ -231,11 +230,7 @@ export function ModelConfigView({
     writeModels(nextModels);
     if (optionsModelState?.index === index) {
       setOptionsModelState(null);
-    } else if (
-      optionsModelState?.index !== null &&
-      optionsModelState?.index !== undefined &&
-      optionsModelState.index > index
-    ) {
+    } else if (optionsModelState?.index !== null && optionsModelState?.index !== undefined && optionsModelState.index > index) {
       setOptionsModelState({
         ...optionsModelState,
         index: optionsModelState.index - 1,
@@ -243,10 +238,34 @@ export function ModelConfigView({
     }
   };
 
+  const fetchSelectedProviderModels = (force?: boolean): void => {
+    if (!selectedProvider?.Id || !selectedProviderEnabled) return;
+    onFetchProviderModels(
+      selectedProvider.Id,
+      force,
+      toProviderEndpointInput(selectedProvider),
+    );
+  };
+
+  const openRemoteModelPicker = (force?: boolean): void => {
+    setRemoteModelPickerOpen(true);
+    fetchSelectedProviderModels(force);
+  };
+
+  const embedded = layoutMode === "embedded";
+
   return (
     <>
-      <div className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(260px,42%)_minmax(0,1fr)] overflow-hidden bg-paper-50 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
-        <section className="flex h-full min-h-0 flex-col overflow-hidden border-b border-ink-200/70 bg-[#f6f0e7] lg:border-b-0 lg:border-r">
+      <div className={cn(
+        "grid bg-paper-50",
+        embedded
+          ? "min-h-0 grid-cols-1 overflow-visible lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]"
+          : "h-full min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(148px,34%)_minmax(0,1fr)] overflow-hidden lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]",
+      )}>
+        <section className={cn(
+          "flex min-h-0 flex-col border-b border-ink-200/70 bg-[var(--theme-config-list-bg)] lg:border-b-0 lg:border-r",
+          embedded ? "overflow-visible" : "h-full overflow-hidden",
+        )}>
           <ProviderList
             providers={providers}
             catalogs={catalogs}
@@ -254,13 +273,17 @@ export function ModelConfigView({
             loadingProviderIds={loadingProviderIds}
             selectedIndex={selectedProviderIndex}
             disabled={disabled}
+            layoutMode={layoutMode}
             onAdd={addProvider}
             onSelect={(index) => startProviderTransition(() => setSelectedProviderIndex(index))}
             onRemove={removeProvider}
             onOpenSettings={() => setProviderSettingsOpen(true)}
           />
         </section>
-        <section className="h-full min-h-0 min-w-0 overflow-hidden bg-paper-50">
+        <section className={cn(
+          "min-h-0 min-w-0 bg-paper-50",
+          embedded ? "overflow-visible" : "h-full overflow-hidden",
+        )}>
           <ProviderModelList
             selectedProvider={selectedProvider}
             catalog={selectedProviderCatalog}
@@ -278,19 +301,16 @@ export function ModelConfigView({
             onSearch={setModelSearch}
             onConfiguredOnlyChange={setShowConfiguredOnly}
             onOpenModelGroups={() => setModelGroupsOpen(true)}
-            onFetch={(force) =>
-              selectedProvider?.Id &&
-              selectedProviderEnabled &&
-              onFetchProviderModels(selectedProvider.Id, force, toProviderEndpointInput(selectedProvider))
-            }
+            onFetch={openRemoteModelPicker}
             onConfigureModel={configureModelFromCatalog}
+            layoutMode={layoutMode}
           />
         </section>
       </div>
       <Dialog open={providerSettingsOpen} onOpenChange={setProviderSettingsOpen}>
         <DialogContent
-          title={frontendMessage("config.provider.settings")}
-          description={selectedProvider ? providerIdLabel(selectedProvider) : frontendMessage("config.provider.select")}
+          title={frontendMessage("runtime.migrated.features.chat.ModelConfigView.311.17")}
+          description={selectedProvider ? providerIdLabel(selectedProvider) : "选择供应商"}
           motionPreset="focus"
           className="h-[min(780px,calc(100dvh_-_48px))] w-[min(860px,calc(100vw_-_32px))] max-w-none rounded-xl bg-paper-50"
           bodyClassName="min-h-0 flex-1"
@@ -307,14 +327,28 @@ export function ModelConfigView({
               removeProvider(index);
               setProviderSettingsOpen(false);
             }}
-            onFetch={(force) =>
-              selectedProvider?.Id &&
-              selectedProviderEnabled &&
-              onFetchProviderModels(selectedProvider.Id, force, toProviderEndpointInput(selectedProvider))
-            }
+            onFetch={fetchSelectedProviderModels}
           />
         </DialogContent>
       </Dialog>
+      <RemoteModelPickerDialog
+        catalog={selectedProviderCatalog}
+        configuredModels={models.filter((model) => model.ProviderId === (selectedProvider?.Id ?? ""))}
+        defaultModelId={defaultModelId}
+        disabled={disabled}
+        error={selectedProviderError}
+        groups={modelGroups}
+        loading={selectedProviderLoading}
+        modelTemplate={modelTemplate}
+        open={remoteModelPickerOpen}
+        provider={selectedProvider}
+        onConfigureModel={(model) => {
+          configureModelFromCatalog(model);
+          setRemoteModelPickerOpen(false);
+        }}
+        onOpenChange={setRemoteModelPickerOpen}
+        onRefresh={() => fetchSelectedProviderModels(true)}
+      />
       <ModelOptionsDialog
         model={optionsModel}
         modelIndex={optionsModelState?.index ?? null}

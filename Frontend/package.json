@@ -11,7 +11,9 @@
     "check.governance": "node --import tsx ../Scripts/VerifyFrontendTestCoverage.ts",
     "test.behavior": "node --import tsx ../Scripts/VerifyFrontendVitestSuite.ts",
     "test.coverage": "vitest run --config ../vitest.config.ts --coverage",
-    "test": "npm run check.types && npm run check.governance && npm run test.behavior"
+    "test": "npm run check.types && npm run check.governance && npm run test.behavior",
+    "ladle": "ladle serve",
+    "ladle:build": "ladle build"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",

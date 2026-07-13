@@ -1,9 +1,22 @@
-import type { ReactNode } from "react";
-import { AlertTriangle, Check, ChevronDown, Loader2, RefreshCw, Search } from "lucide-react";
-import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import type { ReactNode } from "react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  Loader2,
+  RefreshCw,
+  Search,
+} from "lucide-react";
+import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Tooltip } from "../../shared/ui";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Tooltip,
+} from "../../shared/ui";
 import { ModelProviderIcon } from "./ModelProviderIcon";
 import { formatShortTime } from "./modelConfigData";
 
@@ -17,7 +30,7 @@ export function ListHeader({
   action?: ReactNode;
 }): JSX.Element {
   return (
-    <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ink-200/70 bg-[#efe7da] px-3">
+    <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ink-200/70 bg-[var(--theme-config-header-bg)] px-3">
       <div className="min-w-0">
         <div className="truncate text-[13px] font-semibold text-ink-900">{title}</div>
         <div className="mt-0.5 truncate text-[11px] text-ink-500">{subtitle}</div>
@@ -88,7 +101,7 @@ export function TextRow({
   placeholder?: string;
   secret?: boolean;
   trailing?: ReactNode;
-  onChange: (value: string) => void;
+  onChange?: (value: string) => void;
 }): JSX.Element {
   return (
     <SettingRow icon={icon} label={label}>
@@ -100,7 +113,7 @@ export function TextRow({
           disabled={disabled}
           spellCheck={false}
           className={inputClassName}
-          onChange={(event) => onChange(event.currentTarget.value)}
+          onChange={(event) => onChange?.(event.currentTarget.value)}
         />
         {trailing}
       </div>
@@ -188,12 +201,10 @@ export function ToggleRow({
         onClick={() => onChange(!enabled)}
       >
         <span className={cn("relative h-5 w-9 rounded-full", enabled ? "bg-moss-500" : "bg-ink-300")}>
-          <span
-            className={cn(
-              "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-              enabled && "translate-x-4",
-            )}
-          />
+          <span className={cn(
+            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
+            enabled && "translate-x-4",
+          )} />
         </span>
         {enabled ? "ON" : "OFF"}
       </button>
@@ -286,7 +297,7 @@ export function SearchInput({
       <input
         value={value}
         disabled={disabled}
-        placeholder={frontendMessage("config.model.searchPlaceholder")}
+        placeholder={frontendMessage("runtime.migrated.features.chat.ModelConfigPrimitives.299.21")}
         className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-800 outline-none placeholder:text-ink-350 disabled:opacity-55"
         onChange={(event) => onChange(event.currentTarget.value)}
       />
@@ -329,42 +340,32 @@ export function ProviderCatalogStatus({
   disabled?: boolean;
 }): JSX.Element {
   const tone = disabled ? "neutral" : error ? "error" : catalog ? "success" : loading ? "info" : "neutral";
-  const icon = disabled ? (
-    <AlertTriangle className="h-3.5 w-3.5" />
-  ) : loading ? (
-    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-  ) : error ? (
-    <AlertTriangle className="h-3.5 w-3.5" />
-  ) : catalog ? (
-    <Check className="h-3.5 w-3.5" />
-  ) : (
-    <RefreshCw className="h-3.5 w-3.5" />
-  );
+  const icon = disabled
+    ? <AlertTriangle className="h-3.5 w-3.5" />
+    : loading
+    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+    : error
+      ? <AlertTriangle className="h-3.5 w-3.5" />
+      : catalog
+        ? <Check className="h-3.5 w-3.5" />
+        : <RefreshCw className="h-3.5 w-3.5" />;
   const text = disabled
-    ? frontendMessage("config.provider.disabled")
-    : (error?.message ??
-      (catalog
-        ? frontendMessage("config.provider.catalogStatus", {
-            count: catalog.models.length,
-            source: frontendMessage(
-              catalog.source === "cache" ? "config.provider.sourceCache" : "config.provider.sourceNetwork",
-            ),
-            time: formatShortTime(catalog.fetchedAt),
-          })
-        : frontendMessage("config.provider.catalogUnchecked")));
+    ? "供应商已关闭"
+    : error?.message
+    ?? (catalog ? `${catalog.models.length} 个模型 · ${catalog.source === "cache" ? "缓存" : "网络"} · ${formatShortTime(catalog.fetchedAt)}` : "尚未获取模型列表");
 
   return (
-    <div
-      className={cn(
-        "flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-[12px]",
-        statusToneClassName[tone],
-        expanded && "rounded-lg px-3 py-2.5",
-      )}
-    >
+    <div className={cn(
+      "flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-[12px]",
+      statusToneClassName[tone],
+      expanded && "rounded-lg px-3 py-2.5",
+    )}>
       <span className="mt-0.5 shrink-0">{icon}</span>
       <span className="min-w-0">
         <span className="block truncate">{text}</span>
-        {expanded && catalog ? <span className="mt-1 block text-[11px] opacity-75">{catalog.baseUrl}</span> : null}
+        {expanded && catalog ? (
+          <span className="mt-1 block text-[11px] opacity-75">{catalog.baseUrl}</span>
+        ) : null}
       </span>
     </div>
   );
@@ -388,7 +389,10 @@ export function IconAction({
       <button
         type="button"
         disabled={disabled}
-        className={cn(iconButtonClassName, danger && "hover:border-brick-200 hover:bg-brick-50 hover:text-brick-600")}
+        className={cn(
+          iconButtonClassName,
+          danger && "hover:border-brick-200 hover:bg-brick-50 hover:text-brick-600",
+        )}
         aria-label={label}
         onClick={onClick}
       >
@@ -398,7 +402,15 @@ export function IconAction({
   );
 }
 
-export function EmptyDetail({ icon, title, text }: { icon: ReactNode; title: string; text: string }): JSX.Element {
+export function EmptyDetail({
+  icon,
+  title,
+  text,
+}: {
+  icon: ReactNode;
+  title: string;
+  text: string;
+}): JSX.Element {
   return (
     <div className="grid h-full min-h-0 place-items-center px-6 text-center">
       <div>
@@ -413,7 +425,11 @@ export function EmptyDetail({ icon, title, text }: { icon: ReactNode; title: str
 }
 
 export function EmptyList({ text }: { text: string }): JSX.Element {
-  return <div className="grid min-h-40 place-items-center px-5 text-center text-[12px] text-ink-400">{text}</div>;
+  return (
+    <div className="grid min-h-40 place-items-center px-5 text-center text-[12px] text-ink-400">
+      {text}
+    </div>
+  );
 }
 
 export const iconButtonClassName = cn(

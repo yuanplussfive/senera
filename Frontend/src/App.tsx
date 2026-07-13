@@ -1,17 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Toaster } from "sonner";
-import { TooltipProvider } from "./shared/ui";
-import { useAgentSocket, type SocketStatus } from "./api/useAgentSocket";
+import { TooltipProvider, ErrorBoundary } from "./shared/ui";
+import { useAgentSocket } from "./api/useAgentSocket";
+import { buildUploadUrl } from "./api/uploadClient";
+import { useStore } from "./store/sessionStore";
 import { ChatPanel } from "./features/chat";
+import { SessionList } from "./features/session";
 import { ThinkingTimeline } from "./features/workflow";
-import { AppShell } from "./layout/AppShell";
-import type { WsRequest } from "./api/eventTypes";
-import { useChatCommands, type LastSentMessage, type PendingAfterTruncate } from "./app/useChatCommands";
-import { AppSessionSurface, type AppSessionActions } from "./app/AppSessionSurfaces";
-import { useAppChatPanelBindings } from "./app/useAppChatPanelBindings";
-import { useAppPanelController } from "./app/useAppPanelController";
-import { useAppStoreBindings } from "./app/useAppStoreBindings";
-import { useConfigMutationController } from "./app/useConfigMutationController";
+import { AppShell, readAppShellRenderPlan } from "./layout/AppShell";
+import {
+  type EventEnvelope,
+  type WsRequest,
+} from "./api/eventTypes";
+import { usePresetCommands } from "./app/usePresetCommands";
+import {
+  useChatCommands,
+  type LastSentMessage,
+  type PendingAfterTruncate,
+} from "./app/useChatCommands";
 import { useGlobalShortcuts } from "./app/useGlobalShortcuts";
 import { useSessionCommands } from "./app/useSessionCommands";
 import { useSessionCatalogSync } from "./app/useSessionCatalogSync";
@@ -23,79 +29,51 @@ import { useSandboxRuntimeStatus } from "./app/useSandboxRuntimeStatus";
 import { useSocketErrorToasts } from "./app/useSocketErrorToasts";
 import { useSocketPostIngestEffects } from "./app/useSocketPostIngestEffects";
 import { useWorkflowNavigation } from "./app/useWorkflowNavigation";
+import { useResponsiveMode } from "./shared/responsive";
 import { installCopyableToasts } from "./shared/ui/installCopyableToasts";
 import { resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
-import { ServerAuthenticationGate } from "./app/ServerAuthenticationGate";
-import { useServerAuthentication } from "./app/useServerAuthentication";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 installCopyableToasts();
 
 export function App(): JSX.Element {
-  const authentication = useServerAuthentication(WS_URL);
-  if (authentication.state.status !== "authenticated") {
-    return (
-      <ServerAuthenticationGate
-        state={authentication.state}
-        onLogin={authentication.login}
-        onRetry={authentication.refresh}
-      />
-    );
-  }
-  return (
-    <AuthenticatedApp
-      uploadCsrfToken={authentication.state.authentication.csrfToken}
-      onLogout={authentication.logout}
-    />
-  );
-}
+  const ingest = useStore((s) => s.ingest);
+  const registerSession = useStore((s) => s.registerCreatingSession);
+  const appendUserMessage = useStore((s) => s.appendUserMessage);
+  const activeId = useStore((s) => s.activeSessionId);
+  const toggleSidebar = useStore((s) => s.toggleSidebar);
+  const setSidebarCollapsed = useStore((s) => s.setSidebarCollapsed);
+  const modelProviders = useStore((s) => s.modelProviders);
+  const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
+  const selectModelProvider = useStore((s) => s.selectModelProvider);
+  const userProfile = useStore((s) => s.userProfile);
+  const markUserProfileSynced = useStore((s) => s.markUserProfileSynced);
+  const responsiveMode = useResponsiveMode();
+  const { hasPersistentSessionPanel, hasPersistentWorkflowPanel } = responsiveMode;
+  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
+  const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
+  const uploadUrl = useMemo(() => buildUploadUrl(WS_URL), []);
+  const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
 
-function AuthenticatedApp({
-  uploadCsrfToken,
-  onLogout,
-}: {
-  uploadCsrfToken?: string;
-  onLogout: () => Promise<void>;
-}): JSX.Element {
   const sendRef = useRef<((req: WsRequest) => boolean) | null>(null);
-  const statusRef = useRef<SocketStatus>("idle");
   const lastSendRef = useRef<LastSentMessage | null>(null);
   const pendingAfterTruncateRef = useRef<PendingAfterTruncate[]>([]);
-  const {
-    appShellRenderPlan,
-    handleOpenSessionPanel,
-    handleOpenWorkflowPanel,
-    handleToggleSessionPanelShortcut,
-    hasPersistentWorkflowPanel,
-    responsiveMode,
-    sessionDrawerOpen,
-    setSessionDrawerOpen,
-    workflowDrawerOpen,
-    setWorkflowDrawerOpen,
-  } = useAppPanelController();
-  const configMutations = useConfigMutationController({
-    sendRef,
-    statusRef,
-  });
+  const presetEventHandlerRef = useRef<(env: EventEnvelope) => boolean>(() => false);
   const { sandboxStatus, ingestSandboxEvent } = useSandboxRuntimeStatus();
-  const {
-    actions,
-    activeSessionId: activeId,
-    chatModelConfig,
-    chatPluginConfig,
-    chatPresetConfig,
-    chatSystemConfig,
-    selectedModelProviderId,
-    uploadUrl,
-    userProfile,
-  } = useAppStoreBindings({
-    configMutations,
-    wsUrl: WS_URL,
-  });
-  const { appendUserMessage, ingest, markUserProfileSynced, registerCreatingSession: registerSession } = actions;
 
-  const { resetServerKnownSessions, serverKnownSessionIdsRef, syncServerKnownSessionFromEvent } =
-    useServerKnownSessions();
+  const handleOpenSessionPanel = useCallback((): void => {
+    if (hasPersistentSessionPanel) {
+      setSidebarCollapsed(false);
+      return;
+    }
+    setSessionDrawerOpen(true);
+  }, [hasPersistentSessionPanel, setSidebarCollapsed]);
+
+  const {
+    resetServerKnownSessions,
+    serverKnownSessionIdsRef,
+    syncServerKnownSessionFromEvent,
+  } = useServerKnownSessions();
   const { notifySocketError } = useSocketErrorToasts();
   const { handleSessionNotFound } = useSessionNotFoundRecovery({
     ingest,
@@ -114,35 +92,59 @@ function AuthenticatedApp({
     sendRef,
   });
 
+  // Stabilize event handlers to prevent WebSocket reconnection
+  const eventHandlersRef = useRef({
+    syncServerKnownSessionFromEvent,
+    handleSessionNotFound,
+    notifySocketError,
+    ingest,
+    runSocketPostIngestEffects,
+    ingestSandboxEvent,
+    replayAfterSessionTruncated,
+  });
+
+  useEffect(() => {
+    eventHandlersRef.current = {
+      syncServerKnownSessionFromEvent,
+      handleSessionNotFound,
+      notifySocketError,
+      ingest,
+      runSocketPostIngestEffects,
+      ingestSandboxEvent,
+      replayAfterSessionTruncated,
+    };
+  });
+
   const { status, send } = useAgentSocket({
     url: WS_URL,
     onEvent: useCallback(
       (env) => {
-        syncServerKnownSessionFromEvent(env);
+        const handlers = eventHandlersRef.current;
 
-        if (handleSessionNotFound(env)) {
+        handlers.syncServerKnownSessionFromEvent(env);
+
+        if (handlers.handleSessionNotFound(env)) {
           return;
         }
 
-        notifySocketError(env);
-        ingest(env);
-        runSocketPostIngestEffects(env);
-        configMutations.ingestConfigMutationEvent(env);
-        ingestSandboxEvent(env);
-        replayAfterSessionTruncated(env);
+        handlers.notifySocketError(env);
+        handlers.ingest(env);
+        handlers.runSocketPostIngestEffects(env);
+        handlers.ingestSandboxEvent(env);
+
+        presetEventHandlerRef.current(env);
+
+        handlers.replayAfterSessionTruncated(env);
       },
-      [
-        configMutations,
-        handleSessionNotFound,
-        ingest,
-        ingestSandboxEvent,
-        notifySocketError,
-        replayAfterSessionTruncated,
-        runSocketPostIngestEffects,
-        syncServerKnownSessionFromEvent,
-      ],
+      [], // Empty deps - handlers read from ref
     ),
   });
+
+  const presetCommands = usePresetCommands({
+    send,
+    status,
+  });
+  presetEventHandlerRef.current = presetCommands.handlePresetEvent;
 
   const { requestSessionHistory } = useSessionHistoryRecovery({
     activeSessionId: activeId,
@@ -176,6 +178,7 @@ function AuthenticatedApp({
     deleteFromMessage: handleDeleteFromMessage,
     editUserMessage: handleEditUserMessage,
     regenerateMessage: handleRegenerate,
+    resolveApproval: handleResolveApproval,
     sendMessage: handleSend,
   } = useChatCommands({
     activeSessionId: activeId,
@@ -192,102 +195,105 @@ function AuthenticatedApp({
     sendRef.current = send;
   }, [send]);
 
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
+  const handleToggleSessionPanelShortcut = useCallback((): void => {
+    if (hasPersistentSessionPanel) {
+      toggleSidebar();
+      return;
+    }
+    setSessionDrawerOpen((open) => !open);
+  }, [hasPersistentSessionPanel, toggleSidebar]);
 
   useGlobalShortcuts({
     onNewSession: handleNewSession,
     onToggleSessionPanel: handleToggleSessionPanelShortcut,
   });
 
-  const { chatMessageActions, chatNavigationActions, chatRuntime } = useAppChatPanelBindings({
-    messageHandlers: {
-      onSend: handleSend,
-      onCancel: handleCancel,
-      onRegenerate: handleRegenerate,
-      onEditUserMessage: handleEditUserMessage,
-      onDeleteFromMessage: handleDeleteFromMessage,
-      onViewWorkflow: handleViewWorkflow,
-    },
-    navigationHandlers: {
-      onOpenSessionPanel: handleOpenSessionPanel,
-      onOpenWorkflowPanel: handleOpenWorkflowPanel,
-      onRetryHistory: requestSessionHistory,
-      showSessionPanelAction: appShellRenderPlan.showChatSessionPanelAction,
-      showWorkflowPanelAction: appShellRenderPlan.showChatWorkflowPanelAction,
-    },
-    runtime: {
-      sandboxStatus,
-      uploadUrl,
-      uploadCsrfToken,
-    },
-    send,
-    status,
-  });
-
-  const sessionActions = useMemo<AppSessionActions>(
-    () => ({
-      onNewSession: handleNewSession,
-      onCloseSession: handleCloseSession,
-      onCloseSessions: handleCloseSessions,
-      onRefreshSessions: refreshSessionCatalog,
-      onRenameSession: handleRenameSession,
-      onUpdateUserProfile: handleUpdateUserProfile,
-      onLogout,
-    }),
-    [
-      handleCloseSession,
-      handleCloseSessions,
-      handleNewSession,
-      handleRenameSession,
-      handleUpdateUserProfile,
-      onLogout,
-      refreshSessionCatalog,
-    ],
-  );
-
   return (
     <TooltipProvider delayDuration={300}>
       <AppShell
         sessionRail={
-          <AppSessionSurface
-            actions={sessionActions}
+          <SessionList
             presentation="rail"
+            onNewSession={handleNewSession}
+            onCloseSession={handleCloseSession}
+            onCloseSessions={handleCloseSessions}
+            onRefreshSessions={refreshSessionCatalog}
+            onRenameSession={handleRenameSession}
             userProfile={userProfile}
+            onUpdateUserProfile={handleUpdateUserProfile}
             socketStatus={status}
             onOpenSessionPanel={handleOpenSessionPanel}
           />
         }
         sessionPanel={
-          <AppSessionSurface
-            actions={sessionActions}
+          <SessionList
             presentation="auto"
+            onNewSession={handleNewSession}
+            onCloseSession={handleCloseSession}
+            onCloseSessions={handleCloseSessions}
+            onRefreshSessions={refreshSessionCatalog}
+            onRenameSession={handleRenameSession}
             userProfile={userProfile}
+            onUpdateUserProfile={handleUpdateUserProfile}
             socketStatus={status}
           />
         }
         sessionDrawer={
-          <AppSessionSurface
-            actions={sessionActions}
+          <SessionList
             presentation="panel"
+            onNewSession={handleNewSession}
+            onCloseSession={handleCloseSession}
+            onCloseSessions={handleCloseSessions}
+            onRefreshSessions={refreshSessionCatalog}
+            onRenameSession={handleRenameSession}
             userProfile={userProfile}
+            onUpdateUserProfile={handleUpdateUserProfile}
             socketStatus={status}
             onClosePanel={() => setSessionDrawerOpen(false)}
             onSessionSelected={() => setSessionDrawerOpen(false)}
           />
         }
         chatPanel={
-          <ChatPanel
-            userProfile={userProfile}
-            modelConfig={chatModelConfig}
-            pluginConfig={chatPluginConfig}
-            systemConfig={chatSystemConfig}
-            presetConfig={chatPresetConfig}
-            runtime={chatRuntime}
-            messageActions={chatMessageActions}
-            navigationActions={chatNavigationActions}
-          />
+          <ErrorBoundary resetKey={activeId}>
+            <ChatPanel
+              userProfile={userProfile}
+              modelConfig={{
+                modelProviders,
+                selectedModelProviderId,
+                onSelectModelProvider: selectModelProvider,
+              }}
+              presetConfig={{
+                presets: presetCommands.presets,
+                activePresetName: presetCommands.activePresetName,
+                presetsEnabled: presetCommands.presetsEnabled,
+                presetRootDir: presetCommands.presetRootDir,
+                presetOperations: presetCommands.presetOperations,
+                onRefreshPresets: presetCommands.refreshPresets,
+                onSavePreset: presetCommands.savePreset,
+                onDeletePreset: presetCommands.deletePreset,
+                onSetActivePreset: presetCommands.setActivePreset,
+              }}
+              runtime={{
+                socketStatus: status,
+                sandboxStatus,
+                uploadUrl,
+              }}
+              messageActions={{
+                onSend: handleSend,
+                onCancel: handleCancel,
+                onRegenerate: handleRegenerate,
+                onEditUserMessage: handleEditUserMessage,
+                onDeleteFromMessage: handleDeleteFromMessage,
+                onViewWorkflow: handleViewWorkflow,
+                onResolveApproval: handleResolveApproval,
+              }}
+              navigationActions={{
+                onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction ? handleOpenSessionPanel : undefined,
+                onOpenWorkflowPanel: appShellRenderPlan.showChatWorkflowPanelAction ? () => setWorkflowDrawerOpen(true) : undefined,
+                onRetryHistory: requestSessionHistory,
+              }}
+            />
+          </ErrorBoundary>
         }
         workflowPanel={<ThinkingTimeline presentation="auto" />}
         workflowDrawer={<ThinkingTimeline presentation="panel" hidePanelTitle />}
@@ -300,7 +306,8 @@ function AuthenticatedApp({
       <Toaster
         position="bottom-right"
         toastOptions={{
-          className: "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
+          className:
+            "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
         }}
       />
     </TooltipProvider>

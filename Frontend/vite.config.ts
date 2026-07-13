@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "node:path";
+import { appearanceBootstrapPlugin } from "./src/build/appearanceBootstrapPlugin";
 import { readVendorChunkName } from "./src/build/viteManualChunks";
 import { resolveFrontendConfig } from "../Source/AgentSystem/AgentDefaults";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes";
@@ -10,16 +11,32 @@ const WorkspaceRoot = path.resolve(__dirname, "..");
 const DefaultConfigFileName = "senera.config.json";
 
 const frontendConfig = resolveFrontendConfig(readRootConfig());
+const rootPackageJson = readJsonFile<{ version?: string }>(path.resolve(WorkspaceRoot, "package.json"));
+const frontendPackageJson = readJsonFile<{ version?: string }>(path.resolve(__dirname, "package.json"));
 
 export default defineConfig({
-  root: __dirname,
   base: "./",
-  plugins: [react()],
+  plugins: [appearanceBootstrapPlugin(), react()],
   define: {
     __SENERA_DEFAULT_WS_URL__: JSON.stringify(frontendConfig.Client.WebSocketUrl),
     __SENERA_DEFAULT_MODEL_LABEL__: JSON.stringify(frontendConfig.Client.ModelLabel),
     __SENERA_DEFAULT_USER_NAME__: JSON.stringify(frontendConfig.Client.UserName),
-    __SENERA_EMPTY_SUGGESTIONS__: JSON.stringify(frontendConfig.Client.EmptySuggestions.join("|")),
+    __SENERA_EMPTY_SUGGESTIONS__: JSON.stringify(
+      frontendConfig.Client.EmptySuggestions.join("|"),
+    ),
+    __SENERA_APP_VERSION__: JSON.stringify(rootPackageJson.version ?? "0.0.0"),
+    __SENERA_FRONTEND_VERSION__: JSON.stringify(frontendPackageJson.version ?? "0.0.0"),
+  },
+  optimizeDeps: {
+    include: [
+      "@codemirror/lang-json",
+      "@codemirror/lang-markdown",
+      "@codemirror/language",
+      "@codemirror/state",
+      "@codemirror/view",
+      "@lezer/highlight",
+      "@uiw/react-codemirror",
+    ],
   },
   build: {
     rollupOptions: {
@@ -61,6 +78,10 @@ function readRootConfig(): AgentSystemConfig {
     ...emptyRootConfig(),
     ...JSON.parse(fs.readFileSync(configPath, "utf8")),
   } as AgentSystemConfig;
+}
+
+function readJsonFile<T>(filePath: string): T {
+  return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
 }
 
 function emptyRootConfig(): AgentSystemConfig {

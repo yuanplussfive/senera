@@ -272,6 +272,74 @@ export function filterProviderModels(models: ProviderModelInfo[], search: string
   );
 }
 
+export type RemoteModelCategoryId =
+  | "all"
+  | "reasoning"
+  | "vision"
+  | "web"
+  | "free"
+  | "embedding"
+  | "rerank"
+  | "tools";
+
+export interface RemoteModelCategoryDefinition {
+  id: RemoteModelCategoryId;
+  label: string;
+}
+
+export const remoteModelCategories = [
+  { id: "all", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.291.23") },
+  { id: "reasoning", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.292.29") },
+  { id: "vision", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.293.26") },
+  { id: "web", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.294.23") },
+  { id: "free", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.295.24") },
+  { id: "embedding", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.296.29") },
+  { id: "rerank", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.297.26") },
+  { id: "tools", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.298.25") },
+] as const satisfies readonly RemoteModelCategoryDefinition[];
+
+export function filterRemoteModelPickerRows({
+  category,
+  rows,
+  search,
+}: {
+  category: RemoteModelCategoryId;
+  rows: readonly ProviderModelInfo[];
+  search: string;
+}): ProviderModelInfo[] {
+  return filterProviderModels(
+    rows.filter((row) => remoteModelCategoryMatches(row, category)),
+    search,
+  );
+}
+
+export function remoteModelCategoryMatches(
+  row: ProviderModelInfo,
+  category: RemoteModelCategoryId,
+): boolean {
+  if (category === "all") {
+    return true;
+  }
+
+  const text = `${row.id} ${row.ownedBy ?? ""}`.toLowerCase();
+  switch (category) {
+    case "reasoning":
+      return includesAny(text, ["reason", "thinking", "think", "r1", "o1", "o3", "o4"]);
+    case "vision":
+      return includesAny(text, ["vision", "visual", "vl", "image", "img", "omni"]);
+    case "web":
+      return includesAny(text, ["web", "search", "online", "联网"]);
+    case "free":
+      return includesAny(text, ["free", "gratis", "trial"]);
+    case "embedding":
+      return includesAny(text, ["embedding", "embed", "text-embedding", "bge", "e5"]);
+    case "rerank":
+      return includesAny(text, ["rerank", "re-rank", "ranker", "bge-reranker"]);
+    case "tools":
+      return includesAny(text, ["tool", "function", "fc", "agent"]);
+  }
+}
+
 export function readProviderModelRows({
   catalogModels,
   models,
@@ -378,6 +446,31 @@ export function sortProviderModelRows({
       return left.index - right.index;
     })
     .map((entry) => entry.row);
+}
+
+export function applyModelProvidersDraft({
+  models,
+  requestedDefaultModelId,
+  value,
+}: {
+  models: readonly ModelProviderDraft[];
+  requestedDefaultModelId: string;
+  value: JsonConfigObject;
+}): JsonConfigObject {
+  const normalizedModels = models.map(normalizeModelProviderDraft);
+  const resolvedDefault = normalizedModels.some((model) => model.Id === requestedDefaultModelId)
+    ? requestedDefaultModelId
+    : normalizedModels[0]?.Id;
+  const nextValue: JsonConfigObject = {
+    ...value,
+    ModelProviders: normalizedModels,
+  };
+  if (resolvedDefault) {
+    nextValue.DefaultModelProviderId = resolvedDefault;
+  } else {
+    delete nextValue.DefaultModelProviderId;
+  }
+  return nextValue;
 }
 
 export function groupProviderModelRows(
@@ -553,6 +646,10 @@ function nextAvailableName(prefix: string, values: readonly string[]): string {
     index += 1;
   }
   return `${prefix}-${index}`;
+}
+
+function includesAny(source: string, needles: readonly string[]): boolean {
+  return needles.some((needle) => source.includes(needle));
 }
 
 export function formatShortTime(iso: string): string {

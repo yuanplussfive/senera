@@ -165,6 +165,15 @@ export function PresetControl({
   }, [activePresetName, dirty, open, presets, selectedName]);
 
   useEffect(() => {
+    if (!open || presets.length > 0 || selectedName !== null || dirty || draftName || draftContent) return;
+    replaceDraft({
+      name: "roleplay-preset.md",
+      format: "markdown",
+      content: "",
+    });
+  }, [dirty, draftContent, draftName, open, presets.length, selectedName]);
+
+  useEffect(() => {
     if (!open || !selected) return;
     replaceDraft({
       name: selected.name,
@@ -220,7 +229,11 @@ export function PresetControl({
   };
 
   const save = (activate: boolean): void => {
-    if (!currentName || saving || importing) return;
+    if (saving || importing) return;
+    if (!currentName) {
+      setLocalError("先填写预设名称。");
+      return;
+    }
     const validationError = validateDraft(draftFormat, draftContent);
     if (validationError) {
       setLocalError(validationError);
@@ -334,7 +347,7 @@ export function PresetControl({
       >
         <FileDropZone
           accept={PresetFileAccept}
-          className="flex min-h-0 flex-1 overflow-hidden bg-[#f7f3ea]"
+          className="flex min-h-0 flex-1 overflow-hidden bg-[var(--theme-config-stage-bg)]"
           disabled={disabled || busy}
           multiple
           onFiles={handleImportedFiles}
@@ -374,7 +387,6 @@ export function PresetControl({
                   />
                   <PresetWorkspace
                     busy={busy}
-                    currentName={currentName}
                     deleting={deleting}
                     diagnostics={diagnostics}
                     dirty={dirty}
@@ -424,7 +436,6 @@ export function PresetControl({
                   />
                   <PresetWorkspace
                     busy={busy}
-                    currentName={currentName}
                     deleting={deleting}
                     diagnostics={diagnostics}
                     dirty={dirty}

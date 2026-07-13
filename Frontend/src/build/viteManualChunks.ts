@@ -5,6 +5,27 @@ export function readVendorChunkName(id: string): string | undefined {
     return "vendor-react";
   }
   if (packageName.startsWith("@radix-ui/")) return "vendor-radix";
+
+  // Code editor dependencies (~200KB)
+  if (packageName.startsWith("@codemirror/") || packageName === "@uiw/react-codemirror") {
+    return "vendor-codemirror";
+  }
+
+  // Animation library (~100KB)
+  if (packageName === "framer-motion") {
+    return "vendor-motion";
+  }
+
+  // Virtualization library
+  if (packageName === "react-virtuoso") {
+    return "vendor-virtuoso";
+  }
+
+  // Toast library
+  if (packageName === "sonner") {
+    return "vendor-sonner";
+  }
+
   return undefined;
 }
 

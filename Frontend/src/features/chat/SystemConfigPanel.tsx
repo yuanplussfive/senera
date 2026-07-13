@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   AlertTriangle,
   BrainCircuit,
@@ -10,7 +15,6 @@ import {
   Save,
   Search,
   Settings,
-  ShieldAlert,
   SlidersHorizontal,
 } from "lucide-react";
 import type {
@@ -21,29 +25,27 @@ import type {
   ProviderModelsSnapshotData,
 } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { Button, Dialog, DialogContent, ScrollArea, Tooltip } from "../../shared/ui";
+import {
+  Button,
+  ScrollArea,
+} from "../../shared/ui";
 import {
   JsonConfigSettingsView,
-  validateJsonConfigDraft,
-  type JsonConfigObject,
 } from "../../shared/config/JsonConfigForm";
 import { ModelConfigView } from "./ModelConfigView";
 import { PlanningConfigView } from "./PlanningConfigView";
 import { VectorModelConfigView } from "./VectorModelConfigView";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import {
+  useConfigSettingsDraftState,
+  type ConfigSettingsDraftState,
+} from "../settings/sections/configSettingsDraftState";
+import { readSettingsDraftInteraction } from "../settings/settingsInteractionModel";
 
-export function SystemConfigControl({
-  disabled,
-  operation,
-  snapshot,
-  providerModelCatalogs,
-  providerModelErrors,
-  providerModelLoadingIds,
-  onRefresh,
-  onSave,
-  onFetchProviderModels,
-}: {
-  disabled: boolean;
+export interface SystemConfigContentProps {
+  active?: boolean;
+  className?: string;
+  contentReady?: boolean;
+  layoutMode?: "panel" | "embedded";
   operation: ConfigMutationState | null;
   snapshot: ConfigSnapshotData | null;
   providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
@@ -52,191 +54,211 @@ export function SystemConfigControl({
   onRefresh: () => void;
   onSave: (config: Record<string, unknown>) => string | null;
   onFetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
-}): JSX.Element {
-  const [open, setOpen] = useState(false);
-  const [contentReady, setContentReady] = useState(false);
-  const [draft, setDraft] = useState<JsonConfigObject>({});
+  draftState?: ConfigSettingsDraftState;
+}
+
+export function SystemConfigContent({
+  layoutMode = "panel",
+  operation,
+  snapshot,
+  providerModelCatalogs,
+  providerModelErrors,
+  providerModelLoadingIds,
+  onRefresh,
+  onSave,
+  onFetchProviderModels,
+  draftState: externalDraftState,
+  active = true,
+  className,
+  contentReady = true,
+}: SystemConfigContentProps): JSX.Element {
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [saveRequestId, setSaveRequestId] = useState<string | null>(null);
-  const [localError, setLocalError] = useState<string | null>(null);
   const currentSnapshotVersion = snapshot?.version;
-  const sectionList = useMemo(() => snapshot?.form.sections ?? [], [snapshot?.form.sections]);
+  const sectionList = snapshot?.form.sections ?? [];
   const visibleSections = useMemo(
-    () =>
-      selectedSection ? sectionList.filter((section) => section.name === selectedSection) : sectionList.slice(0, 1),
+    () => selectedSection
+      ? sectionList.filter((section) => section.name === selectedSection)
+      : sectionList.slice(0, 1),
     [sectionList, selectedSection],
   );
-  const saveOperation = saveRequestId && operation?.requestId === saveRequestId ? operation : null;
-  const saving = saveOperation?.status === "pending";
-  const refreshDisabled = saving || !snapshot;
-  const diagnostics = snapshot?.diagnostics ?? [];
-  const hasDiagnostics = diagnostics.length > 0;
-  const formValidationErrors = useMemo(
-    () => (snapshot ? validateJsonConfigDraft(snapshot.form.sections, draft) : []),
-    [draft, snapshot],
-  );
+  const internalDraftState = useConfigSettingsDraftState({
+    active,
+    operation,
+    snapshot,
+    onRefresh,
+    onSave,
+  });
+  const draftState = externalDraftState ?? internalDraftState;
+  const interaction = readSettingsDraftInteraction({
+    dirty: draftState.dirty,
+    localError: draftState.localError,
+    ready: Boolean(snapshot),
+    saving: draftState.saving,
+    validationErrors: draftState.validationErrors,
+  });
+  const embedded = layoutMode === "embedded";
 
   useEffect(() => {
-    if (!open) {
-      setContentReady(false);
-      return;
-    }
-    const timeoutId = window.setTimeout(() => {
-      setContentReady(true);
-    }, 48);
-    return () => window.clearTimeout(timeoutId);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || !snapshot) return;
-    setDraft(snapshot.value);
-    setDirty(false);
+    if (!active || !snapshot) return;
     setSelectedSection((current) =>
       current && snapshot.form.sections.some((section) => section.name === current)
         ? current
-        : (snapshot.form.sections[0]?.name ?? null),
+        : snapshot.form.sections[0]?.name ?? null);
+  }, [active, currentSnapshotVersion, snapshot]);
+
+  if (embedded) {
+    return (
+      <div className={cn("bg-[var(--theme-config-stage-bg)]", className)}>
+        <EmbeddedConfigSectionNav
+          sections={sectionList}
+          selectedSection={selectedSection}
+          onSelect={setSelectedSection}
+        />
+        <ConfigToolbar
+          interaction={interaction}
+          onRefresh={draftState.refreshOrRestore}
+          onSave={draftState.save}
+        />
+        <Diagnostics
+          diagnostics={draftState.diagnostics}
+          localError={draftState.localError}
+          validationErrors={draftState.validationErrors}
+        />
+        {!contentReady ? (
+          <ConfigPanelSkeleton />
+        ) : snapshot ? (
+          <SystemConfigSectionContent
+            layoutMode={layoutMode}
+            selectedSection={selectedSection}
+            visibleSections={visibleSections}
+            draftState={draftState}
+            providerModelCatalogs={providerModelCatalogs}
+            providerModelErrors={providerModelErrors}
+            providerModelLoadingIds={providerModelLoadingIds}
+            onFetchProviderModels={onFetchProviderModels}
+          />
+        ) : (
+          <div className="grid min-h-[360px] place-items-center text-[13px] text-ink-400">
+            {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.141.13")}</div>
+        )}
+      </div>
     );
-    setSaveRequestId(null);
-    setLocalError(null);
-  }, [currentSnapshotVersion, open, snapshot]);
-
-  useEffect(() => {
-    if (!saveOperation) return;
-    if (saveOperation.status === "success") {
-      setSaveRequestId(null);
-      setDirty(false);
-      setLocalError(null);
-      return;
-    }
-    if (saveOperation.status === "error") {
-      setSaveRequestId(null);
-      setLocalError(saveOperation.message ?? frontendMessage("config.mainFailed"));
-    }
-  }, [saveOperation]);
-
-  const updateDraft = (value: JsonConfigObject): void => {
-    const currentSnapshot = snapshot;
-    setDraft(value);
-    setDirty(currentSnapshot ? !sameJson(value, currentSnapshot.value) : false);
-    setLocalError(null);
-  };
-
-  const save = (): void => {
-    if (!dirty || saving) return;
-    const errors = snapshot ? validateJsonConfigDraft(snapshot.form.sections, draft) : [];
-    if (errors.length > 0) {
-      setLocalError(errors[0] ?? frontendMessage("config.mainInvalid"));
-      return;
-    }
-    const requestId = onSave(draft);
-    if (requestId) {
-      setSaveRequestId(requestId);
-    }
-  };
-
-  const refreshOrRestore = (): void => {
-    if (!snapshot || saving) return;
-    if (dirty) {
-      setDraft(snapshot.value);
-      setDirty(false);
-      setSaveRequestId(null);
-      setLocalError(null);
-      return;
-    }
-    onRefresh();
-  };
+  }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <Tooltip content={frontendMessage("config.main.title")} side="top">
-        <button
-          type="button"
-          className={cn(
-            "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px]",
-            "text-ink-500 transition hover:bg-ink-900/[0.045] hover:text-ink-800",
-            "focus:outline-none focus:ring-2 focus:ring-terra-200/60",
-            disabled && "pointer-events-none opacity-55",
-          )}
-          aria-label={frontendMessage("config.main.title")}
-          disabled={disabled}
-          onClick={() => setOpen(true)}
-        >
-          <Settings className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{frontendMessage("config.main.shortTitle")}</span>
-          {hasDiagnostics ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
-        </button>
-      </Tooltip>
-
-      <DialogContent
-        title={frontendMessage("config.main.title")}
-        description={snapshot?.path ?? frontendMessage("config.main.awaitingSnapshot")}
-        motionPreset="focus"
-        className="h-[min(900px,calc(100dvh_-_20px))] max-h-none w-[min(1280px,calc(100vw_-_20px))] max-w-none rounded-xl bg-paper-100 sm:w-[min(1280px,calc(100vw_-_32px))]"
-        bodyClassName="flex min-h-0 flex-1 bg-paper-100"
-      >
-        <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[#f7f3ea] lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
-          <ConfigSectionNav sections={sectionList} selectedSection={selectedSection} onSelect={setSelectedSection} />
-          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-ink-200/70 bg-paper-50 lg:border-b-0">
-            <MobileSectionNav sections={sectionList} selectedSection={selectedSection} onSelect={setSelectedSection} />
-            <ConfigToolbar
-              dirty={dirty}
-              disabled={!snapshot || formValidationErrors.length > 0 || saving}
-              refreshDisabled={refreshDisabled}
-              localError={localError}
-              validationErrors={formValidationErrors}
-              saving={saving}
-              onRefresh={refreshOrRestore}
-              onSave={save}
+    <div className={cn(
+      "grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[var(--theme-config-stage-bg)] lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]",
+      className,
+    )}>
+      <ConfigSectionNav
+        sections={sectionList}
+        selectedSection={selectedSection}
+        onSelect={setSelectedSection}
+      />
+      <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-ink-200/70 bg-paper-50 lg:border-b-0">
+        <MobileSectionNav
+          sections={sectionList}
+          selectedSection={selectedSection}
+          onSelect={setSelectedSection}
+        />
+        <ConfigToolbar
+          interaction={interaction}
+          onRefresh={draftState.refreshOrRestore}
+          onSave={draftState.save}
+        />
+        <Diagnostics
+          diagnostics={draftState.diagnostics}
+          localError={draftState.localError}
+          validationErrors={draftState.validationErrors}
+        />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {!contentReady ? (
+            <ConfigPanelSkeleton />
+          ) : snapshot ? (
+            <SystemConfigSectionContent
+              layoutMode={layoutMode}
+              selectedSection={selectedSection}
+              visibleSections={visibleSections}
+              draftState={draftState}
+              providerModelCatalogs={providerModelCatalogs}
+              providerModelErrors={providerModelErrors}
+              providerModelLoadingIds={providerModelLoadingIds}
+              onFetchProviderModels={onFetchProviderModels}
             />
-            <Diagnostics diagnostics={diagnostics} localError={localError} validationErrors={formValidationErrors} />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              {!contentReady ? (
-                <ConfigPanelSkeleton />
-              ) : snapshot ? (
-                selectedSection === "models" ? (
-                  <ModelConfigView
-                    value={draft}
-                    section={visibleSections[0]}
-                    disabled={saving}
-                    catalogs={providerModelCatalogs}
-                    errors={providerModelErrors}
-                    loadingProviderIds={providerModelLoadingIds}
-                    onFetchProviderModels={onFetchProviderModels}
-                    onChange={updateDraft}
-                  />
-                ) : selectedSection === "retrieval" ? (
-                  <VectorModelConfigView
-                    value={draft}
-                    section={visibleSections[0]}
-                    disabled={saving}
-                    onChange={updateDraft}
-                  />
-                ) : selectedSection === "planning" ? (
-                  <PlanningConfigView
-                    value={draft}
-                    section={visibleSections[0]}
-                    disabled={saving}
-                    onChange={updateDraft}
-                  />
-                ) : (
-                  <JsonConfigSettingsView
-                    sections={visibleSections}
-                    value={draft}
-                    disabled={saving}
-                    onChange={updateDraft}
-                  />
-                )
-              ) : (
-                <div className="grid h-full place-items-center text-[13px] text-ink-400">
-                  {frontendMessage("config.main.loadAfterConnect")}
-                </div>
-              )}
-            </div>
-          </section>
+          ) : (
+            <div className="grid h-full place-items-center text-[13px] text-ink-400">
+              {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.190.15")}</div>
+          )}
         </div>
-      </DialogContent>
-    </Dialog>
+      </section>
+    </div>
+  );
+}
+
+function SystemConfigSectionContent({
+  layoutMode,
+  selectedSection,
+  visibleSections,
+  draftState,
+  providerModelCatalogs,
+  providerModelErrors,
+  providerModelLoadingIds,
+  onFetchProviderModels,
+}: {
+  layoutMode: "panel" | "embedded";
+  selectedSection: string | null;
+  visibleSections: ConfigSnapshotData["form"]["sections"];
+  draftState: ConfigSettingsDraftState;
+  providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
+  providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
+  providerModelLoadingIds: Record<string, boolean>;
+  onFetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
+}): JSX.Element {
+  if (selectedSection === "models") {
+    return (
+      <ModelConfigView
+        layoutMode={layoutMode}
+        value={draftState.draft}
+        section={visibleSections[0]}
+        disabled={draftState.saving}
+        catalogs={providerModelCatalogs}
+        errors={providerModelErrors}
+        loadingProviderIds={providerModelLoadingIds}
+        onFetchProviderModels={onFetchProviderModels}
+        onChange={draftState.updateDraft}
+      />
+    );
+  }
+  if (selectedSection === "retrieval") {
+    return (
+      <VectorModelConfigView
+        layoutMode={layoutMode}
+        value={draftState.draft}
+        section={visibleSections[0]}
+        disabled={draftState.saving}
+        onChange={draftState.updateDraft}
+      />
+    );
+  }
+  if (selectedSection === "planning") {
+    return (
+      <PlanningConfigView
+        layoutMode={layoutMode}
+        value={draftState.draft}
+        section={visibleSections[0]}
+        disabled={draftState.saving}
+        onChange={draftState.updateDraft}
+      />
+    );
+  }
+  return (
+    <JsonConfigSettingsView
+      layoutMode={layoutMode}
+      sections={visibleSections}
+      value={draftState.draft}
+      disabled={draftState.saving}
+      onChange={draftState.updateDraft}
+    />
   );
 }
 
@@ -245,60 +267,47 @@ function ConfigPanelSkeleton(): JSX.Element {
     <div className="grid h-full min-h-0 place-items-center bg-paper-50 text-[12.5px] text-ink-400">
       <div className="grid gap-2 text-center">
         <span className="mx-auto h-8 w-8 rounded-full border border-ink-200 bg-paper-100" />
-        <span>{frontendMessage("config.main.loadingPanel")}</span>
+        <span>{frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.271.15")}</span>
       </div>
     </div>
   );
 }
 
 function ConfigToolbar({
-  dirty,
-  disabled,
-  refreshDisabled,
-  localError,
-  validationErrors,
-  saving,
+  interaction,
   onRefresh,
   onSave,
 }: {
-  dirty: boolean;
-  disabled: boolean;
-  refreshDisabled: boolean;
-  localError: string | null;
-  validationErrors: string[];
-  saving: boolean;
+  interaction: ReturnType<typeof readSettingsDraftInteraction>;
   onRefresh: () => void;
   onSave: () => void;
 }): JSX.Element {
-  const invalid = localError || validationErrors.length > 0;
-  const statusLabel = frontendMessage(
-    invalid ? "config.main.statusInvalid" : dirty ? "config.main.statusDirty" : "config.main.statusSynced",
-  );
+  const invalid = interaction.status === "invalid";
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-ink-200/70 bg-[#f3eee5] px-3.5 py-3">
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-ink-200/70 bg-[var(--theme-config-toolbar-bg)] px-3.5 py-3">
       <div className="flex min-w-0 items-center gap-2">
-        <span
-          className={cn(
-            "grid h-8 w-8 place-items-center border",
-            invalid
-              ? "border-brick-200 bg-brick-50 text-brick-600"
-              : dirty
-                ? "border-amber-200 bg-amber-50 text-amber-700"
-                : "border-terra-200 bg-terra-50 text-terra-700",
-          )}
-        >
+        <span className={cn(
+          "grid h-8 w-8 place-items-center border",
+          invalid
+            ? "border-brick-200 bg-brick-50 text-brick-600"
+            : interaction.status === "dirty" || interaction.status === "saving"
+              ? "border-amber-200 bg-amber-50 text-amber-700"
+              : "border-terra-200 bg-terra-50 text-terra-700",
+        )}>
           {invalid ? (
             <AlertTriangle className="h-4 w-4" />
-          ) : dirty ? (
+          ) : interaction.status === "saving" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : interaction.status === "dirty" ? (
             <Settings className="h-4 w-4" />
           ) : (
             <Check className="h-4 w-4" />
           )}
         </span>
         <div className="min-w-0">
-          <div className="text-[13px] font-semibold text-ink-900">{statusLabel}</div>
-          <div className="mt-0.5 text-[11px] text-ink-500">{frontendMessage("config.main.defaultValuesHint")}</div>
+          <div className="text-[13px] font-semibold text-ink-900">{interaction.statusLabel}</div>
+          <div className="mt-0.5 text-[11px] text-ink-500">{interaction.detail}</div>
         </div>
       </div>
 
@@ -306,18 +315,25 @@ function ConfigToolbar({
         <Button
           size="sm"
           variant="outline"
-          disabled={refreshDisabled}
+          disabled={interaction.refreshDisabled}
           onClick={onRefresh}
           className="h-8"
-          title={frontendMessage(dirty ? "config.main.restoreTooltip" : "config.main.refreshTooltip")}
+          title={interaction.refreshTitle}
         >
-          <RefreshCw className={cn("h-3.5 w-3.5", saving && "animate-spin")} />
-          {frontendMessage(dirty ? "config.main.restore" : "config.main.refresh")}
+          <RefreshCw className={cn("h-3.5 w-3.5", interaction.status === "saving" && "animate-spin")} />
+          {interaction.refreshLabel}
         </Button>
-        <Button size="sm" disabled={!dirty || disabled} onClick={onSave} className="h-8">
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          {frontendMessage("config.main.save")}
-        </Button>
+        <Button
+          size="sm"
+          disabled={interaction.saveDisabled}
+          onClick={onSave}
+          className="h-8"
+          title={interaction.saveTitle}
+        >
+          {interaction.status === "saving"
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <Save className="h-3.5 w-3.5" />}
+          {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.337.11")}</Button>
       </div>
     </div>
   );
@@ -333,10 +349,10 @@ function ConfigSectionNav({
   onSelect: (section: string) => void;
 }): JSX.Element {
   return (
-    <aside className="hidden min-h-0 border-r border-ink-200/70 bg-[#f2ece2] lg:flex lg:flex-col">
+    <aside className="hidden min-h-0 border-r border-ink-200/70 bg-[var(--theme-config-nav-bg)] lg:flex lg:flex-col">
       <div className="shrink-0 border-b border-ink-200/70 px-3.5 py-3.5">
-        <div className="text-[12px] font-semibold text-ink-900">{frontendMessage("config.main.sections")}</div>
-        <div className="mt-1 text-[11px] text-ink-500">{frontendMessage("config.main.sectionsHint")}</div>
+        <div className="text-[12px] font-semibold text-ink-900">{frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.356.65")}</div>
+        <div className="mt-1 text-[11px] text-ink-500">{frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.357.56")}</div>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1 p-2">
@@ -356,14 +372,10 @@ function ConfigSectionNav({
                 onClick={() => onSelect(section.name)}
               >
                 <span className="flex min-w-0 items-start gap-2">
-                  <span
-                    className={cn(
-                      "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border",
-                      active
-                        ? "border-terra-200 bg-terra-50 text-terra-700"
-                        : "border-ink-200 bg-paper-100 text-ink-450",
-                    )}
-                  >
+                  <span className={cn(
+                    "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border",
+                    active ? "border-terra-200 bg-terra-50 text-terra-700" : "border-ink-200 bg-paper-100 text-ink-450",
+                  )}>
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                   <span className="min-w-0">
@@ -384,6 +396,44 @@ function ConfigSectionNav({
   );
 }
 
+function EmbeddedConfigSectionNav({
+  sections,
+  selectedSection,
+  onSelect,
+}: {
+  sections: ConfigSnapshotData["form"]["sections"];
+  selectedSection: string | null;
+  onSelect: (section: string) => void;
+}): JSX.Element {
+  return (
+    <div className="border-b border-ink-200/70 bg-[var(--theme-config-nav-bg)] px-3 py-3">
+      <div className="flex min-w-0 flex-wrap gap-1.5">
+        {sections.map((section) => {
+          const active = section.name === selectedSection;
+          const Icon = sectionIcon(section.icon);
+          return (
+            <button
+              key={section.name}
+              type="button"
+              title={section.description ?? section.label}
+              className={cn(
+                "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition",
+                active
+                  ? "bg-paper-50 text-ink-900 shadow-panel"
+                  : "text-ink-500 hover:bg-paper-50/70 hover:text-ink-900",
+              )}
+              onClick={() => onSelect(section.name)}
+            >
+              <Icon className={cn("h-3.5 w-3.5 shrink-0", active ? "text-terra-600" : "text-ink-400")} />
+              <span className="truncate">{section.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MobileSectionNav({
   sections,
   selectedSection,
@@ -394,7 +444,7 @@ function MobileSectionNav({
   onSelect: (section: string) => void;
 }): JSX.Element {
   return (
-    <div className="flex gap-1 overflow-x-auto border-b border-ink-200/70 bg-[#f2ece2] px-2 py-2 lg:hidden">
+    <div className="flex gap-1 overflow-x-auto border-b border-ink-200/70 bg-[var(--theme-config-nav-bg)] px-2 py-2 lg:hidden">
       {sections.map((section) => {
         const Icon = sectionIcon(section.icon);
         return (
@@ -430,8 +480,6 @@ function sectionIcon(icon: string | undefined): typeof Settings {
       return Search;
     case "folder-cog":
       return FolderCog;
-    case "shield-alert":
-      return ShieldAlert;
     default:
       return Settings;
   }
@@ -471,14 +519,8 @@ function Diagnostics({
         </div>
       ))}
       {items.length > 4 ? (
-        <div className="px-1 text-[11px] text-ink-400">
-          {frontendMessage("config.main.moreDiagnostics", { count: items.length - 4 })}
-        </div>
+        <div className="px-1 text-[11px] text-ink-400">{frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.524.56")}{items.length - 4} {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.524.78")}</div>
       ) : null}
     </div>
   );
-}
-
-function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
