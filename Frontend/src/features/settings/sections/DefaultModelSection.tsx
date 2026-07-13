@@ -67,7 +67,7 @@ export function DefaultModelSection({
         <div className="border-b border-ink-200/70 px-4 py-3">
           <h2 className="text-[14px] font-semibold text-ink-900">默认助手模型</h2>
           <p className="mt-1 text-[12px] leading-5 text-ink-500">
-            选择一个已配置、供应商已启用且支持对话的模型；更改会立即保存。
+            选择一个已配置、供应商已启用且支持对话的模型；更改会立即保存，并作为新建对话的初始模型。当前对话可在聊天模型菜单中恢复为默认。
           </p>
         </div>
         <div className="space-y-3 p-4">

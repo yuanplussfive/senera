@@ -43,6 +43,8 @@ import {
 } from "./ModelConfigPrimitives";
 
 const EMPTY_PENDING_MODEL_IDS: ReadonlySet<string> = new Set();
+const modelActionClassName = "inline-flex h-7 items-center rounded-md border border-ink-200 bg-paper-50 px-2 text-[10.5px] font-medium text-ink-650 transition hover:border-terra-300 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50";
+const modelRemoveActionClassName = "inline-flex h-7 items-center rounded-md border border-brick-200 bg-brick-50 px-2 text-[10.5px] font-medium text-brick-700 transition hover:border-brick-300 hover:bg-brick-100 disabled:pointer-events-none disabled:opacity-50";
 
 export function ProviderModelList({
   selectedProvider,
@@ -67,6 +69,8 @@ export function ProviderModelList({
   onAddManualModel,
   showFetchAction = true,
   onConfigureModel,
+  onSetDefaultModel,
+  onRemoveModel,
   onAddModel,
 }: {
   selectedProvider: ProviderEndpointDraft | null;
@@ -91,6 +95,8 @@ export function ProviderModelList({
   onAddManualModel?: () => void;
   showFetchAction?: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
+  onSetDefaultModel?: (model: ModelProviderDraft) => void;
+  onRemoveModel?: (model: ModelProviderDraft) => void;
   onAddModel?: (model: ProviderModelInfo) => void;
 }): JSX.Element {
   const embedded = layoutMode === "embedded";
@@ -118,6 +124,8 @@ export function ProviderModelList({
         pendingModelIds={pendingModelIds}
         disabled={disabled}
         onConfigureModel={onConfigureModel}
+        onSetDefaultModel={onSetDefaultModel}
+        onRemoveModel={onRemoveModel}
         onAddModel={onAddModel}
         onGroupRef={(groupId, element) => {
           if (element) {
@@ -227,6 +235,8 @@ function ProviderModelRows({
   pendingModelIds,
   disabled,
   onConfigureModel,
+  onSetDefaultModel,
+  onRemoveModel,
   onAddModel,
   onGroupRef,
 }: {
@@ -241,6 +251,8 @@ function ProviderModelRows({
   pendingModelIds: ReadonlySet<string>;
   disabled: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
+  onSetDefaultModel?: (model: ModelProviderDraft) => void;
+  onRemoveModel?: (model: ModelProviderDraft) => void;
   onAddModel?: (model: ProviderModelInfo) => void;
   onGroupRef: (groupId: string, element: HTMLElement | null) => void;
 }): JSX.Element {
@@ -295,6 +307,8 @@ function ProviderModelRows({
                 modelTemplate={modelTemplate}
                 disabled={disabled}
                 onConfigureModel={onConfigureModel}
+                onSetDefaultModel={onSetDefaultModel}
+                onRemoveModel={onRemoveModel}
                 onAddModel={onAddModel}
               />
             ))}
@@ -314,6 +328,8 @@ function ProviderModelRow({
   modelTemplate,
   disabled,
   onConfigureModel,
+  onSetDefaultModel,
+  onRemoveModel,
   onAddModel,
 }: {
   model: ProviderModelInfo;
@@ -324,6 +340,8 @@ function ProviderModelRow({
   modelTemplate: Record<string, unknown>;
   disabled: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
+  onSetDefaultModel?: (model: ModelProviderDraft) => void;
+  onRemoveModel?: (model: ModelProviderDraft) => void;
   onAddModel?: (model: ProviderModelInfo) => void;
 }): JSX.Element {
   const isDefault = configured?.Id === defaultModelId;
@@ -349,11 +367,42 @@ function ProviderModelRow({
           <CapabilityIconStrip capabilities={capabilities} />
         </span>
       </span>
-      <span className="flex items-center gap-1.5">
+      <span className="flex flex-wrap items-center justify-end gap-1.5">
         <ConfiguredModelBadge isDefault={isDefault} configured={Boolean(configured)} />
         {pending ? (
           <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10.5px] font-semibold text-sky-700">
             <Loader2 className="h-3 w-3 animate-spin" /> {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.356.58")}</span>
+        ) : configured && (onSetDefaultModel || onRemoveModel) ? (
+          <>
+            <button
+              type="button"
+              disabled={disabled || !providerId}
+              className={modelActionClassName}
+              onClick={() => onConfigureModel(model)}
+            >
+              {frontendMessage("chat.model.configure")}
+            </button>
+            {!isDefault && onSetDefaultModel ? (
+              <button
+                type="button"
+                disabled={disabled || !providerId}
+                className={modelActionClassName}
+                onClick={() => onSetDefaultModel(configured)}
+              >
+                {frontendMessage("chat.model.setDefault")}
+              </button>
+            ) : null}
+            {onRemoveModel ? (
+              <button
+                type="button"
+                disabled={disabled || !providerId}
+                className={modelRemoveActionClassName}
+                onClick={() => onRemoveModel(configured)}
+              >
+                {frontendMessage("chat.model.remove")}
+              </button>
+            ) : null}
+          </>
         ) : configured || !onAddModel ? <button
           type="button"
           disabled={disabled || !providerId}

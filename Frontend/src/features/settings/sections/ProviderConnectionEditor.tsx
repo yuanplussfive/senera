@@ -123,7 +123,7 @@ export function ProviderConnectionEditor({
                 onClick={() => onFetch(true)}
               >
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                获取模型列表
+                管理模型
               </Button>
               {onDelete ? (
                 <IconAction label="删除供应商" danger disabled={disabled || protectedProvider} onClick={onDelete}>

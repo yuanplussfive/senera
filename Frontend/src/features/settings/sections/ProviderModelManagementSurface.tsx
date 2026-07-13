@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
 import type { ProviderModelConfigInput } from "../../../api/providerModelCommandTypes";
-import type { ProviderModelDeleteInput, ProviderModelUpsertInput } from "../../../app/providerModelMutations";
+import type { ProviderModelUpsertInput } from "../../../app/providerModelMutations";
 import { cn } from "../../../lib/util";
 import { Button, Dialog, DialogContent, ScrollArea } from "../../../shared/ui";
 import {
@@ -27,8 +27,9 @@ export function ProviderModelManagementSurface({
   disabled,
   endpointOptions = [],
   modelField,
-  onDeleteProviderModel,
   onFetchProviderModels,
+  onRequestRemoveModel,
+  onSetDefaultModel,
   onUpsertProviderModel,
   operations,
   state,
@@ -48,8 +49,9 @@ export function ProviderModelManagementSurface({
   endpointOptions?: Array<{ value: string; label: string }>;
   modelField?: ConfigFormFieldData;
   operations: SettingsConfigCommands["providerModelOperations"];
-  onDeleteProviderModel: SettingsConfigCommands["deleteProviderModel"];
   onFetchProviderModels: SettingsConfigCommands["fetchProviderModels"];
+  onRequestRemoveModel: (model: ModelProviderDraft) => void;
+  onSetDefaultModel: (modelId: string) => void;
   onUpsertProviderModel: SettingsConfigCommands["upsertProviderModel"];
   state: ModelServiceState;
   catalogs: ReadProviderModelListStateInput["catalogs"];
@@ -169,18 +171,9 @@ export function ProviderModelManagementSurface({
     }
   };
 
-  const removeModel = (model: ModelProviderDraft): void => {
-    const isDefault = model.Id === state.defaultModel?.model.Id;
-    if (isDefault) {
-      // Default assignment has one entry point: the dedicated 默认模型 section.
-      // TODO: let users delete a current default after backend supports an explicit
-      // clear/default-replacement command; do not choose a replacement here.
-      return;
-    }
-    const input: ProviderModelDeleteInput = { modelId: model.Id };
-    if (onDeleteProviderModel(input)) {
-      setEditingModel(null);
-    }
+  const requestModelRemoval = (model: ModelProviderDraft): void => {
+    setEditingModel(null);
+    onRequestRemoveModel(model);
   };
 
   const addManualModel = (): void => {
@@ -280,6 +273,8 @@ export function ProviderModelManagementSurface({
             onFetchProviderModels(selectedProvider.Id, force, fetchEndpoint ?? toProviderEndpointInput(selectedProvider));
           }}
           onConfigureModel={openModel}
+          onSetDefaultModel={(model) => onSetDefaultModel(model.Id)}
+          onRemoveModel={requestModelRemoval}
           onAddModel={addFetchedModel}
         />
       </section>
@@ -294,10 +289,7 @@ export function ProviderModelManagementSurface({
         onOpenChange={(open) => !open && setEditingModel(null)}
         onChange={(patch) => setEditingModel((current) => current ? { ...current, ...patch } : current)}
         onCommit={() => editingModel && saveModel(editingModel)}
-        onRemove={() => editingModel && removeModel(editingModel)}
-        removeDisabledReason={editingModel?.Id === state.defaultModel?.model.Id
-          ? "请先在“默认模型”中更换默认助手模型"
-          : undefined}
+        onRemove={() => editingModel && requestModelRemoval(editingModel)}
       />
       <Dialog open={catalogOpen} onOpenChange={setCatalogOpen}>
         <DialogContent

@@ -64,7 +64,10 @@ export interface ProviderConnectionActions {
   confirmDraft: () => void;
   addProvider: (provider: ProviderEndpointDraft) => void;
   renameProvider: (providerId: string, nextProviderId: string) => void;
-  deleteProvider: (provider: ProviderEndpointDraft) => void;
+  deleteProvider: (
+    provider: ProviderEndpointDraft,
+    options?: Parameters<SettingsConfigCommands["deleteProviderEndpoint"]>[1],
+  ) => boolean;
   fetchSelectedProvider: (force?: boolean) => void;
 }
 
@@ -292,22 +295,22 @@ export function useProviderConnectionActions({
     }
   };
 
-  const deleteProvider = (provider: ProviderEndpointDraft): void => {
-    if (state.models.some((model) => model.ProviderId === provider.Id)) {
-      setLocalError("这个供应商仍有关联模型；模型清理和默认模型替换会在模型管理步骤处理。");
-      return;
+  const deleteProvider = (
+    provider: ProviderEndpointDraft,
+    options?: Parameters<SettingsConfigCommands["deleteProviderEndpoint"]>[1],
+  ): boolean => {
+    const requestId = onDeleteProviderEndpoint(provider.Id, options);
+    if (!requestId) return false;
+
+    const nextProvider = state.providers.find((entry) => entry.Id !== provider.Id) ?? null;
+    setSelectedProviderId(nextProvider?.Id ?? null);
+    setDraftProvider(nextProvider);
+    if (pendingProviderDraftId === provider.Id) {
+      setPendingProviderDraft(null);
+      setPendingProviderDraftConfirmation(null);
     }
-    const requestId = onDeleteProviderEndpoint(provider.Id);
-    if (requestId) {
-      const nextProvider = state.providers.find((entry) => entry.Id !== provider.Id) ?? null;
-      setSelectedProviderId(nextProvider?.Id ?? null);
-      setDraftProvider(nextProvider);
-      if (pendingProviderDraftId === provider.Id) {
-        setPendingProviderDraft(null);
-        setPendingProviderDraftConfirmation(null);
-      }
-      setLocalError(null);
-    }
+    setLocalError(null);
+    return true;
   };
 
   const fetchSelectedProvider = (force?: boolean): void => {

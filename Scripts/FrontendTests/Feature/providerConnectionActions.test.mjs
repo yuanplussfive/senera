@@ -73,6 +73,30 @@ test("selected provider changes to the renamed ID only after its snapshot arrive
   expect(handleRef.current.actions.connectionDraft?.Id).toBe("beta");
 });
 
+test("provider deletion forwards the lifecycle dialog's explicit cascade and replacement choice", async () => {
+  const handleRef = { current: null };
+  const onDeleteProviderEndpoint = vi.fn(() => "delete-request");
+  render(React.createElement(ActionsHarness, {
+    handleRef,
+    onDeleteProviderEndpoint,
+    state: createState("alpha"),
+  }));
+
+  let accepted = false;
+  await act(async () => {
+    accepted = handleRef.current.actions.deleteProvider(
+      { Id: "alpha", Enabled: true, BaseUrl: "https://alpha.example.test/v1" },
+      { cascadeModels: true, replacementDefaultModelId: "beta:model" },
+    );
+  });
+
+  expect(accepted).toBe(true);
+  expect(onDeleteProviderEndpoint).toHaveBeenCalledWith("alpha", {
+    cascadeModels: true,
+    replacementDefaultModelId: "beta:model",
+  });
+});
+
 test("new provider presets remain editable after the identity snapshot arrives", async () => {
   const handleRef = { current: null };
   const onUpsertProviderEndpoint = vi.fn(() => "add-request");
@@ -117,6 +141,7 @@ test("new provider presets remain editable after the identity snapshot arrives",
 function ActionsHarness({
   handleRef,
   onRender,
+  onDeleteProviderEndpoint = () => "delete-request",
   onRenameProviderEndpoint = () => "rename-request",
   onUpsertProviderEndpoint = () => "upsert-request",
   operations = {},
@@ -136,7 +161,7 @@ function ActionsHarness({
     operations,
     selectedProviderId,
     setSelectedProviderId,
-    onDeleteProviderEndpoint: () => "delete-request",
+    onDeleteProviderEndpoint,
     onFetchProviderModels: () => undefined,
     onRenameProviderEndpoint,
     onUpsertProviderEndpoint,

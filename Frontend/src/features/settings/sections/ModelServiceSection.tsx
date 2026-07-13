@@ -4,12 +4,18 @@ import { SettingsWorkspaceState } from "../SettingsWorkspaceSurface";
 import { useModelServiceLayout } from "../../../shared/responsive";
 import { cn } from "../../../lib/util";
 import { findItemField, findTopField, readFieldOptions, toProviderEndpointInput } from "../../chat/modelConfigData";
+import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { AddProviderDialog, RenameProviderDialog } from "./ProviderConnectionDialogs";
 import { ProviderConnectionEditor } from "./ProviderConnectionEditor";
 import { ProviderConnectionList } from "./ProviderConnectionList";
 import { ProviderModelManagementSurface } from "./ProviderModelManagementSurface";
-import { readModelServiceState, type ModelServiceState } from "./modelServiceState";
+import {
+  readDefaultAssistantModelCandidates,
+  readModelServiceState,
+  type ModelServiceState,
+} from "./modelServiceState";
 import { useProviderConnectionActions } from "./useProviderConnectionActions";
+import { ProviderModelLifecycleDialogs } from "./ProviderModelLifecycleDialogs";
 
 const EMPTY_DRAFT: Record<string, unknown> = {};
 
@@ -22,6 +28,8 @@ export function ModelServiceSection({
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [openCatalogSignal, setOpenCatalogSignal] = useState(0);
+  const [modelPendingRemoval, setModelPendingRemoval] = useState<ModelProviderDraft | null>(null);
+  const [providerPendingRemoval, setProviderPendingRemoval] = useState<ProviderEndpointDraft | null>(null);
   const layout = useModelServiceLayout();
   const snapshot = systemConfig?.configSnapshot ?? null;
   const modelSection = snapshot?.form.sections.find((section) => section.name === "models") ?? null;
@@ -35,6 +43,20 @@ export function ModelServiceSection({
       selectedProviderId,
     })
     : null;
+  const modelField = useMemo(
+    () => findTopField(modelSection ?? undefined, "ModelProviders"),
+    [modelSection],
+  );
+  const modelTemplate = useMemo(() => modelField?.defaultItem ?? {}, [modelField]);
+  const defaultModelCandidates = useMemo(
+    () => state ? readDefaultAssistantModelCandidates({
+      models: state.models,
+      providers: state.providers,
+      modelTemplate,
+    }) : [],
+    [modelTemplate, state],
+  );
+  const currentDefaultModelId = state?.defaultModel?.model.Id ?? null;
   const emptyState = useMemo((): ModelServiceState => ({
     providers: [], models: [], selectedProvider: null, selectedProviderModelList: null,
     defaultModel: null, defaultModelStatus: "待设置", defaultSlots: [], diagnostics: [],
@@ -65,14 +87,14 @@ export function ModelServiceSection({
   if (!snapshot || !modelSection || !state) return <SettingsWorkspaceState>主配置连接后会加载模型服务</SettingsWorkspaceState>;
 
   const selectedProvider = state.providers.find((provider) => provider.Id === (selectedProviderId ?? state.providers[0]?.Id)) ?? null;
-  const modelField = findTopField(modelSection, "ModelProviders");
-  const endpointOptions = readFieldOptions(findItemField(findTopField(modelSection, "ModelProviders"), "Endpoint"));
+  const endpointOptions = readFieldOptions(findItemField(modelField, "Endpoint"));
   const modelSurface = (
     <ProviderModelManagementSurface
       disabled={actions.saving}
       operations={systemConfig.providerModelOperations}
-      onDeleteProviderModel={systemConfig.deleteProviderModel}
       onFetchProviderModels={systemConfig.fetchProviderModels}
+      onRequestRemoveModel={setModelPendingRemoval}
+      onSetDefaultModel={systemConfig.setDefaultProviderModel}
       onUpsertProviderModel={systemConfig.upsertProviderModel}
       state={state}
       catalogs={systemConfig.providerModelCatalogs}
@@ -105,7 +127,7 @@ export function ModelServiceSection({
           if (selected && layout === "mobile") setMobileDetailOpen(true);
         }}
         onRename={actions.setRenameTarget}
-        onDelete={actions.deleteProvider}
+        onDelete={setProviderPendingRemoval}
       />
     </section>
   );
@@ -131,7 +153,7 @@ export function ModelServiceSection({
             setOpenCatalogSignal((value) => value + 1);
             actions.fetchSelectedProvider(force);
           }}
-          onDelete={actions.acceptedProvider ? () => actions.deleteProvider(actions.acceptedProvider!) : undefined}
+          onDelete={actions.acceptedProvider ? () => setProviderPendingRemoval(actions.acceptedProvider!) : undefined}
         />
       </div>
       <div className="min-h-0 flex-1 overflow-hidden border-t border-ink-200/70">{modelSurface}</div>
@@ -165,6 +187,21 @@ export function ModelServiceSection({
       {content}
       <AddProviderDialog open={actions.showAddDialog} providers={state.providers} onOpenChange={actions.setShowAddDialog} onAdd={actions.addProvider} />
       <RenameProviderDialog provider={actions.renameTarget} providers={state.providers} onOpenChange={(open) => !open && actions.setRenameTarget(null)} onRename={actions.renameProvider} />
+      <ProviderModelLifecycleDialogs
+        candidateModels={defaultModelCandidates}
+        defaultModelId={currentDefaultModelId}
+        disabled={actions.saving}
+        modelToRemove={modelPendingRemoval}
+        models={state.models}
+        providerToRemove={providerPendingRemoval}
+        onCloseModelRemoval={() => setModelPendingRemoval(null)}
+        onCloseProviderRemoval={() => setProviderPendingRemoval(null)}
+        onConfirmModelRemoval={(input) => Boolean(systemConfig.deleteProviderModel(input))}
+        onConfirmProviderRemoval={(input) => {
+          const provider = state.providers.find((entry) => entry.Id === input.providerId);
+          return provider ? actions.deleteProvider(provider, input) : false;
+        }}
+      />
     </>
   );
 }
