@@ -1,11 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  PencilLine,
-  Plug,
-  RotateCw,
-  SquarePen,
-  Trash2,
-} from "lucide-react";
+import { PencilLine, Plug, RotateCw, SquarePen, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useStore, type SessionRecord, type UserProfile } from "../../store/sessionStore";
@@ -177,10 +171,7 @@ export function SessionList({
   const handleOpenFromRail = onOpenSessionPanel ?? toggleSidebar;
 
   const content = isRail ? (
-    <SessionRail
-      onNewSession={onNewSession}
-      onOpenSessionPanel={handleOpenFromRail}
-    />
+    <SessionRail onNewSession={onNewSession} onOpenSessionPanel={handleOpenFromRail} />
   ) : (
     <aside className={cn("flex h-full shrink-0 flex-col border-r border-ink-200/70 bg-paper-100/70", panelWidthClass)}>
       <SessionHeader

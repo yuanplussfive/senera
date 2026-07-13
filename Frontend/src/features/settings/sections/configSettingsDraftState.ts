@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type {
-  ConfigMutationState,
-  ConfigSnapshotData,
-} from "../../../api/eventTypes";
-import {
-  validateJsonConfigDraft,
-  type JsonConfigObject,
-} from "../../../shared/config/JsonConfigForm";
+import type { ConfigMutationState, ConfigSnapshotData } from "../../../api/eventTypes";
+import { validateJsonConfigDraft, type JsonConfigObject } from "../../../shared/config/JsonConfigForm";
 
 export interface ConfigSettingsDraftState {
   draft: JsonConfigObject;
@@ -42,7 +36,7 @@ export function useConfigSettingsDraftState({
   const currentSnapshotVersion = snapshot?.version;
   const diagnostics = snapshot?.diagnostics ?? [];
   const validationErrors = useMemo(
-    () => snapshot ? validateJsonConfigDraft(snapshot.form.sections, draft) : [],
+    () => (snapshot ? validateJsonConfigDraft(snapshot.form.sections, draft) : []),
     [draft, snapshot],
   );
   const saveOperation = saveRequestId && operation?.requestId === saveRequestId ? operation : null;

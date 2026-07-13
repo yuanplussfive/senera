@@ -229,9 +229,14 @@ test("message list renders messages and streaming run as stable keyed items", ()
 });
 
 test("message list accepts repeated scroller refs without a render loop", () => {
-  renderWithFrontendProviders(React.createElement(MessageList, createMessageListProps({
-    messages: [createMessage({ id: "message-repeat", role: "user", content: "keep scrolling" })],
-  })));
+  renderWithFrontendProviders(
+    React.createElement(
+      MessageList,
+      createMessageListProps({
+        messages: [createMessage({ id: "message-repeat", role: "user", content: "keep scrolling" })],
+      }),
+    ),
+  );
 
   expect(screen.getByText("keep scrolling")).toBeInTheDocument();
 });
@@ -239,22 +244,32 @@ test("message list accepts repeated scroller refs without a render loop", () => 
 test("message list refreshes profile and selected provider presentation", () => {
   const userMessage = createMessage({ id: "message-user-profile", role: "user", content: "hello" });
   const assistantMessage = createMessage({ id: "message-provider", role: "assistant", content: "answer" });
-  const { rerender } = renderWithFrontendProviders(React.createElement(MessageList, createMessageListProps({
-    assistantAvatarIcon: "sparkles",
-    messages: [userMessage, assistantMessage],
-    selectedModelProvider: createProvider("Alpha"),
-    userProfile: createUserProfile("Ada"),
-  })));
+  const { rerender } = renderWithFrontendProviders(
+    React.createElement(
+      MessageList,
+      createMessageListProps({
+        assistantAvatarIcon: "sparkles",
+        messages: [userMessage, assistantMessage],
+        selectedModelProvider: createProvider("Alpha"),
+        userProfile: createUserProfile("Ada"),
+      }),
+    ),
+  );
 
   expect(screen.getByAltText("Ada")).toBeInTheDocument();
   expect(screen.getByText("Alpha")).toBeInTheDocument();
 
-  rerender(React.createElement(MessageList, createMessageListProps({
-    assistantAvatarIcon: "bot",
-    messages: [userMessage, assistantMessage],
-    selectedModelProvider: createProvider("Beta"),
-    userProfile: createUserProfile("Grace"),
-  })));
+  rerender(
+    React.createElement(
+      MessageList,
+      createMessageListProps({
+        assistantAvatarIcon: "bot",
+        messages: [userMessage, assistantMessage],
+        selectedModelProvider: createProvider("Beta"),
+        userProfile: createUserProfile("Grace"),
+      }),
+    ),
+  );
 
   expect(screen.getByAltText("Grace")).toBeInTheDocument();
   expect(screen.getByText("Beta")).toBeInTheDocument();
@@ -265,10 +280,15 @@ test("streaming approvals refresh when their content changes at the same length"
     approvals: [createApproval({ subject: { kind: "tool_call", toolName: "Read config", arguments: {} } })],
     revision: 1,
   });
-  const { rerender } = renderWithFrontendProviders(React.createElement(MessageList, createMessageListProps({
-    currentRun: initialRun,
-    runs: [initialRun],
-  })));
+  const { rerender } = renderWithFrontendProviders(
+    React.createElement(
+      MessageList,
+      createMessageListProps({
+        currentRun: initialRun,
+        runs: [initialRun],
+      }),
+    ),
+  );
 
   expect(screen.getByText("Read config")).toBeInTheDocument();
 
@@ -276,10 +296,15 @@ test("streaming approvals refresh when their content changes at the same length"
     ...initialRun,
     approvals: [createApproval({ subject: { kind: "tool_call", toolName: "Write config", arguments: {} } })],
   };
-  rerender(React.createElement(MessageList, createMessageListProps({
-    currentRun: updatedRun,
-    runs: [updatedRun],
-  })));
+  rerender(
+    React.createElement(
+      MessageList,
+      createMessageListProps({
+        currentRun: updatedRun,
+        runs: [updatedRun],
+      }),
+    ),
+  );
 
   expect(screen.getByText("Write config")).toBeInTheDocument();
   expect(screen.queryByText("Read config")).not.toBeInTheDocument();

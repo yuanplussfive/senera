@@ -5,10 +5,7 @@ import {
   type AgentPiHarnessLeaseInput,
 } from "../../../Source/AgentSystem/Pi/AgentPiHarnessSessionPool.js";
 import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
-import type {
-  AgentPiModelProjection,
-  AgentPiProviderProjection,
-} from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
+import type { AgentPiModelProjection, AgentPiProviderProjection } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
 import type { ResolvedAgentModelProviderConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("AgentPiHarnessSessionPool", () => {

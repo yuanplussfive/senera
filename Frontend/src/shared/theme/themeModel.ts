@@ -94,7 +94,8 @@ const paletteTokens: Record<ColorScheme, Record<ResolvedTheme, Record<string, st
       "--color-brick-600": "180 83 9",
       "--color-brick-700": "146 64 14",
       "--theme-bg": "rgb(248 248 246)",
-      "--theme-bg-image": "radial-gradient(circle at 0% 0%, rgb(194 105 74 / 0.018) 0, transparent 35%), radial-gradient(circle at 100% 100%, rgb(90 125 76 / 0.016) 0, transparent 35%)",
+      "--theme-bg-image":
+        "radial-gradient(circle at 0% 0%, rgb(194 105 74 / 0.018) 0, transparent 35%), radial-gradient(circle at 100% 100%, rgb(90 125 76 / 0.016) 0, transparent 35%)",
       "--theme-fg": "rgb(43 40 32)",
       "--theme-sidebar-bg": "rgb(244 244 241)",
       "--theme-elevated-bg": "rgb(255 255 255)",
@@ -187,7 +188,8 @@ const paletteTokens: Record<ColorScheme, Record<ResolvedTheme, Record<string, st
       "--color-brick-600": "248 162 78",
       "--color-brick-700": "255 191 122",
       "--theme-bg": "rgb(38 36 31)",
-      "--theme-bg-image": "radial-gradient(circle at 0% 0%, rgb(222 142 108 / 0.028) 0, transparent 34%), radial-gradient(circle at 100% 100%, rgb(163 157 140 / 0.02) 0, transparent 36%)",
+      "--theme-bg-image":
+        "radial-gradient(circle at 0% 0%, rgb(222 142 108 / 0.028) 0, transparent 34%), radial-gradient(circle at 100% 100%, rgb(163 157 140 / 0.02) 0, transparent 36%)",
       "--theme-fg": "rgb(239 235 223)",
       "--theme-sidebar-bg": "rgb(33 32 27)",
       "--theme-elevated-bg": "rgb(44 42 37)",
@@ -625,7 +627,7 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
 };
 
 export function normalizeAppearancePreference(value: unknown): AppearancePreference {
-  const source = value && typeof value === "object" ? value as Partial<AppearancePreference> : {};
+  const source = value && typeof value === "object" ? (value as Partial<AppearancePreference>) : {};
   return {
     themeMode: isThemeMode(source.themeMode) ? source.themeMode : defaultAppearancePreference.themeMode,
     colorScheme: isColorScheme(source.colorScheme) ? source.colorScheme : defaultAppearancePreference.colorScheme,
@@ -639,9 +641,7 @@ export function resolveThemeMode(themeMode: ThemeMode, systemTheme: ResolvedThem
   return themeMode === "system" ? systemTheme : themeMode;
 }
 
-export function readSystemTheme(
-  matchMedia: Pick<Window, "matchMedia">["matchMedia"] | undefined,
-): ResolvedTheme {
+export function readSystemTheme(matchMedia: Pick<Window, "matchMedia">["matchMedia"] | undefined): ResolvedTheme {
   if (!matchMedia) return "light";
   return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
@@ -680,12 +680,14 @@ export function createAppearanceTokens(
       ...accentTokens[preference.accentColor][resolvedTheme],
       ...visualRoleTokens[resolvedTheme],
       "--theme-font-scale": fontScaleValues[preference.fontScale],
-      "--theme-ui-font-family": preference.fontFamily === "brand"
-        ? "\"Geist\", ui-sans-serif, system-ui, sans-serif"
-        : "ui-sans-serif, system-ui, sans-serif",
-      "--theme-display-font-family": preference.fontFamily === "brand"
-        ? "\"Fraunces\", ui-serif, Georgia, serif"
-        : "ui-sans-serif, system-ui, sans-serif",
+      "--theme-ui-font-family":
+        preference.fontFamily === "brand"
+          ? '"Geist", ui-sans-serif, system-ui, sans-serif'
+          : "ui-sans-serif, system-ui, sans-serif",
+      "--theme-display-font-family":
+        preference.fontFamily === "brand"
+          ? '"Fraunces", ui-serif, Georgia, serif'
+          : "ui-sans-serif, system-ui, sans-serif",
       "--scrollbar-size": "8px",
       "--scrollbar-track": "transparent",
       "--code-source-max-height": "500px",

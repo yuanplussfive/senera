@@ -45,27 +45,39 @@ export const AllVariants: Story<ButtonProps> = () => (
     <div className="space-y-3">
       <h3 className="text-ink-900 font-medium">Ghost Variant</h3>
       <div className="flex gap-3">
-        <Button variant="ghost" size="sm">Small</Button>
+        <Button variant="ghost" size="sm">
+          Small
+        </Button>
         <Button variant="ghost">Default</Button>
-        <Button variant="ghost" size="icon">★</Button>
+        <Button variant="ghost" size="icon">
+          ★
+        </Button>
       </div>
     </div>
 
     <div className="space-y-3">
       <h3 className="text-ink-900 font-medium">Outline Variant</h3>
       <div className="flex gap-3">
-        <Button variant="outline" size="sm">Small</Button>
+        <Button variant="outline" size="sm">
+          Small
+        </Button>
         <Button variant="outline">Default</Button>
-        <Button variant="outline" size="icon">★</Button>
+        <Button variant="outline" size="icon">
+          ★
+        </Button>
       </div>
     </div>
 
     <div className="space-y-3">
       <h3 className="text-ink-900 font-medium">Destructive Variant</h3>
       <div className="flex gap-3">
-        <Button variant="destructive" size="sm">Small</Button>
+        <Button variant="destructive" size="sm">
+          Small
+        </Button>
         <Button variant="destructive">Default</Button>
-        <Button variant="destructive" size="icon">★</Button>
+        <Button variant="destructive" size="icon">
+          ★
+        </Button>
       </div>
     </div>
 
@@ -73,9 +85,15 @@ export const AllVariants: Story<ButtonProps> = () => (
       <h3 className="text-ink-900 font-medium">Disabled State</h3>
       <div className="flex gap-3">
         <Button disabled>Default</Button>
-        <Button variant="ghost" disabled>Ghost</Button>
-        <Button variant="outline" disabled>Outline</Button>
-        <Button variant="destructive" disabled>Destructive</Button>
+        <Button variant="ghost" disabled>
+          Ghost
+        </Button>
+        <Button variant="outline" disabled>
+          Outline
+        </Button>
+        <Button variant="destructive" disabled>
+          Destructive
+        </Button>
       </div>
     </div>
   </div>

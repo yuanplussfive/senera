@@ -53,12 +53,12 @@ API key、模型和运行时参数。
 
 ### 4. Validation & Error Matrix
 
-| 请求 header | 代理行为 |
-| --- | --- |
-| 未提供 | 为旧 Pi 客户端兼容，使用全局默认模型配置 |
-| 已提供且为已配置 ID | 使用该模型配置构造 compiler 与 planner |
-| 空字符串或纯空白 | 返回 `400 invalid_model_provider` |
-| 未知 ID | 返回 `400 invalid_model_provider`，不得回退默认模型 |
+| 请求 header         | 代理行为                                            |
+| ------------------- | --------------------------------------------------- |
+| 未提供              | 为旧 Pi 客户端兼容，使用全局默认模型配置            |
+| 已提供且为已配置 ID | 使用该模型配置构造 compiler 与 planner              |
+| 空字符串或纯空白    | 返回 `400 invalid_model_provider`                   |
+| 未知 ID             | 返回 `400 invalid_model_provider`，不得回退默认模型 |
 
 ### 5. Good / Base / Bad Cases
 
@@ -131,16 +131,16 @@ active harness 则始终保留到 lease release。
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 行为 |
-| --- | --- |
-| 同 provider、同配置 fingerprint | 复用 runtime 并增加 lease |
-| 切换 provider，旧 runtime 空闲 | 先关闭旧 runtime，再构造新 runtime |
-| 切换 provider，旧 runtime active | 保留旧 runtime，直到 release |
-| Pi bootstrap 超时但创建 Promise 未结束 | 延迟 release，待迟到 session dispose 后释放 |
-| `message_update` | 保留 `model.delta`；不发送或持久化完整 Pi trace |
-| executor 的 slow `model.delta` sink | prompt 等待 collector 完成，不能绕过为 fire-and-forget |
-| trace payload 有数百个属性 | 只读取摘要和 sanitation 上限内的属性 |
-| idle Pi harness 超过上限 | 淘汰 LRU idle harness，不 abort active harness |
+| 条件                                   | 行为                                                   |
+| -------------------------------------- | ------------------------------------------------------ |
+| 同 provider、同配置 fingerprint        | 复用 runtime 并增加 lease                              |
+| 切换 provider，旧 runtime 空闲         | 先关闭旧 runtime，再构造新 runtime                     |
+| 切换 provider，旧 runtime active       | 保留旧 runtime，直到 release                           |
+| Pi bootstrap 超时但创建 Promise 未结束 | 延迟 release，待迟到 session dispose 后释放            |
+| `message_update`                       | 保留 `model.delta`；不发送或持久化完整 Pi trace        |
+| executor 的 slow `model.delta` sink    | prompt 等待 collector 完成，不能绕过为 fire-and-forget |
+| trace payload 有数百个属性             | 只读取摘要和 sanitation 上限内的属性                   |
+| idle Pi harness 超过上限               | 淘汰 LRU idle harness，不 abort active harness         |
 
 ### 5. Good / Base / Bad Cases
 

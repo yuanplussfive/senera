@@ -154,7 +154,6 @@ export class AgentConfigService {
     return this.snapshotValue;
   }
 
-
   upsertProviderEndpoint(input: AgentProviderEndpointUpsertInput): AgentConfigSnapshot {
     return this.updateProviderModelConfig(input, (config) => upsertProviderEndpoint(config, input));
   }
@@ -303,7 +302,6 @@ export class AgentConfigService {
     this.repository = undefined;
     this.repositoryPath = undefined;
   }
-
 
   private updateProviderModelConfig(
     input: AgentConfigRevisionGuardInput,

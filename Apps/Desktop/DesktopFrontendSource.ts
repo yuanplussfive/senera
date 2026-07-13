@@ -2,13 +2,13 @@ import type { BrowserWindow } from "electron";
 
 export type DesktopFrontendSource =
   | {
-    kind: "file";
-    filePath: string;
-  }
+      kind: "file";
+      filePath: string;
+    }
   | {
-    kind: "url";
-    url: string;
-  };
+      kind: "url";
+      url: string;
+    };
 
 export function createDesktopFrontendSource({
   devServerUrl,
@@ -68,7 +68,6 @@ export async function loadDesktopFrontend(
 
 function compactQuery(query: Record<string, string | undefined> | undefined): Record<string, string> | undefined {
   if (!query) return undefined;
-  const entries = Object.entries(query)
-    .filter((entry): entry is [string, string] => entry[1] !== undefined);
+  const entries = Object.entries(query).filter((entry): entry is [string, string] => entry[1] !== undefined);
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }

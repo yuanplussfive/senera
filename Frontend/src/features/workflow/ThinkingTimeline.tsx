@@ -1,34 +1,15 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Lightbulb,
-  Loader2,
-  Maximize2,
-  PanelRightClose,
-  PanelRightOpen,
-  Clock3,
-  ListTree,
-  Wrench,
-} from "lucide-react";
+import { Lightbulb, Loader2, Maximize2, PanelRightClose, PanelRightOpen, Clock3, ListTree, Wrench } from "lucide-react";
 import { useStore, type RunRecord } from "../../store/sessionStore";
 import { useResponsiveMode } from "../../shared/responsive";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import {
-  Dialog,
-  DialogContent,
-  IconButton,
-  MetaLabel,
-} from "../../shared/ui";
+import { Dialog, DialogContent, IconButton, MetaLabel } from "../../shared/ui";
 import { summarizeRun } from "./runSummary";
 import { shouldLoadWorkflowCanvas } from "./canvasLoadPolicy";
 import { RunSelector, RunSummaryStrip } from "./WorkflowRunControls";
-import {
-  motionSprings,
-  motionTimings,
-  readFocusPanelVariants,
-  useMotionLevel,
-} from "../../shared/motion";
+import { motionSprings, motionTimings, readFocusPanelVariants, useMotionLevel } from "../../shared/motion";
 
 const LazyThinkingTimelineCanvas = lazy(() =>
   import("./ThinkingTimelineCanvas").then((module) => ({
@@ -57,13 +38,11 @@ function ThinkingPanel({
   const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
   const collapsed = useStore((s) => s.rightPanelCollapsed);
   const toggleCollapsed = useStore((s) => s.toggleRightPanel);
-  const viewedRunId = useStore((s) =>
-    activeId ? s.viewedRunIdBySession[activeId] : undefined,
-  );
+  const viewedRunId = useStore((s) => (activeId ? s.viewedRunIdBySession[activeId] : undefined));
   const setViewedRun = useStore((s) => s.setViewedRun);
   const [focusOpen, setFocusOpen] = useState(false);
 
-  const runs = session?.runs ?? [];
+  const runs = useMemo(() => session?.runs ?? [], [session?.runs]);
   const latestRun = runs[runs.length - 1];
   const selectedRun = useMemo(() => {
     if (!viewedRunId) return undefined;
@@ -108,10 +87,12 @@ function ThinkingPanel({
 
   return (
     <>
-      <aside className={cn(
-        "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
-        presentation === "panel" ? "w-full border-l-0" : "w-full",
-      )}>
+      <aside
+        className={cn(
+          "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
+          presentation === "panel" ? "w-full border-l-0" : "w-full",
+        )}
+      >
         <TopBar
           run={run}
           runs={runs}
@@ -185,7 +166,9 @@ function TopBar({
         {hideTitle ? null : (
           <>
             <Lightbulb className="h-4 w-4 text-terra-500" />
-            <span className="text-[13px] font-medium text-ink-800">{frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.188.68")}</span>
+            <span className="text-[13px] font-medium text-ink-800">
+              {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.188.68")}
+            </span>
           </>
         )}
         <div className="ml-auto flex min-w-0 items-center gap-2">
@@ -193,19 +176,24 @@ function TopBar({
             {run ? (
               <span>
                 {summary?.completed}/{summary?.total}
-                {summary && summary.failed > 0 ? <span className="ml-1 text-brick-500">·{summary.failed} {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.196.106")}</span> : null}
+                {summary && summary.failed > 0 ? (
+                  <span className="ml-1 text-brick-500">
+                    ·{summary.failed} {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.196.106")}
+                  </span>
+                ) : null}
               </span>
             ) : null}
           </MetaLabel>
           {pinnedToHistory ? (
-          <div className="flex shrink-0 items-center gap-1 rounded-md border border-ink-200/60 bg-paper-50/80 p-0.5 shadow-[var(--shadow-bubble-user)]">
-            <button
-              type="button"
-              onClick={onFollowLatest}
-              className="h-7 rounded px-2 text-[11.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
-            >
-              {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.207.15")}</button>
-          </div>
+            <div className="flex shrink-0 items-center gap-1 rounded-md border border-ink-200/60 bg-paper-50/80 p-0.5 shadow-[var(--shadow-bubble-user)]">
+              <button
+                type="button"
+                onClick={onFollowLatest}
+                className="h-7 rounded px-2 text-[11.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+              >
+                {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.207.15")}
+              </button>
+            </div>
           ) : null}
           <IconButton
             label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.212.19")}
@@ -223,12 +211,7 @@ function TopBar({
       {runs.length > 0 ? (
         <div className="border-b border-ink-200/40 bg-paper-50/70 px-3 py-2">
           {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
-          <RunSelector
-            runs={runs}
-            currentRunId={currentRunId}
-            onSelect={onSelect}
-            pinnedToHistory={pinnedToHistory}
-          />
+          <RunSelector runs={runs} currentRunId={currentRunId} onSelect={onSelect} pinnedToHistory={pinnedToHistory} />
         </div>
       ) : null}
     </>
@@ -291,7 +274,8 @@ function TimelineFocusDialog({
                   onClick={onFollowLatest}
                   className="mt-2 h-8 rounded-md px-2.5 text-[12px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
                 >
-                  {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.295.19")}</button>
+                  {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.295.19")}
+                </button>
               ) : null}
             </div>
           ) : null}
@@ -304,13 +288,7 @@ function TimelineFocusDialog({
 
 // ---------- 画布 ----------
 
-function CanvasArea({
-  run,
-  focusVersion = 0,
-}: {
-  run?: RunRecord;
-  focusVersion?: number;
-}): JSX.Element {
+function CanvasArea({ run, focusVersion = 0 }: { run?: RunRecord; focusVersion?: number }): JSX.Element {
   if (!shouldLoadWorkflowCanvas(run)) {
     return (
       <div className="relative flex flex-1 items-center justify-center overflow-hidden">
@@ -331,7 +309,8 @@ function CanvasLoading(): JSX.Element {
     <div className="relative flex flex-1 items-center justify-center overflow-hidden">
       <div className="inline-flex items-center gap-2 rounded-md border border-ink-200/60 bg-paper-50/80 px-3 py-2 text-[12px] text-ink-500 shadow-bubble-ai">
         <Loader2 className="h-3.5 w-3.5 animate-spin text-umber-500" />
-        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.336.9")}</div>
+        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.336.9")}
+      </div>
     </div>
   );
 }
@@ -352,14 +331,28 @@ function EmptyCanvas(): JSX.Element {
         <ListTree className="h-5 w-5 text-ink-500" />
       </div>
       <p className="mt-3 text-[13px] font-medium text-ink-850">
-        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.358.9")}</p>
+        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.358.9")}
+      </p>
       <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
-        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.361.9")}</p>
+        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.361.9")}
+      </p>
       <div className="mt-3 grid w-full grid-cols-2 gap-1.5 text-left">
-        <EmptyHint icon={<ListTree className="h-3 w-3" />} label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.364.66")} />
-        <EmptyHint icon={<Wrench className="h-3 w-3" />} label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.365.64")} />
-        <EmptyHint icon={<Maximize2 className="h-3 w-3" />} label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.366.67")} />
-        <EmptyHint icon={<Clock3 className="h-3 w-3" />} label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.367.64")} />
+        <EmptyHint
+          icon={<ListTree className="h-3 w-3" />}
+          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.364.66")}
+        />
+        <EmptyHint
+          icon={<Wrench className="h-3 w-3" />}
+          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.365.64")}
+        />
+        <EmptyHint
+          icon={<Maximize2 className="h-3 w-3" />}
+          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.366.67")}
+        />
+        <EmptyHint
+          icon={<Clock3 className="h-3 w-3" />}
+          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.367.64")}
+        />
       </div>
       <p className="mt-3 text-[11px] text-ink-400">
         {isCoarsePointer ? "可拖拽节点，拖动画布，双指缩放。" : "可拖拽节点，滚轮平移，Ctrl+滚轮缩放。"}

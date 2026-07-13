@@ -166,64 +166,66 @@ export function useConfigSettingsCommands({
     send({ type: "config.get" });
   }, [send, status]);
 
-  const saveConfig = useCallback((config: Record<string, unknown>): string | null => {
-    if (status !== "open") {
-      toast.error(frontendMessage("config.mainOffline"));
-      return null;
-    }
-    const requestId = generateId();
-    pendingConfigOpsRef.current.set(requestId, {
-      kind: "config_update",
-    });
-    setConfigOperation({
-      requestId,
-      kind: "config_update",
-      status: "pending",
-      updatedAt: new Date().toISOString(),
-    });
-    const ok = send({
-      type: "config.update",
-      requestId,
-      config,
-      mirrorJson: true,
-    });
-    if (!ok) {
-      pendingConfigOpsRef.current.delete(requestId);
-      setConfigOperation(null);
-      toast.error(frontendMessage("config.mainDisconnected"));
-      return null;
-    }
-    return requestId;
-  }, [send, status]);
-
-  const fetchProviderModels = useCallback((
-    providerId: string,
-    force?: boolean,
-    endpoint?: ProviderModelEndpointInput,
-  ): void => {
-    if (status !== "open") {
-      toast.error(frontendMessage("config.providerModelsOffline"));
-      return;
-    }
-    setProviderModelLoadingIds((current) => ({
-      ...current,
-      [providerId]: true,
-    }));
-    const ok = send({
-      type: "provider.models.fetch",
-      providerId,
-      force,
-      endpoint,
-    });
-    if (!ok) {
-      setProviderModelLoadingIds((current) => {
-        const next = { ...current };
-        delete next[providerId];
-        return next;
+  const saveConfig = useCallback(
+    (config: Record<string, unknown>): string | null => {
+      if (status !== "open") {
+        toast.error(frontendMessage("config.mainOffline"));
+        return null;
+      }
+      const requestId = generateId();
+      pendingConfigOpsRef.current.set(requestId, {
+        kind: "config_update",
       });
-      toast.error(frontendMessage("config.providerModelsDisconnected"));
-    }
-  }, [send, status]);
+      setConfigOperation({
+        requestId,
+        kind: "config_update",
+        status: "pending",
+        updatedAt: new Date().toISOString(),
+      });
+      const ok = send({
+        type: "config.update",
+        requestId,
+        config,
+        mirrorJson: true,
+      });
+      if (!ok) {
+        pendingConfigOpsRef.current.delete(requestId);
+        setConfigOperation(null);
+        toast.error(frontendMessage("config.mainDisconnected"));
+        return null;
+      }
+      return requestId;
+    },
+    [send, status],
+  );
+
+  const fetchProviderModels = useCallback(
+    (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput): void => {
+      if (status !== "open") {
+        toast.error(frontendMessage("config.providerModelsOffline"));
+        return;
+      }
+      setProviderModelLoadingIds((current) => ({
+        ...current,
+        [providerId]: true,
+      }));
+      const ok = send({
+        type: "provider.models.fetch",
+        providerId,
+        force,
+        endpoint,
+      });
+      if (!ok) {
+        setProviderModelLoadingIds((current) => {
+          const next = { ...current };
+          delete next[providerId];
+          return next;
+        });
+        toast.error(frontendMessage("config.providerModelsDisconnected"));
+      }
+    },
+    [send, status],
+  );
 
   return {
     configSnapshot,

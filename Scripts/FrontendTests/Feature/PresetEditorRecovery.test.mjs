@@ -1,24 +1,11 @@
-import React, {
-  Suspense,
-  lazy,
-  useState,
-} from "react";
-import {
-  cleanup,
-  render,
-  screen,
-} from "@testing-library/react";
+import React, { Suspense, lazy, useState } from "react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   PresetEditorFailureBoundary,
   PresetTextEditorFallback,
 } from "../../../Frontend/src/features/chat/PresetWorkspace.tsx";
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-} from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 const LazyCrashingEditor = lazy(async () => ({
   default: function CrashingEditor() {
@@ -77,11 +64,13 @@ describe("PresetEditorFailureBoundary", () => {
   });
 
   it("keeps the fallback editor disabled when preset mutations are busy", () => {
-    render(React.createElement(PresetTextEditorFallback, {
-      content: "locked draft",
-      disabled: true,
-      onChange: () => undefined,
-    }));
+    render(
+      React.createElement(PresetTextEditorFallback, {
+        content: "locked draft",
+        disabled: true,
+        onChange: () => undefined,
+      }),
+    );
 
     expect(screen.getByRole("textbox", { name: "角色预设内容" })).toBeDisabled();
   });

@@ -20,15 +20,23 @@ export const TypeScale: Story = () => (
         <div className="space-y-3">
           <div className="rounded-lg border border-ink-200 p-4">
             <div className="text-ink-500 text-xs mb-2">UI Font (Sans)</div>
-            <div className="text-ink-900 text-lg font-medium" style={{ fontFamily: 'Geist, ui-sans-serif, system-ui, sans-serif' }}>
+            <div
+              className="text-ink-900 text-lg font-medium"
+              style={{ fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif" }}
+            >
               Geist — The quick brown fox jumps over the lazy dog
             </div>
-            <div className="text-ink-600 text-sm mt-2 font-mono">font-family: "Geist", ui-sans-serif, system-ui, sans-serif</div>
+            <div className="text-ink-600 text-sm mt-2 font-mono">
+              font-family: "Geist", ui-sans-serif, system-ui, sans-serif
+            </div>
           </div>
 
           <div className="rounded-lg border border-ink-200 p-4">
             <div className="text-ink-500 text-xs mb-2">Display Font (Serif)</div>
-            <div className="text-ink-900 text-lg font-medium" style={{ fontFamily: 'Fraunces, ui-serif, Georgia, serif' }}>
+            <div
+              className="text-ink-900 text-lg font-medium"
+              style={{ fontFamily: "Fraunces, ui-serif, Georgia, serif" }}
+            >
               Fraunces — The quick brown fox jumps over the lazy dog
             </div>
             <div className="text-ink-600 text-sm mt-2 font-mono">font-family: "Fraunces", ui-serif, Georgia, serif</div>
@@ -39,7 +47,9 @@ export const TypeScale: Story = () => (
             <div className="text-ink-900 text-lg font-medium font-mono">
               JetBrains Mono — The quick brown fox jumps over the lazy dog
             </div>
-            <div className="text-ink-600 text-sm mt-2 font-mono">font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas</div>
+            <div className="text-ink-600 text-sm mt-2 font-mono">
+              font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas
+            </div>
           </div>
         </div>
       </div>
@@ -100,7 +110,8 @@ export const TypeScale: Story = () => (
           <div className="rounded-lg border border-ink-200 p-4">
             <div className="text-ink-500 text-xs mb-2">Loose (2.0) — Code</div>
             <div className="text-ink-900 text-sm font-mono" style={{ lineHeight: 2.0 }}>
-              const example = true;<br />
+              const example = true;
+              <br />
               // Loose for code
             </div>
           </div>
@@ -124,11 +135,12 @@ export const ChatTypography: Story = () => (
           <div
             className="text-ink-900 rounded-2xl bg-paper-200 px-4 py-3 inline-block"
             style={{
-              fontSize: 'var(--theme-chat-user-font-size)',
-              lineHeight: 'var(--theme-chat-user-line-height)'
+              fontSize: "var(--theme-chat-user-font-size)",
+              lineHeight: "var(--theme-chat-user-line-height)",
             }}
           >
-            This is a user message with optimized readability.<br />
+            This is a user message with optimized readability.
+            <br />
             Font size: 14.5px, Line height: 1.55
           </div>
         </div>
@@ -138,11 +150,12 @@ export const ChatTypography: Story = () => (
           <div
             className="text-ink-900"
             style={{
-              fontSize: 'var(--theme-chat-assistant-font-size)',
-              lineHeight: 'var(--theme-chat-assistant-line-height)'
+              fontSize: "var(--theme-chat-assistant-font-size)",
+              lineHeight: "var(--theme-chat-assistant-line-height)",
             }}
           >
-            This is an assistant message with slightly larger text for easier scanning.<br />
+            This is an assistant message with slightly larger text for easier scanning.
+            <br />
             Font size: 15px, Line height: 1.75
           </div>
         </div>
@@ -153,8 +166,12 @@ export const ChatTypography: Story = () => (
         <ul className="text-ink-700 text-sm space-y-2">
           <li>• User messages use compact spacing (1.55) for density</li>
           <li>• Assistant messages use relaxed spacing (1.75) for readability</li>
-          <li>• Font scales apply globally via <span className="font-mono text-xs">--theme-font-scale</span></li>
-          <li>• All text respects <span className="font-mono text-xs">prefers-reduced-motion</span></li>
+          <li>
+            • Font scales apply globally via <span className="font-mono text-xs">--theme-font-scale</span>
+          </li>
+          <li>
+            • All text respects <span className="font-mono text-xs">prefers-reduced-motion</span>
+          </li>
         </ul>
       </div>
     </div>

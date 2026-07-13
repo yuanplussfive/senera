@@ -2,11 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
 import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
-import {
-  appendDesktopLog,
-  prepareDesktopRuntime,
-  type DesktopRuntimePaths,
-} from "./DesktopRuntime.js";
+import { appendDesktopLog, prepareDesktopRuntime, type DesktopRuntimePaths } from "./DesktopRuntime.js";
 import {
   createDesktopFrontendSource,
   loadDesktopFrontend,
@@ -43,7 +39,8 @@ const settingsSectionIds = new Set([
 app.setName("Senera");
 Menu.setApplicationMenu(null);
 
-app.whenReady()
+app
+  .whenReady()
   .then(() => {
     runtimePaths = prepareDesktopRuntime();
     appendDesktopLog(
@@ -78,7 +75,7 @@ app.whenReady()
     });
   })
   .catch((error) => {
-    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
     const logPath = runtimePaths?.logPath ?? path.join(app.getPath("userData"), "desktop.log");
     appendDesktopLog(logPath, `startup failed\n${message}`);
     dialog.showErrorBox("Senera 启动失败", message);

@@ -40,9 +40,12 @@ export function RenameDialog({
             className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-terra-200/50"
           />
           <DialogActions>
-            <DialogActionButton close>{frontendMessage("runtime.migrated.features.session.SessionDialogs.42.39")}</DialogActionButton>
+            <DialogActionButton close>
+              {frontendMessage("runtime.migrated.features.session.SessionDialogs.42.39")}
+            </DialogActionButton>
             <DialogActionButton type="submit" variant="primary">
-              {frontendMessage("runtime.migrated.features.session.SessionDialogs.44.15")}</DialogActionButton>
+              {frontendMessage("runtime.migrated.features.session.SessionDialogs.44.15")}
+            </DialogActionButton>
           </DialogActions>
         </form>
       </DialogContent>
@@ -77,7 +80,9 @@ export function ConfirmationDialog({
           </div>
         </div>
         <DialogActions className="mt-4">
-          <DialogActionButton close>{frontendMessage("runtime.migrated.features.session.SessionDialogs.80.37")}</DialogActionButton>
+          <DialogActionButton close>
+            {frontendMessage("runtime.migrated.features.session.SessionDialogs.80.37")}
+          </DialogActionButton>
           <DialogActionButton
             onClick={() => {
               intent?.onConfirm();

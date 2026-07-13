@@ -11,11 +11,7 @@ export interface ProviderModelEndpointInput {
   Headers?: Record<string, string>;
 }
 
-export type ProviderModelEndpointKind =
-  | "Responses"
-  | "ChatCompletions"
-  | "ClaudeMessages"
-  | "GoogleGenerateContent";
+export type ProviderModelEndpointKind = "Responses" | "ChatCompletions" | "ClaudeMessages" | "GoogleGenerateContent";
 
 export interface ProviderModelConfigInput {
   Id: string;

@@ -177,109 +177,109 @@ export function MessageList({
     <PerformanceMonitor id="MessageList" enabled={import.meta.env.DEV}>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <Virtuoso
-        ref={autoScroll.ref}
-        scrollerRef={setChatContainerScrollerRef}
-        style={{ flex: 1, minHeight: 0 }}
-        data={items}
-        totalCount={items.length}
-        followOutput={autoScroll.followOutput}
-        atBottomStateChange={(atBottom) => {
-          autoScroll.atBottomStateChange(atBottom);
-          setIsAtBottom(atBottom);
-        }}
-        totalListHeightChanged={autoScroll.totalListHeightChanged}
-        defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
-        initialTopMostItemIndex={{ index: Math.max(0, items.length - 1), align: "end" }}
-        atBottomThreshold={MESSAGE_LIST_BOTTOM_THRESHOLD}
-        overscan={{ main: MESSAGE_LIST_OVERSCAN_PX, reverse: MESSAGE_LIST_OVERSCAN_PX }}
-        computeItemKey={(index, item) => readMessageListItemKey(item, index)}
-        itemSize={measureMessageItemSize}
-        itemContent={(index, item) => {
-          const itemKey = readMessageListItemKey(item, index);
-          if (!item) return <div className="h-px" data-message-key={itemKey} />;
-          if (isStreamingListItem(item)) {
+          ref={autoScroll.ref}
+          scrollerRef={setChatContainerScrollerRef}
+          style={{ flex: 1, minHeight: 0 }}
+          data={items}
+          totalCount={items.length}
+          followOutput={autoScroll.followOutput}
+          atBottomStateChange={(atBottom) => {
+            autoScroll.atBottomStateChange(atBottom);
+            setIsAtBottom(atBottom);
+          }}
+          totalListHeightChanged={autoScroll.totalListHeightChanged}
+          defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
+          initialTopMostItemIndex={{ index: Math.max(0, items.length - 1), align: "end" }}
+          atBottomThreshold={MESSAGE_LIST_BOTTOM_THRESHOLD}
+          overscan={{ main: MESSAGE_LIST_OVERSCAN_PX, reverse: MESSAGE_LIST_OVERSCAN_PX }}
+          computeItemKey={(index, item) => readMessageListItemKey(item, index)}
+          itemSize={measureMessageItemSize}
+          itemContent={(index, item) => {
+            const itemKey = readMessageListItemKey(item, index);
+            if (!item) return <div className="h-px" data-message-key={itemKey} />;
+            if (isStreamingListItem(item)) {
+              return (
+                <div
+                  className="chat-message-item mx-auto box-border w-full max-w-3xl px-4 pb-3 pt-1 sm:px-6"
+                  data-message-key={itemKey}
+                  ref={heightObserverRef}
+                >
+                  <MotionMessageItem motionKey={`streaming:${item.run.requestId}`}>
+                    <StreamingRow
+                      run={item.run}
+                      assistantAvatarIcon={assistantAvatarIcon}
+                      selectedModelProvider={selectedModelProvider}
+                      approvalDisabled={approvalDisabled}
+                      onResolveApproval={onResolveApproval}
+                    />
+                  </MotionMessageItem>
+                </div>
+              );
+            }
+            const shouldHighlightCompletedStream =
+              item.role === "assistant" && item.requestId === completedRunIdToHighlight;
+            const isRecentMessage = index >= messages.length - 2;
+            const shouldAnimateMount = shouldHighlightCompletedStream || isRecentMessage;
             return (
               <div
                 className="chat-message-item mx-auto box-border w-full max-w-3xl px-4 pb-3 pt-1 sm:px-6"
                 data-message-key={itemKey}
                 ref={heightObserverRef}
               >
-                <MotionMessageItem motionKey={`streaming:${item.run.requestId}`}>
-                  <StreamingRow
-                    run={item.run}
+                <MotionMessageItem
+                  motionKey={item.id}
+                  animateOnMount={shouldAnimateMount}
+                  className={shouldHighlightCompletedStream ? "streaming-complete-highlight" : undefined}
+                >
+                  <MessageRow
+                    message={item}
+                    run={item.requestId ? runsByRequestId.get(item.requestId) : undefined}
+                    onClickBubble={() => {
+                      if (item.role !== "user") return;
+                      if (!item.requestId) return;
+                      setEditing({ id: item.id, message: item });
+                      setDraft(item.content ?? "");
+                    }}
                     assistantAvatarIcon={assistantAvatarIcon}
                     selectedModelProvider={selectedModelProvider}
-                    approvalDisabled={approvalDisabled}
-                    onResolveApproval={onResolveApproval}
+                    userProfile={userProfile}
+                    showInlineActions={showInlineMessageActions}
+                    onRegenerate={() => onRegenerate(item)}
+                    onDelete={() => setDeleting(item)}
+                    onViewWorkflow={() => onViewWorkflow(item)}
                   />
                 </MotionMessageItem>
               </div>
             );
-          }
-          const shouldHighlightCompletedStream =
-            item.role === "assistant" && item.requestId === completedRunIdToHighlight;
-          const isRecentMessage = index >= messages.length - 2;
-          const shouldAnimateMount = shouldHighlightCompletedStream || isRecentMessage;
-          return (
-            <div
-              className="chat-message-item mx-auto box-border w-full max-w-3xl px-4 pb-3 pt-1 sm:px-6"
-              data-message-key={itemKey}
-              ref={heightObserverRef}
-            >
-              <MotionMessageItem
-                motionKey={item.id}
-                animateOnMount={shouldAnimateMount}
-                className={shouldHighlightCompletedStream ? "streaming-complete-highlight" : undefined}
-              >
-                <MessageRow
-                  message={item}
-                  run={item.requestId ? runsByRequestId.get(item.requestId) : undefined}
-                  onClickBubble={() => {
-                    if (item.role !== "user") return;
-                    if (!item.requestId) return;
-                    setEditing({ id: item.id, message: item });
-                    setDraft(item.content ?? "");
-                  }}
-                  assistantAvatarIcon={assistantAvatarIcon}
-                  selectedModelProvider={selectedModelProvider}
-                  userProfile={userProfile}
-                  showInlineActions={showInlineMessageActions}
-                  onRegenerate={() => onRegenerate(item)}
-                  onDelete={() => setDeleting(item)}
-                  onViewWorkflow={() => onViewWorkflow(item)}
-                />
-              </MotionMessageItem>
-            </div>
-          );
-        }}
-        components={{
-          Header: () => <div className="h-6" />,
-          Footer: () => <div className="h-24" />,
-        }}
-      />
-      <ScrollToBottomButton visible={showScrollButton} onClick={scrollToBottom} />
-      <EditMessageDialog
-        editing={editing}
-        draft={draft}
-        onDraftChange={setDraft}
-        onClose={closeEditor}
-        onSubmit={(target, next) => {
-          onEditUserMessage(target, next);
-          closeEditor();
-        }}
-      />
-      <DeleteMessageDialog
-        open={!!deleting}
-        message={deleting}
-        onOpenChange={(open) => {
-          if (!open) setDeleting(null);
-        }}
-        onConfirm={(target) => {
-          onDeleteFromMessage(target);
-          setDeleting(null);
-        }}
-      />
-    </div>
+          }}
+          components={{
+            Header: () => <div className="h-6" />,
+            Footer: () => <div className="h-24" />,
+          }}
+        />
+        <ScrollToBottomButton visible={showScrollButton} onClick={scrollToBottom} />
+        <EditMessageDialog
+          editing={editing}
+          draft={draft}
+          onDraftChange={setDraft}
+          onClose={closeEditor}
+          onSubmit={(target, next) => {
+            onEditUserMessage(target, next);
+            closeEditor();
+          }}
+        />
+        <DeleteMessageDialog
+          open={!!deleting}
+          message={deleting}
+          onOpenChange={(open) => {
+            if (!open) setDeleting(null);
+          }}
+          onConfirm={(target) => {
+            onDeleteFromMessage(target);
+            setDeleting(null);
+          }}
+        />
+      </div>
     </PerformanceMonitor>
   );
 }

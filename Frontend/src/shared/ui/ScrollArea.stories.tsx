@@ -9,9 +9,7 @@ export const VerticalScroll: Story = () => (
         {Array.from({ length: 20 }).map((_, i) => (
           <div key={i} className="rounded-md border border-ink-200 bg-paper-100 p-3">
             <div className="text-ink-900 text-sm font-medium">Item {i + 1}</div>
-            <div className="text-ink-600 text-xs mt-1">
-              This is item number {i + 1} in the scrollable list
-            </div>
+            <div className="text-ink-600 text-xs mt-1">This is item number {i + 1} in the scrollable list</div>
           </div>
         ))}
       </div>
@@ -64,10 +62,22 @@ export const WithTags: Story = () => (
     <ScrollArea className="h-[200px] w-[300px] rounded-lg border border-ink-200 bg-paper-50 p-4">
       <div className="flex flex-wrap gap-2">
         {[
-          "React", "TypeScript", "Tailwind CSS", "Vite", "Radix UI",
-          "Framer Motion", "Ladle", "Design System", "Component Library",
-          "UI/UX", "Frontend", "Web Development", "Modern Stack",
-          "Storybook Alternative", "Documentation", "Developer Tools"
+          "React",
+          "TypeScript",
+          "Tailwind CSS",
+          "Vite",
+          "Radix UI",
+          "Framer Motion",
+          "Ladle",
+          "Design System",
+          "Component Library",
+          "UI/UX",
+          "Frontend",
+          "Web Development",
+          "Modern Stack",
+          "Storybook Alternative",
+          "Documentation",
+          "Developer Tools",
         ].map((tag) => (
           <span
             key={tag}

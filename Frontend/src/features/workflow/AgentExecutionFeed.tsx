@@ -1,21 +1,9 @@
 import { useEffect, useMemo, useState, type AriaRole, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  ChevronDown,
-  ChevronRight,
-  GitBranch,
-  Workflow,
-  Wrench,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, GitBranch, Workflow, Wrench } from "lucide-react";
 import { cn } from "../../lib/util";
 import { type RunRecord } from "../../store/sessionStore";
-import {
-  deriveFeedModel,
-  statusDotClass,
-  statusTextClass,
-  type FeedGroup,
-  type FeedItem,
-} from "./feedModel";
+import { deriveFeedModel, statusDotClass, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
 import { MetaLabel } from "../../shared/ui";
 import { motionTimings, readFeedItemVariants, useMotionLevel, type MotionLevel } from "../../shared/motion";
 
@@ -44,32 +32,39 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
     <div className="flex min-w-0 flex-col gap-2.5">
       <FeedHeadline item={model.headline} stepCount={run.steps.length} />
       <div className="relative ml-1 pl-5 before:absolute before:left-[5px] before:top-1 before:bottom-0 before:w-px before:bg-ink-200/70">
-        {model.groups.map((group) => group.collapsible ? (
-          <FeedGroupBlock
-            key={group.id}
-            group={group}
-            expanded={expandedGroups[group.id] ?? group.defaultExpanded ?? true}
-            onToggle={() =>
-              setExpandedGroups((current) => ({
-                ...current,
-                [group.id]: !(current[group.id] ?? group.defaultExpanded ?? true),
-              }))}
-            motionLevel={effectiveLevel}
-          />
-        ) : (
-          <div key={group.id} className="mt-1 flex flex-col gap-1">
-            <AnimatePresence initial={false}>
-              {group.items.map((item) => (
-                <FeedRow key={item.id} item={item} motionLevel={effectiveLevel} />
-              ))}
-            </AnimatePresence>
-          </div>
-        ))}
+        {model.groups.map((group) =>
+          group.collapsible ? (
+            <FeedGroupBlock
+              key={group.id}
+              group={group}
+              expanded={expandedGroups[group.id] ?? group.defaultExpanded ?? true}
+              onToggle={() =>
+                setExpandedGroups((current) => ({
+                  ...current,
+                  [group.id]: !(current[group.id] ?? group.defaultExpanded ?? true),
+                }))
+              }
+              motionLevel={effectiveLevel}
+            />
+          ) : (
+            <div key={group.id} className="mt-1 flex flex-col gap-1">
+              <AnimatePresence initial={false}>
+                {group.items.map((item) => (
+                  <FeedRow key={item.id} item={item} motionLevel={effectiveLevel} />
+                ))}
+              </AnimatePresence>
+            </div>
+          ),
+        )}
       </div>
       <div className="ml-1 pl-5">
         <AnimatePresence mode="wait" initial={false}>
           {model.bodyText ? (
-            <FeedMotionBlock key="body" motionLevel={effectiveLevel} className="pt-2 text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-ink-800">
+            <FeedMotionBlock
+              key="body"
+              motionLevel={effectiveLevel}
+              className="pt-2 text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-ink-800"
+            >
               <span className="whitespace-pre-wrap break-words">{model.bodyText}</span>
               <span className="caret-blink" />
             </FeedMotionBlock>
@@ -78,38 +73,26 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
           )}
         </AnimatePresence>
         {model.footer ? (
-          <FeedMotionBlock motionLevel={effectiveLevel} className="pt-1.5 font-mono text-[10.5px] text-ink-400">{model.footer}</FeedMotionBlock>
+          <FeedMotionBlock motionLevel={effectiveLevel} className="pt-1.5 font-mono text-[10.5px] text-ink-400">
+            {model.footer}
+          </FeedMotionBlock>
         ) : null}
       </div>
     </div>
   );
 }
 
-function FeedHeadline({
-  item,
-  stepCount,
-}: {
-  item: FeedItem;
-  stepCount: number;
-}): JSX.Element {
+function FeedHeadline({ item, stepCount }: { item: FeedItem; stepCount: number }): JSX.Element {
   return (
     <div className="flex min-w-0 items-start gap-2.5">
       <span className={cn("mt-[7px] inline-block h-2 w-2 shrink-0 rounded-full", statusDotClass(item.status, true))} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13.5px] font-medium text-ink-900">{item.title}</span>
-          <MetaLabel>
-            {stepCount} steps
-          </MetaLabel>
-          {item.meta ? (
-            <MetaLabel>
-              {item.meta}
-            </MetaLabel>
-          ) : null}
+          <MetaLabel>{stepCount} steps</MetaLabel>
+          {item.meta ? <MetaLabel>{item.meta}</MetaLabel> : null}
         </div>
-        {item.subtitle ? (
-          <div className="mt-0.5 text-[12px] leading-relaxed text-ink-500">{item.subtitle}</div>
-        ) : null}
+        {item.subtitle ? <div className="mt-0.5 text-[12px] leading-relaxed text-ink-500">{item.subtitle}</div> : null}
       </div>
     </div>
   );
@@ -126,11 +109,7 @@ function FeedGroupBlock({
   onToggle: () => void;
   motionLevel: MotionLevel;
 }): JSX.Element {
-  const Icon = group.variant === "delegation"
-    ? Workflow
-    : group.variant === "tools"
-      ? Wrench
-      : GitBranch;
+  const Icon = group.variant === "delegation" ? Workflow : group.variant === "tools" ? Wrench : GitBranch;
 
   return (
     <div className="flex flex-col gap-1.5 py-0.5">
@@ -192,9 +171,7 @@ function FeedRow({
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12.75px] text-ink-900">{item.title}</div>
-        {item.subtitle ? (
-          <div className="mt-0.5 truncate text-[11.5px] text-ink-500">{item.subtitle}</div>
-        ) : null}
+        {item.subtitle ? <div className="mt-0.5 truncate text-[11.5px] text-ink-500">{item.subtitle}</div> : null}
       </div>
       {item.meta ? (
         <span className={cn("shrink-0 pt-px text-[11.5px]", statusTextClass(item.status))}>{item.meta}</span>
@@ -258,8 +235,7 @@ function ThinkingLoader({ motionLevel }: { motionLevel: MotionLevel }): JSX.Elem
     >
       {[0, 1, 2].map((index) => (
         <span
-          // eslint-disable-next-line react/no-array-index-key
-          key={index}
+          key={`thinking-loader-dot-${index}`}
           className="thinking-loader-dot block h-1 w-1 rounded-full bg-ink-400/85"
           style={{ animationDelay: `${index * 140}ms` }}
         />

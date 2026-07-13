@@ -69,9 +69,11 @@ test("rail presentation exposes expansion, new-session, and settings actions wit
 
   expect(onOpenSessionPanel).toHaveBeenCalledTimes(1);
   expect(onNewSession).toHaveBeenCalledTimes(1);
-  expect(openSettingsSurface).toHaveBeenCalledWith(expect.objectContaining({
-    fallback: expect.any(Function),
-  }));
+  expect(openSettingsSurface).toHaveBeenCalledWith(
+    expect.objectContaining({
+      fallback: expect.any(Function),
+    }),
+  );
   expect(openSettingsSurface).toHaveBeenCalledWith(expect.not.objectContaining({ section: expect.anything() }));
   expect(screen.queryByTitle(frontendMessage("connection.open"))).not.toBeInTheDocument();
 });

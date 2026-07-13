@@ -1,43 +1,12 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useState } from "react";
-import {
-  BrainCircuit,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Server,
-  Settings2,
-  Trash2,
-} from "lucide-react";
-import type {
-  ProviderModelsFailedData,
-  ProviderModelsSnapshotData,
-} from "../../api/eventTypes";
+import { BrainCircuit, Eye, EyeOff, KeyRound, Loader2, Plus, RefreshCw, Server, Settings2, Trash2 } from "lucide-react";
+import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import {
-  Button,
-  ScrollArea,
-  Tooltip,
-} from "../../shared/ui";
-import {
-  inferModelProviderIcon,
-  ModelProviderIcon,
-  ModelProviderIconNames,
-} from "./ModelProviderIcon";
-import {
-  formatShortTime,
-  nextHeaderKey,
-  providerEnabled,
-  providerIdLabel,
-  sortProviderRows,
-} from "./modelConfigData";
-import type {
-  ModelConfigLayoutMode,
-  ProviderEndpointDraft,
-} from "./modelConfigTypes";
+import { Button, ScrollArea, Tooltip } from "../../shared/ui";
+import { inferModelProviderIcon, ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
+import { formatShortTime, nextHeaderKey, providerEnabled, providerIdLabel, sortProviderRows } from "./modelConfigData";
+import type { ModelConfigLayoutMode, ProviderEndpointDraft } from "./modelConfigTypes";
 import {
   DetailTitle,
   EmptyDetail,
@@ -84,68 +53,70 @@ export function ProviderList({
   onOpenSettings: () => void;
 }): JSX.Element {
   const embedded = layoutMode === "embedded";
-  const providerRows = providers.length > 0 ? (
-    <div className="space-y-1.5 p-2">
-      {sortProviderRows(providers).map(({ provider, index }) => {
-        const active = index === selectedIndex;
-        const catalog = provider.Id ? catalogs[provider.Id] : undefined;
-        const error = provider.Id ? errors[provider.Id] : undefined;
-        const loading = provider.Id ? loadingProviderIds[provider.Id] : false;
-        const enabled = providerEnabled(provider);
-        const providerId = providerIdLabel(provider);
-        return (
-          <button
-            key={`${index}:${provider.Id}`}
-            type="button"
-            className={cn(
-              "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2.5 py-2.5 text-left transition",
-              "[content-visibility:auto] [contain-intrinsic-size:52px]",
-              active
-                ? "border-ink-200 bg-paper-50 text-ink-900 shadow-panel"
-                : "border-transparent text-ink-650 hover:border-ink-200/70 hover:bg-paper-50/80",
-              !enabled && "opacity-60",
-            )}
-            onClick={() => onSelect(index)}
-          >
-            <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border border-ink-200 bg-paper-100">
-              <ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={20} />
-            </span>
-            <span className="min-w-0 self-center">
-              <span className="block truncate text-[13px] font-semibold" title={providerId}>
-                {providerId}
+  const providerRows =
+    providers.length > 0 ? (
+      <div className="space-y-1.5 p-2">
+        {sortProviderRows(providers).map(({ provider, index }) => {
+          const active = index === selectedIndex;
+          const catalog = provider.Id ? catalogs[provider.Id] : undefined;
+          const error = provider.Id ? errors[provider.Id] : undefined;
+          const loading = provider.Id ? loadingProviderIds[provider.Id] : false;
+          const enabled = providerEnabled(provider);
+          const providerId = providerIdLabel(provider);
+          return (
+            <button
+              key={`${index}:${provider.Id}`}
+              type="button"
+              className={cn(
+                "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2.5 py-2.5 text-left transition",
+                "[content-visibility:auto] [contain-intrinsic-size:52px]",
+                active
+                  ? "border-ink-200 bg-paper-50 text-ink-900 shadow-panel"
+                  : "border-transparent text-ink-650 hover:border-ink-200/70 hover:bg-paper-50/80",
+                !enabled && "opacity-60",
+              )}
+              onClick={() => onSelect(index)}
+            >
+              <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border border-ink-200 bg-paper-100">
+                <ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={20} />
               </span>
-              <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-450">
-                <ProviderStatusIcon loading={loading} catalog={catalog} error={error} />
-                <span className="truncate">
-                  {catalog ? `${catalog.models.length} 个模型 · ${formatShortTime(catalog.fetchedAt)}` : provider.Id || "未设置 ID"}
+              <span className="min-w-0 self-center">
+                <span className="block truncate text-[13px] font-semibold" title={providerId}>
+                  {providerId}
+                </span>
+                <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-450">
+                  <ProviderStatusIcon loading={loading} catalog={catalog} error={error} />
+                  <span className="truncate">
+                    {catalog
+                      ? `${catalog.models.length} 个模型 · ${formatShortTime(catalog.fetchedAt)}`
+                      : provider.Id || "未设置 ID"}
+                  </span>
                 </span>
               </span>
-            </span>
-            <span className={cn(
-              "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-              enabled
-                ? "border-lime-200 bg-lime-50 text-lime-700"
-                : "border-ink-200 bg-ink-900/[0.035] text-ink-450",
-            )}>
-              {enabled ? "ON" : "OFF"}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  ) : (
-    <EmptyList text="添加供应商后填写接口地址" />
-  );
+              <span
+                className={cn(
+                  "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                  enabled
+                    ? "border-lime-200 bg-lime-50 text-lime-700"
+                    : "border-ink-200 bg-ink-900/[0.035] text-ink-450",
+                )}
+              >
+                {enabled ? "ON" : "OFF"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    ) : (
+      <EmptyList text="添加供应商后填写接口地址" />
+    );
 
   return (
-    <div className={cn(
-      "flex min-h-0 flex-col",
-      embedded ? "overflow-visible" : "h-full overflow-hidden",
-    )}>
+    <div className={cn("flex min-h-0 flex-col", embedded ? "overflow-visible" : "h-full overflow-hidden")}>
       <ListHeader
         title={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.145.15")}
         subtitle={`${providers.length} 个端点`}
-        action={(
+        action={
           <div className="flex items-center gap-1.5">
             {showSettingsAction ? (
               <Tooltip content="供应商设置" side="top">
@@ -183,7 +154,7 @@ export function ProviderList({
               </button>
             </Tooltip>
           </div>
-        )}
+        }
       />
       {embedded ? (
         <div className="min-h-0">{providerRows}</div>
@@ -221,7 +192,13 @@ export function ProviderEditor({
   const iconOptions = ModelProviderIconNames.map((icon) => ({ value: icon, label: icon }));
 
   if (!provider) {
-    return <EmptyDetail icon={<Server className="h-5 w-5" />} title={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.223.69")} text="添加供应商后填写接口地址并获取模型列表。" />;
+    return (
+      <EmptyDetail
+        icon={<Server className="h-5 w-5" />}
+        title={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.223.69")}
+        text="添加供应商后填写接口地址并获取模型列表。"
+      />
+    );
   }
 
   const enabled = providerEnabled(provider);
@@ -234,7 +211,7 @@ export function ProviderEditor({
           icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={22} />}
           title={providerId}
           subtitle={enabled ? "供应商已启用" : "供应商已关闭"}
-          actions={(
+          actions={
             <>
               <Button
                 size="sm"
@@ -243,12 +220,18 @@ export function ProviderEditor({
                 onClick={() => onFetch(true)}
               >
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                {frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.245.17")}</Button>
-              <IconAction label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.247.33")} danger disabled={disabled} onClick={() => onRemove(providerIndex)}>
+                {frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.245.17")}
+              </Button>
+              <IconAction
+                label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.247.33")}
+                danger
+                disabled={disabled}
+                onClick={() => onRemove(providerIndex)}
+              >
                 <Trash2 className="h-3.5 w-3.5" />
               </IconAction>
             </>
-          )}
+          }
         />
 
         <SettingsTable>
@@ -266,18 +249,23 @@ export function ProviderEditor({
             placeholder={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.266.25")}
             onChange={(Id) => onChange(providerIndex, { Id })}
           />
-          <MenuRow icon={<BrainCircuit className="h-3.5 w-3.5" />} label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.269.74")}>
+          <MenuRow
+            icon={<BrainCircuit className="h-3.5 w-3.5" />}
+            label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.269.74")}
+          >
             <MenuSelect
               value={provider.Icon ?? ""}
               placeholder={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.272.27")}
               options={iconOptions}
               disabled={disabled}
-              renderValue={(value) => value ? (
-                <span className="inline-flex min-w-0 items-center gap-2">
-                  <ModelProviderIcon icon={value} size={18} />
-                  <span className="truncate">{value}</span>
-                </span>
-              ) : null}
+              renderValue={(value) =>
+                value ? (
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    <ModelProviderIcon icon={value} size={18} />
+                    <span className="truncate">{value}</span>
+                  </span>
+                ) : null
+              }
               renderOption={(option) => (
                 <span className="inline-flex min-w-0 items-center gap-2">
                   <ModelProviderIcon icon={option.value} size={16} />
@@ -302,7 +290,7 @@ export function ProviderEditor({
             disabled={disabled}
             secret={!showKey}
             placeholder="sk-..."
-            trailing={(
+            trailing={
               <button
                 type="button"
                 className="grid h-8 w-8 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800"
@@ -311,7 +299,7 @@ export function ProviderEditor({
               >
                 {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               </button>
-            )}
+            }
             onChange={(ApiKey) => onChange(providerIndex, { ApiKey })}
           />
           <TextRow
@@ -348,7 +336,10 @@ function HeadersRow({
 }): JSX.Element {
   const entries = Object.entries(headers);
   return (
-    <SettingRow icon={<Settings2 className="h-3.5 w-3.5" />} label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.351.68")}>
+    <SettingRow
+      icon={<Settings2 className="h-3.5 w-3.5" />}
+      label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.351.68")}
+    >
       <div className="grid gap-2">
         {entries.map(([key, value], index) => (
           <div key={`${key}:${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
@@ -391,7 +382,8 @@ function HeadersRow({
           onClick={() => onChange({ ...headers, [nextHeaderKey(headers)]: "" })}
         >
           <Plus className="h-3.5 w-3.5" />
-          {frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.394.11")}</button>
+          {frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.394.11")}
+        </button>
       </div>
     </SettingRow>
   );

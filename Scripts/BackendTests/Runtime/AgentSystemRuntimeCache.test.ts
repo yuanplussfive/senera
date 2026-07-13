@@ -16,11 +16,7 @@ describe("AgentSystemRuntimeCache", () => {
     reused.release();
 
     const next = fixture.cache.acquire("deepseek-pro");
-    expect(fixture.order).toEqual([
-      "create:deepseek-flash",
-      "close:deepseek-flash",
-      "create:deepseek-pro",
-    ]);
+    expect(fixture.order).toEqual(["create:deepseek-flash", "close:deepseek-flash", "create:deepseek-pro"]);
     next.release();
   });
 

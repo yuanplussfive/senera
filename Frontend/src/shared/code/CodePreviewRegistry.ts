@@ -67,8 +67,7 @@ export function resolveCodePreview(language: string, code: string): CodePreview 
   const normalizedLanguage = normalizeLanguage(language);
   const context = { language: normalizedLanguage, code };
   const provider = previewProviders.find(
-    (candidate) =>
-      candidate.languages.includes(normalizedLanguage) && candidate.detect(context),
+    (candidate) => candidate.languages.includes(normalizedLanguage) && candidate.detect(context),
   );
   return provider ? provider.build(context) : null;
 }
@@ -88,21 +87,17 @@ export function normalizeLanguage(language: string): string {
   return language.trim().toLowerCase();
 }
 
-export function createCodePreviewThemeVariables(
-  cssVariables: Record<string, string>,
-): CodePreviewThemeVariables {
+export function createCodePreviewThemeVariables(cssVariables: Record<string, string>): CodePreviewThemeVariables {
   return {
     scrollbarThumb: cssVariables["--scrollbar-thumb"] ?? defaultCodePreviewThemeVariables.scrollbarThumb,
-    scrollbarThumbHover: cssVariables["--scrollbar-thumb-hover"] ?? defaultCodePreviewThemeVariables.scrollbarThumbHover,
+    scrollbarThumbHover:
+      cssVariables["--scrollbar-thumb-hover"] ?? defaultCodePreviewThemeVariables.scrollbarThumbHover,
     scrollbarTrack: cssVariables["--scrollbar-track"] ?? defaultCodePreviewThemeVariables.scrollbarTrack,
     scrollbarSize: cssVariables["--scrollbar-size"] ?? defaultCodePreviewThemeVariables.scrollbarSize,
   };
 }
 
-export function applyCodePreviewTheme(
-  source: string,
-  variables: CodePreviewThemeVariables,
-): string {
+export function applyCodePreviewTheme(source: string, variables: CodePreviewThemeVariables): string {
   const document = parse5.parse(source);
   replaceHeadStyle(document, "data-senera-preview-theme", createPreviewThemeStyle(variables));
   return parse5.serialize(document);
@@ -145,8 +140,7 @@ function parseHtmlSource(code: string): {
 } {
   const fragment = parse5.parseFragment(code);
   const document = parse5.parse(code);
-  const hasElement = (tagName: string): boolean =>
-    hasNodeNamed(fragment, tagName) || hasNodeNamed(document, tagName);
+  const hasElement = (tagName: string): boolean => hasNodeNamed(fragment, tagName) || hasNodeNamed(document, tagName);
   return {
     hasRenderableContent: hasAnyElement(fragment) || hasAnyElement(document),
     hasElement,
@@ -156,14 +150,8 @@ function parseHtmlSource(code: string): {
 function buildPreviewDocument(code: string): string {
   const document = parse5.parse(code);
   const fragment = parse5.parseFragment(code);
-  const sourceDocument = isCompleteHtmlSource(fragment)
-    ? document
-    : createDocumentFromFragment(fragment);
-  injectHeadStyle(
-    sourceDocument,
-    createPreviewScrollbarStyle(),
-    "data-senera-scrollbar",
-  );
+  const sourceDocument = isCompleteHtmlSource(fragment) ? document : createDocumentFromFragment(fragment);
+  injectHeadStyle(sourceDocument, createPreviewScrollbarStyle(), "data-senera-scrollbar");
   return parse5.serialize(sourceDocument);
 }
 
@@ -219,7 +207,7 @@ function createPreviewThemeStyle({
 }
 
 function createDocumentFromFragment(fragment: ParseNode): DefaultTreeAdapterTypes.Document {
-  const document = parse5.parse("<!doctype html><html><head><meta charset=\"utf-8\"></head><body></body></html>");
+  const document = parse5.parse('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
   const body = findNodeNamed(document, "body");
   if (isParentNode(body) && isParentNode(fragment)) {
     body.childNodes = [...fragment.childNodes];
@@ -236,9 +224,7 @@ function injectHeadStyle(document: ParseNode, css: string, attributeName: string
 function replaceHeadStyle(document: ParseNode, attributeName: string, css: string): void {
   const head = findNodeNamed(document, "head");
   if (!isParentNode(head)) return;
-  const existingIndex = head.childNodes.findIndex(
-    (child) => isStyleElementWithAttribute(child, attributeName),
-  );
+  const existingIndex = head.childNodes.findIndex((child) => isStyleElementWithAttribute(child, attributeName));
   const style = createStyleElement(css, attributeName);
   if (existingIndex >= 0) {
     head.childNodes.splice(existingIndex, 1, style);
@@ -273,9 +259,7 @@ function hasAnyElement(node: ParseNode): boolean {
 }
 
 function createStyleElement(css: string, attributeName: string): DefaultTreeAdapterTypes.Element {
-  const style = defaultTreeAdapter.createElement("style", parse5.html.NS.HTML, [
-    { name: attributeName, value: "" },
-  ]);
+  const style = defaultTreeAdapter.createElement("style", parse5.html.NS.HTML, [{ name: attributeName, value: "" }]);
   defaultTreeAdapter.insertText(style, css);
   return style;
 }
@@ -284,9 +268,9 @@ function isStyleElementWithAttribute(
   node: ParseNode | null,
   attributeName: string,
 ): node is DefaultTreeAdapterTypes.Element {
-  return isElementNode(node)
-    && node.tagName === "style"
-    && node.attrs.some((attribute) => attribute.name === attributeName);
+  return (
+    isElementNode(node) && node.tagName === "style" && node.attrs.some((attribute) => attribute.name === attributeName)
+  );
 }
 
 function isElementNode(node: ParseNode | null): node is DefaultTreeAdapterTypes.Element {

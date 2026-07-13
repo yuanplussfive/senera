@@ -15,14 +15,7 @@ export function PerformanceMonitor({
   onSlowRender,
   slowThresholdMs = 16, // ~60fps threshold
 }: PerformanceMonitorProps): JSX.Element {
-  const handleRender: ProfilerOnRenderCallback = (
-    id,
-    phase,
-    actualDuration,
-    baseDuration,
-    startTime,
-    commitTime,
-  ) => {
+  const handleRender: ProfilerOnRenderCallback = (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
     // Only log in development
     if (import.meta.env.DEV) {
       // Log slow renders

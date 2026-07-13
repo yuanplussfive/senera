@@ -1,19 +1,8 @@
-export type SettingsDraftStatus =
-  | "loading"
-  | "saving"
-  | "invalid"
-  | "dirty"
-  | "synced";
+export type SettingsDraftStatus = "loading" | "saving" | "invalid" | "dirty" | "synced";
 
 export type SettingsDraftTone = "neutral" | "success" | "info" | "warning";
 
-export type SettingsSectionRuntimeState =
-  | "idle"
-  | "synced"
-  | "dirty"
-  | "saving"
-  | "needs_attention"
-  | "error";
+export type SettingsSectionRuntimeState = "idle" | "synced" | "dirty" | "saving" | "needs_attention" | "error";
 
 export interface SettingsSectionRuntimeStatus {
   label: string;

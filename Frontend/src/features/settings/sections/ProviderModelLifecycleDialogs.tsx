@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
-import {
-  Dialog,
-  DialogActionButton,
-  DialogActions,
-  DialogContent,
-} from "../../../shared/ui";
+import { Dialog, DialogActionButton, DialogActions, DialogContent } from "../../../shared/ui";
 import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 
 export interface DefaultModelCandidate {
@@ -41,9 +36,7 @@ export function ProviderModelLifecycleDialogs({
   }) => boolean;
 }): JSX.Element {
   const providerModels = useMemo(
-    () => providerToRemove
-      ? models.filter((model) => model.ProviderId === providerToRemove.Id)
-      : [],
+    () => (providerToRemove ? models.filter((model) => model.ProviderId === providerToRemove.Id) : []),
     [models, providerToRemove],
   );
 
@@ -96,17 +89,17 @@ function ModelRemovalDialog({
     setReplacementDefaultModelId("");
   }, [model?.Id]);
 
-  const canConfirm = Boolean(model)
-    && !disabled
-    && (!requiresReplacement || Boolean(replacementDefaultModelId));
+  const canConfirm = Boolean(model) && !disabled && (!requiresReplacement || Boolean(replacementDefaultModelId));
 
   return (
     <Dialog open={Boolean(model)} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         title={frontendMessage("settings.modelLifecycle.removeModel.title")}
-        description={requiresReplacement && model
-          ? frontendMessage("settings.modelLifecycle.removeDefault.description", { model: model.Model })
-          : frontendMessage("settings.modelLifecycle.removeModel.description")}
+        description={
+          requiresReplacement && model
+            ? frontendMessage("settings.modelLifecycle.removeDefault.description", { model: model.Model })
+            : frontendMessage("settings.modelLifecycle.removeModel.description")
+        }
         className="w-[min(480px,calc(100vw_-_28px))] rounded-xl bg-paper-50"
         bodyClassName="p-4"
       >
@@ -157,11 +150,7 @@ function ProviderRemovalDialog({
   provider: ProviderEndpointDraft | null;
   providerModels: readonly ModelProviderDraft[];
   onClose: () => void;
-  onConfirm: (input: {
-    providerId: string;
-    cascadeModels: boolean;
-    replacementDefaultModelId?: string;
-  }) => boolean;
+  onConfirm: (input: { providerId: string; cascadeModels: boolean; replacementDefaultModelId?: string }) => boolean;
 }): JSX.Element {
   const [replacementDefaultModelId, setReplacementDefaultModelId] = useState("");
   const associatedModelIds = useMemo(() => new Set(providerModels.map((model) => model.Id)), [providerModels]);
@@ -176,15 +165,13 @@ function ProviderRemovalDialog({
   }, [provider?.Id]);
 
   const cascadeModels = providerModels.length > 0;
-  const canConfirm = Boolean(provider)
-    && !disabled
-    && (!requiresReplacement || Boolean(replacementDefaultModelId));
+  const canConfirm = Boolean(provider) && !disabled && (!requiresReplacement || Boolean(replacementDefaultModelId));
   const description = provider
     ? cascadeModels
       ? frontendMessage("settings.modelLifecycle.deleteProvider.withModels", {
-        provider: provider.Id,
-        count: providerModels.length,
-      })
+          provider: provider.Id,
+          count: providerModels.length,
+        })
       : frontendMessage("settings.modelLifecycle.deleteProvider.none", { provider: provider.Id })
     : "";
 
@@ -203,7 +190,11 @@ function ProviderRemovalDialog({
                 {frontendMessage("settings.modelLifecycle.affectedModels")}
               </h3>
               <ul className="mt-2 space-y-1 text-[12px] text-ink-600">
-                {providerModels.map((model) => <li key={model.Id} className="truncate">{model.Model}</li>)}
+                {providerModels.map((model) => (
+                  <li key={model.Id} className="truncate">
+                    {model.Model}
+                  </li>
+                ))}
               </ul>
             </section>
           ) : null}
@@ -268,7 +259,9 @@ function ReplacementControl({
       >
         <option value="">{frontendMessage("settings.modelLifecycle.replacement.placeholder")}</option>
         {candidateModels.map(({ model, provider }) => (
-          <option key={model.Id} value={model.Id}>{model.Model} · {provider.Id}</option>
+          <option key={model.Id} value={model.Id}>
+            {model.Model} · {provider.Id}
+          </option>
         ))}
       </select>
       {candidateModels.length === 0 ? (

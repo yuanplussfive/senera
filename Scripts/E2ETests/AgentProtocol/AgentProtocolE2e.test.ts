@@ -89,18 +89,14 @@ describe("agent protocol E2E", () => {
         AgentEventKinds.ConfigSnapshot,
         (event) => readOperationRequestId(event) === requestId,
       );
-      const reloaded = await sibling.waitForEvent(
-        AgentEventKinds.ConfigReloaded,
-        undefined,
-        { afterSequence: siblingSequence },
-      );
+      const reloaded = await sibling.waitForEvent(AgentEventKinds.ConfigReloaded, undefined, {
+        afterSequence: siblingSequence,
+      });
 
       sibling.send({ type: "model.list" });
-      const catalog = await sibling.waitForEvent(
-        AgentEventKinds.ModelListSnapshot,
-        undefined,
-        { afterSequence: reloaded.sequence },
-      );
+      const catalog = await sibling.waitForEvent(AgentEventKinds.ModelListSnapshot, undefined, {
+        afterSequence: reloaded.sequence,
+      });
       expect(JSON.stringify(readDataRecord(catalog))).toContain("e2e-added-model");
     } finally {
       sibling.close();

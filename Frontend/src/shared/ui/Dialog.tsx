@@ -1,20 +1,9 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import {
-  forwardRef,
-  useRef,
-  type ButtonHTMLAttributes,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { forwardRef, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
 import type { Transition, VariantLabels, Variants } from "framer-motion";
 import { cn } from "../../lib/util";
-import {
-  dialogPresenceExitMs,
-  MotionDialogContent,
-  MotionDialogOverlay,
-  type DialogMotionPreset,
-} from "../motion";
+import { dialogPresenceExitMs, MotionDialogContent, MotionDialogOverlay, type DialogMotionPreset } from "../motion";
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -35,25 +24,16 @@ function mergeDialogPresenceStyle(style?: CSSProperties): DialogPresenceStyle {
   return style ? { ...dialogPresenceStyle, ...style } : dialogPresenceStyle;
 }
 
-export const DialogOverlay = forwardRef<
-  HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, style, ...props }, ref) => (
-  <DialogPrimitive.Overlay
-    ref={ref}
-    asChild
-    forceMount
-    {...props}
-  >
-    <MotionDialogOverlay
-    className={cn(
-      "dialog-presence fixed inset-0 z-50 bg-ink-950/34 [will-change:opacity]",
-      className,
-    )}
-    style={mergeDialogPresenceStyle(style)}
-    />
-  </DialogPrimitive.Overlay>
-));
+export const DialogOverlay = forwardRef<HTMLDivElement, React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>>(
+  ({ className, style, ...props }, ref) => (
+    <DialogPrimitive.Overlay ref={ref} asChild forceMount {...props}>
+      <MotionDialogOverlay
+        className={cn("dialog-presence fixed inset-0 z-50 bg-ink-950/34 [will-change:opacity]", className)}
+        style={mergeDialogPresenceStyle(style)}
+      />
+    </DialogPrimitive.Overlay>
+  ),
+);
 DialogOverlay.displayName = "DialogOverlay";
 
 type DialogContentSnapshot = {
@@ -82,94 +62,89 @@ const DialogContentFrame = forwardRef<
     contentTransition?: Transition;
     "data-state"?: string;
   }
->(({
-  className,
-  children,
-  title,
-  description,
-  bodyClassName,
-  frameClassName: _frameClassName,
-  panelClassName,
-  motionPreset,
-  contentInitial,
-  contentVariants,
-  contentTransition,
-  style,
-  "data-state": dataState,
-  ...props
-}, ref) => {
-  const liveContent: DialogContentSnapshot = {
-    bodyClassName,
-    children,
-    contentInitial,
-    contentTransition,
-    contentVariants,
-    description,
-    motionPreset,
-    panelClassName,
-    title,
-  };
-  const openContentRef = useRef(liveContent);
-  if (dataState !== "closed") {
-    openContentRef.current = liveContent;
-  }
-  const content = dataState === "closed" ? openContentRef.current : liveContent;
-  const frameStyle = mergeDialogPresenceStyle(
-    dataState === "closed"
-      ? { ...(style ?? {}), pointerEvents: "none" }
-      : style,
-  );
+>(
+  (
+    {
+      className,
+      children,
+      title,
+      description,
+      bodyClassName,
+      frameClassName: _frameClassName,
+      panelClassName,
+      motionPreset,
+      contentInitial,
+      contentVariants,
+      contentTransition,
+      style,
+      "data-state": dataState,
+      ...props
+    },
+    ref,
+  ) => {
+    const liveContent: DialogContentSnapshot = {
+      bodyClassName,
+      children,
+      contentInitial,
+      contentTransition,
+      contentVariants,
+      description,
+      motionPreset,
+      panelClassName,
+      title,
+    };
+    const openContentRef = useRef(liveContent);
+    if (dataState !== "closed") {
+      openContentRef.current = liveContent;
+    }
+    const content = dataState === "closed" ? openContentRef.current : liveContent;
+    const frameStyle = mergeDialogPresenceStyle(
+      dataState === "closed" ? { ...(style ?? {}), pointerEvents: "none" } : style,
+    );
 
-  return (
-    <div
-      ref={ref}
-      className={className}
-      data-state={dataState}
-      style={frameStyle}
-      {...props}
-    >
-      <MotionDialogContent
-        className={content.panelClassName}
-        data-dialog-panel="true"
-        data-state={dataState}
-        motionPreset={content.motionPreset}
-        initial={content.contentInitial}
-        variants={content.contentVariants}
-        transition={content.contentTransition}
-      >
-      <div
-        className="flex items-start gap-3 border-b border-ink-200/50 bg-paper-50 px-4 py-3.5"
-      >
-        <div className="min-w-0 flex-1">
-          <DialogPrimitive.Title className="truncate text-[13.5px] font-medium text-ink-900">
-            {content.title ?? ""}
-          </DialogPrimitive.Title>
-          {content.description ? (
-            <DialogPrimitive.Description className="mt-0.5 truncate text-[12px] text-ink-500">
-              {content.description}
-            </DialogPrimitive.Description>
-          ) : null}
-        </div>
-        <DialogClose asChild>
-          <button
-            type="button"
-            className={cn(
-              "grid h-8 w-8 flex-shrink-0 place-items-center rounded-md text-ink-400",
-              "transition-colors duration-100",
-              "hover:bg-ink-900/[0.08] hover:text-ink-900",
-              "focus:outline-none focus:ring-2 focus:ring-terra-300/60",
-            )}
-            aria-label="关闭"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </DialogClose>
+    return (
+      <div ref={ref} className={className} data-state={dataState} style={frameStyle} {...props}>
+        <MotionDialogContent
+          className={content.panelClassName}
+          data-dialog-panel="true"
+          data-state={dataState}
+          motionPreset={content.motionPreset}
+          initial={content.contentInitial}
+          variants={content.contentVariants}
+          transition={content.contentTransition}
+        >
+          <div className="flex items-start gap-3 border-b border-ink-200/50 bg-paper-50 px-4 py-3.5">
+            <div className="min-w-0 flex-1">
+              <DialogPrimitive.Title className="truncate text-[13.5px] font-medium text-ink-900">
+                {content.title ?? ""}
+              </DialogPrimitive.Title>
+              {content.description ? (
+                <DialogPrimitive.Description className="mt-0.5 truncate text-[12px] text-ink-500">
+                  {content.description}
+                </DialogPrimitive.Description>
+              ) : null}
+            </div>
+            <DialogClose asChild>
+              <button
+                type="button"
+                className={cn(
+                  "grid h-8 w-8 flex-shrink-0 place-items-center rounded-md text-ink-400",
+                  "transition-colors duration-100",
+                  "hover:bg-ink-900/[0.08] hover:text-ink-900",
+                  "focus:outline-none focus:ring-2 focus:ring-terra-300/60",
+                )}
+                aria-label="关闭"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogClose>
+          </div>
+          <div className={content.bodyClassName}>{content.children}</div>
+        </MotionDialogContent>
       </div>
-        <div className={content.bodyClassName}>{content.children}</div>
-      </MotionDialogContent>
-    </div>
-  );
-});
+    );
+  },
+);
 DialogContentFrame.displayName = "DialogContentFrame";
 
 export const DialogContent = forwardRef<
@@ -185,43 +160,54 @@ export const DialogContent = forwardRef<
     contentVariants?: Variants;
     contentTransition?: Transition;
   }
->(({ className, children, title, description, bodyClassName, frameClassName, placement = "center", motionPreset = "modal", contentInitial, contentVariants, contentTransition, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      asChild
-      forceMount
-      {...props}
-    >
-      <DialogContentFrame
-        className={cn(
-          "dialog-presence",
-          placement === "center"
-            ? "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2"
-            : "fixed z-50",
-          placement === "inset" && "flex",
-          frameClassName,
-        )}
-        panelClassName={cn(
-          "w-[min(720px,calc(100vw-28px))] max-h-[min(720px,calc(100vh-28px))]",
-          "flex flex-col overflow-hidden rounded-xl border border-ink-200/80 bg-paper-50 shadow-soft [contain:layout_paint] [will-change:opacity,transform]",
-          placement === "inset" && "min-h-0 flex-1",
-          className,
-        )}
-        title={title}
-        description={description}
-        bodyClassName={bodyClassName}
-        motionPreset={motionPreset}
-        contentInitial={contentInitial}
-        contentVariants={contentVariants}
-        contentTransition={contentTransition}
-      >
-        {children}
-      </DialogContentFrame>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+>(
+  (
+    {
+      className,
+      children,
+      title,
+      description,
+      bodyClassName,
+      frameClassName,
+      placement = "center",
+      motionPreset = "modal",
+      contentInitial,
+      contentVariants,
+      contentTransition,
+      ...props
+    },
+    ref,
+  ) => (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content ref={ref} asChild forceMount {...props}>
+        <DialogContentFrame
+          className={cn(
+            "dialog-presence",
+            placement === "center" ? "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2" : "fixed z-50",
+            placement === "inset" && "flex",
+            frameClassName,
+          )}
+          panelClassName={cn(
+            "w-[min(720px,calc(100vw-28px))] max-h-[min(720px,calc(100vh-28px))]",
+            "flex flex-col overflow-hidden rounded-xl border border-ink-200/80 bg-paper-50 shadow-soft [contain:layout_paint] [will-change:opacity,transform]",
+            placement === "inset" && "min-h-0 flex-1",
+            className,
+          )}
+          title={title}
+          description={description}
+          bodyClassName={bodyClassName}
+          motionPreset={motionPreset}
+          contentInitial={contentInitial}
+          contentVariants={contentVariants}
+          contentTransition={contentTransition}
+        >
+          {children}
+        </DialogContentFrame>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  ),
+);
 DialogContent.displayName = "DialogContent";
 
 export type DialogActionVariant = "secondary" | "primary" | "danger";
@@ -243,11 +229,7 @@ const dialogActionVariantClasses: Record<DialogActionVariant, string> = {
 };
 
 export function DialogActions({ children, className }: DialogActionsProps): JSX.Element {
-  return (
-    <div className={cn("flex justify-end gap-2", className)}>
-      {children}
-    </div>
-  );
+  return <div className={cn("flex justify-end gap-2", className)}>{children}</div>;
 }
 
 export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButtonProps>(

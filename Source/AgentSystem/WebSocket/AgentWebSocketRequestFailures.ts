@@ -1,7 +1,4 @@
-import {
-  AgentEventKinds,
-  type AgentDomainEvent,
-} from "../Events/AgentEvent.js";
+import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { createRequestId } from "../Core/AgentIds.js";
 import type { AgentWebSocketRequest, AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
@@ -9,7 +6,8 @@ import type { AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 
 type FullConfigUpdateRequest = AgentWebSocketRequestOf<"config.update">;
 
-type ProviderModelConfigMutationRequest = AgentWebSocketRequestOf<"provider.endpoint.upsert">
+type ProviderModelConfigMutationRequest =
+  | AgentWebSocketRequestOf<"provider.endpoint.upsert">
   | AgentWebSocketRequestOf<"provider.endpoint.delete">
   | AgentWebSocketRequestOf<"provider.endpoint.rename">
   | AgentWebSocketRequestOf<"provider.model.upsert">
@@ -17,14 +15,13 @@ type ProviderModelConfigMutationRequest = AgentWebSocketRequestOf<"provider.endp
   | AgentWebSocketRequestOf<"provider.model.bulkImport">
   | AgentWebSocketRequestOf<"provider.defaultModel.set">;
 
-type PluginConfigMutationRequest = AgentWebSocketRequestOf<"plugin.config.update">
-  | AgentWebSocketRequestOf<"plugin.config.set_enabled">;
+type PluginConfigMutationRequest =
+  AgentWebSocketRequestOf<"plugin.config.update"> | AgentWebSocketRequestOf<"plugin.config.set_enabled">;
 
-type ConfigMutationRequest = FullConfigUpdateRequest
-  | ProviderModelConfigMutationRequest
-  | PluginConfigMutationRequest;
+type ConfigMutationRequest = FullConfigUpdateRequest | ProviderModelConfigMutationRequest | PluginConfigMutationRequest;
 
-type PresetRequest = AgentWebSocketRequestOf<"preset.list">
+type PresetRequest =
+  | AgentWebSocketRequestOf<"preset.list">
   | AgentWebSocketRequestOf<"preset.save">
   | AgentWebSocketRequestOf<"preset.delete">
   | AgentWebSocketRequestOf<"preset.set_active">;
@@ -122,16 +119,14 @@ function projectPresetFailure(request: PresetRequest, error: unknown): AgentDoma
       operation: {
         requestId: "requestId" in request ? request.requestId : undefined,
         kind: PresetOperationKinds[request.type],
-        name: "name" in request ? request.name ?? null : undefined,
+        name: "name" in request ? (request.name ?? null) : undefined,
       },
     },
   };
 }
 
 function projectRunFailure(request: AgentWebSocketRequest, error: unknown): AgentDomainEvent {
-  const requestId = request.type === "session.message"
-    ? request.requestId ?? createRequestId()
-    : createRequestId();
+  const requestId = request.type === "session.message" ? (request.requestId ?? createRequestId()) : createRequestId();
   return {
     kind: AgentEventKinds.RunFailed,
     context: {

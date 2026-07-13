@@ -21,9 +21,7 @@ describe("providerConnectionState", () => {
         effectiveModels: [],
       }),
       snapshotValue: {
-        ModelProviderEndpoints: [
-          { Id: "custom", Enabled: true, BaseUrl: "https://custom.example.test/v1" },
-        ],
+        ModelProviderEndpoints: [{ Id: "custom", Enabled: true, BaseUrl: "https://custom.example.test/v1" }],
         ModelProviders: [],
       },
     });
@@ -82,11 +80,13 @@ describe("providerConnectionState", () => {
   });
 
   it("trims provider ids before confirm or fetch payloads", () => {
-    expect(buildProviderEndpointMutationInput({
-      Id: "  custom  ",
-      Enabled: true,
-      BaseUrl: "https://draft.example.test/v1",
-    })).toMatchObject({
+    expect(
+      buildProviderEndpointMutationInput({
+        Id: "  custom  ",
+        Enabled: true,
+        BaseUrl: "https://draft.example.test/v1",
+      }),
+    ).toMatchObject({
       ok: true,
       providerId: "custom",
       endpoint: {
@@ -97,20 +97,19 @@ describe("providerConnectionState", () => {
   });
 
   it("blocks empty provider ids without producing a save or fetch payload", () => {
-    expect(buildProviderEndpointMutationInput({
-      Id: "   ",
-      BaseUrl: "https://draft.example.test/v1",
-    })).toEqual({
+    expect(
+      buildProviderEndpointMutationInput({
+        Id: "   ",
+        BaseUrl: "https://draft.example.test/v1",
+      }),
+    ).toEqual({
       ok: false,
       message: "供应商 ID 不能为空。",
     });
   });
 });
 
-function createModelsSection({
-  effectiveEndpoints,
-  effectiveModels,
-}) {
+function createModelsSection({ effectiveEndpoints, effectiveModels }) {
   return {
     name: "models",
     label: "模型",

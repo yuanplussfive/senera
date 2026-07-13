@@ -1,26 +1,15 @@
 import type http from "node:http";
 import { z } from "zod";
-import {
-  AgentEventKinds,
-  type AgentEventSink,
-} from "../Events/AgentEvent.js";
+import { AgentEventKinds, type AgentEventSink } from "../Events/AgentEvent.js";
 import {
   resolveActionPlannerConfig,
   resolveModelProviderCatalog,
   resolveModelProviderConfig,
   resolveServerConfig,
 } from "../AgentDefaults.js";
-import type {
-  AgentSystemConfig,
-  ResolvedAgentModelProviderConfig,
-} from "../Types/AgentConfigTypes.js";
-import {
-  AgentPiAssistantCompiler,
-  type AgentPiAssistantCompilerPort,
-} from "./AgentPiAssistantCompiler.js";
-import {
-  PiOpenAiChatCompletionRequestSchema,
-} from "./AgentPiOpenAiWireTypes.js";
+import type { AgentSystemConfig, ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import { AgentPiAssistantCompiler, type AgentPiAssistantCompilerPort } from "./AgentPiAssistantCompiler.js";
+import { PiOpenAiChatCompletionRequestSchema } from "./AgentPiOpenAiWireTypes.js";
 import {
   AgentPiProxyContextHeader,
   AgentPiProxyModelProviderHeader,
@@ -46,10 +35,7 @@ export interface AgentPiProxyHttpApiOptions {
   maxRequestBytes?: number;
 }
 
-type RouteHandler = (
-  request: http.IncomingMessage,
-  response: http.ServerResponse,
-) => Promise<void>;
+type RouteHandler = (request: http.IncomingMessage, response: http.ServerResponse) => Promise<void>;
 
 class AgentPiProxyRequestError extends Error {
   constructor(
@@ -79,10 +65,7 @@ export class AgentPiProxyHttpApi {
     return this.routes.has(routeKey(request));
   }
 
-  async handle(
-    request: http.IncomingMessage,
-    response: http.ServerResponse,
-  ): Promise<void> {
+  async handle(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
     const handler = this.routes.get(routeKey(request));
     if (!handler) {
       writeJson(response, 404, openAiError("not_found", "Pi proxy route not found."));
@@ -92,9 +75,7 @@ export class AgentPiProxyHttpApi {
     try {
       await handler(request, response);
     } catch (error) {
-      const proxyError = error instanceof AgentPiProxyRequestError
-        ? error
-        : undefined;
+      const proxyError = error instanceof AgentPiProxyRequestError ? error : undefined;
       writeJson(
         response,
         proxyError?.status ?? 500,
@@ -107,16 +88,11 @@ export class AgentPiProxyHttpApi {
     writeJson(response, 200, projectPiModelsResponse(this.modelId()));
   }
 
-  private async handleChatCompletions(
-    request: http.IncomingMessage,
-    response: http.ServerResponse,
-  ): Promise<void> {
+  private async handleChatCompletions(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
     const payload = PiOpenAiChatCompletionRequestSchema.parse(
       await readJsonBody(request, this.options.maxRequestBytes ?? 1_048_576),
     );
-    const compiler = this.compiler(
-      readSingleHeader(request.headers[AgentPiProxyModelProviderHeader]),
-    );
+    const compiler = this.compiler(readSingleHeader(request.headers[AgentPiProxyModelProviderHeader]));
     const runtime = readPiProxyRuntimeContext(readSingleHeader(request.headers[AgentPiProxyContextHeader]));
     await this.emitProxyTrace(runtime, "request", {
       model: payload.model,
@@ -169,14 +145,16 @@ export class AgentPiProxyHttpApi {
     payload: unknown,
   ): Promise<void> {
     const sink = runtime?.onEvent ?? this.options.onEvent;
-    await sink?.(createPiTraceEvent({
-      sessionId: runtime?.sessionId,
-      requestId: runtime?.requestId ?? "pi-proxy",
-      step: runtime?.step ?? 0,
-      source: "proxy",
-      eventType,
-      payload,
-    }));
+    await sink?.(
+      createPiTraceEvent({
+        sessionId: runtime?.sessionId,
+        requestId: runtime?.requestId ?? "pi-proxy",
+        step: runtime?.step ?? 0,
+        source: "proxy",
+        eventType,
+        payload,
+      }),
+    );
   }
 
   private async emitAssistantVisibleEvents(
@@ -195,7 +173,7 @@ export class AgentPiProxyHttpApi {
     registerPiProxyToolCallBatch(
       runtime,
       batchId,
-      assistantMessage.toolCalls.flatMap((call) => call.id ? [call.id] : []),
+      assistantMessage.toolCalls.flatMap((call) => (call.id ? [call.id] : [])),
     );
 
     if (content) {
@@ -213,7 +191,7 @@ export class AgentPiProxyHttpApi {
           terminal: false,
           toolCount: assistantMessage.toolCalls.length,
           batchId,
-          toolCallIds: assistantMessage.toolCalls.flatMap((call) => call.id ? [call.id] : []),
+          toolCallIds: assistantMessage.toolCalls.flatMap((call) => (call.id ? [call.id] : [])),
         },
       });
     }
@@ -255,10 +233,7 @@ function resolvePiProxyModelProvider(
 
   const modelProviderId = decodePiProxyModelProviderHeaderValue(modelProviderHeader).trim();
   if (!modelProviderId) {
-    throw new AgentPiProxyRequestError(
-      "invalid_model_provider",
-      "Pi proxy model provider header must not be empty.",
-    );
+    throw new AgentPiProxyRequestError("invalid_model_provider", "Pi proxy model provider header must not be empty.");
   }
 
   const catalog = resolveModelProviderCatalog(config);
@@ -291,24 +266,17 @@ async function readJsonBody(request: http.IncomingMessage, maximumBytes: number)
     chunks.push(buffer);
   }
   const text = Buffer.concat(chunks).toString("utf8");
-  return text.trim() ? JSON.parse(text) as unknown : {};
+  return text.trim() ? (JSON.parse(text) as unknown) : {};
 }
 
-function writeJson(
-  response: http.ServerResponse,
-  status: number,
-  payload: unknown,
-): void {
+function writeJson(response: http.ServerResponse, status: number, payload: unknown): void {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
   });
   response.end(JSON.stringify(payload));
 }
 
-function writeSse(
-  response: http.ServerResponse,
-  events: readonly unknown[],
-): void {
+function writeSse(response: http.ServerResponse, events: readonly unknown[]): void {
   response.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache",

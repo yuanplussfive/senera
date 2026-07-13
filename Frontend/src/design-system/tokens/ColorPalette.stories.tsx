@@ -85,30 +85,30 @@ export const AllSchemes: Story = () => (
 
       return (
         <div key={scheme} className="space-y-4">
-        <div className="flex items-center gap-3">
-          <h3 className="text-ink-900 text-lg font-medium capitalize">{scheme}</h3>
-          <span className="text-ink-500 text-sm">
-            {scheme === 'senera' && '— Warm paper & ink'}
-            {scheme === 'classic' && '— Cool gray scale'}
-            {scheme === 'mono' && '— Pure monochrome'}
-            {scheme === 'forest' && '— Natural green tones'}
-          </span>
-        </div>
+          <div className="flex items-center gap-3">
+            <h3 className="text-ink-900 text-lg font-medium capitalize">{scheme}</h3>
+            <span className="text-ink-500 text-sm">
+              {scheme === "senera" && "— Warm paper & ink"}
+              {scheme === "classic" && "— Cool gray scale"}
+              {scheme === "mono" && "— Pure monochrome"}
+              {scheme === "forest" && "— Natural green tones"}
+            </span>
+          </div>
 
-        <div className="grid grid-cols-5 gap-2">
-          {colorRanges.paper.map((shade) => {
-            const cssVar = tokens.cssVariables[`--color-paper-${shade}`] ?? "";
-            return (
-              <div key={shade} className="space-y-1">
-                <div
-                  className="h-16 rounded-lg border border-ink-200"
-                  style={{ backgroundColor: `rgb(${cssVar})` }}
-                />
-                <div className="text-ink-600 text-xs text-center">paper-{shade}</div>
-              </div>
-            );
-          })}
-        </div>
+          <div className="grid grid-cols-5 gap-2">
+            {colorRanges.paper.map((shade) => {
+              const cssVar = tokens.cssVariables[`--color-paper-${shade}`] ?? "";
+              return (
+                <div key={shade} className="space-y-1">
+                  <div
+                    className="h-16 rounded-lg border border-ink-200"
+                    style={{ backgroundColor: `rgb(${cssVar})` }}
+                  />
+                  <div className="text-ink-600 text-xs text-center">paper-{shade}</div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       );
     })}
@@ -116,11 +116,21 @@ export const AllSchemes: Story = () => (
     <div className="rounded-lg border border-ink-200 bg-paper-100 p-6 space-y-3">
       <h4 className="text-ink-900 font-medium">Usage Guidelines</h4>
       <ul className="text-ink-700 text-sm space-y-2">
-        <li>• <span className="font-mono text-xs">paper-*</span> — Backgrounds and surfaces</li>
-        <li>• <span className="font-mono text-xs">ink-*</span> — Text and foreground elements</li>
-        <li>• <span className="font-mono text-xs">terra-*</span> — Primary accent (default orange)</li>
-        <li>• <span className="font-mono text-xs">moss-*</span> — Success states</li>
-        <li>• <span className="font-mono text-xs">brick-*</span> — Error and destructive actions</li>
+        <li>
+          • <span className="font-mono text-xs">paper-*</span> — Backgrounds and surfaces
+        </li>
+        <li>
+          • <span className="font-mono text-xs">ink-*</span> — Text and foreground elements
+        </li>
+        <li>
+          • <span className="font-mono text-xs">terra-*</span> — Primary accent (default orange)
+        </li>
+        <li>
+          • <span className="font-mono text-xs">moss-*</span> — Success states
+        </li>
+        <li>
+          • <span className="font-mono text-xs">brick-*</span> — Error and destructive actions
+        </li>
       </ul>
     </div>
   </div>
@@ -129,8 +139,8 @@ export const AllSchemes: Story = () => (
 export const ContrastChecker: Story = () => {
   const checkContrast = (fg: string, bg: string): number => {
     const getLuminance = (rgb: string) => {
-      const [r, g, b] = rgb.split(' ').map(Number);
-      const [rs, gs, bs] = [r, g, b].map(c => {
+      const [r, g, b] = rgb.split(" ").map(Number);
+      const [rs, gs, bs] = [r, g, b].map((c) => {
         c = c / 255;
         return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
       });
@@ -144,11 +154,11 @@ export const ContrastChecker: Story = () => {
     return (lighter + 0.05) / (darker + 0.05);
   };
 
-  const ink900 = getComputedStyle(document.documentElement).getPropertyValue('--color-ink-900').trim();
-  const paper50 = getComputedStyle(document.documentElement).getPropertyValue('--color-paper-50').trim();
+  const ink900 = getComputedStyle(document.documentElement).getPropertyValue("--color-ink-900").trim();
+  const paper50 = getComputedStyle(document.documentElement).getPropertyValue("--color-paper-50").trim();
   const ratio = checkContrast(ink900, paper50);
-  const wcagAA = ratio >= 4.5 ? '✓' : '✗';
-  const wcagAAA = ratio >= 7 ? '✓' : '✗';
+  const wcagAA = ratio >= 4.5 ? "✓" : "✗";
+  const wcagAAA = ratio >= 7 ? "✓" : "✗";
 
   return (
     <div className="p-8 space-y-8">
@@ -175,7 +185,10 @@ export const ContrastChecker: Story = () => {
           </div>
         </div>
 
-        <div className="h-24 rounded-lg flex items-center justify-center text-ink-900 text-lg font-medium" style={{ backgroundColor: `rgb(${paper50})` }}>
+        <div
+          className="h-24 rounded-lg flex items-center justify-center text-ink-900 text-lg font-medium"
+          style={{ backgroundColor: `rgb(${paper50})` }}
+        >
           Sample Text on Paper-50 Background
         </div>
       </div>

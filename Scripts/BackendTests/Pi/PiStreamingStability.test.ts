@@ -11,7 +11,10 @@ import {
   type AgentPiSessionBootstrapRuntime,
 } from "../../../Source/AgentSystem/Pi/AgentPiSessionBootstrapService.js";
 import type { AgentPiSession } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
-import { AgentPiTurnExecutor, type AgentPiTurnRuntimePort } from "../../../Source/AgentSystem/Pi/AgentPiTurnExecutor.js";
+import {
+  AgentPiTurnExecutor,
+  type AgentPiTurnRuntimePort,
+} from "../../../Source/AgentSystem/Pi/AgentPiTurnExecutor.js";
 import { createPiTraceEvent } from "../../../Source/AgentSystem/Pi/AgentPiTraceProjector.js";
 import type { AgentPiModelProjection } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
 
@@ -263,10 +266,12 @@ function messageUpdate(text: string): AgentEvent {
     type: "message_update",
     message: {
       role: "assistant",
-      content: [{
-        type: "text",
-        text,
-      }],
+      content: [
+        {
+          type: "text",
+          text,
+        },
+      ],
     },
     assistantMessageEvent: {},
   } as unknown as AgentEvent;

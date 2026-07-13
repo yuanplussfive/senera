@@ -71,16 +71,12 @@ function summarizePiTracePayload(value: unknown): string {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   const record = readRecord(value);
   if (!record) return "";
-  return takeEnumerableEntries(record, 6).entries
-    .map(([key, entry]) => `${key}=${summarizePrimitive(entry)}`)
+  return takeEnumerableEntries(record, 6)
+    .entries.map(([key, entry]) => `${key}=${summarizePrimitive(entry)}`)
     .join(" ");
 }
 
-function sanitizePiTracePayload(
-  value: unknown,
-  seen = new WeakSet<object>(),
-  depth = 0,
-): unknown {
+function sanitizePiTracePayload(value: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
   if (value === undefined || value === null) return value;
   if (typeof value === "string") return summarizeText(value, MaxTraceStringLength);
   if (typeof value === "number" || typeof value === "boolean") return value;

@@ -101,8 +101,7 @@ export function AppShell({
   const setSidebarCollapsed = useStore((state) => state.setSidebarCollapsed);
   const setRightPanelCollapsed = useStore((state) => state.setRightPanelCollapsed);
   const { reduceMotion, disableMotion } = useMotionLevel();
-  const panelResizeTransition: Transition =
-    disableMotion || reduceMotion ? { duration: 0 } : motionTimings.slow;
+  const panelResizeTransition: Transition = disableMotion || reduceMotion ? { duration: 0 } : motionTimings.slow;
   const renderPlan = readAppShellRenderPlan(responsiveMode);
   const workflowPanelWidth = readWorkflowPanelWidth(responsiveMode);
   const hadPersistentSessionPanel = useRef(renderPlan.showSessionPersistentPanel);

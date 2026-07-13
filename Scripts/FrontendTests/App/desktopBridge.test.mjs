@@ -10,10 +10,12 @@ describe("openDesktopSettingsOrFallback", () => {
     const openSettings = vi.fn().mockResolvedValue(undefined);
     const fallback = vi.fn();
 
-    await expect(openSettingsSurface({
-      bridge: { isDesktop: true, openSettings },
-      fallback,
-    })).resolves.toBe("desktop");
+    await expect(
+      openSettingsSurface({
+        bridge: { isDesktop: true, openSettings },
+        fallback,
+      }),
+    ).resolves.toBe("desktop");
 
     expect(openSettings).toHaveBeenCalledWith({ section: "model-service" });
     expect(fallback).not.toHaveBeenCalled();
@@ -23,11 +25,13 @@ describe("openDesktopSettingsOrFallback", () => {
     const openSettings = vi.fn().mockResolvedValue(undefined);
     const fallback = vi.fn();
 
-    await expect(openDesktopSettingsOrFallback({
-      bridge: { isDesktop: true, openSettings },
-      fallback,
-      section: "appearance",
-    })).resolves.toBe("desktop");
+    await expect(
+      openDesktopSettingsOrFallback({
+        bridge: { isDesktop: true, openSettings },
+        fallback,
+        section: "appearance",
+      }),
+    ).resolves.toBe("desktop");
 
     expect(openSettings).toHaveBeenCalledWith({ section: "appearance" });
     expect(fallback).not.toHaveBeenCalled();
@@ -37,11 +41,13 @@ describe("openDesktopSettingsOrFallback", () => {
     const openSettings = vi.fn().mockResolvedValue(undefined);
     const fallback = vi.fn();
 
-    await expect(openDesktopSettingsOrFallback({
-      bridge: { isDesktop: true, openSettings },
-      section: "tools",
-      fallback,
-    })).resolves.toBe("fallback");
+    await expect(
+      openDesktopSettingsOrFallback({
+        bridge: { isDesktop: true, openSettings },
+        section: "tools",
+        fallback,
+      }),
+    ).resolves.toBe("fallback");
 
     expect(openSettings).not.toHaveBeenCalled();
     expect(fallback).toHaveBeenCalledTimes(1);
@@ -51,12 +57,14 @@ describe("openDesktopSettingsOrFallback", () => {
     const assign = vi.fn();
     const fallback = vi.fn();
 
-    await expect(openSettingsSurface({
-      bridge: undefined,
-      fallback,
-      location: { assign },
-      section: "runtime",
-    })).resolves.toBe("web");
+    await expect(
+      openSettingsSurface({
+        bridge: undefined,
+        fallback,
+        location: { assign },
+        section: "runtime",
+      }),
+    ).resolves.toBe("web");
 
     expect(assign).toHaveBeenCalledWith("?surface=settings&section=runtime");
     expect(fallback).not.toHaveBeenCalled();
@@ -65,14 +73,16 @@ describe("openDesktopSettingsOrFallback", () => {
   it("uses the fallback when the desktop bridge fails", async () => {
     const fallback = vi.fn();
 
-    await expect(openDesktopSettingsOrFallback({
-      bridge: {
-        isDesktop: true,
-        openSettings: vi.fn().mockRejectedValue(new Error("ipc failed")),
-      },
-      fallback,
-      section: "about",
-    })).resolves.toBe("fallback");
+    await expect(
+      openDesktopSettingsOrFallback({
+        bridge: {
+          isDesktop: true,
+          openSettings: vi.fn().mockRejectedValue(new Error("ipc failed")),
+        },
+        fallback,
+        section: "about",
+      }),
+    ).resolves.toBe("fallback");
 
     expect(fallback).toHaveBeenCalledTimes(1);
   });

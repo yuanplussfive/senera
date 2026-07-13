@@ -134,9 +134,10 @@ export function upsertProviderEndpoint(
   assertConfiguredEndpointIdsUnique(config);
   const endpoints = config.ModelProviderEndpoints ?? [];
   const existingIndex = endpoints.findIndex((endpoint) => endpoint.Id === input.endpoint.Id);
-  const nextEndpoints = existingIndex >= 0
-    ? endpoints.map((endpoint, index) => index === existingIndex ? { ...input.endpoint } : { ...endpoint })
-    : [...endpoints.map((endpoint) => ({ ...endpoint })), { ...input.endpoint }];
+  const nextEndpoints =
+    existingIndex >= 0
+      ? endpoints.map((endpoint, index) => (index === existingIndex ? { ...input.endpoint } : { ...endpoint }))
+      : [...endpoints.map((endpoint) => ({ ...endpoint })), { ...input.endpoint }];
 
   return validateProviderModelInvariants({
     ...config,
@@ -157,10 +158,10 @@ export function renameProviderEndpoint(
   const nextConfig = {
     ...config,
     ModelProviderEndpoints: (config.ModelProviderEndpoints ?? []).map((endpoint) =>
-      endpoint.Id === providerId ? { ...endpoint, Id: nextProviderId } : { ...endpoint }
+      endpoint.Id === providerId ? { ...endpoint, Id: nextProviderId } : { ...endpoint },
     ),
     ModelProviders: config.ModelProviders.map((model) =>
-      model.ProviderId === providerId ? { ...model, ProviderId: nextProviderId } : { ...model }
+      model.ProviderId === providerId ? { ...model, ProviderId: nextProviderId } : { ...model },
     ),
   };
 
@@ -189,9 +190,10 @@ export function deleteProviderEndpoint(
   const associatedModelIds = new Set(associatedModels.map((model) => model.Id));
   const currentDefaultId = readCurrentDefaultModelId(config);
   const removesDefault = currentDefaultId !== undefined && associatedModelIds.has(currentDefaultId);
-  const nextModels = associatedModels.length > 0
-    ? config.ModelProviders.filter((model) => model.ProviderId !== providerId).map((model) => ({ ...model }))
-    : config.ModelProviders.map((model) => ({ ...model }));
+  const nextModels =
+    associatedModels.length > 0
+      ? config.ModelProviders.filter((model) => model.ProviderId !== providerId).map((model) => ({ ...model }))
+      : config.ModelProviders.map((model) => ({ ...model }));
 
   let nextDefaultModelId = config.DefaultModelProviderId;
   if (removesDefault) {
@@ -201,14 +203,17 @@ export function deleteProviderEndpoint(
     });
   }
 
-  const nextConfig = withOptionalDefaultModelId({
-    ...config,
-    ModelProviderEndpoints: (config.ModelProviderEndpoints ?? [])
-      .filter((endpoint) => endpoint.Id !== providerId)
-      .map((endpoint) => ({ ...endpoint })),
-    ModelProviders: nextModels,
-    ModelGroups: removeExactModelGroupAssignments(config.ModelGroups ?? [], associatedModelIds),
-  }, nextDefaultModelId);
+  const nextConfig = withOptionalDefaultModelId(
+    {
+      ...config,
+      ModelProviderEndpoints: (config.ModelProviderEndpoints ?? [])
+        .filter((endpoint) => endpoint.Id !== providerId)
+        .map((endpoint) => ({ ...endpoint })),
+      ModelProviders: nextModels,
+      ModelGroups: removeExactModelGroupAssignments(config.ModelGroups ?? [], associatedModelIds),
+    },
+    nextDefaultModelId,
+  );
 
   return validateProviderModelInvariants(nextConfig);
 }
@@ -220,16 +225,20 @@ export function upsertProviderModel(
   assertProviderEndpointExists(config, input.model.ProviderId);
   assertConfiguredModelIdsUnique(config);
   const existingIndex = config.ModelProviders.findIndex((model) => model.Id === input.model.Id);
-  const nextModel = existingIndex >= 0
-    ? { ...config.ModelProviders[existingIndex], ...input.model }
-    : { ...input.model };
-  const nextModels = existingIndex >= 0
-    ? config.ModelProviders.map((model, index) => index === existingIndex ? nextModel : { ...model })
-    : [...config.ModelProviders.map((model) => ({ ...model })), nextModel];
-  const nextConfig = applyOptionalGroupAssignment({
-    ...config,
-    ModelProviders: nextModels,
-  }, nextModel.Id, input.group);
+  const nextModel =
+    existingIndex >= 0 ? { ...config.ModelProviders[existingIndex], ...input.model } : { ...input.model };
+  const nextModels =
+    existingIndex >= 0
+      ? config.ModelProviders.map((model, index) => (index === existingIndex ? nextModel : { ...model }))
+      : [...config.ModelProviders.map((model) => ({ ...model })), nextModel];
+  const nextConfig = applyOptionalGroupAssignment(
+    {
+      ...config,
+      ModelProviders: nextModels,
+    },
+    nextModel.Id,
+    input.group,
+  );
 
   return validateProviderModelInvariants(nextConfig);
 }
@@ -290,9 +299,9 @@ export function deleteProviderModel(
 
   const currentDefaultId = readCurrentDefaultModelId(config);
   const removesDefault = currentDefaultId === input.modelId;
-  const nextModels = config.ModelProviders
-    .filter((candidate) => candidate.Id !== input.modelId)
-    .map((candidate) => ({ ...candidate }));
+  const nextModels = config.ModelProviders.filter((candidate) => candidate.Id !== input.modelId).map((candidate) => ({
+    ...candidate,
+  }));
 
   let nextDefaultModelId = config.DefaultModelProviderId;
   if (removesDefault) {
@@ -302,11 +311,14 @@ export function deleteProviderModel(
     });
   }
 
-  const nextConfig = withOptionalDefaultModelId({
-    ...config,
-    ModelProviders: nextModels,
-    ModelGroups: removeExactModelGroupAssignments(config.ModelGroups ?? [], new Set([input.modelId])),
-  }, nextDefaultModelId);
+  const nextConfig = withOptionalDefaultModelId(
+    {
+      ...config,
+      ModelProviders: nextModels,
+      ModelGroups: removeExactModelGroupAssignments(config.ModelGroups ?? [], new Set([input.modelId])),
+    },
+    nextDefaultModelId,
+  );
 
   return validateProviderModelInvariants(nextConfig);
 }
@@ -360,7 +372,10 @@ function assertProviderIdChanged(providerId: string, nextProviderId: string): vo
 }
 
 function assertProviderIdAvailable(config: AgentSystemConfig, providerId: string): void {
-  if (ProtectedProviderIds.has(providerId) || (config.ModelProviderEndpoints ?? []).some((endpoint) => endpoint.Id === providerId)) {
+  if (
+    ProtectedProviderIds.has(providerId) ||
+    (config.ModelProviderEndpoints ?? []).some((endpoint) => endpoint.Id === providerId)
+  ) {
     throw new AgentProviderModelConfigCommandError(
       `供应商端点配置已存在：ModelProviderEndpoints[].Id=${providerId}`,
       "provider_endpoint_duplicate",
@@ -452,10 +467,7 @@ function assertModelProvidersReferenceExistingEndpoints(config: AgentSystemConfi
 
 function assertDefaultModelProviderIdValid(config: AgentSystemConfig): void {
   if (config.ModelProviders.length === 0) {
-    throw new AgentProviderModelConfigCommandError(
-      "至少需要保留一个模型配置。",
-      "provider_model_empty",
-    );
+    throw new AgentProviderModelConfigCommandError("至少需要保留一个模型配置。", "provider_model_empty");
   }
 
   if (config.DefaultModelProviderId !== undefined) {
@@ -463,19 +475,13 @@ function assertDefaultModelProviderIdValid(config: AgentSystemConfig): void {
   }
 }
 
-function assertModelIdExists(
-  models: readonly AgentModelProviderConfig[],
-  modelId: string,
-  code: string,
-): void {
+function assertModelIdExists(models: readonly AgentModelProviderConfig[], modelId: string, code: string): void {
   if (models.some((model) => model.Id === modelId)) {
     return;
   }
-  throw new AgentProviderModelConfigCommandError(
-    `默认模型配置不存在：DefaultModelProviderId=${modelId}`,
-    code,
-    { modelId },
-  );
+  throw new AgentProviderModelConfigCommandError(`默认模型配置不存在：DefaultModelProviderId=${modelId}`, code, {
+    modelId,
+  });
 }
 
 function readCurrentDefaultModelId(config: AgentSystemConfig): string | undefined {
@@ -501,10 +507,7 @@ function readValidReplacementDefault(
   return replacementDefaultModelId;
 }
 
-function withOptionalDefaultModelId(
-  config: AgentSystemConfig,
-  defaultModelId: string | undefined,
-): AgentSystemConfig {
+function withOptionalDefaultModelId(config: AgentSystemConfig, defaultModelId: string | undefined): AgentSystemConfig {
   const nextConfig = {
     ...config,
     ModelProviderEndpoints: config.ModelProviderEndpoints?.map((endpoint) => ({ ...endpoint })),
@@ -530,21 +533,23 @@ function applyOptionalGroupAssignment(
 
   const groups = removeExactModelGroupAssignments(config.ModelGroups ?? [], modelId);
   const targetIndex = groups.findIndex((group) => group.Id === assignment.groupId);
-  const target = targetIndex >= 0
-    ? addExactModelGroupAssignment(groups[targetIndex], modelId, assignment)
-    : {
-        Id: assignment.groupId,
-        Label: assignment.label ?? assignment.groupId,
-        Icon: assignment.icon,
-        Strategies: [{
-          Match: "exact" as const,
-          Values: [modelId],
-        }],
-      };
+  const target =
+    targetIndex >= 0
+      ? addExactModelGroupAssignment(groups[targetIndex], modelId, assignment)
+      : {
+          Id: assignment.groupId,
+          Label: assignment.label ?? assignment.groupId,
+          Icon: assignment.icon,
+          Strategies: [
+            {
+              Match: "exact" as const,
+              Values: [modelId],
+            },
+          ],
+        };
 
-  const nextGroups = targetIndex >= 0
-    ? groups.map((group, index) => index === targetIndex ? target : group)
-    : [...groups, target];
+  const nextGroups =
+    targetIndex >= 0 ? groups.map((group, index) => (index === targetIndex ? target : group)) : [...groups, target];
 
   return {
     ...config,
@@ -569,7 +574,7 @@ function removeExactModelGroupAssignments(
               ...strategy,
               Values: strategy.Values.filter((value) => !ids.has(value)),
             }
-          : strategy
+          : strategy,
       ).filter((strategy) => strategy.Match !== "exact" || strategy.Values.length > 0);
     }
     return nextGroup;
@@ -601,10 +606,7 @@ function addExactModelGroupAssignment(
   return nextGroup;
 }
 
-function addModelIdToStrategy(
-  strategy: AgentModelGroupStrategyConfig,
-  modelId: string,
-): AgentModelGroupStrategyConfig {
+function addModelIdToStrategy(strategy: AgentModelGroupStrategyConfig, modelId: string): AgentModelGroupStrategyConfig {
   return strategy.Values.includes(modelId)
     ? { ...strategy, Values: [...strategy.Values] }
     : { ...strategy, Values: [...strategy.Values, modelId] };

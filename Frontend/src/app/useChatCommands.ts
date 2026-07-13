@@ -362,14 +362,17 @@ export function useChatCommands({
     [activeSessionId, appendUserMessage, lastSendRef, registerSession, send, serverKnownSessionIdsRef],
   );
 
-  const resolveApproval = useCallback((approvalId: string, approvalStatus: "approved" | "denied"): void => {
-    if (!activeSessionId || status !== "open") return;
-    send({
-      type: "approval.resolve",
-      approvalId,
-      status: approvalStatus,
-    });
-  }, [activeSessionId, send, status]);
+  const resolveApproval = useCallback(
+    (approvalId: string, approvalStatus: "approved" | "denied"): void => {
+      if (!activeSessionId || status !== "open") return;
+      send({
+        type: "approval.resolve",
+        approvalId,
+        status: approvalStatus,
+      });
+    },
+    [activeSessionId, send, status],
+  );
 
   return {
     cancelActiveSession,

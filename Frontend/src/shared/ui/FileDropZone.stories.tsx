@@ -1,4 +1,5 @@
 import type { Story } from "@ladle/react";
+import type { FileRejection } from "react-dropzone";
 import { useRef, useState } from "react";
 import { Upload, FileText, Image as ImageIcon, File } from "lucide-react";
 import { FileDropZone } from "./FileDropZone";
@@ -20,9 +21,7 @@ export const BasicDropZone: Story = () => {
             <div
               className={cn(
                 "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 transition-colors",
-                isDragActive
-                  ? "border-terra-400 bg-terra-50"
-                  : "border-ink-300 bg-paper-100 hover:border-ink-400"
+                isDragActive ? "border-terra-400 bg-terra-50" : "border-ink-300 bg-paper-100 hover:border-ink-400",
               )}
             >
               <Upload className="h-12 w-12 text-ink-400 mb-4" />
@@ -62,10 +61,12 @@ export const ImageUpload: Story = () => {
   const handleFiles = (acceptedFiles: File[]) => {
     const generation = ++previewGenerationRef.current;
     setPreviews([]);
-    void Promise.all(acceptedFiles.map(async (file) => ({
-      file,
-      preview: await readImagePreview(file),
-    })))
+    void Promise.all(
+      acceptedFiles.map(async (file) => ({
+        file,
+        preview: await readImagePreview(file),
+      })),
+    )
       .then((entries) => {
         if (previewGenerationRef.current === generation) setPreviews(entries);
       })
@@ -90,7 +91,7 @@ export const ImageUpload: Story = () => {
                 "flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-300",
                 isDragReject && "border-brick-400 bg-brick-50",
                 isDragActive && !isDragReject && "border-terra-400 bg-terra-50",
-                !isDragActive && "border-ink-300 bg-paper-100 hover:border-ink-400"
+                !isDragActive && "border-ink-300 bg-paper-100 hover:border-ink-400",
               )}
               onClick={open}
             >
@@ -150,13 +151,11 @@ export const SingleFile: Story = () => {
             <div
               className={cn(
                 "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors",
-                isDragActive ? "border-terra-400 bg-terra-50" : "border-ink-300 bg-paper-100"
+                isDragActive ? "border-terra-400 bg-terra-50" : "border-ink-300 bg-paper-100",
               )}
             >
               <File className="h-10 w-10 text-ink-400 mb-3" />
-              <div className="text-ink-900 font-medium mb-1">
-                {file ? "Replace file" : "Upload a file"}
-              </div>
+              <div className="text-ink-900 font-medium mb-1">{file ? "Replace file" : "Upload a file"}</div>
               <div className="text-ink-500 text-sm mb-3">Any file type accepted</div>
               <Button onClick={open} variant="outline" size="sm">
                 Choose File
@@ -184,7 +183,7 @@ export const WithValidation: Story = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFiles = (acceptedFiles: File[], rejections: any[]) => {
+  const handleFiles = (acceptedFiles: File[], rejections: FileRejection[]) => {
     if (rejections.length > 0) {
       setError(`${rejections.length} file(s) rejected: only PDF files under 5MB allowed`);
       setTimeout(() => setError(null), 3000);
@@ -198,17 +197,14 @@ export const WithValidation: Story = () => {
     <div className="flex items-center justify-center min-h-[400px] p-8">
       <div className="w-[500px] space-y-4">
         <h3 className="text-ink-900 font-medium">Upload with Validation</h3>
-        <FileDropZone
-          accept={{ "application/pdf": [".pdf"] }}
-          onFiles={handleFiles}
-        >
+        <FileDropZone accept={{ "application/pdf": [".pdf"] }} onFiles={handleFiles}>
           {({ isDragActive, isDragReject, open }) => (
             <div
               className={cn(
                 "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors",
                 isDragReject && "border-brick-400 bg-brick-50",
                 isDragActive && !isDragReject && "border-terra-400 bg-terra-50",
-                !isDragActive && "border-ink-300 bg-paper-100"
+                !isDragActive && "border-ink-300 bg-paper-100",
               )}
             >
               <FileText className="h-10 w-10 text-ink-400 mb-3" />
@@ -216,14 +212,14 @@ export const WithValidation: Story = () => {
                 {isDragReject ? "Invalid file type" : "Upload PDF Documents"}
               </div>
               <div className="text-ink-500 text-sm mb-3">PDF files only, max 5MB</div>
-              <Button onClick={open} variant="outline">Browse</Button>
+              <Button onClick={open} variant="outline">
+                Browse
+              </Button>
             </div>
           )}
         </FileDropZone>
         {error && (
-          <div className="rounded-lg border border-brick-200 bg-brick-50 text-brick-600 text-sm p-3">
-            {error}
-          </div>
+          <div className="rounded-lg border border-brick-200 bg-brick-50 text-brick-600 text-sm p-3">{error}</div>
         )}
         {files.length > 0 && (
           <div className="space-y-2">

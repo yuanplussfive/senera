@@ -74,14 +74,16 @@ export function UserFooter({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="top" className="w-[244px]">
-          <DropdownMenuLabel>{frontendMessage("runtime.migrated.features.session.ProfileFooter.77.30")}</DropdownMenuLabel>
-          <DropdownMenuItem
-            icon={<User className="h-3.5 w-3.5" />}
-            onSelect={() => setOpen(true)}
-          >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.82.13")}</DropdownMenuItem>
+          <DropdownMenuLabel>
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.77.30")}
+          </DropdownMenuLabel>
+          <DropdownMenuItem icon={<User className="h-3.5 w-3.5" />} onSelect={() => setOpen(true)}>
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.82.13")}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel>{frontendMessage("runtime.migrated.features.session.ProfileFooter.85.30")}</DropdownMenuLabel>
+          <DropdownMenuLabel>
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.85.30")}
+          </DropdownMenuLabel>
           <DropdownMenuItem
             icon={<Palette className="h-3.5 w-3.5" />}
             onSelect={() => {
@@ -91,7 +93,8 @@ export function UserFooter({
               });
             }}
           >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.95.13")}</DropdownMenuItem>
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.95.13")}
+          </DropdownMenuItem>
           <DropdownMenuItem
             icon={<Settings2 className="h-3.5 w-3.5" />}
             onSelect={() => {
@@ -101,7 +104,8 @@ export function UserFooter({
               });
             }}
           >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.106.13")}</DropdownMenuItem>
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.106.13")}
+          </DropdownMenuItem>
           <DropdownMenuItem
             icon={<Info className="h-3.5 w-3.5" />}
             onSelect={() => {
@@ -111,11 +115,14 @@ export function UserFooter({
               });
             }}
           >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.117.13")}</DropdownMenuItem>
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.117.13")}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <div className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[12px] text-ink-500">
             <span className={cn("inline-block h-1.5 w-1.5 rounded-full", statusColor)} />
-            <span className="min-w-0 flex-1 truncate">{frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}
+            </span>
             <span className="font-mono text-[10.5px] text-ink-400">{statusLabel}</span>
           </div>
         </DropdownMenuContent>

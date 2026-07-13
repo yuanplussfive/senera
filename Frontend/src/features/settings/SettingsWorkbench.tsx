@@ -1,12 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
-import {
-  Check,
-  ChevronRight,
-  Copy,
-  RotateCcw,
-  Search,
-  X,
-} from "lucide-react";
+import { Check, ChevronRight, Copy, RotateCcw, Search, X } from "lucide-react";
 import { JsonConfigSettingsView } from "../../shared/config/JsonConfigForm";
 import {
   AppearancePreferenceControl,
@@ -92,11 +85,12 @@ export function SettingsWorkbench({
     [activeSectionId],
   );
   const runtimeStatuses = useMemo(
-    () => readWorkbenchRuntimeStatuses({
-      configDraftState,
-      pluginSettings,
-      systemConfigReady: Boolean(systemConfig?.configSnapshot),
-    }),
+    () =>
+      readWorkbenchRuntimeStatuses({
+        configDraftState,
+        pluginSettings,
+        systemConfigReady: Boolean(systemConfig?.configSnapshot),
+      }),
     [configDraftState, pluginSettings, systemConfig?.configSnapshot],
   );
   const activeRuntimeStatus = runtimeStatuses[activeSection.id];
@@ -105,13 +99,14 @@ export function SettingsWorkbench({
     [activeRuntimeStatus, activeSection],
   );
   const configInteraction = useMemo(
-    () => readSettingsDraftInteraction({
-      dirty: configDraftState.dirty,
-      localError: configDraftState.localError,
-      ready: Boolean(systemConfig?.configSnapshot),
-      saving: configDraftState.saving,
-      validationErrors: configDraftState.validationErrors,
-    }),
+    () =>
+      readSettingsDraftInteraction({
+        dirty: configDraftState.dirty,
+        localError: configDraftState.localError,
+        ready: Boolean(systemConfig?.configSnapshot),
+        saving: configDraftState.saving,
+        validationErrors: configDraftState.validationErrors,
+      }),
     [
       configDraftState.dirty,
       configDraftState.localError,
@@ -234,16 +229,18 @@ export function SettingsWorkbench({
                   values,
                 })}
               </SettingsWorkspaceFrame>
-            ) : renderSettingsContent({
-              activeSection,
-              configDraftState,
-              motionLevel,
-              onMotionLevelChange,
-              onValueChange,
-              pluginSettings,
-              systemConfig,
-              values,
-            })}
+            ) : (
+              renderSettingsContent({
+                activeSection,
+                configDraftState,
+                motionLevel,
+                onMotionLevelChange,
+                onValueChange,
+                pluginSettings,
+                systemConfig,
+                values,
+              })
+            )}
           </ScrollArea>
         )}
       </main>
@@ -278,21 +275,16 @@ function renderSettingsContent({
     );
   }
   if (activeSection.id === "system") {
-    return (
-      <SystemSettings
-        draftState={configDraftState}
-        systemConfig={systemConfig}
-      />
-    );
+    return <SystemSettings draftState={configDraftState} systemConfig={systemConfig} />;
   }
   if (activeSection.id === "default-model") {
     return <DefaultModelSection systemConfig={systemConfig} />;
   }
   if (
-    activeSection.id === "runtime"
-    || activeSection.id === "planning"
-    || activeSection.id === "retrieval"
-    || activeSection.id === "storage"
+    activeSection.id === "runtime" ||
+    activeSection.id === "planning" ||
+    activeSection.id === "retrieval" ||
+    activeSection.id === "storage"
   ) {
     return (
       <ConfigFormSectionSettings
@@ -322,11 +314,7 @@ function SystemSettings({
   systemConfig?: SettingsSystemConfigHandle;
 }): JSX.Element {
   if (!systemConfig) {
-    return (
-      <SettingsWorkspaceState>
-        正在连接主配置服务
-      </SettingsWorkspaceState>
-    );
+    return <SettingsWorkspaceState>正在连接主配置服务</SettingsWorkspaceState>;
   }
 
   return (
@@ -381,12 +369,7 @@ function DraftBackedSection({
           >
             取消
           </Button>
-          <Button
-            size="sm"
-            disabled={interaction.saveDisabled}
-            onClick={onSave}
-            title={interaction.saveTitle}
-          >
+          <Button size="sm" disabled={interaction.saveDisabled} onClick={onSave} title={interaction.saveTitle}>
             保存
           </Button>
         </div>
@@ -480,10 +463,7 @@ function SettingsNavItem({
             {searchDetails.map((detail) => (
               <span
                 key={`${detail.label}:${detail.value}`}
-                className={cn(
-                  "block truncate text-[11px] leading-4",
-                  active ? "text-terra-600/80" : "text-ink-450",
-                )}
+                className={cn("block truncate text-[11px] leading-4", active ? "text-terra-600/80" : "text-ink-450")}
               >
                 {detail.label}：{detail.value}
               </span>
@@ -492,10 +472,12 @@ function SettingsNavItem({
         ) : null}
       </span>
       {runtimeStatus ? (
-        <span className={cn(
-          "mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[10.5px]",
-          runtimeStatusClassName[runtimeStatus.state],
-        )}>
+        <span
+          className={cn(
+            "mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[10.5px]",
+            runtimeStatusClassName[runtimeStatus.state],
+          )}
+        >
           {runtimeStatus.label}
         </span>
       ) : status === "planned" ? (
@@ -533,11 +515,7 @@ function AppearanceSettings(): JSX.Element {
           </div>
         </SettingsPanel>
         <SettingsPanel title="当前外观" description="设置窗口与主窗口共享同一套偏好和 DOM token。">
-          <AppearancePreview
-            preference={preference}
-            resolvedTheme={resolvedTheme}
-            summary={summary}
-          />
+          <AppearancePreview preference={preference} resolvedTheme={resolvedTheme} summary={summary} />
         </SettingsPanel>
       </div>
       <SettingsPanel title="外观状态" description="这些状态会保持主窗口、设置窗口和后续扩展界面显示一致。">
@@ -556,7 +534,11 @@ function GeneralSettings({
   return (
     <div className="max-w-[760px] space-y-4">
       {preferenceSections.map((section) => (
-        <SettingsPanel key={section.id} title={section.title} description="设置窗口布局的默认状态，并在进入持久侧栏布局时同步应用。">
+        <SettingsPanel
+          key={section.id}
+          title={section.title}
+          description="设置窗口布局的默认状态，并在进入持久侧栏布局时同步应用。"
+        >
           <div className="overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50">
             {section.items.map((item, index) => (
               <PreferenceToggle
@@ -675,10 +657,7 @@ function AppearanceTokenContract({ rows }: { rows: AppearanceTokenRow[] }): JSX.
       </div>
       <div className="divide-y divide-ink-200/60">
         {rows.map((row) => (
-          <div
-            key={row.label}
-            className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] gap-3 py-2.5 text-[12px]"
-          >
+          <div key={row.label} className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] gap-3 py-2.5 text-[12px]">
             <code className="min-w-0 truncate font-mono text-ink-700">{row.label}</code>
             <code className="min-w-0 truncate font-mono text-terra-600">{row.value}</code>
           </div>
@@ -848,10 +827,7 @@ function PreferenceToggle({
         <span className="mt-0.5 block text-[12px] leading-5 text-ink-500">{description}</span>
       </span>
       <span
-        className={cn(
-          "relative h-5 w-9 shrink-0 rounded-full transition",
-          checked ? "bg-terra-500" : "bg-ink-200",
-        )}
+        className={cn("relative h-5 w-9 shrink-0 rounded-full transition", checked ? "bg-terra-500" : "bg-ink-200")}
       >
         <span
           className={cn(
@@ -903,23 +879,25 @@ function readWorkbenchRuntimeStatuses({
   const pluginConfigs = pluginSettings?.pluginConfigs ?? [];
   const pluginStatus = pluginSettings
     ? readPluginSectionRuntimeStatus({
-      operationStatuses: Object.values(pluginSettings.pluginConfigOperations).map((operation) => operation.status),
-      pluginErrors: pluginConfigs.filter((plugin) =>
-        plugin.diagnostics.some((diagnostic) => diagnostic.severity === "error")
-      ).length,
-      pluginsLoaded: pluginConfigs.length > 0,
-      pluginsNeedingConfig: pluginConfigs.filter((plugin) => plugin.needsUserConfig).length,
-    })
+        operationStatuses: Object.values(pluginSettings.pluginConfigOperations).map((operation) => operation.status),
+        pluginErrors: pluginConfigs.filter((plugin) =>
+          plugin.diagnostics.some((diagnostic) => diagnostic.severity === "error"),
+        ).length,
+        pluginsLoaded: pluginConfigs.length > 0,
+        pluginsNeedingConfig: pluginConfigs.filter((plugin) => plugin.needsUserConfig).length,
+      })
     : undefined;
 
   return {
-    ...(configStatus ? {
-      system: configStatus,
-      runtime: configStatus,
-      planning: configStatus,
-      retrieval: configStatus,
-      storage: configStatus,
-    } : {}),
+    ...(configStatus
+      ? {
+          system: configStatus,
+          runtime: configStatus,
+          planning: configStatus,
+          retrieval: configStatus,
+          storage: configStatus,
+        }
+      : {}),
     ...(pluginStatus ? { skills: pluginStatus } : {}),
   };
 }

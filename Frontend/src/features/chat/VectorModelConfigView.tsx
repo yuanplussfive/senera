@@ -1,19 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import {
-  BrainCircuit,
-  Layers3,
-  RefreshCw,
-  Server,
-  SlidersHorizontal,
-} from "lucide-react";
+import { BrainCircuit, Layers3, RefreshCw, Server, SlidersHorizontal } from "lucide-react";
 import { cn } from "../../lib/util";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  ScrollArea,
-} from "../../shared/ui";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, ScrollArea } from "../../shared/ui";
 import {
   JsonConfigSettingsView,
   writeJsonConfigFieldValue,
@@ -56,16 +44,17 @@ export function VectorModelConfigView({
 }): JSX.Element {
   const providers = readProviders(value.ModelProviderEndpoints);
   const models = readModels(value.ModelProviders);
-  const nonVectorSection = section ? {
-    ...section,
-    fields: section.fields.filter((field) => field.path[0] !== "VectorModels"),
-  } : undefined;
+  const nonVectorSection = section
+    ? {
+        ...section,
+        fields: section.fields.filter((field) => field.path[0] !== "VectorModels"),
+      }
+    : undefined;
 
   const content = (
-    <div className={cn(
-      "mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-7",
-      layoutMode === "panel" && "min-h-full",
-    )}>
+    <div
+      className={cn("mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
+    >
       <div className="space-y-7">
         <section>
           <SectionTitle
@@ -111,11 +100,7 @@ export function VectorModelConfigView({
   );
 
   if (layoutMode === "embedded") {
-    return (
-      <div className="bg-paper-50">
-        {content}
-      </div>
-    );
+    return <div className="bg-paper-50">{content}</div>;
   }
 
   return (
@@ -150,10 +135,7 @@ function VectorModelCard({
     .filter((provider) => provider.Id && provider.Enabled !== false)
     .map((provider) => ({ value: provider.Id, label: provider.Id, icon: provider.Icon }));
   const modelOptions = models
-    .filter((model) =>
-      model.ProviderId === providerId
-      && model.Model
-      && model.Capabilities?.[capability] === true)
+    .filter((model) => model.ProviderId === providerId && model.Model && model.Capabilities?.[capability] === true)
     .map((model) => ({
       value: model.Model,
       label: model.Model,
@@ -175,7 +157,10 @@ function VectorModelCard({
       </div>
 
       <div className="divide-y divide-ink-200/70">
-        <SettingLine icon={<Server className="h-3.5 w-3.5" />} label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.177.70")}>
+        <SettingLine
+          icon={<Server className="h-3.5 w-3.5" />}
+          label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.177.70")}
+        >
           <MenuSelect
             value={providerId}
             placeholder={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.180.25")}
@@ -184,7 +169,10 @@ function VectorModelCard({
             onChange={(ProviderId) => onChange({ ProviderId, Model: "" })}
           />
         </SettingLine>
-        <SettingLine icon={<BrainCircuit className="h-3.5 w-3.5" />} label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.186.76")}>
+        <SettingLine
+          icon={<BrainCircuit className="h-3.5 w-3.5" />}
+          label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.186.76")}
+        >
           <MenuSelect
             value={readString(value.Model) ?? ""}
             placeholder={providerId ? "选择模型" : "先选择供应商"}
@@ -194,24 +182,67 @@ function VectorModelCard({
           />
           {providerId && modelOptions.length === 0 ? (
             <div className="mt-1.5 text-[11px] text-amber-700">
-              {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.196.15")}{capability === "Embedding" ? "向量嵌入" : "重排序"}{frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.196.70")}</div>
+              {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.196.15")}
+              {capability === "Embedding" ? "向量嵌入" : "重排序"}
+              {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.196.70")}
+            </div>
           ) : null}
         </SettingLine>
         {capability === "Embedding" ? (
           <>
-            <NumberLine label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.202.31")} value={readNumber(value.Dimensions)} disabled={disabled || !enabled} onChange={(Dimensions) => onChange({ Dimensions })} />
-            <NumberLine label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.203.31")} value={readNumber(value.BatchSize)} disabled={disabled || !enabled} onChange={(BatchSize) => onChange({ BatchSize })} />
-            <NumberLine label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.204.31")} value={readNumber(value.InputMaxChars)} disabled={disabled || !enabled} onChange={(InputMaxChars) => onChange({ InputMaxChars })} />
+            <NumberLine
+              label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.202.31")}
+              value={readNumber(value.Dimensions)}
+              disabled={disabled || !enabled}
+              onChange={(Dimensions) => onChange({ Dimensions })}
+            />
+            <NumberLine
+              label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.203.31")}
+              value={readNumber(value.BatchSize)}
+              disabled={disabled || !enabled}
+              onChange={(BatchSize) => onChange({ BatchSize })}
+            />
+            <NumberLine
+              label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.204.31")}
+              value={readNumber(value.InputMaxChars)}
+              disabled={disabled || !enabled}
+              onChange={(InputMaxChars) => onChange({ InputMaxChars })}
+            />
           </>
         ) : (
           <>
-            <TextLine label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.208.29")} value={readString(value.EndpointPath) ?? ""} disabled={disabled || !enabled} onChange={(EndpointPath) => onChange({ EndpointPath })} />
-            <NumberLine label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.209.31")} value={readNumber(value.CandidateLimit)} disabled={disabled || !enabled} onChange={(CandidateLimit) => onChange({ CandidateLimit })} />
-            <NumberLine label="TopK" value={readNumber(value.TopK)} disabled={disabled || !enabled} onChange={(TopK) => onChange({ TopK })} />
+            <TextLine
+              label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.208.29")}
+              value={readString(value.EndpointPath) ?? ""}
+              disabled={disabled || !enabled}
+              onChange={(EndpointPath) => onChange({ EndpointPath })}
+            />
+            <NumberLine
+              label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.209.31")}
+              value={readNumber(value.CandidateLimit)}
+              disabled={disabled || !enabled}
+              onChange={(CandidateLimit) => onChange({ CandidateLimit })}
+            />
+            <NumberLine
+              label="TopK"
+              value={readNumber(value.TopK)}
+              disabled={disabled || !enabled}
+              onChange={(TopK) => onChange({ TopK })}
+            />
           </>
         )}
-        <NumberLine label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.213.27")} value={readNumber(value.TimeoutSeconds)} disabled={disabled || !enabled} onChange={(TimeoutSeconds) => onChange({ TimeoutSeconds })} />
-        <NumberLine label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.214.27")} value={readNumber(value.MaxNetworkRetries)} disabled={disabled || !enabled} onChange={(MaxNetworkRetries) => onChange({ MaxNetworkRetries })} />
+        <NumberLine
+          label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.213.27")}
+          value={readNumber(value.TimeoutSeconds)}
+          disabled={disabled || !enabled}
+          onChange={(TimeoutSeconds) => onChange({ TimeoutSeconds })}
+        />
+        <NumberLine
+          label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.214.27")}
+          value={readNumber(value.MaxNetworkRetries)}
+          disabled={disabled || !enabled}
+          onChange={(MaxNetworkRetries) => onChange({ MaxNetworkRetries })}
+        />
       </div>
     </div>
   );
@@ -372,16 +403,23 @@ function MenuSelect({
           </span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto">
-        {options.length > 0 ? options.map((option) => (
-          <DropdownMenuItem key={option.value} onSelect={() => onChange(option.value)}>
-            <span className="inline-flex min-w-0 items-center gap-2">
-              {option.icon ? <ModelProviderIcon icon={option.icon} size={16} /> : null}
-              <span className="truncate">{option.label}</span>
-            </span>
+      <DropdownMenuContent
+        align="start"
+        className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
+      >
+        {options.length > 0 ? (
+          options.map((option) => (
+            <DropdownMenuItem key={option.value} onSelect={() => onChange(option.value)}>
+              <span className="inline-flex min-w-0 items-center gap-2">
+                {option.icon ? <ModelProviderIcon icon={option.icon} size={16} /> : null}
+                <span className="truncate">{option.label}</span>
+              </span>
+            </DropdownMenuItem>
+          ))
+        ) : (
+          <DropdownMenuItem disabled>
+            {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.384.38")}
           </DropdownMenuItem>
-        )) : (
-          <DropdownMenuItem disabled>{frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.384.38")}</DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -408,27 +446,27 @@ function writeVectorConfig(
 function readProviders(value: unknown): ProviderEndpointDraft[] {
   return Array.isArray(value)
     ? value.filter(isRecord).map((entry) => ({
-      Id: readString(entry.Id) ?? "",
-      Icon: readString(entry.Icon),
-      Enabled: readBoolean(entry.Enabled),
-    }))
+        Id: readString(entry.Id) ?? "",
+        Icon: readString(entry.Icon),
+        Enabled: readBoolean(entry.Enabled),
+      }))
     : [];
 }
 
 function readModels(value: unknown): ModelProviderDraft[] {
   return Array.isArray(value)
     ? value.filter(isRecord).map((entry) => ({
-      Id: readString(entry.Id) ?? "",
-      ProviderId: readString(entry.ProviderId) ?? "",
-      Model: readString(entry.Model) ?? "",
-      Icon: readString(entry.Icon),
-      Capabilities: isRecord(entry.Capabilities)
-        ? {
-          Embedding: readBoolean(entry.Capabilities.Embedding),
-          Rerank: readBoolean(entry.Capabilities.Rerank),
-        }
-        : undefined,
-    }))
+        Id: readString(entry.Id) ?? "",
+        ProviderId: readString(entry.ProviderId) ?? "",
+        Model: readString(entry.Model) ?? "",
+        Icon: readString(entry.Icon),
+        Capabilities: isRecord(entry.Capabilities)
+          ? {
+              Embedding: readBoolean(entry.Capabilities.Embedding),
+              Rerank: readBoolean(entry.Capabilities.Rerank),
+            }
+          : undefined,
+      }))
     : [];
 }
 

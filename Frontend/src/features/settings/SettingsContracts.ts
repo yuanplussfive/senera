@@ -7,10 +7,7 @@ import type {
 } from "../../api/eventTypes";
 import type { ConfigMutationController } from "../../app/useConfigMutationController";
 import type { ProviderEndpointDeleteOptions } from "../../app/providerEndpointMutations";
-import type {
-  ProviderModelDeleteInput,
-  ProviderModelUpsertInput,
-} from "../../app/providerModelMutations";
+import type { ProviderModelDeleteInput, ProviderModelUpsertInput } from "../../app/providerModelMutations";
 
 export interface SettingsConfigCommands {
   configSnapshot: ConfigSnapshotData | null;

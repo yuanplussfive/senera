@@ -38,7 +38,9 @@ describe("resolveSettingsSection", () => {
   });
 
   it("accepts the dedicated default-model route", () => {
-    expect(resolveSettingsSection({ search: "?surface=settings&section=default-model", hash: "" })).toBe("default-model");
+    expect(resolveSettingsSection({ search: "?surface=settings&section=default-model", hash: "" })).toBe(
+      "default-model",
+    );
     expect(resolveSettingsSection({ search: "", hash: "#/settings/default-model" })).toBe("default-model");
   });
 });

@@ -13,22 +13,26 @@ test("connection actions do not reset a draft when provider objects are remateri
   let renderCount = 0;
   const state = createState("alpha");
 
-  const view = render(React.createElement(ActionsHarness, {
-    handleRef,
-    onRender: () => {
-      renderCount += 1;
-    },
-    state,
-  }));
-
-  await act(async () => {
-    view.rerender(React.createElement(ActionsHarness, {
+  const view = render(
+    React.createElement(ActionsHarness, {
       handleRef,
       onRender: () => {
         renderCount += 1;
       },
-      state: createState("alpha"),
-    }));
+      state,
+    }),
+  );
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onRender: () => {
+          renderCount += 1;
+        },
+        state: createState("alpha"),
+      }),
+    );
   });
 
   expect(handleRef.current.selectedProviderId).toBe("alpha");
@@ -39,11 +43,13 @@ test("connection actions do not reset a draft when provider objects are remateri
 test("selected provider changes to the renamed ID only after its snapshot arrives", async () => {
   const handleRef = { current: null };
   const onRenameProviderEndpoint = vi.fn(() => "rename-request");
-  const view = render(React.createElement(ActionsHarness, {
-    handleRef,
-    onRenameProviderEndpoint,
-    state: createState("alpha"),
-  }));
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onRenameProviderEndpoint,
+      state: createState("alpha"),
+    }),
+  );
 
   await act(async () => {
     handleRef.current.actions.renameProvider("alpha", "beta");
@@ -54,19 +60,21 @@ test("selected provider changes to the renamed ID only after its snapshot arrive
   expect(handleRef.current.actions.connectionDraft?.Id).toBe("alpha");
 
   await act(async () => {
-    view.rerender(React.createElement(ActionsHarness, {
-      handleRef,
-      onRenameProviderEndpoint,
-      operations: {
-        alpha: {
-          requestId: "rename-request",
-          kind: "provider.endpoint.rename",
-          status: "success",
-          updatedAt: "2026-07-12T00:00:00.000Z",
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onRenameProviderEndpoint,
+        operations: {
+          alpha: {
+            requestId: "rename-request",
+            kind: "provider.endpoint.rename",
+            status: "success",
+            updatedAt: "2026-07-12T00:00:00.000Z",
+          },
         },
-      },
-      state: createState("beta"),
-    }));
+        state: createState("beta"),
+      }),
+    );
   });
 
   expect(handleRef.current.selectedProviderId).toBe("beta");
@@ -76,11 +84,13 @@ test("selected provider changes to the renamed ID only after its snapshot arrive
 test("provider deletion forwards the lifecycle dialog's explicit cascade and replacement choice", async () => {
   const handleRef = { current: null };
   const onDeleteProviderEndpoint = vi.fn(() => "delete-request");
-  render(React.createElement(ActionsHarness, {
-    handleRef,
-    onDeleteProviderEndpoint,
-    state: createState("alpha"),
-  }));
+  render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onDeleteProviderEndpoint,
+      state: createState("alpha"),
+    }),
+  );
 
   let accepted = false;
   await act(async () => {
@@ -100,11 +110,13 @@ test("provider deletion forwards the lifecycle dialog's explicit cascade and rep
 test("new provider presets remain editable after the identity snapshot arrives", async () => {
   const handleRef = { current: null };
   const onUpsertProviderEndpoint = vi.fn(() => "add-request");
-  const view = render(React.createElement(ActionsHarness, {
-    handleRef,
-    onUpsertProviderEndpoint,
-    state: createState("alpha"),
-  }));
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onUpsertProviderEndpoint,
+      state: createState("alpha"),
+    }),
+  );
 
   await act(async () => {
     handleRef.current.actions.addProvider({
@@ -119,19 +131,21 @@ test("new provider presets remain editable after the identity snapshot arrives",
   });
 
   await act(async () => {
-    view.rerender(React.createElement(ActionsHarness, {
-      handleRef,
-      onUpsertProviderEndpoint,
-      operations: {
-        beta: {
-          requestId: "add-request",
-          kind: "provider.endpoint.upsert",
-          status: "success",
-          updatedAt: "2026-07-12T00:00:00.000Z",
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onUpsertProviderEndpoint,
+        operations: {
+          beta: {
+            requestId: "add-request",
+            kind: "provider.endpoint.upsert",
+            status: "success",
+            updatedAt: "2026-07-12T00:00:00.000Z",
+          },
         },
-      },
-      state: createState("beta", ""),
-    }));
+        state: createState("beta", ""),
+      }),
+    );
   });
 
   expect(handleRef.current.selectedProviderId).toBe("beta");

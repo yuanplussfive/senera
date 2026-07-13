@@ -3,10 +3,7 @@ import { createRequestId } from "../Core/AgentIds.js";
 import { AgentUserProfileInputSchema } from "../Session/AgentUserProfile.js";
 import { AgentUploadAttachmentListSchema } from "../Uploads/AgentUploadTypes.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
-import {
-  ModelProviderEndpointSchema,
-  ModelProviderSchema,
-} from "../Schemas/AgentModelConfigSchema.js";
+import { ModelProviderEndpointSchema, ModelProviderSchema } from "../Schemas/AgentModelConfigSchema.js";
 
 const AgentPresetFormatSchema = z.enum(["json", "markdown", "text"]);
 
@@ -38,10 +35,9 @@ const AgentProviderModelGroupAssignmentRequestSchema = z
   })
   .strict();
 
-const AgentProviderModelBulkImportGroupAssignmentRequestSchema =
-  AgentProviderModelGroupAssignmentRequestSchema.extend({
-    modelId: z.string().min(1),
-  });
+const AgentProviderModelBulkImportGroupAssignmentRequestSchema = AgentProviderModelGroupAssignmentRequestSchema.extend({
+  modelId: z.string().min(1),
+});
 
 export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z

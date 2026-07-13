@@ -1,32 +1,10 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import {
-  Component,
-  lazy,
-  Suspense,
-  useMemo,
-  type ReactNode,
-} from "react";
+import { Component, lazy, Suspense, useMemo, type ReactNode } from "react";
 import { cva } from "class-variance-authority";
-import {
-  BadgeCheck,
-  Check,
-  CircleOff,
-  Loader2,
-  Power,
-  PowerOff,
-  Save,
-  ScrollText,
-  Trash2,
-} from "lucide-react";
-import type {
-  PresetFormat,
-  PresetItem,
-} from "../../api/eventTypes";
+import { BadgeCheck, Check, CircleOff, Loader2, Power, PowerOff, Save, ScrollText, Trash2 } from "lucide-react";
+import type { PresetFormat, PresetItem } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import {
-  Button,
-  ScrollArea,
-} from "../../shared/ui";
+import { Button, ScrollArea } from "../../shared/ui";
 import {
   PresetEditorLanguages,
   PresetFormatOptions,
@@ -84,11 +62,9 @@ export function PresetTextEditorFallback({
 }): JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col bg-paper-50">
-      <div
-        role="alert"
-        className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800"
-      >
-        {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.90.9")}</div>
+      <div role="alert" className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+        {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.90.9")}
+      </div>
       <textarea
         aria-label="角色预设内容"
         className="min-h-0 flex-1 resize-none bg-paper-50 px-4 py-3 font-mono text-[13px] leading-6 text-ink-800 outline-none placeholder:text-ink-400 focus:ring-2 focus:ring-inset focus:ring-terra-200 disabled:cursor-not-allowed disabled:opacity-60"
@@ -222,21 +198,23 @@ export function PresetInspector({
       <div className="shrink-0 border-b border-ink-200/70 px-3.5 py-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[12px] font-semibold text-ink-900">{frontendMessage("runtime.migrated.features.chat.PresetWorkspace.225.69")}</div>
-            <div className="mt-1 truncate font-mono text-[11px] text-ink-500">
-              {displayName || "未命名预设"}
+            <div className="text-[12px] font-semibold text-ink-900">
+              {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.225.69")}
             </div>
+            <div className="mt-1 truncate font-mono text-[11px] text-ink-500">{displayName || "未命名预设"}</div>
           </div>
-          <span className={cn(
-            "shrink-0 border px-1.5 py-0.5 text-[10.5px]",
-            jsonIssue
-              ? "border-brick-200 bg-brick-50 text-brick-700"
-              : dirty
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : active
-                  ? "border-terra-200 bg-terra-50 text-terra-700"
-                  : "border-ink-200 bg-paper-50 text-ink-500",
-          )}>
+          <span
+            className={cn(
+              "shrink-0 border px-1.5 py-0.5 text-[10.5px]",
+              jsonIssue
+                ? "border-brick-200 bg-brick-50 text-brick-700"
+                : dirty
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : active
+                    ? "border-terra-200 bg-terra-50 text-terra-700"
+                    : "border-ink-200 bg-paper-50 text-ink-500",
+            )}
+          >
             {statusLabel}
           </span>
         </div>
@@ -260,7 +238,9 @@ export function PresetInspector({
 
           {jsonIssue ? (
             <section className="px-3.5 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-brick-600">{frontendMessage("runtime.migrated.features.chat.PresetWorkspace.263.97")}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-brick-600">
+                {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.263.97")}
+              </div>
               <div className="mt-2 whitespace-pre-wrap border-l-2 border-brick-300 bg-brick-50/70 px-2.5 py-2 text-[11.5px] leading-5 text-brick-700">
                 {jsonIssue}
               </div>
@@ -347,7 +327,8 @@ function PresetToolbar({
             className="h-9 text-brick-600 hover:bg-brick-50 hover:text-brick-700"
           >
             {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.350.13")}</Button>
+            {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.350.13")}
+          </Button>
           <span className="mx-0.5 hidden h-6 w-px bg-ink-200/80 sm:block" />
           <Button
             size="sm"
@@ -357,15 +338,12 @@ function PresetToolbar({
             className="h-9 bg-paper-50"
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.361.13")}</Button>
-          <Button
-            size="sm"
-            disabled={saving || importing}
-            onClick={() => onSave(true)}
-            className="h-9"
-          >
+            {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.361.13")}
+          </Button>
+          <Button size="sm" disabled={saving || importing} onClick={() => onSave(true)} className="h-9">
             <Check className="h-3.5 w-3.5" />
-            {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.370.13")}</Button>
+            {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.370.13")}
+          </Button>
         </div>
       </div>
     </div>
@@ -403,32 +381,28 @@ function PresetEditor({
           <span className="font-mono text-[11px] font-medium text-ink-600">{formatLabel}</span>
           {jsonIssue ? (
             <span className="truncate rounded-md bg-brick-50 px-1.5 py-0.5 text-[11px] text-brick-700">
-              {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.409.15")}</span>
+              {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.409.15")}
+            </span>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2 font-mono text-[10.5px] text-ink-400">
           <span>{formatTokenState(tokenState)}</span>
-          <span>{formatInteger(stats.lines)} {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.415.46")}</span>
-          <span>{formatInteger(stats.characters)} {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.416.51")}</span>
+          <span>
+            {formatInteger(stats.lines)} {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.415.46")}
+          </span>
+          <span>
+            {formatInteger(stats.characters)} {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.416.51")}
+          </span>
         </div>
       </div>
       <div className="min-h-0 flex-1">
         <PresetEditorFailureBoundary
-          fallback={(
-            <PresetTextEditorFallback
-              content={content}
-              disabled={disabled}
-              onChange={onChange}
-            />
-          )}
+          fallback={<PresetTextEditorFallback content={content} disabled={disabled} onChange={onChange} />}
         >
           <Suspense fallback={<EditorLoading />}>
             <LazyCodeTextEditor
               ariaLabel="角色预设内容"
-              className={cn(
-                "min-h-0 flex-1",
-                jsonIssue && "[&_.cm-editor]:bg-brick-50/20",
-              )}
+              className={cn("min-h-0 flex-1", jsonIssue && "[&_.cm-editor]:bg-brick-50/20")}
               disabled={disabled}
               language={language}
               onChange={onChange}
@@ -456,16 +430,27 @@ function PresetMetricGrid({
     <div className="shrink-0 border-b border-ink-200/70">
       <div className="grid grid-cols-2">
         <MetricCell label="Token" value={formatTokenState(tokenState)} />
-        <MetricCell label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.463.27")} value={formatInteger(stats.characters)} />
-        <MetricCell label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.464.27")} value={formatInteger(stats.lines)} />
-        <MetricCell label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.465.27")} value={formatInteger(stats.bytes)} />
+        <MetricCell
+          label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.463.27")}
+          value={formatInteger(stats.characters)}
+        />
+        <MetricCell
+          label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.464.27")}
+          value={formatInteger(stats.lines)}
+        />
+        <MetricCell
+          label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.465.27")}
+          value={formatInteger(stats.bytes)}
+        />
       </div>
       <div className="grid grid-cols-[72px_minmax(0,1fr)] border-t border-ink-200/70 px-3.5 py-2 text-[11.5px] leading-5">
         <span className="text-ink-400">{frontendMessage("runtime.migrated.features.chat.PresetWorkspace.468.40")}</span>
         <span className="min-w-0 truncate font-mono text-ink-700">{formatLabel}</span>
         {updatedAt ? (
           <>
-            <span className="text-ink-400">{frontendMessage("runtime.migrated.features.chat.PresetWorkspace.472.44")}</span>
+            <span className="text-ink-400">
+              {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.472.44")}
+            </span>
             <span className="min-w-0 truncate text-ink-700">{formatPresetTime(updatedAt)}</span>
           </>
         ) : null}
@@ -474,13 +459,7 @@ function PresetMetricGrid({
   );
 }
 
-function MetricCell({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): JSX.Element {
+function MetricCell({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div className="border-r border-t border-ink-200/70 px-3.5 py-2 first:border-t-0 [&:nth-child(2)]:border-r-0 [&:nth-child(2)]:border-t-0 [&:nth-child(4)]:border-r-0">
       <div className="text-[10.5px] text-ink-400">{label}</div>
@@ -502,24 +481,28 @@ function PresetInfoSection({
 }): JSX.Element {
   return (
     <section className="px-3.5 py-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">{frontendMessage("runtime.migrated.features.chat.PresetWorkspace.509.87")}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+        {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.509.87")}
+      </div>
       <dl className="mt-2 divide-y divide-ink-200/70 border-y border-ink-200/70">
-        <InfoRow label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.511.24")} value={displayName || "未命名预设"} />
+        <InfoRow
+          label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.511.24")}
+          value={displayName || "未命名预设"}
+        />
         <InfoRow label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.512.24")} value={formatLabel} />
         <InfoRow label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.513.24")} value={statusLabel} />
-        {updatedAt ? <InfoRow label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.514.37")} value={formatPresetTime(updatedAt)} /> : null}
+        {updatedAt ? (
+          <InfoRow
+            label={frontendMessage("runtime.migrated.features.chat.PresetWorkspace.514.37")}
+            value={formatPresetTime(updatedAt)}
+          />
+        ) : null}
       </dl>
     </section>
   );
 }
 
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): JSX.Element {
+function InfoRow({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-2 py-1.5 text-[11.5px] leading-5">
       <dt className="text-ink-400">{label}</dt>
@@ -533,20 +516,13 @@ function EditorLoading(): JSX.Element {
     <div className="grid h-full min-h-0 place-items-center bg-[var(--theme-config-editor-loading-bg)] text-[12px] text-ink-400">
       <span className="inline-flex items-center gap-2">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.540.9")}</span>
+        {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.540.9")}
+      </span>
     </div>
   );
 }
 
-function StatusPill({
-  active,
-  dirty,
-  busy,
-}: {
-  active: boolean;
-  dirty: boolean;
-  busy: boolean;
-}): JSX.Element {
+function StatusPill({ active, dirty, busy }: { active: boolean; dirty: boolean; busy: boolean }): JSX.Element {
   const label = busy ? "处理中" : dirty ? "未保存" : active ? "已启用" : "未启用";
   const state = busy ? "busy" : dirty ? "dirty" : active ? "active" : "idle";
   return (
@@ -578,9 +554,7 @@ function FormatSwitch({
           type="button"
           className={cn(
             "inline-flex min-w-12 items-center justify-center rounded-md px-2 font-mono text-[11px] transition",
-            value === item.value
-              ? "bg-paper-50 text-ink-900 shadow-sm"
-              : "text-ink-500 hover:text-ink-800",
+            value === item.value ? "bg-paper-50 text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800",
           )}
           onClick={() => onChange(item.value)}
         >

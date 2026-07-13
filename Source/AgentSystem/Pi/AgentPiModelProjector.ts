@@ -1,10 +1,5 @@
-import type {
-  ResolvedAgentModelProviderConfig,
-} from "../Types/AgentConfigTypes.js";
-import type {
-  AgentPiModelApi,
-  AgentPiProviderProjection,
-} from "./AgentPiTypes.js";
+import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { buildPiProxyBaseUrl } from "../PiProxy/AgentPiProxyHttpApi.js";
 import {

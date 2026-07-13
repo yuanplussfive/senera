@@ -5,14 +5,9 @@ const RuntimeConfigEntry = 'src="/senera-runtime-config.js"';
 const MainEntry = 'src="/src/main.tsx"';
 
 export type DesktopLiveFrontendProbe =
-  | { kind: "ready" }
-  | { kind: "unavailable"; message: string }
-  | { kind: "invalid"; message: string };
+  { kind: "ready" } | { kind: "unavailable"; message: string } | { kind: "invalid"; message: string };
 
-export function probeDesktopLiveFrontend(
-  url: string,
-  timeoutMs = 2_000,
-): Promise<DesktopLiveFrontendProbe> {
+export function probeDesktopLiveFrontend(url: string, timeoutMs = 2_000): Promise<DesktopLiveFrontendProbe> {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (result: DesktopLiveFrontendProbe): void => {
@@ -57,12 +52,14 @@ export function probeDesktopLiveFrontend(
         });
         response.once("end", () => {
           const body = chunks.join("");
-          finish(isSeneraViteEntry(body)
-            ? { kind: "ready" }
-            : {
-              kind: "invalid",
-              message: "did not serve the Senera Vite entry page",
-            });
+          finish(
+            isSeneraViteEntry(body)
+              ? { kind: "ready" }
+              : {
+                  kind: "invalid",
+                  message: "did not serve the Senera Vite entry page",
+                },
+          );
         });
       });
     } catch (error) {
@@ -90,7 +87,5 @@ export function probeDesktopLiveFrontend(
 }
 
 export function isSeneraViteEntry(html: string): boolean {
-  return html.includes(ViteClientEntry)
-    && html.includes(RuntimeConfigEntry)
-    && html.includes(MainEntry);
+  return html.includes(ViteClientEntry) && html.includes(RuntimeConfigEntry) && html.includes(MainEntry);
 }

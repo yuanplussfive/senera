@@ -1,11 +1,6 @@
 import type { Story } from "@ladle/react";
 import { useState } from "react";
-import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogClose,
-} from "./Dialog";
+import { Dialog, DialogTrigger, DialogContent, DialogClose } from "./Dialog";
 import { Button } from "./Button";
 
 export const BasicDialog: Story = () => {
@@ -23,9 +18,7 @@ export const BasicDialog: Story = () => {
           description="This is a dialog description. It provides context about what this dialog does."
         >
           <div className="space-y-4">
-            <p className="text-ink-700 text-sm">
-              This is the dialog content. You can put any content here.
-            </p>
+            <p className="text-ink-700 text-sm">This is the dialog content. You can put any content here.</p>
             <div className="flex justify-end gap-2">
               <DialogClose asChild>
                 <Button variant="ghost">Cancel</Button>
@@ -83,14 +76,9 @@ export const WithoutDescription: Story = () => {
         <DialogTrigger asChild>
           <Button>Open Simple Dialog</Button>
         </DialogTrigger>
-        <DialogContent
-          motionPreset="modal"
-          title="Simple Dialog"
-        >
+        <DialogContent motionPreset="modal" title="Simple Dialog">
           <div className="space-y-4">
-            <p className="text-ink-700 text-sm">
-              This dialog doesn't have a description, only a title.
-            </p>
+            <p className="text-ink-700 text-sm">This dialog doesn't have a description, only a title.</p>
             <div className="flex justify-end">
               <DialogClose asChild>
                 <Button>Close</Button>

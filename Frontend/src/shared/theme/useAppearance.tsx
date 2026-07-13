@@ -178,7 +178,9 @@ function SegmentedControl<TValue extends string>({
                   style={{ background: option.swatch }}
                   aria-hidden="true"
                 />
-              ) : option.icon}
+              ) : (
+                option.icon
+              )}
               <span className="truncate">{option.label}</span>
             </button>
           );

@@ -77,7 +77,9 @@ export function ProviderModelManagementSurface({
   openCatalogSignal?: number;
 }): JSX.Element {
   const modelGroups = readModelGroups(readDraftOrEffectiveValue(draft, section, "ModelGroups"));
-  const [selectedProviderId, setSelectedProviderId] = useState(initialSelectedProviderId ?? state.providers[0]?.Id ?? "");
+  const [selectedProviderId, setSelectedProviderId] = useState(
+    initialSelectedProviderId ?? state.providers[0]?.Id ?? "",
+  );
   const [search, setSearch] = useState("");
   const [configuredOnly, setConfiguredOnly] = useState(false);
   const [editingModel, setEditingModel] = useState<ModelProviderDraft | null>(null);
@@ -89,7 +91,8 @@ export function ProviderModelManagementSurface({
   const [groupUnsupportedDialogOpen, setGroupUnsupportedDialogOpen] = useState(false);
   const previousCatalogSignal = useRef(openCatalogSignal);
   const deferredSearch = useDeferredValue(search);
-  const selectedProvider = state.providers.find((provider) => provider.Id === selectedProviderId) ?? state.providers[0] ?? null;
+  const selectedProvider =
+    state.providers.find((provider) => provider.Id === selectedProviderId) ?? state.providers[0] ?? null;
 
   useEffect(() => {
     if (!showProviderList && initialSelectedProviderId && initialSelectedProviderId !== selectedProviderId) {
@@ -118,12 +121,16 @@ export function ProviderModelManagementSurface({
   const modelTemplate = useMemo(() => modelField?.defaultItem ?? {}, [modelField]);
   const endpointChoices = endpointOptions;
   const visibleRows = selectedProvider
-    ? selectedList?.rows.filter((row) => {
+    ? (selectedList?.rows.filter((row) => {
         const query = deferredSearch.trim().toLowerCase();
-        if (configuredOnly && !state.models.some((model) => model.ProviderId === selectedProvider.Id && model.Model === row.id)) return false;
+        if (
+          configuredOnly &&
+          !state.models.some((model) => model.ProviderId === selectedProvider.Id && model.Model === row.id)
+        )
+          return false;
         if (!query) return true;
         return row.id.toLowerCase().includes(query);
-      }) ?? []
+      }) ?? [])
     : [];
   const visibleGroups = groupProviderModelRows(visibleRows, modelGroups);
   const catalogRows = selectedList?.catalog?.models ?? [];
@@ -133,11 +140,12 @@ export function ProviderModelManagementSurface({
   });
   const catalogGroups = groupProviderModelRows(catalogVisibleRows, modelGroups);
   const pendingModelIds = useMemo(
-    () => new Set(
-      Object.entries(operations)
-        .filter(([, operation]) => operation.status === "pending")
-        .map(([modelId]) => modelId),
-    ),
+    () =>
+      new Set(
+        Object.entries(operations)
+          .filter(([, operation]) => operation.status === "pending")
+          .map(([modelId]) => modelId),
+      ),
     [operations],
   );
 
@@ -150,12 +158,14 @@ export function ProviderModelManagementSurface({
 
   const openModel = (modelInfo: ProviderModelInfo): void => {
     const configured = configuredModel(modelInfo.id);
-    const draft = configured ?? createModelDraft({
-      provider: selectedProvider,
-      modelInfo,
-      modelField,
-      endpointOptions: endpointChoices,
-    });
+    const draft =
+      configured ??
+      createModelDraft({
+        provider: selectedProvider,
+        modelInfo,
+        modelField,
+        endpointOptions: endpointChoices,
+      });
     setEditingModel(draft);
     setEditingExisting(Boolean(configured));
   };
@@ -186,12 +196,14 @@ export function ProviderModelManagementSurface({
       endpointOptions: endpointChoices,
     });
     if (pendingModelIds.has(model.Id)) return;
-    if (onUpsertProviderModel({
-      model: {
-        ...model,
-        Endpoint: model.Endpoint as ProviderModelConfigInput["Endpoint"],
-      },
-    })) {
+    if (
+      onUpsertProviderModel({
+        model: {
+          ...model,
+          Endpoint: model.Endpoint as ProviderModelConfigInput["Endpoint"],
+        },
+      })
+    ) {
       setManualOpen(false);
       setManualModelId("");
     }
@@ -214,44 +226,57 @@ export function ProviderModelManagementSurface({
   };
 
   return (
-    <div className={cn("grid h-full min-h-0 gap-3 bg-paper-50 p-3", showProviderList ? "grid-cols-[minmax(210px,260px)_minmax(0,1fr)]" : "grid-cols-1")}>
-      {showProviderList ? <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50">
-        <div className="flex shrink-0 items-center justify-between border-b border-ink-200/70 px-3 py-3">
-          <div>
-            <div className="text-[13px] font-semibold text-ink-900">供应商模型</div>
-            <div className="mt-0.5 text-[11px] text-ink-500">选择要管理的供应商</div>
+    <div
+      className={cn(
+        "grid h-full min-h-0 gap-3 bg-paper-50 p-3",
+        showProviderList ? "grid-cols-[minmax(210px,260px)_minmax(0,1fr)]" : "grid-cols-1",
+      )}
+    >
+      {showProviderList ? (
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50">
+          <div className="flex shrink-0 items-center justify-between border-b border-ink-200/70 px-3 py-3">
+            <div>
+              <div className="text-[13px] font-semibold text-ink-900">供应商模型</div>
+              <div className="mt-0.5 text-[11px] text-ink-500">选择要管理的供应商</div>
+            </div>
+            <Button size="sm" variant="outline" disabled={disabled} onClick={() => setManualOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              添加
+            </Button>
           </div>
-          <Button size="sm" variant="outline" disabled={disabled} onClick={() => setManualOpen(true)}>
-            <Plus className="h-3.5 w-3.5" />
-            添加
-          </Button>
-        </div>
-        <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full p-2">
-          <div className="space-y-1">
-            {state.providers.map((provider) => (
-              <button
-                key={provider.Id}
-                type="button"
-                disabled={disabled}
-                className={cn(
-                  "w-full rounded-md border px-2.5 py-2 text-left text-[12px] disabled:pointer-events-none disabled:opacity-60",
-                  provider.Id === selectedProvider.Id ? "border-terra-200 bg-terra-50 text-terra-800" : "border-transparent hover:border-ink-200 hover:bg-paper-100",
-                )}
-                aria-pressed={provider.Id === selectedProvider.Id}
-                onClick={() => setSelectedProviderId(provider.Id)}
-              >
-                <span className="block truncate font-medium">{provider.Id || "未命名供应商"}</span>
-                <span className="mt-0.5 block text-[10.5px] opacity-70">{state.models.filter((model) => model.ProviderId === provider.Id).length} 个已配置模型</span>
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
-      </section> : null}
+          <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full p-2">
+            <div className="space-y-1">
+              {state.providers.map((provider) => (
+                <button
+                  key={provider.Id}
+                  type="button"
+                  disabled={disabled}
+                  className={cn(
+                    "w-full rounded-md border px-2.5 py-2 text-left text-[12px] disabled:pointer-events-none disabled:opacity-60",
+                    provider.Id === selectedProvider.Id
+                      ? "border-terra-200 bg-terra-50 text-terra-800"
+                      : "border-transparent hover:border-ink-200 hover:bg-paper-100",
+                  )}
+                  aria-pressed={provider.Id === selectedProvider.Id}
+                  onClick={() => setSelectedProviderId(provider.Id)}
+                >
+                  <span className="block truncate font-medium">{provider.Id || "未命名供应商"}</span>
+                  <span className="mt-0.5 block text-[10.5px] opacity-70">
+                    {state.models.filter((model) => model.ProviderId === provider.Id).length} 个已配置模型
+                  </span>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+        </section>
+      ) : null}
       <section className="min-h-0 min-w-0 overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50">
         <ProviderModelList
           selectedProvider={selectedProvider}
           catalog={selectedList.catalog}
-          error={selectedList.error ? { ...selectedList.error, updatedAt: selectedList.error.updatedAt ?? "" } : undefined}
+          error={
+            selectedList.error ? { ...selectedList.error, updatedAt: selectedList.error.updatedAt ?? "" } : undefined
+          }
           loading={Boolean(selectedList.loading)}
           enabled={Boolean(selectedList.enabled)}
           rows={visibleRows}
@@ -270,7 +295,11 @@ export function ProviderModelManagementSurface({
           onAddManualModel={() => setManualOpen(true)}
           onFetch={(force) => {
             setCatalogOpen(true);
-            onFetchProviderModels(selectedProvider.Id, force, fetchEndpoint ?? toProviderEndpointInput(selectedProvider));
+            onFetchProviderModels(
+              selectedProvider.Id,
+              force,
+              fetchEndpoint ?? toProviderEndpointInput(selectedProvider),
+            );
           }}
           onConfigureModel={openModel}
           onSetDefaultModel={(model) => onSetDefaultModel(model.Id)}
@@ -287,7 +316,7 @@ export function ProviderModelManagementSurface({
         disabled={disabled || Boolean(editingModel && operations[editingModel.Id]?.status === "pending")}
         commitLabels={{ existing: "保存", new: "添加" }}
         onOpenChange={(open) => !open && setEditingModel(null)}
-        onChange={(patch) => setEditingModel((current) => current ? { ...current, ...patch } : current)}
+        onChange={(patch) => setEditingModel((current) => (current ? { ...current, ...patch } : current))}
         onCommit={() => editingModel && saveModel(editingModel)}
         onRemove={() => editingModel && requestModelRemoval(editingModel)}
       />
@@ -314,7 +343,12 @@ export function ProviderModelManagementSurface({
         </DialogContent>
       </Dialog>
       <Dialog open={manualOpen} onOpenChange={setManualOpen}>
-        <DialogContent title="添加模型" description={selectedProvider.Id} className="w-[min(460px,calc(100vw_-_32px))]" bodyClassName="p-4">
+        <DialogContent
+          title="添加模型"
+          description={selectedProvider.Id}
+          className="w-[min(460px,calc(100vw_-_32px))]"
+          bodyClassName="p-4"
+        >
           <div className="space-y-4">
             <label className="block text-[12px] font-medium text-ink-750">
               模型 ID
@@ -328,8 +362,12 @@ export function ProviderModelManagementSurface({
               />
             </label>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setManualOpen(false)}>取消</Button>
-              <Button disabled={disabled || !manualModelId.trim()} onClick={addManualModel}>添加</Button>
+              <Button variant="outline" onClick={() => setManualOpen(false)}>
+                取消
+              </Button>
+              <Button disabled={disabled || !manualModelId.trim()} onClick={addManualModel}>
+                添加
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -337,7 +375,9 @@ export function ProviderModelManagementSurface({
       <Dialog open={groupUnsupportedDialogOpen} onOpenChange={setGroupUnsupportedDialogOpen}>
         <DialogContent title="暂不支持" className="w-[min(460px,calc(100vw-32px))]">
           <div className="p-4 text-[13px] text-ink-700">
-            <p>完整的分组规则编辑（新增、修改、删除分组策略，以及模型分组赋值）需要修订保护的批量配置命令，暂未接入此即时保存界面。</p>
+            <p>
+              完整的分组规则编辑（新增、修改、删除分组策略，以及模型分组赋值）需要修订保护的批量配置命令，暂未接入此即时保存界面。
+            </p>
             <p className="mt-2">当前界面会保留已有分组的显示和筛选，但不会修改分组规则或模型归属。</p>
           </div>
         </DialogContent>
@@ -389,7 +429,10 @@ function CatalogModelDialogContent({
       <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
         {loading ? (
           <SettingsWorkspaceState className="min-h-[260px]">
-            <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />正在获取模型列表</span>
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              正在获取模型列表
+            </span>
           </SettingsWorkspaceState>
         ) : error ? (
           <SettingsWorkspaceState className="min-h-[260px]">获取失败：{error}</SettingsWorkspaceState>
@@ -405,13 +448,20 @@ function CatalogModelDialogContent({
                   const configured = configuredIds.has(row.id);
                   const pending = pendingModelIds.has(modelConfigId(providerId, row.id));
                   return (
-                    <div key={row.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5">
+                    <div
+                      key={row.id}
+                      className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
+                    >
                       <div className="min-w-0">
-                        <div className="truncate font-mono text-[12px] text-ink-850" title={row.id}>{row.id}</div>
+                        <div className="truncate font-mono text-[12px] text-ink-850" title={row.id}>
+                          {row.id}
+                        </div>
                         <div className="mt-0.5 truncate text-[10.5px] text-ink-450">{row.ownedBy || "供应商模型"}</div>
                       </div>
                       {configured ? (
-                        <span className="rounded-md border border-moss-200 bg-moss-50 px-2 py-1 text-[10.5px] font-medium text-moss-700">已添加</span>
+                        <span className="rounded-md border border-moss-200 bg-moss-50 px-2 py-1 text-[10.5px] font-medium text-moss-700">
+                          已添加
+                        </span>
                       ) : pending ? (
                         <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10.5px] font-medium text-sky-700">
                           <Loader2 className="h-3 w-3 animate-spin" /> 添加中

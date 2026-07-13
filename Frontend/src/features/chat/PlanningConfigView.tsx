@@ -1,13 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { BrainCircuit, Route, Settings2 } from "lucide-react";
 import { cn } from "../../lib/util";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  ScrollArea,
-} from "../../shared/ui";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, ScrollArea } from "../../shared/ui";
 import {
   JsonConfigSettingsView,
   writeJsonConfigFieldValue,
@@ -47,27 +41,30 @@ export function PlanningConfigView({
       label: model.Model || model.Id,
       icon: model.Icon ?? inferModelProviderIcon(model.Model || model.Id),
     }));
-  const nonPlannerModelSection = section ? {
-    ...section,
-    fields: section.fields.filter((field) =>
-      field.path.join(".") !== "ActionPlanner.Client.ModelProviderId"),
-  } : undefined;
+  const nonPlannerModelSection = section
+    ? {
+        ...section,
+        fields: section.fields.filter((field) => field.path.join(".") !== "ActionPlanner.Client.ModelProviderId"),
+      }
+    : undefined;
 
   const content = (
-    <div className={cn(
-      "mx-auto w-full max-w-[980px] px-4 py-5 sm:px-6 sm:py-7",
-      layoutMode === "panel" && "min-h-full",
-    )}>
+    <div
+      className={cn("mx-auto w-full max-w-[980px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
+    >
       <div className="space-y-6">
         <section>
           <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-ink-900">
             <Route className="h-4 w-4 text-ink-450" />
-            {frontendMessage("runtime.migrated.features.chat.PlanningConfigView.64.13")}</div>
+            {frontendMessage("runtime.migrated.features.chat.PlanningConfigView.64.13")}
+          </div>
           <div className="overflow-hidden border border-ink-200/70 bg-paper-100 shadow-panel">
             <div className="grid min-w-0 gap-3 bg-paper-50 px-3 py-3 md:grid-cols-[150px_minmax(0,1fr)] md:items-start">
               <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-medium text-ink-800">
                 <BrainCircuit className="h-3.5 w-3.5 text-ink-400" />
-                <span className="truncate">{frontendMessage("runtime.migrated.features.chat.PlanningConfigView.70.44")}</span>
+                <span className="truncate">
+                  {frontendMessage("runtime.migrated.features.chat.PlanningConfigView.70.44")}
+                </span>
               </div>
               <div className="min-w-0">
                 <MenuSelect
@@ -78,14 +75,13 @@ export function PlanningConfigView({
                     ...modelOptions,
                   ]}
                   disabled={Boolean(disabled)}
-                  onChange={(ModelProviderId) => onChange(writeOptionalPath(
-                    value,
-                    ["ActionPlanner", "Client", "ModelProviderId"],
-                    ModelProviderId,
-                  ))}
+                  onChange={(ModelProviderId) =>
+                    onChange(writeOptionalPath(value, ["ActionPlanner", "Client", "ModelProviderId"], ModelProviderId))
+                  }
                 />
                 <div className="mt-1.5 text-[11px] text-ink-450">
-                  {frontendMessage("runtime.migrated.features.chat.PlanningConfigView.88.19")}</div>
+                  {frontendMessage("runtime.migrated.features.chat.PlanningConfigView.88.19")}
+                </div>
               </div>
             </div>
           </div>
@@ -105,11 +101,7 @@ export function PlanningConfigView({
   );
 
   if (layoutMode === "embedded") {
-    return (
-      <div className="bg-paper-50">
-        {content}
-      </div>
-    );
+    return <div className="bg-paper-50">{content}</div>;
   }
 
   return (
@@ -146,9 +138,7 @@ function MenuSelect({
         >
           <span className="flex min-w-0 items-center gap-2">
             {selected?.icon ? <ModelProviderIcon icon={selected.icon} size={16} /> : null}
-            <span className={cn("truncate", !selected && "text-ink-350")}>
-              {selected?.label ?? placeholder}
-            </span>
+            <span className={cn("truncate", !selected && "text-ink-350")}>{selected?.label ?? placeholder}</span>
           </span>
           <Settings2 className="h-3.5 w-3.5 shrink-0 text-ink-350" />
         </button>
@@ -170,13 +160,11 @@ function MenuSelect({
 function readModels(value: unknown): ModelProviderDraft[] {
   return Array.isArray(value)
     ? value.filter(isRecord).map((record) => ({
-      Id: readString(record.Id) ?? "",
-      Model: readString(record.Model) ?? "",
-      Icon: readString(record.Icon),
-      Capabilities: isRecord(record.Capabilities)
-        ? { Chat: readBoolean(record.Capabilities.Chat) }
-        : undefined,
-    }))
+        Id: readString(record.Id) ?? "",
+        Model: readString(record.Model) ?? "",
+        Icon: readString(record.Icon),
+        Capabilities: isRecord(record.Capabilities) ? { Chat: readBoolean(record.Capabilities.Chat) } : undefined,
+      }))
     : [];
 }
 
@@ -189,11 +177,7 @@ function readPathString(value: JsonConfigObject, path: readonly string[]): strin
   return readString(current);
 }
 
-function writeOptionalPath(
-  value: JsonConfigObject,
-  path: readonly string[],
-  nextValue: string,
-): JsonConfigObject {
+function writeOptionalPath(value: JsonConfigObject, path: readonly string[], nextValue: string): JsonConfigObject {
   return writeJsonConfigFieldValue(value, path, nextValue || undefined);
 }
 

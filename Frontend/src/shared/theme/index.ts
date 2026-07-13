@@ -16,10 +16,7 @@ export {
   readSchemeSwatch,
   themeModeLabels,
 } from "./appearancePresentation";
-export type {
-  AppearanceSummaryItem,
-  AppearanceTokenRow,
-} from "./appearancePresentation";
+export type { AppearanceSummaryItem, AppearanceTokenRow } from "./appearancePresentation";
 export type {
   AccentColor,
   AppearanceFontFamily,

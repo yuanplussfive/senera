@@ -8,11 +8,7 @@ export function SkillSettingsSection({
   pluginSettings?: PluginSettingsCommandsHandle;
 }): JSX.Element {
   if (!pluginSettings) {
-    return (
-      <SettingsWorkspaceState>
-        正在连接技能配置服务
-      </SettingsWorkspaceState>
-    );
+    return <SettingsWorkspaceState>正在连接技能配置服务</SettingsWorkspaceState>;
   }
 
   return (

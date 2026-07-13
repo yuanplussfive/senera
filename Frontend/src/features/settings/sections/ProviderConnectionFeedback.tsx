@@ -1,9 +1,4 @@
-import {
-  AlertTriangle,
-  Check,
-  Loader2,
-  Save,
-} from "lucide-react";
+import { AlertTriangle, Check, Loader2, Save } from "lucide-react";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 
 export function ProviderConnectionStatusBadge({

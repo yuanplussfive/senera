@@ -5,15 +5,17 @@ import type { MotionLevel } from "../../shared/motion";
 
 export const PERSIST_KEY = "senera-frontend@v1";
 
-type PersistedSessionState = Partial<Pick<
-  StoreState,
-  | "defaultRightPanelCollapsed"
-  | "defaultSidebarCollapsed"
-  | "motionLevel"
-  | "selectedModelProviderId"
-  | "selectedModelProviderIdsBySession"
-  | "userProfile"
->>;
+type PersistedSessionState = Partial<
+  Pick<
+    StoreState,
+    | "defaultRightPanelCollapsed"
+    | "defaultSidebarCollapsed"
+    | "motionLevel"
+    | "selectedModelProviderId"
+    | "selectedModelProviderIdsBySession"
+    | "userProfile"
+  >
+>;
 
 export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionState> = {
   name: PERSIST_KEY,
@@ -79,12 +81,12 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
   },
 };
 
-
 function readPersistedModelSelectionBySession(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(
     Object.entries(value).filter(
-      (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string" && Boolean(entry[1]),
+      (entry): entry is [string, string] =>
+        typeof entry[0] === "string" && typeof entry[1] === "string" && Boolean(entry[1]),
     ),
   );
 }
@@ -104,14 +106,13 @@ export function readPersistedSessionPreferences(rawValue: string | null): Persis
     if (!parsed.state || typeof parsed.state !== "object") return null;
     const state = parsed.state as Partial<StoreState>;
     return {
-      defaultSidebarCollapsed: typeof state.defaultSidebarCollapsed === "boolean"
-        ? state.defaultSidebarCollapsed
-        : undefined,
-      defaultRightPanelCollapsed: typeof state.defaultRightPanelCollapsed === "boolean"
-        ? state.defaultRightPanelCollapsed
-        : undefined,
+      defaultSidebarCollapsed:
+        typeof state.defaultSidebarCollapsed === "boolean" ? state.defaultSidebarCollapsed : undefined,
+      defaultRightPanelCollapsed:
+        typeof state.defaultRightPanelCollapsed === "boolean" ? state.defaultRightPanelCollapsed : undefined,
       motionLevel: readPersistedMotionLevel(state.motionLevel),
-      selectedModelProviderId: typeof state.selectedModelProviderId === "string" ? state.selectedModelProviderId : undefined,
+      selectedModelProviderId:
+        typeof state.selectedModelProviderId === "string" ? state.selectedModelProviderId : undefined,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(state.selectedModelProviderIdsBySession),
       userProfile: state.userProfile,
     };

@@ -28,7 +28,6 @@ export interface ChatModelConfig {
   onApplyDefaultModel?: () => void;
 }
 
-
 export interface ChatPluginConfig {
   pluginConfigs: PluginConfigItem[];
   pluginConfigOperations: Record<string, PluginConfigMutationState>;

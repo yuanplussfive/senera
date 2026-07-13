@@ -1,8 +1,4 @@
-import type {
-  AgentToolResult,
-  AgentToolUpdateCallback,
-  AgentTool,
-} from "@earendil-works/pi-agent-core";
+import type { AgentToolResult, AgentToolUpdateCallback, AgentTool } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "typebox";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
@@ -46,11 +42,7 @@ export interface AgentPiToolExecutionInput {
   context: AgentPiToolProjectionContext;
 }
 
-export type AgentPiModelApi =
-  | "openai-completions"
-  | "openai-responses"
-  | "anthropic-messages"
-  | "google-generative-ai";
+export type AgentPiModelApi = "openai-completions" | "openai-responses" | "anthropic-messages" | "google-generative-ai";
 
 export interface AgentPiModelProjection {
   id: string;

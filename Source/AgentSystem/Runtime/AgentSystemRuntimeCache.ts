@@ -86,10 +86,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     this.entries.clear();
   }
 
-  private createRuntime(
-    snapshot: AgentSystemRuntimeCacheSnapshot,
-    modelProviderId: string | undefined,
-  ): TRuntime {
+  private createRuntime(snapshot: AgentSystemRuntimeCacheSnapshot, modelProviderId: string | undefined): TRuntime {
     if (this.options.runtimeFactory) {
       return this.options.runtimeFactory({
         workspaceRoot: this.options.workspaceRoot,
@@ -164,15 +161,8 @@ function runtimeCacheKey(modelProviderId: string | undefined): string {
   return modelProviderId?.trim() || "<default>";
 }
 
-function runtimeFingerprint(
-  snapshot: AgentSystemRuntimeCacheSnapshot,
-  modelProviderId: string | undefined,
-): string {
-  return JSON.stringify([
-    snapshot.version,
-    snapshot.revision ?? "json",
-    runtimeCacheKey(modelProviderId),
-  ]);
+function runtimeFingerprint(snapshot: AgentSystemRuntimeCacheSnapshot, modelProviderId: string | undefined): string {
+  return JSON.stringify([snapshot.version, snapshot.revision ?? "json", runtimeCacheKey(modelProviderId)]);
 }
 
 function normalizeMaxIdleEntries(value: number | undefined): number {

@@ -1,15 +1,7 @@
-import {
-  AlertTriangle,
-  Check,
-  Info,
-  Loader2,
-} from "lucide-react";
+import { AlertTriangle, Check, Info, Loader2 } from "lucide-react";
 import { cn } from "../../lib/util";
 import type { SettingsDraftInteraction } from "./settingsInteractionModel";
-import type {
-  SettingsWorkbenchSectionSummary,
-  SettingsWorkbenchSummaryTone,
-} from "./settingsPresentation";
+import type { SettingsWorkbenchSectionSummary, SettingsWorkbenchSummaryTone } from "./settingsPresentation";
 import type { SettingsSectionDefinition } from "./types";
 
 export function WorkbenchControlDeckHeader({
@@ -22,25 +14,22 @@ export function WorkbenchControlDeckHeader({
   summary: SettingsWorkbenchSectionSummary;
 }): JSX.Element {
   const Icon = section.icon;
-  const tone = summary.actionKind === "config"
-    ? readDraftTone(configInteraction.tone)
-    : summary.statusTone;
+  const tone = summary.actionKind === "config" ? readDraftTone(configInteraction.tone) : summary.statusTone;
   const StatusIcon = summaryToneIcon[tone];
   const statusText = summary.actionKind === "config" ? configInteraction.statusLabel : summary.statusLabel;
-  const statusDetail = summary.disabledReason ?? (
-    summary.actionKind === "config" ? summary.actionSurfaceDetail : summary.statusDetail
-  );
+  const statusDetail =
+    summary.disabledReason ?? (summary.actionKind === "config" ? summary.actionSurfaceDetail : summary.statusDetail);
 
   return (
     <header className="shrink-0 border-b border-ink-200/70 bg-paper-50/95">
       <div className="grid min-h-[72px] grid-cols-[minmax(0,1fr)] gap-3 px-5 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="flex min-w-0 items-center gap-3">
-          <span className={cn(
-            "grid h-10 w-10 shrink-0 place-items-center rounded-md border",
-            section.enabled
-              ? "border-ink-200 bg-paper-100 text-ink-650"
-              : "border-ink-200 bg-paper-100 text-ink-350",
-          )}>
+          <span
+            className={cn(
+              "grid h-10 w-10 shrink-0 place-items-center rounded-md border",
+              section.enabled ? "border-ink-200 bg-paper-100 text-ink-650" : "border-ink-200 bg-paper-100 text-ink-350",
+            )}
+          >
             <Icon className="h-5 w-5" />
           </span>
           <div className="min-w-0">
@@ -51,10 +40,12 @@ export function WorkbenchControlDeckHeader({
           </div>
         </div>
 
-        <div className={cn(
-          "flex min-w-0 items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] leading-4 lg:max-w-[340px]",
-          statusToneClassName[tone],
-        )}>
+        <div
+          className={cn(
+            "flex min-w-0 items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] leading-4 lg:max-w-[340px]",
+            statusToneClassName[tone],
+          )}
+        >
           <StatusIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div className="min-w-0">
             <div className="font-semibold">{statusText}</div>

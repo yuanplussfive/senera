@@ -6,7 +6,9 @@
 :root {
   color-scheme: light;
   font-family: var(--theme-ui-font-family, "Geist", ui-sans-serif, system-ui, sans-serif);
-  font-feature-settings: "tnum" on, "ss01" on;
+  font-feature-settings:
+    "tnum" on,
+    "ss01" on;
   --color-paper-50: 255 255 255;
   --color-paper-100: 248 248 246;
   --color-paper-200: 239 238 235;
@@ -70,7 +72,7 @@
   --theme-code-editor-bg: rgb(255 255 255);
   --theme-code-editor-fg: rgb(var(--color-ink-850));
   --theme-code-editor-gutter-bg: rgb(var(--color-paper-200) / 0.72);
-  --theme-code-editor-gutter-border: rgb(var(--color-ink-900) / 0.10);
+  --theme-code-editor-gutter-border: rgb(var(--color-ink-900) / 0.1);
   --theme-code-editor-gutter-fg: rgb(var(--color-ink-900) / 0.42);
   --theme-code-editor-active-line-bg: rgb(var(--color-terra-500) / 0.07);
   --theme-code-editor-active-gutter-bg: rgb(var(--color-terra-500) / 0.09);
@@ -94,12 +96,12 @@
   --theme-config-editor-loading-bg: rgb(255 255 255);
   --theme-chat-user-bg: rgb(var(--color-paper-200));
   --theme-chat-user-fg: rgb(var(--color-ink-900));
-  --theme-chat-user-hover-bg: rgb(var(--color-paper-300) / 0.80);
+  --theme-chat-user-hover-bg: rgb(var(--color-paper-300) / 0.8);
   --theme-chat-user-font-size: 14.5px;
   --theme-chat-user-line-height: 1.55;
   --theme-chat-assistant-font-size: 15px;
   --theme-chat-assistant-line-height: 1.75;
-  --theme-chat-composer-bg: rgb(var(--color-paper-100) / 0.80);
+  --theme-chat-composer-bg: rgb(var(--color-paper-100) / 0.8);
   --theme-chat-composer-focus-bg: rgb(var(--color-paper-50));
   --theme-session-active-bg: rgb(var(--color-ink-900) / 0.055);
   --shadow-bubble-user: 0 1px 1px rgb(43 40 32 / 0.04);

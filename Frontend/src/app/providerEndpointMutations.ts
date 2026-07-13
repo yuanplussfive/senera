@@ -1,9 +1,4 @@
-import {
-  EventKinds,
-  type ConfigFailedData,
-  type ConfigSnapshotData,
-  type EventEnvelope,
-} from "../api/eventTypes";
+import { EventKinds, type ConfigFailedData, type ConfigSnapshotData, type EventEnvelope } from "../api/eventTypes";
 import type {
   ConfigRevisionGuardRequestInput,
   ProviderModelConfigOperationKind,
@@ -53,10 +48,10 @@ export const providerEndpointMessageKeys = {
     success: "config.providerEndpointDeleteSucceeded",
     failure: "config.providerEndpointDeleteFailed",
   },
-} as const satisfies Record<ProviderEndpointOperationKind, Record<
-  "offline" | "configUnavailable" | "disconnected" | "success" | "failure",
-  FrontendMessageKey
->>;
+} as const satisfies Record<
+  ProviderEndpointOperationKind,
+  Record<"offline" | "configUnavailable" | "disconnected" | "success" | "failure", FrontendMessageKey>
+>;
 
 export type ProviderEndpointMutationResolution =
   | {
@@ -126,7 +121,7 @@ function readMatchingPendingOperation(
 }
 
 function isProviderEndpointOperationKind(kind: unknown): kind is ProviderEndpointOperationKind {
-  return kind === "provider.endpoint.upsert"
-    || kind === "provider.endpoint.rename"
-    || kind === "provider.endpoint.delete";
+  return (
+    kind === "provider.endpoint.upsert" || kind === "provider.endpoint.rename" || kind === "provider.endpoint.delete"
+  );
 }

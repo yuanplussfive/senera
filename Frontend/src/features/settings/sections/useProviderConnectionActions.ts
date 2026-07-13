@@ -94,7 +94,8 @@ export function useProviderConnectionActions({
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [renameTarget, setRenameTarget] = useState<ProviderEndpointDraft | null>(null);
   const [pendingProviderDraft, setPendingProviderDraft] = useState<PendingProviderDraft | null>(null);
-  const [pendingProviderDraftConfirmation, setPendingProviderDraftConfirmation] = useState<PendingProviderDraftConfirmation | null>(null);
+  const [pendingProviderDraftConfirmation, setPendingProviderDraftConfirmation] =
+    useState<PendingProviderDraftConfirmation | null>(null);
   const [pendingRename, setPendingRename] = useState<PendingProviderRename | null>(null);
 
   // `readModelServiceState` intentionally materializes fresh provider objects. Depend on
@@ -103,23 +104,22 @@ export function useProviderConnectionActions({
   const providerListKey = JSON.stringify(state.providers.map(normalizeProviderEndpointDraft));
   const pendingRenameProviderId = pendingRename?.providerId;
   const pendingRenameNextProviderId = pendingRename?.nextProviderId;
-  const pendingRenameOperation = pendingRenameProviderId
-    ? operations[pendingRenameProviderId]
-    : undefined;
-  const pendingRenameStatus = pendingRenameOperation && pendingRenameOperation.requestId === pendingRename?.requestId
-    ? pendingRenameOperation.status
-    : undefined;
+  const pendingRenameOperation = pendingRenameProviderId ? operations[pendingRenameProviderId] : undefined;
+  const pendingRenameStatus =
+    pendingRenameOperation && pendingRenameOperation.requestId === pendingRename?.requestId
+      ? pendingRenameOperation.status
+      : undefined;
   const pendingProviderDraftId = pendingProviderDraft?.draft.Id;
-  const pendingAddOperation = pendingProviderDraftId
-    ? operations[pendingProviderDraftId]
-    : undefined;
-  const pendingAddStatus = pendingAddOperation && pendingAddOperation.requestId === pendingProviderDraft?.requestId
-    ? pendingAddOperation.status
-    : undefined;
-  const pendingProviderDraftConfirmationStatus = pendingProviderDraftConfirmation
-    && operations[pendingProviderDraftConfirmation.providerId]?.requestId === pendingProviderDraftConfirmation.requestId
-    ? operations[pendingProviderDraftConfirmation.providerId]?.status
-    : undefined;
+  const pendingAddOperation = pendingProviderDraftId ? operations[pendingProviderDraftId] : undefined;
+  const pendingAddStatus =
+    pendingAddOperation && pendingAddOperation.requestId === pendingProviderDraft?.requestId
+      ? pendingAddOperation.status
+      : undefined;
+  const pendingProviderDraftConfirmationStatus =
+    pendingProviderDraftConfirmation &&
+    operations[pendingProviderDraftConfirmation.providerId]?.requestId === pendingProviderDraftConfirmation.requestId
+      ? operations[pendingProviderDraftConfirmation.providerId]?.status
+      : undefined;
   const providersRef = useRef(state.providers);
   providersRef.current = state.providers;
 
@@ -157,19 +157,26 @@ export function useProviderConnectionActions({
 
     const nextProviderId = providers.some((provider) => provider.Id === selectedProviderId)
       ? selectedProviderId
-      : providers[0]?.Id ?? null;
+      : (providers[0]?.Id ?? null);
     if (nextProviderId !== selectedProviderId) {
       setSelectedProviderId(nextProviderId);
     }
-  }, [pendingAddStatus, pendingProviderDraftId, pendingRenameNextProviderId, pendingRenameProviderId, pendingRenameStatus, providerListKey, selectedProviderId, setSelectedProviderId]);
+  }, [
+    pendingAddStatus,
+    pendingProviderDraftId,
+    pendingRenameNextProviderId,
+    pendingRenameProviderId,
+    pendingRenameStatus,
+    providerListKey,
+    selectedProviderId,
+    setSelectedProviderId,
+  ]);
 
   const acceptedProvider = selectedProviderId
-    ? state.providers.find((provider) => provider.Id === selectedProviderId)
-      ?? (pendingRenameProviderId === selectedProviderId ? draftProvider : null)
-    : state.providers[0] ?? null;
-  const acceptedProviderKey = acceptedProvider
-    ? JSON.stringify(normalizeProviderEndpointDraft(acceptedProvider))
-    : "";
+    ? (state.providers.find((provider) => provider.Id === selectedProviderId) ??
+      (pendingRenameProviderId === selectedProviderId ? draftProvider : null))
+    : (state.providers[0] ?? null);
+  const acceptedProviderKey = acceptedProvider ? JSON.stringify(normalizeProviderEndpointDraft(acceptedProvider)) : "";
   const acceptedProviderRef = useRef(acceptedProvider);
   acceptedProviderRef.current = acceptedProvider;
   const selectedProviderIndex = acceptedProvider
@@ -218,9 +225,17 @@ export function useProviderConnectionActions({
     }
 
     const nextProvider = acceptedProviderKey ? normalizeProviderEndpointDraft(currentAcceptedProvider!) : null;
-    setDraftProvider((current) => sameNullableProvider(current, nextProvider) ? current : nextProvider);
-    setLocalError((current) => current ? null : current);
-  }, [acceptedProviderKey, pendingAddStatus, pendingProviderDraftConfirmation, pendingProviderDraftConfirmationStatus, pendingProviderDraftId, pendingRenameProviderId, selectedProviderId]);
+    setDraftProvider((current) => (sameNullableProvider(current, nextProvider) ? current : nextProvider));
+    setLocalError((current) => (current ? null : current));
+  }, [
+    acceptedProviderKey,
+    pendingAddStatus,
+    pendingProviderDraftConfirmation,
+    pendingProviderDraftConfirmationStatus,
+    pendingProviderDraftId,
+    pendingRenameProviderId,
+    selectedProviderId,
+  ]);
 
   const selectProvider = (provider: ProviderEndpointDraft): boolean => {
     if (dirty) {
@@ -232,11 +247,13 @@ export function useProviderConnectionActions({
   };
 
   const updateDraftProvider = (patch: Partial<ProviderEndpointDraft>): void => {
-    setDraftProvider((current) => applyProviderConnectionDraftPatch({
-      acceptedProvider,
-      currentDraft: current,
-      patch,
-    }));
+    setDraftProvider((current) =>
+      applyProviderConnectionDraftPatch({
+        acceptedProvider,
+        currentDraft: current,
+        patch,
+      }),
+    );
     setLocalError(null);
   };
 
@@ -320,11 +337,7 @@ export function useProviderConnectionActions({
       setLocalError(mutation.message);
       return;
     }
-    onFetchProviderModels(
-      mutation.providerId,
-      force,
-      mutation.endpoint,
-    );
+    onFetchProviderModels(mutation.providerId, force, mutation.endpoint);
   };
 
   return {
@@ -354,10 +367,7 @@ export function useProviderConnectionActions({
   };
 }
 
-function sameNullableProvider(
-  left: ProviderEndpointDraft | null,
-  right: ProviderEndpointDraft | null,
-): boolean {
+function sameNullableProvider(left: ProviderEndpointDraft | null, right: ProviderEndpointDraft | null): boolean {
   if (left === null || right === null) return left === right;
   return sameProviderEndpoint(left, right);
 }

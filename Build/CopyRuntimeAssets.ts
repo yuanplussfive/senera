@@ -8,10 +8,12 @@ import {
 const workspaceRoot = process.cwd();
 const sourceRoot = path.join(workspaceRoot, "Source");
 const distSourceRoot = path.join(workspaceRoot, "Dist", "Source");
-const extraRuntimeAssets = [{
-  source: path.join(workspaceRoot, "Apps", "Desktop", "Preload.cjs"),
-  target: path.join(workspaceRoot, "Dist", "Apps", "Desktop", "Preload.cjs"),
-}];
+const extraRuntimeAssets = [
+  {
+    source: path.join(workspaceRoot, "Apps", "Desktop", "Preload.cjs"),
+    target: path.join(workspaceRoot, "Dist", "Apps", "Desktop", "Preload.cjs"),
+  },
+];
 
 readAgentToolApprovalPolicyArtifact(resolveAgentToolApprovalPolicyArtifactDirectory(sourceRoot));
 const runtimeAssets = discoverRuntimeAssets(sourceRoot);

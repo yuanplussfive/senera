@@ -8,9 +8,7 @@ interface CommandInvocation {
   arguments: string[];
 }
 
-const nativeModules = [
-  "better-sqlite3",
-];
+const nativeModules = ["better-sqlite3"];
 
 const steps = [
   command("npm", ["run", "build"]),
@@ -66,14 +64,7 @@ function command(name: string, args: readonly string[] = []): CommandInvocation 
 
 function clearNativeRebuildMetadata(): void {
   for (const moduleName of nativeModules) {
-    const metadataPath = path.join(
-      process.cwd(),
-      "node_modules",
-      moduleName,
-      "build",
-      "Release",
-      ".forge-meta",
-    );
+    const metadataPath = path.join(process.cwd(), "node_modules", moduleName, "build", "Release", ".forge-meta");
     if (fs.existsSync(metadataPath)) {
       fs.rmSync(metadataPath, { force: true });
     }

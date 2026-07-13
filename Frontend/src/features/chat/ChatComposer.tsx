@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowUp, Check, ChevronDown, Loader2, Paperclip, RotateCcw, Square, X } from "lucide-react";
 import { toast } from "sonner";
-import type {
-  UploadAttachmentData,
-  ModelProviderListItem,
-} from "../../api/eventTypes";
+import type { UploadAttachmentData, ModelProviderListItem } from "../../api/eventTypes";
 import { uploadFile, type UploadProgress } from "../../api/uploadClient";
 import { cn, generateId } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -23,15 +20,9 @@ import {
 import { FilePreviewIcon } from "./FilePreviewIcon";
 import { PresetControl } from "./PresetPanel";
 import { ModelProviderIcon } from "./ModelProviderIcon";
-import {
-  readChatModelProviders,
-  readSelectedModelProvider,
-} from "./modelProvider";
+import { readChatModelProviders, readSelectedModelProvider } from "./modelProvider";
 import type { MessageQueueMode } from "../../app/useChatCommands";
-import type {
-  ChatModelConfig,
-  ChatPresetConfig,
-} from "./ChatPanelContracts";
+import type { ChatModelConfig, ChatPresetConfig } from "./ChatPanelContracts";
 
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
@@ -113,7 +104,8 @@ export function ChatComposer({
     const uploading = pendingAttachments.some((attachment) => attachment.status === "uploading");
     if (!text || disabled || uploading) return;
     const attachments = pendingAttachments.flatMap((entry) =>
-      entry.status === "uploaded" && entry.attachment ? [entry.attachment] : []);
+      entry.status === "uploaded" && entry.attachment ? [entry.attachment] : [],
+    );
     onSend(text, attachments.length > 0 ? attachments : undefined, queueMode);
     setValue("");
     setPendingAttachments([]);
@@ -154,28 +146,33 @@ export function ChatComposer({
       ]);
       void uploadFile(runtime.uploadUrl, file, {
         onProgress: (progress) => {
-          setPendingAttachments((current) => current.map((entry) =>
-            entry.id === id ? { ...entry, progress } : entry));
+          setPendingAttachments((current) =>
+            current.map((entry) => (entry.id === id ? { ...entry, progress } : entry)),
+          );
         },
       })
         .then((attachment) => {
-          setPendingAttachments((current) => current.map((entry) =>
-            entry.id === id
-              ? {
-                  ...entry,
-                  fileName: attachment.name,
-                  mime: attachment.mime,
-                  size: attachment.size,
-                  status: "uploaded",
-                  progress: { loaded: attachment.size, total: attachment.size, ratio: 1 },
-                  attachment,
-                }
-              : entry));
+          setPendingAttachments((current) =>
+            current.map((entry) =>
+              entry.id === id
+                ? {
+                    ...entry,
+                    fileName: attachment.name,
+                    mime: attachment.mime,
+                    size: attachment.size,
+                    status: "uploaded",
+                    progress: { loaded: attachment.size, total: attachment.size, ratio: 1 },
+                    attachment,
+                  }
+                : entry,
+            ),
+          );
         })
         .catch((error) => {
           const message = error instanceof Error ? error.message : String(error);
-          setPendingAttachments((current) => current.map((entry) =>
-            entry.id === id ? { ...entry, status: "error", error: message } : entry));
+          setPendingAttachments((current) =>
+            current.map((entry) => (entry.id === id ? { ...entry, status: "error", error: message } : entry)),
+          );
           toast.error(frontendMessage("upload.fileFailed"), { description: message });
         });
     }
@@ -244,7 +241,8 @@ export function ChatComposer({
       >
         {isDraggingFiles ? (
           <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-[14px] border border-dashed border-terra-300 bg-paper-50/80 text-[13px] font-medium text-terra-700 backdrop-blur-sm">
-            {frontendMessage("runtime.migrated.features.chat.ChatComposer.247.13")}</div>
+            {frontendMessage("runtime.migrated.features.chat.ChatComposer.247.13")}
+          </div>
         ) : null}
         <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFileSelection} />
         {pendingAttachments.length > 0 ? (
@@ -311,7 +309,7 @@ export function ChatComposer({
           ) : (
             <Tooltip content="发送" side="top" shortcut={prefersCompactControls ? undefined : "↵"}>
               <MotionButton
-                  onClick={() => submit(undefined)}
+                onClick={() => submit(undefined)}
                 disabled={!canSend}
                 className={cn(
                   "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
@@ -458,12 +456,9 @@ function formatUploadProgress(progress?: UploadProgress): string {
 }
 
 function readProgressRatio(progress?: UploadProgress): number | undefined {
-  const ratio = progress?.ratio ?? (
-    progress?.total && progress.total > 0 ? progress.loaded / progress.total : undefined
-  );
-  return typeof ratio === "number" && Number.isFinite(ratio)
-    ? Math.min(1, Math.max(0, ratio))
-    : undefined;
+  const ratio =
+    progress?.ratio ?? (progress?.total && progress.total > 0 ? progress.loaded / progress.total : undefined);
+  return typeof ratio === "number" && Number.isFinite(ratio) ? Math.min(1, Math.max(0, ratio)) : undefined;
 }
 
 function formatFileSize(bytes: number): string {
@@ -502,14 +497,8 @@ function ModelSelector({
   onUseDefault?: () => void;
   prefersCompactControls: boolean;
 }): JSX.Element {
-  const chatModels = useMemo(
-    () => readChatModelProviders(models),
-    [models],
-  );
-  const selected = useMemo(
-    () => readSelectedModelProvider(chatModels, selectedId) ?? null,
-    [chatModels, selectedId],
-  );
+  const chatModels = useMemo(() => readChatModelProviders(models), [models]);
+  const selected = useMemo(() => readSelectedModelProvider(chatModels, selectedId) ?? null, [chatModels, selectedId]);
   const label = readModelSelectorLabel(selected);
   const defaultModel = useMemo(
     () => readSelectedModelProvider(chatModels, defaultModelId ?? null) ?? null,
@@ -530,11 +519,7 @@ function ModelSelector({
           )}
           aria-label="选择模型"
         >
-          <ModelProviderIcon
-            className="shrink-0"
-            icon={selected?.icon}
-            size={14}
-          />
+          <ModelProviderIcon className="shrink-0" icon={selected?.icon} size={14} />
           <span className="truncate">{label}</span>
           <ChevronDown className="h-3 w-3 shrink-0 text-ink-350" />
         </MotionButton>
@@ -549,18 +534,15 @@ function ModelSelector({
               key={model.id}
               onSelect={() => onSelect(model.id)}
               className="h-10 py-2"
-              icon={active
-                ? <Check className="h-3.5 w-3.5 text-terra-500" />
-                : (
-                  <ModelProviderIcon
-                    icon={model.icon}
-                    size={14}
-                  />
-                )}
+              icon={
+                active ? (
+                  <Check className="h-3.5 w-3.5 text-terra-500" />
+                ) : (
+                  <ModelProviderIcon icon={model.icon} size={14} />
+                )
+              }
             >
-              <span className="min-w-0 truncate text-[13px] text-ink-850">
-                {readModelSelectorLabel(model)}
-              </span>
+              <span className="min-w-0 truncate text-[13px] text-ink-850">{readModelSelectorLabel(model)}</span>
             </DropdownMenuItem>
           );
         })}

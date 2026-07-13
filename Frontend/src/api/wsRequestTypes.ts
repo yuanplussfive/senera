@@ -1,10 +1,5 @@
 import type { ApprovalResolvedData } from "./approvalEventTypes";
-import type {
-  PresetFormat,
-  ProviderModelEndpointInput,
-  UploadAttachmentData,
-  UserProfileData,
-} from "./eventTypes";
+import type { PresetFormat, ProviderModelEndpointInput, UploadAttachmentData, UserProfileData } from "./eventTypes";
 import type { ProviderModelConfigRequest } from "./providerModelCommandTypes";
 
 type ApprovalResolveStatus = ApprovalResolvedData["status"];

@@ -6,11 +6,7 @@ import { useAppearance } from "../theme";
 import { Dialog, DialogContent, Tooltip, useClipboardCopy } from "../ui";
 import { CodeArtifactSourceView } from "./CodeArtifactSourceView";
 import { type CodeArtifact } from "./CodeArtifactModel";
-import {
-  applyCodePreviewTheme,
-  createCodePreviewThemeVariables,
-  readDownloadMime,
-} from "./CodePreviewRegistry";
+import { applyCodePreviewTheme, createCodePreviewThemeVariables, readDownloadMime } from "./CodePreviewRegistry";
 
 interface CodeArtifactViewerProps {
   artifact: CodeArtifact;
@@ -27,21 +23,16 @@ export function CodeArtifactViewer({
   initialView,
   onOpenChange,
 }: CodeArtifactViewerProps): JSX.Element {
-  const defaultView = useMemo<ArtifactView>(
-    () => (artifact.preview ? "preview" : "source"),
-    [artifact.preview],
-  );
+  const defaultView = useMemo<ArtifactView>(() => (artifact.preview ? "preview" : "source"), [artifact.preview]);
   const [view, setView] = useState<ArtifactView>(initialView ?? defaultView);
   const [wrapped, setWrapped] = useState(false);
   const { copied, copyText } = useClipboardCopy({ successMessage: "代码已复制" });
   const { tokens } = useAppearance();
   const previewSource = useMemo(
-    () => artifact.preview
-      ? applyCodePreviewTheme(
-        artifact.preview.source,
-        createCodePreviewThemeVariables(tokens.cssVariables),
-      )
-      : null,
+    () =>
+      artifact.preview
+        ? applyCodePreviewTheme(artifact.preview.source, createCodePreviewThemeVariables(tokens.cssVariables))
+        : null,
     [artifact.preview, tokens.cssVariables],
   );
 
@@ -81,7 +72,8 @@ export function CodeArtifactViewer({
                 onClick={() => setView("source")}
               >
                 <FileCode className="h-3.5 w-3.5" />
-                {frontendMessage("runtime.migrated.shared.code.CodeArtifactViewer.83.17")}</button>
+                {frontendMessage("runtime.migrated.shared.code.CodeArtifactViewer.83.17")}
+              </button>
               {artifact.preview ? (
                 <button
                   type="button"
@@ -100,7 +92,8 @@ export function CodeArtifactViewer({
                 className={cn("code-artifact-viewer__button", wrapped && "is-active")}
                 onClick={() => setWrapped((value) => !value)}
               >
-                {frontendMessage("runtime.migrated.shared.code.CodeArtifactViewer.103.17")}</button>
+                {frontendMessage("runtime.migrated.shared.code.CodeArtifactViewer.103.17")}
+              </button>
               <Tooltip content={copied ? "已复制" : "复制"} side="top">
                 <button
                   type="button"
@@ -133,11 +126,7 @@ export function CodeArtifactViewer({
                 srcDoc={previewSource ?? artifact.preview.source}
               />
             ) : (
-              <CodeArtifactSourceView
-                code={artifact.code}
-                language={artifact.language}
-                wrapped={wrapped}
-              />
+              <CodeArtifactSourceView code={artifact.code} language={artifact.language} wrapped={wrapped} />
             )}
           </div>
         </div>

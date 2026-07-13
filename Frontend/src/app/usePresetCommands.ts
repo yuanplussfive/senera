@@ -21,9 +21,12 @@ type PendingPresetOperation = {
   kind: Extract<PresetOperationKind, "save" | "delete" | "set_active">;
 };
 
-type PresetMutationRequest = Extract<WsRequest, {
-  type: "preset.save" | "preset.delete" | "preset.set_active";
-}>;
+type PresetMutationRequest = Extract<
+  WsRequest,
+  {
+    type: "preset.save" | "preset.delete" | "preset.set_active";
+  }
+>;
 
 export type PresetSaveInput = {
   name: string;
@@ -94,10 +97,7 @@ export function resolvePresetEvent(
   return null;
 }
 
-export function usePresetCommands({
-  send,
-  status,
-}: UsePresetCommandsOptions): PresetCommandsHandle {
+export function usePresetCommands({ send, status }: UsePresetCommandsOptions): PresetCommandsHandle {
   const presets = useStore((s) => s.presets);
   const activePresetName = useStore((s) => s.activePresetName);
   const presetsEnabled = useStore((s) => s.presetsEnabled);
@@ -127,9 +127,7 @@ export function usePresetCommands({
       return true;
     }
 
-    const pending = resolution.requestId
-      ? pendingPresetOpsRef.current.get(resolution.requestId)
-      : undefined;
+    const pending = resolution.requestId ? pendingPresetOpsRef.current.get(resolution.requestId) : undefined;
     if (resolution.requestId && pending) {
       const requestId = resolution.requestId;
       pendingPresetOpsRef.current.delete(requestId);
@@ -158,59 +156,68 @@ export function usePresetCommands({
     send({ type: "preset.list" });
   }, [send, status]);
 
-  const savePreset = useCallback((input: PresetSaveInput): string | null => {
-    return startPresetOperation({
-      send,
-      status,
-      setPresetOperations,
-      pendingPresetOpsRef,
-      pending: {
-        name: input.name,
-        kind: "save",
-      },
-      request: {
-        type: "preset.save",
-        name: input.name,
-        format: input.format,
-        content: input.content,
-        activate: input.activate,
-      },
-    });
-  }, [send, status]);
+  const savePreset = useCallback(
+    (input: PresetSaveInput): string | null => {
+      return startPresetOperation({
+        send,
+        status,
+        setPresetOperations,
+        pendingPresetOpsRef,
+        pending: {
+          name: input.name,
+          kind: "save",
+        },
+        request: {
+          type: "preset.save",
+          name: input.name,
+          format: input.format,
+          content: input.content,
+          activate: input.activate,
+        },
+      });
+    },
+    [send, status],
+  );
 
-  const deletePreset = useCallback((name: string): string | null => {
-    return startPresetOperation({
-      send,
-      status,
-      setPresetOperations,
-      pendingPresetOpsRef,
-      pending: {
-        name,
-        kind: "delete",
-      },
-      request: {
-        type: "preset.delete",
-        name,
-      },
-    });
-  }, [send, status]);
+  const deletePreset = useCallback(
+    (name: string): string | null => {
+      return startPresetOperation({
+        send,
+        status,
+        setPresetOperations,
+        pendingPresetOpsRef,
+        pending: {
+          name,
+          kind: "delete",
+        },
+        request: {
+          type: "preset.delete",
+          name,
+        },
+      });
+    },
+    [send, status],
+  );
 
-  const setActivePreset = useCallback((name: string | null): string | null => {
-    return startPresetOperation({
-      send,
-      status,
-      setPresetOperations,
-      pendingPresetOpsRef,
-      pending: {
-        name,
-        kind: "set_active",
-      },
-      request: {
-        type: "preset.set_active",
-        name,
-      },
-    });
-  }, [send, status]);
+  const setActivePreset = useCallback(
+    (name: string | null): string | null => {
+      return startPresetOperation({
+        send,
+        status,
+        setPresetOperations,
+        pendingPresetOpsRef,
+        pending: {
+          name,
+          kind: "set_active",
+        },
+        request: {
+          type: "preset.set_active",
+          name,
+        },
+      });
+    },
+    [send, status],
+  );
 
   return {
     activePresetName,

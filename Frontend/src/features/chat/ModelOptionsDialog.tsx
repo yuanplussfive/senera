@@ -1,34 +1,11 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import {
-  BrainCircuit,
-  Settings2,
-  SlidersHorizontal,
-  Trash2,
-} from "lucide-react";
+import { BrainCircuit, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "../../lib/util";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  ScrollArea,
-} from "../../shared/ui";
-import {
-  ModelProviderIcon,
-  ModelProviderIconNames,
-} from "./ModelProviderIcon";
-import {
-  readBooleanWithTemplate,
-  readModelCapabilities,
-  readNumberWithTemplate,
-} from "./modelConfigData";
-import type {
-  ModelCapabilitiesDraft,
-  ModelProviderDraft,
-} from "./modelConfigTypes";
-import {
-  CapabilityToggle,
-  ModelCapabilityIconItems,
-} from "./ModelCapabilityControls";
+import { Button, Dialog, DialogContent, ScrollArea } from "../../shared/ui";
+import { ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
+import { readBooleanWithTemplate, readModelCapabilities, readNumberWithTemplate } from "./modelConfigData";
+import type { ModelCapabilitiesDraft, ModelProviderDraft } from "./modelConfigTypes";
+import { CapabilityToggle, ModelCapabilityIconItems } from "./ModelCapabilityControls";
 import {
   MenuRow,
   MenuSelect,
@@ -93,19 +70,14 @@ export function ModelOptionsDialog({
   );
   const maxRequestSeconds = readNumberWithTemplate(model.MaxRequestSeconds, modelTemplate, "MaxRequestSeconds");
   const maxNetworkRetries = readNumberWithTemplate(model.MaxNetworkRetries, modelTemplate, "MaxNetworkRetries");
-  const contextWindowTokens = readNumberWithTemplate(
-    model.ContextWindowTokens,
-    modelTemplate,
-    "ContextWindowTokens",
-  );
+  const contextWindowTokens = readNumberWithTemplate(model.ContextWindowTokens, modelTemplate, "ContextWindowTokens");
   const maxModelOutputTokens = readNumberWithTemplate(
     model.MaxModelOutputTokens,
     modelTemplate,
     "MaxModelOutputTokens",
   );
-  const streamEnabled = typeof model.Stream === "boolean"
-    ? model.Stream
-    : readBooleanWithTemplate(modelTemplate, "Stream");
+  const streamEnabled =
+    typeof model.Stream === "boolean" ? model.Stream : readBooleanWithTemplate(modelTemplate, "Stream");
 
   const updateCapability = (key: keyof ModelCapabilitiesDraft, enabled: boolean): void => {
     onChange({
@@ -128,7 +100,10 @@ export function ModelOptionsDialog({
         <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
           <div className="space-y-5 px-5 py-4">
             <section>
-              <SectionLabel icon={<SlidersHorizontal className="h-4 w-4" />} title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.130.84")} />
+              <SectionLabel
+                icon={<SlidersHorizontal className="h-4 w-4" />}
+                title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.130.84")}
+              />
               <div className="grid gap-2 sm:grid-cols-2">
                 {ModelCapabilityIconItems.map((item) => (
                   <CapabilityToggle
@@ -145,11 +120,22 @@ export function ModelOptionsDialog({
             </section>
 
             <section>
-              <SectionLabel icon={<Settings2 className="h-4 w-4" />} title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.147.76")} />
+              <SectionLabel
+                icon={<Settings2 className="h-4 w-4" />}
+                title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.147.76")}
+              />
               <SettingsTable>
-                <TextRow label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.149.32")} value={model.Model} disabled icon={<Settings2 className="h-3.5 w-3.5" />} />
+                <TextRow
+                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.149.32")}
+                  value={model.Model}
+                  disabled
+                  icon={<Settings2 className="h-3.5 w-3.5" />}
+                />
                 {onGroupChange ? (
-                  <MenuRow icon={<BrainCircuit className="h-3.5 w-3.5" />} label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.151.82")}>
+                  <MenuRow
+                    icon={<BrainCircuit className="h-3.5 w-3.5" />}
+                    label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.151.82")}
+                  >
                     <MenuSelect
                       value={groupId}
                       placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.154.35")}
@@ -163,7 +149,10 @@ export function ModelOptionsDialog({
             </section>
 
             <section>
-              <SectionLabel icon={<BrainCircuit className="h-4 w-4" />} title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.165.79")} />
+              <SectionLabel
+                icon={<BrainCircuit className="h-4 w-4" />}
+                title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.165.79")}
+              />
               <SettingsTable>
                 <NumberRow
                   label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.168.25")}
@@ -183,7 +172,10 @@ export function ModelOptionsDialog({
                   placeholder="-1"
                   onChange={(MaxModelOutputTokens) => onChange({ MaxModelOutputTokens })}
                 />
-                <MenuRow icon={<Settings2 className="h-3.5 w-3.5" />} label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.185.77")}>
+                <MenuRow
+                  icon={<Settings2 className="h-3.5 w-3.5" />}
+                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.185.77")}
+                >
                   <MenuSelect
                     value={model.Endpoint}
                     placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.188.33")}
@@ -192,18 +184,23 @@ export function ModelOptionsDialog({
                     onChange={(Endpoint) => onChange({ Endpoint })}
                   />
                 </MenuRow>
-                <MenuRow icon={<BrainCircuit className="h-3.5 w-3.5" />} label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.194.80")}>
+                <MenuRow
+                  icon={<BrainCircuit className="h-3.5 w-3.5" />}
+                  label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.194.80")}
+                >
                   <MenuSelect
                     value={model.Icon ?? ""}
                     placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.197.33")}
                     options={iconOptions}
                     disabled={disabled}
-                    renderValue={(value) => value ? (
-                      <span className="inline-flex min-w-0 items-center gap-2">
-                        <ModelProviderIcon icon={value} size={18} />
-                        <span className="truncate">{value}</span>
-                      </span>
-                    ) : null}
+                    renderValue={(value) =>
+                      value ? (
+                        <span className="inline-flex min-w-0 items-center gap-2">
+                          <ModelProviderIcon icon={value} size={18} />
+                          <span className="truncate">{value}</span>
+                        </span>
+                      ) : null
+                    }
                     renderOption={(option) => (
                       <span className="inline-flex min-w-0 items-center gap-2">
                         <ModelProviderIcon icon={option.value} size={16} />
@@ -217,7 +214,10 @@ export function ModelOptionsDialog({
             </section>
 
             <section>
-              <SectionLabel icon={<SlidersHorizontal className="h-4 w-4" />} title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.219.84")} />
+              <SectionLabel
+                icon={<SlidersHorizontal className="h-4 w-4" />}
+                title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.219.84")}
+              />
               <SettingsTable>
                 <NumberRow
                   label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.222.25")}
@@ -320,11 +320,7 @@ export function ModelOptionsDialog({
                 {isDefault ? "DEFAULT" : "设为默认"}
               </button>
             ) : null}
-            <Button
-              size="sm"
-              disabled={disabled}
-              onClick={onCommit}
-            >
+            <Button size="sm" disabled={disabled} onClick={onCommit}>
               {isSaved ? commitLabels.existing : commitLabels.new}
             </Button>
           </div>

@@ -7,17 +7,15 @@ import type { StoreState } from "./types";
  * An active conversation keeps its own local model choice until the user explicitly
  * chooses the default again. This matches the Chat model ownership shown in the UI.
  */
-export function applyModelListSnapshotSelection(
-  state: StoreState,
-  data: ModelListSnapshotData,
-): void {
+export function applyModelListSnapshotSelection(state: StoreState, data: ModelListSnapshotData): void {
   state.modelProviders = data.models;
   const chatModels = readChatModelProviders(data.models);
   const availableIds = new Set(chatModels.map((model) => model.id));
-  const defaultModelId = chatModels.find((model) => model.id === data.defaultModelProviderId)?.id
-    ?? chatModels.find((model) => model.isDefault)?.id
-    ?? chatModels[0]?.id
-    ?? null;
+  const defaultModelId =
+    chatModels.find((model) => model.id === data.defaultModelProviderId)?.id ??
+    chatModels.find((model) => model.isDefault)?.id ??
+    chatModels[0]?.id ??
+    null;
 
   state.defaultModelProviderId = defaultModelId;
   for (const [sessionId, modelId] of Object.entries(state.selectedModelProviderIdsBySession)) {
@@ -48,14 +46,9 @@ export function syncActiveSessionModelSelection(state: StoreState): void {
   syncActiveSessionModelSelectionWithAvailableIds(state, availableIds);
 }
 
-function syncActiveSessionModelSelectionWithAvailableIds(
-  state: StoreState,
-  availableIds: ReadonlySet<string>,
-): void {
+function syncActiveSessionModelSelectionWithAvailableIds(state: StoreState, availableIds: ReadonlySet<string>): void {
   const activeSessionId = state.activeSessionId;
-  const fallbackModelId = isAvailable(state.defaultModelProviderId, availableIds)
-    ? state.defaultModelProviderId
-    : null;
+  const fallbackModelId = isAvailable(state.defaultModelProviderId, availableIds) ? state.defaultModelProviderId : null;
 
   if (!activeSessionId) {
     state.selectedModelProviderId = isAvailable(state.selectedModelProviderId, availableIds)
@@ -80,9 +73,6 @@ function syncActiveSessionModelSelectionWithAvailableIds(
   state.selectedModelProviderId = selectedModelId;
 }
 
-function isAvailable(
-  modelId: string | null | undefined,
-  availableIds: ReadonlySet<string>,
-): modelId is string {
+function isAvailable(modelId: string | null | undefined, availableIds: ReadonlySet<string>): modelId is string {
   return typeof modelId === "string" && availableIds.has(modelId);
 }

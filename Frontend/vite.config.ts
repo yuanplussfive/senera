@@ -21,9 +21,7 @@ export default defineConfig({
     __SENERA_DEFAULT_WS_URL__: JSON.stringify(frontendConfig.Client.WebSocketUrl),
     __SENERA_DEFAULT_MODEL_LABEL__: JSON.stringify(frontendConfig.Client.ModelLabel),
     __SENERA_DEFAULT_USER_NAME__: JSON.stringify(frontendConfig.Client.UserName),
-    __SENERA_EMPTY_SUGGESTIONS__: JSON.stringify(
-      frontendConfig.Client.EmptySuggestions.join("|"),
-    ),
+    __SENERA_EMPTY_SUGGESTIONS__: JSON.stringify(frontendConfig.Client.EmptySuggestions.join("|")),
     __SENERA_APP_VERSION__: JSON.stringify(rootPackageJson.version ?? "0.0.0"),
     __SENERA_FRONTEND_VERSION__: JSON.stringify(frontendPackageJson.version ?? "0.0.0"),
   },

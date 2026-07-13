@@ -43,18 +43,10 @@ export const WithIcons: Story = () => (
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem icon={<Edit className="h-4 w-4" />}>
-          Edit
-        </ContextMenuItem>
-        <ContextMenuItem icon={<Copy className="h-4 w-4" />}>
-          Copy
-        </ContextMenuItem>
-        <ContextMenuItem icon={<Download className="h-4 w-4" />}>
-          Download
-        </ContextMenuItem>
-        <ContextMenuItem icon={<Share className="h-4 w-4" />}>
-          Share
-        </ContextMenuItem>
+        <ContextMenuItem icon={<Edit className="h-4 w-4" />}>Edit</ContextMenuItem>
+        <ContextMenuItem icon={<Copy className="h-4 w-4" />}>Copy</ContextMenuItem>
+        <ContextMenuItem icon={<Download className="h-4 w-4" />}>Download</ContextMenuItem>
+        <ContextMenuItem icon={<Share className="h-4 w-4" />}>Share</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem icon={<Trash2 className="h-4 w-4" />} destructive>
           Delete
@@ -113,12 +105,8 @@ export const DocumentPreview: Story = () => (
           <ContextMenuItem icon={<Copy className="h-4 w-4" />} shortcut="⌘C">
             Copy content
           </ContextMenuItem>
-          <ContextMenuItem icon={<Edit className="h-4 w-4" />}>
-            Edit document
-          </ContextMenuItem>
-          <ContextMenuItem icon={<Share className="h-4 w-4" />}>
-            Share document
-          </ContextMenuItem>
+          <ContextMenuItem icon={<Edit className="h-4 w-4" />}>Edit document</ContextMenuItem>
+          <ContextMenuItem icon={<Share className="h-4 w-4" />}>Share document</ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem icon={<Trash2 className="h-4 w-4" />} destructive>
             Delete document

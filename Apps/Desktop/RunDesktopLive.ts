@@ -11,9 +11,7 @@ interface CommandInvocation {
   env?: NodeJS.ProcessEnv;
 }
 
-const nativeModules = [
-  "better-sqlite3",
-];
+const nativeModules = ["better-sqlite3"];
 
 const frontendUrl = process.env.SENERA_DESKTOP_FRONTEND_URL?.trim() || "http://127.0.0.1:5173";
 const runningChildren = new Set<ChildProcess>();
@@ -53,13 +51,12 @@ async function main(): Promise<void> {
     }
 
     await waitForFrontend(frontendUrl);
-    const electronProcess = start(command("electron", [
-      "--remote-debugging-port=9333",
-      "Dist/Apps/Desktop/Main.js",
-    ], {
-      ...process.env,
-      SENERA_DESKTOP_FRONTEND_URL: frontendUrl,
-    }));
+    const electronProcess = start(
+      command("electron", ["--remote-debugging-port=9333", "Dist/Apps/Desktop/Main.js"], {
+        ...process.env,
+        SENERA_DESKTOP_FRONTEND_URL: frontendUrl,
+      }),
+    );
     process.exitCode = await waitForExit(electronProcess);
   } finally {
     await shutdownChildren();
@@ -168,9 +165,10 @@ function killProcessTree(child: ChildProcess): Promise<void> {
       return;
     }
 
-    const killer = process.platform === "win32"
-      ? spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true })
-      : undefined;
+    const killer =
+      process.platform === "win32"
+        ? spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true })
+        : undefined;
     if (!killer) {
       child.kill("SIGTERM");
       resolve();
@@ -191,14 +189,7 @@ function restoreNativeDependencies(): void {
 
 function clearNativeRebuildMetadata(): void {
   for (const moduleName of nativeModules) {
-    const metadataPath = path.join(
-      process.cwd(),
-      "node_modules",
-      moduleName,
-      "build",
-      "Release",
-      ".forge-meta",
-    );
+    const metadataPath = path.join(process.cwd(), "node_modules", moduleName, "build", "Release", ".forge-meta");
     if (fs.existsSync(metadataPath)) {
       fs.rmSync(metadataPath, { force: true });
     }

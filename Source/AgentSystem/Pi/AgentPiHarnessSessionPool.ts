@@ -1,6 +1,5 @@
 import {
   AgentHarness,
-  type AgentEvent,
   type AgentHarnessOptions,
   type AgentHarnessResources,
   type PromptTemplate,
@@ -14,36 +13,16 @@ import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import { AgentPiProxyContextHeader } from "../PiProxy/AgentPiProxyRuntimeContext.js";
-import type {
-  AgentPiHarnessEvent,
-  AgentPiHarnessTraceContext,
-} from "./AgentPiHarnessEvents.js";
-import {
-  isPiCoreAgentEvent,
-  projectPiHarnessTraceEvent,
-} from "./AgentPiHarnessEvents.js";
+import type { AgentPiHarnessEvent, AgentPiHarnessTraceContext } from "./AgentPiHarnessEvents.js";
+import { isPiCoreAgentEvent, projectPiHarnessTraceEvent } from "./AgentPiHarnessEvents.js";
 import { AgentPiHarnessSession } from "./AgentPiHarnessSession.js";
 import type { AgentPiSession } from "./AgentPiSubstrate.js";
-import {
-  renderPiHarnessSystemPrompt,
-  type AgentPiSelectedPromptTemplateFrame,
-} from "./AgentPiPromptFrameProjector.js";
-import {
-  applyAgentPiContextPolicy,
-  type AgentPiContextPolicyFrame,
-} from "./AgentPiContextPolicy.js";
-import type {
-  AgentPiModelProjection,
-  AgentPiProviderProjection,
-  AgentPiToolDefinition,
-} from "./AgentPiTypes.js";
+import { renderPiHarnessSystemPrompt, type AgentPiSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
+import { applyAgentPiContextPolicy, type AgentPiContextPolicyFrame } from "./AgentPiContextPolicy.js";
+import type { AgentPiProviderProjection, AgentPiToolDefinition } from "./AgentPiTypes.js";
 
 type AgentPiHarness = AgentHarness<Skill, PromptTemplate, AgentPiToolDefinition>;
-type AgentPiHarnessOptions = AgentHarnessOptions<
-  Skill,
-  PromptTemplate,
-  AgentPiToolDefinition
->;
+type AgentPiHarnessOptions = AgentHarnessOptions<Skill, PromptTemplate, AgentPiToolDefinition>;
 
 export interface AgentPiHarnessSessionFrame {
   sessionId?: string;
@@ -239,15 +218,14 @@ export class AgentPiHarnessSessionPool {
           selectedPromptTemplates: frame.snapshot().selectedPromptTemplates,
         }),
     };
-    const harness = this.options.harnessFactory?.(harnessOptions)
-      ?? new AgentHarness<Skill, PromptTemplate, AgentPiToolDefinition>(harnessOptions);
+    const harness =
+      this.options.harnessFactory?.(harnessOptions) ??
+      new AgentHarness<Skill, PromptTemplate, AgentPiToolDefinition>(harnessOptions);
     const disposeTrace = harness.subscribe((event) =>
-      this.emitHarnessTrace(frame.snapshot(), event as AgentPiHarnessEvent));
+      this.emitHarnessTrace(frame.snapshot(), event as AgentPiHarnessEvent),
+    );
     const disposeContextPolicy = harness.on("context", (event) => ({
-      messages: applyAgentPiContextPolicy(
-        event.messages,
-        frame.snapshot().contextPolicy,
-      ),
+      messages: applyAgentPiContextPolicy(event.messages, frame.snapshot().contextPolicy),
     }));
     const pooled: PooledHarness = {
       harness,
@@ -264,10 +242,7 @@ export class AgentPiHarnessSessionPool {
     };
   }
 
-  private async configurePooledHarness(
-    pooled: PooledHarness,
-    input: AgentPiHarnessLeaseInput,
-  ): Promise<void> {
+  private async configurePooledHarness(pooled: PooledHarness, input: AgentPiHarnessLeaseInput): Promise<void> {
     pooled.frame.update(input.frame);
     pooled.disposePreflight?.();
     pooled.disposePreflight = pooled.harness.on("tool_call", (event) =>
@@ -275,7 +250,8 @@ export class AgentPiHarnessSessionPool {
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         input: event.input,
-      }));
+      }),
+    );
 
     await pooled.harness.waitForIdle();
     await pooled.harness.setTools([...input.tools], [...input.activeToolNames]);
@@ -293,17 +269,10 @@ export class AgentPiHarnessSessionPool {
   }
 
   private providerHeaders(frame: AgentPiHarnessSessionFrame): Record<string, string> {
-    return composePiProxyRequestHeaders(
-      this.options.provider.headers,
-      frame.piProxyRuntimeContextId,
-    );
+    return composePiProxyRequestHeaders(this.options.provider.headers, frame.piProxyRuntimeContextId);
   }
 
-  private releasePooledHarness(
-    sessionId: string,
-    pooled: PooledHarness,
-    releaseLease: () => void,
-  ): void {
+  private releasePooledHarness(sessionId: string, pooled: PooledHarness, releaseLease: () => void): void {
     pooled.activeLeases = Math.max(0, pooled.activeLeases - 1);
     pooled.lastAccess = this.nextAccessSequence();
     releaseLease();
@@ -340,10 +309,7 @@ export class AgentPiHarnessSessionPool {
     return this.accessSequence;
   }
 
-  private async emitHarnessTrace(
-    frame: AgentPiHarnessSessionFrame,
-    event: AgentPiHarnessEvent,
-  ): Promise<void> {
+  private async emitHarnessTrace(frame: AgentPiHarnessSessionFrame, event: AgentPiHarnessEvent): Promise<void> {
     if (isPiCoreAgentEvent(event)) {
       return;
     }

@@ -5,41 +5,38 @@ import { findTopField } from "../../chat/modelConfigData";
 import { MenuSelect } from "../../chat/ModelConfigPrimitives";
 import { SettingsWorkspaceState } from "../SettingsWorkspaceSurface";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
-import {
-  readDefaultAssistantModelCandidates,
-  readModelServiceState,
-} from "./modelServiceState";
+import { readDefaultAssistantModelCandidates, readModelServiceState } from "./modelServiceState";
 
 const EMPTY_DRAFT: Record<string, unknown> = {};
 
 /** Dedicated immediate-save surface for the runtime assistant model. */
-export function DefaultModelSection({
-  systemConfig,
-}: {
-  systemConfig?: SettingsSystemConfigHandle;
-}): JSX.Element {
+export function DefaultModelSection({ systemConfig }: { systemConfig?: SettingsSystemConfigHandle }): JSX.Element {
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
   const snapshot = systemConfig?.configSnapshot ?? null;
   const modelSection = snapshot?.form.sections.find((section) => section.name === "models") ?? null;
-  const state = systemConfig && snapshot && modelSection
-    ? readModelServiceState({
-      catalogs: systemConfig.providerModelCatalogs,
-      draft: EMPTY_DRAFT,
-      errors: systemConfig.providerModelErrors,
-      loadingIds: systemConfig.providerModelLoadingIds,
-      section: modelSection,
-    })
-    : null;
+  const state =
+    systemConfig && snapshot && modelSection
+      ? readModelServiceState({
+          catalogs: systemConfig.providerModelCatalogs,
+          draft: EMPTY_DRAFT,
+          errors: systemConfig.providerModelErrors,
+          loadingIds: systemConfig.providerModelLoadingIds,
+          section: modelSection,
+        })
+      : null;
   const modelTemplate = useMemo(
     () => findTopField(modelSection ?? undefined, "ModelProviders")?.defaultItem ?? {},
     [modelSection],
   );
   const candidates = useMemo(
-    () => state ? readDefaultAssistantModelCandidates({
-      models: state.models,
-      providers: state.providers,
-      modelTemplate,
-    }) : [],
+    () =>
+      state
+        ? readDefaultAssistantModelCandidates({
+            models: state.models,
+            providers: state.providers,
+            modelTemplate,
+          })
+        : [],
     [modelTemplate, state],
   );
   const currentModelId = state?.defaultSlots.find((slot) => slot.definition.id === "assistant")?.selectedModelId ?? "";
@@ -76,7 +73,10 @@ export function DefaultModelSection({
               <MenuSelect
                 value={currentModelId}
                 placeholder="选择默认助手模型"
-                options={candidates.map(({ model, provider }) => ({ value: model.Id, label: `${model.Model} · ${provider.Id}` }))}
+                options={candidates.map(({ model, provider }) => ({
+                  value: model.Id,
+                  label: `${model.Model} · ${provider.Id}`,
+                }))}
                 disabled={candidates.length === 0 || operationPending}
                 onChange={selectModel}
               />

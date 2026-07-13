@@ -1,9 +1,5 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BrainCircuit,
@@ -25,13 +21,8 @@ import type {
   ProviderModelsSnapshotData,
 } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import {
-  Button,
-  ScrollArea,
-} from "../../shared/ui";
-import {
-  JsonConfigSettingsView,
-} from "../../shared/config/JsonConfigForm";
+import { Button, ScrollArea } from "../../shared/ui";
+import { JsonConfigSettingsView } from "../../shared/config/JsonConfigForm";
 import { ModelConfigView } from "./ModelConfigView";
 import { PlanningConfigView } from "./PlanningConfigView";
 import { VectorModelConfigView } from "./VectorModelConfigView";
@@ -74,11 +65,10 @@ export function SystemConfigContent({
 }: SystemConfigContentProps): JSX.Element {
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const currentSnapshotVersion = snapshot?.version;
-  const sectionList = snapshot?.form.sections ?? [];
+  const sectionList = useMemo(() => snapshot?.form.sections ?? [], [snapshot?.form.sections]);
   const visibleSections = useMemo(
-    () => selectedSection
-      ? sectionList.filter((section) => section.name === selectedSection)
-      : sectionList.slice(0, 1),
+    () =>
+      selectedSection ? sectionList.filter((section) => section.name === selectedSection) : sectionList.slice(0, 1),
     [sectionList, selectedSection],
   );
   const internalDraftState = useConfigSettingsDraftState({
@@ -103,7 +93,8 @@ export function SystemConfigContent({
     setSelectedSection((current) =>
       current && snapshot.form.sections.some((section) => section.name === current)
         ? current
-        : snapshot.form.sections[0]?.name ?? null);
+        : (snapshot.form.sections[0]?.name ?? null),
+    );
   }, [active, currentSnapshotVersion, snapshot]);
 
   if (embedded) {
@@ -114,11 +105,7 @@ export function SystemConfigContent({
           selectedSection={selectedSection}
           onSelect={setSelectedSection}
         />
-        <ConfigToolbar
-          interaction={interaction}
-          onRefresh={draftState.refreshOrRestore}
-          onSave={draftState.save}
-        />
+        <ConfigToolbar interaction={interaction} onRefresh={draftState.refreshOrRestore} onSave={draftState.save} />
         <Diagnostics
           diagnostics={draftState.diagnostics}
           localError={draftState.localError}
@@ -139,33 +126,24 @@ export function SystemConfigContent({
           />
         ) : (
           <div className="grid min-h-[360px] place-items-center text-[13px] text-ink-400">
-            {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.141.13")}</div>
+            {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.141.13")}
+          </div>
         )}
       </div>
     );
   }
 
   return (
-    <div className={cn(
-      "grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[var(--theme-config-stage-bg)] lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]",
-      className,
-    )}>
-      <ConfigSectionNav
-        sections={sectionList}
-        selectedSection={selectedSection}
-        onSelect={setSelectedSection}
-      />
+    <div
+      className={cn(
+        "grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[var(--theme-config-stage-bg)] lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]",
+        className,
+      )}
+    >
+      <ConfigSectionNav sections={sectionList} selectedSection={selectedSection} onSelect={setSelectedSection} />
       <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-ink-200/70 bg-paper-50 lg:border-b-0">
-        <MobileSectionNav
-          sections={sectionList}
-          selectedSection={selectedSection}
-          onSelect={setSelectedSection}
-        />
-        <ConfigToolbar
-          interaction={interaction}
-          onRefresh={draftState.refreshOrRestore}
-          onSave={draftState.save}
-        />
+        <MobileSectionNav sections={sectionList} selectedSection={selectedSection} onSelect={setSelectedSection} />
+        <ConfigToolbar interaction={interaction} onRefresh={draftState.refreshOrRestore} onSave={draftState.save} />
         <Diagnostics
           diagnostics={draftState.diagnostics}
           localError={draftState.localError}
@@ -187,7 +165,8 @@ export function SystemConfigContent({
             />
           ) : (
             <div className="grid h-full place-items-center text-[13px] text-ink-400">
-              {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.190.15")}</div>
+              {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.190.15")}
+            </div>
           )}
         </div>
       </section>
@@ -287,14 +266,16 @@ function ConfigToolbar({
   return (
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-ink-200/70 bg-[var(--theme-config-toolbar-bg)] px-3.5 py-3">
       <div className="flex min-w-0 items-center gap-2">
-        <span className={cn(
-          "grid h-8 w-8 place-items-center border",
-          invalid
-            ? "border-brick-200 bg-brick-50 text-brick-600"
-            : interaction.status === "dirty" || interaction.status === "saving"
-              ? "border-amber-200 bg-amber-50 text-amber-700"
-              : "border-terra-200 bg-terra-50 text-terra-700",
-        )}>
+        <span
+          className={cn(
+            "grid h-8 w-8 place-items-center border",
+            invalid
+              ? "border-brick-200 bg-brick-50 text-brick-600"
+              : interaction.status === "dirty" || interaction.status === "saving"
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-terra-200 bg-terra-50 text-terra-700",
+          )}
+        >
           {invalid ? (
             <AlertTriangle className="h-4 w-4" />
           ) : interaction.status === "saving" ? (
@@ -330,10 +311,13 @@ function ConfigToolbar({
           className="h-8"
           title={interaction.saveTitle}
         >
-          {interaction.status === "saving"
-            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            : <Save className="h-3.5 w-3.5" />}
-          {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.337.11")}</Button>
+          {interaction.status === "saving" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Save className="h-3.5 w-3.5" />
+          )}
+          {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.337.11")}
+        </Button>
       </div>
     </div>
   );
@@ -351,8 +335,12 @@ function ConfigSectionNav({
   return (
     <aside className="hidden min-h-0 border-r border-ink-200/70 bg-[var(--theme-config-nav-bg)] lg:flex lg:flex-col">
       <div className="shrink-0 border-b border-ink-200/70 px-3.5 py-3.5">
-        <div className="text-[12px] font-semibold text-ink-900">{frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.356.65")}</div>
-        <div className="mt-1 text-[11px] text-ink-500">{frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.357.56")}</div>
+        <div className="text-[12px] font-semibold text-ink-900">
+          {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.356.65")}
+        </div>
+        <div className="mt-1 text-[11px] text-ink-500">
+          {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.357.56")}
+        </div>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1 p-2">
@@ -372,10 +360,14 @@ function ConfigSectionNav({
                 onClick={() => onSelect(section.name)}
               >
                 <span className="flex min-w-0 items-start gap-2">
-                  <span className={cn(
-                    "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border",
-                    active ? "border-terra-200 bg-terra-50 text-terra-700" : "border-ink-200 bg-paper-100 text-ink-450",
-                  )}>
+                  <span
+                    className={cn(
+                      "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border",
+                      active
+                        ? "border-terra-200 bg-terra-50 text-terra-700"
+                        : "border-ink-200 bg-paper-100 text-ink-450",
+                    )}
+                  >
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                   <span className="min-w-0">
@@ -519,7 +511,10 @@ function Diagnostics({
         </div>
       ))}
       {items.length > 4 ? (
-        <div className="px-1 text-[11px] text-ink-400">{frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.524.56")}{items.length - 4} {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.524.78")}</div>
+        <div className="px-1 text-[11px] text-ink-400">
+          {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.524.56")}
+          {items.length - 4} {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.524.78")}
+        </div>
       ) : null}
     </div>
   );

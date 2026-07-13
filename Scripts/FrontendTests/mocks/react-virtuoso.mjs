@@ -6,10 +6,13 @@ export const Virtuoso = React.forwardRef(function TestVirtuoso(props, ref) {
     scrollToIndex: () => undefined,
   }));
 
-  const setScrollerRef = React.useCallback((node) => {
-    props.scrollerRef?.(node);
-    if (node) props.scrollerRef?.(node);
-  }, [props.scrollerRef]);
+  const setScrollerRef = React.useCallback(
+    (node) => {
+      props.scrollerRef?.(node);
+      if (node) props.scrollerRef?.(node);
+    },
+    [props.scrollerRef],
+  );
 
   const Header = props.components?.Header;
   const Footer = props.components?.Footer;

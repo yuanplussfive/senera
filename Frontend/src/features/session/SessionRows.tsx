@@ -70,9 +70,7 @@ export function SessionRow({
           className={cn(
             "group relative isolate mt-0.5 grid w-full grid-cols-[24px_minmax(0,1fr)_28px] items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
             "data-[state=open]:bg-[var(--theme-session-active-bg)]",
-            active
-              ? "text-ink-900"
-              : "text-ink-700 hover:bg-ink-900/[0.03]",
+            active ? "text-ink-900" : "text-ink-700 hover:bg-ink-900/[0.03]",
           )}
         >
           <button
@@ -87,7 +85,9 @@ export function SessionRow({
               key={sessionId}
               layoutId="active-session-indicator"
               className="pointer-events-none absolute inset-0 z-0 rounded-lg bg-[var(--theme-session-active-bg)]"
-              transition={reduceMotion || disableMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 42 }}
+              transition={
+                reduceMotion || disableMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 42 }
+              }
             />
           ) : null}
           <div className="pointer-events-none relative z-20 mt-0.5 grid h-5 w-5 place-items-center">
@@ -150,14 +150,17 @@ export function EmptyState({ onNewSession }: { onNewSession: () => void }): JSX.
   return (
     <div className="mt-8 flex flex-col items-center px-4 text-center">
       <LogoMark size={24} />
-      <div className="mt-2 text-[13px] text-ink-700">{frontendMessage("runtime.migrated.features.session.SessionRows.152.54")}</div>
+      <div className="mt-2 text-[13px] text-ink-700">
+        {frontendMessage("runtime.migrated.features.session.SessionRows.152.54")}
+      </div>
       <button
         type="button"
         onClick={onNewSession}
         className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 py-1 text-[12px] text-ink-800 transition hover:border-ink-300 hover:bg-paper-200/60"
       >
         <SquarePen className="h-3 w-3" />
-        {frontendMessage("runtime.migrated.features.session.SessionRows.159.9")}</button>
+        {frontendMessage("runtime.migrated.features.session.SessionRows.159.9")}
+      </button>
     </div>
   );
 }

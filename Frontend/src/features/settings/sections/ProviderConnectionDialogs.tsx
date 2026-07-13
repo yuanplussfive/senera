@@ -1,19 +1,9 @@
-import {
-  Pencil,
-  Plus,
-} from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "../../../lib/util";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-} from "../../../shared/ui";
+import { Button, Dialog, DialogContent } from "../../../shared/ui";
 import { ModelProviderIcon } from "../../chat/ModelProviderIcon";
-import {
-  inputClassName,
-  MenuSelect,
-} from "../../chat/ModelConfigPrimitives";
+import { inputClassName, MenuSelect } from "../../chat/ModelConfigPrimitives";
 import { normalizeProviderEndpointDraft } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { ProviderFormError } from "./ProviderConnectionFeedback";
@@ -51,16 +41,18 @@ export function AddProviderDialog({
   const submit = (): void => {
     const id = providerId.trim();
     if (!id || duplicate || !preset) return;
-    onAdd(normalizeProviderEndpointDraft({
-      Id: id,
-      Icon: preset.icon,
-      Enabled: true,
-      Kind: "OpenAICompatible",
-      BaseUrl: preset.baseUrl,
-      ApiKey: "",
-      ApiVersion: preset.apiVersion ?? "2023-06-01",
-      Headers: preset.headers ?? {},
-    }));
+    onAdd(
+      normalizeProviderEndpointDraft({
+        Id: id,
+        Icon: preset.icon,
+        Enabled: true,
+        Kind: "OpenAICompatible",
+        BaseUrl: preset.baseUrl,
+        ApiKey: "",
+        ApiVersion: preset.apiVersion ?? "2023-06-01",
+        Headers: preset.headers ?? {},
+      }),
+    );
   };
 
   return (
@@ -103,14 +95,14 @@ export function AddProviderDialog({
                     <ModelProviderIcon icon={current.icon} size={16} />
                     <span className="truncate">{current.label}</span>
                   </span>
-                ) : option.label;
+                ) : (
+                  option.label
+                );
               }}
               onChange={setPresetId}
             />
           </label>
-          {duplicate ? (
-            <ProviderFormError message="这个供应商名称已存在或属于内置身份，请换一个自定义名称。" />
-          ) : null}
+          {duplicate ? <ProviderFormError message="这个供应商名称已存在或属于内置身份，请换一个自定义名称。" /> : null}
           <div className="flex justify-end gap-2 pt-2">
             <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>
               取消
@@ -145,11 +137,12 @@ export function RenameProviderDialog({
   }, [provider]);
 
   const targetId = nextProviderId.trim();
-  const invalid = !provider
-    || !targetId
-    || targetId === provider.Id
-    || providers.some((entry) => entry.Id === targetId)
-    || isProtectedProvider(targetId);
+  const invalid =
+    !provider ||
+    !targetId ||
+    targetId === provider.Id ||
+    providers.some((entry) => entry.Id === targetId) ||
+    isProtectedProvider(targetId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -167,18 +160,16 @@ export function RenameProviderDialog({
               onChange={(event) => setNextProviderId(event.currentTarget.value)}
             />
           </label>
-          {targetId && targetId !== provider?.Id && (providers.some((entry) => entry.Id === targetId) || isProtectedProvider(targetId)) ? (
+          {targetId &&
+          targetId !== provider?.Id &&
+          (providers.some((entry) => entry.Id === targetId) || isProtectedProvider(targetId)) ? (
             <ProviderFormError message="这个名称已存在或属于内置身份。" />
           ) : null}
           <div className="flex justify-end gap-2 pt-2">
             <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>
               取消
             </Button>
-            <Button
-              size="sm"
-              disabled={invalid}
-              onClick={() => provider && onRename(provider.Id, targetId)}
-            >
+            <Button size="sm" disabled={invalid} onClick={() => provider && onRename(provider.Id, targetId)}>
               <Pencil className="h-3.5 w-3.5" />
               重命名
             </Button>

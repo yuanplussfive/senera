@@ -8,16 +8,9 @@ import { ChatPanel } from "./features/chat";
 import { SessionList } from "./features/session";
 import { ThinkingTimeline } from "./features/workflow";
 import { AppShell, readAppShellRenderPlan } from "./layout/AppShell";
-import {
-  type EventEnvelope,
-  type WsRequest,
-} from "./api/eventTypes";
+import { type EventEnvelope, type WsRequest } from "./api/eventTypes";
 import { usePresetCommands } from "./app/usePresetCommands";
-import {
-  useChatCommands,
-  type LastSentMessage,
-  type PendingAfterTruncate,
-} from "./app/useChatCommands";
+import { useChatCommands, type LastSentMessage, type PendingAfterTruncate } from "./app/useChatCommands";
 import { useGlobalShortcuts } from "./app/useGlobalShortcuts";
 import { useSessionCommands } from "./app/useSessionCommands";
 import { useSessionCatalogSync } from "./app/useSessionCatalogSync";
@@ -71,11 +64,8 @@ export function App(): JSX.Element {
     setSessionDrawerOpen(true);
   }, [hasPersistentSessionPanel, setSidebarCollapsed]);
 
-  const {
-    resetServerKnownSessions,
-    serverKnownSessionIdsRef,
-    syncServerKnownSessionFromEvent,
-  } = useServerKnownSessions();
+  const { resetServerKnownSessions, serverKnownSessionIdsRef, syncServerKnownSessionFromEvent } =
+    useServerKnownSessions();
   const { notifySocketError } = useSocketErrorToasts();
   const { handleSessionNotFound } = useSessionNotFoundRecovery({
     ingest,
@@ -293,7 +283,9 @@ export function App(): JSX.Element {
               }}
               navigationActions={{
                 onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction ? handleOpenSessionPanel : undefined,
-                onOpenWorkflowPanel: appShellRenderPlan.showChatWorkflowPanelAction ? () => setWorkflowDrawerOpen(true) : undefined,
+                onOpenWorkflowPanel: appShellRenderPlan.showChatWorkflowPanelAction
+                  ? () => setWorkflowDrawerOpen(true)
+                  : undefined,
                 onRetryHistory: requestSessionHistory,
               }}
             />
@@ -310,8 +302,7 @@ export function App(): JSX.Element {
       <Toaster
         position="bottom-right"
         toastOptions={{
-          className:
-            "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
+          className: "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
         }}
       />
     </TooltipProvider>

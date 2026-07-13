@@ -60,19 +60,24 @@ describe("Pi projection behavior", () => {
       Id: "测试2/deepseek-v4-flash",
       Model: "deepseek-v4-flash",
     });
-    const projected = projectSeneraModelProviderToPi(provider, createConfig({
-      ModelProviders: [{
-        Id: "测试2/deepseek-v4-flash",
-        ProviderId: "main",
-        Endpoint: "ChatCompletions",
-        Model: "deepseek-v4-flash",
-      }],
-    }));
+    const projected = projectSeneraModelProviderToPi(
+      provider,
+      createConfig({
+        ModelProviders: [
+          {
+            Id: "测试2/deepseek-v4-flash",
+            ProviderId: "main",
+            Endpoint: "ChatCompletions",
+            Model: "deepseek-v4-flash",
+          },
+        ],
+      }),
+    );
 
     expect(projected.headers[AgentPiProxyModelProviderHeader]).toBe(
       encodePiProxyModelProviderHeaderValue("测试2/deepseek-v4-flash"),
     );
-    expect(projected.headers[AgentPiProxyModelProviderHeader]).toMatch(/^[\x00-\x7F]*$/);
+    expect(isAsciiHeaderValue(projected.headers[AgentPiProxyModelProviderHeader] ?? "")).toBe(true);
   });
 
   test("injects a single hidden runtime context message with current tool evidence and retrieval tools", () => {
@@ -249,4 +254,8 @@ function isContextMessage(message: AgentMessage): boolean {
 
 function readContextDetails(message: AgentMessage | undefined): unknown {
   return typeof message === "object" && message !== null && "details" in message ? message.details : undefined;
+}
+
+function isAsciiHeaderValue(value: string): boolean {
+  return [...value].every((character) => character.charCodeAt(0) <= 0x7f);
 }

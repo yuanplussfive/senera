@@ -1,20 +1,10 @@
 import type { AgentEvent as AgentSessionEvent } from "@earendil-works/pi-agent-core";
-import type {
-  AssistantMessage,
-  ToolResultMessage,
-} from "@earendil-works/pi-ai";
-import {
-  AgentEventKinds,
-  type AgentDomainEvent,
-  type AgentEventSink,
-} from "../Events/AgentEvent.js";
+import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
+import { AgentEventKinds, type AgentDomainEvent, type AgentEventSink } from "../Events/AgentEvent.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import { clampField, type StepTrace } from "../Runtime/AgentStepTrace.js";
-import {
-  type AgentToolResultPresentation,
-  type ExecutedToolCallResult,
-} from "../Types/ToolRuntimeTypes.js";
+import { type AgentToolResultPresentation, type ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 import type { AgentOpenAiTranscriptMessage } from "../Conversation/AgentOpenAiTranscript.js";
 import { readPiProxyToolCallBatchId } from "../PiProxy/AgentPiProxyRuntimeContext.js";
@@ -47,9 +37,7 @@ type ProjectablePiEvent =
   | Extract<AgentSessionEvent, { type: "tool_execution_end" }>
   | Extract<AgentSessionEvent, { type: "message_update" }>;
 
-type PiEventProjector = (
-  event: ProjectablePiEvent,
-) => readonly AgentDomainEvent[];
+type PiEventProjector = (event: ProjectablePiEvent) => readonly AgentDomainEvent[];
 
 export class AgentPiRunCollector {
   private readonly eventFactory = new AgentLoopEventFactory();
@@ -95,11 +83,13 @@ export class AgentPiRunCollector {
 
   private async projectEvent(event: AgentSessionEvent): Promise<void> {
     if (event.type !== "message_update") {
-      await this.emit(projectPiSessionTraceEvent({
-        requestId: this.options.requestId,
-        step: this.options.step,
-        event,
-      }));
+      await this.emit(
+        projectPiSessionTraceEvent({
+          requestId: this.options.requestId,
+          step: this.options.step,
+          event,
+        }),
+      );
     }
 
     if (event.type === "turn_end") {
@@ -112,9 +102,7 @@ export class AgentPiRunCollector {
     }
   }
 
-  private toolExecutionStarted(
-    event: Extract<AgentSessionEvent, { type: "tool_execution_start" }>,
-  ): AgentDomainEvent {
+  private toolExecutionStarted(event: Extract<AgentSessionEvent, { type: "tool_execution_start" }>): AgentDomainEvent {
     const seq = this.traces.length + this.activeToolTraces.size;
     this.activeToolTraces.set(event.toolCallId, {
       seq,
@@ -184,9 +172,7 @@ export class AgentPiRunCollector {
     ];
   }
 
-  private messageUpdated(
-    event: Extract<AgentSessionEvent, { type: "message_update" }>,
-  ): AgentDomainEvent | undefined {
+  private messageUpdated(event: Extract<AgentSessionEvent, { type: "message_update" }>): AgentDomainEvent | undefined {
     if (this.options.streamModelDeltas === false) {
       return undefined;
     }
@@ -259,19 +245,21 @@ function projectOpenAiAssistantMessage(message: unknown): AgentOpenAiTranscriptM
     return undefined;
   }
 
-  const text = record.content.flatMap((entry) =>
-    entry.type === "text" ? [entry.text] : []).join("");
+  const text = record.content.flatMap((entry) => (entry.type === "text" ? [entry.text] : [])).join("");
   const toolCalls = record.content.flatMap((entry) =>
     entry.type === "toolCall"
-      ? [{
-          id: entry.id,
-          type: "function" as const,
-          function: {
-            name: entry.name,
-            arguments: JSON.stringify(entry.arguments ?? {}),
+      ? [
+          {
+            id: entry.id,
+            type: "function" as const,
+            function: {
+              name: entry.name,
+              arguments: JSON.stringify(entry.arguments ?? {}),
+            },
           },
-        }]
-      : []);
+        ]
+      : [],
+  );
 
   return {
     role: "assistant",
@@ -280,9 +268,7 @@ function projectOpenAiAssistantMessage(message: unknown): AgentOpenAiTranscriptM
   };
 }
 
-function projectOpenAiToolResultMessage(
-  result: ToolResultMessage,
-): AgentOpenAiTranscriptMessage {
+function projectOpenAiToolResultMessage(result: ToolResultMessage): AgentOpenAiTranscriptMessage {
   return {
     role: "tool",
     tool_call_id: result.toolCallId,
@@ -291,9 +277,7 @@ function projectOpenAiToolResultMessage(
 }
 
 function readToolResultContent(result: ToolResultMessage): string {
-  const text = result.content
-    .flatMap((entry) => entry.type === "text" ? [entry.text] : [])
-    .join("");
+  const text = result.content.flatMap((entry) => (entry.type === "text" ? [entry.text] : [])).join("");
   if (text.trim().length > 0) {
     return text;
   }
@@ -344,15 +328,15 @@ function extractText(message: unknown): string {
   const record = readRecord(message);
   const content = record?.content;
   return Array.isArray(content)
-    ? content.flatMap((entry) => {
-        const item = readRecord(entry);
-        return item?.type === "text" && typeof item.text === "string" ? [item.text] : [];
-      }).join("")
+    ? content
+        .flatMap((entry) => {
+          const item = readRecord(entry);
+          return item?.type === "text" && typeof item.text === "string" ? [item.text] : [];
+        })
+        .join("")
     : "";
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }

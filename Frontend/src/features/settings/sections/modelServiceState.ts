@@ -27,21 +27,11 @@ import type {
 
 export type DefaultModelSlotId = "assistant";
 export type DefaultModelSlotStatus =
-  | "ready"
-  | "unset"
-  | "missing"
-  | "provider_missing"
-  | "provider_disabled"
-  | "capability_mismatch";
+  "ready" | "unset" | "missing" | "provider_missing" | "provider_disabled" | "capability_mismatch";
 export type ModelServiceDiagnosticGroup = "connection" | "model_list" | "default_slots" | "runtime";
 export type ModelServiceDiagnosticSeverity = "info" | "warning" | "error";
 export type ModelServiceDiagnosticAction =
-  | "open_connection"
-  | "test_connection"
-  | "fetch_models"
-  | "select_default"
-  | "copy_report"
-  | "none";
+  "open_connection" | "test_connection" | "fetch_models" | "select_default" | "copy_report" | "none";
 
 export interface DefaultModelSlotDefinition {
   id: DefaultModelSlotId;
@@ -158,7 +148,7 @@ export const modelServiceDiagnosticGroupDefinitions = [
   {
     id: "default_slots",
     label: "默认模型",
-      description: "默认助手槽位的可用性。",
+    description: "默认助手槽位的可用性。",
   },
   {
     id: "runtime",
@@ -182,14 +172,14 @@ export function readModelServiceState({
   const selectedProvider = readSelectedProvider(providers, selectedProviderId);
   const selectedProviderModelList = selectedProvider
     ? readProviderModelListState({
-      catalogs,
-      defaultModelId,
-      errors,
-      loadingIds,
-      modelGroups,
-      models,
-      provider: selectedProvider,
-    })
+        catalogs,
+        defaultModelId,
+        errors,
+        loadingIds,
+        modelGroups,
+        models,
+        provider: selectedProvider,
+      })
     : null;
   const defaultSlots = readDefaultModelSlotStates({
     defaultModelId,
@@ -199,9 +189,9 @@ export function readModelServiceState({
   const defaultAssistantSlot = defaultSlots.find((slot) => slot.definition.id === "assistant");
   const defaultModel = defaultAssistantSlot?.selectedModel
     ? {
-      model: defaultAssistantSlot.selectedModel,
-      provider: defaultAssistantSlot.provider ?? undefined,
-    }
+        model: defaultAssistantSlot.selectedModel,
+        provider: defaultAssistantSlot.provider ?? undefined,
+      }
     : null;
   const diagnostics = readModelServiceDiagnostics({
     defaultSlots,
@@ -212,7 +202,7 @@ export function readModelServiceState({
   const providerIssues = diagnostics
     .filter((item) => item.group === "connection" || item.group === "model_list")
     .map((item) => ({
-      severity: item.severity === "info" ? "warning" as const : item.severity,
+      severity: item.severity === "info" ? ("warning" as const) : item.severity,
       message: item.detail,
     }));
 
@@ -225,8 +215,8 @@ export function readModelServiceState({
     defaultModelStatus: defaultAssistantSlot?.statusLabel ?? "待设置",
     defaultSlots,
     diagnostics,
-    catalogSignalCount: providers.filter((provider) =>
-      provider.Id && (errors[provider.Id] || loadingIds[provider.Id])).length,
+    catalogSignalCount: providers.filter((provider) => provider.Id && (errors[provider.Id] || loadingIds[provider.Id]))
+      .length,
     enabledModelCount: models.length,
     enabledProviders: providers.filter((provider) => providerEnabled(provider)).length,
     providerCount: providers.length,
@@ -282,12 +272,8 @@ export function readDefaultModelSlotStates({
 }): DefaultModelSlotState[] {
   return defaultModelSlotDefinitions.map((definition) => {
     const selectedModelId = definition.configKey === "DefaultModelProviderId" ? defaultModelId : null;
-    const selectedModel = selectedModelId
-      ? models.find((model) => model.Id === selectedModelId) ?? null
-      : null;
-    const provider = selectedModel
-      ? providers.find((entry) => entry.Id === selectedModel.ProviderId) ?? null
-      : null;
+    const selectedModel = selectedModelId ? (models.find((model) => model.Id === selectedModelId) ?? null) : null;
+    const provider = selectedModel ? (providers.find((entry) => entry.Id === selectedModel.ProviderId) ?? null) : null;
     const capabilityMismatch = selectedModel
       ? !modelMatchesCapabilityFilter(selectedModel, definition.capabilityFilter)
       : false;
@@ -370,9 +356,7 @@ export function readModelServiceDiagnosticGroups(
   }));
 }
 
-export function formatModelServiceDiagnosticReport(
-  items: readonly ModelServiceDiagnosticItem[],
-): string {
+export function formatModelServiceDiagnosticReport(items: readonly ModelServiceDiagnosticItem[]): string {
   const groups = readModelServiceDiagnosticGroups(items);
   const lines = ["模型服务诊断报告"];
   for (const group of groups) {
@@ -386,7 +370,9 @@ export function formatModelServiceDiagnosticReport(
         item.affectedProviderId ? `provider=${item.affectedProviderId}` : "",
         item.affectedModelId ? `model=${item.affectedModelId}` : "",
         item.affectedSlotId ? `slot=${item.affectedSlotId}` : "",
-      ].filter(Boolean).join(" ");
+      ]
+        .filter(Boolean)
+        .join(" ");
       lines.push(`- ${item.severity.toUpperCase()} ${item.title}`);
       lines.push(`  ${item.detail}`);
       if (affected) {
@@ -491,14 +477,16 @@ function readProviderDiagnosticItems(
   loadingIds: Record<string, boolean>,
 ): ModelServiceDiagnosticItem[] {
   if (!provider.Id) {
-    return [{
-      id: "provider-missing-id",
-      group: "connection",
-      severity: "error",
-      title: "供应商缺少 ID",
-      detail: "存在未命名供应商，请补齐供应商 ID。",
-      action: "open_connection",
-    }];
+    return [
+      {
+        id: "provider-missing-id",
+        group: "connection",
+        severity: "error",
+        title: "供应商缺少 ID",
+        detail: "存在未命名供应商，请补齐供应商 ID。",
+        action: "open_connection",
+      },
+    ];
   }
 
   const items: ModelServiceDiagnosticItem[] = [];
@@ -535,17 +523,19 @@ function readDefaultSlotDiagnosticItems(slot: DefaultModelSlotState): ModelServi
     return [];
   }
 
-  return [{
-    id: `default-slot:${slot.definition.id}`,
-    group: "default_slots",
-    severity: slot.status === "unset" ? "warning" : "error",
-    title: `${slot.definition.label}${slot.status === "unset" ? "未设置" : "不可用"}`,
-    detail: readDefaultSlotDiagnosticDetail(slot),
-    affectedProviderId: slot.provider?.Id,
-    affectedModelId: slot.selectedModelId ?? undefined,
-    affectedSlotId: slot.definition.id,
-    action: slot.repairAction,
-  }];
+  return [
+    {
+      id: `default-slot:${slot.definition.id}`,
+      group: "default_slots",
+      severity: slot.status === "unset" ? "warning" : "error",
+      title: `${slot.definition.label}${slot.status === "unset" ? "未设置" : "不可用"}`,
+      detail: readDefaultSlotDiagnosticDetail(slot),
+      affectedProviderId: slot.provider?.Id,
+      affectedModelId: slot.selectedModelId ?? undefined,
+      affectedSlotId: slot.definition.id,
+      action: slot.repairAction,
+    },
+  ];
 }
 
 function readDefaultSlotDiagnosticDetail(slot: DefaultModelSlotState): string {

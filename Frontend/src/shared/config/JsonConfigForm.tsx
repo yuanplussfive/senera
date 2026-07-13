@@ -1,16 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useEffect, useRef, useState } from "react";
-import {
-  Check,
-  CopyPlus,
-  Plus,
-  Trash2,
-} from "lucide-react";
-import type {
-  ConfigFormFieldData,
-  ConfigFormFieldOptionValue,
-  ConfigFormSectionData,
-} from "../../api/eventTypes";
+import { Check, CopyPlus, Plus, Trash2 } from "lucide-react";
+import type { ConfigFormFieldData, ConfigFormFieldOptionValue, ConfigFormSectionData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { ScrollArea } from "../ui";
 import { JsonConfigRecordField } from "./JsonConfigRecordField";
@@ -35,10 +26,9 @@ export function JsonConfigSettingsView({
   const visibleSections = sections.filter((section) => section.fields.length > 0);
 
   const content = (
-    <div className={cn(
-      "mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-7",
-      layoutMode === "panel" && "min-h-full",
-    )}>
+    <div
+      className={cn("mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
+    >
       {visibleSections.length > 0 ? (
         <div className="space-y-7">
           {visibleSections.map((section, sectionIndex) => (
@@ -49,7 +39,8 @@ export function JsonConfigSettingsView({
               value={value}
               disabled={Boolean(disabled)}
               onUpdateField={(field, nextValue) =>
-                onChange(writeJsonConfigFieldValue(value, field.path, normalizeFieldValue(field, nextValue)))}
+                onChange(writeJsonConfigFieldValue(value, field.path, normalizeFieldValue(field, nextValue)))
+              }
             />
           ))}
         </div>
@@ -62,11 +53,7 @@ export function JsonConfigSettingsView({
   );
 
   if (layoutMode === "embedded") {
-    return (
-      <div className="bg-paper-50">
-        {content}
-      </div>
-    );
+    return <div className="bg-paper-50">{content}</div>;
   }
 
   return (
@@ -98,9 +85,7 @@ function JsonSettingsSection({
             <p className="mt-0.5 text-[12px] leading-5 text-ink-500">{section.description}</p>
           ) : null}
         </div>
-        <span className="pb-0.5 font-mono text-[10.5px] text-ink-350">
-          {String(sectionIndex + 1).padStart(2, "0")}
-        </span>
+        <span className="pb-0.5 font-mono text-[10.5px] text-ink-350">{String(sectionIndex + 1).padStart(2, "0")}</span>
       </div>
 
       <div className="overflow-hidden border border-ink-200/70 bg-paper-100 shadow-panel">
@@ -140,12 +125,8 @@ function JsonFieldControl({
       )}
     >
       <div className={cn("min-w-0 pr-2", wide && "pr-0")}>
-        <div className={cn("text-[13px] font-medium text-ink-900", wide && "text-[13.5px]")}>
-          {field.label}
-        </div>
-        {field.description ? (
-          <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p>
-        ) : null}
+        <div className={cn("text-[13px] font-medium text-ink-900", wide && "text-[13.5px]")}>{field.label}</div>
+        {field.description ? <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>
       <div className={cn("min-w-0 md:justify-self-end", wide && "md:w-full md:justify-self-stretch")}>
         {renderJsonFieldInput(field, value ?? field.defaultValue, disabled, onChange)}
@@ -154,10 +135,7 @@ function JsonFieldControl({
   );
 }
 
-function readDraftOrEffectiveValue(
-  value: JsonConfigObject,
-  field: ConfigFormFieldData,
-): unknown {
+function readDraftOrEffectiveValue(value: JsonConfigObject, field: ConfigFormFieldData): unknown {
   const draftValue = readValueAtPath(value, field.path);
   return draftValue === undefined ? field.effectiveValue : draftValue;
 }
@@ -170,35 +148,16 @@ function renderJsonFieldInput(
 ): JSX.Element {
   if (field.type === "boolean") {
     return (
-      <TogglePill
-        enabled={Boolean(value)}
-        disabled={disabled}
-        label={field.label}
-        onClick={() => onChange(!Boolean(value))}
-      />
+      <TogglePill enabled={Boolean(value)} disabled={disabled} label={field.label} onClick={() => onChange(!value)} />
     );
   }
 
   if (field.type !== "record" && field.options && field.options.length > 0) {
-    return (
-      <OptionControl
-        field={field}
-        value={value}
-        disabled={disabled}
-        onChange={onChange}
-      />
-    );
+    return <OptionControl field={field} value={value} disabled={disabled} onChange={onChange} />;
   }
 
   if (field.type === "number") {
-    return (
-      <NumberFieldControl
-        field={field}
-        value={value}
-        disabled={disabled}
-        onChange={onChange}
-      />
-    );
+    return <NumberFieldControl field={field} value={value} disabled={disabled} onChange={onChange} />;
   }
 
   if (field.type === "array") {
@@ -308,7 +267,9 @@ function OptionControl({
       }}
       className={inputClassName}
     >
-      <option value="" disabled={field.required !== false}>{frontendMessage("runtime.migrated.shared.config.JsonConfigForm.310.60")}</option>
+      <option value="" disabled={field.required !== false}>
+        {frontendMessage("runtime.migrated.shared.config.JsonConfigForm.310.60")}
+      </option>
       {options.map((option) => (
         <option key={String(option)} value={String(option)}>
           {optionLabel(field, option)}
@@ -401,11 +362,7 @@ function ArrayFieldControl({
   };
   const duplicateItem = (index: number): void => {
     const item = value[index];
-    onChange([
-      ...value.slice(0, index + 1),
-      cloneJsonValue(item),
-      ...value.slice(index + 1),
-    ]);
+    onChange([...value.slice(0, index + 1), cloneJsonValue(item), ...value.slice(index + 1)]);
   };
 
   if (itemType === "table") {
@@ -417,7 +374,10 @@ function ArrayFieldControl({
           const effectiveRecord = isRecord(effectiveItems[index]) ? effectiveItems[index] : {};
           const titleRecord = { ...effectiveRecord, ...record };
           return (
-            <div key={`${field.path.join(".")}-${index}`} className="overflow-hidden rounded-lg border border-ink-200 bg-paper-50">
+            <div
+              key={`${field.path.join(".")}-${index}`}
+              className="overflow-hidden rounded-lg border border-ink-200 bg-paper-50"
+            >
               <div className="flex min-w-0 items-center justify-between gap-2 border-b border-ink-200/70 bg-[var(--theme-config-list-bg)] px-3 py-2.5">
                 <div className="min-w-0">
                   <div className="truncate text-[12.5px] font-medium text-ink-900">
@@ -454,10 +414,12 @@ function ArrayFieldControl({
                       field={{ ...itemField, path: relativePath }}
                       value={itemValue ?? effectiveItemValue ?? itemField.effectiveValue}
                       disabled={disabled}
-                      onChange={(nextValue) => updateItem(
-                        index,
-                        writeJsonConfigFieldValue(record, relativePath, normalizeFieldValue(itemField, nextValue)),
-                      )}
+                      onChange={(nextValue) =>
+                        updateItem(
+                          index,
+                          writeJsonConfigFieldValue(record, relativePath, normalizeFieldValue(itemField, nextValue)),
+                        )
+                      }
                     />
                   );
                 })}
@@ -532,9 +494,7 @@ function NestedFieldControl({
           <div className="mt-0.5 text-[11.5px] leading-5 text-ink-500">{field.description}</div>
         ) : null}
       </div>
-      <div className="min-w-0">
-        {renderJsonFieldInput(field, value ?? field.defaultValue, disabled, onChange)}
-      </div>
+      <div className="min-w-0">{renderJsonFieldInput(field, value ?? field.defaultValue, disabled, onChange)}</div>
     </div>
   );
 }
@@ -578,14 +538,9 @@ export function writeJsonConfigFieldValue(
   return clone;
 }
 
-export function validateJsonConfigDraft(
-  sections: readonly ConfigFormSectionData[],
-  value: JsonConfigObject,
-): string[] {
+export function validateJsonConfigDraft(sections: readonly ConfigFormSectionData[], value: JsonConfigObject): string[] {
   return sections.flatMap((section) =>
-    section.fields.flatMap((field) =>
-      validateJsonConfigField(field, readDraftOrEffectiveValue(value, field))
-    )
+    section.fields.flatMap((field) => validateJsonConfigField(field, readDraftOrEffectiveValue(value, field))),
   );
 }
 
@@ -627,9 +582,7 @@ function validateJsonConfigField(field: ConfigFormFieldData, value: unknown): st
   }
   if (field.options && field.options.length > 0) {
     const values = field.type === "array" && Array.isArray(value) ? value : [value];
-    const checkedValues = field.type === "record" && isRecord(value)
-      ? Object.values(value)
-      : values;
+    const checkedValues = field.type === "record" && isRecord(value) ? Object.values(value) : values;
     checkedValues.forEach((item, index) => {
       if (!field.options?.some((option) => sameOptionValue(item, option))) {
         const suffix = checkedValues.length > 1 ? ` 第 ${index + 1} 项` : "";
@@ -640,11 +593,7 @@ function validateJsonConfigField(field: ConfigFormFieldData, value: unknown): st
   return errors;
 }
 
-function validateNumberField(
-  field: ConfigFormFieldData,
-  value: number,
-  label: string,
-): string[] {
+function validateNumberField(field: ConfigFormFieldData, value: number, label: string): string[] {
   const errors: string[] = [];
   if (typeof field.min === "number" && value < field.min) {
     errors.push(`${label} 不能小于 ${field.min}`);
@@ -655,11 +604,7 @@ function validateNumberField(
   return errors;
 }
 
-function validateStringField(
-  field: ConfigFormFieldData,
-  value: string,
-  label: string,
-): string[] {
+function validateStringField(field: ConfigFormFieldData, value: string, label: string): string[] {
   const length = value.trim().length;
   const errors: string[] = [];
   if ((field.required !== false || typeof field.minLength === "number") && length === 0) {
@@ -675,12 +620,7 @@ function validateStringField(
   return errors;
 }
 
-function validateArrayItem(
-  field: ConfigFormFieldData,
-  value: unknown,
-  index: number,
-  label: string,
-): string[] {
+function validateArrayItem(field: ConfigFormFieldData, value: unknown, index: number, label: string): string[] {
   const itemLabel = `${label} 第 ${index + 1} 项`;
   const itemType = field.itemType ?? "string";
   if (itemType === "table") {
@@ -693,9 +633,9 @@ function validateArrayItem(
       const relativePath = readRelativeItemPath(field.path, itemField.path);
       return validateJsonConfigField(
         itemField,
-        readValueAtPath(value, relativePath)
-          ?? readValueAtPath(effectiveItem, relativePath)
-          ?? itemField.effectiveValue,
+        readValueAtPath(value, relativePath) ??
+          readValueAtPath(effectiveItem, relativePath) ??
+          itemField.effectiveValue,
       );
     });
   }
@@ -726,9 +666,9 @@ function normalizeFieldValue(field: ConfigFormFieldData, value: unknown): unknow
   }
   if (field.type === "array") {
     return Array.isArray(value)
-      ? value.map((item) => field.itemType === "table"
-        ? isRecord(item) ? item : {}
-        : coerceArrayItem(item, field.itemType ?? "string"))
+      ? value.map((item) =>
+          field.itemType === "table" ? (isRecord(item) ? item : {}) : coerceArrayItem(item, field.itemType ?? "string"),
+        )
       : [];
   }
   if (field.type === "record") {
@@ -740,11 +680,7 @@ function normalizeFieldValue(field: ConfigFormFieldData, value: unknown): unknow
   return value;
 }
 
-function setValueAtPath(
-  document: JsonConfigObject,
-  pathParts: readonly string[],
-  value: unknown,
-): void {
+function setValueAtPath(document: JsonConfigObject, pathParts: readonly string[], value: unknown): void {
   const lastKey = pathParts[pathParts.length - 1];
   if (!lastKey) {
     return;
@@ -769,21 +705,12 @@ function readValueAtPath(source: unknown, pathParts: readonly string[]): unknown
   return current;
 }
 
-function readRelativeItemPath(
-  parentPath: readonly string[],
-  childPath: readonly string[],
-): string[] {
+function readRelativeItemPath(parentPath: readonly string[], childPath: readonly string[]): string[] {
   return childPath.slice(parentPath.length);
 }
 
-function readArrayItemTitle(
-  field: ConfigFormFieldData,
-  record: Record<string, unknown>,
-  index: number,
-): string {
-  const title = field.itemLabelPath
-    ? readValueAtPath(record, field.itemLabelPath)
-    : undefined;
+function readArrayItemTitle(field: ConfigFormFieldData, record: Record<string, unknown>, index: number): string {
+  const title = field.itemLabelPath ? readValueAtPath(record, field.itemLabelPath) : undefined;
   if (typeof title === "string" && title.trim()) {
     return title;
   }
@@ -818,10 +745,7 @@ function defaultArrayItem(itemType: string): unknown {
   return "";
 }
 
-function optionLabel(
-  field: ConfigFormFieldData,
-  option: ConfigFormFieldOptionValue,
-): string {
+function optionLabel(field: ConfigFormFieldData, option: ConfigFormFieldOptionValue): string {
   return field.optionLabels?.[String(option)] ?? String(option);
 }
 
@@ -844,10 +768,7 @@ function readNumberDraftBlurValue(value: string): number | null {
 }
 
 function isIncompleteNumberDraft(value: string): boolean {
-  return value === "-"
-    || value === "+"
-    || value.endsWith(".")
-    || /[eE][+-]?$/.test(value);
+  return value === "-" || value === "+" || value.endsWith(".") || /[eE][+-]?$/.test(value);
 }
 
 function cloneJsonValue(value: unknown): unknown {
@@ -882,12 +803,7 @@ function TogglePill({
       )}
       aria-label={`${enabled ? "关闭" : "开启"} ${label}`}
     >
-      <span
-        className={cn(
-          "relative h-5 w-9 rounded-full transition",
-          enabled ? "bg-moss-500" : "bg-ink-300",
-        )}
-      >
+      <span className={cn("relative h-5 w-9 rounded-full transition", enabled ? "bg-moss-500" : "bg-ink-300")}>
         <span
           className={cn(
             "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",

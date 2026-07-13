@@ -1,11 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Code2, Settings2 } from "lucide-react";
 import type { TomlTableWithoutBigInt } from "smol-toml";
-import type {
-  PluginConfigField,
-  PluginConfigItem,
-  PluginConfigSection,
-} from "../../api/eventTypes";
+import type { PluginConfigField, PluginConfigItem, PluginConfigSection } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { ScrollArea } from "../../shared/ui";
 import { FieldControl } from "./PluginConfigFields";
@@ -22,8 +18,16 @@ export function ViewSwitch({
   onChange: (value: ConfigView) => void;
 }): JSX.Element {
   const items: Array<{ value: ConfigView; label: string; icon: JSX.Element }> = [
-    { value: "settings", label: frontendMessage("runtime.migrated.features.chat.PluginConfigViews.24.33"), icon: <Settings2 className="h-3.5 w-3.5" /> },
-    { value: "toml", label: frontendMessage("runtime.migrated.features.chat.PluginConfigViews.25.29"), icon: <Code2 className="h-3.5 w-3.5" /> },
+    {
+      value: "settings",
+      label: frontendMessage("runtime.migrated.features.chat.PluginConfigViews.24.33"),
+      icon: <Settings2 className="h-3.5 w-3.5" />,
+    },
+    {
+      value: "toml",
+      label: frontendMessage("runtime.migrated.features.chat.PluginConfigViews.25.29"),
+      icon: <Code2 className="h-3.5 w-3.5" />,
+    },
   ];
 
   return (
@@ -34,9 +38,7 @@ export function ViewSwitch({
           type="button"
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-md px-2 text-[12px] transition",
-            value === item.value
-              ? "bg-paper-50 text-ink-900 shadow-sm"
-              : "text-ink-500 hover:text-ink-800",
+            value === item.value ? "bg-paper-50 text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800",
           )}
           onClick={() => onChange(item.value)}
         >
@@ -68,13 +70,13 @@ export function SettingsView({
   onUpdateField: (field: PluginConfigField, value: unknown) => void;
 }): JSX.Element {
   const content = (
-    <div className={cn(
-      "mx-auto w-full max-w-[820px] px-4 py-5 sm:px-5 sm:py-8",
-      layoutMode === "panel" && "min-h-full",
-    )}>
+    <div
+      className={cn("mx-auto w-full max-w-[820px] px-4 py-5 sm:px-5 sm:py-8", layoutMode === "panel" && "min-h-full")}
+    >
       {parseError ? (
         <div className="mb-5 rounded-xl border border-brick-100 bg-brick-50 px-3 py-2 text-[12.5px] text-brick-700">
-          {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.76.11")}</div>
+          {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.76.11")}
+        </div>
       ) : null}
 
       {sections.length > 0 ? (
@@ -103,25 +105,18 @@ export function SettingsView({
             onSetToolEnabled={onSetToolEnabled}
           />
           <div className="grid min-h-64 place-items-center rounded-xl border border-ink-200/70 bg-paper-50 text-[13px] text-ink-400 shadow-panel">
-            {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.106.13")}</div>
+            {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.106.13")}
+          </div>
         </div>
       )}
     </div>
   );
 
   if (layoutMode === "embedded") {
-    return (
-      <div className="bg-paper-50">
-        {content}
-      </div>
-    );
+    return <div className="bg-paper-50">{content}</div>;
   }
 
-  return (
-    <ScrollArea className="min-h-0 flex-1 bg-paper-50">
-      {content}
-    </ScrollArea>
-  );
+  return <ScrollArea className="min-h-0 flex-1 bg-paper-50">{content}</ScrollArea>;
 }
 
 export function TomlView({
@@ -201,7 +196,9 @@ export function ConfigSourceNotice({ plugin }: { plugin: PluginConfigItem }): JS
 
   return (
     <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[12px] leading-5 text-amber-800">
-      {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.7")}{templateName} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.27")}</div>
+      {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.7")}
+      {templateName} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.27")}
+    </div>
   );
 }
 
@@ -222,11 +219,17 @@ function PluginToolsSection({
     <section className="space-y-3">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h3 className="text-[13px] font-semibold text-ink-900">{frontendMessage("runtime.migrated.features.chat.PluginConfigViews.227.66")}</h3>
+          <h3 className="text-[13px] font-semibold text-ink-900">
+            {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.227.66")}
+          </h3>
           <p className="mt-0.5 text-[12px] leading-5 text-ink-500">
-            {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.229.13")}</p>
+            {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.229.13")}
+          </p>
         </div>
-        <span className="pb-0.5 text-[11px] text-ink-400">{plugin.enabledToolCount}/{plugin.toolCount} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.232.104")}</span>
+        <span className="pb-0.5 text-[11px] text-ink-400">
+          {plugin.enabledToolCount}/{plugin.toolCount}{" "}
+          {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.232.104")}
+        </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {plugin.tools.map((tool) => (
@@ -236,9 +239,7 @@ function PluginToolsSection({
             disabled={disabled}
             className={cn(
               "flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition",
-              tool.enabled
-                ? "border-moss-200 bg-moss-50/70 text-ink-900"
-                : "border-ink-200 bg-paper-50 text-ink-600",
+              tool.enabled ? "border-moss-200 bg-moss-50/70 text-ink-900" : "border-ink-200 bg-paper-50 text-ink-600",
               !disabled && "hover:border-terra-200 hover:bg-terra-50/40",
               disabled && "pointer-events-none opacity-55",
             )}
@@ -287,16 +288,14 @@ function SettingsSection({
     <section className="space-y-3">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h3 className="text-[13px] font-semibold text-ink-900">
-            {sectionDisplayTitle(section, sectionIndex)}
-          </h3>
+          <h3 className="text-[13px] font-semibold text-ink-900">{sectionDisplayTitle(section, sectionIndex)}</h3>
           {section.description ? (
-            <p className="mt-0.5 text-[12px] leading-5 text-ink-500">
-              {section.description}
-            </p>
+            <p className="mt-0.5 text-[12px] leading-5 text-ink-500">{section.description}</p>
           ) : null}
         </div>
-        <span className="pb-0.5 text-[11px] text-ink-400">{section.fields.length} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.302.83")}</span>
+        <span className="pb-0.5 text-[11px] text-ink-400">
+          {section.fields.length} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.302.83")}
+        </span>
       </div>
       <div className="divide-y divide-ink-200/70 overflow-hidden rounded-xl border border-ink-200/70 bg-paper-50 shadow-panel">
         {section.fields.map((field) => (

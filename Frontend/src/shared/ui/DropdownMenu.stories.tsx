@@ -40,12 +40,8 @@ export const WithIcons: Story = () => (
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem icon={<User className="h-4 w-4" />}>
-          Profile
-        </DropdownMenuItem>
-        <DropdownMenuItem icon={<Settings className="h-4 w-4" />}>
-          Settings
-        </DropdownMenuItem>
+        <DropdownMenuItem icon={<User className="h-4 w-4" />}>Profile</DropdownMenuItem>
+        <DropdownMenuItem icon={<Settings className="h-4 w-4" />}>Settings</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem icon={<LogOut className="h-4 w-4" />} destructive>
           Sign out
@@ -92,12 +88,8 @@ export const WithLabel: Story = () => (
       <DropdownMenuContent>
         <DropdownMenuLabel>My Account</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem icon={<User className="h-4 w-4" />}>
-          Profile
-        </DropdownMenuItem>
-        <DropdownMenuItem icon={<Settings className="h-4 w-4" />}>
-          Settings
-        </DropdownMenuItem>
+        <DropdownMenuItem icon={<User className="h-4 w-4" />}>Profile</DropdownMenuItem>
+        <DropdownMenuItem icon={<Settings className="h-4 w-4" />}>Settings</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   </div>

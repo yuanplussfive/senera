@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCw, Save, Search } from "lucide-react";
-import type {
-  PluginConfigField,
-  PluginConfigItem,
-  PluginConfigMutationState,
-} from "../../api/eventTypes";
+import type { PluginConfigField, PluginConfigItem, PluginConfigMutationState } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { Button, ScrollArea, Tooltip } from "../../shared/ui";
 import {
@@ -16,17 +12,9 @@ import {
   type PluginConfigLayoutMode,
   ViewSwitch,
 } from "./PluginConfigViews";
-import {
-  parseDraftToml,
-  validatePluginConfigDraft,
-  writeDraftFieldValue,
-} from "./pluginConfigDraft";
+import { parseDraftToml, validatePluginConfigDraft, writeDraftFieldValue } from "./pluginConfigDraft";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-export {
-  readNumberDraftCommitValue,
-  validatePluginConfigDraft,
-  writeDraftFieldValue,
-} from "./pluginConfigDraft";
+export { readNumberDraftCommitValue, validatePluginConfigDraft, writeDraftFieldValue } from "./pluginConfigDraft";
 
 export function PluginConfigContent({
   layoutMode = "panel",
@@ -52,15 +40,10 @@ export function PluginConfigContent({
   const [toggleRequestId, setToggleRequestId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const configurablePlugins = useMemo(
-    () => plugins.filter((plugin) => plugin.rootKind === "User"),
-    [plugins],
-  );
+  const configurablePlugins = useMemo(() => plugins.filter((plugin) => plugin.rootKind === "User"), [plugins]);
 
   const selected = useMemo(
-    () => configurablePlugins.find((plugin) => plugin.name === selectedName)
-      ?? configurablePlugins[0]
-      ?? null,
+    () => configurablePlugins.find((plugin) => plugin.name === selectedName) ?? configurablePlugins[0] ?? null,
     [configurablePlugins, selectedName],
   );
 
@@ -70,16 +53,12 @@ export function PluginConfigContent({
     if (!query) {
       return configurablePlugins;
     }
-    return configurablePlugins.filter((plugin) =>
-      pluginSearchText(plugin).includes(query)
-    );
+    return configurablePlugins.filter((plugin) => pluginSearchText(plugin).includes(query));
   }, [configurablePlugins, filterText]);
   const parsedDraft = useMemo(() => parseDraftToml(draft), [draft]);
   const visibleSections = selected?.sections.filter((section) => section.fields.length > 0) ?? [];
   const draftValidationErrors = useMemo(
-    () => selected && parsedDraft.value
-      ? validatePluginConfigDraft(selected.sections, parsedDraft.value)
-      : [],
+    () => (selected && parsedDraft.value ? validatePluginConfigDraft(selected.sections, parsedDraft.value) : []),
     [parsedDraft.value, selected],
   );
   const saveOperation = saveRequestId ? operations[saveRequestId] : undefined;
@@ -110,7 +89,7 @@ export function PluginConfigContent({
     setToggleRequestId(null);
     setSaveError(null);
     setView("settings");
-  }, [selected?.name]);
+  }, [selected]);
 
   useEffect(() => {
     if (!selected) return;
@@ -128,13 +107,13 @@ export function PluginConfigContent({
     }
     if (dirty) return;
     setDraft(selected.toml);
-  }, [dirty, saveOperation?.message, saveOperation?.status, selected?.toml]);
+  }, [dirty, saveOperation?.message, saveOperation?.status, selected]);
 
   useEffect(() => {
     if (!toggleOperation) return;
     if (toggleOperation.status === "pending") return;
     setToggleRequestId(null);
-  }, [toggleOperation?.status]);
+  }, [toggleOperation]);
 
   const save = (): void => {
     if (!selected || !dirty || hasDraftErrors || saving) return;
@@ -172,21 +151,26 @@ export function PluginConfigContent({
   };
 
   return (
-    <div className={cn(
-      "grid min-h-0 flex-1 grid-cols-1 bg-paper-100",
-      embedded
-        ? "grid-rows-[auto_auto] overflow-visible"
-        : "grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]",
-    )}>
-      <aside className={cn(
-        "min-h-0 border-b border-ink-200/70 bg-paper-200/45",
-        !embedded && "lg:border-b-0 lg:border-r",
-      )}>
+    <div
+      className={cn(
+        "grid min-h-0 flex-1 grid-cols-1 bg-paper-100",
+        embedded
+          ? "grid-rows-[auto_auto] overflow-visible"
+          : "grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]",
+      )}
+    >
+      <aside
+        className={cn("min-h-0 border-b border-ink-200/70 bg-paper-200/45", !embedded && "lg:border-b-0 lg:border-r")}
+      >
         <div className="flex min-h-12 items-center justify-between gap-2 px-3 py-2 sm:px-4 lg:min-h-14">
           <div className="min-w-0">
-            <div className="text-[12.5px] font-semibold text-ink-900">{frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.187.71")}</div>
+            <div className="text-[12.5px] font-semibold text-ink-900">
+              {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.187.71")}
+            </div>
             <div className="mt-0.5 text-[11px] text-ink-500">
-              {activePlugins}/{configurablePlugins.length || 0} {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.189.65")}</div>
+              {activePlugins}/{configurablePlugins.length || 0}{" "}
+              {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.189.65")}
+            </div>
           </div>
           <Tooltip content="刷新技能配置" side="bottom">
             <button
@@ -235,10 +219,7 @@ export function PluginConfigContent({
         )}
       </aside>
 
-      <section className={cn(
-        "flex min-h-0 flex-col bg-paper-50",
-        embedded ? "overflow-visible" : "overflow-hidden",
-      )}>
+      <section className={cn("flex min-h-0 flex-col bg-paper-50", embedded ? "overflow-visible" : "overflow-hidden")}>
         {selected ? (
           <>
             <div className="shrink-0 border-b border-ink-200/70 bg-paper-50/95 px-3 py-2.5 sm:px-5 sm:py-4">
@@ -248,21 +229,30 @@ export function PluginConfigContent({
                     {pluginDisplayTitle(selected)}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-ink-500">
-                    <span>{selected.enabledToolCount}/{selected.toolCount} {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.252.76")}</span>
+                    <span>
+                      {selected.enabledToolCount}/{selected.toolCount}{" "}
+                      {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.252.76")}
+                    </span>
                     {saving ? (
                       <>
                         <span className="text-ink-300">/</span>
-                        <span className="text-terra-700">{frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.256.58")}</span>
+                        <span className="text-terra-700">
+                          {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.256.58")}
+                        </span>
                       </>
                     ) : selected.needsUserConfig ? (
                       <>
                         <span className="text-ink-300">/</span>
-                        <span className="text-amber-700">{frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.261.58")}</span>
+                        <span className="text-amber-700">
+                          {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.261.58")}
+                        </span>
                       </>
                     ) : dirty ? (
                       <>
                         <span className="text-ink-300">/</span>
-                        <span className="text-terra-700">{frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.266.58")}</span>
+                        <span className="text-terra-700">
+                          {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.266.58")}
+                        </span>
                       </>
                     ) : null}
                   </div>
@@ -315,16 +305,13 @@ export function PluginConfigContent({
                 onUpdateField={updateField}
               />
             ) : (
-              <TomlView
-                layoutMode={layoutMode}
-                draft={draft}
-                onChange={updateDraft}
-              />
+              <TomlView layoutMode={layoutMode} draft={draft} onChange={updateDraft} />
             )}
           </>
         ) : (
           <div className="grid flex-1 place-items-center text-[13px] text-ink-400">
-            {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.328.13")}</div>
+            {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.328.13")}
+          </div>
         )}
       </section>
     </div>
@@ -358,9 +345,7 @@ function PluginSelectorRows({
               embedded
                 ? "min-w-0 lg:gap-3 lg:px-3 lg:py-2.5"
                 : "min-w-[172px] lg:w-full lg:min-w-0 lg:gap-3 lg:px-3 lg:py-2.5",
-              active
-                ? "bg-paper-50 text-ink-900 shadow-panel"
-                : "text-ink-600 hover:bg-paper-50/70 hover:text-ink-900",
+              active ? "bg-paper-50 text-ink-900 shadow-panel" : "text-ink-600 hover:bg-paper-50/70 hover:text-ink-900",
             )}
             onClick={() => onSelect(plugin.name)}
           >
@@ -377,26 +362,20 @@ function PluginSelectorRows({
               )}
             />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-medium">
-                {pluginDisplayTitle(plugin)}
+              <span className="block truncate text-[13px] font-medium">{pluginDisplayTitle(plugin)}</span>
+              <span className={cn("mt-0.5 block truncate text-[11px]", active ? "text-ink-500" : "text-ink-400")}>
+                {plugin.enabledToolCount}/{plugin.toolCount}{" "}
+                {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.391.62")}
               </span>
-              <span
-                className={cn(
-                  "mt-0.5 block truncate text-[11px]",
-                  active ? "text-ink-500" : "text-ink-400",
-                )}
-              >
-                {plugin.enabledToolCount}/{plugin.toolCount} {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.391.62")}</span>
             </span>
-            {active ? (
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-terra-500" />
-            ) : null}
+            {active ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-terra-500" /> : null}
           </button>
         );
       })}
       {plugins.length === 0 ? (
         <div className="w-full px-3 py-5 text-center text-[12px] text-ink-400 lg:py-8">
-          {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.402.11")}</div>
+          {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.402.11")}
+        </div>
       ) : null}
     </>
   );
@@ -426,12 +405,7 @@ function TogglePill({
       )}
       aria-label={`${enabled ? "关闭" : "开启"} ${label}`}
     >
-      <span
-        className={cn(
-          "relative h-5 w-9 rounded-full transition",
-          enabled ? "bg-moss-500" : "bg-ink-300",
-        )}
-      >
+      <span className={cn("relative h-5 w-9 rounded-full transition", enabled ? "bg-moss-500" : "bg-ink-300")}>
         <span
           className={cn(
             "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
@@ -454,24 +428,14 @@ function pluginSearchText(plugin: PluginConfigItem): string {
       section.name,
       section.label,
       section.description ?? "",
-      ...section.fields.flatMap((field) => [
-        field.key,
-        field.label,
-        field.description ?? "",
-      ]),
+      ...section.fields.flatMap((field) => [field.key, field.label, field.description ?? ""]),
     ])
     .join(" ");
-  const toolText = plugin.tools
-    .flatMap((tool) => [tool.name, tool.summary ?? ""])
-    .join(" ");
+  const toolText = plugin.tools.flatMap((tool) => [tool.name, tool.summary ?? ""]).join(" ");
 
-  return [
-    plugin.name,
-    pluginDisplayTitle(plugin),
-    plugin.description ?? "",
-    toolText,
-    fieldText,
-  ].join(" ").toLocaleLowerCase();
+  return [plugin.name, pluginDisplayTitle(plugin), plugin.description ?? "", toolText, fieldText]
+    .join(" ")
+    .toLocaleLowerCase();
 }
 
 function pluginDisplayTitle(plugin: PluginConfigItem): string {

@@ -10,12 +10,8 @@ const providerModelManagementSurfaceSource = readSource(
 const providerConnectionEditorSource = readSource(
   "../../../Frontend/src/features/settings/sections/ProviderConnectionEditor.tsx",
 );
-const providerModelListSource = readSource(
-  "../../../Frontend/src/features/chat/ModelProviderModelList.tsx",
-);
-const settingsWorkbenchSource = readSource(
-  "../../../Frontend/src/features/settings/SettingsWorkbench.tsx",
-);
+const providerModelListSource = readSource("../../../Frontend/src/features/chat/ModelProviderModelList.tsx");
+const settingsWorkbenchSource = readSource("../../../Frontend/src/features/settings/SettingsWorkbench.tsx");
 
 test("model service orchestrator owns one connection-actions instance and one global provider dialog pair", () => {
   expect(countMatches(modelServiceSectionSource, /\buseProviderConnectionActions\s*\(\s*\{/g)).toBe(1);
@@ -53,9 +49,7 @@ test("model service uses list-to-detail navigation on mobile", () => {
 
 test("model management defers search and keeps group editing out of the immediate-save model dialog", () => {
   expect(providerModelManagementSurfaceSource).toMatch(/\buseDeferredValue\b/);
-  expect(providerModelManagementSurfaceSource).toMatch(
-    /const deferredSearch = useDeferredValue\(search\)/,
-  );
+  expect(providerModelManagementSurfaceSource).toMatch(/const deferredSearch = useDeferredValue\(search\)/);
   expect(providerModelManagementSurfaceSource).toMatch(/deferredSearch\.trim\(\)\.toLowerCase\(\)/);
   expect(providerModelManagementSurfaceSource).toMatch(
     /onOpenModelGroups=\{\(\) => setGroupUnsupportedDialogOpen\(true\)\}/,

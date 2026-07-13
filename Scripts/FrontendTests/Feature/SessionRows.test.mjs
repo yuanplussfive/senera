@@ -14,17 +14,19 @@ afterEach(() => {
 test("session rows expose an independent keyboard-operable selection button", async () => {
   const onClick = vi.fn();
   const user = userEvent.setup();
-  renderWithFrontendProviders(React.createElement(SessionRow, {
-    active: true,
-    sessionId: "session-1",
-    title: "Release plan",
-    subtitle: "3 messages",
-    accent: "idle",
-    onClick,
-    showInlineActions: true,
-    onRename: vi.fn(),
-    onClose: vi.fn(),
-  }));
+  renderWithFrontendProviders(
+    React.createElement(SessionRow, {
+      active: true,
+      sessionId: "session-1",
+      title: "Release plan",
+      subtitle: "3 messages",
+      accent: "idle",
+      onClick,
+      showInlineActions: true,
+      onRename: vi.fn(),
+      onClose: vi.fn(),
+    }),
+  );
 
   const selection = screen.getByRole("button", { name: "打开会话：Release plan" });
   expect(selection).toHaveAttribute("aria-current", "true");
@@ -38,17 +40,19 @@ test("session rows expose an independent keyboard-operable selection button", as
 });
 
 test("session row exposes its secondary action when keyboard-focused", () => {
-  renderWithFrontendProviders(React.createElement(SessionRow, {
-    active: false,
-    sessionId: "session-2",
-    title: "Hidden actions",
-    subtitle: "1 message",
-    accent: "idle",
-    onClick: vi.fn(),
-    showInlineActions: false,
-    onRename: vi.fn(),
-    onClose: vi.fn(),
-  }));
+  renderWithFrontendProviders(
+    React.createElement(SessionRow, {
+      active: false,
+      sessionId: "session-2",
+      title: "Hidden actions",
+      subtitle: "1 message",
+      accent: "idle",
+      onClick: vi.fn(),
+      showInlineActions: false,
+      onRename: vi.fn(),
+      onClose: vi.fn(),
+    }),
+  );
 
   expect(screen.getByRole("button", { name: "more" })).toHaveClass("focus-visible:opacity-100");
 });

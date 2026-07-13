@@ -272,15 +272,7 @@ export function filterProviderModels(models: ProviderModelInfo[], search: string
   );
 }
 
-export type RemoteModelCategoryId =
-  | "all"
-  | "reasoning"
-  | "vision"
-  | "web"
-  | "free"
-  | "embedding"
-  | "rerank"
-  | "tools";
+export type RemoteModelCategoryId = "all" | "reasoning" | "vision" | "web" | "free" | "embedding" | "rerank" | "tools";
 
 export interface RemoteModelCategoryDefinition {
   id: RemoteModelCategoryId;
@@ -313,10 +305,7 @@ export function filterRemoteModelPickerRows({
   );
 }
 
-export function remoteModelCategoryMatches(
-  row: ProviderModelInfo,
-  category: RemoteModelCategoryId,
-): boolean {
+export function remoteModelCategoryMatches(row: ProviderModelInfo, category: RemoteModelCategoryId): boolean {
   if (category === "all") {
     return true;
   }

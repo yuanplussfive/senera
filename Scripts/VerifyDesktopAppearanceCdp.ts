@@ -26,15 +26,13 @@ void main().catch((error: unknown) => {
 });
 
 async function main(): Promise<void> {
-  let originalAppearancePreference: string | null = null;
-  const mainTarget = await waitForTarget((target) =>
-    target.type === "page" && isMainWindowTarget(target.url));
+  let originalAppearancePreference: string | null | undefined;
+  const mainTarget = await waitForTarget((target) => target.type === "page" && isMainWindowTarget(target.url));
 
   const mainClient = await createCdpClient(mainTarget.webSocketDebuggerUrl);
   try {
     await waitForDocumentReady(mainClient);
-    originalAppearancePreference = await mainClient.evaluate(() =>
-      localStorage.getItem("senera.appearancePreference"));
+    originalAppearancePreference = await mainClient.evaluate(() => localStorage.getItem("senera.appearancePreference"));
     await mainClient.evaluate(() => {
       localStorage.removeItem("senera.appearancePreference");
       window.dispatchEvent(new StorageEvent("storage", { key: "senera.appearancePreference" }));
@@ -62,8 +60,9 @@ async function main(): Promise<void> {
     mainClient.close();
   }
 
-  const settingsTarget = await waitForTarget((target) =>
-    target.type === "page" && target.url.includes("surface=settings"));
+  const settingsTarget = await waitForTarget(
+    (target) => target.type === "page" && target.url.includes("surface=settings"),
+  );
 
   const settingsClient = await createCdpClient(settingsTarget.webSocketDebuggerUrl);
   try {
@@ -121,11 +120,21 @@ async function main(): Promise<void> {
       terra500: getComputedStyle(document.documentElement).getPropertyValue("--color-terra-500").trim(),
       userBubbleBg: getComputedStyle(document.documentElement).getPropertyValue("--theme-chat-user-bg").trim(),
       userBubbleFg: getComputedStyle(document.documentElement).getPropertyValue("--theme-chat-user-fg").trim(),
-      userBubbleHoverBg: getComputedStyle(document.documentElement).getPropertyValue("--theme-chat-user-hover-bg").trim(),
-      userBubbleFontSize: getComputedStyle(document.documentElement).getPropertyValue("--theme-chat-user-font-size").trim(),
-      userBubbleLineHeight: getComputedStyle(document.documentElement).getPropertyValue("--theme-chat-user-line-height").trim(),
-      assistantFontSize: getComputedStyle(document.documentElement).getPropertyValue("--theme-chat-assistant-font-size").trim(),
-      assistantLineHeight: getComputedStyle(document.documentElement).getPropertyValue("--theme-chat-assistant-line-height").trim(),
+      userBubbleHoverBg: getComputedStyle(document.documentElement)
+        .getPropertyValue("--theme-chat-user-hover-bg")
+        .trim(),
+      userBubbleFontSize: getComputedStyle(document.documentElement)
+        .getPropertyValue("--theme-chat-user-font-size")
+        .trim(),
+      userBubbleLineHeight: getComputedStyle(document.documentElement)
+        .getPropertyValue("--theme-chat-user-line-height")
+        .trim(),
+      assistantFontSize: getComputedStyle(document.documentElement)
+        .getPropertyValue("--theme-chat-assistant-font-size")
+        .trim(),
+      assistantLineHeight: getComputedStyle(document.documentElement)
+        .getPropertyValue("--theme-chat-assistant-line-height")
+        .trim(),
     }));
     assert.equal(updatedSettingsState.dataset.colorScheme, "senera");
     assert.equal(updatedSettingsState.dataset.themePreference, "light");
@@ -147,7 +156,9 @@ async function main(): Promise<void> {
       bg: getComputedStyle(document.documentElement).getPropertyValue("--theme-bg").trim(),
       terra500: getComputedStyle(document.documentElement).getPropertyValue("--color-terra-500").trim(),
       userBubbleBg: getComputedStyle(document.documentElement).getPropertyValue("--theme-chat-user-bg").trim(),
-      userBubbleHoverBg: getComputedStyle(document.documentElement).getPropertyValue("--theme-chat-user-hover-bg").trim(),
+      userBubbleHoverBg: getComputedStyle(document.documentElement)
+        .getPropertyValue("--theme-chat-user-hover-bg")
+        .trim(),
     }));
     assert.equal(darkSettingsState.bg, "rgb(38 36 31)");
     assert.equal(darkSettingsState.terra500, "222 142 108");
@@ -160,7 +171,7 @@ async function main(): Promise<void> {
     await waitForAppearanceDataset(settingsClient, "accentColor", "sky");
     await waitForClassicDarkTokens(settingsClient);
   } finally {
-    if (originalAppearancePreference === null) {
+    if (originalAppearancePreference == null) {
       await settingsClient.evaluate(() => {
         localStorage.removeItem("senera.appearancePreference");
         window.dispatchEvent(new StorageEvent("storage", { key: "senera.appearancePreference" }));
@@ -305,8 +316,9 @@ async function waitForClassicDarkTokens(client: CdpClient): Promise<void> {
 
 async function clickAppearanceRadio(client: CdpClient, text: string): Promise<void> {
   await client.evaluate((label: string) => {
-    const button = Array.from(document.querySelectorAll("button"))
-      .find((candidate) => candidate.getAttribute("role") === "radio" && candidate.textContent?.trim() === label);
+    const button = Array.from(document.querySelectorAll("button")).find(
+      (candidate) => candidate.getAttribute("role") === "radio" && candidate.textContent?.trim() === label,
+    );
     if (!(button instanceof HTMLButtonElement)) {
       throw new Error(`Could not find appearance radio button: ${label}`);
     }
@@ -316,24 +328,28 @@ async function clickAppearanceRadio(client: CdpClient, text: string): Promise<vo
 }
 
 async function waitForAppearanceDataset(client: CdpClient, key: string, value: string): Promise<void> {
-  await client.evaluate(async (datasetKey: string, expectedValue: string) => {
-    await new Promise<void>((resolve, reject) => {
-      const startedAt = Date.now();
-      const tick = () => {
-        if (document.documentElement.dataset[datasetKey] === expectedValue) {
-          resolve();
-          return;
-        }
-        if (Date.now() - startedAt > 5000) {
-          reject(new Error(`Timed out waiting for appearance dataset ${datasetKey}=${expectedValue}.`));
-          return;
-        }
-        window.setTimeout(tick, 100);
-      };
-      tick();
-    });
-    return true;
-  }, key, value);
+  await client.evaluate(
+    async (datasetKey: string, expectedValue: string) => {
+      await new Promise<void>((resolve, reject) => {
+        const startedAt = Date.now();
+        const tick = () => {
+          if (document.documentElement.dataset[datasetKey] === expectedValue) {
+            resolve();
+            return;
+          }
+          if (Date.now() - startedAt > 5000) {
+            reject(new Error(`Timed out waiting for appearance dataset ${datasetKey}=${expectedValue}.`));
+            return;
+          }
+          window.setTimeout(tick, 100);
+        };
+        tick();
+      });
+      return true;
+    },
+    key,
+    value,
+  );
 }
 
 async function waitForTarget(predicate: (target: DebugTarget) => boolean): Promise<DebugTarget> {
@@ -348,16 +364,18 @@ async function waitForTarget(predicate: (target: DebugTarget) => boolean): Promi
 
 function readTargets(): Promise<DebugTarget[]> {
   return new Promise((resolve, reject) => {
-    http.get(`${endpoint}/json/list`, (response) => {
-      let body = "";
-      response.setEncoding("utf8");
-      response.on("data", (chunk) => {
-        body += chunk;
-      });
-      response.on("end", () => {
-        resolve(JSON.parse(body) as DebugTarget[]);
-      });
-    }).on("error", reject);
+    http
+      .get(`${endpoint}/json/list`, (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          resolve(JSON.parse(body) as DebugTarget[]);
+        });
+      })
+      .on("error", reject);
   });
 }
 
@@ -366,7 +384,10 @@ function isMainWindowTarget(url: string): boolean {
 }
 
 async function createCdpClient(url: string): Promise<{
-  evaluate<T, TArgs extends unknown[] = []>(fn: (...args: TArgs) => T | Promise<T>, ...args: TArgs): Promise<Awaited<T>>;
+  evaluate<T, TArgs extends unknown[] = []>(
+    fn: (...args: TArgs) => T | Promise<T>,
+    ...args: TArgs
+  ): Promise<Awaited<T>>;
   close(): void;
 }> {
   const ws = new WebSocket(url);
@@ -376,10 +397,13 @@ async function createCdpClient(url: string): Promise<{
   });
 
   let nextId = 1;
-  const pending = new Map<number, {
-    resolve: (value: unknown) => void;
-    reject: (error: Error) => void;
-  }>();
+  const pending = new Map<
+    number,
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+    }
+  >();
 
   ws.on("message", (data) => {
     const message = JSON.parse(String(data)) as CdpResponse;
@@ -407,16 +431,18 @@ async function createCdpClient(url: string): Promise<{
     fn: (...args: TArgs) => T | Promise<T>,
     ...args: TArgs
   ): Promise<Awaited<T>> {
-    const result = await send("Runtime.evaluate", {
+    const result = (await send("Runtime.evaluate", {
       expression: `(async () => { const __name = (target) => target; return JSON.stringify(await (${fn.toString()})(...${JSON.stringify(args)})); })()`,
       awaitPromise: true,
       returnByValue: true,
-    }) as {
+    })) as {
       result?: { value?: string };
       exceptionDetails?: { text?: string; exception?: { description?: string } };
     };
     if (result.exceptionDetails) {
-      throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "CDP evaluation failed");
+      throw new Error(
+        result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "CDP evaluation failed",
+      );
     }
     if (typeof result.result?.value !== "string") {
       throw new Error("CDP evaluation returned no JSON value.");

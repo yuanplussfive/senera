@@ -46,9 +46,7 @@ export const UseCases: Story = () => (
         <div className="rounded-lg border border-ink-200 bg-paper-50 p-4">
           <MetaLabel>Section Header</MetaLabel>
           <div className="text-ink-900 text-base mt-2">Main Content Title</div>
-          <div className="text-ink-700 text-sm mt-1">
-            Supporting description text goes here
-          </div>
+          <div className="text-ink-700 text-sm mt-1">Supporting description text goes here</div>
         </div>
 
         <div className="rounded-lg border border-ink-200 bg-paper-50 p-4">
@@ -105,7 +103,9 @@ export const InForms: Story = () => (
       <h3 className="text-ink-900 font-medium mb-6">Form Field Labels</h3>
       <div className="space-y-4">
         <div>
-          <MetaLabel as="label" htmlFor="name">Name</MetaLabel>
+          <MetaLabel as="label" htmlFor="name">
+            Name
+          </MetaLabel>
           <input
             id="name"
             type="text"
@@ -115,7 +115,9 @@ export const InForms: Story = () => (
         </div>
 
         <div>
-          <MetaLabel as="label" htmlFor="email">Email Address</MetaLabel>
+          <MetaLabel as="label" htmlFor="email">
+            Email Address
+          </MetaLabel>
           <input
             id="email"
             type="email"
@@ -125,7 +127,9 @@ export const InForms: Story = () => (
         </div>
 
         <div>
-          <MetaLabel as="label" htmlFor="notes">Notes</MetaLabel>
+          <MetaLabel as="label" htmlFor="notes">
+            Notes
+          </MetaLabel>
           <textarea
             id="notes"
             rows={4}

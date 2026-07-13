@@ -142,11 +142,7 @@ export function searchSettingsSectionResults(
   sections: readonly SettingsSectionDefinition[],
   query: string,
 ): SettingsSectionSearchResult[] {
-  const tokens = query
-    .trim()
-    .toLocaleLowerCase()
-    .split(/\s+/)
-    .filter(Boolean);
+  const tokens = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
 
   if (tokens.length === 0) {
     return sections.map((section) => ({
@@ -157,15 +153,20 @@ export function searchSettingsSectionResults(
 
   return sections.flatMap((section) => {
     const entries = createSettingsSectionSearchEntries(section);
-    const searchText = entries.map((entry) => entry.searchText).join(" ").toLocaleLowerCase();
+    const searchText = entries
+      .map((entry) => entry.searchText)
+      .join(" ")
+      .toLocaleLowerCase();
     if (!tokens.every((token) => searchText.includes(token))) {
       return [];
     }
 
-    return [{
-      section,
-      details: createSettingsSectionSearchDetails(entries, tokens),
-    }];
+    return [
+      {
+        section,
+        details: createSettingsSectionSearchDetails(entries, tokens),
+      },
+    ];
   });
 }
 
@@ -209,10 +210,7 @@ const fallbackSettingsSectionGroup: SettingsSectionGroupDefinition = {
   sectionIds: [],
 };
 
-function sectionGroupIncludes(
-  group: SettingsSectionGroupDefinition,
-  sectionId: SettingsSectionId,
-): boolean {
+function sectionGroupIncludes(group: SettingsSectionGroupDefinition, sectionId: SettingsSectionId): boolean {
   return group.sectionIds.includes(sectionId);
 }
 
@@ -221,10 +219,12 @@ export function readSettingsSectionStatus(sectionId: SettingsSectionId): Setting
 }
 
 export function readSettingsSectionPlan(sectionId: SettingsSectionId): SettingsSectionPlan {
-  return plannedSectionPlans[sectionId] ?? {
-    title: "这个分区会继续扩展",
-    items: ["配置入口", "状态摘要", "验证动作"],
-  };
+  return (
+    plannedSectionPlans[sectionId] ?? {
+      title: "这个分区会继续扩展",
+      items: ["配置入口", "状态摘要", "验证动作"],
+    }
+  );
 }
 
 export function readSettingsWorkbenchSectionSummary(
@@ -408,14 +408,16 @@ function createConfigBackedWorkbenchSummary(
       groupDescription: group.description,
       groupLabel: group.label,
       nextStepDetail: "打开模型服务，选择供应商后即可编辑连接、拉取模型和管理已配置模型。",
-      nextStepLabel: runtimeStatus ? modelServiceNextStepByState[runtimeStatus.state] ?? "检查配置状态" : "等待配置加载",
+      nextStepLabel: runtimeStatus
+        ? (modelServiceNextStepByState[runtimeStatus.state] ?? "检查配置状态")
+        : "等待配置加载",
       runtimeSurfaceDetail: "模型服务读取主配置快照，但连接和模型改动通过独立命令即时持久化。",
       runtimeSurfaceLabel: runtimeStatus && runtimeStatus.state !== "idle" ? "配置已连接" : "等待配置",
       runtimeSurfaceTone: runtimeStatus && runtimeStatus.state !== "idle" ? "success" : "neutral",
       saveModelDetail: "每次供应商连接保存或模型增删都会单独发起保存请求，不再等待整份配置保存。",
       saveModelLabel: "按项即时保存",
       statusDetail: runtimeStatus
-        ? modelServiceStatusDetailByState[runtimeStatus.state] ?? "当前分区已接入模型服务运行状态。"
+        ? (modelServiceStatusDetailByState[runtimeStatus.state] ?? "当前分区已接入模型服务运行状态。")
         : "主配置快照加载后会显示模型服务状态。",
       statusLabel,
       statusTone: readRuntimeStatusTone(runtimeStatus),
@@ -430,14 +432,14 @@ function createConfigBackedWorkbenchSummary(
     groupDescription: group.description,
     groupLabel: group.label,
     nextStepDetail: "主配置仅负责系统级字段；运行、规划、检索和存储在各自分区编辑。",
-    nextStepLabel: runtimeStatus ? nextStepByState[runtimeStatus.state] ?? "检查配置状态" : "等待配置加载",
+    nextStepLabel: runtimeStatus ? (nextStepByState[runtimeStatus.state] ?? "检查配置状态") : "等待配置加载",
     runtimeSurfaceDetail: "主配置表单从配置快照读取，并复用共享草稿和保存动作。",
     runtimeSurfaceLabel: runtimeStatus && runtimeStatus.state !== "idle" ? "配置已连接" : "等待配置",
     runtimeSurfaceTone: runtimeStatus && runtimeStatus.state !== "idle" ? "success" : "neutral",
     saveModelDetail: "主配置使用共享草稿保存；供应商和模型通过模型服务的独立命令即时持久化。",
     saveModelLabel: "主配置草稿",
     statusDetail: runtimeStatus
-      ? statusDetailByState[runtimeStatus.state] ?? "当前分区已接入主配置运行状态。"
+      ? (statusDetailByState[runtimeStatus.state] ?? "当前分区已接入主配置运行状态。")
       : "主配置快照加载后会显示保存和校验状态。",
     statusLabel,
     statusTone: readRuntimeStatusTone(runtimeStatus),
@@ -462,9 +464,10 @@ function createDefaultModelWorkbenchSummary(
     runtimeSurfaceTone: readRuntimeStatusTone(runtimeStatus),
     saveModelDetail: "模型选择成功后由后端快照确认当前默认助手模型。",
     saveModelLabel: "即时保存",
-    statusDetail: runtimeStatus?.state === "error"
-      ? "默认模型命令返回错误，请检查模型服务和供应商状态。"
-      : "默认助手模型由模型服务配置提供。",
+    statusDetail:
+      runtimeStatus?.state === "error"
+        ? "默认模型命令返回错误，请检查模型服务和供应商状态。"
+        : "默认助手模型由模型服务配置提供。",
     statusLabel: runtimeStatus?.label ?? "可配置",
     statusTone: readRuntimeStatusTone(runtimeStatus),
   };
@@ -507,14 +510,14 @@ function createConfigFormSectionWorkbenchSummary({
     groupDescription: group.description,
     groupLabel: group.label,
     nextStepDetail: scopeDetail,
-    nextStepLabel: runtimeStatus ? nextStepByState[runtimeStatus.state] ?? "检查配置状态" : "等待配置加载",
+    nextStepLabel: runtimeStatus ? (nextStepByState[runtimeStatus.state] ?? "检查配置状态") : "等待配置加载",
     runtimeSurfaceDetail: `${sectionName} 配置表单从主配置快照中读取，并复用主配置保存动作。`,
     runtimeSurfaceLabel: runtimeStatus && runtimeStatus.state !== "idle" ? "配置已连接" : "等待配置",
     runtimeSurfaceTone: runtimeStatus && runtimeStatus.state !== "idle" ? "success" : "neutral",
     saveModelDetail: "当前仍复用主配置保存契约；这里只改变入口边界和可见范围。",
     saveModelLabel: "配置草稿",
     statusDetail: runtimeStatus
-      ? statusDetailByState[runtimeStatus.state] ?? "当前分区已接入主配置运行状态。"
+      ? (statusDetailByState[runtimeStatus.state] ?? "当前分区已接入主配置运行状态。")
       : "主配置快照加载后会显示保存和校验状态。",
     statusLabel,
     statusTone: readRuntimeStatusTone(runtimeStatus),
@@ -533,19 +536,18 @@ function createSkillsWorkbenchSummary(
     groupDescription: group.description,
     groupLabel: group.label,
     nextStepDetail: "后续会和 tools（工具）能力边界一起重做最终交互。",
-    nextStepLabel: runtimeStatus?.state === "error"
-      ? "查看插件诊断"
-      : runtimeStatus?.state === "needs_attention"
-        ? "补齐插件配置"
-        : "管理技能配置",
+    nextStepLabel:
+      runtimeStatus?.state === "error"
+        ? "查看插件诊断"
+        : runtimeStatus?.state === "needs_attention"
+          ? "补齐插件配置"
+          : "管理技能配置",
     runtimeSurfaceDetail: "技能通过 plugin operations（插件操作）单独保存，不占用主配置草稿。",
     runtimeSurfaceLabel: runtimeStatus ? "插件通道" : "等待插件",
     runtimeSurfaceTone: readRuntimeStatusTone(runtimeStatus),
     saveModelDetail: "技能配置通过 plugin operations（插件操作）单独保存。",
     saveModelLabel: "插件操作",
-    statusDetail: runtimeStatus
-      ? "技能分区显示插件加载、诊断和配置需求。"
-      : "等待插件配置状态。",
+    statusDetail: runtimeStatus ? "技能分区显示插件加载、诊断和配置需求。" : "等待插件配置状态。",
     statusLabel: runtimeStatus?.label ?? "等待插件",
     statusTone: readRuntimeStatusTone(runtimeStatus),
   };
@@ -612,12 +614,14 @@ function createSettingsSectionSearchEntries(section: SettingsSectionDefinition):
       searchText: plan.title,
       value: plan.title,
     });
-    entries.push(...plan.items.map((item, index) => ({
-      detailLabel: "规划",
-      rank: 5 + index,
-      searchText: item,
-      value: item,
-    })));
+    entries.push(
+      ...plan.items.map((item, index) => ({
+        detailLabel: "规划",
+        rank: 5 + index,
+        searchText: item,
+        value: item,
+      })),
+    );
   }
 
   return entries;

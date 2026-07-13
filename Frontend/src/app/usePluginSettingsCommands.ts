@@ -69,9 +69,9 @@ export function resolvePluginSettingsEvent(
     const data = env.data as ConfigFailedData;
     const requestId = data.operation?.requestId;
     if (
-      requestId
-      && pendingPluginRequestIds.has(requestId)
-      && (data.operation?.kind === "update" || data.operation?.kind === "set_enabled")
+      requestId &&
+      pendingPluginRequestIds.has(requestId) &&
+      (data.operation?.kind === "update" || data.operation?.kind === "set_enabled")
     ) {
       return {
         kind: "plugin_config_failed",
@@ -110,13 +110,13 @@ export function usePluginSettingsCommands({
           updatedAt: new Date().toISOString(),
         },
       }));
-      toast.success(frontendMessage(pending.kind === "update" ? "pluginConfig.saved" : "pluginConfig.setEnabledSucceeded"));
+      toast.success(
+        frontendMessage(pending.kind === "update" ? "pluginConfig.saved" : "pluginConfig.setEnabledSucceeded"),
+      );
       return true;
     }
 
-    const pending = resolution.requestId
-      ? pendingPluginConfigOpsRef.current.get(resolution.requestId)
-      : undefined;
+    const pending = resolution.requestId ? pendingPluginConfigOpsRef.current.get(resolution.requestId) : undefined;
     if (resolution.requestId && pending) {
       const requestId = resolution.requestId;
       pendingPluginConfigOpsRef.current.delete(requestId);
@@ -131,9 +131,12 @@ export function usePluginSettingsCommands({
           updatedAt: new Date().toISOString(),
         },
       }));
-      toast.error(frontendMessage(pending.kind === "update" ? "pluginConfig.saveFailed" : "pluginConfig.setEnabledFailed"), {
-        description: resolution.message,
-      });
+      toast.error(
+        frontendMessage(pending.kind === "update" ? "pluginConfig.saveFailed" : "pluginConfig.setEnabledFailed"),
+        {
+          description: resolution.message,
+        },
+      );
       return true;
     }
 
@@ -145,54 +148,56 @@ export function usePluginSettingsCommands({
     send({ type: "plugin.config.list" });
   }, [send, status]);
 
-  const savePluginConfig = useCallback((pluginName: string, toml: string): string | null => {
-    if (status !== "open") {
-      toast.error(frontendMessage("pluginConfig.saveOffline"));
-      return null;
-    }
-    return startPluginOperation({
-      send,
-      setPluginConfigOperations,
-      pendingPluginConfigOpsRef,
-      pending: {
-        pluginName,
-        kind: "update",
-      },
-      request: {
-        type: "plugin.config.update",
-        pluginName,
-        toml,
-      },
-      failureToast: frontendMessage("pluginConfig.saveDisconnected"),
-    });
-  }, [send, status]);
+  const savePluginConfig = useCallback(
+    (pluginName: string, toml: string): string | null => {
+      if (status !== "open") {
+        toast.error(frontendMessage("pluginConfig.saveOffline"));
+        return null;
+      }
+      return startPluginOperation({
+        send,
+        setPluginConfigOperations,
+        pendingPluginConfigOpsRef,
+        pending: {
+          pluginName,
+          kind: "update",
+        },
+        request: {
+          type: "plugin.config.update",
+          pluginName,
+          toml,
+        },
+        failureToast: frontendMessage("pluginConfig.saveDisconnected"),
+      });
+    },
+    [send, status],
+  );
 
-  const setPluginEnabled = useCallback((
-    pluginName: string,
-    enabled: boolean,
-    toolName?: string,
-  ): string | null => {
-    if (status !== "open") {
-      toast.error(frontendMessage("pluginConfig.setEnabledOffline"));
-      return null;
-    }
-    return startPluginOperation({
-      send,
-      setPluginConfigOperations,
-      pendingPluginConfigOpsRef,
-      pending: {
-        pluginName,
-        kind: "set_enabled",
-      },
-      request: {
-        type: "plugin.config.set_enabled",
-        pluginName,
-        toolName,
-        enabled,
-      },
-      failureToast: frontendMessage("pluginConfig.setEnabledDisconnected"),
-    });
-  }, [send, status]);
+  const setPluginEnabled = useCallback(
+    (pluginName: string, enabled: boolean, toolName?: string): string | null => {
+      if (status !== "open") {
+        toast.error(frontendMessage("pluginConfig.setEnabledOffline"));
+        return null;
+      }
+      return startPluginOperation({
+        send,
+        setPluginConfigOperations,
+        pendingPluginConfigOpsRef,
+        pending: {
+          pluginName,
+          kind: "set_enabled",
+        },
+        request: {
+          type: "plugin.config.set_enabled",
+          pluginName,
+          toolName,
+          enabled,
+        },
+        failureToast: frontendMessage("pluginConfig.setEnabledDisconnected"),
+      });
+    },
+    [send, status],
+  );
 
   return {
     pluginConfigs,

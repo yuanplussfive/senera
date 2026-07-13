@@ -389,12 +389,14 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
     form: { version: 1, sections: [] },
   };
 
-  render(React.createElement(ConfigMutationHarness, {
-    configSnapshot,
-    send,
-    status: "open",
-    handleRef,
-  }));
+  render(
+    React.createElement(ConfigMutationHarness, {
+      configSnapshot,
+      send,
+      status: "open",
+      handleRef,
+    }),
+  );
 
   let upsertRequestId;
   let renameRequestId;
@@ -441,53 +443,67 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
     },
   ]);
   expect(send.mock.calls.every(([request]) => request.type !== "config.update" && !("config" in request))).toBe(true);
-  expect(handleRef.current.providerEndpointOperations["custom-openai"]).toEqual(expect.objectContaining({
-    requestId: upsertRequestId,
-    kind: "provider.endpoint.upsert",
-    status: "pending",
-  }));
+  expect(handleRef.current.providerEndpointOperations["custom-openai"]).toEqual(
+    expect.objectContaining({
+      requestId: upsertRequestId,
+      kind: "provider.endpoint.upsert",
+      status: "pending",
+    }),
+  );
 
   await act(async () => {
-    handleRef.current.ingestConfigMutationEvent(event(EventKinds.ConfigSnapshot, "config", {
-      ...configSnapshot,
-      revision: 32,
-      operation: {
-        requestId: upsertRequestId,
-        kind: "provider.endpoint.upsert",
-      },
-    }));
-    handleRef.current.ingestConfigMutationEvent(event(EventKinds.ConfigFailed, "config", {
-      configPath: "Config.toml",
-      message: "stale revision",
-      operation: {
-        requestId: renameRequestId,
-        kind: "provider.endpoint.rename",
-      },
-    }));
-    handleRef.current.ingestConfigMutationEvent(event(EventKinds.ConfigSnapshot, "config", {
-      ...configSnapshot,
-      operation: {
-        requestId: deleteRequestId,
-        kind: "provider.model.delete",
-      },
-    }));
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigSnapshot, "config", {
+        ...configSnapshot,
+        revision: 32,
+        operation: {
+          requestId: upsertRequestId,
+          kind: "provider.endpoint.upsert",
+        },
+      }),
+    );
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigFailed, "config", {
+        configPath: "Config.toml",
+        message: "stale revision",
+        operation: {
+          requestId: renameRequestId,
+          kind: "provider.endpoint.rename",
+        },
+      }),
+    );
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigSnapshot, "config", {
+        ...configSnapshot,
+        operation: {
+          requestId: deleteRequestId,
+          kind: "provider.model.delete",
+        },
+      }),
+    );
   });
 
   expect(handleRef.current.providerEndpointOperations["custom-openai"].status).toBe("success");
-  expect(handleRef.current.providerEndpointOperations["custom-old"]).toEqual(expect.objectContaining({
-    status: "error",
-    message: "stale revision",
-  }));
+  expect(handleRef.current.providerEndpointOperations["custom-old"]).toEqual(
+    expect.objectContaining({
+      status: "error",
+      message: "stale revision",
+    }),
+  );
   expect(handleRef.current.providerEndpointOperations["custom-delete"].status).toBe("pending");
-  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({
-    variant: "success",
-    title: "供应商连接已保存",
-  }));
-  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({
-    variant: "error",
-    title: "供应商重命名失败",
-    options: { description: "stale revision" },
-  }));
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "success",
+      title: "供应商连接已保存",
+    }),
+  );
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "error",
+      title: "供应商重命名失败",
+      options: { description: "stale revision" },
+    }),
+  );
 });
 
 function SandboxHarness({ handleRef }) {

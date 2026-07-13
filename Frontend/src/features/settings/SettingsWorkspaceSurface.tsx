@@ -23,7 +23,12 @@ export function SettingsWorkspaceState({
   className?: string;
 }): JSX.Element {
   return (
-    <div className={cn("grid min-h-[360px] place-items-center bg-paper-50 px-6 text-center text-[13px] text-ink-400", className)}>
+    <div
+      className={cn(
+        "grid min-h-[360px] place-items-center bg-paper-50 px-6 text-center text-[13px] text-ink-400",
+        className,
+      )}
+    >
       {children}
     </div>
   );

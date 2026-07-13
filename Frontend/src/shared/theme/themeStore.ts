@@ -84,22 +84,28 @@ export function createAppearanceStore({
 
   const refreshSystemTheme = (): void => {
     const nextSystemTheme = readSystemTheme(readMatchMedia());
-    updateSnapshot(createAppearanceSnapshot({
-      preference: currentSnapshot.preference,
-      systemTheme: nextSystemTheme,
-    }), {
-      animate: currentSnapshot.preference.themeMode === "system",
-    });
+    updateSnapshot(
+      createAppearanceSnapshot({
+        preference: currentSnapshot.preference,
+        systemTheme: nextSystemTheme,
+      }),
+      {
+        animate: currentSnapshot.preference.themeMode === "system",
+      },
+    );
   };
 
   const refreshStoredPreference = (): void => {
     const nextPreference = readStorageAppearancePreference(readStorage());
-    updateSnapshot(createAppearanceSnapshot({
-      preference: nextPreference,
-      systemTheme: currentSnapshot.systemTheme,
-    }), {
-      animate: true,
-    });
+    updateSnapshot(
+      createAppearanceSnapshot({
+        preference: nextPreference,
+        systemTheme: currentSnapshot.systemTheme,
+      }),
+      {
+        animate: true,
+      },
+    );
   };
 
   const startListening = (): void => {
@@ -119,10 +125,12 @@ export function createAppearanceStore({
       windowRef.addEventListener("storage", storageListener);
     }
 
-    updateSnapshot(createAppearanceSnapshot({
-      preference: readStorageAppearancePreference(readStorage()),
-      systemTheme: readSystemTheme(readMatchMedia()),
-    }));
+    updateSnapshot(
+      createAppearanceSnapshot({
+        preference: readStorageAppearancePreference(readStorage()),
+        systemTheme: readSystemTheme(readMatchMedia()),
+      }),
+    );
   };
 
   const stopListening = (): void => {
@@ -158,13 +166,16 @@ export function createAppearanceStore({
         ...currentSnapshot.preference,
         ...preference,
       });
-      updateSnapshot(createAppearanceSnapshot({
-        preference: nextPreference,
-        systemTheme: currentSnapshot.systemTheme,
-      }), {
-        animate: true,
-        persist: true,
-      });
+      updateSnapshot(
+        createAppearanceSnapshot({
+          preference: nextPreference,
+          systemTheme: currentSnapshot.systemTheme,
+        }),
+        {
+          animate: true,
+          persist: true,
+        },
+      );
     },
     setMotionLevel: (nextMotionLevel, nextPrefersReducedMotion = prefersReducedMotion) => {
       motionLevel = nextMotionLevel;

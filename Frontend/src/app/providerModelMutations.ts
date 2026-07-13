@@ -18,9 +18,12 @@ export type ProviderModelOperationKind = Extract<
   "provider.model.upsert" | "provider.model.delete" | "provider.defaultModel.set"
 >;
 
-export type ProviderModelConfigRequest = Extract<ProviderModelCommandRequest, {
-  type: ProviderModelOperationKind;
-}>;
+export type ProviderModelConfigRequest = Extract<
+  ProviderModelCommandRequest,
+  {
+    type: ProviderModelOperationKind;
+  }
+>;
 
 export interface PendingProviderModelOperation {
   kind: ProviderModelOperationKind;
@@ -43,12 +46,18 @@ export function readConfigRevisionGuardForModel(
 export function readMatchingProviderModelOperation(
   env: EventEnvelope,
   pending: ReadonlyMap<string, PendingProviderModelOperation>,
-): { kind: "success" | "failure"; operation: PendingProviderModelOperation; requestId: string; message?: string } | null {
-  const data = env.kind === EventKinds.ConfigSnapshot
-    ? env.data as ConfigSnapshotData
-    : env.kind === EventKinds.ConfigFailed
-      ? env.data as ConfigFailedData
-      : null;
+): {
+  kind: "success" | "failure";
+  operation: PendingProviderModelOperation;
+  requestId: string;
+  message?: string;
+} | null {
+  const data =
+    env.kind === EventKinds.ConfigSnapshot
+      ? (env.data as ConfigSnapshotData)
+      : env.kind === EventKinds.ConfigFailed
+        ? (env.data as ConfigFailedData)
+        : null;
   const requestId = data?.operation?.requestId;
   const operationKind = data?.operation?.kind;
   if (!requestId || !isProviderModelOperationKind(operationKind)) return null;
@@ -63,9 +72,9 @@ export function readMatchingProviderModelOperation(
 }
 
 export function isProviderModelOperationKind(value: unknown): value is ProviderModelOperationKind {
-  return value === "provider.model.upsert"
-    || value === "provider.model.delete"
-    || value === "provider.defaultModel.set";
+  return (
+    value === "provider.model.upsert" || value === "provider.model.delete" || value === "provider.defaultModel.set"
+  );
 }
 
 export type ProviderModelUpsertInput = {

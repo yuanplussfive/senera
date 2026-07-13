@@ -11,10 +11,7 @@ import {
   toProviderEndpointInput,
 } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft, ProviderModelEndpointInput } from "../../chat/modelConfigTypes";
-import {
-  readModelServiceState,
-  type ModelServiceState,
-} from "./modelServiceState";
+import { readModelServiceState, type ModelServiceState } from "./modelServiceState";
 
 export interface ProviderConnectionStateInput {
   catalogs: Record<string, ProviderModelsSnapshotData>;
@@ -65,15 +62,15 @@ export function readProviderConnectionConfigValue(
   section: ConfigFormSectionData,
 ): JsonConfigObject {
   const effectiveProviders = readProviderEndpoints(
-    findTopField(section, "ModelProviderEndpoints")?.effectiveValue
-      ?? snapshotValue.ModelProviderEndpoints,
+    findTopField(section, "ModelProviderEndpoints")?.effectiveValue ?? snapshotValue.ModelProviderEndpoints,
   );
   return {
     ...snapshotValue,
     ModelProviderEndpoints: effectiveProviders,
     ModelProviders: findTopField(section, "ModelProviders")?.effectiveValue ?? snapshotValue.ModelProviders,
     ModelGroups: findTopField(section, "ModelGroups")?.effectiveValue ?? snapshotValue.ModelGroups,
-    DefaultModelProviderId: findTopField(section, "DefaultModelProviderId")?.effectiveValue ?? snapshotValue.DefaultModelProviderId,
+    DefaultModelProviderId:
+      findTopField(section, "DefaultModelProviderId")?.effectiveValue ?? snapshotValue.DefaultModelProviderId,
   };
 }
 
@@ -85,18 +82,15 @@ export function readProviderConnectionDraftState({
   draftProvider: ProviderEndpointDraft | null;
 }): ProviderConnectionDraftState {
   const acceptedDraft = acceptedProvider ? normalizeProviderEndpointDraft(acceptedProvider) : null;
-  const connectionDraft = draftProvider && acceptedDraft?.Id === draftProvider.Id
-    ? normalizeProviderEndpointDraft(draftProvider)
-    : acceptedDraft;
+  const connectionDraft =
+    draftProvider && acceptedDraft?.Id === draftProvider.Id
+      ? normalizeProviderEndpointDraft(draftProvider)
+      : acceptedDraft;
 
   return {
     acceptedProvider: acceptedDraft,
     connectionDraft,
-    dirty: Boolean(
-      acceptedDraft
-      && connectionDraft
-      && !sameProviderEndpoint(connectionDraft, acceptedDraft),
-    ),
+    dirty: Boolean(acceptedDraft && connectionDraft && !sameProviderEndpoint(connectionDraft, acceptedDraft)),
   };
 }
 

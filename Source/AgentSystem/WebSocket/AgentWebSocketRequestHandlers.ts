@@ -225,22 +225,14 @@ export class AgentWebSocketConfigRequestHandlers {
     request: AgentWebSocketRequestOf<"provider.model.upsert">,
     sendEvent: AgentWebSocketEventSender,
   ): void {
-    this.sendProviderModelConfigSnapshot(
-      this.requireConfigService().upsertProviderModel(request),
-      request,
-      sendEvent,
-    );
+    this.sendProviderModelConfigSnapshot(this.requireConfigService().upsertProviderModel(request), request, sendEvent);
   }
 
   deleteProviderModel(
     request: AgentWebSocketRequestOf<"provider.model.delete">,
     sendEvent: AgentWebSocketEventSender,
   ): void {
-    this.sendProviderModelConfigSnapshot(
-      this.requireConfigService().deleteProviderModel(request),
-      request,
-      sendEvent,
-    );
+    this.sendProviderModelConfigSnapshot(this.requireConfigService().deleteProviderModel(request), request, sendEvent);
   }
 
   bulkImportProviderModels(

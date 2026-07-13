@@ -74,12 +74,12 @@ export default {
       boxShadow: {
         "bubble-user": "var(--shadow-bubble-user)",
         "bubble-ai": "var(--shadow-bubble-ai)",
-        "panel": "var(--shadow-panel)",
-        "soft": "var(--shadow-soft)",
+        panel: "var(--shadow-panel)",
+        soft: "var(--shadow-soft)",
       },
       animation: {
-        "caret": "caret 1.1s ease-in-out infinite",
-        "shimmer": "shimmer 2s linear infinite",
+        caret: "caret 1.1s ease-in-out infinite",
+        shimmer: "shimmer 2s linear infinite",
         "fade-in": "fadeIn 0.18s ease-out both",
         // Dialog content must not animate transform, otherwise it overrides Tailwind translate centering.
         "dialog-in": "dialogIn 0.16s ease-out both",

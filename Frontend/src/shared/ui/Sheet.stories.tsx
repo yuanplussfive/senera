@@ -2,12 +2,7 @@ import type { Story } from "@ladle/react";
 import { useState } from "react";
 import { Menu } from "lucide-react";
 import { Button } from "./Button";
-import {
-  Sheet,
-  SheetTrigger,
-  SheetContent,
-  SheetClose,
-} from "./Sheet";
+import { Sheet, SheetTrigger, SheetContent, SheetClose } from "./Sheet";
 
 export const LeftSheet: Story = () => {
   const [open, setOpen] = useState(false);
@@ -21,18 +16,10 @@ export const LeftSheet: Story = () => {
             Open Left Sheet
           </Button>
         </SheetTrigger>
-        <SheetContent
-          side="left"
-          title="Left Sheet"
-          description="This is a sheet sliding from the left side."
-        >
+        <SheetContent side="left" title="Left Sheet" description="This is a sheet sliding from the left side.">
           <div className="mt-6 space-y-4">
-            <p className="text-ink-700 text-sm">
-              Sheets are side panels that slide in from the edge of the screen.
-            </p>
-            <p className="text-ink-700 text-sm">
-              They're useful for navigation menus, filters, or detail views.
-            </p>
+            <p className="text-ink-700 text-sm">Sheets are side panels that slide in from the edge of the screen.</p>
+            <p className="text-ink-700 text-sm">They're useful for navigation menus, filters, or detail views.</p>
           </div>
           <div className="mt-6">
             <SheetClose asChild>
@@ -57,11 +44,7 @@ export const RightSheet: Story = () => {
             Open Right Sheet
           </Button>
         </SheetTrigger>
-        <SheetContent
-          side="right"
-          title="Right Sheet"
-          description="This is a sheet sliding from the right side."
-        >
+        <SheetContent side="right" title="Right Sheet" description="This is a sheet sliding from the right side.">
           <div className="mt-6 space-y-4">
             <div className="rounded-lg border border-ink-200 p-4">
               <h4 className="text-ink-900 font-medium mb-2">Example Content</h4>
@@ -85,14 +68,12 @@ export const WithForm: Story = () => {
         <SheetTrigger asChild>
           <Button>Open Settings</Button>
         </SheetTrigger>
-        <SheetContent
-          side="right"
-          title="Settings"
-          description="Configure your preferences here."
-        >
+        <SheetContent side="right" title="Settings" description="Configure your preferences here.">
           <div className="mt-6 space-y-4">
             <div className="space-y-2">
-              <label htmlFor="sheet-name" className="text-sm font-medium text-ink-900">Name</label>
+              <label htmlFor="sheet-name" className="text-sm font-medium text-ink-900">
+                Name
+              </label>
               <input
                 id="sheet-name"
                 name="name"
@@ -103,7 +84,9 @@ export const WithForm: Story = () => {
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="sheet-email" className="text-sm font-medium text-ink-900">Email</label>
+              <label htmlFor="sheet-email" className="text-sm font-medium text-ink-900">
+                Email
+              </label>
               <input
                 id="sheet-email"
                 name="email"
@@ -115,7 +98,9 @@ export const WithForm: Story = () => {
             </div>
             <div className="flex gap-2 pt-4">
               <SheetClose asChild>
-                <Button variant="ghost" className="flex-1">Cancel</Button>
+                <Button variant="ghost" className="flex-1">
+                  Cancel
+                </Button>
               </SheetClose>
               <Button className="flex-1">Save</Button>
             </div>

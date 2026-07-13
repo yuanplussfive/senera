@@ -1,19 +1,8 @@
-import {
-  Plus,
-  RefreshCw,
-  Settings2,
-} from "lucide-react";
+import { Plus, RefreshCw, Settings2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  ScrollArea,
-} from "../../shared/ui";
+import { Dialog, DialogContent, ScrollArea } from "../../shared/ui";
 import { cn } from "../../lib/util";
-import {
-  inferModelProviderIcon,
-  ModelProviderIcon,
-} from "./ModelProviderIcon";
+import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
 import {
   defaultModelCapabilities,
   filterRemoteModelPickerRows,
@@ -23,21 +12,9 @@ import {
   type RemoteModelCategoryId,
 } from "./modelConfigData";
 import { CapabilityIconStrip } from "./ModelCapabilityControls";
-import {
-  EmptyList,
-  ProviderCatalogStatus,
-  SearchInput,
-} from "./ModelConfigPrimitives";
-import type {
-  ModelGroupDraft,
-  ModelProviderDraft,
-  ProviderEndpointDraft,
-  ProviderModelInfo,
-} from "./modelConfigTypes";
-import type {
-  ProviderModelsFailedData,
-  ProviderModelsSnapshotData,
-} from "../../api/eventTypes";
+import { EmptyList, ProviderCatalogStatus, SearchInput } from "./ModelConfigPrimitives";
+import type { ModelGroupDraft, ModelProviderDraft, ProviderEndpointDraft, ProviderModelInfo } from "./modelConfigTypes";
+import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 
 export function RemoteModelPickerDialog({
   catalog,
@@ -75,11 +52,12 @@ export function RemoteModelPickerDialog({
     [configuredModels],
   );
   const visibleRows = useMemo(
-    () => filterRemoteModelPickerRows({
-      category,
-      rows: catalog?.models ?? [],
-      search,
-    }),
+    () =>
+      filterRemoteModelPickerRows({
+        category,
+        rows: catalog?.models ?? [],
+        search,
+      }),
     [catalog?.models, category, search],
   );
   const groupedRows = useMemo(() => groupProviderModelRows(visibleRows, groups), [groups, visibleRows]);
@@ -242,9 +220,7 @@ function RemoteModelPickerRow({
           {model.id}
         </span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[10.5px] text-ink-400">
-            {model.ownedBy || "供应商模型"}
-          </span>
+          <span className="truncate text-[10.5px] text-ink-400">{model.ownedBy || "供应商模型"}</span>
           <CapabilityIconStrip capabilities={capabilities} />
         </span>
       </span>

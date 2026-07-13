@@ -53,7 +53,10 @@ describe("Local execution environment behavior", () => {
       }),
     );
     expect(canonical).toEqual(
-      expect.objectContaining({ ok: true, value: await fs.promises.realpath(path.join(workspaceRoot, "notes", "release.txt")) }),
+      expect.objectContaining({
+        ok: true,
+        value: await fs.promises.realpath(path.join(workspaceRoot, "notes", "release.txt")),
+      }),
     );
     await expect(env.exists("notes/release.txt")).resolves.toEqual({ ok: true, value: true });
     await expect(env.remove("notes/release.txt")).resolves.toEqual({ ok: true, value: undefined });

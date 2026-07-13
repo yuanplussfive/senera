@@ -129,12 +129,7 @@ export interface ConfigMutationController {
   refreshPresets: () => void;
   saveConfig: (config: Record<string, unknown>) => string | null;
   savePluginConfig: (pluginName: string, toml: string) => string | null;
-  savePreset: (input: {
-    name: string;
-    format: PresetFormat;
-    content: string;
-    activate?: boolean;
-  }) => string | null;
+  savePreset: (input: { name: string; format: PresetFormat; content: string; activate?: boolean }) => string | null;
   renameProviderEndpoint: (providerId: string, nextProviderId: string) => string | null;
   setActivePreset: (name: string | null) => string | null;
   setPluginEnabled: (pluginName: string, enabled: boolean, toolName?: string) => string | null;
@@ -155,16 +150,25 @@ export function useConfigMutationController({
   const pendingProviderEndpointOpsRef = useRef<Map<string, PendingProviderEndpointOperation>>(new Map());
   const pendingConfigOpsRef = useRef<Map<string, PendingConfigOperation>>(new Map());
   const pendingPresetOpsRef = useRef<Map<string, PendingPresetOperation>>(new Map());
-  const providerModelMutations = useProviderModelMutations({ configSnapshot, sendRef, statusRef });
+  const {
+    deleteProviderModel,
+    ingestConfigMutationEvent: ingestProviderModelMutationEvent,
+    providerModelOperations,
+    setDefaultProviderModel,
+    upsertProviderModel,
+  } = useProviderModelMutations({ configSnapshot, sendRef, statusRef });
 
-  const readOpenTransport = useCallback((offlineMessage: string): SendRequest | null => {
-    const send = sendRef.current;
-    if (statusRef.current !== "open" || !send) {
-      toast.error(offlineMessage);
-      return null;
-    }
-    return send;
-  }, [sendRef, statusRef]);
+  const readOpenTransport = useCallback(
+    (offlineMessage: string): SendRequest | null => {
+      const send = sendRef.current;
+      if (statusRef.current !== "open" || !send) {
+        toast.error(offlineMessage);
+        return null;
+      }
+      return send;
+    },
+    [sendRef, statusRef],
+  );
 
   const refreshPluginConfigs = useCallback((): void => {
     const send = sendRef.current;
@@ -184,384 +188,409 @@ export function useConfigMutationController({
     send({ type: "config.get" });
   }, [sendRef, statusRef]);
 
-  const savePluginConfig = useCallback((pluginName: string, toml: string): string | null => {
-    const send = readOpenTransport(pluginConfigCopy.update.offline);
-    if (!send) return null;
+  const savePluginConfig = useCallback(
+    (pluginName: string, toml: string): string | null => {
+      const send = readOpenTransport(pluginConfigCopy.update.offline);
+      if (!send) return null;
 
-    const requestId = generateId();
-    const pending: PendingPluginConfigOperation = { pluginName, kind: "update" };
-    pendingPluginConfigOpsRef.current.set(requestId, pending);
-    dispatch({
-      type: "plugin_operation_upsert",
-      operation: {
-        requestId,
-        pluginName,
-        kind: pending.kind,
-        status: "pending",
-        updatedAt: timestamp(),
-      },
-    });
-
-    const ok = send({
-      type: "plugin.config.update",
-      requestId,
-      pluginName,
-      toml,
-    });
-    if (!ok) {
-      pendingPluginConfigOpsRef.current.delete(requestId);
-      dispatch({ type: "plugin_operation_remove", requestId });
-      toast.error(pluginConfigCopy.update.disconnected);
-      return null;
-    }
-    return requestId;
-  }, [readOpenTransport]);
-
-  const setPluginEnabled = useCallback((
-    pluginName: string,
-    enabled: boolean,
-    toolName?: string,
-  ): string | null => {
-    const send = readOpenTransport(pluginConfigCopy.set_enabled.offline);
-    if (!send) return null;
-
-    const requestId = generateId();
-    const pending: PendingPluginConfigOperation = { pluginName, kind: "set_enabled" };
-    pendingPluginConfigOpsRef.current.set(requestId, pending);
-    dispatch({
-      type: "plugin_operation_upsert",
-      operation: {
-        requestId,
-        pluginName,
-        kind: pending.kind,
-        status: "pending",
-        updatedAt: timestamp(),
-      },
-    });
-
-    const ok = send({
-      type: "plugin.config.set_enabled",
-      requestId,
-      pluginName,
-      toolName,
-      enabled,
-    });
-    if (!ok) {
-      pendingPluginConfigOpsRef.current.delete(requestId);
-      dispatch({ type: "plugin_operation_remove", requestId });
-      toast.error(pluginConfigCopy.set_enabled.disconnected);
-      return null;
-    }
-    return requestId;
-  }, [readOpenTransport]);
-
-  const saveConfig = useCallback((config: Record<string, unknown>): string | null => {
-    const send = readOpenTransport(frontendMessage("config.mainOffline"));
-    if (!send) return null;
-
-    const requestId = generateId();
-    const pending: PendingConfigOperation = { kind: "config_update" };
-    pendingConfigOpsRef.current.set(requestId, pending);
-    dispatch({
-      type: "config_operation_set",
-      operation: {
-        requestId,
-        kind: pending.kind,
-        status: "pending",
-        updatedAt: timestamp(),
-      },
-    });
-
-    const ok = send({
-      type: "config.update",
-      requestId,
-      config,
-      mirrorJson: true,
-    });
-    if (!ok) {
-      pendingConfigOpsRef.current.delete(requestId);
-      dispatch({ type: "config_operation_set", operation: null });
-      toast.error(frontendMessage("config.mainDisconnected"));
-      return null;
-    }
-    return requestId;
-  }, [readOpenTransport]);
-
-  const startProviderEndpointOperation = useCallback((
-    pending: PendingProviderEndpointOperation,
-    request: ProviderEndpointConfigRequest,
-  ): string | null => {
-    const copy = providerEndpointMessageKeys[pending.kind];
-    const send = readOpenTransport(frontendMessage(copy.offline));
-    if (!send) return null;
-    if (!configSnapshot) {
-      toast.error(frontendMessage(copy.configUnavailable));
-      return null;
-    }
-
-    const requestId = generateId();
-    const operation: ConfigMutationState = {
-      requestId,
-      kind: pending.kind,
-      status: "pending",
-      updatedAt: timestamp(),
-    };
-    pendingProviderEndpointOpsRef.current.set(requestId, pending);
-    dispatch({
-      type: "provider_endpoint_operation_upsert",
-      providerId: pending.providerId,
-      operation,
-    });
-
-    const ok = send({
-      ...request,
-      ...readConfigRevisionGuard(configSnapshot),
-      requestId,
-      mirrorJson: true,
-    } as ProviderEndpointConfigRequest);
-    if (!ok) {
-      pendingProviderEndpointOpsRef.current.delete(requestId);
-      dispatch({ type: "provider_endpoint_operation_remove", providerId: pending.providerId });
-      toast.error(frontendMessage(copy.disconnected));
-      return null;
-    }
-    return requestId;
-  }, [configSnapshot, readOpenTransport]);
-
-  const upsertProviderEndpoint = useCallback((endpoint: ProviderModelEndpointInput): string | null =>
-    startProviderEndpointOperation(
-      {
-        kind: "provider.endpoint.upsert",
-        providerId: endpoint.Id,
-      },
-      {
-        type: "provider.endpoint.upsert",
-        endpoint,
-      },
-    ), [startProviderEndpointOperation]);
-
-  const renameProviderEndpoint = useCallback((
-    providerId: string,
-    nextProviderId: string,
-  ): string | null => startProviderEndpointOperation(
-    {
-      kind: "provider.endpoint.rename",
-      providerId,
-    },
-    {
-      type: "provider.endpoint.rename",
-      providerId,
-      nextProviderId,
-    },
-  ), [startProviderEndpointOperation]);
-
-  const deleteProviderEndpoint = useCallback((
-    providerId: string,
-    options: ProviderEndpointDeleteOptions = {},
-  ): string | null => startProviderEndpointOperation(
-    {
-      kind: "provider.endpoint.delete",
-      providerId,
-    },
-    {
-      type: "provider.endpoint.delete",
-      providerId,
-      ...options,
-    },
-  ), [startProviderEndpointOperation]);
-
-  const fetchProviderModels = useCallback((
-    providerId: string,
-    force?: boolean,
-    endpoint?: ProviderModelEndpointInput,
-  ): void => {
-    const send = readOpenTransport(frontendMessage("config.providerModelsOffline"));
-    if (!send) return;
-
-    dispatch({ type: "provider_models_started", providerId });
-    const ok = send({
-      type: "provider.models.fetch",
-      providerId,
-      force,
-      endpoint,
-    });
-    if (!ok) {
-      dispatch({ type: "provider_models_finished", providerId });
-      toast.error(frontendMessage("config.providerModelsDisconnected"));
-    }
-  }, [readOpenTransport]);
-
-  const startPresetOperation = useCallback((
-    pending: PendingPresetOperation,
-    request: Extract<WsRequest, { type: "preset.save" | "preset.delete" | "preset.set_active" }>,
-  ): string | null => {
-    const send = readOpenTransport(frontendMessage("preset.updateOffline"));
-    if (!send) return null;
-
-    const requestId = generateId();
-    pendingPresetOpsRef.current.set(requestId, pending);
-    dispatch({
-      type: "preset_operation_upsert",
-      operation: {
-        requestId,
-        name: pending.name,
-        kind: pending.kind,
-        status: "pending",
-        updatedAt: timestamp(),
-      },
-    });
-
-    const ok = send({
-      ...request,
-      requestId,
-    });
-    if (!ok) {
-      pendingPresetOpsRef.current.delete(requestId);
-      dispatch({ type: "preset_operation_remove", requestId });
-      toast.error(frontendMessage("preset.updateDisconnected"));
-      return null;
-    }
-    return requestId;
-  }, [readOpenTransport]);
-
-  const savePreset = useCallback((input: {
-    name: string;
-    format: PresetFormat;
-    content: string;
-    activate?: boolean;
-  }): string | null => startPresetOperation(
-    {
-      name: input.name,
-      kind: "save",
-    },
-    {
-      type: "preset.save",
-      name: input.name,
-      format: input.format,
-      content: input.content,
-      activate: input.activate,
-    },
-  ), [startPresetOperation]);
-
-  const deletePreset = useCallback((name: string): string | null => startPresetOperation(
-    {
-      name,
-      kind: "delete",
-    },
-    {
-      type: "preset.delete",
-      name,
-    },
-  ), [startPresetOperation]);
-
-  const setActivePreset = useCallback((name: string | null): string | null => startPresetOperation(
-    {
-      name,
-      kind: "set_active",
-    },
-    {
-      type: "preset.set_active",
-      name,
-    },
-  ), [startPresetOperation]);
-
-  const ingestConfigMutationEvent = useCallback((env: EventEnvelope): boolean => {
-    if (providerModelMutations.ingestConfigMutationEvent(env)) return true;
-    const providerEndpointResolution = resolveProviderEndpointMutationEvent(
-      env,
-      pendingProviderEndpointOpsRef.current,
-    );
-    if (providerEndpointResolution) {
-      ingestProviderEndpointResolution(providerEndpointResolution, pendingProviderEndpointOpsRef, dispatch);
-      return true;
-    }
-    if (env.kind === EventKinds.PluginConfigSnapshot) {
-      ingestPluginConfigSnapshot(env.data as PluginConfigSnapshotData, pendingPluginConfigOpsRef, dispatch);
-      return true;
-    }
-    if (env.kind === EventKinds.PresetSnapshot) {
-      ingestPresetSnapshot(env.data as PresetSnapshotData, pendingPresetOpsRef, dispatch);
-      return true;
-    }
-    if (env.kind === EventKinds.ConfigSnapshot) {
-      ingestConfigSnapshot(env.data as ConfigSnapshotData, pendingConfigOpsRef, dispatch);
-      return true;
-    }
-    if (env.kind === EventKinds.ProviderModelsSnapshot) {
+      const requestId = generateId();
+      const pending: PendingPluginConfigOperation = { pluginName, kind: "update" };
+      pendingPluginConfigOpsRef.current.set(requestId, pending);
       dispatch({
-        type: "provider_models_finished",
-        providerId: (env.data as ProviderModelsSnapshotData).providerId,
+        type: "plugin_operation_upsert",
+        operation: {
+          requestId,
+          pluginName,
+          kind: pending.kind,
+          status: "pending",
+          updatedAt: timestamp(),
+        },
       });
-      return true;
-    }
-    if (env.kind === EventKinds.ProviderModelsFailed) {
-      const data = env.data as ProviderModelsFailedData;
-      dispatch({ type: "provider_models_finished", providerId: data.providerId });
-      toast.error(frontendMessage("config.providerModelsFailed"), {
-        description: data.message,
-      });
-      return true;
-    }
-    if (env.kind === EventKinds.ConfigFailed) {
-      ingestConfigFailure(env.data as ConfigFailedData, pendingConfigOpsRef, pendingPluginConfigOpsRef, dispatch);
-      return true;
-    }
-    if (env.kind === EventKinds.PresetFailed) {
-      ingestPresetFailure(env.data as PresetFailedData, pendingPresetOpsRef, dispatch);
-      return true;
-    }
-    return false;
-  }, [providerModelMutations.ingestConfigMutationEvent]);
 
-  return useMemo(() => ({
-    configOperation: state.configOperation,
-    deleteProviderEndpoint,
-    fetchProviderModels,
-    ingestConfigMutationEvent,
-    pluginConfigOperations: state.pluginConfigOperations,
-    presetOperations: state.presetOperations,
-    providerEndpointOperations: state.providerEndpointOperations,
-    providerModelOperations: providerModelMutations.providerModelOperations,
-    providerModelLoadingIds: state.providerModelLoadingIds,
-    refreshConfig,
-    refreshPluginConfigs,
-    refreshPresets,
-    renameProviderEndpoint,
-    saveConfig,
-    savePluginConfig,
-    savePreset,
-    setActivePreset,
-    setPluginEnabled,
-    deletePreset,
-    upsertProviderEndpoint,
-    upsertProviderModel: providerModelMutations.upsertProviderModel,
-    deleteProviderModel: providerModelMutations.deleteProviderModel,
-    setDefaultProviderModel: providerModelMutations.setDefaultProviderModel,
-  }), [
-    deletePreset,
-    deleteProviderEndpoint,
-    fetchProviderModels,
-    ingestConfigMutationEvent,
-    refreshConfig,
-    refreshPluginConfigs,
-    refreshPresets,
-    renameProviderEndpoint,
-    saveConfig,
-    savePluginConfig,
-    savePreset,
-    setActivePreset,
-    setPluginEnabled,
-    state.configOperation,
-    state.pluginConfigOperations,
-    state.presetOperations,
-    state.providerEndpointOperations,
-    providerModelMutations.providerModelOperations,
-    state.providerModelLoadingIds,
-    upsertProviderEndpoint,
-    providerModelMutations.deleteProviderModel,
-    providerModelMutations.setDefaultProviderModel,
-    providerModelMutations.upsertProviderModel,
-  ]);
+      const ok = send({
+        type: "plugin.config.update",
+        requestId,
+        pluginName,
+        toml,
+      });
+      if (!ok) {
+        pendingPluginConfigOpsRef.current.delete(requestId);
+        dispatch({ type: "plugin_operation_remove", requestId });
+        toast.error(pluginConfigCopy.update.disconnected);
+        return null;
+      }
+      return requestId;
+    },
+    [readOpenTransport],
+  );
+
+  const setPluginEnabled = useCallback(
+    (pluginName: string, enabled: boolean, toolName?: string): string | null => {
+      const send = readOpenTransport(pluginConfigCopy.set_enabled.offline);
+      if (!send) return null;
+
+      const requestId = generateId();
+      const pending: PendingPluginConfigOperation = { pluginName, kind: "set_enabled" };
+      pendingPluginConfigOpsRef.current.set(requestId, pending);
+      dispatch({
+        type: "plugin_operation_upsert",
+        operation: {
+          requestId,
+          pluginName,
+          kind: pending.kind,
+          status: "pending",
+          updatedAt: timestamp(),
+        },
+      });
+
+      const ok = send({
+        type: "plugin.config.set_enabled",
+        requestId,
+        pluginName,
+        toolName,
+        enabled,
+      });
+      if (!ok) {
+        pendingPluginConfigOpsRef.current.delete(requestId);
+        dispatch({ type: "plugin_operation_remove", requestId });
+        toast.error(pluginConfigCopy.set_enabled.disconnected);
+        return null;
+      }
+      return requestId;
+    },
+    [readOpenTransport],
+  );
+
+  const saveConfig = useCallback(
+    (config: Record<string, unknown>): string | null => {
+      const send = readOpenTransport(frontendMessage("config.mainOffline"));
+      if (!send) return null;
+
+      const requestId = generateId();
+      const pending: PendingConfigOperation = { kind: "config_update" };
+      pendingConfigOpsRef.current.set(requestId, pending);
+      dispatch({
+        type: "config_operation_set",
+        operation: {
+          requestId,
+          kind: pending.kind,
+          status: "pending",
+          updatedAt: timestamp(),
+        },
+      });
+
+      const ok = send({
+        type: "config.update",
+        requestId,
+        config,
+        mirrorJson: true,
+      });
+      if (!ok) {
+        pendingConfigOpsRef.current.delete(requestId);
+        dispatch({ type: "config_operation_set", operation: null });
+        toast.error(frontendMessage("config.mainDisconnected"));
+        return null;
+      }
+      return requestId;
+    },
+    [readOpenTransport],
+  );
+
+  const startProviderEndpointOperation = useCallback(
+    (pending: PendingProviderEndpointOperation, request: ProviderEndpointConfigRequest): string | null => {
+      const copy = providerEndpointMessageKeys[pending.kind];
+      const send = readOpenTransport(frontendMessage(copy.offline));
+      if (!send) return null;
+      if (!configSnapshot) {
+        toast.error(frontendMessage(copy.configUnavailable));
+        return null;
+      }
+
+      const requestId = generateId();
+      const operation: ConfigMutationState = {
+        requestId,
+        kind: pending.kind,
+        status: "pending",
+        updatedAt: timestamp(),
+      };
+      pendingProviderEndpointOpsRef.current.set(requestId, pending);
+      dispatch({
+        type: "provider_endpoint_operation_upsert",
+        providerId: pending.providerId,
+        operation,
+      });
+
+      const ok = send({
+        ...request,
+        ...readConfigRevisionGuard(configSnapshot),
+        requestId,
+        mirrorJson: true,
+      } as ProviderEndpointConfigRequest);
+      if (!ok) {
+        pendingProviderEndpointOpsRef.current.delete(requestId);
+        dispatch({ type: "provider_endpoint_operation_remove", providerId: pending.providerId });
+        toast.error(frontendMessage(copy.disconnected));
+        return null;
+      }
+      return requestId;
+    },
+    [configSnapshot, readOpenTransport],
+  );
+
+  const upsertProviderEndpoint = useCallback(
+    (endpoint: ProviderModelEndpointInput): string | null =>
+      startProviderEndpointOperation(
+        {
+          kind: "provider.endpoint.upsert",
+          providerId: endpoint.Id,
+        },
+        {
+          type: "provider.endpoint.upsert",
+          endpoint,
+        },
+      ),
+    [startProviderEndpointOperation],
+  );
+
+  const renameProviderEndpoint = useCallback(
+    (providerId: string, nextProviderId: string): string | null =>
+      startProviderEndpointOperation(
+        {
+          kind: "provider.endpoint.rename",
+          providerId,
+        },
+        {
+          type: "provider.endpoint.rename",
+          providerId,
+          nextProviderId,
+        },
+      ),
+    [startProviderEndpointOperation],
+  );
+
+  const deleteProviderEndpoint = useCallback(
+    (providerId: string, options: ProviderEndpointDeleteOptions = {}): string | null =>
+      startProviderEndpointOperation(
+        {
+          kind: "provider.endpoint.delete",
+          providerId,
+        },
+        {
+          type: "provider.endpoint.delete",
+          providerId,
+          ...options,
+        },
+      ),
+    [startProviderEndpointOperation],
+  );
+
+  const fetchProviderModels = useCallback(
+    (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput): void => {
+      const send = readOpenTransport(frontendMessage("config.providerModelsOffline"));
+      if (!send) return;
+
+      dispatch({ type: "provider_models_started", providerId });
+      const ok = send({
+        type: "provider.models.fetch",
+        providerId,
+        force,
+        endpoint,
+      });
+      if (!ok) {
+        dispatch({ type: "provider_models_finished", providerId });
+        toast.error(frontendMessage("config.providerModelsDisconnected"));
+      }
+    },
+    [readOpenTransport],
+  );
+
+  const startPresetOperation = useCallback(
+    (
+      pending: PendingPresetOperation,
+      request: Extract<WsRequest, { type: "preset.save" | "preset.delete" | "preset.set_active" }>,
+    ): string | null => {
+      const send = readOpenTransport(frontendMessage("preset.updateOffline"));
+      if (!send) return null;
+
+      const requestId = generateId();
+      pendingPresetOpsRef.current.set(requestId, pending);
+      dispatch({
+        type: "preset_operation_upsert",
+        operation: {
+          requestId,
+          name: pending.name,
+          kind: pending.kind,
+          status: "pending",
+          updatedAt: timestamp(),
+        },
+      });
+
+      const ok = send({
+        ...request,
+        requestId,
+      });
+      if (!ok) {
+        pendingPresetOpsRef.current.delete(requestId);
+        dispatch({ type: "preset_operation_remove", requestId });
+        toast.error(frontendMessage("preset.updateDisconnected"));
+        return null;
+      }
+      return requestId;
+    },
+    [readOpenTransport],
+  );
+
+  const savePreset = useCallback(
+    (input: { name: string; format: PresetFormat; content: string; activate?: boolean }): string | null =>
+      startPresetOperation(
+        {
+          name: input.name,
+          kind: "save",
+        },
+        {
+          type: "preset.save",
+          name: input.name,
+          format: input.format,
+          content: input.content,
+          activate: input.activate,
+        },
+      ),
+    [startPresetOperation],
+  );
+
+  const deletePreset = useCallback(
+    (name: string): string | null =>
+      startPresetOperation(
+        {
+          name,
+          kind: "delete",
+        },
+        {
+          type: "preset.delete",
+          name,
+        },
+      ),
+    [startPresetOperation],
+  );
+
+  const setActivePreset = useCallback(
+    (name: string | null): string | null =>
+      startPresetOperation(
+        {
+          name,
+          kind: "set_active",
+        },
+        {
+          type: "preset.set_active",
+          name,
+        },
+      ),
+    [startPresetOperation],
+  );
+
+  const ingestConfigMutationEvent = useCallback(
+    (env: EventEnvelope): boolean => {
+      if (ingestProviderModelMutationEvent(env)) return true;
+      const providerEndpointResolution = resolveProviderEndpointMutationEvent(
+        env,
+        pendingProviderEndpointOpsRef.current,
+      );
+      if (providerEndpointResolution) {
+        ingestProviderEndpointResolution(providerEndpointResolution, pendingProviderEndpointOpsRef, dispatch);
+        return true;
+      }
+      if (env.kind === EventKinds.PluginConfigSnapshot) {
+        ingestPluginConfigSnapshot(env.data as PluginConfigSnapshotData, pendingPluginConfigOpsRef, dispatch);
+        return true;
+      }
+      if (env.kind === EventKinds.PresetSnapshot) {
+        ingestPresetSnapshot(env.data as PresetSnapshotData, pendingPresetOpsRef, dispatch);
+        return true;
+      }
+      if (env.kind === EventKinds.ConfigSnapshot) {
+        ingestConfigSnapshot(env.data as ConfigSnapshotData, pendingConfigOpsRef, dispatch);
+        return true;
+      }
+      if (env.kind === EventKinds.ProviderModelsSnapshot) {
+        dispatch({
+          type: "provider_models_finished",
+          providerId: (env.data as ProviderModelsSnapshotData).providerId,
+        });
+        return true;
+      }
+      if (env.kind === EventKinds.ProviderModelsFailed) {
+        const data = env.data as ProviderModelsFailedData;
+        dispatch({ type: "provider_models_finished", providerId: data.providerId });
+        toast.error(frontendMessage("config.providerModelsFailed"), {
+          description: data.message,
+        });
+        return true;
+      }
+      if (env.kind === EventKinds.ConfigFailed) {
+        ingestConfigFailure(env.data as ConfigFailedData, pendingConfigOpsRef, pendingPluginConfigOpsRef, dispatch);
+        return true;
+      }
+      if (env.kind === EventKinds.PresetFailed) {
+        ingestPresetFailure(env.data as PresetFailedData, pendingPresetOpsRef, dispatch);
+        return true;
+      }
+      return false;
+    },
+    [ingestProviderModelMutationEvent],
+  );
+
+  return useMemo(
+    () => ({
+      configOperation: state.configOperation,
+      deleteProviderEndpoint,
+      fetchProviderModels,
+      ingestConfigMutationEvent,
+      pluginConfigOperations: state.pluginConfigOperations,
+      presetOperations: state.presetOperations,
+      providerEndpointOperations: state.providerEndpointOperations,
+      providerModelOperations,
+      providerModelLoadingIds: state.providerModelLoadingIds,
+      refreshConfig,
+      refreshPluginConfigs,
+      refreshPresets,
+      renameProviderEndpoint,
+      saveConfig,
+      savePluginConfig,
+      savePreset,
+      setActivePreset,
+      setPluginEnabled,
+      deletePreset,
+      upsertProviderEndpoint,
+      upsertProviderModel,
+      deleteProviderModel,
+      setDefaultProviderModel,
+    }),
+    [
+      deletePreset,
+      deleteProviderEndpoint,
+      fetchProviderModels,
+      ingestConfigMutationEvent,
+      refreshConfig,
+      refreshPluginConfigs,
+      refreshPresets,
+      renameProviderEndpoint,
+      saveConfig,
+      savePluginConfig,
+      savePreset,
+      setActivePreset,
+      setPluginEnabled,
+      state.configOperation,
+      state.pluginConfigOperations,
+      state.presetOperations,
+      state.providerEndpointOperations,
+      providerModelOperations,
+      state.providerModelLoadingIds,
+      upsertProviderEndpoint,
+      deleteProviderModel,
+      setDefaultProviderModel,
+      upsertProviderModel,
+    ],
+  );
 }
 
 function configMutationReducer(
@@ -796,4 +825,6 @@ function ingestPresetFailure(
   });
 }
 
-function timestamp(): string { return new Date().toISOString(); }
+function timestamp(): string {
+  return new Date().toISOString();
+}

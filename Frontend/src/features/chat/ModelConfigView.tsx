@@ -1,10 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "react";
 import type { ProviderModelInfo } from "../../api/eventTypes";
-import {
-  Dialog,
-  DialogContent,
-} from "../../shared/ui";
+import { Dialog, DialogContent } from "../../shared/ui";
 import { cn } from "../../lib/util";
 import {
   applyModelProvidersDraft,
@@ -38,10 +35,7 @@ import type {
 } from "./modelConfigTypes";
 import { ModelGroupsDialog } from "./ModelGroupsDialog";
 import { ModelOptionsDialog } from "./ModelOptionsDialog";
-import {
-  ProviderEditor,
-  ProviderList,
-} from "./ModelProviderPanels";
+import { ProviderEditor, ProviderList } from "./ModelProviderPanels";
 import { ProviderModelList } from "./ModelProviderModelList";
 import { RemoteModelPickerDialog } from "./RemoteModelPickerDialog";
 
@@ -84,23 +78,22 @@ export function ModelConfigView({
   const modelTemplate = useMemo(() => cloneRecord(modelField?.defaultItem ?? {}), [modelField]);
   const selectedProviderCatalog = selectedProvider?.Id ? catalogs[selectedProvider.Id] : undefined;
   const selectedProviderError = selectedProvider?.Id ? errors[selectedProvider.Id] : undefined;
-  const selectedProviderLoading = selectedProvider?.Id
-    ? Boolean(loadingProviderIds[selectedProvider.Id])
-    : false;
+  const selectedProviderLoading = selectedProvider?.Id ? Boolean(loadingProviderIds[selectedProvider.Id]) : false;
   const selectedProviderEnabled = providerEnabled(selectedProvider);
   const providerModelRows = useMemo(
-    () => sortProviderModelRows({
-      rows: readProviderModelRows({
-        catalogModels: selectedProviderCatalog?.models ?? [],
+    () =>
+      sortProviderModelRows({
+        rows: readProviderModelRows({
+          catalogModels: selectedProviderCatalog?.models ?? [],
+          models,
+          providerId: selectedProvider?.Id ?? "",
+          search: deferredModelSearch,
+          configuredOnly: showConfiguredOnly,
+        }),
         models,
         providerId: selectedProvider?.Id ?? "",
-        search: deferredModelSearch,
-        configuredOnly: showConfiguredOnly,
+        defaultModelId,
       }),
-      models,
-      providerId: selectedProvider?.Id ?? "",
-      defaultModelId,
-    }),
     [defaultModelId, deferredModelSearch, models, selectedProvider?.Id, selectedProviderCatalog, showConfiguredOnly],
   );
   const providerModelGroups = useMemo(
@@ -108,10 +101,7 @@ export function ModelConfigView({
     [modelGroups, providerModelRows],
   );
 
-  const writeProviders = (
-    nextProviders: ProviderEndpointDraft[],
-    nextModels: ModelProviderDraft[] = models,
-  ): void => {
+  const writeProviders = (nextProviders: ProviderEndpointDraft[], nextModels: ModelProviderDraft[] = models): void => {
     onChange({
       ...value,
       ModelProviderEndpoints: nextProviders.map(normalizeProviderEndpointDraft),
@@ -119,15 +109,14 @@ export function ModelConfigView({
     });
   };
 
-  const writeModels = (
-    nextModels: ModelProviderDraft[],
-    requestedDefaultModelId = defaultModelId,
-  ): void => {
-    onChange(applyModelProvidersDraft({
-      models: nextModels,
-      requestedDefaultModelId,
-      value,
-    }));
+  const writeModels = (nextModels: ModelProviderDraft[], requestedDefaultModelId = defaultModelId): void => {
+    onChange(
+      applyModelProvidersDraft({
+        models: nextModels,
+        requestedDefaultModelId,
+        value,
+      }),
+    );
   };
 
   const writeModelGroups = (nextGroups: ModelGroupDraft[]): void => {
@@ -150,12 +139,12 @@ export function ModelConfigView({
     if (!previous) return;
     const nextProvider = normalizeProviderEndpointDraft({ ...previous, ...patch });
     const nextProviders = providers.map((provider, providerIndex) =>
-      providerIndex === index ? nextProvider : provider);
-    const nextModels = previous.Id !== nextProvider.Id
-      ? models.map((model) => model.ProviderId === previous.Id
-        ? { ...model, ProviderId: nextProvider.Id }
-        : model)
-      : models;
+      providerIndex === index ? nextProvider : provider,
+    );
+    const nextModels =
+      previous.Id !== nextProvider.Id
+        ? models.map((model) => (model.ProviderId === previous.Id ? { ...model, ProviderId: nextProvider.Id } : model))
+        : models;
     writeProviders(nextProviders, nextModels);
   };
 
@@ -177,8 +166,9 @@ export function ModelConfigView({
 
   const configureModelFromCatalog = (modelInfo: ProviderModelInfo): void => {
     if (!selectedProvider?.Id) return;
-    const existingIndex = models.findIndex((model) =>
-      model.ProviderId === selectedProvider.Id && model.Model === modelInfo.id);
+    const existingIndex = models.findIndex(
+      (model) => model.ProviderId === selectedProvider.Id && model.Model === modelInfo.id,
+    );
     if (existingIndex >= 0) {
       setOptionsModelState({
         model: models[existingIndex],
@@ -210,19 +200,21 @@ export function ModelConfigView({
     const previous = models[optionsModelState.index];
     const nextDefault = previous && defaultModelId === previous.Id ? nextModel.Id : defaultModelId;
     writeModels(
-      models.map((model, modelIndex) => modelIndex === optionsModelState.index ? nextModel : model),
+      models.map((model, modelIndex) => (modelIndex === optionsModelState.index ? nextModel : model)),
       nextDefault,
     );
     setOptionsModelState(null);
   };
 
   const updateModelDraft = (patch: Partial<ModelProviderDraft>): void => {
-    setOptionsModelState((current) => current
-      ? {
-        ...current,
-        model: normalizeModelProviderDraft({ ...current.model, ...patch }),
-      }
-      : current);
+    setOptionsModelState((current) =>
+      current
+        ? {
+            ...current,
+            model: normalizeModelProviderDraft({ ...current.model, ...patch }),
+          }
+        : current,
+    );
   };
 
   const removeModel = (index: number): void => {
@@ -230,7 +222,11 @@ export function ModelConfigView({
     writeModels(nextModels);
     if (optionsModelState?.index === index) {
       setOptionsModelState(null);
-    } else if (optionsModelState?.index !== null && optionsModelState?.index !== undefined && optionsModelState.index > index) {
+    } else if (
+      optionsModelState?.index !== null &&
+      optionsModelState?.index !== undefined &&
+      optionsModelState.index > index
+    ) {
       setOptionsModelState({
         ...optionsModelState,
         index: optionsModelState.index - 1,
@@ -240,11 +236,7 @@ export function ModelConfigView({
 
   const fetchSelectedProviderModels = (force?: boolean): void => {
     if (!selectedProvider?.Id || !selectedProviderEnabled) return;
-    onFetchProviderModels(
-      selectedProvider.Id,
-      force,
-      toProviderEndpointInput(selectedProvider),
-    );
+    onFetchProviderModels(selectedProvider.Id, force, toProviderEndpointInput(selectedProvider));
   };
 
   const openRemoteModelPicker = (force?: boolean): void => {
@@ -256,16 +248,20 @@ export function ModelConfigView({
 
   return (
     <>
-      <div className={cn(
-        "grid bg-paper-50",
-        embedded
-          ? "min-h-0 grid-cols-1 overflow-visible lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]"
-          : "h-full min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(148px,34%)_minmax(0,1fr)] overflow-hidden lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]",
-      )}>
-        <section className={cn(
-          "flex min-h-0 flex-col border-b border-ink-200/70 bg-[var(--theme-config-list-bg)] lg:border-b-0 lg:border-r",
-          embedded ? "overflow-visible" : "h-full overflow-hidden",
-        )}>
+      <div
+        className={cn(
+          "grid bg-paper-50",
+          embedded
+            ? "min-h-0 grid-cols-1 overflow-visible lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]"
+            : "h-full min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(148px,34%)_minmax(0,1fr)] overflow-hidden lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]",
+        )}
+      >
+        <section
+          className={cn(
+            "flex min-h-0 flex-col border-b border-ink-200/70 bg-[var(--theme-config-list-bg)] lg:border-b-0 lg:border-r",
+            embedded ? "overflow-visible" : "h-full overflow-hidden",
+          )}
+        >
           <ProviderList
             providers={providers}
             catalogs={catalogs}
@@ -280,10 +276,9 @@ export function ModelConfigView({
             onOpenSettings={() => setProviderSettingsOpen(true)}
           />
         </section>
-        <section className={cn(
-          "min-h-0 min-w-0 bg-paper-50",
-          embedded ? "overflow-visible" : "h-full overflow-hidden",
-        )}>
+        <section
+          className={cn("min-h-0 min-w-0 bg-paper-50", embedded ? "overflow-visible" : "h-full overflow-hidden")}
+        >
           <ProviderModelList
             selectedProvider={selectedProvider}
             catalog={selectedProviderCatalog}

@@ -14,22 +14,24 @@ afterEach(() => cleanup());
 function renderLifecycle(overrides = {}) {
   const onConfirmModelRemoval = vi.fn(() => true);
   const onConfirmProviderRemoval = vi.fn(() => true);
-  render(React.createElement(ProviderModelLifecycleDialogs, {
-    candidateModels: [
-      { model: gpt, provider: openAi },
-      { model: sonnet, provider: anthropic },
-    ],
-    defaultModelId: gpt.Id,
-    disabled: false,
-    modelToRemove: null,
-    models: [gpt, embedding, sonnet],
-    providerToRemove: null,
-    onCloseModelRemoval: vi.fn(),
-    onCloseProviderRemoval: vi.fn(),
-    onConfirmModelRemoval,
-    onConfirmProviderRemoval,
-    ...overrides,
-  }));
+  render(
+    React.createElement(ProviderModelLifecycleDialogs, {
+      candidateModels: [
+        { model: gpt, provider: openAi },
+        { model: sonnet, provider: anthropic },
+      ],
+      defaultModelId: gpt.Id,
+      disabled: false,
+      modelToRemove: null,
+      models: [gpt, embedding, sonnet],
+      providerToRemove: null,
+      onCloseModelRemoval: vi.fn(),
+      onCloseProviderRemoval: vi.fn(),
+      onConfirmModelRemoval,
+      onConfirmProviderRemoval,
+      ...overrides,
+    }),
+  );
   return { onConfirmModelRemoval, onConfirmProviderRemoval };
 }
 

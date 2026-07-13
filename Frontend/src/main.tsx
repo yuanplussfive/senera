@@ -78,12 +78,12 @@ function SettingsSurface(props: SettingsSurfaceProps): JSX.Element {
   const providerModelErrors = useStore((state) => state.providerModelErrors);
   const sendRef = useRef<((request: WsRequest) => boolean) | null>(null);
   const statusRef = useRef<SocketStatus>("idle");
-  const configSettingsEventHandlerRef = useRef<ReturnType<typeof useConfigMutationController>["ingestConfigMutationEvent"]>(
-    () => false,
-  );
-  const pluginSettingsEventHandlerRef = useRef<ReturnType<typeof usePluginSettingsCommands>["handlePluginSettingsEvent"]>(
-    () => false,
-  );
+  const configSettingsEventHandlerRef = useRef<
+    ReturnType<typeof useConfigMutationController>["ingestConfigMutationEvent"]
+  >(() => false);
+  const pluginSettingsEventHandlerRef = useRef<
+    ReturnType<typeof usePluginSettingsCommands>["handlePluginSettingsEvent"]
+  >(() => false);
   const { status, send } = useAgentSocket({
     url: WS_URL,
     onEvent: (env) => {
@@ -129,16 +129,11 @@ function SettingsSurface(props: SettingsSurfaceProps): JSX.Element {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <SettingsWorkbench
-        {...props}
-        pluginSettings={pluginSettings}
-        systemConfig={systemConfig}
-      />
+      <SettingsWorkbench {...props} pluginSettings={pluginSettings} systemConfig={systemConfig} />
       <Toaster
         position="bottom-right"
         toastOptions={{
-          className:
-            "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
+          className: "!font-sans !text-[13px] !bg-paper-50 !text-ink-900 !border !border-ink-200 !shadow-soft",
         }}
       />
     </TooltipProvider>
