@@ -89,7 +89,7 @@ export class AgentPiHarnessSession implements AgentPiSession {
   subscribe(listener: AgentPiSessionEventListener): () => void {
     return this.harness.subscribe((event) => {
       if (isPiCoreAgentEvent(event as AgentPiHarnessEvent)) {
-        void listener(event as AgentEvent);
+        return listener(event as AgentEvent);
       }
     });
   }

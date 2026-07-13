@@ -1,7 +1,7 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, Loader2, RefreshCw, Search } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Tooltip } from "../../shared/ui";
 import { ModelProviderIcon } from "./ModelProviderIcon";
@@ -17,7 +17,7 @@ export function ListHeader({
   action?: ReactNode;
 }): JSX.Element {
   return (
-    <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ink-200/70 bg-[#efe7da] px-3">
+    <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ink-200/70 bg-[var(--theme-config-header-bg)] px-3">
       <div className="min-w-0">
         <div className="truncate text-[13px] font-semibold text-ink-900">{title}</div>
         <div className="mt-0.5 truncate text-[11px] text-ink-500">{subtitle}</div>
@@ -88,7 +88,7 @@ export function TextRow({
   placeholder?: string;
   secret?: boolean;
   trailing?: ReactNode;
-  onChange: (value: string) => void;
+  onChange?: (value: string) => void;
 }): JSX.Element {
   return (
     <SettingRow icon={icon} label={label}>
@@ -100,7 +100,7 @@ export function TextRow({
           disabled={disabled}
           spellCheck={false}
           className={inputClassName}
-          onChange={(event) => onChange(event.currentTarget.value)}
+          onChange={(event) => onChange?.(event.currentTarget.value)}
         />
         {trailing}
       </div>
@@ -286,7 +286,7 @@ export function SearchInput({
       <input
         value={value}
         disabled={disabled}
-        placeholder={frontendMessage("config.model.searchPlaceholder")}
+        placeholder={frontendMessage("runtime.migrated.features.chat.ModelConfigPrimitives.299.21")}
         className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-800 outline-none placeholder:text-ink-350 disabled:opacity-55"
         onChange={(event) => onChange(event.currentTarget.value)}
       />
@@ -341,17 +341,11 @@ export function ProviderCatalogStatus({
     <RefreshCw className="h-3.5 w-3.5" />
   );
   const text = disabled
-    ? frontendMessage("config.provider.disabled")
+    ? "供应商已关闭"
     : (error?.message ??
       (catalog
-        ? frontendMessage("config.provider.catalogStatus", {
-            count: catalog.models.length,
-            source: frontendMessage(
-              catalog.source === "cache" ? "config.provider.sourceCache" : "config.provider.sourceNetwork",
-            ),
-            time: formatShortTime(catalog.fetchedAt),
-          })
-        : frontendMessage("config.provider.catalogUnchecked")));
+        ? `${catalog.models.length} 个模型 · ${catalog.source === "cache" ? "缓存" : "网络"} · ${formatShortTime(catalog.fetchedAt)}`
+        : "尚未获取模型列表"));
 
   return (
     <div

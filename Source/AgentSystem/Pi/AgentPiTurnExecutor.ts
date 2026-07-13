@@ -169,9 +169,7 @@ export class AgentPiTurnExecutor {
         onEvent,
       );
 
-      unsubscribe = session.subscribe((event) => {
-        void collector.collect(event);
-      });
+      unsubscribe = session.subscribe((event) => collector.collect(event));
       throwIfAborted(signal);
       if (sessionResult.historyMigrationRequired) {
         await session.setHistory(projected.history);

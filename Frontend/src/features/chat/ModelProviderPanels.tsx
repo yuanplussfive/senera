@@ -1,12 +1,12 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useState } from "react";
 import { BrainCircuit, Eye, EyeOff, KeyRound, Loader2, Plus, RefreshCw, Server, Settings2, Trash2 } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { Button, ScrollArea, Tooltip } from "../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
 import { formatShortTime, nextHeaderKey, providerEnabled, providerIdLabel, sortProviderRows } from "./modelConfigData";
-import type { ProviderEndpointDraft } from "./modelConfigTypes";
+import type { ModelConfigLayoutMode, ProviderEndpointDraft } from "./modelConfigTypes";
 import {
   DetailTitle,
   EmptyDetail,
@@ -32,6 +32,8 @@ export function ProviderList({
   loadingProviderIds,
   selectedIndex,
   disabled,
+  layoutMode = "panel",
+  showSettingsAction = true,
   onAdd,
   onSelect,
   onRemove,
@@ -43,47 +45,110 @@ export function ProviderList({
   loadingProviderIds: Record<string, boolean>;
   selectedIndex: number;
   disabled: boolean;
+  layoutMode?: ModelConfigLayoutMode;
+  showSettingsAction?: boolean;
   onAdd: () => void;
   onSelect: (index: number) => void;
   onRemove: (index: number) => void;
   onOpenSettings: () => void;
 }): JSX.Element {
+  const embedded = layoutMode === "embedded";
+  const providerRows =
+    providers.length > 0 ? (
+      <div className="space-y-1.5 p-2">
+        {sortProviderRows(providers).map(({ provider, index }) => {
+          const active = index === selectedIndex;
+          const catalog = provider.Id ? catalogs[provider.Id] : undefined;
+          const error = provider.Id ? errors[provider.Id] : undefined;
+          const loading = provider.Id ? loadingProviderIds[provider.Id] : false;
+          const enabled = providerEnabled(provider);
+          const providerId = providerIdLabel(provider);
+          return (
+            <button
+              key={`${index}:${provider.Id}`}
+              type="button"
+              className={cn(
+                "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2.5 py-2.5 text-left transition",
+                "[content-visibility:auto] [contain-intrinsic-size:52px]",
+                active
+                  ? "border-ink-200 bg-paper-50 text-ink-900 shadow-panel"
+                  : "border-transparent text-ink-650 hover:border-ink-200/70 hover:bg-paper-50/80",
+                !enabled && "opacity-60",
+              )}
+              onClick={() => onSelect(index)}
+            >
+              <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border border-ink-200 bg-paper-100">
+                <ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={20} />
+              </span>
+              <span className="min-w-0 self-center">
+                <span className="block truncate text-[13px] font-semibold" title={providerId}>
+                  {providerId}
+                </span>
+                <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-450">
+                  <ProviderStatusIcon loading={loading} catalog={catalog} error={error} />
+                  <span className="truncate">
+                    {catalog
+                      ? `${catalog.models.length} 个模型 · ${formatShortTime(catalog.fetchedAt)}`
+                      : provider.Id || "未设置 ID"}
+                  </span>
+                </span>
+              </span>
+              <span
+                className={cn(
+                  "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                  enabled
+                    ? "border-lime-200 bg-lime-50 text-lime-700"
+                    : "border-ink-200 bg-ink-900/[0.035] text-ink-450",
+                )}
+              >
+                {enabled ? "ON" : "OFF"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    ) : (
+      <EmptyList text="添加供应商后填写接口地址" />
+    );
+
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className={cn("flex min-h-0 flex-col", embedded ? "overflow-visible" : "h-full overflow-hidden")}>
       <ListHeader
-        title={frontendMessage("config.provider.title")}
-        subtitle={frontendMessage("config.provider.endpointCount", { count: providers.length })}
+        title={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.145.15")}
+        subtitle={`${providers.length} 个端点`}
         action={
           <div className="flex items-center gap-1.5">
-            <Tooltip content={frontendMessage("config.provider.settings")} side="top">
-              <button
-                type="button"
-                disabled={disabled || providers.length === 0}
-                className={iconButtonClassName}
-                onClick={onOpenSettings}
-                aria-label={frontendMessage("config.provider.settings")}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-              </button>
-            </Tooltip>
-            <Tooltip content={frontendMessage("config.provider.delete")} side="top">
+            {showSettingsAction ? (
+              <Tooltip content="供应商设置" side="top">
+                <button
+                  type="button"
+                  disabled={disabled || providers.length === 0}
+                  className={iconButtonClassName}
+                  onClick={onOpenSettings}
+                  aria-label="供应商设置"
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+            ) : null}
+            <Tooltip content="删除供应商" side="top">
               <button
                 type="button"
                 disabled={disabled || providers.length === 0}
                 className={cn(iconButtonClassName, "hover:border-brick-200 hover:bg-brick-50 hover:text-brick-600")}
                 onClick={() => onRemove(selectedIndex)}
-                aria-label={frontendMessage("config.provider.delete")}
+                aria-label="删除供应商"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </Tooltip>
-            <Tooltip content={frontendMessage("config.provider.add")} side="top">
+            <Tooltip content="添加供应商" side="top">
               <button
                 type="button"
                 disabled={disabled}
                 className={iconButtonClassName}
                 onClick={onAdd}
-                aria-label={frontendMessage("config.provider.add")}
+                aria-label="添加供应商"
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
@@ -91,67 +156,13 @@ export function ProviderList({
           </div>
         }
       />
-      <ScrollArea className="min-h-0 flex-1 overflow-hidden" viewportClassName="h-full">
-        {providers.length > 0 ? (
-          <div className="space-y-1.5 p-2">
-            {sortProviderRows(providers).map(({ provider, index }) => {
-              const active = index === selectedIndex;
-              const catalog = provider.Id ? catalogs[provider.Id] : undefined;
-              const error = provider.Id ? errors[provider.Id] : undefined;
-              const loading = provider.Id ? loadingProviderIds[provider.Id] : false;
-              const enabled = providerEnabled(provider);
-              const providerId = providerIdLabel(provider);
-              return (
-                <button
-                  key={`${index}:${provider.Id}`}
-                  type="button"
-                  className={cn(
-                    "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2.5 py-2.5 text-left transition",
-                    "[content-visibility:auto] [contain-intrinsic-size:52px]",
-                    active
-                      ? "border-ink-200 bg-paper-50 text-ink-900 shadow-panel"
-                      : "border-transparent text-ink-650 hover:border-ink-200/70 hover:bg-paper-50/80",
-                    !enabled && "opacity-60",
-                  )}
-                  onClick={() => onSelect(index)}
-                >
-                  <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border border-ink-200 bg-paper-100">
-                    <ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={20} />
-                  </span>
-                  <span className="min-w-0 self-center">
-                    <span className="block truncate text-[13px] font-semibold" title={providerId}>
-                      {providerId}
-                    </span>
-                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-450">
-                      <ProviderStatusIcon loading={loading} catalog={catalog} error={error} />
-                      <span className="truncate">
-                        {catalog
-                          ? frontendMessage("config.provider.catalogSummary", {
-                              count: catalog.models.length,
-                              time: formatShortTime(catalog.fetchedAt),
-                            })
-                          : provider.Id || frontendMessage("config.provider.idUnset")}
-                      </span>
-                    </span>
-                  </span>
-                  <span
-                    className={cn(
-                      "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                      enabled
-                        ? "border-lime-200 bg-lime-50 text-lime-700"
-                        : "border-ink-200 bg-ink-900/[0.035] text-ink-450",
-                    )}
-                  >
-                    {enabled ? "ON" : "OFF"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <EmptyList text={frontendMessage("config.provider.emptyList")} />
-        )}
-      </ScrollArea>
+      {embedded ? (
+        <div className="min-h-0">{providerRows}</div>
+      ) : (
+        <ScrollArea className="min-h-0 flex-1 overflow-hidden" viewportClassName="h-full">
+          {providerRows}
+        </ScrollArea>
+      )}
     </div>
   );
 }
@@ -184,8 +195,8 @@ export function ProviderEditor({
     return (
       <EmptyDetail
         icon={<Server className="h-5 w-5" />}
-        title={frontendMessage("config.provider.select")}
-        text={frontendMessage("config.provider.emptyDetail")}
+        title={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.223.69")}
+        text="添加供应商后填写接口地址并获取模型列表。"
       />
     );
   }
@@ -199,7 +210,7 @@ export function ProviderEditor({
         <DetailTitle
           icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={22} />}
           title={providerId}
-          subtitle={frontendMessage(enabled ? "config.provider.enabled" : "config.provider.disabled")}
+          subtitle={enabled ? "供应商已启用" : "供应商已关闭"}
           actions={
             <>
               <Button
@@ -209,10 +220,10 @@ export function ProviderEditor({
                 onClick={() => onFetch(true)}
               >
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                {frontendMessage("config.provider.check")}
+                {frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.245.17")}
               </Button>
               <IconAction
-                label={frontendMessage("config.provider.delete")}
+                label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.247.33")}
                 danger
                 disabled={disabled}
                 onClick={() => onRemove(providerIndex)}
@@ -225,23 +236,26 @@ export function ProviderEditor({
 
         <SettingsTable>
           <ToggleRow
-            label={frontendMessage("config.provider.enable")}
+            label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.256.19")}
             enabled={enabled}
             disabled={disabled}
             onChange={(Enabled) => onChange(providerIndex, { Enabled })}
           />
           <TextRow
             icon={<Server className="h-3.5 w-3.5" />}
-            label={frontendMessage("config.provider.name")}
+            label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.263.19")}
             value={provider.Id}
             disabled={disabled}
-            placeholder={frontendMessage("config.provider.namePlaceholder")}
+            placeholder={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.266.25")}
             onChange={(Id) => onChange(providerIndex, { Id })}
           />
-          <MenuRow icon={<BrainCircuit className="h-3.5 w-3.5" />} label={frontendMessage("config.provider.icon")}>
+          <MenuRow
+            icon={<BrainCircuit className="h-3.5 w-3.5" />}
+            label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.269.74")}
+          >
             <MenuSelect
               value={provider.Icon ?? ""}
-              placeholder={frontendMessage("config.provider.selectIcon")}
+              placeholder={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.272.27")}
               options={iconOptions}
               disabled={disabled}
               renderValue={(value) =>
@@ -281,7 +295,7 @@ export function ProviderEditor({
                 type="button"
                 className="grid h-8 w-8 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800"
                 onClick={() => setShowKey((current) => !current)}
-                aria-label={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
+                aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
               >
                 {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               </button>
@@ -290,10 +304,10 @@ export function ProviderEditor({
           />
           <TextRow
             icon={<Settings2 className="h-3.5 w-3.5" />}
-            label={frontendMessage("config.provider.apiVersion")}
+            label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.319.19")}
             value={provider.ApiVersion ?? ""}
             disabled={disabled}
-            placeholder={frontendMessage("config.provider.optionalPlaceholder")}
+            placeholder={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.322.25")}
             onChange={(ApiVersion) => onChange(providerIndex, { ApiVersion })}
           />
           <HeadersRow
@@ -322,7 +336,10 @@ function HeadersRow({
 }): JSX.Element {
   const entries = Object.entries(headers);
   return (
-    <SettingRow icon={<Settings2 className="h-3.5 w-3.5" />} label={frontendMessage("config.provider.headers")}>
+    <SettingRow
+      icon={<Settings2 className="h-3.5 w-3.5" />}
+      label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.351.68")}
+    >
       <div className="grid gap-2">
         {entries.map(([key, value], index) => (
           <div key={`${key}:${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
@@ -349,7 +366,7 @@ function HeadersRow({
               }}
             />
             <IconAction
-              label={frontendMessage("config.provider.deleteHeader")}
+              label={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.378.21")}
               danger
               disabled={disabled}
               onClick={() => onChange(Object.fromEntries(entries.filter((_, entryIndex) => entryIndex !== index)))}
@@ -365,7 +382,7 @@ function HeadersRow({
           onClick={() => onChange({ ...headers, [nextHeaderKey(headers)]: "" })}
         >
           <Plus className="h-3.5 w-3.5" />
-          {frontendMessage("config.provider.addHeader")}
+          {frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.394.11")}
         </button>
       </div>
     </SettingRow>

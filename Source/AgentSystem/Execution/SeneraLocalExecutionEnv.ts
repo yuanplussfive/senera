@@ -281,7 +281,9 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     const resolved = pathResult.value;
     try {
       const canonical = await realpath(resolved);
-      return this.safeFilePath(canonical);
+      return (await this.isAllowedCanonicalFilePath(canonical))
+        ? ok(canonical)
+        : err(new FileError("permission_denied", `路径超出执行工作区：${value}`, canonical));
     } catch (error) {
       return err(toFileError(error, resolved));
     }
@@ -395,6 +397,17 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     return (
       isPathInside(this.workspaceRoot, value) || [...this.ownedTempRoots].some((root) => isPathInside(root, value))
     );
+  }
+
+  private async isAllowedCanonicalFilePath(value: string): Promise<boolean> {
+    for (const root of [this.workspaceRoot, ...this.ownedTempRoots]) {
+      try {
+        if (isPathInside(await realpath(root), value)) return true;
+      } catch {
+        // A removed temporary root cannot authorize a canonical path.
+      }
+    }
+    return false;
   }
 }
 

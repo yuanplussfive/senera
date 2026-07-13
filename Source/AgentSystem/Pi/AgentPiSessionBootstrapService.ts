@@ -13,8 +13,13 @@ export interface AgentPiSessionBootstrapRuntime {
   };
 }
 
+export interface AgentPiSessionBootstrapRuntimeLease {
+  runtime: AgentPiSessionBootstrapRuntime;
+  release(): void;
+}
+
 export interface AgentPiSessionBootstrapServiceOptions {
-  runtime: (modelProviderId?: string) => AgentPiSessionBootstrapRuntime;
+  acquireRuntime: (modelProviderId?: string) => AgentPiSessionBootstrapRuntimeLease;
 }
 
 export interface AgentPiSessionBootstrapRequest {
@@ -39,49 +44,64 @@ export class AgentPiSessionBootstrapService implements AgentPiSessionBootstrapPo
   constructor(private readonly options: AgentPiSessionBootstrapServiceOptions) {}
 
   async bootstrap(request: AgentPiSessionBootstrapRequest): Promise<void> {
-    const runtime = this.options.runtime(request.modelProviderId);
+    const runtimeLease = this.options.acquireRuntime(request.modelProviderId);
+    const runtime = runtimeLease.runtime;
     const requestId = createOpaqueId("pi_bootstrap");
     const step = 0;
     let createSessionPromise: Promise<AgentPiSessionResult> | undefined;
-
-    await this.emitTrace(request, requestId, step, PiSessionBootstrapTraceEvents.Started, {
-      sessionId: request.sessionId,
-      modelProviderId: request.modelProviderId,
-      timeoutMs: runtime.agentLoopConfig.PiSessionCreateTimeoutMs,
-    });
+    let releaseAfterSessionCreateSettles = false;
 
     try {
-      const result = await runAgentPiGuardedPhase({
-        phase: PiSessionBootstrapPhase,
+      await this.emitTrace(request, requestId, step, PiSessionBootstrapTraceEvents.Started, {
+        sessionId: request.sessionId,
+        modelProviderId: request.modelProviderId,
         timeoutMs: runtime.agentLoopConfig.PiSessionCreateTimeoutMs,
-        run: () => {
-          createSessionPromise = runtime.services.pi.createSession({
-            sessionId: request.sessionId,
-            requestId,
-            step,
-            visibleToolNames: [],
-            onEvent: (event) => emitAgentEvent(request.onEvent, stripPersistentSessionContext(event)),
-          });
-          return createSessionPromise;
-        },
       });
 
-      result.session.dispose();
-      await this.emitTrace(request, requestId, step, PiSessionBootstrapTraceEvents.Completed, {
-        sessionId: request.sessionId,
-        piSessionId: result.piSessionId,
-        historyMigrationRequired: result.historyMigrationRequired,
-        activeTools: result.session.getActiveToolNames(),
-      });
-    } catch (error) {
-      void createSessionPromise?.then(
-        (lateSession) => lateSession.session.dispose(),
-        () => undefined,
-      );
-      await this.emitTrace(request, requestId, step, PiSessionBootstrapTraceEvents.Failed, {
-        sessionId: request.sessionId,
-        error: serializeError(error),
-      });
+      try {
+        const result = await runAgentPiGuardedPhase({
+          phase: PiSessionBootstrapPhase,
+          timeoutMs: runtime.agentLoopConfig.PiSessionCreateTimeoutMs,
+          run: () => {
+            createSessionPromise = runtime.services.pi.createSession({
+              sessionId: request.sessionId,
+              requestId,
+              step,
+              visibleToolNames: [],
+              onEvent: (event) => emitAgentEvent(request.onEvent, stripPersistentSessionContext(event)),
+            });
+            return createSessionPromise;
+          },
+        });
+
+        result.session.dispose();
+        await this.emitTrace(request, requestId, step, PiSessionBootstrapTraceEvents.Completed, {
+          sessionId: request.sessionId,
+          piSessionId: result.piSessionId,
+          historyMigrationRequired: result.historyMigrationRequired,
+          activeTools: result.session.getActiveToolNames(),
+        });
+      } catch (error) {
+        const lateCreate = createSessionPromise;
+        if (lateCreate) {
+          releaseAfterSessionCreateSettles = true;
+          void lateCreate
+            .then(
+              (lateSession) => lateSession.session.dispose(),
+              () => undefined,
+            )
+            .catch(() => undefined)
+            .finally(() => runtimeLease.release());
+        }
+        await this.emitTrace(request, requestId, step, PiSessionBootstrapTraceEvents.Failed, {
+          sessionId: request.sessionId,
+          error: serializeError(error),
+        });
+      }
+    } finally {
+      if (!releaseAfterSessionCreateSettles) {
+        runtimeLease.release();
+      }
     }
   }
 

@@ -1,3 +1,4 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { BrainCircuit, Layers3, RefreshCw, Server, SlidersHorizontal } from "lucide-react";
 import { cn } from "../../lib/util";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, ScrollArea } from "../../shared/ui";
@@ -7,7 +8,6 @@ import {
   type JsonConfigObject,
 } from "../../shared/config/JsonConfigForm";
 import type { ConfigFormSectionData } from "../../api/eventTypes";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { ModelProviderIcon, inferModelProviderIcon } from "./ModelProviderIcon";
 
 interface ProviderEndpointDraft {
@@ -30,11 +30,13 @@ interface ModelProviderDraft {
 type VectorCapability = "Embedding" | "Rerank";
 
 export function VectorModelConfigView({
+  layoutMode = "panel",
   value,
   section,
   disabled,
   onChange,
 }: {
+  layoutMode?: "panel" | "embedded";
   value: JsonConfigObject;
   section?: ConfigFormSectionData;
   disabled?: boolean;
@@ -49,50 +51,61 @@ export function VectorModelConfigView({
       }
     : undefined;
 
+  const content = (
+    <div
+      className={cn("mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
+    >
+      <div className="space-y-7">
+        <section>
+          <SectionTitle
+            icon={<BrainCircuit className="h-4 w-4" />}
+            title={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.72.19")}
+            description={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.73.25")}
+          />
+          <div className="grid gap-3 lg:grid-cols-2">
+            <VectorModelCard
+              title={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.77.21")}
+              description={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.78.27")}
+              capability="Embedding"
+              providers={providers}
+              models={models}
+              value={readVectorConfig(value, "Embedding")}
+              disabled={Boolean(disabled)}
+              onChange={(patch) => onChange(writeVectorConfig(value, "Embedding", patch))}
+            />
+            <VectorModelCard
+              title={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.87.21")}
+              description={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.88.27")}
+              capability="Rerank"
+              providers={providers}
+              models={models}
+              value={readVectorConfig(value, "Rerank")}
+              disabled={Boolean(disabled)}
+              onChange={(patch) => onChange(writeVectorConfig(value, "Rerank", patch))}
+            />
+          </div>
+        </section>
+
+        {nonVectorSection && nonVectorSection.fields.length > 0 ? (
+          <JsonConfigSettingsView
+            layoutMode={layoutMode}
+            sections={[nonVectorSection]}
+            value={value}
+            disabled={disabled}
+            onChange={onChange}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+
+  if (layoutMode === "embedded") {
+    return <div className="bg-paper-50">{content}</div>;
+  }
+
   return (
     <ScrollArea className="h-full min-h-0 flex-1 bg-paper-50" viewportClassName="h-full">
-      <div className="mx-auto min-h-full w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-7">
-        <div className="space-y-7">
-          <section>
-            <SectionTitle
-              icon={<BrainCircuit className="h-4 w-4" />}
-              title={frontendMessage("config.vector.title")}
-              description={frontendMessage("config.vector.description")}
-            />
-            <div className="grid gap-3 lg:grid-cols-2">
-              <VectorModelCard
-                title={frontendMessage("config.vector.embeddingTitle")}
-                description={frontendMessage("config.vector.embeddingDescription")}
-                capability="Embedding"
-                providers={providers}
-                models={models}
-                value={readVectorConfig(value, "Embedding")}
-                disabled={Boolean(disabled)}
-                onChange={(patch) => onChange(writeVectorConfig(value, "Embedding", patch))}
-              />
-              <VectorModelCard
-                title={frontendMessage("config.vector.rerankTitle")}
-                description={frontendMessage("config.vector.rerankDescription")}
-                capability="Rerank"
-                providers={providers}
-                models={models}
-                value={readVectorConfig(value, "Rerank")}
-                disabled={Boolean(disabled)}
-                onChange={(patch) => onChange(writeVectorConfig(value, "Rerank", patch))}
-              />
-            </div>
-          </section>
-
-          {nonVectorSection && nonVectorSection.fields.length > 0 ? (
-            <JsonConfigSettingsView
-              sections={[nonVectorSection]}
-              value={value}
-              disabled={disabled}
-              onChange={onChange}
-            />
-          ) : null}
-        </div>
-      </div>
+      {content}
     </ScrollArea>
   );
 }
@@ -131,7 +144,7 @@ function VectorModelCard({
 
   return (
     <div className="overflow-hidden border border-ink-200/70 bg-paper-100 shadow-panel">
-      <div className="flex items-start justify-between gap-3 border-b border-ink-200/70 bg-[#f6f0e7] px-4 py-3">
+      <div className="flex items-start justify-between gap-3 border-b border-ink-200/70 bg-[var(--theme-config-list-bg)] px-4 py-3">
         <div className="min-w-0">
           <div className="text-[13px] font-semibold text-ink-900">{title}</div>
           <div className="mt-0.5 text-[11.5px] leading-4 text-ink-500">{description}</div>
@@ -144,51 +157,53 @@ function VectorModelCard({
       </div>
 
       <div className="divide-y divide-ink-200/70">
-        <SettingLine icon={<Server className="h-3.5 w-3.5" />} label={frontendMessage("config.vector.provider")}>
+        <SettingLine
+          icon={<Server className="h-3.5 w-3.5" />}
+          label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.177.70")}
+        >
           <MenuSelect
             value={providerId}
-            placeholder={frontendMessage("config.vector.selectProvider")}
+            placeholder={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.180.25")}
             options={providerOptions}
             disabled={disabled || !enabled || providerOptions.length === 0}
             onChange={(ProviderId) => onChange({ ProviderId, Model: "" })}
           />
         </SettingLine>
-        <SettingLine icon={<BrainCircuit className="h-3.5 w-3.5" />} label={frontendMessage("config.vector.model")}>
+        <SettingLine
+          icon={<BrainCircuit className="h-3.5 w-3.5" />}
+          label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.186.76")}
+        >
           <MenuSelect
             value={readString(value.Model) ?? ""}
-            placeholder={frontendMessage(
-              providerId ? "config.vector.selectModel" : "config.vector.selectProviderFirst",
-            )}
+            placeholder={providerId ? "选择模型" : "先选择供应商"}
             options={modelOptions}
             disabled={disabled || !enabled || !providerId || modelOptions.length === 0}
             onChange={(Model) => onChange({ Model })}
           />
           {providerId && modelOptions.length === 0 ? (
             <div className="mt-1.5 text-[11px] text-amber-700">
-              {frontendMessage("config.vector.noCapableModel", {
-                capability: frontendMessage(
-                  capability === "Embedding" ? "config.vector.embeddingCapability" : "config.vector.rerankCapability",
-                ),
-              })}
+              {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.196.15")}
+              {capability === "Embedding" ? "向量嵌入" : "重排序"}
+              {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.196.70")}
             </div>
           ) : null}
         </SettingLine>
         {capability === "Embedding" ? (
           <>
             <NumberLine
-              label={frontendMessage("config.vector.dimensions")}
+              label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.202.31")}
               value={readNumber(value.Dimensions)}
               disabled={disabled || !enabled}
               onChange={(Dimensions) => onChange({ Dimensions })}
             />
             <NumberLine
-              label={frontendMessage("config.vector.batchSize")}
+              label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.203.31")}
               value={readNumber(value.BatchSize)}
               disabled={disabled || !enabled}
               onChange={(BatchSize) => onChange({ BatchSize })}
             />
             <NumberLine
-              label={frontendMessage("config.vector.inputLimit")}
+              label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.204.31")}
               value={readNumber(value.InputMaxChars)}
               disabled={disabled || !enabled}
               onChange={(InputMaxChars) => onChange({ InputMaxChars })}
@@ -197,13 +212,13 @@ function VectorModelCard({
         ) : (
           <>
             <TextLine
-              label={frontendMessage("config.vector.endpointPath")}
+              label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.208.29")}
               value={readString(value.EndpointPath) ?? ""}
               disabled={disabled || !enabled}
               onChange={(EndpointPath) => onChange({ EndpointPath })}
             />
             <NumberLine
-              label={frontendMessage("config.vector.candidateLimit")}
+              label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.209.31")}
               value={readNumber(value.CandidateLimit)}
               disabled={disabled || !enabled}
               onChange={(CandidateLimit) => onChange({ CandidateLimit })}
@@ -217,13 +232,13 @@ function VectorModelCard({
           </>
         )}
         <NumberLine
-          label={frontendMessage("config.vector.timeoutSeconds")}
+          label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.213.27")}
           value={readNumber(value.TimeoutSeconds)}
           disabled={disabled || !enabled}
           onChange={(TimeoutSeconds) => onChange({ TimeoutSeconds })}
         />
         <NumberLine
-          label={frontendMessage("config.vector.networkRetries")}
+          label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.214.27")}
           value={readNumber(value.MaxNetworkRetries)}
           disabled={disabled || !enabled}
           onChange={(MaxNetworkRetries) => onChange({ MaxNetworkRetries })}
@@ -402,7 +417,9 @@ function MenuSelect({
             </DropdownMenuItem>
           ))
         ) : (
-          <DropdownMenuItem disabled>{frontendMessage("config.vector.noOptions")}</DropdownMenuItem>
+          <DropdownMenuItem disabled>
+            {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.384.38")}
+          </DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,6 +1,18 @@
 // 协议类型。事件枚举从后端 AgentEventCatalog 生成，其他 DTO 保持前端消费视角。
 import { EventKinds, EventLayers, EventPhases } from "./generatedEventCatalog";
 import type { EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
+import type { ProviderModelConfigOperationKind } from "./providerModelCommandTypes";
+
+export type {
+  ConfigRevisionGuardRequestInput,
+  ProviderModelBulkImportGroupAssignmentInput,
+  ProviderModelConfigInput,
+  ProviderModelConfigOperationKind,
+  ProviderModelConfigRequest,
+  ProviderModelEndpointInput,
+  ProviderModelEndpointKind,
+  ProviderModelGroupAssignmentInput,
+} from "./providerModelCommandTypes";
 
 export { EventKinds, EventLayers, EventPhases };
 export type { EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
@@ -182,6 +194,7 @@ export interface ModelCapabilitiesData {
   Vision?: boolean;
   ImageOutput?: boolean;
   Reasoning?: boolean;
+  ToolCalling?: boolean;
   DeveloperRole?: boolean;
 }
 
@@ -273,17 +286,6 @@ export interface SandboxStatusSnapshotData {
   diagnostics: SandboxDiagnosticData[];
   message: string;
   updatedAt: string;
-}
-
-export interface ProviderModelEndpointInput {
-  Id: string;
-  Icon?: string;
-  Enabled?: boolean;
-  Kind?: "OpenAICompatible";
-  BaseUrl?: string;
-  ApiKey?: string;
-  ApiVersion?: string;
-  Headers?: Record<string, string>;
 }
 
 export interface PluginConfigSection {
@@ -416,7 +418,7 @@ export interface ConfigFailedData {
 
 export type ConfigSnapshotSource = "sqlite" | "json";
 
-export type ConfigOperationKind = "config_update";
+export type ConfigOperationKind = "config_update" | ProviderModelConfigOperationKind;
 
 export interface ConfigOperationResult {
   requestId?: string;

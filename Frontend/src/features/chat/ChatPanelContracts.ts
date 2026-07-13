@@ -21,7 +21,11 @@ import type { ChatMessage, UserProfile } from "../../store/sessionStore";
 export interface ChatModelConfig {
   modelProviders: ModelProviderListItem[];
   selectedModelProviderId: string | null;
+  /** Server-configured default used for new conversations. */
+  defaultModelProviderId?: string | null;
   onSelectModelProvider: (id: string) => void;
+  /** Restores the active conversation to the current default model. */
+  onApplyDefaultModel?: () => void;
 }
 
 export interface ChatPluginConfig {
@@ -42,7 +46,6 @@ export interface ChatSystemConfig {
   onSaveConfig: (config: Record<string, unknown>) => string | null;
   onFetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
 }
-
 export interface ChatPresetConfig {
   presets: PresetItem[];
   activePresetName: string | null;
@@ -81,8 +84,6 @@ export interface ChatNavigationActions {
 export interface ChatPanelProps {
   userProfile: UserProfile;
   modelConfig: ChatModelConfig;
-  pluginConfig: ChatPluginConfig;
-  systemConfig: ChatSystemConfig;
   presetConfig: ChatPresetConfig;
   runtime: ChatRuntimeState;
   messageActions: ChatMessageActions;

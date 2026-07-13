@@ -5,7 +5,6 @@ import { cn } from "../../lib/util";
 import { type RunRecord } from "../../store/sessionStore";
 import { deriveFeedModel, statusDotClass, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
 import { MetaLabel } from "../../shared/ui";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motionTimings, readFeedItemVariants, useMotionLevel, type MotionLevel } from "../../shared/motion";
 
 export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
@@ -64,7 +63,7 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
             <FeedMotionBlock
               key="body"
               motionLevel={effectiveLevel}
-              className="pt-2 text-[14.5px] leading-[1.72] text-ink-800"
+              className="pt-2 text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-ink-800"
             >
               <span className="whitespace-pre-wrap break-words">{model.bodyText}</span>
               <span className="caret-blink" />
@@ -90,7 +89,7 @@ function FeedHeadline({ item, stepCount }: { item: FeedItem; stepCount: number }
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13.5px] font-medium text-ink-900">{item.title}</span>
-          <MetaLabel>{frontendMessage("workflow.summary.steps", { count: stepCount })}</MetaLabel>
+          <MetaLabel>{stepCount} steps</MetaLabel>
           {item.meta ? <MetaLabel>{item.meta}</MetaLabel> : null}
         </div>
         {item.subtitle ? <div className="mt-0.5 text-[12px] leading-relaxed text-ink-500">{item.subtitle}</div> : null}
@@ -236,7 +235,7 @@ function ThinkingLoader({ motionLevel }: { motionLevel: MotionLevel }): JSX.Elem
     >
       {[0, 1, 2].map((index) => (
         <span
-          key={index}
+          key={`thinking-loader-dot-${index}`}
           className="thinking-loader-dot block h-1 w-1 rounded-full bg-ink-400/85"
           style={{ animationDelay: `${index * 140}ms` }}
         />

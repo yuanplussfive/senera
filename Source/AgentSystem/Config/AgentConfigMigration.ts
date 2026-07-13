@@ -1,8 +1,42 @@
 import type { ZodIssue, ZodType } from "zod";
 
+export interface AgentConfigMigrationResult<TConfig> {
+  config: TConfig;
+  migratedPaths: string[];
+  removedPaths: string[];
+}
+
 export interface AgentConfigUnknownKeyMigrationResult<TConfig> {
   config: TConfig;
   removedPaths: string[];
+}
+
+export function migrateAgentConfigPayload<TConfig>(
+  config: unknown,
+  schema: ZodType<TConfig>,
+): AgentConfigMigrationResult<TConfig> | undefined {
+  const legacy = migrateLegacyAgentConfigFields(config);
+  const parsed = schema.safeParse(legacy.config);
+  if (parsed.success) {
+    return legacy.migratedPaths.length > 0
+      ? {
+          config: parsed.data,
+          migratedPaths: legacy.migratedPaths,
+          removedPaths: [],
+        }
+      : undefined;
+  }
+
+  const unknown = migrateUnknownConfigKeys(legacy.config, schema);
+  if (!unknown) {
+    return undefined;
+  }
+
+  return {
+    config: unknown.config,
+    migratedPaths: legacy.migratedPaths,
+    removedPaths: unknown.removedPaths,
+  };
 }
 
 export function migrateUnknownConfigKeys<TConfig>(
@@ -85,6 +119,56 @@ function isUnrecognizedKeysIssue(issue: ZodIssue): issue is Extract<ZodIssue, { 
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function migrateLegacyAgentConfigFields(input: unknown): {
+  config: unknown;
+  migratedPaths: string[];
+} {
+  const config = cloneJsonValue(input);
+  if (!isRecord(config)) {
+    return {
+      config,
+      migratedPaths: [],
+    };
+  }
+
+  const migratedPaths: string[] = [];
+  migrateAgentLoopRepairAttempts(config, "");
+  const defaults = config.Defaults;
+  if (isRecord(defaults)) {
+    migrateAgentLoopRepairAttempts(defaults, "Defaults.");
+  }
+
+  return {
+    config,
+    migratedPaths,
+  };
+
+  function migrateAgentLoopRepairAttempts(container: Record<string, unknown>, prefix: string): void {
+    const agentLoop = container.AgentLoop;
+    if (!isRecord(agentLoop) || !Object.prototype.hasOwnProperty.call(agentLoop, "MaxRepairAttempts")) {
+      return;
+    }
+
+    const actionPlanner = ensureRecord(container, "ActionPlanner");
+    if (!Object.prototype.hasOwnProperty.call(actionPlanner, "MaxRepairAttempts")) {
+      actionPlanner.MaxRepairAttempts = agentLoop.MaxRepairAttempts;
+    }
+    delete agentLoop.MaxRepairAttempts;
+    migratedPaths.push(`${prefix}AgentLoop.MaxRepairAttempts`);
+  }
+}
+
+function ensureRecord(container: Record<string, unknown>, key: string): Record<string, unknown> {
+  const current = container[key];
+  if (isRecord(current)) {
+    return current;
+  }
+
+  const next: Record<string, unknown> = {};
+  container[key] = next;
+  return next;
 }
 
 function cloneJsonValue(value: unknown): unknown {

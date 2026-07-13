@@ -1,8 +1,10 @@
-import { useCallback, type ReactNode } from "react";
-import { useDropzone, type Accept, type FileRejection } from "react-dropzone";
+import { useCallback, type DragEventHandler, type InputHTMLAttributes, type ReactNode } from "react";
+import { useDropzone, type Accept, type DropzoneOptions, type FileRejection } from "react-dropzone";
 import { cn } from "../../lib/util";
 
 export type FileDropZoneAccept = Accept;
+
+const noopDragHandler: DragEventHandler<HTMLElement> = () => undefined;
 
 export interface FileDropZoneState {
   isDragActive: boolean;
@@ -39,8 +41,12 @@ export function FileDropZone({
     multiple,
     noClick: true,
     noKeyboard: true,
+    onDragEnter: noopDragHandler,
+    onDragLeave: noopDragHandler,
+    onDragOver: noopDragHandler,
     onDrop: handleDrop,
-  });
+  } satisfies DropzoneOptions);
+  const inputProps = getInputProps({}) as InputHTMLAttributes<HTMLInputElement>;
 
   return (
     <div
@@ -48,7 +54,7 @@ export function FileDropZone({
         className: cn("relative", className),
       })}
     >
-      <input {...getInputProps()} />
+      <input {...inputProps} />
       {children({ isDragActive, isDragReject, open })}
     </div>
   );

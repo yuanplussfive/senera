@@ -104,16 +104,30 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   });
 
   const loopFactory = (modelProviderId?: string) => {
-    const runtime = runtimeCache.get(modelProviderId);
-    const model = new AgentModelEndpointClient(runtime.config, modelProviderId);
+    const lease = runtimeCache.acquire(modelProviderId);
+    try {
+      const model = new AgentModelEndpointClient(lease.runtime.config, modelProviderId);
+      const loop = new AgentLoop({
+        runtime: lease.runtime,
+        model,
+      });
 
-    return new AgentLoop({
-      runtime,
-      model,
-    });
+      return {
+        run: async (...args: Parameters<AgentLoop["run"]>) => {
+          try {
+            return await loop.run(...args);
+          } finally {
+            lease.release();
+          }
+        },
+      };
+    } catch (error) {
+      lease.release();
+      throw error;
+    }
   };
   const piSessionBootstrap = new AgentPiSessionBootstrapService({
-    runtime: (modelProviderId) => runtimeCache.get(modelProviderId),
+    acquireRuntime: (modelProviderId) => runtimeCache.acquire(modelProviderId),
   });
 
   const repository = createRepository(workspaceRoot, initialConfig);

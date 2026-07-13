@@ -6,7 +6,6 @@ import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import type { AgentPiProxyModelApi } from "../PiProxy/AgentPiProxyContract.js";
 
 export type AgentPiToolDetails = {
   senera: {
@@ -43,10 +42,12 @@ export interface AgentPiToolExecutionInput {
   context: AgentPiToolProjectionContext;
 }
 
+export type AgentPiModelApi = "openai-completions" | "openai-responses" | "anthropic-messages" | "google-generative-ai";
+
 export interface AgentPiModelProjection {
   id: string;
   name: string;
-  api: AgentPiProxyModelApi;
+  api: AgentPiModelApi;
   provider: string;
   baseUrl: string;
   reasoning: boolean;
@@ -69,5 +70,11 @@ export interface AgentPiProviderProjection {
   providerId: string;
   apiKey: string;
   headers: Record<string, string>;
+  upstream: {
+    providerId: string;
+    endpoint: string;
+    baseUrl: string;
+    model: string;
+  };
   model: AgentPiModelProjection;
 }

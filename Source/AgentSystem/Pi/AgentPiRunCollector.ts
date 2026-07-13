@@ -20,7 +20,6 @@ export interface AgentPiRunCollectorOptions {
 }
 
 export interface AgentPiRunProjection {
-  events: AgentDomainEvent[];
   traces: StepTrace[];
   executedTools: ExecutedToolCallResult[];
   openAiMessages: AgentOpenAiTranscriptMessage[];
@@ -53,7 +52,6 @@ export class AgentPiRunCollector {
       return projected ? [projected] : [];
     },
   };
-  private readonly events: AgentDomainEvent[] = [];
   private readonly traces: StepTrace[] = [];
   private readonly activeToolTraces = new Map<string, ActiveToolTrace>();
   private readonly executedTools: ExecutedToolCallResult[] = [];
@@ -77,7 +75,6 @@ export class AgentPiRunCollector {
 
   snapshot(): AgentPiRunProjection {
     return {
-      events: [...this.events],
       traces: [...this.traces],
       executedTools: [...this.executedTools],
       openAiMessages: [...this.openAiMessages],
@@ -85,13 +82,15 @@ export class AgentPiRunCollector {
   }
 
   private async projectEvent(event: AgentSessionEvent): Promise<void> {
-    await this.emit(
-      projectPiSessionTraceEvent({
-        requestId: this.options.requestId,
-        step: this.options.step,
-        event,
-      }),
-    );
+    if (event.type !== "message_update") {
+      await this.emit(
+        projectPiSessionTraceEvent({
+          requestId: this.options.requestId,
+          step: this.options.step,
+          event,
+        }),
+      );
+    }
 
     if (event.type === "turn_end") {
       this.recordOpenAiTurn(event);
@@ -226,7 +225,6 @@ export class AgentPiRunCollector {
   }
 
   private async emit(event: AgentDomainEvent): Promise<void> {
-    this.events.push(event);
     await emitAgentEvent(this.options.onEvent, event);
   }
 

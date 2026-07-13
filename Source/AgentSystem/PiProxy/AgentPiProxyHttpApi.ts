@@ -1,12 +1,19 @@
 import type http from "node:http";
 import { z } from "zod";
 import { AgentEventKinds, type AgentEventSink } from "../Events/AgentEvent.js";
-import { resolveActionPlannerConfig, resolveModelProviderConfig } from "../AgentDefaults.js";
-import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import {
+  resolveActionPlannerConfig,
+  resolveModelProviderCatalog,
+  resolveModelProviderConfig,
+  resolveServerConfig,
+} from "../AgentDefaults.js";
+import type { AgentSystemConfig, ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import { AgentPiAssistantCompiler, type AgentPiAssistantCompilerPort } from "./AgentPiAssistantCompiler.js";
 import { PiOpenAiChatCompletionRequestSchema } from "./AgentPiOpenAiWireTypes.js";
 import {
   AgentPiProxyContextHeader,
+  AgentPiProxyModelProviderHeader,
+  decodePiProxyModelProviderHeaderValue,
   registerPiProxyToolCallBatch,
   readPiProxyRuntimeContext,
 } from "./AgentPiProxyRuntimeContext.js";
@@ -17,24 +24,39 @@ import {
   projectPiChatCompletionStreamEvents,
   projectPiModelsResponse,
 } from "./AgentPiOpenAiResponseProjector.js";
-import { AgentPiProxyProtocol } from "./AgentPiProxyContract.js";
 
 export interface AgentPiProxyHttpApiOptions {
   configSnapshot: () => AgentSystemConfig;
-  compilerFactory?: (config: AgentSystemConfig) => AgentPiAssistantCompilerPort;
+  compilerFactory?: (
+    config: AgentSystemConfig,
+    modelProvider: ResolvedAgentModelProviderConfig,
+  ) => AgentPiAssistantCompilerPort;
   onEvent?: AgentEventSink;
   maxRequestBytes?: number;
 }
 
 type RouteHandler = (request: http.IncomingMessage, response: http.ServerResponse) => Promise<void>;
 
+class AgentPiProxyRequestError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly status = 400,
+  ) {
+    super(message);
+  }
+}
+
+class PiProxyRequestTooLargeError extends AgentPiProxyRequestError {
+  constructor() {
+    super("request_too_large", "Pi proxy request body exceeds the configured size limit.", 413);
+  }
+}
+
 export class AgentPiProxyHttpApi {
   private readonly routes = new Map<string, RouteHandler>([
-    [`GET ${AgentPiProxyProtocol.routes.models}`, (_request, response) => this.handleModels(response)],
-    [
-      `POST ${AgentPiProxyProtocol.routes.chatCompletions}`,
-      (request, response) => this.handleChatCompletions(request, response),
-    ],
+    ["GET /v1/models", (_request, response) => this.handleModels(response)],
+    ["POST /v1/chat/completions", (request, response) => this.handleChatCompletions(request, response)],
   ]);
 
   constructor(private readonly options: AgentPiProxyHttpApiOptions) {}
@@ -53,9 +75,12 @@ export class AgentPiProxyHttpApi {
     try {
       await handler(request, response);
     } catch (error) {
-      const status = error instanceof PiProxyRequestTooLargeError ? 413 : 500;
-      const code = error instanceof PiProxyRequestTooLargeError ? "request_too_large" : "senera_pi_proxy_error";
-      writeJson(response, status, openAiError(code, errorMessage(error)));
+      const proxyError = error instanceof AgentPiProxyRequestError ? error : undefined;
+      writeJson(
+        response,
+        proxyError?.status ?? 500,
+        openAiError(proxyError?.code ?? "senera_pi_proxy_error", errorMessage(error)),
+      );
     }
   }
 
@@ -67,7 +92,7 @@ export class AgentPiProxyHttpApi {
     const payload = PiOpenAiChatCompletionRequestSchema.parse(
       await readJsonBody(request, this.options.maxRequestBytes ?? 1_048_576),
     );
-    const compiler = this.compiler();
+    const compiler = this.compiler(readSingleHeader(request.headers[AgentPiProxyModelProviderHeader]));
     const runtime = readPiProxyRuntimeContext(readSingleHeader(request.headers[AgentPiProxyContextHeader]));
     await this.emitProxyTrace(runtime, "request", {
       model: payload.model,
@@ -98,12 +123,12 @@ export class AgentPiProxyHttpApi {
     writeJson(response, 200, projectPiChatCompletionResponse(payload.model, assistantMessage));
   }
 
-  private compiler(): AgentPiAssistantCompilerPort {
+  private compiler(modelProviderHeader: string | undefined): AgentPiAssistantCompilerPort {
     const config = this.options.configSnapshot();
+    const provider = resolvePiProxyModelProvider(config, modelProviderHeader);
     if (this.options.compilerFactory) {
-      return this.options.compilerFactory(config);
+      return this.options.compilerFactory(config, provider);
     }
-    const provider = resolveModelProviderConfig(config);
     return new AgentPiAssistantCompiler({
       modelProvider: provider,
       actionPlannerConfig: resolveActionPlannerConfig(config, provider.Id),
@@ -198,16 +223,35 @@ function readSingleHeader(value: string | string[] | undefined): string | undefi
   return Array.isArray(value) ? value[0] : value;
 }
 
+function resolvePiProxyModelProvider(
+  config: AgentSystemConfig,
+  modelProviderHeader: string | undefined,
+): ResolvedAgentModelProviderConfig {
+  if (modelProviderHeader === undefined) {
+    return resolveModelProviderConfig(config);
+  }
+
+  const modelProviderId = decodePiProxyModelProviderHeaderValue(modelProviderHeader).trim();
+  if (!modelProviderId) {
+    throw new AgentPiProxyRequestError("invalid_model_provider", "Pi proxy model provider header must not be empty.");
+  }
+
+  const catalog = resolveModelProviderCatalog(config);
+  const provider = catalog.providers.find((item) => item.Id === modelProviderId);
+  if (!provider) {
+    throw new AgentPiProxyRequestError(
+      "invalid_model_provider",
+      `Pi proxy model provider is not configured: ${modelProviderId}`,
+    );
+  }
+
+  return provider;
+}
+
 function routeKey(request: http.IncomingMessage): string {
   const method = request.method?.toUpperCase() ?? "";
   const path = request.url ? new URL(request.url, "http://senera.local").pathname : "";
   return `${method} ${path}`;
-}
-
-class PiProxyRequestTooLargeError extends Error {
-  constructor() {
-    super("Request body exceeds the configured limit.");
-  }
 }
 
 async function readJsonBody(request: http.IncomingMessage, maximumBytes: number): Promise<unknown> {
@@ -259,4 +303,18 @@ function errorMessage(error: unknown): string {
     return error.issues.map((issue) => issue.message).join("; ");
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+export function buildPiProxyBaseUrl(config: AgentSystemConfig): string {
+  const server = resolveServerConfig(config);
+  return `http://${clientHostForBindHost(server.Host)}:${server.Port}/v1`;
+}
+
+function clientHostForBindHost(host: string): string {
+  const bindAnyHostByName = new Map([
+    ["0.0.0.0", "127.0.0.1"],
+    ["::", "[::1]"],
+    ["[::]", "[::1]"],
+  ]);
+  return bindAnyHostByName.get(host) ?? host;
 }

@@ -1,7 +1,11 @@
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
-import type { AgentPiProviderProjection } from "./AgentPiTypes.js";
+import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import { AgentPiProxyProtocol, resolveAgentPiProxyBaseUrl } from "../PiProxy/AgentPiProxyContract.js";
+import { buildPiProxyBaseUrl } from "../PiProxy/AgentPiProxyHttpApi.js";
+import {
+  AgentPiProxyModelProviderHeader,
+  encodePiProxyModelProviderHeaderValue,
+} from "../PiProxy/AgentPiProxyRuntimeContext.js";
 import { resolveAgentModelCompatibility } from "../ModelEndpoints/ModelCompatibility.js";
 
 const FreeCostModel = {
@@ -12,6 +16,9 @@ const FreeCostModel = {
 } as const;
 
 const UnlimitedTokenBudget = Number.MAX_SAFE_INTEGER;
+const SeneraPiProxyProviderId = "senera-pi-proxy";
+const SeneraPiProxyApi: AgentPiModelApi = "openai-completions";
+const SeneraPiProxyApiKey = "senera-local";
 
 export function projectSeneraModelProviderToPi(
   provider: ResolvedAgentModelProviderConfig,
@@ -19,12 +26,12 @@ export function projectSeneraModelProviderToPi(
 ): AgentPiProviderProjection {
   const capabilities = provider.Capabilities ?? {};
   const compatibility = resolveAgentModelCompatibility(provider);
-  const proxyBaseUrl = resolveAgentPiProxyBaseUrl(config);
+  const proxyBaseUrl = buildPiProxyBaseUrl(config);
   const model = {
     id: provider.Model,
     name: provider.Id,
-    api: AgentPiProxyProtocol.modelApi,
-    provider: AgentPiProxyProtocol.providerId,
+    api: SeneraPiProxyApi,
+    provider: SeneraPiProxyProviderId,
     baseUrl: proxyBaseUrl,
     reasoning: capabilities.Reasoning === true,
     input: capabilities.Vision === true ? ["text", "image"] : ["text"],
@@ -38,8 +45,16 @@ export function projectSeneraModelProviderToPi(
 
   return {
     providerId: model.provider,
-    apiKey: AgentPiProxyProtocol.apiKey,
-    headers: {},
+    apiKey: SeneraPiProxyApiKey,
+    headers: {
+      [AgentPiProxyModelProviderHeader]: encodePiProxyModelProviderHeaderValue(provider.Id),
+    },
+    upstream: {
+      providerId: provider.Id,
+      endpoint: provider.Endpoint,
+      baseUrl: provider.BaseUrl,
+      model: provider.Model,
+    },
     model,
   };
 }

@@ -2,7 +2,12 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { DEFAULT_SESSION_TITLE } from "./session/defaults";
-import { clearPersistedStore, sessionPersistOptions } from "./session/persistence";
+import {
+  PERSIST_KEY,
+  clearPersistedStore,
+  readPersistedSessionPreferences,
+  sessionPersistOptions,
+} from "./session/persistence";
 import {
   advanceRunDisplayText,
   applyEvent,
@@ -11,6 +16,11 @@ import {
   deleteSessionRuntimeState,
   truncate,
 } from "./session/sessionProjector";
+import {
+  applyDefaultModelToActiveSession,
+  selectModelForActiveSession,
+  syncActiveSessionModelSelection,
+} from "./session/sessionModelSelection";
 import { DEFAULT_USER_PROFILE, normalizeUserProfile, type UserProfile } from "./session/userProfile";
 import type { MotionLevel } from "../shared/motion";
 import {
@@ -172,6 +182,8 @@ export interface StoreState {
   activeSessionId: string | null;
   sidebarCollapsed: boolean;
   rightPanelCollapsed: boolean;
+  defaultSidebarCollapsed: boolean;
+  defaultRightPanelCollapsed: boolean;
   motionLevel: MotionLevel;
   /** 每个 session 当前在右栏查看的 run requestId；不存在则用最新 run */
   viewedRunIdBySession: Record<string, string>;
@@ -196,7 +208,12 @@ export interface StoreState {
   modelProviders: ModelProviderListItem[];
   providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
   providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
+  /** Current active conversation's model. Kept for existing command/UI contracts. */
   selectedModelProviderId: string | null;
+  /** Authoritative default model from model.list; used when creating a new conversation. */
+  defaultModelProviderId: string | null;
+  /** Local per-conversation selections. The backend still receives the chosen id per request. */
+  selectedModelProviderIdsBySession: Record<string, string>;
   pluginConfigs: PluginConfigItem[];
   presets: PresetItem[];
   activePresetName: string | null;
@@ -210,9 +227,11 @@ export interface StoreState {
   toggleRightPanel: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
+  setDefaultSidebarCollapsed: (collapsed: boolean) => void;
+  setDefaultRightPanelCollapsed: (collapsed: boolean) => void;
   setMotionLevel: (level: MotionLevel) => void;
   setViewedRun: (sessionId: string, requestId: string | undefined) => void;
-  registerCreatingSession: (sessionId: string, title?: string) => void;
+  registerCreatingSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
   renameSession: (sessionId: string, title: string) => void;
   appendUserMessage: (
     sessionId: string,
@@ -228,6 +247,7 @@ export interface StoreState {
   markHistoryLoading: (sessionId: string) => void;
   markHistoryLoadFailed: (sessionId: string) => void;
   selectModelProvider: (id: string) => void;
+  applyDefaultModelToActiveSession: () => void;
   setUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   markUserProfileSynced: (profile?: UserProfileData) => void;
   replaceWithDevMockData: (sessions: SessionRecord[], activeSessionId?: string) => void;
@@ -251,6 +271,8 @@ export const useStore = create<StoreState>()(
       activeSessionId: null,
       sidebarCollapsed: false,
       rightPanelCollapsed: false,
+      defaultSidebarCollapsed: false,
+      defaultRightPanelCollapsed: false,
       motionLevel: "full",
       viewedRunIdBySession: {},
       historyLoadedIds: {},
@@ -266,6 +288,8 @@ export const useStore = create<StoreState>()(
       providerModelCatalogs: {},
       providerModelErrors: {},
       selectedModelProviderId: null,
+      defaultModelProviderId: null,
+      selectedModelProviderIdsBySession: {},
       pluginConfigs: [],
       presets: [],
       activePresetName: null,
@@ -277,6 +301,7 @@ export const useStore = create<StoreState>()(
       selectSession: (id) =>
         set((state) => {
           state.activeSessionId = id;
+          syncActiveSessionModelSelection(state);
         }),
 
       toggleSidebar: () =>
@@ -299,6 +324,18 @@ export const useStore = create<StoreState>()(
           state.rightPanelCollapsed = collapsed;
         }),
 
+      setDefaultSidebarCollapsed: (collapsed) =>
+        set((state) => {
+          state.defaultSidebarCollapsed = collapsed;
+          state.sidebarCollapsed = collapsed;
+        }),
+
+      setDefaultRightPanelCollapsed: (collapsed) =>
+        set((state) => {
+          state.defaultRightPanelCollapsed = collapsed;
+          state.rightPanelCollapsed = collapsed;
+        }),
+
       setMotionLevel: (level) =>
         set((state) => {
           state.motionLevel = level;
@@ -313,15 +350,20 @@ export const useStore = create<StoreState>()(
           }
         }),
 
-      registerCreatingSession: (sessionId, title) =>
+      registerCreatingSession: (sessionId, title, modelProviderId) =>
         set((state) => {
           delete state.pendingDeletedSessionIds[sessionId];
           state.pendingCreatedSessionIds[sessionId] = true;
+          const initialModelId = modelProviderId ?? state.defaultModelProviderId;
+          if (initialModelId) {
+            state.selectedModelProviderIdsBySession[sessionId] = initialModelId;
+          }
           if (state.sessions[sessionId]) {
             if (!state.sessionOrder.includes(sessionId)) {
               state.sessionOrder.unshift(sessionId);
             }
             state.activeSessionId = sessionId;
+            syncActiveSessionModelSelection(state);
             return;
           }
           state.sessions[sessionId] = {
@@ -337,6 +379,7 @@ export const useStore = create<StoreState>()(
           };
           state.sessionOrder.unshift(sessionId);
           state.activeSessionId = sessionId;
+          syncActiveSessionModelSelection(state);
         }),
 
       renameSession: (sessionId, title) =>
@@ -350,10 +393,12 @@ export const useStore = create<StoreState>()(
           state.pendingDeletedSessionIds[sessionId] = true;
           delete state.pendingCreatedSessionIds[sessionId];
           delete state.sessions[sessionId];
+          delete state.selectedModelProviderIdsBySession[sessionId];
           state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
           if (state.activeSessionId === sessionId) {
             state.activeSessionId = state.sessionOrder[0] ?? null;
           }
+          syncActiveSessionModelSelection(state);
         }),
 
       clearAllSessions: (sessionIds) =>
@@ -362,11 +407,13 @@ export const useStore = create<StoreState>()(
           for (const id of ids) {
             state.pendingDeletedSessionIds[id] = true;
             delete state.pendingCreatedSessionIds[id];
+            delete state.selectedModelProviderIdsBySession[id];
             deleteSessionRuntimeState(state, id);
           }
           if (state.activeSessionId && !state.sessions[state.activeSessionId]) {
             state.activeSessionId = state.sessionOrder[0] ?? null;
           }
+          syncActiveSessionModelSelection(state);
         }),
 
       markHistoryLoading: (sessionId) =>
@@ -389,7 +436,12 @@ export const useStore = create<StoreState>()(
 
       selectModelProvider: (id) =>
         set((state) => {
-          state.selectedModelProviderId = id;
+          selectModelForActiveSession(state, id);
+        }),
+
+      applyDefaultModelToActiveSession: () =>
+        set((state) => {
+          applyDefaultModelToActiveSession(state);
         }),
 
       setUserProfile: (profile) =>
@@ -430,6 +482,7 @@ export const useStore = create<StoreState>()(
           state.missingOnServerIds = {};
           state.pendingCreatedSessionIds = {};
           state.pendingDeletedSessionIds = {};
+          state.selectedModelProviderIdsBySession = {};
           for (const session of mockSessions) {
             state.sessions[session.sessionId] = session;
             state.sessionOrder.push(session.sessionId);
@@ -437,6 +490,7 @@ export const useStore = create<StoreState>()(
           }
           state.activeSessionId =
             activeSessionId && state.sessions[activeSessionId] ? activeSessionId : (state.sessionOrder[0] ?? null);
+          syncActiveSessionModelSelection(state);
         }),
 
       appendUserMessage: (sessionId, requestId, input, attachments, options) =>
@@ -476,9 +530,43 @@ export const useStore = create<StoreState>()(
       ingest: (env) =>
         set((state) => {
           applyEvent(state, env);
+          syncActiveSessionModelSelection(state);
         }),
     })),
     sessionPersistOptions,
   ),
 );
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== PERSIST_KEY) return;
+    const preferences = readPersistedSessionPreferences(event.newValue);
+    if (!preferences) return;
+    const state = useStore.getState();
+    const nextDefaultSidebarCollapsed = preferences.defaultSidebarCollapsed ?? state.defaultSidebarCollapsed;
+    const nextDefaultRightPanelCollapsed = preferences.defaultRightPanelCollapsed ?? state.defaultRightPanelCollapsed;
+    const nextMotionLevel = preferences.motionLevel ?? state.motionLevel;
+    const nextSelectedModelProviderId = preferences.selectedModelProviderId ?? state.selectedModelProviderId;
+    const nextSelectedModelProviderIdsBySession =
+      preferences.selectedModelProviderIdsBySession ?? state.selectedModelProviderIdsBySession;
+    if (
+      nextDefaultSidebarCollapsed === state.defaultSidebarCollapsed &&
+      nextDefaultRightPanelCollapsed === state.defaultRightPanelCollapsed &&
+      nextMotionLevel === state.motionLevel &&
+      nextSelectedModelProviderId === state.selectedModelProviderId &&
+      nextSelectedModelProviderIdsBySession === state.selectedModelProviderIdsBySession
+    ) {
+      return;
+    }
+    useStore.setState({
+      defaultSidebarCollapsed: nextDefaultSidebarCollapsed,
+      defaultRightPanelCollapsed: nextDefaultRightPanelCollapsed,
+      sidebarCollapsed: nextDefaultSidebarCollapsed,
+      rightPanelCollapsed: nextDefaultRightPanelCollapsed,
+      motionLevel: nextMotionLevel,
+      selectedModelProviderId: nextSelectedModelProviderId,
+      selectedModelProviderIdsBySession: nextSelectedModelProviderIdsBySession,
+    });
+  });
+}
 export { clearPersistedStore };

@@ -49,15 +49,19 @@ test("the complete UI sends a message and restores the server-owned conversation
       status: "completed",
     });
   });
-  expect(await screen.findByText("验证完整界面链路")).toBeVisible();
-  expect(await screen.findByText("E2E response: 验证完整界面链路")).toBeVisible();
+  await waitFor(() => {
+    expectVisibleText("验证完整界面链路");
+    expectVisibleText("E2E response: 验证完整界面链路");
+  });
 
   firstMount.unmount();
   resetFrontendStore();
   render(React.createElement(App));
 
-  expect(await screen.findByText("验证完整界面链路")).toBeVisible();
-  expect(await screen.findByText("E2E response: 验证完整界面链路")).toBeVisible();
+  await waitFor(() => {
+    expectVisibleText("验证完整界面链路");
+    expectVisibleText("E2E response: 验证完整界面链路");
+  });
   await waitFor(() => {
     const state = useStore.getState();
     expect(state.activeSessionId).toEqual(expect.any(String));
@@ -83,16 +87,20 @@ test("switching recovered sessions keeps each server-owned conversation isolated
     expect(useStore.getState().sessionOrder).toEqual(expect.arrayContaining(["session_alpha", "session_beta"]));
   });
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
-  await user.click(await screen.findByText("alpha only"));
-  expect(await screen.findByText("E2E response: alpha only")).toBeVisible();
+  await user.click(await screen.findByRole("button", { name: "打开会话：alpha only" }));
+  await waitFor(() => {
+    expectVisibleText("E2E response: alpha only");
+  });
   await waitFor(() => {
     expect(useStore.getState().activeSessionId).toBe("session_alpha");
     expect(useStore.getState().historyLoadedIds.session_alpha).toBe(true);
   });
 
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
-  await user.click(await screen.findByText("beta only"));
-  expect(await screen.findByText("E2E response: beta only")).toBeVisible();
+  await user.click(await screen.findByRole("button", { name: "打开会话：beta only" }));
+  await waitFor(() => {
+    expectVisibleText("E2E response: beta only");
+  });
   await waitFor(() => {
     expect(useStore.getState().activeSessionId).toBe("session_beta");
     expect(useStore.getState().historyLoadedIds.session_beta).toBe(true);
@@ -128,4 +136,9 @@ function installBrowserRuntime() {
     configurable: true,
     value: vi.fn(),
   });
+}
+function expectVisibleText(text) {
+  const visible = screen.getAllByText(text).find((element) => !element.closest('[aria-hidden="true"]'));
+  expect(visible).toBeDefined();
+  expect(visible).toBeVisible();
 }

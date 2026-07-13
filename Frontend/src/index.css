@@ -5,10 +5,118 @@
 /* ----- base ----- */
 :root {
   color-scheme: light;
-  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--theme-ui-font-family, "Geist", ui-sans-serif, system-ui, sans-serif);
   font-feature-settings:
     "tnum" on,
     "ss01" on;
+  --color-paper-50: 255 255 255;
+  --color-paper-100: 248 248 246;
+  --color-paper-200: 239 238 235;
+  --color-paper-300: 224 223 219;
+  --color-paper-400: 199 197 189;
+  --color-ink-950: 33 30 24;
+  --color-ink-900: 43 40 32;
+  --color-ink-850: 50 47 39;
+  --color-ink-800: 63 58 49;
+  --color-ink-700: 81 76 64;
+  --color-ink-650: 98 93 80;
+  --color-ink-600: 106 101 88;
+  --color-ink-500: 115 112 95;
+  --color-ink-400: 150 145 127;
+  --color-ink-350: 170 165 146;
+  --color-ink-300: 186 181 166;
+  --color-ink-200: 224 223 219;
+  --color-ink-100: 234 233 229;
+  --color-ink-50: 244 244 241;
+  --color-terra-50: 252 244 239;
+  --color-terra-100: 246 226 214;
+  --color-terra-200: 236 195 171;
+  --color-terra-300: 214 143 111;
+  --color-terra-400: 194 105 74;
+  --color-terra-500: 180 93 64;
+  --color-terra-600: 168 87 59;
+  --color-terra-700: 132 64 43;
+  --color-moss-50: 240 243 235;
+  --color-moss-100: 219 226 203;
+  --color-moss-400: 125 152 102;
+  --color-moss-500: 90 125 76;
+  --color-moss-600: 69 98 57;
+  --color-umber-50: 247 240 228;
+  --color-umber-100: 234 220 197;
+  --color-umber-200: 210 186 141;
+  --color-umber-500: 138 106 63;
+  --color-umber-600: 112 86 50;
+  --color-brick-50: 254 246 238;
+  --color-brick-100: 253 232 215;
+  --color-brick-200: 250 201 164;
+  --color-brick-500: 217 119 6;
+  --color-brick-600: 180 83 9;
+  --color-brick-700: 146 64 14;
+  --theme-bg: rgb(248 248 246);
+  --theme-bg-image:
+    radial-gradient(circle at 0% 0%, rgb(194 105 74 / 0.018) 0, transparent 35%),
+    radial-gradient(circle at 100% 100%, rgb(90 125 76 / 0.016) 0, transparent 35%);
+  --theme-fg: rgb(43 40 32);
+  --theme-sidebar-bg: rgb(244 244 241);
+  --theme-elevated-bg: rgb(255 255 255);
+  --theme-border: rgb(224 223 219);
+  --theme-accent-soft: rgb(241 220 207);
+  --theme-surface-shadow: 0 1px 2px rgb(43 40 32 / 0.04), 0 12px 24px rgb(43 40 32 / 0.06);
+  --theme-panel-glaze: rgb(255 255 255 / 0.56);
+  --theme-hover-wash: rgb(43 40 32 / 0.055);
+  --theme-selection-bg: rgb(194 105 74 / 0.18);
+  --theme-selection-fg: rgb(43 40 32);
+  --theme-skeleton-a: rgb(43 40 32 / 0.035);
+  --theme-skeleton-b: rgb(43 40 32 / 0.09);
+  --theme-complete-highlight: rgb(194 105 74 / 0.08);
+  --theme-code-editor-bg: rgb(255 255 255);
+  --theme-code-editor-fg: rgb(var(--color-ink-850));
+  --theme-code-editor-gutter-bg: rgb(var(--color-paper-200) / 0.72);
+  --theme-code-editor-gutter-border: rgb(var(--color-ink-900) / 0.1);
+  --theme-code-editor-gutter-fg: rgb(var(--color-ink-900) / 0.42);
+  --theme-code-editor-active-line-bg: rgb(var(--color-terra-500) / 0.07);
+  --theme-code-editor-active-gutter-bg: rgb(var(--color-terra-500) / 0.09);
+  --theme-code-editor-active-gutter-fg: rgb(var(--color-terra-700));
+  --theme-code-editor-selection-bg: rgb(var(--color-terra-500) / 0.18);
+  --theme-code-editor-caret: rgb(var(--color-terra-500));
+  --theme-code-token-keyword: rgb(var(--color-terra-600));
+  --theme-code-token-string: rgb(var(--color-moss-600));
+  --theme-code-token-property: rgb(var(--color-umber-600));
+  --theme-code-token-literal: rgb(39 107 117);
+  --theme-code-token-comment: rgb(var(--color-ink-500));
+  --theme-code-token-name: rgb(var(--color-ink-800));
+  --theme-code-token-punctuation: rgb(var(--color-ink-500));
+  --theme-code-token-invalid: rgb(var(--color-brick-700));
+  --theme-config-nav-bg: rgb(244 244 241);
+  --theme-config-list-bg: rgb(248 248 246);
+  --theme-config-header-bg: rgb(239 238 235);
+  --theme-config-toolbar-bg: rgb(244 244 241);
+  --theme-config-stage-bg: rgb(248 248 246);
+  --theme-config-panel-bg: rgb(255 255 255);
+  --theme-config-editor-loading-bg: rgb(255 255 255);
+  --theme-chat-user-bg: rgb(var(--color-paper-200));
+  --theme-chat-user-fg: rgb(var(--color-ink-900));
+  --theme-chat-user-hover-bg: rgb(var(--color-paper-300) / 0.8);
+  --theme-chat-user-font-size: 14.5px;
+  --theme-chat-user-line-height: 1.55;
+  --theme-chat-assistant-font-size: 15px;
+  --theme-chat-assistant-line-height: 1.75;
+  --theme-chat-composer-bg: rgb(var(--color-paper-100) / 0.8);
+  --theme-chat-composer-focus-bg: rgb(var(--color-paper-50));
+  --theme-session-active-bg: rgb(var(--color-ink-900) / 0.055);
+  --shadow-bubble-user: 0 1px 1px rgb(43 40 32 / 0.04);
+  --shadow-bubble-ai: 0 1px 0 rgb(43 40 32 / 0.05), 0 0 0 1px rgb(43 40 32 / 0.045);
+  --shadow-panel: 0 0 0 1px rgb(43 40 32 / 0.055);
+  --shadow-soft: 0 8px 24px -12px rgb(43 40 32 / 0.16);
+  --shadow-avatar-cropper: inset 0 0 0 1px rgb(255 255 255 / 0.18), 0 10px 30px rgb(43 40 32 / 0.14);
+  --theme-font-scale: 1;
+  --theme-ui-font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --theme-display-font-family: "Fraunces", ui-serif, Georgia, serif;
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: rgb(43 40 32 / 0.15);
+  --scrollbar-thumb-hover: rgb(43 40 32 / 0.25);
+  --scrollbar-track: transparent;
+  --code-source-max-height: 500px;
   --icon-swap-dur: 200ms;
   --icon-swap-blur: 2px;
   --icon-swap-start-scale: 0.25;
@@ -32,22 +140,14 @@ body,
 
 body {
   margin: 0;
-  background: #faf8f3;
-  color: #1c1a17;
+  background: var(--theme-bg);
+  color: var(--theme-fg);
   /* 极淡的纸面噪点 */
-  background-image:
-    radial-gradient(circle at 0% 0%, rgba(179, 68, 31, 0.025) 0, transparent 35%),
-    radial-gradient(circle at 100% 100%, rgba(90, 125, 76, 0.02) 0, transparent 35%);
+  background-image: var(--theme-bg-image);
+  font-size: calc(16px * var(--theme-font-scale));
 }
 
 /* ----- scrollbar ----- */
-:root {
-  --scrollbar-size: 8px;
-  --scrollbar-thumb: rgba(28, 26, 23, 0.16);
-  --scrollbar-thumb-hover: rgba(28, 26, 23, 0.26);
-  --scrollbar-track: transparent;
-  --code-source-max-height: 500px;
-}
 .scrollbar-thin,
 [data-virtuoso-scroller="true"],
 .markdown-renderer__table-wrap,
@@ -134,13 +234,18 @@ html[data-motion-level="none"] *::after {
   display: inline-block;
   margin-left: 2px;
   font-weight: 400;
-  color: #b3441f;
+  color: rgb(var(--color-terra-500));
   animation: caret 1.1s ease-in-out infinite;
 }
 
 /* ----- 流式骨架 shimmer ----- */
 .shimmer {
-  background: linear-gradient(90deg, rgba(28, 26, 23, 0.04) 25%, rgba(28, 26, 23, 0.1) 50%, rgba(28, 26, 23, 0.04) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--theme-skeleton-a) 25%,
+    var(--theme-skeleton-b) 50%,
+    var(--theme-skeleton-a) 75%
+  );
   background-size: 200% 100%;
   animation: shimmer 1.8s linear infinite;
 }
@@ -175,8 +280,41 @@ html[data-motion-level="none"] .thinking-loader-dot,
 
 /* ----- 选中文字 ----- */
 ::selection {
-  background: rgba(179, 68, 31, 0.18);
-  color: #1c1a17;
+  background: var(--theme-selection-bg);
+  color: var(--theme-selection-fg);
+}
+
+.theme-transition-fallback,
+.theme-transition-fallback *,
+.theme-transition-fallback *::before,
+.theme-transition-fallback *::after {
+  transition:
+    background-color var(--theme-transition-duration, 180ms) ease,
+    border-color var(--theme-transition-duration, 180ms) ease,
+    box-shadow var(--theme-transition-duration, 180ms) ease,
+    color var(--theme-transition-duration, 180ms) ease,
+    fill var(--theme-transition-duration, 180ms) ease,
+    stroke var(--theme-transition-duration, 180ms) ease !important;
+}
+
+html[data-motion-level="none"] .theme-transition-fallback,
+html[data-motion-level="none"] .theme-transition-fallback *,
+html[data-motion-level="none"] .theme-transition-fallback *::before,
+html[data-motion-level="none"] .theme-transition-fallback *::after {
+  transition-duration: 0s !important;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+  animation-timing-function: ease;
+}
+
+html[data-motion-level="reduced"]::view-transition-old(root),
+html[data-motion-level="reduced"]::view-transition-new(root),
+html[data-motion-level="none"]::view-transition-old(root),
+html[data-motion-level="none"]::view-transition-new(root) {
+  animation-duration: 1ms;
 }
 
 @keyframes streaming-complete-highlight {
@@ -185,7 +323,7 @@ html[data-motion-level="none"] .thinking-loader-dot,
     background-color: transparent;
   }
   42% {
-    background-color: rgba(179, 68, 31, 0.08);
+    background-color: var(--theme-complete-highlight);
   }
 }
 

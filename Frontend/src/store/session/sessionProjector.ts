@@ -20,7 +20,7 @@ import { applyScopedRunEvent } from "./scopedRunProjector";
 import { projectSessionHistoryEvent } from "./sessionHistoryProjector";
 import { ingestSessionList, readFirstAvailableSessionId } from "./sessionListProjection";
 import { nowIso, syncSessionCountsFromLoadedMessages } from "./sessionProjectorCore";
-import { readChatModelProviders } from "../../features/chat/modelProvider";
+import { applyModelListSnapshotSelection } from "./sessionModelSelection";
 import type { StoreState } from "./types";
 
 export { normalizeUserProfile } from "./userProfile";
@@ -54,16 +54,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
 
   switch (env.kind) {
     case EventKinds.ModelListSnapshot: {
-      const data = env.data as ModelListSnapshotData;
-      state.modelProviders = data.models;
-      const chatModels = readChatModelProviders(data.models);
-      const selectedId = state.selectedModelProviderId;
-      const selectedStillExists = selectedId ? chatModels.some((model) => model.id === selectedId) : false;
-      const defaultChatModel =
-        chatModels.find((model) => model.id === data.defaultModelProviderId) ??
-        chatModels.find((model) => model.isDefault) ??
-        chatModels[0];
-      state.selectedModelProviderId = selectedStillExists ? selectedId : (defaultChatModel?.id ?? null);
+      applyModelListSnapshotSelection(state, env.data as ModelListSnapshotData);
       return;
     }
 
@@ -150,6 +141,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       delete state.pendingCreatedSessionIds[sessionId];
       if (!state.sessions[sessionId]) return;
       delete state.sessions[sessionId];
+      delete state.selectedModelProviderIdsBySession[sessionId];
       state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
       delete state.historyLoadedIds[sessionId];
       delete state.historyLoadingIds[sessionId];

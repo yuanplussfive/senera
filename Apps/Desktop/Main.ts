@@ -1,15 +1,40 @@
 import path from "node:path";
-import electron from "electron";
+import { fileURLToPath } from "node:url";
+import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
 import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
 import { appendDesktopLog, prepareDesktopRuntime, type DesktopRuntimePaths } from "./DesktopRuntime.js";
+import {
+  createDesktopFrontendSource,
+  loadDesktopFrontend,
+  type DesktopFrontendSource,
+} from "./DesktopFrontendSource.js";
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
 import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
 
-const { app, BrowserWindow, dialog, Menu } = electron;
-
 let serverHandle: SeneraServerHandle | undefined;
-let mainWindow: electron.BrowserWindow | undefined;
+let mainWindow: BrowserWindow | undefined;
+let settingsWindow: BrowserWindow | undefined;
 let runtimePaths: DesktopRuntimePaths | undefined;
+let frontendSource: DesktopFrontendSource | undefined;
+const desktopModuleDir = path.dirname(fileURLToPath(import.meta.url));
+
+const settingsSectionIds = new Set([
+  "model-service",
+  "default-model",
+  "system",
+  "runtime",
+  "planning",
+  "retrieval",
+  "storage",
+  "general",
+  "appearance",
+  "tools",
+  "skills",
+  "memory",
+  "integrations",
+  "usage",
+  "about",
+]);
 
 app.setName("Senera");
 Menu.setApplicationMenu(null);
@@ -23,6 +48,11 @@ app
       `starting desktop runtime workspace=${runtimePaths.workspaceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
     );
     const paths = runtimePaths;
+    frontendSource = createDesktopFrontendSource({
+      devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
+      frontendIndexHtml: paths.frontendIndexHtml,
+    });
+    registerDesktopIpc();
     const seedConfig = loadConfigFile(paths.configSeedPath);
     serverHandle = startSeneraServer({
       workspaceRoot: paths.workspaceRoot,
@@ -33,15 +63,14 @@ app
         label: paths.configDatabasePath,
       },
       runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
-      resourcesPath: paths.resourceRoot,
     });
     mainWindow = createMainWindow();
-    void mainWindow.loadFile(runtimePaths.frontendIndexHtml);
+    void loadDesktopFrontend(mainWindow, frontendSource);
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         mainWindow = createMainWindow();
-        void mainWindow.loadFile(runtimePaths?.frontendIndexHtml ?? "");
+        void loadDesktopFrontend(mainWindow, readFrontendSource());
       }
     });
   })
@@ -64,8 +93,19 @@ app.on("before-quit", () => {
   serverHandle = undefined;
 });
 
-function createMainWindow(): electron.BrowserWindow {
-  return new BrowserWindow({
+function registerDesktopIpc(): void {
+  ipcMain.handle("senera:settings.open", (_event, options?: { section?: string }) => {
+    openSettingsWindow(options);
+  });
+}
+
+function resolveSettingsSection(section: string | undefined): string {
+  if (!settingsSectionIds.has(section ?? "")) return "model-service";
+  return section as string;
+}
+
+function createMainWindow(): BrowserWindow {
+  const window = new BrowserWindow({
     width: 1360,
     height: 880,
     minWidth: 1100,
@@ -77,7 +117,79 @@ function createMainWindow(): electron.BrowserWindow {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(desktopModuleDir, "Preload.cjs"),
       sandbox: true,
     },
   });
+  window.on("page-title-updated", (event) => {
+    event.preventDefault();
+    window.setTitle("Senera");
+  });
+  window.on("closed", () => {
+    mainWindow = undefined;
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.close();
+    }
+  });
+  return window;
+}
+
+function openSettingsWindow(options?: { section?: string }): void {
+  if (!runtimePaths) return;
+  const source = readFrontendSource();
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createMainWindow();
+    void loadDesktopFrontend(mainWindow, source);
+  }
+  const section = resolveSettingsSection(options?.section);
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (settingsWindow.isMinimized()) settingsWindow.restore();
+    settingsWindow.focus();
+    void loadDesktopFrontend(settingsWindow, source, {
+      surface: "settings",
+      section,
+    });
+    return;
+  }
+
+  settingsWindow = new BrowserWindow({
+    width: 960,
+    height: 680,
+    minWidth: 820,
+    minHeight: 560,
+    backgroundColor: "#f7f8f6",
+    title: "Senera 设置",
+    show: false,
+    autoHideMenuBar: true,
+    icon: runtimePaths.windowIconPath,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(desktopModuleDir, "Preload.cjs"),
+      sandbox: true,
+    },
+  });
+
+  settingsWindow.once("ready-to-show", () => {
+    settingsWindow?.show();
+  });
+  settingsWindow.on("page-title-updated", (event) => {
+    event.preventDefault();
+    settingsWindow?.setTitle("Senera 设置");
+  });
+  settingsWindow.on("closed", () => {
+    settingsWindow = undefined;
+  });
+
+  void loadDesktopFrontend(settingsWindow, source, {
+    surface: "settings",
+    section,
+  });
+}
+
+function readFrontendSource(): DesktopFrontendSource {
+  if (!frontendSource) {
+    throw new Error("Desktop frontend source has not been initialized.");
+  }
+  return frontendSource;
 }

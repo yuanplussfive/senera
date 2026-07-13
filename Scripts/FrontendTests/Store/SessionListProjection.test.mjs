@@ -115,6 +115,8 @@ function createState(overrides = {}) {
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},
+    defaultModelProviderId: null,
+    selectedModelProviderIdsBySession: {},
     ...overrides,
   };
 }

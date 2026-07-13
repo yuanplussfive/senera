@@ -1,4 +1,5 @@
-import { ChevronDown, PanelLeftClose, PanelLeftOpen, SquarePen } from "lucide-react";
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen } from "lucide-react";
+import { openSettingsSurface } from "../../app/desktopBridge";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../../shared/responsive";
@@ -9,13 +10,11 @@ import {
   IconButton,
   LogoMark,
   LogoWordmark,
-  Tooltip,
 } from "../../shared/ui";
 import { DropdownSessionMenuSections } from "./SessionMenuActions";
 import type { SessionMenuSection } from "./types";
 
 interface SessionRailProps {
-  socketStatus: string;
   onNewSession: () => void;
   onOpenSessionPanel: () => void;
 }
@@ -26,7 +25,7 @@ interface SessionHeaderProps {
   onToggleSidebar: () => void;
 }
 
-export function SessionRail({ socketStatus, onNewSession, onOpenSessionPanel }: SessionRailProps): JSX.Element {
+export function SessionRail({ onNewSession, onOpenSessionPanel }: SessionRailProps): JSX.Element {
   return (
     <aside className="flex h-full w-[56px] shrink-0 flex-col items-center border-r border-ink-200/70 bg-paper-100/60 py-3">
       <IconButton
@@ -52,7 +51,19 @@ export function SessionRail({ socketStatus, onNewSession, onOpenSessionPanel }: 
         <SquarePen className="h-4 w-4" />
       </IconButton>
       <div className="mt-auto pb-1">
-        <ConnectionDot status={socketStatus} />
+        <IconButton
+          label={frontendMessage("pluginConfig.viewSettings")}
+          tooltip={frontendMessage("pluginConfig.viewSettings")}
+          tooltipSide="right"
+          onClick={() => {
+            void openSettingsSurface({
+              fallback: () => undefined,
+            });
+          }}
+          touchSafe
+        >
+          <Settings2 className="h-4 w-4" />
+        </IconButton>
       </div>
     </aside>
   );
@@ -104,27 +115,5 @@ export function SessionHeader({ menuSections, onNewSession, onToggleSidebar }: S
         <SquarePen className="h-4 w-4" />
       </IconButton>
     </div>
-  );
-}
-
-function ConnectionDot({ status }: { status: string }): JSX.Element {
-  const color =
-    status === "open"
-      ? "bg-moss-500"
-      : status === "connecting" || status === "idle"
-        ? "bg-umber-500 motion-safe:animate-pulse"
-        : "bg-brick-500";
-  const label =
-    status === "open"
-      ? frontendMessage("connection.open")
-      : status === "connecting" || status === "idle"
-        ? frontendMessage("connection.connecting")
-        : frontendMessage("connection.closed");
-  return (
-    <Tooltip content={label} side="right">
-      <button type="button" className="grid h-6 w-6 place-items-center">
-        <span className={cn("block h-2 w-2 rounded-full", color)} />
-      </button>
-    </Tooltip>
   );
 }

@@ -146,7 +146,7 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
           });
         }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="rgba(28,26,23,0.10)" />
+        <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--theme-canvas-grid)" />
         <Controls
           position="bottom-left"
           showInteractive={false}

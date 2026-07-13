@@ -25,7 +25,7 @@ export interface UseChatCommandsOptions {
   ) => void;
   lastSendRef: MutableRefObject<LastSentMessage | null>;
   pendingAfterTruncateRef: MutableRefObject<PendingAfterTruncate[]>;
-  registerSession: (sessionId: string) => void;
+  registerSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
   send: (request: WsRequest) => boolean;
   serverKnownSessionIdsRef: MutableRefObject<Set<string>>;
   status: SocketStatus;
@@ -36,6 +36,7 @@ export interface ChatCommandsHandle {
   deleteFromMessage: (message: ChatMessage) => void;
   editUserMessage: (message: ChatMessage, nextContent: string) => void;
   regenerateMessage: (message: ChatMessage) => void;
+  resolveApproval: (approvalId: string, status: "approved" | "denied") => void;
   sendMessage: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
   sendAfterTruncate: (pending: PendingAfterTruncate) => boolean;
 }
@@ -323,7 +324,7 @@ export function useChatCommands({
           toast.error(frontendMessage("chat.createSessionDisconnected"));
           return;
         }
-        registerSession(targetSessionId);
+        registerSession(targetSessionId, undefined, modelProviderId);
         serverKnownSessionIdsRef.current.add(targetSessionId);
       }
 
@@ -361,11 +362,24 @@ export function useChatCommands({
     [activeSessionId, appendUserMessage, lastSendRef, registerSession, send, serverKnownSessionIdsRef],
   );
 
+  const resolveApproval = useCallback(
+    (approvalId: string, approvalStatus: "approved" | "denied"): void => {
+      if (!activeSessionId || status !== "open") return;
+      send({
+        type: "approval.resolve",
+        approvalId,
+        status: approvalStatus,
+      });
+    },
+    [activeSessionId, send, status],
+  );
+
   return {
     cancelActiveSession,
     deleteFromMessage,
     editUserMessage,
     regenerateMessage,
+    resolveApproval,
     sendMessage,
     sendAfterTruncate,
   };

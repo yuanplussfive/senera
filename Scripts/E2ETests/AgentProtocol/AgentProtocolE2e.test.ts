@@ -66,6 +66,43 @@ describe("agent protocol E2E", () => {
     expect(readDataRecord(historyChunk).entries).toEqual(expect.any(Array));
   });
 
+  test("provider model changes notify sibling clients to refresh the chat model catalog", async () => {
+    const harness = await createHarness();
+    const sibling = await AgentProtocolE2eClient.connect(harness.websocketUrl);
+    try {
+      const siblingSequence = sibling.snapshot().at(-1)?.sequence ?? 0;
+      const requestId = "request_e2e_model_sync";
+
+      harness.client.send({
+        type: "provider.model.upsert",
+        requestId,
+        expectedRevision: 1,
+        model: {
+          Id: "e2e-added-model",
+          ProviderId: "e2e",
+          Endpoint: "ChatCompletions",
+          Model: "senera-e2e-added",
+        },
+      });
+
+      await harness.client.waitForEvent(
+        AgentEventKinds.ConfigSnapshot,
+        (event) => readOperationRequestId(event) === requestId,
+      );
+      const reloaded = await sibling.waitForEvent(AgentEventKinds.ConfigReloaded, undefined, {
+        afterSequence: siblingSequence,
+      });
+
+      sibling.send({ type: "model.list" });
+      const catalog = await sibling.waitForEvent(AgentEventKinds.ModelListSnapshot, undefined, {
+        afterSequence: reloaded.sequence,
+      });
+      expect(JSON.stringify(readDataRecord(catalog))).toContain("e2e-added-model");
+    } finally {
+      sibling.close();
+    }
+  });
+
   test("invalid websocket payload is rejected without closing the connection", async () => {
     const harness = await createHarness();
     const before = harness.client.snapshot().at(-1)?.sequence ?? 0;
@@ -166,6 +203,13 @@ async function createCompletedSession(
   await harness.client.waitForEvent(AgentEventKinds.RunCompleted, (event) => event.sessionId === sessionId, {
     afterSequence: beforeMessage,
   });
+}
+
+function readOperationRequestId(event: { data: unknown }): string | undefined {
+  const operation = readDataRecord(event).operation;
+  if (!operation || typeof operation !== "object") return undefined;
+  const requestId = (operation as Record<string, unknown>).requestId;
+  return typeof requestId === "string" ? requestId : undefined;
 }
 
 function readDataRecord(event: { data: unknown }): Record<string, unknown> {

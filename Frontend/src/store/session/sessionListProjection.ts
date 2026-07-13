@@ -54,6 +54,7 @@ export function deleteSessionRuntimeState(state: StoreState, sessionId: string):
   delete state.historyEventRunIds[sessionId];
   delete state.viewedRunIdBySession[sessionId];
   delete state.missingOnServerIds[sessionId];
+  delete state.selectedModelProviderIdsBySession[sessionId];
   state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
 }
 

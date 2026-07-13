@@ -2336,6 +2336,560 @@
       "properties": {
         "type": {
           "type": "string",
+          "const": "provider.endpoint.upsert"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "mirrorJson": {
+          "type": "boolean"
+        },
+        "endpoint": {
+          "type": "object",
+          "properties": {
+            "Id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "Icon": {
+              "type": "string",
+              "minLength": 1
+            },
+            "Enabled": {
+              "type": "boolean"
+            },
+            "Kind": {
+              "type": "string",
+              "const": "OpenAICompatible"
+            },
+            "BaseUrl": {
+              "type": "string",
+              "format": "uri"
+            },
+            "ApiKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ApiVersion": {
+              "type": "string",
+              "minLength": 1
+            },
+            "Headers": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "Id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "endpoint"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "provider.endpoint.delete"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "mirrorJson": {
+          "type": "boolean"
+        },
+        "providerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cascadeModels": {
+          "type": "boolean"
+        },
+        "replacementDefaultModelId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "providerId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "provider.endpoint.rename"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "mirrorJson": {
+          "type": "boolean"
+        },
+        "providerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nextProviderId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "providerId",
+        "nextProviderId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "provider.model.upsert"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "mirrorJson": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": "object",
+          "properties": {
+            "Id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ProviderId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "Icon": {
+              "type": "string",
+              "minLength": 1
+            },
+            "Capabilities": {
+              "type": "object",
+              "properties": {
+                "Chat": {
+                  "type": "boolean"
+                },
+                "Embedding": {
+                  "type": "boolean"
+                },
+                "Rerank": {
+                  "type": "boolean"
+                },
+                "Vision": {
+                  "type": "boolean"
+                },
+                "ImageOutput": {
+                  "type": "boolean"
+                },
+                "Reasoning": {
+                  "type": "boolean"
+                },
+                "DeveloperRole": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "ContextWindowTokens": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "MaxModelOutputTokens": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "Endpoint": {
+              "type": "string",
+              "enum": [
+                "Responses",
+                "ChatCompletions",
+                "ClaudeMessages",
+                "GoogleGenerateContent"
+              ]
+            },
+            "Model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "Temperature": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "MaxOutputTokens": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "Stream": {
+              "type": "boolean"
+            },
+            "TimeoutSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "FirstTokenTimeoutSeconds": {
+              "type": "number"
+            },
+            "MaxRequestSeconds": {
+              "type": "number"
+            },
+            "MaxNetworkRetries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "Id",
+            "ProviderId",
+            "Endpoint",
+            "Model"
+          ],
+          "additionalProperties": false
+        },
+        "group": {
+          "type": "object",
+          "properties": {
+            "groupId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1
+            },
+            "icon": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "groupId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "model"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "provider.model.delete"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "mirrorJson": {
+          "type": "boolean"
+        },
+        "modelId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replacementDefaultModelId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "modelId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "provider.model.bulkImport"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "mirrorJson": {
+          "type": "boolean"
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ProviderId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "Icon": {
+                "type": "string",
+                "minLength": 1
+              },
+              "Capabilities": {
+                "type": "object",
+                "properties": {
+                  "Chat": {
+                    "type": "boolean"
+                  },
+                  "Embedding": {
+                    "type": "boolean"
+                  },
+                  "Rerank": {
+                    "type": "boolean"
+                  },
+                  "Vision": {
+                    "type": "boolean"
+                  },
+                  "ImageOutput": {
+                    "type": "boolean"
+                  },
+                  "Reasoning": {
+                    "type": "boolean"
+                  },
+                  "DeveloperRole": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "ContextWindowTokens": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "MaxModelOutputTokens": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "Endpoint": {
+                "type": "string",
+                "enum": [
+                  "Responses",
+                  "ChatCompletions",
+                  "ClaudeMessages",
+                  "GoogleGenerateContent"
+                ]
+              },
+              "Model": {
+                "type": "string",
+                "minLength": 1
+              },
+              "Temperature": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2
+              },
+              "MaxOutputTokens": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "Stream": {
+                "type": "boolean"
+              },
+              "TimeoutSeconds": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "FirstTokenTimeoutSeconds": {
+                "type": "number"
+              },
+              "MaxRequestSeconds": {
+                "type": "number"
+              },
+              "MaxNetworkRetries": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "Id",
+              "ProviderId",
+              "Endpoint",
+              "Model"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "overwriteExisting": {
+          "type": "boolean"
+        },
+        "groupAssignments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "groupId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "icon": {
+                "type": "string",
+                "minLength": 1
+              },
+              "modelId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "groupId",
+              "modelId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "type",
+        "models"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "provider.defaultModel.set"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "mirrorJson": {
+          "type": "boolean"
+        },
+        "modelId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "modelId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
           "const": "plugin.config.list"
         }
       },

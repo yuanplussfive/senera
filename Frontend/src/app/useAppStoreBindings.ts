@@ -37,9 +37,17 @@ export function useAppStoreBindings({
     () => ({
       modelProviders: state.modelProviders,
       selectedModelProviderId: state.selectedModelProviderId,
+      defaultModelProviderId: state.defaultModelProviderId,
       onSelectModelProvider: state.selectModelProvider,
+      onApplyDefaultModel: state.applyDefaultModelToActiveSession,
     }),
-    [state.modelProviders, state.selectModelProvider, state.selectedModelProviderId],
+    [
+      state.applyDefaultModelToActiveSession,
+      state.defaultModelProviderId,
+      state.modelProviders,
+      state.selectModelProvider,
+      state.selectedModelProviderId,
+    ],
   );
 
   const chatPluginConfig = useMemo<ChatPluginConfig>(
@@ -138,6 +146,8 @@ const selectAppStoreState = (state: StoreState) => ({
   presetsEnabled: state.presetsEnabled,
   providerModelCatalogs: state.providerModelCatalogs,
   providerModelErrors: state.providerModelErrors,
+  applyDefaultModelToActiveSession: state.applyDefaultModelToActiveSession,
+  defaultModelProviderId: state.defaultModelProviderId,
   selectModelProvider: state.selectModelProvider,
   selectedModelProviderId: state.selectedModelProviderId,
   userProfile: state.userProfile,

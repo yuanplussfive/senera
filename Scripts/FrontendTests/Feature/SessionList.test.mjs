@@ -4,6 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
+const { openSettingsSurface } = vi.hoisted(() => ({ openSettingsSurface: vi.fn(() => Promise.resolve()) }));
+
+vi.mock("../../../Frontend/src/app/desktopBridge.ts", () => ({ openSettingsSurface }));
+
 vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
   TooltipProvider: ({ children }) => React.createElement(React.Fragment, null, children),
   Tooltip: ({ children }) => React.createElement(React.Fragment, null, children),
@@ -37,14 +41,14 @@ test("session panel renders store sessions and selects a row", async () => {
   });
   renderWithFrontendProviders(React.createElement(SessionList, createProps({ onSessionSelected })));
 
-  await user.click(screen.getByText("Second session"));
+  await user.click(screen.getByRole("button", { name: "打开会话：Second session" }));
 
   expect(useStore.getState().activeSessionId).toBe("second");
   expect(onSessionSelected).toHaveBeenCalledTimes(1);
   expect(screen.getByText("最近 · 2")).toBeInTheDocument();
 });
 
-test("rail presentation exposes direct expansion and new-session actions", async () => {
+test("rail presentation exposes expansion, new-session, and settings actions without a connection dot", async () => {
   const onNewSession = vi.fn();
   const onOpenSessionPanel = vi.fn();
   const user = userEvent.setup();
@@ -61,9 +65,17 @@ test("rail presentation exposes direct expansion and new-session actions", async
 
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
   await user.click(screen.getByRole("button", { name: frontendMessage("session.new") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("pluginConfig.viewSettings") }));
 
   expect(onOpenSessionPanel).toHaveBeenCalledTimes(1);
   expect(onNewSession).toHaveBeenCalledTimes(1);
+  expect(openSettingsSurface).toHaveBeenCalledWith(
+    expect.objectContaining({
+      fallback: expect.any(Function),
+    }),
+  );
+  expect(openSettingsSurface).toHaveBeenCalledWith(expect.not.objectContaining({ section: expect.anything() }));
+  expect(screen.queryByTitle(frontendMessage("connection.open"))).not.toBeInTheDocument();
 });
 
 test("session row menu submits a trimmed rename", async () => {
@@ -97,7 +109,7 @@ test("session row deletion requires explicit confirmation", async () => {
   renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSession })));
 
   await user.click(screen.getByRole("button", { name: "more" }));
-  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.deleteCurrentHistory") }));
+  await user.click(await screen.findByRole("menuitem", { name: "删除历史" }));
   expect(screen.getByRole("dialog", { name: frontendMessage("session.deleteCurrentTitle") })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteCurrentConfirm") }));
 

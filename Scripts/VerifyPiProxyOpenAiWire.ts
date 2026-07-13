@@ -5,13 +5,11 @@ import {
   projectPiChatCompletionResponse,
   projectPiChatCompletionStreamEvents,
 } from "../Source/AgentSystem/PiProxy/AgentPiOpenAiResponseProjector.js";
-import { AgentPiProxyHttpApi } from "../Source/AgentSystem/PiProxy/AgentPiProxyHttpApi.js";
-import {
-  AgentPiProxyProtocol,
-  resolveAgentPiProxyBaseUrl,
-} from "../Source/AgentSystem/PiProxy/AgentPiProxyContract.js";
+import { AgentPiProxyHttpApi, buildPiProxyBaseUrl } from "../Source/AgentSystem/PiProxy/AgentPiProxyHttpApi.js";
 import {
   AgentPiProxyContextHeader,
+  AgentPiProxyModelProviderHeader,
+  encodePiProxyModelProviderHeaderValue,
   withPiProxyRuntimeContext,
 } from "../Source/AgentSystem/PiProxy/AgentPiProxyRuntimeContext.js";
 import { AgentWebSocketHttpRouter } from "../Source/AgentSystem/WebSocket/AgentWebSocketHttpRouter.js";
@@ -22,6 +20,8 @@ import type {
   AgentPiAssistantCompilerPort,
 } from "../Source/AgentSystem/PiProxy/AgentPiAssistantCompiler.js";
 import { projectSeneraModelProviderToPi } from "../Source/AgentSystem/Pi/AgentPiModelProjector.js";
+import { composePiProxyRequestHeaders } from "../Source/AgentSystem/Pi/AgentPiHarnessSessionPool.js";
+import { resolveModelProviderConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import type {
   AgentSystemConfig,
   ResolvedAgentModelProviderConfig,
@@ -32,7 +32,7 @@ const config: AgentSystemConfig = {
     Host: "127.0.0.1",
     Port: 8787,
   },
-  DefaultModelProviderId: "main",
+  DefaultModelProviderId: "test-model",
   ModelProviderEndpoints: [
     {
       Id: "main",
@@ -67,22 +67,87 @@ const provider: ResolvedAgentModelProviderConfig = {
   MaxRequestMs: 20_000,
   MaxNetworkRetries: 1,
   Headers: {},
+  Capabilities: {},
 };
 
 const projected = projectSeneraModelProviderToPi(provider, config);
-assert.equal(projected.model.provider, AgentPiProxyProtocol.providerId);
-assert.equal(projected.model.api, AgentPiProxyProtocol.modelApi);
-assert.equal(projected.model.baseUrl, resolveAgentPiProxyBaseUrl(config));
+assert.equal(projected.model.provider, "senera-pi-proxy");
+assert.equal(projected.model.api, "openai-completions");
+assert.equal(projected.model.baseUrl, buildPiProxyBaseUrl(config));
+assert.equal(projected.upstream.baseUrl, provider.BaseUrl);
+assert.equal(projected.headers[AgentPiProxyModelProviderHeader], provider.Id);
 assert.equal(
-  resolveAgentPiProxyBaseUrl({
+  buildPiProxyBaseUrl({
     ...config,
     Server: {
       Host: "0.0.0.0",
       Port: 8787,
     },
   }),
-  `http://127.0.0.1:8787${AgentPiProxyProtocol.basePath}`,
+  "http://127.0.0.1:8787/v1",
 );
+
+const routingConfig: AgentSystemConfig = {
+  Server: {
+    Host: "127.0.0.1",
+    Port: 8787,
+  },
+  DefaultModelProviderId: "mistral",
+  ModelProviderEndpoints: [
+    {
+      Id: "mistral-endpoint",
+      BaseUrl: "https://mistral.invalid/v1",
+      ApiKey: "mistral-key",
+    },
+    {
+      Id: "deepseek-endpoint",
+      BaseUrl: "https://deepseek.invalid/v1",
+      ApiKey: "deepseek-key",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "mistral",
+      ProviderId: "mistral-endpoint",
+      Endpoint: "ChatCompletions",
+      Model: "mistral-large-latest",
+    },
+    {
+      Id: "deepseek-flash",
+      ProviderId: "deepseek-endpoint",
+      Endpoint: "ChatCompletions",
+      Model: "deepseek-v4-flash",
+    },
+    {
+      Id: "测试2/deepseek-v4-flash",
+      ProviderId: "deepseek-endpoint",
+      Endpoint: "ChatCompletions",
+      Model: "deepseek-v4-flash",
+    },
+  ],
+};
+
+const deepseekProjection = projectSeneraModelProviderToPi(
+  resolveModelProviderConfig(routingConfig, "deepseek-flash"),
+  routingConfig,
+);
+assert.deepEqual(deepseekProjection.headers, {
+  [AgentPiProxyModelProviderHeader]: "deepseek-flash",
+});
+assert.deepEqual(composePiProxyRequestHeaders(deepseekProjection.headers, "pictx_verify"), {
+  [AgentPiProxyModelProviderHeader]: "deepseek-flash",
+  [AgentPiProxyContextHeader]: "pictx_verify",
+});
+const localizedProviderId = "测试2/deepseek-v4-flash";
+const localizedProjection = projectSeneraModelProviderToPi(
+  resolveModelProviderConfig(routingConfig, localizedProviderId),
+  routingConfig,
+);
+assert.equal(
+  localizedProjection.headers[AgentPiProxyModelProviderHeader],
+  encodePiProxyModelProviderHeaderValue(localizedProviderId),
+);
+assert.equal(isAsciiHeaderValue(localizedProjection.headers[AgentPiProxyModelProviderHeader] ?? ""), true);
 
 const toolMessage = {
   kind: "tool_calls" as const,
@@ -163,9 +228,10 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
     async (contextId) => {
       const request = new MockHttpRequest({
         method: "POST",
-        url: AgentPiProxyProtocol.routes.chatCompletions,
+        url: "/v1/chat/completions",
         headers: {
           [AgentPiProxyContextHeader]: contextId,
+          [AgentPiProxyModelProviderHeader]: "test-model",
         },
         body: JSON.stringify({
           model: "test-model",
@@ -246,6 +312,89 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
   assert.match(response.bodyText(), /"tool_calls"/);
 }
 
+async function verifyPiProxyModelProviderRouting(): Promise<void> {
+  const selectedProviders: Array<Pick<ResolvedAgentModelProviderConfig, "Id" | "BaseUrl" | "Model">> = [];
+  const api = new AgentPiProxyHttpApi({
+    configSnapshot: () => routingConfig,
+    compilerFactory: (_config, selectedProvider) => {
+      selectedProviders.push({
+        Id: selectedProvider.Id,
+        BaseUrl: selectedProvider.BaseUrl,
+        Model: selectedProvider.Model,
+      });
+      return new SpyCompiler();
+    },
+  });
+
+  const selected = await postPiChatCompletion(api, {
+    [AgentPiProxyModelProviderHeader]: "deepseek-flash",
+  });
+  assert.equal(selected.statusCode, 200);
+  assert.deepEqual(selectedProviders, [
+    {
+      Id: "deepseek-flash",
+      BaseUrl: "https://deepseek.invalid/v1",
+      Model: "deepseek-v4-flash",
+    },
+  ]);
+
+  const localized = await postPiChatCompletion(api, {
+    [AgentPiProxyModelProviderHeader]: encodePiProxyModelProviderHeaderValue("测试2/deepseek-v4-flash"),
+  });
+  assert.equal(localized.statusCode, 200);
+  assert.equal(selectedProviders.at(-1)?.Id, "测试2/deepseek-v4-flash");
+  assert.equal(selectedProviders.at(-1)?.Model, "deepseek-v4-flash");
+
+  const fallback = await postPiChatCompletion(api);
+  assert.equal(fallback.statusCode, 200);
+  assert.equal(selectedProviders.at(-1)?.Id, "mistral");
+  assert.equal(selectedProviders.at(-1)?.Model, "mistral-large-latest");
+
+  const unknown = await postPiChatCompletion(api, {
+    [AgentPiProxyModelProviderHeader]: "missing-provider",
+  });
+  assert.equal(unknown.statusCode, 400);
+  assert.match(unknown.bodyText(), /"code":"invalid_model_provider"/);
+  assert.equal(selectedProviders.length, 3);
+
+  const empty = await postPiChatCompletion(api, {
+    [AgentPiProxyModelProviderHeader]: "   ",
+  });
+  assert.equal(empty.statusCode, 400);
+  assert.match(empty.bodyText(), /"code":"invalid_model_provider"/);
+  assert.equal(selectedProviders.length, 3);
+
+  const blank = await postPiChatCompletion(api, {
+    [AgentPiProxyModelProviderHeader]: "",
+  });
+  assert.equal(blank.statusCode, 400);
+  assert.match(blank.bodyText(), /"code":"invalid_model_provider"/);
+  assert.equal(selectedProviders.length, 3);
+}
+
+async function postPiChatCompletion(
+  api: AgentPiProxyHttpApi,
+  headers: http.IncomingHttpHeaders = {},
+): Promise<MockHttpResponse> {
+  const request = new MockHttpRequest({
+    method: "POST",
+    url: "/v1/chat/completions",
+    headers,
+    body: JSON.stringify({
+      model: "deepseek-v4-flash",
+      messages: [
+        {
+          role: "user",
+          content: "hello",
+        },
+      ],
+    }),
+  });
+  const response = new MockHttpResponse();
+  await api.handle(request as unknown as http.IncomingMessage, response as unknown as http.ServerResponse);
+  return response;
+}
+
 class SpyCompiler implements AgentPiAssistantCompilerPort {
   lastRequest?: AgentPiAssistantCompileRequest;
 
@@ -316,7 +465,12 @@ class MockHttpResponse extends Writable {
   }
 }
 
-verifyPiProxyRuntimeContextForwarding().then(
+async function main(): Promise<void> {
+  await verifyPiProxyRuntimeContextForwarding();
+  await verifyPiProxyModelProviderRouting();
+}
+
+main().then(
   () => {
     console.log("Pi proxy OpenAI wire projection verified.");
   },
@@ -325,3 +479,7 @@ verifyPiProxyRuntimeContextForwarding().then(
     process.exitCode = 1;
   },
 );
+
+function isAsciiHeaderValue(value: string): boolean {
+  return [...value].every((character) => character.charCodeAt(0) <= 0x7f);
+}

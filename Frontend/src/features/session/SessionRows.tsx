@@ -1,7 +1,7 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { ChevronDown, MessageSquare, PencilLine, SquarePen, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState } from "react";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import {
   ContextMenu,
@@ -47,13 +47,13 @@ export function SessionRow({
   const actions: SessionMenuAction[] = [
     {
       id: "rename",
-      label: frontendMessage("session.rename"),
+      label: frontendMessage("runtime.migrated.features.session.SessionRows.49.14"),
       icon: <PencilLine className="h-3.5 w-3.5" />,
       onSelect: onRename,
     },
     {
       id: "delete",
-      label: frontendMessage("session.deleteCurrentHistory"),
+      label: frontendMessage("runtime.migrated.features.session.SessionRows.55.14"),
       icon: <Trash2 className="h-3.5 w-3.5" />,
       destructive: true,
       onSelect: onClose,
@@ -65,26 +65,32 @@ export function SessionRow({
       <ContextMenuTrigger asChild>
         <motion.div
           data-session-row={sessionId}
-          onClick={onClick}
           whileTap={tapScale ? { scale: tapScale } : undefined}
           transition={motionTimings.fast}
           className={cn(
-            "group relative isolate mt-0.5 grid w-full cursor-pointer grid-cols-[24px_minmax(0,1fr)_28px] items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
-            "data-[state=open]:bg-ink-900/[0.055]",
+            "group relative isolate mt-0.5 grid w-full grid-cols-[24px_minmax(0,1fr)_28px] items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
+            "data-[state=open]:bg-[var(--theme-session-active-bg)]",
             active ? "text-ink-900" : "text-ink-700 hover:bg-ink-900/[0.03]",
           )}
         >
+          <button
+            type="button"
+            aria-current={active ? "true" : undefined}
+            aria-label={`打开会话：${title}`}
+            onClick={onClick}
+            className="absolute inset-0 z-10 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300"
+          />
           {active ? (
             <motion.span
               key={sessionId}
               layoutId="active-session-indicator"
-              className="pointer-events-none absolute inset-0 z-0 rounded-lg bg-ink-900/[0.055]"
+              className="pointer-events-none absolute inset-0 z-0 rounded-lg bg-[var(--theme-session-active-bg)]"
               transition={
                 reduceMotion || disableMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 42 }
               }
             />
           ) : null}
-          <div className="relative z-10 mt-0.5 grid h-5 w-5 place-items-center">
+          <div className="pointer-events-none relative z-20 mt-0.5 grid h-5 w-5 place-items-center">
             {accent === "running" ? (
               <span className="block h-1.5 w-1.5 rounded-full bg-umber-500 motion-safe:animate-pulse" />
             ) : accent === "failed" ? (
@@ -93,7 +99,7 @@ export function SessionRow({
               <MessageSquare className="h-3.5 w-3.5 text-ink-500" />
             )}
           </div>
-          <div className="relative z-10 min-w-0 overflow-hidden pr-1">
+          <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
             <div className="flex min-w-0 items-center gap-1">
               <span
                 title={title}
@@ -107,30 +113,33 @@ export function SessionRow({
             </div>
           </div>
 
-          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <IconButton
-                label="more"
-                size="sm"
-                tone="muted"
-                onClick={(e) => e.stopPropagation()}
-                touchSafe
-                className={cn(
-                  "justify-self-end hover:bg-ink-900/[0.06]",
-                  menuOpen || active || showInlineActions ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-                )}
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </IconButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[190px]">
-              <DropdownSessionMenuItems actions={actions} separateLast />
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="relative z-20">
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <IconButton
+                  label="more"
+                  size="sm"
+                  tone="muted"
+                  touchSafe
+                  className={cn(
+                    "justify-self-end hover:bg-ink-900/[0.06]",
+                    menuOpen || active || showInlineActions
+                      ? "opacity-100"
+                      : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                  )}
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </IconButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[190px]">
+                <DropdownSessionMenuItems actions={actions} separateLast />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </motion.div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-[196px]">
-        <ContextMenuLabel>{frontendMessage("session.actions")}</ContextMenuLabel>
+        <ContextMenuLabel>{frontendMessage("runtime.migrated.features.session.SessionRows.141.27")}</ContextMenuLabel>
         <ContextSessionMenuItems actions={actions} separateLast />
       </ContextMenuContent>
     </ContextMenu>
@@ -141,14 +150,16 @@ export function EmptyState({ onNewSession }: { onNewSession: () => void }): JSX.
   return (
     <div className="mt-8 flex flex-col items-center px-4 text-center">
       <LogoMark size={24} />
-      <div className="mt-2 text-[13px] text-ink-700">{frontendMessage("session.emptyTitle")}</div>
+      <div className="mt-2 text-[13px] text-ink-700">
+        {frontendMessage("runtime.migrated.features.session.SessionRows.152.54")}
+      </div>
       <button
         type="button"
         onClick={onNewSession}
         className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 py-1 text-[12px] text-ink-800 transition hover:border-ink-300 hover:bg-paper-200/60"
       >
         <SquarePen className="h-3 w-3" />
-        {frontendMessage("session.emptyAction")}
+        {frontendMessage("runtime.migrated.features.session.SessionRows.159.9")}
       </button>
     </div>
   );

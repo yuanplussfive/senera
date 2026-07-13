@@ -1,18 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import {
-  forwardRef,
-  useEffect,
-  useRef,
-  useState,
-  type ButtonHTMLAttributes,
-  type CSSProperties,
-  type ForwardedRef,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from "react";
+import { forwardRef, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
 import type { Transition, VariantLabels, Variants } from "framer-motion";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { dialogPresenceExitMs, MotionDialogContent, MotionDialogOverlay, type DialogMotionPreset } from "../motion";
 
@@ -27,85 +16,12 @@ type DialogPresenceStyle = CSSProperties & {
   "--dialog-presence-exit-dur"?: string;
 };
 
-type DialogDragOffset = {
-  x: number;
-  y: number;
-};
-
-type DialogDragState = {
-  pointerId: number;
-  startClientX: number;
-  startClientY: number;
-  startOffset: DialogDragOffset;
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-};
-
-export interface DialogDragBoundsInput {
-  edgePadding: number;
-  rect: Pick<DOMRect, "bottom" | "left" | "right" | "top">;
-  startOffset: DialogDragOffset;
-  viewportHeight: number;
-  viewportWidth: number;
-}
-
 const dialogPresenceStyle = {
   "--dialog-presence-exit-dur": `${dialogPresenceExitMs}ms`,
 } satisfies DialogPresenceStyle;
 
 function mergeDialogPresenceStyle(style?: CSSProperties): DialogPresenceStyle {
   return style ? { ...dialogPresenceStyle, ...style } : dialogPresenceStyle;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-export function readDialogDragBounds({
-  edgePadding,
-  rect,
-  startOffset,
-  viewportHeight,
-  viewportWidth,
-}: DialogDragBoundsInput): Pick<DialogDragState, "maxX" | "maxY" | "minX" | "minY"> {
-  return {
-    minX: edgePadding - rect.left + startOffset.x,
-    maxX: viewportWidth - edgePadding - rect.right + startOffset.x,
-    minY: edgePadding - rect.top + startOffset.y,
-    maxY: viewportHeight - edgePadding - rect.bottom + startOffset.y,
-  };
-}
-
-export function clampDialogDragOffset(
-  offset: DialogDragOffset,
-  bounds: Pick<DialogDragState, "maxX" | "maxY" | "minX" | "minY">,
-): DialogDragOffset {
-  return {
-    x: clamp(offset.x, bounds.minX, bounds.maxX),
-    y: clamp(offset.y, bounds.minY, bounds.maxY),
-  };
-}
-
-function canDragDialog(event: ReactPointerEvent): boolean {
-  if (event.button !== 0) return false;
-  if (event.pointerType === "touch") return false;
-  return true;
-}
-
-function isZeroOffset(offset: DialogDragOffset): boolean {
-  return offset.x === 0 && offset.y === 0;
-}
-
-function setForwardedRef<T>(ref: ForwardedRef<T>, value: T | null): void {
-  if (typeof ref === "function") {
-    ref(value);
-    return;
-  }
-  if (ref) {
-    ref.current = value;
-  }
 }
 
 export const DialogOverlay = forwardRef<HTMLDivElement, React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>>(
@@ -127,7 +43,6 @@ type DialogContentSnapshot = {
   contentTransition?: Transition;
   contentVariants?: Variants;
   description?: string;
-  draggable: boolean;
   motionPreset: DialogMotionPreset;
   panelClassName?: string;
   title?: string;
@@ -141,7 +56,6 @@ const DialogContentFrame = forwardRef<
     bodyClassName?: string;
     frameClassName?: string;
     panelClassName?: string;
-    draggable?: boolean;
     motionPreset: DialogMotionPreset;
     contentInitial?: false | VariantLabels;
     contentVariants?: Variants;
@@ -158,7 +72,6 @@ const DialogContentFrame = forwardRef<
       bodyClassName,
       frameClassName: _frameClassName,
       panelClassName,
-      draggable = true,
       motionPreset,
       contentInitial,
       contentVariants,
@@ -169,9 +82,6 @@ const DialogContentFrame = forwardRef<
     },
     ref,
   ) => {
-    const frameRef = useRef<HTMLDivElement | null>(null);
-    const dragStateRef = useRef<DialogDragState | null>(null);
-    const [dragOffset, setDragOffset] = useState<DialogDragOffset>({ x: 0, y: 0 });
     const liveContent: DialogContentSnapshot = {
       bodyClassName,
       children,
@@ -179,7 +89,6 @@ const DialogContentFrame = forwardRef<
       contentTransition,
       contentVariants,
       description,
-      draggable,
       motionPreset,
       panelClassName,
       title,
@@ -189,73 +98,12 @@ const DialogContentFrame = forwardRef<
       openContentRef.current = liveContent;
     }
     const content = dataState === "closed" ? openContentRef.current : liveContent;
-    const canShowDragCursor = content.draggable && dataState !== "closed";
-    const baseFrameStyle = isZeroOffset(dragOffset)
-      ? style
-      : { ...(style ?? {}), translate: `${dragOffset.x}px ${dragOffset.y}px` };
     const frameStyle = mergeDialogPresenceStyle(
-      dataState === "closed" ? { ...(baseFrameStyle ?? {}), pointerEvents: "none" } : baseFrameStyle,
+      dataState === "closed" ? { ...(style ?? {}), pointerEvents: "none" } : style,
     );
 
-    useEffect(() => {
-      if (dataState === "closed") {
-        setDragOffset({ x: 0, y: 0 });
-        dragStateRef.current = null;
-      }
-    }, [dataState]);
-
-    const setFrameNode = (node: HTMLDivElement | null): void => {
-      frameRef.current = node;
-      setForwardedRef(ref, node);
-    };
-
-    const handleHeaderPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
-      if (!content.draggable || dataState === "closed" || !canDragDialog(event)) {
-        return;
-      }
-      const frame = frameRef.current;
-      if (!frame) return;
-
-      const rect = frame.getBoundingClientRect();
-      const edgePadding = 12;
-      const startOffset = dragOffset;
-      const bounds = readDialogDragBounds({
-        edgePadding,
-        rect,
-        startOffset,
-        viewportHeight: window.innerHeight,
-        viewportWidth: window.innerWidth,
-      });
-      dragStateRef.current = {
-        pointerId: event.pointerId,
-        startClientX: event.clientX,
-        startClientY: event.clientY,
-        startOffset,
-        ...bounds,
-      };
-      event.currentTarget.setPointerCapture(event.pointerId);
-      event.preventDefault();
-    };
-
-    const handleHeaderPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
-      const dragState = dragStateRef.current;
-      if (!dragState || dragState.pointerId !== event.pointerId) return;
-      const nextX = dragState.startOffset.x + event.clientX - dragState.startClientX;
-      const nextY = dragState.startOffset.y + event.clientY - dragState.startClientY;
-      setDragOffset(clampDialogDragOffset({ x: nextX, y: nextY }, dragState));
-    };
-
-    const stopDragging = (event: ReactPointerEvent<HTMLDivElement>): void => {
-      const dragState = dragStateRef.current;
-      if (!dragState || dragState.pointerId !== event.pointerId) return;
-      dragStateRef.current = null;
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-    };
-
     return (
-      <div ref={setFrameNode} className={className} data-state={dataState} style={frameStyle} {...props}>
+      <div ref={ref} className={className} data-state={dataState} style={frameStyle} {...props}>
         <MotionDialogContent
           className={content.panelClassName}
           data-dialog-panel="true"
@@ -265,16 +113,7 @@ const DialogContentFrame = forwardRef<
           variants={content.contentVariants}
           transition={content.contentTransition}
         >
-          <div
-            className={cn(
-              "flex items-start gap-3 border-b border-ink-200/50 bg-paper-50 px-4 py-3.5",
-              canShowDragCursor && "lg:cursor-move lg:select-none",
-            )}
-            onPointerDown={handleHeaderPointerDown}
-            onPointerMove={handleHeaderPointerMove}
-            onPointerUp={stopDragging}
-            onPointerCancel={stopDragging}
-          >
+          <div className="flex items-start gap-3 border-b border-ink-200/50 bg-paper-50 px-4 py-3.5">
             <div className="min-w-0 flex-1">
               <DialogPrimitive.Title className="truncate text-[13.5px] font-medium text-ink-900">
                 {content.title ?? ""}
@@ -288,15 +127,13 @@ const DialogContentFrame = forwardRef<
             <DialogClose asChild>
               <button
                 type="button"
-                data-dialog-no-drag
-                onPointerDown={(event) => event.stopPropagation()}
                 className={cn(
                   "grid h-8 w-8 flex-shrink-0 place-items-center rounded-md text-ink-400",
                   "transition-colors duration-100",
                   "hover:bg-ink-900/[0.08] hover:text-ink-900",
                   "focus:outline-none focus:ring-2 focus:ring-terra-300/60",
                 )}
-                aria-label={frontendMessage("ui.close")}
+                aria-label="关闭"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -319,7 +156,6 @@ export const DialogContent = forwardRef<
     frameClassName?: string;
     placement?: "center" | "inset";
     motionPreset?: DialogMotionPreset;
-    draggable?: boolean;
     contentInitial?: false | VariantLabels;
     contentVariants?: Variants;
     contentTransition?: Transition;
@@ -335,7 +171,6 @@ export const DialogContent = forwardRef<
       frameClassName,
       placement = "center",
       motionPreset = "modal",
-      draggable = true,
       contentInitial,
       contentVariants,
       contentTransition,
@@ -362,7 +197,6 @@ export const DialogContent = forwardRef<
           title={title}
           description={description}
           bodyClassName={bodyClassName}
-          draggable={draggable}
           motionPreset={motionPreset}
           contentInitial={contentInitial}
           contentVariants={contentVariants}

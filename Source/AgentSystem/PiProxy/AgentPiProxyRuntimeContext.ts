@@ -2,6 +2,19 @@ import { createOpaqueId } from "../Core/AgentIds.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 
 export const AgentPiProxyContextHeader = "x-senera-pi-context-id";
+export const AgentPiProxyModelProviderHeader = "x-senera-model-provider-id";
+
+export function encodePiProxyModelProviderHeaderValue(modelProviderId: string): string {
+  return encodeURIComponent(modelProviderId);
+}
+
+export function decodePiProxyModelProviderHeaderValue(headerValue: string): string {
+  try {
+    return decodeURIComponent(headerValue);
+  } catch {
+    return headerValue;
+  }
+}
 
 export interface AgentPiProxyRuntimeContext {
   sessionId?: string;

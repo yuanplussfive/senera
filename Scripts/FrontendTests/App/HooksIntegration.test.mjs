@@ -376,6 +376,136 @@ test("useConfigMutationController rolls back disconnected sends and records prov
   );
 });
 
+test("useConfigMutationController sends guarded provider endpoint commands and tracks provider state", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  const configSnapshot = {
+    path: "Config.toml",
+    version: 7,
+    revision: 31,
+    value: {},
+    source: "sqlite",
+    diagnostics: [],
+    form: { version: 1, sections: [] },
+  };
+
+  render(
+    React.createElement(ConfigMutationHarness, {
+      configSnapshot,
+      send,
+      status: "open",
+      handleRef,
+    }),
+  );
+
+  let upsertRequestId;
+  let renameRequestId;
+  let deleteRequestId;
+  await act(async () => {
+    upsertRequestId = handleRef.current.upsertProviderEndpoint({
+      Id: "custom-openai",
+      Icon: "sparkles",
+      Kind: "OpenAICompatible",
+    });
+    renameRequestId = handleRef.current.renameProviderEndpoint("custom-old", "custom-new");
+    deleteRequestId = handleRef.current.deleteProviderEndpoint("custom-delete", {
+      cascadeModels: true,
+    });
+  });
+
+  expect(send.mock.calls.map(([request]) => request)).toEqual([
+    {
+      type: "provider.endpoint.upsert",
+      endpoint: {
+        Id: "custom-openai",
+        Icon: "sparkles",
+        Kind: "OpenAICompatible",
+      },
+      expectedRevision: 31,
+      requestId: upsertRequestId,
+      mirrorJson: true,
+    },
+    {
+      type: "provider.endpoint.rename",
+      providerId: "custom-old",
+      nextProviderId: "custom-new",
+      expectedRevision: 31,
+      requestId: renameRequestId,
+      mirrorJson: true,
+    },
+    {
+      type: "provider.endpoint.delete",
+      providerId: "custom-delete",
+      cascadeModels: true,
+      expectedRevision: 31,
+      requestId: deleteRequestId,
+      mirrorJson: true,
+    },
+  ]);
+  expect(send.mock.calls.every(([request]) => request.type !== "config.update" && !("config" in request))).toBe(true);
+  expect(handleRef.current.providerEndpointOperations["custom-openai"]).toEqual(
+    expect.objectContaining({
+      requestId: upsertRequestId,
+      kind: "provider.endpoint.upsert",
+      status: "pending",
+    }),
+  );
+
+  await act(async () => {
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigSnapshot, "config", {
+        ...configSnapshot,
+        revision: 32,
+        operation: {
+          requestId: upsertRequestId,
+          kind: "provider.endpoint.upsert",
+        },
+      }),
+    );
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigFailed, "config", {
+        configPath: "Config.toml",
+        message: "stale revision",
+        operation: {
+          requestId: renameRequestId,
+          kind: "provider.endpoint.rename",
+        },
+      }),
+    );
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigSnapshot, "config", {
+        ...configSnapshot,
+        operation: {
+          requestId: deleteRequestId,
+          kind: "provider.model.delete",
+        },
+      }),
+    );
+  });
+
+  expect(handleRef.current.providerEndpointOperations["custom-openai"].status).toBe("success");
+  expect(handleRef.current.providerEndpointOperations["custom-old"]).toEqual(
+    expect.objectContaining({
+      status: "error",
+      message: "stale revision",
+    }),
+  );
+  expect(handleRef.current.providerEndpointOperations["custom-delete"].status).toBe("pending");
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "success",
+      title: "供应商连接已保存",
+    }),
+  );
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "error",
+      title: "供应商重命名失败",
+      options: { description: "stale revision" },
+    }),
+  );
+});
+
 function SandboxHarness({ handleRef }) {
   const handle = useSandboxRuntimeStatus();
   useEffect(() => {
@@ -417,12 +547,13 @@ function SocketErrorToastHarness({ handleRef }) {
   return null;
 }
 
-function ConfigMutationHarness({ send, status, handleRef }) {
+function ConfigMutationHarness({ configSnapshot = null, send, status, handleRef }) {
   const sendRef = useRef(send);
   const statusRef = useRef(status);
   sendRef.current = send;
   statusRef.current = status;
   const handle = useConfigMutationController({
+    configSnapshot,
     sendRef,
     statusRef,
   });

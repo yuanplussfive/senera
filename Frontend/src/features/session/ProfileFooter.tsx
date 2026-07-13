@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, User } from "lucide-react";
+import { Camera, Info, Palette, Settings2, User } from "lucide-react";
 import { toast } from "sonner";
+import { openSettingsSurface } from "../../app/desktopBridge";
 import type { UserProfile } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
-import { Dialog, DialogActionButton, DialogActions, DialogContent } from "../../shared/ui";
+import {
+  Dialog,
+  DialogActionButton,
+  DialogActions,
+  DialogContent,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../shared/ui";
 import {
   AVATAR_PREVIEW_SIZE,
   MAX_AVATAR_SOURCE_BYTES,
@@ -44,20 +56,77 @@ export function UserFooter({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex h-14 w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300"
-      >
-        <UserAvatar profile={profile} />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] text-ink-800">{profile.name}</div>
-          <div className="flex items-center gap-1 font-mono text-[10px] text-ink-400">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="flex h-14 w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300 data-[state=open]:bg-ink-900/[0.045]"
+          >
+            <UserAvatar profile={profile} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13px] text-ink-800">{profile.name}</div>
+              <div className="flex items-center gap-1 font-mono text-[10px] text-ink-400">
+                <span className={cn("inline-block h-1.5 w-1.5 rounded-full", statusColor)} />
+                {statusLabel}
+              </div>
+            </div>
+            <Settings2 className="h-3.5 w-3.5 shrink-0 text-ink-350" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" className="w-[244px]">
+          <DropdownMenuLabel>
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.77.30")}
+          </DropdownMenuLabel>
+          <DropdownMenuItem icon={<User className="h-3.5 w-3.5" />} onSelect={() => setOpen(true)}>
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.82.13")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.85.30")}
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            icon={<Palette className="h-3.5 w-3.5" />}
+            onSelect={() => {
+              void openSettingsSurface({
+                section: "appearance",
+                fallback: () => undefined,
+              });
+            }}
+          >
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.95.13")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            icon={<Settings2 className="h-3.5 w-3.5" />}
+            onSelect={() => {
+              void openSettingsSurface({
+                section: "general",
+                fallback: () => undefined,
+              });
+            }}
+          >
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.106.13")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            icon={<Info className="h-3.5 w-3.5" />}
+            onSelect={() => {
+              void openSettingsSurface({
+                section: "about",
+                fallback: () => undefined,
+              });
+            }}
+          >
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.117.13")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <div className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[12px] text-ink-500">
             <span className={cn("inline-block h-1.5 w-1.5 rounded-full", statusColor)} />
-            {statusLabel}
+            <span className="min-w-0 flex-1 truncate">
+              {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}
+            </span>
+            <span className="font-mono text-[10.5px] text-ink-400">{statusLabel}</span>
           </div>
-        </div>
-      </button>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <ProfileDialog
         open={open}
         profile={profile}
@@ -323,7 +392,7 @@ function AvatarCropper({
           ref={frameRef}
           className={cn(
             "relative h-48 w-48 touch-none overflow-hidden rounded-full bg-ink-950 select-none",
-            "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18),0_10px_30px_rgba(23,20,18,0.14)]",
+            "shadow-[var(--shadow-avatar-cropper)]",
           )}
           onPointerDown={(event) => {
             if (!image) return;

@@ -72,10 +72,13 @@ export interface ProviderModelGroup {
   rows: ProviderModelInfo[];
 }
 
+export type ModelConfigLayoutMode = "panel" | "embedded";
+
 export interface ModelConfigViewProps {
   value: JsonConfigObject;
   section?: ConfigFormSectionData;
   disabled?: boolean;
+  layoutMode?: ModelConfigLayoutMode;
   catalogs: Record<string, ProviderModelsSnapshotData>;
   errors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
   loadingProviderIds: Record<string, boolean>;

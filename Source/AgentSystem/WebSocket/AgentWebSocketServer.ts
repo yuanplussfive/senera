@@ -91,6 +91,7 @@ export class AgentWebSocketServer {
         sandboxRuntimeService,
       },
       sendEnvelope: (socket, event) => this.eventSender.sendEnvelope(socket, event),
+      broadcast: (event) => this.broadcast(event),
     });
   }
 

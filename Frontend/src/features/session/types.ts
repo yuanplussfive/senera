@@ -1,3 +1,4 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 export type ConfirmationIntent = {
   title: string;
   description: string;
@@ -25,17 +26,17 @@ export type SessionMenuSection = {
 export const preferenceSections = [
   {
     id: "layout",
-    title: frontendMessage("preferences.layout.title"),
+    title: frontendMessage("runtime.migrated.features.session.types.28.12"),
     items: [
       {
-        id: "sidebarCollapsed",
-        title: frontendMessage("preferences.layout.sidebarCollapsed"),
-        description: frontendMessage("preferences.layout.sidebarCollapsedDescription"),
+        id: "defaultSidebarCollapsed",
+        title: frontendMessage("runtime.migrated.features.session.types.32.16"),
+        description: frontendMessage("runtime.migrated.features.session.types.33.22"),
       },
       {
-        id: "rightPanelCollapsed",
-        title: frontendMessage("preferences.layout.rightPanelCollapsed"),
-        description: frontendMessage("preferences.layout.rightPanelCollapsedDescription"),
+        id: "defaultRightPanelCollapsed",
+        title: frontendMessage("runtime.migrated.features.session.types.37.16"),
+        description: frontendMessage("runtime.migrated.features.session.types.38.22"),
       },
     ],
   },
@@ -46,18 +47,17 @@ export type LayoutPreferenceId = (typeof preferenceSections)[number]["items"][nu
 export const motionLevelOptions = [
   {
     id: "full",
-    title: frontendMessage("preferences.motion.full"),
-    description: frontendMessage("preferences.motion.fullDescription"),
+    title: frontendMessage("runtime.migrated.features.session.types.49.12"),
+    description: frontendMessage("runtime.migrated.features.session.types.50.18"),
   },
   {
     id: "reduced",
-    title: frontendMessage("preferences.motion.reduced"),
-    description: frontendMessage("preferences.motion.reducedDescription"),
+    title: frontendMessage("runtime.migrated.features.session.types.54.12"),
+    description: frontendMessage("runtime.migrated.features.session.types.55.18"),
   },
   {
     id: "none",
-    title: frontendMessage("preferences.motion.none"),
-    description: frontendMessage("preferences.motion.noneDescription"),
+    title: frontendMessage("runtime.migrated.features.session.types.59.12"),
+    description: frontendMessage("runtime.migrated.features.session.types.60.18"),
   },
 ] as const;
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";

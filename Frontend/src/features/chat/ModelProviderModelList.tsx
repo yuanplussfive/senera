@@ -1,12 +1,13 @@
-import { useMemo, useRef } from "react";
-import { Loader2, RefreshCw, Settings2, Tags } from "lucide-react";
-import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { useMemo, useRef } from "react";
+import { Loader2, Plus, RefreshCw, Settings2, Tags } from "lucide-react";
+import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { ScrollArea, Tooltip } from "../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
-import { defaultModelCapabilities, providerEnabled, readModelCapabilities } from "./modelConfigData";
+import { defaultModelCapabilities, modelConfigId, providerEnabled, readModelCapabilities } from "./modelConfigData";
 import type {
+  ModelConfigLayoutMode,
   ModelProviderDraft,
   ProviderEndpointDraft,
   ProviderModelGroup,
@@ -21,6 +22,12 @@ import {
   iconButtonClassName,
 } from "./ModelConfigPrimitives";
 
+const EMPTY_PENDING_MODEL_IDS: ReadonlySet<string> = new Set();
+const modelActionClassName =
+  "inline-flex h-7 items-center rounded-md border border-ink-200 bg-paper-50 px-2 text-[10.5px] font-medium text-ink-650 transition hover:border-terra-300 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50";
+const modelRemoveActionClassName =
+  "inline-flex h-7 items-center rounded-md border border-brick-200 bg-brick-50 px-2 text-[10.5px] font-medium text-brick-700 transition hover:border-brick-300 hover:bg-brick-100 disabled:pointer-events-none disabled:opacity-50";
+
 export function ProviderModelList({
   selectedProvider,
   catalog,
@@ -32,14 +39,21 @@ export function ProviderModelList({
   models,
   modelTemplate,
   defaultModelId,
+  pendingModelIds = EMPTY_PENDING_MODEL_IDS,
   search,
   configuredOnly,
   disabled,
+  layoutMode = "panel",
   onSearch,
   onConfiguredOnlyChange,
   onOpenModelGroups,
   onFetch,
+  onAddManualModel,
+  showFetchAction = true,
   onConfigureModel,
+  onSetDefaultModel,
+  onRemoveModel,
+  onAddModel,
 }: {
   selectedProvider: ProviderEndpointDraft | null;
   catalog?: ProviderModelsSnapshotData;
@@ -51,15 +65,23 @@ export function ProviderModelList({
   models: ModelProviderDraft[];
   modelTemplate: Record<string, unknown>;
   defaultModelId: string;
+  pendingModelIds?: ReadonlySet<string>;
   search: string;
   configuredOnly: boolean;
   disabled: boolean;
+  layoutMode?: ModelConfigLayoutMode;
   onSearch: (value: string) => void;
   onConfiguredOnlyChange: (enabled: boolean) => void;
   onOpenModelGroups: () => void;
   onFetch: (force?: boolean) => void;
+  onAddManualModel?: () => void;
+  showFetchAction?: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
+  onSetDefaultModel?: (model: ModelProviderDraft) => void;
+  onRemoveModel?: (model: ModelProviderDraft) => void;
+  onAddModel?: (model: ProviderModelInfo) => void;
 }): JSX.Element {
+  const embedded = layoutMode === "embedded";
   const scrollTopRef = useRef<HTMLDivElement | null>(null);
   const groupRefs = useRef(new Map<string, HTMLElement>());
   const scrollToGroup = (groupId: string | null): void => {
@@ -69,21 +91,49 @@ export function ProviderModelList({
       behavior: "smooth",
     });
   };
+  const modelRows = (
+    <>
+      <div ref={scrollTopRef} />
+      <ProviderModelRows
+        selectedProvider={selectedProvider}
+        enabled={enabled}
+        catalog={catalog}
+        rows={rows}
+        groups={groups}
+        models={models}
+        modelTemplate={modelTemplate}
+        defaultModelId={defaultModelId}
+        pendingModelIds={pendingModelIds}
+        disabled={disabled}
+        onConfigureModel={onConfigureModel}
+        onSetDefaultModel={onSetDefaultModel}
+        onRemoveModel={onRemoveModel}
+        onAddModel={onAddModel}
+        onGroupRef={(groupId, element) => {
+          if (element) {
+            groupRefs.current.set(groupId, element);
+          } else {
+            groupRefs.current.delete(groupId);
+          }
+        }}
+      />
+    </>
+  );
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className={cn("flex min-h-0 flex-col", embedded ? "overflow-visible" : "h-full overflow-hidden")}>
       <ListHeader
-        title={frontendMessage("config.model.title")}
+        title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.138.15")}
         subtitle={modelListSubtitle(selectedProvider, catalog, rows.length)}
         action={
           <div className="flex items-center gap-1.5">
-            <Tooltip content={frontendMessage("config.modelGroups.title")} side="top">
+            <Tooltip content="模型分组" side="top">
               <button
                 type="button"
                 disabled={disabled}
                 className={iconButtonClassName}
                 onClick={onOpenModelGroups}
-                aria-label={frontendMessage("config.modelGroups.title")}
+                aria-label="模型分组"
               >
                 <Tags className="h-3.5 w-3.5" />
               </button>
@@ -101,19 +151,34 @@ export function ProviderModelList({
               onClick={() => onConfiguredOnlyChange(!configuredOnly)}
               aria-pressed={configuredOnly}
             >
-              ON
+              {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.166.17")}
             </button>
-            <Tooltip content={frontendMessage("config.model.check")} side="top">
-              <button
-                type="button"
-                disabled={disabled || loading || !enabled || !selectedProvider?.Id}
-                className={iconButtonClassName}
-                onClick={() => onFetch(true)}
-                aria-label={frontendMessage("config.model.check")}
-              >
-                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              </button>
-            </Tooltip>
+            {onAddManualModel ? (
+              <Tooltip content="手动添加模型" side="top">
+                <button
+                  type="button"
+                  disabled={disabled || !selectedProvider}
+                  className={iconButtonClassName}
+                  onClick={onAddManualModel}
+                  aria-label="手动添加模型"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+            ) : null}
+            {showFetchAction ? (
+              <Tooltip content="获取模型列表" side="top">
+                <button
+                  type="button"
+                  disabled={disabled || loading || !enabled || !selectedProvider?.Id}
+                  className={iconButtonClassName}
+                  onClick={() => onFetch(true)}
+                  aria-label="获取模型列表"
+                >
+                  {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                </button>
+              </Tooltip>
+            ) : null}
           </div>
         }
       />
@@ -122,28 +187,16 @@ export function ProviderModelList({
         <ProviderCatalogStatus catalog={catalog} error={error} loading={loading} disabled={!enabled} />
       </div>
       <ModelGroupSummary groups={groups} total={rows.length} onSelectGroup={scrollToGroup} />
-      <ScrollArea className="min-h-0 flex-1 overflow-hidden" viewportClassName="h-full pr-2 [scrollbar-gutter:stable]">
-        <div ref={scrollTopRef} />
-        <ProviderModelRows
-          selectedProvider={selectedProvider}
-          enabled={enabled}
-          catalog={catalog}
-          rows={rows}
-          groups={groups}
-          models={models}
-          modelTemplate={modelTemplate}
-          defaultModelId={defaultModelId}
-          disabled={disabled}
-          onConfigureModel={onConfigureModel}
-          onGroupRef={(groupId, element) => {
-            if (element) {
-              groupRefs.current.set(groupId, element);
-            } else {
-              groupRefs.current.delete(groupId);
-            }
-          }}
-        />
-      </ScrollArea>
+      {embedded ? (
+        <div className="min-h-0">{modelRows}</div>
+      ) : (
+        <ScrollArea
+          className="min-h-0 flex-1 overflow-hidden"
+          viewportClassName="h-full pr-2 [scrollbar-gutter:stable]"
+        >
+          {modelRows}
+        </ScrollArea>
+      )}
     </div>
   );
 }
@@ -157,8 +210,12 @@ function ProviderModelRows({
   models,
   modelTemplate,
   defaultModelId,
+  pendingModelIds,
   disabled,
   onConfigureModel,
+  onSetDefaultModel,
+  onRemoveModel,
+  onAddModel,
   onGroupRef,
 }: {
   selectedProvider: ProviderEndpointDraft | null;
@@ -169,8 +226,12 @@ function ProviderModelRows({
   models: ModelProviderDraft[];
   modelTemplate: Record<string, unknown>;
   defaultModelId: string;
+  pendingModelIds: ReadonlySet<string>;
   disabled: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
+  onSetDefaultModel?: (model: ModelProviderDraft) => void;
+  onRemoveModel?: (model: ModelProviderDraft) => void;
+  onAddModel?: (model: ProviderModelInfo) => void;
   onGroupRef: (groupId: string, element: HTMLElement | null) => void;
 }): JSX.Element {
   const selectedProviderId = selectedProvider?.Id ?? "";
@@ -181,16 +242,16 @@ function ProviderModelRows({
   );
 
   if (!selectedProvider) {
-    return <EmptyList text={frontendMessage("config.model.addProviderFirst")} />;
+    return <EmptyList text="先添加供应商" />;
   }
   if (!enabled) {
-    return <EmptyList text={frontendMessage("config.provider.disabled")} />;
+    return <EmptyList text="当前供应商已关闭" />;
   }
   if (!catalog && rows.length === 0) {
-    return <EmptyList text={frontendMessage("config.model.checkHint")} />;
+    return <EmptyList text="点击获取模型列表读取 /models 列表" />;
   }
   if (rows.length === 0) {
-    return <EmptyList text={frontendMessage("config.model.noMatches")} />;
+    return <EmptyList text="没有匹配的模型" />;
   }
 
   return (
@@ -217,9 +278,13 @@ function ProviderModelRows({
                 providerId={selectedProvider.Id}
                 configured={configuredByModel.get(model.id)}
                 defaultModelId={defaultModelId}
+                pending={pendingModelIds.has(modelConfigId(selectedProviderId, model.id))}
                 modelTemplate={modelTemplate}
                 disabled={disabled}
                 onConfigureModel={onConfigureModel}
+                onSetDefaultModel={onSetDefaultModel}
+                onRemoveModel={onRemoveModel}
+                onAddModel={onAddModel}
               />
             ))}
           </div>
@@ -234,17 +299,25 @@ function ProviderModelRow({
   providerId,
   configured,
   defaultModelId,
+  pending,
   modelTemplate,
   disabled,
   onConfigureModel,
+  onSetDefaultModel,
+  onRemoveModel,
+  onAddModel,
 }: {
   model: ProviderModelInfo;
   providerId: string;
   configured?: ModelProviderDraft;
   defaultModelId: string;
+  pending: boolean;
   modelTemplate: Record<string, unknown>;
   disabled: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
+  onSetDefaultModel?: (model: ModelProviderDraft) => void;
+  onRemoveModel?: (model: ModelProviderDraft) => void;
+  onAddModel?: (model: ProviderModelInfo) => void;
 }): JSX.Element {
   const isDefault = configured?.Id === defaultModelId;
   const capabilities = configured
@@ -259,24 +332,71 @@ function ProviderModelRow({
           {model.id}
         </span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[10.5px] text-ink-400">
-            {model.ownedBy || frontendMessage("config.model.providerModel")}
-          </span>
+          <span className="truncate text-[10.5px] text-ink-400">{model.ownedBy || "供应商模型"}</span>
           <CapabilityIconStrip capabilities={capabilities} />
         </span>
       </span>
-      <span className="flex items-center gap-1.5">
+      <span className="flex flex-wrap items-center justify-end gap-1.5">
         <ConfiguredModelBadge isDefault={isDefault} configured={Boolean(configured)} />
-        <button
-          type="button"
-          disabled={disabled || !providerId}
-          className={iconButtonClassName}
-          title={frontendMessage("config.model.configure")}
-          aria-label={frontendMessage("config.model.configure")}
-          onClick={() => onConfigureModel(model)}
-        >
-          <Settings2 className="h-3.5 w-3.5" />
-        </button>
+        {pending ? (
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10.5px] font-semibold text-sky-700">
+            <Loader2 className="h-3 w-3 animate-spin" />{" "}
+            {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.356.58")}
+          </span>
+        ) : configured && (onSetDefaultModel || onRemoveModel) ? (
+          <>
+            <button
+              type="button"
+              disabled={disabled || !providerId}
+              className={modelActionClassName}
+              onClick={() => onConfigureModel(model)}
+            >
+              {frontendMessage("chat.model.configure")}
+            </button>
+            {!isDefault && onSetDefaultModel ? (
+              <button
+                type="button"
+                disabled={disabled || !providerId}
+                className={modelActionClassName}
+                onClick={() => onSetDefaultModel(configured)}
+              >
+                {frontendMessage("chat.model.setDefault")}
+              </button>
+            ) : null}
+            {onRemoveModel ? (
+              <button
+                type="button"
+                disabled={disabled || !providerId}
+                className={modelRemoveActionClassName}
+                onClick={() => onRemoveModel(configured)}
+              >
+                {frontendMessage("chat.model.remove")}
+              </button>
+            ) : null}
+          </>
+        ) : configured || !onAddModel ? (
+          <button
+            type="button"
+            disabled={disabled || !providerId}
+            className={iconButtonClassName}
+            title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.362.17")}
+            aria-label="配置模型"
+            onClick={() => onConfigureModel(model)}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={disabled || !providerId}
+            className={iconButtonClassName}
+            title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.371.17")}
+            aria-label="添加模型"
+            onClick={() => onAddModel(model)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        )}
       </span>
     </div>
   );
@@ -297,9 +417,11 @@ function ConfiguredModelBadge({
     );
   }
   if (configured) {
+    // TODO: this is a configured-state badge, not model enablement. Persisted
+    // model Enabled plus runtime filtering require a backend contract first.
     return (
       <span className="rounded-full border border-lime-200 bg-lime-50 px-2 py-1 text-[10.5px] font-semibold text-lime-700">
-        ON
+        {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.401.9")}
       </span>
     );
   }
@@ -325,10 +447,12 @@ function ModelGroupSummary({
           type="button"
           className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-ink-300 bg-paper-100 px-2.5 text-[11px] text-ink-750 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700"
           onClick={() => onSelectGroup(null)}
-          title={frontendMessage("config.model.allModelsTitle", { count: total })}
+          title={`所有模型: ${total}`}
         >
           <Tags className="h-3.5 w-3.5" />
-          <span className="font-medium">{frontendMessage("config.model.allModels")}</span>
+          <span className="font-medium">
+            {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.430.41")}
+          </span>
           <span className="rounded-full bg-ink-900/[0.06] px-1.5 py-0.5 text-[10px] text-ink-500">{total}</span>
         </button>
         {groups.map((group) => (
@@ -357,17 +481,15 @@ function modelListSubtitle(
   visibleRows: number,
 ): string {
   if (!selectedProvider) {
-    return frontendMessage("config.model.selectProviderHint");
+    return "选择供应商后显示模型";
   }
   if (!providerEnabled(selectedProvider)) {
-    return frontendMessage("config.provider.disabled");
+    return "当前供应商已关闭";
   }
   if (!catalog) {
-    return visibleRows > 0
-      ? frontendMessage("config.model.configuredCount", { count: visibleRows })
-      : frontendMessage("config.model.checkToShow");
+    return visibleRows > 0 ? `${visibleRows} 个已配置模型` : "获取后显示可用模型";
   }
   return visibleRows === catalog.models.length
-    ? frontendMessage("config.model.count", { count: catalog.models.length })
-    : frontendMessage("config.model.filteredCount", { visible: visibleRows, total: catalog.models.length });
+    ? `${catalog.models.length} 个模型`
+    : `${visibleRows} / ${catalog.models.length} 个模型`;
 }

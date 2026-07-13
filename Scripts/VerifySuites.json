@@ -76,7 +76,9 @@
         "VerifyRuntimeModulePath.js",
         "VerifyDesktopRuntimeConfigProjection.js",
         "VerifyDesktopRuntimeAssetSync.js",
-        "VerifyDesktopRuntimePaths.js"
+        "VerifyDesktopRuntimePaths.js",
+        "VerifyDesktopFrontendSource.js",
+        "VerifyDesktopLiveFrontendServer.js"
       ]
     },
     "release": {

@@ -6,6 +6,24 @@ import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentConfigFormSnapshot } from "../Types/ConfigFormTypes.js";
 import { projectAgentConfigForm } from "./AgentConfigFormProjector.js";
+import {
+  assertConfigRevisionGuard,
+  bulkImportProviderModels,
+  deleteProviderEndpoint,
+  deleteProviderModel,
+  renameProviderEndpoint,
+  setDefaultProviderModel,
+  upsertProviderEndpoint,
+  upsertProviderModel,
+  type AgentConfigRevisionGuardInput,
+  type AgentDefaultModelSetInput,
+  type AgentProviderEndpointDeleteInput,
+  type AgentProviderEndpointRenameInput,
+  type AgentProviderEndpointUpsertInput,
+  type AgentProviderModelBulkImportInput,
+  type AgentProviderModelDeleteInput,
+  type AgentProviderModelUpsertInput,
+} from "./AgentProviderModelConfigCommands.js";
 import { AgentConfigSqliteRepository, type AgentConfigRevisionRecord } from "./AgentConfigSqliteRepository.js";
 import { formatConfigIssues } from "./AgentConfigDiagnostics.js";
 import {
@@ -13,7 +31,7 @@ import {
   resolveConfigStoreDatabasePath,
   writeAgentConfigJsonMirror,
 } from "./AgentConfigServicePaths.js";
-import { migrateUnknownConfigKeys } from "./AgentConfigMigration.js";
+import { migrateAgentConfigPayload } from "./AgentConfigMigration.js";
 
 export type AgentConfigSnapshotSource = "sqlite" | "json";
 
@@ -62,7 +80,8 @@ type AgentConfigRepairResult =
       kind: "none";
     }
   | {
-      kind: "migrated_unknown_keys";
+      kind: "migrated";
+      migratedPaths: string[];
       removedPaths: string[];
     }
   | {
@@ -135,6 +154,33 @@ export class AgentConfigService {
     return this.snapshotValue;
   }
 
+  upsertProviderEndpoint(input: AgentProviderEndpointUpsertInput): AgentConfigSnapshot {
+    return this.updateProviderModelConfig(input, (config) => upsertProviderEndpoint(config, input));
+  }
+
+  renameProviderEndpoint(input: AgentProviderEndpointRenameInput): AgentConfigSnapshot {
+    return this.updateProviderModelConfig(input, (config) => renameProviderEndpoint(config, input));
+  }
+
+  deleteProviderEndpoint(input: AgentProviderEndpointDeleteInput): AgentConfigSnapshot {
+    return this.updateProviderModelConfig(input, (config) => deleteProviderEndpoint(config, input));
+  }
+
+  upsertProviderModel(input: AgentProviderModelUpsertInput): AgentConfigSnapshot {
+    return this.updateProviderModelConfig(input, (config) => upsertProviderModel(config, input));
+  }
+
+  bulkImportProviderModels(input: AgentProviderModelBulkImportInput): AgentConfigSnapshot {
+    return this.updateProviderModelConfig(input, (config) => bulkImportProviderModels(config, input));
+  }
+
+  deleteProviderModel(input: AgentProviderModelDeleteInput): AgentConfigSnapshot {
+    return this.updateProviderModelConfig(input, (config) => deleteProviderModel(config, input));
+  }
+
+  setDefaultProviderModel(input: AgentDefaultModelSetInput): AgentConfigSnapshot {
+    return this.updateProviderModelConfig(input, (config) => setDefaultProviderModel(config, input));
+  }
   reloadFromSources(): AgentConfigSnapshot {
     this.snapshotValue = this.initialize(this.snapshotValue.version + 1);
     return this.snapshotValue;
@@ -257,6 +303,21 @@ export class AgentConfigService {
     this.repositoryPath = undefined;
   }
 
+  private updateProviderModelConfig(
+    input: AgentConfigRevisionGuardInput,
+    transform: (config: AgentSystemConfig) => AgentSystemConfig,
+  ): AgentConfigSnapshot {
+    const snapshot = this.snapshotValue;
+    assertConfigRevisionGuard(input, {
+      revision: snapshot.revision,
+      version: snapshot.version,
+    });
+    return this.update({
+      config: transform(snapshot.value),
+      source: "ui_update",
+      mirrorJson: input.mirrorJson,
+    });
+  }
   private readLatestValidRevision(
     repository: AgentConfigSqliteRepository,
     seedConfig: AgentSystemConfig,
@@ -277,7 +338,7 @@ export class AgentConfigService {
       };
     }
 
-    const migrated = migrateUnknownConfigKeys(latest.config, AgentSystemConfigSchema);
+    const migrated = migrateAgentConfigPayload(latest.config, AgentSystemConfigSchema);
     if (migrated) {
       return {
         revision: repository.appendRevision({
@@ -285,7 +346,8 @@ export class AgentConfigService {
           source: "migration",
         }),
         repaired: {
-          kind: "migrated_unknown_keys",
+          kind: "migrated",
+          migratedPaths: migrated.migratedPaths,
           removedPaths: migrated.removedPaths,
         },
       };
@@ -356,7 +418,7 @@ function diagnosticsForRepair(repair: AgentConfigRepairResult): AgentConfigDiagn
     return [];
   }
 
-  if (repair.kind === "migrated_unknown_keys") {
+  if (repair.kind === "migrated") {
     return [];
   }
 

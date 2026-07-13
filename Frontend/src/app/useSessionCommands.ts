@@ -10,7 +10,7 @@ export interface UseSessionCommandsOptions {
   send: (request: WsRequest) => boolean;
   serverKnownSessionIdsRef: MutableRefObject<Set<string>>;
   status: SocketStatus;
-  selectedModelProviderId: string | null;
+  defaultModelProviderId: string | null;
 }
 
 export interface SessionCommandsHandle {
@@ -34,7 +34,7 @@ export function useSessionCommands({
   send,
   serverKnownSessionIdsRef,
   status,
-  selectedModelProviderId,
+  defaultModelProviderId,
 }: UseSessionCommandsOptions): SessionCommandsHandle {
   const clearAllSessions = useStore((state) => state.clearAllSessions);
   const registerSession = useStore((state) => state.registerCreatingSession);
@@ -52,16 +52,16 @@ export function useSessionCommands({
     const ok = send({
       type: "session.create",
       sessionId,
-      modelProviderId: selectedModelProviderId ?? undefined,
+      modelProviderId: defaultModelProviderId ?? undefined,
     });
     if (!ok) {
       toast.error(frontendMessage("session.createDisconnected"));
       return;
     }
 
-    registerSession(sessionId);
+    registerSession(sessionId, undefined, defaultModelProviderId);
     serverKnownSessionIdsRef.current.add(sessionId);
-  }, [registerSession, selectedModelProviderId, send, serverKnownSessionIdsRef, status]);
+  }, [defaultModelProviderId, registerSession, send, serverKnownSessionIdsRef, status]);
 
   const closeSession = useCallback(
     (sessionId: string): void => {

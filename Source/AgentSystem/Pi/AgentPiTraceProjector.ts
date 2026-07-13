@@ -14,6 +14,9 @@ export interface AgentPiTraceInput {
 }
 
 const SensitiveKeyPattern = /api[-_]?key|authorization|token|secret|password/i;
+const MaxTraceStringLength = 4_096;
+const MaxTraceCollectionEntries = 32;
+const MaxTraceDepth = 5;
 
 export function createPiTraceEvent(input: AgentPiTraceInput): AgentDomainEvent {
   return {
@@ -68,20 +71,26 @@ function summarizePiTracePayload(value: unknown): string {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   const record = readRecord(value);
   if (!record) return "";
-  return Object.entries(record)
-    .slice(0, 6)
-    .map(([key, entry]) => `${key}=${summarizePrimitive(entry)}`)
+  return takeEnumerableEntries(record, 6)
+    .entries.map(([key, entry]) => `${key}=${summarizePrimitive(entry)}`)
     .join(" ");
 }
 
-function sanitizePiTracePayload(value: unknown, seen = new WeakSet<object>()): unknown {
+function sanitizePiTracePayload(value: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
   if (value === undefined || value === null) return value;
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return summarizeText(value, MaxTraceStringLength);
   if (typeof value === "number" || typeof value === "boolean") return value;
+  if (depth >= MaxTraceDepth) return "[truncated]";
   if (Array.isArray(value)) {
     if (seen.has(value)) return "[circular]";
     seen.add(value);
-    return value.map((entry) => sanitizePiTracePayload(entry, seen));
+    const entries = value
+      .slice(0, MaxTraceCollectionEntries)
+      .map((entry) => sanitizePiTracePayload(entry, seen, depth + 1));
+    if (value.length > MaxTraceCollectionEntries) {
+      entries.push(`[${value.length - MaxTraceCollectionEntries} additional entries omitted]`);
+    }
+    return entries;
   }
 
   const record = readRecord(value);
@@ -89,12 +98,34 @@ function sanitizePiTracePayload(value: unknown, seen = new WeakSet<object>()): u
   if (seen.has(record)) return "[circular]";
   seen.add(record);
 
-  return Object.fromEntries(
-    Object.entries(record).map(([key, entry]) => [
+  const { entries, truncated } = takeEnumerableEntries(record, MaxTraceCollectionEntries);
+  const sanitized = Object.fromEntries(
+    entries.map(([key, entry]) => [
       key,
-      SensitiveKeyPattern.test(key) ? "[redacted]" : sanitizePiTracePayload(entry, seen),
+      SensitiveKeyPattern.test(key) ? "[redacted]" : sanitizePiTracePayload(entry, seen, depth + 1),
     ]),
   );
+  if (truncated) {
+    sanitized["[truncated]"] = "additional properties omitted";
+  }
+  return sanitized;
+}
+
+function takeEnumerableEntries(
+  record: Record<string, unknown>,
+  limit: number,
+): { entries: Array<[string, unknown]>; truncated: boolean } {
+  const entries: Array<[string, unknown]> = [];
+  for (const key in record) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+      continue;
+    }
+    if (entries.length === limit) {
+      return { entries, truncated: true };
+    }
+    entries.push([key, record[key]]);
+  }
+  return { entries, truncated: false };
 }
 
 function summarizePrimitive(value: unknown): string {

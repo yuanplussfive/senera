@@ -1,3 +1,4 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { BrainCircuit, Route, Settings2 } from "lucide-react";
 import { cn } from "../../lib/util";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, ScrollArea } from "../../shared/ui";
@@ -7,7 +8,6 @@ import {
   type JsonConfigObject,
 } from "../../shared/config/JsonConfigForm";
 import type { ConfigFormSectionData } from "../../api/eventTypes";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { ModelProviderIcon, inferModelProviderIcon } from "./ModelProviderIcon";
 
 interface ModelProviderDraft {
@@ -20,11 +20,13 @@ interface ModelProviderDraft {
 }
 
 export function PlanningConfigView({
+  layoutMode = "panel",
   value,
   section,
   disabled,
   onChange,
 }: {
+  layoutMode?: "panel" | "embedded";
   value: JsonConfigObject;
   section?: ConfigFormSectionData;
   disabled?: boolean;
@@ -46,52 +48,65 @@ export function PlanningConfigView({
       }
     : undefined;
 
-  return (
-    <ScrollArea className="h-full min-h-0 flex-1 bg-paper-50" viewportClassName="h-full">
-      <div className="mx-auto min-h-full w-full max-w-[980px] px-4 py-5 sm:px-6 sm:py-7">
-        <div className="space-y-6">
-          <section>
-            <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-ink-900">
-              <Route className="h-4 w-4 text-ink-450" />
-              {frontendMessage("config.planning.title")}
-            </div>
-            <div className="overflow-hidden border border-ink-200/70 bg-paper-100 shadow-panel">
-              <div className="grid min-w-0 gap-3 bg-paper-50 px-3 py-3 md:grid-cols-[150px_minmax(0,1fr)] md:items-start">
-                <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-medium text-ink-800">
-                  <BrainCircuit className="h-3.5 w-3.5 text-ink-400" />
-                  <span className="truncate">{frontendMessage("config.planning.model")}</span>
-                </div>
-                <div className="min-w-0">
-                  <MenuSelect
-                    value={selectedModelId}
-                    placeholder={frontendMessage("config.planning.inheritMainModel")}
-                    options={[
-                      { value: "", label: frontendMessage("config.planning.inheritMainModel") },
-                      ...modelOptions,
-                    ]}
-                    disabled={Boolean(disabled)}
-                    onChange={(ModelProviderId) =>
-                      onChange(
-                        writeOptionalPath(value, ["ActionPlanner", "Client", "ModelProviderId"], ModelProviderId),
-                      )
-                    }
-                  />
-                  <div className="mt-1.5 text-[11px] text-ink-450">{frontendMessage("config.planning.modelHint")}</div>
+  const content = (
+    <div
+      className={cn("mx-auto w-full max-w-[980px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
+    >
+      <div className="space-y-6">
+        <section>
+          <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-ink-900">
+            <Route className="h-4 w-4 text-ink-450" />
+            {frontendMessage("runtime.migrated.features.chat.PlanningConfigView.64.13")}
+          </div>
+          <div className="overflow-hidden border border-ink-200/70 bg-paper-100 shadow-panel">
+            <div className="grid min-w-0 gap-3 bg-paper-50 px-3 py-3 md:grid-cols-[150px_minmax(0,1fr)] md:items-start">
+              <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-medium text-ink-800">
+                <BrainCircuit className="h-3.5 w-3.5 text-ink-400" />
+                <span className="truncate">
+                  {frontendMessage("runtime.migrated.features.chat.PlanningConfigView.70.44")}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <MenuSelect
+                  value={selectedModelId}
+                  placeholder={frontendMessage("runtime.migrated.features.chat.PlanningConfigView.75.31")}
+                  options={[
+                    { value: "", label: frontendMessage("runtime.migrated.features.chat.PlanningConfigView.77.41") },
+                    ...modelOptions,
+                  ]}
+                  disabled={Boolean(disabled)}
+                  onChange={(ModelProviderId) =>
+                    onChange(writeOptionalPath(value, ["ActionPlanner", "Client", "ModelProviderId"], ModelProviderId))
+                  }
+                />
+                <div className="mt-1.5 text-[11px] text-ink-450">
+                  {frontendMessage("runtime.migrated.features.chat.PlanningConfigView.88.19")}
                 </div>
               </div>
             </div>
-          </section>
+          </div>
+        </section>
 
-          {nonPlannerModelSection && nonPlannerModelSection.fields.length > 0 ? (
-            <JsonConfigSettingsView
-              sections={[nonPlannerModelSection]}
-              value={value}
-              disabled={disabled}
-              onChange={onChange}
-            />
-          ) : null}
-        </div>
+        {nonPlannerModelSection && nonPlannerModelSection.fields.length > 0 ? (
+          <JsonConfigSettingsView
+            layoutMode={layoutMode}
+            sections={[nonPlannerModelSection]}
+            value={value}
+            disabled={disabled}
+            onChange={onChange}
+          />
+        ) : null}
       </div>
+    </div>
+  );
+
+  if (layoutMode === "embedded") {
+    return <div className="bg-paper-50">{content}</div>;
+  }
+
+  return (
+    <ScrollArea className="h-full min-h-0 flex-1 bg-paper-50" viewportClassName="h-full">
+      {content}
     </ScrollArea>
   );
 }

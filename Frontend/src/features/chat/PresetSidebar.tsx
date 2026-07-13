@@ -50,7 +50,7 @@ export function PresetSidebar({
   onSelect: (name: string) => void;
 }): JSX.Element {
   return (
-    <aside className="flex min-h-0 w-full min-w-0 flex-col border-b border-ink-200/70 bg-[#f2ece2] lg:h-full lg:border-b-0 lg:border-r">
+    <aside className="flex min-h-0 w-full min-w-0 flex-col border-b border-ink-200/70 bg-[var(--theme-config-nav-bg)] lg:h-full lg:border-b-0 lg:border-r">
       <div className="shrink-0 border-b border-ink-200/60 px-3.5 py-3.5">
         <div className="min-w-0">
           <div className="flex items-center justify-between gap-2">
