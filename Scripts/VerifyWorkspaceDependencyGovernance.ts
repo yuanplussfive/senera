@@ -323,6 +323,8 @@ function inspectApplicationEntrypoints(): string[] {
     "Apps/ServerRuntime.ts",
     "Apps/Desktop/Main.ts",
     "Apps/Desktop/DesktopRuntime.ts",
+    "Apps/Desktop/DesktopFrontendSource.ts",
+    "Apps/Desktop/RunDesktopLive.ts",
     "Apps/Desktop/PackageDesktop.ts",
     "Build/CopyRuntimeAssets.ts",
   ];
