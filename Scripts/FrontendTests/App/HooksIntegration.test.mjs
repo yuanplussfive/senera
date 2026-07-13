@@ -371,9 +371,15 @@ test("useConfigMutationController covers enabled plugins, preset mutations, and 
       ),
     ).toBe(true);
   });
-  expect(handleRef.current.pluginConfigOperations[enabledRequest]).toMatchObject({ status: "error", kind: "set_enabled" });
+  expect(handleRef.current.pluginConfigOperations[enabledRequest]).toMatchObject({
+    status: "error",
+    kind: "set_enabled",
+  });
   expect(handleRef.current.presetOperations[deletePresetRequest]).toMatchObject({ status: "success", kind: "delete" });
-  expect(handleRef.current.presetOperations[activePresetRequest]).toMatchObject({ status: "error", kind: "set_active" });
+  expect(handleRef.current.presetOperations[activePresetRequest]).toMatchObject({
+    status: "error",
+    kind: "set_active",
+  });
 
   send.mockReturnValue(false);
   await act(async () => {
@@ -408,22 +414,44 @@ test("useConfigMutationController rejects provider model mutations without confi
 test("useConfigMutationController covers provider model commands and acknowledgements", async () => {
   const send = vi.fn(() => true);
   const handleRef = { current: null };
-  const configSnapshot = { path: "Config.toml", version: 1, revision: 4, value: {}, source: "sqlite", diagnostics: [], form: { version: 1, sections: [] } };
+  const configSnapshot = {
+    path: "Config.toml",
+    version: 1,
+    revision: 4,
+    value: {},
+    source: "sqlite",
+    diagnostics: [],
+    form: { version: 1, sections: [] },
+  };
   render(React.createElement(ConfigMutationHarness, { configSnapshot, send, status: "open", handleRef }));
 
   let upsertId;
   let deleteId;
   let defaultId;
   await act(async () => {
-    upsertId = handleRef.current.upsertProviderModel({ model: { Id: "gpt", ProviderId: "openai", Name: "GPT" }, group: "chat" });
+    upsertId = handleRef.current.upsertProviderModel({
+      model: { Id: "gpt", ProviderId: "openai", Name: "GPT" },
+      group: "chat",
+    });
     deleteId = handleRef.current.deleteProviderModel({ modelId: "old", providerId: "openai" });
     defaultId = handleRef.current.setDefaultProviderModel("gpt");
   });
   expect(send).toHaveBeenCalledTimes(3);
   await act(async () => {
-    handleRef.current.ingestConfigMutationEvent(event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: upsertId, kind: "provider.model.upsert" } }));
-    handleRef.current.ingestConfigMutationEvent(event(EventKinds.ConfigFailed, "config", { message: "delete failed", operation: { requestId: deleteId, kind: "provider.model.delete" } }));
-    handleRef.current.ingestConfigMutationEvent(event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: defaultId, kind: "provider.defaultModel.set" } }));
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: upsertId, kind: "provider.model.upsert" } }),
+    );
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigFailed, "config", {
+        message: "delete failed",
+        operation: { requestId: deleteId, kind: "provider.model.delete" },
+      }),
+    );
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigSnapshot, "config", {
+        operation: { requestId: defaultId, kind: "provider.defaultModel.set" },
+      }),
+    );
   });
   expect(handleRef.current.providerModelOperations.gpt.status).toBe("success");
   expect(handleRef.current.providerModelOperations.old.status).toBe("error");
@@ -454,13 +482,23 @@ test("useConfigMutationController confirms enabled-plugin and active-preset succ
 test("useConfigMutationController rolls back provider model sends that disconnect", async () => {
   const send = vi.fn(() => false);
   const handleRef = { current: null };
-  const configSnapshot = { path: "Config.toml", version: 1, revision: 4, value: {}, source: "sqlite", diagnostics: [], form: { version: 1, sections: [] } };
+  const configSnapshot = {
+    path: "Config.toml",
+    version: 1,
+    revision: 4,
+    value: {},
+    source: "sqlite",
+    diagnostics: [],
+    form: { version: 1, sections: [] },
+  };
   render(React.createElement(ConfigMutationHarness, { configSnapshot, send, status: "open", handleRef }));
   await act(async () => {
     expect(handleRef.current.deleteProviderModel({ modelId: "old", providerId: "openai" })).toBe(null);
   });
   expect(handleRef.current.providerModelOperations).toEqual({});
-  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({ title: frontendMessage("config.mainDisconnected") }));
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({ title: frontendMessage("config.mainDisconnected") }),
+  );
 });
 
 test("plugin event resolver ignores unrelated events", () => {
@@ -469,9 +507,24 @@ test("plugin event resolver ignores unrelated events", () => {
 
 test("app mutation event resolvers cover success and failure projections", () => {
   const pending = new Set(["request-1"]);
-  expect(resolvePluginSettingsEvent(event(EventKinds.PluginConfigSnapshot, "config", { operation: { requestId: "request-1" } }), pending)).toMatchObject({ kind: "plugin_config_success" });
-  expect(resolvePresetEvent(event(EventKinds.PresetSnapshot, "config", { operation: { requestId: "request-1", name: "default" } }), pending)).toMatchObject({ kind: "preset_success" });
-  expect(resolveConfigSettingsEvent(event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: "request-1", kind: "config_update" } }), pending)).toMatchObject({ kind: "config_update_success" });
+  expect(
+    resolvePluginSettingsEvent(
+      event(EventKinds.PluginConfigSnapshot, "config", { operation: { requestId: "request-1" } }),
+      pending,
+    ),
+  ).toMatchObject({ kind: "plugin_config_success" });
+  expect(
+    resolvePresetEvent(
+      event(EventKinds.PresetSnapshot, "config", { operation: { requestId: "request-1", name: "default" } }),
+      pending,
+    ),
+  ).toMatchObject({ kind: "preset_success" });
+  expect(
+    resolveConfigSettingsEvent(
+      event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: "request-1", kind: "config_update" } }),
+      pending,
+    ),
+  ).toMatchObject({ kind: "config_update_success" });
 });
 
 test("useConfigMutationTransport exposes open and offline transport paths", () => {
