@@ -18,6 +18,7 @@ import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentC
 import type { AgentCompletedRunResult } from "../../../Source/AgentSystem/Runtime/AgentExecutionProjector.js";
 import type { AgentRunRequest } from "../../../Source/AgentSystem/Loop/AgentLoop.js";
 import { AgentLocalAdminAccountStore } from "../../../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
+import { AgentConfigService } from "../../../Source/AgentSystem/Config/AgentConfigService.js";
 
 export interface AgentProtocolE2eHarness {
   readonly workspaceRoot: string;
@@ -50,6 +51,15 @@ export async function createAgentProtocolE2eHarness(
       password: authentication.password ?? "a long administrator password",
     });
   }
+  const configService = new AgentConfigService({
+    workspaceRoot,
+    source: {
+      kind: "sqlite",
+      databasePath: path.join(workspaceRoot, ".senera", "Config.sqlite"),
+      seedConfig: config,
+    },
+  });
+  const configSnapshot = () => configService.snapshot().value;
   const repository = new InMemorySessionRepository();
   const store = new AgentSessionStore({ repository });
   const approvalRuntime = new AgentApprovalRuntime();
@@ -66,6 +76,8 @@ export async function createAgentProtocolE2eHarness(
   });
   const server = new AgentWebSocketServer({
     config,
+    configService,
+    configSnapshot,
     workspaceRoot,
     sessionManager,
     userProfileManager: new AgentUserProfileManager(repository),
@@ -91,6 +103,7 @@ export async function createAgentProtocolE2eHarness(
     stop: () => {
       client.close();
       server.stop();
+      configService.close();
       repository.close();
       rmSync(workspaceRoot, { recursive: true, force: true });
     },

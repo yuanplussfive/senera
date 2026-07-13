@@ -94,7 +94,10 @@ export class AgentWebSocketSessionRequestHandlers {
 }
 
 export class AgentWebSocketConfigRequestHandlers {
-  constructor(private readonly context: AgentWebSocketRequestContext) {}
+  constructor(
+    private readonly context: AgentWebSocketRequestContext,
+    private readonly broadcast: AgentWebSocketEventSender,
+  ) {}
 
   listModels(sendEvent: AgentWebSocketEventSender): void {
     const catalog = resolveModelProviderCatalog(this.context.configSnapshot());
@@ -182,17 +185,7 @@ export class AgentWebSocketConfigRequestHandlers {
         },
       },
     });
-    sendEvent({
-      kind: AgentEventKinds.ConfigReloaded,
-      context: {},
-      data: {
-        configPath: snapshot.path,
-        source: snapshot.source,
-        revision: snapshot.revision,
-        databasePath: snapshot.databasePath,
-        diagnostics: snapshot.diagnostics,
-      },
-    });
+    this.broadcastConfigReloaded(snapshot);
   }
 
   upsertProviderEndpoint(
@@ -349,7 +342,13 @@ export class AgentWebSocketConfigRequestHandlers {
         },
       },
     });
-    sendEvent({
+    this.broadcastConfigReloaded(snapshot);
+  }
+
+  private broadcastConfigReloaded(
+    snapshot: ReturnType<NonNullable<AgentWebSocketRequestContext["configService"]>["snapshot"]>,
+  ): void {
+    this.broadcast({
       kind: AgentEventKinds.ConfigReloaded,
       context: {},
       data: {

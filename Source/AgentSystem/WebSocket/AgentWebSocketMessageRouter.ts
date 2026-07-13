@@ -26,10 +26,11 @@ export class AgentWebSocketMessageRouter {
     private readonly options: {
       context: AgentWebSocketRequestContext;
       sendEnvelope: (socket: WebSocket, event: AgentDomainEvent) => void;
+      broadcast: (event: AgentDomainEvent) => void;
     },
   ) {
     this.session = new AgentWebSocketSessionRequestHandlers(options.context);
-    this.config = new AgentWebSocketConfigRequestHandlers(options.context);
+    this.config = new AgentWebSocketConfigRequestHandlers(options.context, options.broadcast);
     this.preset = new AgentWebSocketPresetRequestHandlers(options.context);
     this.profile = new AgentWebSocketProfileRequestHandlers(options.context);
     this.approval = new AgentWebSocketApprovalRequestHandlers(options.context);
