@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.0.27](https://github.com/yuanplussfive/senera/compare/v1.0.26...v1.0.27) (2026-07-14)
+
+
+### 问题修复
+
+* **release:** 补发模型服务工作台版本 ([#21](https://github.com/yuanplussfive/senera/issues/21)) ([d6adc41](https://github.com/yuanplussfive/senera/commit/d6adc411e615f7589d20a64a0fd7d39eaaaaa8ed))
+
 ## [1.0.26](https://github.com/yuanplussfive/senera/compare/v1.0.25...v1.0.26) (2026-07-12)
 
 
