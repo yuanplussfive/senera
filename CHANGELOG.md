@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.2.0](https://github.com/yuanplussfive/senera/compare/v1.1.0...v1.2.0) (2026-07-14)
+
+
+### 新增功能
+
+* **runtime:** 强化持久化重试与文件边界 ([#25](https://github.com/yuanplussfive/senera/issues/25)) ([06b26d0](https://github.com/yuanplussfive/senera/commit/06b26d07204c7b9ab5714c2d5fe5d7b45cf725f6))
+
 ## [1.1.0](https://github.com/yuanplussfive/senera/compare/v1.0.27...v1.1.0) (2026-07-14)
 
 
