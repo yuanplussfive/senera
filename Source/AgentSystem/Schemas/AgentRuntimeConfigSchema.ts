@@ -53,6 +53,12 @@ export const UploadsSchema = z
   .object({
     RootDir: z.string().min(1).optional(),
     MaxFileBytes: z.number().int().min(1).optional(),
+    MaxRequestBytes: z.number().int().min(1).optional(),
+    MaxFilesPerRequest: z.number().int().min(1).optional(),
+    MaxConcurrentUploads: z.number().int().min(1).optional(),
+    MaxStoredBytes: z.number().int().min(1).optional(),
+    RetentionHours: z.number().int().min(1).optional(),
+    MaintenanceIntervalMinutes: z.number().int().min(1).optional(),
   })
   .strict();
 

@@ -8,6 +8,7 @@ import type {
   ResolvedAgentPluginRootsConfig,
   ResolvedAgentUploadsConfig,
 } from "../Types/AgentConfigTypes.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { buildWebSocketUrl, readConfiguredString } from "./AgentDefaultHelpers.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
 
@@ -37,10 +38,17 @@ export function resolveArtifactsConfig(config: AgentSystemConfig): ResolvedAgent
 
 export function resolveUploadsConfig(config: AgentSystemConfig): ResolvedAgentUploadsConfig {
   const defaults = resolveAgentDefaults(config);
-  return {
+  const uploads = {
     ...defaults.Uploads,
     ...config.Uploads,
   };
+  if (uploads.MaxRequestBytes < uploads.MaxFileBytes) {
+    throw new Error(agentErrorMessage("upload.requestLimitBelowFileLimit"));
+  }
+  if (uploads.MaxStoredBytes < uploads.MaxFileBytes) {
+    throw new Error(agentErrorMessage("upload.storageLimitBelowFileLimit"));
+  }
+  return uploads;
 }
 
 export function resolveFrontendConfig(config: AgentSystemConfig): ResolvedAgentFrontendConfig {

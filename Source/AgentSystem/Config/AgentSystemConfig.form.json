@@ -838,6 +838,54 @@
             "required": false
           },
           {
+            "path": ["Uploads", "MaxRequestBytes"],
+            "label": "单次上传请求上限",
+            "type": "number",
+            "min": 1,
+            "step": 1024,
+            "required": false
+          },
+          {
+            "path": ["Uploads", "MaxFilesPerRequest"],
+            "label": "单次上传文件数",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["Uploads", "MaxConcurrentUploads"],
+            "label": "并发上传数",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["Uploads", "MaxStoredBytes"],
+            "label": "上传存储总量",
+            "type": "number",
+            "min": 1,
+            "step": 1048576,
+            "required": false
+          },
+          {
+            "path": ["Uploads", "RetentionHours"],
+            "label": "上传保留小时数",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
+            "path": ["Uploads", "MaintenanceIntervalMinutes"],
+            "label": "上传维护间隔（分钟）",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false
+          },
+          {
             "path": ["Frontend", "Client", "WebSocketUrl"],
             "label": "前端 WebSocket",
             "description": "为空时根据服务端 Host/Port 推导。",

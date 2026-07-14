@@ -22,6 +22,7 @@ const migratedRuntimeFiles = [
   ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "PiProxy")),
   ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "Plugin")),
   ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "ToolRuntime")),
+  ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "Uploads")),
   ...walkSourceFiles(path.join(workspaceRoot, "Source", "AgentSystem", "WebSocket")),
   path.join(workspaceRoot, "Source", "AgentSystem", "AgentRootCommand.ts"),
 ]

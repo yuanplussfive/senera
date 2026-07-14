@@ -30,6 +30,7 @@ export class AgentWebSocketServer {
   private readonly logger: AgentLogger;
   private readonly eventSender: AgentWebSocketEventEnvelopeSender;
   private readonly httpRouter: AgentWebSocketHttpRouter;
+  private readonly uploadApi: AgentUploadHttpApi;
   private readonly messageRouter: AgentWebSocketMessageRouter;
   private readonly accessGuard: AgentServerAccessGuard;
   private httpServer?: http.Server;
@@ -61,11 +62,13 @@ export class AgentWebSocketServer {
       sessionManager: options.sessionManager,
       eventLogger: options.eventLogger,
     });
+    const uploadStore = createUploadStore(options, configSnapshot);
+    this.uploadApi = new AgentUploadHttpApi({
+      store: uploadStore,
+      isOriginAllowed: (origin) => this.accessGuard.allowsOrigin(origin),
+    });
     this.httpRouter = new AgentWebSocketHttpRouter({
-      uploadApi: new AgentUploadHttpApi({
-        storeFactory: () => createUploadStore(options, configSnapshot()),
-        isOriginAllowed: (origin) => this.accessGuard.allowsOrigin(origin),
-      }),
+      uploadApi: this.uploadApi,
       piProxyApi: new AgentPiProxyHttpApi({
         configSnapshot,
         onEvent: (event) => this.broadcast(event),
@@ -123,11 +126,13 @@ export class AgentWebSocketServer {
     });
 
     this.httpServer.listen(this.serverConfig.Port, this.serverConfig.Host);
+    this.uploadApi.startMaintenance();
     this.heartbeatTimer = setInterval(() => this.heartbeat(), this.accessGuard.heartbeatIntervalMs);
     this.heartbeatTimer.unref();
   }
 
   stop(): void {
+    this.uploadApi.stopMaintenance();
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
@@ -235,13 +240,11 @@ export class AgentWebSocketServer {
 
 function createUploadStore(
   options: AgentWebSocketServerOptions,
-  config: AgentWebSocketRequestContext["config"],
+  configSnapshot: AgentWebSocketRequestContext["configSnapshot"],
 ): AgentUploadStore {
-  const uploads = resolveUploadsConfig(config);
   return new AgentUploadStore({
     workspaceRoot: options.workspaceRoot ?? process.cwd(),
-    rootDir: uploads.RootDir,
-    maxFileBytes: uploads.MaxFileBytes,
+    config: () => resolveUploadsConfig(configSnapshot()),
   });
 }
 

@@ -120,8 +120,7 @@ async function handleUploadedDocument(args: DocumentArguments, context: Paramete
   const uploads = resolveUploadsConfig(context.config);
   const store = new AgentUploadStore({
     workspaceRoot: context.workspaceRoot,
-    rootDir: uploads.RootDir,
-    maxFileBytes: uploads.MaxFileBytes,
+    config: uploads,
   });
   const uploadUri = normalizeAgentUploadUri(args.uploadUri) ?? args.uploadUri;
   const resolved = await store.resolve(uploadUri).catch(() => undefined);
