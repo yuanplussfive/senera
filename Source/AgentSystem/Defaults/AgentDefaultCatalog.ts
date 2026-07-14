@@ -171,6 +171,12 @@ export const AgentDefaults = {
   Uploads: {
     RootDir: ".senera/uploads",
     MaxFileBytes: 52428800,
+    MaxRequestBytes: 104857600,
+    MaxFilesPerRequest: 8,
+    MaxConcurrentUploads: 4,
+    MaxStoredBytes: 2147483648,
+    RetentionHours: 720,
+    MaintenanceIntervalMinutes: 15,
   },
   Frontend: {
     DevServer: {

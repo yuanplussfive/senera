@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
+import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export const DefaultAgentUploadRootDir = ".senera/uploads";
 
@@ -51,11 +52,19 @@ export function parseAgentUploadUri(value: string): string | undefined {
 }
 
 export function resolveAgentUploadRoot(workspaceRoot: string, rootDir: string): string {
-  return assertInsideRoot(workspaceRoot, path.resolve(workspaceRoot, rootDir), `upload 根目录超出工作区：${rootDir}`);
+  return assertInsideRoot(
+    workspaceRoot,
+    path.resolve(workspaceRoot, rootDir),
+    agentErrorMessage("upload.rootOutsideWorkspace", { rootDir }),
+  );
 }
 
 export function resolveAgentUploadDir(uploadRoot: string, uploadId: string): string {
-  return assertInsideRoot(uploadRoot, path.resolve(uploadRoot, uploadId), `upload 目录超出上传根目录：${uploadId}`);
+  return assertInsideRoot(
+    uploadRoot,
+    path.resolve(uploadRoot, uploadId),
+    agentErrorMessage("upload.directoryOutsideRoot", { uploadId }),
+  );
 }
 
 export function resolveAgentUploadFile(uploadRoot: string, uploadId: string, fileName: string): string {
@@ -63,7 +72,7 @@ export function resolveAgentUploadFile(uploadRoot: string, uploadId: string, fil
   return assertInsideRoot(
     uploadDir,
     path.resolve(uploadDir, fileName),
-    `upload 文件超出上传目录：${uploadId}/${fileName}`,
+    agentErrorMessage("upload.fileOutsideDirectory", { uploadId, fileName }),
   );
 }
 

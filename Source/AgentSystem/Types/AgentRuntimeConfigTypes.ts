@@ -86,11 +86,23 @@ export interface ResolvedAgentArtifactsConfig {
 export interface AgentUploadsConfig {
   RootDir?: string;
   MaxFileBytes?: number;
+  MaxRequestBytes?: number;
+  MaxFilesPerRequest?: number;
+  MaxConcurrentUploads?: number;
+  MaxStoredBytes?: number;
+  RetentionHours?: number;
+  MaintenanceIntervalMinutes?: number;
 }
 
 export interface ResolvedAgentUploadsConfig {
   RootDir: string;
   MaxFileBytes: number;
+  MaxRequestBytes: number;
+  MaxFilesPerRequest: number;
+  MaxConcurrentUploads: number;
+  MaxStoredBytes: number;
+  RetentionHours: number;
+  MaintenanceIntervalMinutes: number;
 }
 
 export interface AgentConfigStoreConfig {

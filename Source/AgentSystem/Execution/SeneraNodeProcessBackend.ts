@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { spawn } from "cross-spawn";
 import kill from "tree-kill";
 import {
@@ -8,8 +9,24 @@ import {
 import { SeneraProcessOutputBuffer } from "./SeneraProcessOutputBuffer.js";
 import type { SeneraProcessExecutionBackend, SeneraProcessExecutionRequest } from "./SeneraProcessExecutionBackend.js";
 
+const DEFAULT_TERMINATION_GRACE_MS = 500;
+
+export type SeneraProcessTreeTerminator = (pid: number, signal: NodeJS.Signals) => Promise<void>;
+
+export interface SeneraNodeProcessBackendOptions {
+  terminateProcessTree?: SeneraProcessTreeTerminator;
+  terminationGraceMs?: number;
+}
+
 export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
   readonly kind = "node-local";
+  private readonly terminateProcessTree: SeneraProcessTreeTerminator;
+  private readonly terminationGraceMs: number;
+
+  constructor(options: SeneraNodeProcessBackendOptions = {}) {
+    this.terminateProcessTree = options.terminateProcessTree ?? terminateProcessTree;
+    this.terminationGraceMs = normalizeTerminationGrace(options.terminationGraceMs);
+  }
 
   async executeProcess(request: SeneraProcessExecutionRequest): Promise<SeneraShellExecutionResult> {
     assertNotAborted(request.signal);
@@ -29,11 +46,11 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
       let settled = false;
       let terminalError: SeneraExecutionError | undefined;
       let timer: ReturnType<typeof setTimeout> | undefined = undefined;
+      let resolveChildClosed: () => void;
+      const childClosed = new Promise<void>((resolve) => {
+        resolveChildClosed = resolve;
+      });
 
-      const killChild = (): void => {
-        if (child.pid === undefined) return;
-        kill(child.pid, "SIGTERM", () => undefined);
-      };
       const settle = (callback: () => void): void => {
         if (settled) return;
         settled = true;
@@ -47,7 +64,13 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
       const rejectWith = (error: SeneraExecutionError): void => {
         if (settled || terminalError) return;
         terminalError = error;
-        killChild();
+        const settleRejection = (): void => settle(() => reject(terminalError!));
+        void terminateChildProcess({
+          child,
+          childClosed,
+          terminateProcessTree: this.terminateProcessTree,
+          graceMs: this.terminationGraceMs,
+        }).then(settleRejection, settleRejection);
       };
 
       request.signal?.addEventListener("abort", abortListener, { once: true });
@@ -72,6 +95,7 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
           : undefined;
 
       child.stdout?.on("data", (chunk: Buffer) => {
+        if (terminalError) return;
         output.pushStdout(chunk);
         if (output.stdoutBytes > request.limits.maxStdoutBytes) {
           rejectWith(
@@ -87,6 +111,7 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
         }
       });
       child.stderr?.on("data", (chunk: Buffer) => {
+        if (terminalError) return;
         output.pushStderr(chunk);
         if (output.stderrBytes > request.limits.maxStderrBytes) {
           rejectWith(
@@ -122,6 +147,7 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
         );
       });
       child.on("close", (exitCode, signal) => {
+        resolveChildClosed();
         if (terminalError) {
           settle(() => reject(terminalError!));
           return;
@@ -139,6 +165,73 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
       child.stdin?.end(request.stdin);
     });
   }
+}
+
+interface TerminateChildProcessOptions {
+  child: ChildProcess;
+  childClosed: Promise<void>;
+  terminateProcessTree: SeneraProcessTreeTerminator;
+  graceMs: number;
+}
+
+async function terminateChildProcess(options: TerminateChildProcessOptions): Promise<void> {
+  const { child, childClosed, terminateProcessTree, graceMs } = options;
+  const pid = child.pid;
+  if (pid === undefined || hasExited(child)) return;
+
+  try {
+    void terminateProcessTree(pid, "SIGTERM").catch(() => undefined);
+  } catch {
+    // Synchronous terminator failures follow the same bounded force-kill path.
+  }
+  await waitForClose(childClosed, graceMs);
+  if (hasExited(child)) return;
+
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    // The process may have exited between the state check and the signal.
+  }
+  await waitForClose(childClosed, graceMs);
+}
+
+function terminateProcessTree(pid: number, signal: NodeJS.Signals): Promise<void> {
+  return new Promise((resolve, reject) => {
+    kill(pid, signal, (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function waitForClose(childClosed: Promise<void>, timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    timer.unref();
+    void childClosed.then(finish);
+  });
+}
+
+function hasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+function normalizeTerminationGrace(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_TERMINATION_GRACE_MS;
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new RangeError("terminationGraceMs must be a positive finite number.");
+  }
+  return Math.max(1, Math.trunc(value));
 }
 
 function assertNotAborted(signal: AbortSignal | undefined): void {

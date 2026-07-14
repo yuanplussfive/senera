@@ -1,5 +1,5 @@
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { SeneraNodeProcessBackend } from "../../../Source/AgentSystem/Execution/SeneraNodeProcessBackend.js";
 import type { SeneraProcessExecutionRequest } from "../../../Source/AgentSystem/Execution/SeneraProcessExecutionBackend.js";
 import { SeneraExecutionErrorCodes } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
@@ -126,6 +126,77 @@ describe("Node process backend behavior", () => {
         }),
       ),
     ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.StderrLimitExceeded });
+  });
+
+  test.each([
+    {
+      condition: "throws synchronously",
+      terminateProcessTree: () => {
+        throw new Error("termination threw");
+      },
+    },
+    {
+      condition: "fails",
+      terminateProcessTree: async () => {
+        throw new Error("termination failed");
+      },
+    },
+    {
+      condition: "stalls",
+      terminateProcessTree: () => new Promise<void>(() => undefined),
+    },
+  ])("settles a timeout when process-tree termination $condition", async ({ terminateProcessTree }) => {
+    const terminator = vi.fn(terminateProcessTree);
+    const backend = new SeneraNodeProcessBackend({
+      terminateProcessTree: terminator,
+      terminationGraceMs: 25,
+    });
+
+    await expect(
+      backend.executeProcess(
+        createRequest({
+          cwd: process.cwd(),
+          args: ["-e", "setInterval(() => undefined, 1_000)"],
+          timeoutMs: 25,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.Timeout });
+
+    expect(terminator).toHaveBeenCalledWith(expect.any(Number), "SIGTERM");
+  });
+
+  test("settles concurrent abort and timeout requests", async () => {
+    const backend = new SeneraNodeProcessBackend();
+    const abortControllers = Array.from({ length: 3 }, () => new AbortController());
+    const abortedExecutions = abortControllers.map((controller) =>
+      backend.executeProcess(
+        createRequest({
+          cwd: process.cwd(),
+          args: ["-e", "setInterval(() => undefined, 1_000)"],
+          signal: controller.signal,
+        }),
+      ),
+    );
+    const timedOutExecutions = Array.from({ length: 3 }, () =>
+      backend.executeProcess(
+        createRequest({
+          cwd: process.cwd(),
+          args: ["-e", "setInterval(() => undefined, 1_000)"],
+          timeoutMs: 25,
+        }),
+      ),
+    );
+
+    setTimeout(() => abortControllers.forEach((controller) => controller.abort()), 25);
+
+    await Promise.all([
+      ...abortedExecutions.map((execution) =>
+        expect(execution).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.Aborted }),
+      ),
+      ...timedOutExecutions.map((execution) =>
+        expect(execution).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.Timeout }),
+      ),
+    ]);
   });
 
   test("refuses local execution when the profile requires sandbox isolation", async () => {

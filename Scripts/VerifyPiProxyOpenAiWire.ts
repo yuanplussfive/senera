@@ -21,7 +21,7 @@ import type {
 } from "../Source/AgentSystem/PiProxy/AgentPiAssistantCompiler.js";
 import { projectSeneraModelProviderToPi } from "../Source/AgentSystem/Pi/AgentPiModelProjector.js";
 import { composePiProxyRequestHeaders } from "../Source/AgentSystem/Pi/AgentPiHarnessSessionPool.js";
-import { resolveModelProviderConfig } from "../Source/AgentSystem/AgentDefaults.js";
+import { resolveModelProviderConfig, resolveUploadsConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import type {
   AgentSystemConfig,
   ResolvedAgentModelProviderConfig,
@@ -206,14 +206,13 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
       events.push(event);
     },
   });
+  const uploadStore = new AgentUploadStore({
+    workspaceRoot: process.cwd(),
+    config: resolveUploadsConfig(config),
+  });
   const router = new AgentWebSocketHttpRouter({
     uploadApi: new AgentUploadHttpApi({
-      storeFactory: () =>
-        new AgentUploadStore({
-          workspaceRoot: process.cwd(),
-          rootDir: ".senera/uploads",
-          maxFileBytes: 1_024,
-        }),
+      store: uploadStore,
     }),
     piProxyApi: api,
   });

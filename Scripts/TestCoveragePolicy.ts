@@ -68,6 +68,7 @@ const backendTestLayers = [
   { name: "Session", minimumCases: 10 },
   { name: "Text", minimumCases: 3 },
   { name: "ToolSearch", minimumCases: 3 },
+  { name: "Uploads", minimumCases: 8 },
   { name: "Xml", minimumCases: 3 },
 ] as const satisfies readonly TestLayerPolicy[];
 
@@ -128,6 +129,7 @@ export const E2eTestPolicy = {
   requiredLayers: [
     { name: "AgentProtocol", minimumCases: 3 },
     { name: "FrontendJourney", minimumCases: 2 },
+    { name: "RuntimeIntegration", minimumCases: 1 },
   ],
 } as const satisfies TestSuitePolicy;
 
