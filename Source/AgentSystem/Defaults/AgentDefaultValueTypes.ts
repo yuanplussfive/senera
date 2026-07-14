@@ -1,6 +1,5 @@
 import type {
   AgentActionPlannerConfig,
-  AgentSystemConfig,
   AgentToolLearningConfig,
   AgentVectorEmbeddingConfig,
   AgentVectorRerankConfig,
@@ -20,33 +19,22 @@ import type {
   ResolvedAgentToolSearchConfig,
   ResolvedAgentUploadsConfig,
 } from "../Types/AgentConfigTypes.js";
-import type { AgentModelEndpointKind } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import type { AgentModelRuntimeDefaultsConfig } from "../Types/AgentModelConfigTypes.js";
+
+export type { AgentModelRuntimeDefaultsConfig } from "../Types/AgentModelConfigTypes.js";
 
 export interface AgentVectorModelsDefaultsConfig {
   Embedding: Required<AgentVectorEmbeddingConfig>;
   Rerank: Required<AgentVectorRerankConfig>;
 }
 
-export type AgentModelRuntimeDefaultsConfig = {
-  Kind: "OpenAICompatible";
-  Endpoint: AgentModelEndpointKind;
-  Model: string;
-  Capabilities: Required<NonNullable<AgentSystemConfig["ModelProviders"][number]["Capabilities"]>>;
-  ContextWindowTokens: number;
-  MaxModelOutputTokens: number;
-  Temperature: number;
-  MaxOutputTokens: number;
-  Stream: boolean;
-  TimeoutSeconds: number;
-  FirstTokenTimeoutSeconds: number;
-  MaxRequestSeconds: number;
-  MaxNetworkRetries: number;
-};
-
 export type ResolvedAgentModelRuntimeDefaultsConfig = AgentModelRuntimeDefaultsConfig & {
   TimeoutMs: number;
   FirstTokenTimeoutMs: number;
   MaxRequestMs: number;
+  RetryBaseDelayMs: number;
+  RetryMaxDelayMs: number;
+  RetryAfterMaxDelayMs: number;
 };
 
 export type ResolvedAgentVectorEmbeddingDefaultsConfig = Required<AgentVectorEmbeddingConfig> & {

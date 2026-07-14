@@ -1,5 +1,9 @@
 import type Database from "better-sqlite3";
 import {
+  prepareAgentMemoryLearningJobSqlStatements,
+  type AgentMemoryLearningJobSqlStatements,
+} from "./AgentMemoryLearningJobSqlStatements.js";
+import {
   prepareAgentMemoryCandidateSqlStatements,
   type AgentMemoryCandidateSqlStatements,
 } from "./AgentMemoryCandidateSqlStatements.js";
@@ -27,6 +31,7 @@ import {
 export interface AgentMemorySqlStatements
   extends
     AgentMemoryEpisodeSqlStatements,
+    AgentMemoryLearningJobSqlStatements,
     AgentMemorySourceSqlStatements,
     AgentMemoryCandidateSqlStatements,
     AgentMemoryItemSqlStatements,
@@ -36,6 +41,7 @@ export interface AgentMemorySqlStatements
 export function prepareAgentMemorySqlStatements(db: Database.Database): AgentMemorySqlStatements {
   return {
     ...prepareAgentMemoryEpisodeSqlStatements(db),
+    ...prepareAgentMemoryLearningJobSqlStatements(db),
     ...prepareAgentMemorySourceSqlStatements(db),
     ...prepareAgentMemoryCandidateSqlStatements(db),
     ...prepareAgentMemoryItemSqlStatements(db),

@@ -177,6 +177,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   });
 
   server.start();
+  memoryLearning.start();
   startSandboxRuntimePreparation({
     workspaceRoot,
     config: initialConfig,

@@ -185,10 +185,16 @@ function defaultModelRuntimeMilliseconds(runtime: typeof AgentDefaults.ModelRunt
   TimeoutMs: number;
   FirstTokenTimeoutMs: number;
   MaxRequestMs: number;
+  RetryBaseDelayMs: number;
+  RetryMaxDelayMs: number;
+  RetryAfterMaxDelayMs: number;
 } {
   return {
     TimeoutMs: secondsToMilliseconds(runtime.TimeoutSeconds),
     FirstTokenTimeoutMs: disabledOrSecondsToMilliseconds(runtime.FirstTokenTimeoutSeconds),
     MaxRequestMs: disabledOrSecondsToMilliseconds(runtime.MaxRequestSeconds),
+    RetryBaseDelayMs: secondsToMilliseconds(runtime.RetryBaseDelaySeconds),
+    RetryMaxDelayMs: secondsToMilliseconds(runtime.RetryMaxDelaySeconds),
+    RetryAfterMaxDelayMs: secondsToMilliseconds(runtime.RetryAfterMaxDelaySeconds),
   };
 }

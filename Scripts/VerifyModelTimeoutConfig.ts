@@ -118,6 +118,9 @@ assert.equal(defaulted.Stream, true);
 assert.equal(defaulted.TimeoutMs, 480000);
 assert.equal(defaulted.FirstTokenTimeoutMs, 240000);
 assert.equal(defaulted.MaxRequestMs, -1);
+assert.equal(defaulted.RetryBaseDelayMs, 250);
+assert.equal(defaulted.RetryMaxDelayMs, 10000);
+assert.equal(defaulted.RetryAfterMaxDelayMs, 60000);
 
 const configured = resolveModelProviderConfig(
   parseConfig({
@@ -128,6 +131,9 @@ const configured = resolveModelProviderConfig(
         TimeoutSeconds: 30,
         FirstTokenTimeoutSeconds: 5,
         MaxRequestSeconds: 180,
+        RetryBaseDelaySeconds: 0.5,
+        RetryMaxDelaySeconds: 12,
+        RetryAfterMaxDelaySeconds: 45,
       },
     ],
   }),
@@ -135,6 +141,9 @@ const configured = resolveModelProviderConfig(
 assert.equal(configured.TimeoutMs, 30000);
 assert.equal(configured.FirstTokenTimeoutMs, 5000);
 assert.equal(configured.MaxRequestMs, 180000);
+assert.equal(configured.RetryBaseDelayMs, 500);
+assert.equal(configured.RetryMaxDelayMs, 12000);
+assert.equal(configured.RetryAfterMaxDelayMs, 45000);
 
 const splitPlanner = resolveActionPlannerConfig(
   parseConfig({
@@ -177,6 +186,23 @@ assert.throws(() =>
       },
     ],
   }),
+);
+
+assert.throws(
+  () =>
+    resolveModelProviderConfig(
+      parseConfig({
+        ...baseConfig,
+        ModelProviders: [
+          {
+            ...baseConfig.ModelProviders[0],
+            RetryBaseDelaySeconds: 5,
+            RetryMaxDelaySeconds: 1,
+          },
+        ],
+      }),
+    ),
+  /基础等待时间不能大于最大等待时间/,
 );
 
 assert.throws(() =>

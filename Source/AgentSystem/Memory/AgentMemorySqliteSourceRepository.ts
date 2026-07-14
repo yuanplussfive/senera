@@ -28,6 +28,7 @@ import {
   sourceToRow,
 } from "./AgentMemoryRowMapper.js";
 import { configureAgentMemoryDatabase, installAgentMemorySchema } from "./AgentMemorySqlSchema.js";
+import { failedAgentMemoryLearningJobStatus, memoryLearningJobFromStorageRow } from "./AgentMemoryLearningJob.js";
 import { prepareAgentMemorySqlStatements, type AgentMemorySqlStatements } from "./AgentMemorySqlStatements.js";
 import { projectMemoryTime as projectTime } from "./AgentMemoryTime.js";
 import type {
@@ -40,6 +41,7 @@ import type {
   AgentMemoryItemVectorRecord,
   AgentMemoryItemVectorWrite,
   AgentMemoryLearningWriteInput,
+  AgentMemoryLearningJobRecord,
   AgentMemoryObservationRecord,
   AgentMemoryRecordedTurn,
   AgentMemorySourceRecord,
@@ -243,6 +245,10 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
     return rows.map(rowToMemoryCandidate);
   }
 
+  listMemoryCandidatesForEpisode(episodeUri: string): AgentMemoryCandidateRecord[] {
+    return this.statements.listMemoryCandidatesForEpisodeStmt.all(episodeUri).map(rowToMemoryCandidate);
+  }
+
   listActiveMemoryItems(): AgentMemoryItemRecord[] {
     return this.statements.listActiveMemoryItemsStmt.all().map(rowToMemoryItem);
   }
@@ -269,6 +275,50 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
 
   listMemoryItemVectors(model: string): AgentMemoryItemVectorRecord[] {
     return this.statements.listMemoryItemVectorsStmt.all(model).map(rowToMemoryItemVector);
+  }
+
+  enqueueMemoryLearningJob(episodeUri: string, nowMs: number): void {
+    this.statements.enqueueMemoryLearningJobStmt.run(episodeUri, nowMs, nowMs);
+  }
+
+  resetRunningMemoryLearningJobs(nowMs: number): void {
+    this.statements.resetRunningMemoryLearningJobsStmt.run(nowMs, nowMs);
+  }
+
+  listDueMemoryLearningJobs(nowMs: number, limit: number): AgentMemoryLearningJobRecord[] {
+    return this.statements.listDueMemoryLearningJobsStmt.all(nowMs, limit).map(memoryLearningJobFromStorageRow);
+  }
+
+  nextMemoryLearningJobAtMs(): number | undefined {
+    return this.statements.nextMemoryLearningJobAtStmt.get()?.next_attempt_at_ms ?? undefined;
+  }
+
+  markMemoryLearningJobRunning(episodeUri: string, nowMs: number): AgentMemoryLearningJobRecord | undefined {
+    const updated = this.statements.markMemoryLearningJobRunningStmt.run(nowMs, episodeUri);
+    if (updated.changes === 0) return undefined;
+    const row = this.statements.selectMemoryLearningJobStmt.get(episodeUri);
+    return row ? memoryLearningJobFromStorageRow(row) : undefined;
+  }
+
+  markMemoryLearningJobCompleted(episodeUri: string, nowMs: number): void {
+    this.statements.markMemoryLearningJobCompletedStmt.run(nowMs, nowMs, episodeUri);
+  }
+
+  markMemoryLearningJobFailed(
+    episodeUri: string,
+    input: { terminal: boolean; nextAttemptAtMs: number; lastError: string; updatedAtMs: number },
+  ): void {
+    this.statements.markMemoryLearningJobFailedStmt.run(
+      failedAgentMemoryLearningJobStatus(input.terminal),
+      input.nextAttemptAtMs,
+      input.lastError,
+      input.updatedAtMs,
+      episodeUri,
+    );
+  }
+
+  listMemoryLearningJobs(): AgentMemoryLearningJobRecord[] {
+    return this.statements.listMemoryLearningJobsStmt.all().map(memoryLearningJobFromStorageRow);
   }
 
   close(): void {

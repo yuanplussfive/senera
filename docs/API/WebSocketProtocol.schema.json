@@ -1524,6 +1524,18 @@
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 9007199254740991
+                  },
+                  "RetryBaseDelaySeconds": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "RetryMaxDelaySeconds": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "RetryAfterMaxDelaySeconds": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
                   }
                 },
                 "required": [
@@ -2665,6 +2677,18 @@
               "type": "integer",
               "minimum": 0,
               "maximum": 9007199254740991
+            },
+            "RetryBaseDelaySeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "RetryMaxDelaySeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "RetryAfterMaxDelaySeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
             }
           },
           "required": [
@@ -2860,6 +2884,18 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 9007199254740991
+              },
+              "RetryBaseDelaySeconds": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "RetryMaxDelaySeconds": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "RetryAfterMaxDelaySeconds": {
+                "type": "number",
+                "exclusiveMinimum": 0
               }
             },
             "required": [

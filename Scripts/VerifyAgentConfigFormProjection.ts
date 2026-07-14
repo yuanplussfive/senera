@@ -63,6 +63,7 @@ const models = findField(form, ["ModelProviders"]);
 assert.equal(models.type, "array");
 assert.equal(models.itemType, "table");
 assert.ok(models.itemFields?.some((field) => field.key === "Endpoint" && field.options?.includes("ChatCompletions")));
+assert.ok(models.itemFields?.some((field) => field.key === "RetryBaseDelaySeconds"));
 
 const loadedTools = findField(form, ["AgentLoop", "LoadedTools"]);
 assert.equal(loadedTools.type, "string");

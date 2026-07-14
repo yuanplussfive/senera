@@ -59,6 +59,9 @@ const modelProvider: ResolvedAgentModelProviderConfig = {
   FirstTokenTimeoutMs: 20_000,
   MaxRequestMs: 20_000,
   MaxNetworkRetries: 1,
+  RetryBaseDelayMs: 250,
+  RetryMaxDelayMs: 10_000,
+  RetryAfterMaxDelayMs: 60_000,
   Headers: {},
   Capabilities: {},
 };

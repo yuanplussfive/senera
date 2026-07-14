@@ -1,5 +1,6 @@
 import type {
   AgentModelCapabilitiesConfig,
+  AgentModelProviderConfig,
   AgentModelProviderEndpointConfig,
   AgentSystemConfig,
   AgentModelRuntimeDefaultsConfig,
@@ -51,8 +52,22 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
   const endpointCatalog = resolveModelProviderEndpointCatalog(config);
   const providers: ResolvedAgentModelProviderConfig[] = config.ModelProviders.map((provider) => {
     const endpoint = endpointCatalog.resolve(provider.ProviderId);
-    const { Capabilities, TimeoutSeconds, FirstTokenTimeoutSeconds, MaxRequestSeconds, Icon, ...providerRuntime } =
-      provider;
+    const {
+      Capabilities,
+      TimeoutSeconds,
+      FirstTokenTimeoutSeconds,
+      MaxRequestSeconds,
+      RetryBaseDelaySeconds,
+      RetryMaxDelaySeconds,
+      RetryAfterMaxDelaySeconds,
+      Icon,
+      ...providerRuntime
+    } = provider;
+    const retryDelays = resolveModelRetryDelays(defaults.ModelRuntime, {
+      RetryBaseDelaySeconds,
+      RetryMaxDelaySeconds,
+      RetryAfterMaxDelaySeconds,
+    });
     return {
       ...defaults.ModelRuntime,
       ...endpoint,
@@ -62,6 +77,7 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
       FirstTokenTimeoutMs:
         optionalDisabledOrSecondsToMilliseconds(FirstTokenTimeoutSeconds) ?? defaults.ModelRuntime.FirstTokenTimeoutMs,
       MaxRequestMs: optionalDisabledOrSecondsToMilliseconds(MaxRequestSeconds) ?? defaults.ModelRuntime.MaxRequestMs,
+      ...retryDelays,
       Icon: Icon ?? endpoint.Icon,
       ProviderId: endpoint.Id,
       Kind: endpoint.Kind,
@@ -99,6 +115,28 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
     },
     list: () => providers.map((provider) => toModelProviderListItem(provider, defaultId, defaults.ModelRuntime)),
   };
+}
+
+function resolveModelRetryDelays(
+  defaults: Pick<
+    ReturnType<typeof resolveAgentDefaults>["ModelRuntime"],
+    "RetryBaseDelayMs" | "RetryMaxDelayMs" | "RetryAfterMaxDelayMs"
+  >,
+  config: Pick<
+    AgentModelProviderConfig,
+    "RetryBaseDelaySeconds" | "RetryMaxDelaySeconds" | "RetryAfterMaxDelaySeconds"
+  >,
+) {
+  const retryDelays = {
+    RetryBaseDelayMs: optionalSecondsToMilliseconds(config.RetryBaseDelaySeconds) ?? defaults.RetryBaseDelayMs,
+    RetryMaxDelayMs: optionalSecondsToMilliseconds(config.RetryMaxDelaySeconds) ?? defaults.RetryMaxDelayMs,
+    RetryAfterMaxDelayMs:
+      optionalSecondsToMilliseconds(config.RetryAfterMaxDelaySeconds) ?? defaults.RetryAfterMaxDelayMs,
+  };
+  if (retryDelays.RetryBaseDelayMs > retryDelays.RetryMaxDelayMs) {
+    throw new Error("模型网络重试基础等待时间不能大于最大等待时间。");
+  }
+  return retryDelays;
 }
 
 function resolveConfiguredEndpoint(

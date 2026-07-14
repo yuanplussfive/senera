@@ -13,8 +13,6 @@ const resolveFrontendDependency = createRequire(workspacePath("Frontend", "packa
 const xyflowPackageRoot = normalizePath(
   path.resolve(path.dirname(resolveFrontendDependency("@xyflow/react")), "../.."),
 );
-const workspacePaths = (values: readonly string[]): string[] =>
-  values.map((value) => workspacePath(...value.split("/")));
 const frontendTestDoubles = {
   "react-virtuoso": workspacePath("Scripts", "FrontendTests", "mocks", "react-virtuoso.mjs"),
   sonner: workspacePath("Scripts", "FrontendTests", "mocks", "sonner.mjs"),
@@ -41,7 +39,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: false,
     include: [...FrontendTestCoveragePolicy.testInclude],
-    setupFiles: workspacePaths(FrontendTestCoveragePolicy.setupFiles ?? []),
+    setupFiles: [...(FrontendTestCoveragePolicy.setupFiles ?? [])],
     server: {
       deps: {
         inline: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/],

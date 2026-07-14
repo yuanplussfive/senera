@@ -12,6 +12,11 @@ import {
 } from "./AgentMemoryRecordFactory.js";
 import { buildMemoryItemVector, memoryItemVectorKey } from "./AgentMemoryRowMapper.js";
 import { projectMemoryTime as projectTime } from "./AgentMemoryTime.js";
+import {
+  AgentMemoryLearningJobStatuses,
+  failedAgentMemoryLearningJobStatus,
+  isRunnableAgentMemoryLearningJobStatus,
+} from "./AgentMemoryLearningJob.js";
 import type {
   AgentMemoryCandidateRecord,
   AgentMemoryCandidateWriteInput,
@@ -22,6 +27,7 @@ import type {
   AgentMemoryItemVectorRecord,
   AgentMemoryItemVectorWrite,
   AgentMemoryLearningWriteInput,
+  AgentMemoryLearningJobRecord,
   AgentMemoryObservationRecord,
   AgentMemoryRecordedTurn,
   AgentMemorySourceRecord,
@@ -36,6 +42,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
   private readonly vectors = new Map<string, AgentMemoryItemVectorRecord>();
   private readonly items = new Map<string, AgentMemoryItemRecord>();
   private readonly observations = new Map<string, AgentMemoryObservationRecord>();
+  private readonly learningJobs = new Map<string, AgentMemoryLearningJobRecord>();
 
   recordCompletedTurn(input: AgentMemoryCompletedTurnInput): AgentMemoryRecordedTurn {
     const episode = buildEpisode(input);
@@ -155,6 +162,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
       }
       this.episodes.delete(episode.uri);
       this.sourcesByEpisode.delete(episode.uri);
+      this.learningJobs.delete(episode.uri);
     }
     for (const item of this.items.values()) {
       if (item.sessionId === sessionId) {
@@ -181,6 +189,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
       if (episode.sessionId === sessionId && episode.startedAt >= target.startedAt) {
         this.episodes.delete(episode.uri);
         this.sourcesByEpisode.delete(episode.uri);
+        this.learningJobs.delete(episode.uri);
         for (const item of this.items.values()) {
           if (item.sourceEpisodeUri === episode.uri) {
             this.items.delete(item.uri);
@@ -242,6 +251,12 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
       .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id));
   }
 
+  listMemoryCandidatesForEpisode(episodeUri: string): AgentMemoryCandidateRecord[] {
+    return [...this.candidates.values()]
+      .filter((candidate) => candidate.sourceEpisodeUri === episodeUri)
+      .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id));
+  }
+
   listActiveMemoryItems(): AgentMemoryItemRecord[] {
     return [...this.items.values()]
       .filter((item) => item.status === "active")
@@ -272,6 +287,94 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
     return [...this.vectors.values()]
       .filter((record) => record.model === model)
       .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.memoryUri.localeCompare(right.memoryUri));
+  }
+
+  enqueueMemoryLearningJob(episodeUri: string, nowMs: number): void {
+    const existing = this.learningJobs.get(episodeUri);
+    this.learningJobs.set(episodeUri, {
+      episodeUri,
+      status:
+        existing?.status === AgentMemoryLearningJobStatuses.Completed
+          ? AgentMemoryLearningJobStatuses.Completed
+          : AgentMemoryLearningJobStatuses.Pending,
+      attempts: existing?.attempts ?? 0,
+      nextAttemptAtMs: existing?.status === AgentMemoryLearningJobStatuses.Completed ? existing.nextAttemptAtMs : nowMs,
+      lastError: existing?.status === AgentMemoryLearningJobStatuses.Completed ? existing.lastError : "",
+      updatedAtMs: nowMs,
+    });
+  }
+
+  resetRunningMemoryLearningJobs(nowMs: number): void {
+    for (const job of this.learningJobs.values()) {
+      if (job.status === AgentMemoryLearningJobStatuses.Running) {
+        this.learningJobs.set(job.episodeUri, {
+          ...job,
+          status: AgentMemoryLearningJobStatuses.Retry,
+          nextAttemptAtMs: nowMs,
+          lastError: "interrupted by runtime restart",
+          updatedAtMs: nowMs,
+        });
+      }
+    }
+  }
+
+  listDueMemoryLearningJobs(nowMs: number, limit: number): AgentMemoryLearningJobRecord[] {
+    return this.listMemoryLearningJobs()
+      .filter((job) => isRunnableAgentMemoryLearningJobStatus(job.status) && job.nextAttemptAtMs <= nowMs)
+      .slice(0, limit);
+  }
+
+  nextMemoryLearningJobAtMs(): number | undefined {
+    const times = [...this.learningJobs.values()]
+      .filter((job) => isRunnableAgentMemoryLearningJobStatus(job.status))
+      .map((job) => job.nextAttemptAtMs);
+    return times.length > 0 ? Math.min(...times) : undefined;
+  }
+
+  markMemoryLearningJobRunning(episodeUri: string, nowMs: number): AgentMemoryLearningJobRecord | undefined {
+    const current = this.learningJobs.get(episodeUri);
+    if (!current || !isRunnableAgentMemoryLearningJobStatus(current.status)) return undefined;
+    const next: AgentMemoryLearningJobRecord = {
+      ...current,
+      status: AgentMemoryLearningJobStatuses.Running,
+      attempts: current.attempts + 1,
+      updatedAtMs: nowMs,
+    };
+    this.learningJobs.set(episodeUri, next);
+    return next;
+  }
+
+  markMemoryLearningJobCompleted(episodeUri: string, nowMs: number): void {
+    const current = this.learningJobs.get(episodeUri);
+    if (!current) return;
+    this.learningJobs.set(episodeUri, {
+      ...current,
+      status: AgentMemoryLearningJobStatuses.Completed,
+      nextAttemptAtMs: nowMs,
+      lastError: "",
+      updatedAtMs: nowMs,
+    });
+  }
+
+  markMemoryLearningJobFailed(
+    episodeUri: string,
+    input: { terminal: boolean; nextAttemptAtMs: number; lastError: string; updatedAtMs: number },
+  ): void {
+    const current = this.learningJobs.get(episodeUri);
+    if (!current) return;
+    this.learningJobs.set(episodeUri, {
+      ...current,
+      status: failedAgentMemoryLearningJobStatus(input.terminal),
+      nextAttemptAtMs: input.nextAttemptAtMs,
+      lastError: input.lastError,
+      updatedAtMs: input.updatedAtMs,
+    });
+  }
+
+  listMemoryLearningJobs(): AgentMemoryLearningJobRecord[] {
+    return [...this.learningJobs.values()]
+      .map((job) => ({ ...job }))
+      .sort((left, right) => left.updatedAtMs - right.updatedAtMs || left.episodeUri.localeCompare(right.episodeUri));
   }
 
   close(): void {}

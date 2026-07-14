@@ -94,6 +94,9 @@ export function copyModelRuntimeTemplate(template: Record<string, unknown>): Par
     ...optionalNumber("FirstTokenTimeoutSeconds", template.FirstTokenTimeoutSeconds),
     ...optionalNumber("MaxRequestSeconds", template.MaxRequestSeconds),
     ...optionalNumber("MaxNetworkRetries", template.MaxNetworkRetries),
+    ...optionalNumber("RetryBaseDelaySeconds", template.RetryBaseDelaySeconds),
+    ...optionalNumber("RetryMaxDelaySeconds", template.RetryMaxDelaySeconds),
+    ...optionalNumber("RetryAfterMaxDelaySeconds", template.RetryAfterMaxDelaySeconds),
   };
 }
 
@@ -236,6 +239,9 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ...optionalNumber("FirstTokenTimeoutSeconds", record.FirstTokenTimeoutSeconds),
     ...optionalNumber("MaxRequestSeconds", record.MaxRequestSeconds),
     ...optionalNumber("MaxNetworkRetries", record.MaxNetworkRetries),
+    ...optionalNumber("RetryBaseDelaySeconds", record.RetryBaseDelaySeconds),
+    ...optionalNumber("RetryMaxDelaySeconds", record.RetryMaxDelaySeconds),
+    ...optionalNumber("RetryAfterMaxDelaySeconds", record.RetryAfterMaxDelaySeconds),
   };
 }
 

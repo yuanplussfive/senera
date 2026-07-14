@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { applyPatch } from "diff";
 import { z } from "zod";
-import { resolveWorkspacePath, workspaceRelativePath } from "../Execution/SeneraWorkspacePath.js";
+import {
+  resolveWorkspacePath,
+  validateWorkspaceMutationPath,
+  workspaceRelativePath,
+} from "../Execution/SeneraWorkspacePath.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
@@ -79,6 +83,7 @@ interface ResolvedWorkspaceTarget {
 }
 
 interface PatchPlan {
+  workspaceRoot: string;
   dryRun: boolean;
   fuzzFactor: number;
   operations: WorkspacePatchOperationSummary[];
@@ -169,6 +174,7 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
 
 async function buildPatchPlan(args: WorkspaceApplyPatchArguments, workspaceRoot: string): Promise<PatchPlan> {
   const plan: PatchPlan = {
+    workspaceRoot: path.resolve(workspaceRoot),
     dryRun: args.dryRun === true,
     fuzzFactor: args.fuzzFactor ?? 0,
     operations: [],
@@ -232,7 +238,7 @@ async function planAddOperation(
   },
   pointer: string,
 ): Promise<void> {
-  const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
+  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const existing = await lstatOrUndefined(target.absolutePath);
   if (existing) {
@@ -268,7 +274,7 @@ async function planUpdateOperation(
   },
   pointer: string,
 ): Promise<void> {
-  const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
+  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const content = await readExistingFile(target, `${pointer}/path`);
   const patched = applyHunkPatch({
@@ -305,7 +311,7 @@ async function planDeleteOperation(
   },
   pointer: string,
 ): Promise<void> {
-  const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
+  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const stat = await requiredStat(target, `${pointer}/path`);
   if (!stat.isFile()) {
@@ -334,8 +340,8 @@ async function planMoveOperation(
   },
   pointer: string,
 ): Promise<void> {
-  const source = resolveTarget(input.workspaceRoot, input.operation.source, `${pointer}/source`);
-  const destination = resolveTarget(input.workspaceRoot, input.operation.destination, `${pointer}/destination`);
+  const source = await resolveTarget(input.workspaceRoot, input.operation.source, `${pointer}/source`);
+  const destination = await resolveTarget(input.workspaceRoot, input.operation.destination, `${pointer}/destination`);
   if (source.relativePath === destination.relativePath) {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.moveSamePath", { path: source.relativePath }),
@@ -391,7 +397,7 @@ async function planCreateDirectoryOperation(
   },
   pointer: string,
 ): Promise<void> {
-  const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
+  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensureNotWorkspaceRoot(target, `${pointer}/path`, agentErrorMessage("workspacePatch.createDirectoryRoot"));
   const existing = await lstatOrUndefined(target.absolutePath);
   if (existing && !existing.isDirectory()) {
@@ -420,7 +426,7 @@ async function planDeleteDirectoryOperation(
   },
   pointer: string,
 ): Promise<void> {
-  const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
+  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensureNotWorkspaceRoot(target, `${pointer}/path`, agentErrorMessage("workspacePatch.deleteDirectoryRoot"));
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const stat = await requiredStat(target, `${pointer}/path`);
@@ -445,18 +451,22 @@ async function planDeleteDirectoryOperation(
 
 async function applyPatchPlan(plan: PatchPlan): Promise<void> {
   for (const directory of plan.createDirectories.values()) {
+    await requireSafeMutationTarget(plan.workspaceRoot, directory.target);
     await fs.mkdir(directory.target.absolutePath, { recursive: true });
   }
 
   for (const write of plan.writes.values()) {
+    await requireSafeMutationTarget(plan.workspaceRoot, write.target);
     await atomicWriteFile(write.target.absolutePath, write.content);
   }
 
   for (const deletion of plan.deletes.values()) {
+    await requireSafeMutationTarget(plan.workspaceRoot, deletion.target);
     await fs.rm(deletion.target.absolutePath, { force: false });
   }
 
   for (const deletion of plan.deleteDirectories.values()) {
+    await requireSafeMutationTarget(plan.workspaceRoot, deletion.target);
     if (deletion.recursive) {
       await fs.rm(deletion.target.absolutePath, {
         force: false,
@@ -571,7 +581,7 @@ async function lstatOrUndefined(filePath: string): Promise<Awaited<ReturnType<ty
   }
 }
 
-function resolveTarget(workspaceRoot: string, value: string, pointer: string): ResolvedWorkspaceTarget {
+async function resolveTarget(workspaceRoot: string, value: string, pointer: string): Promise<ResolvedWorkspaceTarget> {
   if (value.includes("\0")) {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.pathContainsNul"),
@@ -583,6 +593,14 @@ function resolveTarget(workspaceRoot: string, value: string, pointer: string): R
   if (!resolved.ok) {
     throw new WorkspaceApplyPatchError({
       message: resolved.message,
+      pointer,
+    });
+  }
+
+  const mutationPath = await validateWorkspaceMutationPath(workspaceRoot, resolved.absolutePath);
+  if (!mutationPath.ok) {
+    throw new WorkspaceApplyPatchError({
+      message: mutationPath.message,
       pointer,
     });
   }
@@ -600,6 +618,16 @@ function resolveTarget(workspaceRoot: string, value: string, pointer: string): R
     absolutePath: resolved.absolutePath,
     relativePath,
   };
+}
+
+async function requireSafeMutationTarget(workspaceRoot: string, target: ResolvedWorkspaceTarget): Promise<void> {
+  const validation = await validateWorkspaceMutationPath(workspaceRoot, target.absolutePath);
+  if (!validation.ok) {
+    throw new WorkspaceApplyPatchError({
+      message: validation.message,
+      pointer: "/operations",
+    });
+  }
 }
 
 function ensureNotWorkspaceRoot(target: ResolvedWorkspaceTarget, pointer: string, message: string): void {

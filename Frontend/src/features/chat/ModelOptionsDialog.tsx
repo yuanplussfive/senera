@@ -70,6 +70,21 @@ export function ModelOptionsDialog({
   );
   const maxRequestSeconds = readNumberWithTemplate(model.MaxRequestSeconds, modelTemplate, "MaxRequestSeconds");
   const maxNetworkRetries = readNumberWithTemplate(model.MaxNetworkRetries, modelTemplate, "MaxNetworkRetries");
+  const retryBaseDelaySeconds = readNumberWithTemplate(
+    model.RetryBaseDelaySeconds,
+    modelTemplate,
+    "RetryBaseDelaySeconds",
+  );
+  const retryMaxDelaySeconds = readNumberWithTemplate(
+    model.RetryMaxDelaySeconds,
+    modelTemplate,
+    "RetryMaxDelaySeconds",
+  );
+  const retryAfterMaxDelaySeconds = readNumberWithTemplate(
+    model.RetryAfterMaxDelaySeconds,
+    modelTemplate,
+    "RetryAfterMaxDelaySeconds",
+  );
   const contextWindowTokens = readNumberWithTemplate(model.ContextWindowTokens, modelTemplate, "ContextWindowTokens");
   const maxModelOutputTokens = readNumberWithTemplate(
     model.MaxModelOutputTokens,
@@ -279,6 +294,33 @@ export function ModelOptionsDialog({
                   disabled={disabled}
                   placeholder="1"
                   onChange={(MaxNetworkRetries) => onChange({ MaxNetworkRetries })}
+                />
+                <NumberRow
+                  label={frontendMessage("config.model.retryBaseDelay")}
+                  value={retryBaseDelaySeconds}
+                  min={0.001}
+                  step={0.05}
+                  disabled={disabled}
+                  placeholder="0.25"
+                  onChange={(RetryBaseDelaySeconds) => onChange({ RetryBaseDelaySeconds })}
+                />
+                <NumberRow
+                  label={frontendMessage("config.model.retryMaxDelay")}
+                  value={retryMaxDelaySeconds}
+                  min={0.001}
+                  step={1}
+                  disabled={disabled}
+                  placeholder="10"
+                  onChange={(RetryMaxDelaySeconds) => onChange({ RetryMaxDelaySeconds })}
+                />
+                <NumberRow
+                  label={frontendMessage("config.model.retryAfterMaxDelay")}
+                  value={retryAfterMaxDelaySeconds}
+                  min={0.001}
+                  step={1}
+                  disabled={disabled}
+                  placeholder="60"
+                  onChange={(RetryAfterMaxDelaySeconds) => onChange({ RetryAfterMaxDelaySeconds })}
                 />
               </SettingsTable>
             </section>

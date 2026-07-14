@@ -11,10 +11,12 @@ export interface AgentStaticFrontendHttpApiOptions {
 
 export class AgentStaticFrontendHttpApi {
   private readonly rootDir: string;
+  private readonly canonicalRootDir: string;
   private readonly runtimeConfigFileName: string;
 
   constructor(options: AgentStaticFrontendHttpApiOptions) {
     this.rootDir = path.resolve(options.rootDir);
+    this.canonicalRootDir = fs.realpathSync(this.rootDir);
     this.runtimeConfigFileName = options.runtimeConfigFileName ?? "senera-runtime-config.js";
   }
 
@@ -54,16 +56,21 @@ export class AgentStaticFrontendHttpApi {
 
   private resolveExistingFile(requestedPath: string): string | undefined {
     const candidate = this.resolveSafePath(requestedPath);
-    if (!candidate) {
+    if (!candidate || !this.isReadableFile(candidate)) {
       return undefined;
     }
-
-    return this.isReadableFile(candidate) ? candidate : undefined;
+    try {
+      const canonicalCandidate = fs.realpathSync(candidate);
+      return isInsideDirectory(this.canonicalRootDir, canonicalCandidate) ? canonicalCandidate : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private resolveResponseFile(requestedPath: string): string | undefined {
     return (
-      this.resolveExistingFile(requestedPath) ?? (isFrontendRoute(requestedPath) ? this.indexFilePath() : undefined)
+      this.resolveExistingFile(requestedPath) ??
+      (isFrontendRoute(requestedPath) ? this.resolveExistingFile("/index.html") : undefined)
     );
   }
 
@@ -71,10 +78,6 @@ export class AgentStaticFrontendHttpApi {
     const relative = requestedPath.replace(/^\/+/, "");
     const candidate = path.resolve(this.rootDir, relative);
     return isInsideDirectory(this.rootDir, candidate) ? candidate : undefined;
-  }
-
-  private indexFilePath(): string {
-    return path.join(this.rootDir, "index.html");
   }
 
   private isReadableFile(filePath: string): boolean {

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { z } from "zod";
 import { parse as parseToml } from "smol-toml";
-import { resolveUploadsConfig } from "../AgentDefaults.js";
+import { AgentDefaults, resolveUploadsConfig } from "../AgentDefaults.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { AgentPromptRenderer } from "../Prompt/AgentPromptRenderer.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
@@ -56,6 +56,9 @@ const ImageVisionPluginConfigSchema = z
               })
               .optional(),
             maxNetworkRetries: z.number().int().min(0),
+            retryBaseDelaySeconds: z.number().positive().optional(),
+            retryMaxDelaySeconds: z.number().positive().optional(),
+            retryAfterMaxDelaySeconds: z.number().positive().optional(),
             headers: z.record(z.string(), z.string()),
           })
           .strict(),
@@ -72,11 +75,19 @@ interface ImageVisionPluginConfig {
     maxImageBytes: number;
     provider: Omit<
       RawImageVisionPluginConfig["vision"]["provider"],
-      "timeoutSeconds" | "firstTokenTimeoutSeconds" | "maxRequestSeconds"
+      | "timeoutSeconds"
+      | "firstTokenTimeoutSeconds"
+      | "maxRequestSeconds"
+      | "retryBaseDelaySeconds"
+      | "retryMaxDelaySeconds"
+      | "retryAfterMaxDelaySeconds"
     > & {
       timeoutMs: number;
       firstTokenTimeoutMs: number;
       maxRequestMs: number;
+      retryBaseDelayMs: number;
+      retryMaxDelayMs: number;
+      retryAfterMaxDelayMs: number;
     };
   };
 }
@@ -200,6 +211,7 @@ function readImageVisionPluginConfig(toml: string): ImageVisionPluginConfig {
 
 function normalizeImageVisionPluginConfig(config: RawImageVisionPluginConfig): ImageVisionPluginConfig {
   const provider = config.vision.provider;
+  const retryDelays = readRetryDelays(provider);
   return {
     ...config,
     vision: {
@@ -216,9 +228,35 @@ function normalizeImageVisionPluginConfig(config: RawImageVisionPluginConfig): I
           provider.maxRequestSeconds,
           "vision.provider.maxRequestSeconds",
         ),
+        ...retryDelays,
       },
     },
   };
+}
+
+function readRetryDelays(provider: RawImageVisionPluginConfig["vision"]["provider"]): {
+  retryBaseDelayMs: number;
+  retryMaxDelayMs: number;
+  retryAfterMaxDelayMs: number;
+} {
+  const retryDelays = {
+    retryBaseDelayMs: readSecondsAsMilliseconds(
+      provider.retryBaseDelaySeconds ?? AgentDefaults.ModelRuntime.RetryBaseDelaySeconds,
+      "vision.provider.retryBaseDelaySeconds",
+    ),
+    retryMaxDelayMs: readSecondsAsMilliseconds(
+      provider.retryMaxDelaySeconds ?? AgentDefaults.ModelRuntime.RetryMaxDelaySeconds,
+      "vision.provider.retryMaxDelaySeconds",
+    ),
+    retryAfterMaxDelayMs: readSecondsAsMilliseconds(
+      provider.retryAfterMaxDelaySeconds ?? AgentDefaults.ModelRuntime.RetryAfterMaxDelaySeconds,
+      "vision.provider.retryAfterMaxDelaySeconds",
+    ),
+  };
+  if (retryDelays.retryBaseDelayMs > retryDelays.retryMaxDelayMs) {
+    throw new Error("ImageVisionTool 配置无效：retryBaseDelaySeconds 不能大于 retryMaxDelaySeconds");
+  }
+  return retryDelays;
 }
 
 function readMegabytesAsBytes(valueMb: number, fieldName: string): number {
@@ -264,6 +302,9 @@ function resolveImageVisionProvider(config: ImageVisionPluginConfig): ResolvedAg
     FirstTokenTimeoutMs: provider.firstTokenTimeoutMs,
     MaxRequestMs: provider.maxRequestMs,
     MaxNetworkRetries: provider.maxNetworkRetries,
+    RetryBaseDelayMs: provider.retryBaseDelayMs,
+    RetryMaxDelayMs: provider.retryMaxDelayMs,
+    RetryAfterMaxDelayMs: provider.retryAfterMaxDelayMs,
     Headers: provider.headers,
   };
 }

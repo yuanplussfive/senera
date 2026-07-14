@@ -120,6 +120,9 @@
               "FirstTokenTimeoutSeconds": 240,
               "MaxRequestSeconds": -1,
               "MaxNetworkRetries": 1,
+              "RetryBaseDelaySeconds": 0.25,
+              "RetryMaxDelaySeconds": 10,
+              "RetryAfterMaxDelaySeconds": 60,
               "Stream": true,
               "MaxOutputTokens": -1
             },
@@ -278,6 +281,33 @@
                 "label": "网络重试次数",
                 "type": "number",
                 "min": 0,
+                "step": 1,
+                "required": false
+              },
+              {
+                "path": ["RetryBaseDelaySeconds"],
+                "label": "重试基础等待",
+                "description": "单位秒；指数退避从该值开始。",
+                "type": "number",
+                "min": 0.001,
+                "step": 0.05,
+                "required": false
+              },
+              {
+                "path": ["RetryMaxDelaySeconds"],
+                "label": "重试最大等待",
+                "description": "单位秒；指数退避不会超过该值。",
+                "type": "number",
+                "min": 0.001,
+                "step": 1,
+                "required": false
+              },
+              {
+                "path": ["RetryAfterMaxDelaySeconds"],
+                "label": "Retry-After 最大等待",
+                "description": "单位秒；限制供应商 Retry-After 响应要求的最长等待。",
+                "type": "number",
+                "min": 0.001,
                 "step": 1,
                 "required": false
               }

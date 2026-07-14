@@ -19,7 +19,12 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html", "json-summary"],
       reportsDirectory: BackendTestCoveragePolicy.coverageDirectory,
-      thresholds: BackendTestCoveragePolicy.thresholds,
+      thresholds: {
+        ...BackendTestCoveragePolicy.thresholds,
+        ...Object.fromEntries(
+          (BackendTestCoveragePolicy.thresholdGroups ?? []).map((group) => [group.pattern, group.thresholds]),
+        ),
+      },
       include: [...BackendTestCoveragePolicy.coverageInclude],
       exclude: [...BackendTestCoveragePolicy.coverageExclude],
     },

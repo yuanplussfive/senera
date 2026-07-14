@@ -5,6 +5,7 @@ export interface AgentMemoryCandidateSqlStatements {
   insertMemoryCandidateStmt: Database.Statement;
   listPendingMemoryCandidatesStmt: Database.Statement<[string], MemoryCandidateRow>;
   listPendingMemoryCandidatesByTypeStmt: Database.Statement<[string, string], MemoryCandidateRow>;
+  listMemoryCandidatesForEpisodeStmt: Database.Statement<[string], MemoryCandidateRow>;
   promoteMemoryCandidateStmt: Database.Statement<[string, string, number, string, string, string, string]>;
   rejectMemoryCandidateStmt: Database.Statement<[string, number, string, string, string, string]>;
 }
@@ -73,6 +74,11 @@ export function prepareAgentMemoryCandidateSqlStatements(db: Database.Database):
     listPendingMemoryCandidatesByTypeStmt: db.prepare<[string, string], MemoryCandidateRow>(`
       SELECT * FROM memory_candidates
       WHERE session_id = ? AND status = 'pending' AND type = ?
+      ORDER BY created_at_ms ASC, id ASC
+    `),
+    listMemoryCandidatesForEpisodeStmt: db.prepare<[string], MemoryCandidateRow>(`
+      SELECT * FROM memory_candidates
+      WHERE source_episode_uri = ?
       ORDER BY created_at_ms ASC, id ASC
     `),
     promoteMemoryCandidateStmt: db.prepare<[string, string, number, string, string, string, string]>(`
