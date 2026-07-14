@@ -54,7 +54,7 @@ export function MessageAvatar({ role, icon, profile }: MessageAvatarProps): JSX.
     <div className="relative grid h-8 w-8 shrink-0 place-items-center">
       <div
         className={cn(
-          "relative z-10 grid h-8 w-8 place-items-center rounded-xl text-ink-700",
+          "relative z-10 grid h-8 w-8 place-items-center rounded-lg text-ink-700",
           hasIcon ? "bg-paper-50 ring-1 ring-ink-200" : "bg-transparent",
         )}
       >

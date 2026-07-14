@@ -1,46 +1,20 @@
-import {
-  Check,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Loader2,
-  Plus,
-  RefreshCw,
-  RotateCcw,
-  Server,
-  Settings2,
-  Trash2,
-} from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Plus, RotateCcw, Server, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { SettingsConfigCommands } from "../SettingsContracts";
-import { Button, ScrollArea } from "../../../shared/ui";
-import { inferModelProviderIcon, ModelProviderIcon, ModelProviderIconNames } from "../../chat/ModelProviderIcon";
-import {
-  DetailTitle,
-  EmptyDetail,
-  IconAction,
-  inputClassName,
-  MenuRow,
-  MenuSelect,
-  ProviderCatalogStatus,
-  SettingRow,
-  SettingsTable,
-  TextRow,
-  ToggleRow,
-} from "../../chat/ModelConfigPrimitives";
+import { cn } from "../../../lib/util";
+import { Button, Dialog, DialogActionButton, DialogActions, DialogContent, FormHint, Input } from "../../../shared/ui";
+import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
+import { DetailTitle, EmptyDetail, IconAction, inputClassName } from "../../chat/ModelConfigPrimitives";
 import { nextHeaderKey, providerEnabled, providerIdLabel } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
-import { ProviderConnectionStatusBadge, ProviderFormError } from "./ProviderConnectionFeedback";
+import { ProviderFormError } from "./ProviderConnectionFeedback";
 import { isProtectedProvider } from "./ProviderConnectionIdentity";
 
 export function ProviderConnectionEditor({
   acceptedProvider,
-  catalog,
   dirty,
   draftProvider,
   disabled,
-  error,
-  loading,
   localError,
   operation,
   providerModelCount,
@@ -49,15 +23,11 @@ export function ProviderConnectionEditor({
   onChange,
   onConfirm,
   onDelete,
-  onFetch,
 }: {
   acceptedProvider: ProviderEndpointDraft | null;
-  catalog?: SettingsConfigCommands["providerModelCatalogs"][string];
   dirty: boolean;
   draftProvider: ProviderEndpointDraft | null;
   disabled: boolean;
-  error?: SettingsConfigCommands["providerModelErrors"][string];
-  loading: boolean;
   localError: string | null;
   operation?: SettingsConfigCommands["providerEndpointOperations"][string];
   providerModelCount: number;
@@ -66,10 +36,10 @@ export function ProviderConnectionEditor({
   onChange: (patch: Partial<ProviderEndpointDraft>) => void;
   onConfirm: () => void;
   onDelete?: () => void;
-  onFetch: (force?: boolean) => void;
 }): JSX.Element {
   const [showKey, setShowKey] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [requestConfigOpen, setRequestConfigOpen] = useState(false);
+  const [requestHeadersDraft, setRequestHeadersDraft] = useState<Record<string, string>>({});
   const provider = draftProvider;
 
   if (!provider || !acceptedProvider || providerIndex < 0) {
@@ -87,179 +57,195 @@ export function ProviderConnectionEditor({
   const pending = operation?.status === "pending";
   const operationError = operation?.status === "error" ? operation.message : null;
   const confirmDisabled = disabled || pending || !dirty || !provider.Id.trim();
-  const iconOptions = ModelProviderIconNames.map((icon) => ({ value: icon, label: icon }));
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
-        <div className="mx-auto w-full max-w-[420px] px-3 py-4">
-          <DetailTitle
-            icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={22} />}
-            title={providerIdLabel(provider)}
-            subtitle={readProviderConnectionSubtitle({
-              dirty,
-              enabled,
-              operation,
-              protectedProvider,
-              providerModelCount,
-            })}
-            actions={
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={disabled || loading || !enabled || !provider.Id}
-                  onClick={() => onFetch(true)}
-                >
-                  {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  管理模型
-                </Button>
-                {onDelete ? (
-                  <IconAction label="删除供应商" danger disabled={disabled || protectedProvider} onClick={onDelete}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </IconAction>
-                ) : null}
-              </>
-            }
-          />
-
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            {protectedProvider ? (
-              <span className="rounded-md border border-ink-200 bg-ink-900/[0.035] px-2 py-1 text-[11px] font-medium text-ink-500">
-                内置身份
-              </span>
-            ) : (
-              <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-medium text-sky-700">
-                自定义身份
-              </span>
-            )}
-          </div>
-
-          <SettingsTable>
-            <ToggleRow
-              label="启用供应商"
-              enabled={enabled}
-              disabled={disabled || pending}
-              onChange={(Enabled) => onChange({ Enabled })}
-            />
-            <SettingRow
-              icon={<Server className="h-3.5 w-3.5" />}
-              label="供应商"
-              description={protectedProvider ? "内置供应商身份不能在这里重命名。" : "重命名请使用左侧行操作。"}
-            >
-              <div className="rounded-md border border-ink-200 bg-paper-50 px-2.5 py-2 font-mono text-[12.5px] text-ink-700">
-                {provider.Id}
-              </div>
-            </SettingRow>
-            <MenuRow icon={<Settings2 className="h-3.5 w-3.5" />} label="图标">
-              <MenuSelect
-                value={provider.Icon ?? ""}
-                placeholder="选择图标"
-                options={iconOptions}
+    <div className="bg-paper-50">
+      <div className="mx-auto w-full max-w-[960px] px-5 py-4 lg:px-7">
+        <DetailTitle
+          icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={22} />}
+          title={providerIdLabel(provider)}
+          subtitle={readProviderConnectionSubtitle({
+            dirty,
+            enabled,
+            operation,
+            protectedProvider,
+            providerModelCount,
+          })}
+          actions={
+            <>
+              {dirty ? (
+                <>
+                  <Button size="sm" variant="outline" disabled={disabled || pending} onClick={onCancel}>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    取消
+                  </Button>
+                  <Button size="sm" disabled={confirmDisabled} onClick={onConfirm}>
+                    {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    保存
+                  </Button>
+                </>
+              ) : null}
+              <button
+                type="button"
                 disabled={disabled || pending}
-                renderValue={(value) =>
-                  value ? (
-                    <span className="inline-flex min-w-0 items-center gap-2">
-                      <ModelProviderIcon icon={value} size={18} />
-                      <span className="truncate">{value}</span>
-                    </span>
-                  ) : null
-                }
-                renderOption={(option) => (
-                  <span className="inline-flex min-w-0 items-center gap-2">
-                    <ModelProviderIcon icon={option.value} size={16} />
-                    <span className="truncate">{option.label}</span>
-                  </span>
-                )}
-                onChange={(Icon) => onChange({ Icon })}
-              />
-            </MenuRow>
-            <TextRow
-              icon={<Server className="h-3.5 w-3.5" />}
-              label="Base URL"
-              value={provider.BaseUrl ?? ""}
-              disabled={disabled || pending}
-              placeholder="https://.../v1"
-              onChange={(BaseUrl) => onChange({ BaseUrl })}
-            />
-            <TextRow
-              icon={<KeyRound className="h-3.5 w-3.5" />}
-              label="API Key"
-              value={provider.ApiKey ?? ""}
-              disabled={disabled || pending}
-              secret={!showKey}
-              placeholder="sk-..."
-              trailing={
-                <button
-                  type="button"
-                  className="grid h-8 w-8 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800"
-                  onClick={() => setShowKey((current) => !current)}
-                  aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
-                >
-                  {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-              }
-              onChange={(ApiKey) => onChange({ ApiKey })}
-            />
-          </SettingsTable>
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] font-medium text-ink-650 transition hover:border-terra-200 disabled:pointer-events-none disabled:opacity-50"
+                onClick={() => onChange({ Enabled: !enabled })}
+                aria-pressed={enabled}
+              >
+                <span className={cn("relative h-5 w-9 rounded-full", enabled ? "bg-moss-500" : "bg-ink-300")}>
+                  <span
+                    className={cn(
+                      "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
+                      enabled && "translate-x-4",
+                    )}
+                  />
+                </span>
+                {enabled ? "已启用" : "已停用"}
+              </button>
+              {onDelete ? (
+                <IconAction label="删除供应商" danger disabled={disabled || protectedProvider} onClick={onDelete}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </IconAction>
+              ) : null}
+            </>
+          }
+        />
 
-          <button
-            type="button"
-            className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] font-medium text-ink-600 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700"
-            onClick={() => setAdvancedOpen((current) => !current)}
+        <div className="grid gap-3">
+          <ConnectionField
+            label="API Key"
+            action={
+              <button
+                type="button"
+                className="grid h-7 w-7 place-items-center rounded-md text-ink-450 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
+                onClick={() => {
+                  setRequestHeadersDraft({ ...(provider.Headers ?? {}) });
+                  setRequestConfigOpen(true);
+                }}
+                aria-label="请求配置"
+                title="请求配置"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+              </button>
+            }
           >
-            <Settings2 className="h-3.5 w-3.5" />
-            {advancedOpen ? "收起高级字段" : "高级字段"}
-          </button>
-
-          {advancedOpen ? (
-            <div className="mt-3">
-              <SettingsTable>
-                <TextRow
-                  icon={<Settings2 className="h-3.5 w-3.5" />}
-                  label="API 版本"
-                  value={provider.ApiVersion ?? ""}
-                  disabled={disabled || pending}
-                  placeholder="需要时填写"
-                  onChange={(ApiVersion) => onChange({ ApiVersion })}
-                />
-                <HeadersEditor
-                  headers={provider.Headers ?? {}}
-                  disabled={disabled || pending}
-                  onChange={(Headers) => onChange({ Headers })}
-                />
-              </SettingsTable>
+            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-terra-300 focus-within:ring-2 focus-within:ring-terra-100">
+              <input
+                type={showKey ? "text" : "password"}
+                value={provider.ApiKey ?? ""}
+                disabled={disabled || pending}
+                placeholder="sk-..."
+                spellCheck={false}
+                className={cn(inputClassName, "h-full font-mono")}
+                onChange={(event) => onChange({ ApiKey: event.currentTarget.value })}
+              />
+              <button
+                type="button"
+                className="grid h-9 w-9 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800"
+                onClick={() => setShowKey((current) => !current)}
+                aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
+              >
+                {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
             </div>
-          ) : null}
-
-          <div className="mt-4">
-            <ProviderCatalogStatus catalog={catalog} error={error} loading={loading} expanded disabled={!enabled} />
-            {dirty ? (
-              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800">
-                当前模型列表检测会使用这些可见值；只有点击保存才会保存连接字段。
-              </p>
-            ) : null}
-            {localError ? <ProviderFormError message={localError} /> : null}
-            {operationError ? <ProviderFormError message={operationError} /> : null}
-          </div>
+          </ConnectionField>
+          <ConnectionField
+            label="API 地址"
+            action={
+              <button
+                type="button"
+                className="grid h-7 w-7 place-items-center rounded-md text-ink-450 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
+                onClick={() => {
+                  setRequestHeadersDraft({ ...(provider.Headers ?? {}) });
+                  setRequestConfigOpen(true);
+                }}
+                aria-label="请求配置"
+                title="请求配置"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+              </button>
+            }
+          >
+            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-terra-300 focus-within:ring-2 focus-within:ring-terra-100">
+              <input
+                value={provider.BaseUrl ?? ""}
+                disabled={disabled || pending}
+                placeholder="https://.../v1"
+                spellCheck={false}
+                className={cn(inputClassName, "h-full font-mono")}
+                onChange={(event) => onChange({ BaseUrl: event.currentTarget.value })}
+              />
+            </div>
+          </ConnectionField>
         </div>
-      </ScrollArea>
-      <div className="shrink-0 border-t border-ink-200/70 bg-paper-50 px-3 py-3">
-        <div className="mx-auto flex w-full max-w-[420px] items-center justify-between gap-2">
-          <ProviderConnectionStatusBadge dirty={dirty} operation={operation} />
-          <div className="flex shrink-0 items-center gap-2">
-            <Button size="sm" variant="outline" disabled={disabled || pending || !dirty} onClick={onCancel}>
-              <RotateCcw className="h-3.5 w-3.5" />
-              取消
-            </Button>
-            <Button size="sm" disabled={confirmDisabled} onClick={onConfirm}>
-              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              保存
-            </Button>
-          </div>
+
+        <div className="mt-2">
+          {dirty ? (
+            <p className="mt-2 rounded-md border border-ink-200 bg-paper-100 px-3 py-2 text-[12px] leading-5 text-ink-700">
+              当前模型列表检测会使用这些可见值；只有点击保存才会保存连接字段。
+            </p>
+          ) : null}
+          {localError ? <ProviderFormError message={localError} /> : null}
+          {operationError ? <ProviderFormError message={operationError} /> : null}
         </div>
       </div>
+      <Dialog open={requestConfigOpen} onOpenChange={setRequestConfigOpen}>
+        <DialogContent
+          title="请求配置"
+          description="配置发送给当前供应商的自定义请求头。"
+          className="h-[min(680px,calc(100dvh_-_32px))] w-[min(600px,calc(100vw_-_32px))]"
+          bodyClassName="flex min-h-0 flex-1 flex-col px-8 pb-7 pt-3"
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-[12px] font-semibold text-ink-750">自定义请求头</span>
+              <span className="rounded-md border border-ink-200 bg-paper-100 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-500">
+                {"{}"}
+              </span>
+            </div>
+            <HeadersEditor
+              headers={requestHeadersDraft}
+              disabled={disabled || pending}
+              onChange={setRequestHeadersDraft}
+            />
+            <FormHint className="mt-3">请求头会随当前供应商连接配置保存。</FormHint>
+          </div>
+          <DialogActions className="mt-auto">
+            <DialogActionButton onClick={() => setRequestConfigOpen(false)}>取消</DialogActionButton>
+            <DialogActionButton
+              variant="primary"
+              disabled={disabled || pending}
+              onClick={() => {
+                onChange({ Headers: requestHeadersDraft });
+                setRequestConfigOpen(false);
+              }}
+            >
+              保存
+            </DialogActionButton>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function ConnectionField({
+  label,
+  action,
+  children,
+}: {
+  label: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1.5 flex items-center justify-between gap-2 text-[12px] font-medium text-ink-650">
+        <span>{label}</span>
+        {action}
+      </span>
+      {children}
+    </label>
   );
 }
 
@@ -274,53 +260,49 @@ function HeadersEditor({
 }): JSX.Element {
   const entries = Object.entries(headers);
   return (
-    <SettingRow icon={<Settings2 className="h-3.5 w-3.5" />} label="请求头">
-      <div className="grid gap-2">
-        {entries.map(([key, value], index) => (
-          <div key={`${key}:${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <input
-              value={key}
-              placeholder="Header"
-              disabled={disabled}
-              className={inputClassName}
-              onChange={(event) => {
-                const next = [...entries];
-                next[index] = [event.currentTarget.value, value];
-                onChange(Object.fromEntries(next.filter(([entryKey]) => entryKey.trim())));
-              }}
-            />
-            <input
-              value={value}
-              placeholder="Value"
-              disabled={disabled}
-              className={inputClassName}
-              onChange={(event) => {
-                const next = [...entries];
-                next[index] = [key, event.currentTarget.value];
-                onChange(Object.fromEntries(next));
-              }}
-            />
-            <IconAction
-              label="删除请求头"
-              danger
-              disabled={disabled}
-              onClick={() => onChange(Object.fromEntries(entries.filter((_, entryIndex) => entryIndex !== index)))}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </IconAction>
-          </div>
-        ))}
-        <button
-          type="button"
-          disabled={disabled}
-          className="inline-flex h-8 w-fit items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-paper-50 px-2.5 text-[12px] text-ink-600 transition hover:border-terra-300 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50"
-          onClick={() => onChange({ ...headers, [nextHeaderKey(headers)]: "" })}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          添加请求头
-        </button>
-      </div>
-    </SettingRow>
+    <div className="grid gap-2">
+      {entries.map(([key, value], index) => (
+        <div key={`${key}:${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <Input
+            value={key}
+            placeholder="Header"
+            disabled={disabled}
+            onChange={(event) => {
+              const next = [...entries];
+              next[index] = [event.currentTarget.value, value];
+              onChange(Object.fromEntries(next.filter(([entryKey]) => entryKey.trim())));
+            }}
+          />
+          <Input
+            value={value}
+            placeholder="Value"
+            disabled={disabled}
+            onChange={(event) => {
+              const next = [...entries];
+              next[index] = [key, event.currentTarget.value];
+              onChange(Object.fromEntries(next));
+            }}
+          />
+          <IconAction
+            label="删除请求头"
+            danger
+            disabled={disabled}
+            onClick={() => onChange(Object.fromEntries(entries.filter((_, entryIndex) => entryIndex !== index)))}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </IconAction>
+        </div>
+      ))}
+      <Button
+        variant="outline"
+        disabled={disabled}
+        className="w-fit border-dashed"
+        onClick={() => onChange({ ...headers, [nextHeaderKey(headers)]: "" })}
+      >
+        <Plus className="h-3.5 w-3.5" />
+        添加请求头
+      </Button>
+    </div>
   );
 }
 

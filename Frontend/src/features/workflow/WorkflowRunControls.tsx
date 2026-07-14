@@ -14,19 +14,19 @@ import type { RunSummary } from "./runSummary";
 
 export function RunSummaryStrip({ run, summary }: { run: RunRecord; summary: RunSummary }): JSX.Element {
   return (
-    <div className="mb-2 grid grid-cols-3 gap-1.5">
-      <MetricChip
+    <div className="mb-2 flex items-center divide-x divide-ink-200 border-y border-ink-200/70">
+      <MetricItem
         icon={<ListTree className="h-3 w-3" />}
         label={frontendMessage("workflow.summary.nodes")}
         value={`${summary.completed}/${summary.total}`}
         tone={summary.failed > 0 ? "danger" : run.status === "running" ? "live" : "neutral"}
       />
-      <MetricChip
+      <MetricItem
         icon={<Wrench className="h-3 w-3" />}
         label={frontendMessage("workflow.summary.tools")}
         value={`${summary.tools}`}
       />
-      <MetricChip
+      <MetricItem
         icon={<Clock3 className="h-3 w-3" />}
         label={summary.startedAt}
         value={summary.duration || frontendMessage("workflow.run.inProgress")}
@@ -35,7 +35,7 @@ export function RunSummaryStrip({ run, summary }: { run: RunRecord; summary: Run
   );
 }
 
-function MetricChip({
+function MetricItem({
   icon,
   label,
   value,
@@ -49,17 +49,13 @@ function MetricChip({
   return (
     <div
       className={cn(
-        "flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1.5",
-        tone === "danger"
-          ? "border-brick-100 bg-brick-50/70 text-brick-600"
-          : tone === "live"
-            ? "border-umber-200/60 bg-umber-50 text-umber-600"
-            : "border-ink-200/60 bg-paper-100/70 text-ink-600",
+        "flex min-w-0 flex-1 items-center gap-1.5 px-2 py-2",
+        tone === "danger" ? "text-brick-600" : tone === "live" ? "text-umber-600" : "text-ink-600",
       )}
     >
       <span className="shrink-0">{icon}</span>
-      <span className="min-w-0 truncate font-mono text-[10px] text-current/70">{label}</span>
-      <span className="ml-auto shrink-0 font-mono text-[10.5px] font-medium">{value}</span>
+      <span className="min-w-0 truncate text-[10.5px] text-current/70">{label}</span>
+      <span className="ml-auto shrink-0 text-[10.5px] font-medium tabular-nums">{value}</span>
     </div>
   );
 }
@@ -138,7 +134,7 @@ export function RunSelector({
 
 function RunStatusBadge({ status }: { status: RunRecord["status"] }): JSX.Element {
   if (status === "running") {
-    return <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-umber-500 motion-safe:animate-pulse" />;
+    return <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-umber-500" />;
   }
   if (status === "failed") {
     return (
@@ -149,7 +145,7 @@ function RunStatusBadge({ status }: { status: RunRecord["status"] }): JSX.Elemen
   }
   if (status === "cancelled") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-1.5 py-0.5 text-ink-500">
+      <span className="inline-flex items-center gap-1 rounded-md bg-ink-100 px-1.5 py-0.5 text-ink-500">
         {frontendMessage("workflow.run.status.cancelled")}
       </span>
     );

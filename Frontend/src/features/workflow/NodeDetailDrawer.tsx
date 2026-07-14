@@ -74,7 +74,7 @@ function Header({ step, onClose }: { step: TimelineStep; onClose: () => void }):
   return (
     <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 px-5">
       <MetaLabel>{readStepKindLabel(step.kind)}</MetaLabel>
-      <h2 className="font-serif text-[17px] italic text-ink-900" style={{ fontWeight: 500 }}>
+      <h2 className="truncate text-[15px] font-semibold text-ink-950">
         {step.title}
       </h2>
       <button
@@ -288,7 +288,7 @@ function MetaStrip({ step }: { step: TimelineStep }): JSX.Element {
         <span
           key={i}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11.5px]",
+            "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11.5px]",
             toneClass(c.tone),
           )}
         >

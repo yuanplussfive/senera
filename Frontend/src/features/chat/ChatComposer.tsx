@@ -227,20 +227,20 @@ export function ChatComposer({
   };
 
   return (
-    <div className="border-t border-ink-200/60 bg-paper-50 px-3 pb-4 pt-3 sm:px-6 sm:pb-6">
+    <div className="border-t border-ink-200 bg-paper-50 px-3 pb-4 pt-3 sm:px-6 sm:pb-5">
       <div
         onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "relative mx-auto flex max-w-3xl flex-col gap-1.5 rounded-2xl border border-ink-200 bg-[var(--theme-chat-composer-bg)] px-3 py-2 shadow-bubble-ai transition",
-          "focus-within:border-ink-300 focus-within:bg-[var(--theme-chat-composer-focus-bg)]",
+          "relative mx-auto flex w-full min-w-0 max-w-[800px] flex-col gap-1.5 rounded-[10px] border border-ink-200 bg-[var(--theme-chat-composer-bg)] px-3 py-2 transition-[background-color,border-color,box-shadow] duration-150",
+          "focus-within:border-terra-300 focus-within:bg-[var(--theme-chat-composer-focus-bg)] focus-within:shadow-[0_0_0_3px_rgb(var(--color-terra-100)/0.55)]",
           isDraggingFiles && "border-terra-300 bg-terra-50/70 ring-2 ring-terra-200/70",
         )}
       >
         {isDraggingFiles ? (
-          <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-[14px] border border-dashed border-terra-300 bg-paper-50/80 text-[13px] font-medium text-terra-700 backdrop-blur-sm">
+          <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-md border border-dashed border-terra-300 bg-paper-50 text-[13px] font-medium text-terra-700">
             {frontendMessage("runtime.migrated.features.chat.ChatComposer.247.13")}
           </div>
         ) : null}
@@ -284,7 +284,7 @@ export function ChatComposer({
                   onClick={() => submit("steer")}
                   disabled={!canSend}
                   className={cn(
-                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
+                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
                     prefersCompactControls && "min-h-11 min-w-11",
                     canSend ? "bg-ink-900 text-paper-50 hover:bg-terra-500" : "bg-ink-200/60 text-ink-400",
                   )}
@@ -297,7 +297,7 @@ export function ChatComposer({
                 <MotionButton
                   onClick={onCancel}
                   className={cn(
-                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brick-500 text-paper-50 transition hover:bg-brick-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
+                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brick-500 text-paper-50 transition-colors duration-150 hover:bg-brick-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
                     prefersCompactControls && "min-h-11 min-w-11",
                   )}
                   aria-label="cancel"
@@ -312,7 +312,7 @@ export function ChatComposer({
                 onClick={() => submit(undefined)}
                 disabled={!canSend}
                 className={cn(
-                  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
+                  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
                   prefersCompactControls && "min-h-11 min-w-11",
                   canSend ? "bg-ink-900 text-paper-50 hover:bg-terra-500" : "bg-ink-200/60 text-ink-400",
                 )}
@@ -323,25 +323,25 @@ export function ChatComposer({
             </Tooltip>
           )}
         </div>
-        <div className="flex min-w-0 items-center justify-between gap-2 px-1 font-mono text-[10.5px] text-ink-400">
+        <div className="flex min-w-0 items-center justify-between gap-2 px-1 text-[10.5px] text-ink-400">
           <span className="min-w-0 truncate">
             {prefersCompactControls ? null : running ? (
               <>
-                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">↵</kbd>
+                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 font-mono text-ink-600">↵</kbd>
                 <span className="ml-1.5">{frontendMessage("runtime.migrated.features.chat.ChatComposer.334.42")}</span>
                 <span className="mx-2 text-ink-300">·</span>
-                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">Alt↵</kbd>
+                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 font-mono text-ink-600">Alt↵</kbd>
                 <span className="ml-1.5">{frontendMessage("runtime.migrated.features.chat.ChatComposer.337.42")}</span>
                 <span className="mx-2 text-ink-300">·</span>
-                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">Esc</kbd>
+                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 font-mono text-ink-600">Esc</kbd>
                 <span className="ml-1.5">{frontendMessage("runtime.migrated.features.chat.ChatComposer.340.42")}</span>
               </>
             ) : (
               <>
-                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">⌘K</kbd>
+                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 font-mono text-ink-600">⌘K</kbd>
                 <span className="ml-1.5">{frontendMessage("runtime.migrated.features.chat.ChatComposer.345.42")}</span>
                 <span className="mx-2 text-ink-300">·</span>
-                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 text-ink-600">⇧↵</kbd>
+                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 font-mono text-ink-600">⇧↵</kbd>
                 <span className="ml-1.5">{frontendMessage("runtime.migrated.features.chat.ChatComposer.348.42")}</span>
               </>
             )}

@@ -88,7 +88,7 @@ export function ModelGroupsDialog({
         title={frontendMessage("config.modelGroups.title")}
         description={frontendMessage("config.modelGroups.description")}
         motionPreset="focus"
-        className="h-[min(760px,calc(100dvh_-_48px))] w-[min(880px,calc(100vw_-_32px))] max-w-none rounded-xl bg-paper-50"
+        className="h-[min(760px,calc(100dvh_-_48px))] w-[min(880px,calc(100vw_-_32px))] max-w-none rounded-lg bg-paper-50"
         bodyClassName="flex min-h-0 flex-col"
       >
         <div className="flex shrink-0 items-center justify-between border-b border-ink-200/70 bg-paper-100 px-5 py-3">

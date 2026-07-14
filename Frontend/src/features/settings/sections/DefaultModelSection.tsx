@@ -92,12 +92,12 @@ export function DefaultModelSection({ systemConfig }: { systemConfig?: SettingsS
             ) : null}
           </div>
           {candidates.length === 0 ? (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800">
+            <p className="rounded-md border border-ink-200 bg-paper-100 px-3 py-2 text-[12px] leading-5 text-ink-700">
               暂无可用候选。请先在模型服务中启用供应商并配置支持对话的模型。
             </p>
           ) : null}
           {currentDefaultSlot && currentDefaultSlot.status !== "ready" && currentModelId ? (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800">
+            <p className="rounded-md border border-ink-200 bg-paper-100 px-3 py-2 text-[12px] leading-5 text-ink-700">
               当前默认助手模型不可用（{currentDefaultSlot.statusLabel}），请选择一个可用候选。
             </p>
           ) : null}

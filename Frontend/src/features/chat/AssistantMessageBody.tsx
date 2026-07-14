@@ -15,7 +15,7 @@ export function AssistantMessageBody({ message, run, onViewWorkflow }: Assistant
     <div className="mt-1 min-w-0">
       {!isToolPreface ? <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} /> : null}
       {isToolPreface ? (
-        <div className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-umber-50 px-2 py-0.5 font-mono text-[10.5px] text-umber-600">
+        <div className="mb-1.5 text-[11px] font-medium text-umber-600">
           {frontendMessage("runtime.migrated.features.chat.AssistantMessageBody.22.11")}
         </div>
       ) : null}
@@ -26,7 +26,7 @@ export function AssistantMessageBody({ message, run, onViewWorkflow }: Assistant
         {message.content}
       </LazyMarkdownRenderer>
       {message.kind === "AssistantAsk" ? (
-        <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-terra-50 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-wider text-terra-600">
+        <div className="mt-2 text-[11px] font-medium text-terra-600">
           {frontendMessage("runtime.migrated.features.chat.AssistantMessageBody.33.11")}
         </div>
       ) : null}

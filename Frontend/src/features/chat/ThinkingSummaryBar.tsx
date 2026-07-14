@@ -30,7 +30,7 @@ export function ThinkingSummaryBar({
 
   return (
     <DropdownMenu open={expanded} onOpenChange={setExpanded} modal={false}>
-      <div className="mt-1.5 rounded-xl border border-ink-200/60 bg-paper-50/70">
+      <div className="mt-1.5 rounded-lg border border-ink-200/60 bg-paper-50/70">
         <DropdownMenuTrigger asChild>
           <button
             type="button"
@@ -38,7 +38,7 @@ export function ThinkingSummaryBar({
             aria-expanded={expanded}
           >
             <Lightbulb className="h-3.5 w-3.5 shrink-0 text-terra-500" />
-            <span className="min-w-0 flex-1 truncate font-mono text-[11px] tracking-wide text-ink-500">
+            <span className="min-w-0 flex-1 truncate text-[11.5px] text-ink-500">
               {frontendMessage("workflow.summary.steps", { count: summary.total })}
               {summary.tools > 0
                 ? ` · ${frontendMessage("workflow.summary.toolsCount", { count: summary.tools })}`
@@ -62,7 +62,7 @@ export function ThinkingSummaryBar({
         sideOffset={8}
         collisionPadding={12}
         onCloseAutoFocus={(event) => event.preventDefault()}
-        className="scrollbar-thin w-[min(680px,calc(100vw-32px))] max-h-[min(520px,calc(100vh-96px))] overflow-y-auto rounded-xl p-0 shadow-soft"
+        className="scrollbar-thin w-[min(680px,calc(100vw-32px))] max-h-[min(520px,calc(100vh-96px))] overflow-y-auto rounded-lg p-0 shadow-soft"
       >
         <SummaryDetail run={run} onViewWorkflow={onViewWorkflow} onClose={() => setExpanded(false)} />
       </DropdownMenuContent>
@@ -89,7 +89,7 @@ function SummaryDetail({
         <Lightbulb className="h-3.5 w-3.5 shrink-0 text-terra-500" />
         <div className="min-w-0 flex-1">
           <div className="text-[12.5px] font-medium text-ink-850">{frontendMessage("workflow.panel.title")}</div>
-          <div className="mt-0.5 truncate font-mono text-[10.5px] text-ink-400">
+          <div className="mt-0.5 truncate text-[10.5px] tabular-nums text-ink-400">
             {frontendMessage("workflow.summary.steps", { count: run.steps.length })} · {readRunStatusLabel(run.status)}
           </div>
         </div>

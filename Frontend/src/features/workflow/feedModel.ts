@@ -39,7 +39,7 @@ export interface FeedModel {
 const TimelineStatusPresentation = {
   running: {
     labelKey: "workflow.feed.running",
-    dotClass: "bg-umber-500 motion-safe:animate-pulse",
+    dotClass: "bg-umber-500",
     textClass: "text-umber-600",
   },
   pending: {

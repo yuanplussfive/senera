@@ -74,7 +74,7 @@ export function SettingsView({
       className={cn("mx-auto w-full max-w-[820px] px-4 py-5 sm:px-5 sm:py-8", layoutMode === "panel" && "min-h-full")}
     >
       {parseError ? (
-        <div className="mb-5 rounded-xl border border-brick-100 bg-brick-50 px-3 py-2 text-[12.5px] text-brick-700">
+        <div className="mb-5 rounded-lg border border-brick-100 bg-brick-50 px-3 py-2 text-[12.5px] text-brick-700">
           {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.76.11")}
         </div>
       ) : null}
@@ -104,7 +104,7 @@ export function SettingsView({
             disabled={toolsDisabled || Boolean(parseError)}
             onSetToolEnabled={onSetToolEnabled}
           />
-          <div className="grid min-h-64 place-items-center rounded-xl border border-ink-200/70 bg-paper-50 text-[13px] text-ink-400 shadow-panel">
+          <div className="grid min-h-64 place-items-center rounded-lg border border-ink-200/70 bg-paper-50 text-[13px] text-ink-400 shadow-panel">
             {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.106.13")}
           </div>
         </div>
@@ -135,7 +135,7 @@ export function TomlView({
         spellCheck={false}
         onChange={(event) => onChange(event.target.value)}
         className={cn(
-          "mx-auto block w-full max-w-[820px] resize-none rounded-xl border border-ink-200 bg-paper-100 p-4",
+          "mx-auto block w-full max-w-[820px] resize-none rounded-lg border border-ink-200 bg-paper-100 p-4",
           layoutMode === "embedded" ? "min-h-[520px]" : "h-full",
           "font-mono text-[12px] leading-5 text-ink-800 shadow-panel outline-none",
           "selection:bg-terra-100 selection:text-ink-900 focus:border-terra-300 focus:ring-2 focus:ring-terra-100",
@@ -175,7 +175,7 @@ export function Diagnostics({
             "rounded-md border px-2 py-1.5 text-[12px]",
             diagnostic.severity === "error"
               ? "border-brick-200 bg-brick-50 text-brick-700"
-              : "border-amber-200 bg-amber-50 text-amber-800",
+              : "border-ink-200 bg-paper-100 text-umber-600",
           )}
         >
           {diagnostic.message}
@@ -195,7 +195,7 @@ export function ConfigSourceNotice({ plugin }: { plugin: PluginConfigItem }): JS
     : "PluginConfig.example.toml";
 
   return (
-    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[12px] leading-5 text-amber-800">
+    <div className="mt-2 rounded-md border border-ink-200 bg-paper-100 px-2 py-1.5 text-[12px] leading-5 text-ink-700">
       {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.7")}
       {templateName} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.27")}
     </div>
@@ -238,7 +238,7 @@ function PluginToolsSection({
             type="button"
             disabled={disabled}
             className={cn(
-              "flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition",
+              "flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition",
               tool.enabled ? "border-moss-200 bg-moss-50/70 text-ink-900" : "border-ink-200 bg-paper-50 text-ink-600",
               !disabled && "hover:border-terra-200 hover:bg-terra-50/40",
               disabled && "pointer-events-none opacity-55",
@@ -297,7 +297,7 @@ function SettingsSection({
           {section.fields.length} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.302.83")}
         </span>
       </div>
-      <div className="divide-y divide-ink-200/70 overflow-hidden rounded-xl border border-ink-200/70 bg-paper-50 shadow-panel">
+      <div className="divide-y divide-ink-200/70 overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50 shadow-panel">
         {section.fields.map((field) => (
           <FieldControl
             key={field.path.join(".")}

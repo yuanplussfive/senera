@@ -68,7 +68,7 @@ export function ChatPanel({
           </ChatContentMotion>
         ) : messages.length === 0 && !isRunning ? (
           <ChatContentMotion key={`empty:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
-            <div className="flex flex-1 items-center justify-center px-6">
+            <div className="flex flex-1 items-center justify-center px-8 py-16 sm:px-12">
               <EmptyChatState
                 onSelectSuggestion={runtime.socketStatus === "open" ? messageActions.onSend : undefined}
               />

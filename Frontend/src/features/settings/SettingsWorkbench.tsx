@@ -200,8 +200,8 @@ export function SettingsWorkbench({
           />
         )}
         {activeSection.id === "model-service" ? (
-          <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-4">
-            <SettingsWorkspaceFrame className="h-full min-h-0">
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <SettingsWorkspaceFrame className="h-full min-h-0 rounded-none border-0 shadow-none">
               {renderSettingsContent({
                 activeSection,
                 configDraftState,
@@ -903,10 +903,10 @@ function readWorkbenchRuntimeStatuses({
 }
 
 const runtimeStatusClassName = {
-  dirty: "bg-amber-50 text-amber-700",
+  dirty: "bg-paper-100 text-umber-600",
   error: "bg-brick-50 text-brick-700",
   idle: "bg-ink-900/[0.045] text-ink-500",
-  needs_attention: "bg-amber-50 text-amber-700",
+  needs_attention: "bg-paper-100 text-umber-600",
   saving: "bg-sky-50 text-sky-700",
   synced: "bg-moss-50 text-moss-700",
 } as const;

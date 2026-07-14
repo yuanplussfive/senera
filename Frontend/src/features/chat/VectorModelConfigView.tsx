@@ -181,7 +181,7 @@ function VectorModelCard({
             onChange={(Model) => onChange({ Model })}
           />
           {providerId && modelOptions.length === 0 ? (
-            <div className="mt-1.5 text-[11px] text-amber-700">
+            <div className="mt-1.5 text-[11px] text-umber-600">
               {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.196.15")}
               {capability === "Embedding" ? "向量嵌入" : "重排序"}
               {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.196.70")}
@@ -359,8 +359,8 @@ function SwitchButton({
       type="button"
       disabled={disabled}
       className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-full border px-2 text-[11px] font-semibold transition",
-        enabled ? "border-lime-200 bg-lime-50 text-lime-700" : "border-ink-200 bg-paper-50 text-ink-450",
+        "inline-flex h-7 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-100 px-2 text-[11px] font-semibold transition-colors duration-150",
+        enabled ? "text-moss-600" : "text-ink-450",
         disabled && "pointer-events-none opacity-50",
       )}
       onClick={() => onChange(!enabled)}

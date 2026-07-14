@@ -28,7 +28,7 @@ export const DialogOverlay = forwardRef<HTMLDivElement, React.ComponentPropsWith
   ({ className, style, ...props }, ref) => (
     <DialogPrimitive.Overlay ref={ref} asChild forceMount {...props}>
       <MotionDialogOverlay
-        className={cn("dialog-presence fixed inset-0 z-50 bg-ink-950/34 [will-change:opacity]", className)}
+        className={cn("dialog-presence fixed inset-0 z-50 bg-ink-950/52 [will-change:opacity]", className)}
         style={mergeDialogPresenceStyle(style)}
       />
     </DialogPrimitive.Overlay>
@@ -113,13 +113,13 @@ const DialogContentFrame = forwardRef<
           variants={content.contentVariants}
           transition={content.contentTransition}
         >
-          <div className="flex items-start gap-3 border-b border-ink-200/50 bg-paper-50 px-4 py-3.5">
+          <div className="flex items-start gap-4 bg-paper-50 px-8 pb-4 pt-7">
             <div className="min-w-0 flex-1">
-              <DialogPrimitive.Title className="truncate text-[13.5px] font-medium text-ink-900">
+              <DialogPrimitive.Title className="text-[20px] font-semibold leading-7 text-ink-950">
                 {content.title ?? ""}
               </DialogPrimitive.Title>
               {content.description ? (
-                <DialogPrimitive.Description className="mt-0.5 truncate text-[12px] text-ink-500">
+                <DialogPrimitive.Description className="mt-1.5 text-[13px] leading-5 text-ink-500">
                   {content.description}
                 </DialogPrimitive.Description>
               ) : null}
@@ -128,14 +128,14 @@ const DialogContentFrame = forwardRef<
               <button
                 type="button"
                 className={cn(
-                  "grid h-8 w-8 flex-shrink-0 place-items-center rounded-md text-ink-400",
-                  "transition-colors duration-100",
+                  "grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-ink-400",
+                  "transition-colors duration-150 ease-out",
                   "hover:bg-ink-900/[0.08] hover:text-ink-900",
-                  "focus:outline-none focus:ring-2 focus:ring-terra-300/60",
+                  "focus:outline-none focus:ring-4 focus:ring-ink-900/[0.08]",
                 )}
                 aria-label="关闭"
               >
-                <X className="h-4 w-4" />
+                <X className="h-[18px] w-[18px]" />
               </button>
             </DialogClose>
           </div>
@@ -189,10 +189,11 @@ export const DialogContent = forwardRef<
             frameClassName,
           )}
           panelClassName={cn(
-            "w-[min(720px,calc(100vw-28px))] max-h-[min(720px,calc(100vh-28px))]",
-            "flex flex-col overflow-hidden rounded-xl border border-ink-200/80 bg-paper-50 shadow-soft [contain:layout_paint] [will-change:opacity,transform]",
+            "w-[min(600px,calc(100vw-32px))] max-h-[min(800px,calc(100dvh-32px))]",
+            "flex flex-col overflow-hidden [will-change:opacity,transform]",
             placement === "inset" && "min-h-0 flex-1",
             className,
+            "rounded-[10px] border border-ink-200 bg-paper-50 shadow-[0_14px_36px_-18px_rgb(24_25_28/0.38),0_2px_8px_-4px_rgb(24_25_28/0.18)]",
           )}
           title={title}
           description={description}
@@ -223,13 +224,16 @@ export interface DialogActionButtonProps extends ButtonHTMLAttributes<HTMLButton
 }
 
 const dialogActionVariantClasses: Record<DialogActionVariant, string> = {
-  secondary: "text-ink-600 hover:bg-ink-900/[0.05] hover:text-ink-900",
-  primary: "bg-ink-900 font-medium text-paper-50 hover:bg-ink-800",
-  danger: "bg-brick-500 font-medium text-paper-50 hover:bg-brick-600 focus:ring-brick-200/60",
+  secondary:
+    "border border-ink-200 bg-paper-50 text-ink-700 shadow-[0_1px_2px_rgb(33_30_24/0.04)] hover:border-ink-300 hover:bg-ink-900/[0.035] hover:text-ink-900",
+  primary:
+    "bg-ink-900 font-medium text-paper-50 shadow-[0_1px_2px_rgb(33_30_24/0.2),0_6px_14px_-8px_rgb(33_30_24/0.5)] hover:bg-ink-800",
+  danger:
+    "bg-brick-500 font-medium text-paper-50 shadow-[0_1px_2px_rgb(146_64_14/0.24)] hover:bg-brick-600 focus:ring-brick-200/60",
 };
 
 export function DialogActions({ children, className }: DialogActionsProps): JSX.Element {
-  return <div className={cn("flex justify-end gap-2", className)}>{children}</div>;
+  return <div className={cn("flex justify-end gap-2 border-t border-ink-200/70 pt-5", className)}>{children}</div>;
 }
 
 export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButtonProps>(
@@ -239,7 +243,7 @@ export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButt
         ref={ref}
         type={type}
         className={cn(
-          "h-8 rounded-md px-3 text-[12.5px] transition focus:outline-none focus:ring-2 focus:ring-terra-200/60 disabled:cursor-not-allowed disabled:opacity-45",
+          "h-10 rounded-lg px-4 text-[13px] transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-terra-300/60 disabled:cursor-not-allowed disabled:opacity-45",
           dialogActionVariantClasses[variant],
           className,
         )}

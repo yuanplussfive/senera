@@ -100,7 +100,7 @@ function ModelRemovalDialog({
             ? frontendMessage("settings.modelLifecycle.removeDefault.description", { model: model.Model })
             : frontendMessage("settings.modelLifecycle.removeModel.description")
         }
-        className="w-[min(480px,calc(100vw_-_28px))] rounded-xl bg-paper-50"
+        className="w-[min(480px,calc(100vw_-_28px))] rounded-lg bg-paper-50"
         bodyClassName="p-4"
       >
         {requiresReplacement ? (
@@ -180,7 +180,7 @@ function ProviderRemovalDialog({
       <DialogContent
         title={frontendMessage("settings.modelLifecycle.deleteProvider.title")}
         description={description}
-        className="w-[min(520px,calc(100vw_-_28px))] rounded-xl bg-paper-50"
+        className="w-[min(520px,calc(100vw_-_28px))] rounded-lg bg-paper-50"
         bodyClassName="p-4"
       >
         <div className="space-y-4">
@@ -265,7 +265,7 @@ function ReplacementControl({
         ))}
       </select>
       {candidateModels.length === 0 ? (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800">
+        <p className="rounded-md border border-ink-200 bg-paper-100 px-3 py-2 text-[12px] leading-5 text-ink-700">
           {frontendMessage("settings.modelLifecycle.noReplacement")}
         </p>
       ) : null}

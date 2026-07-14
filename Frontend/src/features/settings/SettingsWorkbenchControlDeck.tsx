@@ -66,11 +66,11 @@ const summaryToneIcon = {
 } as const;
 
 const statusToneClassName = {
-  danger: "border-brick-200 bg-brick-50 text-brick-700",
-  info: "border-sky-200 bg-sky-50 text-sky-800",
+  danger: "border-ink-200 bg-paper-100 text-brick-700",
+  info: "border-ink-200 bg-paper-100 text-ink-650",
   neutral: "border-ink-200 bg-paper-100 text-ink-550",
-  success: "border-moss-200 bg-moss-50 text-moss-800",
-  warning: "border-amber-200 bg-amber-50 text-amber-900",
+  success: "border-ink-200 bg-paper-100 text-moss-600",
+  warning: "border-ink-200 bg-paper-100 text-umber-600",
 } as const;
 
 function readDraftTone(tone: SettingsDraftInteraction["tone"]): SettingsWorkbenchSummaryTone {

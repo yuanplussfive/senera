@@ -51,7 +51,7 @@ export function UserFooter({
     socketStatus === "open"
       ? "bg-moss-500"
       : socketStatus === "connecting" || socketStatus === "idle"
-        ? "bg-umber-500 motion-safe:animate-pulse"
+        ? "bg-umber-500"
         : "bg-brick-500";
 
   return (
@@ -65,7 +65,7 @@ export function UserFooter({
             <UserAvatar profile={profile} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13px] text-ink-800">{profile.name}</div>
-              <div className="flex items-center gap-1 font-mono text-[10px] text-ink-400">
+              <div className="flex items-center gap-1 text-[10.5px] text-ink-400">
                 <span className={cn("inline-block h-1.5 w-1.5 rounded-full", statusColor)} />
                 {statusLabel}
               </div>
@@ -123,7 +123,7 @@ export function UserFooter({
             <span className="min-w-0 flex-1 truncate">
               {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}
             </span>
-            <span className="font-mono text-[10.5px] text-ink-400">{statusLabel}</span>
+            <span className="text-[10.5px] text-ink-400">{statusLabel}</span>
           </div>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -313,7 +313,7 @@ function AvatarPicker({
   onRemove: () => void;
 }): JSX.Element {
   return (
-    <div className="overflow-hidden rounded-xl border border-ink-200/70 bg-paper-100/65">
+    <div className="overflow-hidden rounded-lg border border-ink-200/70 bg-paper-100/65">
       <div className="flex items-center gap-4 p-3">
         <UserAvatar profile={{ name, avatarDataUrl, updatedAt }} size="large" />
         <div className="min-w-0 flex-1">
@@ -386,7 +386,7 @@ function AvatarCropper({
   };
 
   return (
-    <div className="rounded-xl border border-ink-200/70 bg-paper-100/65 p-3">
+    <div className="rounded-lg border border-ink-200/70 bg-paper-100/65 p-3">
       <div className="flex flex-col items-center">
         <div
           ref={frameRef}

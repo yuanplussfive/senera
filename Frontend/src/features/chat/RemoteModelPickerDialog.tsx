@@ -69,7 +69,7 @@ export function RemoteModelPickerDialog({
         title="供应商模型"
         description={`${providerLabel} · 获取模型列表后手动添加，不会覆盖本地模型`}
         motionPreset="focus"
-        className="h-[min(760px,calc(100dvh_-_32px))] w-[min(980px,calc(100vw_-_24px))] max-w-none rounded-xl bg-paper-50"
+        className="h-[min(760px,calc(100dvh_-_32px))] w-[min(980px,calc(100vw_-_24px))] max-w-none rounded-lg bg-paper-50"
         bodyClassName="flex min-h-0 flex-col"
       >
         <div className="grid gap-2 border-b border-ink-200/70 bg-paper-50 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
@@ -169,7 +169,7 @@ function RemoteModelPickerRows({
               <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
               <span className="truncate text-[11.5px] font-semibold text-ink-700">{group.label}</span>
             </span>
-            <span className="rounded-full bg-ink-900/[0.055] px-2 py-0.5 text-[10.5px] text-ink-500">
+            <span className="tabular-nums text-[10.5px] text-ink-400">
               {group.rows.length}
             </span>
           </div>
@@ -226,11 +226,11 @@ function RemoteModelPickerRow({
       </span>
       <span className="flex items-center gap-1.5">
         {isDefault ? (
-          <span className="rounded-full border border-terra-200 bg-terra-50 px-2 py-1 text-[10.5px] font-semibold text-terra-700">
+          <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-terra-700">
             DEFAULT
           </span>
         ) : configured ? (
-          <span className="rounded-full border border-lime-200 bg-lime-50 px-2 py-1 text-[10.5px] font-semibold text-lime-700">
+          <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-moss-600">
             已添加
           </span>
         ) : null}

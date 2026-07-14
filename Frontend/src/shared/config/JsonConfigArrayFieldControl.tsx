@@ -57,7 +57,7 @@ export function ArrayFieldControl({
               key={`${field.path.join(".")}-${index}`}
               className="overflow-hidden rounded-lg border border-ink-200 bg-paper-50"
             >
-              <div className="flex min-w-0 items-center justify-between gap-2 border-b border-ink-200/70 bg-[#f6f0e7] px-3 py-2.5">
+              <div className="flex min-w-0 items-center justify-between gap-2 border-b border-ink-200/70 bg-[var(--theme-config-list-bg)] px-3 py-2.5">
                 <div className="min-w-0">
                   <div className="truncate text-[12.5px] font-medium text-ink-900">
                     {readArrayItemTitle(field, titleRecord, index)}

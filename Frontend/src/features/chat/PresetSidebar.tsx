@@ -166,12 +166,12 @@ function PresetListItem({
         <span className="block truncate text-[13px] font-medium">
           {displayName || frontendMessage("preset.ui.unnamed")}
         </span>
-        <span className="mt-0.5 block truncate font-mono text-[10.5px] text-ink-400">
+        <span className="mt-0.5 block truncate text-[10.5px] tabular-nums text-ink-400">
           {formatLabel} · {formatPresetTime(preset.updatedAt)}
         </span>
       </span>
       {preset.active ? <Check className="h-3.5 w-3.5 shrink-0 text-terra-500" /> : null}
-      {preset.diagnostics.length > 0 ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" /> : null}
+      {preset.diagnostics.length > 0 ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-umber-500" /> : null}
     </button>
   );
 }

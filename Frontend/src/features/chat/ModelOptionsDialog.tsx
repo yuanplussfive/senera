@@ -109,7 +109,7 @@ export function ModelOptionsDialog({
         title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.121.15")}
         description={model.Model}
         motionPreset="focus"
-        className="h-[min(720px,calc(100dvh_-_48px))] w-[min(760px,calc(100vw_-_32px))] max-w-none rounded-xl bg-paper-50"
+        className="h-[min(720px,calc(100dvh_-_48px))] w-[min(760px,calc(100vw_-_32px))] max-w-none rounded-lg bg-paper-50"
         bodyClassName="flex min-h-0 flex-col"
       >
         <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">

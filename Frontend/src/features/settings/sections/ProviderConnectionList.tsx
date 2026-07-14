@@ -51,7 +51,7 @@ export function ProviderConnectionList({
   });
   const providerRows =
     providers.length > 0 ? (
-      <div className="space-y-1.5 p-2">
+      <div className="space-y-0.5 p-2">
         {providerResults.map(({ provider }) => {
           const active = provider.Id === selectedProviderId;
           const catalog = provider.Id ? catalogs[provider.Id] : undefined;
@@ -64,10 +64,8 @@ export function ProviderConnectionList({
             <div
               key={provider.Id}
               className={cn(
-                "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-lg border px-2 py-2 transition",
-                active
-                  ? "border-ink-200 bg-paper-50 text-ink-900 shadow-panel"
-                  : "border-transparent text-ink-650 hover:border-ink-200/70 hover:bg-paper-50/80",
+                "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-2 py-2 transition-colors",
+                active ? "bg-ink-900/[0.055] text-ink-900" : "text-ink-650 hover:bg-ink-900/[0.03] hover:text-ink-900",
                 !enabled && "opacity-65",
               )}
             >
@@ -79,7 +77,7 @@ export function ProviderConnectionList({
                 aria-pressed={active}
                 onClick={() => onSelect(provider)}
               >
-                <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border border-ink-200 bg-paper-100">
+                <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-md border border-ink-200/80 bg-paper-50">
                   <ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={20} />
                 </span>
                 <span className="min-w-0 self-center">
@@ -97,10 +95,10 @@ export function ProviderConnectionList({
                 </span>
                 <span
                   className={cn(
-                    "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                    "rounded-md border border-ink-200 bg-paper-100 px-2 py-0.5 text-[10px] font-semibold",
                     enabled
-                      ? "border-lime-200 bg-lime-50 text-lime-700"
-                      : "border-ink-200 bg-ink-900/[0.035] text-ink-450",
+                      ? "text-moss-600"
+                      : "text-ink-450",
                   )}
                 >
                   {enabled ? "ON" : "OFF"}
@@ -139,32 +137,33 @@ export function ProviderConnectionList({
     );
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-ink-200/70 bg-paper-50 p-3">
-        <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-ink-900">供应商</div>
-            <div className="mt-0.5 truncate text-[11px] text-ink-500">
-              {providerQuery ? `${providerResults.length} / ${providers.length} 个端点` : `${providers.length} 个端点`}
+    <div className="h-full min-h-0 overflow-hidden">
+      <ScrollArea className="h-full min-h-0" viewportClassName="h-full">
+        <div className="border-b border-ink-200/70 bg-paper-50 p-3">
+          <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-[14px] font-semibold text-ink-900">模型服务</div>
+              <div className="mt-0.5 truncate text-[11px] text-ink-500">
+                {providerQuery
+                  ? `${providerResults.length} / ${providers.length} 个端点`
+                  : `${providers.length} 个端点`}
+              </div>
             </div>
+            <button
+              type="button"
+              disabled={disabled}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200 disabled:pointer-events-none disabled:opacity-50"
+              onClick={onRequestAdd}
+              aria-label="添加供应商"
+              title="添加供应商"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
           </div>
+          <SearchInput value={providerSearch} disabled={providers.length === 0} onChange={setProviderSearch} />
         </div>
-        <SearchInput value={providerSearch} disabled={providers.length === 0} onChange={setProviderSearch} />
-      </div>
-      <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
         {providerRows}
       </ScrollArea>
-      <div className="shrink-0 border-t border-ink-200/70 bg-paper-50 p-2">
-        <button
-          type="button"
-          disabled={disabled}
-          className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-paper-50 px-2.5 text-[12px] font-medium text-ink-600 transition hover:border-terra-300 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50"
-          onClick={onRequestAdd}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          添加
-        </button>
-      </div>
     </div>
   );
 }

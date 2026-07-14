@@ -23,7 +23,7 @@ export interface IconButtonProps extends Omit<HTMLMotionProps<"button">, "aria-l
 const sizeClasses: Record<IconButtonSize, string> = {
   sm: "h-6 w-6 rounded",
   md: "h-8 w-8 rounded-lg",
-  lg: "h-9 w-9 rounded-xl",
+  lg: "h-9 w-9 rounded-lg",
 };
 
 const toneClasses: Record<IconButtonTone, string> = {
@@ -57,7 +57,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         ref={ref}
         aria-label={label}
         className={cn(
-          "grid shrink-0 place-items-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
+          "grid shrink-0 place-items-center transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-300/60 disabled:pointer-events-none disabled:opacity-50",
           sizeClasses[size],
           touchSafeClassName,
           toneClasses[tone],

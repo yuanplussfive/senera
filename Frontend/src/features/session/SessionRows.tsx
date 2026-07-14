@@ -92,7 +92,7 @@ export function SessionRow({
           ) : null}
           <div className="pointer-events-none relative z-20 mt-0.5 grid h-5 w-5 place-items-center">
             {accent === "running" ? (
-              <span className="block h-1.5 w-1.5 rounded-full bg-umber-500 motion-safe:animate-pulse" />
+              <span className="block h-1.5 w-1.5 rounded-full bg-umber-500" />
             ) : accent === "failed" ? (
               <span className="block h-1.5 w-1.5 rounded-full bg-brick-500" />
             ) : (
@@ -108,7 +108,7 @@ export function SessionRow({
                 {title}
               </span>
             </div>
-            <div className="mt-0.5 truncate font-mono text-[10.5px] text-ink-400 cursor-[inherit] select-none">
+            <div className="mt-0.5 truncate text-[10.5px] tabular-nums text-ink-400 cursor-[inherit] select-none">
               {subtitle}
             </div>
           </div>

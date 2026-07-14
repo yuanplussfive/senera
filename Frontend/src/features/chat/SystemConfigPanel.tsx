@@ -272,7 +272,7 @@ function ConfigToolbar({
             invalid
               ? "border-brick-200 bg-brick-50 text-brick-600"
               : interaction.status === "dirty" || interaction.status === "saving"
-                ? "border-amber-200 bg-amber-50 text-amber-700"
+                ? "border-ink-200 bg-paper-100 text-umber-600"
                 : "border-terra-200 bg-terra-50 text-terra-700",
           )}
         >
@@ -504,7 +504,7 @@ function Diagnostics({
             "whitespace-pre-wrap border px-2 py-1.5 text-[12px]",
             item.severity === "error"
               ? "border-brick-200 bg-brick-50 text-brick-700"
-              : "border-amber-200 bg-amber-50 text-amber-800",
+              : "border-ink-200 bg-paper-100 text-umber-600",
           )}
         >
           {item.message}

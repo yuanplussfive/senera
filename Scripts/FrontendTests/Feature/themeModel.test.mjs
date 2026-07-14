@@ -133,7 +133,7 @@ describe("themeModel", () => {
       "--scrollbar-thumb": "rgb(17 24 39 / 0.15)",
     });
   });
-  it("uses the Senera warm paper palette as the default light appearance", () => {
+  it("uses the neutral Senera palette as the default light appearance", () => {
     const snapshot = createAppearanceSnapshot({
       preference: {
         ...defaultAppearancePreference,
@@ -144,12 +144,12 @@ describe("themeModel", () => {
     expect(defaultAppearancePreference.colorScheme).toBe("senera");
     expect(snapshot.tokens.cssVariables).toMatchObject({
       "--color-paper-50": "255 255 255",
-      "--color-paper-100": "248 248 246",
+      "--color-paper-100": "247 247 248",
       "--color-terra-500": "180 93 64",
-      "--theme-bg": "rgb(248 248 246)",
-      "--theme-sidebar-bg": "rgb(244 244 241)",
+      "--theme-bg": "rgb(247 247 248)",
+      "--theme-sidebar-bg": "rgb(245 246 247)",
       "--theme-elevated-bg": "rgb(255 255 255)",
-      "--theme-border": "rgb(224 223 219)",
+      "--theme-border": "rgb(222 224 228)",
       "--theme-chat-user-bg": "rgb(var(--color-paper-200))",
       "--theme-chat-user-fg": "rgb(var(--color-ink-900))",
       "--theme-chat-user-hover-bg": "rgb(var(--color-paper-300) / 0.80)",
@@ -159,7 +159,7 @@ describe("themeModel", () => {
       "--theme-chat-assistant-line-height": "1.75",
     });
   });
-  it("uses a Senera dark paper bubble as the default dark appearance", () => {
+  it("uses a neutral charcoal Senera palette as the default dark appearance", () => {
     const snapshot = createAppearanceSnapshot({
       preference: {
         ...defaultAppearancePreference,
@@ -168,10 +168,10 @@ describe("themeModel", () => {
       systemTheme: "light",
     });
     expect(snapshot.tokens.cssVariables).toMatchObject({
-      "--theme-bg": "rgb(38 36 31)",
-      "--theme-sidebar-bg": "rgb(33 32 27)",
-      "--theme-elevated-bg": "rgb(44 42 37)",
-      "--theme-border": "rgb(61 57 47)",
+      "--theme-bg": "rgb(28 29 32)",
+      "--theme-sidebar-bg": "rgb(23 24 27)",
+      "--theme-elevated-bg": "rgb(36 37 40)",
+      "--theme-border": "rgb(55 56 61)",
       "--theme-chat-user-bg": "rgb(var(--color-paper-200))",
       "--theme-chat-user-fg": "rgb(var(--color-ink-950))",
       "--theme-chat-user-hover-bg": "rgb(var(--color-paper-300))",

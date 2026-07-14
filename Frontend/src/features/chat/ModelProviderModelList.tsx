@@ -1,6 +1,6 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { useMemo, useRef } from "react";
-import { Loader2, Plus, RefreshCw, Settings2, Tags } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Loader2, Plus, RefreshCw, Search, Settings2, Tags } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { ScrollArea, Tooltip } from "../../shared/ui";
@@ -50,6 +50,7 @@ export function ProviderModelList({
   onFetch,
   onAddManualModel,
   showFetchAction = true,
+  compactHeader = false,
   onConfigureModel,
   onSetDefaultModel,
   onRemoveModel,
@@ -76,12 +77,14 @@ export function ProviderModelList({
   onFetch: (force?: boolean) => void;
   onAddManualModel?: () => void;
   showFetchAction?: boolean;
+  compactHeader?: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
   onSetDefaultModel?: (model: ModelProviderDraft) => void;
   onRemoveModel?: (model: ModelProviderDraft) => void;
   onAddModel?: (model: ProviderModelInfo) => void;
 }): JSX.Element {
   const embedded = layoutMode === "embedded";
+  const [compactSearchOpen, setCompactSearchOpen] = useState(false);
   const scrollTopRef = useRef<HTMLDivElement | null>(null);
   const groupRefs = useRef(new Map<string, HTMLElement>());
   const scrollToGroup = (groupId: string | null): void => {
@@ -109,6 +112,7 @@ export function ProviderModelList({
         onSetDefaultModel={onSetDefaultModel}
         onRemoveModel={onRemoveModel}
         onAddModel={onAddModel}
+        groupedCards={compactHeader}
         onGroupRef={(groupId, element) => {
           if (element) {
             groupRefs.current.set(groupId, element);
@@ -122,71 +126,131 @@ export function ProviderModelList({
 
   return (
     <div className={cn("flex min-h-0 flex-col", embedded ? "overflow-visible" : "h-full overflow-hidden")}>
-      <ListHeader
-        title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.138.15")}
-        subtitle={modelListSubtitle(selectedProvider, catalog, rows.length)}
-        action={
-          <div className="flex items-center gap-1.5">
-            <Tooltip content="模型分组" side="top">
-              <button
-                type="button"
-                disabled={disabled}
-                className={iconButtonClassName}
-                onClick={onOpenModelGroups}
-                aria-label="模型分组"
-              >
-                <Tags className="h-3.5 w-3.5" />
-              </button>
-            </Tooltip>
-            <button
-              type="button"
-              disabled={disabled || !selectedProvider}
-              className={cn(
-                "inline-flex h-8 items-center rounded-md border px-2.5 text-[11px] font-semibold transition",
-                configuredOnly
-                  ? "border-lime-200 bg-lime-50 text-lime-700"
-                  : "border-ink-200 bg-paper-50 text-ink-500 hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700",
-                "disabled:pointer-events-none disabled:opacity-45",
-              )}
-              onClick={() => onConfiguredOnlyChange(!configuredOnly)}
-              aria-pressed={configuredOnly}
-            >
-              {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.166.17")}
-            </button>
-            {onAddManualModel ? (
-              <Tooltip content="手动添加模型" side="top">
+      {compactHeader ? (
+        <div className="border-b border-ink-200/70 bg-paper-50 px-3 py-3">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-[13.5px] font-semibold text-ink-900">模型</span>
+              <span className="rounded-md bg-ink-900/[0.055] px-2 py-0.5 text-[10.5px] text-ink-500">
+                {rows.length}
+              </span>
+              <Tooltip content="搜索模型" side="top">
                 <button
                   type="button"
                   disabled={disabled || !selectedProvider}
-                  className={iconButtonClassName}
-                  onClick={onAddManualModel}
-                  aria-label="手动添加模型"
+                  className="grid h-8 w-8 place-items-center rounded-md text-ink-450 transition hover:bg-ink-900/[0.05] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-45"
+                  onClick={() => setCompactSearchOpen((current) => !current)}
+                  aria-label="搜索模型"
+                  aria-pressed={compactSearchOpen}
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Search className="h-4 w-4" />
                 </button>
               </Tooltip>
-            ) : null}
-            {showFetchAction ? (
-              <Tooltip content="获取模型列表" side="top">
+            </div>
+            <div className="flex items-center gap-1.5">
+              {showFetchAction ? (
                 <button
                   type="button"
                   disabled={disabled || loading || !enabled || !selectedProvider?.Id}
-                  className={iconButtonClassName}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-medium text-ink-650 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-45"
                   onClick={() => onFetch(true)}
-                  aria-label="获取模型列表"
                 >
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  获取模型列表
+                </button>
+              ) : null}
+              {onAddManualModel ? (
+                <Tooltip content="自定义模型" side="top">
+                  <button
+                    type="button"
+                    disabled={disabled || !selectedProvider}
+                    className={iconButtonClassName}
+                    onClick={onAddManualModel}
+                    aria-label="添加自定义模型"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </Tooltip>
+              ) : null}
+            </div>
+          </div>
+          {compactSearchOpen ? (
+            <div className="mt-2.5">
+              <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <ListHeader
+          title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.138.15")}
+          subtitle={modelListSubtitle(selectedProvider, catalog, rows.length)}
+          action={
+            <div className="flex items-center gap-1.5">
+              <Tooltip content="模型分组" side="top">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  className={iconButtonClassName}
+                  onClick={onOpenModelGroups}
+                  aria-label="模型分组"
+                >
+                  <Tags className="h-3.5 w-3.5" />
                 </button>
               </Tooltip>
-            ) : null}
+              <button
+                type="button"
+                disabled={disabled || !selectedProvider}
+                className={cn(
+                  "inline-flex h-8 items-center rounded-md border px-2.5 text-[11px] font-semibold transition",
+                  configuredOnly
+                    ? "border-lime-200 bg-lime-50 text-lime-700"
+                    : "border-ink-200 bg-paper-50 text-ink-500 hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700",
+                  "disabled:pointer-events-none disabled:opacity-45",
+                )}
+                onClick={() => onConfiguredOnlyChange(!configuredOnly)}
+                aria-pressed={configuredOnly}
+              >
+                {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.166.17")}
+              </button>
+              {onAddManualModel ? (
+                <Tooltip content="手动添加模型" side="top">
+                  <button
+                    type="button"
+                    disabled={disabled || !selectedProvider}
+                    className={iconButtonClassName}
+                    onClick={onAddManualModel}
+                    aria-label="手动添加模型"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </Tooltip>
+              ) : null}
+              {showFetchAction ? (
+                <Tooltip content="获取模型列表" side="top">
+                  <button
+                    type="button"
+                    disabled={disabled || loading || !enabled || !selectedProvider?.Id}
+                    className={iconButtonClassName}
+                    onClick={() => onFetch(true)}
+                    aria-label="获取模型列表"
+                  >
+                    {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  </button>
+                </Tooltip>
+              ) : null}
+            </div>
+          }
+        />
+      )}
+      {compactHeader ? null : (
+        <div className="grid gap-2 border-b border-ink-200/70 bg-paper-50/75 p-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
+          <div className="flex min-w-0 items-center justify-end gap-1.5">
+            <ProviderCatalogStatus catalog={catalog} error={error} loading={loading} disabled={!enabled} />
           </div>
-        }
-      />
-      <div className="grid gap-2 border-b border-ink-200/70 bg-paper-50/75 p-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-        <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
-        <ProviderCatalogStatus catalog={catalog} error={error} loading={loading} disabled={!enabled} />
-      </div>
-      <ModelGroupSummary groups={groups} total={rows.length} onSelectGroup={scrollToGroup} />
+        </div>
+      )}
+      {compactHeader ? null : <ModelGroupSummary groups={groups} total={rows.length} onSelectGroup={scrollToGroup} />}
       {embedded ? (
         <div className="min-h-0">{modelRows}</div>
       ) : (
@@ -216,6 +280,7 @@ function ProviderModelRows({
   onSetDefaultModel,
   onRemoveModel,
   onAddModel,
+  groupedCards,
   onGroupRef,
 }: {
   selectedProvider: ProviderEndpointDraft | null;
@@ -232,6 +297,7 @@ function ProviderModelRows({
   onSetDefaultModel?: (model: ModelProviderDraft) => void;
   onRemoveModel?: (model: ModelProviderDraft) => void;
   onAddModel?: (model: ProviderModelInfo) => void;
+  groupedCards: boolean;
   onGroupRef: (groupId: string, element: HTMLElement | null) => void;
 }): JSX.Element {
   const selectedProviderId = selectedProvider?.Id ?? "";
@@ -257,16 +323,26 @@ function ProviderModelRows({
   return (
     <div>
       {groups.map((group) => (
-        <section key={group.id} className="border-b border-ink-200/70 last:border-b-0">
+        <section
+          key={group.id}
+          className={cn(
+            groupedCards
+              ? "mx-3 mt-3 overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50 last:mb-3"
+              : "border-b border-ink-200/70 last:border-b-0",
+          )}
+        >
           <div
             ref={(element) => onGroupRef(group.id, element)}
-            className="sticky top-0 z-[1] flex h-8 scroll-mt-0 items-center justify-between border-b border-ink-200/70 bg-paper-100 px-3"
+            className={cn(
+              "flex scroll-mt-0 items-center justify-between border-b border-ink-200/70 bg-paper-100 px-3",
+              groupedCards ? "h-10" : "sticky top-0 z-[1] h-8",
+            )}
           >
             <span className="flex min-w-0 items-center gap-1.5">
               <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
               <span className="truncate text-[11.5px] font-semibold text-ink-700">{group.label}</span>
             </span>
-            <span className="rounded-full bg-ink-900/[0.055] px-2 py-0.5 text-[10.5px] text-ink-500">
+            <span className="tabular-nums text-[10.5px] text-ink-400">
               {group.rows.length}
             </span>
           </div>
@@ -339,8 +415,8 @@ function ProviderModelRow({
       <span className="flex flex-wrap items-center justify-end gap-1.5">
         <ConfiguredModelBadge isDefault={isDefault} configured={Boolean(configured)} />
         {pending ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10.5px] font-semibold text-sky-700">
-            <Loader2 className="h-3 w-3 animate-spin" />{" "}
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-medium text-ink-600">
+            <Loader2 className="h-3 w-3 animate-spin text-terra-500" />{" "}
             {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.356.58")}
           </span>
         ) : configured && (onSetDefaultModel || onRemoveModel) ? (
@@ -411,7 +487,7 @@ function ConfiguredModelBadge({
 }): JSX.Element | null {
   if (isDefault) {
     return (
-      <span className="rounded-full border border-terra-200 bg-terra-50 px-2 py-1 text-[10.5px] font-semibold text-terra-700">
+      <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-terra-700">
         DEFAULT
       </span>
     );
@@ -420,7 +496,7 @@ function ConfiguredModelBadge({
     // TODO: this is a configured-state badge, not model enablement. Persisted
     // model Enabled plus runtime filtering require a backend contract first.
     return (
-      <span className="rounded-full border border-lime-200 bg-lime-50 px-2 py-1 text-[10.5px] font-semibold text-lime-700">
+      <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-moss-600">
         {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.401.9")}
       </span>
     );
@@ -445,7 +521,7 @@ function ModelGroupSummary({
       <div className="flex min-w-0 flex-wrap gap-1.5">
         <button
           type="button"
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-ink-300 bg-paper-100 px-2.5 text-[11px] text-ink-750 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-ink-300 bg-paper-100 px-2.5 text-[11px] text-ink-750 transition-colors duration-150 hover:border-ink-400 hover:bg-paper-50"
           onClick={() => onSelectGroup(null)}
           title={`所有模型: ${total}`}
         >
@@ -453,19 +529,19 @@ function ModelGroupSummary({
           <span className="font-medium">
             {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.430.41")}
           </span>
-          <span className="rounded-full bg-ink-900/[0.06] px-1.5 py-0.5 text-[10px] text-ink-500">{total}</span>
+          <span className="tabular-nums text-[10px] text-ink-400">{total}</span>
         </button>
         {groups.map((group) => (
           <button
             type="button"
             key={group.id}
-            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-ink-200 bg-paper-100 px-2.5 text-[11px] text-ink-650 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700"
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-100 px-2.5 text-[11px] text-ink-650 transition-colors duration-150 hover:border-ink-400 hover:bg-paper-50 hover:text-ink-850"
             title={`${group.label}: ${group.rows.length}`}
             onClick={() => onSelectGroup(group.id)}
           >
             <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
             <span className="max-w-24 truncate font-medium">{group.label}</span>
-            <span className="rounded-full bg-ink-900/[0.06] px-1.5 py-0.5 text-[10px] text-ink-500">
+            <span className="tabular-nums text-[10px] text-ink-400">
               {group.rows.length}
             </span>
           </button>

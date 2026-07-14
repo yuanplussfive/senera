@@ -233,6 +233,7 @@ export function MenuSelect({
   disabled,
   renderValue,
   renderOption,
+  triggerClassName,
   onChange,
 }: {
   value: string;
@@ -241,6 +242,7 @@ export function MenuSelect({
   disabled: boolean;
   renderValue?: (value: string) => ReactNode;
   renderOption?: (option: { value: string; label: string }) => ReactNode;
+  triggerClassName?: string;
   onChange: (value: string) => void;
 }): JSX.Element {
   const selected = options.find((option) => option.value === value);
@@ -254,6 +256,7 @@ export function MenuSelect({
           className={cn(
             "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5",
             "text-left text-[12.5px] text-ink-800 transition hover:border-terra-200 disabled:pointer-events-none disabled:opacity-55",
+            triggerClassName,
           )}
         >
           <span className={cn("min-w-0 truncate", !display && "text-ink-350")}>{display ?? placeholder}</span>

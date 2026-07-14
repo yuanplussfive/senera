@@ -4,7 +4,17 @@ import type { ConfigFormFieldData } from "../../../api/eventTypes";
 import type { ProviderModelConfigInput } from "../../../api/providerModelCommandTypes";
 import type { ProviderModelUpsertInput } from "../../../app/providerModelMutations";
 import { cn } from "../../../lib/util";
-import { Button, Dialog, DialogContent, ScrollArea } from "../../../shared/ui";
+import {
+  Button,
+  Dialog,
+  DialogActionButton,
+  DialogActions,
+  DialogContent,
+  FormField,
+  FormLabel,
+  Input,
+  ScrollArea,
+} from "../../../shared/ui";
 import {
   createModelDraft,
   groupProviderModelRows,
@@ -44,6 +54,7 @@ export function ProviderModelManagementSurface({
   showFetchAction = true,
   fetchEndpoint,
   openCatalogSignal = 0,
+  embedded = false,
 }: {
   disabled: boolean;
   endpointOptions?: Array<{ value: string; label: string }>;
@@ -75,6 +86,8 @@ export function ProviderModelManagementSurface({
   fetchEndpoint?: Parameters<SettingsConfigCommands["fetchProviderModels"]>[2];
   /** Opens the catalog when the sibling provider editor triggers fetch. */
   openCatalogSignal?: number;
+  /** Let the parent detail pane own scrolling and use the compact model toolbar. */
+  embedded?: boolean;
 }): JSX.Element {
   const modelGroups = readModelGroups(readDraftOrEffectiveValue(draft, section, "ModelGroups"));
   const [selectedProviderId, setSelectedProviderId] = useState(
@@ -228,7 +241,7 @@ export function ProviderModelManagementSurface({
   return (
     <div
       className={cn(
-        "grid h-full min-h-0 gap-3 bg-paper-50 p-3",
+        embedded ? "grid min-h-0 bg-paper-50" : "grid h-full min-h-0 bg-paper-50",
         showProviderList ? "grid-cols-[minmax(210px,260px)_minmax(0,1fr)]" : "grid-cols-1",
       )}
     >
@@ -270,7 +283,7 @@ export function ProviderModelManagementSurface({
           </ScrollArea>
         </section>
       ) : null}
-      <section className="min-h-0 min-w-0 overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50">
+      <section className={cn("min-h-0 min-w-0 bg-paper-50", embedded ? "overflow-visible" : "overflow-hidden")}>
         <ProviderModelList
           selectedProvider={selectedProvider}
           catalog={selectedList.catalog}
@@ -288,6 +301,8 @@ export function ProviderModelManagementSurface({
           search={search}
           configuredOnly={configuredOnly}
           disabled={disabled}
+          layoutMode={embedded ? "embedded" : "panel"}
+          compactHeader={embedded}
           onSearch={setSearch}
           onConfiguredOnlyChange={setConfiguredOnly}
           onOpenModelGroups={() => setGroupUnsupportedDialogOpen(true)}
@@ -322,9 +337,9 @@ export function ProviderModelManagementSurface({
       />
       <Dialog open={catalogOpen} onOpenChange={setCatalogOpen}>
         <DialogContent
-          title={`获取模型列表${selectedProvider ? ` - ${selectedProvider.Id}` : ""}`}
-          description="点击每一行右侧的 + 立即加入可用模型。"
-          className="h-[min(720px,calc(100dvh_-_48px))] w-[min(760px,calc(100vw_-_32px))] max-w-none rounded-xl bg-paper-50"
+          title="获取模型列表"
+          description={selectedProvider ? `从 ${selectedProvider.Id} 获取可用模型，点击行尾按钮即可添加。` : undefined}
+          className="h-[min(760px,calc(100dvh_-_32px))] w-[min(780px,calc(100vw_-_32px))] max-w-none"
           bodyClassName="min-h-0 flex-1 p-0"
         >
           <CatalogModelDialogContent
@@ -345,31 +360,26 @@ export function ProviderModelManagementSurface({
       <Dialog open={manualOpen} onOpenChange={setManualOpen}>
         <DialogContent
           title="添加模型"
-          description={selectedProvider.Id}
-          className="w-[min(460px,calc(100vw_-_32px))]"
-          bodyClassName="p-4"
+          description={`供应商：${selectedProvider.Id}`}
+          className="min-h-[480px] w-[min(560px,calc(100vw_-_32px))]"
+          bodyClassName="flex min-h-0 flex-1 flex-col px-8 pb-7 pt-3"
         >
-          <div className="space-y-4">
-            <label className="block text-[12px] font-medium text-ink-750">
-              模型 ID
-              <input
-                autoFocus
-                value={manualModelId}
-                placeholder="例如 gpt-4o"
-                className="mt-1 h-9 w-full rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12.5px] outline-none focus:border-terra-300"
-                onChange={(event) => setManualModelId(event.currentTarget.value)}
-                onKeyDown={(event) => event.key === "Enter" && addManualModel()}
-              />
-            </label>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setManualOpen(false)}>
-                取消
-              </Button>
-              <Button disabled={disabled || !manualModelId.trim()} onClick={addManualModel}>
-                添加
-              </Button>
-            </div>
-          </div>
+          <FormField>
+            <FormLabel required>模型 ID</FormLabel>
+            <Input
+              autoFocus
+              value={manualModelId}
+              placeholder="例如 gpt-4o"
+              onChange={(event) => setManualModelId(event.currentTarget.value)}
+              onKeyDown={(event) => event.key === "Enter" && addManualModel()}
+            />
+          </FormField>
+          <DialogActions className="mt-auto">
+            <DialogActionButton onClick={() => setManualOpen(false)}>取消</DialogActionButton>
+            <DialogActionButton variant="primary" disabled={disabled || !manualModelId.trim()} onClick={addManualModel}>
+              添加
+            </DialogActionButton>
+          </DialogActions>
         </DialogContent>
       </Dialog>
       <Dialog open={groupUnsupportedDialogOpen} onOpenChange={setGroupUnsupportedDialogOpen}>

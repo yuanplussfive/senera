@@ -5,29 +5,29 @@
 /* ----- base ----- */
 :root {
   color-scheme: light;
-  font-family: var(--theme-ui-font-family, "Geist", ui-sans-serif, system-ui, sans-serif);
+  font-family: var(--theme-ui-font-family, "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif);
   font-feature-settings:
     "tnum" on,
     "ss01" on;
   --color-paper-50: 255 255 255;
-  --color-paper-100: 248 248 246;
-  --color-paper-200: 239 238 235;
-  --color-paper-300: 224 223 219;
-  --color-paper-400: 199 197 189;
-  --color-ink-950: 33 30 24;
-  --color-ink-900: 43 40 32;
-  --color-ink-850: 50 47 39;
-  --color-ink-800: 63 58 49;
-  --color-ink-700: 81 76 64;
-  --color-ink-650: 98 93 80;
-  --color-ink-600: 106 101 88;
-  --color-ink-500: 115 112 95;
-  --color-ink-400: 150 145 127;
-  --color-ink-350: 170 165 146;
-  --color-ink-300: 186 181 166;
-  --color-ink-200: 224 223 219;
-  --color-ink-100: 234 233 229;
-  --color-ink-50: 244 244 241;
+  --color-paper-100: 247 247 248;
+  --color-paper-200: 239 240 242;
+  --color-paper-300: 222 224 228;
+  --color-paper-400: 196 199 205;
+  --color-ink-950: 24 25 28;
+  --color-ink-900: 31 32 36;
+  --color-ink-850: 42 43 48;
+  --color-ink-800: 55 57 63;
+  --color-ink-700: 72 75 82;
+  --color-ink-650: 87 90 98;
+  --color-ink-600: 101 104 113;
+  --color-ink-500: 112 116 126;
+  --color-ink-400: 145 149 158;
+  --color-ink-350: 165 169 177;
+  --color-ink-300: 184 188 196;
+  --color-ink-200: 222 224 228;
+  --color-ink-100: 234 236 239;
+  --color-ink-50: 245 246 247;
   --color-terra-50: 252 244 239;
   --color-terra-100: 246 226 214;
   --color-terra-200: 236 195 171;
@@ -52,17 +52,15 @@
   --color-brick-500: 217 119 6;
   --color-brick-600: 180 83 9;
   --color-brick-700: 146 64 14;
-  --theme-bg: rgb(248 248 246);
-  --theme-bg-image:
-    radial-gradient(circle at 0% 0%, rgb(194 105 74 / 0.018) 0, transparent 35%),
-    radial-gradient(circle at 100% 100%, rgb(90 125 76 / 0.016) 0, transparent 35%);
-  --theme-fg: rgb(43 40 32);
-  --theme-sidebar-bg: rgb(244 244 241);
+  --theme-bg: rgb(247 247 248);
+  --theme-bg-image: none;
+  --theme-fg: rgb(31 32 36);
+  --theme-sidebar-bg: rgb(245 246 247);
   --theme-elevated-bg: rgb(255 255 255);
-  --theme-border: rgb(224 223 219);
+  --theme-border: rgb(222 224 228);
   --theme-accent-soft: rgb(241 220 207);
-  --theme-surface-shadow: 0 1px 2px rgb(43 40 32 / 0.04), 0 12px 24px rgb(43 40 32 / 0.06);
-  --theme-panel-glaze: rgb(255 255 255 / 0.56);
+  --theme-surface-shadow: 0 1px 2px rgb(24 25 28 / 0.06), 0 6px 14px -8px rgb(24 25 28 / 0.14);
+  --theme-panel-glaze: rgb(255 255 255);
   --theme-hover-wash: rgb(43 40 32 / 0.055);
   --theme-selection-bg: rgb(194 105 74 / 0.18);
   --theme-selection-fg: rgb(43 40 32);
@@ -110,7 +108,7 @@
   --shadow-soft: 0 8px 24px -12px rgb(43 40 32 / 0.16);
   --shadow-avatar-cropper: inset 0 0 0 1px rgb(255 255 255 / 0.18), 0 10px 30px rgb(43 40 32 / 0.14);
   --theme-font-scale: 1;
-  --theme-ui-font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --theme-ui-font-family: "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --theme-display-font-family: "Fraunces", ui-serif, Georgia, serif;
   --scrollbar-size: 8px;
   --scrollbar-thumb: rgb(43 40 32 / 0.15);
@@ -142,7 +140,6 @@ body {
   margin: 0;
   background: var(--theme-bg);
   color: var(--theme-fg);
-  /* 极淡的纸面噪点 */
   background-image: var(--theme-bg-image);
   font-size: calc(16px * var(--theme-font-scale));
 }

@@ -307,7 +307,7 @@ export function ModelConfigView({
           title={frontendMessage("runtime.migrated.features.chat.ModelConfigView.311.17")}
           description={selectedProvider ? providerIdLabel(selectedProvider) : "选择供应商"}
           motionPreset="focus"
-          className="h-[min(780px,calc(100dvh_-_48px))] w-[min(860px,calc(100vw_-_32px))] max-w-none rounded-xl bg-paper-50"
+          className="h-[min(780px,calc(100dvh_-_48px))] w-[min(860px,calc(100vw_-_32px))] max-w-none rounded-lg bg-paper-50"
           bodyClassName="min-h-0 flex-1"
         >
           <ProviderEditor

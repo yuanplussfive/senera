@@ -52,7 +52,7 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
   return (
     <div
       className={cn(
-        "group relative w-[240px] cursor-pointer rounded-xl border bg-paper-50 px-3 py-2.5 transition-all",
+        "group relative w-[240px] cursor-pointer rounded-lg border bg-paper-50 px-3 py-2.5 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
         "shadow-[var(--theme-node-shadow)] hover:shadow-[var(--theme-node-shadow)]",
         accent.border,
         selected ? "ring-2 ring-terra-400 ring-offset-2 ring-offset-paper-100" : "",
@@ -122,7 +122,7 @@ function ScopeNode({
   return (
     <div
       className={cn(
-        "group relative w-[240px] cursor-default rounded-xl border px-3 py-2.5 transition-all",
+        "group relative w-[240px] cursor-default rounded-lg border px-3 py-2.5 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
         "shadow-[var(--shadow-bubble-user)]",
         accent,
         selected ? "ring-2 ring-terra-400 ring-offset-2 ring-offset-paper-100" : "",
@@ -193,7 +193,7 @@ function StatusDot({
   const transition = motionLevel === "none" ? { duration: 0 } : motionTimings.fast;
   const color =
     status === "running"
-      ? "bg-umber-500 motion-safe:animate-pulse"
+      ? "bg-umber-500"
       : status === "done"
         ? "bg-moss-500"
         : status === "failed"
@@ -230,7 +230,7 @@ function StatusFooter({ step, motionLevel }: { step: TimelineStep; motionLevel: 
         exit={{ opacity: motionLevel === "none" ? 1 : 0 }}
         transition={transition}
         className={cn(
-          "mt-1.5 text-right font-mono text-[10px]",
+          "mt-1.5 text-right text-[10px] tabular-nums",
           step.status === "running" ? "text-umber-600" : "text-ink-400",
         )}
       >

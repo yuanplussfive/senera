@@ -4,12 +4,12 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Geist"', "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ['"Segoe UI Variable"', '"Segoe UI"', "ui-sans-serif", "system-ui", "sans-serif"],
         serif: ['"Fraunces"', "ui-serif", "Georgia", "serif"],
         mono: ['"JetBrains Mono"', "ui-monospace", "Menlo", "Consolas", "monospace"],
       },
       colors: {
-        // 暖纸面色板
+        // Neutral application surfaces.
         paper: {
           50: "rgb(var(--color-paper-50) / <alpha-value>)",
           100: "rgb(var(--color-paper-100) / <alpha-value>)",
@@ -17,7 +17,7 @@ export default {
           300: "rgb(var(--color-paper-300) / <alpha-value>)",
           400: "rgb(var(--color-paper-400) / <alpha-value>)",
         },
-        // 深墨色文字
+        // Neutral foreground scale.
         ink: {
           950: "rgb(var(--color-ink-950) / <alpha-value>)",
           900: "rgb(var(--color-ink-900) / <alpha-value>)",

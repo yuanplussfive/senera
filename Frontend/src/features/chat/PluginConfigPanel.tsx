@@ -243,7 +243,7 @@ export function PluginConfigContent({
                     ) : selected.needsUserConfig ? (
                       <>
                         <span className="text-ink-300">/</span>
-                        <span className="text-amber-700">
+                        <span className="text-umber-600">
                           {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.261.58")}
                         </span>
                       </>
@@ -355,9 +355,9 @@ function PluginSelectorRows({
                 error
                   ? "bg-brick-500"
                   : plugin.needsUserConfig
-                    ? "bg-amber-500"
+                    ? "bg-umber-500"
                     : plugin.available
-                      ? "bg-emerald-500"
+                    ? "bg-moss-500"
                       : "bg-ink-300",
               )}
             />

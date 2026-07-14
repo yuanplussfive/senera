@@ -26,7 +26,7 @@ export function ProviderConnectionStatusBadge({
   }
   if (dirty) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-800">
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[11px] font-medium text-umber-600">
         <Save className="h-3.5 w-3.5" />
         待确认
       </span>

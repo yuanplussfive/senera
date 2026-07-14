@@ -1,8 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Lightbulb, Loader2, Maximize2, PanelRightClose, PanelRightOpen, Clock3, ListTree, Wrench } from "lucide-react";
+import { Lightbulb, Loader2, Maximize2, PanelRightClose, PanelRightOpen, ListTree } from "lucide-react";
 import { useStore, type RunRecord } from "../../store/sessionStore";
-import { useResponsiveMode } from "../../shared/responsive";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Dialog, DialogContent, IconButton, MetaLabel } from "../../shared/ui";
@@ -317,7 +316,6 @@ function CanvasLoading(): JSX.Element {
 
 function EmptyCanvas(): JSX.Element {
   const { level, reduceMotion, disableMotion } = useMotionLevel();
-  const { isCoarsePointer } = useResponsiveMode();
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
   return (
     <motion.div
@@ -327,45 +325,13 @@ function EmptyCanvas(): JSX.Element {
       transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.soft}
       className="flex max-w-[320px] flex-col items-center px-6 text-center"
     >
-      <div className="grid h-11 w-11 place-items-center rounded-xl border border-ink-200/70 bg-paper-50 shadow-[var(--shadow-bubble-user)]">
-        <ListTree className="h-5 w-5 text-ink-500" />
-      </div>
-      <p className="mt-3 text-[13px] font-medium text-ink-850">
+      <ListTree className="h-5 w-5 text-ink-350" />
+      <p className="mt-4 text-[13px] font-semibold text-ink-800">
         {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.358.9")}
       </p>
       <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
         {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.361.9")}
       </p>
-      <div className="mt-3 grid w-full grid-cols-2 gap-1.5 text-left">
-        <EmptyHint
-          icon={<ListTree className="h-3 w-3" />}
-          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.364.66")}
-        />
-        <EmptyHint
-          icon={<Wrench className="h-3 w-3" />}
-          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.365.64")}
-        />
-        <EmptyHint
-          icon={<Maximize2 className="h-3 w-3" />}
-          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.366.67")}
-        />
-        <EmptyHint
-          icon={<Clock3 className="h-3 w-3" />}
-          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.367.64")}
-        />
-      </div>
-      <p className="mt-3 text-[11px] text-ink-400">
-        {isCoarsePointer ? "可拖拽节点，拖动画布，双指缩放。" : "可拖拽节点，滚轮平移，Ctrl+滚轮缩放。"}
-      </p>
     </motion.div>
-  );
-}
-
-function EmptyHint({ icon, label }: { icon: JSX.Element; label: string }): JSX.Element {
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-ink-200/60 bg-paper-50/70 px-2 py-1.5 text-[11.5px] text-ink-600">
-      <span className="shrink-0 text-ink-400">{icon}</span>
-      <span className="truncate">{label}</span>
-    </span>
   );
 }

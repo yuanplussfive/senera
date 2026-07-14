@@ -77,7 +77,7 @@ export function ProviderList({
               )}
               onClick={() => onSelect(index)}
             >
-              <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border border-ink-200 bg-paper-100">
+              <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-md border border-ink-200 bg-paper-100">
                 <ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={20} />
               </span>
               <span className="min-w-0 self-center">
@@ -95,10 +95,10 @@ export function ProviderList({
               </span>
               <span
                 className={cn(
-                  "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                  "rounded-md border border-ink-200 bg-paper-100 px-2 py-0.5 text-[10px] font-semibold",
                   enabled
-                    ? "border-lime-200 bg-lime-50 text-lime-700"
-                    : "border-ink-200 bg-ink-900/[0.035] text-ink-450",
+                    ? "text-moss-600"
+                    : "text-ink-450",
                 )}
               >
                 {enabled ? "ON" : "OFF"}
