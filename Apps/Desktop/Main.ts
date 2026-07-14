@@ -17,6 +17,7 @@ let settingsWindow: BrowserWindow | undefined;
 let runtimePaths: DesktopRuntimePaths | undefined;
 let frontendSource: DesktopFrontendSource | undefined;
 const desktopModuleDir = path.dirname(fileURLToPath(import.meta.url));
+const remoteDebuggingPort = process.env.SENERA_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
 
 const settingsSectionIds = new Set([
   "model-service",
@@ -37,6 +38,9 @@ const settingsSectionIds = new Set([
 ]);
 
 app.setName("Senera");
+if (remoteDebuggingPort) {
+  app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort);
+}
 Menu.setApplicationMenu(null);
 
 app
