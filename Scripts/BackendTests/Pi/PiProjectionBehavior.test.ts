@@ -179,6 +179,9 @@ function createProvider(overrides: Partial<ResolvedAgentModelProviderConfig> = {
     FirstTokenTimeoutMs: 10_000,
     MaxRequestMs: 120_000,
     MaxNetworkRetries: 0,
+    RetryBaseDelayMs: 250,
+    RetryMaxDelayMs: 10_000,
+    RetryAfterMaxDelayMs: 60_000,
     Headers: {},
     ...overrides,
   };

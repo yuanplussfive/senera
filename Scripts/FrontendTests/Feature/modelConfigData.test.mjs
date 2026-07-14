@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyModelProvidersDraft,
+  normalizeModelProviderDraft,
   filterRemoteModelPickerRows,
   readProviderModelRows,
   remoteModelCategories,
@@ -65,6 +66,23 @@ describe("remote model picker helpers", () => {
         models: [{ Id: "local/local-only", ProviderId: "local", Endpoint: "chat", Model: "local-only" }],
       }),
     ).toEqual([{ id: "local-only", ownedBy: "local" }]);
+  });
+  it("preserves configurable retry delays in model drafts", () => {
+    expect(
+      normalizeModelProviderDraft({
+        Id: "local/retry",
+        ProviderId: "local",
+        Endpoint: "chat",
+        Model: "retry",
+        RetryBaseDelaySeconds: 0.5,
+        RetryMaxDelaySeconds: 12,
+        RetryAfterMaxDelaySeconds: 45,
+      }),
+    ).toMatchObject({
+      RetryBaseDelaySeconds: 0.5,
+      RetryMaxDelaySeconds: 12,
+      RetryAfterMaxDelaySeconds: 45,
+    });
   });
   it("keeps an existing default model when applying model provider drafts", () => {
     expect(

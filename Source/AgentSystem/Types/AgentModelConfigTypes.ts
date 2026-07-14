@@ -16,6 +16,9 @@ export interface AgentModelProviderConfig {
   FirstTokenTimeoutSeconds?: number;
   MaxRequestSeconds?: number;
   MaxNetworkRetries?: number;
+  RetryBaseDelaySeconds?: number;
+  RetryMaxDelaySeconds?: number;
+  RetryAfterMaxDelaySeconds?: number;
 }
 
 export interface AgentModelCapabilitiesConfig {
@@ -80,6 +83,9 @@ export interface AgentModelRuntimeDefaultsConfig {
   FirstTokenTimeoutSeconds: number;
   MaxRequestSeconds: number;
   MaxNetworkRetries: number;
+  RetryBaseDelaySeconds: number;
+  RetryMaxDelaySeconds: number;
+  RetryAfterMaxDelaySeconds: number;
 }
 
 export interface ResolvedAgentModelProviderConfig {
@@ -102,6 +108,9 @@ export interface ResolvedAgentModelProviderConfig {
   FirstTokenTimeoutMs: number;
   MaxRequestMs: number;
   MaxNetworkRetries: number;
+  RetryBaseDelayMs: number;
+  RetryMaxDelayMs: number;
+  RetryAfterMaxDelayMs: number;
   Headers: Record<string, string>;
 }
 

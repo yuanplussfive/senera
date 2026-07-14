@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import type { ResolvedAgentArtifactsConfig } from "../Types/AgentConfigTypes.js";
 import type {
   ExecutedToolCallArtifact,
@@ -8,7 +7,7 @@ import type {
   ToolWorkspaceChange,
 } from "../Types/ToolRuntimeTypes.js";
 import { createAgentArtifactLocator } from "./AgentArtifactLocator.js";
-import { writeArtifactJson, writeArtifactText, writeBoundedArtifactJson } from "./AgentArtifactFileWriter.js";
+import { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
 import { redactArtifactSecrets } from "./AgentArtifactRedaction.js";
 import { stableArtifactHash } from "./AgentArtifactStableJson.js";
 import { collectArtifactEvidence } from "./AgentArtifactEvidenceProjection.js";
@@ -165,7 +164,6 @@ export class AgentToolExecutionArtifactRecorder {
       projection,
     };
 
-    await fs.mkdir(locator.absoluteDir, { recursive: true });
     await writeToolArtifactFiles({
       config: this.options.config,
       artifact,
@@ -254,7 +252,8 @@ async function writeToolArtifactFiles(input: {
   relativeDir: string;
   workspaceArtifacts?: Awaited<ReturnType<typeof writeToolWorkspaceArtifacts>>;
 }): Promise<void> {
-  await writeArtifactJson(input.artifact.files.manifest, {
+  const writer = new AgentArtifactFileWriter(input.workspaceRoot);
+  await writer.writeJson(input.artifact.files.manifest, {
     schemaVersion: 1,
     artifactId: input.artifact.artifactId,
     artifactUri: input.artifact.artifactUri,
@@ -288,22 +287,22 @@ async function writeToolArtifactFiles(input: {
       : undefined,
     files: input.artifact.files,
   });
-  await writeArtifactJson(input.artifact.files.input, input.redactedInput);
-  await writeBoundedArtifactJson(input.artifact.files.raw, input.redactedRaw, input.config.RawJsonMaxBytes);
-  await writeArtifactText(input.artifact.files.summary, input.artifact.summary, input.config.TextFileMaxBytes);
-  await writeArtifactJson(input.artifact.files.summaryJson, input.artifact.structuredSummary);
-  await writeArtifactJson(input.artifact.files.evidence, {
+  await writer.writeJson(input.artifact.files.input, input.redactedInput);
+  await writer.writeBoundedJson(input.artifact.files.raw, input.redactedRaw, input.config.RawJsonMaxBytes);
+  await writer.writeText(input.artifact.files.summary, input.artifact.summary, input.config.TextFileMaxBytes);
+  await writer.writeJson(input.artifact.files.summaryJson, input.artifact.structuredSummary);
+  await writer.writeJson(input.artifact.files.evidence, {
     artifactId: input.artifact.artifactId,
     artifactUri: input.artifact.artifactUri,
     artifactPath: input.absoluteDir,
     evidence: input.artifact.evidence,
   });
-  await writeArtifactText(
+  await writer.writeText(
     input.artifact.files.projection,
     input.artifact.projection ?? "",
     input.config.TextFileMaxBytes,
   );
-  await writeArtifactJson(input.artifact.files.delta, {
+  await writer.writeJson(input.artifact.files.delta, {
     artifactId: input.artifact.artifactId,
     artifactUri: input.artifact.artifactUri,
     artifactPath: input.absoluteDir,
@@ -313,9 +312,9 @@ async function writeToolArtifactFiles(input: {
     return;
   }
 
-  await writeArtifactJson(input.artifact.files.workspaceBefore, input.workspaceArtifacts.before);
-  await writeArtifactJson(input.artifact.files.workspaceAfter, input.workspaceArtifacts.after);
-  await writeArtifactJson(input.artifact.files.workspaceDiff, {
+  await writer.writeJson(input.artifact.files.workspaceBefore, input.workspaceArtifacts.before);
+  await writer.writeJson(input.artifact.files.workspaceAfter, input.workspaceArtifacts.after);
+  await writer.writeJson(input.artifact.files.workspaceDiff, {
     artifactId: input.artifact.artifactId,
     artifactUri: input.artifact.artifactUri,
     artifactPath: input.absoluteDir,

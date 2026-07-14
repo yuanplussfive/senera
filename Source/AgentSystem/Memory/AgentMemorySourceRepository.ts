@@ -2,9 +2,12 @@ import { type AgentConversationEntry } from "../Conversation/AgentConversation.j
 import type { AgentTerminalResult } from "../Runtime/AgentExecutionProjector.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+import type { AgentMemoryLearningJobRecord } from "./AgentMemoryLearningJob.js";
 
 export { DefaultAgentMemoryTimeZone } from "./AgentMemoryTime.js";
 export { InMemoryAgentMemorySourceRepository } from "./AgentMemoryInMemorySourceRepository.js";
+export { AgentMemoryLearningJobStatuses, AgentMemoryLearningJobStatusValues } from "./AgentMemoryLearningJob.js";
+export type { AgentMemoryLearningJobRecord, AgentMemoryLearningJobStatus } from "./AgentMemoryLearningJob.js";
 export {
   DefaultAgentMemoryDatabasePath,
   resolveAgentMemoryDatabasePath,
@@ -18,7 +21,6 @@ export type AgentMemoryType = (typeof AgentMemoryTypes)[number];
 export type AgentMemoryItemStatus = "active" | "superseded" | "archived" | "needs_review";
 export type AgentMemoryCandidateStatus = "pending" | "promoted" | "rejected";
 export type AgentMemoryLearningOperation = "create" | "reinforce" | "update" | "supersede" | "reject";
-
 export interface AgentMemoryEpisodeRecord {
   id: string;
   uri: string;
@@ -238,10 +240,22 @@ export interface AgentMemorySourceRepository {
   listSources(episodeUri: string): AgentMemorySourceRecord[];
   findMemorySourcesByRefs(refs: readonly string[]): AgentMemorySourceRecord[];
   listPendingMemoryCandidates(sessionId: string, type?: AgentMemoryType): AgentMemoryCandidateRecord[];
+  listMemoryCandidatesForEpisode(episodeUri: string): AgentMemoryCandidateRecord[];
   listActiveMemoryItems(): AgentMemoryItemRecord[];
   findMemoryItemsByUris(uris: readonly string[]): AgentMemoryItemRecord[];
   listMemoryObservations(memoryUri: string): AgentMemoryObservationRecord[];
   upsertMemoryItemVectors(records: readonly AgentMemoryItemVectorWrite[]): void;
   listMemoryItemVectors(model: string): AgentMemoryItemVectorRecord[];
+  enqueueMemoryLearningJob(episodeUri: string, nowMs: number): void;
+  resetRunningMemoryLearningJobs(nowMs: number): void;
+  listDueMemoryLearningJobs(nowMs: number, limit: number): AgentMemoryLearningJobRecord[];
+  nextMemoryLearningJobAtMs(): number | undefined;
+  markMemoryLearningJobRunning(episodeUri: string, nowMs: number): AgentMemoryLearningJobRecord | undefined;
+  markMemoryLearningJobCompleted(episodeUri: string, nowMs: number): void;
+  markMemoryLearningJobFailed(
+    episodeUri: string,
+    input: { terminal: boolean; nextAttemptAtMs: number; lastError: string; updatedAtMs: number },
+  ): void;
+  listMemoryLearningJobs(): AgentMemoryLearningJobRecord[];
   close(): void;
 }

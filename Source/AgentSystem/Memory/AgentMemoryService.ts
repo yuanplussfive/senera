@@ -7,6 +7,7 @@ import {
 
 export interface AgentMemoryLearningSink {
   enqueue(recordedTurn: AgentMemoryRecordedTurn): void;
+  stop?(): void;
 }
 
 export interface AgentMemoryServiceOptions {
@@ -38,6 +39,7 @@ export class AgentMemoryService {
   }
 
   close(): void {
+    this.learning?.stop?.();
     this.sourceRepository.close();
   }
 }

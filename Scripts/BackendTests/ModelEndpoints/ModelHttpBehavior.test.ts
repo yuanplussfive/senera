@@ -4,6 +4,10 @@ import { createModelProviderMetadata } from "../../../Source/AgentSystem/ModelEn
 import { createModelRequestLifetime } from "../../../Source/AgentSystem/ModelEndpoints/ModelHttpAbort.js";
 import { ModelHttpClient } from "../../../Source/AgentSystem/ModelEndpoints/ModelHttpClient.js";
 import { ModelProviderHttpError } from "../../../Source/AgentSystem/ModelEndpoints/ModelHttpErrors.js";
+import {
+  fetchModelHttpWithRetries,
+  parseRetryAfterMs,
+} from "../../../Source/AgentSystem/ModelEndpoints/ModelHttpRetry.js";
 import { createModelHttpUrl, rawPathSegment } from "../../../Source/AgentSystem/ModelEndpoints/ModelHttpUrl.js";
 import { collectModelStream, createSseResponse } from "./ModelEndpointTestFixtures.js";
 
@@ -57,6 +61,38 @@ describe("model HTTP transport", () => {
       }),
     );
     expect(fetch as unknown as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+  });
+
+  test("honors Retry-After and uses deterministic exponential backoff when absent", async () => {
+    const config = createModelProvider({
+      MaxNetworkRetries: 1,
+      RetryBaseDelayMs: 400,
+      RetryMaxDelayMs: 800,
+      RetryAfterMaxDelayMs: 1_500,
+    });
+    const sleep = vi.fn(async () => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response("limited", { status: 429, headers: { "Retry-After": "2" } }))
+        .mockResolvedValueOnce(Response.json({ ok: true })),
+    );
+
+    await fetchModelHttpWithRetries(config, new URL("https://model.example/v1"), {}, { sleep, random: () => 0.5 });
+    expect(sleep).toHaveBeenCalledWith(1_500, undefined);
+
+    sleep.mockClear();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response("unavailable", { status: 503 }))
+        .mockResolvedValueOnce(Response.json({ ok: true })),
+    );
+    await fetchModelHttpWithRetries(config, new URL("https://model.example/v1"), {}, { sleep, random: () => 0.5 });
+    expect(sleep).toHaveBeenCalledWith(400, undefined);
+    expect(parseRetryAfterMs("Wed, 01 Jan 2025 00:00:03 GMT", Date.parse("2025-01-01T00:00:00Z"), 2_000)).toBe(2_000);
   });
 
   test("decodes UTF-8 SSE split across byte chunks and ignores completion sentinels", async () => {

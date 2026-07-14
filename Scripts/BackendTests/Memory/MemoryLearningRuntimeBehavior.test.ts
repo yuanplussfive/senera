@@ -177,6 +177,61 @@ describe("Memory learning runtime behavior", () => {
       }),
     );
   });
+
+  test("persists retry state and resumes only pending candidates without learning duplicates", async () => {
+    const repository = new InMemoryAgentMemorySourceRepository();
+    const turn = recordedTurn(repository);
+    let now = 1_000;
+    const learningClient = fakeLearningClient({
+      learnAndValidate: async (input) => ({
+        candidates: [
+          memoryCandidateDraft("completed before retry", input.supportingSourceRefs),
+          memoryCandidateDraft("durable retry", input.supportingSourceRefs),
+        ],
+      }),
+    });
+    let resolutionAttempts = 0;
+    const writeResolver = fakeWriteResolver(async (input) => {
+      resolutionAttempts += 1;
+      if (resolutionAttempts === 2) throw new Error("temporary model failure");
+      return { ...input.proposed, operation: "reject", reason: "retry completed" };
+    });
+    const runtime = new AgentMemoryLearningRuntime({
+      repository,
+      now: () => now,
+      retryBaseMs: 100,
+      maxAttempts: 3,
+      configSnapshot: () => memoryLearningConfig({ enabled: true }),
+      createDependencies: () => ({ learningClient, vectorClient: fakeVectorClient(), writeResolver }),
+    });
+
+    runtime.enqueue(turn);
+    runtime.start();
+    await runtime.drainDue();
+    expect(repository.listMemoryLearningJobs()).toEqual([
+      expect.objectContaining({ status: "retry", attempts: 1, nextAttemptAtMs: 1_100 }),
+    ]);
+    expect(
+      repository
+        .listMemoryCandidatesForEpisode(turn.episode.uri)
+        .map((candidate) => candidate.status)
+        .sort(),
+    ).toEqual(["pending", "rejected"]);
+
+    now = 1_100;
+    await runtime.drainDue();
+    runtime.stop();
+
+    expect(repository.listMemoryLearningJobs()).toEqual([
+      expect.objectContaining({ status: "completed", attempts: 2, lastError: "" }),
+    ]);
+    expect(learningClient.learnAndValidate).toHaveBeenCalledTimes(1);
+    expect(writeResolver.resolve).toHaveBeenCalledTimes(3);
+    expect(repository.listMemoryCandidatesForEpisode(turn.episode.uri).map((candidate) => candidate.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+  });
 });
 
 function recordedTurn(repository: InMemoryAgentMemorySourceRepository): AgentMemoryRecordedTurn {

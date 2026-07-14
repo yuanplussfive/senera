@@ -36,6 +36,9 @@ export interface ModelProviderDraft {
   FirstTokenTimeoutSeconds?: number;
   MaxRequestSeconds?: number;
   MaxNetworkRetries?: number;
+  RetryBaseDelaySeconds?: number;
+  RetryMaxDelaySeconds?: number;
+  RetryAfterMaxDelaySeconds?: number;
 }
 
 export interface ModelCapabilitiesDraft {

@@ -1,8 +1,12 @@
 import { z } from "zod";
 
+const ArtifactRedactionKeyPatternSchema = z.string().min(1).refine(isValidRegularExpression, {
+  message: "Artifacts.Redact.Keys 必须是有效的正则表达式。",
+});
+
 const ToolArtifactRedactionSchema = z
   .object({
-    Keys: z.array(z.string().min(1)).optional(),
+    Keys: z.array(ArtifactRedactionKeyPatternSchema).optional(),
     Paths: z.array(z.string().min(1)).optional(),
   })
   .strict();
@@ -123,3 +127,12 @@ export const ToolArtifactPolicySchema = z
     Workspace: ToolArtifactWorkspaceSchema.optional(),
   })
   .strict();
+
+function isValidRegularExpression(value: string): boolean {
+  try {
+    new RegExp(value, "i");
+    return true;
+  } catch {
+    return false;
+  }
+}

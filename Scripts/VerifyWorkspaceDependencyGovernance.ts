@@ -459,17 +459,27 @@ function inspectVerifyWorkflow(): string[] {
 }
 
 function inspectSecurityScanWorkflow(): string[] {
-  return inspectTextIncludes(securityScanWorkflow, ".github/workflows/security-scan.yml", [
+  const label = ".github/workflows/security-scan.yml";
+  const violations = inspectTextIncludes(securityScanWorkflow, label, [
     "name: Security Scan",
+    "pull_request:",
     "github/codeql-action/init@v3",
     "queries: security-extended,security-and-quality",
     "actions/dependency-review-action@v4",
     "aquasecurity/trivy-action@0.35.0",
     'exit-code: "1"',
     "github/codeql-action/upload-sarif@v3",
-    "if: github.event_name != 'pull_request'",
     "npm run quality.security",
   ]);
+  for (const jobName of ["dependency-audit", "codeql", "trivy-filesystem"]) {
+    const block = workflowJobBlock(securityScanWorkflow, jobName);
+    if (!block) {
+      violations.push(`${label} must define ${jobName}.`);
+    } else if (block.includes("\n    if: github.event_name != 'pull_request'")) {
+      violations.push(`${label} job ${jobName} must run for pull requests.`);
+    }
+  }
+  return violations;
 }
 
 function inspectReleaseWorkflowGates(): string[] {
@@ -652,6 +662,16 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
 
 function inspectTextIncludes(source: string, label: string, expectedTerms: readonly string[]): string[] {
   return expectedTerms.filter((term) => !source.includes(term)).map((term) => `${label} must include ${term}.`);
+}
+
+function workflowJobBlock(source: string, jobName: string): string | undefined {
+  const marker = `\n  ${jobName}:\n`;
+  const start = source.indexOf(marker);
+  if (start < 0) return undefined;
+  const nextJob = /^ {2}[a-z0-9-]+:\s*$/gm;
+  nextJob.lastIndex = start + marker.length;
+  const next = nextJob.exec(source);
+  return source.slice(start, next?.index ?? source.length);
 }
 
 function toPackageJsonPattern(pattern: string): string {

@@ -39,6 +39,9 @@ export const ModelProviderSchema = z
     FirstTokenTimeoutSeconds: disabledOrPositiveNumber("FirstTokenTimeoutSeconds").optional(),
     MaxRequestSeconds: disabledOrPositiveNumber("MaxRequestSeconds").optional(),
     MaxNetworkRetries: z.number().int().min(0).optional(),
+    RetryBaseDelaySeconds: z.number().positive().optional(),
+    RetryMaxDelaySeconds: z.number().positive().optional(),
+    RetryAfterMaxDelaySeconds: z.number().positive().optional(),
   })
   .strict();
 

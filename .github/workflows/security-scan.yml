@@ -28,7 +28,6 @@ jobs:
   dependency-audit:
     name: Dependency Audit
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
     env:
       npm_config_cache: .npm-cache
     steps:
@@ -39,7 +38,6 @@ jobs:
   codeql:
     name: CodeQL
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - uses: github/codeql-action/init@v3
@@ -51,7 +49,6 @@ jobs:
   trivy-filesystem:
     name: Trivy Filesystem
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - uses: aquasecurity/trivy-action@0.35.0

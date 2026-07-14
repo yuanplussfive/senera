@@ -126,12 +126,25 @@ function assertCoveragePolicy(policy: TestSuitePolicy): void {
       `${policy.label} coverage threshold ${metric} must be 0-100.`,
     );
   }
+  for (const group of policy.thresholdGroups ?? []) {
+    assert.ok(group.pattern.length > 0, `${policy.label} grouped coverage threshold must define a pattern.`);
+    for (const [metric, value] of Object.entries(group.thresholds)) {
+      assert.ok(
+        Number.isInteger(value) && value >= 0 && value <= 100,
+        `${policy.label} grouped coverage threshold ${group.pattern}:${metric} must be 0-100.`,
+      );
+    }
+  }
 }
 
 function hasCoveragePolicy(policy: TestSuitePolicy): policy is TestSuitePolicy & {
   coverageInclude: readonly string[];
   coverageExclude: readonly string[];
   thresholds: Record<string, number>;
+  thresholdGroups?: readonly {
+    pattern: string;
+    thresholds: Record<string, number>;
+  }[];
 } {
   return (
     "coverageInclude" in policy &&

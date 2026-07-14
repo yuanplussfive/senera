@@ -45,6 +45,9 @@ export const AgentDefaults = {
     FirstTokenTimeoutSeconds: 240,
     MaxRequestSeconds: -1,
     MaxNetworkRetries: 1,
+    RetryBaseDelaySeconds: 0.25,
+    RetryMaxDelaySeconds: 10,
+    RetryAfterMaxDelaySeconds: 60,
   },
   ToolExecution: {
     TimeoutSeconds: 120,

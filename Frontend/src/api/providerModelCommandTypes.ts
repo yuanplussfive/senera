@@ -29,6 +29,9 @@ export interface ProviderModelConfigInput {
   FirstTokenTimeoutSeconds?: number;
   MaxRequestSeconds?: number;
   MaxNetworkRetries?: number;
+  RetryBaseDelaySeconds?: number;
+  RetryMaxDelaySeconds?: number;
+  RetryAfterMaxDelaySeconds?: number;
 }
 
 export interface ProviderModelGroupAssignmentInput {

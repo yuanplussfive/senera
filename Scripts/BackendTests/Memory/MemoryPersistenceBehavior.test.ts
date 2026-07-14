@@ -22,6 +22,31 @@ afterEach(() => {
 });
 
 describe("Memory persistence behavior", () => {
+  test("recovers interrupted learning jobs after reopening SQLite", () => {
+    const databasePath = createDatabasePath();
+    const first = new SqliteAgentMemorySourceRepository(databasePath);
+    const turn = first.recordCompletedTurn(
+      completedTurn("session-learning-job", "request-learning-job", "2026-01-01T00:00:00.000Z"),
+    );
+    first.enqueueMemoryLearningJob(turn.episode.uri, 1_000);
+    expect(first.markMemoryLearningJobRunning(turn.episode.uri, 1_001)).toEqual(
+      expect.objectContaining({ status: "running", attempts: 1 }),
+    );
+    first.close();
+
+    const reopened = new SqliteAgentMemorySourceRepository(databasePath);
+    reopened.resetRunningMemoryLearningJobs(2_000);
+    expect(reopened.listDueMemoryLearningJobs(2_000, 10)).toEqual([
+      expect.objectContaining({
+        episodeUri: turn.episode.uri,
+        status: "retry",
+        attempts: 1,
+        lastError: "interrupted by runtime restart",
+      }),
+    ]);
+    reopened.close();
+  });
+
   test("persists completed turns, sources, candidates, and promoted memory across repository instances", async () => {
     const databasePath = createDatabasePath();
     const firstRepository = new SqliteAgentMemorySourceRepository(databasePath);

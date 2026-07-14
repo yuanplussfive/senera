@@ -125,6 +125,9 @@ export function createModelProvider(
     FirstTokenTimeoutMs: 10_000,
     MaxRequestMs: 10_000,
     MaxNetworkRetries: 0,
+    RetryBaseDelayMs: 250,
+    RetryMaxDelayMs: 10_000,
+    RetryAfterMaxDelayMs: 60_000,
     Headers: {},
     ...overrides,
   };

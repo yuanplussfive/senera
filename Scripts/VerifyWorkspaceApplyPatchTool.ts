@@ -12,8 +12,12 @@ import type { AgentHostToolContext } from "../Source/AgentSystem/ToolRuntime/Age
 void main();
 
 async function main(): Promise<void> {
-  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "senera-workspace-patch-"));
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "senera-workspace-patch-"));
+  const workspaceRoot = path.join(temporaryRoot, "workspace");
+  const outsideRoot = path.join(temporaryRoot, "outside");
   try {
+    await fs.mkdir(workspaceRoot, { recursive: true });
+    await fs.mkdir(outsideRoot, { recursive: true });
     await fs.mkdir(path.join(workspaceRoot, "src"), { recursive: true });
     await fs.mkdir(path.join(workspaceRoot, "docs"), { recursive: true });
     await fs.mkdir(path.join(workspaceRoot, "empty-delete"), { recursive: true });
@@ -127,9 +131,26 @@ async function main(): Promise<void> {
     );
     assert.equal(invalid.response.ok, false);
 
+    const linkedDirectory = path.join(workspaceRoot, "linked-outside");
+    await fs.symlink(outsideRoot, linkedDirectory, process.platform === "win32" ? "junction" : "dir");
+    const escaped = await applyWorkspacePatchHostTool(
+      {
+        operations: [
+          {
+            kind: "add",
+            path: "linked-outside/escaped.txt",
+            content: "must remain inside the workspace\n",
+          },
+        ],
+      },
+      context,
+    );
+    assert.equal(escaped.response.ok, false);
+    await assert.rejects(fs.stat(path.join(outsideRoot, "escaped.txt")));
+
     console.log("Workspace apply patch tool verification passed.");
   } finally {
-    await fs.rm(workspaceRoot, { force: true, recursive: true });
+    await fs.rm(temporaryRoot, { force: true, recursive: true });
   }
 }
 

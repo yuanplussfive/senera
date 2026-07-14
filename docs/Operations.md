@@ -2,16 +2,20 @@
 
 这份文档写给实际部署、更新和排查 Senera 的人。日常本地开发看 README 就够了；跑 Docker、更新镜像、处理数据目录权限和沙箱状态时，看这里。
 
-## Docker 启动
+## Docker 首次启动
 
 默认容器监听 `8787`，所有运行数据都放在容器内的 `/data`。`compose.yaml` 默认使用 Docker named volume，普通部署不用先处理宿主机目录权限。
 
+Senera 不提供默认账号或默认密码。全新 volume 必须先拉取镜像并创建管理员账户：
+
 ```bash
+docker compose pull
+docker compose run --rm -it senera node Dist/Apps/AdminAccess.js init
 docker compose up -d
 docker compose logs -f senera
 ```
 
-启动后打开 `http://localhost:8787`。
+初始化命令会依次询问登录用户名、显示名称和至少 15 位的管理员密码。账户文件只保存 `scrypt` 密码哈希。初始化完成并启动服务后，打开 `http://localhost:8787`。
 
 默认 `compose.yaml` 做了这些事情：
 
@@ -26,18 +30,6 @@ SENERA_PORT=18787 docker compose up -d
 ```
 
 ## 管理员访问
-
-Senera 的公网服务是单管理员模式，不提供默认账号或默认密码。首次启动前需要在数据 volume 中创建管理员账户；账户文件只保存 `scrypt` 密码哈希，不保存明文密码。
-
-```bash
-docker compose run --rm -it senera node Dist/Apps/AdminAccess.js init
-```
-
-命令会依次询问登录用户名、显示名称和管理员密码。登录用户名用于认证，显示名称只用于界面展示。初始化完成后再启动服务：
-
-```bash
-docker compose up -d
-```
 
 浏览器和手机 Web 端登录后会获得 HttpOnly Cookie。会话最长 72 小时，连续 12 小时没有实际请求会失效；服务重启也会使所有会话重新登录。退出登录或重置密码会立即撤销会话。
 

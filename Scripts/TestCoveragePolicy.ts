@@ -26,6 +26,10 @@ export type TestSuiteCoveragePolicy = {
   coverageInclude: readonly string[];
   coverageExclude: readonly string[];
   thresholds: CoverageThresholds;
+  thresholdGroups?: readonly {
+    pattern: string;
+    thresholds: CoverageThresholds;
+  }[];
   requiredLayers?: readonly TestLayerPolicy[];
 };
 
@@ -60,15 +64,21 @@ const frontendTestLayers = [
 
 const backendTestLayers = [
   { name: "ActionPlanner", minimumCases: 10 },
+  { name: "Artifacts", minimumCases: 8 },
   { name: "Auth", minimumCases: 12 },
+  { name: "Config", minimumCases: 3 },
   { name: "Execution", minimumCases: 15 },
   { name: "Memory", minimumCases: 10 },
   { name: "ModelEndpoints", minimumCases: 12 },
   { name: "Pi", minimumCases: 10 },
+  { name: "Runtime", minimumCases: 4 },
+  { name: "Safety", minimumCases: 2 },
   { name: "Session", minimumCases: 10 },
   { name: "Text", minimumCases: 3 },
+  { name: "ToolRuntime", minimumCases: 3 },
   { name: "ToolSearch", minimumCases: 3 },
   { name: "Uploads", minimumCases: 8 },
+  { name: "WebSocket", minimumCases: 14 },
   { name: "Xml", minimumCases: 3 },
 ] as const satisfies readonly TestLayerPolicy[];
 
@@ -105,14 +115,26 @@ export const BackendTestCoveragePolicy = {
   verifyEntrypoint: "Scripts/VerifyBackendTestCoverage.ts",
   testInclude: ["Scripts/BackendTests/**/*.test.ts"],
   coverageDirectory: "coverage/backend",
-  coverageInclude: backendTestLayers.map((layer) => `Source/AgentSystem/${layer.name}/**/*.ts`),
-  coverageExclude: ["Source/AgentSystem/**/*.d.ts"],
+  coverageInclude: ["Source/AgentSystem/**/*.ts"],
+  coverageExclude: ["Source/AgentSystem/BamlClient/**", "Source/AgentSystem/**/*.d.ts"],
   thresholds: {
-    lines: 60,
-    functions: 60,
-    branches: 45,
-    statements: 60,
+    lines: 40,
+    functions: 38,
+    branches: 28,
+    statements: 40,
   },
+  thresholdGroups: [
+    {
+      pattern:
+        "Source/AgentSystem/{ActionPlanner,Auth,Execution,Memory,ModelEndpoints,Pi,Session,Text,ToolSearch,Uploads,Xml}/**/*.ts",
+      thresholds: {
+        lines: 60,
+        functions: 60,
+        branches: 45,
+        statements: 60,
+      },
+    },
+  ],
   requiredLayers: backendTestLayers,
 } as const satisfies TestSuiteCoveragePolicy;
 

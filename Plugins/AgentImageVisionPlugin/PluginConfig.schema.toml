@@ -154,6 +154,30 @@ min = 0
 step = 1
 
 [[form.sections.fields]]
+path = ["vision", "provider", "retryBaseDelaySeconds"]
+label = "重试基础等待"
+description = "指数退避的起始等待时间，单位秒。"
+type = "number"
+min = 0.001
+step = 0.05
+
+[[form.sections.fields]]
+path = ["vision", "provider", "retryMaxDelaySeconds"]
+label = "重试最大等待"
+description = "指数退避的最长等待时间，单位秒。"
+type = "number"
+min = 0.001
+step = 1
+
+[[form.sections.fields]]
+path = ["vision", "provider", "retryAfterMaxDelaySeconds"]
+label = "Retry-After 最大等待"
+description = "供应商 Retry-After 响应允许的最长等待时间，单位秒。"
+type = "number"
+min = 0.001
+step = 1
+
+[[form.sections.fields]]
 path = ["vision", "provider", "headers"]
 label = "附加请求头"
 description = "发送给视觉模型服务的额外请求头。"

@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { createTwoFilesPatch } from "diff";
 import type { ToolArtifactWorkspaceManifest } from "../Types/PluginManifestTypes.js";
@@ -9,6 +8,7 @@ import type {
   ToolWorkspaceSnapshot,
 } from "../Types/ToolRuntimeTypes.js";
 import { assertInsideRoot, toPosixPath } from "./AgentArtifactLocator.js";
+import { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
 
 export interface AgentWorkspaceArtifactWriterOptions {
   workspaceRoot: string;
@@ -36,7 +36,11 @@ interface WorkspaceContentWriteResult {
 }
 
 export class AgentWorkspaceArtifactWriter {
-  constructor(private readonly options: AgentWorkspaceArtifactWriterOptions) {}
+  private readonly fileWriter: AgentArtifactFileWriter;
+
+  constructor(private readonly options: AgentWorkspaceArtifactWriterOptions) {
+    this.fileWriter = new AgentArtifactFileWriter(options.workspaceRoot);
+  }
 
   async write(): Promise<WrittenWorkspaceArtifacts> {
     const before = await this.writeSnapshotContents({
@@ -53,7 +57,7 @@ export class AgentWorkspaceArtifactWriter {
       this.annotatePatchReference(change, before.byPath, after.byPath),
     );
     const patchText = this.buildUnifiedPatch(changes, before.byPath, after.byPath);
-    await writeText(this.options.files.workspacePatch, patchText);
+    await this.fileWriter.writeText(this.options.files.workspacePatch, patchText, Number.MAX_SAFE_INTEGER);
 
     return {
       before: before.snapshot,
@@ -106,7 +110,7 @@ export class AgentWorkspaceArtifactWriter {
       path.resolve(rootDir, relativePath),
       `workspace artifact 内容路径超出目录：${entry.path}`,
     );
-    await writeText(artifactPath, entry.content.text);
+    await this.fileWriter.writeText(artifactPath, entry.content.text, Number.MAX_SAFE_INTEGER);
 
     return {
       ...entry,
@@ -244,11 +248,4 @@ function safeArtifactFilePath(value: string): string {
 
 function toArtifactRelativePath(artifactDir: string, filePath: string): string {
   return toPosixPath(path.relative(artifactDir, filePath));
-}
-
-async function writeText(filePath: string, value: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tempPath, value, "utf8");
-  await fs.rename(tempPath, filePath);
 }

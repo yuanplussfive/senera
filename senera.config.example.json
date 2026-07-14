@@ -173,7 +173,11 @@
       },
       "Endpoint": "ChatCompletions",
       "Model": "mistral-large-latest",
-      "MaxOutputTokens": 4096
+      "MaxOutputTokens": 4096,
+      "MaxNetworkRetries": 1,
+      "RetryBaseDelaySeconds": 0.25,
+      "RetryMaxDelaySeconds": 10,
+      "RetryAfterMaxDelaySeconds": 60
     }
   ]
 }
