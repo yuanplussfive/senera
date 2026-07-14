@@ -736,10 +736,10 @@ function AboutSettings({ activeSectionId }: { activeSectionId: SettingsSectionId
       </SettingsPanel>
       <SettingsPanel title="本地验证" description="这些命令用于验证桌面端实际窗口和前端构建，不依赖 npm run server。">
         <div className="grid gap-2">
-          <CommandRow command="npm run frontend" label="启动前端 HMR 服务" />
-          <CommandRow command="npm run desktoplive" label="启动桌面端 live 验证" />
-          <CommandRow command="npm run desktopverify" label="构建主进程和前端" />
-          <CommandRow command="npm run desktoppack" label="打包安装程序" />
+          <CommandRow command="npm run dev.frontend" label="启动前端 HMR 服务" />
+          <CommandRow command="npm run desktop.live" label="启动桌面端 live 验证" />
+          <CommandRow command="npm run desktop.verify" label="构建主进程和前端" />
+          <CommandRow command="npm run desktop.pack" label="打包安装程序" />
         </div>
       </SettingsPanel>
     </div>

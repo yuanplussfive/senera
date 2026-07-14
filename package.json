@@ -69,11 +69,7 @@
     "ci": "npm run quality.security && npm run quality.baml && npm run policy.verify && npm run check.types && npm run quality.lint && npm run quality.format && npm run test.backend && npm run test.frontend && npm run test.e2e && npm run build && npm run verify.suite -- workspace core e2e platform release && npm run quality.coverage",
     "test": "npm run check.types && npm run test.backend && npm run test.frontend",
     "desktop.live": "tsx Apps/Desktop/RunDesktopLive.ts",
-    "desktoplive": "npm run desktop.live",
-    "desktop.verify": "npm run build && npm --workspace senera-frontend run build",
-    "desktopverify": "npm run desktop.verify",
-    "desktoppack": "npm run desktop.pack",
-    "desktoprestore": "npm run desktop.restore"
+    "desktop.verify": "npm run build && npm --workspace senera-frontend run build"
   },
   "keywords": [],
   "author": "",
