@@ -62,15 +62,12 @@ export function UserFooter({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="flex h-[54px] w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition-colors duration-150 hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300 data-[state=open]:bg-ink-900/[0.045]"
+            className="flex h-[48px] w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition-colors duration-150 hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300 data-[state=open]:bg-ink-900/[0.045]"
           >
             <UserAvatar profile={profile} />
-            <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <div className="truncate text-[13px] text-ink-800">{profile.name}</div>
-              <div className="flex items-center gap-1 text-[10.5px] text-ink-400">
-                <StatusIcon className={cn("h-3 w-3 shrink-0", statusIconClass)} aria-hidden="true" />
-                {statusLabel}
-              </div>
+              <StatusIcon className={cn("h-3 w-3 shrink-0", statusIconClass)} aria-label={statusLabel} />
             </div>
             <Settings2 className="h-3.5 w-3.5 shrink-0 text-ink-350" />
           </button>

@@ -2,14 +2,7 @@ import { ChevronDown, PanelLeftClose, SquarePen } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../../shared/responsive";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  IconButton,
-  LogoMark,
-  LogoWordmark,
-} from "../../shared/ui";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, IconButton, LogoWordmark } from "../../shared/ui";
 import { DropdownSessionMenuSections } from "./SessionMenuActions";
 import type { SessionMenuSection } from "./types";
 
@@ -33,8 +26,7 @@ export function SessionHeader({ menuSections, onNewSession, onToggleSidebar }: S
               isCoarsePointer && "min-h-11",
             )}
           >
-            <LogoMark size={18} />
-            <LogoWordmark className="truncate text-[14px]" />
+            <LogoWordmark className="truncate" />
             <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-ink-400 transition-transform duration-150 group-data-[state=open]:rotate-180" />
           </button>
         </DropdownMenuTrigger>

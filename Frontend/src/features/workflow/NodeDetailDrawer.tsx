@@ -6,7 +6,7 @@ import { cn, formatTime, formatDuration } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
 import { MetaLabel, Sheet, SheetContent, Tooltip, useClipboardCopy } from "../../shared/ui";
-import { readStepKindLabel, readStepStatusLabel, readStepStatusTone } from "./stepPresentation";
+import { readStepKindLabel, readStepStatusLabel } from "./stepPresentation";
 import { DataView } from "./DataView";
 
 export interface NodeDetailDrawerProps {
@@ -56,10 +56,9 @@ export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.
 function DetailSkeleton(): JSX.Element {
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-1.5">
-        <span className="h-6 w-24 rounded-full bg-ink-900/[0.05]" />
-        <span className="h-6 w-32 rounded-full bg-ink-900/[0.05]" />
-        <span className="h-6 w-20 rounded-full bg-ink-900/[0.05]" />
+      <div className="space-y-2 border-y border-ink-200/60 py-3">
+        <span className="block h-3 w-24 rounded-sm bg-ink-900/[0.05]" />
+        <span className="block h-3 w-40 rounded-sm bg-ink-900/[0.05]" />
       </div>
       <div className="space-y-2">
         <span className="block h-3 w-16 rounded bg-ink-900/[0.05]" />
@@ -73,14 +72,14 @@ function DetailSkeleton(): JSX.Element {
 function Header({ step, onClose }: { step: TimelineStep; onClose: () => void }): JSX.Element {
   return (
     <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 px-5">
-      <MetaLabel>{readStepKindLabel(step.kind)}</MetaLabel>
-      <h2 className="truncate text-[15px] font-semibold text-ink-950">
-        {step.title}
-      </h2>
+      <div className="min-w-0 flex-1">
+        <h2 className="truncate text-[15px] font-semibold text-ink-950">{step.title}</h2>
+        <div className="mt-0.5 text-[10.5px] text-ink-450">{readStepKindLabel(step.kind)}</div>
+      </div>
       <button
         type="button"
         onClick={onClose}
-        className="ml-auto grid h-8 w-8 place-items-center rounded-lg text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
+        className="ml-auto grid h-8 w-8 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
         aria-label={frontendMessage("ui.close")}
       >
         <X className="h-4 w-4" />
@@ -104,16 +103,12 @@ const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
 
       {step.toolErrorMessage ? (
         <Section label={frontendMessage("workflow.node.section.error")}>
-          <div className="rounded-md border border-brick-200/70 bg-brick-50/50 px-3 py-2 text-[13px] text-brick-600">
-            {step.toolErrorMessage}
-          </div>
+          <div className="text-[13px] leading-5 text-brick-600">{step.toolErrorMessage}</div>
         </Section>
       ) : null}
       {step.errorMessage && step.errorMessage !== step.toolErrorMessage ? (
         <Section label={frontendMessage("workflow.node.section.error")}>
-          <div className="rounded-md border border-brick-200/70 bg-brick-50/50 px-3 py-2 text-[13px] text-brick-600">
-            {step.errorMessage}
-          </div>
+          <div className="text-[13px] leading-5 text-brick-600">{step.errorMessage}</div>
         </Section>
       ) : null}
 
@@ -128,7 +123,7 @@ const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
       {step.toolPreview && step.toolPreview !== step.toolPresentation?.headline ? (
         <Section label={frontendMessage("workflow.node.section.resultPreview")} copyValue={step.toolPreview}>
           <MarkdownRenderer
-            className="rounded-md bg-paper-100/50 px-3 py-2"
+            className="px-0 py-0"
             contentClassName="text-[13px] leading-relaxed"
             compact
             lightweightCode
@@ -192,7 +187,7 @@ function ToolResultPresentationView({
       {presentation.summary ? (
         <Section label={frontendMessage("workflow.node.section.resultSummary")} copyValue={presentation.summary}>
           <MarkdownRenderer
-            className="rounded-md bg-paper-100/50 px-3 py-2"
+            className="px-0 py-0"
             contentClassName="text-[13px] leading-relaxed"
             compact
             lightweightCode
@@ -240,7 +235,7 @@ function MetaStrip({ step }: { step: TimelineStep }): JSX.Element {
   chips.push({
     label: frontendMessage("workflow.node.meta.status"),
     value: readStepStatusLabel(step.status),
-    tone: readStepStatusTone(step.status),
+    tone: step.status === "failed" ? "warn" : step.status === "running" ? "live" : "default",
   });
   if (step.modelName)
     chips.push({ label: frontendMessage("workflow.node.meta.model"), value: step.modelName, mono: true });
@@ -283,34 +278,29 @@ function MetaStrip({ step }: { step: TimelineStep }): JSX.Element {
     chips.push({ label: frontendMessage("workflow.node.meta.start"), value: formatTime(step.startedAt), mono: true });
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {chips.map((c, i) => (
-        <span
-          key={i}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11.5px]",
-            toneClass(c.tone),
-          )}
-        >
-          <MetaLabel size="xs">{c.label}</MetaLabel>
-          <span className={cn("text-ink-800", c.mono && "font-mono text-[11px]")}>{c.value}</span>
-        </span>
+    <dl className="divide-y divide-ink-200/60 border-y border-ink-200/70">
+      {chips.map((chip, index) => (
+        <div key={index} className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 py-1.5 text-[11.5px]">
+          <dt className="text-ink-450">{chip.label}</dt>
+          <dd
+            className={cn(
+              "min-w-0 break-words text-ink-800",
+              chip.mono && "font-mono text-[11px]",
+              toneTextClass(chip.tone),
+            )}
+          >
+            {chip.value}
+          </dd>
+        </div>
       ))}
-    </div>
+    </dl>
   );
 }
 
-function toneClass(tone: "default" | "warn" | "ok" | "live" | undefined): string {
-  switch (tone) {
-    case "warn":
-      return "border-brick-200/70 bg-brick-50/50";
-    case "ok":
-      return "border-moss-100/60 bg-moss-50/60";
-    case "live":
-      return "border-umber-200/60 bg-umber-50";
-    default:
-      return "border-ink-200/60 bg-paper-100/60";
-  }
+function toneTextClass(tone: "default" | "warn" | "ok" | "live" | undefined): string {
+  if (tone === "warn") return "text-brick-600";
+  if (tone === "live") return "text-umber-600";
+  return "";
 }
 
 function Section({

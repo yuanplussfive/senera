@@ -79,13 +79,20 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
       if (!flowReady || nodes.length === 0) return;
       window.requestAnimationFrame(() => {
         try {
-          void rf.fitView({ padding: FIT_VIEW_PADDING, duration });
+          if (nodes.length > 8) {
+            const recentNode =
+              [...nodes].reverse().find((node) => node.data.kind === "step" && node.data.step.status === "running") ??
+              nodes[nodes.length - 1];
+            void rf.setCenter(recentNode.position.x + 120, recentNode.position.y + 54, { zoom: 0.86, duration });
+            return;
+          }
+          void rf.fitView({ padding: FIT_VIEW_PADDING, duration, maxZoom: 1 });
         } catch {
           /* ignore */
         }
       });
     },
-    [flowReady, nodes.length, rf],
+    [flowReady, nodes, rf],
   );
 
   useEffect(() => {
@@ -122,8 +129,8 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
         nodeTypes={NODE_TYPES}
         onNodeClick={handleNodeClick}
         fitView
-        fitViewOptions={{ padding: FIT_VIEW_PADDING }}
-        minZoom={0.4}
+        fitViewOptions={{ padding: FIT_VIEW_PADDING, maxZoom: 1 }}
+        minZoom={0.5}
         maxZoom={1.6}
         translateExtent={translateExtent}
         proOptions={{ hideAttribution: true }}
@@ -135,22 +142,15 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
         zoomOnPinch
         zoomOnScroll={false}
         selectionOnDrag={false}
-        onInit={(instance) => {
+        onInit={() => {
           setFlowReady(true);
-          window.requestAnimationFrame(() => {
-            try {
-              void instance.fitView({ padding: FIT_VIEW_PADDING });
-            } catch {
-              /* ignore */
-            }
-          });
         }}
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--theme-canvas-grid)" />
         <Controls
           position="bottom-left"
           showInteractive={false}
-          className={cn("!rounded-md !border !border-ink-200 !bg-paper-50 !shadow-bubble-ai")}
+          className={cn("!rounded-md !border !border-ink-200 !bg-paper-50 !shadow-none")}
         />
       </ReactFlow>
       <NodeDetailDrawer step={selectedStep} onClose={() => setSelectedStepId(null)} />

@@ -13,7 +13,6 @@ export function AssistantMessageBody({ message, run, onViewWorkflow }: Assistant
   const isToolPreface = message.kind === "AssistantToolPreface";
   return (
     <div className="assistant-message-flow mt-1 min-w-0">
-      {!isToolPreface ? <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} /> : null}
       {isToolPreface ? (
         <div className="mb-1.5 text-[11px] font-medium text-umber-600">
           {frontendMessage("runtime.migrated.features.chat.AssistantMessageBody.22.11")}
@@ -25,6 +24,7 @@ export function AssistantMessageBody({ message, run, onViewWorkflow }: Assistant
       >
         {message.content}
       </LazyMarkdownRenderer>
+      {!isToolPreface ? <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} /> : null}
       {message.kind === "AssistantAsk" ? (
         <div className="mt-2 text-[11px] font-medium text-terra-600">
           {frontendMessage("runtime.migrated.features.chat.AssistantMessageBody.33.11")}

@@ -1,5 +1,4 @@
 import { ArrowUpRight } from "lucide-react";
-import { LogoMark } from "../../shared/ui";
 import { resolveRuntimeEmptySuggestions } from "../../config/runtimeConfig";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { parseEmptySuggestions } from "./emptySuggestions";
@@ -12,8 +11,7 @@ export function EmptyChatState({
   const suggestions = parseEmptySuggestions(resolveRuntimeEmptySuggestions(__SENERA_EMPTY_SUGGESTIONS__));
   return (
     <div className="flex w-full max-w-[560px] flex-col items-start text-left">
-      <LogoMark size={30} />
-      <h2 className="mt-6 text-[28px] font-semibold leading-9 text-ink-950">
+      <h2 className="text-[28px] font-semibold leading-9 tracking-[-0.025em] text-ink-950">
         {frontendMessage("chat.empty.title")}
       </h2>
       <p className="mt-2 max-w-md text-[14px] leading-6 text-ink-500">{frontendMessage("chat.empty.subtitle")}</p>
@@ -31,10 +29,7 @@ export function EmptyChatState({
                 <ArrowUpRight className="h-4 w-4 shrink-0 text-ink-350 transition-colors group-hover:text-terra-600" />
               </button>
             ) : (
-              <span
-                key={suggestion}
-                className="block px-3 py-3 text-[13.5px] text-ink-600"
-              >
+              <span key={suggestion} className="block px-3 py-3 text-[13.5px] text-ink-600">
                 {suggestion}
               </span>
             ),

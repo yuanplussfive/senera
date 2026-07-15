@@ -1,5 +1,5 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { ChevronDown, CircleAlert, LoaderCircle, MessageSquare, PencilLine, SquarePen, Trash2 } from "lucide-react";
+import { CircleAlert, LoaderCircle, MoreHorizontal, PencilLine, SquarePen, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState } from "react";
 import { cn } from "../../lib/util";
@@ -12,7 +12,6 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
   IconButton,
-  LogoMark,
 } from "../../shared/ui";
 import { motionTimings, readTapScale, useMotionLevel } from "../../shared/motion";
 import { ContextSessionMenuItems, DropdownSessionMenuItems } from "./SessionMenuActions";
@@ -68,9 +67,9 @@ export function SessionRow({
           whileTap={tapScale ? { scale: tapScale } : undefined}
           transition={motionTimings.fast}
           className={cn(
-            "group relative isolate mt-0.5 grid w-full grid-cols-[22px_minmax(0,1fr)_28px] items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors duration-150",
-            "data-[state=open]:bg-[var(--theme-session-active-bg)]",
-            active ? "text-ink-900" : "text-ink-700 hover:bg-ink-900/[0.03]",
+            "group relative isolate mt-px grid w-full grid-cols-[minmax(0,1fr)_28px] items-center gap-1 rounded-md px-2.5 py-1.5 text-left transition-colors duration-150",
+            "data-[state=open]:bg-ink-900/[0.055]",
+            active ? "bg-ink-900/[0.055] text-ink-950" : "text-ink-700 hover:bg-ink-900/[0.035]",
           )}
         >
           <button
@@ -80,33 +79,19 @@ export function SessionRow({
             onClick={onClick}
             className="absolute inset-0 z-10 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300"
           />
-          {active ? (
-            <motion.span
-              key={sessionId}
-              layoutId="active-session-indicator"
-              className="pointer-events-none absolute inset-0 z-0 rounded-md bg-[var(--theme-elevated-bg)] shadow-[inset_2px_0_0_rgb(var(--color-terra-500)/0.78)]"
-              transition={
-                reduceMotion || disableMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 42 }
-              }
-            />
-          ) : null}
-          <div className="pointer-events-none relative z-20 mt-0.5 grid h-5 w-5 place-items-center">
-            {accent === "running" ? (
-              <LoaderCircle
-                className="h-3.5 w-3.5 animate-spin text-umber-600"
-                aria-label={frontendMessage("session.statusRunning")}
-              />
-            ) : accent === "failed" ? (
-              <CircleAlert
-                className="h-3.5 w-3.5 text-brick-600"
-                aria-label={frontendMessage("session.statusFailed")}
-              />
-            ) : (
-              <MessageSquare className="h-3.5 w-3.5 text-ink-500" aria-hidden="true" />
-            )}
-          </div>
           <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
-            <div className="flex min-w-0 items-center gap-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              {accent === "running" ? (
+                <LoaderCircle
+                  className="h-3 w-3 shrink-0 animate-spin text-umber-600"
+                  aria-label={frontendMessage("session.statusRunning")}
+                />
+              ) : accent === "failed" ? (
+                <CircleAlert
+                  className="h-3 w-3 shrink-0 text-brick-600"
+                  aria-label={frontendMessage("session.statusFailed")}
+                />
+              ) : null}
               <span
                 title={title}
                 className="block min-w-0 max-w-full truncate text-[13px] font-medium leading-tight cursor-[inherit] select-none"
@@ -114,9 +99,11 @@ export function SessionRow({
                 {title}
               </span>
             </div>
-            <div className="mt-0.5 truncate text-[10.5px] tabular-nums text-ink-400 cursor-[inherit] select-none">
-              {subtitle}
-            </div>
+            {active || accent !== "idle" ? (
+              <div className="mt-0.5 truncate text-[10.5px] tabular-nums text-ink-450 cursor-[inherit] select-none">
+                {subtitle}
+              </div>
+            ) : null}
           </div>
 
           <div className="relative z-20">
@@ -129,12 +116,12 @@ export function SessionRow({
                   touchSafe
                   className={cn(
                     "justify-self-end hover:bg-ink-900/[0.06]",
-                    menuOpen || active || showInlineActions
+                    menuOpen || showInlineActions
                       ? "opacity-100"
                       : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
                   )}
                 >
-                  <ChevronDown className="h-3.5 w-3.5" />
+                  <MoreHorizontal className="h-3.5 w-3.5" />
                 </IconButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-[190px]">
@@ -155,14 +142,13 @@ export function SessionRow({
 export function EmptyState({ onNewSession }: { onNewSession: () => void }): JSX.Element {
   return (
     <div className="mt-8 flex flex-col items-center px-4 text-center">
-      <LogoMark size={24} />
-      <div className="mt-2 text-[13px] text-ink-700">
+      <div className="text-[13px] text-ink-700">
         {frontendMessage("runtime.migrated.features.session.SessionRows.152.54")}
       </div>
       <button
         type="button"
         onClick={onNewSession}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 py-1 text-[12px] text-ink-800 transition hover:border-ink-300 hover:bg-paper-200/60"
+        className="mt-3 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-ink-700 transition hover:bg-ink-900/[0.05] hover:text-ink-950"
       >
         <SquarePen className="h-3 w-3" />
         {frontendMessage("runtime.migrated.features.session.SessionRows.159.9")}

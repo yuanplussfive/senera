@@ -11,6 +11,7 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 
 const { ChatPanel } = await import("../../../Frontend/src/features/chat/ChatPanel.tsx");
 const { ChatComposer } = await import("../../../Frontend/src/features/chat/ChatComposer.tsx");
+const { MessageActions } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
 const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
@@ -189,6 +190,38 @@ test("chat panel mounts and updates aggregate state without external-store warni
       /maximum update depth|getSnapshot should be cached|external store/i.test(String(message)),
     ),
   ).toBe(false);
+});
+
+test("message overflow keeps workflow and mutation actions reachable", async () => {
+  const user = userEvent.setup();
+  const onViewWorkflow = vi.fn();
+  const onRegenerate = vi.fn();
+  const onDelete = vi.fn();
+
+  renderWithFrontendProviders(
+    React.createElement(MessageActions, {
+      content: "answer",
+      placement: "left",
+      hasRequestId: true,
+      hasWorkflow: true,
+      showInlineActions: true,
+      onViewWorkflow,
+      onRegenerate,
+      onDelete,
+    }),
+  );
+
+  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "查看工作流" }));
+  expect(onViewWorkflow).toHaveBeenCalledTimes(1);
+
+  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "从此处重新回答" }));
+  expect(onRegenerate).toHaveBeenCalledTimes(1);
+
+  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "从此处删除" }));
+  expect(onDelete).toHaveBeenCalledTimes(1);
 });
 
 test("message list renders messages and streaming run as stable keyed items", () => {

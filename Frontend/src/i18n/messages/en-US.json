@@ -17,6 +17,7 @@
   "chat.cancelRequested": "Interrupt request sent...",
   "chat.action.copy": "Copy",
   "chat.action.deleteFromHere": "Delete from here",
+  "chat.action.more": "More actions",
   "chat.action.regenerateFromHere": "Regenerate from here",
   "chat.action.viewWorkflow": "View workflow",
   "chat.askUserBadge": "Needs your reply",

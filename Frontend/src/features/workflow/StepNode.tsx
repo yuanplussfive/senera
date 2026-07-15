@@ -17,10 +17,9 @@ import {
 import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
 import { cn, formatDuration } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { MetaLabel } from "../../shared/ui";
 import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
 import type { StepNodeData } from "./layout";
-import { readStepAccent } from "./stepPresentation";
+import { readStepStatusLabel } from "./stepPresentation";
 
 const KindIcon: Record<TimelineStepKind, React.ComponentType<{ className?: string }>> = {
   understand: MessageSquareText,
@@ -45,60 +44,65 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
 
   const step = data.step;
   const Icon = KindIcon[step.kind];
-
-  const accent = readStepAccent(step);
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
+  const statusClass =
+    step.status === "failed" || step.kind === "error"
+      ? "border-brick-300"
+      : step.status === "running"
+        ? "border-umber-300"
+        : "border-ink-200";
+  const iconClass =
+    step.status === "failed" || step.kind === "error"
+      ? "text-brick-600"
+      : step.status === "running"
+        ? "text-umber-600"
+        : "text-ink-500";
 
   return (
     <div
       className={cn(
-        "group relative w-[240px] cursor-pointer rounded-lg border bg-paper-50 px-3 py-2.5 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
-        "shadow-[var(--theme-node-shadow)] hover:shadow-[var(--theme-node-shadow)]",
-        accent.border,
-        selected ? "ring-2 ring-terra-400 ring-offset-2 ring-offset-paper-100" : "",
+        "group relative w-[240px] cursor-pointer rounded-md border bg-paper-50 px-3 py-2.5 transition-[border-color,background-color] duration-150",
+        "hover:border-ink-400 hover:bg-paper-100/70",
+        statusClass,
+        selected ? "outline outline-2 outline-offset-2 outline-terra-400" : "",
       )}
     >
-      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-paper-50 !bg-ink-300" />
+      <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-paper-50 !bg-ink-300" />
 
-      <div className="flex items-start gap-2">
-        <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-lg", accent.iconBg)}>
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center">
           <StatusIcon
             status={step.status}
             kind={step.kind}
             icon={Icon}
-            className={accent.iconFg}
+            className={iconClass}
             motionLevel={effectiveLevel}
           />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-[12.5px] font-medium text-ink-900">{step.title}</span>
-            <StatusDot status={step.status} motionLevel={effectiveLevel} />
-          </div>
+          <div className="truncate text-[12.5px] font-medium text-ink-900">{step.title}</div>
           {step.description ? (
-            <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-ink-500">{step.description}</p>
+            <p className="mt-1 line-clamp-2 text-[11.5px] leading-[1.45] text-ink-500">{step.description}</p>
           ) : null}
         </div>
       </div>
 
       {step.kind === "tool" && step.callId ? (
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <MetaLabel size="xs">call</MetaLabel>
-          <span className="rounded bg-paper-200/70 px-1.5 py-0.5 font-mono text-[10px] text-ink-700">
-            {step.callId.slice(0, 12)}
-          </span>
+        <div className="mt-2 flex min-w-0 gap-1 font-mono text-[10px] text-ink-400">
+          <span>call</span>
+          <span className="truncate">{step.callId.slice(0, 12)}</span>
         </div>
       ) : null}
 
       {step.toolErrorMessage || step.errorMessage ? (
-        <div className="mt-1.5 line-clamp-2 rounded-md border border-brick-200/70 bg-brick-50/50 px-2 py-1 text-[10.5px] text-brick-600">
+        <div className="mt-2 line-clamp-2 border-t border-brick-200/70 pt-1.5 text-[10.5px] text-brick-600">
           {step.toolErrorMessage || step.errorMessage}
         </div>
       ) : null}
 
       <StatusFooter step={step} motionLevel={effectiveLevel} />
 
-      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !border-paper-50 !bg-ink-300" />
+      <Handle type="source" position={Position.Bottom} className="!h-1.5 !w-1.5 !border-paper-50 !bg-ink-300" />
     </div>
   );
 }
@@ -112,36 +116,33 @@ function ScopeNode({
   group: Extract<StepNodeData, { kind: "scope" }>["group"];
   selected: boolean;
 }): JSX.Element {
-  const accent =
-    group.status === "failed"
-      ? "border-brick-200 bg-brick-50/70 text-brick-600"
-      : group.status === "running"
-        ? "border-umber-200 bg-umber-50/80 text-umber-600"
-        : "border-moss-100 bg-moss-50/70 text-moss-600";
+  const statusClass =
+    group.status === "failed" ? "border-brick-300" : group.status === "running" ? "border-umber-300" : "border-ink-200";
 
   return (
     <div
       className={cn(
-        "group relative w-[240px] cursor-default rounded-lg border px-3 py-2.5 transition-[background-color,border-color,box-shadow] duration-150 ease-out",
-        "shadow-[var(--shadow-bubble-user)]",
-        accent,
-        selected ? "ring-2 ring-terra-400 ring-offset-2 ring-offset-paper-100" : "",
+        "group relative w-[240px] cursor-default rounded-md border bg-paper-100 px-3 py-2.5 transition-colors duration-150",
+        statusClass,
+        selected ? "outline outline-2 outline-offset-2 outline-terra-400" : "",
       )}
     >
-      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-paper-50 !bg-ink-300" />
-      <div className="flex items-center gap-2">
-        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-paper-50/75">
-          <GitBranch className="h-3.5 w-3.5" />
-        </span>
+      <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-paper-50 !bg-ink-300" />
+      <div className="flex items-start gap-2.5">
+        <GitBranch className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12.5px] font-medium text-ink-900">{group.label}</div>
           {group.description ? (
-            <div className="mt-0.5 truncate text-[11.5px] text-ink-500">{group.description}</div>
+            <div className="mt-1 truncate text-[11.5px] text-ink-500">{group.description}</div>
+          ) : null}
+          {group.status !== "done" ? (
+            <div className={cn("mt-1 text-[10.5px]", group.status === "failed" ? "text-brick-600" : "text-umber-600")}>
+              {readStepStatusLabel(group.status)}
+            </div>
           ) : null}
         </div>
-        <StatusDot status={group.status} motionLevel="none" />
       </div>
-      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !border-paper-50 !bg-ink-300" />
+      <Handle type="source" position={Position.Bottom} className="!h-1.5 !w-1.5 !border-paper-50 !bg-ink-300" />
     </div>
   );
 }
@@ -179,36 +180,6 @@ function StatusIcon({
           <Icon className={cn("h-3 w-3", className)} />
         )}
       </motion.span>
-    </AnimatePresence>
-  );
-}
-
-function StatusDot({
-  status,
-  motionLevel,
-}: {
-  status: TimelineStep["status"];
-  motionLevel: MotionLevel;
-}): JSX.Element | null {
-  const transition = motionLevel === "none" ? { duration: 0 } : motionTimings.fast;
-  const color =
-    status === "running"
-      ? "bg-umber-500"
-      : status === "done"
-        ? "bg-moss-500"
-        : status === "failed"
-          ? "bg-brick-500"
-          : "bg-ink-300";
-  return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.span
-        key={status}
-        initial={{ opacity: motionLevel === "none" ? 1 : 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: motionLevel === "none" ? 1 : 0 }}
-        transition={transition}
-        className={cn("inline-flex h-1.5 w-1.5 shrink-0 rounded-full", color)}
-      />
     </AnimatePresence>
   );
 }

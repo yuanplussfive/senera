@@ -236,8 +236,8 @@ export function ChatComposer({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            "relative flex min-w-0 flex-col rounded-lg border border-ink-200/90 bg-[var(--theme-chat-composer-bg)] px-3 pb-2 pt-1.5 transition-[background-color,border-color,box-shadow] duration-150",
-            "focus-within:border-terra-300 focus-within:bg-[var(--theme-chat-composer-focus-bg)] focus-within:shadow-[0_0_0_2px_rgb(var(--color-terra-100)/0.7)]",
+            "relative flex min-w-0 flex-col rounded-lg border border-ink-300/80 bg-[var(--theme-chat-composer-bg)] px-3 pb-2 pt-1.5 transition-[background-color,border-color] duration-150",
+            "focus-within:border-ink-500 focus-within:bg-[var(--theme-chat-composer-focus-bg)]",
             isDraggingFiles && "border-terra-300 bg-terra-50/70 ring-2 ring-terra-200/70",
           )}
           data-chat-composer
@@ -269,7 +269,7 @@ export function ChatComposer({
             className="scrollbar-thin min-h-11 w-full resize-none bg-transparent px-1 py-2.5 text-[14.5px] leading-6 text-ink-900 placeholder:text-ink-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:opacity-60"
           />
 
-          <div className="flex min-w-0 items-center gap-2 border-t border-ink-200/60 pt-2">
+          <div className="flex min-w-0 items-center gap-2 pt-1">
             <div className="flex min-w-0 flex-1 items-center gap-1">
               <IconButton
                 label="attach"
@@ -318,7 +318,7 @@ export function ChatComposer({
                     className={cn(
                       "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
                       prefersCompactControls && "min-h-11 min-w-11",
-                      canSend ? "bg-ink-900 text-paper-50 hover:bg-terra-600" : "bg-ink-200/70 text-ink-400",
+                      canSend ? "bg-ink-900 text-paper-50 hover:bg-ink-800" : "bg-transparent text-ink-350",
                     )}
                     aria-label="inject-current-run"
                   >
@@ -354,7 +354,7 @@ export function ChatComposer({
                   className={cn(
                     "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
                     prefersCompactControls && "min-h-11 min-w-11",
-                    canSend ? "bg-ink-900 text-paper-50 hover:bg-terra-600" : "bg-ink-200/70 text-ink-400",
+                    canSend ? "bg-ink-900 text-paper-50 hover:bg-ink-800" : "bg-transparent text-ink-350",
                   )}
                   aria-label="send"
                 >

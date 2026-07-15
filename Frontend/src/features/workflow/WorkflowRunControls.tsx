@@ -1,4 +1,4 @@
-import { ChevronDown, Check, Clock3, ListTree, Wrench, X as XIcon } from "lucide-react";
+import { Check, ChevronDown, Loader2, X as XIcon } from "lucide-react";
 import type { RunRecord } from "../../store/sessionStore";
 import { cn, formatDuration, formatTime } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -8,54 +8,21 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-  MetaLabel,
 } from "../../shared/ui";
 import type { RunSummary } from "./runSummary";
 
 export function RunSummaryStrip({ run, summary }: { run: RunRecord; summary: RunSummary }): JSX.Element {
   return (
-    <div className="mb-2 flex items-center divide-x divide-ink-200 border-y border-ink-200/70">
-      <MetricItem
-        icon={<ListTree className="h-3 w-3" />}
-        label={frontendMessage("workflow.summary.nodes")}
-        value={`${summary.completed}/${summary.total}`}
-        tone={summary.failed > 0 ? "danger" : run.status === "running" ? "live" : "neutral"}
-      />
-      <MetricItem
-        icon={<Wrench className="h-3 w-3" />}
-        label={frontendMessage("workflow.summary.tools")}
-        value={`${summary.tools}`}
-      />
-      <MetricItem
-        icon={<Clock3 className="h-3 w-3" />}
-        label={summary.startedAt}
-        value={summary.duration || frontendMessage("workflow.run.inProgress")}
-      />
-    </div>
-  );
-}
-
-function MetricItem({
-  icon,
-  label,
-  value,
-  tone = "neutral",
-}: {
-  icon: JSX.Element;
-  label: string;
-  value: string;
-  tone?: "neutral" | "live" | "danger";
-}): JSX.Element {
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 flex-1 items-center gap-1.5 px-2 py-2",
-        tone === "danger" ? "text-brick-600" : tone === "live" ? "text-umber-600" : "text-ink-600",
-      )}
-    >
-      <span className="shrink-0">{icon}</span>
-      <span className="min-w-0 truncate text-[10.5px] text-current/70">{label}</span>
-      <span className="ml-auto shrink-0 text-[10.5px] font-medium tabular-nums">{value}</span>
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] tabular-nums text-ink-500">
+      <span>
+        {frontendMessage("workflow.summary.nodes")} {summary.completed}/{summary.total}
+      </span>
+      <span>
+        {frontendMessage("workflow.summary.tools")} {summary.tools}
+      </span>
+      <span className={cn(summary.failed > 0 && "text-brick-600", run.status === "running" && "text-umber-600")}>
+        {summary.duration || frontendMessage("workflow.run.inProgress")}
+      </span>
     </div>
   );
 }
@@ -74,81 +41,70 @@ export function RunSelector({
   const current = runs.find((r) => r.requestId === currentRunId) ?? runs[runs.length - 1];
   const reversed = [...runs].reverse();
   const currentIndex = runs.indexOf(current) + 1;
+
   return (
-    <div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="group flex w-full items-start gap-2 rounded-lg border border-ink-200/60 bg-paper-100/70 px-3 py-2 text-left transition hover:border-ink-300 hover:bg-paper-100"
-          >
-            <div className="min-w-0 flex-1">
-              <MetaLabel as="div" size="sm" className="flex items-center gap-1.5">
-                <RunStatusBadge status={current.status} />
-                <span>
-                  {runs.length === 1
-                    ? frontendMessage("workflow.run.only")
-                    : !pinnedToHistory
-                      ? frontendMessage("workflow.run.latest")
-                      : frontendMessage("workflow.run.index", { index: currentIndex, total: runs.length })}
-                </span>
-                <span>· {formatDuration(current.startedAt, current.endedAt)}</span>
-              </MetaLabel>
-              <div className="mt-1 line-clamp-2 text-[12.5px] text-ink-800">
-                {current.input || frontendMessage("workflow.run.emptyInput")}
-              </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="group flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left transition-colors hover:bg-ink-900/[0.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+        >
+          <RunStatusIcon status={current.status} className="mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-ink-450">
+              <span>
+                {runs.length === 1
+                  ? frontendMessage("workflow.run.only")
+                  : !pinnedToHistory
+                    ? frontendMessage("workflow.run.latest")
+                    : frontendMessage("workflow.run.index", { index: currentIndex, total: runs.length })}
+              </span>
+              <span>· {formatDuration(current.startedAt, current.endedAt)}</span>
             </div>
-            <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-400 transition group-data-[state=open]:rotate-180" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="max-h-[60vh] w-[420px] overflow-y-auto scrollbar-thin">
-          <DropdownMenuLabel>{frontendMessage("workflow.run.allRuns", { count: runs.length })}</DropdownMenuLabel>
-          {reversed.map((r, i) => {
-            const isCurrent = r.requestId === current.requestId;
-            const indexFromOldest = runs.indexOf(r) + 1;
-            return (
-              <DropdownMenuItem
-                key={r.requestId}
-                onSelect={() => onSelect(r.requestId)}
-                icon={
-                  isCurrent ? <Check className="h-3.5 w-3.5 text-terra-500" /> : <span className="block h-3.5 w-3.5" />
-                }
-              >
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="font-mono text-[10px] text-ink-400">
-                    {i === 0 ? frontendMessage("workflow.run.latestShort") : `#${indexFromOldest}`}
-                  </span>
-                  <span className="truncate text-[12.5px]">
-                    {r.input || frontendMessage("workflow.run.emptyInput")}
-                  </span>
-                </div>
-                <span className="ml-2 font-mono text-[10px] text-ink-400">{formatTime(r.startedAt)}</span>
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+            <div className="mt-0.5 line-clamp-2 text-[12.5px] leading-5 text-ink-800">
+              {current.input || frontendMessage("workflow.run.emptyInput")}
+            </div>
+          </div>
+          <ChevronDown className="mt-1 h-3.5 w-3.5 shrink-0 text-ink-400 transition-transform group-data-[state=open]:rotate-180" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="scrollbar-thin max-h-[60vh] w-[420px] overflow-y-auto">
+        <DropdownMenuLabel>{frontendMessage("workflow.run.allRuns", { count: runs.length })}</DropdownMenuLabel>
+        {reversed.map((run, index) => {
+          const isCurrent = run.requestId === current.requestId;
+          const indexFromOldest = runs.indexOf(run) + 1;
+          return (
+            <DropdownMenuItem
+              key={run.requestId}
+              onSelect={() => onSelect(run.requestId)}
+              icon={isCurrent ? <Check className="h-3.5 w-3.5 text-ink-800" /> : <span className="block h-3.5 w-3.5" />}
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="shrink-0 text-[10.5px] tabular-nums text-ink-400">
+                  {index === 0 ? frontendMessage("workflow.run.latestShort") : `#${indexFromOldest}`}
+                </span>
+                <span className="truncate text-[12.5px]">
+                  {run.input || frontendMessage("workflow.run.emptyInput")}
+                </span>
+              </div>
+              <span className="ml-2 text-[10.5px] tabular-nums text-ink-400">{formatTime(run.startedAt)}</span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
-function RunStatusBadge({ status }: { status: RunRecord["status"] }): JSX.Element {
+function RunStatusIcon({ status, className }: { status: RunRecord["status"]; className?: string }): JSX.Element {
   if (status === "running") {
-    return <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-umber-500" />;
+    return <Loader2 className={cn("h-3.5 w-3.5 shrink-0 animate-spin text-umber-600", className)} />;
   }
   if (status === "failed") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-brick-200/60 bg-brick-50/60 px-1.5 py-0.5 text-[10.5px] text-brick-600">
-        <XIcon className="h-2.5 w-2.5" /> {frontendMessage("workflow.run.status.failed")}
-      </span>
-    );
+    return <XIcon className={cn("h-3.5 w-3.5 shrink-0 text-brick-600", className)} />;
   }
   if (status === "cancelled") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-ink-100 px-1.5 py-0.5 text-ink-500">
-        {frontendMessage("workflow.run.status.cancelled")}
-      </span>
-    );
+    return <XIcon className={cn("h-3.5 w-3.5 shrink-0 text-ink-400", className)} />;
   }
-  return <Check className="h-3 w-3 text-moss-500" />;
+  return <Check className={cn("h-3.5 w-3.5 shrink-0 text-ink-500", className)} />;
 }

@@ -1,7 +1,7 @@
 import type { ModelProviderListItem } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { ConversationFrame } from "../../shared/ui";
-import { MessageAvatar, MessageMeta } from "./MessageChrome";
+import { MessageMeta } from "./MessageChrome";
 import { MessageActions } from "./MessageActions";
 import { readAssistantDisplayContent, readAssistantDisplayName } from "./messagePresentation";
 import { AssistantMessageBody } from "./AssistantMessageBody";
@@ -25,7 +25,6 @@ export function MessageRow({
   message,
   run,
   onClickBubble,
-  assistantAvatarIcon,
   selectedModelProvider,
   userProfile,
   showInlineActions,
@@ -59,9 +58,8 @@ export function MessageRow({
   const displayContent = readAssistantDisplayContent(message, run);
 
   return (
-    <ConversationFrame mode="wide" className="group/msg flex items-start gap-3">
-      <MessageAvatar role="assistant" icon={assistantAvatarIcon} />
-      <div className="flex min-w-0 flex-1 flex-col">
+    <ConversationFrame mode="wide" className="group/msg">
+      <div className="flex min-w-0 flex-col">
         <MessageMeta title={readAssistantDisplayName(message, selectedModelProvider)} timestamp={message.createdAt} />
         <AssistantMessageBody
           message={{ ...message, content: displayContent }}

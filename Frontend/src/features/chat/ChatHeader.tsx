@@ -70,12 +70,12 @@ function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | n
       <button
         type="button"
         className={cn(
-          "ml-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12px] transition-colors duration-150",
+          "ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
           presentation.className,
         )}
+        aria-label={presentation.label}
       >
         <Icon className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">{presentation.label}</span>
       </button>
     </Tooltip>
   );

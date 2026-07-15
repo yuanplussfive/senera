@@ -3,7 +3,7 @@ import type { ApprovalResolutionScope } from "../../api/approvalEventTypes";
 import type { RunRecord } from "../../store/sessionStore";
 import { AgentExecutionFeed } from "../workflow/AgentExecutionFeed";
 import { ApprovalRequestStrip } from "./ApprovalRequestStrip";
-import { MessageAvatar, MessageMeta } from "./MessageChrome";
+import { MessageMeta } from "./MessageChrome";
 import { readRunDisplayName } from "./messagePresentation";
 import { ConversationFrame } from "../../shared/ui";
 
@@ -17,15 +17,13 @@ export interface StreamingRowProps {
 
 export function StreamingRow({
   run,
-  assistantAvatarIcon,
   selectedModelProvider,
   approvalDisabled = false,
   onResolveApproval,
 }: StreamingRowProps): JSX.Element {
   return (
-    <ConversationFrame mode="wide" className="flex items-start gap-3">
-      <MessageAvatar role="assistant" icon={assistantAvatarIcon} />
-      <div className="flex min-w-0 flex-1 flex-col">
+    <ConversationFrame mode="wide" className="group/msg">
+      <div className="flex min-w-0 flex-col">
         <MessageMeta title={readRunDisplayName(run, selectedModelProvider)} timestamp={run.startedAt} />
         <div className="mt-1">
           <ApprovalRequestStrip

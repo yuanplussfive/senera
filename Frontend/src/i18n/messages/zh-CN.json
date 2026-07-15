@@ -17,6 +17,7 @@
   "chat.cancelRequested": "已发送中断请求…",
   "chat.action.copy": "复制",
   "chat.action.deleteFromHere": "从此处删除",
+  "chat.action.more": "更多操作",
   "chat.action.regenerateFromHere": "从此处重新回答",
   "chat.action.viewWorkflow": "查看工作流",
   "chat.askUserBadge": "需要你的回复",
