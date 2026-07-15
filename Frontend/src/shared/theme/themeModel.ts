@@ -609,6 +609,10 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-chat-composer-bg": "rgb(var(--color-paper-100) / 0.80)",
     "--theme-chat-composer-focus-bg": "rgb(var(--color-paper-50))",
     "--theme-session-active-bg": "rgb(var(--color-ink-900) / 0.055)",
+    "--theme-overlay-shadow":
+      "0 30px 72px -26px rgb(24 25 28 / 0.42), 0 10px 28px -16px rgb(24 25 28 / 0.24)",
+    "--theme-dialog-backdrop": "rgb(24 25 28 / 0.52)",
+    "--theme-sheet-backdrop": "rgb(24 25 28 / 0.44)",
   },
   dark: {
     "--theme-chat-user-bg": "rgb(var(--color-paper-200))",
@@ -621,6 +625,10 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-chat-composer-bg": "rgb(var(--color-paper-50) / 0.76)",
     "--theme-chat-composer-focus-bg": "rgb(var(--color-paper-50) / 0.92)",
     "--theme-session-active-bg": "rgb(var(--color-ink-900) / 0.075)",
+    "--theme-overlay-shadow":
+      "0 30px 76px -22px rgb(0 0 0 / 0.82), 0 12px 32px -18px rgb(0 0 0 / 0.68)",
+    "--theme-dialog-backdrop": "rgb(0 0 0 / 0.68)",
+    "--theme-sheet-backdrop": "rgb(0 0 0 / 0.58)",
   },
 };
 

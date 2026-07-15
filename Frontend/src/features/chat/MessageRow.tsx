@@ -1,19 +1,22 @@
-import type { ModelProviderListItem } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { ConversationFrame } from "../../shared/ui";
-import { MessageMeta } from "./MessageChrome";
+import { AssistantMessageAvatar, MessageMeta } from "./MessageChrome";
 import { MessageActions } from "./MessageActions";
-import { readAssistantDisplayContent, readAssistantDisplayName } from "./messagePresentation";
+import { readAssistantDisplayContent } from "./messagePresentation";
 import { AssistantMessageBody } from "./AssistantMessageBody";
 import { SystemMessageRow } from "./SystemMessageRow";
+import { ThinkingSummaryBar } from "./ThinkingSummaryBar";
 import { UserMessageRow } from "./UserMessageRow";
 
 interface MessageRowProps {
   message: ChatMessage;
   run?: RunRecord;
   onClickBubble?: () => void;
-  assistantAvatarIcon?: string;
-  selectedModelProvider?: ModelProviderListItem;
+  isEditing?: boolean;
+  editDraft?: string;
+  onEditDraftChange?: (value: string) => void;
+  onCancelEdit?: () => void;
+  onSubmitEdit?: () => void;
   userProfile: UserProfile;
   showInlineActions: boolean;
   onRegenerate: () => void;
@@ -25,7 +28,11 @@ export function MessageRow({
   message,
   run,
   onClickBubble,
-  selectedModelProvider,
+  isEditing = false,
+  editDraft = "",
+  onEditDraftChange,
+  onCancelEdit,
+  onSubmitEdit,
   userProfile,
   showInlineActions,
   onRegenerate,
@@ -40,6 +47,11 @@ export function MessageRow({
         userProfile={userProfile}
         showInlineActions={showInlineActions}
         onClickBubble={onClickBubble}
+        isEditing={isEditing}
+        editDraft={editDraft}
+        onEditDraftChange={onEditDraftChange}
+        onCancelEdit={onCancelEdit}
+        onSubmitEdit={onSubmitEdit}
         onRegenerate={onRegenerate}
         onDelete={onDelete}
         onViewWorkflow={onViewWorkflow}
@@ -59,24 +71,26 @@ export function MessageRow({
 
   return (
     <ConversationFrame mode="wide" className="group/msg">
-      <div className="flex min-w-0 flex-col">
-        <MessageMeta title={readAssistantDisplayName(message, selectedModelProvider)} timestamp={message.createdAt} />
-        <AssistantMessageBody
-          message={{ ...message, content: displayContent }}
-          run={run}
-          onViewWorkflow={onViewWorkflow}
-        />
-        <MessageActions
-          content={displayContent}
-          placement="left"
-          hasRequestId={!!message.requestId}
-          hasWorkflow={!!run}
-          allowMutation={message.kind !== "AssistantToolPreface"}
-          showInlineActions={showInlineActions}
-          onRegenerate={onRegenerate}
-          onDelete={onDelete}
-          onViewWorkflow={onViewWorkflow}
-        />
+      <div className="flex min-w-0 items-start gap-3" data-assistant-message>
+        <AssistantMessageAvatar />
+        <div className="min-w-0 flex-1">
+          <MessageMeta title="Senera" timestamp={message.createdAt} />
+          {message.kind !== "AssistantToolPreface" ? (
+            <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} />
+          ) : null}
+          <AssistantMessageBody message={{ ...message, content: displayContent }} />
+          <MessageActions
+            content={displayContent}
+            placement="left"
+            hasRequestId={!!message.requestId}
+            hasWorkflow={!!run}
+            allowMutation={message.kind !== "AssistantToolPreface"}
+            showInlineActions={showInlineActions}
+            onRegenerate={onRegenerate}
+            onDelete={onDelete}
+            onViewWorkflow={onViewWorkflow}
+          />
+        </div>
       </div>
     </ConversationFrame>
   );

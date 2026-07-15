@@ -8,6 +8,7 @@ import { installMemoryLocalStorage, resetFrontendStore } from "../frontendStoreT
 const { ThinkingTimeline } = await import("../../../Frontend/src/features/workflow/ThinkingTimeline.tsx");
 const { ThinkingTimelineCanvas } = await import("../../../Frontend/src/features/workflow/ThinkingTimelineCanvas.tsx");
 const { StepNode } = await import("../../../Frontend/src/features/workflow/StepNode.tsx");
+const { ChatHeader } = await import("../../../Frontend/src/features/chat/ChatHeader.tsx");
 const { ReactFlowProvider } = await import("@xyflow/react");
 const { useStore } = await import("../../../Frontend/src/store/sessionStore.ts");
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
@@ -34,22 +35,37 @@ test("thinking timeline renders its empty state and opens a focused workflow vie
   expect(screen.getByRole("dialog", { name: frontendMessage("workflow.panel.title") })).toBeInTheDocument();
 });
 
-test("workflow dock opens the persisted execution panel", async () => {
-  useStore.setState({ rightPanelCollapsed: true });
+test("chat header exposes one neutral workflow tool entry for panel toggling", async () => {
+  const onToggle = vi.fn();
   const user = userEvent.setup();
   renderWithFrontendProviders(
-    React.createElement(
-      React.Fragment,
-      null,
-      React.createElement(ThinkingTimeline, { presentation: "dock" }),
-      React.createElement(ThinkingTimeline),
-    ),
+    React.createElement(ChatHeader, {
+      title: "Workflow tool test",
+      onOpenWorkflowPanel: onToggle,
+    }),
   );
 
-  await user.click(screen.getByRole("button", { name: frontendMessage("workflow.panel.title") }));
+  const expandButton = screen.getByRole("button", { name: frontendMessage("workflow.panel.expand") });
+  expect(document.querySelector("[data-workflow-dock]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workspace-tool-dock]")).toContainElement(expandButton);
+  expect(expandButton).toHaveAttribute("aria-expanded", "false");
+  expect(expandButton.className).not.toMatch(/terra|blue|indigo|violet/);
+  await user.click(expandButton);
+  expect(onToggle).toHaveBeenCalledTimes(1);
+});
 
-  expect(useStore.getState().rightPanelCollapsed).toBe(false);
-  expect(screen.getByText(frontendMessage("workflow.panel.title"))).toBeVisible();
+test("persistent workflow panel owns its tool header and only collapse control", async () => {
+  const onClosePanel = vi.fn();
+  const user = userEvent.setup();
+  renderWithFrontendProviders(React.createElement(ThinkingTimeline, { onClosePanel }));
+
+  const collapseButton = screen.getByRole("button", { name: frontendMessage("workflow.panel.collapse") });
+  expect(screen.getAllByRole("button", { name: frontendMessage("workflow.panel.collapse") })).toHaveLength(1);
+  expect(document.querySelector("[data-workspace-tool-dock]")).toContainElement(
+    screen.getByText(frontendMessage("workflow.panel.title")),
+  );
+  await user.click(collapseButton);
+  expect(onClosePanel).toHaveBeenCalledTimes(1);
 });
 
 test("thinking timeline pins a historical run and can return to the latest run", async () => {

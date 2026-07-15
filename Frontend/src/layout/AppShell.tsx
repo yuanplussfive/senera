@@ -7,7 +7,6 @@ import { useStore } from "../store/sessionStore";
 import type { ResponsiveMode } from "../shared/responsive";
 
 const SESSION_PANEL_WIDTH = 268;
-const WORKFLOW_DOCK_WIDTH = 46;
 const WORKFLOW_PANEL_WIDTH_COMPACT = 360;
 const WORKFLOW_PANEL_WIDTH = 460;
 const SESSION_DRAWER_WIDTH = "w-[min(360px,calc(100vw-24px))]";
@@ -17,7 +16,6 @@ interface AppShellProps {
   sessionPanel: ReactNode;
   sessionDrawer: ReactNode;
   chatPanel: ReactNode;
-  workflowDock: ReactNode;
   workflowPanel: ReactNode;
   workflowDrawer: ReactNode;
   sessionDrawerOpen: boolean;
@@ -49,13 +47,17 @@ interface AppShellSurfacePlan {
 
 interface AppShellRenderPlan {
   showSessionPersistentPanel: boolean;
-  showWorkflowDock: boolean;
   showWorkflowPersistentPanel: boolean;
   workflowPanelLayout: WorkflowPanelLayout;
   showSessionDrawer: boolean;
   showWorkflowDrawer: boolean;
   showChatSessionPanelAction: boolean;
   showChatWorkflowPanelAction: boolean;
+}
+
+export interface AppShellResponsiveEntryPlan {
+  sidebarCollapsed: boolean | null;
+  rightPanelCollapsed: boolean | null;
 }
 
 export function readAppShellSurfacePlan(responsiveMode: ResponsiveMode): AppShellSurfacePlan {
@@ -70,7 +72,6 @@ export function readAppShellRenderPlan(responsiveMode: ResponsiveMode): AppShell
   const showWorkflowPersistentPanel = surfacePlan.workflow === "persistent";
   return {
     showSessionPersistentPanel: surfacePlan.session === "persistent",
-    showWorkflowDock: showWorkflowPersistentPanel,
     showWorkflowPersistentPanel,
     workflowPanelLayout: showWorkflowPersistentPanel
       ? responsiveMode.hasInlineWorkflowPanel
@@ -80,7 +81,7 @@ export function readAppShellRenderPlan(responsiveMode: ResponsiveMode): AppShell
     showSessionDrawer: surfacePlan.session === "drawer",
     showWorkflowDrawer: surfacePlan.workflow === "drawer",
     showChatSessionPanelAction: surfacePlan.session === "drawer",
-    showChatWorkflowPanelAction: surfacePlan.workflow === "drawer",
+    showChatWorkflowPanelAction: true,
   };
 }
 
@@ -88,11 +89,19 @@ export function readWorkflowPanelWidth(responsiveMode: ResponsiveMode): number {
   return responsiveMode.viewport === "wide" ? WORKFLOW_PANEL_WIDTH : WORKFLOW_PANEL_WIDTH_COMPACT;
 }
 
+export function readAppShellResponsiveEntryPlan(responsiveMode: ResponsiveMode): AppShellResponsiveEntryPlan {
+  return {
+    sidebarCollapsed: responsiveMode.hasPersistentSessionPanel ? false : null,
+    rightPanelCollapsed: responsiveMode.hasPersistentWorkflowPanel
+      ? !responsiveMode.hasInlineWorkflowPanel
+      : null,
+  };
+}
+
 export function AppShell({
   sessionPanel,
   sessionDrawer,
   chatPanel,
-  workflowDock,
   workflowPanel,
   workflowDrawer,
   sessionDrawerOpen,
@@ -103,16 +112,13 @@ export function AppShell({
 }: AppShellProps): JSX.Element {
   const sidebarCollapsed = useStore((state) => state.sidebarCollapsed);
   const rightPanelCollapsed = useStore((state) => state.rightPanelCollapsed);
-  const defaultSidebarCollapsed = useStore((state) => state.defaultSidebarCollapsed);
-  const defaultRightPanelCollapsed = useStore((state) => state.defaultRightPanelCollapsed);
   const setSidebarCollapsed = useStore((state) => state.setSidebarCollapsed);
   const setRightPanelCollapsed = useStore((state) => state.setRightPanelCollapsed);
   const { reduceMotion, disableMotion } = useMotionLevel();
-  const panelResizeTransition: Transition = disableMotion || reduceMotion ? { duration: 0 } : motionTimings.slow;
   const renderPlan = readAppShellRenderPlan(responsiveMode);
   const workflowPanelWidth = readWorkflowPanelWidth(responsiveMode);
-  const hadPersistentSessionPanel = useRef(renderPlan.showSessionPersistentPanel);
-  const hadPersistentWorkflowPanel = useRef(renderPlan.showWorkflowPersistentPanel);
+  const responsiveLayoutKey = `${renderPlan.showSessionPersistentPanel ? "persistent" : "drawer"}:${renderPlan.workflowPanelLayout}`;
+  const previousResponsiveLayoutKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (responsiveMode.hasPersistentSessionPanel && sessionDrawerOpen) {
@@ -131,27 +137,46 @@ export function AppShell({
   ]);
 
   useEffect(() => {
-    if (renderPlan.showSessionPersistentPanel && !hadPersistentSessionPanel.current) {
-      setSidebarCollapsed(defaultSidebarCollapsed);
+    if (previousResponsiveLayoutKeyRef.current === responsiveLayoutKey) return;
+    previousResponsiveLayoutKeyRef.current = responsiveLayoutKey;
+    const entryPlan = readAppShellResponsiveEntryPlan(responsiveMode);
+    if (entryPlan.sidebarCollapsed !== null) {
+      setSidebarCollapsed(entryPlan.sidebarCollapsed);
     }
-    if (renderPlan.showWorkflowPersistentPanel && !hadPersistentWorkflowPanel.current) {
-      setRightPanelCollapsed(defaultRightPanelCollapsed);
+    if (entryPlan.rightPanelCollapsed !== null) {
+      setRightPanelCollapsed(entryPlan.rightPanelCollapsed);
     }
-    hadPersistentSessionPanel.current = renderPlan.showSessionPersistentPanel;
-    hadPersistentWorkflowPanel.current = renderPlan.showWorkflowPersistentPanel;
   }, [
-    defaultRightPanelCollapsed,
-    defaultSidebarCollapsed,
-    renderPlan.showSessionPersistentPanel,
-    renderPlan.showWorkflowPersistentPanel,
+    responsiveLayoutKey,
+    responsiveMode,
     setRightPanelCollapsed,
     setSidebarCollapsed,
   ]);
 
-  const workflowPanelMotion =
-    renderPlan.workflowPanelLayout === "inline"
-      ? { width: rightPanelCollapsed ? 0 : workflowPanelWidth, opacity: rightPanelCollapsed ? 0 : 1, x: 0 }
-      : { width: workflowPanelWidth, opacity: rightPanelCollapsed ? 0 : 1, x: rightPanelCollapsed ? 24 : 0 };
+  const workflowPanelInline = renderPlan.workflowPanelLayout === "inline";
+  const sessionPanelTransition: Transition =
+    disableMotion || reduceMotion
+      ? { duration: 0 }
+      : sidebarCollapsed
+        ? motionTimings.panelClose
+        : motionTimings.panelOpen;
+  const workflowPanelTransition: Transition =
+    disableMotion || reduceMotion
+      ? { duration: 0 }
+      : rightPanelCollapsed
+        ? motionTimings.panelClose
+        : motionTimings.panelOpen;
+  const workflowPanelTarget = workflowPanelInline
+    ? {
+        width: rightPanelCollapsed ? 0 : workflowPanelWidth,
+        opacity: rightPanelCollapsed ? 0 : 1,
+        x: rightPanelCollapsed ? 16 : 0,
+      }
+    : {
+        width: workflowPanelWidth,
+        opacity: rightPanelCollapsed ? 0 : 1,
+        x: rightPanelCollapsed ? 16 : 0,
+      };
 
   return (
     <div
@@ -161,11 +186,16 @@ export function AppShell({
       {renderPlan.showSessionPersistentPanel ? (
         <motion.div
           initial={false}
-          animate={{ width: sidebarCollapsed ? 0 : SESSION_PANEL_WIDTH, opacity: sidebarCollapsed ? 0 : 1 }}
-          transition={panelResizeTransition}
+          animate={{
+            width: sidebarCollapsed ? 0 : SESSION_PANEL_WIDTH,
+            opacity: sidebarCollapsed ? 0 : 1,
+            x: sidebarCollapsed ? -16 : 0,
+          }}
+          transition={sessionPanelTransition}
           className="relative z-20 h-full shrink-0 overflow-hidden"
-          style={{ visibility: sidebarCollapsed ? "hidden" : "visible" }}
+          style={{ pointerEvents: sidebarCollapsed ? "none" : "auto", willChange: "width, opacity, transform" }}
           aria-hidden={sidebarCollapsed}
+          data-open={!sidebarCollapsed}
         >
           {sessionPanel}
         </motion.div>
@@ -175,28 +205,23 @@ export function AppShell({
         {chatPanel}
       </div>
 
-      {renderPlan.showWorkflowDock ? (
-        <div className="relative z-30 h-full shrink-0" style={{ width: WORKFLOW_DOCK_WIDTH }}>
-          {workflowDock}
-        </div>
-      ) : null}
-
       {renderPlan.showWorkflowPersistentPanel ? (
         <motion.div
           initial={false}
-          animate={workflowPanelMotion}
-          transition={panelResizeTransition}
+          animate={workflowPanelTarget}
+          transition={workflowPanelTransition}
           className={
             renderPlan.workflowPanelLayout === "overlay"
-              ? "absolute bottom-0 right-[46px] top-0 z-20 overflow-hidden shadow-[-18px_0_34px_-30px_rgb(24_25_28/0.45)]"
+              ? "absolute bottom-0 right-0 top-0 z-30 overflow-hidden [box-shadow:var(--theme-overlay-shadow)]"
               : "relative z-20 h-full shrink-0 overflow-hidden"
           }
           style={{
-            ...(renderPlan.workflowPanelLayout === "overlay" ? { width: workflowPanelWidth } : {}),
             pointerEvents: rightPanelCollapsed ? "none" : "auto",
-            visibility: rightPanelCollapsed ? "hidden" : "visible",
+            willChange: "width, opacity, transform",
           }}
           aria-hidden={rightPanelCollapsed}
+          data-open={!rightPanelCollapsed}
+          data-workflow-panel-surface
         >
           <div className="h-full" style={{ width: workflowPanelWidth }}>
             {workflowPanel}

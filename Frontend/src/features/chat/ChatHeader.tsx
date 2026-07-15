@@ -18,7 +18,10 @@ export function ChatHeader({
   onOpenWorkflowPanel?: () => void;
 }): JSX.Element {
   return (
-    <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-ink-200/70 bg-[var(--theme-elevated-bg)] px-3 sm:px-5">
+    <div
+      className="flex h-[52px] shrink-0 items-center gap-2 border-b border-ink-200/70 bg-[var(--theme-elevated-bg)] px-3 sm:px-5"
+      data-ui-chrome
+    >
       {onOpenSessionPanel ? (
         <IconButton
           label={frontendMessage("session.headerExpand")}
@@ -42,16 +45,23 @@ export function ChatHeader({
       ) : null}
       <SandboxStatusBadge status={sandboxStatus} />
       {onOpenWorkflowPanel ? (
-        <IconButton
-          label={frontendMessage("workflow.panel.open")}
-          tooltip={frontendMessage("workflow.panel.open")}
-          tooltipSide="bottom"
-          onClick={onOpenWorkflowPanel}
-          touchSafe
-          className="ml-auto"
+        <nav
+          className="ml-auto flex items-center border-l border-ink-200/70 pl-2"
+          aria-label={frontendMessage("workflow.panel.title")}
+          data-workspace-tool-dock
         >
-          <ListTree className="h-4 w-4" />
-        </IconButton>
+          <IconButton
+            label={frontendMessage("workflow.panel.expand")}
+            tooltip={frontendMessage("workflow.panel.expand")}
+            tooltipSide="bottom"
+            aria-expanded={false}
+            onClick={onOpenWorkflowPanel}
+            touchSafe
+            className="rounded-md"
+          >
+            <ListTree className="h-4 w-4" />
+          </IconButton>
+        </nav>
       ) : null}
     </div>
   );

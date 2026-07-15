@@ -60,6 +60,9 @@
   --theme-border: rgb(222 224 228);
   --theme-accent-soft: rgb(241 220 207);
   --theme-surface-shadow: 0 1px 2px rgb(24 25 28 / 0.06), 0 6px 14px -8px rgb(24 25 28 / 0.14);
+  --theme-overlay-shadow: 0 30px 72px -26px rgb(24 25 28 / 0.42), 0 10px 28px -16px rgb(24 25 28 / 0.24);
+  --theme-dialog-backdrop: rgb(24 25 28 / 0.52);
+  --theme-sheet-backdrop: rgb(24 25 28 / 0.44);
   --theme-panel-glaze: rgb(255 255 255);
   --theme-hover-wash: rgb(43 40 32 / 0.055);
   --theme-selection-bg: rgb(194 105 74 / 0.18);
@@ -114,6 +117,7 @@
   --scrollbar-thumb: rgb(43 40 32 / 0.15);
   --scrollbar-thumb-hover: rgb(43 40 32 / 0.25);
   --scrollbar-track: transparent;
+  --conversation-workspace-max-width: 980px;
   --code-source-max-height: 500px;
   --icon-swap-dur: 200ms;
   --icon-swap-blur: 2px;
@@ -142,6 +146,44 @@ body {
   color: var(--theme-fg);
   background-image: var(--theme-bg-image);
   font-size: calc(16px * var(--theme-font-scale));
+}
+
+:where(
+  a[href],
+  button:not(:disabled),
+  summary,
+  select:not(:disabled),
+  input:is([type="checkbox"], [type="radio"], [type="range"]):not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="option"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"])
+) {
+  cursor: pointer;
+}
+
+:where(button:disabled, select:disabled, input:disabled, [aria-disabled="true"], [data-disabled]) {
+  cursor: not-allowed;
+}
+
+/* Interactive state is communicated by hover, selection, and control-specific borders. */
+:where(button, input, textarea, select, [role="button"], [role="menuitem"], [tabindex]):focus,
+:where(button, input, textarea, select, [role="button"], [role="menuitem"], [tabindex]):focus-visible {
+  outline: none !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+}
+
+:where(button, [role="button"], [role="menuitem"], [role="tab"], [role="option"]) {
+  user-select: none;
+}
+
+[data-ui-chrome] {
+  user-select: none;
+}
+
+[data-ui-chrome] :where(input, textarea, [contenteditable="true"], [data-selectable="true"]) {
+  user-select: text;
 }
 
 /* ----- scrollbar ----- */
@@ -195,6 +237,7 @@ textarea::-webkit-scrollbar-track {
 
 .conversation-frame {
   box-sizing: border-box;
+  display: flex;
   width: 100%;
   min-width: 0;
   margin-inline: auto;
@@ -202,21 +245,23 @@ textarea::-webkit-scrollbar-track {
 }
 
 .conversation-frame--prose {
+  flex-direction: column;
   max-width: 860px;
 }
 
-.conversation-frame--wide {
-  max-width: 1160px;
+.conversation-frame--wide,
+.conversation-frame--composer,
+.conversation-frame--user {
+  max-width: var(--conversation-workspace-max-width);
 }
 
+.conversation-frame--wide,
 .conversation-frame--composer {
-  max-width: 980px;
+  flex-direction: column;
 }
 
 .conversation-frame--user {
-  width: min(84%, 760px);
-  margin-right: auto;
-  margin-left: auto;
+  flex-direction: row;
 }
 
 .assistant-message-flow .markdown-renderer > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6, hr) {
@@ -227,11 +272,6 @@ textarea::-webkit-scrollbar-track {
   .conversation-frame {
     max-width: none;
     padding-inline: 14px;
-  }
-
-  .conversation-frame--user {
-    width: 94%;
-    margin-right: 0;
   }
 }
 

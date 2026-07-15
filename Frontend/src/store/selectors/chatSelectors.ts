@@ -10,6 +10,7 @@ export function useChatState(sessionId: string | null) {
   return useStore(
     useShallow((s) => ({
       session: sessionId ? s.sessions[sessionId] : null,
+      historyLoaded: sessionId ? !!s.historyLoadedIds[sessionId] : false,
       historyLoading: sessionId ? !!s.historyLoadingIds[sessionId] : false,
       historyFailed: sessionId ? !!s.historyFailedIds[sessionId] : false,
     })),

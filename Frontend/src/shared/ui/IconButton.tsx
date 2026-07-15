@@ -57,7 +57,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         ref={ref}
         aria-label={label}
         className={cn(
-          "grid shrink-0 place-items-center transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-300/60 disabled:pointer-events-none disabled:opacity-50",
+          "grid shrink-0 cursor-pointer place-items-center transition-colors duration-150 ease-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
           sizeClasses[size],
           touchSafeClassName,
           toneClasses[tone],

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Info, LoaderCircle, Palette, Settings2, User, Wifi, WifiOff } from "lucide-react";
+import { Camera, Info, LoaderCircle, Settings2, User, UserRoundPen, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import { openSettingsSurface } from "../../app/desktopBridge";
 import type { UserProfile } from "../../store/sessionStore";
@@ -12,7 +12,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../shared/ui";
@@ -65,45 +64,24 @@ export function UserFooter({
             className="flex h-[48px] w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition-colors duration-150 hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300 data-[state=open]:bg-ink-900/[0.045]"
           >
             <UserAvatar profile={profile} />
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <div className="truncate text-[13px] text-ink-800">{profile.name}</div>
-              <StatusIcon className={cn("h-3 w-3 shrink-0", statusIconClass)} aria-label={statusLabel} />
-            </div>
+            <div className="min-w-0 flex-1 truncate text-[13px] text-ink-800">{profile.name}</div>
             <Settings2 className="h-3.5 w-3.5 shrink-0 text-ink-350" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" className="w-[244px]">
-          <DropdownMenuLabel>
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.77.30")}
-          </DropdownMenuLabel>
-          <DropdownMenuItem icon={<User className="h-3.5 w-3.5" />} onSelect={() => setOpen(true)}>
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.82.13")}
+        <DropdownMenuContent align="start" side="top" collisionPadding={8} className="w-[220px]">
+          <DropdownMenuItem icon={<UserRoundPen className="h-3.5 w-3.5" />} onSelect={() => setOpen(true)}>
+            {frontendMessage("profile.menu.edit")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel>
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.85.30")}
-          </DropdownMenuLabel>
-          <DropdownMenuItem
-            icon={<Palette className="h-3.5 w-3.5" />}
-            onSelect={() => {
-              void openSettingsSurface({
-                section: "appearance",
-                fallback: () => undefined,
-              });
-            }}
-          >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.95.13")}
-          </DropdownMenuItem>
           <DropdownMenuItem
             icon={<Settings2 className="h-3.5 w-3.5" />}
             onSelect={() => {
               void openSettingsSurface({
-                section: "general",
                 fallback: () => undefined,
               });
             }}
           >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.106.13")}
+            {frontendMessage("profile.menu.settings")}
           </DropdownMenuItem>
           <DropdownMenuItem
             icon={<Info className="h-3.5 w-3.5" />}
@@ -114,7 +92,7 @@ export function UserFooter({
               });
             }}
           >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.117.13")}
+            {frontendMessage("profile.menu.about")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <div className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[12px] text-ink-500">
@@ -234,10 +212,11 @@ function ProfileDialog({
         title={frontendMessage("profile.title")}
         description={frontendMessage("profile.description")}
         className="w-[min(420px,calc(100vw-28px))]"
-        bodyClassName="p-4"
+        bodyClassName="px-6 pb-6"
       >
         <form
-          className="space-y-4"
+          className="space-y-0"
+          data-profile-editor
           onSubmit={(event) => {
             event.preventDefault();
             const name = draftName.trim();
@@ -269,7 +248,7 @@ function ProfileDialog({
             />
           )}
 
-          <label className="block">
+          <label className="mt-5 block border-t border-ink-200/70 pt-5">
             <span className="mb-1.5 block text-[12px] font-medium text-ink-600">
               {frontendMessage("profile.displayName")}
             </span>
@@ -283,8 +262,11 @@ function ProfileDialog({
             />
           </label>
 
-          <DialogActions>
-            <DialogActionButton className="mr-auto text-brick-700 hover:bg-brick-50" onClick={() => void onLogout()}>
+          <DialogActions className="mt-6">
+            <DialogActionButton
+              className="mr-auto border-0 bg-transparent px-2 text-brick-600 shadow-none hover:bg-transparent hover:text-brick-700"
+              onClick={() => void onLogout()}
+            >
               {frontendMessage("auth.signOut")}
             </DialogActionButton>
             <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
@@ -312,37 +294,35 @@ function AvatarPicker({
   onRemove: () => void;
 }): JSX.Element {
   return (
-    <div className="overflow-hidden rounded-lg border border-ink-200/70 bg-paper-100/65">
-      <div className="flex items-center gap-4 p-3">
-        <UserAvatar profile={{ name, avatarDataUrl, updatedAt }} size="large" />
-        <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium text-ink-900">{frontendMessage("profile.avatar")}</div>
-          <div className="mt-1 text-[12px] leading-5 text-ink-500">{frontendMessage("profile.avatarHint")}</div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-ink-900 px-3 text-[12.5px] font-medium text-paper-50 transition hover:bg-ink-800">
-              <Camera className="h-3.5 w-3.5" />
-              {frontendMessage("profile.selectImage")}
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="sr-only"
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-                  event.currentTarget.value = "";
-                  if (file) onReadFile(file);
-                }}
-              />
-            </label>
-            {avatarDataUrl ? (
-              <button
-                type="button"
-                onClick={onRemove}
-                className="h-8 rounded-md px-2.5 text-[12.5px] text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900"
-              >
-                {frontendMessage("profile.removeAvatar")}
-              </button>
-            ) : null}
-          </div>
+    <div className="flex items-center gap-4 py-1">
+      <UserAvatar profile={{ name, avatarDataUrl, updatedAt }} size="large" />
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium text-ink-900">{frontendMessage("profile.avatar")}</div>
+        <div className="mt-0.5 text-[12px] leading-5 text-ink-500">{frontendMessage("profile.avatarHint")}</div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-3 text-[12.5px] font-medium text-ink-700 transition-colors hover:border-ink-300 hover:bg-ink-900/[0.035] hover:text-ink-900">
+            <Camera className="h-3.5 w-3.5" />
+            {frontendMessage("profile.selectImage")}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (file) onReadFile(file);
+              }}
+            />
+          </label>
+          {avatarDataUrl ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="h-8 cursor-pointer rounded-md px-2.5 text-[12.5px] text-ink-500 transition-colors hover:bg-ink-900/[0.05] hover:text-ink-900"
+            >
+              {frontendMessage("profile.removeAvatar")}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

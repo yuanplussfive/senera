@@ -28,7 +28,10 @@ export const DialogOverlay = forwardRef<HTMLDivElement, React.ComponentPropsWith
   ({ className, style, ...props }, ref) => (
     <DialogPrimitive.Overlay ref={ref} asChild forceMount {...props}>
       <MotionDialogOverlay
-        className={cn("dialog-presence fixed inset-0 z-50 bg-ink-950/52 [will-change:opacity]", className)}
+        className={cn(
+          "dialog-presence fixed inset-0 z-50 bg-[var(--theme-dialog-backdrop)] [will-change:opacity]",
+          className,
+        )}
         style={mergeDialogPresenceStyle(style)}
       />
     </DialogPrimitive.Overlay>
@@ -129,9 +132,10 @@ const DialogContentFrame = forwardRef<
                 type="button"
                 className={cn(
                   "grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-ink-400",
+                  "cursor-pointer",
                   "transition-colors duration-150 ease-out",
                   "hover:bg-ink-900/[0.08] hover:text-ink-900",
-                  "focus:outline-none focus:ring-4 focus:ring-ink-900/[0.08]",
+                  "focus:outline-none",
                 )}
                 aria-label="关闭"
               >
@@ -193,7 +197,7 @@ export const DialogContent = forwardRef<
             "flex flex-col overflow-hidden [will-change:opacity,transform]",
             placement === "inset" && "min-h-0 flex-1",
             className,
-            "rounded-[10px] border border-ink-200 bg-paper-50 shadow-[0_14px_36px_-18px_rgb(24_25_28/0.38),0_2px_8px_-4px_rgb(24_25_28/0.18)]",
+            "rounded-[10px] border border-ink-200 bg-paper-50",
           )}
           title={title}
           description={description}
@@ -229,7 +233,7 @@ const dialogActionVariantClasses: Record<DialogActionVariant, string> = {
   primary:
     "bg-ink-900 font-medium text-paper-50 shadow-[0_1px_2px_rgb(33_30_24/0.2),0_6px_14px_-8px_rgb(33_30_24/0.5)] hover:bg-ink-800",
   danger:
-    "bg-brick-500 font-medium text-paper-50 shadow-[0_1px_2px_rgb(146_64_14/0.24)] hover:bg-brick-600 focus:ring-brick-200/60",
+    "bg-brick-500 font-medium text-paper-50 shadow-[0_1px_2px_rgb(146_64_14/0.24)] hover:bg-brick-600",
 };
 
 export function DialogActions({ children, className }: DialogActionsProps): JSX.Element {
@@ -243,7 +247,7 @@ export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButt
         ref={ref}
         type={type}
         className={cn(
-          "h-10 rounded-lg px-4 text-[13px] transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-terra-300/60 disabled:cursor-not-allowed disabled:opacity-45",
+          "h-10 cursor-pointer rounded-lg px-4 text-[13px] transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus:outline-none disabled:cursor-not-allowed disabled:opacity-45",
           dialogActionVariantClasses[variant],
           className,
         )}

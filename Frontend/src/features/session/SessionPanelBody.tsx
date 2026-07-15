@@ -1,10 +1,10 @@
 import { Search, X } from "lucide-react";
-import { MetaLabel, ScrollArea } from "../../shared/ui";
+import { LayoutGroup } from "framer-motion";
+import { ScrollArea } from "../../shared/ui";
 import { MotionList, MotionListItem } from "../../shared/motion";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { SessionRecord } from "../../store/sessionStore";
 import { EmptyState, SessionRow } from "./SessionRows";
-import { formatSessionSubtitle } from "./sessionPresentation";
 
 interface SessionPanelBodyProps {
   sessions: readonly SessionRecord[];
@@ -40,6 +40,7 @@ export function SessionPanelBody({
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-400 group-focus-within:text-terra-600" />
         <input
           type="search"
+          data-selectable="true"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder={frontendMessage("session.searchPlaceholder")}
@@ -66,20 +67,14 @@ export function SessionPanelBody({
               {frontendMessage("session.searchEmpty")}
             </div>
           ) : (
-            <>
-              <div className="px-2 pb-1.5 pt-1">
-                <MetaLabel as="div" size="sm">
-                  {frontendMessage("session.recentCount", { count: sessions.length })}
-                </MetaLabel>
-              </div>
-              <MotionList>
+            <LayoutGroup id="session-list-selection">
+              <MotionList className="flex flex-col gap-0.5 pt-1">
                 {sessions.map((session, index) => {
                   const isActive = session.sessionId === activeSessionId;
                   const lastRun = session.runs[session.runs.length - 1];
                   const isRunning = lastRun?.status === "running";
                   const hasFailed = lastRun?.status === "failed";
                   const isHistoryLoading = !!historyLoadingIds[session.sessionId];
-                  const subtitle = formatSessionSubtitle(session, isHistoryLoading);
 
                   return (
                     <MotionListItem key={session.sessionId} index={index} itemCount={sessions.length} layout="position">
@@ -87,8 +82,7 @@ export function SessionPanelBody({
                         active={isActive}
                         sessionId={session.sessionId}
                         title={session.title}
-                        subtitle={subtitle}
-                        accent={isRunning ? "running" : hasFailed ? "failed" : "idle"}
+                        accent={isHistoryLoading || isRunning ? "running" : hasFailed ? "failed" : "idle"}
                         onClick={() => onSelectSession(session.sessionId)}
                         showInlineActions={showInlineRowActions}
                         onRename={() => onRenameSession(session)}
@@ -98,7 +92,7 @@ export function SessionPanelBody({
                   );
                 })}
               </MotionList>
-            </>
+            </LayoutGroup>
           )}
         </div>
       </ScrollArea>

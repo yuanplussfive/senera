@@ -51,8 +51,8 @@ export function SessionList({
   const historyLoadingIds = useStore((s) => s.historyLoadingIds);
   const select = useStore((s) => s.selectSession);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
-  const { prefersCompactControls, supportsHover } = useResponsiveMode();
-  const showInlineRowActions = prefersCompactControls || !supportsHover;
+  const { viewport } = useResponsiveMode();
+  const showInlineRowActions = viewport === "mobile" || viewport === "tablet";
 
   const [confirmation, setConfirmation] = useState<ConfirmationIntent | null>(null);
   const [renaming, setRenaming] = useState<RenameIntent | null>(null);
@@ -178,6 +178,7 @@ export function SessionList({
         panelWidthClass,
       )}
       data-session-sidebar
+      data-ui-chrome
     >
       <SessionHeader
         menuSections={menuSections}

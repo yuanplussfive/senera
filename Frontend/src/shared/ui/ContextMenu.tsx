@@ -43,7 +43,7 @@ export const ContextMenuItem = forwardRef<HTMLDivElement, ItemProps>(
       <ContextMenuPrimitive.Item
         ref={ref}
         className={cn(
-          "group flex h-8 cursor-default select-none items-center gap-2.5 rounded-md px-2.5 text-[13px] outline-none transition-colors",
+          "group flex h-8 cursor-pointer select-none items-center gap-2.5 rounded-md px-2.5 text-[13px] outline-none transition-colors",
           isCoarsePointer && "min-h-11",
           "text-ink-800 data-[highlighted]:bg-ink-900/[0.045] data-[highlighted]:text-ink-900",
           destructive && "text-brick-500 data-[highlighted]:bg-brick-50 data-[highlighted]:text-brick-600",

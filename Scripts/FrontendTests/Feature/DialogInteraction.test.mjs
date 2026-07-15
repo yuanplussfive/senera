@@ -1,7 +1,17 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test } from "vitest";
-import { Dialog, DialogContent } from "../../../Frontend/src/shared/ui/Dialog.tsx";
+import {
+  Dialog,
+  DialogActionButton,
+  DialogContent,
+} from "../../../Frontend/src/shared/ui/Dialog.tsx";
+import { Sheet, SheetContent } from "../../../Frontend/src/shared/ui/Sheet.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "../../../Frontend/src/shared/ui/DropdownMenu.tsx";
 
 afterEach(() => {
   cleanup();
@@ -12,7 +22,12 @@ test("in-app dialog headers do not move their frame on pointer input", () => {
     React.createElement(
       Dialog,
       { open: true },
-      React.createElement(DialogContent, { title: "固定弹窗" }, React.createElement("p", null, "弹窗内容")),
+      React.createElement(
+        DialogContent,
+        { title: "固定弹窗", description: "弹窗说明" },
+        React.createElement("p", null, "弹窗内容"),
+        React.createElement(DialogActionButton, null, "确认"),
+      ),
     ),
   );
 
@@ -24,5 +39,39 @@ test("in-app dialog headers do not move their frame on pointer input", () => {
   fireEvent.pointerUp(title, { pointerId: 1 });
 
   expect(dialog.style.translate).toBe("");
+  expect(document.querySelector(".fixed.inset-0")).toHaveClass("bg-[var(--theme-dialog-backdrop)]");
+  expect(document.querySelector("[data-dialog-panel='true']")).not.toHaveClass(
+    "[box-shadow:var(--theme-overlay-shadow)]",
+  );
+  expect(screen.getByRole("button", { name: "确认" })).toHaveClass("cursor-pointer");
   expect(title.parentElement).not.toHaveClass("lg:cursor-move");
+});
+
+test("sheets use the shared dimming layer and menu items expose pointer affordance", () => {
+  const sheetRender = render(
+    React.createElement(
+      Sheet,
+      { open: true },
+      React.createElement(SheetContent, { title: "节点详情" }, React.createElement("p", null, "详情内容")),
+    ),
+  );
+
+  expect(document.querySelector(".fixed.inset-0")).toHaveClass("bg-[var(--theme-sheet-backdrop)]");
+  expect(screen.getByRole("dialog", { name: "节点详情" })).not.toHaveClass(
+    "[box-shadow:var(--theme-overlay-shadow)]",
+  );
+  sheetRender.unmount();
+
+  render(
+    React.createElement(
+      DropdownMenu,
+      { open: true },
+      React.createElement(
+        DropdownMenuContent,
+        null,
+        React.createElement(DropdownMenuItem, null, "菜单选项"),
+      ),
+    ),
+  );
+  expect(screen.getByRole("menuitem", { name: "菜单选项" })).toHaveClass("cursor-pointer");
 });

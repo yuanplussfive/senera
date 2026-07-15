@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -14,6 +14,7 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 }));
 
 const { SessionList } = await import("../../../Frontend/src/features/session/SessionList.tsx");
+const { SessionRow } = await import("../../../Frontend/src/features/session/SessionRows.tsx");
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
 const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
@@ -45,7 +46,10 @@ test("session panel renders store sessions and selects a row", async () => {
 
   expect(useStore.getState().activeSessionId).toBe("second");
   expect(onSessionSelected).toHaveBeenCalledTimes(1);
-  expect(screen.getByText("最近 · 2")).toBeInTheDocument();
+  expect(screen.queryByText("最近 · 2")).not.toBeInTheDocument();
+  const rows = Array.from(document.querySelectorAll("[data-session-row]"));
+  expect(rows).toHaveLength(2);
+  expect(new Set(rows.map((row) => (row.classList.contains("h-11") ? "h-11" : "h-9"))).size).toBe(1);
 });
 
 test("integrated sidebar exposes collapse, new-session, and real session search", async () => {
@@ -83,6 +87,35 @@ test("integrated sidebar exposes collapse, new-session, and real session search"
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toHaveValue("");
 });
 
+test("account menu exposes one settings entry and a flatter profile editor", async () => {
+  const user = userEvent.setup();
+  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
+
+  await user.click(screen.getByRole("button", { name: /用户/ }));
+  expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.edit") })).toBeVisible();
+  expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.settings") })).toBeVisible();
+  expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.about") })).toBeVisible();
+  expect(screen.queryByRole("menuitem", { name: "外观设置" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "通用设置" })).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.settings") }));
+  expect(openSettingsSurface).toHaveBeenCalledWith({ fallback: expect.any(Function) });
+
+  await user.click(screen.getByRole("button", { name: /用户/ }));
+  await user.click(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.about") }));
+  expect(openSettingsSurface).toHaveBeenLastCalledWith({
+    section: "about",
+    fallback: expect.any(Function),
+  });
+
+  await user.click(screen.getByRole("button", { name: /用户/ }));
+  await user.click(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.edit") }));
+  expect(screen.getByRole("dialog", { name: frontendMessage("profile.title") })).toBeVisible();
+  const editor = document.querySelector("[data-profile-editor]");
+  expect(editor).not.toBeNull();
+  expect(editor.querySelector(":scope > .rounded-lg.border")).toBeNull();
+});
+
 test("session row menu submits a trimmed rename", async () => {
   const onRenameSession = vi.fn();
   const user = userEvent.setup();
@@ -101,6 +134,29 @@ test("session row menu submits a trimmed rename", async () => {
   await user.click(screen.getByRole("button", { name: frontendMessage("session.save") }));
 
   expect(onRenameSession).toHaveBeenCalledWith("first", "New title");
+});
+
+test("desktop session rows use the context menu without a duplicate overflow button", async () => {
+  const onRename = vi.fn();
+  const user = userEvent.setup();
+  renderWithFrontendProviders(
+    React.createElement(SessionRow, {
+      active: true,
+      sessionId: "desktop-session",
+      title: "Desktop session",
+      accent: "idle",
+      onClick: vi.fn(),
+      showInlineActions: false,
+      onRename,
+      onClose: vi.fn(),
+    }),
+  );
+
+  const sessionButton = screen.getByRole("button", { name: "打开会话：Desktop session" });
+  expect(screen.queryByRole("button", { name: "more" })).not.toBeInTheDocument();
+  fireEvent.contextMenu(sessionButton, { clientX: 24, clientY: 24 });
+  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.rename") }));
+  expect(onRename).toHaveBeenCalledTimes(1);
 });
 
 test("session row deletion requires explicit confirmation", async () => {

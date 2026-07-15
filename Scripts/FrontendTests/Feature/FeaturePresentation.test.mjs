@@ -10,7 +10,10 @@ import {
 } from "../../../Frontend/src/features/chat/modelProvider.ts";
 import {
   readRunDisplayName,
+  readRunDisplayIcon,
   readAssistantDisplayContent,
+  readAssistantDisplayIcon,
+  readAssistantDisplayName,
 } from "../../../Frontend/src/features/chat/messagePresentation.ts";
 import {
   readRunStatusLabel,
@@ -103,6 +106,25 @@ test("message presentation preserves assistant content and run provider labels",
 
   expect(readAssistantDisplayContent(message, run)).toBe("最终回复");
   expect(readRunDisplayName(run)).toBe("gpt-test");
+  expect(
+    readAssistantDisplayName(
+      { metadata: { run: { modelProvider: run.modelProvider } } },
+      model("currently-selected", true, false),
+    ),
+  ).toBe("gpt-test");
+  expect(readAssistantDisplayIcon(message, { ...run.modelProvider, capabilities: { Chat: true }, isDefault: false })).toBe(
+    "openai",
+  );
+  expect(readRunDisplayIcon(run)).toBe("openai");
+  expect(
+    readRunDisplayIcon({
+      modelProvider: {
+        ...run.modelProvider,
+        id: "provider-deepseek",
+        model: "deepseek-v4-flash",
+      },
+    }),
+  ).toBe("deepseek");
 });
 
 function model(id, chat, isDefault) {

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useChatCommands } from "../../../Frontend/src/app/useChatCommands.ts";
 import { useSessionCommands } from "../../../Frontend/src/app/useSessionCommands.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
-import { useStore } from "../../../Frontend/src/store/sessionStore.ts";
+import { DEFAULT_SESSION_TITLE, useStore } from "../../../Frontend/src/store/sessionStore.ts";
 import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
 import { installMemoryLocalStorage, registerTestSession, resetFrontendStore } from "../frontendStoreTestHarness.mjs";
 
@@ -187,6 +187,10 @@ test("useSessionCommands creates, renames, and synchronizes sessions only after 
   expect(serverKnownSessionIdsRef.current).toContain(created.sessionId);
   expect(useStore.getState().activeSessionId).toBe(created.sessionId);
 
+  act(() => handleRef.current.createSession());
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(useStore.getState().activeSessionId).toBe(created.sessionId);
+
   act(() => handleRef.current.renameSession(created.sessionId, "  Renamed session  "));
   expect(useStore.getState().sessions[created.sessionId].title).toBe("Renamed session");
   expect(send).toHaveBeenLastCalledWith({
@@ -194,6 +198,22 @@ test("useSessionCommands creates, renames, and synchronizes sessions only after 
     sessionId: created.sessionId,
     title: "Renamed session",
   });
+});
+
+test("useSessionCommands reuses an existing empty new conversation while offline", () => {
+  registerTestSession("session-empty", DEFAULT_SESSION_TITLE);
+  registerTestSession("session-current", "Current work");
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderSessionCommands({ handleRef, send, status: "closed" });
+
+  act(() => handleRef.current.createSession());
+
+  expect(send).not.toHaveBeenCalled();
+  expect(useStore.getState().activeSessionId).toBe("session-empty");
+  expect(readTestToastCalls()).not.toContainEqual(
+    expect.objectContaining({ title: frontendMessage("session.createOffline") }),
+  );
 });
 
 test("useSessionCommands keeps failed bulk deletions and reports the partial result", () => {

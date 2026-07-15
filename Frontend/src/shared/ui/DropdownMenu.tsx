@@ -48,7 +48,7 @@ export const DropdownMenuItem = forwardRef<HTMLDivElement, ItemProps>(
       <DropdownMenuPrimitive.Item
         ref={ref}
         className={cn(
-          "group flex h-8 cursor-default select-none items-center gap-2.5 rounded-md px-2.5 text-[13px] outline-none transition-colors",
+          "group flex h-8 cursor-pointer select-none items-center gap-2.5 rounded-md px-2.5 text-[13px] outline-none transition-colors",
           isCoarsePointer && "min-h-11",
           "text-ink-800 data-[highlighted]:bg-ink-900/[0.045] data-[highlighted]:text-ink-900",
           destructive && "text-brick-500 data-[highlighted]:bg-brick-50 data-[highlighted]:text-brick-600",
@@ -101,7 +101,7 @@ export const DropdownMenuCheckboxItem = forwardRef<
       ref={ref}
       checked={checked}
       className={cn(
-        "relative flex h-8 cursor-default select-none items-center gap-2 rounded-md px-2.5 pl-7 text-[13px] outline-none",
+        "relative flex h-8 cursor-pointer select-none items-center gap-2 rounded-md px-2.5 pl-7 text-[13px] outline-none",
         isCoarsePointer && "min-h-11",
         "text-ink-800 data-[highlighted]:bg-ink-900/[0.045] data-[highlighted]:text-ink-900",
         className,

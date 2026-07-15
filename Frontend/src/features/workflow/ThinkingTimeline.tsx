@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Maximize2, PanelRightClose, PanelRightOpen, ListTree } from "lucide-react";
+import { ListTree, Loader2, Maximize2, PanelRightClose } from "lucide-react";
 import { useStore, type RunRecord } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -19,64 +19,26 @@ const LazyThinkingTimelineCanvas = lazy(() =>
 export function ThinkingTimeline({
   presentation = "auto",
   hidePanelTitle = false,
+  onClosePanel,
 }: {
-  presentation?: "auto" | "panel" | "dock";
+  presentation?: "auto" | "panel";
   hidePanelTitle?: boolean;
+  onClosePanel?: () => void;
 }): JSX.Element {
-  if (presentation === "dock") return <WorkflowDock />;
-  return <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} />;
-}
-
-function WorkflowDock(): JSX.Element {
-  const collapsed = useStore((state) => state.rightPanelCollapsed);
-  const setCollapsed = useStore((state) => state.setRightPanelCollapsed);
-  const toggleCollapsed = useStore((state) => state.toggleRightPanel);
-
-  return (
-    <nav
-      className="flex h-full w-[46px] flex-col items-center border-l border-ink-200/70 bg-[var(--theme-sidebar-bg)] px-1.5 py-2"
-      aria-label={frontendMessage("workflow.panel.title")}
-      data-workflow-dock
-    >
-      <IconButton
-        label={frontendMessage("workflow.panel.title")}
-        tooltip={frontendMessage("workflow.panel.title")}
-        tooltipSide="left"
-        aria-pressed={!collapsed}
-        onClick={() => setCollapsed(false)}
-        className={cn(
-          "h-8 w-8 rounded-md transition-colors duration-150",
-          !collapsed ? "bg-ink-900/[0.07] text-ink-900" : "text-ink-500 hover:bg-ink-900/[0.045] hover:text-ink-800",
-        )}
-      >
-        <ListTree className="h-4 w-4" />
-      </IconButton>
-
-      <div className="mt-auto">
-        <IconButton
-          label={collapsed ? frontendMessage("workflow.panel.expand") : frontendMessage("workflow.panel.collapse")}
-          tooltip={collapsed ? frontendMessage("workflow.panel.expand") : frontendMessage("workflow.panel.collapse")}
-          tooltipSide="left"
-          onClick={toggleCollapsed}
-          className="h-8 w-8 text-ink-500"
-        >
-          {collapsed ? <PanelRightOpen className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />}
-        </IconButton>
-      </div>
-    </nav>
-  );
+  return <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} onClosePanel={onClosePanel} />;
 }
 
 function ThinkingPanel({
   presentation,
   hidePanelTitle,
+  onClosePanel,
 }: {
   presentation: "auto" | "panel";
   hidePanelTitle: boolean;
+  onClosePanel?: () => void;
 }): JSX.Element {
   const activeId = useStore((s) => s.activeSessionId);
   const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
-  const toggleCollapsed = useStore((s) => s.toggleRightPanel);
   const viewedRunId = useStore((s) => (activeId ? s.viewedRunIdBySession[activeId] : undefined));
   const setViewedRun = useStore((s) => s.setViewedRun);
   const [focusOpen, setFocusOpen] = useState(false);
@@ -113,6 +75,7 @@ function ThinkingPanel({
           "flex h-full shrink-0 flex-col border-l border-ink-200/70 bg-[var(--theme-elevated-bg)]",
           presentation === "panel" ? "w-full border-l-0" : "w-full",
         )}
+        data-ui-chrome
       >
         <TopBar
           run={run}
@@ -124,7 +87,7 @@ function ThinkingPanel({
           onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
           onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
           onToggleFocus={toggleFocus}
-          onCollapse={presentation === "panel" ? undefined : toggleCollapsed}
+          onClosePanel={onClosePanel}
         />
         <CanvasArea run={run} />
       </aside>
@@ -154,7 +117,7 @@ function TopBar({
   onSelect,
   onFollowLatest,
   onToggleFocus,
-  onCollapse,
+  onClosePanel,
 }: {
   run?: RunRecord;
   runs: RunRecord[];
@@ -165,27 +128,24 @@ function TopBar({
   onSelect: (requestId: string) => void;
   onFollowLatest: () => void;
   onToggleFocus: () => void;
-  onCollapse?: () => void;
+  onClosePanel?: () => void;
 }): JSX.Element {
   const summary = run ? summarizeRun(run) : undefined;
 
   return (
     <>
-      <div className="flex h-[48px] items-center gap-2 border-b border-ink-200/70 px-3">
-        {onCollapse ? (
-          <IconButton
-            label={frontendMessage("workflow.panel.collapse")}
-            tooltip={frontendMessage("workflow.panel.collapse")}
-            tooltipSide="left"
-            size="sm"
-            className="h-7 w-7 text-ink-500"
-            onClick={onCollapse}
-          >
-            <PanelRightClose className="h-4 w-4" />
-          </IconButton>
-        ) : null}
+      <div className="flex h-[52px] items-center gap-2 border-b border-ink-200/70 px-3">
         {hideTitle ? null : (
-          <span className="text-[13px] font-medium text-ink-850">{frontendMessage("workflow.panel.title")}</span>
+          <nav
+            className="flex min-w-0 items-center gap-2"
+            aria-label={frontendMessage("workflow.panel.title")}
+            data-workspace-tool-dock
+          >
+            <ListTree className="h-4 w-4 shrink-0 text-ink-500" />
+            <span className="truncate text-[13px] font-medium text-ink-850">
+              {frontendMessage("workflow.panel.title")}
+            </span>
+          </nav>
         )}
         <div className="ml-auto flex items-center gap-1">
           <IconButton
@@ -197,6 +157,16 @@ function TopBar({
           >
             <Maximize2 className="h-4 w-4" />
           </IconButton>
+          {onClosePanel ? (
+            <IconButton
+              label={frontendMessage("workflow.panel.collapse")}
+              tooltip={frontendMessage("workflow.panel.collapse")}
+              tooltipSide="bottom"
+              onClick={onClosePanel}
+            >
+              <PanelRightClose className="h-4 w-4" />
+            </IconButton>
+          ) : null}
         </div>
       </div>
 

@@ -35,8 +35,10 @@ export function App(): JSX.Element {
   const appendUserMessage = useStore((s) => s.appendUserMessage);
   const activeId = useStore((s) => s.activeSessionId);
   const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
+  const rightPanelCollapsed = useStore((s) => s.rightPanelCollapsed);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const setSidebarCollapsed = useStore((s) => s.setSidebarCollapsed);
+  const setRightPanelCollapsed = useStore((s) => s.setRightPanelCollapsed);
   const modelProviders = useStore((s) => s.modelProviders);
   const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
   const defaultModelProviderId = useStore((s) => s.defaultModelProviderId);
@@ -64,6 +66,22 @@ export function App(): JSX.Element {
     }
     setSessionDrawerOpen(true);
   }, [hasPersistentSessionPanel, setSidebarCollapsed]);
+
+  const handleOpenWorkflowPanel = useCallback((): void => {
+    if (hasPersistentWorkflowPanel) {
+      setRightPanelCollapsed(false);
+      return;
+    }
+    setWorkflowDrawerOpen(true);
+  }, [hasPersistentWorkflowPanel, setRightPanelCollapsed]);
+
+  const handleCloseWorkflowPanel = useCallback((): void => {
+    if (hasPersistentWorkflowPanel) {
+      setRightPanelCollapsed(true);
+      return;
+    }
+    setWorkflowDrawerOpen(false);
+  }, [hasPersistentWorkflowPanel, setRightPanelCollapsed]);
 
   const { resetServerKnownSessions, serverKnownSessionIdsRef, syncServerKnownSessionFromEvent } =
     useServerKnownSessions();
@@ -273,16 +291,17 @@ export function App(): JSX.Element {
                   appShellRenderPlan.showChatSessionPanelAction || sidebarCollapsed
                     ? handleOpenSessionPanel
                     : undefined,
-                onOpenWorkflowPanel: appShellRenderPlan.showChatWorkflowPanelAction
-                  ? () => setWorkflowDrawerOpen(true)
-                  : undefined,
+                onOpenWorkflowPanel:
+                  appShellRenderPlan.showChatWorkflowPanelAction &&
+                  (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)
+                    ? handleOpenWorkflowPanel
+                    : undefined,
                 onRetryHistory: requestSessionHistory,
               }}
             />
           </ErrorBoundary>
         }
-        workflowDock={<ThinkingTimeline presentation="dock" />}
-        workflowPanel={<ThinkingTimeline presentation="auto" />}
+        workflowPanel={<ThinkingTimeline presentation="auto" onClosePanel={handleCloseWorkflowPanel} />}
         workflowDrawer={<ThinkingTimeline presentation="panel" hidePanelTitle />}
         sessionDrawerOpen={sessionDrawerOpen}
         onSessionDrawerOpenChange={setSessionDrawerOpen}

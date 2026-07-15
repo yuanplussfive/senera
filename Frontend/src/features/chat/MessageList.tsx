@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
-import type { ModelProviderListItem } from "../../api/eventTypes";
 import type { ApprovalResolutionScope } from "../../api/approvalEventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
 import { PerformanceMonitor } from "../../app/PerformanceMonitor";
 import { DeleteMessageDialog } from "./DeleteMessageDialog";
-import { EditMessageDialog } from "./EditMessageDialog";
 import { MessageRow } from "./MessageRow";
 import { MotionMessageItem } from "./MotionMessageItem";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
@@ -21,8 +19,6 @@ interface MessageListProps {
   messages: ChatMessage[];
   runs: RunRecord[];
   currentRun?: RunRecord;
-  assistantAvatarIcon?: string;
-  selectedModelProvider?: ModelProviderListItem;
   userProfile: UserProfile;
   onRegenerate: (m: ChatMessage) => void;
   onEditUserMessage: (m: ChatMessage, nextContent: string) => void;
@@ -61,8 +57,6 @@ export function MessageList({
   messages,
   runs,
   currentRun,
-  assistantAvatarIcon,
-  selectedModelProvider,
   userProfile,
   onRegenerate,
   onEditUserMessage,
@@ -207,8 +201,6 @@ export function MessageList({
                   <MotionMessageItem motionKey={`streaming:${item.run.requestId}`}>
                     <StreamingRow
                       run={item.run}
-                      assistantAvatarIcon={assistantAvatarIcon}
-                      selectedModelProvider={selectedModelProvider}
                       approvalDisabled={approvalDisabled}
                       onResolveApproval={onResolveApproval}
                     />
@@ -240,8 +232,17 @@ export function MessageList({
                       setEditing({ id: item.id, message: item });
                       setDraft(item.content ?? "");
                     }}
-                    assistantAvatarIcon={assistantAvatarIcon}
-                    selectedModelProvider={selectedModelProvider}
+                    isEditing={editing?.id === item.id}
+                    editDraft={editing?.id === item.id ? draft : ""}
+                    onEditDraftChange={setDraft}
+                    onCancelEdit={closeEditor}
+                    onSubmitEdit={() => {
+                      if (editing?.id !== item.id) return;
+                      const next = draft.trim();
+                      if (!next) return;
+                      onEditUserMessage(item, next);
+                      closeEditor();
+                    }}
                     userProfile={userProfile}
                     showInlineActions={showInlineMessageActions}
                     onRegenerate={() => onRegenerate(item)}
@@ -254,20 +255,10 @@ export function MessageList({
           }}
           components={{
             Header: () => <div className="h-6" />,
-            Footer: () => <div className="h-24" />,
+            Footer: () => <div className="h-3" data-message-list-end-spacer />,
           }}
         />
         <ScrollToBottomButton visible={showScrollButton} onClick={scrollToBottom} />
-        <EditMessageDialog
-          editing={editing}
-          draft={draft}
-          onDraftChange={setDraft}
-          onClose={closeEditor}
-          onSubmit={(target, next) => {
-            onEditUserMessage(target, next);
-            closeEditor();
-          }}
-        />
         <DeleteMessageDialog
           open={!!deleting}
           message={deleting}

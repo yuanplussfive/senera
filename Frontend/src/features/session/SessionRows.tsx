@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
   IconButton,
 } from "../../shared/ui";
-import { motionTimings, readTapScale, useMotionLevel } from "../../shared/motion";
+import { motionTimings, useMotionLevel } from "../../shared/motion";
 import { ContextSessionMenuItems, DropdownSessionMenuItems } from "./SessionMenuActions";
 import type { SessionMenuAction } from "./types";
 
@@ -21,7 +21,6 @@ interface SessionRowProps {
   active: boolean;
   sessionId: string;
   title: string;
-  subtitle: string;
   accent: "idle" | "running" | "failed";
   onClick: () => void;
   showInlineActions: boolean;
@@ -33,7 +32,6 @@ export function SessionRow({
   active,
   sessionId,
   title,
-  subtitle,
   accent,
   onClick,
   showInlineActions,
@@ -42,7 +40,7 @@ export function SessionRow({
 }: SessionRowProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const { reduceMotion, disableMotion } = useMotionLevel();
-  const tapScale = readTapScale(disableMotion || reduceMotion ? "reduced" : "full");
+  const animateSelection = !reduceMotion && !disableMotion;
   const actions: SessionMenuAction[] = [
     {
       id: "rename",
@@ -62,21 +60,41 @@ export function SessionRow({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <motion.div
+        <div
           data-session-row={sessionId}
-          whileTap={tapScale ? { scale: tapScale } : undefined}
-          transition={motionTimings.fast}
           className={cn(
-            "group relative isolate mt-px grid w-full grid-cols-[minmax(0,1fr)_28px] items-center gap-1 rounded-md px-2.5 py-1.5 text-left transition-colors duration-150",
+            "group relative isolate grid w-full items-center rounded-md px-2.5 text-left transition-colors duration-150",
+            showInlineActions ? "h-11" : "h-9",
+            showInlineActions ? "grid-cols-[minmax(0,1fr)_28px] gap-1" : "grid-cols-1",
             "data-[state=open]:bg-ink-900/[0.055]",
-            active ? "bg-ink-900/[0.055] text-ink-950" : "text-ink-700 hover:bg-ink-900/[0.035]",
+            active ? "text-ink-950" : "text-ink-650 hover:bg-ink-900/[0.035] hover:text-ink-900",
           )}
         >
+          {active ? (
+            <motion.span
+              layoutId={animateSelection ? "active-session-surface" : undefined}
+              transition={animateSelection ? { layout: motionTimings.selection } : { duration: 0 }}
+              className="pointer-events-none absolute inset-0 z-0 rounded-md bg-[var(--theme-session-active-bg)]"
+              data-active-session-indicator
+            />
+          ) : null}
           <button
             type="button"
             aria-current={active ? "true" : undefined}
             aria-label={`打开会话：${title}`}
             onClick={onClick}
+            onKeyDown={(event) => {
+              if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
+              event.preventDefault();
+              const rect = event.currentTarget.getBoundingClientRect();
+              event.currentTarget.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                  bubbles: true,
+                  clientX: rect.left + Math.min(rect.width / 2, 120),
+                  clientY: rect.top + Math.min(rect.height / 2, 24),
+                }),
+              );
+            }}
             className="absolute inset-0 z-10 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300"
           />
           <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
@@ -94,42 +112,37 @@ export function SessionRow({
               ) : null}
               <span
                 title={title}
-                className="block min-w-0 max-w-full truncate text-[13px] font-medium leading-tight cursor-[inherit] select-none"
+                className={cn(
+                  "block min-w-0 max-w-full cursor-[inherit] select-none truncate text-[13px] leading-5 transition-colors duration-150",
+                  active ? "font-medium" : "font-normal",
+                )}
               >
                 {title}
               </span>
             </div>
-            {active || accent !== "idle" ? (
-              <div className="mt-0.5 truncate text-[10.5px] tabular-nums text-ink-450 cursor-[inherit] select-none">
-                {subtitle}
-              </div>
-            ) : null}
           </div>
 
-          <div className="relative z-20">
-            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-              <DropdownMenuTrigger asChild>
-                <IconButton
-                  label="more"
-                  size="sm"
-                  tone="muted"
-                  touchSafe
-                  className={cn(
-                    "justify-self-end hover:bg-ink-900/[0.06]",
-                    menuOpen || showInlineActions
-                      ? "opacity-100"
-                      : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
-                  )}
-                >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
-                </IconButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[190px]">
-                <DropdownSessionMenuItems actions={actions} separateLast />
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </motion.div>
+          {showInlineActions ? (
+            <div className="relative z-20">
+              <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <IconButton
+                    label="more"
+                    size="sm"
+                    tone="muted"
+                    touchSafe
+                    className="justify-self-end hover:bg-ink-900/[0.06]"
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </IconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[190px]">
+                  <DropdownSessionMenuItems actions={actions} separateLast />
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ) : null}
+        </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-[196px]">
         <ContextMenuLabel>{frontendMessage("runtime.migrated.features.session.SessionRows.141.27")}</ContextMenuLabel>

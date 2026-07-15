@@ -8,14 +8,11 @@ interface LogoProps {
 export function LogoMark({ className, size = 22 }: LogoProps): JSX.Element {
   return (
     <span
-      className={cn(
-        "grid shrink-0 place-items-center font-sans font-semibold leading-none tracking-[-0.08em] text-ink-900",
-        className,
-      )}
-      style={{ width: size, height: size, fontSize: Math.max(11, Math.round(size * 0.62)) }}
+      className={cn("grid shrink-0 place-items-center", className)}
+      style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      S
+      <img src="/favicon.svg" alt="" className="h-full w-full object-contain" draggable={false} />
     </span>
   );
 }
