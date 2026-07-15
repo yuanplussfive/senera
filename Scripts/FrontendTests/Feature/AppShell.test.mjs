@@ -20,34 +20,45 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("app shell derives stable surfaces and actions across responsive modes", () => {
+test("app shell derives integrated workspace surfaces across responsive modes", () => {
   const mobile = responsiveMode("mobile");
   const tablet = responsiveMode("tablet");
   const desktop = responsiveMode("desktop");
+  const inlineDesktop = { ...responsiveMode("desktop"), hasInlineWorkflowPanel: true };
   const wide = responsiveMode("wide");
 
   expect(readAppShellSurfacePlan(mobile)).toEqual({ session: "drawer", workflow: "drawer" });
   expect(readAppShellRenderPlan(mobile)).toMatchObject({
-    showSessionRail: false,
+    showSessionPersistentPanel: false,
+    showWorkflowDock: false,
     showSessionDrawer: true,
     showWorkflowDrawer: true,
+    workflowPanelLayout: "drawer",
     showChatSessionPanelAction: true,
     showChatWorkflowPanelAction: true,
   });
   expect(readAppShellRenderPlan(tablet)).toMatchObject({
-    showSessionRail: true,
     showSessionPersistentPanel: false,
+    showWorkflowDock: false,
     showWorkflowPersistentPanel: false,
+    workflowPanelLayout: "drawer",
   });
   expect(readAppShellRenderPlan(desktop)).toMatchObject({
-    showSessionRail: true,
-    showSessionPersistentPanel: false,
+    showSessionPersistentPanel: true,
+    showWorkflowDock: true,
     showWorkflowPersistentPanel: true,
+    workflowPanelLayout: "overlay",
+    showSessionDrawer: false,
+    showWorkflowDrawer: false,
+  });
+  expect(readAppShellRenderPlan(inlineDesktop)).toMatchObject({
+    workflowPanelLayout: "inline",
   });
   expect(readAppShellRenderPlan(wide)).toMatchObject({
-    showSessionRail: false,
     showSessionPersistentPanel: true,
+    showWorkflowDock: true,
     showWorkflowPersistentPanel: true,
+    workflowPanelLayout: "inline",
   });
   expect(readWorkflowPanelWidth(desktop)).toBeLessThan(readWorkflowPanelWidth(wide));
 });
@@ -57,10 +68,10 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
   const onWorkflowDrawerOpenChange = vi.fn();
   renderWithFrontendProviders(
     React.createElement(AppShell, {
-      sessionRail: React.createElement("div", null, "Session rail"),
       sessionPanel: React.createElement("div", null, "Session panel"),
       sessionDrawer: React.createElement("div", null, "Session drawer"),
       chatPanel: React.createElement("div", null, "Chat panel"),
+      workflowDock: React.createElement("div", null, "Workflow dock"),
       workflowPanel: React.createElement("div", null, "Workflow panel"),
       workflowDrawer: React.createElement("div", null, "Workflow drawer"),
       sessionDrawerOpen: true,
@@ -73,6 +84,7 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
 
   expect(screen.getByText("Session panel")).toBeVisible();
   expect(screen.getByText("Chat panel")).toBeVisible();
+  expect(screen.getByText("Workflow dock")).toBeVisible();
   expect(screen.getByText("Workflow panel")).toBeVisible();
   expect(screen.queryByText("Session drawer")).not.toBeInTheDocument();
   expect(screen.queryByText("Workflow drawer")).not.toBeInTheDocument();
@@ -85,8 +97,9 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
 function responsiveMode(viewport) {
   return {
     viewport,
-    hasPersistentSessionPanel: viewport === "wide",
+    hasPersistentSessionPanel: viewport === "desktop" || viewport === "wide",
     hasPersistentWorkflowPanel: viewport === "desktop" || viewport === "wide",
+    hasInlineWorkflowPanel: viewport === "wide",
     prefersCompactControls: viewport === "mobile",
     supportsHover: viewport !== "mobile",
     isCoarsePointer: viewport === "mobile",

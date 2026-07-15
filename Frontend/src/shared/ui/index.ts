@@ -22,6 +22,8 @@ export {
   DialogTrigger,
 } from "./Dialog";
 export type { DialogActionButtonProps, DialogActionsProps, DialogActionVariant } from "./Dialog";
+export { ConversationFrame } from "./ConversationFrame";
+export type { ConversationFrameMode, ConversationFrameProps } from "./ConversationFrame";
 export { ErrorBoundary } from "./ErrorBoundary";
 export { FileDropZone } from "./FileDropZone";
 export type { FileDropZoneAccept, FileDropZoneState } from "./FileDropZone";

@@ -5,6 +5,7 @@ import { AgentExecutionFeed } from "../workflow/AgentExecutionFeed";
 import { ApprovalRequestStrip } from "./ApprovalRequestStrip";
 import { MessageAvatar, MessageMeta } from "./MessageChrome";
 import { readRunDisplayName } from "./messagePresentation";
+import { ConversationFrame } from "../../shared/ui";
 
 export interface StreamingRowProps {
   run: RunRecord;
@@ -22,7 +23,7 @@ export function StreamingRow({
   onResolveApproval,
 }: StreamingRowProps): JSX.Element {
   return (
-    <div className="flex items-start gap-3">
+    <ConversationFrame mode="wide" className="flex items-start gap-3">
       <MessageAvatar role="assistant" icon={assistantAvatarIcon} />
       <div className="flex min-w-0 flex-1 flex-col">
         <MessageMeta title={readRunDisplayName(run, selectedModelProvider)} timestamp={run.startedAt} />
@@ -35,6 +36,6 @@ export function StreamingRow({
           <AgentExecutionFeed run={run} />
         </div>
       </div>
-    </div>
+    </ConversationFrame>
   );
 }

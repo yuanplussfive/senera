@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -48,34 +48,39 @@ test("session panel renders store sessions and selects a row", async () => {
   expect(screen.getByText("最近 · 2")).toBeInTheDocument();
 });
 
-test("rail presentation exposes expansion, new-session, and settings actions without a connection dot", async () => {
+test("integrated sidebar exposes collapse, new-session, and real session search", async () => {
   const onNewSession = vi.fn();
-  const onOpenSessionPanel = vi.fn();
+  const onClosePanel = vi.fn();
   const user = userEvent.setup();
+  resetSessionStore({
+    sessions: {
+      first: session("first", "Frontend refactor"),
+      second: session("second", "Provider settings"),
+    },
+    sessionOrder: ["first", "second"],
+    activeSessionId: "first",
+  });
   renderWithFrontendProviders(
     React.createElement(
       SessionList,
       createProps({
-        presentation: "rail",
         onNewSession,
-        onOpenSessionPanel,
+        onClosePanel,
       }),
     ),
   );
 
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.headerCollapse") }));
   await user.click(screen.getByRole("button", { name: frontendMessage("session.new") }));
-  await user.click(screen.getByRole("button", { name: frontendMessage("pluginConfig.viewSettings") }));
+  await user.type(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }), "provider");
 
-  expect(onOpenSessionPanel).toHaveBeenCalledTimes(1);
+  expect(onClosePanel).toHaveBeenCalledTimes(1);
   expect(onNewSession).toHaveBeenCalledTimes(1);
-  expect(openSettingsSurface).toHaveBeenCalledWith(
-    expect.objectContaining({
-      fallback: expect.any(Function),
-    }),
-  );
-  expect(openSettingsSurface).toHaveBeenCalledWith(expect.not.objectContaining({ section: expect.anything() }));
-  expect(screen.queryByTitle(frontendMessage("connection.open"))).not.toBeInTheDocument();
+  expect(screen.getByText("Provider settings")).toBeVisible();
+  await waitFor(() => expect(screen.queryByText("Frontend refactor")).not.toBeInTheDocument());
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.searchClear") }));
+  expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toHaveValue("");
 });
 
 test("session row menu submits a trimmed rename", async () => {

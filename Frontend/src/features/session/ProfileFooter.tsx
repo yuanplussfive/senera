@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Info, Palette, Settings2, User } from "lucide-react";
+import { Camera, Info, LoaderCircle, Palette, Settings2, User, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import { openSettingsSurface } from "../../app/desktopBridge";
 import type { UserProfile } from "../../store/sessionStore";
@@ -47,12 +47,14 @@ export function UserFooter({
         : socketStatus === "error"
           ? frontendMessage("connection.error")
           : frontendMessage("connection.closed");
-  const statusColor =
+  const StatusIcon =
+    socketStatus === "open" ? Wifi : socketStatus === "connecting" || socketStatus === "idle" ? LoaderCircle : WifiOff;
+  const statusIconClass =
     socketStatus === "open"
-      ? "bg-moss-500"
+      ? "text-moss-600"
       : socketStatus === "connecting" || socketStatus === "idle"
-        ? "bg-umber-500"
-        : "bg-brick-500";
+        ? "animate-spin text-umber-600"
+        : "text-brick-600";
 
   return (
     <>
@@ -60,13 +62,13 @@ export function UserFooter({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="flex h-14 w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300 data-[state=open]:bg-ink-900/[0.045]"
+            className="flex h-[54px] w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition-colors duration-150 hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300 data-[state=open]:bg-ink-900/[0.045]"
           >
             <UserAvatar profile={profile} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13px] text-ink-800">{profile.name}</div>
               <div className="flex items-center gap-1 text-[10.5px] text-ink-400">
-                <span className={cn("inline-block h-1.5 w-1.5 rounded-full", statusColor)} />
+                <StatusIcon className={cn("h-3 w-3 shrink-0", statusIconClass)} aria-hidden="true" />
                 {statusLabel}
               </div>
             </div>
@@ -119,7 +121,7 @@ export function UserFooter({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <div className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[12px] text-ink-500">
-            <span className={cn("inline-block h-1.5 w-1.5 rounded-full", statusColor)} />
+            <StatusIcon className={cn("h-3 w-3 shrink-0", statusIconClass)} aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">
               {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}
             </span>

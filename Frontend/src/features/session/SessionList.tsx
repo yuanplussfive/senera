@@ -6,7 +6,7 @@ import { useStore, type SessionRecord, type UserProfile } from "../../store/sess
 import { cn } from "../../lib/util";
 import { ConfirmationDialog, RenameDialog } from "./SessionDialogs";
 import { UserFooter } from "./ProfileFooter";
-import { SessionHeader, SessionRail } from "./SessionChrome";
+import { SessionHeader } from "./SessionChrome";
 import { SessionPanelBody } from "./SessionPanelBody";
 import type { ConfirmationIntent, SessionMenuSection } from "./types";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -21,9 +21,8 @@ interface Props {
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   onLogout?: () => Promise<void>;
   socketStatus: string;
-  presentation?: "auto" | "panel" | "rail";
+  presentation?: "auto" | "panel";
   onSessionSelected?: () => void;
-  onOpenSessionPanel?: () => void;
   onClosePanel?: () => void;
 }
 
@@ -44,13 +43,11 @@ export function SessionList({
   socketStatus,
   presentation = "auto",
   onSessionSelected,
-  onOpenSessionPanel,
   onClosePanel,
 }: Props): JSX.Element {
   const sessions = useStore((s) => s.sessions);
   const order = useStore((s) => s.sessionOrder);
   const active = useStore((s) => s.activeSessionId);
-  const collapsed = useStore((s) => s.sidebarCollapsed);
   const historyLoadingIds = useStore((s) => s.historyLoadingIds);
   const select = useStore((s) => s.selectSession);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
@@ -60,11 +57,17 @@ export function SessionList({
   const [confirmation, setConfirmation] = useState<ConfirmationIntent | null>(null);
   const [renaming, setRenaming] = useState<RenameIntent | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const sessionList = useMemo(
     () => order.map((id) => sessions[id]).filter((session): session is SessionRecord => !!session),
     [order, sessions],
   );
+
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
+  const filteredSessions = normalizedSearchQuery
+    ? sessionList.filter((session) => session.title.toLocaleLowerCase().includes(normalizedSearchQuery))
+    : sessionList;
 
   const activeSession = active ? sessions[active] : undefined;
 
@@ -166,14 +169,16 @@ export function SessionList({
     },
   ] satisfies readonly SessionMenuSection[];
 
-  const isRail = presentation === "rail" || (presentation === "auto" && collapsed);
-  const panelWidthClass = presentation === "panel" ? "w-full" : "w-[264px]";
-  const handleOpenFromRail = onOpenSessionPanel ?? toggleSidebar;
+  const panelWidthClass = presentation === "panel" ? "w-full" : "w-[268px]";
 
-  const content = isRail ? (
-    <SessionRail onNewSession={onNewSession} onOpenSessionPanel={handleOpenFromRail} />
-  ) : (
-    <aside className={cn("flex h-full shrink-0 flex-col border-r border-ink-200/70 bg-paper-100/70", panelWidthClass)}>
+  const content = (
+    <aside
+      className={cn(
+        "flex h-full shrink-0 flex-col border-r border-ink-200/70 bg-[var(--theme-sidebar-bg)]",
+        panelWidthClass,
+      )}
+      data-session-sidebar
+    >
       <SessionHeader
         menuSections={menuSections}
         onNewSession={onNewSession}
@@ -181,7 +186,10 @@ export function SessionList({
       />
 
       <SessionPanelBody
-        sessions={sessionList}
+        sessions={filteredSessions}
+        totalSessionCount={sessionList.length}
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
         activeSessionId={active}
         historyLoadingIds={historyLoadingIds}
         showInlineRowActions={showInlineRowActions}

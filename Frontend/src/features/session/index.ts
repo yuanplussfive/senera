@@ -1,5 +1,5 @@
 export { SessionList } from "./SessionList";
-export { SessionHeader, SessionRail } from "./SessionChrome";
+export { SessionHeader } from "./SessionChrome";
 export { ConfirmationDialog, RenameDialog } from "./SessionDialogs";
 export { EmptyState, SessionRow } from "./SessionRows";
 export { UserFooter } from "./ProfileFooter";

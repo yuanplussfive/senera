@@ -26,6 +26,23 @@ test("responsive mode derives stable layout capabilities from media query matche
 
   expect(desktop.hasPersistentSessionPanel).toBe(true);
   expect(desktop.hasPersistentWorkflowPanel).toBe(true);
+  const compactDesktop = deriveResponsiveMode({
+    ...defaultResponsiveQueryMatches,
+    tabletUp: true,
+    desktopUp: true,
+  });
+  expect(compactDesktop.viewport).toBe("desktop");
+  expect(compactDesktop.hasPersistentSessionPanel).toBe(true);
+  expect(compactDesktop.hasPersistentWorkflowPanel).toBe(true);
+  expect(compactDesktop.hasInlineWorkflowPanel).toBe(false);
+  const inlineDesktop = deriveResponsiveMode({
+    ...defaultResponsiveQueryMatches,
+    tabletUp: true,
+    desktopUp: true,
+    workflowInlineUp: true,
+  });
+  expect(inlineDesktop.viewport).toBe("desktop");
+  expect(inlineDesktop.hasInlineWorkflowPanel).toBe(true);
   expect(desktop.supportsHover).toBe(true);
   expect(areResponsiveQueryMatchesEqual(defaultResponsiveQueryMatches, defaultResponsiveQueryMatches)).toBe(true);
 });

@@ -41,7 +41,7 @@ export function ChatPanel({
   );
 
   return (
-    <main className="flex h-full min-w-0 flex-1 flex-col bg-paper-50">
+    <main className="flex h-full min-w-0 flex-1 flex-col bg-[var(--theme-elevated-bg)]" data-agent-workspace>
       <ChatHeader
         title={session?.title ?? DEFAULT_SESSION_TITLE}
         runStatus={currentRun?.status}

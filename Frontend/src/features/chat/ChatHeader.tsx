@@ -1,4 +1,4 @@
-import { Lightbulb, PanelLeftOpen, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ListTree, PanelLeftOpen, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
@@ -18,7 +18,7 @@ export function ChatHeader({
   onOpenWorkflowPanel?: () => void;
 }): JSX.Element {
   return (
-    <div className="flex h-14 shrink-0 items-center gap-2 border-b border-ink-200/60 px-3 sm:px-6">
+    <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-ink-200/70 bg-[var(--theme-elevated-bg)] px-3 sm:px-5">
       {onOpenSessionPanel ? (
         <IconButton
           label={frontendMessage("session.headerExpand")}
@@ -30,16 +30,14 @@ export function ChatHeader({
           <PanelLeftOpen className="h-4 w-4" />
         </IconButton>
       ) : null}
-      <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink-950">
-        {title}
-      </h1>
+      <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink-950">{title}</h1>
       {runStatus === "failed" ? (
         <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium text-brick-600">
-          failed
+          {frontendMessage("workflow.run.status.failed")}
         </span>
       ) : runStatus === "cancelled" ? (
         <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium text-ink-500">
-          cancelled
+          {frontendMessage("workflow.run.status.cancelled")}
         </span>
       ) : null}
       <SandboxStatusBadge status={sandboxStatus} />
@@ -52,7 +50,7 @@ export function ChatHeader({
           touchSafe
           className="ml-auto"
         >
-          <Lightbulb className="h-4 w-4" />
+          <ListTree className="h-4 w-4" />
         </IconButton>
       ) : null}
     </div>

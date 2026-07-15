@@ -1,5 +1,6 @@
 import type { ModelProviderListItem } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
+import { ConversationFrame } from "../../shared/ui";
 import { MessageAvatar, MessageMeta } from "./MessageChrome";
 import { MessageActions } from "./MessageActions";
 import { readAssistantDisplayContent, readAssistantDisplayName } from "./messagePresentation";
@@ -48,13 +49,17 @@ export function MessageRow({
   }
 
   if (message.role === "system") {
-    return <SystemMessageRow message={message} />;
+    return (
+      <ConversationFrame mode="prose">
+        <SystemMessageRow message={message} />
+      </ConversationFrame>
+    );
   }
 
   const displayContent = readAssistantDisplayContent(message, run);
 
   return (
-    <div className="group/msg flex items-start gap-3">
+    <ConversationFrame mode="wide" className="group/msg flex items-start gap-3">
       <MessageAvatar role="assistant" icon={assistantAvatarIcon} />
       <div className="flex min-w-0 flex-1 flex-col">
         <MessageMeta title={readAssistantDisplayName(message, selectedModelProvider)} timestamp={message.createdAt} />
@@ -75,6 +80,6 @@ export function MessageRow({
           onViewWorkflow={onViewWorkflow}
         />
       </div>
-    </div>
+    </ConversationFrame>
   );
 }

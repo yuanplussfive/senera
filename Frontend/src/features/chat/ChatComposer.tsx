@@ -14,6 +14,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  ConversationFrame,
   IconButton,
   Tooltip,
 } from "../../shared/ui";
@@ -227,43 +228,33 @@ export function ChatComposer({
   };
 
   return (
-    <div className="border-t border-ink-200 bg-paper-50 px-3 pb-4 pt-3 sm:px-6 sm:pb-5">
-      <div
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        className={cn(
-          "relative mx-auto flex w-full min-w-0 max-w-[800px] flex-col gap-1.5 rounded-[10px] border border-ink-200 bg-[var(--theme-chat-composer-bg)] px-3 py-2 transition-[background-color,border-color,box-shadow] duration-150",
-          "focus-within:border-terra-300 focus-within:bg-[var(--theme-chat-composer-focus-bg)] focus-within:shadow-[0_0_0_3px_rgb(var(--color-terra-100)/0.55)]",
-          isDraggingFiles && "border-terra-300 bg-terra-50/70 ring-2 ring-terra-200/70",
-        )}
-      >
-        {isDraggingFiles ? (
-          <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-md border border-dashed border-terra-300 bg-paper-50 text-[13px] font-medium text-terra-700">
-            {frontendMessage("runtime.migrated.features.chat.ChatComposer.247.13")}
-          </div>
-        ) : null}
-        <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFileSelection} />
-        {pendingAttachments.length > 0 ? (
-          <AttachmentTray
-            attachments={pendingAttachments}
-            onRemove={(id) => setPendingAttachments((current) => current.filter((entry) => entry.id !== id))}
-          />
-        ) : null}
-        <div className="flex items-end gap-2">
-          <IconButton
-            label="attach"
-            tooltip={frontendMessage("runtime.migrated.features.chat.ChatComposer.260.21")}
-            tooltipSide="top"
-            size="lg"
-            tone="primary"
-            disabled={disabled || running}
-            onClick={() => fileInputRef.current?.click()}
-            touchSafe
-          >
-            <Paperclip className="h-4 w-4" />
-          </IconButton>
+    <div className="border-t border-ink-200/70 bg-[var(--theme-elevated-bg)] py-3 sm:py-4">
+      <ConversationFrame mode="composer">
+        <div
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={cn(
+            "relative flex min-w-0 flex-col rounded-lg border border-ink-200/90 bg-[var(--theme-chat-composer-bg)] px-3 pb-2 pt-1.5 transition-[background-color,border-color,box-shadow] duration-150",
+            "focus-within:border-terra-300 focus-within:bg-[var(--theme-chat-composer-focus-bg)] focus-within:shadow-[0_0_0_2px_rgb(var(--color-terra-100)/0.7)]",
+            isDraggingFiles && "border-terra-300 bg-terra-50/70 ring-2 ring-terra-200/70",
+          )}
+          data-chat-composer
+        >
+          {isDraggingFiles ? (
+            <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-md border border-dashed border-terra-300 bg-paper-50 text-[13px] font-medium text-terra-700">
+              {frontendMessage("runtime.migrated.features.chat.ChatComposer.247.13")}
+            </div>
+          ) : null}
+          <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFileSelection} />
+          {pendingAttachments.length > 0 ? (
+            <AttachmentTray
+              attachments={pendingAttachments}
+              onRemove={(id) => setPendingAttachments((current) => current.filter((entry) => entry.id !== id))}
+            />
+          ) : null}
+
           <textarea
             ref={taRef}
             aria-label="输入消息"
@@ -275,102 +266,105 @@ export function ChatComposer({
             placeholder={hint}
             disabled={disabled}
             style={{ maxHeight: textareaMaxHeight }}
-            className="scrollbar-thin min-w-0 flex-1 resize-none bg-transparent py-2 text-[14.5px] leading-6 text-ink-900 placeholder:text-ink-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:opacity-60"
+            className="scrollbar-thin min-h-11 w-full resize-none bg-transparent px-1 py-2.5 text-[14.5px] leading-6 text-ink-900 placeholder:text-ink-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:opacity-60"
           />
-          {running ? (
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Tooltip content="注入当前任务" side="top" shortcut={prefersCompactControls ? undefined : "↵"}>
+
+          <div className="flex min-w-0 items-center gap-2 border-t border-ink-200/60 pt-2">
+            <div className="flex min-w-0 flex-1 items-center gap-1">
+              <IconButton
+                label="attach"
+                tooltip={frontendMessage("runtime.migrated.features.chat.ChatComposer.260.21")}
+                tooltipSide="top"
+                tone="muted"
+                disabled={disabled || running}
+                onClick={() => fileInputRef.current?.click()}
+                touchSafe
+              >
+                <Paperclip className="h-4 w-4" />
+              </IconButton>
+              <PresetControl
+                disabled={disabled || running}
+                enabled={presetConfig.presetsEnabled}
+                rootDir={presetConfig.presetRootDir}
+                presets={presetConfig.presets}
+                activePresetName={presetConfig.activePresetName}
+                operations={presetConfig.presetOperations}
+                onRefresh={presetConfig.onRefreshPresets}
+                onSave={presetConfig.onSavePreset}
+                onDelete={presetConfig.onDeletePreset}
+                onSetActive={presetConfig.onSetActivePreset}
+              />
+              <ModelSelector
+                disabled={disabled || running}
+                models={modelConfig.modelProviders}
+                selectedId={modelConfig.selectedModelProviderId}
+                defaultModelId={modelConfig.defaultModelProviderId}
+                onSelect={modelConfig.onSelectModelProvider}
+                onUseDefault={modelConfig.onApplyDefaultModel}
+                prefersCompactControls={prefersCompactControls}
+              />
+            </div>
+
+            {running ? (
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Tooltip
+                  content={frontendMessage("chat.composer.inject")}
+                  side="top"
+                  shortcut={prefersCompactControls ? undefined : "↵"}
+                >
+                  <MotionButton
+                    onClick={() => submit("steer")}
+                    disabled={!canSend}
+                    className={cn(
+                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
+                      prefersCompactControls && "min-h-11 min-w-11",
+                      canSend ? "bg-ink-900 text-paper-50 hover:bg-terra-600" : "bg-ink-200/70 text-ink-400",
+                    )}
+                    aria-label="inject-current-run"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </MotionButton>
+                </Tooltip>
+                <Tooltip
+                  content={frontendMessage("chat.composer.cancelRunning")}
+                  side="top"
+                  shortcut={prefersCompactControls ? undefined : "Esc"}
+                >
+                  <MotionButton
+                    onClick={onCancel}
+                    className={cn(
+                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-brick-200 bg-paper-50 text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200/70",
+                      prefersCompactControls && "min-h-11 min-w-11",
+                    )}
+                    aria-label="cancel"
+                  >
+                    <Square className="h-3.5 w-3.5 fill-current" />
+                  </MotionButton>
+                </Tooltip>
+              </div>
+            ) : (
+              <Tooltip
+                content={frontendMessage("chat.composer.send")}
+                side="top"
+                shortcut={prefersCompactControls ? undefined : "↵"}
+              >
                 <MotionButton
-                  onClick={() => submit("steer")}
+                  onClick={() => submit(undefined)}
                   disabled={!canSend}
                   className={cn(
                     "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
                     prefersCompactControls && "min-h-11 min-w-11",
-                    canSend ? "bg-ink-900 text-paper-50 hover:bg-terra-500" : "bg-ink-200/60 text-ink-400",
+                    canSend ? "bg-ink-900 text-paper-50 hover:bg-terra-600" : "bg-ink-200/70 text-ink-400",
                   )}
-                  aria-label="inject-current-run"
+                  aria-label="send"
                 >
                   <ArrowUp className="h-4 w-4" />
                 </MotionButton>
               </Tooltip>
-              <Tooltip content="中断当前运行" side="top" shortcut={prefersCompactControls ? undefined : "Esc"}>
-                <MotionButton
-                  onClick={onCancel}
-                  className={cn(
-                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brick-500 text-paper-50 transition-colors duration-150 hover:bg-brick-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
-                    prefersCompactControls && "min-h-11 min-w-11",
-                  )}
-                  aria-label="cancel"
-                >
-                  <Square className="h-3.5 w-3.5 fill-current" />
-                </MotionButton>
-              </Tooltip>
-            </div>
-          ) : (
-            <Tooltip content="发送" side="top" shortcut={prefersCompactControls ? undefined : "↵"}>
-              <MotionButton
-                onClick={() => submit(undefined)}
-                disabled={!canSend}
-                className={cn(
-                  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70 disabled:pointer-events-none disabled:opacity-50",
-                  prefersCompactControls && "min-h-11 min-w-11",
-                  canSend ? "bg-ink-900 text-paper-50 hover:bg-terra-500" : "bg-ink-200/60 text-ink-400",
-                )}
-                aria-label="send"
-              >
-                <ArrowUp className="h-4 w-4" />
-              </MotionButton>
-            </Tooltip>
-          )}
-        </div>
-        <div className="flex min-w-0 items-center justify-between gap-2 px-1 text-[10.5px] text-ink-400">
-          <span className="min-w-0 truncate">
-            {prefersCompactControls ? null : running ? (
-              <>
-                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 font-mono text-ink-600">↵</kbd>
-                <span className="ml-1.5">{frontendMessage("runtime.migrated.features.chat.ChatComposer.334.42")}</span>
-                <span className="mx-2 text-ink-300">·</span>
-                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 font-mono text-ink-600">Alt↵</kbd>
-                <span className="ml-1.5">{frontendMessage("runtime.migrated.features.chat.ChatComposer.337.42")}</span>
-                <span className="mx-2 text-ink-300">·</span>
-                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 font-mono text-ink-600">Esc</kbd>
-                <span className="ml-1.5">{frontendMessage("runtime.migrated.features.chat.ChatComposer.340.42")}</span>
-              </>
-            ) : (
-              <>
-                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 font-mono text-ink-600">⌘K</kbd>
-                <span className="ml-1.5">{frontendMessage("runtime.migrated.features.chat.ChatComposer.345.42")}</span>
-                <span className="mx-2 text-ink-300">·</span>
-                <kbd className="rounded border border-ink-200 bg-paper-50 px-1 font-mono text-ink-600">⇧↵</kbd>
-                <span className="ml-1.5">{frontendMessage("runtime.migrated.features.chat.ChatComposer.348.42")}</span>
-              </>
             )}
-          </span>
-          <span className="flex min-w-0 items-center gap-1">
-            <PresetControl
-              disabled={disabled || running}
-              enabled={presetConfig.presetsEnabled}
-              rootDir={presetConfig.presetRootDir}
-              presets={presetConfig.presets}
-              activePresetName={presetConfig.activePresetName}
-              operations={presetConfig.presetOperations}
-              onRefresh={presetConfig.onRefreshPresets}
-              onSave={presetConfig.onSavePreset}
-              onDelete={presetConfig.onDeletePreset}
-              onSetActive={presetConfig.onSetActivePreset}
-            />
-            <ModelSelector
-              disabled={disabled || running}
-              models={modelConfig.modelProviders}
-              selectedId={modelConfig.selectedModelProviderId}
-              defaultModelId={modelConfig.defaultModelProviderId}
-              onSelect={modelConfig.onSelectModelProvider}
-              onUseDefault={modelConfig.onApplyDefaultModel}
-              prefersCompactControls={prefersCompactControls}
-            />
-          </span>
+          </div>
         </div>
-      </div>
+      </ConversationFrame>
     </div>
   );
 }

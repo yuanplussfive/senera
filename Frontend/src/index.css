@@ -188,6 +188,53 @@ textarea::-webkit-scrollbar-thumb:hover {
 textarea::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
 }
+.workspace-main {
+  container-name: workspace-main;
+  container-type: inline-size;
+}
+
+.conversation-frame {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin-inline: auto;
+  padding-inline: clamp(16px, 2.6vw, 34px);
+}
+
+.conversation-frame--prose {
+  max-width: 860px;
+}
+
+.conversation-frame--wide {
+  max-width: 1160px;
+}
+
+.conversation-frame--composer {
+  max-width: 980px;
+}
+
+.conversation-frame--user {
+  width: min(84%, 760px);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.assistant-message-flow .markdown-renderer > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6, hr) {
+  max-width: 76ch;
+}
+
+@container workspace-main (max-width: 720px) {
+  .conversation-frame {
+    max-width: none;
+    padding-inline: 14px;
+  }
+
+  .conversation-frame--user {
+    width: 94%;
+    margin-right: 0;
+  }
+}
+
 .chat-message-item {
   contain: layout paint;
 }

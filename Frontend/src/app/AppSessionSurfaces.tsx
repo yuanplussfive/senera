@@ -15,9 +15,8 @@ export interface AppSessionActions {
 export interface AppSessionSurfaceProps {
   actions: AppSessionActions;
   onClosePanel?: () => void;
-  onOpenSessionPanel?: () => void;
   onSessionSelected?: () => void;
-  presentation: "auto" | "panel" | "rail";
+  presentation: "auto" | "panel";
   socketStatus: SocketStatus;
   userProfile: UserProfile;
 }
@@ -25,7 +24,6 @@ export interface AppSessionSurfaceProps {
 export function AppSessionSurface({
   actions,
   onClosePanel,
-  onOpenSessionPanel,
   onSessionSelected,
   presentation,
   socketStatus,
@@ -43,7 +41,6 @@ export function AppSessionSurface({
       onUpdateUserProfile={actions.onUpdateUserProfile}
       onLogout={actions.onLogout}
       socketStatus={socketStatus}
-      onOpenSessionPanel={onOpenSessionPanel}
       onClosePanel={onClosePanel}
       onSessionSelected={onSessionSelected}
     />

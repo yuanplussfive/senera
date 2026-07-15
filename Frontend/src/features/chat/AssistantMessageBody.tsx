@@ -12,7 +12,7 @@ export interface AssistantMessageBodyProps {
 export function AssistantMessageBody({ message, run, onViewWorkflow }: AssistantMessageBodyProps): JSX.Element {
   const isToolPreface = message.kind === "AssistantToolPreface";
   return (
-    <div className="mt-1 min-w-0">
+    <div className="assistant-message-flow mt-1 min-w-0">
       {!isToolPreface ? <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} /> : null}
       {isToolPreface ? (
         <div className="mb-1.5 text-[11px] font-medium text-umber-600">

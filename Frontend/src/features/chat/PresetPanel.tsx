@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FileRejection } from "react-dropzone";
-import { AlertTriangle, BookUser } from "lucide-react";
+import { AlertTriangle, BookUser, Check } from "lucide-react";
 import type { PresetFormat, PresetItem, PresetMutationState } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../../shared/responsive";
@@ -333,7 +333,7 @@ export function PresetControl({
         >
           <BookUser className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">{frontendMessage("preset.ui.shortTitle")}</span>
-          {activePreset ? <span className="h-1.5 w-1.5 rounded-full bg-terra-500" /> : null}
+          {activePreset ? <Check className="h-3 w-3 text-terra-600" aria-hidden="true" /> : null}
           {hasDiagnostics ? <AlertTriangle className="h-3.5 w-3.5 text-umber-500" /> : null}
         </button>
       </Tooltip>

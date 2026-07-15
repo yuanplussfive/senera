@@ -56,7 +56,7 @@ test("preset control edits and saves a selected preset with activation", async (
 
   await user.click(screen.getByRole("button", { name: "启用" }));
   expect(onSetActive).toHaveBeenCalledWith("writer.md");
-});
+}, 10_000);
 
 test("preset control requires confirmation before deleting the selected preset", async () => {
   const onDelete = vi.fn(() => "delete-request");

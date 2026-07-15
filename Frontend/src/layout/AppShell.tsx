@@ -6,19 +6,18 @@ import { motionTimings, useMotionLevel } from "../shared/motion";
 import { useStore } from "../store/sessionStore";
 import type { ResponsiveMode } from "../shared/responsive";
 
-const SESSION_RAIL_WIDTH = 56;
-const SESSION_PANEL_WIDTH = 264;
-const WORKFLOW_RAIL_WIDTH = 44;
+const SESSION_PANEL_WIDTH = 268;
+const WORKFLOW_DOCK_WIDTH = 46;
 const WORKFLOW_PANEL_WIDTH_COMPACT = 360;
 const WORKFLOW_PANEL_WIDTH = 460;
 const SESSION_DRAWER_WIDTH = "w-[min(360px,calc(100vw-24px))]";
 const WORKFLOW_DRAWER_WIDTH = "w-[min(560px,calc(100vw-24px))]";
 
 interface AppShellProps {
-  sessionRail: ReactNode;
   sessionPanel: ReactNode;
   sessionDrawer: ReactNode;
   chatPanel: ReactNode;
+  workflowDock: ReactNode;
   workflowPanel: ReactNode;
   workflowDrawer: ReactNode;
   sessionDrawerOpen: boolean;
@@ -41,6 +40,7 @@ interface ResponsiveDrawerProps {
 }
 
 type AppShellSurface = "drawer" | "persistent";
+type WorkflowPanelLayout = "drawer" | "overlay" | "inline";
 
 interface AppShellSurfacePlan {
   session: AppShellSurface;
@@ -48,9 +48,10 @@ interface AppShellSurfacePlan {
 }
 
 interface AppShellRenderPlan {
-  showSessionRail: boolean;
   showSessionPersistentPanel: boolean;
+  showWorkflowDock: boolean;
   showWorkflowPersistentPanel: boolean;
+  workflowPanelLayout: WorkflowPanelLayout;
   showSessionDrawer: boolean;
   showWorkflowDrawer: boolean;
   showChatSessionPanelAction: boolean;
@@ -66,13 +67,19 @@ export function readAppShellSurfacePlan(responsiveMode: ResponsiveMode): AppShel
 
 export function readAppShellRenderPlan(responsiveMode: ResponsiveMode): AppShellRenderPlan {
   const surfacePlan = readAppShellSurfacePlan(responsiveMode);
+  const showWorkflowPersistentPanel = surfacePlan.workflow === "persistent";
   return {
-    showSessionRail: responsiveMode.viewport === "tablet" || responsiveMode.viewport === "desktop",
     showSessionPersistentPanel: surfacePlan.session === "persistent",
-    showWorkflowPersistentPanel: surfacePlan.workflow === "persistent",
+    showWorkflowDock: showWorkflowPersistentPanel,
+    showWorkflowPersistentPanel,
+    workflowPanelLayout: showWorkflowPersistentPanel
+      ? responsiveMode.hasInlineWorkflowPanel
+        ? "inline"
+        : "overlay"
+      : "drawer",
     showSessionDrawer: surfacePlan.session === "drawer",
     showWorkflowDrawer: surfacePlan.workflow === "drawer",
-    showChatSessionPanelAction: responsiveMode.viewport === "mobile",
+    showChatSessionPanelAction: surfacePlan.session === "drawer",
     showChatWorkflowPanelAction: surfacePlan.workflow === "drawer",
   };
 }
@@ -82,10 +89,10 @@ export function readWorkflowPanelWidth(responsiveMode: ResponsiveMode): number {
 }
 
 export function AppShell({
-  sessionRail,
   sessionPanel,
   sessionDrawer,
   chatPanel,
+  workflowDock,
   workflowPanel,
   workflowDrawer,
   sessionDrawerOpen,
@@ -141,28 +148,59 @@ export function AppShell({
     setSidebarCollapsed,
   ]);
 
+  const workflowPanelMotion =
+    renderPlan.workflowPanelLayout === "inline"
+      ? { width: rightPanelCollapsed ? 0 : workflowPanelWidth, opacity: rightPanelCollapsed ? 0 : 1, x: 0 }
+      : { width: workflowPanelWidth, opacity: rightPanelCollapsed ? 0 : 1, x: rightPanelCollapsed ? 24 : 0 };
+
   return (
-    <div className="relative flex h-dvh w-screen overflow-hidden text-ink-900">
-      {renderPlan.showSessionRail ? <div className="flex">{sessionRail}</div> : null}
+    <div
+      className="relative flex h-dvh w-screen overflow-hidden bg-[var(--theme-bg)] text-ink-900"
+      data-workspace-shell
+    >
       {renderPlan.showSessionPersistentPanel ? (
         <motion.div
           initial={false}
-          animate={{ width: sidebarCollapsed ? SESSION_RAIL_WIDTH : SESSION_PANEL_WIDTH }}
+          animate={{ width: sidebarCollapsed ? 0 : SESSION_PANEL_WIDTH, opacity: sidebarCollapsed ? 0 : 1 }}
           transition={panelResizeTransition}
-          className="h-full shrink-0 overflow-hidden"
+          className="relative z-20 h-full shrink-0 overflow-hidden"
+          style={{ visibility: sidebarCollapsed ? "hidden" : "visible" }}
+          aria-hidden={sidebarCollapsed}
         >
           {sessionPanel}
         </motion.div>
       ) : null}
-      <div className="flex min-w-0 flex-1">{chatPanel}</div>
+
+      <div className="workspace-main relative flex min-w-0 flex-1 overflow-hidden" data-workspace-main>
+        {chatPanel}
+      </div>
+
+      {renderPlan.showWorkflowDock ? (
+        <div className="relative z-30 h-full shrink-0" style={{ width: WORKFLOW_DOCK_WIDTH }}>
+          {workflowDock}
+        </div>
+      ) : null}
+
       {renderPlan.showWorkflowPersistentPanel ? (
         <motion.div
           initial={false}
-          animate={{ width: rightPanelCollapsed ? WORKFLOW_RAIL_WIDTH : workflowPanelWidth }}
+          animate={workflowPanelMotion}
           transition={panelResizeTransition}
-          className="h-full shrink-0 overflow-hidden"
+          className={
+            renderPlan.workflowPanelLayout === "overlay"
+              ? "absolute bottom-0 right-[46px] top-0 z-20 overflow-hidden shadow-[-18px_0_34px_-30px_rgb(24_25_28/0.45)]"
+              : "relative z-20 h-full shrink-0 overflow-hidden"
+          }
+          style={{
+            ...(renderPlan.workflowPanelLayout === "overlay" ? { width: workflowPanelWidth } : {}),
+            pointerEvents: rightPanelCollapsed ? "none" : "auto",
+            visibility: rightPanelCollapsed ? "hidden" : "visible",
+          }}
+          aria-hidden={rightPanelCollapsed}
         >
-          {workflowPanel}
+          <div className="h-full" style={{ width: workflowPanelWidth }}>
+            {workflowPanel}
+          </div>
         </motion.div>
       ) : null}
 
@@ -171,7 +209,7 @@ export function AppShell({
           open={sessionDrawerOpen}
           onOpenChange={onSessionDrawerOpenChange}
           side="left"
-          title={frontendMessage("runtime.migrated.layout.AppShell.174.17")}
+          title={frontendMessage("session.section")}
           widthClassName={SESSION_DRAWER_WIDTH}
           focusContentOnOpen
           showClose={false}
@@ -186,7 +224,7 @@ export function AppShell({
           open={workflowDrawerOpen}
           onOpenChange={onWorkflowDrawerOpenChange}
           side="right"
-          title={frontendMessage("runtime.migrated.layout.AppShell.189.17")}
+          title={frontendMessage("workflow.panel.title")}
           widthClassName={WORKFLOW_DRAWER_WIDTH}
         >
           {workflowDrawer}

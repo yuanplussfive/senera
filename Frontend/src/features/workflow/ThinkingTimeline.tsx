@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Lightbulb, Loader2, Maximize2, PanelRightClose, PanelRightOpen, ListTree } from "lucide-react";
+import { Loader2, Maximize2, PanelRightClose, PanelRightOpen, ListTree } from "lucide-react";
 import { useStore, type RunRecord } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -20,22 +20,64 @@ export function ThinkingTimeline({
   presentation = "auto",
   hidePanelTitle = false,
 }: {
-  presentation?: "auto" | "panel" | "rail";
+  presentation?: "auto" | "panel" | "dock";
   hidePanelTitle?: boolean;
 }): JSX.Element {
+  if (presentation === "dock") return <WorkflowDock />;
   return <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} />;
+}
+
+function WorkflowDock(): JSX.Element {
+  const collapsed = useStore((state) => state.rightPanelCollapsed);
+  const setCollapsed = useStore((state) => state.setRightPanelCollapsed);
+  const toggleCollapsed = useStore((state) => state.toggleRightPanel);
+
+  return (
+    <nav
+      className="flex h-full w-[46px] flex-col items-center border-l border-ink-200/70 bg-[var(--theme-sidebar-bg)] px-1.5 py-2"
+      aria-label={frontendMessage("workflow.panel.title")}
+      data-workflow-dock
+    >
+      <IconButton
+        label={frontendMessage("workflow.panel.title")}
+        tooltip={frontendMessage("workflow.panel.title")}
+        tooltipSide="left"
+        aria-pressed={!collapsed}
+        onClick={() => setCollapsed(false)}
+        className={cn(
+          "h-8 w-8 rounded-md transition-colors duration-150",
+          !collapsed
+            ? "bg-terra-50 text-terra-700 ring-1 ring-inset ring-terra-200/80"
+            : "text-ink-500 hover:bg-ink-900/[0.045] hover:text-ink-800",
+        )}
+      >
+        <ListTree className="h-4 w-4" />
+      </IconButton>
+
+      <div className="mt-auto">
+        <IconButton
+          label={collapsed ? frontendMessage("workflow.panel.expand") : frontendMessage("workflow.panel.collapse")}
+          tooltip={collapsed ? frontendMessage("workflow.panel.expand") : frontendMessage("workflow.panel.collapse")}
+          tooltipSide="left"
+          onClick={toggleCollapsed}
+          className="h-8 w-8 text-ink-500"
+        >
+          {collapsed ? <PanelRightOpen className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />}
+        </IconButton>
+      </div>
+    </nav>
+  );
 }
 
 function ThinkingPanel({
   presentation,
   hidePanelTitle,
 }: {
-  presentation: "auto" | "panel" | "rail";
+  presentation: "auto" | "panel";
   hidePanelTitle: boolean;
 }): JSX.Element {
   const activeId = useStore((s) => s.activeSessionId);
   const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
-  const collapsed = useStore((s) => s.rightPanelCollapsed);
   const toggleCollapsed = useStore((s) => s.toggleRightPanel);
   const viewedRunId = useStore((s) => (activeId ? s.viewedRunIdBySession[activeId] : undefined));
   const setViewedRun = useStore((s) => s.setViewedRun);
@@ -62,33 +104,15 @@ function ThinkingPanel({
     }
   }, [activeId, viewedRunId, selectedRun, latestRun?.requestId, setViewedRun]);
 
-  const isRail = presentation === "rail" || (presentation === "auto" && collapsed);
-
   const toggleFocus = useCallback(() => {
     setFocusOpen((value) => !value);
   }, []);
-
-  if (isRail) {
-    return (
-      <aside className="flex h-full w-[44px] shrink-0 flex-col items-center border-l border-ink-200/60 bg-paper-100/40 py-3">
-        <IconButton
-          label={frontendMessage("workflow.panel.expand")}
-          tooltip={frontendMessage("workflow.panel.expand")}
-          tooltipSide="left"
-          onClick={toggleCollapsed}
-        >
-          <PanelRightOpen className="h-4 w-4" />
-        </IconButton>
-        <Lightbulb className="mt-2 h-4 w-4 text-terra-500" />
-      </aside>
-    );
-  }
 
   return (
     <>
       <aside
         className={cn(
-          "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
+          "flex h-full shrink-0 flex-col border-l border-ink-200/70 bg-[var(--theme-elevated-bg)]",
           presentation === "panel" ? "w-full border-l-0" : "w-full",
         )}
       >
@@ -149,11 +173,11 @@ function TopBar({
 
   return (
     <>
-      <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 bg-paper-100/70 px-3">
+      <div className="flex h-[52px] items-center gap-2 border-b border-ink-200/70 bg-[var(--theme-elevated-bg)] px-3">
         {onCollapse ? (
           <IconButton
-            label="collapse"
-            tooltip={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.176.21")}
+            label={frontendMessage("workflow.panel.collapse")}
+            tooltip={frontendMessage("workflow.panel.collapse")}
             tooltipSide="left"
             size="sm"
             className="h-7 w-7 text-ink-500"
@@ -164,10 +188,8 @@ function TopBar({
         ) : null}
         {hideTitle ? null : (
           <>
-            <Lightbulb className="h-4 w-4 text-terra-500" />
-            <span className="text-[13px] font-medium text-ink-800">
-              {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.188.68")}
-            </span>
+            <ListTree className="h-4 w-4 text-terra-600" />
+            <span className="text-[13px] font-medium text-ink-800">{frontendMessage("workflow.panel.title")}</span>
           </>
         )}
         <div className="ml-auto flex min-w-0 items-center gap-2">
@@ -190,13 +212,13 @@ function TopBar({
                 onClick={onFollowLatest}
                 className="h-7 rounded px-2 text-[11.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
               >
-                {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.207.15")}
+                {frontendMessage("workflow.panel.followLatest")}
               </button>
             </div>
           ) : null}
           <IconButton
-            label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.212.19")}
-            tooltip={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.213.21")}
+            label={frontendMessage("workflow.panel.focus")}
+            tooltip={frontendMessage("workflow.panel.focus")}
             tooltipSide="bottom"
             aria-pressed={focusOpen}
             onClick={onToggleFocus}
@@ -242,7 +264,7 @@ function TimelineFocusDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.264.15")}
+        title={frontendMessage("workflow.panel.title")}
         description={summary ? `${summary.completed}/${summary.total} 节点 · ${summary.tools} 工具` : undefined}
         placement="inset"
         motionPreset="focus"
@@ -273,7 +295,7 @@ function TimelineFocusDialog({
                   onClick={onFollowLatest}
                   className="mt-2 h-8 rounded-md px-2.5 text-[12px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
                 >
-                  {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.295.19")}
+                  {frontendMessage("workflow.panel.followLatest")}
                 </button>
               ) : null}
             </div>
@@ -308,7 +330,7 @@ function CanvasLoading(): JSX.Element {
     <div className="relative flex flex-1 items-center justify-center overflow-hidden">
       <div className="inline-flex items-center gap-2 rounded-md border border-ink-200/60 bg-paper-50/80 px-3 py-2 text-[12px] text-ink-500 shadow-bubble-ai">
         <Loader2 className="h-3.5 w-3.5 animate-spin text-umber-500" />
-        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.336.9")}
+        {frontendMessage("workflow.panel.loadingGraph")}
       </div>
     </div>
   );
@@ -326,11 +348,9 @@ function EmptyCanvas(): JSX.Element {
       className="flex max-w-[320px] flex-col items-center px-6 text-center"
     >
       <ListTree className="h-5 w-5 text-ink-350" />
-      <p className="mt-4 text-[13px] font-semibold text-ink-800">
-        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.358.9")}
-      </p>
+      <p className="mt-4 text-[13px] font-semibold text-ink-800">{frontendMessage("workflow.panel.emptyTitle")}</p>
       <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
-        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.361.9")}
+        {frontendMessage("workflow.panel.emptyDescription")}
       </p>
     </motion.div>
   );

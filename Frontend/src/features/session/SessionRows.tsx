@@ -1,5 +1,5 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { ChevronDown, MessageSquare, PencilLine, SquarePen, Trash2 } from "lucide-react";
+import { ChevronDown, CircleAlert, LoaderCircle, MessageSquare, PencilLine, SquarePen, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState } from "react";
 import { cn } from "../../lib/util";
@@ -68,7 +68,7 @@ export function SessionRow({
           whileTap={tapScale ? { scale: tapScale } : undefined}
           transition={motionTimings.fast}
           className={cn(
-            "group relative isolate mt-0.5 grid w-full grid-cols-[24px_minmax(0,1fr)_28px] items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
+            "group relative isolate mt-0.5 grid w-full grid-cols-[22px_minmax(0,1fr)_28px] items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors duration-150",
             "data-[state=open]:bg-[var(--theme-session-active-bg)]",
             active ? "text-ink-900" : "text-ink-700 hover:bg-ink-900/[0.03]",
           )}
@@ -78,13 +78,13 @@ export function SessionRow({
             aria-current={active ? "true" : undefined}
             aria-label={`打开会话：${title}`}
             onClick={onClick}
-            className="absolute inset-0 z-10 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300"
+            className="absolute inset-0 z-10 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300"
           />
           {active ? (
             <motion.span
               key={sessionId}
               layoutId="active-session-indicator"
-              className="pointer-events-none absolute inset-0 z-0 rounded-lg bg-[var(--theme-session-active-bg)]"
+              className="pointer-events-none absolute inset-0 z-0 rounded-md bg-[var(--theme-elevated-bg)] shadow-[inset_2px_0_0_rgb(var(--color-terra-500)/0.78)]"
               transition={
                 reduceMotion || disableMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 42 }
               }
@@ -92,11 +92,17 @@ export function SessionRow({
           ) : null}
           <div className="pointer-events-none relative z-20 mt-0.5 grid h-5 w-5 place-items-center">
             {accent === "running" ? (
-              <span className="block h-1.5 w-1.5 rounded-full bg-umber-500" />
+              <LoaderCircle
+                className="h-3.5 w-3.5 animate-spin text-umber-600"
+                aria-label={frontendMessage("session.statusRunning")}
+              />
             ) : accent === "failed" ? (
-              <span className="block h-1.5 w-1.5 rounded-full bg-brick-500" />
+              <CircleAlert
+                className="h-3.5 w-3.5 text-brick-600"
+                aria-label={frontendMessage("session.statusFailed")}
+              />
             ) : (
-              <MessageSquare className="h-3.5 w-3.5 text-ink-500" />
+              <MessageSquare className="h-3.5 w-3.5 text-ink-500" aria-hidden="true" />
             )}
           </div>
           <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">

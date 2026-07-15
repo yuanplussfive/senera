@@ -34,6 +34,7 @@ export function App(): JSX.Element {
   const registerSession = useStore((s) => s.registerCreatingSession);
   const appendUserMessage = useStore((s) => s.appendUserMessage);
   const activeId = useStore((s) => s.activeSessionId);
+  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const setSidebarCollapsed = useStore((s) => s.setSidebarCollapsed);
   const modelProviders = useStore((s) => s.modelProviders);
@@ -203,20 +204,6 @@ export function App(): JSX.Element {
   return (
     <TooltipProvider delayDuration={300}>
       <AppShell
-        sessionRail={
-          <SessionList
-            presentation="rail"
-            onNewSession={handleNewSession}
-            onCloseSession={handleCloseSession}
-            onCloseSessions={handleCloseSessions}
-            onRefreshSessions={refreshSessionCatalog}
-            onRenameSession={handleRenameSession}
-            userProfile={userProfile}
-            onUpdateUserProfile={handleUpdateUserProfile}
-            socketStatus={status}
-            onOpenSessionPanel={handleOpenSessionPanel}
-          />
-        }
         sessionPanel={
           <SessionList
             presentation="auto"
@@ -282,7 +269,10 @@ export function App(): JSX.Element {
                 onResolveApproval: handleResolveApproval,
               }}
               navigationActions={{
-                onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction ? handleOpenSessionPanel : undefined,
+                onOpenSessionPanel:
+                  appShellRenderPlan.showChatSessionPanelAction || sidebarCollapsed
+                    ? handleOpenSessionPanel
+                    : undefined,
                 onOpenWorkflowPanel: appShellRenderPlan.showChatWorkflowPanelAction
                   ? () => setWorkflowDrawerOpen(true)
                   : undefined,
@@ -291,6 +281,7 @@ export function App(): JSX.Element {
             />
           </ErrorBoundary>
         }
+        workflowDock={<ThinkingTimeline presentation="dock" />}
         workflowPanel={<ThinkingTimeline presentation="auto" />}
         workflowDrawer={<ThinkingTimeline presentation="panel" hidePanelTitle />}
         sessionDrawerOpen={sessionDrawerOpen}

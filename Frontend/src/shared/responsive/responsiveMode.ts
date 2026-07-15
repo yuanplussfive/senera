@@ -4,6 +4,7 @@ export interface ResponsiveQueryMatches {
   tabletUp: boolean;
   desktopUp: boolean;
   wideUp: boolean;
+  workflowInlineUp: boolean;
   supportsHover: boolean;
   hasPrimaryCoarsePointer: boolean;
   hasAnyCoarsePointer: boolean;
@@ -14,6 +15,7 @@ export interface ResponsiveMode {
   viewport: ResponsiveViewport;
   hasPersistentSessionPanel: boolean;
   hasPersistentWorkflowPanel: boolean;
+  hasInlineWorkflowPanel: boolean;
   prefersCompactControls: boolean;
   supportsHover: boolean;
   isCoarsePointer: boolean;
@@ -24,6 +26,7 @@ export const responsiveMediaQueries = {
   tabletUp: "(min-width: 768px)",
   desktopUp: "(min-width: 1024px)",
   wideUp: "(min-width: 1536px)",
+  workflowInlineUp: "(min-width: 1280px)",
   supportsHover: "(hover: hover)",
   hasPrimaryCoarsePointer: "(pointer: coarse)",
   hasAnyCoarsePointer: "(any-pointer: coarse)",
@@ -34,6 +37,7 @@ export const defaultResponsiveQueryMatches: ResponsiveQueryMatches = {
   tabletUp: false,
   desktopUp: false,
   wideUp: false,
+  workflowInlineUp: false,
   supportsHover: false,
   hasPrimaryCoarsePointer: false,
   hasAnyCoarsePointer: false,
@@ -52,8 +56,9 @@ export function deriveResponsiveMode(matches: ResponsiveQueryMatches): Responsiv
 
   return {
     viewport,
-    hasPersistentSessionPanel: matches.wideUp,
+    hasPersistentSessionPanel: matches.desktopUp,
     hasPersistentWorkflowPanel: matches.desktopUp,
+    hasInlineWorkflowPanel: matches.workflowInlineUp || matches.wideUp,
     prefersCompactControls: viewport === "mobile" || isCoarsePointer,
     supportsHover: matches.supportsHover,
     isCoarsePointer,
@@ -66,6 +71,7 @@ export function areResponsiveQueryMatchesEqual(left: ResponsiveQueryMatches, rig
     left.tabletUp === right.tabletUp &&
     left.desktopUp === right.desktopUp &&
     left.wideUp === right.wideUp &&
+    left.workflowInlineUp === right.workflowInlineUp &&
     left.supportsHover === right.supportsHover &&
     left.hasPrimaryCoarsePointer === right.hasPrimaryCoarsePointer &&
     left.hasAnyCoarsePointer === right.hasAnyCoarsePointer &&

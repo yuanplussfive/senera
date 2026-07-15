@@ -34,12 +34,19 @@ test("thinking timeline renders its empty state and opens a focused workflow vie
   expect(screen.getByRole("dialog", { name: frontendMessage("workflow.panel.title") })).toBeInTheDocument();
 });
 
-test("thinking timeline rail expands the persisted workflow panel", async () => {
+test("workflow dock opens the persisted execution panel", async () => {
   useStore.setState({ rightPanelCollapsed: true });
   const user = userEvent.setup();
-  renderWithFrontendProviders(React.createElement(ThinkingTimeline));
+  renderWithFrontendProviders(
+    React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(ThinkingTimeline, { presentation: "dock" }),
+      React.createElement(ThinkingTimeline),
+    ),
+  );
 
-  await user.click(screen.getByRole("button", { name: frontendMessage("workflow.panel.expand") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("workflow.panel.title") }));
 
   expect(useStore.getState().rightPanelCollapsed).toBe(false);
   expect(screen.getByText(frontendMessage("workflow.panel.title"))).toBeVisible();
