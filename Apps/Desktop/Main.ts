@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, type IpcMainInvokeEvent } from "electron";
 import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
 import { appendDesktopLog, prepareDesktopRuntime, type DesktopRuntimePaths } from "./DesktopRuntime.js";
 import {
@@ -21,8 +21,6 @@ let runtimePaths: DesktopRuntimePaths | undefined;
 let frontendSource: DesktopFrontendSource | undefined;
 const desktopModuleDir = path.dirname(fileURLToPath(import.meta.url));
 const remoteDebuggingPort = process.env.SENERA_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
-const mainWindowTitleBarHeight = 52;
-const settingsWindowTitleBarHeight = 56;
 
 const settingsSectionIds = new Set([
   "model-service",
@@ -114,29 +112,23 @@ function registerDesktopIpc(): void {
     forceSettingsWindowClose = true;
     settingsWindow.close();
   });
-  ipcMain.handle(
-    "senera:window.set-title-bar-overlay",
-    (event, overlay: { color?: unknown; symbolColor?: unknown }) => {
-      if (process.platform === "darwin") return;
-      const target = BrowserWindow.fromWebContents(event.sender);
-      if (!target || (target !== mainWindow && target !== settingsWindow)) return;
-      target.setTitleBarOverlay({
-        color: readTitleBarColor(overlay?.color, readInitialTitleBarOverlay().color),
-        symbolColor: readTitleBarColor(overlay?.symbolColor, readInitialTitleBarOverlay().symbolColor),
-        height: target === settingsWindow ? settingsWindowTitleBarHeight : mainWindowTitleBarHeight,
-      });
-    },
-  );
-}
-
-function readInitialTitleBarOverlay(): { color: string; symbolColor: string } {
-  return nativeTheme.shouldUseDarkColors
-    ? { color: "#242528", symbolColor: "#f5f7fa" }
-    : { color: "#ffffff", symbolColor: "#17191c" };
-}
-
-function readTitleBarColor(value: unknown, fallback: string): string {
-  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+  ipcMain.handle("senera:window.minimize", (event) => {
+    resolveManagedWindow(event)?.minimize();
+  });
+  ipcMain.handle("senera:window.toggle-maximize", (event) => {
+    const target = resolveManagedWindow(event);
+    if (!target) return undefined;
+    if (target.isMaximized()) target.unmaximize();
+    else target.maximize();
+    return readWindowState(target);
+  });
+  ipcMain.handle("senera:window.close", (event) => {
+    resolveManagedWindow(event)?.close();
+  });
+  ipcMain.handle("senera:window.get-state", (event) => {
+    const target = resolveManagedWindow(event);
+    return target ? readWindowState(target) : undefined;
+  });
 }
 
 function resolveSettingsSection(section: string | undefined): string {
@@ -154,8 +146,7 @@ function createMainWindow(): BrowserWindow {
     title: "Senera",
     icon: runtimePaths?.windowIconPath,
     autoHideMenuBar: true,
-    titleBarStyle: "hidden",
-    titleBarOverlay: { ...readInitialTitleBarOverlay(), height: mainWindowTitleBarHeight },
+    ...readWindowFrameOptions(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -167,6 +158,7 @@ function createMainWindow(): BrowserWindow {
     event.preventDefault();
     window.setTitle("Senera");
   });
+  registerWindowStateEvents(window);
   window.on("closed", () => {
     mainWindow = undefined;
     if (settingsWindow && !settingsWindow.isDestroyed()) {
@@ -207,8 +199,7 @@ function openSettingsWindow(options?: { section?: string }): void {
     show: false,
     autoHideMenuBar: true,
     icon: runtimePaths.windowIconPath,
-    titleBarStyle: "hidden",
-    titleBarOverlay: { ...readInitialTitleBarOverlay(), height: settingsWindowTitleBarHeight },
+    ...readWindowFrameOptions(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -226,6 +217,7 @@ function openSettingsWindow(options?: { section?: string }): void {
     event.preventDefault();
     settingsWindow?.setTitle("Senera 设置");
   });
+  registerWindowStateEvents(settingsWindow);
   settingsWindow.on("close", (event) => {
     if (desktopQuitting || forceSettingsWindowClose || !settingsWindowDirty) return;
     event.preventDefault();
@@ -241,6 +233,28 @@ function openSettingsWindow(options?: { section?: string }): void {
     surface: "settings",
     section,
   });
+}
+
+function readWindowFrameOptions(): { frame: false } | { titleBarStyle: "hiddenInset" } {
+  return process.platform === "darwin" ? { titleBarStyle: "hiddenInset" } : { frame: false };
+}
+
+function resolveManagedWindow(event: IpcMainInvokeEvent): BrowserWindow | undefined {
+  const target = BrowserWindow.fromWebContents(event.sender);
+  return target && (target === mainWindow || target === settingsWindow) ? target : undefined;
+}
+
+function readWindowState(window: BrowserWindow): { isMaximized: boolean } {
+  return { isMaximized: window.isMaximized() };
+}
+
+function registerWindowStateEvents(window: BrowserWindow): void {
+  const publishState = (): void => {
+    if (window.isDestroyed() || window.webContents.isDestroyed()) return;
+    window.webContents.send("senera:window.state-changed", readWindowState(window));
+  };
+  window.on("maximize", publishState);
+  window.on("unmaximize", publishState);
 }
 
 function readFrontendSource(): DesktopFrontendSource {

@@ -436,13 +436,19 @@ html[data-motion-level="none"]::view-transition-new(root) {
 }
 
 /* Electron desktop chrome -------------------------------------------------- */
-html[data-senera-desktop-window="true"] {
-  --senera-window-controls-width: 138px;
+html[data-senera-window-controls="custom"] {
+  --senera-titlebar-height: 52px;
 }
 
 html[data-senera-desktop-window="true"] [data-window-drag-region] {
   -webkit-app-region: drag;
   app-region: drag;
+  user-select: none;
+}
+
+html[data-senera-window-controls="custom"] [data-desktop-window-controls] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
   user-select: none;
 }
 
@@ -453,17 +459,17 @@ html[data-senera-desktop-window="true"]
   app-region: no-drag;
 }
 
-html[data-senera-desktop-window="true"] [data-window-controls-inset] {
-  padding-right: calc(var(--senera-window-controls-width) + 0.75rem) !important;
+html[data-senera-window-controls="custom"] [data-workspace-main] {
+  height: calc(100% - var(--senera-titlebar-height));
+  margin-top: var(--senera-titlebar-height);
 }
 
-html[data-senera-desktop-window="true"]
-  [data-workspace-shell]:has([data-workflow-panel-surface][data-open="true"])
-  [data-workflow-panel-surface][data-open="true"]
-  [data-window-drag-region],
-html[data-senera-desktop-window="true"]
-  [data-workspace-shell]:not(:has([data-workflow-panel-surface][data-open="true"]))
-  [data-workspace-main]
-  [data-window-drag-region] {
-  padding-right: calc(var(--senera-window-controls-width) + 0.75rem) !important;
+html[data-senera-window-controls="custom"] [data-workflow-panel-surface][data-workflow-panel-layout="inline"] {
+  height: calc(100% - var(--senera-titlebar-height));
+  margin-top: var(--senera-titlebar-height);
+}
+
+html[data-senera-window-controls="custom"] [data-settings-workbench] {
+  height: calc(100% - var(--senera-titlebar-height));
+  margin-top: var(--senera-titlebar-height);
 }

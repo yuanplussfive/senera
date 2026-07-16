@@ -3,6 +3,7 @@ import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/e
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { IconButton, Tooltip } from "../../shared/ui";
+import { ToolDock } from "./ToolDock";
 
 export function ChatHeader({
   title,
@@ -19,7 +20,7 @@ export function ChatHeader({
 }): JSX.Element {
   return (
     <div
-      className="relative z-10 flex h-[52px] shrink-0 items-center gap-2 bg-[var(--theme-elevated-bg)] px-3 [box-shadow:var(--shadow-soft)] sm:px-5"
+      className="relative z-10 flex h-[52px] shrink-0 items-center gap-2 bg-[var(--theme-elevated-bg)] px-3 sm:px-5"
       data-ui-chrome
       data-window-drag-region
     >
@@ -46,23 +47,16 @@ export function ChatHeader({
       ) : null}
       <SandboxStatusBadge status={sandboxStatus} />
       {onOpenWorkflowPanel ? (
-        <nav
-          className="ml-auto flex items-center border-l border-ink-200/70 pl-2"
-          aria-label={frontendMessage("workflow.panel.title")}
-          data-workspace-tool-dock
-        >
-          <IconButton
-            label={frontendMessage("workflow.panel.expand")}
-            tooltip={frontendMessage("workflow.panel.expand")}
-            tooltipSide="bottom"
-            aria-expanded={false}
-            onClick={onOpenWorkflowPanel}
-            touchSafe
-            className="rounded-md"
-          >
-            <ListTree className="h-4 w-4" />
-          </IconButton>
-        </nav>
+        <ToolDock
+          items={[
+            {
+              id: "workflow",
+              label: frontendMessage("workflow.panel.expand"),
+              icon: <ListTree className="h-4 w-4" />,
+              onSelect: onOpenWorkflowPanel,
+            },
+          ]}
+        />
       ) : null}
     </div>
   );

@@ -4,15 +4,19 @@ export interface OpenDesktopSettingsOptions {
   section?: SettingsSectionId;
 }
 
-export interface DesktopTitleBarOverlay {
-  color: string;
-  symbolColor: string;
+export interface DesktopWindowState {
+  isMaximized: boolean;
 }
 
 export interface SeneraDesktopBridge {
   readonly isDesktop: boolean;
+  readonly windowControls?: "custom" | "native";
   openSettings: (options?: OpenDesktopSettingsOptions) => Promise<void>;
-  setTitleBarOverlay?: (overlay: DesktopTitleBarOverlay) => Promise<void>;
+  minimizeWindow?: () => Promise<void>;
+  toggleMaximizeWindow?: () => Promise<DesktopWindowState | undefined>;
+  closeWindow?: () => Promise<void>;
+  getWindowState?: () => Promise<DesktopWindowState | undefined>;
+  onWindowStateChanged?: (listener: (state: DesktopWindowState) => void) => () => void;
   setSettingsDirty?: (dirty: boolean) => Promise<void>;
   onSettingsCloseRequested?: (listener: () => void) => () => void;
   confirmSettingsClose?: () => Promise<void>;

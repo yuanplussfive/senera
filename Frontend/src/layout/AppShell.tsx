@@ -207,16 +207,20 @@ export function AppShell({
           transition={workflowPanelTransition}
           className={
             renderPlan.workflowPanelLayout === "overlay"
-              ? "absolute bottom-0 right-0 top-0 z-30 overflow-hidden [box-shadow:var(--theme-overlay-shadow)]"
-              : "relative z-20 h-full shrink-0 overflow-hidden"
+              ? "absolute bottom-0 right-0 top-0 z-30 overflow-hidden rounded-xl border border-ink-200/75 bg-[var(--theme-elevated-bg)] [box-shadow:var(--theme-overlay-shadow)]"
+              : "relative z-20 h-full shrink-0 overflow-hidden border-l border-ink-200/70 bg-[var(--theme-elevated-bg)]"
           }
           style={{
+            ...(renderPlan.workflowPanelLayout === "overlay"
+              ? { top: "var(--senera-titlebar-height, 0px)", right: "8px", bottom: "8px" }
+              : undefined),
             pointerEvents: rightPanelCollapsed ? "none" : "auto",
             willChange: "width, opacity, transform",
           }}
           aria-hidden={rightPanelCollapsed}
           data-open={!rightPanelCollapsed}
           data-workflow-panel-surface
+          data-workflow-panel-layout={renderPlan.workflowPanelLayout}
         >
           <div className="h-full" style={{ width: workflowPanelWidth }}>
             {workflowPanel}

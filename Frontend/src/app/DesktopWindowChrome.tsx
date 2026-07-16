@@ -1,16 +1,8 @@
-import { useEffect, useMemo, type ReactNode } from "react";
-import { readWindowControlsInsetWidth, type WindowControlsOverlayGeometry } from "../shared/responsive";
-import { useAppearance, type AppearanceSnapshot } from "../shared/theme";
-import { readDesktopBridge, type DesktopTitleBarOverlay } from "./desktopBridge";
+import { Maximize2, Minimize2, Minus, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { readDesktopBridge, type SeneraDesktopBridge } from "./desktopBridge";
 
 export type DesktopWindowSurface = "main" | "settings";
-
-const defaultWindowsControlsWidth = 138;
-
-interface DesktopWindowControlsOverlay extends WindowControlsOverlayGeometry {
-  addEventListener: (type: "geometrychange", listener: EventListener) => void;
-  removeEventListener: (type: "geometrychange", listener: EventListener) => void;
-}
 
 export function DesktopWindowChrome({
   children,
@@ -20,57 +12,109 @@ export function DesktopWindowChrome({
   surface: DesktopWindowSurface;
 }): JSX.Element {
   const bridge = readDesktopBridge();
-  const appearance = useAppearance();
-  const overlay = useMemo(() => readDesktopTitleBarOverlay(appearance), [appearance]);
+  const customControlsBridge = bridge?.isDesktop && bridge.windowControls === "custom" ? bridge : undefined;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!bridge?.isDesktop) return;
     const root = document.documentElement;
-    const windowControlsOverlay = (navigator as Navigator & { windowControlsOverlay?: DesktopWindowControlsOverlay })
-      .windowControlsOverlay;
-    const updateControlsWidth = (): void => {
-      const controlsWidth = readWindowControlsInsetWidth({
-        fallbackWidth: defaultWindowsControlsWidth,
-        overlay: windowControlsOverlay,
-        viewportWidth: root.clientWidth,
-      });
-      root.style.setProperty("--senera-window-controls-width", controlsWidth + "px");
-    };
-
     root.dataset.seneraDesktopWindow = "true";
     root.dataset.seneraDesktopSurface = surface;
-    updateControlsWidth();
-    window.addEventListener("resize", updateControlsWidth);
-    windowControlsOverlay?.addEventListener("geometrychange", updateControlsWidth);
+    root.dataset.seneraWindowControls = customControlsBridge ? "custom" : "native";
     return () => {
-      window.removeEventListener("resize", updateControlsWidth);
-      windowControlsOverlay?.removeEventListener("geometrychange", updateControlsWidth);
-      root.style.removeProperty("--senera-window-controls-width");
       delete root.dataset.seneraDesktopWindow;
       delete root.dataset.seneraDesktopSurface;
+      delete root.dataset.seneraWindowControls;
     };
-  }, [bridge?.isDesktop, surface]);
+  }, [bridge?.isDesktop, customControlsBridge, surface]);
+
+  return (
+    <>
+      {customControlsBridge ? (
+        <div
+          className="fixed inset-x-0 top-0 z-10 h-[52px] border-b border-ink-200/60 bg-[var(--theme-elevated-bg)]"
+          data-desktop-window-drag-strip
+          data-window-drag-region
+        />
+      ) : null}
+      {children}
+      {customControlsBridge ? <DesktopWindowControls bridge={customControlsBridge} /> : null}
+    </>
+  );
+}
+
+export function shouldUseCustomWindowControls(windowControls: SeneraDesktopBridge["windowControls"]): boolean {
+  return windowControls === "custom";
+}
+
+function DesktopWindowControls({ bridge }: { bridge: SeneraDesktopBridge }): JSX.Element {
+  const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
-    if (!bridge?.isDesktop || !bridge.setTitleBarOverlay) return;
-    void bridge.setTitleBarOverlay(overlay);
-  }, [bridge, overlay]);
+    let active = true;
+    const statePromise = bridge.getWindowState?.();
+    if (statePromise) {
+      void statePromise.then((state) => {
+        if (active && state) setIsMaximized(state.isMaximized);
+      });
+    }
+    const removeListener = bridge.onWindowStateChanged?.((state) => setIsMaximized(state.isMaximized));
+    return () => {
+      active = false;
+      removeListener?.();
+    };
+  }, [bridge]);
 
-  return <>{children}</>;
-}
-
-export function readDesktopTitleBarOverlay(snapshot: AppearanceSnapshot): DesktopTitleBarOverlay {
-  const fallbackColor = snapshot.resolvedTheme === "dark" ? "#242528" : "#ffffff";
-  return {
-    color: readRgbTokenAsHex(snapshot.tokens.cssVariables["--theme-elevated-bg"]) ?? fallbackColor,
-    symbolColor: snapshot.resolvedTheme === "dark" ? "#f5f7fa" : "#17191c",
+  const toggleMaximize = (): void => {
+    const statePromise = bridge.toggleMaximizeWindow?.();
+    if (statePromise) {
+      void statePromise.then((state) => {
+        if (state) setIsMaximized(state.isMaximized);
+      });
+    }
   };
+
+  return (
+    <div
+      className="fixed right-0 top-0 z-40 flex h-[52px] items-stretch text-ink-650"
+      role="group"
+      aria-label="窗口控制"
+      data-desktop-window-controls
+    >
+      <WindowControlButton label="最小化窗口" onClick={() => void bridge.minimizeWindow?.()}>
+        <Minus className="h-[15px] w-[15px]" strokeWidth={1.7} />
+      </WindowControlButton>
+      <WindowControlButton label={isMaximized ? "还原窗口" : "最大化窗口"} onClick={toggleMaximize}>
+        {isMaximized ? (
+          <Minimize2 className="h-[13px] w-[13px]" strokeWidth={1.6} />
+        ) : (
+          <Maximize2 className="h-[13px] w-[13px]" strokeWidth={1.6} />
+        )}
+      </WindowControlButton>
+      <WindowControlButton close label="关闭窗口" onClick={() => void bridge.closeWindow?.()}>
+        <X className="h-[15px] w-[15px]" strokeWidth={1.7} />
+      </WindowControlButton>
+    </div>
+  );
 }
 
-function readRgbTokenAsHex(value: string | undefined): string | undefined {
-  const match = value?.match(/^rgb\(\s*(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})\s*\)$/i);
-  if (!match) return undefined;
-  const channels = match.slice(1).map(Number);
-  if (channels.some((channel) => channel < 0 || channel > 255)) return undefined;
-  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+function WindowControlButton({
+  children,
+  close = false,
+  label,
+  onClick,
+}: {
+  children: ReactNode;
+  close?: boolean;
+  label: string;
+  onClick: () => void;
+}): JSX.Element {
+  const className = close
+    ? "grid h-full w-[46px] place-items-center bg-transparent transition-colors duration-150 hover:bg-[#c42b1c] hover:text-white focus:outline-none focus-visible:bg-[#c42b1c] focus-visible:text-white"
+    : "grid h-full w-[46px] place-items-center bg-transparent transition-colors duration-150 hover:bg-ink-900/[0.055] hover:text-ink-950 focus:outline-none focus-visible:bg-ink-900/[0.075] focus-visible:text-ink-950";
+
+  return (
+    <button type="button" aria-label={label} onClick={onClick} className={className} data-window-control>
+      {children}
+    </button>
+  );
 }

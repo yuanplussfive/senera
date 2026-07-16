@@ -2,7 +2,6 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { motion } from "framer-motion";
 import { ListTree, Loader2, Maximize2, PanelRightClose } from "lucide-react";
 import { useStore, type RunRecord } from "../../store/sessionStore";
-import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Dialog, DialogContent, IconButton } from "../../shared/ui";
 import { summarizeRun } from "./runSummary";
@@ -71,11 +70,9 @@ function ThinkingPanel({
   return (
     <>
       <aside
-        className={cn(
-          "flex h-full shrink-0 flex-col border-l border-ink-200/70 bg-[var(--theme-elevated-bg)]",
-          presentation === "panel" ? "w-full border-l-0" : "w-full",
-        )}
+        className="flex h-full w-full shrink-0 flex-col bg-[var(--theme-elevated-bg)]"
         data-ui-chrome
+        data-panel-presentation={presentation}
       >
         <TopBar
           run={run}
