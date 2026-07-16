@@ -166,7 +166,7 @@ function SegmentedControl<TValue extends string>({
               onClick={() => onChange(option.value)}
               className={cn(
                 "inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition",
-                "focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                 selected
                   ? "bg-paper-100 text-ink-900 shadow-panel"
                   : "text-ink-500 hover:bg-paper-100/80 hover:text-ink-850",

@@ -157,7 +157,7 @@ export function ProviderConnectionList({
             <button
               type="button"
               disabled={disabled}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200 disabled:pointer-events-none disabled:opacity-50"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50"
               onClick={onRequestAdd}
               aria-label="添加供应商"
               title="添加供应商"

@@ -66,8 +66,8 @@ export function SessionRow({
             "group relative isolate grid w-full items-center rounded-md px-2.5 text-left transition-colors duration-150",
             showInlineActions ? "h-11" : "h-9",
             showInlineActions ? "grid-cols-[minmax(0,1fr)_28px] gap-1" : "grid-cols-1",
-            "data-[state=open]:bg-ink-900/[0.055]",
-            active ? "text-ink-950" : "text-ink-650 hover:bg-ink-900/[0.035] hover:text-ink-900",
+            "data-[state=open]:bg-surface-hover",
+            active ? "text-accent-content" : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
           )}
         >
           {active ? (
@@ -95,7 +95,7 @@ export function SessionRow({
                 }),
               );
             }}
-            className="absolute inset-0 z-10 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300"
+            className="absolute inset-0 z-10 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
           />
           <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
             <div className="flex min-w-0 items-center gap-1.5">

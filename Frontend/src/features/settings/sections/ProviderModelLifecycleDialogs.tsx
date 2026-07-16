@@ -254,7 +254,7 @@ function ReplacementControl({
         value={value}
         disabled={disabled || candidateModels.length === 0}
         aria-label={frontendMessage("settings.modelLifecycle.replacement.label")}
-        className="h-9 w-full rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12.5px] text-ink-800 outline-none focus:border-terra-300 focus:ring-2 focus:ring-terra-100 disabled:cursor-not-allowed disabled:opacity-60"
+        className="h-9 w-full rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12.5px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:cursor-not-allowed disabled:opacity-60"
         onChange={(event) => onChange(event.currentTarget.value)}
       >
         <option value="">{frontendMessage("settings.modelLifecycle.replacement.placeholder")}</option>

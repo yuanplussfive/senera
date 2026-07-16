@@ -88,7 +88,7 @@ export function ProviderConnectionEditor({
               <button
                 type="button"
                 disabled={disabled || pending}
-                className="inline-flex h-8 items-center gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] font-medium text-ink-650 transition hover:border-terra-200 disabled:pointer-events-none disabled:opacity-50"
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] font-medium text-ink-650 transition hover:border-accent-border-strong disabled:pointer-events-none disabled:opacity-50"
                 onClick={() => onChange({ Enabled: !enabled })}
                 aria-pressed={enabled}
               >
@@ -129,7 +129,7 @@ export function ProviderConnectionEditor({
               </button>
             }
           >
-            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-terra-300 focus-within:ring-2 focus-within:ring-terra-100">
+            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
                 type={showKey ? "text" : "password"}
                 value={provider.ApiKey ?? ""}
@@ -166,7 +166,7 @@ export function ProviderConnectionEditor({
               </button>
             }
           >
-            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-terra-300 focus-within:ring-2 focus-within:ring-terra-100">
+            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
                 value={provider.BaseUrl ?? ""}
                 disabled={disabled || pending}

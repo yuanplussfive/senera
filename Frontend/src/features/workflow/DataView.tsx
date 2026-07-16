@@ -196,7 +196,7 @@ function SourceFrameBlock({ frame, depth }: { frame: SourceFrame; depth: number 
               return (
                 <span
                   key={`${lineNumber}:${index}`}
-                  className={cn("grid grid-cols-[4.25rem_minmax(0,1fr)] px-3", focused && "bg-terra-50/80")}
+                  className={cn("grid grid-cols-[4.25rem_minmax(0,1fr)] px-3", focused && "bg-accent-surface")}
                 >
                   <span className="select-none border-r border-ink-200/70 pr-3 text-right text-ink-400">
                     {lineNumber}
@@ -272,7 +272,7 @@ function FormattedString({ value, unit }: { value: string; unit?: string }): JSX
         href={value}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 break-all text-terra-600 underline decoration-terra-300 underline-offset-2 hover:text-terra-700"
+        className="inline-flex items-center gap-1 break-all text-accent-content underline decoration-accent-border underline-offset-2 hover:text-accent-content-hover"
       >
         {value}
         <ExternalLink className="h-3 w-3 shrink-0" />

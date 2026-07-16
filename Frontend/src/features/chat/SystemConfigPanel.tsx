@@ -273,7 +273,7 @@ function ConfigToolbar({
               ? "border-brick-200 bg-brick-50 text-brick-600"
               : interaction.status === "dirty" || interaction.status === "saving"
                 ? "border-ink-200 bg-paper-100 text-umber-600"
-                : "border-terra-200 bg-terra-50 text-terra-700",
+                : "border-accent-border bg-accent-surface text-accent-content",
           )}
         >
           {invalid ? (
@@ -364,7 +364,7 @@ function ConfigSectionNav({
                     className={cn(
                       "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border",
                       active
-                        ? "border-terra-200 bg-terra-50 text-terra-700"
+                        ? "border-accent-border bg-accent-surface text-accent-content"
                         : "border-ink-200 bg-paper-100 text-ink-450",
                     )}
                   >
@@ -416,7 +416,7 @@ function EmbeddedConfigSectionNav({
               )}
               onClick={() => onSelect(section.name)}
             >
-              <Icon className={cn("h-3.5 w-3.5 shrink-0", active ? "text-terra-600" : "text-ink-400")} />
+              <Icon className={cn("h-3.5 w-3.5 shrink-0", active ? "text-accent-content" : "text-ink-400")} />
               <span className="truncate">{section.label}</span>
             </button>
           );

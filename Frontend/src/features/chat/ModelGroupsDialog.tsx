@@ -214,7 +214,7 @@ export function ModelGroupsDialog({
                       <button
                         type="button"
                         disabled={disabled}
-                        className="inline-flex h-8 w-fit items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-650 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50"
+                        className="inline-flex h-8 w-fit items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-650 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50"
                         onClick={() => addStrategy(index)}
                       >
                         <Plus className="h-3.5 w-3.5" />

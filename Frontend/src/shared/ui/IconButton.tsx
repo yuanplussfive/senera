@@ -27,10 +27,10 @@ const sizeClasses: Record<IconButtonSize, string> = {
 };
 
 const toneClasses: Record<IconButtonTone, string> = {
-  neutral: "text-ink-600 hover:bg-ink-900/[0.05] hover:text-ink-900",
-  muted: "text-ink-400 hover:bg-ink-900/[0.05] hover:text-ink-800",
-  danger: "text-ink-400 hover:bg-ink-900/[0.05] hover:text-brick-500",
-  primary: "text-ink-500 hover:bg-ink-900/[0.05] hover:text-ink-800",
+  neutral: "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
+  muted: "text-content-muted hover:bg-surface-hover hover:text-content-primary",
+  danger: "text-content-muted hover:bg-surface-hover hover:text-brick-500 focus-visible:ring-brick-200",
+  primary: "text-accent-content hover:bg-accent-surface hover:text-accent-content",
 };
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
@@ -57,7 +57,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         ref={ref}
         aria-label={label}
         className={cn(
-          "grid shrink-0 cursor-pointer place-items-center transition-colors duration-150 ease-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
+          "grid shrink-0 cursor-pointer place-items-center transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50",
           sizeClasses[size],
           touchSafeClassName,
           toneClasses[tone],

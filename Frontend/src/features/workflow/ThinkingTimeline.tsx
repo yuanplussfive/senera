@@ -179,7 +179,7 @@ function TopBar({
               <button
                 type="button"
                 onClick={onFollowLatest}
-                className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+                className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
               >
                 {frontendMessage("workflow.panel.followLatest")}
               </button>
@@ -246,7 +246,7 @@ function TimelineFocusDialog({
                   <button
                     type="button"
                     onClick={onFollowLatest}
-                    className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+                    className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
                   >
                     {frontendMessage("workflow.panel.followLatest")}
                   </button>

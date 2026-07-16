@@ -37,7 +37,7 @@ export function RenameDialog({
             autoFocus
             value={value}
             onChange={(event) => onValueChange(event.target.value)}
-            className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-terra-200/50"
+            className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-accent-focus"
           />
           <DialogActions>
             <DialogActionButton close>

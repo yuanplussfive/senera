@@ -24,7 +24,7 @@ import {
 
 const EMPTY_PENDING_MODEL_IDS: ReadonlySet<string> = new Set();
 const modelActionClassName =
-  "inline-flex h-7 items-center rounded-md border border-ink-200 bg-paper-50 px-2 text-[10.5px] font-medium text-ink-650 transition hover:border-terra-300 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex h-7 items-center rounded-md border border-ink-200 bg-paper-50 px-2 text-[10.5px] font-medium text-ink-650 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50";
 const modelRemoveActionClassName =
   "inline-flex h-7 items-center rounded-md border border-brick-200 bg-brick-50 px-2 text-[10.5px] font-medium text-brick-700 transition hover:border-brick-300 hover:bg-brick-100 disabled:pointer-events-none disabled:opacity-50";
 
@@ -152,7 +152,7 @@ export function ProviderModelList({
                 <button
                   type="button"
                   disabled={disabled || loading || !enabled || !selectedProvider?.Id}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-medium text-ink-650 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-45"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-medium text-ink-650 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-45"
                   onClick={() => onFetch(true)}
                 >
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -204,7 +204,7 @@ export function ProviderModelList({
                   "inline-flex h-8 items-center rounded-md border px-2.5 text-[11px] font-semibold transition",
                   configuredOnly
                     ? "border-lime-200 bg-lime-50 text-lime-700"
-                    : "border-ink-200 bg-paper-50 text-ink-500 hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700",
+                    : "border-ink-200 bg-paper-50 text-ink-500 hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover",
                   "disabled:pointer-events-none disabled:opacity-45",
                 )}
                 onClick={() => onConfiguredOnlyChange(!configuredOnly)}
@@ -342,9 +342,7 @@ function ProviderModelRows({
               <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
               <span className="truncate text-[11.5px] font-semibold text-ink-700">{group.label}</span>
             </span>
-            <span className="tabular-nums text-[10.5px] text-ink-400">
-              {group.rows.length}
-            </span>
+            <span className="tabular-nums text-[10.5px] text-ink-400">{group.rows.length}</span>
           </div>
           <div className="divide-y divide-ink-200/70">
             {group.rows.map((model) => (
@@ -416,7 +414,7 @@ function ProviderModelRow({
         <ConfiguredModelBadge isDefault={isDefault} configured={Boolean(configured)} />
         {pending ? (
           <span className="inline-flex items-center gap-1.5 rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-medium text-ink-600">
-            <Loader2 className="h-3 w-3 animate-spin text-terra-500" />{" "}
+            <Loader2 className="h-3 w-3 animate-spin text-accent-content" />{" "}
             {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.356.58")}
           </span>
         ) : configured && (onSetDefaultModel || onRemoveModel) ? (
@@ -487,7 +485,7 @@ function ConfiguredModelBadge({
 }): JSX.Element | null {
   if (isDefault) {
     return (
-      <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-terra-700">
+      <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-accent-content">
         DEFAULT
       </span>
     );
@@ -541,9 +539,7 @@ function ModelGroupSummary({
           >
             <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
             <span className="max-w-24 truncate font-medium">{group.label}</span>
-            <span className="tabular-nums text-[10px] text-ink-400">
-              {group.rows.length}
-            </span>
+            <span className="tabular-nums text-[10px] text-ink-400">{group.rows.length}</span>
           </button>
         ))}
       </div>

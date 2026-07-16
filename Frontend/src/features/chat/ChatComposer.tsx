@@ -236,14 +236,14 @@ export function ChatComposer({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            "relative flex min-w-0 flex-col rounded-lg border border-ink-300/80 bg-[var(--theme-chat-composer-bg)] px-3 pb-2 pt-1.5 transition-colors duration-150",
-            "focus-within:bg-[var(--theme-chat-composer-focus-bg)]",
-            isDraggingFiles && "border-terra-300 bg-terra-50/70 ring-2 ring-terra-200/70",
+            "relative flex min-w-0 flex-col rounded-lg border border-line-strong bg-[var(--theme-chat-composer-bg)] px-3 pb-2 pt-1.5 transition-[background-color,border-color,box-shadow] duration-150",
+            "focus-within:border-accent-border focus-within:bg-[var(--theme-chat-composer-focus-bg)] focus-within:ring-2 focus-within:ring-accent-focus",
+            isDraggingFiles && "border-accent-border bg-accent-surface ring-2 ring-accent-focus",
           )}
           data-chat-composer
         >
           {isDraggingFiles ? (
-            <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-md border border-dashed border-terra-300 bg-paper-50 text-[13px] font-medium text-terra-700">
+            <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-md border border-dashed border-accent-border bg-surface-panel text-[13px] font-medium text-accent-content">
               {frontendMessage("runtime.migrated.features.chat.ChatComposer.247.13")}
             </div>
           ) : null}
@@ -318,7 +318,9 @@ export function ChatComposer({
                     className={cn(
                       "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
                       prefersCompactControls && "min-h-11 min-w-11",
-                      canSend ? "bg-ink-900 text-paper-50 hover:bg-ink-800" : "bg-transparent text-ink-350",
+                      canSend
+                        ? "bg-accent-solid text-accent-on-solid shadow-accent hover:bg-accent-solid-hover active:bg-accent-solid-pressed"
+                        : "bg-transparent text-content-disabled",
                     )}
                     aria-label="inject-current-run"
                   >
@@ -354,7 +356,9 @@ export function ChatComposer({
                   className={cn(
                     "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
                     prefersCompactControls && "min-h-11 min-w-11",
-                    canSend ? "bg-ink-900 text-paper-50 hover:bg-ink-800" : "bg-transparent text-ink-350",
+                    canSend
+                      ? "bg-accent-solid text-accent-on-solid shadow-accent hover:bg-accent-solid-hover active:bg-accent-solid-pressed"
+                      : "bg-transparent text-content-disabled",
                   )}
                   aria-label="send"
                 >
@@ -393,7 +397,7 @@ function AttachmentTray({
             <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
             {entry.status === "uploading" ? (
               <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-paper-50">
-                <Loader2 className="h-2.5 w-2.5 animate-spin text-terra-500" />
+                <Loader2 className="h-2.5 w-2.5 animate-spin text-accent-content" />
               </span>
             ) : null}
             {entry.status === "error" ? (
@@ -407,7 +411,7 @@ function AttachmentTray({
               <span className="min-w-0 truncate">{entry.fileName}</span>
               <span className="shrink-0 font-mono text-[10px] text-ink-350">{formatFileSize(entry.size)}</span>
               {entry.status === "uploading" ? (
-                <span className="shrink-0 font-mono text-[10px] text-terra-600">
+                <span className="shrink-0 font-mono text-[10px] text-accent-content">
                   {formatUploadProgress(entry.progress)}
                 </span>
               ) : null}
@@ -435,7 +439,7 @@ function UploadProgressBar({ progress }: { progress?: UploadProgress }): JSX.Ele
     <span className="h-1 overflow-hidden rounded-full bg-ink-200/70">
       <span
         className={cn(
-          "block h-full origin-left rounded-full bg-terra-500 transition-transform duration-150",
+          "block h-full origin-left rounded-full bg-accent-solid transition-transform duration-150",
           ratio === undefined && "animate-pulse",
         )}
         style={{ transform: `scaleX(${ratio ?? 1})` }}
@@ -530,7 +534,7 @@ function ModelSelector({
               className="h-10 py-2"
               icon={
                 active ? (
-                  <Check className="h-3.5 w-3.5 text-terra-500" />
+                  <Check className="h-3.5 w-3.5 text-accent-content" />
                 ) : (
                   <ModelProviderIcon icon={model.icon} size={14} />
                 )
@@ -549,7 +553,7 @@ function ModelSelector({
             <DropdownMenuItem
               onSelect={onUseDefault}
               className="h-10 py-2"
-              icon={<RotateCcw className="h-3.5 w-3.5 text-terra-500" />}
+              icon={<RotateCcw className="h-3.5 w-3.5 text-accent-content" />}
             >
               <span className="min-w-0 truncate text-[13px] text-ink-850">
                 {frontendMessage("chat.model.useDefault")}

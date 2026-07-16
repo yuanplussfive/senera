@@ -267,7 +267,7 @@ export function ProviderModelManagementSurface({
                   className={cn(
                     "w-full rounded-md border px-2.5 py-2 text-left text-[12px] disabled:pointer-events-none disabled:opacity-60",
                     provider.Id === selectedProvider.Id
-                      ? "border-terra-200 bg-terra-50 text-terra-800"
+                      ? "border-accent-border bg-accent-surface text-accent-content"
                       : "border-transparent hover:border-ink-200 hover:bg-paper-100",
                   )}
                   aria-pressed={provider.Id === selectedProvider.Id}
@@ -433,7 +433,7 @@ function CatalogModelDialogContent({
           onChange={(event) => onSearch(event.currentTarget.value)}
           aria-label="搜索模型列表"
           placeholder="搜索模型"
-          className="h-9 w-full rounded-md border border-ink-200 bg-paper-50 px-3 text-[12.5px] text-ink-800 outline-none focus:border-terra-300 focus:ring-2 focus:ring-terra-100"
+          className="h-9 w-full rounded-md border border-ink-200 bg-paper-50 px-3 text-[12.5px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
         />
       </div>
       <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
@@ -482,7 +482,7 @@ function CatalogModelDialogContent({
                           disabled={disabled}
                           aria-label={`添加模型 ${row.id}`}
                           title="添加模型"
-                          className="grid h-8 w-8 place-items-center rounded-md border border-ink-200 bg-paper-50 text-ink-600 transition hover:border-terra-300 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50"
+                          className="grid h-8 w-8 place-items-center rounded-md border border-ink-200 bg-paper-50 text-ink-600 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50"
                           onClick={() => onAddModel(row)}
                         >
                           <Plus className="h-3.5 w-3.5" />

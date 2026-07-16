@@ -125,13 +125,13 @@ const DialogContentFrame = forwardRef<
           transition={content.contentTransition}
         >
           {content.showHeader ? (
-            <div className="flex items-start gap-4 bg-paper-50 px-8 pb-4 pt-7">
+            <div className="flex items-start gap-4 bg-surface-panel px-8 pb-4 pt-7">
               <div className="min-w-0 flex-1">
-                <DialogPrimitive.Title className="text-[20px] font-semibold leading-7 text-ink-950">
+                <DialogPrimitive.Title className="text-[20px] font-semibold leading-7 text-content-strong">
                   {content.title ?? ""}
                 </DialogPrimitive.Title>
                 {content.description ? (
-                  <DialogPrimitive.Description className="mt-1.5 text-[13px] leading-5 text-ink-500">
+                  <DialogPrimitive.Description className="mt-1.5 text-[13px] leading-5 text-content-secondary">
                     {content.description}
                   </DialogPrimitive.Description>
                 ) : null}
@@ -141,11 +141,11 @@ const DialogContentFrame = forwardRef<
                   <button
                     type="button"
                     className={cn(
-                      "grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-ink-400",
+                      "grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-content-muted",
                       "cursor-pointer",
                       "transition-colors duration-150 ease-out",
-                      "hover:bg-ink-900/[0.08] hover:text-ink-900",
-                      "focus:outline-none",
+                      "hover:bg-surface-hover hover:text-content-primary",
+                      "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                     )}
                     aria-label="关闭"
                   >
@@ -220,7 +220,7 @@ export const DialogContent = forwardRef<
             "flex flex-col overflow-hidden [will-change:opacity,transform]",
             placement === "inset" && "min-h-0 flex-1",
             className,
-            "rounded-[10px] border border-ink-200 bg-paper-50",
+            "rounded-[10px] border border-line bg-surface-panel",
           )}
           title={title}
           description={description}
@@ -254,9 +254,9 @@ export interface DialogActionButtonProps extends ButtonHTMLAttributes<HTMLButton
 
 const dialogActionVariantClasses: Record<DialogActionVariant, string> = {
   secondary:
-    "border border-ink-200 bg-paper-50 text-ink-700 shadow-[0_1px_2px_rgb(33_30_24/0.04)] hover:border-ink-300 hover:bg-ink-900/[0.035] hover:text-ink-900",
+    "border border-line bg-surface-panel text-content-secondary shadow-[0_1px_2px_rgb(33_30_24/0.04)] hover:border-line-strong hover:bg-surface-hover hover:text-content-primary",
   primary:
-    "bg-ink-900 font-medium text-paper-50 shadow-[0_1px_2px_rgb(33_30_24/0.2),0_6px_14px_-8px_rgb(33_30_24/0.5)] hover:bg-ink-800",
+    "bg-accent-solid font-medium text-accent-on-solid shadow-accent hover:bg-accent-solid-hover active:bg-accent-solid-pressed",
   danger: "bg-brick-500 font-medium text-paper-50 shadow-[0_1px_2px_rgb(146_64_14/0.24)] hover:bg-brick-600",
 };
 
@@ -271,7 +271,7 @@ export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButt
         ref={ref}
         type={type}
         className={cn(
-          "h-10 cursor-pointer rounded-lg px-4 text-[13px] transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus:outline-none disabled:cursor-not-allowed disabled:opacity-45",
+          "h-10 cursor-pointer rounded-lg px-4 text-[13px] transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:cursor-not-allowed disabled:opacity-45",
           dialogActionVariantClasses[variant],
           className,
         )}

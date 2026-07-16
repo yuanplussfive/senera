@@ -133,7 +133,7 @@ function MenuSelect({
           disabled={disabled}
           className={cn(
             "flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5",
-            "text-left text-[12.5px] text-ink-800 transition hover:border-terra-200 disabled:pointer-events-none disabled:opacity-55",
+            "text-left text-[12.5px] text-ink-800 transition hover:border-accent-border-strong disabled:pointer-events-none disabled:opacity-55",
           )}
         >
           <span className="flex min-w-0 items-center gap-2">

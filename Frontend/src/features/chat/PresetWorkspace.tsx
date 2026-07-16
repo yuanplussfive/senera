@@ -67,7 +67,7 @@ export function PresetTextEditorFallback({
       </div>
       <textarea
         aria-label="角色预设内容"
-        className="min-h-0 flex-1 resize-none bg-paper-50 px-4 py-3 font-mono text-[13px] leading-6 text-ink-800 outline-none placeholder:text-ink-400 focus:ring-2 focus:ring-inset focus:ring-terra-200 disabled:cursor-not-allowed disabled:opacity-60"
+        className="min-h-0 flex-1 resize-none bg-paper-50 px-4 py-3 font-mono text-[13px] leading-6 text-ink-800 outline-none placeholder:text-ink-400 focus:ring-2 focus:ring-inset focus:ring-accent-focus disabled:cursor-not-allowed disabled:opacity-60"
         disabled={disabled}
         spellCheck={false}
         value={content}
@@ -82,7 +82,7 @@ const statusPillClass = cva(
   {
     variants: {
       state: {
-        active: "border-terra-200 bg-terra-50 text-terra-700",
+        active: "border-accent-border bg-accent-surface text-accent-content",
         busy: "border-ink-200 bg-paper-50 text-ink-500",
         dirty: "border-ink-200 bg-paper-100 text-umber-600",
         idle: "border-ink-200 bg-paper-50 text-ink-500",
@@ -211,7 +211,7 @@ export function PresetInspector({
                 : dirty
                   ? "border-ink-200 bg-paper-100 text-umber-600"
                   : active
-                    ? "border-terra-200 bg-terra-50 text-terra-700"
+                    ? "border-accent-border bg-accent-surface text-accent-content"
                     : "border-ink-200 bg-paper-50 text-ink-500",
             )}
           >
@@ -297,7 +297,7 @@ function PresetToolbar({
             placeholder="preset"
             spellCheck={false}
             aria-label="预设名称"
-            className="h-9 min-w-0 flex-1 rounded-lg border border-ink-200 bg-paper-50 px-3 font-mono text-[12.5px] text-ink-800 shadow-sm outline-none transition placeholder:text-ink-400 focus:border-terra-300 focus:ring-2 focus:ring-terra-100"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-ink-200 bg-paper-50 px-3 font-mono text-[12.5px] text-ink-800 shadow-sm outline-none transition placeholder:text-ink-400 focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
           />
           <FormatSwitch value={draftFormat} onChange={onFormatChange} />
         </div>

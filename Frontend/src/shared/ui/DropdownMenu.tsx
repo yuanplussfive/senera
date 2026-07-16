@@ -113,13 +113,13 @@ export const DropdownMenuCheckboxItem = forwardRef<
         "relative flex min-h-10 cursor-pointer select-none items-center rounded-md px-2.5 py-2 pl-8 text-[13px] leading-5 outline-none",
         "transition-[background-color,color] duration-100",
         isCoarsePointer && "min-h-11",
-        "text-ink-800 data-[highlighted]:bg-ink-900/[0.05] data-[highlighted]:text-ink-950",
+        "text-content-primary data-[highlighted]:bg-accent-surface data-[highlighted]:text-accent-content",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-45",
         className,
       )}
       {...props}
     >
-      <span className="absolute left-2.5 grid h-4 w-4 place-items-center text-terra-500">
+      <span className="absolute left-2.5 grid h-4 w-4 place-items-center text-accent-content">
         <DropdownMenuPrimitive.ItemIndicator>
           <Check className="h-3.5 w-3.5" />
         </DropdownMenuPrimitive.ItemIndicator>

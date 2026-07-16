@@ -324,7 +324,7 @@ export function PresetControl({
           className={cn(
             "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px]",
             "text-ink-500 transition hover:bg-ink-900/[0.045] hover:text-ink-800",
-            "focus:outline-none focus:ring-2 focus:ring-terra-200/60",
+            "focus:outline-none focus:ring-2 focus:ring-accent-focus",
             disabled && "pointer-events-none opacity-55",
           )}
           aria-label={frontendMessage("preset.ui.title")}
@@ -333,7 +333,7 @@ export function PresetControl({
         >
           <BookUser className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">{frontendMessage("preset.ui.shortTitle")}</span>
-          {activePreset ? <Check className="h-3 w-3 text-terra-600" aria-hidden="true" /> : null}
+          {activePreset ? <Check className="h-3 w-3 text-accent-content" aria-hidden="true" /> : null}
           {hasDiagnostics ? <AlertTriangle className="h-3.5 w-3.5 text-umber-500" /> : null}
         </button>
       </Tooltip>

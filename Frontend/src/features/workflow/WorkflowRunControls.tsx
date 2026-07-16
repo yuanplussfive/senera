@@ -47,7 +47,7 @@ export function RunSelector({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="group flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left transition-colors hover:bg-ink-900/[0.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+          className="group flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left transition-colors hover:bg-ink-900/[0.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
         >
           <RunStatusIcon status={current.status} className="mt-0.5" />
           <div className="min-w-0 flex-1">

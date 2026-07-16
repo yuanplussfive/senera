@@ -80,7 +80,7 @@ export const WithForm: Story = () => {
                 type="text"
                 autoComplete="name"
                 placeholder="Enter your name"
-                className="w-full h-9 px-3 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-terra-200/70"
+                className="w-full h-9 px-3 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus"
               />
             </div>
             <div className="space-y-2">
@@ -93,7 +93,7 @@ export const WithForm: Story = () => {
                 type="email"
                 autoComplete="email"
                 placeholder="your@email.com"
-                className="w-full h-9 px-3 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-terra-200/70"
+                className="w-full h-9 px-3 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus"
               />
             </div>
             <div className="flex gap-2 pt-4">

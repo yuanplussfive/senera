@@ -64,7 +64,7 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
         "group relative w-[240px] cursor-pointer select-none rounded-md border bg-paper-50 px-3 py-2.5 transition-[border-color,background-color] duration-150",
         "hover:border-ink-400 hover:bg-paper-100/70",
         statusClass,
-        selected ? "outline outline-2 outline-offset-2 outline-terra-400" : "",
+        selected ? "outline outline-2 outline-offset-2 outline-accent-focus" : "",
       )}
     >
       <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-paper-50 !bg-ink-300" />
@@ -124,7 +124,7 @@ function ScopeNode({
       className={cn(
         "group relative w-[240px] cursor-default select-none rounded-md border bg-paper-100 px-3 py-2.5 transition-colors duration-150",
         statusClass,
-        selected ? "outline outline-2 outline-offset-2 outline-terra-400" : "",
+        selected ? "outline outline-2 outline-offset-2 outline-accent-focus" : "",
       )}
     >
       <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-paper-50 !bg-ink-300" />

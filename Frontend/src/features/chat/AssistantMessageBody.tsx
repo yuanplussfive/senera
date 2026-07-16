@@ -22,7 +22,7 @@ export function AssistantMessageBody({ message }: AssistantMessageBodyProps): JS
         {message.content}
       </LazyMarkdownRenderer>
       {message.kind === "AssistantAsk" ? (
-        <div className="mt-2 text-[11px] font-medium text-terra-600">
+        <div className="mt-2 text-[11px] font-medium text-accent-content">
           {frontendMessage("runtime.migrated.features.chat.AssistantMessageBody.33.11")}
         </div>
       ) : null}

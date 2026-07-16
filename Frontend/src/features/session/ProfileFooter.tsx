@@ -66,7 +66,7 @@ export function UserFooter({
           <button
             ref={settingsTriggerRef}
             type="button"
-            className="flex h-[48px] w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition-colors duration-150 hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300 data-[state=open]:bg-ink-900/[0.045]"
+            className="flex h-[48px] w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition-colors duration-150 hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus data-[state=open]:bg-ink-900/[0.045]"
           >
             <UserAvatar profile={profile} />
             <div className="min-w-0 flex-1 truncate text-[13px] text-ink-800">{profile.name}</div>
@@ -253,7 +253,7 @@ function ProfileDialog({
               value={draftName}
               maxLength={48}
               onChange={(event) => setDraftName(event.target.value)}
-              className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-terra-200/50"
+              className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-accent-focus"
               placeholder={frontendMessage("profile.namePlaceholder")}
             />
           </label>

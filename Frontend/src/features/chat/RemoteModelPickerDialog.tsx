@@ -79,7 +79,7 @@ export function RemoteModelPickerDialog({
             <button
               type="button"
               disabled={disabled || loading || !provider?.Id}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-semibold text-ink-600 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-45"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-semibold text-ink-600 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-45"
               onClick={onRefresh}
             >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
@@ -100,7 +100,7 @@ export function RemoteModelPickerDialog({
                     "h-7 shrink-0 rounded-md border px-2.5 text-[11.5px] font-medium transition",
                     active
                       ? "border-ink-800 bg-ink-900 text-paper-50"
-                      : "border-ink-200 bg-paper-50 text-ink-550 hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700",
+                      : "border-ink-200 bg-paper-50 text-ink-550 hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover",
                   )}
                   onClick={() => setCategory(item.id)}
                 >
@@ -169,9 +169,7 @@ function RemoteModelPickerRows({
               <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
               <span className="truncate text-[11.5px] font-semibold text-ink-700">{group.label}</span>
             </span>
-            <span className="tabular-nums text-[10.5px] text-ink-400">
-              {group.rows.length}
-            </span>
+            <span className="tabular-nums text-[10.5px] text-ink-400">{group.rows.length}</span>
           </div>
           <div className="divide-y divide-ink-200/70">
             {group.rows.map((model) => (
@@ -226,7 +224,7 @@ function RemoteModelPickerRow({
       </span>
       <span className="flex items-center gap-1.5">
         {isDefault ? (
-          <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-terra-700">
+          <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-accent-content">
             DEFAULT
           </span>
         ) : configured ? (
@@ -237,7 +235,7 @@ function RemoteModelPickerRow({
         <button
           type="button"
           disabled={disabled}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-semibold text-ink-600 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-45"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-semibold text-ink-600 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-45"
           onClick={() => onConfigureModel(model)}
         >
           {configured ? <Settings2 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}

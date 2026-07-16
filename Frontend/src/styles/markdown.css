@@ -70,14 +70,14 @@
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  color: rgb(var(--color-terra-500));
+  color: var(--accent-content);
   text-decoration: underline;
-  text-decoration-color: rgb(var(--color-terra-500) / 0.35);
+  text-decoration-color: var(--accent-border);
   text-underline-offset: 2px;
   word-break: break-word;
 }
 .markdown-renderer__link:hover {
-  color: rgb(var(--color-terra-600));
+  color: var(--accent-content-hover);
 }
 .markdown-renderer blockquote {
   border-left: 3px solid rgb(var(--color-ink-200));
@@ -86,8 +86,8 @@
 }
 .markdown-renderer :not(pre) > code {
   border: 1px solid rgb(var(--color-ink-200));
-  background: rgb(var(--color-terra-100));
-  color: rgb(var(--color-terra-600));
+  background: var(--accent-surface-hover);
+  color: var(--accent-content);
   border-radius: 6px;
   padding: 0.14rem 0.38rem;
   font-family: "JetBrains Mono", ui-monospace, monospace;
@@ -192,7 +192,7 @@
   color: rgb(var(--color-ink-900));
 }
 .markdown-renderer__artifact-card:focus-visible {
-  box-shadow: inset 0 0 0 2px rgb(var(--color-terra-500) / 0.22);
+  box-shadow: inset 0 0 0 2px var(--accent-focus-ring);
 }
 .markdown-renderer__artifact-source {
   flex: none;

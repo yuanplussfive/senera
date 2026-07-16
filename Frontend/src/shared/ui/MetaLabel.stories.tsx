@@ -110,7 +110,7 @@ export const InForms: Story = () => (
             id="name"
             type="text"
             placeholder="Enter your name"
-            className="mt-1.5 w-full h-9 px-3 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-terra-200/70"
+            className="mt-1.5 w-full h-9 px-3 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus"
           />
         </div>
 
@@ -122,7 +122,7 @@ export const InForms: Story = () => (
             id="email"
             type="email"
             placeholder="you@example.com"
-            className="mt-1.5 w-full h-9 px-3 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-terra-200/70"
+            className="mt-1.5 w-full h-9 px-3 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus"
           />
         </div>
 
@@ -134,7 +134,7 @@ export const InForms: Story = () => (
             id="notes"
             rows={4}
             placeholder="Add a note..."
-            className="mt-1.5 w-full px-3 py-2 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-terra-200/70 resize-none"
+            className="mt-1.5 w-full px-3 py-2 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus resize-none"
           />
         </div>
       </div>
@@ -162,7 +162,7 @@ export const WithCustomColors: Story = () => (
         </div>
 
         <div className="rounded-lg border border-ink-200 bg-paper-50 p-4">
-          <MetaLabel className="text-terra-600">Warning</MetaLabel>
+          <MetaLabel className="text-accent-content">Warning</MetaLabel>
           <div className="text-ink-900 text-sm mt-2">Please review this action</div>
         </div>
 

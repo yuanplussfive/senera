@@ -22,7 +22,7 @@ export function SessionHeader({ menuSections, onNewSession, onToggleSidebar }: S
           <button
             type="button"
             className={cn(
-              "group flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-[13px] font-medium text-ink-800 transition-colors duration-150 hover:bg-ink-900/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70",
+              "group flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-[13px] font-medium text-ink-800 transition-colors duration-150 hover:bg-ink-900/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
               isCoarsePointer && "min-h-11",
             )}
           >

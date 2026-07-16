@@ -43,7 +43,7 @@ export function FieldControl({
 export const inputClassName = cn(
   "h-8 w-full rounded-lg border border-ink-200 bg-paper-100 px-2.5 text-[12.5px] text-ink-800",
   "outline-none transition placeholder:text-ink-400",
-  "focus:border-terra-300 focus:ring-2 focus:ring-terra-100",
+  "focus:border-accent-border focus:ring-2 focus:ring-accent-focus",
   "disabled:pointer-events-none disabled:opacity-55",
 );
 
@@ -286,7 +286,7 @@ function ArrayFieldControl({
       <button
         type="button"
         disabled={disabled}
-        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-paper-50 px-2.5 text-[12px] text-ink-600 transition hover:border-terra-300 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50"
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-paper-50 px-2.5 text-[12px] text-ink-600 transition hover:border-accent-border-strong hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50"
         onClick={() => onChange([...value, defaultArrayItem(itemType)])}
       >
         <Plus className="h-3.5 w-3.5" />

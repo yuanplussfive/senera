@@ -262,7 +262,7 @@ function SettingsNavigation({
   return (
     <>
       <div className="shrink-0 border-b border-ink-200/70 px-3 py-2.5">
-        <label className="flex h-8 items-center gap-2 rounded-md border border-ink-200 bg-paper-100 px-2.5 text-ink-450 shadow-sm transition focus-within:border-terra-300 focus-within:ring-2 focus-within:ring-terra-100">
+        <label className="flex h-8 items-center gap-2 rounded-md border border-line bg-surface-subtle px-2.5 text-content-muted shadow-sm transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
           <Search className="h-3.5 w-3.5 shrink-0" />
           <input
             value={search}
@@ -333,7 +333,9 @@ function SettingsNavItem({
       onClick={onSelect}
       className={cn(
         "grid min-h-9 w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 rounded-md px-2.5 py-2 text-left text-[13px] transition",
-        active ? "bg-ink-900/[0.065] text-ink-900" : "text-ink-650 hover:bg-ink-900/[0.04] hover:text-ink-900",
+        active
+          ? "bg-accent-surface text-accent-content"
+          : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
       )}
     >
       <Icon className="mt-0.5 h-4 w-4 shrink-0" />
@@ -757,7 +759,7 @@ function CommandRow({ label, command }: { label: string; command: string }): JSX
         tone="muted"
         onClick={() => void copyText(command)}
       >
-        {copied ? <Check className="h-3.5 w-3.5 text-terra-500" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? <Check className="h-3.5 w-3.5 text-accent-content" /> : <Copy className="h-3.5 w-3.5" />}
       </IconButton>
     </div>
   );
@@ -781,8 +783,8 @@ function MotionLevelOption({
       className={cn(
         "rounded-lg border px-3 py-3 text-left transition",
         selected
-          ? "border-terra-300 bg-terra-50 text-terra-800"
-          : "border-ink-200 bg-paper-50 text-ink-700 hover:bg-paper-100",
+          ? "border-accent-border bg-accent-surface text-accent-content"
+          : "border-line bg-surface-panel text-content-secondary hover:bg-surface-subtle",
       )}
     >
       <div className="text-[12.5px] font-semibold">{title}</div>
@@ -820,7 +822,7 @@ function PreferenceToggle({
       />
       <span
         aria-hidden="true"
-        className={cn("relative h-5 w-9 shrink-0 rounded-full transition", checked ? "bg-terra-500" : "bg-ink-300")}
+        className={cn("relative h-5 w-9 shrink-0 rounded-full transition", checked ? "bg-accent-solid" : "bg-ink-300")}
       >
         <span
           className={cn(

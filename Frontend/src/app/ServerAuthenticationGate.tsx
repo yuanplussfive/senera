@@ -57,7 +57,7 @@ function LoginForm({
         onSubmit={submit}
       >
         <div className="flex items-center gap-3">
-          <span className="grid h-9 w-9 place-items-center bg-terra-50 text-terra-700">
+          <span className="grid h-9 w-9 place-items-center bg-accent-surface text-accent-content">
             <KeyRound className="h-4 w-4" aria-hidden="true" />
           </span>
           <h1 className="text-[16px] font-semibold leading-6 text-ink-950">{frontendMessage("auth.title")}</h1>
@@ -67,7 +67,7 @@ function LoginForm({
           <input
             autoComplete="username"
             autoFocus
-            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-terra-200/50"
+            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
             value={loginName}
             onChange={(event) => setLoginName(event.target.value)}
             required
@@ -78,7 +78,7 @@ function LoginForm({
           <input
             type="password"
             autoComplete="current-password"
-            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-terra-200/50"
+            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
@@ -118,7 +118,7 @@ function AuthenticationStatus({
           <button
             type="button"
             onClick={onAction}
-            className="text-[13px] font-medium text-terra-700 hover:text-terra-800"
+            className="text-[13px] font-medium text-accent-content hover:text-accent-content-hover"
           >
             {actionLabel}
           </button>

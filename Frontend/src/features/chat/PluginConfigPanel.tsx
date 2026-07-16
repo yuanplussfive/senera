@@ -218,7 +218,7 @@ export function PluginConfigContent({
           </div>
 
           <div className="px-3 pb-2 lg:pb-2">
-            <label className="flex h-8 items-center gap-2 rounded-lg border border-transparent bg-paper-50 px-2.5 text-ink-400 shadow-panel transition focus-within:border-terra-200 focus-within:ring-2 focus-within:ring-terra-100">
+            <label className="flex h-8 items-center gap-2 rounded-lg border border-transparent bg-paper-50 px-2.5 text-ink-400 shadow-panel transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <Search className="h-3.5 w-3.5 shrink-0" />
               <input
                 value={filterText}
@@ -297,7 +297,7 @@ export function PluginConfigContent({
                       {saving ? (
                         <>
                           <span className="text-ink-300">/</span>
-                          <span className="text-terra-700">
+                          <span className="text-accent-content">
                             {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.256.58")}
                           </span>
                         </>
@@ -311,7 +311,7 @@ export function PluginConfigContent({
                       ) : dirty ? (
                         <>
                           <span className="text-ink-300">/</span>
-                          <span className="text-terra-700">
+                          <span className="text-accent-content">
                             {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.266.58")}
                           </span>
                         </>
@@ -458,7 +458,7 @@ function PluginSelectorRows({
                 {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.391.62")}
               </span>
             </span>
-            {active ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-terra-500" /> : null}
+            {active ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-solid" /> : null}
           </button>
         );
       })}

@@ -138,7 +138,7 @@ export function TomlView({
           "mx-auto block w-full max-w-[820px] resize-none rounded-lg border border-ink-200 bg-paper-100 p-4",
           layoutMode === "embedded" ? "min-h-[520px]" : "h-full",
           "font-mono text-[12px] leading-5 text-ink-800 shadow-panel outline-none",
-          "selection:bg-terra-100 selection:text-ink-900 focus:border-terra-300 focus:ring-2 focus:ring-terra-100",
+          "selection:bg-accent-surface-hover selection:text-ink-900 focus:border-accent-border focus:ring-2 focus:ring-accent-focus",
         )}
       />
     </div>
@@ -240,7 +240,7 @@ function PluginToolsSection({
             className={cn(
               "flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition",
               tool.enabled ? "border-moss-200 bg-moss-50/70 text-ink-900" : "border-ink-200 bg-paper-50 text-ink-600",
-              !disabled && "hover:border-terra-200 hover:bg-terra-50/40",
+              !disabled && "hover:border-accent-border-strong hover:bg-accent-surface-hover",
               disabled && "pointer-events-none opacity-55",
             )}
             onClick={() => onSetToolEnabled(tool.name, !tool.enabled)}

@@ -21,7 +21,9 @@ export const BasicDropZone: Story = () => {
             <div
               className={cn(
                 "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 transition-colors",
-                isDragActive ? "border-terra-400 bg-terra-50" : "border-ink-300 bg-paper-100 hover:border-ink-400",
+                isDragActive
+                  ? "border-accent-border-strong bg-accent-surface"
+                  : "border-ink-300 bg-paper-100 hover:border-ink-400",
               )}
             >
               <Upload className="h-12 w-12 text-ink-400 mb-4" />
@@ -88,9 +90,9 @@ export const ImageUpload: Story = () => {
             <button
               type="button"
               className={cn(
-                "flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-300",
+                "flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                 isDragReject && "border-brick-400 bg-brick-50",
-                isDragActive && !isDragReject && "border-terra-400 bg-terra-50",
+                isDragActive && !isDragReject && "border-accent-border-strong bg-accent-surface",
                 !isDragActive && "border-ink-300 bg-paper-100 hover:border-ink-400",
               )}
               onClick={open}
@@ -151,7 +153,7 @@ export const SingleFile: Story = () => {
             <div
               className={cn(
                 "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors",
-                isDragActive ? "border-terra-400 bg-terra-50" : "border-ink-300 bg-paper-100",
+                isDragActive ? "border-accent-border-strong bg-accent-surface" : "border-ink-300 bg-paper-100",
               )}
             >
               <File className="h-10 w-10 text-ink-400 mb-3" />
@@ -203,7 +205,7 @@ export const WithValidation: Story = () => {
               className={cn(
                 "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors",
                 isDragReject && "border-brick-400 bg-brick-50",
-                isDragActive && !isDragReject && "border-terra-400 bg-terra-50",
+                isDragActive && !isDragReject && "border-accent-border-strong bg-accent-surface",
                 !isDragActive && "border-ink-300 bg-paper-100",
               )}
             >

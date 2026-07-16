@@ -183,7 +183,7 @@ export function ToggleRow({
         disabled={disabled}
         className={cn(
           "inline-flex h-8 w-fit items-center gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-650",
-          "transition hover:border-terra-200 disabled:pointer-events-none disabled:opacity-50",
+          "transition hover:border-accent-border-strong disabled:pointer-events-none disabled:opacity-50",
         )}
         onClick={() => onChange(!enabled)}
       >
@@ -255,7 +255,7 @@ export function MenuSelect({
           disabled={disabled}
           className={cn(
             "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5",
-            "text-left text-[12.5px] text-ink-800 transition hover:border-terra-200 disabled:pointer-events-none disabled:opacity-55",
+            "text-left text-[12.5px] text-ink-800 transition hover:border-accent-border-strong disabled:pointer-events-none disabled:opacity-55",
             triggerClassName,
           )}
         >
@@ -415,7 +415,7 @@ export function EmptyList({ text }: { text: string }): JSX.Element {
 
 export const iconButtonClassName = cn(
   "grid h-8 w-8 shrink-0 place-items-center rounded-md border border-ink-200 bg-paper-50 text-ink-550",
-  "transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700",
+  "transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover",
   "disabled:pointer-events-none disabled:opacity-45",
 );
 

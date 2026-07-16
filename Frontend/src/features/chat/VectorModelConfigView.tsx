@@ -393,7 +393,7 @@ function MenuSelect({
           disabled={disabled}
           className={cn(
             "inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-left text-[12.5px] text-ink-800",
-            "outline-none transition hover:bg-ink-900/[0.035] focus-visible:border-terra-300 focus-visible:ring-2 focus-visible:ring-terra-100",
+            "outline-none transition hover:bg-ink-900/[0.035] focus-visible:border-accent-border focus-visible:ring-2 focus-visible:ring-accent-focus",
             "disabled:pointer-events-none disabled:opacity-55",
           )}
         >
@@ -489,6 +489,6 @@ function isRecord(value: unknown): value is JsonConfigObject {
 const inputClassName = cn(
   "h-8 w-full min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12.5px] text-ink-800",
   "outline-none transition placeholder:text-ink-400",
-  "focus:border-terra-300 focus:ring-2 focus:ring-terra-100",
+  "focus:border-accent-border focus:ring-2 focus:ring-accent-focus",
   "disabled:pointer-events-none disabled:opacity-55",
 );

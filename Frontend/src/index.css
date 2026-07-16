@@ -28,14 +28,23 @@
   --color-ink-200: 222 224 228;
   --color-ink-100: 234 236 239;
   --color-ink-50: 245 246 247;
-  --color-terra-50: 252 244 239;
-  --color-terra-100: 246 226 214;
-  --color-terra-200: 236 195 171;
-  --color-terra-300: 214 143 111;
-  --color-terra-400: 194 105 74;
-  --color-terra-500: 180 93 64;
-  --color-terra-600: 168 87 59;
-  --color-terra-700: 132 64 43;
+  --color-accent-50: 252 244 239;
+  --color-accent-100: 246 226 214;
+  --color-accent-200: 236 195 171;
+  --color-accent-300: 214 143 111;
+  --color-accent-400: 194 105 74;
+  --color-accent-500: 180 93 64;
+  --color-accent-600: 168 87 59;
+  --color-accent-700: 132 64 43;
+  --color-terra-50: var(--color-accent-50);
+  --color-terra-100: var(--color-accent-100);
+  --color-terra-200: var(--color-accent-200);
+  --color-terra-300: var(--color-accent-300);
+  --color-terra-400: var(--color-accent-400);
+  --color-terra-500: var(--color-accent-500);
+  --color-terra-600: var(--color-accent-600);
+  --color-terra-700: var(--color-accent-700);
+  --color-accent-contrast: 255 255 255;
   --color-moss-50: 240 243 235;
   --color-moss-100: 219 226 203;
   --color-moss-400: 125 152 102;
@@ -58,29 +67,29 @@
   --theme-sidebar-bg: rgb(245 246 247);
   --theme-elevated-bg: rgb(255 255 255);
   --theme-border: rgb(222 224 228);
-  --theme-accent-soft: rgb(241 220 207);
+  --theme-accent-soft: var(--accent-surface);
   --theme-surface-shadow: 0 1px 2px rgb(24 25 28 / 0.06), 0 6px 14px -8px rgb(24 25 28 / 0.14);
   --theme-overlay-shadow: 0 30px 72px -26px rgb(24 25 28 / 0.42), 0 10px 28px -16px rgb(24 25 28 / 0.24);
   --theme-dialog-backdrop: rgb(24 25 28 / 0.52);
   --theme-sheet-backdrop: rgb(24 25 28 / 0.44);
   --theme-panel-glaze: rgb(255 255 255);
-  --theme-hover-wash: rgb(43 40 32 / 0.055);
-  --theme-selection-bg: rgb(194 105 74 / 0.18);
-  --theme-selection-fg: rgb(43 40 32);
+  --theme-hover-wash: var(--surface-hover);
+  --theme-selection-bg: rgb(var(--color-accent-500) / 0.18);
+  --theme-selection-fg: var(--content-primary);
   --theme-skeleton-a: rgb(43 40 32 / 0.035);
   --theme-skeleton-b: rgb(43 40 32 / 0.09);
-  --theme-complete-highlight: rgb(194 105 74 / 0.08);
+  --theme-complete-highlight: rgb(var(--color-accent-500) / 0.08);
   --theme-code-editor-bg: rgb(255 255 255);
   --theme-code-editor-fg: rgb(var(--color-ink-850));
   --theme-code-editor-gutter-bg: rgb(var(--color-paper-200) / 0.72);
   --theme-code-editor-gutter-border: rgb(var(--color-ink-900) / 0.1);
   --theme-code-editor-gutter-fg: rgb(var(--color-ink-900) / 0.42);
-  --theme-code-editor-active-line-bg: rgb(var(--color-terra-500) / 0.07);
-  --theme-code-editor-active-gutter-bg: rgb(var(--color-terra-500) / 0.09);
-  --theme-code-editor-active-gutter-fg: rgb(var(--color-terra-700));
-  --theme-code-editor-selection-bg: rgb(var(--color-terra-500) / 0.18);
-  --theme-code-editor-caret: rgb(var(--color-terra-500));
-  --theme-code-token-keyword: rgb(var(--color-terra-600));
+  --theme-code-editor-active-line-bg: rgb(var(--color-accent-500) / 0.07);
+  --theme-code-editor-active-gutter-bg: rgb(var(--color-accent-500) / 0.09);
+  --theme-code-editor-active-gutter-fg: rgb(var(--color-accent-700));
+  --theme-code-editor-selection-bg: rgb(var(--color-accent-500) / 0.18);
+  --theme-code-editor-caret: rgb(var(--color-accent-500));
+  --theme-code-token-keyword: rgb(var(--color-accent-600));
   --theme-code-token-string: rgb(var(--color-moss-600));
   --theme-code-token-property: rgb(var(--color-umber-600));
   --theme-code-token-literal: rgb(39 107 117);
@@ -104,7 +113,35 @@
   --theme-chat-assistant-line-height: 1.75;
   --theme-chat-composer-bg: rgb(var(--color-paper-100) / 0.8);
   --theme-chat-composer-focus-bg: rgb(var(--color-paper-50));
-  --theme-session-active-bg: rgb(var(--color-ink-900) / 0.055);
+  --theme-session-active-bg: var(--accent-surface);
+  --surface-canvas: var(--theme-bg);
+  --surface-sidebar: var(--theme-sidebar-bg);
+  --surface-panel: rgb(var(--color-paper-50));
+  --surface-raised: var(--theme-elevated-bg);
+  --surface-subtle: rgb(var(--color-paper-100));
+  --surface-muted: rgb(var(--color-paper-200));
+  --surface-hover: rgb(var(--color-ink-900) / 0.05);
+  --content-strong: rgb(var(--color-ink-950));
+  --content-primary: rgb(var(--color-ink-900));
+  --content-secondary: rgb(var(--color-ink-650));
+  --content-muted: rgb(var(--color-ink-400));
+  --content-disabled: rgb(var(--color-ink-350));
+  --content-inverse: rgb(var(--color-paper-50));
+  --line-subtle: rgb(var(--color-ink-200) / 0.7);
+  --line-default: var(--theme-border);
+  --line-strong: rgb(var(--color-ink-300));
+  --accent-solid: rgb(var(--color-accent-500));
+  --accent-solid-hover: rgb(var(--color-accent-600));
+  --accent-solid-pressed: rgb(var(--color-accent-700));
+  --accent-content: rgb(var(--color-accent-700));
+  --accent-content-hover: rgb(var(--color-accent-600));
+  --accent-surface: rgb(var(--color-accent-50));
+  --accent-surface-hover: rgb(var(--color-accent-100));
+  --accent-border: rgb(var(--color-accent-200));
+  --accent-border-strong: rgb(var(--color-accent-300));
+  --accent-focus-ring: rgb(var(--color-accent-200) / 0.7);
+  --accent-on-solid: rgb(var(--color-accent-contrast));
+  --accent-shadow: 0 1px 2px rgb(var(--color-accent-700) / 0.24), 0 7px 16px -10px rgb(var(--color-accent-700) / 0.58);
   --shadow-bubble-user: 0 1px 1px rgb(43 40 32 / 0.04);
   --shadow-bubble-ai: 0 1px 0 rgb(43 40 32 / 0.05), 0 0 0 1px rgb(43 40 32 / 0.045);
   --shadow-panel: 0 0 0 1px rgb(43 40 32 / 0.055);
@@ -170,8 +207,6 @@ body {
 :where(button, input, textarea, select, [role="button"], [role="menuitem"], [tabindex]):focus,
 :where(button, input, textarea, select, [role="button"], [role="menuitem"], [tabindex]):focus-visible {
   outline: none !important;
-  --tw-ring-offset-shadow: 0 0 #0000 !important;
-  --tw-ring-shadow: 0 0 #0000 !important;
 }
 
 :where(button, [role="button"], [role="menuitem"], [role="tab"], [role="option"]) {
@@ -318,7 +353,7 @@ html[data-motion-level="none"] *::after {
   display: inline-block;
   margin-left: 2px;
   font-weight: 400;
-  color: rgb(var(--color-terra-500));
+  color: rgb(var(--color-accent-500));
   animation: caret 1.1s ease-in-out infinite;
 }
 

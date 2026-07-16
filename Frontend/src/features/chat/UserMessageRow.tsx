@@ -66,7 +66,7 @@ export function UserMessageRow({
               className={cn(
                 "mt-1 whitespace-pre-wrap rounded-lg rounded-tr-sm bg-[var(--theme-chat-user-bg)] px-4 py-2.5 text-left text-[length:var(--theme-chat-user-font-size)] leading-[var(--theme-chat-user-line-height)] text-[var(--theme-chat-user-fg)] transition",
                 message.requestId
-                  ? "cursor-pointer hover:bg-[var(--theme-chat-user-hover-bg)] focus:outline-none focus:ring-2 focus:ring-terra-200/60"
+                  ? "cursor-pointer hover:bg-[var(--theme-chat-user-hover-bg)] focus:outline-none focus:ring-2 focus:ring-accent-focus"
                   : "cursor-default",
               )}
               aria-label={frontendMessage("chat.editMessage")}

@@ -4,7 +4,7 @@ import { colorSchemes, createAppearanceTokens, defaultAppearancePreference } fro
 const colorRanges = {
   paper: [50, 100, 200, 300, 400],
   ink: [950, 900, 850, 800, 700, 650, 600, 500, 400, 350, 300, 200, 100, 50],
-  terra: [50, 100, 200, 300, 400, 500, 600, 700],
+  accent: [50, 100, 200, 300, 400, 500, 600, 700],
   moss: [50, 100, 400, 500, 600],
   umber: [50, 100, 200, 500, 600],
   brick: [50, 100, 200, 500, 600, 700],
@@ -51,10 +51,10 @@ export const SeneraLight: Story = () => (
 
     <div className="grid grid-cols-2 gap-8">
       <div className="space-y-4">
-        <h3 className="text-ink-900 font-medium">Terra (Accent)</h3>
-        {colorRanges.terra.slice(0, 5).map((shade) => {
-          const cssVar = getComputedStyle(document.documentElement).getPropertyValue(`--color-terra-${shade}`).trim();
-          return <ColorSwatch key={shade} color="terra" label={`terra-${shade}`} value={cssVar} />;
+        <h3 className="text-ink-900 font-medium">Accent</h3>
+        {colorRanges.accent.slice(0, 5).map((shade) => {
+          const cssVar = getComputedStyle(document.documentElement).getPropertyValue(`--color-accent-${shade}`).trim();
+          return <ColorSwatch key={shade} color="accent" label={`accent-${shade}`} value={cssVar} />;
         })}
       </div>
 
@@ -125,7 +125,7 @@ export const AllSchemes: Story = () => (
           • <span className="font-mono text-xs">ink-*</span> — Text and foreground elements
         </li>
         <li>
-          • <span className="font-mono text-xs">terra-*</span> — Primary accent (default orange)
+          • <span className="font-mono text-xs">accent-*</span> — Selected accent palette
         </li>
         <li>
           • <span className="font-mono text-xs">moss-*</span> — Success states

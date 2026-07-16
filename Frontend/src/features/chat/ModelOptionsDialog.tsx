@@ -353,8 +353,8 @@ export function ModelOptionsDialog({
                 className={cn(
                   "inline-flex h-8 items-center rounded-md border px-3 text-[12px] transition",
                   isDefault
-                    ? "border-terra-200 bg-terra-50 text-terra-700"
-                    : "border-ink-200 bg-paper-50 text-ink-650 hover:border-terra-200 hover:text-terra-700",
+                    ? "border-accent-border bg-accent-surface text-accent-content"
+                    : "border-ink-200 bg-paper-50 text-ink-650 hover:border-accent-border-strong hover:text-accent-content-hover",
                   "disabled:pointer-events-none disabled:opacity-50",
                 )}
                 onClick={() => onSetDefault(model.Id)}
