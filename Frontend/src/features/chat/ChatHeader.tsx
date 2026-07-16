@@ -19,8 +19,9 @@ export function ChatHeader({
 }): JSX.Element {
   return (
     <div
-      className="flex h-[52px] shrink-0 items-center gap-2 border-b border-ink-200/70 bg-[var(--theme-elevated-bg)] px-3 sm:px-5"
+      className="relative z-10 flex h-[52px] shrink-0 items-center gap-2 bg-[var(--theme-elevated-bg)] px-3 [box-shadow:var(--shadow-soft)] sm:px-5"
       data-ui-chrome
+      data-window-drag-region
     >
       {onOpenSessionPanel ? (
         <IconButton

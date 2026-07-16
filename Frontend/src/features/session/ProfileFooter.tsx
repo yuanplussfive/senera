@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Info, LoaderCircle, Settings2, User, UserRoundPen, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
-import { openSettingsSurface } from "../../app/desktopBridge";
 import type { UserProfile } from "../../store/sessionStore";
+import type { SettingsSectionId } from "../settings/types";
 import { cn } from "../../lib/util";
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuMeta,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../shared/ui";
@@ -31,13 +32,16 @@ export function UserFooter({
   socketStatus,
   onUpdateProfile,
   onLogout,
+  onOpenSettings,
 }: {
   profile: UserProfile;
   socketStatus: string;
   onUpdateProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   onLogout: () => Promise<void>;
+  onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const statusLabel =
     socketStatus === "open"
       ? frontendMessage("connection.open")
@@ -60,6 +64,7 @@ export function UserFooter({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
+            ref={settingsTriggerRef}
             type="button"
             className="flex h-[48px] w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition-colors duration-150 hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300 data-[state=open]:bg-ink-900/[0.045]"
           >
@@ -75,33 +80,24 @@ export function UserFooter({
           <DropdownMenuSeparator />
           <DropdownMenuItem
             icon={<Settings2 className="h-3.5 w-3.5" />}
-            onSelect={() => {
-              void openSettingsSurface({
-                fallback: () => undefined,
-              });
-            }}
+            onSelect={() => onOpenSettings(undefined, settingsTriggerRef.current)}
           >
             {frontendMessage("profile.menu.settings")}
           </DropdownMenuItem>
           <DropdownMenuItem
             icon={<Info className="h-3.5 w-3.5" />}
-            onSelect={() => {
-              void openSettingsSurface({
-                section: "about",
-                fallback: () => undefined,
-              });
-            }}
+            onSelect={() => onOpenSettings("about", settingsTriggerRef.current)}
           >
             {frontendMessage("profile.menu.about")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <div className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[12px] text-ink-500">
-            <StatusIcon className={cn("h-3 w-3 shrink-0", statusIconClass)} aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate">
-              {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}
-            </span>
-            <span className="text-[10.5px] text-ink-400">{statusLabel}</span>
-          </div>
+          <DropdownMenuMeta
+            aria-live="polite"
+            icon={<StatusIcon className={cn("h-3.5 w-3.5", statusIconClass)} aria-hidden="true" />}
+            value={statusLabel}
+          >
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}
+          </DropdownMenuMeta>
         </DropdownMenuContent>
       </DropdownMenu>
       <ProfileDialog

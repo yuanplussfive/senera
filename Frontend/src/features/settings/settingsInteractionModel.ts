@@ -2,13 +2,6 @@ export type SettingsDraftStatus = "loading" | "saving" | "invalid" | "dirty" | "
 
 export type SettingsDraftTone = "neutral" | "success" | "info" | "warning";
 
-export type SettingsSectionRuntimeState = "idle" | "synced" | "dirty" | "saving" | "needs_attention" | "error";
-
-export interface SettingsSectionRuntimeStatus {
-  label: string;
-  state: SettingsSectionRuntimeState;
-}
-
 export interface SettingsDraftInteractionInput {
   dirty: boolean;
   localError?: string | null;
@@ -109,48 +102,4 @@ export function readSettingsDraftInteraction({
     statusLabel: "已同步",
     tone: "success",
   };
-}
-
-export function readConfigSectionRuntimeStatus(
-  input: SettingsDraftInteractionInput & { ready?: boolean },
-): SettingsSectionRuntimeStatus | null {
-  const interaction = readSettingsDraftInteraction(input);
-  switch (interaction.status) {
-    case "loading":
-      return { label: "加载中", state: "idle" };
-    case "saving":
-      return { label: "保存中", state: "saving" };
-    case "invalid":
-      return { label: "需修复", state: "error" };
-    case "dirty":
-      return { label: "未保存", state: "dirty" };
-    case "synced":
-      return { label: "已同步", state: "synced" };
-  }
-}
-
-export function readPluginSectionRuntimeStatus({
-  operationStatuses,
-  pluginErrors,
-  pluginsLoaded,
-  pluginsNeedingConfig,
-}: {
-  operationStatuses: readonly string[];
-  pluginErrors: number;
-  pluginsLoaded: boolean;
-  pluginsNeedingConfig: number;
-}): SettingsSectionRuntimeStatus | null {
-  if (operationStatuses.includes("pending")) {
-    return { label: "保存中", state: "saving" };
-  }
-  if (operationStatuses.includes("error") || pluginErrors > 0) {
-    return { label: "有错误", state: "error" };
-  }
-  if (pluginsNeedingConfig > 0) {
-    return { label: "需配置", state: "needs_attention" };
-  }
-  if (!pluginsLoaded) {
-    return { label: "加载中", state: "idle" };
-  }
-  return { label: "已同步", state: "synced" };
 }

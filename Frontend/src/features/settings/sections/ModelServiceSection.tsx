@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { SettingsWorkspaceState } from "../SettingsWorkspaceSurface";
-import { useModelServiceLayout } from "../../../shared/responsive";
+import { classifySettingsContentLayout, useObservedLayout } from "../../../shared/responsive";
 import { cn } from "../../../lib/util";
-import { ScrollArea } from "../../../shared/ui";
+import { Dialog, DialogActionButton, DialogActions, DialogContent, ScrollArea } from "../../../shared/ui";
 import { findItemField, findTopField, readFieldOptions, toProviderEndpointInput } from "../../chat/modelConfigData";
 import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { AddProviderDialog, RenameProviderDialog } from "./ProviderConnectionDialogs";
@@ -22,12 +22,22 @@ import { ProviderModelLifecycleDialogs } from "./ProviderModelLifecycleDialogs";
 const EMPTY_DRAFT: Record<string, unknown> = {};
 
 /** Provider/model management. Default assignment lives in DefaultModelSection. */
-export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsSystemConfigHandle }): JSX.Element {
+export function ModelServiceSection({
+  systemConfig,
+  onDirtyChange,
+}: {
+  systemConfig?: SettingsSystemConfigHandle;
+  onDirtyChange?: (dirty: boolean) => void;
+}): JSX.Element {
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [modelPendingRemoval, setModelPendingRemoval] = useState<ModelProviderDraft | null>(null);
   const [providerPendingRemoval, setProviderPendingRemoval] = useState<ProviderEndpointDraft | null>(null);
-  const layout = useModelServiceLayout();
+  const [pendingProviderSelection, setPendingProviderSelection] = useState<ProviderEndpointDraft | null>(null);
+  const { ref: layoutRef, layout } = useObservedLayout<HTMLDivElement, "compact" | "standard" | "wide">(
+    classifySettingsContentLayout,
+    "standard",
+  );
   const snapshot = systemConfig?.configSnapshot ?? null;
   const modelSection = snapshot?.form.sections.find((section) => section.name === "models") ?? null;
   const state =
@@ -96,6 +106,11 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
     onUpsertProviderEndpoint: systemConfig?.upsertProviderEndpoint ?? noopCommands.upsertProviderEndpoint,
   });
 
+  useEffect(() => {
+    onDirtyChange?.(actions.dirty);
+    return () => onDirtyChange?.(false);
+  }, [actions.dirty, onDirtyChange]);
+
   if (!systemConfig) return <SettingsWorkspaceState>正在连接主配置服务</SettingsWorkspaceState>;
   if (!snapshot || !modelSection || !state)
     return <SettingsWorkspaceState>主配置连接后会加载模型服务</SettingsWorkspaceState>;
@@ -138,8 +153,12 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
         disabled={actions.saving}
         onRequestAdd={() => actions.setShowAddDialog(true)}
         onSelect={(provider) => {
+          if (actions.dirty) {
+            setPendingProviderSelection(provider);
+            return;
+          }
           const selected = actions.selectProvider(provider);
-          if (selected && layout === "mobile") setMobileDetailOpen(true);
+          if (selected && layout === "compact") setMobileDetailOpen(true);
         }}
         onRename={actions.setRenameTarget}
         onDelete={setProviderPendingRemoval}
@@ -169,7 +188,7 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
   );
 
   const content =
-    layout === "mobile" ? (
+    layout === "compact" ? (
       <div className="relative h-full min-h-0 overflow-hidden bg-paper-50">
         {mobileDetailOpen ? (
           <div className="flex h-full min-h-0 flex-col overflow-hidden bg-paper-50">
@@ -191,7 +210,7 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
       <div
         className={cn(
           "grid h-full min-h-0 overflow-hidden bg-paper-50",
-          layout === "tablet" ? "grid-cols-[230px_minmax(0,1fr)]" : "grid-cols-[250px_minmax(0,1fr)]",
+          layout === "standard" ? "grid-cols-[230px_minmax(0,1fr)]" : "grid-cols-[250px_minmax(0,1fr)]",
         )}
       >
         {providerList}
@@ -200,7 +219,7 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
     );
 
   return (
-    <>
+    <div ref={layoutRef} className="h-full min-h-0 overflow-hidden">
       {content}
       <AddProviderDialog
         open={actions.showAddDialog}
@@ -229,6 +248,28 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
           return provider ? actions.deleteProvider(provider, input) : false;
         }}
       />
-    </>
+      <Dialog
+        open={pendingProviderSelection !== null}
+        onOpenChange={(open) => !open && setPendingProviderSelection(null)}
+      >
+        <DialogContent title="放弃未确认的连接修改？" description="切换供应商会丢失当前连接表单中的修改。">
+          <DialogActions>
+            <DialogActionButton close>继续编辑</DialogActionButton>
+            <DialogActionButton
+              variant="danger"
+              onClick={() => {
+                const provider = pendingProviderSelection;
+                setPendingProviderSelection(null);
+                if (!provider) return;
+                actions.discardAndSelectProvider(provider);
+                if (layout === "compact") setMobileDetailOpen(true);
+              }}
+            >
+              放弃更改
+            </DialogActionButton>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

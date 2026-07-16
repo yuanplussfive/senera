@@ -4,10 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
-const { openSettingsSurface } = vi.hoisted(() => ({ openSettingsSurface: vi.fn(() => Promise.resolve()) }));
-
-vi.mock("../../../Frontend/src/app/desktopBridge.ts", () => ({ openSettingsSurface }));
-
 vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
   TooltipProvider: ({ children }) => React.createElement(React.Fragment, null, children),
   Tooltip: ({ children }) => React.createElement(React.Fragment, null, children),
@@ -89,7 +85,8 @@ test("integrated sidebar exposes collapse, new-session, and real session search"
 
 test("account menu exposes one settings entry and a flatter profile editor", async () => {
   const user = userEvent.setup();
-  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
+  const onOpenSettings = vi.fn();
+  renderWithFrontendProviders(React.createElement(SessionList, createProps({ onOpenSettings })));
 
   await user.click(screen.getByRole("button", { name: /用户/ }));
   expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.edit") })).toBeVisible();
@@ -99,14 +96,11 @@ test("account menu exposes one settings entry and a flatter profile editor", asy
   expect(screen.queryByRole("menuitem", { name: "通用设置" })).not.toBeInTheDocument();
 
   await user.click(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.settings") }));
-  expect(openSettingsSurface).toHaveBeenCalledWith({ fallback: expect.any(Function) });
+  expect(onOpenSettings).toHaveBeenCalledWith(undefined, expect.any(HTMLButtonElement));
 
   await user.click(screen.getByRole("button", { name: /用户/ }));
   await user.click(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.about") }));
-  expect(openSettingsSurface).toHaveBeenLastCalledWith({
-    section: "about",
-    fallback: expect.any(Function),
-  });
+  expect(onOpenSettings).toHaveBeenLastCalledWith("about", expect.any(HTMLButtonElement));
 
   await user.click(screen.getByRole("button", { name: /用户/ }));
   await user.click(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.edit") }));
@@ -187,6 +181,7 @@ function createProps(overrides = {}) {
     userProfile: DEFAULT_USER_PROFILE,
     onUpdateUserProfile: vi.fn(),
     socketStatus: "open",
+    onOpenSettings: vi.fn(),
     presentation: "panel",
     ...overrides,
   };

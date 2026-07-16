@@ -6,7 +6,7 @@ import { motionTimings, useMotionLevel } from "../shared/motion";
 import { useStore } from "../store/sessionStore";
 import type { ResponsiveMode } from "../shared/responsive";
 
-const SESSION_PANEL_WIDTH = 268;
+const SESSION_PANEL_WIDTH = 284;
 const WORKFLOW_PANEL_WIDTH_COMPACT = 360;
 const WORKFLOW_PANEL_WIDTH = 460;
 const SESSION_DRAWER_WIDTH = "w-[min(360px,calc(100vw-24px))]";
@@ -92,9 +92,7 @@ export function readWorkflowPanelWidth(responsiveMode: ResponsiveMode): number {
 export function readAppShellResponsiveEntryPlan(responsiveMode: ResponsiveMode): AppShellResponsiveEntryPlan {
   return {
     sidebarCollapsed: responsiveMode.hasPersistentSessionPanel ? false : null,
-    rightPanelCollapsed: responsiveMode.hasPersistentWorkflowPanel
-      ? !responsiveMode.hasInlineWorkflowPanel
-      : null,
+    rightPanelCollapsed: responsiveMode.hasPersistentWorkflowPanel ? !responsiveMode.hasInlineWorkflowPanel : null,
   };
 }
 
@@ -146,12 +144,7 @@ export function AppShell({
     if (entryPlan.rightPanelCollapsed !== null) {
       setRightPanelCollapsed(entryPlan.rightPanelCollapsed);
     }
-  }, [
-    responsiveLayoutKey,
-    responsiveMode,
-    setRightPanelCollapsed,
-    setSidebarCollapsed,
-  ]);
+  }, [responsiveLayoutKey, responsiveMode, setRightPanelCollapsed, setSidebarCollapsed]);
 
   const workflowPanelInline = renderPlan.workflowPanelLayout === "inline";
   const sessionPanelTransition: Transition =
@@ -197,7 +190,9 @@ export function AppShell({
           aria-hidden={sidebarCollapsed}
           data-open={!sidebarCollapsed}
         >
-          {sessionPanel}
+          <div className="h-full p-2" style={{ width: SESSION_PANEL_WIDTH }}>
+            {sessionPanel}
+          </div>
         </motion.div>
       ) : null}
 

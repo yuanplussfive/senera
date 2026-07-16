@@ -134,7 +134,10 @@ function TopBar({
 
   return (
     <>
-      <div className="flex h-[52px] items-center gap-2 border-b border-ink-200/70 px-3">
+      <div
+        className="relative z-10 flex h-[52px] items-center gap-2 bg-[var(--theme-elevated-bg)] px-3 [box-shadow:var(--shadow-soft)]"
+        data-window-drag-region
+      >
         {hideTitle ? null : (
           <nav
             className="flex min-w-0 items-center gap-2"

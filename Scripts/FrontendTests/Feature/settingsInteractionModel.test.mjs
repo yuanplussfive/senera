@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  readConfigSectionRuntimeStatus,
-  readPluginSectionRuntimeStatus,
-  readSettingsDraftInteraction,
-} from "../../../Frontend/src/features/settings/settingsInteractionModel.ts";
+import { readSettingsDraftInteraction } from "../../../Frontend/src/features/settings/settingsInteractionModel.ts";
 describe("readSettingsDraftInteraction", () => {
   it("blocks save while the snapshot is loading", () => {
     expect(
@@ -76,57 +72,6 @@ describe("readSettingsDraftInteraction", () => {
       detail: "写入失败",
       saveDisabled: false,
       saveTitle: "重试保存当前草稿",
-    });
-  });
-});
-describe("readConfigSectionRuntimeStatus", () => {
-  it("maps shared config draft state into compact section labels", () => {
-    expect(readConfigSectionRuntimeStatus({ dirty: true, saving: false })).toEqual({
-      label: "未保存",
-      state: "dirty",
-    });
-    expect(readConfigSectionRuntimeStatus({ dirty: false, saving: false, validationErrors: ["bad"] })).toEqual({
-      label: "需修复",
-      state: "error",
-    });
-  });
-});
-describe("readPluginSectionRuntimeStatus", () => {
-  it("prioritizes pending and error plugin states", () => {
-    expect(
-      readPluginSectionRuntimeStatus({
-        operationStatuses: ["pending"],
-        pluginErrors: 0,
-        pluginsLoaded: true,
-        pluginsNeedingConfig: 0,
-      }),
-    ).toEqual({
-      label: "保存中",
-      state: "saving",
-    });
-    expect(
-      readPluginSectionRuntimeStatus({
-        operationStatuses: [],
-        pluginErrors: 1,
-        pluginsLoaded: true,
-        pluginsNeedingConfig: 0,
-      }),
-    ).toEqual({
-      label: "有错误",
-      state: "error",
-    });
-  });
-  it("surfaces plugin configuration needs", () => {
-    expect(
-      readPluginSectionRuntimeStatus({
-        operationStatuses: [],
-        pluginErrors: 0,
-        pluginsLoaded: true,
-        pluginsNeedingConfig: 2,
-      }),
-    ).toEqual({
-      label: "需配置",
-      state: "needs_attention",
     });
   });
 });

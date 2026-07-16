@@ -8,7 +8,7 @@ import { FieldControl } from "./PluginConfigFields";
 import { readDraftValue } from "./pluginConfigDraft";
 
 export type ConfigView = "settings" | "toml";
-export type PluginConfigLayoutMode = "panel" | "embedded";
+export type PluginConfigLayoutMode = "panel" | "embedded" | "workspace";
 
 export function ViewSwitch({
   value,

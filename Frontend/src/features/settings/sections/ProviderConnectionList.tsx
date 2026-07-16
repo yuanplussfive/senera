@@ -96,9 +96,7 @@ export function ProviderConnectionList({
                 <span
                   className={cn(
                     "rounded-md border border-ink-200 bg-paper-100 px-2 py-0.5 text-[10px] font-semibold",
-                    enabled
-                      ? "text-moss-600"
-                      : "text-ink-450",
+                    enabled ? "text-moss-600" : "text-ink-450",
                   )}
                 >
                   {enabled ? "ON" : "OFF"}
@@ -116,13 +114,20 @@ export function ProviderConnectionList({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44 bg-paper-50">
-                  <DropdownMenuItem disabled={protectedProvider} onSelect={() => onRename(provider)}>
-                    <Pencil className="mr-2 h-3.5 w-3.5" />
+                  <DropdownMenuItem
+                    icon={<Pencil className="h-3.5 w-3.5" />}
+                    disabled={protectedProvider}
+                    onSelect={() => onRename(provider)}
+                  >
                     重命名
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem destructive disabled={protectedProvider} onSelect={() => onDelete(provider)}>
-                    <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  <DropdownMenuItem
+                    icon={<Trash2 className="h-3.5 w-3.5" />}
+                    destructive
+                    disabled={protectedProvider}
+                    onSelect={() => onDelete(provider)}
+                  >
                     删除
                   </DropdownMenuItem>
                 </DropdownMenuContent>

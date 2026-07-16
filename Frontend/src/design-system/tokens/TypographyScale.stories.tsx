@@ -22,12 +22,12 @@ export const TypeScale: Story = () => (
             <div className="text-ink-500 text-xs mb-2">UI Font (Sans)</div>
             <div
               className="text-ink-900 text-lg font-medium"
-              style={{ fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif" }}
+              style={{ fontFamily: '"Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif' }}
             >
-              Geist — The quick brown fox jumps over the lazy dog
+              Segoe UI Variable — The quick brown fox jumps over the lazy dog
             </div>
             <div className="text-ink-600 text-sm mt-2 font-mono">
-              font-family: "Geist", ui-sans-serif, system-ui, sans-serif
+              font-family: "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif
             </div>
           </div>
 

@@ -1,6 +1,6 @@
 import type { Story } from "@ladle/react";
 import { useState } from "react";
-import { Dialog, DialogTrigger, DialogContent, DialogClose } from "./Dialog";
+import { Dialog, DialogTrigger, DialogContent, DialogActions, DialogActionButton } from "./Dialog";
 import { Button } from "./Button";
 
 export const BasicDialog: Story = () => {
@@ -19,14 +19,14 @@ export const BasicDialog: Story = () => {
         >
           <div className="space-y-4">
             <p className="text-ink-700 text-sm">This is the dialog content. You can put any content here.</p>
-            <div className="flex justify-end gap-2">
-              <DialogClose asChild>
-                <Button variant="ghost">Cancel</Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button>Confirm</Button>
-              </DialogClose>
-            </div>
+            <DialogActions>
+              <DialogActionButton close variant="secondary">
+                Cancel
+              </DialogActionButton>
+              <DialogActionButton close variant="primary">
+                Confirm
+              </DialogActionButton>
+            </DialogActions>
           </div>
         </DialogContent>
       </Dialog>
@@ -52,14 +52,14 @@ export const DestructiveDialog: Story = () => {
             <p className="text-ink-700 text-sm">
               Please confirm that you want to proceed with this destructive action.
             </p>
-            <div className="flex justify-end gap-2">
-              <DialogClose asChild>
-                <Button variant="ghost">Cancel</Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button variant="destructive">Delete</Button>
-              </DialogClose>
-            </div>
+            <DialogActions>
+              <DialogActionButton close variant="secondary">
+                Cancel
+              </DialogActionButton>
+              <DialogActionButton close variant="danger">
+                Delete
+              </DialogActionButton>
+            </DialogActions>
           </div>
         </DialogContent>
       </Dialog>
@@ -79,11 +79,11 @@ export const WithoutDescription: Story = () => {
         <DialogContent motionPreset="modal" title="Simple Dialog">
           <div className="space-y-4">
             <p className="text-ink-700 text-sm">This dialog doesn't have a description, only a title.</p>
-            <div className="flex justify-end">
-              <DialogClose asChild>
-                <Button>Close</Button>
-              </DialogClose>
-            </div>
+            <DialogActions>
+              <DialogActionButton close variant="primary">
+                Close
+              </DialogActionButton>
+            </DialogActions>
           </div>
         </DialogContent>
       </Dialog>

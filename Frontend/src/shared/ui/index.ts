@@ -34,6 +34,7 @@ export {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuMeta,
   DropdownMenuPortal,
   DropdownMenuSeparator,
   DropdownMenuTrigger,

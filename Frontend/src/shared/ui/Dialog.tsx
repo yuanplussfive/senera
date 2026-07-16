@@ -48,6 +48,8 @@ type DialogContentSnapshot = {
   description?: string;
   motionPreset: DialogMotionPreset;
   panelClassName?: string;
+  showClose: boolean;
+  showHeader: boolean;
   title?: string;
 };
 
@@ -59,6 +61,8 @@ const DialogContentFrame = forwardRef<
     bodyClassName?: string;
     frameClassName?: string;
     panelClassName?: string;
+    showClose: boolean;
+    showHeader: boolean;
     motionPreset: DialogMotionPreset;
     contentInitial?: false | VariantLabels;
     contentVariants?: Variants;
@@ -75,6 +79,8 @@ const DialogContentFrame = forwardRef<
       bodyClassName,
       frameClassName: _frameClassName,
       panelClassName,
+      showClose,
+      showHeader,
       motionPreset,
       contentInitial,
       contentVariants,
@@ -94,6 +100,8 @@ const DialogContentFrame = forwardRef<
       description,
       motionPreset,
       panelClassName,
+      showClose,
+      showHeader,
       title,
     };
     const openContentRef = useRef(liveContent);
@@ -116,33 +124,44 @@ const DialogContentFrame = forwardRef<
           variants={content.contentVariants}
           transition={content.contentTransition}
         >
-          <div className="flex items-start gap-4 bg-paper-50 px-8 pb-4 pt-7">
-            <div className="min-w-0 flex-1">
-              <DialogPrimitive.Title className="text-[20px] font-semibold leading-7 text-ink-950">
-                {content.title ?? ""}
-              </DialogPrimitive.Title>
-              {content.description ? (
-                <DialogPrimitive.Description className="mt-1.5 text-[13px] leading-5 text-ink-500">
-                  {content.description}
-                </DialogPrimitive.Description>
+          {content.showHeader ? (
+            <div className="flex items-start gap-4 bg-paper-50 px-8 pb-4 pt-7">
+              <div className="min-w-0 flex-1">
+                <DialogPrimitive.Title className="text-[20px] font-semibold leading-7 text-ink-950">
+                  {content.title ?? ""}
+                </DialogPrimitive.Title>
+                {content.description ? (
+                  <DialogPrimitive.Description className="mt-1.5 text-[13px] leading-5 text-ink-500">
+                    {content.description}
+                  </DialogPrimitive.Description>
+                ) : null}
+              </div>
+              {content.showClose ? (
+                <DialogClose asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      "grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-ink-400",
+                      "cursor-pointer",
+                      "transition-colors duration-150 ease-out",
+                      "hover:bg-ink-900/[0.08] hover:text-ink-900",
+                      "focus:outline-none",
+                    )}
+                    aria-label="关闭"
+                  >
+                    <X className="h-[18px] w-[18px]" />
+                  </button>
+                </DialogClose>
               ) : null}
             </div>
-            <DialogClose asChild>
-              <button
-                type="button"
-                className={cn(
-                  "grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-ink-400",
-                  "cursor-pointer",
-                  "transition-colors duration-150 ease-out",
-                  "hover:bg-ink-900/[0.08] hover:text-ink-900",
-                  "focus:outline-none",
-                )}
-                aria-label="关闭"
-              >
-                <X className="h-[18px] w-[18px]" />
-              </button>
-            </DialogClose>
-          </div>
+          ) : (
+            <>
+              <DialogPrimitive.Title className="sr-only">{content.title ?? ""}</DialogPrimitive.Title>
+              {content.description ? (
+                <DialogPrimitive.Description className="sr-only">{content.description}</DialogPrimitive.Description>
+              ) : null}
+            </>
+          )}
           <div className={content.bodyClassName}>{content.children}</div>
         </MotionDialogContent>
       </div>
@@ -160,6 +179,8 @@ export const DialogContent = forwardRef<
     frameClassName?: string;
     placement?: "center" | "inset";
     motionPreset?: DialogMotionPreset;
+    showClose?: boolean;
+    showHeader?: boolean;
     contentInitial?: false | VariantLabels;
     contentVariants?: Variants;
     contentTransition?: Transition;
@@ -175,6 +196,8 @@ export const DialogContent = forwardRef<
       frameClassName,
       placement = "center",
       motionPreset = "modal",
+      showClose = true,
+      showHeader = true,
       contentInitial,
       contentVariants,
       contentTransition,
@@ -203,6 +226,8 @@ export const DialogContent = forwardRef<
           description={description}
           bodyClassName={bodyClassName}
           motionPreset={motionPreset}
+          showClose={showClose}
+          showHeader={showHeader}
           contentInitial={contentInitial}
           contentVariants={contentVariants}
           contentTransition={contentTransition}
@@ -232,8 +257,7 @@ const dialogActionVariantClasses: Record<DialogActionVariant, string> = {
     "border border-ink-200 bg-paper-50 text-ink-700 shadow-[0_1px_2px_rgb(33_30_24/0.04)] hover:border-ink-300 hover:bg-ink-900/[0.035] hover:text-ink-900",
   primary:
     "bg-ink-900 font-medium text-paper-50 shadow-[0_1px_2px_rgb(33_30_24/0.2),0_6px_14px_-8px_rgb(33_30_24/0.5)] hover:bg-ink-800",
-  danger:
-    "bg-brick-500 font-medium text-paper-50 shadow-[0_1px_2px_rgb(146_64_14/0.24)] hover:bg-brick-600",
+  danger: "bg-brick-500 font-medium text-paper-50 shadow-[0_1px_2px_rgb(146_64_14/0.24)] hover:bg-brick-600",
 };
 
 export function DialogActions({ children, className }: DialogActionsProps): JSX.Element {

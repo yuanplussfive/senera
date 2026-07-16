@@ -1,6 +1,6 @@
 export type ThemeMode = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
-export type ColorScheme = "senera" | "classic" | "mono" | "forest";
+export type ColorScheme = "senera" | "monochrome" | "nordic" | "sepia" | "lavender" | "ocean";
 export type AccentColor = "terra" | "violet" | "moss" | "sky";
 export type AppearanceFontFamily = "brand" | "system";
 export type FontScale = "compact" | "standard" | "comfortable" | "large";
@@ -43,7 +43,14 @@ export const defaultAppearancePreference = {
 } as const satisfies AppearancePreference;
 
 export const themeModes = ["system", "light", "dark"] as const satisfies readonly ThemeMode[];
-export const colorSchemes = ["senera", "classic", "mono", "forest"] as const satisfies readonly ColorScheme[];
+export const colorSchemes = [
+  "senera",
+  "monochrome",
+  "nordic",
+  "sepia",
+  "lavender",
+  "ocean",
+] as const satisfies readonly ColorScheme[];
 export const accentColors = ["terra", "violet", "moss", "sky"] as const satisfies readonly AccentColor[];
 export const appearanceFontFamilies = ["brand", "system"] as const satisfies readonly AppearanceFontFamily[];
 export const fontScales = ["compact", "standard", "comfortable", "large"] as const satisfies readonly FontScale[];
@@ -244,21 +251,29 @@ const paletteTokens: Record<ColorScheme, Record<ResolvedTheme, Record<string, st
       "--scrollbar-thumb-hover": "rgb(239 235 223 / 0.30)",
     },
   },
-  mono: {
+  monochrome: {
     light: {},
     dark: {},
   },
-  classic: {
+  nordic: {
     light: {},
     dark: {},
   },
-  forest: {
+  sepia: {
+    light: {},
+    dark: {},
+  },
+  lavender: {
+    light: {},
+    dark: {},
+  },
+  ocean: {
     light: {},
     dark: {},
   },
 };
 
-paletteTokens.mono.light = {
+paletteTokens.monochrome.light = {
   ...paletteTokens.senera.light,
   "--color-paper-50": "255 255 255",
   "--color-paper-100": "245 245 245",
@@ -280,32 +295,19 @@ paletteTokens.mono.light = {
   "--color-ink-100": "229 229 229",
   "--color-ink-50": "245 245 245",
   "--theme-bg": "rgb(245 245 245)",
-  "--theme-bg-image": "none",
-  "--theme-fg": "rgb(23 23 23)",
   "--theme-sidebar-bg": "rgb(229 229 229)",
   "--theme-elevated-bg": "rgb(255 255 255)",
   "--theme-border": "rgb(212 212 212)",
   "--theme-accent-soft": "rgb(229 229 229)",
-  "--theme-surface-shadow": "0 1px 2px rgb(0 0 0 / 0.04), 0 12px 24px rgb(0 0 0 / 0.08)",
-  "--theme-hover-wash": "rgb(23 23 23 / 0.055)",
-  "--theme-selection-bg": "rgb(23 23 23 / 0.16)",
-  "--theme-selection-fg": "rgb(255 255 255)",
-  "--theme-config-nav-bg": "rgb(229 229 229)",
-  "--theme-config-list-bg": "rgb(245 245 245)",
-  "--theme-config-header-bg": "rgb(229 229 229)",
-  "--theme-config-toolbar-bg": "rgb(229 229 229)",
-  "--theme-config-stage-bg": "rgb(245 245 245)",
-  "--theme-config-panel-bg": "rgb(255 255 255)",
-  "--scrollbar-thumb": "rgb(23 23 23 / 0.16)",
-  "--scrollbar-thumb-hover": "rgb(23 23 23 / 0.28)",
 };
-paletteTokens.mono.dark = {
+
+paletteTokens.monochrome.dark = {
   ...paletteTokens.senera.dark,
-  "--color-paper-50": "23 23 23",
-  "--color-paper-100": "10 10 10",
-  "--color-paper-200": "23 23 23",
-  "--color-paper-300": "38 38 38",
-  "--color-paper-400": "64 64 64",
+  "--color-paper-50": "10 10 10",
+  "--color-paper-100": "23 23 23",
+  "--color-paper-200": "38 38 38",
+  "--color-paper-300": "64 64 64",
+  "--color-paper-400": "82 82 82",
   "--color-ink-950": "250 250 250",
   "--color-ink-900": "245 245 245",
   "--color-ink-850": "229 229 229",
@@ -321,189 +323,126 @@ paletteTokens.mono.dark = {
   "--color-ink-100": "23 23 23",
   "--color-ink-50": "10 10 10",
   "--theme-bg": "rgb(10 10 10)",
-  "--theme-bg-image": "none",
-  "--theme-fg": "rgb(245 245 245)",
   "--theme-sidebar-bg": "rgb(0 0 0)",
   "--theme-elevated-bg": "rgb(23 23 23)",
   "--theme-border": "rgb(38 38 38)",
   "--theme-accent-soft": "rgb(38 38 38)",
-  "--theme-surface-shadow": "0 1px 2px rgb(0 0 0 / 0.40), 0 12px 24px rgb(0 0 0 / 0.60)",
-  "--theme-hover-wash": "rgb(245 245 245 / 0.075)",
-  "--theme-selection-bg": "rgb(229 229 229 / 0.26)",
-  "--theme-selection-fg": "rgb(10 10 10)",
-  "--theme-config-nav-bg": "rgb(0 0 0)",
-  "--theme-config-list-bg": "rgb(10 10 10)",
-  "--theme-config-header-bg": "rgb(23 23 23)",
-  "--theme-config-toolbar-bg": "rgb(23 23 23)",
-  "--theme-config-stage-bg": "rgb(10 10 10)",
-  "--theme-config-panel-bg": "rgb(23 23 23)",
-  "--scrollbar-thumb": "rgb(245 245 245 / 0.18)",
-  "--scrollbar-thumb-hover": "rgb(245 245 245 / 0.32)",
 };
-paletteTokens.classic.light = {
+
+paletteTokens.nordic.light = {
   ...paletteTokens.senera.light,
   "--color-paper-50": "255 255 255",
-  "--color-paper-100": "249 250 251",
-  "--color-paper-200": "243 244 246",
-  "--color-paper-300": "229 231 235",
-  "--color-paper-400": "209 213 219",
-  "--color-ink-950": "3 7 18",
-  "--color-ink-900": "17 24 39",
-  "--color-ink-850": "31 41 55",
-  "--color-ink-800": "55 65 81",
-  "--color-ink-700": "75 85 99",
-  "--color-ink-650": "95 105 122",
-  "--color-ink-600": "107 114 128",
-  "--color-ink-500": "107 114 128",
-  "--color-ink-400": "156 163 175",
-  "--color-ink-350": "183 190 202",
-  "--color-ink-300": "209 213 219",
-  "--color-ink-200": "229 231 235",
-  "--color-ink-100": "243 244 246",
-  "--color-ink-50": "249 250 251",
-  "--theme-bg": "rgb(249 250 251)",
-  "--theme-bg-image": "none",
-  "--theme-fg": "rgb(17 24 39)",
-  "--theme-sidebar-bg": "rgb(243 244 246)",
+  "--color-paper-100": "248 249 251",
+  "--color-paper-200": "236 239 244",
+  "--color-paper-300": "229 233 240",
+  "--color-paper-400": "216 222 233",
+  "--color-ink-950": "46 52 64",
+  "--color-ink-900": "59 66 82",
+  "--color-ink-850": "67 76 94",
+  "--color-ink-800": "76 86 106",
+  "--color-ink-500": "129 161 193",
+  "--theme-bg": "rgb(248 249 251)",
+  "--theme-sidebar-bg": "rgb(236 239 244)",
   "--theme-elevated-bg": "rgb(255 255 255)",
-  "--theme-border": "rgb(229 231 235)",
-  "--theme-accent-soft": "rgb(219 234 254)",
-  "--theme-surface-shadow": "0 1px 2px rgb(17 24 39 / 0.04), 0 12px 24px rgb(17 24 39 / 0.06)",
-  "--theme-panel-glaze": "rgb(255 255 255 / 0.56)",
-  "--theme-hover-wash": "rgb(17 24 39 / 0.055)",
-  "--theme-selection-bg": "rgb(59 130 246 / 0.18)",
-  "--theme-selection-fg": "rgb(17 24 39)",
-  "--theme-skeleton-a": "rgb(17 24 39 / 0.035)",
-  "--theme-skeleton-b": "rgb(17 24 39 / 0.09)",
-  "--theme-complete-highlight": "rgb(59 130 246 / 0.08)",
-  "--theme-code-loading-bg": "rgb(255 255 255 / 0.96)",
-  "--theme-code-loading-border": "rgb(17 24 39 / 0.10)",
-  "--theme-code-loading-shadow": "0 12px 32px rgb(17 24 39 / 0.13)",
-  "--theme-code-line-rule": "rgb(229 231 235 / 0.7)",
-  "--theme-code-line-number": "rgb(107 114 128 / 0.58)",
-  "--theme-canvas-grid": "rgb(17 24 39 / 0.09)",
-  "--theme-node-shadow": "0 1px 2px rgb(17 24 39 / 0.035), 0 4px 12px rgb(17 24 39 / 0.09)",
-  "--shadow-bubble-user": "0 1px 1px rgb(17 24 39 / 0.04)",
-  "--shadow-bubble-ai": "0 1px 0 rgb(17 24 39 / 0.05), 0 0 0 1px rgb(17 24 39 / 0.045)",
-  "--shadow-panel": "0 0 0 1px rgb(17 24 39 / 0.055)",
-  "--shadow-soft": "0 8px 24px -12px rgb(17 24 39 / 0.16)",
-  "--scrollbar-thumb": "rgb(17 24 39 / 0.15)",
-  "--scrollbar-thumb-hover": "rgb(17 24 39 / 0.25)",
+  "--theme-border": "rgb(229 233 240)",
 };
-paletteTokens.classic.dark = {
+
+paletteTokens.nordic.dark = {
   ...paletteTokens.senera.dark,
-  "--color-paper-50": "31 41 55",
-  "--color-paper-100": "17 24 39",
-  "--color-paper-200": "31 41 55",
-  "--color-paper-300": "55 65 81",
-  "--color-paper-400": "75 85 99",
-  "--color-ink-950": "249 250 251",
-  "--color-ink-900": "249 250 251",
-  "--color-ink-850": "243 244 246",
-  "--color-ink-800": "229 231 235",
-  "--color-ink-700": "209 213 219",
-  "--color-ink-650": "186 194 205",
-  "--color-ink-600": "156 163 175",
-  "--color-ink-500": "156 163 175",
-  "--color-ink-400": "107 114 128",
-  "--color-ink-350": "75 85 99",
-  "--color-ink-300": "55 65 81",
-  "--color-ink-200": "55 65 81",
-  "--color-ink-100": "31 41 55",
-  "--color-ink-50": "17 24 39",
-  "--theme-bg": "rgb(17 24 39)",
-  "--theme-bg-image": "none",
-  "--theme-fg": "rgb(249 250 251)",
-  "--theme-sidebar-bg": "rgb(11 15 25)",
-  "--theme-elevated-bg": "rgb(31 41 55)",
-  "--theme-border": "rgb(55 65 81)",
-  "--theme-accent-soft": "rgb(30 58 138)",
-  "--theme-surface-shadow": "0 1px 2px rgb(0 0 0 / 0.30), 0 12px 24px rgb(0 0 0 / 0.40)",
-  "--theme-panel-glaze": "rgb(255 255 255 / 0.045)",
-  "--theme-hover-wash": "rgb(249 250 251 / 0.075)",
-  "--theme-selection-bg": "rgb(96 165 250 / 0.28)",
-  "--theme-selection-fg": "rgb(249 250 251)",
-  "--theme-complete-highlight": "rgb(96 165 250 / 0.13)",
-  "--theme-code-loading-bg": "rgb(31 41 55 / 0.96)",
-  "--theme-code-loading-border": "rgb(249 250 251 / 0.10)",
-  "--theme-code-loading-shadow": "0 16px 36px rgb(0 0 0 / 0.38)",
-  "--theme-code-line-rule": "rgb(249 250 251 / 0.12)",
-  "--theme-code-line-number": "rgb(156 163 175 / 0.62)",
-  "--theme-canvas-grid": "rgb(249 250 251 / 0.07)",
-  "--scrollbar-thumb": "rgb(249 250 251 / 0.18)",
-  "--scrollbar-thumb-hover": "rgb(249 250 251 / 0.30)",
+  "--color-paper-50": "46 52 64",
+  "--color-paper-100": "59 66 82",
+  "--color-paper-200": "67 76 94",
+  "--color-paper-300": "76 86 106",
+  "--color-paper-400": "94 129 172",
+  "--color-ink-950": "236 239 244",
+  "--color-ink-900": "229 233 240",
+  "--color-ink-850": "216 222 233",
+  "--color-ink-800": "180 142 173",
+  "--color-ink-500": "136 192 208",
+  "--theme-bg": "rgb(46 52 64)",
+  "--theme-sidebar-bg": "rgb(59 66 82)",
+  "--theme-elevated-bg": "rgb(67 76 94)",
+  "--theme-border": "rgb(76 86 106)",
 };
-paletteTokens.forest.light = {
+
+paletteTokens.sepia.light = {
+  ...paletteTokens.senera.light,
+  "--color-paper-50": "253 246 227",
+  "--color-paper-100": "238 232 213",
+  "--color-paper-200": "220 214 196",
+  "--color-paper-300": "202 196 179",
+  "--color-ink-950": "101 123 131",
+  "--color-ink-900": "88 110 117",
+  "--theme-bg": "rgb(238 232 213)",
+  "--theme-sidebar-bg": "rgb(220 214 196)",
+  "--theme-elevated-bg": "rgb(253 246 227)",
+  "--theme-border": "rgb(202 196 179)",
+};
+
+paletteTokens.sepia.dark = {
+  ...paletteTokens.senera.dark,
+  "--color-paper-50": "0 43 54",
+  "--color-paper-100": "7 54 66",
+  "--color-paper-200": "23 70 82",
+  "--color-ink-950": "147 161 161",
+  "--color-ink-900": "131 148 150",
+  "--theme-bg": "rgb(0 43 54)",
+  "--theme-sidebar-bg": "rgb(7 54 66)",
+  "--theme-elevated-bg": "rgb(23 70 82)",
+  "--theme-border": "rgb(88 110 117)",
+};
+
+paletteTokens.lavender.light = {
   ...paletteTokens.senera.light,
   "--color-paper-50": "255 255 255",
-  "--color-paper-100": "245 247 245",
-  "--color-paper-200": "232 236 232",
-  "--color-paper-300": "209 219 209",
-  "--color-paper-400": "177 194 177",
-  "--color-ink-950": "28 35 28",
-  "--color-ink-900": "36 43 36",
-  "--color-ink-850": "45 54 45",
-  "--color-ink-800": "55 68 55",
-  "--color-ink-700": "75 91 75",
-  "--color-ink-650": "88 104 88",
-  "--color-ink-600": "99 112 99",
-  "--color-ink-500": "99 112 99",
-  "--color-ink-400": "129 145 129",
-  "--color-ink-350": "153 169 153",
-  "--color-ink-300": "177 194 177",
-  "--color-ink-200": "209 219 209",
-  "--color-ink-100": "232 236 232",
-  "--color-ink-50": "238 241 238",
-  "--theme-bg": "rgb(245 247 245)",
-  "--theme-bg-image": "none",
-  "--theme-fg": "rgb(36 43 36)",
-  "--theme-sidebar-bg": "rgb(238 241 238)",
+  "--color-paper-100": "250 248 252",
+  "--color-paper-200": "243 239 248",
+  "--color-paper-300": "230 223 238",
+  "--color-ink-950": "44 38 52",
+  "--color-ink-900": "65 57 76",
+  "--theme-bg": "rgb(250 248 252)",
+  "--theme-sidebar-bg": "rgb(243 239 248)",
   "--theme-elevated-bg": "rgb(255 255 255)",
-  "--theme-border": "rgb(209 219 209)",
-  "--theme-accent-soft": "rgb(217 230 217)",
-  "--theme-surface-shadow": "0 1px 2px rgb(36 43 36 / 0.03), 0 12px 24px rgb(36 43 36 / 0.06)",
-  "--theme-hover-wash": "rgb(36 43 36 / 0.055)",
-  "--theme-selection-bg": "rgb(75 115 75 / 0.18)",
-  "--theme-selection-fg": "rgb(36 43 36)",
-  "--theme-complete-highlight": "rgb(75 115 75 / 0.08)",
-  "--scrollbar-thumb": "rgb(36 43 36 / 0.15)",
-  "--scrollbar-thumb-hover": "rgb(36 43 36 / 0.25)",
+  "--theme-border": "rgb(230 223 238)",
 };
-paletteTokens.forest.dark = {
+
+paletteTokens.lavender.dark = {
   ...paletteTokens.senera.dark,
-  "--color-paper-50": "38 48 41",
-  "--color-paper-100": "27 34 29",
-  "--color-paper-200": "51 64 54",
-  "--color-paper-300": "58 71 61",
-  "--color-paper-400": "82 101 86",
-  "--color-ink-950": "227 234 227",
-  "--color-ink-900": "227 234 227",
-  "--color-ink-850": "212 224 212",
-  "--color-ink-800": "190 207 190",
-  "--color-ink-700": "165 186 165",
-  "--color-ink-650": "150 171 150",
-  "--color-ink-600": "150 166 150",
-  "--color-ink-500": "150 166 150",
-  "--color-ink-400": "114 134 114",
-  "--color-ink-350": "88 105 88",
-  "--color-ink-300": "58 71 61",
-  "--color-ink-200": "58 71 61",
-  "--color-ink-100": "38 48 41",
-  "--color-ink-50": "27 34 29",
-  "--theme-bg": "rgb(27 34 29)",
-  "--theme-bg-image": "none",
-  "--theme-fg": "rgb(227 234 227)",
-  "--theme-sidebar-bg": "rgb(35 43 37)",
-  "--theme-elevated-bg": "rgb(38 48 41)",
-  "--theme-border": "rgb(58 71 61)",
-  "--theme-accent-soft": "rgb(42 64 42)",
-  "--theme-surface-shadow": "0 1px 2px rgb(0 0 0 / 0.30), 0 8px 24px rgb(0 0 0 / 0.40)",
-  "--theme-hover-wash": "rgb(227 234 227 / 0.075)",
-  "--theme-selection-bg": "rgb(154 189 133 / 0.28)",
-  "--theme-selection-fg": "rgb(227 234 227)",
-  "--theme-complete-highlight": "rgb(154 189 133 / 0.13)",
-  "--scrollbar-thumb": "rgb(227 234 227 / 0.18)",
-  "--scrollbar-thumb-hover": "rgb(227 234 227 / 0.30)",
+  "--color-paper-50": "24 21 28",
+  "--color-paper-100": "34 30 40",
+  "--color-paper-200": "44 38 52",
+  "--color-ink-950": "243 239 248",
+  "--color-ink-900": "230 223 238",
+  "--theme-bg": "rgb(24 21 28)",
+  "--theme-sidebar-bg": "rgb(34 30 40)",
+  "--theme-elevated-bg": "rgb(44 38 52)",
+  "--theme-border": "rgb(65 57 76)",
+};
+
+paletteTokens.ocean.light = {
+  ...paletteTokens.senera.light,
+  "--color-paper-50": "255 255 255",
+  "--color-paper-100": "240 248 255",
+  "--color-paper-200": "224 240 255",
+  "--color-ink-950": "10 37 64",
+  "--color-ink-900": "21 52 87",
+  "--theme-bg": "rgb(240 248 255)",
+  "--theme-sidebar-bg": "rgb(224 240 255)",
+  "--theme-elevated-bg": "rgb(255 255 255)",
+  "--theme-border": "rgb(194 220 245)",
+};
+
+paletteTokens.ocean.dark = {
+  ...paletteTokens.senera.dark,
+  "--color-paper-50": "10 25 41",
+  "--color-paper-100": "15 35 56",
+  "--color-paper-200": "21 52 87",
+  "--color-ink-950": "224 240 255",
+  "--color-ink-900": "194 220 245",
+  "--theme-bg": "rgb(10 25 41)",
+  "--theme-sidebar-bg": "rgb(15 35 56)",
+  "--theme-elevated-bg": "rgb(21 52 87)",
+  "--theme-border": "rgb(34 77 122)",
 };
 
 const accentTokens: Record<AccentColor, Record<ResolvedTheme, Record<string, string>>> = {
@@ -609,8 +548,7 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-chat-composer-bg": "rgb(var(--color-paper-100) / 0.80)",
     "--theme-chat-composer-focus-bg": "rgb(var(--color-paper-50))",
     "--theme-session-active-bg": "rgb(var(--color-ink-900) / 0.055)",
-    "--theme-overlay-shadow":
-      "0 30px 72px -26px rgb(24 25 28 / 0.42), 0 10px 28px -16px rgb(24 25 28 / 0.24)",
+    "--theme-overlay-shadow": "0 30px 72px -26px rgb(24 25 28 / 0.42), 0 10px 28px -16px rgb(24 25 28 / 0.24)",
     "--theme-dialog-backdrop": "rgb(24 25 28 / 0.52)",
     "--theme-sheet-backdrop": "rgb(24 25 28 / 0.44)",
   },
@@ -625,8 +563,7 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-chat-composer-bg": "rgb(var(--color-paper-50) / 0.76)",
     "--theme-chat-composer-focus-bg": "rgb(var(--color-paper-50) / 0.92)",
     "--theme-session-active-bg": "rgb(var(--color-ink-900) / 0.075)",
-    "--theme-overlay-shadow":
-      "0 30px 76px -22px rgb(0 0 0 / 0.82), 0 12px 32px -18px rgb(0 0 0 / 0.68)",
+    "--theme-overlay-shadow": "0 30px 76px -22px rgb(0 0 0 / 0.82), 0 12px 32px -18px rgb(0 0 0 / 0.68)",
     "--theme-dialog-backdrop": "rgb(0 0 0 / 0.68)",
     "--theme-sheet-backdrop": "rgb(0 0 0 / 0.58)",
   },
@@ -741,7 +678,14 @@ function isThemeMode(value: unknown): value is ThemeMode {
 }
 
 function isColorScheme(value: unknown): value is ColorScheme {
-  return value === "senera" || value === "classic" || value === "mono" || value === "forest";
+  return (
+    value === "senera" ||
+    value === "monochrome" ||
+    value === "nordic" ||
+    value === "sepia" ||
+    value === "lavender" ||
+    value === "ocean"
+  );
 }
 
 function isAccentColor(value: unknown): value is AccentColor {

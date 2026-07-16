@@ -1,17 +1,9 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test } from "vitest";
-import {
-  Dialog,
-  DialogActionButton,
-  DialogContent,
-} from "../../../Frontend/src/shared/ui/Dialog.tsx";
+import { Dialog, DialogActionButton, DialogContent } from "../../../Frontend/src/shared/ui/Dialog.tsx";
 import { Sheet, SheetContent } from "../../../Frontend/src/shared/ui/Sheet.tsx";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "../../../Frontend/src/shared/ui/DropdownMenu.tsx";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "../../../Frontend/src/shared/ui/DropdownMenu.tsx";
 
 afterEach(() => {
   cleanup();
@@ -57,21 +49,34 @@ test("sheets use the shared dimming layer and menu items expose pointer affordan
   );
 
   expect(document.querySelector(".fixed.inset-0")).toHaveClass("bg-[var(--theme-sheet-backdrop)]");
-  expect(screen.getByRole("dialog", { name: "节点详情" })).not.toHaveClass(
-    "[box-shadow:var(--theme-overlay-shadow)]",
-  );
+  expect(screen.getByRole("dialog", { name: "节点详情" })).not.toHaveClass("[box-shadow:var(--theme-overlay-shadow)]");
   sheetRender.unmount();
 
   render(
     React.createElement(
       DropdownMenu,
       { open: true },
-      React.createElement(
-        DropdownMenuContent,
-        null,
-        React.createElement(DropdownMenuItem, null, "菜单选项"),
-      ),
+      React.createElement(DropdownMenuContent, null, React.createElement(DropdownMenuItem, null, "菜单选项")),
     ),
   );
   expect(screen.getByRole("menuitem", { name: "菜单选项" })).toHaveClass("cursor-pointer");
+});
+
+test("dialogs can hide their default header and close control while preserving an accessible name", () => {
+  render(
+    React.createElement(
+      Dialog,
+      { open: true },
+      React.createElement(
+        DialogContent,
+        { title: "设置工作台", description: "设置说明", showHeader: false, showClose: false },
+        React.createElement("button", { type: "button" }, "宿主关闭"),
+      ),
+    ),
+  );
+
+  expect(screen.getByRole("dialog", { name: "设置工作台" })).toBeInTheDocument();
+  expect(screen.getByText("设置工作台")).toHaveClass("sr-only");
+  expect(screen.queryByRole("button", { name: "关闭" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "宿主关闭" })).toBeInTheDocument();
 });

@@ -10,6 +10,7 @@ import { SessionHeader } from "./SessionChrome";
 import { SessionPanelBody } from "./SessionPanelBody";
 import type { ConfirmationIntent, SessionMenuSection } from "./types";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import type { SettingsSectionId } from "../settings/types";
 
 interface Props {
   onNewSession: () => void;
@@ -21,6 +22,7 @@ interface Props {
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   onLogout?: () => Promise<void>;
   socketStatus: string;
+  onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
   presentation?: "auto" | "panel";
   onSessionSelected?: () => void;
   onClosePanel?: () => void;
@@ -41,6 +43,7 @@ export function SessionList({
   onUpdateUserProfile,
   onLogout,
   socketStatus,
+  onOpenSettings,
   presentation = "auto",
   onSessionSelected,
   onClosePanel,
@@ -174,10 +177,14 @@ export function SessionList({
   const content = (
     <aside
       className={cn(
-        "flex h-full shrink-0 flex-col border-r border-ink-200/70 bg-[var(--theme-sidebar-bg)]",
+        "flex h-full shrink-0 flex-col bg-[var(--theme-sidebar-bg)]",
+        presentation === "auto"
+          ? "overflow-hidden rounded-xl border border-ink-200/55 [box-shadow:var(--theme-surface-shadow)]"
+          : "border-r border-ink-200/70",
         panelWidthClass,
       )}
       data-session-sidebar
+      data-session-surface={presentation}
       data-ui-chrome
     >
       <SessionHeader
@@ -206,6 +213,7 @@ export function SessionList({
       <UserFooter
         profile={userProfile}
         socketStatus={socketStatus}
+        onOpenSettings={onOpenSettings}
         onUpdateProfile={onUpdateUserProfile}
         onLogout={onLogout ?? (async () => undefined)}
       />

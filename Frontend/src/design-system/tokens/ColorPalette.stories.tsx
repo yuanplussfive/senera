@@ -89,9 +89,11 @@ export const AllSchemes: Story = () => (
             <h3 className="text-ink-900 text-lg font-medium capitalize">{scheme}</h3>
             <span className="text-ink-500 text-sm">
               {scheme === "senera" && "— Warm paper & ink"}
-              {scheme === "classic" && "— Cool gray scale"}
-              {scheme === "mono" && "— Pure monochrome"}
-              {scheme === "forest" && "— Natural green tones"}
+              {scheme === "monochrome" && "— Pure monochrome & high contrast"}
+              {scheme === "nordic" && "— Cool slate grays & icy tones"}
+              {scheme === "sepia" && "— Warm coffee & retro vibe"}
+              {scheme === "lavender" && "— Soft purple-tinted grays"}
+              {scheme === "ocean" && "— Deep sea blues"}
             </span>
           </div>
 

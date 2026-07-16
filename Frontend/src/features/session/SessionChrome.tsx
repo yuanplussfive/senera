@@ -16,7 +16,7 @@ export function SessionHeader({ menuSections, onNewSession, onToggleSidebar }: S
   const { isCoarsePointer } = useResponsiveMode();
 
   return (
-    <div className="flex h-[52px] shrink-0 items-center gap-1.5 px-2.5">
+    <div className="flex h-[52px] shrink-0 items-center gap-1.5 px-2.5" data-window-drag-region>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button

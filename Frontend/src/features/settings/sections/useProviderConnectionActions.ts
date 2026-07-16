@@ -59,6 +59,7 @@ export interface ProviderConnectionActions {
   renameTarget: ProviderEndpointDraft | null;
   setRenameTarget: (provider: ProviderEndpointDraft | null) => void;
   selectProvider: (provider: ProviderEndpointDraft) => boolean;
+  discardAndSelectProvider: (provider: ProviderEndpointDraft) => void;
   updateDraftProvider: (patch: Partial<ProviderEndpointDraft>) => void;
   resetDraft: () => void;
   confirmDraft: () => void;
@@ -246,6 +247,14 @@ export function useProviderConnectionActions({
     return true;
   };
 
+  const discardAndSelectProvider = (provider: ProviderEndpointDraft): void => {
+    setSelectedProviderId(provider.Id);
+    setDraftProvider(resetProviderConnectionDraft(provider));
+    setPendingProviderDraft(null);
+    setPendingProviderDraftConfirmation(null);
+    setLocalError(null);
+  };
+
   const updateDraftProvider = (patch: Partial<ProviderEndpointDraft>): void => {
     setDraftProvider((current) =>
       applyProviderConnectionDraftPatch({
@@ -357,6 +366,7 @@ export function useProviderConnectionActions({
     renameTarget,
     setRenameTarget,
     selectProvider,
+    discardAndSelectProvider,
     updateDraftProvider,
     resetDraft,
     confirmDraft,

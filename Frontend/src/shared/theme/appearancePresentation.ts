@@ -29,9 +29,11 @@ export const themeModeLabels = {
 
 export const colorSchemeLabels = {
   senera: "Senera 暖纸",
-  classic: "冷灰",
-  mono: "墨灰",
-  forest: "森绿",
+  monochrome: "纯粹黑白",
+  nordic: "北欧冷调",
+  sepia: "暖咖复古",
+  lavender: "丁香暮光",
+  ocean: "深海幽蓝",
 } as const satisfies Record<ColorScheme, string>;
 
 export const accentColorLabels = {
@@ -112,9 +114,11 @@ export function readAppearanceTokenRows(preference: AppearancePreference): Appea
 }
 
 export function readSchemeSwatch(value: ColorScheme): string {
-  if (value === "classic") return "#f9fafb";
-  if (value === "mono") return "#f5f5f5";
-  if (value === "forest") return "#f5f7f5";
+  if (value === "monochrome") return "#f5f5f5";
+  if (value === "nordic") return "#eef2f6";
+  if (value === "sepia") return "#e8ddcc";
+  if (value === "lavender") return "#f0eef5";
+  if (value === "ocean") return "#f0f8ff";
   return "#f8f8f6";
 }
 

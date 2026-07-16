@@ -1,6 +1,7 @@
 import type { SocketStatus } from "../api/useAgentSocket";
 import { SessionList } from "../features/session";
 import type { UserProfile } from "../store/sessionStore";
+import type { SettingsSectionId } from "../features/settings/types";
 
 export interface AppSessionActions {
   onNewSession: () => void;
@@ -10,6 +11,7 @@ export interface AppSessionActions {
   onRenameSession: (id: string, title: string) => void;
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   onLogout: () => Promise<void>;
+  onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
 }
 
 export interface AppSessionSurfaceProps {
@@ -41,6 +43,7 @@ export function AppSessionSurface({
       onUpdateUserProfile={actions.onUpdateUserProfile}
       onLogout={actions.onLogout}
       socketStatus={socketStatus}
+      onOpenSettings={actions.onOpenSettings}
       onClosePanel={onClosePanel}
       onSessionSelected={onSessionSelected}
     />

@@ -36,13 +36,13 @@ describe("appearancePresentation", () => {
       readAppearanceTokenRows({
         ...defaultAppearancePreference,
         themeMode: "dark",
-        colorScheme: "classic",
+        colorScheme: "nordic",
         accentColor: "sky",
         fontScale: "compact",
       }),
     ).toEqual([
       { label: "data-theme-preference", value: "dark" },
-      { label: "data-color-scheme", value: "classic" },
+      { label: "data-color-scheme", value: "nordic" },
       { label: "data-accent-color", value: "sky" },
       { label: "data-font-family", value: "brand" },
       { label: "data-font-scale", value: "compact" },

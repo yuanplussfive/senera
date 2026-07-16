@@ -2,33 +2,35 @@
 
 Audit date: 2026-07-14
 
+Workspace chrome constraints updated: 2026-07-16
+
 Scope: `Frontend/src`, `Frontend/README.md`, and frontend Storybook/Ladle stories. Generated output and dependencies are excluded.
 
 ## Result
 
-| Stage | Groups | Hits |
-| --- | ---: | ---: |
-| Before the first pass | 19 | 352 |
-| Before this audit pass | 12 | 228 |
-| After confirmed fixes | 12 | 177 |
+| Stage                  | Groups | Hits |
+| ---------------------- | -----: | ---: |
+| Before the first pass  |     19 |  352 |
+| Before this audit pass |     12 |  228 |
+| After confirmed fixes  |     12 |  177 |
 
 The remaining group count is not a quality score. Each remaining hit below has a code-level reason to stay or is outside the shipped product surface.
 
 ## Confirmed Fixes
 
-| Files | Finding | Resolution |
-| --- | --- | --- |
-| `ModelProviderModelList.tsx`, `RemoteModelPickerDialog.tsx` | Nested group/count pills and colored model-state pills | Small-radius group controls, inline counts, neutral state surfaces |
-| `ModelCapabilityControls.tsx` | Capability icons wrapped in repeated circular tiles | Bare semantic icons; state remains in the switch and text |
-| `ModelProviderPanels.tsx`, `ProviderConnectionList.tsx`, `VectorModelConfigView.tsx` | Stock green status pills | Neutral surfaces with the project moss color used only for state text |
-| `PresetOverlays.tsx` | Blur overlays and large-radius floating panels | Opaque surfaces, 8px radius, no backdrop blur |
-| `ScrollToBottomButton.tsx` | Floating pill with blur, ring, and wide shadow | 8px radius and one compact, colorless shadow |
-| `PluginConfigViews.tsx`, model dialogs, provider lifecycle dialogs | Product surfaces still using `rounded-xl` | Unified to `rounded-lg` |
-| `ChatComposer.tsx` | Regular UI guidance inherited monospace | UI sans for guidance; monospace retained on keyboard keys and file metrics |
-| `ProfileFooter.tsx`, `SessionRows.tsx` | Connection and session summaries rendered as terminal text | UI sans with tabular numerals where needed |
-| `ThinkingSummaryBar.tsx`, `WorkflowRunControls.tsx`, `StepNode.tsx` | Summary labels and status copy rendered as terminal text | UI sans; durations and counts use tabular numerals |
-| `PresetWorkspace.tsx`, `PresetSidebar.tsx` | Format controls and ordinary metadata overused monospace | UI sans for labels; tabular numerals for measured values |
-| `JsonConfigArrayFieldControl.tsx` | Hard-coded warm surface `#f6f0e7` | Existing configuration surface token |
+| Files                                                                                | Finding                                                    | Resolution                                                                 |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `ModelProviderModelList.tsx`, `RemoteModelPickerDialog.tsx`                          | Nested group/count pills and colored model-state pills     | Small-radius group controls, inline counts, neutral state surfaces         |
+| `ModelCapabilityControls.tsx`                                                        | Capability icons wrapped in repeated circular tiles        | Bare semantic icons; state remains in the switch and text                  |
+| `ModelProviderPanels.tsx`, `ProviderConnectionList.tsx`, `VectorModelConfigView.tsx` | Stock green status pills                                   | Neutral surfaces with the project moss color used only for state text      |
+| `PresetOverlays.tsx`                                                                 | Blur overlays and large-radius floating panels             | Opaque surfaces, 8px radius, no backdrop blur                              |
+| `ScrollToBottomButton.tsx`                                                           | Floating pill with blur, ring, and wide shadow             | 8px radius and one compact, colorless shadow                               |
+| `PluginConfigViews.tsx`, model dialogs, provider lifecycle dialogs                   | Product surfaces still using `rounded-xl`                  | Unified to `rounded-lg`                                                    |
+| `ChatComposer.tsx`                                                                   | Regular UI guidance inherited monospace                    | UI sans for guidance; monospace retained on keyboard keys and file metrics |
+| `ProfileFooter.tsx`, `SessionRows.tsx`                                               | Connection and session summaries rendered as terminal text | UI sans with tabular numerals where needed                                 |
+| `ThinkingSummaryBar.tsx`, `WorkflowRunControls.tsx`, `StepNode.tsx`                  | Summary labels and status copy rendered as terminal text   | UI sans; durations and counts use tabular numerals                         |
+| `PresetWorkspace.tsx`, `PresetSidebar.tsx`                                           | Format controls and ordinary metadata overused monospace   | UI sans for labels; tabular numerals for measured values                   |
+| `JsonConfigArrayFieldControl.tsx`                                                    | Hard-coded warm surface `#f6f0e7`                          | Existing configuration surface token                                       |
 
 ## Retained Findings
 
@@ -69,6 +71,7 @@ Retained circles are constrained to shapes that are conventionally circular:
 
 - `HistoryRecoveryState.tsx`: skeleton geometry mirrors the real chat bubbles.
 - `UserMessageRow.tsx`: the message bubble uses one large outer radius and a smaller speaker corner; it is not nested inside another rounded surface.
+- `SessionList.tsx`: `rounded-xl` is reserved for the single Desktop/Wide persistent workspace sidebar shell. It separates navigation chrome from the continuous chat canvas and is not repeated on session rows or nested cards.
 - Remaining hits are design-system stories.
 
 ### 22: Clipped Borders
@@ -111,7 +114,10 @@ Ordinary navigation, status copy, summaries, and descriptive text use the UI fon
 
 - Run the scanner and review new hits; do not treat the hit count as a pass/fail score.
 - Reject new page-level radial gradients, backdrop-blur surfaces, and `transition-all`.
-- Keep product surfaces at 6-10px radius unless the geometry is an avatar, toggle, progress track, or chat bubble.
+- Keep ordinary product surfaces at 6-10px radius. The Desktop/Wide persistent workspace sidebar may use 12px as the single shell-level exception; avatars, toggles, progress tracks, and chat bubbles continue to follow their geometry.
+- Do not separate persistent workspace regions primarily with full-height `border-r` or full-width high-contrast top-bar `border-b`; use shell spacing, neutral surface contrast, and the existing semantic surface shadow.
+- Keep the central conversation workspace as one continuous canvas; do not wrap it in another rounded, bordered card.
+- Preserve Electron drag regions and the window-controls inset when changing workspace chrome.
 - Use monospace only when character alignment or literal technical identity matters.
 - Prefer neutral state surfaces; reserve terra, moss, umber, and brick for state signals.
 - Verify changed surfaces at 390px and 1440px before merging.
