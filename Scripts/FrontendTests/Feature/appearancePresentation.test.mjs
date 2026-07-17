@@ -16,7 +16,7 @@ describe("appearancePresentation", () => {
     };
     expect(createAppearanceSummary(preference)).toEqual([
       { id: "themeMode", label: "主题", value: "深色" },
-      { id: "colorScheme", label: "配色", value: "Senera 暖纸" },
+      { id: "colorScheme", label: "配色", value: "暖纸" },
       { id: "accentColor", label: "强调色", value: "苔绿" },
       { id: "fontFamily", label: "字体", value: "系统" },
       { id: "fontScale", label: "字号", value: "大字" },
@@ -36,13 +36,13 @@ describe("appearancePresentation", () => {
       readAppearanceTokenRows({
         ...defaultAppearancePreference,
         themeMode: "dark",
-        colorScheme: "nordic",
+        colorScheme: "classic",
         accentColor: "sky",
         fontScale: "compact",
       }),
     ).toEqual([
       { label: "data-theme-preference", value: "dark" },
-      { label: "data-color-scheme", value: "nordic" },
+      { label: "data-color-scheme", value: "classic" },
       { label: "data-accent-color", value: "sky" },
       { label: "data-font-family", value: "brand" },
       { label: "data-font-scale", value: "compact" },

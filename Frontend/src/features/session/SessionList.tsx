@@ -54,6 +54,7 @@ export function SessionList({
   const historyLoadingIds = useStore((s) => s.historyLoadingIds);
   const select = useStore((s) => s.selectSession);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
+  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
   const { viewport } = useResponsiveMode();
   const showInlineRowActions = viewport === "mobile" || viewport === "tablet";
 
@@ -172,45 +173,51 @@ export function SessionList({
     },
   ] satisfies readonly SessionMenuSection[];
 
-  const panelWidthClass = presentation === "panel" ? "w-full" : "w-[268px]";
+  const compactSidebar = presentation === "auto" && sidebarCollapsed;
+  const panelWidthClass = presentation === "panel" ? "w-full" : compactSidebar ? "w-[58px]" : "w-[246px]";
 
   const content = (
     <aside
       className={cn(
-        "flex h-full shrink-0 flex-col bg-[var(--theme-sidebar-bg)]",
+        "flex h-full shrink-0 flex-col bg-surface-sidebar transition-[width] duration-300 ease-[cubic-bezier(.32,.72,.35,1)]",
         presentation === "auto"
-          ? "overflow-hidden rounded-xl border border-ink-200/55 [box-shadow:var(--theme-surface-shadow)]"
-          : "border-r border-ink-200/70",
+          ? "overflow-hidden rounded-2xl border border-line-subtle [box-shadow:var(--theme-surface-shadow)]"
+          : "border-r border-line-subtle",
         panelWidthClass,
       )}
       data-session-sidebar
       data-session-surface={presentation}
+      data-collapsed={compactSidebar}
       data-ui-chrome
     >
       <SessionHeader
+        collapsed={compactSidebar}
         menuSections={menuSections}
         onNewSession={onNewSession}
         onToggleSidebar={onClosePanel ?? toggleSidebar}
       />
 
-      <SessionPanelBody
-        sessions={filteredSessions}
-        totalSessionCount={sessionList.length}
-        query={searchQuery}
-        onQueryChange={setSearchQuery}
-        activeSessionId={active}
-        historyLoadingIds={historyLoadingIds}
-        showInlineRowActions={showInlineRowActions}
-        onNewSession={onNewSession}
-        onSelectSession={(sessionId) => {
-          select(sessionId);
-          onSessionSelected?.();
-        }}
-        onRenameSession={openRename}
-        onDeleteSession={confirmDeleteSession}
-      />
+      {compactSidebar ? null : (
+        <SessionPanelBody
+          sessions={filteredSessions}
+          totalSessionCount={sessionList.length}
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          activeSessionId={active}
+          historyLoadingIds={historyLoadingIds}
+          showInlineRowActions={showInlineRowActions}
+          onNewSession={onNewSession}
+          onSelectSession={(sessionId) => {
+            select(sessionId);
+            onSessionSelected?.();
+          }}
+          onRenameSession={openRename}
+          onDeleteSession={confirmDeleteSession}
+        />
+      )}
 
       <UserFooter
+        collapsed={compactSidebar}
         profile={userProfile}
         socketStatus={socketStatus}
         onOpenSettings={onOpenSettings}

@@ -50,24 +50,28 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
       ? "border-brick-300"
       : step.status === "running"
         ? "border-umber-300"
-        : "border-ink-200";
+        : "border-line-subtle";
   const iconClass =
     step.status === "failed" || step.kind === "error"
       ? "text-brick-600"
       : step.status === "running"
         ? "text-umber-600"
-        : "text-ink-500";
+        : "text-content-secondary";
 
   return (
     <div
       className={cn(
-        "group relative w-[240px] cursor-pointer select-none rounded-md border bg-paper-50 px-3 py-2.5 transition-[border-color,background-color] duration-150",
-        "hover:border-ink-400 hover:bg-paper-100/70",
+        "group relative w-[240px] cursor-pointer select-none rounded-lg border bg-surface-raised px-3 py-2.5 shadow-panel transition-[border-color,background-color,box-shadow] duration-150",
+        "hover:border-line-strong hover:bg-surface-subtle hover:shadow-[var(--shadow-soft)]",
         statusClass,
         selected ? "outline outline-2 outline-offset-2 outline-accent-focus" : "",
       )}
     >
-      <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-paper-50 !bg-ink-300" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!h-1.5 !w-1.5 !border-surface-raised !bg-content-muted"
+      />
 
       <div className="flex items-start gap-2.5">
         <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center">
@@ -80,15 +84,15 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
           />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12.5px] font-medium text-ink-900">{step.title}</div>
+          <div className="truncate text-[12.5px] font-medium text-content-primary">{step.title}</div>
           {step.description ? (
-            <p className="mt-1 line-clamp-2 text-[11.5px] leading-[1.45] text-ink-500">{step.description}</p>
+            <p className="mt-1 line-clamp-2 text-[11.5px] leading-[1.45] text-content-secondary">{step.description}</p>
           ) : null}
         </div>
       </div>
 
       {step.kind === "tool" && step.callId ? (
-        <div className="mt-2 flex min-w-0 gap-1 font-mono text-[10px] text-ink-400">
+        <div className="mt-2 flex min-w-0 gap-1 font-mono text-[10px] text-content-muted">
           <span>call</span>
           <span className="truncate">{step.callId.slice(0, 12)}</span>
         </div>
@@ -102,7 +106,11 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
 
       <StatusFooter step={step} motionLevel={effectiveLevel} />
 
-      <Handle type="source" position={Position.Bottom} className="!h-1.5 !w-1.5 !border-paper-50 !bg-ink-300" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!h-1.5 !w-1.5 !border-surface-raised !bg-content-muted"
+      />
     </div>
   );
 }
@@ -117,23 +125,31 @@ function ScopeNode({
   selected: boolean;
 }): JSX.Element {
   const statusClass =
-    group.status === "failed" ? "border-brick-300" : group.status === "running" ? "border-umber-300" : "border-ink-200";
+    group.status === "failed"
+      ? "border-brick-300"
+      : group.status === "running"
+        ? "border-umber-300"
+        : "border-line-subtle";
 
   return (
     <div
       className={cn(
-        "group relative w-[240px] cursor-default select-none rounded-md border bg-paper-100 px-3 py-2.5 transition-colors duration-150",
+        "group relative w-[240px] cursor-default select-none rounded-lg border bg-surface-subtle px-3 py-2.5 shadow-panel transition-colors duration-150",
         statusClass,
         selected ? "outline outline-2 outline-offset-2 outline-accent-focus" : "",
       )}
     >
-      <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-paper-50 !bg-ink-300" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!h-1.5 !w-1.5 !border-surface-raised !bg-content-muted"
+      />
       <div className="flex items-start gap-2.5">
-        <GitBranch className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+        <GitBranch className="mt-0.5 h-4 w-4 shrink-0 text-content-secondary" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12.5px] font-medium text-ink-900">{group.label}</div>
+          <div className="truncate text-[12.5px] font-medium text-content-primary">{group.label}</div>
           {group.description ? (
-            <div className="mt-1 truncate text-[11.5px] text-ink-500">{group.description}</div>
+            <div className="mt-1 truncate text-[11.5px] text-content-secondary">{group.description}</div>
           ) : null}
           {group.status !== "done" ? (
             <div className={cn("mt-1 text-[10.5px]", group.status === "failed" ? "text-brick-600" : "text-umber-600")}>
@@ -142,7 +158,11 @@ function ScopeNode({
           ) : null}
         </div>
       </div>
-      <Handle type="source" position={Position.Bottom} className="!h-1.5 !w-1.5 !border-paper-50 !bg-ink-300" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!h-1.5 !w-1.5 !border-surface-raised !bg-content-muted"
+      />
     </div>
   );
 }
@@ -202,7 +222,7 @@ function StatusFooter({ step, motionLevel }: { step: TimelineStep; motionLevel: 
         transition={transition}
         className={cn(
           "mt-1.5 text-right text-[10px] tabular-nums",
-          step.status === "running" ? "text-umber-600" : "text-ink-400",
+          step.status === "running" ? "text-umber-600" : "text-content-muted",
         )}
       >
         {label}

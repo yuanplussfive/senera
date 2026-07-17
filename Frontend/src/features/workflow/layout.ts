@@ -57,8 +57,8 @@ export function layoutSteps(steps: TimelineStep[]): {
   const g = new dagre.graphlib.Graph();
   g.setGraph({
     rankdir: "TB",
-    nodesep: 36,
-    ranksep: 48,
+    nodesep: 28,
+    ranksep: 40,
     marginx: 24,
     marginy: 24,
   });
@@ -377,7 +377,7 @@ function mergeNodeStatus(current: TimelineStep["status"], next: TimelineStep["st
 function edgeStyle(status: TimelineStep["status"]): React.CSSProperties {
   if (status === "failed") return { stroke: "rgb(var(--color-brick-600))", strokeWidth: 1.5 };
   if (status === "running") return { stroke: "rgb(var(--color-umber-500))", strokeWidth: 1.5 };
-  return { stroke: "rgb(var(--color-ink-300))", strokeWidth: 1 };
+  return { stroke: "var(--line-strong)", strokeWidth: 1 };
 }
 
 // Keep the exported step-kind type tied to the store contract.

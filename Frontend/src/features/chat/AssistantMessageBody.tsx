@@ -17,7 +17,7 @@ export function AssistantMessageBody({ message }: AssistantMessageBodyProps): JS
       ) : null}
       <LazyMarkdownRenderer
         className="mt-1 min-w-0"
-        contentClassName="text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-ink-800"
+        contentClassName="text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
       >
         {message.content}
       </LazyMarkdownRenderer>

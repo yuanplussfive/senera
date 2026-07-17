@@ -83,6 +83,41 @@ test("integrated sidebar exposes collapse, new-session, and real session search"
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toHaveValue("");
 });
 
+test("persistent session sidebar collapses into the prototype tool rail", async () => {
+  const user = userEvent.setup();
+  resetSessionStore({
+    sessions: { first: session("first", "Frontend refactor") },
+    sessionOrder: ["first"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(
+    React.createElement(
+      SessionList,
+      createProps({
+        presentation: "auto",
+        onClosePanel: undefined,
+      }),
+    ),
+  );
+
+  expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.headerCollapse") }));
+
+  const sidebar = document.querySelector("[data-session-sidebar]");
+  expect(sidebar).toHaveAttribute("data-collapsed", "true");
+  expect(sidebar).toHaveClass("w-[58px]");
+  expect(
+    screen.queryByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: frontendMessage("session.headerExpand") })).toBeVisible();
+  expect(screen.getByRole("button", { name: frontendMessage("session.new") })).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
+  expect(sidebar).toHaveAttribute("data-collapsed", "false");
+  expect(sidebar).toHaveClass("w-[246px]");
+  expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toBeVisible();
+});
+
 test("account menu exposes one settings entry and a flatter profile editor", async () => {
   const user = userEvent.setup();
   const onOpenSettings = vi.fn();

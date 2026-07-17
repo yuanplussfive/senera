@@ -38,7 +38,7 @@ async function main(): Promise<void> {
       window.dispatchEvent(new StorageEvent("storage", { key: "senera.appearancePreference" }));
       return true;
     });
-    await waitForDefaultSeneraAppearance(mainClient);
+    await waitForDefaultAppearance(mainClient);
 
     const mainState = await mainClient.evaluate(() => ({
       title: document.title,
@@ -48,7 +48,9 @@ async function main(): Promise<void> {
     }));
 
     assert.equal(mainState.title, "senera");
-    assert.equal(mainState.dataset.colorScheme, "senera");
+    assert.equal(mainState.dataset.colorScheme, "classic");
+    assert.equal(mainState.dataset.accentColor, "sky");
+    assert.equal(mainState.dataset.themePreference, "system");
     assert.equal(mainState.hasDesktopBridge, true);
     assert.match(mainState.text, /senera|配置|技能|预设/);
 
@@ -77,7 +79,7 @@ async function main(): Promise<void> {
       await new Promise<void>((resolve, reject) => {
         const startedAt = Date.now();
         const tick = () => {
-          if (document.body.innerText.includes("Senera 暖纸")) {
+          if (document.body.innerText.includes("暖纸") && document.body.innerText.includes("青瓷")) {
             resolve();
             return;
           }
@@ -100,16 +102,32 @@ async function main(): Promise<void> {
 
     assert.match(settingsState.url, /surface=settings/);
     assert.match(settingsState.url, /section=appearance/);
-    assert.equal(settingsState.dataset.colorScheme, "senera");
+    assert.equal(settingsState.dataset.colorScheme, "classic");
+    assert.equal(settingsState.dataset.accentColor, "sky");
     assert.match(settingsState.text, /设置/);
     assert.match(settingsState.text, /外观/);
     assert.match(settingsState.text, /主题/);
-    assert.match(settingsState.text, /Senera 暖纸/);
-    assert.match(settingsState.text, /冷灰/);
-    assert.match(settingsState.text, /天蓝/);
+    for (const label of ["暖纸", "冷灰", "墨灰", "森绿", "樱粉", "雾蓝", "薰紫", "抹茶", "蜜杏", "青瓷"]) {
+      assert.match(settingsState.text, new RegExp(label));
+    }
+    for (const label of ["陶土", "天蓝", "苔绿", "紫藤", "蔷薇", "杏子", "青玉"]) {
+      assert.match(settingsState.text, new RegExp(label));
+    }
+
+    await clickAppearanceRadio(settingsClient, "蜜杏");
+    await waitForAppearanceDataset(settingsClient, "colorScheme", "honey");
+    assert.equal(
+      await settingsClient.evaluate(() => document.documentElement.dataset.accentColor),
+      "sky",
+      "Changing a color scheme must not silently replace the independently selected accent color.",
+    );
+    await clickButtonByText(settingsClient, "使用推荐");
+    await waitForAppearanceDataset(settingsClient, "accentColor", "apricot");
 
     await clickAppearanceRadio(settingsClient, "浅色");
     await waitForAppearanceDataset(settingsClient, "themePreference", "light");
+    await clickAppearanceRadio(settingsClient, "暖纸");
+    await waitForAppearanceDataset(settingsClient, "colorScheme", "senera");
     await clickAppearanceRadio(settingsClient, "陶土");
     await waitForAppearanceDataset(settingsClient, "accentColor", "terra");
     await waitForSeneraLightTokens(settingsClient);
@@ -205,17 +223,21 @@ async function waitForDocumentReady(client: CdpClient): Promise<void> {
   });
 }
 
-async function waitForDefaultSeneraAppearance(client: CdpClient): Promise<void> {
+async function waitForDefaultAppearance(client: CdpClient): Promise<void> {
   await client.evaluate(async () => {
     await new Promise<void>((resolve, reject) => {
       const startedAt = Date.now();
       const tick = () => {
-        if (document.documentElement.dataset.colorScheme === "senera") {
+        if (
+          document.documentElement.dataset.colorScheme === "classic" &&
+          document.documentElement.dataset.accentColor === "sky" &&
+          document.documentElement.dataset.themePreference === "system"
+        ) {
           resolve();
           return;
         }
         if (Date.now() - startedAt > 5000) {
-          reject(new Error("Timed out waiting for default Senera appearance after storage reset."));
+          reject(new Error("Timed out waiting for the default classic + sky appearance after storage reset."));
           return;
         }
         window.setTimeout(tick, 100);
@@ -316,11 +338,26 @@ async function waitForClassicDarkTokens(client: CdpClient): Promise<void> {
 
 async function clickAppearanceRadio(client: CdpClient, text: string): Promise<void> {
   await client.evaluate((label: string) => {
-    const button = Array.from(document.querySelectorAll("button")).find(
-      (candidate) => candidate.getAttribute("role") === "radio" && candidate.textContent?.trim() === label,
-    );
+    const button = Array.from(document.querySelectorAll("button")).find((candidate) => {
+      if (candidate.getAttribute("role") !== "radio") return false;
+      const ariaLabel = candidate.getAttribute("aria-label")?.trim();
+      return ariaLabel === `配色：${label}` || candidate.textContent?.trim() === label;
+    });
     if (!(button instanceof HTMLButtonElement)) {
       throw new Error(`Could not find appearance radio button: ${label}`);
+    }
+    button.click();
+    return true;
+  }, text);
+}
+
+async function clickButtonByText(client: CdpClient, text: string): Promise<void> {
+  await client.evaluate((label: string) => {
+    const button = Array.from(document.querySelectorAll("button")).find(
+      (candidate) => candidate.textContent?.trim() === label,
+    );
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`Could not find button: ${label}`);
     }
     button.click();
     return true;

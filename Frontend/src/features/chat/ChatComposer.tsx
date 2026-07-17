@@ -228,7 +228,7 @@ export function ChatComposer({
   };
 
   return (
-    <div className="border-t border-ink-200/70 bg-[var(--theme-elevated-bg)] py-3 sm:py-4">
+    <div className="bg-surface-canvas py-3 sm:py-4">
       <ConversationFrame mode="composer">
         <div
           onDragEnter={handleDragEnter}
@@ -236,8 +236,8 @@ export function ChatComposer({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            "relative flex min-w-0 flex-col rounded-lg border border-line-strong bg-[var(--theme-chat-composer-bg)] px-3 pb-2 pt-1.5 transition-[background-color,border-color,box-shadow] duration-150",
-            "focus-within:border-accent-border focus-within:bg-[var(--theme-chat-composer-focus-bg)] focus-within:ring-2 focus-within:ring-accent-focus",
+            "relative flex min-w-0 flex-col rounded-[18px] border border-line bg-[var(--theme-chat-composer-bg)] px-3.5 pb-2.5 pt-2.5 shadow-[var(--shadow-soft)] transition-[background-color,border-color,box-shadow] duration-150",
+            "focus-within:border-accent-border-strong focus-within:bg-[var(--theme-chat-composer-focus-bg)] focus-within:ring-2 focus-within:ring-accent-focus",
             isDraggingFiles && "border-accent-border bg-accent-surface ring-2 ring-accent-focus",
           )}
           data-chat-composer
@@ -266,10 +266,10 @@ export function ChatComposer({
             placeholder={hint}
             disabled={disabled}
             style={{ maxHeight: textareaMaxHeight }}
-            className="scrollbar-thin min-h-11 w-full resize-none bg-transparent px-1 py-2.5 text-[14.5px] leading-6 text-ink-900 placeholder:text-ink-400 focus:outline-none disabled:opacity-60"
+            className="scrollbar-thin min-h-10 w-full resize-none bg-transparent px-1 py-2 text-[14.5px] leading-6 text-content-primary placeholder:text-content-secondary focus:outline-none disabled:opacity-60 sm:min-h-10"
           />
 
-          <div className="flex min-w-0 items-center gap-2 pt-1">
+          <div className="flex min-w-0 items-center gap-2 pt-0.5">
             <div className="flex min-w-0 flex-1 items-center gap-1">
               <IconButton
                 label="attach"
@@ -316,11 +316,11 @@ export function ChatComposer({
                     onClick={() => submit("steer")}
                     disabled={!canSend}
                     className={cn(
-                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
+                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
                       prefersCompactControls && "min-h-11 min-w-11",
                       canSend
-                        ? "bg-accent-solid text-accent-on-solid shadow-accent hover:bg-accent-solid-hover active:bg-accent-solid-pressed"
-                        : "bg-transparent text-content-disabled",
+                        ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
+                        : "border-line-subtle bg-surface-muted text-content-disabled",
                     )}
                     aria-label="inject-current-run"
                   >
@@ -335,7 +335,7 @@ export function ChatComposer({
                   <MotionButton
                     onClick={onCancel}
                     className={cn(
-                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-brick-200 bg-paper-50 text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none",
+                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200",
                       prefersCompactControls && "min-h-11 min-w-11",
                     )}
                     aria-label="cancel"
@@ -354,11 +354,11 @@ export function ChatComposer({
                   onClick={() => submit(undefined)}
                   disabled={!canSend}
                   className={cn(
-                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
+                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
                     prefersCompactControls && "min-h-11 min-w-11",
                     canSend
-                      ? "bg-accent-solid text-accent-on-solid shadow-accent hover:bg-accent-solid-hover active:bg-accent-solid-pressed"
-                      : "bg-transparent text-content-disabled",
+                      ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
+                      : "border-line-subtle bg-surface-muted text-content-disabled",
                   )}
                   aria-label="send"
                 >
@@ -390,13 +390,13 @@ function AttachmentTray({
             entry.status === "uploading" && "min-w-[210px]",
             entry.status === "error"
               ? "border-brick-200 bg-brick-50 text-brick-700"
-              : "border-ink-200 bg-paper-50 text-ink-650",
+              : "border-line-subtle bg-surface-raised text-content-secondary",
           )}
         >
           <span className="relative shrink-0">
             <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
             {entry.status === "uploading" ? (
-              <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-paper-50">
+              <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-surface-raised bg-surface-raised">
                 <Loader2 className="h-2.5 w-2.5 animate-spin text-accent-content" />
               </span>
             ) : null}
@@ -409,7 +409,7 @@ function AttachmentTray({
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="min-w-0 truncate">{entry.fileName}</span>
-              <span className="shrink-0 font-mono text-[10px] text-ink-350">{formatFileSize(entry.size)}</span>
+              <span className="shrink-0 font-mono text-[10px] text-content-muted">{formatFileSize(entry.size)}</span>
               {entry.status === "uploading" ? (
                 <span className="shrink-0 font-mono text-[10px] text-accent-content">
                   {formatUploadProgress(entry.progress)}
@@ -436,7 +436,7 @@ function AttachmentTray({
 function UploadProgressBar({ progress }: { progress?: UploadProgress }): JSX.Element {
   const ratio = readProgressRatio(progress);
   return (
-    <span className="h-1 overflow-hidden rounded-full bg-ink-200/70">
+    <span className="h-1 overflow-hidden rounded-full bg-surface-muted">
       <span
         className={cn(
           "block h-full origin-left rounded-full bg-accent-solid transition-transform duration-150",
@@ -511,15 +511,15 @@ function ModelSelector({
           className={cn(
             "inline-flex h-9 min-w-0 max-w-[180px] items-center gap-1.5 rounded-md px-2 text-[11px] sm:h-7 sm:max-w-[230px]",
             prefersCompactControls && "min-h-11 min-w-11",
-            "text-ink-500 transition hover:bg-ink-900/[0.045] hover:text-ink-800",
-            "focus:outline-none",
+            "text-content-secondary transition hover:bg-surface-hover hover:text-content-primary",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
             (disabled || chatModels.length === 0) && "pointer-events-none opacity-55",
           )}
           aria-label="选择模型"
         >
           <ModelProviderIcon className="shrink-0" icon={selected?.icon} size={14} />
           <span className="truncate">{label}</span>
-          <ChevronDown className="h-3 w-3 shrink-0 text-ink-350" />
+          <ChevronDown className="h-3 w-3 shrink-0 text-content-muted" />
         </MotionButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="top" className="w-[min(280px,calc(100vw-24px))]">
@@ -540,14 +540,14 @@ function ModelSelector({
                 )
               }
             >
-              <span className="min-w-0 truncate text-[13px] text-ink-850">{readModelSelectorLabel(model)}</span>
+              <span className="min-w-0 truncate text-[13px] text-content-primary">{readModelSelectorLabel(model)}</span>
             </DropdownMenuItem>
           );
         })}
         {!usesDefault && defaultModel && onUseDefault ? (
           <>
             <DropdownMenuSeparator />
-            <div className="px-2 py-1.5 text-[11px] text-ink-450">
+            <div className="px-2 py-1.5 text-[11px] text-content-muted">
               {frontendMessage("chat.model.defaultHint", { model: readModelSelectorLabel(defaultModel) })}
             </div>
             <DropdownMenuItem
@@ -555,7 +555,7 @@ function ModelSelector({
               className="h-10 py-2"
               icon={<RotateCcw className="h-3.5 w-3.5 text-accent-content" />}
             >
-              <span className="min-w-0 truncate text-[13px] text-ink-850">
+              <span className="min-w-0 truncate text-[13px] text-content-primary">
                 {frontendMessage("chat.model.useDefault")}
               </span>
             </DropdownMenuItem>

@@ -28,12 +28,14 @@ import {
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export function UserFooter({
+  collapsed = false,
   profile,
   socketStatus,
   onUpdateProfile,
   onLogout,
   onOpenSettings,
 }: {
+  collapsed?: boolean;
   profile: UserProfile;
   socketStatus: string;
   onUpdateProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
@@ -66,14 +68,28 @@ export function UserFooter({
           <button
             ref={settingsTriggerRef}
             type="button"
-            className="flex h-[48px] w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition-colors duration-150 hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus data-[state=open]:bg-ink-900/[0.045]"
+            className={cn(
+              "mt-auto w-full transition-colors duration-150 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus data-[state=open]:bg-surface-hover",
+              collapsed
+                ? "grid h-12 place-items-center border-t-0 px-0"
+                : "flex h-[48px] items-center gap-2 border-t border-line-subtle px-3 text-left",
+            )}
           >
             <UserAvatar profile={profile} />
-            <div className="min-w-0 flex-1 truncate text-[13px] text-ink-800">{profile.name}</div>
-            <Settings2 className="h-3.5 w-3.5 shrink-0 text-ink-350" />
+            {collapsed ? null : (
+              <>
+                <div className="min-w-0 flex-1 truncate text-[13px] text-content-primary">{profile.name}</div>
+                <Settings2 className="h-3.5 w-3.5 shrink-0 text-content-muted" />
+              </>
+            )}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" collisionPadding={8} className="w-[220px]">
+        <DropdownMenuContent
+          align={collapsed ? "end" : "start"}
+          side={collapsed ? "right" : "top"}
+          collisionPadding={8}
+          className="w-[220px]"
+        >
           <DropdownMenuItem icon={<UserRoundPen className="h-3.5 w-3.5" />} onSelect={() => setOpen(true)}>
             {frontendMessage("profile.menu.edit")}
           </DropdownMenuItem>
@@ -128,7 +144,7 @@ function UserAvatar({ profile, size = "normal" }: { profile: UserProfile; size?:
   return (
     <div
       className={cn(
-        "grid shrink-0 place-items-center overflow-hidden bg-ink-900 font-semibold text-paper-50 ring-1 ring-ink-900/10",
+        "grid shrink-0 place-items-center overflow-hidden bg-content-strong font-semibold text-content-inverse ring-1 ring-line-subtle",
         className,
       )}
     >

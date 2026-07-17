@@ -1,5 +1,6 @@
 import type { Story } from "@ladle/react";
 import { colorSchemes, createAppearanceTokens, defaultAppearancePreference } from "../../shared/theme/themeModel";
+import { colorSchemeLabels, readColorSchemeStory } from "../../shared/theme/appearancePresentation";
 
 const colorRanges = {
   paper: [50, 100, 200, 300, 400],
@@ -77,7 +78,7 @@ export const AllSchemes: Story = () => (
   <div className="p-8 space-y-12">
     <div>
       <h2 className="text-ink-900 text-xl font-medium mb-2">Color Schemes</h2>
-      <p className="text-ink-600 text-sm">Senera provides 4 color schemes, each with light and dark modes</p>
+      <p className="text-ink-600 text-sm">Senera provides 10 color schemes, each with light and dark modes</p>
     </div>
 
     {colorSchemes.map((scheme) => {
@@ -86,15 +87,8 @@ export const AllSchemes: Story = () => (
       return (
         <div key={scheme} className="space-y-4">
           <div className="flex items-center gap-3">
-            <h3 className="text-ink-900 text-lg font-medium capitalize">{scheme}</h3>
-            <span className="text-ink-500 text-sm">
-              {scheme === "senera" && "— Warm paper & ink"}
-              {scheme === "monochrome" && "— Pure monochrome & high contrast"}
-              {scheme === "nordic" && "— Cool slate grays & icy tones"}
-              {scheme === "sepia" && "— Warm coffee & retro vibe"}
-              {scheme === "lavender" && "— Soft purple-tinted grays"}
-              {scheme === "ocean" && "— Deep sea blues"}
-            </span>
+            <h3 className="text-ink-900 text-lg font-medium">{colorSchemeLabels[scheme]}</h3>
+            <span className="text-ink-500 text-sm">— {readColorSchemeStory(scheme)}</span>
           </div>
 
           <div className="grid grid-cols-5 gap-2">

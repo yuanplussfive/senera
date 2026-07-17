@@ -20,7 +20,7 @@ export function ChatHeader({
 }): JSX.Element {
   return (
     <div
-      className="relative z-10 flex h-[52px] shrink-0 items-center gap-2 bg-[var(--theme-elevated-bg)] px-3 sm:px-5"
+      className="relative z-10 flex h-[52px] shrink-0 items-center gap-2 border-b border-line-subtle bg-surface-canvas px-3 sm:px-5"
       data-ui-chrome
       data-window-drag-region
     >
@@ -35,13 +35,13 @@ export function ChatHeader({
           <PanelLeftOpen className="h-4 w-4" />
         </IconButton>
       ) : null}
-      <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink-950">{title}</h1>
+      <h1 className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-content-strong">{title}</h1>
       {runStatus === "failed" ? (
         <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium text-brick-600">
           {frontendMessage("workflow.run.status.failed")}
         </span>
       ) : runStatus === "cancelled" ? (
-        <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium text-ink-500">
+        <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium text-content-secondary">
           {frontendMessage("workflow.run.status.cancelled")}
         </span>
       ) : null}
@@ -75,7 +75,7 @@ function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | n
       <button
         type="button"
         className={cn(
-          "ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+          "ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
           presentation.className,
         )}
         aria-label={presentation.label}
@@ -105,25 +105,25 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
       label: frontendMessage("sandbox.status.unknown"),
       tooltip: commonTooltip,
       Icon: Shield,
-      className: "text-ink-500 hover:bg-ink-900/[0.04]",
+      className: "text-content-secondary hover:bg-surface-hover",
     },
     preparing: {
       label: frontendMessage("sandbox.status.preparing"),
       tooltip: commonTooltip,
       Icon: Shield,
-      className: "text-umber-600 hover:bg-ink-900/[0.04]",
+      className: "text-umber-600 hover:bg-surface-hover",
     },
     ready: {
       label: frontendMessage("sandbox.status.ready"),
       tooltip: commonTooltip,
       Icon: ShieldCheck,
-      className: "text-moss-600 hover:bg-ink-900/[0.04]",
+      className: "text-moss-600 hover:bg-surface-hover",
     },
     fallback: {
       label: frontendMessage("sandbox.status.fallback"),
       tooltip: commonTooltip,
       Icon: ShieldAlert,
-      className: "text-brick-600 hover:bg-ink-900/[0.04]",
+      className: "text-brick-600 hover:bg-surface-hover",
     },
   } satisfies Record<
     SandboxRuntimeState,

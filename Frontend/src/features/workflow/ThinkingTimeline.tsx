@@ -132,7 +132,7 @@ function TopBar({
   return (
     <>
       <div
-        className="relative z-10 flex h-[52px] items-center gap-2 bg-[var(--theme-elevated-bg)] px-3 [box-shadow:var(--shadow-soft)]"
+        className="relative z-10 flex h-[52px] items-center gap-2 border-b border-line-subtle bg-surface-raised px-3"
         data-window-drag-region
       >
         {hideTitle ? null : (
@@ -141,8 +141,8 @@ function TopBar({
             aria-label={frontendMessage("workflow.panel.title")}
             data-workspace-tool-dock
           >
-            <ListTree className="h-4 w-4 shrink-0 text-ink-500" />
-            <span className="truncate text-[13px] font-medium text-ink-850">
+            <ListTree className="h-4 w-4 shrink-0 text-content-secondary" />
+            <span className="truncate text-[13px] font-medium text-content-primary">
               {frontendMessage("workflow.panel.title")}
             </span>
           </nav>
@@ -171,7 +171,7 @@ function TopBar({
       </div>
 
       {runs.length > 0 ? (
-        <div className="border-b border-ink-200/60 px-3 py-2">
+        <div className="border-b border-line-subtle bg-surface-subtle/45 px-3 py-2">
           <RunSelector runs={runs} currentRunId={currentRunId} onSelect={onSelect} pinnedToHistory={pinnedToHistory} />
           <div className="mt-1 flex min-w-0 items-center justify-between gap-2 px-1">
             {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
@@ -179,7 +179,7 @@ function TopBar({
               <button
                 type="button"
                 onClick={onFollowLatest}
-                className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+                className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
               >
                 {frontendMessage("workflow.panel.followLatest")}
               </button>
@@ -222,7 +222,7 @@ function TimelineFocusDialog({
         motionPreset="focus"
         frameClassName="bottom-3 left-3 right-3 top-3 sm:bottom-4 sm:left-4 sm:right-4 sm:top-4"
         className="h-auto max-h-none w-auto max-w-none rounded-lg"
-        bodyClassName="flex min-h-0 flex-1 flex-col bg-paper-100/40"
+        bodyClassName="flex min-h-0 flex-1 flex-col bg-[var(--theme-workflow-canvas-bg)]"
       >
         <motion.div
           variants={readFocusPanelVariants(effectiveLevel)}
@@ -233,7 +233,7 @@ function TimelineFocusDialog({
           className="min-h-0 flex flex-1 flex-col"
         >
           {runs.length > 0 ? (
-            <div className="shrink-0 border-b border-ink-200/60 px-3 py-2 sm:px-4">
+            <div className="shrink-0 border-b border-line-subtle bg-surface-subtle/45 px-3 py-2 sm:px-4">
               <RunSelector
                 runs={runs}
                 currentRunId={currentRunId}
@@ -246,7 +246,7 @@ function TimelineFocusDialog({
                   <button
                     type="button"
                     onClick={onFollowLatest}
-                    className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+                    className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
                   >
                     {frontendMessage("workflow.panel.followLatest")}
                   </button>
@@ -266,7 +266,7 @@ function TimelineFocusDialog({
 function CanvasArea({ run, focusVersion = 0 }: { run?: RunRecord; focusVersion?: number }): JSX.Element {
   if (!shouldLoadWorkflowCanvas(run)) {
     return (
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-[var(--theme-workflow-canvas-bg)]">
         <EmptyCanvas />
       </div>
     );
@@ -281,8 +281,8 @@ function CanvasArea({ run, focusVersion = 0 }: { run?: RunRecord; focusVersion?:
 
 function CanvasLoading(): JSX.Element {
   return (
-    <div className="relative flex flex-1 items-center justify-center overflow-hidden">
-      <div className="inline-flex items-center gap-2 text-[12px] text-ink-500">
+    <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-[var(--theme-workflow-canvas-bg)]">
+      <div className="inline-flex items-center gap-2 text-[12px] text-content-secondary">
         <Loader2 className="h-3.5 w-3.5 animate-spin text-umber-500" />
         {frontendMessage("workflow.panel.loadingGraph")}
       </div>
@@ -301,9 +301,11 @@ function EmptyCanvas(): JSX.Element {
       transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.soft}
       className="flex max-w-[320px] flex-col items-center px-6 text-center"
     >
-      <ListTree className="h-5 w-5 text-ink-350" />
-      <p className="mt-4 text-[13px] font-semibold text-ink-800">{frontendMessage("workflow.panel.emptyTitle")}</p>
-      <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
+      <ListTree className="h-5 w-5 text-content-muted" />
+      <p className="mt-4 text-[13px] font-semibold text-content-primary">
+        {frontendMessage("workflow.panel.emptyTitle")}
+      </p>
+      <p className="mt-1.5 text-[12.5px] leading-relaxed text-content-secondary">
         {frontendMessage("workflow.panel.emptyDescription")}
       </p>
     </motion.div>

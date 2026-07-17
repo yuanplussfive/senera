@@ -63,18 +63,20 @@ export function SessionRow({
         <div
           data-session-row={sessionId}
           className={cn(
-            "group relative isolate grid w-full items-center rounded-md px-2.5 text-left transition-colors duration-150",
+            "group relative isolate grid w-full items-center rounded-[9px] px-2.5 text-left transition-colors duration-150",
             showInlineActions ? "h-11" : "h-9",
             showInlineActions ? "grid-cols-[minmax(0,1fr)_28px] gap-1" : "grid-cols-1",
             "data-[state=open]:bg-surface-hover",
-            active ? "text-accent-content" : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
+            active
+              ? "text-content-primary"
+              : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
           )}
         >
           {active ? (
             <motion.span
               layoutId={animateSelection ? "active-session-surface" : undefined}
               transition={animateSelection ? { layout: motionTimings.selection } : { duration: 0 }}
-              className="pointer-events-none absolute inset-0 z-0 rounded-md bg-[var(--theme-session-active-bg)]"
+              className="pointer-events-none absolute inset-0 z-0 rounded-[9px] bg-[var(--theme-session-active-bg)]"
               data-active-session-indicator
             />
           ) : null}
@@ -95,7 +97,7 @@ export function SessionRow({
                 }),
               );
             }}
-            className="absolute inset-0 z-10 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
+            className="absolute inset-0 z-10 cursor-pointer rounded-[9px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
           />
           <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
             <div className="flex min-w-0 items-center gap-1.5">
@@ -131,7 +133,7 @@ export function SessionRow({
                     size="sm"
                     tone="muted"
                     touchSafe
-                    className="justify-self-end hover:bg-ink-900/[0.06]"
+                    className="justify-self-end hover:bg-surface-hover"
                   >
                     <MoreHorizontal className="h-3.5 w-3.5" />
                   </IconButton>
@@ -155,13 +157,13 @@ export function SessionRow({
 export function EmptyState({ onNewSession }: { onNewSession: () => void }): JSX.Element {
   return (
     <div className="mt-8 flex flex-col items-center px-4 text-center">
-      <div className="text-[13px] text-ink-700">
+      <div className="text-[13px] text-content-secondary">
         {frontendMessage("runtime.migrated.features.session.SessionRows.152.54")}
       </div>
       <button
         type="button"
         onClick={onNewSession}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-ink-700 transition hover:bg-ink-900/[0.05] hover:text-ink-950"
+        className="mt-3 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary"
       >
         <SquarePen className="h-3 w-3" />
         {frontendMessage("runtime.migrated.features.session.SessionRows.159.9")}

@@ -122,7 +122,7 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
   );
 
   return (
-    <div className="relative flex-1 overflow-hidden">
+    <div className="relative flex-1 overflow-hidden bg-[var(--theme-workflow-canvas-bg)]">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -146,11 +146,11 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
           setFlowReady(true);
         }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--theme-canvas-grid)" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--theme-workflow-grid)" />
         <Controls
           position="bottom-left"
           showInteractive={false}
-          className={cn("!rounded-md !border !border-ink-200 !bg-paper-50 !shadow-none")}
+          className={cn("!overflow-hidden !rounded-lg !border !border-line-subtle !bg-surface-raised !shadow-panel")}
         />
       </ReactFlow>
       <NodeDetailDrawer step={selectedStep} onClose={() => setSelectedStepId(null)} />

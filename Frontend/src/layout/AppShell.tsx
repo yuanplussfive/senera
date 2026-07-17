@@ -6,7 +6,8 @@ import { motionTimings, useMotionLevel } from "../shared/motion";
 import { useStore } from "../store/sessionStore";
 import type { ResponsiveMode } from "../shared/responsive";
 
-const SESSION_PANEL_WIDTH = 284;
+const SESSION_PANEL_WIDTH = 246;
+const SESSION_PANEL_COLLAPSED_WIDTH = 58;
 const WORKFLOW_PANEL_WIDTH_COMPACT = 360;
 const WORKFLOW_PANEL_WIDTH = 460;
 const SESSION_DRAWER_WIDTH = "w-[min(360px,calc(100vw-24px))]";
@@ -173,24 +174,25 @@ export function AppShell({
 
   return (
     <div
-      className="relative flex h-dvh w-screen overflow-hidden bg-[var(--theme-bg)] text-ink-900"
+      className="relative flex h-dvh w-screen gap-2.5 overflow-hidden bg-surface-canvas p-2.5 text-content-primary"
       data-workspace-shell
     >
       {renderPlan.showSessionPersistentPanel ? (
         <motion.div
           initial={false}
           animate={{
-            width: sidebarCollapsed ? 0 : SESSION_PANEL_WIDTH,
-            opacity: sidebarCollapsed ? 0 : 1,
-            x: sidebarCollapsed ? -16 : 0,
+            width: sidebarCollapsed ? SESSION_PANEL_COLLAPSED_WIDTH : SESSION_PANEL_WIDTH,
           }}
           transition={sessionPanelTransition}
           className="relative z-20 h-full shrink-0 overflow-hidden"
-          style={{ pointerEvents: sidebarCollapsed ? "none" : "auto", willChange: "width, opacity, transform" }}
-          aria-hidden={sidebarCollapsed}
+          style={{ willChange: "width" }}
           data-open={!sidebarCollapsed}
+          data-collapsed={sidebarCollapsed}
         >
-          <div className="h-full p-2" style={{ width: SESSION_PANEL_WIDTH }}>
+          <div
+            className="h-full"
+            style={{ width: sidebarCollapsed ? SESSION_PANEL_COLLAPSED_WIDTH : SESSION_PANEL_WIDTH }}
+          >
             {sessionPanel}
           </div>
         </motion.div>
@@ -207,8 +209,8 @@ export function AppShell({
           transition={workflowPanelTransition}
           className={
             renderPlan.workflowPanelLayout === "overlay"
-              ? "absolute bottom-0 right-0 top-0 z-30 overflow-hidden rounded-xl border border-ink-200/75 bg-[var(--theme-elevated-bg)] [box-shadow:var(--theme-overlay-shadow)]"
-              : "relative z-20 h-full shrink-0 overflow-hidden border-l border-ink-200/70 bg-[var(--theme-elevated-bg)]"
+              ? "absolute bottom-0 right-0 top-0 z-30 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel [box-shadow:var(--theme-overlay-shadow)]"
+              : "relative z-20 h-full shrink-0 overflow-hidden border-l border-line-subtle bg-surface-panel"
           }
           style={{
             ...(renderPlan.workflowPanelLayout === "overlay"

@@ -34,7 +34,7 @@ export function ChatPanel({
     session.messageCount > 0 &&
     (!historyLoaded || historyLoading || historyFailed);
   return (
-    <main className="flex h-full min-w-0 flex-1 flex-col bg-[var(--theme-elevated-bg)]" data-agent-workspace>
+    <main className="flex h-full min-w-0 flex-1 flex-col bg-surface-canvas" data-agent-workspace>
       <ChatHeader
         title={session?.title ?? DEFAULT_SESSION_TITLE}
         runStatus={currentRun?.status}

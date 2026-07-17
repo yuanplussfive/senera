@@ -36,7 +36,6 @@ export function App(): JSX.Element {
   const registerSession = useStore((s) => s.registerCreatingSession);
   const appendUserMessage = useStore((s) => s.appendUserMessage);
   const activeId = useStore((s) => s.activeSessionId);
-  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
   const rightPanelCollapsed = useStore((s) => s.rightPanelCollapsed);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const setSidebarCollapsed = useStore((s) => s.setSidebarCollapsed);
@@ -308,10 +307,7 @@ export function App(): JSX.Element {
                 onResolveApproval: handleResolveApproval,
               }}
               navigationActions={{
-                onOpenSessionPanel:
-                  appShellRenderPlan.showChatSessionPanelAction || sidebarCollapsed
-                    ? handleOpenSessionPanel
-                    : undefined,
+                onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction ? handleOpenSessionPanel : undefined,
                 onOpenWorkflowPanel:
                   appShellRenderPlan.showChatWorkflowPanelAction &&
                   (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)

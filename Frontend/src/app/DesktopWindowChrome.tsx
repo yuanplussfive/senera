@@ -31,7 +31,9 @@ export function DesktopWindowChrome({
     <>
       {customControlsBridge ? (
         <div
-          className="fixed inset-x-0 top-0 z-10 h-[52px] border-b border-ink-200/60 bg-[var(--theme-elevated-bg)]"
+          className={`fixed inset-x-0 top-0 z-10 h-[52px] ${
+            surface === "main" ? "bg-transparent" : "border-b border-ink-200/60 bg-[var(--theme-elevated-bg)]"
+          }`}
           data-desktop-window-drag-strip
           data-window-drag-region
         />

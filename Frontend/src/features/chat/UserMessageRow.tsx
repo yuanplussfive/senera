@@ -64,7 +64,7 @@ export function UserMessageRow({
               whileTap={tapScale ? { scale: tapScale } : undefined}
               transition={motionTimings.fast}
               className={cn(
-                "mt-1 whitespace-pre-wrap rounded-lg rounded-tr-sm bg-[var(--theme-chat-user-bg)] px-4 py-2.5 text-left text-[length:var(--theme-chat-user-font-size)] leading-[var(--theme-chat-user-line-height)] text-[var(--theme-chat-user-fg)] transition",
+                "mt-1 whitespace-pre-wrap rounded-2xl rounded-tr-[5px] bg-[var(--theme-chat-user-bg)] px-4 py-2.5 text-left text-[length:var(--theme-chat-user-font-size)] leading-[var(--theme-chat-user-line-height)] text-[var(--theme-chat-user-fg)] shadow-[var(--shadow-bubble-user)] transition",
                 message.requestId
                   ? "cursor-pointer hover:bg-[var(--theme-chat-user-hover-bg)] focus:outline-none focus:ring-2 focus:ring-accent-focus"
                   : "cursor-default",
@@ -97,12 +97,12 @@ function MessageAttachments({ attachments }: { attachments: NonNullable<ChatMess
       {attachments.map((attachment) => (
         <div
           key={attachment.uploadUri}
-          className="flex max-w-full items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2 py-1 text-[11px] text-ink-650"
+          className="flex max-w-full items-center gap-1.5 rounded-md border border-line-subtle bg-surface-raised px-2 py-1 text-[11px] text-content-secondary"
           title={attachment.uploadUri}
         >
           <FilePreviewIcon name={attachment.name} mime={attachment.mime} />
           <span className="min-w-0 truncate">{attachment.name}</span>
-          <span className="shrink-0 font-mono text-[10px] text-ink-350">
+          <span className="shrink-0 font-mono text-[10px] text-content-muted">
             {attachment.mime} · {formatFileSize(attachment.size)}
           </span>
         </div>

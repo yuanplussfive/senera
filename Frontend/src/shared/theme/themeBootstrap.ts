@@ -21,6 +21,9 @@ export interface AppearanceBootstrapConfig {
     fontFamily: string[];
     fontScale: string[];
   };
+  legacyPreferenceValues: {
+    colorScheme: Record<string, string>;
+  };
 }
 
 export function createAppearanceBootstrapConfig(): AppearanceBootstrapConfig {
@@ -33,6 +36,13 @@ export function createAppearanceBootstrapConfig(): AppearanceBootstrapConfig {
       accentColor: [...accentColors],
       fontFamily: [...appearanceFontFamilies],
       fontScale: [...fontScales],
+    },
+    legacyPreferenceValues: {
+      colorScheme: {
+        monochrome: "mono",
+        nordic: "classic",
+        sepia: "honey",
+      },
     },
   };
 }
@@ -50,10 +60,10 @@ export function createAppearanceBootstrapScript(): string {
       parsed = {};
     }
     return Object.fromEntries(
-      Object.entries(config.defaultPreference).map(([name, value]) => [
-        name,
-        config.validPreferenceValues[name].includes(parsed[name]) ? parsed[name] : value,
-      ]),
+      Object.entries(config.defaultPreference).map(([name, value]) => {
+        const candidate = config.legacyPreferenceValues[name]?.[parsed[name]] ?? parsed[name];
+        return [name, config.validPreferenceValues[name].includes(candidate) ? candidate : value];
+      }),
     );
   };
   let preference = config.defaultPreference;

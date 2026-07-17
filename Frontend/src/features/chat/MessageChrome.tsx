@@ -18,19 +18,16 @@ export function MessageMeta({
   order = "title-first",
 }: MessageMetaProps): JSX.Element {
   const titleNode = title ? (
-    <span className="min-w-0 truncate text-[13.5px] font-semibold text-ink-900">{title}</span>
+    <span className="min-w-0 truncate text-[13.5px] font-semibold text-content-primary">{title}</span>
   ) : null;
   const timeNode = (
-    <span className="shrink-0 text-[10.5px] tabular-nums text-ink-400 opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100">
+    <span className="shrink-0 text-[10.5px] tabular-nums text-content-muted opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100">
       {formatTime(timestamp)}
     </span>
   );
 
   return (
-    <div
-      className={cn("flex min-w-0 items-baseline gap-2", align === "right" && "justify-end")}
-      data-ui-chrome
-    >
+    <div className={cn("flex min-w-0 items-baseline gap-2", align === "right" && "justify-end")} data-ui-chrome>
       {order === "time-first" ? timeNode : titleNode}
       {order === "time-first" ? titleNode : timeNode}
     </div>
@@ -39,11 +36,7 @@ export function MessageMeta({
 
 export function AssistantMessageAvatar(): JSX.Element {
   return (
-    <span
-      className="grid h-8 w-8 shrink-0 place-items-center"
-      aria-label="Senera"
-      data-message-avatar="assistant"
-    >
+    <span className="grid h-8 w-8 shrink-0 place-items-center" aria-label="Senera" data-message-avatar="assistant">
       <LogoMark size={30} />
     </span>
   );
@@ -60,7 +53,7 @@ export function MessageAvatar({ role, icon, profile }: MessageAvatarProps): JSX.
     const fallback = readUserInitial(profile?.name);
     return (
       <div
-        className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-ink-200 text-[12px] font-semibold text-ink-700"
+        className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-surface-muted text-[12px] font-semibold text-content-secondary"
         data-message-avatar="user"
       >
         {profile?.avatarDataUrl ? (
@@ -75,7 +68,7 @@ export function MessageAvatar({ role, icon, profile }: MessageAvatarProps): JSX.
   }
 
   return icon ? (
-    <span className="grid h-6 w-6 shrink-0 place-items-center text-ink-500">
+    <span className="grid h-6 w-6 shrink-0 place-items-center text-content-secondary">
       <ModelProviderIcon icon={icon} size={15} />
     </span>
   ) : (

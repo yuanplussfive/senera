@@ -7,6 +7,7 @@ import {
   type FontScale,
   type ThemeMode,
 } from "./themeModel";
+import { colorSchemeStories, colorSchemeSwatches, recommendedAccentColors } from "./themeData";
 
 export type AppearancePreferenceId = keyof AppearancePreference;
 
@@ -28,19 +29,26 @@ export const themeModeLabels = {
 } as const satisfies Record<ThemeMode, string>;
 
 export const colorSchemeLabels = {
-  senera: "Senera 暖纸",
-  monochrome: "纯粹黑白",
-  nordic: "北欧冷调",
-  sepia: "暖咖复古",
-  lavender: "丁香暮光",
-  ocean: "深海幽蓝",
+  senera: "暖纸",
+  classic: "冷灰",
+  mono: "墨灰",
+  forest: "森绿",
+  sakura: "樱粉",
+  ocean: "雾蓝",
+  lavender: "薰紫",
+  matcha: "抹茶",
+  honey: "蜜杏",
+  celadon: "青瓷",
 } as const satisfies Record<ColorScheme, string>;
 
 export const accentColorLabels = {
   terra: "陶土",
-  violet: "紫藤",
-  moss: "苔绿",
   sky: "天蓝",
+  moss: "苔绿",
+  violet: "紫藤",
+  rose: "蔷薇",
+  apricot: "杏子",
+  jade: "青玉",
 } as const satisfies Record<AccentColor, string>;
 
 export const fontFamilyLabels = {
@@ -114,17 +122,35 @@ export function readAppearanceTokenRows(preference: AppearancePreference): Appea
 }
 
 export function readSchemeSwatch(value: ColorScheme): string {
-  if (value === "monochrome") return "#f5f5f5";
-  if (value === "nordic") return "#eef2f6";
-  if (value === "sepia") return "#e8ddcc";
-  if (value === "lavender") return "#f0eef5";
-  if (value === "ocean") return "#f0f8ff";
-  return "#f8f8f6";
+  return toRgbColor(colorSchemeSwatches[value].paper[1] ?? colorSchemeSwatches[value].paper[0]);
+}
+
+export function readSchemeSwatchStrip(value: ColorScheme): string[] {
+  const swatch = colorSchemeSwatches[value];
+  return [...swatch.paper.slice(0, 3), ...swatch.ink.slice(0, 2)].map(toRgbColor);
+}
+
+export function readColorSchemeStory(value: ColorScheme): string {
+  return colorSchemeStories[value];
+}
+
+export function readRecommendedAccent(value: ColorScheme): AccentColor {
+  return recommendedAccentColors[value];
 }
 
 export function readAccentSwatch(value: AccentColor): string {
-  if (value === "violet") return "#7e67c2";
-  if (value === "moss") return "#5a7d4c";
-  if (value === "sky") return "#3b82f6";
-  return "#b45d40";
+  const values: Record<AccentColor, string> = {
+    terra: "180 93 64",
+    sky: "59 130 246",
+    moss: "90 125 76",
+    violet: "107 83 177",
+    rose: "176 92 101",
+    apricot: "167 103 62",
+    jade: "47 128 124",
+  };
+  return toRgbColor(values[value]);
+}
+
+function toRgbColor(value: string): string {
+  return `rgb(${value})`;
 }

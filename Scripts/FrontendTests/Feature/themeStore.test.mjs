@@ -89,7 +89,7 @@ describe("createAppearanceStore", () => {
       appearancePreferenceStorageKey,
       JSON.stringify({
         themeMode: "dark",
-        colorScheme: "senera",
+        colorScheme: "classic",
         accentColor: "violet",
         fontFamily: "brand",
         fontScale: "standard",

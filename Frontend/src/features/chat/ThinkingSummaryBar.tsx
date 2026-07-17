@@ -26,7 +26,7 @@ export function ThinkingSummaryBar({
     <div className="mt-1" data-ui-chrome>
       <button
         type="button"
-        className="group inline-flex max-w-full items-center gap-1.5 py-1 text-left text-[11.5px] text-ink-500 transition-colors hover:text-ink-800 focus:outline-none"
+        className="group inline-flex max-w-full items-center gap-1.5 rounded-md py-1 text-left text-[11.5px] text-ink-500 transition-colors hover:text-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
@@ -46,13 +46,7 @@ export function ThinkingSummaryBar({
   );
 }
 
-function SummaryDetail({
-  run,
-  onViewWorkflow,
-}: {
-  run: RunRecord;
-  onViewWorkflow?: () => void;
-}): JSX.Element {
+function SummaryDetail({ run, onViewWorkflow }: { run: RunRecord; onViewWorkflow?: () => void }): JSX.Element {
   const model = deriveFeedModel(run);
   const items = model.groups.flatMap((group) => group.items);
 

@@ -37,20 +37,20 @@ export function SessionPanelBody({
     <div className="flex min-h-0 flex-1 flex-col px-2 pb-2">
       <label className="group relative mb-2 block shrink-0">
         <span className="sr-only">{frontendMessage("session.searchPlaceholder")}</span>
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-400 group-focus-within:text-accent-content" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-content-muted group-focus-within:text-accent-content" />
         <input
           type="search"
           data-selectable="true"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder={frontendMessage("session.searchPlaceholder")}
-          className="h-8 w-full rounded-md border border-ink-200/80 bg-[var(--theme-elevated-bg)] pl-8 pr-8 text-[12px] text-ink-800 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
+          className="h-8 w-full rounded-[10px] border border-line-subtle bg-surface-raised pl-8 pr-8 text-[12px] text-content-primary outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-content-muted focus:border-accent-border-strong focus:ring-2 focus:ring-accent-focus"
         />
         {query ? (
           <button
             type="button"
             onClick={() => onQueryChange("")}
-            className="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-ink-400 transition-colors duration-150 hover:bg-ink-900/[0.05] hover:text-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+            className="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-content-muted transition-colors duration-150 hover:bg-surface-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
             aria-label={frontendMessage("session.searchClear")}
           >
             <X className="h-3.5 w-3.5" />
@@ -63,7 +63,7 @@ export function SessionPanelBody({
           {totalSessionCount === 0 ? (
             <EmptyState onNewSession={onNewSession} />
           ) : sessions.length === 0 ? (
-            <div className="px-3 py-10 text-center text-[12px] leading-5 text-ink-500">
+            <div className="px-3 py-10 text-center text-[12px] leading-5 text-content-secondary">
               {frontendMessage("session.searchEmpty")}
             </div>
           ) : (
