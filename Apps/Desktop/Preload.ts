@@ -20,4 +20,5 @@ contextBridge.exposeInMainWorld("seneraDesktop", {
     return () => ipcRenderer.removeListener("senera:settings.request-close", handler);
   },
   confirmSettingsClose: () => ipcRenderer.invoke("senera:settings.confirm-close"),
+  cancelSettingsClose: () => ipcRenderer.invoke("senera:settings.cancel-close"),
 });

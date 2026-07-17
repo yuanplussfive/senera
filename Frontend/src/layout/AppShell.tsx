@@ -1,6 +1,6 @@
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { motion, type Transition } from "framer-motion";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type HTMLAttributes, type ReactNode } from "react";
 import { Sheet, SheetContent } from "../shared/ui";
 import { motionTimings, useMotionLevel } from "../shared/motion";
 import { useStore } from "../store/sessionStore";
@@ -171,6 +171,7 @@ export function AppShell({
         opacity: rightPanelCollapsed ? 0 : 1,
         x: rightPanelCollapsed ? 16 : 0,
       };
+  const workflowPanelInertProps = (rightPanelCollapsed ? { inert: "" } : {}) as HTMLAttributes<HTMLDivElement>;
 
   return (
     <div
@@ -224,7 +225,7 @@ export function AppShell({
           data-workflow-panel-surface
           data-workflow-panel-layout={renderPlan.workflowPanelLayout}
         >
-          <div className="h-full" style={{ width: workflowPanelWidth }}>
+          <div {...workflowPanelInertProps} className="h-full" style={{ width: workflowPanelWidth }}>
             {workflowPanel}
           </div>
         </motion.div>

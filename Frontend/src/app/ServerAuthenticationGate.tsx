@@ -1,7 +1,25 @@
 import { KeyRound, LoaderCircle, LogIn, RefreshCcw } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import type { ServerAuthenticationState } from "./useServerAuthentication";
+import type { ServerAuthentication } from "../api/authClient";
+
+export function ServerAuthenticationBoundary({
+  state,
+  onLogin,
+  onRetry,
+  children,
+}: {
+  state: ServerAuthenticationState;
+  onLogin: (credentials: { loginName: string; password: string }) => Promise<void>;
+  onRetry: () => Promise<void>;
+  children: (authentication: ServerAuthentication) => ReactNode;
+}): JSX.Element {
+  if (state.status === "authenticated") {
+    return <>{children(state.authentication)}</>;
+  }
+  return <ServerAuthenticationGate state={state} onLogin={onLogin} onRetry={onRetry} />;
+}
 
 export function ServerAuthenticationGate({
   state,

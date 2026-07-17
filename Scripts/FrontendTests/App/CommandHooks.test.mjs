@@ -80,6 +80,33 @@ test("useChatCommands blocks sends while history is recovering without mutating 
   );
 });
 
+test("useChatCommands preserves local state and retry context when message delivery fails", () => {
+  const sessionId = "session-send-failed";
+  registerTestSession(sessionId, "Existing session");
+  const send = vi.fn(() => false);
+  const lastSendRef = { current: null };
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: sessionId, handleRef, lastSendRef, send });
+
+  let accepted = true;
+  act(() => {
+    accepted = handleRef.current.sendMessage("Keep this draft");
+  });
+
+  expect(accepted).toBe(false);
+  expect(useStore.getState().sessions[sessionId]).toMatchObject({
+    messages: [],
+    runs: [],
+  });
+  expect(lastSendRef.current).toBeNull();
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "error",
+      title: frontendMessage("chat.sendDisconnected"),
+    }),
+  );
+});
+
 test("useChatCommands rolls back failed truncate queues and preserves retry context", () => {
   const pendingAfterTruncateRef = { current: [] };
   const send = vi.fn(() => false);
@@ -213,6 +240,31 @@ test("useSessionCommands reuses an existing empty new conversation while offline
   expect(useStore.getState().activeSessionId).toBe("session-empty");
   expect(readTestToastCalls()).not.toContainEqual(
     expect.objectContaining({ title: frontendMessage("session.createOffline") }),
+  );
+});
+
+test.each([
+  { status: "closed", sendResult: true },
+  { status: "open", sendResult: false },
+])("useSessionCommands keeps the original title when rename delivery fails ($status)", ({ status, sendResult }) => {
+  registerTestSession("session-rename", "Original title");
+  const send = vi.fn(() => sendResult);
+  const handleRef = { current: null };
+  renderSessionCommands({ handleRef, send, status });
+
+  let accepted = true;
+  act(() => {
+    accepted = handleRef.current.renameSession("session-rename", "New title");
+  });
+
+  expect(accepted).toBe(false);
+  expect(useStore.getState().sessions["session-rename"].title).toBe("Original title");
+  expect(send).toHaveBeenCalledTimes(status === "open" ? 1 : 0);
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "error",
+      title: frontendMessage("session.renameDisconnected"),
+    }),
   );
 });
 

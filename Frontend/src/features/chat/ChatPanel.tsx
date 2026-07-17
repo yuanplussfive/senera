@@ -95,6 +95,7 @@ export function ChatPanel({
         runtime={{
           socketStatus: runtime.socketStatus,
           uploadUrl: runtime.uploadUrl,
+          uploadCsrfToken: runtime.uploadCsrfToken,
         }}
         onSend={messageActions.onSend}
         onCancel={messageActions.onCancel}

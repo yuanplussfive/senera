@@ -66,7 +66,7 @@ export interface ChatRuntimeState {
 }
 
 export interface ChatMessageActions {
-  onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
+  onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
   onCancel: () => void;
   onRegenerate: (message: ChatMessage) => void;
   onEditUserMessage: (message: ChatMessage, nextContent: string) => void;

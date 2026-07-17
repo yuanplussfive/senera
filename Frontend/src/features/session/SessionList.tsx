@@ -17,7 +17,7 @@ interface Props {
   onCloseSession: (id: string) => void;
   onCloseSessions: (ids: string[]) => void;
   onRefreshSessions: () => void;
-  onRenameSession: (id: string, title: string) => void;
+  onRenameSession: (id: string, title: string) => boolean;
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   onLogout?: () => Promise<void>;
@@ -87,7 +87,7 @@ export function SessionList({
       toast.error(frontendMessage("session.renameEmpty"));
       return;
     }
-    onRenameSession(renaming.sessionId, nextTitle);
+    if (onRenameSession(renaming.sessionId, nextTitle) === false) return;
     setRenaming(null);
     toast.success(frontendMessage("session.renameSucceeded"));
   };
@@ -222,7 +222,7 @@ export function SessionList({
         socketStatus={socketStatus}
         onOpenSettings={onOpenSettings}
         onUpdateProfile={onUpdateUserProfile}
-        onLogout={onLogout ?? (async () => undefined)}
+        onLogout={onLogout}
       />
     </aside>
   );

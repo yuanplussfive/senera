@@ -27,6 +27,7 @@ import type { ChatModelConfig, ChatPresetConfig } from "./ChatPanelContracts";
 
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
+const ACTIVE_LAYER_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
 
 export interface ChatComposerProps {
   disabled: boolean;
@@ -36,8 +37,9 @@ export interface ChatComposerProps {
   runtime: {
     socketStatus: string;
     uploadUrl: string;
+    uploadCsrfToken?: string;
   };
-  onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
+  onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
   onCancel: () => void;
 }
 
@@ -85,6 +87,7 @@ export function ChatComposer({
         return;
       }
       if (e.key === "Escape" && running) {
+        if (e.defaultPrevented || hasActiveInteractionLayer(e)) return;
         e.preventDefault();
         onCancel();
       }
@@ -107,7 +110,8 @@ export function ChatComposer({
     const attachments = pendingAttachments.flatMap((entry) =>
       entry.status === "uploaded" && entry.attachment ? [entry.attachment] : [],
     );
-    onSend(text, attachments.length > 0 ? attachments : undefined, queueMode);
+    const sent = onSend(text, attachments.length > 0 ? attachments : undefined, queueMode);
+    if (sent === false) return;
     setValue("");
     setPendingAttachments([]);
     if (taRef.current) taRef.current.style.height = "auto";
@@ -146,6 +150,7 @@ export function ChatComposer({
         },
       ]);
       void uploadFile(runtime.uploadUrl, file, {
+        headers: runtime.uploadCsrfToken ? { "X-Senera-Csrf": runtime.uploadCsrfToken } : undefined,
         onProgress: (progress) => {
           setPendingAttachments((current) =>
             current.map((entry) => (entry.id === id ? { ...entry, progress } : entry)),
@@ -198,16 +203,17 @@ export function ChatComposer({
   };
 
   const handleDragEnter = (event: React.DragEvent<HTMLDivElement>): void => {
-    if (disabled || running || !acceptsDraggedFiles(event)) return;
+    if (!acceptsDraggedFiles(event)) return;
     event.preventDefault();
+    if (disabled || running) return;
     dragDepthRef.current += 1;
     setIsDraggingFiles(true);
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>): void => {
-    if (disabled || running || !acceptsDraggedFiles(event)) return;
+    if (!acceptsDraggedFiles(event)) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
+    event.dataTransfer.dropEffect = disabled || running ? "none" : "copy";
   };
 
   const handleDragLeave = (event: React.DragEvent<HTMLDivElement>): void => {
@@ -220,10 +226,11 @@ export function ChatComposer({
   };
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>): void => {
-    if (disabled || running || !acceptsDraggedFiles(event)) return;
+    if (!acceptsDraggedFiles(event)) return;
     event.preventDefault();
     dragDepthRef.current = 0;
     setIsDraggingFiles(false);
+    if (disabled || running) return;
     enqueueFiles(Array.from(event.dataTransfer.files ?? []));
   };
 
@@ -371,6 +378,13 @@ export function ChatComposer({
       </ConversationFrame>
     </div>
   );
+}
+
+function hasActiveInteractionLayer(event: KeyboardEvent): boolean {
+  if (event.composedPath().some((target) => target instanceof Element && target.matches(ACTIVE_LAYER_SELECTOR))) {
+    return true;
+  }
+  return document.querySelector(ACTIVE_LAYER_SELECTOR) !== null;
 }
 
 function AttachmentTray({

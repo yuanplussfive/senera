@@ -165,6 +165,26 @@ test("session row menu submits a trimmed rename", async () => {
   expect(onRenameSession).toHaveBeenCalledWith("first", "New title");
 });
 
+test("session rename dialog stays open when the command is rejected", async () => {
+  const onRenameSession = vi.fn(() => false);
+  const user = userEvent.setup();
+  resetSessionStore({
+    sessions: { first: session("first", "Old title") },
+    sessionOrder: ["first"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps({ onRenameSession })));
+
+  await user.click(screen.getByRole("button", { name: "more" }));
+  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.rename") }));
+  await user.clear(screen.getByRole("textbox"));
+  await user.type(screen.getByRole("textbox"), "New title");
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.save") }));
+
+  expect(onRenameSession).toHaveBeenCalledWith("first", "New title");
+  expect(screen.getByRole("dialog", { name: frontendMessage("session.renameDialogTitle") })).toBeVisible();
+});
+
 test("desktop session rows use the context menu without a duplicate overflow button", async () => {
   const onRename = vi.fn();
   const user = userEvent.setup();

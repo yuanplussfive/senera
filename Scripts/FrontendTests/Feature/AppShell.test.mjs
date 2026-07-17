@@ -161,6 +161,10 @@ test("desktop overlay owns the full-height right tool surface", () => {
   const surface = document.querySelector("[data-workflow-panel-surface]");
   expect(surface).toHaveClass("top-0", "right-0", "z-30", "[box-shadow:var(--theme-overlay-shadow)]");
   expect(surface).not.toHaveClass("top-[52px]");
+  expect(screen.getByText("Workflow overlay").parentElement).toHaveAttribute("inert");
+
+  act(() => useStore.getState().setRightPanelCollapsed(false));
+  expect(screen.getByText("Workflow overlay").parentElement).not.toHaveAttribute("inert");
 });
 
 function responsiveMode(viewport) {

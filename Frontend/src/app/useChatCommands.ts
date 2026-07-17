@@ -37,7 +37,7 @@ export interface ChatCommandsHandle {
   editUserMessage: (message: ChatMessage, nextContent: string) => void;
   regenerateMessage: (message: ChatMessage) => void;
   resolveApproval: (approvalId: string, status: "approved" | "denied") => void;
-  sendMessage: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
+  sendMessage: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
   sendAfterTruncate: (pending: PendingAfterTruncate) => boolean;
 }
 
@@ -294,7 +294,7 @@ export function useChatCommands({
   );
 
   const sendMessage = useCallback(
-    (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode): void => {
+    (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode): boolean => {
       const state = useStore.getState();
       const modelProviderId = state.selectedModelProviderId ?? undefined;
       const target = resolveSendTargetSession({
@@ -306,7 +306,7 @@ export function useChatCommands({
 
       if (target.kind === "blocked_history_loading") {
         toast.warning(frontendMessage("chat.historyRecovering"));
-        return;
+        return false;
       }
 
       const targetSessionId = target.sessionId;
@@ -322,7 +322,7 @@ export function useChatCommands({
         });
         if (!ok) {
           toast.error(frontendMessage("chat.createSessionDisconnected"));
-          return;
+          return false;
         }
         registerSession(targetSessionId, undefined, modelProviderId);
         serverKnownSessionIdsRef.current.add(targetSessionId);
@@ -337,15 +337,11 @@ export function useChatCommands({
         });
         if (!ok) {
           toast.error(frontendMessage("chat.createSessionDisconnected"));
-          return;
+          return false;
         }
         serverKnownSessionIdsRef.current.add(targetSessionId);
       }
 
-      appendUserMessage(targetSessionId, requestId, input, attachments, {
-        createRun: queueMode === undefined,
-      });
-      lastSendRef.current = { sessionId: targetSessionId, requestId, input, attachments, modelProviderId, queueMode };
       const ok = send({
         type: "session.message",
         sessionId: targetSessionId,
@@ -357,7 +353,13 @@ export function useChatCommands({
       });
       if (!ok) {
         toast.error(frontendMessage("chat.sendDisconnected"));
+        return false;
       }
+      appendUserMessage(targetSessionId, requestId, input, attachments, {
+        createRun: queueMode === undefined,
+      });
+      lastSendRef.current = { sessionId: targetSessionId, requestId, input, attachments, modelProviderId, queueMode };
+      return true;
     },
     [activeSessionId, appendUserMessage, lastSendRef, registerSession, send, serverKnownSessionIdsRef],
   );

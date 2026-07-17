@@ -31,7 +31,13 @@ import { SettingsOverlay } from "./features/settings";
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 installCopyableToasts();
 
-export function App(): JSX.Element {
+export function App({
+  onLogout,
+  uploadCsrfToken,
+}: {
+  onLogout?: () => Promise<void>;
+  uploadCsrfToken?: string;
+}): JSX.Element {
   const ingest = useStore((s) => s.ingest);
   const registerSession = useStore((s) => s.registerCreatingSession);
   const appendUserMessage = useStore((s) => s.appendUserMessage);
@@ -246,6 +252,7 @@ export function App(): JSX.Element {
             onRenameSession={handleRenameSession}
             userProfile={userProfile}
             onUpdateUserProfile={handleUpdateUserProfile}
+            onLogout={onLogout}
             socketStatus={status}
             onOpenSettings={(section, returnFocus) => {
               void settingsController.openSettings(section, returnFocus);
@@ -262,6 +269,7 @@ export function App(): JSX.Element {
             onRenameSession={handleRenameSession}
             userProfile={userProfile}
             onUpdateUserProfile={handleUpdateUserProfile}
+            onLogout={onLogout}
             socketStatus={status}
             onOpenSettings={(section, returnFocus) => {
               void settingsController.openSettings(section, returnFocus);
@@ -296,6 +304,7 @@ export function App(): JSX.Element {
                 socketStatus: status,
                 sandboxStatus,
                 uploadUrl,
+                uploadCsrfToken,
               }}
               messageActions={{
                 onSend: handleSend,

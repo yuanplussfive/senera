@@ -20,6 +20,7 @@ export interface SeneraDesktopBridge {
   setSettingsDirty?: (dirty: boolean) => Promise<void>;
   onSettingsCloseRequested?: (listener: () => void) => () => void;
   confirmSettingsClose?: () => Promise<void>;
+  cancelSettingsClose?: () => Promise<void>;
 }
 
 declare global {

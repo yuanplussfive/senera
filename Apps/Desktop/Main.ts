@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, Menu, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from "electron";
 import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
 import { appendDesktopLog, prepareDesktopRuntime, type DesktopRuntimePaths } from "./DesktopRuntime.js";
 import {
@@ -10,13 +10,15 @@ import {
 } from "./DesktopFrontendSource.js";
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
 import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
+import { isTrustedDesktopNavigation, resolveExternalHttpUrl } from "./DesktopNavigationPolicy.js";
+import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
 
 let serverHandle: SeneraServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
-let settingsWindowDirty = false;
 let forceSettingsWindowClose = false;
 let desktopQuitting = false;
+const settingsClosePolicy = new DesktopClosePolicy();
 let runtimePaths: DesktopRuntimePaths | undefined;
 let frontendSource: DesktopFrontendSource | undefined;
 const desktopModuleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -91,7 +93,11 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  if (!desktopQuitting && requestDirtySettingsConfirmation("quit")) {
+    event.preventDefault();
+    return;
+  }
   desktopQuitting = true;
   forceSettingsWindowClose = true;
   serverHandle?.stop();
@@ -104,13 +110,24 @@ function registerDesktopIpc(): void {
   });
   ipcMain.handle("senera:settings.dirty", (event, dirty: boolean) => {
     if (settingsWindow && event.sender === settingsWindow.webContents) {
-      settingsWindowDirty = Boolean(dirty);
+      settingsClosePolicy.setDirty(Boolean(dirty));
     }
   });
   ipcMain.handle("senera:settings.confirm-close", (event) => {
     if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
+    const closeIntent = settingsClosePolicy.confirm();
     forceSettingsWindowClose = true;
     settingsWindow.close();
+    if (closeIntent === "main") {
+      mainWindow?.close();
+    } else if (closeIntent === "quit") {
+      desktopQuitting = true;
+      app.quit();
+    }
+  });
+  ipcMain.handle("senera:settings.cancel-close", (event) => {
+    if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
+    settingsClosePolicy.cancel();
   });
   ipcMain.handle("senera:window.minimize", (event) => {
     resolveManagedWindow(event)?.minimize();
@@ -158,7 +175,12 @@ function createMainWindow(): BrowserWindow {
     event.preventDefault();
     window.setTitle("Senera");
   });
+  registerNavigationPolicy(window, readFrontendSource());
   registerWindowStateEvents(window);
+  window.on("close", (event) => {
+    if (desktopQuitting || !requestDirtySettingsConfirmation("main")) return;
+    event.preventDefault();
+  });
   window.on("closed", () => {
     mainWindow = undefined;
     if (settingsWindow && !settingsWindow.isDestroyed()) {
@@ -180,7 +202,7 @@ function openSettingsWindow(options?: { section?: string }): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     if (settingsWindow.isMinimized()) settingsWindow.restore();
     settingsWindow.focus();
-    if (!settingsWindowDirty) {
+    if (!settingsClosePolicy.dirty) {
       void loadDesktopFrontend(settingsWindow, source, {
         surface: "settings",
         section,
@@ -208,7 +230,7 @@ function openSettingsWindow(options?: { section?: string }): void {
     },
   });
 
-  settingsWindowDirty = false;
+  settingsClosePolicy.reset();
   forceSettingsWindowClose = false;
   settingsWindow.once("ready-to-show", () => {
     settingsWindow?.show();
@@ -218,14 +240,15 @@ function openSettingsWindow(options?: { section?: string }): void {
     settingsWindow?.setTitle("Senera 设置");
   });
   registerWindowStateEvents(settingsWindow);
+  registerNavigationPolicy(settingsWindow, source);
   settingsWindow.on("close", (event) => {
-    if (desktopQuitting || forceSettingsWindowClose || !settingsWindowDirty) return;
+    if (forceSettingsWindowClose || !settingsClosePolicy.dirty) return;
     event.preventDefault();
-    settingsWindow?.webContents.send("senera:settings.request-close");
+    requestDirtySettingsConfirmation("settings");
   });
   settingsWindow.on("closed", () => {
     settingsWindow = undefined;
-    settingsWindowDirty = false;
+    settingsClosePolicy.reset();
     forceSettingsWindowClose = false;
   });
 
@@ -255,6 +278,36 @@ function registerWindowStateEvents(window: BrowserWindow): void {
   };
   window.on("maximize", publishState);
   window.on("unmaximize", publishState);
+}
+
+function requestDirtySettingsConfirmation(intent: DesktopCloseIntent): boolean {
+  if (!settingsWindow || settingsWindow.isDestroyed() || !settingsClosePolicy.request(intent)) return false;
+  if (settingsWindow.isMinimized()) settingsWindow.restore();
+  settingsWindow.show();
+  settingsWindow.focus();
+  settingsWindow.webContents.send("senera:settings.request-close");
+  return true;
+}
+
+function registerNavigationPolicy(window: BrowserWindow, source: DesktopFrontendSource): void {
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalHttpUrl(url);
+    return { action: "deny" };
+  });
+  window.webContents.on("will-navigate", (event, url) => {
+    if (isTrustedDesktopNavigation(url, source)) return;
+    event.preventDefault();
+    openExternalHttpUrl(url);
+  });
+}
+
+function openExternalHttpUrl(value: string): void {
+  const url = resolveExternalHttpUrl(value);
+  if (!url) return;
+  void shell.openExternal(url).catch((error) => {
+    if (!runtimePaths) return;
+    appendDesktopLog(runtimePaths.logPath, "external navigation failed url=" + url + " error=" + String(error));
+  });
 }
 
 function readFrontendSource(): DesktopFrontendSource {

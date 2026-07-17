@@ -6,6 +6,8 @@ import { resolveAppSurface, resolveSettingsSection } from "./app/appSurface";
 import { readDesktopBridge } from "./app/desktopBridge";
 import { DesktopWindowChrome } from "./app/DesktopWindowChrome";
 import { buildSettingsSurfaceSyncRequests } from "./app/settingsSurfaceSync";
+import { ServerAuthenticationBoundary } from "./app/ServerAuthenticationGate";
+import { useServerAuthentication } from "./app/useServerAuthentication";
 import { useSettingsRuntime } from "./app/useSettingsRuntime";
 import { useAgentSocket, type SocketStatus } from "./api/useAgentSocket";
 import type { WsRequest } from "./api/eventTypes";
@@ -44,25 +46,37 @@ function Root(): JSX.Element {
   const isDesktop = Boolean(readDesktopBridge()?.isDesktop);
   const surface = resolveAppSurface(window.location, isDesktop);
   const settingsSection = resolveSettingsSection(window.location);
+  const authentication = useServerAuthentication(WS_URL);
 
   return (
     <AppMotionProvider level={motionLevel}>
       <AppAppearanceProvider motionLevel={motionLevel}>
         <DesktopWindowChrome surface={surface}>
-          {surface === "settings" ? (
-            <DesktopSettingsSurface
-              initialSection={settingsSection}
-              values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
-              motionLevel={motionLevel}
-              onValueChange={(id, value) => {
-                if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-                if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
-              }}
-              onMotionLevelChange={setMotionLevel}
-            />
-          ) : (
-            <App />
-          )}
+          <ServerAuthenticationBoundary
+            state={authentication.state}
+            onLogin={authentication.login}
+            onRetry={authentication.refresh}
+          >
+            {(resolvedAuthentication) =>
+              surface === "settings" ? (
+                <DesktopSettingsSurface
+                  initialSection={settingsSection}
+                  values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
+                  motionLevel={motionLevel}
+                  onValueChange={(id, value) => {
+                    if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
+                    if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
+                  }}
+                  onMotionLevelChange={setMotionLevel}
+                />
+              ) : (
+                <App
+                  onLogout={resolvedAuthentication.account ? authentication.logout : undefined}
+                  uploadCsrfToken={resolvedAuthentication.csrfToken}
+                />
+              )
+            }
+          </ServerAuthenticationBoundary>
         </DesktopWindowChrome>
       </AppAppearanceProvider>
     </AppMotionProvider>
@@ -142,7 +156,13 @@ function DesktopSettingsSurface({
         pluginSettings={runtime.pluginSettings}
         systemConfig={runtime.systemConfig}
       />
-      <Dialog open={closeConfirmationOpen} onOpenChange={setCloseConfirmationOpen}>
+      <Dialog
+        open={closeConfirmationOpen}
+        onOpenChange={(open) => {
+          setCloseConfirmationOpen(open);
+          if (!open) void bridge?.cancelSettingsClose?.();
+        }}
+      >
         <DialogContent title="放弃未保存的更改？" description="关闭设置窗口会丢失尚未保存或确认的修改。">
           <DialogActions>
             <DialogActionButton close>继续编辑</DialogActionButton>

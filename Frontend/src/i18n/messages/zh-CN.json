@@ -458,6 +458,7 @@
   "session.hydrated": "恢复 {count} 个会话",
   "session.hydratingDescription": "正在从后端同步消息历史…",
   "session.replayDisconnected": "重新发送失败，连接可能已断开",
+  "session.renameDisconnected": "重命名失败，连接可能已断开",
   "session.renameEmpty": "会话名称不能为空",
   "session.renameSucceeded": "已重命名",
   "session.searchPlaceholder": "搜索会话",

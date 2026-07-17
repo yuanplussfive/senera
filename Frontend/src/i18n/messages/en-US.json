@@ -458,6 +458,7 @@
   "session.hydrated": "Restored {count} sessions",
   "session.hydratingDescription": "Syncing message history from backend...",
   "session.replayDisconnected": "Resend failed. The connection may be closed.",
+  "session.renameDisconnected": "Rename failed. The connection may be closed.",
   "session.renameEmpty": "Session name is required",
   "session.renameSucceeded": "Renamed",
   "session.searchPlaceholder": "Search chats",

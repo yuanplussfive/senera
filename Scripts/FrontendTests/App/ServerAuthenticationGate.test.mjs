@@ -4,7 +4,10 @@ import React from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { ServerAuthenticationGate } from "../../../Frontend/src/app/ServerAuthenticationGate.tsx";
+import {
+  ServerAuthenticationBoundary,
+  ServerAuthenticationGate,
+} from "../../../Frontend/src/app/ServerAuthenticationGate.tsx";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 
 afterEach(() => {
@@ -13,6 +16,40 @@ afterEach(() => {
 });
 
 describe("server authentication gate", () => {
+  test("does not mount authenticated application content before the session is resolved", () => {
+    const child = vi.fn(() => React.createElement("div", null, "Protected workspace"));
+    const props = {
+      onLogin: vi.fn(),
+      onRetry: vi.fn(),
+      children: child,
+    };
+    const { rerender } = render(
+      React.createElement(ServerAuthenticationBoundary, {
+        ...props,
+        state: { status: "loading" },
+      }),
+    );
+
+    expect(child).not.toHaveBeenCalled();
+    expect(screen.queryByText("Protected workspace")).not.toBeInTheDocument();
+
+    rerender(
+      React.createElement(ServerAuthenticationBoundary, {
+        ...props,
+        state: {
+          status: "authenticated",
+          authentication: {
+            required: true,
+            account: { id: "owner", loginName: "owner", displayName: "Owner", role: "owner" },
+          },
+        },
+      }),
+    );
+
+    expect(child).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Protected workspace")).toBeVisible();
+  });
+
   test("submits the supplied login name and password", async () => {
     const login = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();

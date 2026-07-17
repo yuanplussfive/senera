@@ -3,12 +3,7 @@ import { toast } from "sonner";
 import type { WsRequest } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { generateId } from "../lib/util";
-import {
-  DEFAULT_SESSION_TITLE,
-  useStore,
-  type StoreState,
-  type UserProfile,
-} from "../store/sessionStore";
+import { DEFAULT_SESSION_TITLE, useStore, type StoreState, type UserProfile } from "../store/sessionStore";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export interface UseSessionCommandsOptions {
@@ -22,7 +17,7 @@ export interface SessionCommandsHandle {
   closeSession: (sessionId: string) => void;
   closeSessions: (sessionIds: string[]) => void;
   createSession: () => void;
-  renameSession: (sessionId: string, title: string) => void;
+  renameSession: (sessionId: string, title: string) => boolean;
   updateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
 }
 
@@ -133,14 +128,18 @@ export function useSessionCommands({
   );
 
   const renameSession = useCallback(
-    (sessionId: string, title: string): void => {
+    (sessionId: string, title: string): boolean => {
       const nextTitle = normalizeSessionTitle(title);
-      if (!nextTitle) return;
+      if (!nextTitle) return false;
 
+      if (status !== "open" || !send({ type: "session.rename", sessionId, title: nextTitle })) {
+        toast.error(frontendMessage("session.renameDisconnected"));
+        return false;
+      }
       renameStoreSession(sessionId, nextTitle);
-      send({ type: "session.rename", sessionId, title: nextTitle });
+      return true;
     },
-    [renameStoreSession, send],
+    [renameStoreSession, send, status],
   );
 
   const updateUserProfile = useCallback(

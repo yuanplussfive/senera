@@ -70,6 +70,34 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
   expect(onCancel).toHaveBeenCalledTimes(1);
 });
 
+test("chat composer preserves a failed draft and leaves Escape to active interaction layers", async () => {
+  const onSend = vi.fn(() => false);
+  const onCancel = vi.fn();
+  const user = userEvent.setup();
+  const { rerender } = renderWithFrontendProviders(
+    React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(ChatComposer, createComposerProps({ running: true, onSend, onCancel })),
+      React.createElement("div", { role: "dialog", "aria-label": "Open dialog" }, "Dialog content"),
+    ),
+  );
+
+  const composer = screen.getByRole("textbox", { name: "输入消息" });
+  await user.type(composer, "preserve this draft");
+  await user.keyboard("{Enter}");
+  expect(composer).toHaveValue("preserve this draft");
+
+  await user.keyboard("{Escape}");
+  expect(onCancel).not.toHaveBeenCalled();
+
+  rerender(React.createElement(ChatComposer, createComposerProps({ running: true, onSend, onCancel })));
+  const preventedEscape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+  preventedEscape.preventDefault();
+  window.dispatchEvent(preventedEscape);
+  expect(onCancel).not.toHaveBeenCalled();
+});
+
 test("chat model selector keeps the current conversation choice and exposes the current default", async () => {
   const onApplyDefaultModel = vi.fn();
   const user = userEvent.setup();
@@ -334,10 +362,7 @@ test("message list refreshes the user profile while keeping the project identity
   );
   expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
   expect(screen.getByAltText("Ada").closest("[data-message-avatar='user']")).toHaveClass("h-8", "w-8");
-  expect(screen.getByText("hello").closest(".conversation-frame--user")).toHaveClass(
-    "items-start",
-    "justify-end",
-  );
+  expect(screen.getByText("hello").closest(".conversation-frame--user")).toHaveClass("items-start", "justify-end");
   expect(screen.getByText("hello")).toHaveClass("cursor-pointer");
 
   rerender(
@@ -617,18 +642,6 @@ function createMessage(overrides = {}) {
     content: "message",
     createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
-  };
-}
-
-function createProvider(model) {
-  return {
-    id: model.toLowerCase(),
-    capabilities: { Chat: true },
-    kind: "openai-compatible",
-    endpoint: "chat",
-    baseUrl: "https://example.test",
-    model,
-    isDefault: false,
   };
 }
 

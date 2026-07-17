@@ -39,7 +39,7 @@ export function UserFooter({
   profile: UserProfile;
   socketStatus: string;
   onUpdateProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
-  onLogout: () => Promise<void>;
+  onLogout?: () => Promise<void>;
   onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -125,13 +125,17 @@ export function UserFooter({
           setOpen(false);
           toast.success(frontendMessage("profile.saved"));
         }}
-        onLogout={async () => {
-          try {
-            await onLogout();
-          } catch {
-            toast.error(frontendMessage("auth.logoutFailed"));
-          }
-        }}
+        onLogout={
+          onLogout
+            ? async () => {
+                try {
+                  await onLogout();
+                } catch {
+                  toast.error(frontendMessage("auth.logoutFailed"));
+                }
+              }
+            : undefined
+        }
       />
     </>
   );
@@ -170,7 +174,7 @@ function ProfileDialog({
   profile: UserProfile;
   onOpenChange: (open: boolean) => void;
   onSubmit: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
-  onLogout: () => Promise<void>;
+  onLogout?: () => Promise<void>;
 }): JSX.Element {
   const [draftName, setDraftName] = useState(profile.name);
   const [draftAvatar, setDraftAvatar] = useState<string | null>(profile.avatarDataUrl);
@@ -275,12 +279,14 @@ function ProfileDialog({
           </label>
 
           <DialogActions className="mt-6">
-            <DialogActionButton
-              className="mr-auto border-0 bg-transparent px-2 text-brick-600 shadow-none hover:bg-transparent hover:text-brick-700"
-              onClick={() => void onLogout()}
-            >
-              {frontendMessage("auth.signOut")}
-            </DialogActionButton>
+            {onLogout ? (
+              <DialogActionButton
+                className="mr-auto border-0 bg-transparent px-2 text-brick-600 shadow-none hover:bg-transparent hover:text-brick-700"
+                onClick={() => void onLogout()}
+              >
+                {frontendMessage("auth.signOut")}
+              </DialogActionButton>
+            ) : null}
             <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
             <DialogActionButton type="submit" variant="primary">
               {frontendMessage("profile.save")}

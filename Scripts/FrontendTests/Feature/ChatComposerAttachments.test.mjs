@@ -37,7 +37,19 @@ test("chat composer waits for an attachment upload and sends the uploaded refere
   });
   const onSend = vi.fn();
   const user = userEvent.setup();
-  renderWithFrontendProviders(React.createElement(ChatComposer, createComposerProps({ onSend })));
+  renderWithFrontendProviders(
+    React.createElement(
+      ChatComposer,
+      createComposerProps({
+        onSend,
+        runtime: {
+          socketStatus: "open",
+          uploadUrl: "http://127.0.0.1/api/uploads",
+          uploadCsrfToken: "csrf-token",
+        },
+      }),
+    ),
+  );
 
   const fileInput = document.querySelector("input[type='file']");
   await user.upload(fileInput, new File(["report"], "report.txt", { type: "text/plain" }));
@@ -48,7 +60,10 @@ test("chat composer waits for an attachment upload and sends the uploaded refere
   expect(uploadFileMock).toHaveBeenCalledWith(
     "http://127.0.0.1/api/uploads",
     expect.objectContaining({ name: "report.txt" }),
-    expect.objectContaining({ onProgress: expect.any(Function) }),
+    expect.objectContaining({
+      headers: { "X-Senera-Csrf": "csrf-token" },
+      onProgress: expect.any(Function),
+    }),
   );
   expect(onSend).toHaveBeenCalledWith("Analyze this report", [attachment], undefined);
   expect(screen.queryByText("report.txt")).not.toBeInTheDocument();
@@ -74,6 +89,57 @@ test("chat composer preserves failed attachments for removal and reports the upl
   await user.click(screen.getByRole("button", { name: "移除附件" }));
   expect(screen.queryByText("broken.txt")).not.toBeInTheDocument();
 });
+
+test("chat composer prevents disabled and running file drops without uploading", () => {
+  renderWithFrontendProviders(
+    React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(ChatComposer, createComposerProps({ disabled: true })),
+      React.createElement(ChatComposer, createComposerProps({ running: true })),
+    ),
+  );
+  const surfaces = document.querySelectorAll("[data-chat-composer]");
+  expect(dispatchFileDrop(surfaces[0])).toBe(false);
+  expect(dispatchFileDrop(surfaces[1])).toBe(false);
+  expect(uploadFileMock).not.toHaveBeenCalled();
+});
+
+test("chat composer keeps uploaded attachments when sending is rejected", async () => {
+  const attachment = {
+    uploadUri: "senera://upload/retry",
+    name: "retry.txt",
+    mime: "text/plain",
+    size: 5,
+    status: "uploaded",
+  };
+  uploadFileMock.mockResolvedValue(attachment);
+  const user = userEvent.setup();
+  renderWithFrontendProviders(React.createElement(ChatComposer, createComposerProps({ onSend: vi.fn(() => false) })));
+
+  await user.upload(
+    document.querySelector("input[type='file']"),
+    new File(["retry"], "retry.txt", { type: "text/plain" }),
+  );
+  expect(await screen.findByText("retry.txt")).toBeVisible();
+  await user.type(screen.getByRole("textbox"), "Try again");
+  await user.click(screen.getByRole("button", { name: "send" }));
+
+  expect(screen.getByRole("textbox")).toHaveValue("Try again");
+  expect(screen.getByText("retry.txt")).toBeVisible();
+});
+
+function dispatchFileDrop(target) {
+  const event = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: {
+      types: ["Files"],
+      files: [new File(["drop"], "drop.txt", { type: "text/plain" })],
+      dropEffect: "move",
+    },
+  });
+  return target.dispatchEvent(event);
+}
 
 function createComposerProps(overrides = {}) {
   return {

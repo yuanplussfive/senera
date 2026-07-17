@@ -8,9 +8,9 @@ export interface AppSessionActions {
   onCloseSession: (id: string) => void;
   onCloseSessions: (ids: string[]) => void;
   onRefreshSessions: () => void;
-  onRenameSession: (id: string, title: string) => void;
+  onRenameSession: (id: string, title: string) => boolean;
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
-  onLogout: () => Promise<void>;
+  onLogout?: () => Promise<void>;
   onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
 }
 
