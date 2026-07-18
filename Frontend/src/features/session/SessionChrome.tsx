@@ -52,6 +52,7 @@ export function SessionHeader({
 
         <IconButton
           label={frontendMessage("session.new")}
+          tone="muted"
           tooltip={frontendMessage("session.new")}
           tooltipSide="right"
           tooltipShortcut="⌘N"
@@ -62,6 +63,7 @@ export function SessionHeader({
         </IconButton>
         <IconButton
           label={frontendMessage("session.headerExpand")}
+          tone="muted"
           tooltip={frontendMessage("session.headerExpand")}
           tooltipSide="right"
           tooltipShortcut="⌘B"
@@ -97,6 +99,7 @@ export function SessionHeader({
 
       <IconButton
         label={frontendMessage("session.new")}
+        tone="muted"
         tooltip={frontendMessage("session.new")}
         tooltipSide="bottom"
         tooltipShortcut="⌘N"
@@ -107,6 +110,7 @@ export function SessionHeader({
       </IconButton>
       <IconButton
         label={frontendMessage("session.headerCollapse")}
+        tone="muted"
         tooltip={frontendMessage("session.headerCollapse")}
         tooltipSide="bottom"
         tooltipShortcut="⌘B"

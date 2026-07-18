@@ -11,6 +11,7 @@ import { SessionPanelBody } from "./SessionPanelBody";
 import type { ConfirmationIntent, SessionMenuSection } from "./types";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { SettingsSectionId } from "../settings/types";
+import type { SandboxStatusSnapshotData } from "../../api/eventTypes";
 
 interface Props {
   onNewSession: () => void;
@@ -22,6 +23,7 @@ interface Props {
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   onLogout?: () => Promise<void>;
   socketStatus: string;
+  sandboxStatus?: SandboxStatusSnapshotData | null;
   onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
   presentation?: "auto" | "panel";
   onSessionSelected?: () => void;
@@ -43,6 +45,7 @@ export function SessionList({
   onUpdateUserProfile,
   onLogout,
   socketStatus,
+  sandboxStatus,
   onOpenSettings,
   presentation = "auto",
   onSessionSelected,
@@ -220,6 +223,7 @@ export function SessionList({
         collapsed={compactSidebar}
         profile={userProfile}
         socketStatus={socketStatus}
+        sandboxStatus={sandboxStatus}
         onOpenSettings={onOpenSettings}
         onUpdateProfile={onUpdateUserProfile}
         onLogout={onLogout}

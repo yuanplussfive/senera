@@ -549,24 +549,39 @@ if (typeof window !== "undefined") {
     const nextSelectedModelProviderId = preferences.selectedModelProviderId ?? state.selectedModelProviderId;
     const nextSelectedModelProviderIdsBySession =
       preferences.selectedModelProviderIdsBySession ?? state.selectedModelProviderIdsBySession;
+    const defaultSidebarChanged = nextDefaultSidebarCollapsed !== state.defaultSidebarCollapsed;
+    const defaultRightPanelChanged = nextDefaultRightPanelCollapsed !== state.defaultRightPanelCollapsed;
+    const motionLevelChanged = nextMotionLevel !== state.motionLevel;
+    const selectedModelProviderChanged = nextSelectedModelProviderId !== state.selectedModelProviderId;
+    const selectedModelsBySessionChanged = !areStringRecordsEqual(
+      nextSelectedModelProviderIdsBySession,
+      state.selectedModelProviderIdsBySession,
+    );
     if (
-      nextDefaultSidebarCollapsed === state.defaultSidebarCollapsed &&
-      nextDefaultRightPanelCollapsed === state.defaultRightPanelCollapsed &&
-      nextMotionLevel === state.motionLevel &&
-      nextSelectedModelProviderId === state.selectedModelProviderId &&
-      nextSelectedModelProviderIdsBySession === state.selectedModelProviderIdsBySession
+      !defaultSidebarChanged &&
+      !defaultRightPanelChanged &&
+      !motionLevelChanged &&
+      !selectedModelProviderChanged &&
+      !selectedModelsBySessionChanged
     ) {
       return;
     }
     useStore.setState({
       defaultSidebarCollapsed: nextDefaultSidebarCollapsed,
       defaultRightPanelCollapsed: nextDefaultRightPanelCollapsed,
-      sidebarCollapsed: nextDefaultSidebarCollapsed,
-      rightPanelCollapsed: nextDefaultRightPanelCollapsed,
+      ...(defaultSidebarChanged ? { sidebarCollapsed: nextDefaultSidebarCollapsed } : {}),
+      ...(defaultRightPanelChanged ? { rightPanelCollapsed: nextDefaultRightPanelCollapsed } : {}),
       motionLevel: nextMotionLevel,
       selectedModelProviderId: nextSelectedModelProviderId,
       selectedModelProviderIdsBySession: nextSelectedModelProviderIdsBySession,
     });
   });
 }
+
+function areStringRecordsEqual(left: Record<string, string>, right: Record<string, string>): boolean {
+  const leftEntries = Object.entries(left);
+  if (leftEntries.length !== Object.keys(right).length) return false;
+  return leftEntries.every(([key, value]) => right[key] === value);
+}
+
 export { clearPersistedStore };

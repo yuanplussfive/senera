@@ -173,9 +173,7 @@ export function SettingsWorkbench({
               className="flex h-[58px] shrink-0 items-center gap-2 border-b border-ink-200/70 px-4"
               data-window-drag-region
             >
-              <span className="grid h-8 w-8 place-items-center rounded-lg border border-ink-200 bg-paper-100 text-ink-500">
-                <MonitorCog className="h-4 w-4" />
-              </span>
+              <MonitorCog className="h-5 w-5 shrink-0 text-ink-500" />
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-[14px] font-semibold text-ink-900">设置</h1>
                 <p className="truncate text-[11.5px] text-ink-450">Senera 工作台</p>
@@ -262,7 +260,7 @@ function SettingsNavigation({
   return (
     <>
       <div className="shrink-0 border-b border-ink-200/70 px-3 py-2.5">
-        <label className="flex h-8 items-center gap-2 rounded-md border border-line bg-surface-subtle px-2.5 text-content-muted shadow-sm transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
+        <label className="flex h-8 items-center gap-2 rounded-md border border-line bg-paper-50 px-2.5 text-content-muted transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
           <Search className="h-3.5 w-3.5 shrink-0" />
           <input
             value={search}
@@ -283,8 +281,8 @@ function SettingsNavigation({
           ) : null}
         </label>
       </div>
-      <ScrollArea className="min-h-0 flex-1" viewportClassName="px-2.5 py-2.5">
-        <nav className="space-y-4" aria-label="设置分区">
+      <ScrollArea className="min-h-0 flex-1" viewportClassName="px-2 py-2">
+        <nav className="space-y-3" aria-label="设置分区">
           {groupedResults.map(({ group, results }) => (
             <div key={group.id}>
               <div className="px-2 pb-1 text-[11px] font-medium text-ink-350">{group.label}</div>
@@ -363,9 +361,7 @@ function SettingsSectionHeader({ section }: { section: SettingsSectionDefinition
       data-window-controls-inset
     >
       <div className="flex min-w-0 items-center gap-3">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-ink-200 bg-paper-100 text-ink-600">
-          <Icon className="h-4.5 w-4.5" />
-        </span>
+        <Icon className="h-5 w-5 shrink-0 text-ink-500" />
         <div className="min-w-0">
           <h2 className="truncate text-[17px] font-semibold leading-6 text-ink-950">{section.label}</h2>
           <p className="mt-0.5 max-w-[760px] text-[12px] leading-5 text-ink-500">{section.description}</p>
@@ -409,7 +405,7 @@ function SettingsContent({
   }
 
   return (
-    <ScrollArea className="min-h-0 flex-1" viewportClassName="p-3 sm:p-4 lg:p-5">
+    <ScrollArea className="min-h-0 flex-1" viewportClassName="p-3 sm:p-4">
       <div className={sectionWidthClassName(activeSection.id)}>{content}</div>
     </ScrollArea>
   );
@@ -551,7 +547,7 @@ function DraftBackedSection({
           </Button>
         </div>
       </div>
-      {children}
+      <div className="pt-2">{children}</div>
     </SettingsWorkspaceFrame>
   );
 }
@@ -647,14 +643,14 @@ function SettingsPanel({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <section className="rounded-lg border border-ink-200/70 bg-paper-50 shadow-sm">
-      <div className="border-b border-ink-200/70 px-4 py-3">
+    <section className="border-b border-ink-200/70 pb-4 last:border-b-0">
+      <div className="pb-2">
         <MetaLabel as="h3" size="sm">
           {title}
         </MetaLabel>
         <p className="mt-1 text-[12px] leading-5 text-ink-500">{description}</p>
       </div>
-      <div className="p-4">{children}</div>
+      {children}
     </section>
   );
 }
@@ -763,9 +759,9 @@ function AboutSettings({ environment }: { environment: SettingsEnvironment }): J
         </dl>
       </SettingsPanel>
       {import.meta.env.DEV ? (
-        <details className="rounded-lg border border-ink-200/70 bg-paper-50 shadow-sm">
-          <summary className="cursor-pointer px-4 py-3 text-[12.5px] font-medium text-ink-700">开发诊断</summary>
-          <div className="space-y-2 border-t border-ink-200/70 p-4">
+        <details className="border-b border-ink-200/70 pb-3">
+          <summary className="cursor-pointer text-[12.5px] font-medium text-ink-700">开发诊断</summary>
+          <div className="mt-3 space-y-2">
             <CommandRow command="npm run dev.frontend" label="启动前端开发服务" />
             <CommandRow command="npm run desktop.live" label="启动桌面端实时验证" />
             <CommandRow command="npm run desktop.verify" label="验证桌面构建" />

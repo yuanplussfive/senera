@@ -13,7 +13,7 @@ import type { RunSummary } from "./runSummary";
 
 export function RunSummaryStrip({ run, summary }: { run: RunRecord; summary: RunSummary }): JSX.Element {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] tabular-nums text-ink-500">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] tabular-nums text-content-muted">
       <span>
         {frontendMessage("workflow.summary.nodes")} {summary.completed}/{summary.total}
       </span>
@@ -47,11 +47,11 @@ export function RunSelector({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="group flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left transition-colors hover:bg-ink-900/[0.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+          className="group flex w-full items-start gap-2 rounded-lg px-1 py-1.5 text-left transition-colors hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
         >
           <RunStatusIcon status={current.status} className="mt-0.5" />
           <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-ink-450">
+            <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-content-muted">
               <span>
                 {runs.length === 1
                   ? frontendMessage("workflow.run.only")
@@ -61,7 +61,7 @@ export function RunSelector({
               </span>
               <span>· {formatDuration(current.startedAt, current.endedAt)}</span>
             </div>
-            <div className="mt-0.5 line-clamp-2 text-[12.5px] leading-5 text-ink-800">
+            <div className="mt-1 line-clamp-2 text-[12.5px] leading-5 text-content-secondary">
               {current.input || frontendMessage("workflow.run.emptyInput")}
             </div>
           </div>
@@ -97,14 +97,34 @@ export function RunSelector({
 }
 
 function RunStatusIcon({ status, className }: { status: RunRecord["status"]; className?: string }): JSX.Element {
+  const baseClassName = "grid h-[18px] w-[18px] shrink-0 place-items-center rounded-md";
   if (status === "running") {
-    return <Loader2 className={cn("h-3.5 w-3.5 shrink-0 animate-spin text-umber-600", className)} />;
+    return (
+      <span className={cn(baseClassName, "bg-umber-50 text-umber-600", className)} data-workflow-run-status={status}>
+        <Loader2 className="h-3 w-3 animate-spin" />
+      </span>
+    );
   }
   if (status === "failed") {
-    return <XIcon className={cn("h-3.5 w-3.5 shrink-0 text-brick-600", className)} />;
+    return (
+      <span className={cn(baseClassName, "bg-brick-50 text-brick-600", className)} data-workflow-run-status={status}>
+        <XIcon className="h-3 w-3" />
+      </span>
+    );
   }
   if (status === "cancelled") {
-    return <XIcon className={cn("h-3.5 w-3.5 shrink-0 text-ink-400", className)} />;
+    return (
+      <span
+        className={cn(baseClassName, "bg-surface-subtle text-content-muted", className)}
+        data-workflow-run-status={status}
+      >
+        <XIcon className="h-3 w-3" />
+      </span>
+    );
   }
-  return <Check className={cn("h-3.5 w-3.5 shrink-0 text-ink-500", className)} />;
+  return (
+    <span className={cn(baseClassName, "bg-moss-50 text-moss-600", className)} data-workflow-run-status={status}>
+      <Check className="h-3 w-3" />
+    </span>
+  );
 }

@@ -9,7 +9,7 @@ export function SettingsWorkspaceFrame({
   className?: string;
 }): JSX.Element {
   return (
-    <section className={cn("overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50 shadow-sm", className)}>
+    <section className={cn("overflow-hidden rounded-md border border-ink-200/70 bg-paper-50", className)}>
       {children}
     </section>
   );

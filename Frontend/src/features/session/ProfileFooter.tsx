@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Info, LoaderCircle, Settings2, User, UserRoundPen, Wifi, WifiOff } from "lucide-react";
+import {
+  Camera,
+  Info,
+  LoaderCircle,
+  Settings,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  User,
+  UserRoundPen,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { toast } from "sonner";
+import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
 import type { UserProfile } from "../../store/sessionStore";
 import type { SettingsSectionId } from "../settings/types";
 import { cn } from "../../lib/util";
@@ -31,6 +44,7 @@ export function UserFooter({
   collapsed = false,
   profile,
   socketStatus,
+  sandboxStatus,
   onUpdateProfile,
   onLogout,
   onOpenSettings,
@@ -38,6 +52,7 @@ export function UserFooter({
   collapsed?: boolean;
   profile: UserProfile;
   socketStatus: string;
+  sandboxStatus?: SandboxStatusSnapshotData | null;
   onUpdateProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
   onLogout?: () => Promise<void>;
   onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
@@ -79,7 +94,7 @@ export function UserFooter({
             {collapsed ? null : (
               <>
                 <div className="min-w-0 flex-1 truncate text-[13px] text-content-primary">{profile.name}</div>
-                <Settings2 className="h-3.5 w-3.5 shrink-0 text-content-muted" />
+                <Settings className="h-3.5 w-3.5 shrink-0 text-content-muted" />
               </>
             )}
           </button>
@@ -95,7 +110,7 @@ export function UserFooter({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            icon={<Settings2 className="h-3.5 w-3.5" />}
+            icon={<Settings className="h-3.5 w-3.5" />}
             onSelect={() => onOpenSettings(undefined, settingsTriggerRef.current)}
           >
             {frontendMessage("profile.menu.settings")}
@@ -114,6 +129,7 @@ export function UserFooter({
           >
             {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}
           </DropdownMenuMeta>
+          <SandboxStatusMeta status={sandboxStatus} />
         </DropdownMenuContent>
       </DropdownMenu>
       <ProfileDialog
@@ -138,6 +154,58 @@ export function UserFooter({
         }
       />
     </>
+  );
+}
+
+function SandboxStatusMeta({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
+  const state = status?.state ?? "unknown";
+  const detail = status?.message ?? frontendMessage("sandbox.status.unsynced");
+  const suffix =
+    status?.effectiveMode === "fallback"
+      ? frontendMessage("sandbox.status.fallbackSuffix")
+      : frontendMessage("sandbox.status.sandboxSuffix");
+  const table = {
+    unknown: {
+      label: frontendMessage("sandbox.status.unknown"),
+      Icon: Shield,
+      className: "text-content-muted",
+    },
+    preparing: {
+      label: frontendMessage("sandbox.status.preparing"),
+      Icon: Shield,
+      className: "text-umber-600",
+    },
+    ready: {
+      label: frontendMessage("sandbox.status.ready"),
+      Icon: ShieldCheck,
+      className: "text-moss-600",
+    },
+    fallback: {
+      label: frontendMessage("sandbox.status.fallback"),
+      Icon: ShieldAlert,
+      className: "text-brick-600",
+    },
+  } satisfies Record<
+    SandboxRuntimeState,
+    {
+      label: string;
+      Icon: typeof Shield;
+      className: string;
+    }
+  >;
+  const presentation = table[state];
+  const StatusIcon = presentation.Icon;
+
+  return (
+    <DropdownMenuMeta
+      aria-label={`${frontendMessage("sandbox.status.label")}: ${presentation.label}`}
+      title={`${detail} ${suffix}`}
+      icon={<StatusIcon className={`h-3.5 w-3.5 ${presentation.className}`} aria-hidden="true" />}
+      value={presentation.label}
+      data-sandbox-status={state}
+    >
+      {frontendMessage("sandbox.status.label")}
+    </DropdownMenuMeta>
   );
 }
 

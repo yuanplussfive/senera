@@ -34,12 +34,12 @@ const expectedAccent500 = {
 };
 
 describe("themeModel", () => {
-  it("normalizes current and legacy stored appearance preferences", () => {
+  it("normalizes stored appearance preferences and rejects unsupported values", () => {
     expect(
       normalizeAppearancePreference({
         themeMode: "dark",
-        colorScheme: "nordic",
-        accentColor: "sky",
+        colorScheme: "classic",
+        accentColor: "rose",
         fontFamily: "system",
         fontScale: "large",
       }),
@@ -50,11 +50,9 @@ describe("themeModel", () => {
       fontFamily: "system",
       fontScale: "large",
     });
-    expect(normalizeAppearancePreference({ colorScheme: "monochrome" }).colorScheme).toBe("mono");
-    expect(normalizeAppearancePreference({ colorScheme: "sepia" }).colorScheme).toBe("honey");
     expect(
       normalizeAppearancePreference({
-        themeMode: "sepia",
+        themeMode: "unsupported",
         colorScheme: "unknown",
         accentColor: "hotpink",
         fontFamily: "comic",
@@ -63,11 +61,24 @@ describe("themeModel", () => {
     ).toEqual(defaultAppearancePreference);
   });
 
-  it("uses cold gray and sky as the default appearance", () => {
+  it("pairs every stored color scheme with its designated accent", () => {
+    expect(normalizeAppearancePreference({ colorScheme: "lavender", accentColor: "terra" })).toMatchObject({
+      colorScheme: "lavender",
+      accentColor: "violet",
+    });
+    expect(
+      createAppearanceSnapshot({
+        preference: { ...defaultAppearancePreference, colorScheme: "forest", accentColor: "sky" },
+        systemTheme: "light",
+      }).preference,
+    ).toMatchObject({ colorScheme: "forest", accentColor: "moss" });
+  });
+
+  it("uses the Senera paper palette and terra accent as the default appearance", () => {
     expect(defaultAppearancePreference).toEqual({
       themeMode: "system",
-      colorScheme: "classic",
-      accentColor: "sky",
+      colorScheme: "senera",
+      accentColor: "terra",
       fontFamily: "brand",
       fontScale: "standard",
     });
@@ -129,6 +140,8 @@ describe("themeModel", () => {
           "--theme-code-preview-bg": expect.any(String),
           "--theme-canvas-grid": expect.any(String),
         });
+        expect(tokens.cssVariables).not.toHaveProperty("--theme-workflow-canvas-bg");
+        expect(tokens.cssVariables).not.toHaveProperty("--theme-workflow-grid");
       }
     }
   });
@@ -189,13 +202,13 @@ describe("themeModel", () => {
 
   it("reads resolved appearance from stored JSON and system theme", () => {
     const storage = new Map([
-      ["senera.appearancePreference", JSON.stringify({ themeMode: "dark", colorScheme: "sepia" })],
+      ["senera.appearancePreference", JSON.stringify({ themeMode: "dark", colorScheme: "forest" })],
     ]);
     const snapshot = readResolvedAppearance({
       readStorageValue: (key) => storage.get(key) ?? null,
       readSystemTheme: () => "light",
     });
-    expect(snapshot.preference).toMatchObject({ themeMode: "dark", colorScheme: "honey" });
+    expect(snapshot.preference).toMatchObject({ themeMode: "dark", colorScheme: "forest" });
     expect(snapshot.resolvedTheme).toBe("dark");
   });
 });

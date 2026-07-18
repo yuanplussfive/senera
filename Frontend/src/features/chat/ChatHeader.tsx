@@ -1,28 +1,25 @@
-import { ListTree, PanelLeftOpen, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
-import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
+import { ListTree, PanelLeftOpen } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { cn } from "../../lib/util";
-import { IconButton, Tooltip } from "../../shared/ui";
+import { IconButton } from "../../shared/ui";
 import { ToolDock } from "./ToolDock";
 
 export function ChatHeader({
   title,
   runStatus,
-  sandboxStatus,
   onOpenSessionPanel,
   onOpenWorkflowPanel,
 }: {
   title: string;
   runStatus?: "running" | "completed" | "failed" | "cancelled";
-  sandboxStatus?: SandboxStatusSnapshotData | null;
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
 }): JSX.Element {
   return (
     <div
-      className="relative z-10 flex h-[52px] shrink-0 items-center gap-2 border-b border-line-subtle bg-surface-canvas px-3 sm:px-5"
+      className="relative z-10 flex h-[52px] shrink-0 items-center gap-2 border-b border-line-subtle bg-transparent px-3 sm:px-5"
       data-ui-chrome
       data-window-drag-region
+      data-window-controls-inset
     >
       {onOpenSessionPanel ? (
         <IconButton
@@ -45,7 +42,6 @@ export function ChatHeader({
           {frontendMessage("workflow.run.status.cancelled")}
         </span>
       ) : null}
-      <SandboxStatusBadge status={sandboxStatus} />
       {onOpenWorkflowPanel ? (
         <ToolDock
           items={[
@@ -60,80 +56,4 @@ export function ChatHeader({
       ) : null}
     </div>
   );
-}
-
-function SandboxStatusBadge({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
-  const presentation = readSandboxStatusPresentation(status);
-  const Icon = presentation.Icon;
-
-  return (
-    <Tooltip
-      content={<span className="max-w-[260px] whitespace-normal leading-5">{presentation.tooltip}</span>}
-      side="bottom"
-      align="end"
-    >
-      <button
-        type="button"
-        className={cn(
-          "ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-          presentation.className,
-        )}
-        aria-label={presentation.label}
-      >
-        <Icon className="h-3.5 w-3.5" />
-      </button>
-    </Tooltip>
-  );
-}
-
-function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null): {
-  label: string;
-  tooltip: string;
-  Icon: typeof Shield;
-  className: string;
-} {
-  const state = status?.state ?? "unknown";
-  const detail = status?.message ?? frontendMessage("sandbox.status.unsynced");
-  const fallbackSuffix =
-    status?.effectiveMode === "fallback"
-      ? frontendMessage("sandbox.status.fallbackSuffix")
-      : frontendMessage("sandbox.status.sandboxSuffix");
-  const commonTooltip = `${detail} ${fallbackSuffix}`;
-
-  const table = {
-    unknown: {
-      label: frontendMessage("sandbox.status.unknown"),
-      tooltip: commonTooltip,
-      Icon: Shield,
-      className: "text-content-secondary hover:bg-surface-hover",
-    },
-    preparing: {
-      label: frontendMessage("sandbox.status.preparing"),
-      tooltip: commonTooltip,
-      Icon: Shield,
-      className: "text-umber-600 hover:bg-surface-hover",
-    },
-    ready: {
-      label: frontendMessage("sandbox.status.ready"),
-      tooltip: commonTooltip,
-      Icon: ShieldCheck,
-      className: "text-moss-600 hover:bg-surface-hover",
-    },
-    fallback: {
-      label: frontendMessage("sandbox.status.fallback"),
-      tooltip: commonTooltip,
-      Icon: ShieldAlert,
-      className: "text-brick-600 hover:bg-surface-hover",
-    },
-  } satisfies Record<
-    SandboxRuntimeState,
-    {
-      label: string;
-      tooltip: string;
-      Icon: typeof Shield;
-      className: string;
-    }
-  >;
-
-  return table[state];
 }

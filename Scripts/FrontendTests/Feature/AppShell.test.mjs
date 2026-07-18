@@ -11,6 +11,8 @@ import {
   readWorkflowPanelWidth,
 } from "../../../Frontend/src/layout/AppShell.tsx";
 import { useStore } from "../../../Frontend/src/store/sessionStore.ts";
+const { ThinkingTimeline } = await import("../../../Frontend/src/features/workflow/ThinkingTimeline.tsx");
+import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 
 beforeEach(() => {
   installMemoryLocalStorage();
@@ -49,7 +51,7 @@ test("app shell derives integrated workspace surfaces across responsive modes", 
     workflowPanelLayout: "overlay",
     showSessionDrawer: false,
     showWorkflowDrawer: false,
-    showChatWorkflowPanelAction: true,
+    showChatWorkflowPanelAction: false,
   });
   expect(readAppShellRenderPlan(inlineDesktop)).toMatchObject({
     workflowPanelLayout: "inline",
@@ -58,9 +60,10 @@ test("app shell derives integrated workspace surfaces across responsive modes", 
     showSessionPersistentPanel: true,
     showWorkflowPersistentPanel: true,
     workflowPanelLayout: "inline",
-    showChatWorkflowPanelAction: true,
+    showChatWorkflowPanelAction: false,
   });
-  expect(readWorkflowPanelWidth(desktop)).toBeLessThan(readWorkflowPanelWidth(wide));
+  expect(readWorkflowPanelWidth(desktop)).toBe(302);
+  expect(readWorkflowPanelWidth(wide)).toBe(302);
   expect(readAppShellResponsiveEntryPlan(mobile)).toEqual({
     sidebarCollapsed: null,
     rightPanelCollapsed: null,
@@ -88,7 +91,13 @@ test("app shell applies automatic panel defaults only when entering a responsive
     onWorkflowDrawerOpenChange: vi.fn(),
   };
   const inlineDesktop = { ...responsiveMode("desktop"), hasInlineWorkflowPanel: true };
-  const { rerender } = render(React.createElement(AppShell, { ...props, responsiveMode: inlineDesktop }));
+  const shell = (responsiveMode) =>
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(AppShell, { ...props, responsiveMode }),
+    );
+  const { rerender } = render(shell(inlineDesktop));
 
   await waitFor(() => {
     expect(useStore.getState().sidebarCollapsed).toBe(false);
@@ -97,10 +106,10 @@ test("app shell applies automatic panel defaults only when entering a responsive
 
   act(() => useStore.getState().setRightPanelCollapsed(true));
   await waitFor(() => expect(useStore.getState().rightPanelCollapsed).toBe(true));
-  rerender(React.createElement(AppShell, { ...props, responsiveMode: inlineDesktop }));
+  rerender(shell(inlineDesktop));
   expect(useStore.getState().rightPanelCollapsed).toBe(true);
 
-  rerender(React.createElement(AppShell, { ...props, responsiveMode: responsiveMode("desktop") }));
+  rerender(shell(responsiveMode("desktop")));
   await waitFor(() => {
     expect(useStore.getState().sidebarCollapsed).toBe(false);
     expect(useStore.getState().rightPanelCollapsed).toBe(true);
@@ -108,7 +117,7 @@ test("app shell applies automatic panel defaults only when entering a responsive
 
   act(() => useStore.getState().setRightPanelCollapsed(false));
   await waitFor(() => expect(useStore.getState().rightPanelCollapsed).toBe(false));
-  rerender(React.createElement(AppShell, { ...props, responsiveMode: responsiveMode("desktop") }));
+  rerender(shell(responsiveMode("desktop")));
   expect(useStore.getState().rightPanelCollapsed).toBe(false);
 });
 
@@ -133,7 +142,19 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
   expect(screen.getByText("Session panel")).toBeVisible();
   expect(screen.getByText("Chat panel")).toBeVisible();
   expect(screen.getByText("Workflow panel")).toBeVisible();
-  expect(document.querySelector("[data-workflow-dock]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock]")).toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-rail]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workspace-shell]")).toHaveClass(
+    "bg-surface-canvas",
+    "[background-image:var(--theme-bg-image)]",
+  );
+  expect(document.querySelector("[data-workflow-panel-surface]")).toHaveClass(
+    "bg-surface-canvas",
+    "[background-image:var(--theme-bg-image)]",
+  );
+  expect(document.querySelector("[data-workflow-panel-surface]")).not.toHaveClass("bg-surface-panel");
+  expect(document.querySelector("[data-workflow-dock-gutter]")).toBeInTheDocument();
   expect(screen.queryByText("Session drawer")).not.toBeInTheDocument();
   expect(screen.queryByText("Workflow drawer")).not.toBeInTheDocument();
   await waitFor(() => {
@@ -142,13 +163,13 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
   });
 });
 
-test("desktop overlay owns the full-height right tool surface", () => {
+test("desktop overlay opens from a floating capsule and switches horizontal tabs", () => {
   renderWithFrontendProviders(
     React.createElement(AppShell, {
       sessionPanel: React.createElement("div", null, "Session panel"),
       sessionDrawer: React.createElement("div", null, "Session drawer"),
       chatPanel: React.createElement("div", null, "Chat panel"),
-      workflowPanel: React.createElement("div", null, "Workflow overlay"),
+      workflowPanel: React.createElement(ThinkingTimeline, { presentation: "dock" }),
       workflowDrawer: React.createElement("div", null, "Workflow drawer"),
       sessionDrawerOpen: false,
       onSessionDrawerOpenChange: vi.fn(),
@@ -158,13 +179,76 @@ test("desktop overlay owns the full-height right tool surface", () => {
     }),
   );
 
-  const surface = document.querySelector("[data-workflow-panel-surface]");
-  expect(surface).toHaveClass("top-0", "right-0", "z-30", "[box-shadow:var(--theme-overlay-shadow)]");
-  expect(surface).not.toHaveClass("top-[52px]");
-  expect(screen.getByText("Workflow overlay").parentElement).toHaveAttribute("inert");
+  const dock = document.querySelector("[data-workflow-dock]");
+  const toggle = document.querySelector("[data-workflow-dock-toggle]");
+  expect(dock).toHaveAttribute("data-workflow-dock-layout", "overlay");
+  expect(dock).toHaveClass("z-50");
+  expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
+  expect(document.querySelectorAll("[data-workflow-dock-tool]")).toHaveLength(2);
+  expect(document.querySelector("[data-workflow-dock-capsule]")).toBeInTheDocument();
+  expect(dock).toHaveStyle({ right: "12px" });
+  expect(document.querySelector("[data-workflow-dock-gutter]")).toBeInTheDocument();
+  expect(dock.querySelector("[data-window-drag-region]")).not.toBeInTheDocument();
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(toggle).toHaveClass("h-8", "w-8", "rounded-full", "text-content-muted");
+  expect(toggle.querySelector("svg")).toHaveClass("h-4", "w-4");
+  expect(toggle).not.toHaveAttribute("aria-pressed");
+  expect(toggle).not.toHaveClass("bg-accent-surface", "text-accent-content");
 
-  act(() => useStore.getState().setRightPanelCollapsed(false));
-  expect(screen.getByText("Workflow overlay").parentElement).not.toHaveAttribute("inert");
+  act(() => toggle.click());
+  const surface = document.querySelector("[data-workflow-panel-surface]");
+  expect(surface).toHaveClass("absolute", "inset-y-0", "[box-shadow:var(--theme-overlay-shadow)]");
+  expect(surface).toHaveClass("bg-surface-panel");
+  const executionTab = screen.getByRole("tab", { name: "执行" });
+  expect(document.querySelector("[data-workflow-dock-tabs]")).toHaveClass("rounded-full", "bg-surface-subtle");
+  expect(executionTab).toHaveClass("flex-1", "bg-surface-raised", "text-content-primary");
+  const collapseButton = screen.getByRole("button", { name: /收起/ });
+  const focusButton = screen.getByRole("button", { name: "放大查看" });
+  expect(collapseButton).toHaveClass("text-content-muted");
+  expect(collapseButton).not.toHaveClass("border", "bg-surface-raised", "shadow-sm");
+  expect(focusButton).toHaveClass("text-content-muted");
+  expect(document.querySelector("[data-workflow-window-controls-cover]")).toContainElement(collapseButton);
+  expect(document.querySelector("[data-workflow-dock-tabs]")).not.toContainElement(collapseButton);
+  expect(document.querySelector("[data-workflow-execution-content]")).toContainElement(focusButton);
+  expect(document.querySelector("[data-workflow-dock-tabs]")).not.toContainElement(focusButton);
+  expect(dock).toHaveStyle({ right: "0px" });
+  expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
+
+  act(() => collapseButton.click());
+  expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
+  expect(dock.querySelector("[data-window-drag-region]")).not.toBeInTheDocument();
+  const executionToggleAfterCollapse = document.querySelector("[data-workflow-dock-toggle]");
+  expect(executionToggleAfterCollapse).not.toHaveAttribute("aria-pressed");
+  act(() => executionToggleAfterCollapse.click());
+  expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "执行" })).toHaveAttribute("aria-selected", "true");
+
+  const terminalTabAfterReopen = screen.getByRole("tab", { name: "终端" });
+  const collapseButtonAfterReopen = screen.getByRole("button", { name: /收起/ });
+  act(() => terminalTabAfterReopen.click());
+  const selectedTerminalTab = screen.getByRole("tab", { name: "终端" });
+  expect(selectedTerminalTab).toHaveAttribute("aria-selected", "true");
+  expect(selectedTerminalTab).toHaveClass("flex-1", "bg-surface-raised", "text-content-primary");
+  expect(document.querySelector("[data-workflow-dock-placeholder='terminal']")).toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-tabs-list]")).toHaveClass("rounded-full", "bg-surface-subtle");
+  expect(document.querySelector("[data-workflow-dock-empty-state]")).toHaveTextContent("终端功能待定");
+  expect(screen.queryByRole("button", { name: "放大查看" })).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-window-controls-cover]")).toContainElement(collapseButtonAfterReopen);
+
+  act(() => selectedTerminalTab.click());
+  expect(screen.getByRole("tab", { name: "终端" })).toHaveAttribute("aria-selected", "true");
+  expect(document.querySelector("[data-workflow-dock-placeholder='terminal']")).toBeInTheDocument();
+
+  act(() => collapseButtonAfterReopen.click());
+  expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
+  expect(dock.querySelector("[data-window-drag-region]")).not.toBeInTheDocument();
+
+  const terminalToggle = document.querySelector("[data-workflow-dock-tool=terminal]");
+  expect(terminalToggle).not.toHaveAttribute("aria-pressed");
+  act(() => terminalToggle.click());
+  expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "终端" })).toHaveAttribute("aria-selected", "true");
+  expect(document.querySelector("[data-workflow-panel-surface]")).toBeInTheDocument();
 });
 
 function responsiveMode(viewport) {

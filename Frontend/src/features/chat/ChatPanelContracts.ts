@@ -10,7 +10,6 @@ import type {
   ProviderModelsSnapshotData,
   PluginConfigItem,
   PluginConfigMutationState,
-  SandboxStatusSnapshotData,
   UploadAttachmentData,
 } from "../../api/eventTypes";
 import type { SocketStatus } from "../../api/useAgentSocket";
@@ -60,7 +59,6 @@ export interface ChatPresetConfig {
 
 export interface ChatRuntimeState {
   socketStatus: SocketStatus;
-  sandboxStatus: SandboxStatusSnapshotData | null;
   uploadUrl: string;
   uploadCsrfToken?: string;
 }

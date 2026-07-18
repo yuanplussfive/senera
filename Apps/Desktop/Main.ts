@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
 import { appendDesktopLog, prepareDesktopRuntime, type DesktopRuntimePaths } from "./DesktopRuntime.js";
 import {
@@ -12,10 +12,12 @@ import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
 import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
 import { isTrustedDesktopNavigation, resolveExternalHttpUrl } from "./DesktopNavigationPolicy.js";
 import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
+import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
 
 let serverHandle: SeneraServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
+let desktopTray: Tray | undefined;
 let forceSettingsWindowClose = false;
 let desktopQuitting = false;
 const settingsClosePolicy = new DesktopClosePolicy();
@@ -53,6 +55,7 @@ app
       `starting desktop runtime workspace=${runtimePaths.workspaceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
     );
     const paths = runtimePaths;
+    desktopTray = createDesktopTray(paths.windowIconPath);
     frontendSource = createDesktopFrontendSource({
       devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
       frontendIndexHtml: paths.frontendIndexHtml,
@@ -73,10 +76,7 @@ app
     void loadDesktopFrontend(mainWindow, frontendSource);
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        mainWindow = createMainWindow();
-        void loadDesktopFrontend(mainWindow, readFrontendSource());
-      }
+      showAllDesktopWindows();
     });
   })
   .catch((error) => {
@@ -87,12 +87,6 @@ app
     app.exit(1);
   });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
-
 app.on("before-quit", (event) => {
   if (!desktopQuitting && requestDirtySettingsConfirmation("quit")) {
     event.preventDefault();
@@ -100,6 +94,8 @@ app.on("before-quit", (event) => {
   }
   desktopQuitting = true;
   forceSettingsWindowClose = true;
+  desktopTray?.destroy();
+  desktopTray = undefined;
   serverHandle?.stop();
   serverHandle = undefined;
 });
@@ -140,7 +136,8 @@ function registerDesktopIpc(): void {
     return readWindowState(target);
   });
   ipcMain.handle("senera:window.close", (event) => {
-    resolveManagedWindow(event)?.close();
+    if (!resolveManagedWindow(event)) return;
+    hideAllDesktopWindows();
   });
   ipcMain.handle("senera:window.get-state", (event) => {
     const target = resolveManagedWindow(event);
@@ -151,6 +148,38 @@ function registerDesktopIpc(): void {
 function resolveSettingsSection(section: string | undefined): string {
   if (!settingsSectionIds.has(section ?? "")) return "model-service";
   return section as string;
+}
+
+function createDesktopTray(iconPath: string): Tray {
+  const tray = new Tray(iconPath);
+  tray.setToolTip("Senera");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "显示 Senera",
+        click: showAllDesktopWindows,
+      },
+      { type: "separator" },
+      {
+        label: "退出 Senera",
+        click: () => app.quit(),
+      },
+    ]),
+  );
+  tray.on("click", showAllDesktopWindows);
+  return tray;
+}
+
+function hideAllDesktopWindows(): void {
+  hideDesktopWindows([mainWindow, settingsWindow]);
+}
+
+function showAllDesktopWindows(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createMainWindow();
+    void loadDesktopFrontend(mainWindow, readFrontendSource());
+  }
+  showDesktopWindows([mainWindow, settingsWindow]);
 }
 
 function createMainWindow(): BrowserWindow {
@@ -178,8 +207,9 @@ function createMainWindow(): BrowserWindow {
   registerNavigationPolicy(window, readFrontendSource());
   registerWindowStateEvents(window);
   window.on("close", (event) => {
-    if (desktopQuitting || !requestDirtySettingsConfirmation("main")) return;
+    if (desktopQuitting) return;
     event.preventDefault();
+    hideAllDesktopWindows();
   });
   window.on("closed", () => {
     mainWindow = undefined;

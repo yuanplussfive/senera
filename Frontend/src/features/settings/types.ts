@@ -78,7 +78,7 @@ export const settingsSections = [
     id: "appearance",
     label: "外观",
     icon: Palette,
-    description: "管理主题模式、配色、强调色、字体和字号。",
+    description: "管理主题模式、配色、字体和字号。",
   },
   {
     id: "system",

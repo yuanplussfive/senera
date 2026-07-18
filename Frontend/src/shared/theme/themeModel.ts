@@ -1,4 +1,4 @@
-import { accentTokens, paletteTokens } from "./themeData";
+import { accentTokens, paletteTokens, recommendedAccentColors } from "./themeData";
 
 export type ThemeMode = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
@@ -15,6 +15,8 @@ export interface AppearancePreference {
   fontFamily: AppearanceFontFamily;
   fontScale: FontScale;
 }
+
+export type AppearancePreferenceUpdate = Partial<Omit<AppearancePreference, "accentColor">>;
 
 export interface AppearanceSnapshot {
   preference: AppearancePreference;
@@ -39,8 +41,8 @@ export const appearancePreferenceStorageKey = "senera.appearancePreference";
 
 export const defaultAppearancePreference = {
   themeMode: "system",
-  colorScheme: "classic",
-  accentColor: "sky",
+  colorScheme: "senera",
+  accentColor: "terra",
   fontFamily: "brand",
   fontScale: "standard",
 } as const satisfies AppearancePreference;
@@ -166,8 +168,6 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-chat-composer-bg": "rgb(var(--color-paper-100) / 0.80)",
     "--theme-chat-composer-focus-bg": "rgb(var(--color-paper-50))",
     "--theme-session-active-bg": "var(--accent-surface)",
-    "--theme-workflow-canvas-bg": "rgb(var(--color-paper-100))",
-    "--theme-workflow-grid": "rgb(var(--color-ink-900) / 0.045)",
     "--theme-overlay-shadow": "0 30px 72px -26px rgb(24 25 28 / 0.42), 0 10px 28px -16px rgb(24 25 28 / 0.24)",
     "--theme-dialog-backdrop": "rgb(24 25 28 / 0.52)",
     "--theme-sheet-backdrop": "rgb(24 25 28 / 0.44)",
@@ -184,8 +184,6 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-chat-composer-bg": "rgb(var(--color-paper-50) / 0.76)",
     "--theme-chat-composer-focus-bg": "rgb(var(--color-paper-50) / 0.92)",
     "--theme-session-active-bg": "var(--accent-surface)",
-    "--theme-workflow-canvas-bg": "rgb(var(--color-paper-100))",
-    "--theme-workflow-grid": "rgb(var(--color-ink-900) / 0.045)",
     "--theme-overlay-shadow": "0 30px 76px -22px rgb(0 0 0 / 0.82), 0 12px 32px -18px rgb(0 0 0 / 0.68)",
     "--theme-dialog-backdrop": "rgb(0 0 0 / 0.68)",
     "--theme-sheet-backdrop": "rgb(0 0 0 / 0.58)",
@@ -194,10 +192,13 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
 
 export function normalizeAppearancePreference(value: unknown): AppearancePreference {
   const source = value && typeof value === "object" ? (value as Partial<AppearancePreference>) : {};
+  const colorScheme = isColorScheme(source.colorScheme)
+    ? source.colorScheme
+    : defaultAppearancePreference.colorScheme;
   return {
     themeMode: isThemeMode(source.themeMode) ? source.themeMode : defaultAppearancePreference.themeMode,
-    colorScheme: normalizeColorScheme(source.colorScheme),
-    accentColor: isAccentColor(source.accentColor) ? source.accentColor : defaultAppearancePreference.accentColor,
+    colorScheme,
+    accentColor: recommendedAccentColors[colorScheme],
     fontFamily: isAppearanceFontFamily(source.fontFamily) ? source.fontFamily : defaultAppearancePreference.fontFamily,
     fontScale: isFontScale(source.fontScale) ? source.fontScale : defaultAppearancePreference.fontScale,
   };
@@ -219,12 +220,13 @@ export function createAppearanceSnapshot({
   preference: AppearancePreference;
   systemTheme: ResolvedTheme;
 }): AppearanceSnapshot {
-  const resolvedTheme = resolveThemeMode(preference.themeMode, systemTheme);
+  const normalizedPreference = normalizeAppearancePreference(preference);
+  const resolvedTheme = resolveThemeMode(normalizedPreference.themeMode, systemTheme);
   return {
-    preference,
+    preference: normalizedPreference,
     resolvedTheme,
     systemTheme,
-    tokens: createAppearanceTokens(preference, resolvedTheme),
+    tokens: createAppearanceTokens(normalizedPreference, resolvedTheme),
   };
 }
 
@@ -301,26 +303,8 @@ function isThemeMode(value: unknown): value is ThemeMode {
   return value === "system" || value === "light" || value === "dark";
 }
 
-const legacyColorSchemeAliases = {
-  monochrome: "mono",
-  nordic: "classic",
-  sepia: "honey",
-} as const satisfies Record<string, ColorScheme>;
-
-function normalizeColorScheme(value: unknown): ColorScheme {
-  if (isColorScheme(value)) return value;
-  if (typeof value === "string" && value in legacyColorSchemeAliases) {
-    return legacyColorSchemeAliases[value as keyof typeof legacyColorSchemeAliases];
-  }
-  return defaultAppearancePreference.colorScheme;
-}
-
 function isColorScheme(value: unknown): value is ColorScheme {
   return typeof value === "string" && colorSchemes.includes(value as ColorScheme);
-}
-
-function isAccentColor(value: unknown): value is AccentColor {
-  return typeof value === "string" && accentColors.includes(value as AccentColor);
 }
 
 function isAppearanceFontFamily(value: unknown): value is AppearanceFontFamily {

@@ -235,7 +235,7 @@ export function ChatComposer({
   };
 
   return (
-    <div className="bg-surface-canvas py-3 sm:py-4">
+    <div className="bg-transparent py-3 sm:py-4">
       <ConversationFrame mode="composer">
         <div
           onDragEnter={handleDragEnter}
@@ -243,8 +243,7 @@ export function ChatComposer({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            "relative flex min-w-0 flex-col rounded-[18px] border border-line bg-[var(--theme-chat-composer-bg)] px-3.5 pb-2.5 pt-2.5 shadow-[var(--shadow-soft)] transition-[background-color,border-color,box-shadow] duration-150",
-            "focus-within:border-accent-border-strong focus-within:bg-[var(--theme-chat-composer-focus-bg)] focus-within:ring-2 focus-within:ring-accent-focus",
+            "relative flex min-w-0 flex-col rounded-[18px] border border-line bg-surface-raised px-3.5 pb-2.5 pt-2.5 shadow-[var(--shadow-soft)] transition-[background-color,border-color,box-shadow] duration-150",
             isDraggingFiles && "border-accent-border bg-accent-surface ring-2 ring-accent-focus",
           )}
           data-chat-composer

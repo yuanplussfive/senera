@@ -11,8 +11,10 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 
 const { ChatPanel } = await import("../../../Frontend/src/features/chat/ChatPanel.tsx");
 const { ChatComposer } = await import("../../../Frontend/src/features/chat/ChatComposer.tsx");
+const { ScrollToBottomButton } = await import("../../../Frontend/src/features/chat/ScrollToBottomButton.tsx");
 const { MessageActions } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
+const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
 const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
 
@@ -40,8 +42,11 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
 
   const composer = screen.getByRole("textbox", { name: "输入消息" });
   expect(composer).not.toHaveClass("focus-visible:ring-2");
-  expect(document.querySelector("[data-chat-composer]")).toHaveClass(
+  expect(document.querySelector("[data-chat-composer]")).toHaveClass("bg-surface-raised");
+  expect(document.querySelector("[data-chat-composer]")).not.toHaveClass(
+    "focus-within:border-accent-border-strong",
     "focus-within:bg-[var(--theme-chat-composer-focus-bg)]",
+    "focus-within:ring-2",
   );
   await user.type(composer, "  hello project  ");
   await user.click(screen.getByRole("button", { name: "send" }));
@@ -68,6 +73,15 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
 
   await user.keyboard("{Escape}");
   expect(onCancel).toHaveBeenCalledTimes(1);
+});
+
+test("scroll-to-bottom stays compact while retaining an accessible label", () => {
+  renderWithFrontendProviders(React.createElement(ScrollToBottomButton, { visible: true, onClick: vi.fn() }));
+
+  const button = screen.getByRole("button", { name: frontendMessage("chat.scrollToBottom") });
+  expect(button).toHaveClass("h-8", "w-8", "rounded-full", "bg-surface-raised", "text-content-secondary");
+  expect(button).not.toHaveClass("bg-ink-900", "text-paper-50");
+  expect(button).not.toHaveTextContent(frontendMessage("chat.backToBottom"));
 });
 
 test("chat composer preserves a failed draft and leaves Escape to active interaction layers", async () => {
@@ -581,7 +595,6 @@ function createChatPanelProps(overrides = {}) {
     },
     runtime: {
       socketStatus: "open",
-      sandboxStatus: null,
       uploadUrl: "/upload",
     },
     messageActions: createMessageActions(),

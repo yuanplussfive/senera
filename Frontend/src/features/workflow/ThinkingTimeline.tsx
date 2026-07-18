@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { cn } from "../../lib/util";
 import { ListTree, Loader2, Maximize2, PanelRightClose } from "lucide-react";
 import { useStore, type RunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -8,6 +9,13 @@ import { summarizeRun } from "./runSummary";
 import { shouldLoadWorkflowCanvas } from "./canvasLoadPolicy";
 import { RunSelector, RunSummaryStrip } from "./WorkflowRunControls";
 import { motionSprings, motionTimings, readFocusPanelVariants, useMotionLevel } from "../../shared/motion";
+
+export type ThinkingTimelineDockTab = {
+  id: string;
+  label: string;
+  active: boolean;
+  onSelect: () => void;
+};
 
 const LazyThinkingTimelineCanvas = lazy(() =>
   import("./ThinkingTimelineCanvas").then((module) => ({
@@ -18,22 +26,33 @@ const LazyThinkingTimelineCanvas = lazy(() =>
 export function ThinkingTimeline({
   presentation = "auto",
   hidePanelTitle = false,
+  dockTabs,
   onClosePanel,
 }: {
-  presentation?: "auto" | "panel";
+  presentation?: "auto" | "dock" | "panel";
   hidePanelTitle?: boolean;
+  dockTabs?: readonly ThinkingTimelineDockTab[];
   onClosePanel?: () => void;
 }): JSX.Element {
-  return <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} onClosePanel={onClosePanel} />;
+  return (
+    <ThinkingPanel
+      presentation={presentation}
+      hidePanelTitle={hidePanelTitle}
+      dockTabs={dockTabs}
+      onClosePanel={onClosePanel}
+    />
+  );
 }
 
 function ThinkingPanel({
   presentation,
   hidePanelTitle,
+  dockTabs,
   onClosePanel,
 }: {
-  presentation: "auto" | "panel";
+  presentation: "auto" | "dock" | "panel";
   hidePanelTitle: boolean;
+  dockTabs?: readonly ThinkingTimelineDockTab[];
   onClosePanel?: () => void;
 }): JSX.Element {
   const activeId = useStore((s) => s.activeSessionId);
@@ -70,7 +89,10 @@ function ThinkingPanel({
   return (
     <>
       <aside
-        className="flex h-full w-full shrink-0 flex-col bg-[var(--theme-elevated-bg)]"
+        className={cn(
+          "flex h-full w-full shrink-0 flex-col",
+          presentation === "dock" ? "bg-transparent" : "bg-surface-raised",
+        )}
         data-ui-chrome
         data-panel-presentation={presentation}
       >
@@ -79,14 +101,14 @@ function ThinkingPanel({
           runs={runs}
           currentRunId={run?.requestId}
           pinnedToHistory={isPinnedToHistory}
-          focusOpen={focusOpen}
           hideTitle={hidePanelTitle}
+          presentation={presentation}
+          dockTabs={dockTabs}
           onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
           onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
-          onToggleFocus={toggleFocus}
           onClosePanel={onClosePanel}
         />
-        <CanvasArea run={run} />
+        <CanvasArea run={run} focusOpen={focusOpen} onToggleFocus={toggleFocus} />
       </aside>
       <TimelineFocusDialog
         open={focusOpen}
@@ -109,22 +131,22 @@ function TopBar({
   runs,
   currentRunId,
   pinnedToHistory,
-  focusOpen,
   hideTitle,
+  presentation,
+  dockTabs,
   onSelect,
   onFollowLatest,
-  onToggleFocus,
   onClosePanel,
 }: {
   run?: RunRecord;
   runs: RunRecord[];
   currentRunId?: string;
   pinnedToHistory: boolean;
-  focusOpen: boolean;
   hideTitle?: boolean;
+  presentation: "auto" | "dock" | "panel";
+  dockTabs?: readonly ThinkingTimelineDockTab[];
   onSelect: (requestId: string) => void;
   onFollowLatest: () => void;
-  onToggleFocus: () => void;
   onClosePanel?: () => void;
 }): JSX.Element {
   const summary = run ? summarizeRun(run) : undefined;
@@ -132,10 +154,37 @@ function TopBar({
   return (
     <>
       <div
-        className="relative z-10 flex h-[52px] items-center gap-2 border-b border-line-subtle bg-surface-raised px-3"
+        className={cn(
+          "relative z-10 flex items-center gap-2 border-b border-line-subtle",
+          presentation === "dock" ? "h-[58px] bg-transparent px-3 pr-12" : "h-[52px] bg-surface-raised px-3",
+        )}
         data-window-drag-region
       >
-        {hideTitle ? null : (
+        {dockTabs ? (
+          <nav
+            className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full border border-line-subtle bg-surface-subtle p-1"
+            aria-label="功能坞标签"
+            data-workflow-dock-tabs
+          >
+            {dockTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={tab.active}
+                onClick={tab.onSelect}
+                className={cn(
+                  "min-w-0 flex-1 rounded-full px-1.5 py-1.5 text-[12px] font-medium text-content-muted transition-[background-color,color,box-shadow] duration-150 hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+                  tab.active && "bg-surface-raised text-content-primary shadow-sm",
+                  !tab.active && "hover:bg-surface-hover",
+                )}
+                data-workflow-dock-tab={tab.id}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        ) : hideTitle ? null : (
           <nav
             className="flex min-w-0 items-center gap-2"
             aria-label={frontendMessage("workflow.panel.title")}
@@ -147,31 +196,31 @@ function TopBar({
             </span>
           </nav>
         )}
-        <div className="ml-auto flex items-center gap-1">
-          <IconButton
-            label={frontendMessage("workflow.panel.focus")}
-            tooltip={frontendMessage("workflow.panel.focus")}
-            tooltipSide="bottom"
-            aria-pressed={focusOpen}
-            onClick={onToggleFocus}
-          >
-            <Maximize2 className="h-4 w-4" />
-          </IconButton>
-          {onClosePanel ? (
+        {onClosePanel ? (
+          <div className="ml-auto">
             <IconButton
               label={frontendMessage("workflow.panel.collapse")}
+              tone="muted"
               tooltip={frontendMessage("workflow.panel.collapse")}
               tooltipSide="bottom"
               onClick={onClosePanel}
             >
               <PanelRightClose className="h-4 w-4" />
             </IconButton>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
 
       {runs.length > 0 ? (
-        <div className="border-b border-line-subtle bg-surface-subtle/45 px-3 py-2">
+        <div
+          className={cn(
+            "shrink-0",
+            presentation === "dock"
+              ? "mx-3 mt-3 rounded-[14px] border border-line-subtle bg-surface-raised px-3 py-2.5 shadow-[var(--theme-node-shadow)]"
+              : "border-b border-line-subtle bg-surface-subtle/45 px-3 py-2",
+          )}
+          data-workflow-run-summary
+        >
           <RunSelector runs={runs} currentRunId={currentRunId} onSelect={onSelect} pinnedToHistory={pinnedToHistory} />
           <div className="mt-1 flex min-w-0 items-center justify-between gap-2 px-1">
             {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
@@ -222,7 +271,7 @@ function TimelineFocusDialog({
         motionPreset="focus"
         frameClassName="bottom-3 left-3 right-3 top-3 sm:bottom-4 sm:left-4 sm:right-4 sm:top-4"
         className="h-auto max-h-none w-auto max-w-none rounded-lg"
-        bodyClassName="flex min-h-0 flex-1 flex-col bg-[var(--theme-workflow-canvas-bg)]"
+        bodyClassName="flex min-h-0 flex-1 flex-col bg-surface-subtle"
       >
         <motion.div
           variants={readFocusPanelVariants(effectiveLevel)}
@@ -263,25 +312,66 @@ function TimelineFocusDialog({
 
 // ---------- 画布 ----------
 
-function CanvasArea({ run, focusVersion = 0 }: { run?: RunRecord; focusVersion?: number }): JSX.Element {
+function CanvasArea({
+  run,
+  focusVersion = 0,
+  focusOpen = false,
+  onToggleFocus,
+}: {
+  run?: RunRecord;
+  focusVersion?: number;
+  focusOpen?: boolean;
+  onToggleFocus?: () => void;
+}): JSX.Element {
   if (!shouldLoadWorkflowCanvas(run)) {
     return (
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-[var(--theme-workflow-canvas-bg)]">
+      <div
+        className="relative flex flex-1 items-center justify-center overflow-hidden bg-transparent"
+        data-workflow-execution-content
+      >
+        <CanvasFocusAction focusOpen={focusOpen} onToggleFocus={onToggleFocus} />
         <EmptyCanvas />
       </div>
     );
   }
 
   return (
-    <Suspense fallback={<CanvasLoading />}>
-      <LazyThinkingTimelineCanvas run={run} focusVersion={focusVersion} />
-    </Suspense>
+    <div className="relative flex min-h-0 flex-1 overflow-hidden bg-transparent" data-workflow-execution-content>
+      <CanvasFocusAction focusOpen={focusOpen} onToggleFocus={onToggleFocus} />
+      <Suspense fallback={<CanvasLoading />}>
+        <LazyThinkingTimelineCanvas run={run} focusVersion={focusVersion} />
+      </Suspense>
+    </div>
+  );
+}
+
+function CanvasFocusAction({
+  focusOpen,
+  onToggleFocus,
+}: {
+  focusOpen: boolean;
+  onToggleFocus?: () => void;
+}): JSX.Element | null {
+  if (!onToggleFocus) return null;
+  return (
+    <IconButton
+      label={frontendMessage("workflow.panel.focus")}
+      tone="muted"
+      tooltip={frontendMessage("workflow.panel.focus")}
+      tooltipSide="left"
+      aria-pressed={focusOpen}
+      onClick={onToggleFocus}
+      className="absolute right-3 top-3 z-20 border border-line-subtle bg-surface-raised shadow-sm"
+      data-workflow-focus-action
+    >
+      <Maximize2 className="h-4 w-4" />
+    </IconButton>
   );
 }
 
 function CanvasLoading(): JSX.Element {
   return (
-    <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-[var(--theme-workflow-canvas-bg)]">
+    <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-transparent">
       <div className="inline-flex items-center gap-2 text-[12px] text-content-secondary">
         <Loader2 className="h-3.5 w-3.5 animate-spin text-umber-500" />
         {frontendMessage("workflow.panel.loadingGraph")}

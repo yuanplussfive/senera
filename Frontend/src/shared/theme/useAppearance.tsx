@@ -3,11 +3,9 @@ import { Check, Monitor, Moon, Palette, Pilcrow, Sun, Type } from "lucide-react"
 import { cn } from "../../lib/util";
 import { useMotionLevel, type MotionLevel } from "../motion";
 import {
-  accentColors,
   fontScales,
-  type AccentColor,
   type AppearanceFontFamily,
-  type AppearancePreference,
+  type AppearancePreferenceUpdate,
   type AppearanceSnapshot,
   type ColorScheme,
   type ThemeMode,
@@ -36,7 +34,7 @@ export function useAppearance(): AppearanceSnapshot {
   );
 }
 
-export function useSetAppearancePreference(): (preference: Partial<AppearancePreference>) => void {
+export function useSetAppearancePreference(): (preference: AppearancePreferenceUpdate) => void {
   return appearanceStore.setPreference;
 }
 
@@ -78,7 +76,6 @@ const fontFamilyOptions = [
 export function AppearancePreferenceControl({ className }: { className?: string }): JSX.Element {
   const { preference } = useAppearance();
   const setPreference = useSetAppearancePreference();
-  const recommendedAccent = readRecommendedAccent(preference.colorScheme);
 
   return (
     <div className={cn("space-y-4", className)}>
@@ -94,13 +91,9 @@ export function AppearancePreferenceControl({ className }: { className?: string 
         onChange={(themeMode) => setPreference({ themeMode })}
       />
 
-      <ColorSchemeControl value={preference.colorScheme} onChange={(colorScheme) => setPreference({ colorScheme })} />
-
-      <AccentColorControl
-        value={preference.accentColor}
-        recommended={recommendedAccent}
-        onChange={(accentColor) => setPreference({ accentColor })}
-        onUseRecommended={() => setPreference({ accentColor: recommendedAccent })}
+      <ColorSchemeControl
+        value={preference.colorScheme}
+        onChange={(colorScheme) => setPreference({ colorScheme })}
       />
 
       <SegmentedControl
@@ -189,77 +182,6 @@ function ColorSchemeControl({
         ))}
       </div>
       <p className="mt-2 text-[11.5px] leading-5 text-content-secondary">{readColorSchemeStory(value)}</p>
-    </div>
-  );
-}
-
-function AccentColorControl({
-  value,
-  recommended,
-  onChange,
-  onUseRecommended,
-}: {
-  value: AccentColor;
-  recommended: AccentColor;
-  onChange: (value: AccentColor) => void;
-  onUseRecommended: () => void;
-}): JSX.Element {
-  const usesRecommended = value === recommended;
-  return (
-    <div>
-      <ControlLabel icon={<Check className="h-3.5 w-3.5" />} label="强调色" />
-      <div
-        className="grid grid-cols-2 gap-1 rounded-lg border border-line-subtle bg-surface-panel p-1 sm:grid-cols-4"
-        role="radiogroup"
-        aria-label="强调色"
-      >
-        {accentColors.map((accent) => {
-          const selected = value === accent;
-          return (
-            <button
-              key={accent}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => onChange(accent)}
-              className={cn(
-                "inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-                selected
-                  ? "bg-surface-subtle text-content-primary shadow-panel"
-                  : "text-content-secondary hover:bg-surface-subtle hover:text-content-primary",
-              )}
-            >
-              <span
-                className="h-3 w-3 shrink-0 rounded-full border border-line-subtle"
-                style={{ background: readAccentSwatch(accent) }}
-                aria-hidden="true"
-              />
-              <span className="truncate">{accentColorLabels[accent]}</span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="mt-1.5 flex min-h-6 items-center justify-between gap-3 text-[11px] text-content-secondary">
-        <span>
-          推荐：
-          <span className="font-medium text-content-primary">{accentColorLabels[recommended]}</span>
-        </span>
-        {!usesRecommended ? (
-          <button
-            type="button"
-            onClick={onUseRecommended}
-            className="rounded-md px-2 py-1 font-medium text-accent-content transition hover:bg-accent-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
-          >
-            使用推荐
-          </button>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-accent-content">
-            <Check className="h-3 w-3" />
-            当前搭配
-          </span>
-        )}
-      </div>
     </div>
   );
 }

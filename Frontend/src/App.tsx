@@ -94,14 +94,6 @@ export function App({
     setWorkflowDrawerOpen(true);
   }, [hasPersistentWorkflowPanel, setRightPanelCollapsed]);
 
-  const handleCloseWorkflowPanel = useCallback((): void => {
-    if (hasPersistentWorkflowPanel) {
-      setRightPanelCollapsed(true);
-      return;
-    }
-    setWorkflowDrawerOpen(false);
-  }, [hasPersistentWorkflowPanel, setRightPanelCollapsed]);
-
   const { resetServerKnownSessions, serverKnownSessionIdsRef, syncServerKnownSessionFromEvent } =
     useServerKnownSessions();
   const { notifySocketError } = useSocketErrorToasts();
@@ -254,6 +246,7 @@ export function App({
             onUpdateUserProfile={handleUpdateUserProfile}
             onLogout={onLogout}
             socketStatus={status}
+            sandboxStatus={sandboxStatus}
             onOpenSettings={(section, returnFocus) => {
               void settingsController.openSettings(section, returnFocus);
             }}
@@ -271,6 +264,7 @@ export function App({
             onUpdateUserProfile={handleUpdateUserProfile}
             onLogout={onLogout}
             socketStatus={status}
+            sandboxStatus={sandboxStatus}
             onOpenSettings={(section, returnFocus) => {
               void settingsController.openSettings(section, returnFocus);
             }}
@@ -302,7 +296,6 @@ export function App({
               }}
               runtime={{
                 socketStatus: status,
-                sandboxStatus,
                 uploadUrl,
                 uploadCsrfToken,
               }}
@@ -327,7 +320,7 @@ export function App({
             />
           </ErrorBoundary>
         }
-        workflowPanel={<ThinkingTimeline presentation="auto" onClosePanel={handleCloseWorkflowPanel} />}
+        workflowPanel={<ThinkingTimeline presentation="dock" />}
         workflowDrawer={<ThinkingTimeline presentation="panel" hidePanelTitle />}
         sessionDrawerOpen={sessionDrawerOpen}
         onSessionDrawerOpenChange={setSessionDrawerOpen}

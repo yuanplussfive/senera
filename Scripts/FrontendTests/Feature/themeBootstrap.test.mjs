@@ -12,9 +12,10 @@ import {
   createAppearanceBootstrapConfig,
   createAppearanceBootstrapScript,
 } from "../../../Frontend/src/shared/theme/themeBootstrap.ts";
+import { recommendedAccentColors } from "../../../Frontend/src/shared/theme/themeData.ts";
 
 describe("themeBootstrap", () => {
-  it("derives early bootstrap values and migration aliases from the shared appearance contract", () => {
+  it("derives early bootstrap values from the shared appearance contract", () => {
     expect(createAppearanceBootstrapConfig()).toEqual({
       storageKey: appearancePreferenceStorageKey,
       defaultPreference: defaultAppearancePreference,
@@ -25,13 +26,7 @@ describe("themeBootstrap", () => {
         fontFamily: [...appearanceFontFamilies],
         fontScale: [...fontScales],
       },
-      legacyPreferenceValues: {
-        colorScheme: {
-          monochrome: "mono",
-          nordic: "classic",
-          sepia: "honey",
-        },
-      },
+      accentColorByScheme: recommendedAccentColors,
     });
   });
 
@@ -39,7 +34,6 @@ describe("themeBootstrap", () => {
     const script = createAppearanceBootstrapScript();
     expect(script).toContain(appearancePreferenceStorageKey);
     expect(script).toContain("document.documentElement");
-    expect(script).toContain('"colorScheme":"classic"');
-    expect(script).toContain('"sepia":"honey"');
+    expect(script).toContain('"colorScheme":"senera"');
   });
 });

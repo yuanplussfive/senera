@@ -6,7 +6,12 @@ import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs"
 import { installMemoryLocalStorage, resetFrontendStore } from "../frontendStoreTestHarness.mjs";
 
 const { ThinkingTimeline } = await import("../../../Frontend/src/features/workflow/ThinkingTimeline.tsx");
-const { ThinkingTimelineCanvas } = await import("../../../Frontend/src/features/workflow/ThinkingTimelineCanvas.tsx");
+const {
+  ThinkingTimelineCanvas,
+  readInitialWorkflowViewportMode,
+  readStartWorkflowViewport,
+  readWorkflowViewportTarget,
+} = await import("../../../Frontend/src/features/workflow/ThinkingTimelineCanvas.tsx");
 const { StepNode } = await import("../../../Frontend/src/features/workflow/StepNode.tsx");
 const { ChatHeader } = await import("../../../Frontend/src/features/chat/ChatHeader.tsx");
 const { ReactFlowProvider } = await import("@xyflow/react");
@@ -31,7 +36,11 @@ test("thinking timeline renders its empty state and opens a focused workflow vie
   renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "panel" }));
 
   expect(screen.getByText(frontendMessage("workflow.panel.emptyTitle"))).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: frontendMessage("workflow.panel.focus") }));
+  const focusButton = screen.getByRole("button", { name: frontendMessage("workflow.panel.focus") });
+  expect(focusButton).toHaveClass("text-content-muted");
+  expect(document.querySelector("[data-workflow-execution-content]")).toContainElement(focusButton);
+  expect(document.querySelector("[data-window-drag-region]")).not.toContainElement(focusButton);
+  await user.click(focusButton);
   expect(screen.getByRole("dialog", { name: frontendMessage("workflow.panel.title") })).toBeInTheDocument();
 });
 
@@ -48,6 +57,7 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
   const expandButton = screen.getByRole("button", { name: frontendMessage("workflow.panel.expand") });
   expect(document.querySelector("[data-workflow-dock]")).not.toBeInTheDocument();
   expect(document.querySelector("[data-workspace-tool-dock]")).toContainElement(expandButton);
+  expect(document.querySelector("[data-window-controls-inset]")).toBeInTheDocument();
   expect(expandButton).toHaveAttribute("aria-expanded", "false");
   expect(expandButton.className).not.toMatch(/terra|blue|indigo|violet/);
   await user.click(expandButton);
@@ -66,6 +76,37 @@ test("persistent workflow panel owns its tool header and only collapse control",
   );
   await user.click(collapseButton);
   expect(onClosePanel).toHaveBeenCalledTimes(1);
+});
+
+test("dock execution view uses a segmented header and raised run summary", () => {
+  const run = createRun({
+    requestId: "run-dock",
+    input: "Inspect the new dock prototype",
+    steps: [createStep({ id: "dock-step", title: "Compare the expanded layout" })],
+  });
+  resetFrontendStore({
+    activeSessionId: "session-a",
+    sessionOrder: ["session-a"],
+    sessions: {
+      "session-a": createSession([run]),
+    },
+  });
+
+  renderWithFrontendProviders(
+    React.createElement(ThinkingTimeline, {
+      presentation: "dock",
+      dockTabs: [
+        { id: "execution", label: "执行", active: true, onSelect: vi.fn() },
+        { id: "terminal", label: "终端", active: false, onSelect: vi.fn() },
+      ],
+    }),
+  );
+
+  expect(document.querySelector("[data-workflow-dock-tabs]")).toHaveClass("rounded-full", "bg-surface-subtle");
+  expect(screen.getByRole("tab", { name: "执行" })).toHaveClass("flex-1", "bg-surface-raised");
+  expect(screen.getByRole("tab", { name: "终端" })).toHaveAttribute("aria-selected", "false");
+  expect(document.querySelector("[data-workflow-run-summary]")).toHaveClass("rounded-[14px]", "bg-surface-raised");
+  expect(document.querySelector("[data-workflow-run-status='completed']")).toHaveClass("bg-moss-50");
 });
 
 test("thinking timeline pins a historical run and can return to the latest run", async () => {
@@ -110,6 +151,55 @@ test("thinking timeline canvas lays out and renders real workflow nodes", async 
   expect(await screen.findByText("Understand request")).toBeInTheDocument();
   expect(screen.getByText("Return answer")).toBeInTheDocument();
   expect(document.querySelectorAll(".react-flow__node")).toHaveLength(2);
+  expect(document.querySelector("[data-workflow-canvas-pan]")).toHaveAttribute(
+    "data-workflow-canvas-pan",
+    "vertical",
+  );
+  expect(document.querySelector("[data-workflow-canvas-bounds]")).toHaveAttribute(
+    "data-workflow-canvas-bounds",
+    "content",
+  );
+});
+
+test("focused workflow canvas allows free panning beyond the compact content bounds", async () => {
+  const run = createRun({
+    steps: [createStep({ id: "focused", title: "Inspect focused workflow" })],
+  });
+  renderWithFrontendProviders(React.createElement(ThinkingTimelineCanvas, { run, focusVersion: 1 }));
+
+  expect(await screen.findByText("Inspect focused workflow")).toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-canvas-pan]")).toHaveAttribute(
+    "data-workflow-canvas-pan",
+    "free",
+  );
+  expect(document.querySelector("[data-workflow-canvas-bounds]")).toHaveAttribute(
+    "data-workflow-canvas-bounds",
+    "unbounded",
+  );
+});
+
+test("workflow viewport starts terminal runs at the beginning and follows live runs at the latest step", () => {
+  const nodes = [
+    viewportNode("scope", { kind: "scope", group: { status: "done" } }),
+    viewportNode("first", { kind: "step", step: createStep({ id: "first", status: "done" }) }),
+    viewportNode("running", { kind: "step", step: createStep({ id: "running", status: "running" }) }),
+    viewportNode("queued", { kind: "step", step: createStep({ id: "queued", status: "pending" }) }),
+  ];
+
+  expect(readInitialWorkflowViewportMode("completed")).toBe("start");
+  expect(readInitialWorkflowViewportMode("failed")).toBe("start");
+  expect(readInitialWorkflowViewportMode("cancelled")).toBe("start");
+  expect(readInitialWorkflowViewportMode("running")).toBe("latest");
+  expect(readWorkflowViewportTarget(nodes, "start")?.id).toBe("first");
+  expect(readWorkflowViewportTarget(nodes, "latest")?.id).toBe("running");
+  const startViewport = readStartWorkflowViewport(
+    {
+      position: { x: 100, y: 200 },
+    },
+    300,
+  );
+  expect(startViewport.x + (100 + 120) * startViewport.zoom).toBeCloseTo(150);
+  expect(startViewport.y + 200 * startViewport.zoom).toBeCloseTo(24);
 });
 
 test("step node presents failed tool identity, error, status, and duration", () => {
@@ -173,6 +263,15 @@ function renderWorkflowNode(props) {
   return renderWithFrontendProviders(
     React.createElement(ReactFlowProvider, null, React.createElement(StepNode, props)),
   );
+}
+
+function viewportNode(id, data) {
+  return {
+    id,
+    type: "step",
+    position: { x: 0, y: 0 },
+    data,
+  };
 }
 
 function createSession(runs) {

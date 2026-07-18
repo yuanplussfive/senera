@@ -26,14 +26,14 @@ export function useAppChatPanelBindings({
     showSessionPanelAction: boolean;
     showWorkflowPanelAction: boolean;
   };
-  runtime: Pick<ChatRuntimeState, "sandboxStatus" | "uploadUrl" | "uploadCsrfToken">;
+  runtime: Pick<ChatRuntimeState, "uploadUrl" | "uploadCsrfToken">;
   send: AgentSocketHandle["send"];
   status: SocketStatus;
 }): AppChatPanelBindings {
   const { onCancel, onDeleteFromMessage, onEditUserMessage, onRegenerate, onSend, onViewWorkflow } = messageHandlers;
   const { onOpenSessionPanel, onOpenWorkflowPanel, onRetryHistory, showSessionPanelAction, showWorkflowPanelAction } =
     navigationHandlers;
-  const { sandboxStatus, uploadUrl, uploadCsrfToken } = runtime;
+  const { uploadUrl, uploadCsrfToken } = runtime;
 
   const handleResolveApproval = useCallback(
     (approvalId: string, approvalStatus: "approved" | "denied", scope?: ApprovalResolutionScope): void => {
@@ -57,11 +57,10 @@ export function useAppChatPanelBindings({
   const chatRuntime = useMemo<ChatRuntimeState>(
     () => ({
       socketStatus: status,
-      sandboxStatus,
       uploadUrl,
       uploadCsrfToken,
     }),
-    [sandboxStatus, status, uploadCsrfToken, uploadUrl],
+    [status, uploadCsrfToken, uploadUrl],
   );
 
   const chatMessageActions = useMemo<ChatMessageActions>(

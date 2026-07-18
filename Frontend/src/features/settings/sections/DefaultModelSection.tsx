@@ -60,14 +60,14 @@ export function DefaultModelSection({ systemConfig }: { systemConfig?: SettingsS
 
   return (
     <div className="bg-paper-50 p-3 sm:p-4">
-      <section className="mx-auto max-w-[760px] rounded-lg border border-ink-200/70 bg-paper-50 shadow-sm">
-        <div className="border-b border-ink-200/70 px-4 py-3">
+      <section className="mx-auto max-w-[760px]">
+        <div className="border-b border-ink-200/70 pb-3">
           <h2 className="text-[14px] font-semibold text-ink-900">默认助手模型</h2>
           <p className="mt-1 text-[12px] leading-5 text-ink-500">
             选择一个已配置、供应商已启用且支持对话的模型；更改会立即保存，并作为新建对话的初始模型。当前对话可在聊天模型菜单中恢复为默认。
           </p>
         </div>
-        <div className="space-y-3 p-4">
+        <div className="space-y-3 px-1 pt-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1" aria-label="默认助手模型">
               <MenuSelect

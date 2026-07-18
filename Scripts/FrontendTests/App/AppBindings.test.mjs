@@ -129,7 +129,6 @@ test("useAppChatPanelBindings sends approvals and exposes only available navigat
   expect(handleRef.current.chatNavigationActions.onOpenWorkflowPanel).toBe(onOpenWorkflowPanel);
   expect(handleRef.current.chatRuntime).toEqual({
     socketStatus: "open",
-    sandboxStatus: null,
     uploadUrl: "http://127.0.0.1/api/uploads",
   });
 
@@ -187,7 +186,6 @@ function ChatPanelBindingsHarness({ handleRef, navigationHandlers = createNaviga
     messageHandlers: createMessageHandlers(),
     navigationHandlers,
     runtime: {
-      sandboxStatus: null,
       uploadUrl: "http://127.0.0.1/api/uploads",
     },
     send,

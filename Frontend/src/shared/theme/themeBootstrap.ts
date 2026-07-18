@@ -8,6 +8,7 @@ import {
   themeModes,
   type AppearancePreference,
 } from "./themeModel";
+import { recommendedAccentColors } from "./themeData";
 
 export const appearanceBootstrapScriptPlaceholder = "__SENERA_APPEARANCE_BOOTSTRAP_SCRIPT__";
 
@@ -21,9 +22,7 @@ export interface AppearanceBootstrapConfig {
     fontFamily: string[];
     fontScale: string[];
   };
-  legacyPreferenceValues: {
-    colorScheme: Record<string, string>;
-  };
+  accentColorByScheme: Record<string, string>;
 }
 
 export function createAppearanceBootstrapConfig(): AppearanceBootstrapConfig {
@@ -37,13 +36,7 @@ export function createAppearanceBootstrapConfig(): AppearanceBootstrapConfig {
       fontFamily: [...appearanceFontFamilies],
       fontScale: [...fontScales],
     },
-    legacyPreferenceValues: {
-      colorScheme: {
-        monochrome: "mono",
-        nordic: "classic",
-        sepia: "honey",
-      },
-    },
+    accentColorByScheme: { ...recommendedAccentColors },
   };
 }
 
@@ -59,12 +52,14 @@ export function createAppearanceBootstrapScript(): string {
     } catch {
       parsed = {};
     }
-    return Object.fromEntries(
+    const normalized = Object.fromEntries(
       Object.entries(config.defaultPreference).map(([name, value]) => {
-        const candidate = config.legacyPreferenceValues[name]?.[parsed[name]] ?? parsed[name];
+        const candidate = parsed[name];
         return [name, config.validPreferenceValues[name].includes(candidate) ? candidate : value];
       }),
     );
+    normalized.accentColor = config.accentColorByScheme[normalized.colorScheme] ?? config.defaultPreference.accentColor;
+    return normalized;
   };
   let preference = config.defaultPreference;
   try {

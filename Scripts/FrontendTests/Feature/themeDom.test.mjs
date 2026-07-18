@@ -48,7 +48,7 @@ describe("themeDom", () => {
     expect(root.dataset.theme).toBe("dark");
     expect(root.dataset.themePreference).toBe("dark");
     expect(root.dataset.colorScheme).toBe("ocean");
-    expect(root.dataset.accentColor).toBe("violet");
+    expect(root.dataset.accentColor).toBe("sky");
     expect(root.dataset.fontFamily).toBe("system");
     expect(root.dataset.fontScale).toBe("large");
     expect(root.style.colorScheme).toBe("dark");

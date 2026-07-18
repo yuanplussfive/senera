@@ -84,19 +84,19 @@ describe("createAppearanceStore", () => {
     });
     const subscriber = vi.fn();
     const unsubscribe = store.subscribe(subscriber);
-    store.setPreference({ themeMode: "dark", accentColor: "violet" });
+    store.setPreference({ themeMode: "dark", colorScheme: "lavender" });
     expect(storage.setItem).toHaveBeenCalledWith(
       appearancePreferenceStorageKey,
       JSON.stringify({
         themeMode: "dark",
-        colorScheme: "classic",
+        colorScheme: "lavender",
         accentColor: "violet",
         fontFamily: "brand",
         fontScale: "standard",
       }),
     );
     expect(store.getSnapshot()).toMatchObject({
-      preference: { themeMode: "dark", accentColor: "violet" },
+      preference: { themeMode: "dark", colorScheme: "lavender", accentColor: "violet" },
       resolvedTheme: "dark",
     });
     expect(subscriber).toHaveBeenCalled();

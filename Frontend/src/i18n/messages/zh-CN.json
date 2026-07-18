@@ -511,6 +511,7 @@
   "socket.toolCallFailed": "工具调用失败: {toolName}",
   "sandbox.status.fallback": "本地回退",
   "sandbox.status.fallbackSuffix": "允许回退的工具会继续使用本地执行边界。",
+  "sandbox.status.label": "沙箱",
   "sandbox.status.ready": "沙箱可用",
   "sandbox.status.sandboxSuffix": "支持沙箱的工具会优先进入 microVM。",
   "sandbox.status.preparing": "沙箱准备中",

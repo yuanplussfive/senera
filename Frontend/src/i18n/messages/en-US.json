@@ -511,6 +511,7 @@
   "socket.toolCallFailed": "Tool call failed: {toolName}",
   "sandbox.status.fallback": "Local fallback",
   "sandbox.status.fallbackSuffix": "Tools that allow fallback will continue through the local execution boundary.",
+  "sandbox.status.label": "Sandbox",
   "sandbox.status.ready": "Sandbox ready",
   "sandbox.status.sandboxSuffix": "Sandbox-capable tools will prefer the microVM.",
   "sandbox.status.preparing": "Preparing sandbox",

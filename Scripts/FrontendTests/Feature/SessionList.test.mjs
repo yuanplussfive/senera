@@ -70,8 +70,12 @@ test("integrated sidebar exposes collapse, new-session, and real session search"
     ),
   );
 
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.headerCollapse") }));
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.new") }));
+  const collapseButton = screen.getByRole("button", { name: frontendMessage("session.headerCollapse") });
+  const newSessionButton = screen.getByRole("button", { name: frontendMessage("session.new") });
+  expect(collapseButton).toHaveClass("text-content-muted");
+  expect(newSessionButton).toHaveClass("text-content-muted");
+  await user.click(collapseButton);
+  await user.click(newSessionButton);
   await user.type(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }), "provider");
 
   expect(onClosePanel).toHaveBeenCalledTimes(1);
@@ -118,17 +122,35 @@ test("persistent session sidebar collapses into the prototype tool rail", async 
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toBeVisible();
 });
 
-test("account menu exposes one settings entry and a flatter profile editor", async () => {
+test("account menu exposes settings and global runtime status", async () => {
   const user = userEvent.setup();
   const onOpenSettings = vi.fn();
-  renderWithFrontendProviders(React.createElement(SessionList, createProps({ onOpenSettings })));
+  renderWithFrontendProviders(
+    React.createElement(
+      SessionList,
+      createProps({
+        onOpenSettings,
+        sandboxStatus: {
+          state: "ready",
+          provider: "microsandbox",
+          effectiveMode: "sandbox",
+          message: "microVM ready",
+        },
+      }),
+    ),
+  );
 
+  expect(document.querySelector("[data-session-sidebar] .lucide-settings")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /用户/ }));
   expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.edit") })).toBeVisible();
   expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.settings") })).toBeVisible();
   expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.about") })).toBeVisible();
   expect(screen.queryByRole("menuitem", { name: "外观设置" })).not.toBeInTheDocument();
   expect(screen.queryByRole("menuitem", { name: "通用设置" })).not.toBeInTheDocument();
+  const sandboxStatus = document.querySelector("[data-sandbox-status='ready']");
+  expect(sandboxStatus).toHaveTextContent(frontendMessage("sandbox.status.label"));
+  expect(sandboxStatus).toHaveTextContent(frontendMessage("sandbox.status.ready"));
+  expect(sandboxStatus).toHaveAttribute("title", expect.stringContaining("microVM ready"));
 
   await user.click(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.settings") }));
   expect(onOpenSettings).toHaveBeenCalledWith(undefined, expect.any(HTMLButtonElement));
