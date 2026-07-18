@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "../../../shared/ui";
 import { findTopField } from "../../chat/modelConfigData";
@@ -46,10 +47,10 @@ export function DefaultModelSection({ systemConfig }: { systemConfig?: SettingsS
   const operationPending = operation?.status === "pending";
 
   if (!systemConfig) {
-    return <SettingsWorkspaceState>正在连接主配置服务</SettingsWorkspaceState>;
+    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingMain")}</SettingsWorkspaceState>;
   }
   if (!snapshot || !modelSection || !state) {
-    return <SettingsWorkspaceState>主配置连接后会加载默认模型</SettingsWorkspaceState>;
+    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingDefaultModel")}</SettingsWorkspaceState>;
   }
 
   const selectModel = (modelId: string): void => {
@@ -62,17 +63,17 @@ export function DefaultModelSection({ systemConfig }: { systemConfig?: SettingsS
     <div className="bg-paper-50 p-3 sm:p-4">
       <section className="mx-auto max-w-[760px]">
         <div className="border-b border-ink-200/70 pb-3">
-          <h2 className="text-[14px] font-semibold text-ink-900">默认助手模型</h2>
+          <h2 className="text-[14px] font-semibold text-ink-900">{frontendMessage("settings.model.defaultTitle")}</h2>
           <p className="mt-1 text-[12px] leading-5 text-ink-500">
-            选择一个已配置、供应商已启用且支持对话的模型；更改会立即保存，并作为新建对话的初始模型。当前对话可在聊天模型菜单中恢复为默认。
+            {frontendMessage("settings.model.defaultDescription")}
           </p>
         </div>
         <div className="space-y-3 px-1 pt-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="min-w-0 flex-1" aria-label="默认助手模型">
+            <div className="min-w-0 flex-1" aria-label={frontendMessage("settings.model.defaultAria")}>
               <MenuSelect
                 value={currentModelId}
-                placeholder="选择默认助手模型"
+                placeholder={frontendMessage("settings.model.defaultPlaceholder")}
                 options={candidates.map(({ model, provider }) => ({
                   value: model.Id,
                   label: `${model.Model} · ${provider.Id}`,
@@ -83,27 +84,27 @@ export function DefaultModelSection({ systemConfig }: { systemConfig?: SettingsS
             </div>
             {operationPending ? (
               <Button size="sm" variant="outline" disabled>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> 保存中
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> {frontendMessage("settings.state.saving")}
               </Button>
             ) : operation?.status === "success" ? (
               <span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-moss-200 bg-moss-50 px-2.5 text-[11.5px] font-medium text-moss-700">
-                <Check className="h-3.5 w-3.5" /> 已保存
+                <Check className="h-3.5 w-3.5" /> {frontendMessage("settings.state.saved")}
               </span>
             ) : null}
           </div>
           {candidates.length === 0 ? (
             <p className="rounded-md border border-ink-200 bg-paper-100 px-3 py-2 text-[12px] leading-5 text-ink-700">
-              暂无可用候选。请先在模型服务中启用供应商并配置支持对话的模型。
+              {frontendMessage("settings.model.noCandidates")}
             </p>
           ) : null}
           {currentDefaultSlot && currentDefaultSlot.status !== "ready" && currentModelId ? (
             <p className="rounded-md border border-ink-200 bg-paper-100 px-3 py-2 text-[12px] leading-5 text-ink-700">
-              当前默认助手模型不可用（{currentDefaultSlot.statusLabel}），请选择一个可用候选。
+              {frontendMessage("settings.model.unavailable", { status: currentDefaultSlot.statusLabel })}
             </p>
           ) : null}
           {operationError ? (
             <p className="rounded-md border border-brick-200 bg-brick-50 px-3 py-2 text-[12px] leading-5 text-brick-700">
-              保存失败：{operationError}
+              {frontendMessage("settings.model.saveFailed", { error: operationError })}
             </p>
           ) : null}
         </div>

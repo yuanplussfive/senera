@@ -1,5 +1,6 @@
 import { MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
 import {
@@ -73,7 +74,12 @@ export function ProviderConnectionList({
                 type="button"
                 disabled={disabled}
                 className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-left disabled:pointer-events-none disabled:opacity-60"
-                aria-label={`${providerIdLabel(provider)}，${modelCount} 个模型，${enabled ? "已启用" : "已停用"}${active ? "，当前已选择" : ""}`}
+                aria-label={frontendMessage("settings.provider.rowAria", {
+                  provider: providerIdLabel(provider),
+                  models: frontendMessage("settings.provider.modelsCount", { count: modelCount }),
+                  state: frontendMessage(enabled ? "settings.provider.enabled" : "settings.provider.disabled"),
+                  selected: active ? frontendMessage("settings.provider.selectedSuffix") : "",
+                })}
                 aria-pressed={active}
                 onClick={() => onSelect(provider)}
               >
@@ -88,8 +94,11 @@ export function ProviderConnectionList({
                     <ProviderStatusIcon loading={loading} catalog={catalog} error={error} />
                     <span className="truncate">
                       {catalog
-                        ? `${modelCount} 个模型 · ${formatShortTime(catalog.fetchedAt)}`
-                        : provider.Id || "未设置 ID"}
+                        ? frontendMessage("settings.provider.catalogSummary", {
+                            models: frontendMessage("settings.provider.modelsCount", { count: modelCount }),
+                            time: formatShortTime(catalog.fetchedAt),
+                          })
+                        : provider.Id || frontendMessage("settings.provider.unsetId")}
                     </span>
                   </span>
                 </span>
@@ -108,7 +117,7 @@ export function ProviderConnectionList({
                     type="button"
                     disabled={disabled}
                     className="grid h-8 w-8 place-items-center rounded-md text-ink-400 transition hover:bg-ink-900/[0.045] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-45"
-                    aria-label="供应商操作"
+                    aria-label={frontendMessage("settings.provider.operations")}
                   >
                     <MoreVertical className="h-3.5 w-3.5" />
                   </button>
@@ -119,7 +128,7 @@ export function ProviderConnectionList({
                     disabled={protectedProvider}
                     onSelect={() => onRename(provider)}
                   >
-                    重命名
+                    {frontendMessage("settings.provider.rename")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -128,17 +137,17 @@ export function ProviderConnectionList({
                     disabled={protectedProvider}
                     onSelect={() => onDelete(provider)}
                   >
-                    删除
+                    {frontendMessage("settings.action.delete")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           );
         })}
-        {providerResults.length === 0 ? <EmptyList text="没有匹配的供应商" /> : null}
+        {providerResults.length === 0 ? <EmptyList text={frontendMessage("settings.provider.searchEmpty")} /> : null}
       </div>
     ) : (
-      <EmptyList text="添加供应商后填写连接信息" />
+      <EmptyList text={frontendMessage("settings.provider.addDescription")} />
     );
 
   return (
@@ -147,11 +156,11 @@ export function ProviderConnectionList({
         <div className="border-b border-ink-200/70 bg-paper-50 p-3">
           <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate text-[14px] font-semibold text-ink-900">模型服务</div>
+              <div className="truncate text-[14px] font-semibold text-ink-900">{frontendMessage("settings.model.serviceTitle")}</div>
               <div className="mt-0.5 truncate text-[11px] text-ink-500">
                 {providerQuery
-                  ? `${providerResults.length} / ${providers.length} 个端点`
-                  : `${providers.length} 个端点`}
+                  ? frontendMessage("settings.provider.filteredEndpoints", { visible: providerResults.length, total: providers.length })
+                  : frontendMessage("settings.provider.endpointsCount", { count: providers.length })}
               </div>
             </div>
             <button
@@ -159,8 +168,8 @@ export function ProviderConnectionList({
               disabled={disabled}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50"
               onClick={onRequestAdd}
-              aria-label="添加供应商"
-              title="添加供应商"
+              aria-label={frontendMessage("settings.provider.add")}
+              title={frontendMessage("settings.provider.add")}
             >
               <Plus className="h-4 w-4" />
             </button>

@@ -1,3 +1,5 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+
 export type SettingsDraftStatus = "loading" | "saving" | "invalid" | "dirty" | "synced";
 
 export type SettingsDraftTone = "neutral" | "success" | "info" | "warning";
@@ -13,7 +15,7 @@ export interface SettingsDraftInteractionInput {
 export interface SettingsDraftInteraction {
   detail: string;
   refreshDisabled: boolean;
-  refreshLabel: "刷新" | "还原";
+  refreshLabel: string;
   refreshTitle: string;
   saveDisabled: boolean;
   saveTitle: string;
@@ -31,33 +33,33 @@ export function readSettingsDraftInteraction({
 }: SettingsDraftInteractionInput): SettingsDraftInteraction {
   const validationError = validationErrors[0] ?? null;
   const issue = validationError ?? localError;
-  const refreshLabel = dirty ? "还原" : "刷新";
-  const refreshTitle = dirty ? "放弃未保存修改并还原当前快照" : "刷新配置快照";
+  const refreshLabel = frontendMessage(dirty ? "settings.draft.restore" : "settings.draft.refresh");
+  const refreshTitle = frontendMessage(dirty ? "settings.draft.restoreTitle" : "settings.draft.refreshTitle");
 
   if (!ready) {
     return {
-      detail: "配置快照尚未加载。",
+      detail: frontendMessage("settings.draft.notLoaded"),
       refreshDisabled: true,
       refreshLabel,
-      refreshTitle: "配置快照尚未加载",
+      refreshTitle: frontendMessage("settings.draft.notLoadedTitle"),
       saveDisabled: true,
-      saveTitle: "配置快照尚未加载",
+      saveTitle: frontendMessage("settings.draft.notLoadedTitle"),
       status: "loading",
-      statusLabel: "等待加载",
+      statusLabel: frontendMessage("settings.draft.waiting"),
       tone: "neutral",
     };
   }
 
   if (saving) {
     return {
-      detail: "正在把当前草稿保存到后端配置。",
+      detail: frontendMessage("settings.draft.savingDetail"),
       refreshDisabled: true,
       refreshLabel,
-      refreshTitle: "正在保存，暂不能刷新或还原",
+      refreshTitle: frontendMessage("settings.draft.savingTitle"),
       saveDisabled: true,
-      saveTitle: "正在保存",
+      saveTitle: frontendMessage("settings.state.saving"),
       status: "saving",
-      statusLabel: "保存中",
+      statusLabel: frontendMessage("settings.draft.savingStatus"),
       tone: "info",
     };
   }
@@ -70,36 +72,40 @@ export function readSettingsDraftInteraction({
       refreshLabel,
       refreshTitle,
       saveDisabled: blocksSave || !dirty,
-      saveTitle: blocksSave ? `请先修复校验错误：${issue}` : dirty ? "重试保存当前草稿" : "没有未保存修改",
+      saveTitle: blocksSave
+        ? frontendMessage("settings.draft.fixIssue", { issue })
+        : dirty
+          ? frontendMessage("settings.draft.retrySave")
+          : frontendMessage("settings.draft.noUnsaved"),
       status: "invalid",
-      statusLabel: "需要修复",
+      statusLabel: frontendMessage("settings.draft.fixRequired"),
       tone: "warning",
     };
   }
 
   if (dirty) {
     return {
-      detail: "有未保存修改，保存后才会写入配置。",
+      detail: frontendMessage("settings.draft.unsavedDetail"),
       refreshDisabled: false,
       refreshLabel,
       refreshTitle,
       saveDisabled: false,
-      saveTitle: "保存当前草稿",
+      saveTitle: frontendMessage("settings.draft.unsavedTitle"),
       status: "dirty",
-      statusLabel: "未保存",
+      statusLabel: frontendMessage("settings.draft.unsaved"),
       tone: "info",
     };
   }
 
   return {
-    detail: "没有未保存修改。",
+    detail: frontendMessage("settings.draft.syncedDetail"),
     refreshDisabled: false,
     refreshLabel,
     refreshTitle,
     saveDisabled: true,
-    saveTitle: "没有未保存修改",
+    saveTitle: frontendMessage("settings.draft.syncedTitle"),
     status: "synced",
-    statusLabel: "已同步",
+    statusLabel: frontendMessage("settings.state.synced"),
     tone: "success",
   };
 }

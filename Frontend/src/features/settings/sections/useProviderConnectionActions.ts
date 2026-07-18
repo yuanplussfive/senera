@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { SettingsConfigCommands } from "../SettingsContracts";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { normalizeProviderEndpointDraft } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import type { ModelServiceState } from "./modelServiceState";
@@ -240,7 +241,7 @@ export function useProviderConnectionActions({
 
   const selectProvider = (provider: ProviderEndpointDraft): boolean => {
     if (dirty) {
-      setLocalError("当前连接表单有未确认修改，请先确认或取消。");
+      setLocalError(frontendMessage("settings.provider.pendingDraftError"));
       return false;
     }
     setSelectedProviderId(provider.Id);
@@ -308,7 +309,7 @@ export function useProviderConnectionActions({
 
   const renameProvider = (providerId: string, nextProviderId: string): void => {
     if (providerId === selectedProviderId && dirty) {
-      setLocalError("当前连接表单有未确认修改，请先确认或取消。");
+      setLocalError(frontendMessage("settings.provider.pendingDraftError"));
       return;
     }
     const requestId = onRenameProviderEndpoint(providerId, nextProviderId);

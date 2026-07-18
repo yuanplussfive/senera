@@ -130,17 +130,17 @@ export function ProviderModelList({
         <div className="border-b border-ink-200/70 bg-paper-50 px-3 py-3">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="text-[13.5px] font-semibold text-ink-900">模型</span>
+              <span className="text-[13.5px] font-semibold text-ink-900">{frontendMessage("config.model.title")}</span>
               <span className="rounded-md bg-ink-900/[0.055] px-2 py-0.5 text-[10.5px] text-ink-500">
                 {rows.length}
               </span>
-              <Tooltip content="搜索模型" side="top">
+              <Tooltip content={frontendMessage("config.model.searchPlaceholder")} side="top">
                 <button
                   type="button"
                   disabled={disabled || !selectedProvider}
                   className="grid h-8 w-8 place-items-center rounded-md text-ink-450 transition hover:bg-ink-900/[0.05] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-45"
                   onClick={() => setCompactSearchOpen((current) => !current)}
-                  aria-label="搜索模型"
+                  aria-label={frontendMessage("config.model.searchPlaceholder")}
                   aria-pressed={compactSearchOpen}
                 >
                   <Search className="h-4 w-4" />
@@ -156,17 +156,17 @@ export function ProviderModelList({
                   onClick={() => onFetch(true)}
                 >
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  获取模型列表
+                  {frontendMessage("config.model.fetchList")}
                 </button>
               ) : null}
               {onAddManualModel ? (
-                <Tooltip content="自定义模型" side="top">
+                <Tooltip content={frontendMessage("config.model.customModel")} side="top">
                   <button
                     type="button"
                     disabled={disabled || !selectedProvider}
                     className={iconButtonClassName}
                     onClick={onAddManualModel}
-                    aria-label="添加自定义模型"
+                    aria-label={frontendMessage("config.model.addCustomModel")}
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </button>
@@ -186,13 +186,13 @@ export function ProviderModelList({
           subtitle={modelListSubtitle(selectedProvider, catalog, rows.length)}
           action={
             <div className="flex items-center gap-1.5">
-              <Tooltip content="模型分组" side="top">
+              <Tooltip content={frontendMessage("config.model.modelGroups")} side="top">
                 <button
                   type="button"
                   disabled={disabled}
                   className={iconButtonClassName}
                   onClick={onOpenModelGroups}
-                  aria-label="模型分组"
+                  aria-label={frontendMessage("config.model.modelGroups")}
                 >
                   <Tags className="h-3.5 w-3.5" />
                 </button>
@@ -213,26 +213,26 @@ export function ProviderModelList({
                 {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.166.17")}
               </button>
               {onAddManualModel ? (
-                <Tooltip content="手动添加模型" side="top">
+                <Tooltip content={frontendMessage("config.model.manualAdd")} side="top">
                   <button
                     type="button"
                     disabled={disabled || !selectedProvider}
                     className={iconButtonClassName}
                     onClick={onAddManualModel}
-                    aria-label="手动添加模型"
+                    aria-label={frontendMessage("config.model.manualAdd")}
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </button>
                 </Tooltip>
               ) : null}
               {showFetchAction ? (
-                <Tooltip content="获取模型列表" side="top">
+                <Tooltip content={frontendMessage("config.model.fetchList")} side="top">
                   <button
                     type="button"
                     disabled={disabled || loading || !enabled || !selectedProvider?.Id}
                     className={iconButtonClassName}
                     onClick={() => onFetch(true)}
-                    aria-label="获取模型列表"
+                    aria-label={frontendMessage("config.model.fetchList")}
                   >
                     {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                   </button>
@@ -308,16 +308,16 @@ function ProviderModelRows({
   );
 
   if (!selectedProvider) {
-    return <EmptyList text="先添加供应商" />;
+    return <EmptyList text={frontendMessage("config.model.addProviderFirst")} />;
   }
   if (!enabled) {
-    return <EmptyList text="当前供应商已关闭" />;
+    return <EmptyList text={frontendMessage("config.model.providerDisabled")} />;
   }
   if (!catalog && rows.length === 0) {
-    return <EmptyList text="点击获取模型列表读取 /models 列表" />;
+    return <EmptyList text={frontendMessage("config.model.fetchHint")} />;
   }
   if (rows.length === 0) {
-    return <EmptyList text="没有匹配的模型" />;
+    return <EmptyList text={frontendMessage("config.model.noMatches")} />;
   }
 
   return (
@@ -406,7 +406,7 @@ function ProviderModelRow({
           {model.id}
         </span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[10.5px] text-ink-400">{model.ownedBy || "供应商模型"}</span>
+          <span className="truncate text-[10.5px] text-ink-400">{model.ownedBy || frontendMessage("config.model.providerModel")}</span>
           <CapabilityIconStrip capabilities={capabilities} />
         </span>
       </span>
@@ -454,7 +454,7 @@ function ProviderModelRow({
             disabled={disabled || !providerId}
             className={iconButtonClassName}
             title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.362.17")}
-            aria-label="配置模型"
+            aria-label={frontendMessage("config.model.configure")}
             onClick={() => onConfigureModel(model)}
           >
             <Settings2 className="h-3.5 w-3.5" />
@@ -465,7 +465,7 @@ function ProviderModelRow({
             disabled={disabled || !providerId}
             className={iconButtonClassName}
             title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.371.17")}
-            aria-label="添加模型"
+            aria-label={frontendMessage("config.model.addModel")}
             onClick={() => onAddModel(model)}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -521,7 +521,7 @@ function ModelGroupSummary({
           type="button"
           className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-ink-300 bg-paper-100 px-2.5 text-[11px] text-ink-750 transition-colors duration-150 hover:border-ink-400 hover:bg-paper-50"
           onClick={() => onSelectGroup(null)}
-          title={`所有模型: ${total}`}
+          title={frontendMessage("config.model.allModelsTitle", { count: total })}
         >
           <Tags className="h-3.5 w-3.5" />
           <span className="font-medium">
@@ -553,15 +553,17 @@ function modelListSubtitle(
   visibleRows: number,
 ): string {
   if (!selectedProvider) {
-    return "选择供应商后显示模型";
+    return frontendMessage("config.model.selectProviderHint");
   }
   if (!providerEnabled(selectedProvider)) {
-    return "当前供应商已关闭";
+    return frontendMessage("config.model.providerDisabled");
   }
   if (!catalog) {
-    return visibleRows > 0 ? `${visibleRows} 个已配置模型` : "获取后显示可用模型";
+    return visibleRows > 0
+      ? frontendMessage("config.model.configuredCount", { count: visibleRows })
+      : frontendMessage("config.model.fetchToShow");
   }
   return visibleRows === catalog.models.length
-    ? `${catalog.models.length} 个模型`
-    : `${visibleRows} / ${catalog.models.length} 个模型`;
+    ? frontendMessage("config.model.count", { count: catalog.models.length })
+    : frontendMessage("config.model.filteredCount", { visible: visibleRows, total: catalog.models.length });
 }

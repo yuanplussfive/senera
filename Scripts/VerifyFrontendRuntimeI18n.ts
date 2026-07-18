@@ -38,6 +38,7 @@ verifyI18nRuntimeGovernance({
         "features/chat/SystemConfigPanel.tsx",
         "features/chat/ThinkingSummaryBar.tsx",
         "features/chat/VectorModelConfigView.tsx",
+        "features/settings",
         "features/chat/UserMessageRow.tsx",
         "features/chat/emptySuggestions.ts",
         "features/chat/modelConfigData.ts",
@@ -80,7 +81,10 @@ verifyI18nRuntimeGovernance({
         "shared/config",
         "shared/ui",
       ],
-      allowedFiles: ["Frontend/src/shared/ui/useClipboardCopy.ts"],
+      allowedFiles: [
+        "Frontend/src/shared/ui/useClipboardCopy.ts",
+        "Frontend/src/shared/ui/DropdownMenu.stories.tsx",
+      ],
     },
   ],
 });

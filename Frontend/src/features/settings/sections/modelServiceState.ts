@@ -3,6 +3,7 @@ import type {
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
 } from "../../../api/eventTypes";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { JsonConfigObject } from "../../../shared/config/JsonConfigForm";
 import {
   groupProviderModelRows,
@@ -127,8 +128,8 @@ export interface DefaultAssistantModelCandidate {
 export const defaultModelSlotDefinitions = [
   {
     id: "assistant",
-    label: "默认助手模型",
-    description: "聊天和常规助手回复使用的主模型。",
+    label: frontendMessage("settings.model.defaultTitle"),
+    description: frontendMessage("settings.diagnostics.defaultModelDescription"),
     configKey: "DefaultModelProviderId",
     capabilityFilter: { Chat: true },
   },
@@ -137,23 +138,23 @@ export const defaultModelSlotDefinitions = [
 export const modelServiceDiagnosticGroupDefinitions = [
   {
     id: "connection",
-    label: "连接配置",
-    description: "供应商 ID、启用状态和连接配置问题。",
+    label: frontendMessage("settings.diagnostics.connectionGroup"),
+    description: frontendMessage("settings.diagnostics.connectionGroupDescription"),
   },
   {
     id: "model_list",
-    label: "模型列表",
-    description: "远程目录获取、模型快照和本地配置关系。",
+    label: frontendMessage("settings.diagnostics.modelListGroup"),
+    description: frontendMessage("settings.diagnostics.modelListGroupDescription"),
   },
   {
     id: "default_slots",
-    label: "默认模型",
-    description: "默认助手槽位的可用性。",
+    label: frontendMessage("settings.diagnostics.defaultGroup"),
+    description: frontendMessage("settings.diagnostics.defaultGroupDescription"),
   },
   {
     id: "runtime",
-    label: "运行使用",
-    description: "运行时调用链路和后续恢复入口。",
+    label: frontendMessage("settings.diagnostics.runtimeGroup"),
+    description: frontendMessage("settings.diagnostics.runtimeGroupDescription"),
   },
 ] as const satisfies readonly Omit<ModelServiceDiagnosticGroupState, "items">[];
 
@@ -212,7 +213,7 @@ export function readModelServiceState({
     selectedProvider,
     selectedProviderModelList,
     defaultModel,
-    defaultModelStatus: defaultAssistantSlot?.statusLabel ?? "待设置",
+    defaultModelStatus: defaultAssistantSlot?.statusLabel ?? frontendMessage("settings.diagnostics.unset"),
     defaultSlots,
     diagnostics,
     catalogSignalCount: providers.filter((provider) => provider.Id && (errors[provider.Id] || loadingIds[provider.Id]))
@@ -340,8 +341,8 @@ export function readModelServiceDiagnostics({
       id: "runtime-placeholder",
       group: "runtime",
       severity: "info",
-      title: "运行使用诊断",
-      detail: "运行时调用链路会在连接和默认模型槽位稳定后接入。",
+      title: frontendMessage("settings.diagnostics.runtimeTitle"),
+      detail: frontendMessage("settings.diagnostics.runtimeDetail"),
       action: "none",
     } satisfies ModelServiceDiagnosticItem,
   ];
@@ -358,11 +359,11 @@ export function readModelServiceDiagnosticGroups(
 
 export function formatModelServiceDiagnosticReport(items: readonly ModelServiceDiagnosticItem[]): string {
   const groups = readModelServiceDiagnosticGroups(items);
-  const lines = ["模型服务诊断报告"];
+  const lines = [frontendMessage("settings.diagnostics.reportTitle")];
   for (const group of groups) {
     lines.push("", `[${group.label}]`);
     if (group.items.length === 0) {
-      lines.push("- 无诊断项");
+      lines.push(`- ${frontendMessage("settings.diagnostics.noItems")}`);
       continue;
     }
     for (const item of group.items) {
@@ -444,17 +445,17 @@ function readDefaultSlotStatus({
 function defaultSlotStatusLabel(status: DefaultModelSlotStatus): string {
   switch (status) {
     case "ready":
-      return "可用";
+      return frontendMessage("settings.diagnostics.available");
     case "unset":
-      return "待设置";
+      return frontendMessage("settings.diagnostics.unset");
     case "missing":
-      return "模型不存在";
+      return frontendMessage("settings.diagnostics.modelMissing");
     case "provider_missing":
-      return "供应商不存在";
+      return frontendMessage("settings.diagnostics.providerMissing");
     case "provider_disabled":
-      return "供应商已关闭";
+      return frontendMessage("settings.diagnostics.providerDisabled");
     case "capability_mismatch":
-      return "能力不匹配";
+      return frontendMessage("settings.diagnostics.capabilityMismatch");
   }
 }
 
@@ -482,8 +483,8 @@ function readProviderDiagnosticItems(
         id: "provider-missing-id",
         group: "connection",
         severity: "error",
-        title: "供应商缺少 ID",
-        detail: "存在未命名供应商，请补齐供应商 ID。",
+        title: frontendMessage("settings.diagnostics.providerMissingIdTitle"),
+        detail: frontendMessage("settings.diagnostics.providerMissingIdDetail"),
         action: "open_connection",
       },
     ];
@@ -495,8 +496,8 @@ function readProviderDiagnosticItems(
       id: `provider-disabled:${provider.Id}`,
       group: "connection",
       severity: "warning",
-      title: "供应商已关闭",
-      detail: `${providerIdLabel(provider)} 当前未启用，相关模型不会作为可用候选。`,
+      title: frontendMessage("settings.diagnostics.providerDisabledTitle"),
+      detail: frontendMessage("settings.diagnostics.providerDisabledDetail", { provider: providerIdLabel(provider) }),
       affectedProviderId: provider.Id,
       action: "open_connection",
     });
@@ -508,7 +509,7 @@ function readProviderDiagnosticItems(
       id: `provider-model-fetch:${provider.Id}`,
       group: "model_list",
       severity: "error",
-      title: "模型列表获取失败",
+      title: frontendMessage("settings.diagnostics.modelFetchFailed"),
       detail: `${providerIdLabel(provider)}：${error.message}`,
       affectedProviderId: provider.Id,
       action: loadingIds[provider.Id] ? "none" : "fetch_models",
@@ -528,7 +529,12 @@ function readDefaultSlotDiagnosticItems(slot: DefaultModelSlotState): ModelServi
       id: `default-slot:${slot.definition.id}`,
       group: "default_slots",
       severity: slot.status === "unset" ? "warning" : "error",
-      title: `${slot.definition.label}${slot.status === "unset" ? "未设置" : "不可用"}`,
+      title: frontendMessage("settings.diagnostics.defaultUnavailable", {
+        label: slot.definition.label,
+        state: frontendMessage(
+          slot.status === "unset" ? "settings.diagnostics.unset" : "settings.diagnostics.unavailable",
+        ),
+      }),
       detail: readDefaultSlotDiagnosticDetail(slot),
       affectedProviderId: slot.provider?.Id,
       affectedModelId: slot.selectedModelId ?? undefined,
@@ -541,15 +547,21 @@ function readDefaultSlotDiagnosticItems(slot: DefaultModelSlotState): ModelServi
 function readDefaultSlotDiagnosticDetail(slot: DefaultModelSlotState): string {
   switch (slot.status) {
     case "unset":
-      return `${slot.definition.label}还没有绑定模型。`;
+      return frontendMessage("settings.diagnostics.defaultUnset", { label: slot.definition.label });
     case "missing":
-      return `${slot.definition.label}绑定的模型 ${slot.selectedModelId ?? ""} 不在已配置模型中。`;
+      return frontendMessage("settings.diagnostics.defaultMissing", {
+        label: slot.definition.label,
+        model: slot.selectedModelId ?? "",
+      });
     case "provider_missing":
-      return `${slot.definition.label}绑定的模型供应商不存在。`;
+      return frontendMessage("settings.diagnostics.defaultProviderMissing", { label: slot.definition.label });
     case "provider_disabled":
-      return `${slot.definition.label}绑定的供应商 ${slot.provider?.Id ?? ""} 已关闭。`;
+      return frontendMessage("settings.diagnostics.defaultProviderDisabled", {
+        label: slot.definition.label,
+        provider: slot.provider?.Id ?? "",
+      });
     case "capability_mismatch":
-      return `${slot.definition.label}绑定的模型不满足当前槽位能力要求。`;
+      return frontendMessage("settings.diagnostics.defaultCapabilityMismatch", { label: slot.definition.label });
     case "ready":
       return "";
   }

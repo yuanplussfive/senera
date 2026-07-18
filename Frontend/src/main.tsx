@@ -15,6 +15,7 @@ import { resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { installMotionDevTools } from "./dev/motionDevTools";
 import { SettingsWorkbench } from "./features/settings";
 import type { SettingsSectionId } from "./features/settings/types";
+import { FrontendI18nProvider } from "./i18n/useFrontendLocale";
 import { AppMotionProvider } from "./shared/motion";
 import { AppAppearanceProvider } from "./shared/theme";
 import { Dialog, DialogActionButton, DialogActions, DialogContent, TooltipProvider } from "./shared/ui";
@@ -49,37 +50,39 @@ function Root(): JSX.Element {
   const authentication = useServerAuthentication(WS_URL);
 
   return (
-    <AppMotionProvider level={motionLevel}>
-      <AppAppearanceProvider motionLevel={motionLevel}>
-        <DesktopWindowChrome surface={surface}>
-          <ServerAuthenticationBoundary
-            state={authentication.state}
-            onLogin={authentication.login}
-            onRetry={authentication.refresh}
-          >
-            {(resolvedAuthentication) =>
-              surface === "settings" ? (
-                <DesktopSettingsSurface
-                  initialSection={settingsSection}
-                  values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
-                  motionLevel={motionLevel}
-                  onValueChange={(id, value) => {
-                    if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-                    if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
-                  }}
-                  onMotionLevelChange={setMotionLevel}
-                />
-              ) : (
-                <App
-                  onLogout={resolvedAuthentication.account ? authentication.logout : undefined}
-                  uploadCsrfToken={resolvedAuthentication.csrfToken}
-                />
-              )
-            }
-          </ServerAuthenticationBoundary>
-        </DesktopWindowChrome>
-      </AppAppearanceProvider>
-    </AppMotionProvider>
+    <FrontendI18nProvider>
+      <AppMotionProvider level={motionLevel}>
+        <AppAppearanceProvider motionLevel={motionLevel}>
+          <DesktopWindowChrome surface={surface}>
+            <ServerAuthenticationBoundary
+              state={authentication.state}
+              onLogin={authentication.login}
+              onRetry={authentication.refresh}
+            >
+              {(resolvedAuthentication) =>
+                surface === "settings" ? (
+                  <DesktopSettingsSurface
+                    initialSection={settingsSection}
+                    values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
+                    motionLevel={motionLevel}
+                    onValueChange={(id, value) => {
+                      if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
+                      if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
+                    }}
+                    onMotionLevelChange={setMotionLevel}
+                  />
+                ) : (
+                  <App
+                    onLogout={resolvedAuthentication.account ? authentication.logout : undefined}
+                    uploadCsrfToken={resolvedAuthentication.csrfToken}
+                  />
+                )
+              }
+            </ServerAuthenticationBoundary>
+          </DesktopWindowChrome>
+        </AppAppearanceProvider>
+      </AppMotionProvider>
+    </FrontendI18nProvider>
   );
 }
 

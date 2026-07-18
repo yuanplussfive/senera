@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import { FrontendLocales, frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { useFrontendLocale, useSetFrontendLocale } from "../../i18n/useFrontendLocale";
 import { Check, Copy, Menu, MonitorCog, RotateCcw, Search, X } from "lucide-react";
 import { JsonConfigSettingsView } from "../../shared/config/JsonConfigForm";
 import {
@@ -150,8 +152,8 @@ export function SettingsWorkbench({
           data-window-controls-inset
         >
           <IconButton
-            label="打开设置导航"
-            tooltip="打开设置导航"
+            label={frontendMessage("settings.nav.open")}
+            tooltip={frontendMessage("settings.nav.open")}
             size="sm"
             tone="muted"
             onClick={() => setNavigationOpen(true)}
@@ -160,7 +162,7 @@ export function SettingsWorkbench({
           </IconButton>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[13.5px] font-semibold text-ink-900">{activeSection.label}</div>
-            <div className="truncate text-[11px] text-ink-450">设置</div>
+            <div className="truncate text-[11px] text-ink-450">{frontendMessage("settings.header.title")}</div>
           </div>
           {shellActions}
         </header>
@@ -175,8 +177,10 @@ export function SettingsWorkbench({
             >
               <MonitorCog className="h-5 w-5 shrink-0 text-ink-500" />
               <div className="min-w-0 flex-1">
-                <h1 className="truncate text-[14px] font-semibold text-ink-900">设置</h1>
-                <p className="truncate text-[11.5px] text-ink-450">Senera 工作台</p>
+                <h1 className="truncate text-[14px] font-semibold text-ink-900">
+                  {frontendMessage("settings.header.title")}
+                </h1>
+                <p className="truncate text-[11.5px] text-ink-450">{frontendMessage("settings.header.subtitle")}</p>
               </div>
               {shellActions}
             </div>
@@ -204,7 +208,7 @@ export function SettingsWorkbench({
       <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
         <SheetContent
           side="left"
-          title="设置导航"
+          title={frontendMessage("settings.nav.title")}
           className="w-[min(320px,calc(100vw-24px))] p-0"
           showHeader={false}
           focusContentOnOpen
@@ -212,10 +216,12 @@ export function SettingsWorkbench({
           <div className="flex h-full min-h-0 flex-col bg-paper-50">
             <div className="flex h-14 shrink-0 items-center gap-2 border-b border-ink-200/70 px-4">
               <MonitorCog className="h-4 w-4 text-ink-500" />
-              <div className="min-w-0 flex-1 text-[14px] font-semibold text-ink-900">设置</div>
+              <div className="min-w-0 flex-1 text-[14px] font-semibold text-ink-900">
+                {frontendMessage("settings.header.title")}
+              </div>
               <IconButton
-                label="关闭设置导航"
-                tooltip="关闭设置导航"
+                label={frontendMessage("settings.nav.close")}
+                tooltip={frontendMessage("settings.nav.close")}
                 size="sm"
                 tone="muted"
                 onClick={() => setNavigationOpen(false)}
@@ -265,14 +271,14 @@ function SettingsNavigation({
           <input
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            aria-label="搜索设置"
-            placeholder="搜索设置"
+            aria-label={frontendMessage("settings.nav.searchLabel")}
+            placeholder={frontendMessage("settings.nav.searchPlaceholder")}
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-800 outline-none placeholder:text-ink-350"
           />
           {search ? (
             <button
               type="button"
-              aria-label="清除搜索"
+              aria-label={frontendMessage("settings.nav.clearSearch")}
               onClick={() => onSearchChange("")}
               className="grid h-5 w-5 shrink-0 place-items-center rounded text-ink-350 transition hover:bg-ink-900/[0.06] hover:text-ink-700"
             >
@@ -282,7 +288,7 @@ function SettingsNavigation({
         </label>
       </div>
       <ScrollArea className="min-h-0 flex-1" viewportClassName="px-2 py-2">
-        <nav className="space-y-3" aria-label="设置分区">
+        <nav className="space-y-3" aria-label={frontendMessage("settings.nav.sectionsLabel")}>
           {groupedResults.map(({ group, results }) => (
             <div key={group.id}>
               <div className="px-2 pb-1 text-[11px] font-medium text-ink-350">{group.label}</div>
@@ -301,7 +307,9 @@ function SettingsNavigation({
             </div>
           ))}
           {groupedResults.length === 0 ? (
-            <div className="px-2 py-5 text-center text-[12px] leading-5 text-ink-450">没有匹配的设置</div>
+            <div className="px-2 py-5 text-center text-[12px] leading-5 text-ink-450">
+              {frontendMessage("settings.nav.empty")}
+            </div>
           ) : null}
         </nav>
       </ScrollArea>
@@ -344,7 +352,7 @@ function SettingsNavItem({
             key={`${detail.label}:${detail.value}`}
             className="mt-0.5 block truncate text-[10.5px] leading-4 text-ink-450"
           >
-            {detail.label}：{detail.value}
+            {detail.label}: {detail.value}
           </span>
         ))}
       </span>
@@ -470,7 +478,8 @@ function SystemSettings({
   draftState: ReturnType<typeof useConfigSettingsDraftState>;
   systemConfig?: SettingsSystemConfigHandle;
 }): JSX.Element {
-  if (!systemConfig) return <SettingsWorkspaceState>正在连接主配置服务</SettingsWorkspaceState>;
+  if (!systemConfig)
+    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingMain")}</SettingsWorkspaceState>;
   return (
     <DraftBackedSection draftState={draftState} ready={Boolean(systemConfig.configSnapshot)}>
       <JsonConfigSettingsView
@@ -478,7 +487,7 @@ function SystemSettings({
         sections={readMainConfigurationSections(systemConfig.configSnapshot?.form.sections ?? [])}
         value={draftState.draft}
         disabled={draftState.saving}
-        emptyText="主配置暂时没有独立字段。"
+        emptyText={frontendMessage("settings.state.emptyMain")}
         onChange={draftState.updateDraft}
       />
     </DraftBackedSection>
@@ -495,7 +504,8 @@ function ConfigFormSectionSettings({
   systemConfig?: SettingsSystemConfigHandle;
 }): JSX.Element {
   const sections = systemConfig?.configSnapshot?.form.sections.filter((section) => section.name === sectionId) ?? [];
-  if (!systemConfig?.configSnapshot) return <SettingsWorkspaceState>正在连接配置服务</SettingsWorkspaceState>;
+  if (!systemConfig?.configSnapshot)
+    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingConfig")}</SettingsWorkspaceState>;
   return (
     <DraftBackedSection draftState={draftState} ready>
       <JsonConfigSettingsView
@@ -503,7 +513,7 @@ function ConfigFormSectionSettings({
         sections={sections}
         value={draftState.draft}
         disabled={draftState.saving}
-        emptyText="这个配置分区还没有可显示的字段"
+        emptyText={frontendMessage("settings.state.emptySection")}
         onChange={draftState.updateDraft}
       />
     </DraftBackedSection>
@@ -543,7 +553,9 @@ function DraftBackedSection({
             {interaction.refreshLabel}
           </Button>
           <Button size="sm" disabled={interaction.saveDisabled} onClick={draftState.save} title={interaction.saveTitle}>
-            {draftState.saving ? "正在保存" : "保存更改"}
+            {draftState.saving
+              ? frontendMessage("settings.state.saving")
+              : frontendMessage("settings.action.saveChanges")}
           </Button>
         </div>
       </div>
@@ -566,7 +578,10 @@ function AppearanceSettings(): JSX.Element {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,540px)_minmax(0,1fr)]">
-        <SettingsPanel title="外观" description="更改会立即应用到所有已打开的 Senera 窗口。">
+        <SettingsPanel
+          title={frontendMessage("settings.appearance.title")}
+          description={frontendMessage("settings.appearance.description")}
+        >
           <AppearancePreferenceControl />
           <div className="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-ink-200/60 pt-3">
             <Button
@@ -576,11 +591,14 @@ function AppearanceSettings(): JSX.Element {
               onClick={() => setAppearancePreference(defaultAppearancePreference)}
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              恢复默认
+              {frontendMessage("settings.appearance.reset")}
             </Button>
           </div>
         </SettingsPanel>
-        <SettingsPanel title="实时预览" description="使用当前颜色、字体和字号渲染常用界面元素。">
+        <SettingsPanel
+          title={frontendMessage("settings.appearance.previewTitle")}
+          description={frontendMessage("settings.appearance.previewDescription")}
+        >
           <AppearancePreview preference={preference} resolvedTheme={resolvedTheme} summary={summary} />
         </SettingsPanel>
       </div>
@@ -594,13 +612,20 @@ function GeneralSettings({
   onValueChange,
   onMotionLevelChange,
 }: Pick<SettingsWorkbenchProps, "values" | "motionLevel" | "onValueChange" | "onMotionLevelChange">): JSX.Element {
+  const locale = useFrontendLocale();
+  const setLocale = useSetFrontendLocale();
+  const changeLocale = (nextLocale: typeof locale): void => {
+    setLocale(nextLocale);
+    window.location.reload();
+  };
+
   return (
     <div className="space-y-4">
       {preferenceSections.map((preferenceSection) => (
         <SettingsPanel
           key={preferenceSection.id}
           title={preferenceSection.title}
-          description="设置工作区布局的默认状态。"
+          description={frontendMessage("settings.general.layoutDescription")}
         >
           <div className="overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50">
             {preferenceSection.items.map((item, index) => (
@@ -616,7 +641,29 @@ function GeneralSettings({
           </div>
         </SettingsPanel>
       ))}
-      <SettingsPanel title="动画" description="控制消息、面板和弹层的过渡强度。">
+      <SettingsPanel
+        title={frontendMessage("settings.general.languageLabel")}
+        description={frontendMessage("settings.general.languageDescription")}
+      >
+        <label className="flex items-center justify-between gap-3 rounded-lg border border-ink-200/70 bg-paper-50 px-3 py-3">
+          <span className="text-[12.5px] font-medium text-ink-850">
+            {frontendMessage("settings.general.languageLabel")}
+          </span>
+          <select
+            aria-label={frontendMessage("settings.general.languageLabel")}
+            value={locale}
+            onChange={(event) => changeLocale(event.target.value as typeof locale)}
+            className="h-8 rounded-md border border-line bg-paper-50 px-2 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
+          >
+            <option value={FrontendLocales.ZhCn}>{frontendMessage("settings.general.languageZhCn")}</option>
+            <option value={FrontendLocales.EnUs}>{frontendMessage("settings.general.languageEnUs")}</option>
+          </select>
+        </label>
+      </SettingsPanel>{" "}
+      <SettingsPanel
+        title={frontendMessage("settings.general.animationTitle")}
+        description={frontendMessage("settings.general.animationDescription")}
+      >
         <div className="grid gap-2 sm:grid-cols-3">
           {motionLevelOptions.map((option) => (
             <MotionLevelOption
@@ -676,14 +723,16 @@ function AppearancePreview({
       </dl>
       <div className="border-t border-ink-200/60 pt-4">
         <div className="flex items-center justify-between gap-3">
-          <MetaLabel size="sm">界面示例</MetaLabel>
+          <MetaLabel size="sm">{frontendMessage("settings.appearance.previewLabel")}</MetaLabel>
           <span className="rounded-full bg-ink-900/[0.04] px-2 py-0.5 text-[11px] text-ink-500">
-            {resolvedTheme === "dark" ? "深色" : "浅色"}
+            {resolvedTheme === "dark"
+              ? frontendMessage("settings.appearance.dark")
+              : frontendMessage("settings.appearance.light")}
           </span>
         </div>
         <div
           className="mt-3 overflow-hidden rounded-xl border border-line-subtle bg-[var(--theme-bg)] p-2"
-          aria-label="当前外观界面预览"
+          aria-label={frontendMessage("settings.appearance.previewAria")}
         >
           <div className="grid min-h-[220px] grid-cols-[104px_minmax(0,1fr)] gap-2">
             <div className="flex flex-col rounded-lg border border-line-subtle bg-[var(--theme-sidebar-bg)] p-2 shadow-panel">
@@ -697,10 +746,14 @@ function AppearancePreview({
               <div className="mt-2 h-5 rounded-md border border-line-subtle bg-surface-raised" />
               <div className="mt-2 space-y-1">
                 <div className="rounded-md bg-accent-surface px-2 py-1.5 text-[9px] font-medium text-accent-content">
-                  主题预览
+                  {frontendMessage("settings.appearance.sampleTitle")}
                 </div>
-                <div className="px-2 py-1.5 text-[9px] text-content-secondary">新对话</div>
-                <div className="px-2 py-1.5 text-[9px] text-content-secondary">设置讨论</div>
+                <div className="px-2 py-1.5 text-[9px] text-content-secondary">
+                  {frontendMessage("settings.appearance.sampleNewChat")}
+                </div>
+                <div className="px-2 py-1.5 text-[9px] text-content-secondary">
+                  {frontendMessage("settings.appearance.sampleDiscussion")}
+                </div>
               </div>
               <div className="mt-auto flex items-center gap-1.5 border-t border-line-subtle pt-2">
                 <span className="h-4 w-4 rounded-full bg-surface-muted" />
@@ -709,16 +762,16 @@ function AppearancePreview({
             </div>
             <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-line-subtle bg-[var(--theme-bg)]">
               <div className="flex h-8 items-center border-b border-line-subtle bg-surface-raised px-2.5 text-[10px] font-semibold text-content-primary">
-                主题预览
+                {frontendMessage("settings.appearance.sampleTitle")}
               </div>
               <div className="flex flex-1 flex-col gap-2.5 p-3">
                 <div className="ml-auto max-w-[80%] rounded-lg rounded-tr-sm bg-[var(--theme-chat-user-bg)] px-2.5 py-1.5 text-[9.5px] leading-4 text-[var(--theme-chat-user-fg)]">
-                  帮我检查这套主题。
+                  {frontendMessage("settings.appearance.samplePrompt")}
                 </div>
                 <div>
                   <div className="text-[9px] font-semibold text-content-primary">Senera</div>
                   <div className="mt-1 text-[9.5px] leading-4 text-content-secondary">
-                    颜色、层级和代码块会在这里即时预览。
+                    {frontendMessage("settings.appearance.sampleResponse")}
                   </div>
                   <div className="mt-2 overflow-hidden rounded-md border border-line-subtle bg-[var(--theme-code-editor-bg)]">
                     <div className="border-b border-line-subtle bg-[var(--theme-code-editor-gutter-bg)] px-2 py-1 font-mono text-[8px] text-[var(--theme-code-editor-gutter-fg)]">
@@ -732,7 +785,9 @@ function AppearancePreview({
               </div>
               <div className="p-2.5 pt-0">
                 <div className="flex items-center gap-2 rounded-xl border border-line bg-[var(--theme-chat-composer-bg)] px-2.5 py-2 shadow-[var(--shadow-soft)]">
-                  <span className="min-w-0 flex-1 text-[9px] text-content-secondary">跟 Senera 说点什么</span>
+                  <span className="min-w-0 flex-1 text-[9px] text-content-secondary">
+                    {frontendMessage("settings.appearance.sampleComposer")}
+                  </span>
                   <span
                     className="h-5 w-5 rounded-full"
                     style={{ background: readAccentSwatch(preference.accentColor) }}
@@ -750,21 +805,32 @@ function AppearancePreview({
 function AboutSettings({ environment }: { environment: SettingsEnvironment }): JSX.Element {
   return (
     <div className="space-y-4">
-      <SettingsPanel title="关于 Senera" description="查看当前版本和运行环境。">
+      <SettingsPanel
+        title={frontendMessage("settings.about.title")}
+        description={frontendMessage("settings.about.description")}
+      >
         <dl className="grid gap-3 sm:grid-cols-2">
-          <AboutValue label="应用版本" value={environment.appVersion} />
-          <AboutValue label="前端版本" value={environment.frontendVersion} />
-          <AboutValue label="运行方式" value={environment.surface === "desktop" ? "桌面应用" : "Web"} />
-          <AboutValue label="构建模式" value={environment.mode} />
+          <AboutValue label={frontendMessage("settings.about.appVersion")} value={environment.appVersion} />
+          <AboutValue label={frontendMessage("settings.about.frontendVersion")} value={environment.frontendVersion} />
+          <AboutValue
+            label={frontendMessage("settings.about.runMode")}
+            value={frontendMessage(environment.surface === "desktop" ? "settings.about.desktop" : "settings.about.web")}
+          />
+          <AboutValue label={frontendMessage("settings.about.buildMode")} value={environment.mode} />
         </dl>
       </SettingsPanel>
       {import.meta.env.DEV ? (
         <details className="border-b border-ink-200/70 pb-3">
-          <summary className="cursor-pointer text-[12.5px] font-medium text-ink-700">开发诊断</summary>
+          <summary className="cursor-pointer text-[12.5px] font-medium text-ink-700">
+            {frontendMessage("settings.about.devDiagnostics")}
+          </summary>
           <div className="mt-3 space-y-2">
-            <CommandRow command="npm run dev.frontend" label="启动前端开发服务" />
-            <CommandRow command="npm run desktop.live" label="启动桌面端实时验证" />
-            <CommandRow command="npm run desktop.verify" label="验证桌面构建" />
+            <CommandRow command="npm run dev.frontend" label={frontendMessage("settings.about.command.frontend")} />
+            <CommandRow command="npm run desktop.live" label={frontendMessage("settings.about.command.desktopLive")} />
+            <CommandRow
+              command="npm run desktop.verify"
+              label={frontendMessage("settings.about.command.desktopVerify")}
+            />
           </div>
         </details>
       ) : null}
@@ -782,7 +848,7 @@ function AboutValue({ label, value }: { label: string; value: string }): JSX.Ele
 }
 
 function CommandRow({ label, command }: { label: string; command: string }): JSX.Element {
-  const { copied, copyText } = useClipboardCopy({ successMessage: "已复制命令" });
+  const { copied, copyText } = useClipboardCopy({ successMessage: frontendMessage("settings.action.copied") });
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-ink-200/70 bg-paper-100/55 px-3 py-2.5">
       <div className="min-w-0">
@@ -790,8 +856,8 @@ function CommandRow({ label, command }: { label: string; command: string }): JSX
         <code className="mt-0.5 block truncate font-mono text-[11.5px] text-ink-500">{command}</code>
       </div>
       <IconButton
-        label="复制命令"
-        tooltip={copied ? "已复制" : "复制命令"}
+        label={frontendMessage("settings.action.copyCommand")}
+        tooltip={copied ? frontendMessage("settings.action.copied") : frontendMessage("settings.action.copyCommand")}
         size="sm"
         tone="muted"
         onClick={() => void copyText(command)}
@@ -883,11 +949,14 @@ function DiscardSectionDraftDialog({
 }): JSX.Element {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title="放弃未保存的更改？" description="当前编辑内容尚未确认，切换分区会丢失这些更改。">
+      <DialogContent
+        title={frontendMessage("settings.discard.title")}
+        description={frontendMessage("settings.discard.switchDescription")}
+      >
         <DialogActions>
-          <DialogActionButton close>继续编辑</DialogActionButton>
+          <DialogActionButton close>{frontendMessage("settings.discard.continue")}</DialogActionButton>
           <DialogActionButton variant="danger" onClick={onDiscard}>
-            放弃更改
+            {frontendMessage("settings.discard.confirm")}
           </DialogActionButton>
         </DialogActions>
       </DialogContent>

@@ -136,7 +136,14 @@ function registerDesktopIpc(): void {
     return readWindowState(target);
   });
   ipcMain.handle("senera:window.close", (event) => {
-    if (!resolveManagedWindow(event)) return;
+    const target = resolveManagedWindow(event);
+    if (!target) return;
+    if (target === settingsWindow) {
+      if (requestDirtySettingsConfirmation("settings")) return;
+      forceSettingsWindowClose = true;
+      target.close();
+      return;
+    }
     hideAllDesktopWindows();
   });
   ipcMain.handle("senera:window.get-state", (event) => {

@@ -4,6 +4,7 @@ import type {
   ProviderModelsSnapshotData,
 } from "../../../api/eventTypes";
 import type { JsonConfigObject } from "../../../shared/config/JsonConfigForm";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import {
   findTopField,
   normalizeProviderEndpointDraft,
@@ -121,14 +122,14 @@ export function buildProviderEndpointMutationInput(
   if (!connectionDraft) {
     return {
       ok: false,
-      message: "请选择供应商。",
+      message: frontendMessage("settings.provider.chooseRequired"),
     };
   }
   const providerId = connectionDraft.Id.trim();
   if (!providerId) {
     return {
       ok: false,
-      message: "供应商 ID 不能为空。",
+      message: frontendMessage("settings.provider.idRequired"),
     };
   }
   return {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ConfigMutationState, ConfigSnapshotData } from "../../../api/eventTypes";
 import { validateJsonConfigDraft, type JsonConfigObject } from "../../../shared/config/JsonConfigForm";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 
 export interface ConfigSettingsDraftState {
   draft: JsonConfigObject;
@@ -60,7 +61,7 @@ export function useConfigSettingsDraftState({
     }
     if (saveOperation.status === "error") {
       setSaveRequestId(null);
-      setLocalError(saveOperation.message ?? "主配置保存失败");
+      setLocalError(saveOperation.message ?? frontendMessage("config.mainFailed"));
     }
   }, [saveOperation]);
 
@@ -75,7 +76,7 @@ export function useConfigSettingsDraftState({
     if (!dirty || saving) return;
     const errors = snapshot ? validateJsonConfigDraft(snapshot.form.sections, draft) : [];
     if (errors.length > 0) {
-      setLocalError(errors[0] ?? "主配置表单校验失败");
+      setLocalError(errors[0] ?? frontendMessage("config.mainInvalid"));
       return;
     }
     const requestId = onSave(draft);

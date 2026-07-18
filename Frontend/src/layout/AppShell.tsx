@@ -54,8 +54,18 @@ type WorkflowPanelLayout = "drawer" | "overlay" | "inline";
 type WorkflowDockTool = "execution" | "terminal";
 
 const WORKFLOW_DOCK_ITEMS = [
-  { id: "execution", label: "执行", tooltip: "执行", Icon: ListTree },
-  { id: "terminal", label: "终端", tooltip: "终端", Icon: SquareTerminal },
+  {
+    id: "execution",
+    label: frontendMessage("workflow.dock.execution"),
+    tooltip: frontendMessage("workflow.dock.execution"),
+    Icon: ListTree,
+  },
+  {
+    id: "terminal",
+    label: frontendMessage("workflow.dock.terminal"),
+    tooltip: frontendMessage("workflow.dock.terminal"),
+    Icon: SquareTerminal,
+  },
 ] as const satisfies readonly { id: WorkflowDockTool; label: string; tooltip: string; Icon: typeof ListTree }[];
 
 type WorkflowDockTab = {
@@ -317,7 +327,7 @@ export function AppShell({
                   width: WORKFLOW_DOCK_CAPSULE_WIDTH,
                   willChange: "opacity, transform",
                 }}
-                aria-label="功能坞"
+                aria-label={frontendMessage("workflow.dock.label")}
                 data-workflow-dock-capsule
               >
                 {WORKFLOW_DOCK_ITEMS.map(({ id, tooltip, Icon }) => (
@@ -392,7 +402,7 @@ function WorkflowDockPlaceholder({
             <Icon className="h-4 w-4" />
           </span>
           <p className="mt-3 text-[12.5px] font-medium text-content-primary">{item.label}</p>
-          <p className="mt-1 text-[11.5px] text-content-muted">功能待定</p>
+          <p className="mt-1 text-[11.5px] text-content-muted">{frontendMessage("workflow.dock.pending")}</p>
         </div>
       </div>
     </aside>
@@ -403,7 +413,7 @@ function WorkflowDockTabs({ tabs }: { tabs: readonly WorkflowDockTab[] }): JSX.E
   return (
     <nav
       className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full border border-line-subtle bg-surface-subtle p-1"
-      aria-label="功能坞标签"
+      aria-label={frontendMessage("workflow.dock.tabs")}
       data-workflow-dock-tabs-list
     >
       {tabs.map((tab) => (

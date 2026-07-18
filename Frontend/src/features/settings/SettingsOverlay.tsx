@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { X } from "lucide-react";
 import type { SocketStatus } from "../../api/useAgentSocket";
 import type { WsRequest } from "../../api/eventTypes";
@@ -35,8 +36,8 @@ export function SettingsOverlay({
       >
         {section ? (
           <DialogContent
-            title="Senera 设置"
-            description="管理模型、能力、个人偏好和系统配置。"
+            title={frontendMessage("settings.overlay.title")}
+            description={frontendMessage("settings.overlay.description")}
             showHeader={false}
             showClose={false}
             className="h-[min(900px,calc(100dvh-48px))] max-h-[calc(100dvh-48px)] w-[min(1440px,calc(100vw-64px))] max-w-none overflow-hidden p-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0"
@@ -59,8 +60,8 @@ export function SettingsOverlay({
               onPendingChangesChange={controller.setPendingChanges}
               shellActions={
                 <IconButton
-                  label="关闭设置"
-                  tooltip="关闭设置"
+                  label={frontendMessage("settings.overlay.close")}
+                  tooltip={frontendMessage("settings.overlay.close")}
                   size="sm"
                   tone="muted"
                   onClick={controller.requestClose}
@@ -74,13 +75,16 @@ export function SettingsOverlay({
       </Dialog>
 
       <Dialog open={controller.closeConfirmationOpen} onOpenChange={(open) => !open && controller.cancelClose()}>
-        <DialogContent title="放弃未保存的更改？" description="关闭设置会丢失尚未保存或确认的修改。">
+        <DialogContent
+          title={frontendMessage("settings.discard.title")}
+          description={frontendMessage("settings.discard.closeDescription")}
+        >
           <DialogActions>
             <DialogActionButton close onClick={controller.cancelClose}>
-              继续编辑
+              {frontendMessage("settings.discard.continue")}
             </DialogActionButton>
             <DialogActionButton variant="danger" onClick={controller.confirmClose}>
-              放弃更改
+              {frontendMessage("settings.discard.confirm")}
             </DialogActionButton>
           </DialogActions>
         </DialogContent>

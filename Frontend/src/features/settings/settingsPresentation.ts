@@ -1,3 +1,4 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { SettingsSectionDefinition, SettingsSectionId } from "./types";
 
 export type SettingsSectionGroupId = "model" | "capabilities" | "personal" | "system";
@@ -24,15 +25,30 @@ export interface GroupedSettingsSectionSearchResult {
 }
 
 export const settingsSectionGroups = [
-  { id: "model", label: "模型", sectionIds: ["model-service", "default-model"] },
-  {
-    id: "capabilities",
-    label: "能力与运行",
-    sectionIds: ["runtime", "planning", "retrieval", "skills"],
-  },
-  { id: "personal", label: "个人", sectionIds: ["general", "appearance"] },
-  { id: "system", label: "系统", sectionIds: ["system", "storage", "about"] },
+  defineSettingsSectionGroup("model", "settings.group.model", ["model-service", "default-model"]),
+  defineSettingsSectionGroup("capabilities", "settings.group.capabilities", [
+    "runtime",
+    "planning",
+    "retrieval",
+    "skills",
+  ]),
+  defineSettingsSectionGroup("personal", "settings.group.personal", ["general", "appearance"]),
+  defineSettingsSectionGroup("system", "settings.group.system", ["system", "storage", "about"]),
 ] as const satisfies readonly SettingsSectionGroupDefinition[];
+
+function defineSettingsSectionGroup(
+  id: SettingsSectionGroupId,
+  labelKey: Parameters<typeof frontendMessage>[0],
+  sectionIds: readonly SettingsSectionId[],
+): SettingsSectionGroupDefinition {
+  return {
+    id,
+    get label() {
+      return frontendMessage(labelKey);
+    },
+    sectionIds,
+  };
+}
 
 export function searchSettingsSections(
   sections: readonly SettingsSectionDefinition[],
@@ -57,9 +73,9 @@ export function searchSettingsSectionResults(
 
     const details: SettingsSectionSearchDetail[] = [];
     if (tokens.some((token) => section.description.toLocaleLowerCase().includes(token))) {
-      details.push({ label: "说明", value: section.description });
+      details.push({ label: frontendMessage("settings.search.detail"), value: section.description });
     } else if (tokens.some((token) => group.label.toLocaleLowerCase().includes(token))) {
-      details.push({ label: "分组", value: group.label });
+      details.push({ label: frontendMessage("settings.search.groupDetail"), value: group.label });
     }
     return [{ section, details }];
   });

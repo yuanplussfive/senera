@@ -1,6 +1,7 @@
 import { Copy, Minus, Square, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { readDesktopBridge, type SeneraDesktopBridge } from "./desktopBridge";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export type DesktopWindowSurface = "main" | "settings";
 
@@ -79,16 +80,16 @@ function DesktopWindowControls({ bridge }: { bridge: SeneraDesktopBridge }): JSX
     <div
       className="fixed right-0 top-0 z-40 flex h-[52px] items-stretch text-content-muted"
       role="group"
-      aria-label="窗口控制"
+      aria-label={frontendMessage("desktop.window.controls")}
       data-desktop-window-controls
     >
-      <WindowControlButton label="最小化窗口" onClick={() => void bridge.minimizeWindow?.()}>
+      <WindowControlButton label={frontendMessage("desktop.window.minimize")} onClick={() => void bridge.minimizeWindow?.()}>
         <Minus className="h-4 w-4" />
       </WindowControlButton>
-      <WindowControlButton label={isMaximized ? "还原窗口" : "最大化窗口"} onClick={toggleMaximize}>
+      <WindowControlButton label={frontendMessage(isMaximized ? "desktop.window.restore" : "desktop.window.maximize")} onClick={toggleMaximize}>
         {isMaximized ? <Copy className="h-4 w-4" /> : <Square className="h-4 w-4" />}
       </WindowControlButton>
-      <WindowControlButton label="关闭窗口" onClick={() => void bridge.closeWindow?.()}>
+      <WindowControlButton label={frontendMessage("desktop.window.close")} onClick={() => void bridge.closeWindow?.()}>
         <X className="h-4 w-4" />
       </WindowControlButton>
     </div>

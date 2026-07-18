@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
 import type { ProviderModelConfigInput } from "../../../api/providerModelCommandTypes";
 import type { ProviderModelUpsertInput } from "../../../app/providerModelMutations";
@@ -163,7 +164,7 @@ export function ProviderModelManagementSurface({
   );
 
   if (!selectedProvider || !selectedList) {
-    return <SettingsWorkspaceState>先在供应商中添加连接，再管理模型。</SettingsWorkspaceState>;
+    return <SettingsWorkspaceState>{frontendMessage("settings.modelManagement.noProvider")}</SettingsWorkspaceState>;
   }
 
   const configuredModel = (modelId: string): ModelProviderDraft | undefined =>
@@ -249,12 +250,12 @@ export function ProviderModelManagementSurface({
         <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50">
           <div className="flex shrink-0 items-center justify-between border-b border-ink-200/70 px-3 py-3">
             <div>
-              <div className="text-[13px] font-semibold text-ink-900">供应商模型</div>
-              <div className="mt-0.5 text-[11px] text-ink-500">选择要管理的供应商</div>
+              <div className="text-[13px] font-semibold text-ink-900">{frontendMessage("settings.modelManagement.title")}</div>
+              <div className="mt-0.5 text-[11px] text-ink-500">{frontendMessage("settings.modelManagement.providerHint")}</div>
             </div>
             <Button size="sm" variant="outline" disabled={disabled} onClick={() => setManualOpen(true)}>
               <Plus className="h-3.5 w-3.5" />
-              添加
+              {frontendMessage("settings.modelManagement.add")}
             </Button>
           </div>
           <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full p-2">
@@ -273,9 +274,11 @@ export function ProviderModelManagementSurface({
                   aria-pressed={provider.Id === selectedProvider.Id}
                   onClick={() => setSelectedProviderId(provider.Id)}
                 >
-                  <span className="block truncate font-medium">{provider.Id || "未命名供应商"}</span>
+                  <span className="block truncate font-medium">{provider.Id || frontendMessage("settings.provider.unnamed")}</span>
                   <span className="mt-0.5 block text-[10.5px] opacity-70">
-                    {state.models.filter((model) => model.ProviderId === provider.Id).length} 个已配置模型
+                    {frontendMessage("settings.modelManagement.configuredCount", {
+                      count: state.models.filter((model) => model.ProviderId === provider.Id).length,
+                    })}
                   </span>
                 </button>
               ))}
@@ -329,7 +332,10 @@ export function ProviderModelManagementSurface({
         defaultModelId={state.defaultModel?.model.Id ?? ""}
         endpointOptions={endpointChoices}
         disabled={disabled || Boolean(editingModel && operations[editingModel.Id]?.status === "pending")}
-        commitLabels={{ existing: "保存", new: "添加" }}
+        commitLabels={{
+          existing: frontendMessage("settings.action.save"),
+          new: frontendMessage("settings.action.add"),
+        }}
         onOpenChange={(open) => !open && setEditingModel(null)}
         onChange={(patch) => setEditingModel((current) => (current ? { ...current, ...patch } : current))}
         onCommit={() => editingModel && saveModel(editingModel)}
@@ -337,8 +343,12 @@ export function ProviderModelManagementSurface({
       />
       <Dialog open={catalogOpen} onOpenChange={setCatalogOpen}>
         <DialogContent
-          title="获取模型列表"
-          description={selectedProvider ? `从 ${selectedProvider.Id} 获取可用模型，点击行尾按钮即可添加。` : undefined}
+          title={frontendMessage("settings.modelManagement.fetchTitle")}
+          description={
+            selectedProvider
+              ? frontendMessage("settings.modelManagement.fetchDescription", { provider: selectedProvider.Id })
+              : undefined
+          }
           className="h-[min(760px,calc(100dvh_-_32px))] w-[min(780px,calc(100vw_-_32px))] max-w-none"
           bodyClassName="min-h-0 flex-1 p-0"
         >
@@ -359,36 +369,36 @@ export function ProviderModelManagementSurface({
       </Dialog>
       <Dialog open={manualOpen} onOpenChange={setManualOpen}>
         <DialogContent
-          title="添加模型"
-          description={`供应商：${selectedProvider.Id}`}
+          title={frontendMessage("settings.modelManagement.addModelTitle")}
+          description={frontendMessage("settings.modelManagement.providerLabel", { provider: selectedProvider.Id })}
           className="min-h-[480px] w-[min(560px,calc(100vw_-_32px))]"
           bodyClassName="flex min-h-0 flex-1 flex-col px-8 pb-7 pt-3"
         >
           <FormField>
-            <FormLabel required>模型 ID</FormLabel>
+            <FormLabel required>{frontendMessage("settings.modelManagement.modelIdLabel")}</FormLabel>
             <Input
               autoFocus
               value={manualModelId}
-              placeholder="例如 gpt-4o"
+              placeholder={frontendMessage("settings.modelManagement.modelIdPlaceholder")}
               onChange={(event) => setManualModelId(event.currentTarget.value)}
               onKeyDown={(event) => event.key === "Enter" && addManualModel()}
             />
           </FormField>
           <DialogActions className="mt-auto">
-            <DialogActionButton onClick={() => setManualOpen(false)}>取消</DialogActionButton>
+            <DialogActionButton onClick={() => setManualOpen(false)}>{frontendMessage("settings.action.cancel")}</DialogActionButton>
             <DialogActionButton variant="primary" disabled={disabled || !manualModelId.trim()} onClick={addManualModel}>
-              添加
+              {frontendMessage("settings.action.add")}
             </DialogActionButton>
           </DialogActions>
         </DialogContent>
       </Dialog>
       <Dialog open={groupUnsupportedDialogOpen} onOpenChange={setGroupUnsupportedDialogOpen}>
-        <DialogContent title="暂不支持" className="w-[min(460px,calc(100vw-32px))]">
+        <DialogContent title={frontendMessage("settings.modelManagement.unsupportedTitle")} className="w-[min(460px,calc(100vw-32px))]">
           <div className="p-4 text-[13px] text-ink-700">
             <p>
-              完整的分组规则编辑（新增、修改、删除分组策略，以及模型分组赋值）需要修订保护的批量配置命令，暂未接入此即时保存界面。
+              {frontendMessage("settings.modelManagement.unsupportedDescription")}
             </p>
-            <p className="mt-2">当前界面会保留已有分组的显示和筛选，但不会修改分组规则或模型归属。</p>
+            <p className="mt-2">{frontendMessage("settings.modelManagement.unsupportedHint")}</p>
           </div>
         </DialogContent>
       </Dialog>
@@ -431,8 +441,8 @@ function CatalogModelDialogContent({
           value={search}
           disabled={disabled}
           onChange={(event) => onSearch(event.currentTarget.value)}
-          aria-label="搜索模型列表"
-          placeholder="搜索模型"
+          aria-label={frontendMessage("settings.modelManagement.search")}
+          placeholder={frontendMessage("settings.modelManagement.search")}
           className="h-9 w-full rounded-md border border-ink-200 bg-paper-50 px-3 text-[12.5px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
         />
       </div>
@@ -441,11 +451,13 @@ function CatalogModelDialogContent({
           <SettingsWorkspaceState className="min-h-[260px]">
             <span className="inline-flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
-              正在获取模型列表
+              {frontendMessage("settings.modelManagement.fetching")}
             </span>
           </SettingsWorkspaceState>
         ) : error ? (
-          <SettingsWorkspaceState className="min-h-[260px]">获取失败：{error}</SettingsWorkspaceState>
+          <SettingsWorkspaceState className="min-h-[260px]">
+            {frontendMessage("settings.modelManagement.fetchFailed", { error })}
+          </SettingsWorkspaceState>
         ) : rows.length > 0 ? (
           <div className="divide-y divide-ink-200/70">
             {groups.map((group) => (
@@ -466,22 +478,22 @@ function CatalogModelDialogContent({
                         <div className="truncate font-mono text-[12px] text-ink-850" title={row.id}>
                           {row.id}
                         </div>
-                        <div className="mt-0.5 truncate text-[10.5px] text-ink-450">{row.ownedBy || "供应商模型"}</div>
+                        <div className="mt-0.5 truncate text-[10.5px] text-ink-450">{row.ownedBy || frontendMessage("settings.modelManagement.providerModel")}</div>
                       </div>
                       {configured ? (
                         <span className="rounded-md border border-moss-200 bg-moss-50 px-2 py-1 text-[10.5px] font-medium text-moss-700">
-                          已添加
+                          {frontendMessage("settings.modelManagement.added")}
                         </span>
                       ) : pending ? (
                         <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10.5px] font-medium text-sky-700">
-                          <Loader2 className="h-3 w-3 animate-spin" /> 添加中
+                          <Loader2 className="h-3 w-3 animate-spin" /> {frontendMessage("settings.modelManagement.adding")}
                         </span>
                       ) : (
                         <button
                           type="button"
                           disabled={disabled}
-                          aria-label={`添加模型 ${row.id}`}
-                          title="添加模型"
+                          aria-label={frontendMessage("settings.modelManagement.addModelAria", { model: row.id })}
+                          title={frontendMessage("settings.modelManagement.addModel")}
                           className="grid h-8 w-8 place-items-center rounded-md border border-ink-200 bg-paper-50 text-ink-600 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50"
                           onClick={() => onAddModel(row)}
                         >
@@ -495,7 +507,9 @@ function CatalogModelDialogContent({
             ))}
           </div>
         ) : (
-          <SettingsWorkspaceState className="min-h-[260px]">没有匹配的模型</SettingsWorkspaceState>
+          <SettingsWorkspaceState className="min-h-[260px]">
+            {frontendMessage("settings.modelManagement.noMatches")}
+          </SettingsWorkspaceState>
         )}
       </ScrollArea>
     </div>

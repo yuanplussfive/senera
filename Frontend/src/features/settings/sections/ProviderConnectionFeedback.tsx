@@ -1,5 +1,6 @@
 import { AlertTriangle, Check, Loader2, Save } from "lucide-react";
 import type { SettingsConfigCommands } from "../SettingsContracts";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 
 export function ProviderConnectionStatusBadge({
   dirty,
@@ -12,7 +13,7 @@ export function ProviderConnectionStatusBadge({
     return (
       <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-medium text-sky-700">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        正在保存
+        {frontendMessage("settings.state.saving")}
       </span>
     );
   }
@@ -20,7 +21,7 @@ export function ProviderConnectionStatusBadge({
     return (
       <span className="inline-flex items-center gap-1.5 rounded-md border border-brick-200 bg-brick-50 px-2 py-1 text-[11px] font-medium text-brick-700">
         <AlertTriangle className="h-3.5 w-3.5" />
-        保存失败
+        {frontendMessage("settings.state.saveFailed")}
       </span>
     );
   }
@@ -28,14 +29,14 @@ export function ProviderConnectionStatusBadge({
     return (
       <span className="inline-flex items-center gap-1.5 rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[11px] font-medium text-umber-600">
         <Save className="h-3.5 w-3.5" />
-        待确认
+        {frontendMessage("settings.state.pending")}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1.5 rounded-md border border-moss-200 bg-moss-50 px-2 py-1 text-[11px] font-medium text-moss-700">
       <Check className="h-3.5 w-3.5" />
-      已同步
+      {frontendMessage("settings.state.synced")}
     </span>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { SettingsWorkspaceState } from "../SettingsWorkspaceSurface";
 import { classifySettingsContentLayout, useObservedLayout } from "../../../shared/responsive";
@@ -72,7 +73,7 @@ export function ModelServiceSection({
       selectedProvider: null,
       selectedProviderModelList: null,
       defaultModel: null,
-      defaultModelStatus: "待设置",
+      defaultModelStatus: frontendMessage("settings.diagnostics.unset"),
       defaultSlots: [],
       diagnostics: [],
       catalogSignalCount: 0,
@@ -111,9 +112,9 @@ export function ModelServiceSection({
     return () => onDirtyChange?.(false);
   }, [actions.dirty, onDirtyChange]);
 
-  if (!systemConfig) return <SettingsWorkspaceState>正在连接主配置服务</SettingsWorkspaceState>;
+  if (!systemConfig) return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingMain")}</SettingsWorkspaceState>;
   if (!snapshot || !modelSection || !state)
-    return <SettingsWorkspaceState>主配置连接后会加载模型服务</SettingsWorkspaceState>;
+    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingModelService")}</SettingsWorkspaceState>;
 
   const selectedProvider =
     state.providers.find((provider) => provider.Id === (selectedProviderId ?? state.providers[0]?.Id)) ?? null;
@@ -198,7 +199,7 @@ export function ModelServiceSection({
               onClick={() => setMobileDetailOpen(false)}
             >
               <ChevronLeft className="h-4 w-4" />
-              返回供应商列表
+              {frontendMessage("settings.model.serviceBack")}
             </button>
             <div className="min-h-0 flex-1 overflow-hidden">{detail}</div>
           </div>
@@ -252,9 +253,12 @@ export function ModelServiceSection({
         open={pendingProviderSelection !== null}
         onOpenChange={(open) => !open && setPendingProviderSelection(null)}
       >
-        <DialogContent title="放弃未确认的连接修改？" description="切换供应商会丢失当前连接表单中的修改。">
+        <DialogContent
+          title={frontendMessage("settings.discard.connectionTitle")}
+          description={frontendMessage("settings.discard.connectionDescription")}
+        >
           <DialogActions>
-            <DialogActionButton close>继续编辑</DialogActionButton>
+            <DialogActionButton close>{frontendMessage("settings.discard.continue")}</DialogActionButton>
             <DialogActionButton
               variant="danger"
               onClick={() => {
@@ -265,7 +269,7 @@ export function ModelServiceSection({
                 if (layout === "compact") setMobileDetailOpen(true);
               }}
             >
-              放弃更改
+              {frontendMessage("settings.discard.confirm")}
             </DialogActionButton>
           </DialogActions>
         </DialogContent>

@@ -10,6 +10,7 @@ import {
   SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
+import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 
 export type SettingsSectionId =
   | "model-service"
@@ -32,74 +33,66 @@ export interface SettingsSectionDefinition {
 }
 
 export const settingsSections = [
-  {
-    id: "model-service",
-    label: "模型服务",
-    icon: Bot,
-    description: "管理供应商连接、模型列表和模型参数。",
-  },
-  {
-    id: "default-model",
-    label: "默认模型",
-    icon: Bot,
-    description: "选择当前运行时使用的默认助手模型。",
-  },
-  {
-    id: "runtime",
-    label: "运行",
-    icon: Gauge,
-    description: "管理主循环、工具执行、服务和持久化。",
-  },
-  {
-    id: "planning",
-    label: "规划与学习",
-    icon: Route,
-    description: "管理规划、工具学习和长期记忆晋升。",
-  },
-  {
-    id: "retrieval",
-    label: "检索与向量",
-    icon: Search,
-    description: "管理工具检索、向量模型和重排序。",
-  },
-  {
-    id: "skills",
-    label: "技能",
-    icon: Boxes,
-    description: "管理用户技能配置、启用状态和工具开关。",
-  },
-  {
-    id: "general",
-    label: "通用",
-    icon: SlidersHorizontal,
-    description: "控制窗口布局、面板默认状态和基础交互。",
-  },
-  {
-    id: "appearance",
-    label: "外观",
-    icon: Palette,
-    description: "管理主题模式、配色、字体和字号。",
-  },
-  {
-    id: "system",
-    label: "主配置",
-    icon: SlidersHorizontal,
-    description: "管理系统级配置。运行、规划、检索与文件设置位于各自分区。",
-  },
-  {
-    id: "storage",
-    label: "文件与界面",
-    icon: FolderCog,
-    description: "管理上传、产物、预设和界面默认行为。",
-  },
-  {
-    id: "about",
-    label: "关于",
-    icon: Info,
-    description: "查看 Senera 版本、运行环境和诊断信息。",
-  },
+  defineSettingsSection(
+    "model-service",
+    Bot,
+    "settings.section.modelService.label",
+    "settings.section.modelService.description",
+  ),
+  defineSettingsSection(
+    "default-model",
+    Bot,
+    "settings.section.defaultModel.label",
+    "settings.section.defaultModel.description",
+  ),
+  defineSettingsSection("runtime", Gauge, "settings.section.runtime.label", "settings.section.runtime.description"),
+  defineSettingsSection("planning", Route, "settings.section.planning.label", "settings.section.planning.description"),
+  defineSettingsSection(
+    "retrieval",
+    Search,
+    "settings.section.retrieval.label",
+    "settings.section.retrieval.description",
+  ),
+  defineSettingsSection("skills", Boxes, "settings.section.skills.label", "settings.section.skills.description"),
+  defineSettingsSection(
+    "general",
+    SlidersHorizontal,
+    "settings.section.general.label",
+    "settings.section.general.description",
+  ),
+  defineSettingsSection(
+    "appearance",
+    Palette,
+    "settings.section.appearance.label",
+    "settings.section.appearance.description",
+  ),
+  defineSettingsSection(
+    "system",
+    SlidersHorizontal,
+    "settings.section.system.label",
+    "settings.section.system.description",
+  ),
+  defineSettingsSection("storage", FolderCog, "settings.section.storage.label", "settings.section.storage.description"),
+  defineSettingsSection("about", Info, "settings.section.about.label", "settings.section.about.description"),
 ] as const satisfies readonly SettingsSectionDefinition[];
 
+function defineSettingsSection(
+  id: SettingsSectionId,
+  icon: LucideIcon,
+  labelKey: FrontendMessageKey,
+  descriptionKey: FrontendMessageKey,
+): SettingsSectionDefinition {
+  return {
+    id,
+    icon,
+    get label() {
+      return frontendMessage(labelKey);
+    },
+    get description() {
+      return frontendMessage(descriptionKey);
+    },
+  };
+}
 export const settingsSectionIds = settingsSections.map((section) => section.id) as readonly SettingsSectionId[];
 export const defaultSettingsSectionId: SettingsSectionId = settingsSections[0].id;
 

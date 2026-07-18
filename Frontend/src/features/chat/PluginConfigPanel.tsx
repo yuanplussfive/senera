@@ -205,12 +205,12 @@ export function PluginConfigContent({
                 {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.189.65")}
               </div>
             </div>
-            <Tooltip content="刷新技能配置" side="bottom">
+            <Tooltip content={frontendMessage("pluginConfig.refresh")} side="bottom">
               <button
                 type="button"
                 className="grid h-8 w-8 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
                 onClick={onRefresh}
-                aria-label="刷新技能配置"
+                aria-label={frontendMessage("pluginConfig.refresh")}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
@@ -278,7 +278,7 @@ export function PluginConfigContent({
                 setCompactDetailOpen(false);
               }}
             >
-              返回技能列表
+              {frontendMessage("pluginConfig.backToList")}
             </button>
           ) : null}
           {selected ? (
@@ -340,7 +340,7 @@ export function PluginConfigContent({
                       className="h-8"
                     >
                       <Save className="h-3.5 w-3.5" />
-                      {saving ? "正在保存" : "保存"}
+                      {frontendMessage(saving ? "pluginConfig.saving" : "pluginConfig.save")}
                     </Button>
                   </div>
                 </div>
@@ -377,9 +377,12 @@ export function PluginConfigContent({
         </section>
       ) : null}
       <Dialog open={pendingPluginName !== null} onOpenChange={(open) => !open && setPendingPluginName(null)}>
-        <DialogContent title="放弃未保存的技能配置？" description="继续操作会丢失当前技能配置中的修改。">
+        <DialogContent
+          title={frontendMessage("pluginConfig.discardTitle")}
+          description={frontendMessage("pluginConfig.discardDescription")}
+        >
           <DialogActions>
-            <DialogActionButton close>继续编辑</DialogActionButton>
+            <DialogActionButton close>{frontendMessage("pluginConfig.discardContinue")}</DialogActionButton>
             <DialogActionButton
               variant="danger"
               onClick={() => {
@@ -396,7 +399,7 @@ export function PluginConfigContent({
                 }
               }}
             >
-              放弃更改
+              {frontendMessage("pluginConfig.discardAction")}
             </DialogActionButton>
           </DialogActions>
         </DialogContent>
@@ -493,7 +496,7 @@ function TogglePill({
         !disabled && "hover:bg-ink-900/[0.04]",
         disabled && "pointer-events-none opacity-45",
       )}
-      aria-label={`${enabled ? "关闭" : "开启"} ${label}`}
+      aria-label={frontendMessage(enabled ? "pluginConfig.disableLabel" : "pluginConfig.enableLabel", { label })}
     >
       <span className={cn("relative h-5 w-9 rounded-full transition", enabled ? "bg-moss-500" : "bg-ink-300")}>
         <span
@@ -503,7 +506,7 @@ function TogglePill({
           )}
         />
       </span>
-      <span>{enabled ? "已启用" : "已关闭"}</span>
+      <span>{frontendMessage(enabled ? "pluginConfig.enabled" : "pluginConfig.disabled")}</span>
     </button>
   );
 }
@@ -527,5 +530,5 @@ function pluginSearchText(plugin: PluginConfigItem): string {
 function pluginDisplayTitle(plugin: PluginConfigItem): string {
   const title = plugin.title.trim();
   const name = plugin.name.trim();
-  return title && title !== plugin.name ? title : name || "未命名技能";
+  return title && title !== plugin.name ? title : name || frontendMessage("pluginConfig.unnamed");
 }

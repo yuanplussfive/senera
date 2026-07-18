@@ -1,6 +1,7 @@
 import type { PluginSettingsCommandsHandle } from "../../../app/usePluginSettingsCommands";
 import { PluginConfigContent } from "../../chat/PluginConfigPanel";
 import { SettingsWorkspaceState } from "../SettingsWorkspaceSurface";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 
 export function SkillSettingsSection({
   pluginSettings,
@@ -10,7 +11,7 @@ export function SkillSettingsSection({
   onDirtyChange?: (dirty: boolean) => void;
 }): JSX.Element {
   if (!pluginSettings) {
-    return <SettingsWorkspaceState>正在连接技能配置服务</SettingsWorkspaceState>;
+    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingSkills")}</SettingsWorkspaceState>;
   }
 
   return (

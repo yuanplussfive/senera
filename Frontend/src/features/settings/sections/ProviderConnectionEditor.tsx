@@ -1,5 +1,6 @@
 import { Check, Eye, EyeOff, Loader2, Plus, RotateCcw, Server, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
 import { Button, Dialog, DialogActionButton, DialogActions, DialogContent, FormHint, Input } from "../../../shared/ui";
@@ -46,8 +47,8 @@ export function ProviderConnectionEditor({
     return (
       <EmptyDetail
         icon={<Server className="h-5 w-5" />}
-        title="选择供应商"
-        text="添加或选择供应商后，在这里确认连接字段。"
+        title={frontendMessage("settings.provider.selectTitle")}
+        text={frontendMessage("settings.provider.selectDescription")}
       />
     );
   }
@@ -77,11 +78,11 @@ export function ProviderConnectionEditor({
                 <>
                   <Button size="sm" variant="outline" disabled={disabled || pending} onClick={onCancel}>
                     <RotateCcw className="h-3.5 w-3.5" />
-                    取消
+                    {frontendMessage("settings.action.cancel")}
                   </Button>
                   <Button size="sm" disabled={confirmDisabled} onClick={onConfirm}>
                     {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                    保存
+                    {frontendMessage("settings.action.save")}
                   </Button>
                 </>
               ) : null}
@@ -100,10 +101,10 @@ export function ProviderConnectionEditor({
                     )}
                   />
                 </span>
-                {enabled ? "已启用" : "已停用"}
+                {frontendMessage(enabled ? "settings.provider.enabled" : "settings.provider.disabled")}
               </button>
               {onDelete ? (
-                <IconAction label="删除供应商" danger disabled={disabled || protectedProvider} onClick={onDelete}>
+                <IconAction label={frontendMessage("settings.provider.delete")} danger disabled={disabled || protectedProvider} onClick={onDelete}>
                   <Trash2 className="h-3.5 w-3.5" />
                 </IconAction>
               ) : null}
@@ -113,7 +114,7 @@ export function ProviderConnectionEditor({
 
         <div className="grid gap-3">
           <ConnectionField
-            label="API Key"
+            label={frontendMessage("settings.provider.apiKey")}
             action={
               <button
                 type="button"
@@ -122,8 +123,8 @@ export function ProviderConnectionEditor({
                   setRequestHeadersDraft({ ...(provider.Headers ?? {}) });
                   setRequestConfigOpen(true);
                 }}
-                aria-label="请求配置"
-                title="请求配置"
+                aria-label={frontendMessage("settings.provider.apiConfig")}
+                title={frontendMessage("settings.provider.apiConfig")}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
               </button>
@@ -143,14 +144,14 @@ export function ProviderConnectionEditor({
                 type="button"
                 className="grid h-9 w-9 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800"
                 onClick={() => setShowKey((current) => !current)}
-                aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
+                aria-label={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
               >
                 {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               </button>
             </div>
           </ConnectionField>
           <ConnectionField
-            label="API 地址"
+            label={frontendMessage("settings.provider.apiUrl")}
             action={
               <button
                 type="button"
@@ -159,8 +160,8 @@ export function ProviderConnectionEditor({
                   setRequestHeadersDraft({ ...(provider.Headers ?? {}) });
                   setRequestConfigOpen(true);
                 }}
-                aria-label="请求配置"
-                title="请求配置"
+                aria-label={frontendMessage("settings.provider.apiConfig")}
+                title={frontendMessage("settings.provider.apiConfig")}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
               </button>
@@ -182,7 +183,7 @@ export function ProviderConnectionEditor({
         <div className="mt-2">
           {dirty ? (
             <p className="mt-2 rounded-md border border-ink-200 bg-paper-100 px-3 py-2 text-[12px] leading-5 text-ink-700">
-              当前模型列表检测会使用这些可见值；只有点击保存才会保存连接字段。
+              {frontendMessage("settings.provider.connectionDraftHint")}
             </p>
           ) : null}
           {localError ? <ProviderFormError message={localError} /> : null}
@@ -191,14 +192,14 @@ export function ProviderConnectionEditor({
       </div>
       <Dialog open={requestConfigOpen} onOpenChange={setRequestConfigOpen}>
         <DialogContent
-          title="请求配置"
-          description="配置发送给当前供应商的自定义请求头。"
+          title={frontendMessage("settings.provider.apiConfig")}
+          description={frontendMessage("settings.provider.customHeadersDescription")}
           className="h-[min(680px,calc(100dvh_-_32px))] w-[min(600px,calc(100vw_-_32px))]"
           bodyClassName="flex min-h-0 flex-1 flex-col px-8 pb-7 pt-3"
         >
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="mb-3 flex items-center gap-2">
-              <span className="text-[12px] font-semibold text-ink-750">自定义请求头</span>
+              <span className="text-[12px] font-semibold text-ink-750">{frontendMessage("settings.provider.customHeaders")}</span>
               <span className="rounded-md border border-ink-200 bg-paper-100 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-500">
                 {"{}"}
               </span>
@@ -208,10 +209,10 @@ export function ProviderConnectionEditor({
               disabled={disabled || pending}
               onChange={setRequestHeadersDraft}
             />
-            <FormHint className="mt-3">请求头会随当前供应商连接配置保存。</FormHint>
+            <FormHint className="mt-3">{frontendMessage("settings.provider.customHeadersHint")}</FormHint>
           </div>
           <DialogActions className="mt-auto">
-            <DialogActionButton onClick={() => setRequestConfigOpen(false)}>取消</DialogActionButton>
+            <DialogActionButton onClick={() => setRequestConfigOpen(false)}>{frontendMessage("settings.action.cancel")}</DialogActionButton>
             <DialogActionButton
               variant="primary"
               disabled={disabled || pending}
@@ -220,7 +221,7 @@ export function ProviderConnectionEditor({
                 setRequestConfigOpen(false);
               }}
             >
-              保存
+              {frontendMessage("settings.action.save")}
             </DialogActionButton>
           </DialogActions>
         </DialogContent>
@@ -265,7 +266,7 @@ function HeadersEditor({
         <div key={`${key}:${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <Input
             value={key}
-            placeholder="Header"
+            placeholder={frontendMessage("settings.provider.headerName")}
             disabled={disabled}
             onChange={(event) => {
               const next = [...entries];
@@ -275,7 +276,7 @@ function HeadersEditor({
           />
           <Input
             value={value}
-            placeholder="Value"
+            placeholder={frontendMessage("settings.provider.headerValue")}
             disabled={disabled}
             onChange={(event) => {
               const next = [...entries];
@@ -284,7 +285,7 @@ function HeadersEditor({
             }}
           />
           <IconAction
-            label="删除请求头"
+            label={frontendMessage("settings.provider.deleteHeader")}
             danger
             disabled={disabled}
             onClick={() => onChange(Object.fromEntries(entries.filter((_, entryIndex) => entryIndex !== index)))}
@@ -300,7 +301,7 @@ function HeadersEditor({
         onClick={() => onChange({ ...headers, [nextHeaderKey(headers)]: "" })}
       >
         <Plus className="h-3.5 w-3.5" />
-        添加请求头
+        {frontendMessage("settings.provider.addHeader")}
       </Button>
     </div>
   );
@@ -320,13 +321,13 @@ function readProviderConnectionSubtitle({
   providerModelCount: number;
 }): string {
   if (operation?.status === "pending") {
-    return "正在保存连接配置";
+    return frontendMessage("settings.provider.savingConnection");
   }
   if (operation?.status === "error") {
-    return "上次保存失败";
+    return frontendMessage("settings.provider.lastSaveFailed");
   }
-  const identity = protectedProvider ? "内置身份" : "自定义身份";
-  const state = enabled ? "已启用" : "已关闭";
-  const draft = dirty ? "有未确认修改" : "连接字段已同步";
-  return `${identity} · ${state} · ${providerModelCount} 个已配置模型 · ${draft}`;
+  const identity = frontendMessage(protectedProvider ? "settings.provider.builtIn" : "settings.provider.customIdentity");
+  const state = frontendMessage(enabled ? "settings.state.enabled" : "settings.state.disabled");
+  const draft = frontendMessage(dirty ? "settings.provider.unsavedChanges" : "settings.provider.fieldsSynced");
+  return frontendMessage("settings.provider.connectionStatus", { identity, state, count: providerModelCount, draft });
 }
