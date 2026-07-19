@@ -3,7 +3,6 @@ import { Loader2, Plus } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
 import type { ProviderModelConfigInput } from "../../../api/providerModelCommandTypes";
-import type { ProviderModelUpsertInput } from "../../../app/providerModelMutations";
 import { cn } from "../../../lib/util";
 import {
   Button,
@@ -33,6 +32,14 @@ import type { SettingsConfigCommands } from "../SettingsContracts";
 import type { ModelServiceState } from "./modelServiceState";
 import type { ConfigFormSectionData } from "../../../api/eventTypes";
 import type { JsonConfigObject } from "../../../shared/config/JsonConfigForm";
+
+interface ModelSaveQueueEntry {
+  draft: ModelProviderDraft;
+  requestId: string | null;
+  requestDraft: ModelProviderDraft | null;
+  timer: number | null;
+  closeRequested: boolean;
+}
 
 export function ProviderModelManagementSurface({
   disabled,
@@ -104,6 +111,11 @@ export function ProviderModelManagementSurface({
   const [catalogSearch, setCatalogSearch] = useState("");
   const [groupUnsupportedDialogOpen, setGroupUnsupportedDialogOpen] = useState(false);
   const previousCatalogSignal = useRef(openCatalogSignal);
+  const modelSaveQueueRef = useRef<Map<string, ModelSaveQueueEntry>>(new Map());
+  const pendingNewModelIdRef = useRef<string | null>(null);
+  const operationsRef = useRef(operations);
+  const flushExistingModelSaveRef = useRef<(modelId?: string, closeRequested?: boolean) => boolean>(() => true);
+  operationsRef.current = operations;
   const deferredSearch = useDeferredValue(search);
   const selectedProvider =
     state.providers.find((provider) => provider.Id === selectedProviderId) ?? state.providers[0] ?? null;
@@ -121,6 +133,47 @@ export function ProviderModelManagementSurface({
     previousCatalogSignal.current = openCatalogSignal;
     if (openCatalogSignal > 0) setCatalogOpen(true);
   }, [openCatalogSignal]);
+  useEffect(
+    () => () => {
+      for (const entry of modelSaveQueueRef.current.values()) {
+        if (entry.timer !== null) window.clearTimeout(entry.timer);
+      }
+    },
+    [],
+  );
+  useEffect(() => {
+    for (const [modelId, current] of modelSaveQueueRef.current) {
+      if (!current.requestId) continue;
+      const operation = operations[modelId];
+      if (!operation || operation.requestId !== current.requestId || operation.status === "pending") continue;
+      if (operation.status === "error") {
+        modelSaveQueueRef.current.set(modelId, {
+          ...current,
+          requestId: null,
+          requestDraft: null,
+          closeRequested: false,
+        });
+        continue;
+      }
+      const hasNewerDraft = !sameModelDraft(current.draft, current.requestDraft ?? current.draft);
+      modelSaveQueueRef.current.set(modelId, {
+        ...current,
+        requestId: null,
+        requestDraft: null,
+        closeRequested: hasNewerDraft ? current.closeRequested : false,
+      });
+      if (hasNewerDraft) {
+        flushExistingModelSaveRef.current(modelId, false);
+        continue;
+      }
+      if (current.closeRequested && editingModel?.Id === modelId) {
+        modelSaveQueueRef.current.delete(modelId);
+        pendingNewModelIdRef.current = null;
+        setEditingModel(null);
+        setEditingExisting(false);
+      }
+    }
+  }, [editingModel?.Id, operations]);
   const selectedList = selectedProvider
     ? readProviderModelListState({
         catalogs,
@@ -172,7 +225,9 @@ export function ProviderModelManagementSurface({
 
   const openModel = (modelInfo: ProviderModelInfo): void => {
     const configured = configuredModel(modelInfo.id);
+    const queued = modelSaveQueueRef.current.get(modelConfigId(selectedProvider.Id, modelInfo.id));
     const draft =
+      queued?.draft ??
       configured ??
       createModelDraft({
         provider: selectedProvider,
@@ -182,17 +237,80 @@ export function ProviderModelManagementSurface({
       });
     setEditingModel(draft);
     setEditingExisting(Boolean(configured));
+    pendingNewModelIdRef.current = null;
   };
 
-  const saveModel = (model: ModelProviderDraft): void => {
-    const payload: ProviderModelConfigInput = {
-      ...model,
-      Endpoint: model.Endpoint as ProviderModelConfigInput["Endpoint"],
+  const submitModelRequest = (model: ModelProviderDraft): string | null =>
+    onUpsertProviderModel({
+      model: {
+        ...model,
+        Endpoint: model.Endpoint as ProviderModelConfigInput["Endpoint"],
+      },
+    });
+
+  const requestModelSave = (model: ModelProviderDraft, closeRequested: boolean): boolean => {
+    const current = modelSaveQueueRef.current.get(model.Id) ?? {
+      draft: model,
+      requestId: null,
+      requestDraft: null,
+      timer: null,
+      closeRequested: false,
     };
-    const request: ProviderModelUpsertInput = { model: payload };
-    if (onUpsertProviderModel(request)) {
-      setEditingModel(null);
+    if (current.requestId && operationsRef.current[model.Id]?.status === "pending") {
+      modelSaveQueueRef.current.set(model.Id, {
+        ...current,
+        draft: model,
+        closeRequested: current.closeRequested || closeRequested,
+      });
+      return false;
     }
+    const requestId = submitModelRequest(model);
+    if (!requestId) return false;
+    modelSaveQueueRef.current.set(model.Id, {
+      ...current,
+      draft: model,
+      requestId,
+      requestDraft: model,
+      timer: null,
+      closeRequested: current.closeRequested || closeRequested,
+    });
+    return true;
+  };
+
+  const flushExistingModelSave = (modelId = editingModel?.Id, closeRequested = false): boolean => {
+    if (!modelId) return true;
+    const current = modelSaveQueueRef.current.get(modelId);
+    if (!current) return true;
+    if (current.timer !== null) window.clearTimeout(current.timer);
+    modelSaveQueueRef.current.set(modelId, {
+      ...current,
+      timer: null,
+      closeRequested: current.closeRequested || closeRequested,
+    });
+    if (current.requestId) return false;
+    return requestModelSave(current.draft, closeRequested || current.closeRequested);
+  };
+  flushExistingModelSaveRef.current = flushExistingModelSave;
+
+  const scheduleExistingModelSave = (model: ModelProviderDraft, immediate: boolean): void => {
+    const current = modelSaveQueueRef.current.get(model.Id) ?? {
+      draft: model,
+      requestId: null,
+      requestDraft: null,
+      timer: null,
+      closeRequested: false,
+    };
+    if (current.timer !== null) window.clearTimeout(current.timer);
+    const timer = window.setTimeout(
+      () => {
+        const entry = modelSaveQueueRef.current.get(model.Id);
+        if (!entry) return;
+        modelSaveQueueRef.current.set(model.Id, { ...entry, timer: null, draft: model });
+        requestModelSave(model, false);
+      },
+      immediate ? 0 : 500,
+    );
+    modelSaveQueueRef.current.set(model.Id, { ...current, draft: model, timer });
   };
 
   const requestModelRemoval = (model: ModelProviderDraft): void => {
@@ -250,8 +368,12 @@ export function ProviderModelManagementSurface({
         <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50">
           <div className="flex shrink-0 items-center justify-between border-b border-ink-200/70 px-3 py-3">
             <div>
-              <div className="text-[13px] font-semibold text-ink-900">{frontendMessage("settings.modelManagement.title")}</div>
-              <div className="mt-0.5 text-[11px] text-ink-500">{frontendMessage("settings.modelManagement.providerHint")}</div>
+              <div className="text-[13px] font-semibold text-ink-900">
+                {frontendMessage("settings.modelManagement.title")}
+              </div>
+              <div className="mt-0.5 text-[11px] text-ink-500">
+                {frontendMessage("settings.modelManagement.providerHint")}
+              </div>
             </div>
             <Button size="sm" variant="outline" disabled={disabled} onClick={() => setManualOpen(true)}>
               <Plus className="h-3.5 w-3.5" />
@@ -274,7 +396,9 @@ export function ProviderModelManagementSurface({
                   aria-pressed={provider.Id === selectedProvider.Id}
                   onClick={() => setSelectedProviderId(provider.Id)}
                 >
-                  <span className="block truncate font-medium">{provider.Id || frontendMessage("settings.provider.unnamed")}</span>
+                  <span className="block truncate font-medium">
+                    {provider.Id || frontendMessage("settings.provider.unnamed")}
+                  </span>
                   <span className="mt-0.5 block text-[10.5px] opacity-70">
                     {frontendMessage("settings.modelManagement.configuredCount", {
                       count: state.models.filter((model) => model.ProviderId === provider.Id).length,
@@ -333,12 +457,79 @@ export function ProviderModelManagementSurface({
         endpointOptions={endpointChoices}
         disabled={disabled || Boolean(editingModel && operations[editingModel.Id]?.status === "pending")}
         commitLabels={{
-          existing: frontendMessage("settings.action.save"),
-          new: frontendMessage("settings.action.add"),
+          existing: frontendMessage(
+            editingModel &&
+              (operations[editingModel.Id]?.status === "error" || pendingNewModelIdRef.current === editingModel.Id)
+              ? "settings.action.retry"
+              : "settings.action.confirm",
+          ),
+          new: frontendMessage(
+            editingModel &&
+              (operations[editingModel.Id]?.status === "error" || pendingNewModelIdRef.current === editingModel.Id)
+              ? "settings.action.retry"
+              : "settings.action.add",
+          ),
         }}
-        onOpenChange={(open) => !open && setEditingModel(null)}
-        onChange={(patch) => setEditingModel((current) => (current ? { ...current, ...patch } : current))}
-        onCommit={() => editingModel && saveModel(editingModel)}
+        onOpenChange={(open) => {
+          if (open) return;
+          if (!editingModel) return;
+          if (editingExisting) {
+            const flushed = flushExistingModelSave(editingModel.Id, true);
+            if (!flushed || modelSaveQueueRef.current.get(editingModel.Id)?.requestId) return;
+          } else {
+            const current = modelSaveQueueRef.current.get(editingModel.Id);
+            if (current?.requestId) {
+              modelSaveQueueRef.current.set(editingModel.Id, { ...current, closeRequested: true });
+              return;
+            }
+            pendingNewModelIdRef.current = null;
+          }
+          setEditingModel(null);
+          setEditingExisting(false);
+        }}
+        onChange={(patch) => {
+          if (!editingModel) return;
+          const nextModel = { ...editingModel, ...patch };
+          setEditingModel(nextModel);
+          if (editingExisting) {
+            const immediate =
+              "Capabilities" in patch ||
+              "Endpoint" in patch ||
+              "Icon" in patch ||
+              Object.values(patch).some((value) => typeof value === "boolean");
+            scheduleExistingModelSave(nextModel, immediate);
+          }
+        }}
+        onCommitDraft={() => {
+          if (editingExisting) flushExistingModelSave();
+        }}
+        onCommit={() => {
+          if (!editingModel) return;
+          if (!editingExisting) {
+            const current = modelSaveQueueRef.current.get(editingModel.Id);
+            if (current?.requestId) {
+              modelSaveQueueRef.current.set(editingModel.Id, { ...current, closeRequested: true });
+              return;
+            }
+            const requestId = submitModelRequest(editingModel);
+            if (requestId) {
+              modelSaveQueueRef.current.set(editingModel.Id, {
+                draft: editingModel,
+                requestId,
+                requestDraft: editingModel,
+                timer: null,
+                closeRequested: true,
+              });
+              pendingNewModelIdRef.current = editingModel.Id;
+            }
+            return;
+          }
+          const flushed = flushExistingModelSave(editingModel.Id, true);
+          if (flushed && !modelSaveQueueRef.current.get(editingModel.Id)?.requestId) {
+            setEditingModel(null);
+            setEditingExisting(false);
+          }
+        }}
         onRemove={() => editingModel && requestModelRemoval(editingModel)}
       />
       <Dialog open={catalogOpen} onOpenChange={setCatalogOpen}>
@@ -385,7 +576,9 @@ export function ProviderModelManagementSurface({
             />
           </FormField>
           <DialogActions className="mt-auto">
-            <DialogActionButton onClick={() => setManualOpen(false)}>{frontendMessage("settings.action.cancel")}</DialogActionButton>
+            <DialogActionButton onClick={() => setManualOpen(false)}>
+              {frontendMessage("settings.action.cancel")}
+            </DialogActionButton>
             <DialogActionButton variant="primary" disabled={disabled || !manualModelId.trim()} onClick={addManualModel}>
               {frontendMessage("settings.action.add")}
             </DialogActionButton>
@@ -393,17 +586,22 @@ export function ProviderModelManagementSurface({
         </DialogContent>
       </Dialog>
       <Dialog open={groupUnsupportedDialogOpen} onOpenChange={setGroupUnsupportedDialogOpen}>
-        <DialogContent title={frontendMessage("settings.modelManagement.unsupportedTitle")} className="w-[min(460px,calc(100vw-32px))]">
+        <DialogContent
+          title={frontendMessage("settings.modelManagement.unsupportedTitle")}
+          className="w-[min(460px,calc(100vw-32px))]"
+        >
           <div className="p-4 text-[13px] text-ink-700">
-            <p>
-              {frontendMessage("settings.modelManagement.unsupportedDescription")}
-            </p>
+            <p>{frontendMessage("settings.modelManagement.unsupportedDescription")}</p>
             <p className="mt-2">{frontendMessage("settings.modelManagement.unsupportedHint")}</p>
           </div>
         </DialogContent>
       </Dialog>
     </div>
   );
+}
+
+function sameModelDraft(left: ModelProviderDraft, right: ModelProviderDraft): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function CatalogModelDialogContent({
@@ -478,7 +676,9 @@ function CatalogModelDialogContent({
                         <div className="truncate font-mono text-[12px] text-ink-850" title={row.id}>
                           {row.id}
                         </div>
-                        <div className="mt-0.5 truncate text-[10.5px] text-ink-450">{row.ownedBy || frontendMessage("settings.modelManagement.providerModel")}</div>
+                        <div className="mt-0.5 truncate text-[10.5px] text-ink-450">
+                          {row.ownedBy || frontendMessage("settings.modelManagement.providerModel")}
+                        </div>
                       </div>
                       {configured ? (
                         <span className="rounded-md border border-moss-200 bg-moss-50 px-2 py-1 text-[10.5px] font-medium text-moss-700">
@@ -486,7 +686,8 @@ function CatalogModelDialogContent({
                         </span>
                       ) : pending ? (
                         <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10.5px] font-medium text-sky-700">
-                          <Loader2 className="h-3 w-3 animate-spin" /> {frontendMessage("settings.modelManagement.adding")}
+                          <Loader2 className="h-3 w-3 animate-spin" />{" "}
+                          {frontendMessage("settings.modelManagement.adding")}
                         </span>
                       ) : (
                         <button

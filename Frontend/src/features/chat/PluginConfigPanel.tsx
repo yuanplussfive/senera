@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { RefreshCw, Save, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RefreshCw, RotateCcw, Search } from "lucide-react";
 import type { PluginConfigField, PluginConfigItem, PluginConfigMutationState } from "../../api/eventTypes";
+import type { SocketStatus } from "../../api/useAgentSocket";
 import { cn } from "../../lib/util";
-import { Button, Dialog, DialogActionButton, DialogActions, DialogContent, ScrollArea, Tooltip } from "../../shared/ui";
+import { Button, ScrollArea, Tooltip } from "../../shared/ui";
 import {
   ConfigSourceNotice,
   Diagnostics,
@@ -17,10 +18,41 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { classifySettingsContentLayout, useObservedLayout } from "../../shared/responsive";
 export { readNumberDraftCommitValue, validatePluginConfigDraft, writeDraftFieldValue } from "./pluginConfigDraft";
 
+const AUTO_SAVE_DELAY_MS = 500;
+
+interface PluginDraftEntry {
+  synced: string;
+  draft: string;
+  dirty: boolean;
+  saveRequestId: string | null;
+  saveRequestDraft: string | null;
+  queuedDraft: string | null;
+  awaitingSnapshot: string | null;
+  saveError: string | null;
+  autoSaveBlocked: boolean;
+  toggleRequestId: string | null;
+}
+
+function createPluginDraftEntry(plugin: PluginConfigItem): PluginDraftEntry {
+  return {
+    synced: plugin.toml,
+    draft: plugin.toml,
+    dirty: false,
+    saveRequestId: null,
+    saveRequestDraft: null,
+    queuedDraft: null,
+    awaitingSnapshot: null,
+    saveError: null,
+    autoSaveBlocked: false,
+    toggleRequestId: null,
+  };
+}
+
 export function PluginConfigContent({
   layoutMode = "panel",
   plugins,
   operations,
+  socketStatus = "open",
   onRefresh,
   onSave,
   onSetEnabled,
@@ -29,32 +61,45 @@ export function PluginConfigContent({
   layoutMode?: PluginConfigLayoutMode;
   plugins: PluginConfigItem[];
   operations: Record<string, PluginConfigMutationState>;
+  socketStatus?: SocketStatus;
   onRefresh: () => void;
   onSave: (pluginName: string, toml: string) => string | null;
   onSetEnabled: (pluginName: string, enabled: boolean, toolName?: string) => string | null;
   onDirtyChange?: (dirty: boolean) => void;
 }): JSX.Element {
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [dirty, setDirty] = useState(false);
   const [view, setView] = useState<ConfigView>("settings");
   const [filterText, setFilterText] = useState("");
-  const [saveRequestId, setSaveRequestId] = useState<string | null>(null);
-  const [toggleRequestId, setToggleRequestId] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [pendingPluginName, setPendingPluginName] = useState<string | null>(null);
   const [compactDetailOpen, setCompactDetailOpen] = useState(false);
+  const [, setEntryVersion] = useState(0);
+  const draftEntriesRef = useRef<Map<string, PluginDraftEntry>>(new Map());
+  const saveTimersRef = useRef<Map<string, number>>(new Map());
+  const configurablePluginsRef = useRef<PluginConfigItem[]>([]);
   const { ref: layoutRef, layout } = useObservedLayout<HTMLDivElement, "compact" | "standard" | "wide">(
     classifySettingsContentLayout,
     "standard",
   );
 
   const configurablePlugins = useMemo(() => plugins.filter((plugin) => plugin.rootKind === "User"), [plugins]);
+  configurablePluginsRef.current = configurablePlugins;
 
   const selected = useMemo(
     () => configurablePlugins.find((plugin) => plugin.name === selectedName) ?? configurablePlugins[0] ?? null,
     [configurablePlugins, selectedName],
   );
+  const selectedEntry = selected
+    ? (draftEntriesRef.current.get(selected.name) ??
+      (() => {
+        const entry = createPluginDraftEntry(selected);
+        draftEntriesRef.current.set(selected.name, entry);
+        return entry;
+      })())
+    : null;
+  const draft = selectedEntry?.draft ?? selected?.toml ?? "";
+  const dirty = Boolean(selectedEntry?.dirty);
+  const saveRequestId = selectedEntry?.saveRequestId ?? null;
+  const toggleRequestId = selectedEntry?.toggleRequestId ?? null;
+  const saveError = selectedEntry?.saveError ?? null;
 
   const activePlugins = configurablePlugins.filter((plugin) => plugin.available).length;
   const filteredPlugins = useMemo(() => {
@@ -72,7 +117,7 @@ export function PluginConfigContent({
   );
   const saveOperation = saveRequestId ? operations[saveRequestId] : undefined;
   const toggleOperation = toggleRequestId ? operations[toggleRequestId] : undefined;
-  const saving = saveOperation?.status === "pending";
+  const saving = saveRequestId !== null && saveOperation?.status !== "success" && saveOperation?.status !== "error";
   const toggling = toggleOperation?.status === "pending";
   const hasDraftErrors = Boolean(parsedDraft.error) || draftValidationErrors.length > 0;
   const embedded = layoutMode === "embedded";
@@ -80,76 +125,195 @@ export function PluginConfigContent({
   const compactWorkspace = workspace && layout === "compact";
 
   useEffect(() => {
-    if (!selectedName && configurablePlugins.length > 0) {
-      setSelectedName(configurablePlugins[0].name);
+    const selectionStillExists = configurablePlugins.some((plugin) => plugin.name === selectedName);
+    const nextSelectedName = selectionStillExists ? selectedName : (configurablePlugins[0]?.name ?? null);
+    if (nextSelectedName !== selectedName) {
+      setSelectedName(nextSelectedName);
     }
   }, [configurablePlugins, selectedName]);
 
   useEffect(() => {
-    if (!selected) {
-      setDraft("");
-      setDirty(false);
-      setSaveRequestId(null);
-      setToggleRequestId(null);
-      setSaveError(null);
-      return;
+    let changed = false;
+    const activeNames = new Set(configurablePlugins.map((plugin) => plugin.name));
+    for (const plugin of configurablePlugins) {
+      const current = draftEntriesRef.current.get(plugin.name);
+      if (!current) {
+        draftEntriesRef.current.set(plugin.name, createPluginDraftEntry(plugin));
+        changed = true;
+        continue;
+      }
+      if (current.awaitingSnapshot) {
+        if (current.awaitingSnapshot !== plugin.toml) continue;
+        draftEntriesRef.current.set(plugin.name, {
+          ...current,
+          synced: plugin.toml,
+          draft: current.draft === current.awaitingSnapshot ? plugin.toml : current.draft,
+          awaitingSnapshot: null,
+        });
+        changed = true;
+        continue;
+      }
+      if (!current.dirty && !current.saveRequestId && !current.queuedDraft && current.synced !== plugin.toml) {
+        draftEntriesRef.current.set(plugin.name, {
+          ...current,
+          synced: plugin.toml,
+          draft: plugin.toml,
+        });
+        changed = true;
+      }
     }
-    setDraft(selected.toml);
-    setDirty(false);
-    setSaveRequestId(null);
-    setToggleRequestId(null);
-    setSaveError(null);
-    setView("settings");
-  }, [selected]);
+    for (const name of draftEntriesRef.current.keys()) {
+      if (!activeNames.has(name)) {
+        draftEntriesRef.current.delete(name);
+        const timer = saveTimersRef.current.get(name);
+        if (timer !== undefined) window.clearTimeout(timer);
+        saveTimersRef.current.delete(name);
+        changed = true;
+      }
+    }
+    if (changed) setEntryVersion((version) => version + 1);
+  }, [configurablePlugins]);
+
+  const saveDraft = useCallback(
+    (pluginName: string, manual: boolean): void => {
+      const plugin = configurablePluginsRef.current.find((item) => item.name === pluginName);
+      const current = plugin ? draftEntriesRef.current.get(pluginName) : undefined;
+      if (!plugin || !current || !current.dirty) return;
+      const parsed = parseDraftToml(current.draft);
+      const validationErrors = parsed.value ? validatePluginConfigDraft(plugin.sections, parsed.value) : [];
+      if (parsed.error || validationErrors.length > 0) return;
+      if (current.saveRequestId) {
+        draftEntriesRef.current.set(pluginName, { ...current, queuedDraft: current.draft });
+        setEntryVersion((version) => version + 1);
+        return;
+      }
+      if (!manual && current.autoSaveBlocked) return;
+      if (socketStatus !== "open") {
+        draftEntriesRef.current.set(pluginName, {
+          ...current,
+          saveError: frontendMessage("settings.draft.connectionInterrupted"),
+          autoSaveBlocked: true,
+        });
+        setEntryVersion((version) => version + 1);
+        return;
+      }
+      const requestId = onSave(pluginName, current.draft);
+      if (!requestId) {
+        draftEntriesRef.current.set(pluginName, {
+          ...current,
+          saveError: frontendMessage("pluginConfig.saveDisconnected"),
+          autoSaveBlocked: true,
+        });
+        setEntryVersion((version) => version + 1);
+        return;
+      }
+      draftEntriesRef.current.set(pluginName, {
+        ...current,
+        saveRequestId: requestId,
+        saveRequestDraft: current.draft,
+        queuedDraft: null,
+        awaitingSnapshot: null,
+        saveError: null,
+        autoSaveBlocked: false,
+      });
+      setEntryVersion((version) => version + 1);
+    },
+    [onSave, socketStatus],
+  );
 
   useEffect(() => {
-    if (!selected) return;
-    if (saveOperation?.status === "success") {
-      setDraft(selected.toml);
-      setDirty(false);
-      setSaveRequestId(null);
-      setSaveError(null);
-      return;
+    let changed = false;
+    const followUps: string[] = [];
+    for (const [pluginName, current] of draftEntriesRef.current) {
+      if (current.saveRequestId === null) {
+        if (current.toggleRequestId && operations[current.toggleRequestId]?.status !== "pending") {
+          draftEntriesRef.current.set(pluginName, { ...current, toggleRequestId: null });
+          changed = true;
+        }
+        continue;
+      }
+      const operation = operations[current.saveRequestId];
+      if (!operation || operation.status === "pending") continue;
+      if (operation.status === "error") {
+        draftEntriesRef.current.set(pluginName, {
+          ...current,
+          saveRequestId: null,
+          saveRequestDraft: null,
+          queuedDraft: null,
+          saveError: operation.message ?? frontendMessage("pluginConfig.saveFailed"),
+          autoSaveBlocked: true,
+        });
+        changed = true;
+        continue;
+      }
+      const sentDraft = current.saveRequestDraft ?? current.draft;
+      const queuedDraft = current.queuedDraft;
+      const latestPlugin = configurablePluginsRef.current.find((plugin) => plugin.name === pluginName);
+      const snapshotMatchesRequest = latestPlugin?.toml === sentDraft;
+      const nextDraft = queuedDraft ?? sentDraft;
+      draftEntriesRef.current.set(pluginName, {
+        ...current,
+        synced: sentDraft,
+        draft: nextDraft,
+        dirty: nextDraft !== sentDraft,
+        saveRequestId: null,
+        saveRequestDraft: null,
+        queuedDraft: null,
+        awaitingSnapshot:
+          queuedDraft !== null && queuedDraft !== sentDraft ? null : snapshotMatchesRequest ? null : sentDraft,
+        saveError: null,
+        autoSaveBlocked: false,
+      });
+      changed = true;
+      if (queuedDraft !== null && queuedDraft !== sentDraft) followUps.push(pluginName);
     }
-    if (saveOperation?.status === "error") {
-      setSaveRequestId(null);
-      setSaveError(saveOperation.message ?? frontendMessage("pluginConfig.saveFailed"));
-      return;
+    if (changed) setEntryVersion((version) => version + 1);
+    for (const pluginName of followUps) {
+      window.setTimeout(() => saveDraft(pluginName, false), 0);
     }
-    if (dirty) return;
-    setDraft(selected.toml);
-  }, [dirty, saveOperation?.message, saveOperation?.status, selected]);
-
-  useEffect(() => {
-    if (!toggleOperation) return;
-    if (toggleOperation.status === "pending") return;
-    setToggleRequestId(null);
-  }, [toggleOperation]);
+  }, [operations, saveDraft]);
 
   useEffect(() => {
     onDirtyChange?.(dirty);
     return () => onDirtyChange?.(false);
   }, [dirty, onDirtyChange]);
 
-  const save = (): void => {
-    if (!selected || !dirty || hasDraftErrors || saving) return;
-    const requestId = onSave(selected.name, draft);
-    if (!requestId) {
-      return;
-    }
-    setSaveError(null);
-    setSaveRequestId(requestId);
-  };
+  const scheduleSave = useCallback(
+    (pluginName: string, delay: number): void => {
+      const previous = saveTimersRef.current.get(pluginName);
+      if (previous !== undefined) window.clearTimeout(previous);
+      const timer = window.setTimeout(() => {
+        saveTimersRef.current.delete(pluginName);
+        saveDraft(pluginName, false);
+      }, delay);
+      saveTimersRef.current.set(pluginName, timer);
+    },
+    [saveDraft],
+  );
 
-  const updateDraft = (nextDraft: string): void => {
-    setDraft(nextDraft);
-    setDirty(Boolean(selected) && nextDraft !== selected?.toml);
-    setSaveError(null);
+  const flushSave = useCallback((): void => {
+    if (selected) saveDraft(selected.name, true);
+  }, [saveDraft, selected]);
+  const retrySave = flushSave;
+
+  const updateDraft = (nextDraft: string, mode: "debounced" | "immediate" = "debounced"): void => {
+    if (!selected) return;
+    const current = selectedEntry ?? createPluginDraftEntry(selected);
+    draftEntriesRef.current.set(selected.name, {
+      ...current,
+      draft: nextDraft,
+      dirty: nextDraft !== current.synced,
+      queuedDraft: current.saveRequestId ? nextDraft : current.queuedDraft,
+      saveError: null,
+      autoSaveBlocked: false,
+    });
+    setEntryVersion((version) => version + 1);
+    scheduleSave(selected.name, mode === "immediate" ? 0 : AUTO_SAVE_DELAY_MS);
   };
 
   const updateField = (field: PluginConfigField, value: unknown): void => {
     const nextDraft = writeDraftFieldValue(draft, field, value);
-    updateDraft(nextDraft);
+    updateDraft(nextDraft, field.type === "boolean" || Boolean(field.options?.length) ? "immediate" : "debounced");
   };
 
   const selectPlugin = (pluginName: string): void => {
@@ -157,19 +321,21 @@ export function PluginConfigContent({
       if (compactWorkspace) setCompactDetailOpen(true);
       return;
     }
-    if (dirty) {
-      setPendingPluginName(pluginName);
-      return;
-    }
     setSelectedName(pluginName);
     if (compactWorkspace) setCompactDetailOpen(true);
   };
 
   const setSelectedToolEnabled = (toolName: string, enabled: boolean): void => {
+    setPluginEnabled(enabled, toolName);
+  };
+
+  const setPluginEnabled = (enabled: boolean, toolName?: string): void => {
     if (!selected) return;
     const requestId = onSetEnabled(selected.name, enabled, toolName);
     if (requestId) {
-      setToggleRequestId(requestId);
+      const current = selectedEntry ?? createPluginDraftEntry(selected);
+      draftEntriesRef.current.set(selected.name, { ...current, toggleRequestId: requestId });
+      setEntryVersion((version) => version + 1);
     }
   };
 
@@ -177,7 +343,7 @@ export function PluginConfigContent({
     <div
       ref={layoutRef}
       className={cn(
-        "grid min-h-0 flex-1 grid-cols-1 bg-paper-100",
+        "grid min-h-0 min-w-0 flex-1 grid-cols-1 bg-paper-100",
         embedded && "grid-rows-[auto_auto] overflow-visible",
         !embedded &&
           !workspace &&
@@ -190,7 +356,7 @@ export function PluginConfigContent({
       {!compactWorkspace || !compactDetailOpen ? (
         <aside
           className={cn(
-            "min-h-0 border-b border-ink-200/70 bg-paper-200/45",
+            "min-h-0 min-w-0 border-b border-ink-200/70 bg-paper-200/45",
             !embedded && !workspace && "lg:border-b-0 lg:border-r",
             workspace && layout !== "compact" && "border-b-0 border-r",
           )}
@@ -223,6 +389,7 @@ export function PluginConfigContent({
               <input
                 value={filterText}
                 onChange={(event) => setFilterText(event.currentTarget.value)}
+                aria-label={frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.210.27")}
                 placeholder={frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.210.27")}
                 className="min-w-0 flex-1 bg-transparent text-[12px] text-ink-800 outline-none placeholder:text-ink-400"
               />
@@ -265,18 +432,17 @@ export function PluginConfigContent({
       ) : null}
 
       {!compactWorkspace || compactDetailOpen ? (
-        <section className={cn("flex min-h-0 flex-col bg-paper-50", embedded ? "overflow-visible" : "overflow-hidden")}>
+        <section
+          className={cn(
+            "plugin-config-detail flex min-h-0 min-w-0 flex-col bg-paper-50",
+            embedded ? "overflow-visible" : "overflow-hidden",
+          )}
+        >
           {compactWorkspace ? (
             <button
               type="button"
               className="flex h-11 shrink-0 items-center gap-2 border-b border-ink-200/70 px-3 text-[12.5px] font-medium text-ink-600"
-              onClick={() => {
-                if (dirty) {
-                  setPendingPluginName("__back__");
-                  return;
-                }
-                setCompactDetailOpen(false);
-              }}
+              onClick={() => setCompactDetailOpen(false)}
             >
               {frontendMessage("pluginConfig.backToList")}
             </button>
@@ -325,23 +491,20 @@ export function PluginConfigContent({
                       enabled={selected.enabled}
                       disabled={dirty || toggling}
                       label={frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.277.27")}
-                      onClick={() => {
-                        const requestId = onSetEnabled(selected.name, !selected.enabled);
-                        if (requestId) {
-                          setToggleRequestId(requestId);
-                        }
-                      }}
+                      onClick={() => setPluginEnabled(!selected.enabled)}
                     />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!dirty || saving || hasDraftErrors}
-                      onClick={save}
-                      className="h-8"
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      {frontendMessage(saving ? "pluginConfig.saving" : "pluginConfig.save")}
-                    </Button>
+                    {saveError && dirty ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={saving || hasDraftErrors || socketStatus !== "open"}
+                        onClick={retrySave}
+                        className="h-8"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        {frontendMessage("settings.action.retry")}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
 
@@ -364,9 +527,10 @@ export function PluginConfigContent({
                   toolsDisabled={dirty || toggling || !selected.enabled}
                   onSetToolEnabled={setSelectedToolEnabled}
                   onUpdateField={updateField}
+                  onCommit={flushSave}
                 />
               ) : (
-                <TomlView layoutMode={layoutMode} draft={draft} onChange={updateDraft} />
+                <TomlView layoutMode={layoutMode} draft={draft} onChange={updateDraft} onCommit={flushSave} />
               )}
             </>
           ) : (
@@ -376,34 +540,6 @@ export function PluginConfigContent({
           )}
         </section>
       ) : null}
-      <Dialog open={pendingPluginName !== null} onOpenChange={(open) => !open && setPendingPluginName(null)}>
-        <DialogContent
-          title={frontendMessage("pluginConfig.discardTitle")}
-          description={frontendMessage("pluginConfig.discardDescription")}
-        >
-          <DialogActions>
-            <DialogActionButton close>{frontendMessage("pluginConfig.discardContinue")}</DialogActionButton>
-            <DialogActionButton
-              variant="danger"
-              onClick={() => {
-                const target = pendingPluginName;
-                setPendingPluginName(null);
-                setDirty(false);
-                setSaveError(null);
-                if (selected) setDraft(selected.toml);
-                if (target === "__back__") {
-                  setCompactDetailOpen(false);
-                } else if (target) {
-                  setSelectedName(target);
-                  if (compactWorkspace) setCompactDetailOpen(true);
-                }
-              }}
-            >
-              {frontendMessage("pluginConfig.discardAction")}
-            </DialogActionButton>
-          </DialogActions>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -490,6 +626,7 @@ function TogglePill({
       type="button"
       disabled={disabled}
       onClick={onClick}
+      aria-pressed={enabled}
       className={cn(
         "inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-1.5 text-[12px] transition",
         enabled ? "text-moss-600" : "text-ink-500",

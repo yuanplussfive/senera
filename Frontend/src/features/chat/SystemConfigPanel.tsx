@@ -8,11 +8,11 @@ import {
   Loader2,
   RefreshCw,
   Route,
-  Save,
   Search,
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
+import type { SocketStatus } from "../../api/useAgentSocket";
 import type {
   ConfigMutationState,
   ConfigSnapshotData,
@@ -39,6 +39,7 @@ export interface SystemConfigContentProps {
   layoutMode?: "panel" | "embedded";
   operation: ConfigMutationState | null;
   snapshot: ConfigSnapshotData | null;
+  socketStatus?: SocketStatus;
   providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
   providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
   providerModelLoadingIds: Record<string, boolean>;
@@ -52,6 +53,7 @@ export function SystemConfigContent({
   layoutMode = "panel",
   operation,
   snapshot,
+  socketStatus = "open",
   providerModelCatalogs,
   providerModelErrors,
   providerModelLoadingIds,
@@ -75,12 +77,14 @@ export function SystemConfigContent({
     active,
     operation,
     snapshot,
+    socketStatus,
     onRefresh,
     onSave,
   });
   const draftState = externalDraftState ?? internalDraftState;
   const interaction = readSettingsDraftInteraction({
     dirty: draftState.dirty,
+    conflict: draftState.conflict,
     localError: draftState.localError,
     ready: Boolean(snapshot),
     saving: draftState.saving,
@@ -237,6 +241,7 @@ function SystemConfigSectionContent({
       value={draftState.draft}
       disabled={draftState.saving}
       onChange={draftState.updateDraft}
+      onCommit={draftState.flushSave}
     />
   );
 }
@@ -304,20 +309,18 @@ function ConfigToolbar({
           <RefreshCw className={cn("h-3.5 w-3.5", interaction.status === "saving" && "animate-spin")} />
           {interaction.refreshLabel}
         </Button>
-        <Button
-          size="sm"
-          disabled={interaction.saveDisabled}
-          onClick={onSave}
-          className="h-8"
-          title={interaction.saveTitle}
-        >
-          {interaction.status === "saving" ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Save className="h-3.5 w-3.5" />
-          )}
-          {frontendMessage("runtime.migrated.features.chat.SystemConfigPanel.337.11")}
-        </Button>
+        {interaction.status === "conflict" || (interaction.status === "invalid" && !interaction.saveDisabled) ? (
+          <Button
+            size="sm"
+            disabled={interaction.saveDisabled}
+            onClick={onSave}
+            className="h-8"
+            title={interaction.saveTitle}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {frontendMessage("settings.action.retry")}
+          </Button>
+        ) : null}
       </div>
     </div>
   );

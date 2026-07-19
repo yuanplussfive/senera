@@ -91,6 +91,7 @@ export function SettingsWorkbench({
     active: Boolean(systemConfig),
     operation: systemConfig?.configOperation ?? null,
     snapshot: systemConfig?.configSnapshot ?? null,
+    socketStatus: systemConfig?.socketStatus,
     onRefresh: systemConfig?.refreshConfig ?? noop,
     onSave: systemConfig?.saveConfig ?? noopSave,
   });
@@ -486,9 +487,9 @@ function SystemSettings({
         layoutMode="embedded"
         sections={readMainConfigurationSections(systemConfig.configSnapshot?.form.sections ?? [])}
         value={draftState.draft}
-        disabled={draftState.saving}
         emptyText={frontendMessage("settings.state.emptyMain")}
         onChange={draftState.updateDraft}
+        onCommit={draftState.flushSave}
       />
     </DraftBackedSection>
   );
@@ -512,9 +513,9 @@ function ConfigFormSectionSettings({
         layoutMode="embedded"
         sections={sections}
         value={draftState.draft}
-        disabled={draftState.saving}
         emptyText={frontendMessage("settings.state.emptySection")}
         onChange={draftState.updateDraft}
+        onCommit={draftState.flushSave}
       />
     </DraftBackedSection>
   );
@@ -531,6 +532,7 @@ function DraftBackedSection({
 }): JSX.Element {
   const interaction = readSettingsDraftInteraction({
     dirty: draftState.dirty,
+    conflict: draftState.conflict,
     localError: draftState.localError,
     ready,
     saving: draftState.saving,
@@ -552,11 +554,17 @@ function DraftBackedSection({
           >
             {interaction.refreshLabel}
           </Button>
-          <Button size="sm" disabled={interaction.saveDisabled} onClick={draftState.save} title={interaction.saveTitle}>
-            {draftState.saving
-              ? frontendMessage("settings.state.saving")
-              : frontendMessage("settings.action.saveChanges")}
-          </Button>
+          {interaction.status === "conflict" || (interaction.status === "invalid" && !interaction.saveDisabled) ? (
+            <Button
+              size="sm"
+              disabled={interaction.saveDisabled}
+              onClick={draftState.save}
+              title={interaction.saveTitle}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {frontendMessage("settings.action.retry")}
+            </Button>
+          ) : null}
         </div>
       </div>
       <div className="pt-2">{children}</div>

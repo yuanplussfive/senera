@@ -38,6 +38,7 @@ export type PluginSettingsEventResolution =
 export interface PluginSettingsCommandsHandle {
   pluginConfigs: PluginConfigItem[];
   pluginConfigOperations: Record<string, PluginConfigMutationState>;
+  socketStatus: SocketStatus;
   handlePluginSettingsEvent: (env: EventEnvelope) => boolean;
   refreshPluginConfigs: () => void;
   savePluginConfig: (pluginName: string, toml: string) => string | null;
@@ -110,9 +111,6 @@ export function usePluginSettingsCommands({
           updatedAt: new Date().toISOString(),
         },
       }));
-      toast.success(
-        frontendMessage(pending.kind === "update" ? "pluginConfig.saved" : "pluginConfig.setEnabledSucceeded"),
-      );
       return true;
     }
 
@@ -202,6 +200,7 @@ export function usePluginSettingsCommands({
   return {
     pluginConfigs,
     pluginConfigOperations,
+    socketStatus: status,
     handlePluginSettingsEvent,
     refreshPluginConfigs,
     savePluginConfig,

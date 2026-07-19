@@ -1,11 +1,12 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
-export type SettingsDraftStatus = "loading" | "saving" | "invalid" | "dirty" | "synced";
+export type SettingsDraftStatus = "loading" | "saving" | "invalid" | "dirty" | "conflict" | "synced";
 
 export type SettingsDraftTone = "neutral" | "success" | "info" | "warning";
 
 export interface SettingsDraftInteractionInput {
   dirty: boolean;
+  conflict?: boolean;
   localError?: string | null;
   ready?: boolean;
   saving: boolean;
@@ -26,6 +27,7 @@ export interface SettingsDraftInteraction {
 
 export function readSettingsDraftInteraction({
   dirty,
+  conflict = false,
   localError = null,
   ready = true,
   saving,
@@ -61,6 +63,20 @@ export function readSettingsDraftInteraction({
       status: "saving",
       statusLabel: frontendMessage("settings.draft.savingStatus"),
       tone: "info",
+    };
+  }
+
+  if (conflict) {
+    return {
+      detail: localError ?? frontendMessage("settings.draft.conflict"),
+      refreshDisabled: false,
+      refreshLabel,
+      refreshTitle,
+      saveDisabled: !dirty,
+      saveTitle: dirty ? frontendMessage("settings.draft.retrySave") : frontendMessage("settings.draft.noUnsaved"),
+      status: "conflict",
+      statusLabel: frontendMessage("settings.draft.conflictStatus"),
+      tone: "warning",
     };
   }
 

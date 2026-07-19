@@ -22,6 +22,7 @@ export function ProviderConnectionList({
   catalogs,
   errors,
   loadingProviderIds,
+  operations,
   selectedProviderId,
   disabled,
   onRequestAdd,
@@ -33,6 +34,7 @@ export function ProviderConnectionList({
   catalogs: SettingsConfigCommands["providerModelCatalogs"];
   errors: SettingsConfigCommands["providerModelErrors"];
   loadingProviderIds: SettingsConfigCommands["providerModelLoadingIds"];
+  operations: SettingsConfigCommands["providerEndpointOperations"];
   selectedProviderId: string | null;
   disabled: boolean;
   onRequestAdd: () => void;
@@ -58,6 +60,10 @@ export function ProviderConnectionList({
           const catalog = provider.Id ? catalogs[provider.Id] : undefined;
           const error = provider.Id ? errors[provider.Id] : undefined;
           const loading = provider.Id ? loadingProviderIds[provider.Id] : false;
+          const operation = provider.Id ? operations[provider.Id] : undefined;
+          const operationPending = operation?.status === "pending";
+          const operationError =
+            operation?.status === "error" ? { providerId: provider.Id, message: operation.message ?? "" } : undefined;
           const enabled = providerEnabled(provider);
           const modelCount = catalog?.models.length ?? 0;
           const protectedProvider = isProtectedProvider(provider.Id);
@@ -91,14 +97,22 @@ export function ProviderConnectionList({
                     {providerIdLabel(provider)}
                   </span>
                   <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-450">
-                    <ProviderStatusIcon loading={loading} catalog={catalog} error={error} />
+                    <ProviderStatusIcon
+                      loading={loading || operationPending}
+                      catalog={catalog}
+                      error={error || operationError}
+                    />
                     <span className="truncate">
-                      {catalog
-                        ? frontendMessage("settings.provider.catalogSummary", {
-                            models: frontendMessage("settings.provider.modelsCount", { count: modelCount }),
-                            time: formatShortTime(catalog.fetchedAt),
-                          })
-                        : provider.Id || frontendMessage("settings.provider.unsetId")}
+                      {operationPending
+                        ? frontendMessage("settings.provider.savingConnection")
+                        : operationError
+                          ? frontendMessage("settings.provider.lastSaveFailed")
+                          : catalog
+                            ? frontendMessage("settings.provider.catalogSummary", {
+                                models: frontendMessage("settings.provider.modelsCount", { count: modelCount }),
+                                time: formatShortTime(catalog.fetchedAt),
+                              })
+                            : provider.Id || frontendMessage("settings.provider.unsetId")}
                     </span>
                   </span>
                 </span>
@@ -156,10 +170,15 @@ export function ProviderConnectionList({
         <div className="border-b border-ink-200/70 bg-paper-50 p-3">
           <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate text-[14px] font-semibold text-ink-900">{frontendMessage("settings.model.serviceTitle")}</div>
+              <div className="truncate text-[14px] font-semibold text-ink-900">
+                {frontendMessage("settings.model.serviceTitle")}
+              </div>
               <div className="mt-0.5 truncate text-[11px] text-ink-500">
                 {providerQuery
-                  ? frontendMessage("settings.provider.filteredEndpoints", { visible: providerResults.length, total: providers.length })
+                  ? frontendMessage("settings.provider.filteredEndpoints", {
+                      visible: providerResults.length,
+                      total: providers.length,
+                    })
                   : frontendMessage("settings.provider.endpointsCount", { count: providers.length })}
               </div>
             </div>

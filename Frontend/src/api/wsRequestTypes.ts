@@ -24,7 +24,14 @@ export type WsRequest =
   | { type: "model.list" }
   | { type: "provider.models.fetch"; providerId: string; force?: boolean; endpoint?: ProviderModelEndpointInput }
   | { type: "config.get" }
-  | { type: "config.update"; requestId?: string; config: Record<string, unknown>; mirrorJson?: boolean }
+  | {
+      type: "config.update";
+      requestId?: string;
+      expectedRevision?: number;
+      expectedVersion?: number;
+      config: Record<string, unknown>;
+      mirrorJson?: boolean;
+    }
   | ProviderModelConfigRequest
   | { type: "plugin.config.list" }
   | { type: "plugin.config.update"; requestId?: string; pluginName: string; toml: string }

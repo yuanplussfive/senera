@@ -280,6 +280,38 @@ textarea::-webkit-scrollbar-track {
   container-type: inline-size;
 }
 
+.plugin-config-detail {
+  container-name: plugin-config-detail;
+  container-type: inline-size;
+}
+
+.plugin-config-field {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container plugin-config-detail (min-width: 560px) {
+  .plugin-config-tool-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container plugin-config-detail (min-width: 620px) {
+  .plugin-config-field {
+    align-items: center;
+    grid-template-columns: minmax(220px, 1fr) minmax(250px, 320px);
+  }
+
+  .plugin-config-field[data-field-type="array"] {
+    align-items: start;
+  }
+
+  .plugin-config-field__control {
+    justify-self: end;
+    width: 100%;
+  }
+}
+
 .conversation-frame {
   box-sizing: border-box;
   display: flex;

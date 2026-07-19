@@ -1,4 +1,4 @@
-import { Check, Eye, EyeOff, Loader2, Plus, RotateCcw, Server, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Plus, RotateCcw, Server, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
@@ -20,7 +20,6 @@ export function ProviderConnectionEditor({
   operation,
   providerModelCount,
   providerIndex,
-  onCancel,
   onChange,
   onConfirm,
   onDelete,
@@ -33,9 +32,8 @@ export function ProviderConnectionEditor({
   operation?: SettingsConfigCommands["providerEndpointOperations"][string];
   providerModelCount: number;
   providerIndex: number;
-  onCancel: () => void;
   onChange: (patch: Partial<ProviderEndpointDraft>) => void;
-  onConfirm: () => void;
+  onConfirm: (patch?: Partial<ProviderEndpointDraft>) => void;
   onDelete?: () => void;
 }): JSX.Element {
   const [showKey, setShowKey] = useState(false);
@@ -57,7 +55,6 @@ export function ProviderConnectionEditor({
   const protectedProvider = isProtectedProvider(provider.Id);
   const pending = operation?.status === "pending";
   const operationError = operation?.status === "error" ? operation.message : null;
-  const confirmDisabled = disabled || pending || !dirty || !provider.Id.trim();
 
   return (
     <div className="bg-paper-50">
@@ -74,23 +71,17 @@ export function ProviderConnectionEditor({
           })}
           actions={
             <>
-              {dirty ? (
-                <>
-                  <Button size="sm" variant="outline" disabled={disabled || pending} onClick={onCancel}>
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    {frontendMessage("settings.action.cancel")}
-                  </Button>
-                  <Button size="sm" disabled={confirmDisabled} onClick={onConfirm}>
-                    {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                    {frontendMessage("settings.action.save")}
-                  </Button>
-                </>
+              {(operationError || localError) && dirty ? (
+                <Button size="sm" variant="outline" disabled={disabled || pending} onClick={() => onConfirm()}>
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {frontendMessage("settings.action.retry")}
+                </Button>
               ) : null}
               <button
                 type="button"
-                disabled={disabled || pending}
+                disabled={disabled}
                 className="inline-flex h-8 items-center gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] font-medium text-ink-650 transition hover:border-accent-border-strong disabled:pointer-events-none disabled:opacity-50"
-                onClick={() => onChange({ Enabled: !enabled })}
+                onClick={() => onConfirm({ Enabled: !enabled })}
                 aria-pressed={enabled}
               >
                 <span className={cn("relative h-5 w-9 rounded-full", enabled ? "bg-moss-500" : "bg-ink-300")}>
@@ -104,7 +95,12 @@ export function ProviderConnectionEditor({
                 {frontendMessage(enabled ? "settings.provider.enabled" : "settings.provider.disabled")}
               </button>
               {onDelete ? (
-                <IconAction label={frontendMessage("settings.provider.delete")} danger disabled={disabled || protectedProvider} onClick={onDelete}>
+                <IconAction
+                  label={frontendMessage("settings.provider.delete")}
+                  danger
+                  disabled={disabled || protectedProvider}
+                  onClick={onDelete}
+                >
                   <Trash2 className="h-3.5 w-3.5" />
                 </IconAction>
               ) : null}
@@ -134,11 +130,14 @@ export function ProviderConnectionEditor({
               <input
                 type={showKey ? "text" : "password"}
                 value={provider.ApiKey ?? ""}
-                disabled={disabled || pending}
+                disabled={disabled}
                 placeholder="sk-..."
                 spellCheck={false}
                 className={cn(inputClassName, "h-full font-mono")}
-                onChange={(event) => onChange({ ApiKey: event.currentTarget.value })}
+                onChange={(event) => {
+                  onChange({ ApiKey: event.currentTarget.value });
+                }}
+                onBlur={() => onConfirm()}
               />
               <button
                 type="button"
@@ -170,27 +169,31 @@ export function ProviderConnectionEditor({
             <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
                 value={provider.BaseUrl ?? ""}
-                disabled={disabled || pending}
+                disabled={disabled}
                 placeholder="https://.../v1"
                 spellCheck={false}
                 className={cn(inputClassName, "h-full font-mono")}
-                onChange={(event) => onChange({ BaseUrl: event.currentTarget.value })}
+                onChange={(event) => {
+                  onChange({ BaseUrl: event.currentTarget.value });
+                }}
+                onBlur={() => onConfirm()}
               />
             </div>
           </ConnectionField>
         </div>
 
         <div className="mt-2">
-          {dirty ? (
-            <p className="mt-2 rounded-md border border-ink-200 bg-paper-100 px-3 py-2 text-[12px] leading-5 text-ink-700">
-              {frontendMessage("settings.provider.connectionDraftHint")}
-            </p>
-          ) : null}
           {localError ? <ProviderFormError message={localError} /> : null}
           {operationError ? <ProviderFormError message={operationError} /> : null}
         </div>
       </div>
-      <Dialog open={requestConfigOpen} onOpenChange={setRequestConfigOpen}>
+      <Dialog
+        open={requestConfigOpen}
+        onOpenChange={(open) => {
+          if (!open) onConfirm({ Headers: requestHeadersDraft });
+          setRequestConfigOpen(open);
+        }}
+      >
         <DialogContent
           title={frontendMessage("settings.provider.apiConfig")}
           description={frontendMessage("settings.provider.customHeadersDescription")}
@@ -199,29 +202,35 @@ export function ProviderConnectionEditor({
         >
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="mb-3 flex items-center gap-2">
-              <span className="text-[12px] font-semibold text-ink-750">{frontendMessage("settings.provider.customHeaders")}</span>
+              <span className="text-[12px] font-semibold text-ink-750">
+                {frontendMessage("settings.provider.customHeaders")}
+              </span>
               <span className="rounded-md border border-ink-200 bg-paper-100 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-500">
                 {"{}"}
               </span>
             </div>
             <HeadersEditor
               headers={requestHeadersDraft}
-              disabled={disabled || pending}
-              onChange={setRequestHeadersDraft}
+              disabled={disabled}
+              onChange={(headers, immediate) => {
+                setRequestHeadersDraft(headers);
+                onChange({ Headers: headers });
+                if (immediate) onConfirm({ Headers: headers });
+              }}
+              onCommit={() => onConfirm({ Headers: requestHeadersDraft })}
             />
             <FormHint className="mt-3">{frontendMessage("settings.provider.customHeadersHint")}</FormHint>
           </div>
           <DialogActions className="mt-auto">
-            <DialogActionButton onClick={() => setRequestConfigOpen(false)}>{frontendMessage("settings.action.cancel")}</DialogActionButton>
             <DialogActionButton
               variant="primary"
-              disabled={disabled || pending}
+              disabled={disabled}
               onClick={() => {
-                onChange({ Headers: requestHeadersDraft });
+                onConfirm({ Headers: requestHeadersDraft });
                 setRequestConfigOpen(false);
               }}
             >
-              {frontendMessage("settings.action.save")}
+              {frontendMessage("settings.action.confirm")}
             </DialogActionButton>
           </DialogActions>
         </DialogContent>
@@ -254,10 +263,12 @@ function HeadersEditor({
   disabled,
   headers,
   onChange,
+  onCommit,
 }: {
   disabled: boolean;
   headers: Record<string, string>;
-  onChange: (headers: Record<string, string>) => void;
+  onChange: (headers: Record<string, string>, immediate?: boolean) => void;
+  onCommit: () => void;
 }): JSX.Element {
   const entries = Object.entries(headers);
   return (
@@ -273,6 +284,7 @@ function HeadersEditor({
               next[index] = [event.currentTarget.value, value];
               onChange(Object.fromEntries(next.filter(([entryKey]) => entryKey.trim())));
             }}
+            onBlur={onCommit}
           />
           <Input
             value={value}
@@ -283,12 +295,13 @@ function HeadersEditor({
               next[index] = [key, event.currentTarget.value];
               onChange(Object.fromEntries(next));
             }}
+            onBlur={onCommit}
           />
           <IconAction
             label={frontendMessage("settings.provider.deleteHeader")}
             danger
             disabled={disabled}
-            onClick={() => onChange(Object.fromEntries(entries.filter((_, entryIndex) => entryIndex !== index)))}
+            onClick={() => onChange(Object.fromEntries(entries.filter((_, entryIndex) => entryIndex !== index)), true)}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </IconAction>
@@ -298,7 +311,7 @@ function HeadersEditor({
         variant="outline"
         disabled={disabled}
         className="w-fit border-dashed"
-        onClick={() => onChange({ ...headers, [nextHeaderKey(headers)]: "" })}
+        onClick={() => onChange({ ...headers, [nextHeaderKey(headers)]: "" }, true)}
       >
         <Plus className="h-3.5 w-3.5" />
         {frontendMessage("settings.provider.addHeader")}
@@ -326,7 +339,9 @@ function readProviderConnectionSubtitle({
   if (operation?.status === "error") {
     return frontendMessage("settings.provider.lastSaveFailed");
   }
-  const identity = frontendMessage(protectedProvider ? "settings.provider.builtIn" : "settings.provider.customIdentity");
+  const identity = frontendMessage(
+    protectedProvider ? "settings.provider.builtIn" : "settings.provider.customIdentity",
+  );
   const state = frontendMessage(enabled ? "settings.state.enabled" : "settings.state.disabled");
   const draft = frontendMessage(dirty ? "settings.provider.unsavedChanges" : "settings.provider.fieldsSynced");
   return frontendMessage("settings.provider.connectionStatus", { identity, state, count: providerModelCount, draft });

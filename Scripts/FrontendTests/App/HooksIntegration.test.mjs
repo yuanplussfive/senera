@@ -257,12 +257,7 @@ test("useConfigMutationController tracks plugin config requests through success 
       status: "success",
     }),
   );
-  expect(readTestToastCalls()).toContainEqual(
-    expect.objectContaining({
-      variant: "success",
-      title: "插件配置已保存",
-    }),
-  );
+  expect(readTestToastCalls()).not.toContainEqual(expect.objectContaining({ variant: "success" }));
 });
 
 test("useConfigMutationController routes preset and main config acknowledgements to their owning domains", async () => {
@@ -270,6 +265,7 @@ test("useConfigMutationController routes preset and main config acknowledgements
   const handleRef = { current: null };
   render(
     React.createElement(ConfigMutationHarness, {
+      configSnapshot: createConfigSnapshot(),
       send,
       status: "open",
       handleRef,
@@ -315,10 +311,10 @@ test("useConfigMutationController routes preset and main config acknowledgements
   expect(handleRef.current.presetOperations[presetRequestId]).toMatchObject({ status: "success", kind: "save" });
   expect(handleRef.current.configOperation).toMatchObject({ status: "success", kind: "config_update" });
   expect(readTestToastCalls()).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ variant: "success", title: frontendMessage("preset.saved") }),
-      expect.objectContaining({ variant: "success", title: frontendMessage("config.mainSaved") }),
-    ]),
+    expect.arrayContaining([expect.objectContaining({ variant: "success", title: frontendMessage("preset.saved") })]),
+  );
+  expect(readTestToastCalls()).not.toContainEqual(
+    expect.objectContaining({ variant: "success", title: frontendMessage("config.mainSaved") }),
   );
 });
 
@@ -328,6 +324,7 @@ test("useConfigMutationController rolls back disconnected sends and records prov
 
   render(
     React.createElement(ConfigMutationHarness, {
+      configSnapshot: createConfigSnapshot(),
       send,
       status: "open",
       handleRef,
@@ -491,11 +488,8 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
     }),
   );
   expect(handleRef.current.providerEndpointOperations["custom-delete"].status).toBe("pending");
-  expect(readTestToastCalls()).toContainEqual(
-    expect.objectContaining({
-      variant: "success",
-      title: "供应商连接已保存",
-    }),
+  expect(readTestToastCalls()).not.toContainEqual(
+    expect.objectContaining({ variant: "success", title: "供应商连接已保存" }),
   );
   expect(readTestToastCalls()).toContainEqual(
     expect.objectContaining({
@@ -561,6 +555,19 @@ function ConfigMutationHarness({ configSnapshot = null, send, status, handleRef 
     handleRef.current = handle;
   });
   return null;
+}
+
+function createConfigSnapshot(overrides = {}) {
+  return {
+    path: "Config.toml",
+    version: 1,
+    revision: 4,
+    value: {},
+    source: "sqlite",
+    diagnostics: [],
+    form: { version: 1, sections: [] },
+    ...overrides,
+  };
 }
 
 function event(kind, phase, data, overrides = {}) {

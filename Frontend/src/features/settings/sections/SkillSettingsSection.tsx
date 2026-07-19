@@ -19,6 +19,7 @@ export function SkillSettingsSection({
       layoutMode="workspace"
       plugins={pluginSettings.pluginConfigs}
       operations={pluginSettings.pluginConfigOperations}
+      socketStatus={pluginSettings.socketStatus}
       onRefresh={pluginSettings.refreshPluginConfigs}
       onSave={pluginSettings.savePluginConfig}
       onSetEnabled={pluginSettings.setPluginEnabled}

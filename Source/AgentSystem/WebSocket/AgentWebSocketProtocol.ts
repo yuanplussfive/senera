@@ -117,9 +117,8 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("config.update"),
-      requestId: z.string().min(1).optional(),
+      ...AgentConfigRevisionGuardRequestSchema,
       config: AgentSystemConfigSchema,
-      mirrorJson: z.boolean().optional(),
     })
     .strict(),
   z

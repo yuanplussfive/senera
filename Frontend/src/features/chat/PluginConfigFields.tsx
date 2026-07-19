@@ -26,16 +26,14 @@ export function FieldControl({
 }): JSX.Element {
   return (
     <div
-      className={cn(
-        "grid min-w-0 gap-3 px-4 py-3.5 transition hover:bg-paper-100/45 md:grid-cols-[minmax(220px,1fr)_minmax(250px,320px)]",
-        field.type === "array" ? "md:items-start" : "md:items-center",
-      )}
+      data-field-type={field.type}
+      className="plugin-config-field grid min-w-0 gap-3 px-4 py-3.5 transition hover:bg-paper-100/45"
     >
       <div className="min-w-0 pr-2">
         <div className="text-[13px] font-medium text-ink-900">{field.label}</div>
         {field.description ? <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>
-      <div className="min-w-0 md:justify-self-end">{renderFieldInput(field, value, disabled, onChange)}</div>
+      <div className="plugin-config-field__control min-w-0">{renderFieldInput(field, value, disabled, onChange)}</div>
     </div>
   );
 }
@@ -312,6 +310,7 @@ function TogglePill({
       type="button"
       disabled={disabled}
       onClick={onClick}
+      aria-pressed={enabled}
       className={cn(
         "inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-1.5 text-[12px] transition",
         enabled ? "text-moss-600" : "text-ink-500",

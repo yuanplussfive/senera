@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -16,6 +16,8 @@ vi.mock("../../../Frontend/src/shared/code/CodeTextEditor.tsx", () => ({
 
 const { PresetControl } = await import("../../../Frontend/src/features/chat/PresetPanel.tsx");
 const { PlanningConfigView } = await import("../../../Frontend/src/features/chat/PlanningConfigView.tsx");
+const { PluginConfigContent } = await import("../../../Frontend/src/features/chat/PluginConfigPanel.tsx");
+const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
 const { ConfigSourceNotice, Diagnostics, SettingsView, TomlView, ViewSwitch } =
   await import("../../../Frontend/src/features/chat/PluginConfigViews.tsx");
 
@@ -175,6 +177,139 @@ test("plugin source controls expose view changes, diagnostics, templates, and TO
   expect(screen.getByText("value required")).toBeVisible();
   expect(screen.getByText("save rejected")).toBeVisible();
   expect(screen.getByText(/PluginConfig\.example\.toml 模板草稿/)).toBeVisible();
+});
+
+test("plugin config autosaves changes and keeps the latest value during a snapshot refresh", async () => {
+  const onSave = vi.fn(() => "save-request");
+  const user = userEvent.setup();
+  const props = {
+    layoutMode: "workspace",
+    plugins: [createPlugin()],
+    operations: {},
+    onRefresh: vi.fn(),
+    onSave,
+    onSetEnabled: vi.fn(() => "toggle-request"),
+  };
+  const view = renderWithFrontendProviders(React.createElement(PluginConfigContent, props));
+  await user.click(screen.getByRole("button", { name: /Search plugin1\/1/ }));
+
+  await user.click(screen.getByRole("button", { name: "关闭 Enable search" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith("SearchPlugin", expect.stringContaining("Enabled = false")));
+
+  view.rerender(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(PluginConfigContent, {
+        ...props,
+        plugins: [createPlugin({ description: "refreshed metadata" })],
+      }),
+    ),
+  );
+  expect(screen.getByRole("button", { name: "开启 Enable search" })).toBeInTheDocument();
+  expect(onSave).toHaveBeenCalledTimes(1);
+});
+
+test("plugin config accepts later snapshots after save success includes the saved snapshot", async () => {
+  const onSave = vi.fn(() => "save-request");
+  const user = userEvent.setup();
+  const props = {
+    layoutMode: "workspace",
+    plugins: [createPlugin()],
+    operations: {},
+    onRefresh: vi.fn(),
+    onSave,
+    onSetEnabled: vi.fn(() => "toggle-request"),
+  };
+  const view = renderWithFrontendProviders(React.createElement(PluginConfigContent, props));
+  await user.click(screen.getByRole("button", { name: /Search plugin1\/1/ }));
+  await user.click(screen.getByRole("button", { name: "关闭 Enable search" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+
+  const savedToml = onSave.mock.calls[0][1];
+  const successfulOperation = {
+    "save-request": {
+      requestId: "save-request",
+      pluginName: "SearchPlugin",
+      kind: "update",
+      status: "success",
+      updatedAt: "2026-07-12T00:00:00.000Z",
+    },
+  };
+  view.rerender(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(PluginConfigContent, {
+        ...props,
+        plugins: [createPlugin({ toml: savedToml })],
+        operations: successfulOperation,
+      }),
+    ),
+  );
+  await waitFor(() => expect(screen.getByRole("button", { name: "开启 Enable search" })).toBeVisible());
+
+  view.rerender(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(PluginConfigContent, {
+        ...props,
+        plugins: [createPlugin({ toml: "[General]\nEnabled = true" })],
+        operations: successfulOperation,
+      }),
+    ),
+  );
+
+  await waitFor(() => expect(screen.getByRole("button", { name: "关闭 Enable search" })).toBeVisible());
+  expect(onSave).toHaveBeenCalledTimes(1);
+});
+
+test("plugin drafts and errors stay isolated when switching during a save", async () => {
+  const onSave = vi.fn(() => "search-save");
+  const user = userEvent.setup();
+  const plugins = [createPlugin(), createPlugin({ name: "OtherPlugin", title: "Other plugin" })];
+  const props = {
+    layoutMode: "workspace",
+    plugins,
+    operations: {},
+    onRefresh: vi.fn(),
+    onSave,
+    onSetEnabled: vi.fn(() => "toggle-request"),
+  };
+  const view = renderWithFrontendProviders(React.createElement(PluginConfigContent, props));
+
+  await user.click(screen.getByRole("button", { name: /Search plugin/ }));
+  await user.click(screen.getByRole("button", { name: "关闭 Enable search" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith("SearchPlugin", expect.stringContaining("Enabled = false")));
+
+  await user.click(screen.getByRole("button", { name: "返回技能列表" }));
+  await user.click(screen.getByRole("button", { name: /Other plugin/ }));
+  view.rerender(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(PluginConfigContent, {
+        ...props,
+        operations: {
+          "search-save": {
+            requestId: "search-save",
+            pluginName: "SearchPlugin",
+            kind: "update",
+            status: "error",
+            message: "search rejected",
+            updatedAt: "2026-07-12T00:00:00.000Z",
+          },
+        },
+      }),
+    ),
+  );
+
+  expect(screen.queryByText("search rejected")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "返回技能列表" }));
+  await user.click(screen.getByRole("button", { name: /Search plugin/ }));
+  expect(screen.getByRole("button", { name: "开启 Enable search" })).toBeVisible();
+  expect(screen.getByRole("button", { name: /重试|Retry/ })).toBeVisible();
 });
 
 function createPresetControlProps(overrides = {}) {

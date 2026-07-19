@@ -112,13 +112,18 @@ export function useProviderEndpointMutations({
         requestId: resolution.requestId,
         kind: resolution.operationKind,
         status: resolution.kind === "success" ? "success" : "error",
-        ...(resolution.kind === "failure" ? { message: resolution.message } : {}),
+        ...(resolution.kind === "failure" ? { message: resolution.message, errorCode: resolution.errorCode } : {}),
         updatedAt: timestamp(),
       },
     });
     const copy = providerEndpointMessageKeys[resolution.operationKind];
-    if (resolution.kind === "success") toast.success(frontendMessage(copy.success));
-    else toast.error(frontendMessage(copy.failure), { description: resolution.message });
+    if (resolution.kind === "success") {
+      if (resolution.operationKind !== "provider.endpoint.upsert") {
+        toast.success(frontendMessage(copy.success));
+      }
+    } else {
+      toast.error(frontendMessage(copy.failure), { description: resolution.message });
+    }
     return true;
   }, []);
 

@@ -39,6 +39,7 @@ export function useSettingsRuntime({
     () => ({
       pluginConfigs,
       pluginConfigOperations: controller.pluginConfigOperations,
+      socketStatus: controller.socketStatus,
       refreshPluginConfigs: controller.refreshPluginConfigs,
       savePluginConfig: controller.savePluginConfig,
       setPluginEnabled: controller.setPluginEnabled,

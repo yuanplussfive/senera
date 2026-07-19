@@ -40,6 +40,7 @@ export function ViewSwitch({
             "inline-flex items-center justify-center gap-1.5 rounded-md px-2 text-[12px] transition",
             value === item.value ? "bg-paper-50 text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800",
           )}
+          aria-pressed={value === item.value}
           onClick={() => onChange(item.value)}
         >
           {item.icon}
@@ -59,6 +60,7 @@ export function SettingsView({
   toolsDisabled,
   onSetToolEnabled,
   onUpdateField,
+  onCommit,
 }: {
   plugin: PluginConfigItem;
   sections: PluginConfigSection[];
@@ -68,9 +70,11 @@ export function SettingsView({
   toolsDisabled: boolean;
   onSetToolEnabled: (toolName: string, enabled: boolean) => void;
   onUpdateField: (field: PluginConfigField, value: unknown) => void;
+  onCommit?: () => void;
 }): JSX.Element {
   const content = (
     <div
+      onBlurCapture={onCommit}
       className={cn("mx-auto w-full max-w-[820px] px-4 py-5 sm:px-5 sm:py-8", layoutMode === "panel" && "min-h-full")}
     >
       {parseError ? (
@@ -123,10 +127,12 @@ export function TomlView({
   draft,
   layoutMode = "panel",
   onChange,
+  onCommit,
 }: {
   draft: string;
   layoutMode?: PluginConfigLayoutMode;
   onChange: (value: string) => void;
+  onCommit?: () => void;
 }): JSX.Element {
   return (
     <div className="min-h-0 flex-1 bg-paper-50 px-4 py-4 sm:px-5 sm:py-6">
@@ -134,6 +140,7 @@ export function TomlView({
         value={draft}
         spellCheck={false}
         onChange={(event) => onChange(event.target.value)}
+        onBlur={onCommit}
         className={cn(
           "mx-auto block w-full max-w-[820px] resize-none rounded-lg border border-ink-200 bg-paper-100 p-4",
           layoutMode === "embedded" ? "min-h-[520px]" : "h-full",
@@ -231,12 +238,13 @@ function PluginToolsSection({
           {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.232.104")}
         </span>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="plugin-config-tool-grid grid gap-2">
         {plugin.tools.map((tool) => (
           <button
             key={tool.name}
             type="button"
             disabled={disabled}
+            aria-pressed={tool.enabled}
             className={cn(
               "flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition",
               tool.enabled ? "border-moss-200 bg-moss-50/70 text-ink-900" : "border-ink-200 bg-paper-50 text-ink-600",

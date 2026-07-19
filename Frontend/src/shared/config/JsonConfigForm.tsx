@@ -15,18 +15,21 @@ export function JsonConfigSettingsView({
   disabled,
   emptyText = "没有可视化配置项",
   onChange,
+  onCommit,
 }: {
   layoutMode?: "panel" | "embedded";
   sections: ConfigFormSectionData[];
   value: JsonConfigObject;
   disabled?: boolean;
   emptyText?: string;
-  onChange: (value: JsonConfigObject) => void;
+  onChange: (value: JsonConfigObject, mode?: "debounced" | "immediate") => void;
+  onCommit?: () => void;
 }): JSX.Element {
   const visibleSections = sections.filter((section) => section.fields.length > 0);
 
   const content = (
     <div
+      onBlurCapture={onCommit}
       className={cn("mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
     >
       {visibleSections.length > 0 ? (
@@ -39,7 +42,10 @@ export function JsonConfigSettingsView({
               value={value}
               disabled={Boolean(disabled)}
               onUpdateField={(field, nextValue) =>
-                onChange(writeJsonConfigFieldValue(value, field.path, normalizeFieldValue(field, nextValue)))
+                onChange(
+                  writeJsonConfigFieldValue(value, field.path, normalizeFieldValue(field, nextValue)),
+                  field.type === "boolean" || Boolean(field.options?.length) ? "immediate" : "debounced",
+                )
               }
             />
           ))}

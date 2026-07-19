@@ -26,10 +26,14 @@ export function ModelOptionsDialog({
   onOpenChange,
   onChange,
   onCommit,
+  onCommitDraft,
   onSetDefault,
   onRemove,
   removeDisabledReason,
-  commitLabels = { existing: "应用到草稿", new: "添加到草稿" },
+  commitLabels = {
+    existing: frontendMessage("config.model.applyToDraft"),
+    new: frontendMessage("config.model.addToDraft"),
+  },
   groupId = "",
   groupOptions = [],
   onGroupChange,
@@ -43,6 +47,7 @@ export function ModelOptionsDialog({
   onOpenChange: (open: boolean) => void;
   onChange: (patch: Partial<ModelProviderDraft>) => void;
   onCommit: () => void;
+  onCommitDraft?: () => void;
   onSetDefault?: (modelId: string) => void;
   onRemove: (index: number) => void;
   removeDisabledReason?: string;
@@ -113,7 +118,7 @@ export function ModelOptionsDialog({
         bodyClassName="flex min-h-0 flex-col"
       >
         <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
-          <div className="space-y-5 px-5 py-4">
+          <div className="space-y-5 px-5 py-4" onBlurCapture={onCommitDraft}>
             <section>
               <SectionLabel
                 icon={<SlidersHorizontal className="h-4 w-4" />}
@@ -343,7 +348,11 @@ export function ModelOptionsDialog({
             }}
           >
             <Trash2 className="h-3.5 w-3.5" />
-            {removeDisabledReason ? "先更换默认" : isSaved ? "移除" : "未保存"}
+            {removeDisabledReason
+              ? frontendMessage("config.model.changeDefaultFirst")
+              : isSaved
+                ? frontendMessage("config.model.remove")
+                : frontendMessage("config.model.unsaved")}
           </button>
           <div className="flex items-center gap-2">
             {onSetDefault ? (
@@ -359,7 +368,7 @@ export function ModelOptionsDialog({
                 )}
                 onClick={() => onSetDefault(model.Id)}
               >
-                {isDefault ? "DEFAULT" : "设为默认"}
+                {isDefault ? frontendMessage("config.model.default") : frontendMessage("config.model.setDefault")}
               </button>
             ) : null}
             <Button size="sm" disabled={disabled} onClick={onCommit}>

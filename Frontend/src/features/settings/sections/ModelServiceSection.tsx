@@ -105,6 +105,8 @@ export function ModelServiceSection({
     onFetchProviderModels: systemConfig?.fetchProviderModels ?? noopCommands.fetchProviderModels,
     onRenameProviderEndpoint: systemConfig?.renameProviderEndpoint ?? noopCommands.renameProviderEndpoint,
     onUpsertProviderEndpoint: systemConfig?.upsertProviderEndpoint ?? noopCommands.upsertProviderEndpoint,
+    onRefreshConfig: systemConfig?.refreshConfig,
+    socketStatus: systemConfig?.socketStatus,
   });
 
   useEffect(() => {
@@ -112,7 +114,8 @@ export function ModelServiceSection({
     return () => onDirtyChange?.(false);
   }, [actions.dirty, onDirtyChange]);
 
-  if (!systemConfig) return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingMain")}</SettingsWorkspaceState>;
+  if (!systemConfig)
+    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingMain")}</SettingsWorkspaceState>;
   if (!snapshot || !modelSection || !state)
     return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingModelService")}</SettingsWorkspaceState>;
 
@@ -150,16 +153,17 @@ export function ModelServiceSection({
         catalogs={systemConfig.providerModelCatalogs}
         errors={systemConfig.providerModelErrors}
         loadingProviderIds={systemConfig.providerModelLoadingIds}
+        operations={systemConfig.providerEndpointOperations}
         selectedProviderId={actions.acceptedProvider?.Id ?? null}
-        disabled={actions.saving}
+        disabled={false}
         onRequestAdd={() => actions.setShowAddDialog(true)}
         onSelect={(provider) => {
-          if (actions.dirty) {
+          const selected = actions.commitAndSelectProvider(provider);
+          if (!selected) {
             setPendingProviderSelection(provider);
             return;
           }
-          const selected = actions.selectProvider(provider);
-          if (selected && layout === "compact") setMobileDetailOpen(true);
+          if (layout === "compact") setMobileDetailOpen(true);
         }}
         onRename={actions.setRenameTarget}
         onDelete={setProviderPendingRemoval}
@@ -177,8 +181,7 @@ export function ModelServiceSection({
           operation={actions.providerOperation}
           providerModelCount={actions.selectedProviderModelCount}
           providerIndex={actions.selectedProviderIndex}
-          disabled={actions.saving}
-          onCancel={actions.resetDraft}
+          disabled={false}
           onChange={actions.updateDraftProvider}
           onConfirm={actions.confirmDraft}
           onDelete={actions.acceptedProvider ? () => setProviderPendingRemoval(actions.acceptedProvider!) : undefined}

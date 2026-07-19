@@ -30,7 +30,7 @@ describe("readSettingsDraftInteraction", () => {
       saveTitle: "没有未保存修改",
     });
   });
-  it("enables save for dirty valid drafts", () => {
+  it("reports valid dirty drafts as recorded for automatic save", () => {
     expect(
       readSettingsDraftInteraction({
         dirty: true,
@@ -38,10 +38,10 @@ describe("readSettingsDraftInteraction", () => {
       }),
     ).toMatchObject({
       status: "dirty",
-      statusLabel: "未保存",
+      statusLabel: "已记录修改",
       refreshLabel: "还原",
       saveDisabled: false,
-      saveTitle: "保存当前草稿",
+      saveTitle: "立即重试保存",
     });
   });
   it("blocks save on validation errors and keeps the reason visible", () => {

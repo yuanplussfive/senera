@@ -2,7 +2,10 @@ import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js"
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { resolveModelProviderCatalog } from "../AgentDefaults.js";
 import { projectAgentConfigForm } from "../Config/AgentConfigFormProjector.js";
-import type { AgentProviderModelConfigOperationKind } from "../Config/AgentProviderModelConfigCommands.js";
+import {
+  assertConfigRevisionGuard,
+  type AgentProviderModelConfigOperationKind,
+} from "../Config/AgentProviderModelConfigCommands.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
@@ -169,7 +172,15 @@ export class AgentWebSocketConfigRequestHandlers {
       throw new Error(agentErrorMessage("websocket.configServiceDisabled"));
     }
 
-    const snapshot = this.context.configService.update({
+    const configService = this.context.configService;
+    const current = configService.snapshot();
+    if (request.expectedRevision !== undefined || request.expectedVersion !== undefined) {
+      assertConfigRevisionGuard(request, {
+        revision: current.revision,
+        version: current.version,
+      });
+    }
+    const snapshot = configService.update({
       config: request.config,
       source: "ui_update",
       mirrorJson: request.mirrorJson,

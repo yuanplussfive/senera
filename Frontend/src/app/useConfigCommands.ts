@@ -14,10 +14,13 @@ import {
 import type { SocketStatus } from "../api/useAgentSocket";
 import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { readConfigFailureCode } from "./configMutationFailure";
+import { readConfigRevisionGuard } from "./providerEndpointMutations";
 
 type SendRequest = (request: WsRequest) => boolean;
 
 export interface ConfigCommandTransport {
+  configSnapshot?: ConfigSnapshotData | null;
   sendRef: MutableRefObject<SendRequest | null>;
   statusRef: MutableRefObject<SocketStatus>;
 }
@@ -29,7 +32,7 @@ type Action =
   | { type: "finished"; providerId: string };
 const initialState: State = { configOperation: null, providerModelLoadingIds: {} };
 
-export function useConfigCommands({ sendRef, statusRef }: ConfigCommandTransport) {
+export function useConfigCommands({ configSnapshot = null, sendRef, statusRef }: ConfigCommandTransport) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const pendingRef = useRef(new Set<string>());
   const refreshConfig = useCallback(() => sendIfOpen(sendRef, statusRef, { type: "config.get" }), [sendRef, statusRef]);
@@ -48,13 +51,25 @@ export function useConfigCommands({ sendRef, statusRef }: ConfigCommandTransport
         toast.error(frontendMessage("config.mainOffline"));
         return null;
       }
+      if (!configSnapshot) {
+        toast.error(frontendMessage("config.mainFailed"));
+        return null;
+      }
       const requestId = generateId();
       pendingRef.current.add(requestId);
       dispatch({
         type: "config",
         operation: { requestId, kind: "config_update", status: "pending", updatedAt: timestamp() },
       });
-      if (!send({ type: "config.update", requestId, config, mirrorJson: true })) {
+      if (
+        !send({
+          type: "config.update",
+          requestId,
+          config,
+          ...readConfigRevisionGuard(configSnapshot),
+          mirrorJson: true,
+        })
+      ) {
         pendingRef.current.delete(requestId);
         dispatch({ type: "config", operation: null });
         toast.error(frontendMessage("config.mainDisconnected"));
@@ -62,7 +77,7 @@ export function useConfigCommands({ sendRef, statusRef }: ConfigCommandTransport
       }
       return requestId;
     },
-    [sendRef, statusRef],
+    [configSnapshot, sendRef, statusRef],
   );
   const fetchProviderModels = useCallback(
     (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput): void => {
@@ -99,7 +114,6 @@ export function useConfigCommands({ sendRef, statusRef }: ConfigCommandTransport
         type: "config",
         operation: { requestId, kind: "config_update", status: "success", updatedAt: timestamp() },
       });
-      toast.success(frontendMessage("config.mainSaved"));
     } else if (env.kind === EventKinds.ConfigFailed) {
       dispatch({
         type: "config",
@@ -108,6 +122,7 @@ export function useConfigCommands({ sendRef, statusRef }: ConfigCommandTransport
           kind: "config_update",
           status: "error",
           message: (data as ConfigFailedData).message,
+          errorCode: readConfigFailureCode((data as ConfigFailedData).details),
           updatedAt: timestamp(),
         },
       });
