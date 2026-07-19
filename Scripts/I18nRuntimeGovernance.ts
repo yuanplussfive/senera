@@ -7,6 +7,7 @@ export interface I18nRuntimeGovernanceArea {
   root: string;
   include: readonly string[];
   allowedFiles?: readonly string[];
+  allowedFilePatterns?: readonly RegExp[];
   exclude?: readonly string[];
 }
 
@@ -59,12 +60,17 @@ function inspectArea(workspaceRoot: string, area: I18nRuntimeGovernanceArea): st
   const allowedFiles = new Set(
     (area.allowedFiles ?? []).map((file) => normalizePath(path.resolve(workspaceRoot, ...file.split("/")))),
   );
+  const allowedFilePatterns = area.allowedFilePatterns ?? [];
   const excludedPaths = (area.exclude ?? []).map((file) => normalizePath(path.resolve(root, ...file.split("/"))));
 
   return area.include
     .flatMap((include) => collectSourceFiles(path.resolve(root, ...include.split("/"))))
     .filter((file, index, files) => files.indexOf(file) === index)
-    .filter((file) => !allowedFiles.has(normalizePath(file)))
+    .filter(
+      (file) =>
+        !allowedFiles.has(normalizePath(file)) &&
+        !allowedFilePatterns.some((pattern) => pattern.test(normalizePath(file))),
+    )
     .filter(
       (file) =>
         !excludedPaths.some(

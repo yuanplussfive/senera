@@ -8,7 +8,8 @@ verifyI18nRuntimeGovernance({
       root: "Frontend/src",
       include: ["."],
       exclude: ["dev", "design-system"],
-      allowedFiles: ["Frontend/src/shared/ui/useClipboardCopy.ts", "Frontend/src/shared/ui/DropdownMenu.stories.tsx"],
+      allowedFiles: ["Frontend/src/shared/ui/useClipboardCopy.ts"],
+      allowedFilePatterns: [/\.stories\.(?:tsx|ts)$/u],
     },
   ],
 });
