@@ -462,6 +462,8 @@
   "session.emptyTitle": "No chats yet",
   "session.headerCollapse": "Collapse sidebar",
   "session.headerExpand": "Expand sidebar",
+  "session.currentSection": "Current chat",
+  "session.historySection": "History",
   "session.new": "New chat",
   "session.preferences": "Preferences",
   "session.recentCount": "Recent · {count}",

@@ -170,7 +170,7 @@ export function App({
     send,
     status,
   });
-  const { refreshSessionCatalog } = useSessionCatalogSync({
+  useSessionCatalogSync({
     send,
     status,
     onServerSessionsReset: resetServerKnownSessions,
@@ -240,7 +240,6 @@ export function App({
             onNewSession={handleNewSession}
             onCloseSession={handleCloseSession}
             onCloseSessions={handleCloseSessions}
-            onRefreshSessions={refreshSessionCatalog}
             onRenameSession={handleRenameSession}
             userProfile={userProfile}
             onUpdateUserProfile={handleUpdateUserProfile}
@@ -258,7 +257,6 @@ export function App({
             onNewSession={handleNewSession}
             onCloseSession={handleCloseSession}
             onCloseSessions={handleCloseSessions}
-            onRefreshSessions={refreshSessionCatalog}
             onRenameSession={handleRenameSession}
             userProfile={userProfile}
             onUpdateUserProfile={handleUpdateUserProfile}

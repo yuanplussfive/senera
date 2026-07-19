@@ -462,6 +462,8 @@
   "session.emptyTitle": "还没有对话",
   "session.headerCollapse": "收起侧栏",
   "session.headerExpand": "展开侧栏",
+  "session.currentSection": "当前会话",
+  "session.historySection": "历史管理",
   "session.new": "新建对话",
   "session.preferences": "偏好设置",
   "session.recentCount": "最近 · {count}",

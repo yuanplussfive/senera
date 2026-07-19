@@ -299,3 +299,21 @@ function session(sessionId, title) {
     runs: [],
   };
 }
+
+test("session header menu keeps only non-duplicated session actions", async () => {
+  const user = userEvent.setup();
+  resetSessionStore({
+    sessions: { first: session("first", "Frontend refactor") },
+    sessionOrder: ["first"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
+
+  await user.click(screen.getByRole("button", { name: "Senera" }));
+
+  expect(screen.getByRole("menuitem", { name: frontendMessage("session.renameCurrent") })).toBeVisible();
+  expect(screen.getByRole("menuitem", { name: frontendMessage("session.deleteCurrentTitle") })).toBeVisible();
+  expect(screen.getByRole("menuitem", { name: frontendMessage("session.deleteAllHistory") })).toBeVisible();
+  expect(screen.queryByRole("menuitem", { name: frontendMessage("session.new") })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: frontendMessage("session.sync") })).not.toBeInTheDocument();
+});

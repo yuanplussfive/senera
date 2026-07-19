@@ -18,7 +18,7 @@ export function menuItemClassName({
     "transition-[background-color,color] duration-100",
     isCoarsePointer && "min-h-11",
     "text-content-primary data-[highlighted]:bg-accent-surface data-[highlighted]:text-accent-content",
-    destructive && "text-brick-500 data-[highlighted]:bg-brick-50 data-[highlighted]:text-brick-600",
+    destructive && "text-content-secondary data-[highlighted]:bg-surface-hover data-[highlighted]:text-brick-600",
     "data-[disabled]:pointer-events-none data-[disabled]:opacity-45",
     className,
   );
@@ -42,7 +42,7 @@ export function MenuItemContent({
           className={cn(
             "grid h-4 w-4 shrink-0 place-items-center text-content-muted transition-colors duration-100",
             "group-data-[highlighted]:text-accent-content",
-            destructive && "text-brick-500 group-data-[highlighted]:text-brick-600",
+            destructive && "text-content-muted group-data-[highlighted]:text-brick-600",
           )}
         >
           {icon}

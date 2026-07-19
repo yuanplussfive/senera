@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { PencilLine, Plug, RotateCw, SquarePen, Trash2 } from "lucide-react";
+import { PencilLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useStore, type SessionRecord, type UserProfile } from "../../store/sessionStore";
@@ -17,7 +17,6 @@ interface Props {
   onNewSession: () => void;
   onCloseSession: (id: string) => void;
   onCloseSessions: (ids: string[]) => void;
-  onRefreshSessions: () => void;
   onRenameSession: (id: string, title: string) => boolean;
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
@@ -39,7 +38,6 @@ export function SessionList({
   onNewSession,
   onCloseSession,
   onCloseSessions,
-  onRefreshSessions,
   onRenameSession,
   userProfile,
   onUpdateUserProfile,
@@ -97,8 +95,8 @@ export function SessionList({
 
   const confirmDeleteSession = (session: SessionRecord): void => {
     setConfirmation({
-      title: frontendMessage("runtime.migrated.features.session.SessionList.96.14"),
-      description: frontendMessage("runtime.migrated.features.session.SessionList.97.20", { value0: session.title }),
+      title: frontendMessage("session.deleteCurrentTitle"),
+      description: frontendMessage("session.deleteCurrentDescription", { title: session.title }),
       confirmLabel: frontendMessage("session.deleteCurrentConfirm"),
       tone: "danger",
       details: [
@@ -116,8 +114,8 @@ export function SessionList({
     const ids = sessionList.map((session) => session.sessionId);
     if (ids.length === 0) return;
     setConfirmation({
-      title: frontendMessage("runtime.migrated.features.session.SessionList.112.14"),
-      description: frontendMessage("runtime.migrated.features.session.SessionList.113.20", { value0: ids.length }),
+      title: frontendMessage("session.deleteAllHistory"),
+      description: frontendMessage("session.deleteAllDescription", { count: ids.length }),
       confirmLabel: frontendMessage("session.deleteAllConfirm"),
       tone: "danger",
       details: [frontendMessage("session.deleteAllDetailRequests"), frontendMessage("session.deleteAllDetailRefresh")],
@@ -130,27 +128,19 @@ export function SessionList({
 
   const menuSections = [
     {
-      section: "对话",
+      section: frontendMessage("session.currentSection"),
       items: [
         {
-          id: "new",
-          label: frontendMessage("runtime.migrated.features.session.SessionList.130.18"),
-          icon: <SquarePen className="h-3.5 w-3.5" />,
-          shortcut: "⌘N",
-          disabled: false,
-          onSelect: onNewSession,
-        },
-        {
           id: "rename",
-          label: frontendMessage("runtime.migrated.features.session.SessionList.138.18"),
+          label: frontendMessage("session.renameCurrent"),
           icon: <PencilLine className="h-3.5 w-3.5" />,
           disabled: !activeSession,
           onSelect: () => activeSession && openRename(activeSession),
         },
         {
           id: "delete-current",
-          label: frontendMessage("runtime.migrated.features.session.SessionList.145.18"),
-          icon: <Plug className="h-3.5 w-3.5" />,
+          label: frontendMessage("session.deleteCurrentTitle"),
+          icon: <Trash2 className="h-3.5 w-3.5" />,
           destructive: true,
           disabled: !activeSession,
           onSelect: () => activeSession && confirmDeleteSession(activeSession),
@@ -158,18 +148,11 @@ export function SessionList({
       ],
     },
     {
-      section: "应用",
+      section: frontendMessage("session.historySection"),
       items: [
         {
-          id: "sync",
-          label: frontendMessage("runtime.migrated.features.session.SessionList.158.18"),
-          icon: <RotateCw className="h-3.5 w-3.5" />,
-          disabled: socketStatus !== "open",
-          onSelect: onRefreshSessions,
-        },
-        {
           id: "delete-all",
-          label: frontendMessage("runtime.migrated.features.session.SessionList.165.18"),
+          label: frontendMessage("session.deleteAllHistory"),
           icon: <Trash2 className="h-3.5 w-3.5" />,
           destructive: true,
           disabled: sessionList.length === 0,
