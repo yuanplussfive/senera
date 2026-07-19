@@ -37,6 +37,13 @@ export function resolveModelProviderEndpointCatalog(config: AgentSystemConfig) {
 
   return {
     endpoints,
+    resolveKnown: (providerId: string) => {
+      const endpoint = endpointsById.get(providerId);
+      if (!endpoint) {
+        throw new Error(`供应商端点配置不存在：ProviderId=${providerId}`);
+      }
+      return endpoint;
+    },
     resolve: (providerId: string) => {
       const endpoint = endpoints.find((item) => item.Id === providerId);
       if (!endpoint) {
@@ -50,8 +57,9 @@ export function resolveModelProviderEndpointCatalog(config: AgentSystemConfig) {
 export function resolveModelProviderCatalog(config: AgentSystemConfig) {
   const defaults = resolveAgentDefaults(config);
   const endpointCatalog = resolveModelProviderEndpointCatalog(config);
-  const providers: ResolvedAgentModelProviderConfig[] = config.ModelProviders.map((provider) => {
-    const endpoint = endpointCatalog.resolve(provider.ProviderId);
+  const providers: ResolvedAgentModelProviderConfig[] = config.ModelProviders.flatMap((provider) => {
+    const endpoint = endpointCatalog.resolveKnown(provider.ProviderId);
+    if (!endpoint.Enabled) return [];
     const {
       Capabilities,
       TimeoutSeconds,
@@ -68,25 +76,26 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
       RetryMaxDelaySeconds,
       RetryAfterMaxDelaySeconds,
     });
-    return {
-      ...defaults.ModelRuntime,
-      ...endpoint,
-      ...providerRuntime,
-      Capabilities: resolveModelCapabilities(defaults.ModelRuntime, Capabilities),
-      TimeoutMs: optionalSecondsToMilliseconds(TimeoutSeconds) ?? defaults.ModelRuntime.TimeoutMs,
-      FirstTokenTimeoutMs:
-        optionalDisabledOrSecondsToMilliseconds(FirstTokenTimeoutSeconds) ?? defaults.ModelRuntime.FirstTokenTimeoutMs,
-      MaxRequestMs: optionalDisabledOrSecondsToMilliseconds(MaxRequestSeconds) ?? defaults.ModelRuntime.MaxRequestMs,
-      ...retryDelays,
-      Icon: Icon ?? endpoint.Icon,
-      ProviderId: endpoint.Id,
-      Kind: endpoint.Kind,
-      BaseUrl: endpoint.BaseUrl,
-      ApiKey: endpoint.ApiKey,
-      ApiVersion: endpoint.ApiVersion,
-      Headers: { ...endpoint.Headers },
-    };
-  });
+    return [
+      {
+        ...defaults.ModelRuntime,
+        ...endpoint,
+        ...providerRuntime,
+        Capabilities: resolveModelCapabilities(defaults.ModelRuntime, Capabilities),
+        TimeoutMs: optionalSecondsToMilliseconds(TimeoutSeconds) ?? defaults.ModelRuntime.TimeoutMs,
+        FirstTokenTimeoutMs:
+          optionalDisabledOrSecondsToMilliseconds(FirstTokenTimeoutSeconds) ?? defaults.ModelRuntime.FirstTokenTimeoutMs,
+        MaxRequestMs: optionalDisabledOrSecondsToMilliseconds(MaxRequestSeconds) ?? defaults.ModelRuntime.MaxRequestMs,
+        ...retryDelays,
+        Icon: Icon ?? endpoint.Icon,
+        ProviderId: endpoint.Id,
+        Kind: endpoint.Kind,
+        BaseUrl: endpoint.BaseUrl,
+        ApiKey: endpoint.ApiKey,
+        ApiVersion: endpoint.ApiVersion,
+        Headers: { ...endpoint.Headers },
+      },
+    ];  });
 
   const ids = new Set<string>();
   for (const provider of providers) {
@@ -96,7 +105,13 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
     ids.add(provider.Id);
   }
 
-  const defaultId = config.DefaultModelProviderId ?? providers[0]?.Id;
+  if (
+    config.DefaultModelProviderId !== undefined &&
+    !config.ModelProviders.some((provider) => provider.Id === config.DefaultModelProviderId)
+  ) {
+    throw new Error(`默认模型配置不存在：DefaultModelProviderId=${config.DefaultModelProviderId}`);
+  }
+  const defaultId = providers.find((provider) => provider.Id === config.DefaultModelProviderId)?.Id ?? providers[0]?.Id;
   const defaultProvider = providers.find((provider) => provider.Id === defaultId);
   if (!defaultProvider) {
     throw new Error(`默认模型配置不存在：DefaultModelProviderId=${defaultId}`);
