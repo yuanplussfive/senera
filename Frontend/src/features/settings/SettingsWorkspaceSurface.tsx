@@ -8,11 +8,7 @@ export function SettingsWorkspaceFrame({
   children: ReactNode;
   className?: string;
 }): JSX.Element {
-  return (
-    <section className={cn("overflow-hidden rounded-md border border-ink-200/70 bg-paper-50", className)}>
-      {children}
-    </section>
-  );
+  return <section className={cn("overflow-hidden bg-paper-50", className)}>{children}</section>;
 }
 
 export function SettingsWorkspaceState({

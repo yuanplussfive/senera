@@ -10,9 +10,9 @@ import {
   FormHint,
   FormLabel,
   Input,
+  MenuSelect,
 } from "../../../shared/ui";
 import { ModelProviderIcon } from "../../chat/ModelProviderIcon";
-import { MenuSelect } from "../../chat/ModelConfigPrimitives";
 import { normalizeProviderEndpointDraft } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { ProviderFormError } from "./ProviderConnectionFeedback";
@@ -89,6 +89,7 @@ export function AddProviderDialog({
             <MenuSelect
               value={presetId}
               placeholder={frontendMessage("settings.provider.presetPlaceholder")}
+              ariaLabel={frontendMessage("settings.provider.presetLabel")}
               options={providerPresets.map((entry) => ({ value: entry.id, label: entry.label }))}
               disabled={false}
               triggerClassName="h-11 rounded-lg px-3.5 text-[14px] hover:border-ink-300"

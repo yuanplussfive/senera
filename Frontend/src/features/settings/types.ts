@@ -1,13 +1,14 @@
 import {
-  Bot,
   Boxes,
   FolderCog,
   Gauge,
   Info,
   Palette,
   Route,
+  Cable,
   Search,
   SlidersHorizontal,
+  Target,
   type LucideIcon,
 } from "lucide-react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
@@ -21,7 +22,6 @@ export type SettingsSectionId =
   | "skills"
   | "general"
   | "appearance"
-  | "system"
   | "storage"
   | "about";
 
@@ -35,13 +35,13 @@ export interface SettingsSectionDefinition {
 export const settingsSections = [
   defineSettingsSection(
     "model-service",
-    Bot,
+    Cable,
     "settings.section.modelService.label",
     "settings.section.modelService.description",
   ),
   defineSettingsSection(
     "default-model",
-    Bot,
+    Target,
     "settings.section.defaultModel.label",
     "settings.section.defaultModel.description",
   ),
@@ -65,12 +65,6 @@ export const settingsSections = [
     Palette,
     "settings.section.appearance.label",
     "settings.section.appearance.description",
-  ),
-  defineSettingsSection(
-    "system",
-    SlidersHorizontal,
-    "settings.section.system.label",
-    "settings.section.system.description",
   ),
   defineSettingsSection("storage", FolderCog, "settings.section.storage.label", "settings.section.storage.description"),
   defineSettingsSection("about", Info, "settings.section.about.label", "settings.section.about.description"),

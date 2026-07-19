@@ -25,6 +25,7 @@ import {
   IconButton,
   MetaLabel,
   ScrollArea,
+  Switch,
   Sheet,
   SheetContent,
   useClipboardCopy,
@@ -33,8 +34,8 @@ import type { SettingsSystemConfigHandle } from "./SettingsContracts";
 import type { PluginSettingsCommandsHandle } from "../../app/usePluginSettingsCommands";
 import type { MotionLevel } from "../../shared/motion";
 import { cn } from "../../lib/util";
-import { motionLevelOptions, preferenceSections, type LayoutPreferenceId } from "../session/types";
-import { groupSettingsSectionResults, searchSettingsSectionResults } from "./settingsPresentation";
+import { type LayoutPreferenceId } from "../session/types";
+import { createSettingsSearchEntries, groupSettingsSectionResults, searchSettingsSectionResults } from "./settingsPresentation";
 import { readSettingsDraftInteraction } from "./settingsInteractionModel";
 import { SettingsWorkspaceFrame, SettingsWorkspaceState } from "./SettingsWorkspaceSurface";
 import { useConfigSettingsDraftState } from "./sections/configSettingsDraftState";
@@ -78,6 +79,7 @@ export function SettingsWorkbench({
   pluginSettings,
   systemConfig,
 }: SettingsWorkbenchProps): JSX.Element {
+  useFrontendLocale();
   const [sectionSearch, setSectionSearch] = useState("");
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [entityDraftDirty, setEntityDraftDirty] = useState(false);
@@ -96,9 +98,13 @@ export function SettingsWorkbench({
     onSave: systemConfig?.saveConfig ?? noopSave,
   });
   const activeSection = readSettingsSection(section);
+  const settingsSearchEntries = useMemo(
+    () => createSettingsSearchEntries(systemConfig?.configSnapshot?.form.sections, pluginSettings?.pluginConfigs),
+    [pluginSettings?.pluginConfigs, systemConfig?.configSnapshot?.form.sections],
+  );
   const groupedResults = useMemo(
-    () => groupSettingsSectionResults(searchSettingsSectionResults(settingsSections, sectionSearch)),
-    [sectionSearch],
+    () => groupSettingsSectionResults(searchSettingsSectionResults(settingsSections, sectionSearch, settingsSearchEntries)),
+    [sectionSearch, settingsSearchEntries],
   );
   const pendingChanges = configDraftState.dirty || entityDraftDirty;
   const showSectionHeader = !usesOwnSectionHeader(section) || environment.surface === "desktop";
@@ -448,8 +454,6 @@ function renderSettingsContent({
           onMotionLevelChange={onMotionLevelChange}
         />
       );
-    case "system":
-      return <SystemSettings draftState={configDraftState} systemConfig={systemConfig} />;
     case "runtime":
     case "planning":
     case "retrieval":
@@ -472,29 +476,6 @@ function renderSettingsContent({
   }
 }
 
-function SystemSettings({
-  draftState,
-  systemConfig,
-}: {
-  draftState: ReturnType<typeof useConfigSettingsDraftState>;
-  systemConfig?: SettingsSystemConfigHandle;
-}): JSX.Element {
-  if (!systemConfig)
-    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingMain")}</SettingsWorkspaceState>;
-  return (
-    <DraftBackedSection draftState={draftState} ready={Boolean(systemConfig.configSnapshot)}>
-      <JsonConfigSettingsView
-        layoutMode="embedded"
-        sections={readMainConfigurationSections(systemConfig.configSnapshot?.form.sections ?? [])}
-        value={draftState.draft}
-        emptyText={frontendMessage("settings.state.emptyMain")}
-        onChange={draftState.updateDraft}
-        onCommit={draftState.flushSave}
-      />
-    </DraftBackedSection>
-  );
-}
-
 function ConfigFormSectionSettings({
   draftState,
   sectionId,
@@ -512,6 +493,7 @@ function ConfigFormSectionSettings({
       <JsonConfigSettingsView
         layoutMode="embedded"
         sections={sections}
+        showSectionHeading={sections.length > 1}
         value={draftState.draft}
         emptyText={frontendMessage("settings.state.emptySection")}
         onChange={draftState.updateDraft}
@@ -538,44 +520,63 @@ function DraftBackedSection({
     saving: draftState.saving,
     validationErrors: draftState.validationErrors,
   });
+  const showStatusBar = interaction.status === "invalid" || interaction.status === "conflict";
+
+  const recoveryLabel =
+    interaction.status === "conflict"
+      ? frontendMessage("settings.draft.loadRemote")
+      : draftState.dirty
+        ? frontendMessage("settings.draft.discard")
+        : frontendMessage("settings.draft.reload");
+  const recoveryTitle =
+    interaction.status === "conflict"
+      ? frontendMessage("settings.draft.loadRemoteTitle")
+      : draftState.dirty
+        ? frontendMessage("settings.draft.discardTitle")
+        : frontendMessage("settings.draft.reloadTitle");
   return (
     <SettingsWorkspaceFrame className="overflow-visible">
-      <div className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-ink-200/70 bg-paper-50/95 px-4 py-2.5 backdrop-blur-sm">
-        <div className="min-w-0 text-[11.5px] leading-5 text-ink-500">
-          {interaction.status === "synced" ? null : interaction.detail}
+      {draftState.saving ? (
+        <div className="flex h-7 items-center justify-end px-4 pt-2 text-[11px] text-ink-450" aria-live="polite">
+          {frontendMessage("settings.draft.savingStatus")}
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={interaction.refreshDisabled}
-            onClick={draftState.refreshOrRestore}
-            title={interaction.refreshTitle}
-          >
-            {interaction.refreshLabel}
-          </Button>
-          {interaction.status === "conflict" || (interaction.status === "invalid" && !interaction.saveDisabled) ? (
-            <Button
-              size="sm"
-              disabled={interaction.saveDisabled}
-              onClick={draftState.save}
-              title={interaction.saveTitle}
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              {frontendMessage("settings.action.retry")}
-            </Button>
-          ) : null}
+      ) : draftState.savedRecently ? (
+        <div className="flex h-7 items-center justify-end px-4 pt-2 text-[11px] text-accent-content" aria-live="polite">
+          {frontendMessage("settings.draft.savedStatus")}
         </div>
-      </div>
+      ) : null}
+      {showStatusBar ? (
+        <div className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-ink-200/70 bg-paper-50 px-4 py-2.5">
+          <div className="min-w-0 text-[11.5px] leading-5 text-ink-500">{interaction.detail}</div>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            {showStatusBar ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={interaction.refreshDisabled}
+                onClick={draftState.refreshOrRestore}
+                title={recoveryTitle}
+              >
+                {recoveryLabel}
+              </Button>
+            ) : null}
+            {interaction.status === "conflict" || (interaction.status === "invalid" && !interaction.saveDisabled) ? (
+              <Button
+                size="sm"
+                disabled={interaction.saveDisabled}
+                onClick={draftState.save}
+                title={interaction.saveTitle}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {frontendMessage("settings.action.retry")}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <div className="pt-2">{children}</div>
     </SettingsWorkspaceFrame>
   );
-}
-
-function readMainConfigurationSections(
-  sections: NonNullable<SettingsSystemConfigHandle["configSnapshot"]>["form"]["sections"],
-) {
-  return sections.filter((section) => section.name === "system");
 }
 
 function AppearanceSettings(): JSX.Element {
@@ -622,9 +623,43 @@ function GeneralSettings({
 }: Pick<SettingsWorkbenchProps, "values" | "motionLevel" | "onValueChange" | "onMotionLevelChange">): JSX.Element {
   const locale = useFrontendLocale();
   const setLocale = useSetFrontendLocale();
+  const preferenceSections = [
+    {
+      id: "layout",
+      title: frontendMessage("runtime.migrated.features.session.types.28.12"),
+      items: [
+        {
+          id: "defaultSidebarCollapsed",
+          title: frontendMessage("runtime.migrated.features.session.types.32.16"),
+          description: frontendMessage("runtime.migrated.features.session.types.33.22"),
+        },
+        {
+          id: "defaultRightPanelCollapsed",
+          title: frontendMessage("runtime.migrated.features.session.types.37.16"),
+          description: frontendMessage("runtime.migrated.features.session.types.38.22"),
+        },
+      ],
+    },
+  ] as const;
+  const motionLevelOptions = [
+    {
+      id: "full",
+      title: frontendMessage("runtime.migrated.features.session.types.49.12"),
+      description: frontendMessage("runtime.migrated.features.session.types.50.18"),
+    },
+    {
+      id: "reduced",
+      title: frontendMessage("runtime.migrated.features.session.types.54.12"),
+      description: frontendMessage("runtime.migrated.features.session.types.55.18"),
+    },
+    {
+      id: "none",
+      title: frontendMessage("runtime.migrated.features.session.types.59.12"),
+      description: frontendMessage("runtime.migrated.features.session.types.60.18"),
+    },
+  ] as const;
   const changeLocale = (nextLocale: typeof locale): void => {
     setLocale(nextLocale);
-    window.location.reload();
   };
 
   return (
@@ -635,7 +670,7 @@ function GeneralSettings({
           title={preferenceSection.title}
           description={frontendMessage("settings.general.layoutDescription")}
         >
-          <div className="overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50">
+          <div className="border-y border-ink-200/70 bg-paper-50">
             {preferenceSection.items.map((item, index) => (
               <PreferenceToggle
                 key={item.id}
@@ -653,7 +688,7 @@ function GeneralSettings({
         title={frontendMessage("settings.general.languageLabel")}
         description={frontendMessage("settings.general.languageDescription")}
       >
-        <label className="flex items-center justify-between gap-3 rounded-lg border border-ink-200/70 bg-paper-50 px-3 py-3">
+        <label className="flex items-center justify-between gap-3 border-y border-ink-200/70 py-3">
           <span className="text-[12.5px] font-medium text-ink-850">
             {frontendMessage("settings.general.languageLabel")}
           </span>
@@ -672,7 +707,7 @@ function GeneralSettings({
         title={frontendMessage("settings.general.animationTitle")}
         description={frontendMessage("settings.general.animationDescription")}
       >
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="divide-y divide-ink-200/70 border-y border-ink-200/70">
           {motionLevelOptions.map((option) => (
             <MotionLevelOption
               key={option.id}
@@ -732,14 +767,14 @@ function AppearancePreview({
       <div className="border-t border-ink-200/60 pt-4">
         <div className="flex items-center justify-between gap-3">
           <MetaLabel size="sm">{frontendMessage("settings.appearance.previewLabel")}</MetaLabel>
-          <span className="rounded-full bg-ink-900/[0.04] px-2 py-0.5 text-[11px] text-ink-500">
+          <span className="text-[11px] font-medium text-content-secondary">
             {resolvedTheme === "dark"
               ? frontendMessage("settings.appearance.dark")
               : frontendMessage("settings.appearance.light")}
           </span>
         </div>
         <div
-          className="mt-3 overflow-hidden rounded-xl border border-line-subtle bg-[var(--theme-bg)] p-2"
+          className="mt-3 overflow-hidden rounded-lg border border-line-subtle bg-[var(--theme-bg)] p-2"
           aria-label={frontendMessage("settings.appearance.previewAria")}
         >
           <div className="grid min-h-[220px] grid-cols-[104px_minmax(0,1fr)] gap-2">
@@ -792,7 +827,7 @@ function AppearancePreview({
                 </div>
               </div>
               <div className="p-2.5 pt-0">
-                <div className="flex items-center gap-2 rounded-xl border border-line bg-[var(--theme-chat-composer-bg)] px-2.5 py-2 shadow-[var(--shadow-soft)]">
+                <div className="flex items-center gap-2 rounded-lg border border-line bg-[var(--theme-chat-composer-bg)] px-2.5 py-2 shadow-[var(--shadow-soft)]">
                   <span className="min-w-0 flex-1 text-[9px] text-content-secondary">
                     {frontendMessage("settings.appearance.sampleComposer")}
                   </span>
@@ -817,7 +852,7 @@ function AboutSettings({ environment }: { environment: SettingsEnvironment }): J
         title={frontendMessage("settings.about.title")}
         description={frontendMessage("settings.about.description")}
       >
-        <dl className="grid gap-3 sm:grid-cols-2">
+        <dl className="grid gap-x-8 sm:grid-cols-2">
           <AboutValue label={frontendMessage("settings.about.appVersion")} value={environment.appVersion} />
           <AboutValue label={frontendMessage("settings.about.frontendVersion")} value={environment.frontendVersion} />
           <AboutValue
@@ -832,7 +867,7 @@ function AboutSettings({ environment }: { environment: SettingsEnvironment }): J
           <summary className="cursor-pointer text-[12.5px] font-medium text-ink-700">
             {frontendMessage("settings.about.devDiagnostics")}
           </summary>
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 divide-y divide-ink-200/60 border-y border-ink-200/60">
             <CommandRow command="npm run dev.frontend" label={frontendMessage("settings.about.command.frontend")} />
             <CommandRow command="npm run desktop.live" label={frontendMessage("settings.about.command.desktopLive")} />
             <CommandRow
@@ -848,9 +883,9 @@ function AboutSettings({ environment }: { environment: SettingsEnvironment }): J
 
 function AboutValue({ label, value }: { label: string; value: string }): JSX.Element {
   return (
-    <div className="rounded-lg border border-ink-200/70 bg-paper-100/55 px-3 py-2.5">
-      <dt className="text-[11px] text-ink-450">{label}</dt>
-      <dd className="mt-1 truncate text-[12.5px] font-medium text-ink-850">{value}</dd>
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-baseline gap-3 border-b border-ink-200/60 py-2.5">
+      <dt className="truncate text-[11px] text-ink-450">{label}</dt>
+      <dd className="max-w-full truncate text-right text-[12.5px] font-medium text-ink-850">{value}</dd>
     </div>
   );
 }
@@ -858,7 +893,7 @@ function AboutValue({ label, value }: { label: string; value: string }): JSX.Ele
 function CommandRow({ label, command }: { label: string; command: string }): JSX.Element {
   const { copied, copyText } = useClipboardCopy({ successMessage: frontendMessage("settings.action.copied") });
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-ink-200/70 bg-paper-100/55 px-3 py-2.5">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2.5">
       <div className="min-w-0">
         <div className="text-[12.5px] font-medium text-ink-850">{label}</div>
         <code className="mt-0.5 block truncate font-mono text-[11.5px] text-ink-500">{command}</code>
@@ -890,16 +925,22 @@ function MotionLevelOption({
   return (
     <button
       type="button"
+      aria-pressed={selected}
       onClick={onSelect}
       className={cn(
-        "rounded-lg border px-3 py-3 text-left transition",
+        "flex w-full items-start gap-4 px-3 py-3 text-left transition",
         selected
-          ? "border-accent-border bg-accent-surface text-accent-content"
-          : "border-line bg-surface-panel text-content-secondary hover:bg-surface-subtle",
+          ? "bg-accent-surface text-accent-content"
+          : "text-content-secondary hover:bg-surface-subtle",
       )}
     >
-      <div className="text-[12.5px] font-semibold">{title}</div>
-      <div className="mt-1 text-[11.5px] leading-5 text-ink-500">{description}</div>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12.5px] font-semibold">{title}</span>
+        <span className="mt-1 block text-[11.5px] leading-5 text-ink-500">{description}</span>
+      </span>
+      <span className="grid h-5 w-5 shrink-0 place-items-center text-accent-content" aria-hidden="true">
+        {selected ? <Check className="h-3.5 w-3.5" /> : null}
+      </span>
     </button>
   );
 }
@@ -918,34 +959,15 @@ function PreferenceToggle({
   onCheckedChange: (checked: boolean) => void;
 }): JSX.Element {
   return (
-    <label
-      className={cn("flex cursor-pointer items-center gap-4 px-4 py-3", separated && "border-t border-ink-200/70")}
-    >
+    <div className={cn("flex items-center gap-4 px-4 py-3", separated && "border-t border-ink-200/70")}>
       <span className="min-w-0 flex-1">
         <span className="block text-[13px] font-medium text-ink-850">{title}</span>
         <span className="mt-0.5 block text-[11.5px] leading-5 text-ink-500">{description}</span>
       </span>
-      <input
-        type="checkbox"
-        className="sr-only"
-        checked={checked}
-        onChange={(event) => onCheckedChange(event.target.checked)}
-      />
-      <span
-        aria-hidden="true"
-        className={cn("relative h-5 w-9 shrink-0 rounded-full transition", checked ? "bg-accent-solid" : "bg-ink-300")}
-      >
-        <span
-          className={cn(
-            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-            checked && "translate-x-4",
-          )}
-        />
-      </span>
-    </label>
+      <Switch checked={checked} ariaLabel={title} onCheckedChange={onCheckedChange} />
+    </div>
   );
 }
-
 function DiscardSectionDraftDialog({
   open,
   onOpenChange,

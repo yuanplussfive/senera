@@ -1,5 +1,5 @@
 import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
-import { FrontendDefaultLocale, frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { FrontendDefaultLocale } from "../../i18n/frontendMessageCatalog";
 import {
   readDefaultModelGroup,
   readDefaultModelGroupRules,
@@ -46,18 +46,6 @@ export function readDraftOrEffectiveValue(
     return draftValue;
   }
   return findTopField(section, key)?.effectiveValue;
-}
-
-export function createProviderDraft(
-  field: ConfigFormFieldData | undefined,
-  providers: readonly ProviderEndpointDraft[],
-): ProviderEndpointDraft {
-  const id = nextProviderEndpointId(providers);
-  return normalizeProviderEndpointDraft({
-    ...cloneRecord(field?.defaultItem ?? {}),
-    Id: id,
-    Enabled: true,
-  });
 }
 
 export function createModelDraft({
@@ -170,18 +158,6 @@ export function normalizeModelGroupStrategy(value: unknown): ModelGroupStrategyD
   };
 }
 
-export function createModelGroupDraft(
-  template: Record<string, unknown>,
-  groups: readonly ModelGroupDraft[],
-): ModelGroupDraft {
-  return normalizeModelGroupDraft({
-    ...template,
-    Id: nextModelGroupId(groups),
-    Label: frontendMessage("config.modelGroups.newGroup"),
-    Strategies: [{ Match: "prefix", Values: [] }],
-  });
-}
-
 export function toProviderEndpointInput(provider: ProviderEndpointDraft): ProviderModelEndpointInput {
   const headers = provider.Headers
     ? Object.fromEntries(Object.entries(provider.Headers).filter(([key]) => key.trim()))
@@ -276,63 +252,6 @@ export function filterProviderModels(models: ProviderModelInfo[], search: string
   return models.filter(
     (model) => model.id.toLowerCase().includes(query) || model.ownedBy?.toLowerCase().includes(query),
   );
-}
-
-export type RemoteModelCategoryId = "all" | "reasoning" | "vision" | "web" | "free" | "embedding" | "rerank" | "tools";
-
-export interface RemoteModelCategoryDefinition {
-  id: RemoteModelCategoryId;
-  label: string;
-}
-
-export const remoteModelCategories = [
-  { id: "all", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.291.23") },
-  { id: "reasoning", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.292.29") },
-  { id: "vision", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.293.26") },
-  { id: "web", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.294.23") },
-  { id: "free", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.295.24") },
-  { id: "embedding", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.296.29") },
-  { id: "rerank", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.297.26") },
-  { id: "tools", label: frontendMessage("runtime.migrated.features.chat.modelConfigData.298.25") },
-] as const satisfies readonly RemoteModelCategoryDefinition[];
-
-export function filterRemoteModelPickerRows({
-  category,
-  rows,
-  search,
-}: {
-  category: RemoteModelCategoryId;
-  rows: readonly ProviderModelInfo[];
-  search: string;
-}): ProviderModelInfo[] {
-  return filterProviderModels(
-    rows.filter((row) => remoteModelCategoryMatches(row, category)),
-    search,
-  );
-}
-
-export function remoteModelCategoryMatches(row: ProviderModelInfo, category: RemoteModelCategoryId): boolean {
-  if (category === "all") {
-    return true;
-  }
-
-  const text = `${row.id} ${row.ownedBy ?? ""}`.toLowerCase();
-  switch (category) {
-    case "reasoning":
-      return includesAny(text, ["reason", "thinking", "think", "r1", "o1", "o3", "o4"]);
-    case "vision":
-      return includesAny(text, ["vision", "visual", "vl", "image", "img", "omni"]);
-    case "web":
-      return includesAny(text, ["web", "search", "online", "联网"]);
-    case "free":
-      return includesAny(text, ["free", "gratis", "trial"]);
-    case "embedding":
-      return includesAny(text, ["embedding", "embed", "text-embedding", "bge", "e5"]);
-    case "rerank":
-      return includesAny(text, ["rerank", "re-rank", "ranker", "bge-reranker"]);
-    case "tools":
-      return includesAny(text, ["tool", "function", "fc", "agent"]);
-  }
 }
 
 export function readProviderModelRows({
@@ -443,31 +362,6 @@ export function sortProviderModelRows({
     .map((entry) => entry.row);
 }
 
-export function applyModelProvidersDraft({
-  models,
-  requestedDefaultModelId,
-  value,
-}: {
-  models: readonly ModelProviderDraft[];
-  requestedDefaultModelId: string;
-  value: JsonConfigObject;
-}): JsonConfigObject {
-  const normalizedModels = models.map(normalizeModelProviderDraft);
-  const resolvedDefault = normalizedModels.some((model) => model.Id === requestedDefaultModelId)
-    ? requestedDefaultModelId
-    : normalizedModels[0]?.Id;
-  const nextValue: JsonConfigObject = {
-    ...value,
-    ModelProviders: normalizedModels,
-  };
-  if (resolvedDefault) {
-    nextValue.DefaultModelProviderId = resolvedDefault;
-  } else {
-    delete nextValue.DefaultModelProviderId;
-  }
-  return nextValue;
-}
-
 export function groupProviderModelRows(
   rows: ProviderModelInfo[],
   modelGroups: readonly ModelGroupDraft[],
@@ -527,13 +421,6 @@ export function modelConfigId(providerId: string, modelName: string): string {
   return `${providerId}/${modelName}`;
 }
 
-export function nextProviderEndpointId(providers: readonly ProviderEndpointDraft[]): string {
-  return nextAvailableName(
-    "provider",
-    providers.map((provider) => provider.Id),
-  );
-}
-
 export function readNumberWithTemplate(
   value: unknown,
   template: Record<string, unknown>,
@@ -590,7 +477,7 @@ export function optionalCapabilities<TKey extends string>(
 }
 
 export function readModelGroupMatch(value: unknown): ModelProviderRuleMatchKind {
-  return ModelGroupMatchOptions.some((option) => option.value === value)
+  return ModelGroupMatchKinds.includes(value as ModelProviderRuleMatchKind)
     ? (value as ModelProviderRuleMatchKind)
     : "prefix";
 }
@@ -605,20 +492,6 @@ export function readStringArray(value: unknown): string[] {
     : [];
 }
 
-export function parseDelimitedValues(value: string): string[] {
-  return value
-    .split(/[,\n，]/u)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-export function nextModelGroupId(groups: readonly ModelGroupDraft[]): string {
-  return nextAvailableName(
-    "group",
-    groups.map((group) => group.Id),
-  );
-}
-
 export function readNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
@@ -629,22 +502,6 @@ export function readBoolean(value: unknown): boolean | undefined {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function nextAvailableName(prefix: string, values: readonly string[]): string {
-  const used = new Set(values.map((value) => value.trim()).filter(Boolean));
-  if (!used.has(prefix)) {
-    return prefix;
-  }
-  let index = 2;
-  while (used.has(`${prefix}-${index}`)) {
-    index += 1;
-  }
-  return `${prefix}-${index}`;
-}
-
-function includesAny(source: string, needles: readonly string[]): boolean {
-  return needles.some((needle) => source.includes(needle));
 }
 
 export function formatShortTime(iso: string): string {
@@ -670,9 +527,4 @@ export const ModelCapabilityKeys = [
   "DeveloperRole",
 ] as const satisfies readonly (keyof ModelCapabilitiesDraft)[];
 
-export const ModelGroupMatchOptions = [
-  { value: "prefix", label: frontendMessage("config.modelGroups.matchPrefix") },
-  { value: "includes", label: frontendMessage("config.modelGroups.matchIncludes") },
-  { value: "exact", label: frontendMessage("config.modelGroups.matchExact") },
-  { value: "suffix", label: frontendMessage("config.modelGroups.matchSuffix") },
-] as const satisfies readonly { value: ModelProviderRuleMatchKind; label: string }[];
+const ModelGroupMatchKinds = ["prefix", "includes", "exact", "suffix"] as const;

@@ -1,51 +1,51 @@
 import type { Story } from "@ladle/react";
-import { ChevronDown, Settings, User, UserRoundPen, Info, Wifi, LogOut, Copy, Trash2, FileText } from "lucide-react";
+import { ChevronDown, Copy, FileText, Info, LogOut, Settings, Trash2, User, UserRoundPen, Wifi } from "lucide-react";
 import { Button } from "./Button";
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuLabel,
   DropdownMenuMeta,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "./DropdownMenu";
 
 export const BasicMenu: Story = () => (
-  <div className="flex items-center justify-center min-h-[400px] p-8">
+  <div className="flex min-h-[400px] items-center justify-center p-8">
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button>
-          Options
+          操作
           <ChevronDown className="h-3.5 w-3.5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem>View</DropdownMenuItem>
-        <DropdownMenuItem>Edit</DropdownMenuItem>
-        <DropdownMenuItem>Duplicate</DropdownMenuItem>
+        <DropdownMenuItem>查看</DropdownMenuItem>
+        <DropdownMenuItem>编辑</DropdownMenuItem>
+        <DropdownMenuItem>创建副本</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem destructive>Delete</DropdownMenuItem>
+        <DropdownMenuItem destructive>删除</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   </div>
 );
 
 export const WithIcons: Story = () => (
-  <div className="flex items-center justify-center min-h-[400px] p-8">
+  <div className="flex min-h-[400px] items-center justify-center p-8">
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline">
-          Account
+          账户
           <ChevronDown className="h-3.5 w-3.5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem icon={<User className="h-4 w-4" />}>Profile</DropdownMenuItem>
-        <DropdownMenuItem icon={<Settings className="h-4 w-4" />}>Settings</DropdownMenuItem>
+        <DropdownMenuItem icon={<User className="h-4 w-4" />}>个人资料</DropdownMenuItem>
+        <DropdownMenuItem icon={<Settings className="h-4 w-4" />}>设置</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem icon={<LogOut className="h-4 w-4" />} destructive>
-          Sign out
+          退出登录
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -53,24 +53,24 @@ export const WithIcons: Story = () => (
 );
 
 export const WithShortcuts: Story = () => (
-  <div className="flex items-center justify-center min-h-[400px] p-8">
+  <div className="flex min-h-[400px] items-center justify-center p-8">
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost">
-          File
+          文件
           <ChevronDown className="h-3.5 w-3.5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
         <DropdownMenuItem icon={<FileText className="h-4 w-4" />} shortcut="⌘N">
-          New File
+          新建文件
         </DropdownMenuItem>
         <DropdownMenuItem icon={<Copy className="h-4 w-4" />} shortcut="⌘D">
-          Duplicate
+          创建副本
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem icon={<Trash2 className="h-4 w-4" />} shortcut="⌫" destructive>
-          Delete
+          删除
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -78,19 +78,19 @@ export const WithShortcuts: Story = () => (
 );
 
 export const WithLabel: Story = () => (
-  <div className="flex items-center justify-center min-h-[400px] p-8">
+  <div className="flex min-h-[400px] items-center justify-center p-8">
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button>
-          Menu
+          菜单
           <ChevronDown className="h-3.5 w-3.5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuLabel>My Account</DropdownMenuLabel>
+        <DropdownMenuLabel>我的账户</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem icon={<User className="h-4 w-4" />}>Profile</DropdownMenuItem>
-        <DropdownMenuItem icon={<Settings className="h-4 w-4" />}>Settings</DropdownMenuItem>
+        <DropdownMenuItem icon={<User className="h-4 w-4" />}>个人资料</DropdownMenuItem>
+        <DropdownMenuItem icon={<Settings className="h-4 w-4" />}>设置</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   </div>

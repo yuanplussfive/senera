@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, Loader2, RefreshCw, Search } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Tooltip } from "../../shared/ui";
+import { Switch, Tooltip } from "../../shared/ui";
 import { ModelProviderIcon } from "./ModelProviderIcon";
 import { formatShortTime } from "./modelConfigData";
 
@@ -178,29 +178,16 @@ export function ToggleRow({
 }): JSX.Element {
   return (
     <SettingRow icon={<ChevronDown className="h-3.5 w-3.5 rotate-[-90deg]" />} label={label}>
-      <button
-        type="button"
+      <Switch
+        checked={Boolean(enabled)}
         disabled={disabled}
-        className={cn(
-          "inline-flex h-8 w-fit items-center gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-650",
-          "transition hover:border-accent-border-strong disabled:pointer-events-none disabled:opacity-50",
-        )}
-        onClick={() => onChange(!enabled)}
-      >
-        <span className={cn("relative h-5 w-9 rounded-full", enabled ? "bg-moss-500" : "bg-ink-300")}>
-          <span
-            className={cn(
-              "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-              enabled && "translate-x-4",
-            )}
-          />
-        </span>
-        {enabled ? "ON" : "OFF"}
-      </button>
+        ariaLabel={label}
+        className="h-8 w-10 justify-center"
+        onCheckedChange={onChange}
+      />
     </SettingRow>
   );
 }
-
 export function SettingRow({
   icon,
   label,
@@ -223,54 +210,6 @@ export function SettingRow({
       </div>
       <div className="min-w-0">{children}</div>
     </div>
-  );
-}
-
-export function MenuSelect({
-  value,
-  placeholder,
-  options,
-  disabled,
-  renderValue,
-  renderOption,
-  triggerClassName,
-  onChange,
-}: {
-  value: string;
-  placeholder: string;
-  options: Array<{ value: string; label: string }>;
-  disabled: boolean;
-  renderValue?: (value: string) => ReactNode;
-  renderOption?: (option: { value: string; label: string }) => ReactNode;
-  triggerClassName?: string;
-  onChange: (value: string) => void;
-}): JSX.Element {
-  const selected = options.find((option) => option.value === value);
-  const display = value && renderValue ? renderValue(value) : selected?.label;
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          disabled={disabled}
-          className={cn(
-            "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5",
-            "text-left text-[12.5px] text-ink-800 transition hover:border-accent-border-strong disabled:pointer-events-none disabled:opacity-55",
-            triggerClassName,
-          )}
-        >
-          <span className={cn("min-w-0 truncate", !display && "text-ink-350")}>{display ?? placeholder}</span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-350" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-[320px] min-w-[240px] overflow-y-auto bg-paper-50">
-        {options.map((option) => (
-          <DropdownMenuItem key={option.value} onSelect={() => onChange(option.value)}>
-            {renderOption ? renderOption(option) : option.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

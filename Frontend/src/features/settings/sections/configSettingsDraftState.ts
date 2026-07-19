@@ -13,6 +13,7 @@ export interface ConfigSettingsDraftState {
   dirty: boolean;
   localError: string | null;
   saving: boolean;
+  savedRecently: boolean;
   conflict: boolean;
   validationErrors: string[];
   flushSave: () => void;
@@ -45,6 +46,7 @@ export function useConfigSettingsDraftState({
   const [saveRequestId, setSaveRequestId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [autoSaveBlocked, setAutoSaveBlocked] = useState(false);
+  const [savedRecently, setSavedRecently] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [saveDelay, setSaveDelay] = useState(AUTO_SAVE_DELAY_MS);
   const draftRef = useRef(draft);
@@ -52,6 +54,7 @@ export function useConfigSettingsDraftState({
   const saveRequestIdRef = useRef<string | null>(null);
   const saveRequestDraftRef = useRef<JsonConfigObject | null>(null);
   const baseSnapshotRef = useRef<JsonConfigObject | null>(null);
+  const savedStatusTimerRef = useRef<number | null>(null);
   const snapshotKey = snapshot ? `${snapshot.version}:${snapshot.revision ?? "json"}` : "";
   const diagnostics = snapshot?.diagnostics ?? [];
   const validationErrors = useMemo(
@@ -65,6 +68,12 @@ export function useConfigSettingsDraftState({
     draftRef.current = draft;
     dirtyRef.current = dirty;
   }, [draft, dirty]);
+
+  useEffect(() => {
+    return () => {
+      if (savedStatusTimerRef.current !== null) window.clearTimeout(savedStatusTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!active || !snapshot || saveRequestIdRef.current) return;
@@ -91,6 +100,12 @@ export function useConfigSettingsDraftState({
       saveRequestDraftRef.current = null;
       setLocalError(null);
       setAutoSaveBlocked(false);
+      setSavedRecently(true);
+      if (savedStatusTimerRef.current !== null) window.clearTimeout(savedStatusTimerRef.current);
+      savedStatusTimerRef.current = window.setTimeout(() => {
+        setSavedRecently(false);
+        savedStatusTimerRef.current = null;
+      }, 1800);
       if (snapshot) {
         baseSnapshotRef.current = snapshot.value;
         const nextDirty = !sameJson(draftRef.current, snapshot.value);
@@ -169,6 +184,11 @@ export function useConfigSettingsDraftState({
     setDirty(nextDirty);
     setLocalError(null);
     setAutoSaveBlocked(false);
+    setSavedRecently(false);
+    if (savedStatusTimerRef.current !== null) {
+      window.clearTimeout(savedStatusTimerRef.current);
+      savedStatusTimerRef.current = null;
+    }
     setSaveDelay(mode === "immediate" ? 0 : AUTO_SAVE_DELAY_MS);
   };
 
@@ -200,6 +220,7 @@ export function useConfigSettingsDraftState({
     dirty,
     localError,
     saving,
+    savedRecently,
     conflict,
     validationErrors,
     flushSave,

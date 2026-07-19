@@ -681,11 +681,11 @@ function CatalogModelDialogContent({
                         </div>
                       </div>
                       {configured ? (
-                        <span className="rounded-md border border-moss-200 bg-moss-50 px-2 py-1 text-[10.5px] font-medium text-moss-700">
+                        <span className="text-[10.5px] font-medium text-moss-700">
                           {frontendMessage("settings.modelManagement.added")}
                         </span>
                       ) : pending ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10.5px] font-medium text-sky-700">
+                        <span className="inline-flex items-center gap-1.5 text-[10.5px] font-medium text-ink-600">
                           <Loader2 className="h-3 w-3 animate-spin" />{" "}
                           {frontendMessage("settings.modelManagement.adding")}
                         </span>

@@ -44,6 +44,10 @@ export type { IconButtonProps } from "./IconButton";
 export { LogoLockup, LogoMark, LogoWordmark } from "./Logo";
 export { MetaLabel, metaLabelClassName } from "./MetaLabel";
 export type { MetaLabelProps, MetaLabelSize } from "./MetaLabel";
+export { MenuSelect } from "./MenuSelect";
+export type { MenuSelectOption, MenuSelectProps } from "./MenuSelect";
+export { Switch, SwitchTrack } from "./Switch";
+export type { SwitchProps, SwitchSize, SwitchTrackProps } from "./Switch";
 export { ScrollArea, ScrollBar } from "./ScrollArea";
 export {
   Sheet,

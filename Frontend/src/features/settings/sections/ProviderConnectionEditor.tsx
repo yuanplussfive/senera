@@ -3,7 +3,7 @@ import { useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
-import { Button, Dialog, DialogActionButton, DialogActions, DialogContent, FormHint, Input } from "../../../shared/ui";
+import { Button, Dialog, DialogActionButton, DialogActions, DialogContent, FormHint, Input, Switch } from "../../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
 import { DetailTitle, EmptyDetail, IconAction, inputClassName } from "../../chat/ModelConfigPrimitives";
 import { nextHeaderKey, providerEnabled, providerIdLabel } from "../../chat/modelConfigData";
@@ -77,23 +77,23 @@ export function ProviderConnectionEditor({
                   {frontendMessage("settings.action.retry")}
                 </Button>
               ) : null}
-              <button
-                type="button"
+              <Switch
+                checked={enabled}
                 disabled={disabled}
-                className="inline-flex h-8 items-center gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] font-medium text-ink-650 transition hover:border-accent-border-strong disabled:pointer-events-none disabled:opacity-50"
-                onClick={() => onConfirm({ Enabled: !enabled })}
-                aria-pressed={enabled}
+                ariaLabel={providerIdLabel(provider)}
+                className="h-8 w-10 justify-center"
+                onCheckedChange={(Enabled) => onConfirm({ Enabled })}
+              />
+              <IconAction
+                label={frontendMessage("settings.provider.apiConfig")}
+                disabled={disabled}
+                onClick={() => {
+                  setRequestHeadersDraft({ ...(provider.Headers ?? {}) });
+                  setRequestConfigOpen(true);
+                }}
               >
-                <span className={cn("relative h-5 w-9 rounded-full", enabled ? "bg-moss-500" : "bg-ink-300")}>
-                  <span
-                    className={cn(
-                      "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-                      enabled && "translate-x-4",
-                    )}
-                  />
-                </span>
-                {frontendMessage(enabled ? "settings.provider.enabled" : "settings.provider.disabled")}
-              </button>
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+              </IconAction>
               {onDelete ? (
                 <IconAction
                   label={frontendMessage("settings.provider.delete")}
@@ -111,20 +111,6 @@ export function ProviderConnectionEditor({
         <div className="grid gap-3">
           <ConnectionField
             label={frontendMessage("settings.provider.apiKey")}
-            action={
-              <button
-                type="button"
-                className="grid h-7 w-7 place-items-center rounded-md text-ink-450 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
-                onClick={() => {
-                  setRequestHeadersDraft({ ...(provider.Headers ?? {}) });
-                  setRequestConfigOpen(true);
-                }}
-                aria-label={frontendMessage("settings.provider.apiConfig")}
-                title={frontendMessage("settings.provider.apiConfig")}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-              </button>
-            }
           >
             <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
@@ -151,20 +137,6 @@ export function ProviderConnectionEditor({
           </ConnectionField>
           <ConnectionField
             label={frontendMessage("settings.provider.apiUrl")}
-            action={
-              <button
-                type="button"
-                className="grid h-7 w-7 place-items-center rounded-md text-ink-450 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
-                onClick={() => {
-                  setRequestHeadersDraft({ ...(provider.Headers ?? {}) });
-                  setRequestConfigOpen(true);
-                }}
-                aria-label={frontendMessage("settings.provider.apiConfig")}
-                title={frontendMessage("settings.provider.apiConfig")}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-              </button>
-            }
           >
             <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
@@ -205,7 +177,7 @@ export function ProviderConnectionEditor({
               <span className="text-[12px] font-semibold text-ink-750">
                 {frontendMessage("settings.provider.customHeaders")}
               </span>
-              <span className="rounded-md border border-ink-200 bg-paper-100 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-500">
+              <span className="font-mono text-[10.5px] text-ink-450">
                 {"{}"}
               </span>
             </div>
@@ -241,19 +213,14 @@ export function ProviderConnectionEditor({
 
 function ConnectionField({
   label,
-  action,
   children,
 }: {
   label: string;
-  action?: React.ReactNode;
   children: React.ReactNode;
 }): JSX.Element {
   return (
     <label className="block min-w-0">
-      <span className="mb-1.5 flex items-center justify-between gap-2 text-[12px] font-medium text-ink-650">
-        <span>{label}</span>
-        {action}
-      </span>
+      <span className="mb-1.5 block text-[12px] font-medium text-ink-650">{label}</span>
       {children}
     </label>
   );

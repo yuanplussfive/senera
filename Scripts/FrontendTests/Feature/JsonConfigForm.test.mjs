@@ -85,7 +85,7 @@ test("settings form updates boolean, option, number, array, and record controls"
   const user = userEvent.setup();
   render(React.createElement(ConfigHarness, { onChange }));
 
-  await user.click(screen.getByRole("button", { name: "开启 Enabled" }));
+  await user.click(screen.getByRole("switch", { name: "Enabled" }));
   await user.click(screen.getByRole("button", { name: "Safe" }));
   const number = screen.getByRole("spinbutton");
   await user.clear(number);
@@ -93,7 +93,7 @@ test("settings form updates boolean, option, number, array, and record controls"
   await user.click(screen.getByRole("button", { name: "添加标签" }));
   await user.click(screen.getByRole("button", { name: "添加键值" }));
 
-  expect(screen.getByRole("button", { name: "关闭 Enabled" })).toBeInTheDocument();
+  expect(screen.getByRole("switch", { name: "Enabled" })).toHaveAttribute("aria-checked", "true");
   expect(number).toHaveValue(3);
   const tagsSection = screen.getByText("Tags").closest("div.grid");
   expect(within(tagsSection).getAllByRole("textbox")).toHaveLength(2);
@@ -108,6 +108,35 @@ test("settings form updates boolean, option, number, array, and record controls"
   );
 });
 
+test("multi-section settings expose lightweight section navigation", () => {
+  render(
+    React.createElement(JsonConfigSettingsView, {
+      sections: [
+        ...configSections,
+        {
+          name: "planning",
+          label: "Planning",
+          fields: [{ path: ["Plan"], label: "Plan", type: "string", effectiveValue: "" }],
+        },
+      ],
+      value: initialConfig,
+      onChange: vi.fn(),
+    }),
+  );
+
+  expect(screen.getByRole("navigation", { name: "配置分区" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Runtime" })).toHaveAttribute("href", "#json-config-section-runtime");
+  expect(screen.getByRole("link", { name: "Planning" })).toHaveAttribute("href", "#json-config-section-planning");  cleanup();
+  render(
+    React.createElement(JsonConfigSettingsView, {
+      sections: configSections,
+      showSectionHeading: false,
+      value: initialConfig,
+      onChange: vi.fn(),
+    }),
+  );
+  expect(screen.queryByRole("heading", { name: "Runtime" })).not.toBeInTheDocument();
+});
 test("disabled settings form blocks every mutable control", () => {
   render(
     React.createElement(JsonConfigSettingsView, {

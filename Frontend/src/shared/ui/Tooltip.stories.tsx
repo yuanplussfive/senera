@@ -1,14 +1,14 @@
 import type { Story } from "@ladle/react";
+import { Heart, Settings, Trash2 } from "lucide-react";
 import { Button } from "./Button";
-import { Tooltip, TooltipProvider } from "./Tooltip";
 import { IconButton } from "./IconButton";
-import { Settings, Heart, Trash2 } from "lucide-react";
+import { Tooltip, TooltipProvider } from "./Tooltip";
 
 export const BasicTooltip: Story = () => (
   <TooltipProvider>
-    <div className="flex items-center justify-center min-h-[300px] p-8">
-      <Tooltip content="This is a tooltip">
-        <Button>Hover me</Button>
+    <div className="flex min-h-[300px] items-center justify-center p-8">
+      <Tooltip content="这里是简短说明">
+        <Button>悬停查看说明</Button>
       </Tooltip>
     </div>
   </TooltipProvider>
@@ -16,13 +16,13 @@ export const BasicTooltip: Story = () => (
 
 export const WithShortcut: Story = () => (
   <TooltipProvider>
-    <div className="flex items-center justify-center min-h-[300px] p-8">
+    <div className="flex min-h-[300px] items-center justify-center p-8">
       <div className="flex gap-4">
-        <Tooltip content="Save document" shortcut="⌘S">
-          <Button>Save</Button>
+        <Tooltip content="保存当前文档" shortcut="⌘S">
+          <Button>保存</Button>
         </Tooltip>
-        <Tooltip content="Open settings" shortcut="⌘,">
-          <Button variant="ghost">Settings</Button>
+        <Tooltip content="打开设置" shortcut="⌘,">
+          <Button variant="ghost">设置</Button>
         </Tooltip>
       </div>
     </div>
@@ -31,19 +31,19 @@ export const WithShortcut: Story = () => (
 
 export const Sides: Story = () => (
   <TooltipProvider>
-    <div className="flex items-center justify-center min-h-[400px] p-8">
+    <div className="flex min-h-[400px] items-center justify-center p-8">
       <div className="grid grid-cols-2 gap-12">
-        <Tooltip content="Top tooltip" side="top">
-          <Button>Top</Button>
+        <Tooltip content="显示在上方" side="top">
+          <Button>上方</Button>
         </Tooltip>
-        <Tooltip content="Right tooltip" side="right">
-          <Button>Right</Button>
+        <Tooltip content="显示在右侧" side="right">
+          <Button>右侧</Button>
         </Tooltip>
-        <Tooltip content="Bottom tooltip" side="bottom">
-          <Button>Bottom</Button>
+        <Tooltip content="显示在下方" side="bottom">
+          <Button>下方</Button>
         </Tooltip>
-        <Tooltip content="Left tooltip" side="left">
-          <Button>Left</Button>
+        <Tooltip content="显示在左侧" side="left">
+          <Button>左侧</Button>
         </Tooltip>
       </div>
     </div>
@@ -52,15 +52,15 @@ export const Sides: Story = () => (
 
 export const WithIconButtons: Story = () => (
   <TooltipProvider>
-    <div className="flex items-center justify-center min-h-[300px] p-8">
+    <div className="flex min-h-[300px] items-center justify-center p-8">
       <div className="flex gap-2">
-        <IconButton label="Settings" tooltip="Open settings" tooltipShortcut="⌘,">
+        <IconButton label="打开设置" tooltip="打开设置" tooltipShortcut="⌘,">
           <Settings className="h-4 w-4" />
         </IconButton>
-        <IconButton label="Like" tooltip="Add to favorites" tone="primary">
+        <IconButton label="加入收藏" tooltip="加入收藏" tone="primary">
           <Heart className="h-4 w-4" />
         </IconButton>
-        <IconButton label="Delete" tooltip="Delete item" tooltipShortcut="⌫" tone="danger">
+        <IconButton label="删除项目" tooltip="删除项目" tooltipShortcut="⌫" tone="danger">
           <Trash2 className="h-4 w-4" />
         </IconButton>
       </div>

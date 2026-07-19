@@ -91,7 +91,7 @@ test("planning config selects only chat-capable models and can return to inherit
     }),
   );
 
-  await user.click(screen.getByRole("button", { name: "继承主模型" }));
+  await user.click(screen.getByRole("button", { name: "模型: 继承主模型" }));
   expect(screen.queryByText("Embedding Alpha")).not.toBeInTheDocument();
   await user.click(screen.getByRole("menuitem", { name: "Planner Alpha" }));
   expect(onChange).toHaveBeenLastCalledWith(
@@ -109,7 +109,7 @@ test("planning config selects only chat-capable models and can return to inherit
       onChange,
     }),
   );
-  await user.click(screen.getByRole("button", { name: "Planner Alpha" }));
+  await user.click(screen.getByRole("button", { name: "模型: Planner Alpha" }));
   await user.click(screen.getByRole("menuitem", { name: "继承主模型" }));
   expect(onChange.mock.calls.at(-1)[0].ActionPlanner.Client.ModelProviderId).toBeUndefined();
 });
@@ -131,7 +131,7 @@ test("plugin settings route tool and field changes while parse failures disable 
 
   await user.click(screen.getByText("SearchTool").closest("button"));
   expect(onSetToolEnabled).toHaveBeenCalledWith("SearchTool", false);
-  await user.click(screen.getByRole("button", { name: "关闭 Enable search" }));
+  await user.click(screen.getByRole("switch", { name: "关闭 Enable search" }));
   expect(onUpdateField).toHaveBeenCalledWith(plugin.sections[0].fields[0], false);
 
   view.rerender(
@@ -193,7 +193,7 @@ test("plugin config autosaves changes and keeps the latest value during a snapsh
   const view = renderWithFrontendProviders(React.createElement(PluginConfigContent, props));
   await user.click(screen.getByRole("button", { name: /Search plugin1\/1/ }));
 
-  await user.click(screen.getByRole("button", { name: "关闭 Enable search" }));
+  await user.click(screen.getByRole("switch", { name: "关闭 Enable search" }));
   await waitFor(() => expect(onSave).toHaveBeenCalledWith("SearchPlugin", expect.stringContaining("Enabled = false")));
 
   view.rerender(
@@ -206,7 +206,7 @@ test("plugin config autosaves changes and keeps the latest value during a snapsh
       }),
     ),
   );
-  expect(screen.getByRole("button", { name: "开启 Enable search" })).toBeInTheDocument();
+  expect(screen.getByRole("switch", { name: "开启 Enable search" })).toBeInTheDocument();
   expect(onSave).toHaveBeenCalledTimes(1);
 });
 
@@ -223,7 +223,7 @@ test("plugin config accepts later snapshots after save success includes the save
   };
   const view = renderWithFrontendProviders(React.createElement(PluginConfigContent, props));
   await user.click(screen.getByRole("button", { name: /Search plugin1\/1/ }));
-  await user.click(screen.getByRole("button", { name: "关闭 Enable search" }));
+  await user.click(screen.getByRole("switch", { name: "关闭 Enable search" }));
   await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
 
   const savedToml = onSave.mock.calls[0][1];
@@ -247,7 +247,7 @@ test("plugin config accepts later snapshots after save success includes the save
       }),
     ),
   );
-  await waitFor(() => expect(screen.getByRole("button", { name: "开启 Enable search" })).toBeVisible());
+  await waitFor(() => expect(screen.getByRole("switch", { name: "开启 Enable search" })).toBeVisible());
 
   view.rerender(
     React.createElement(
@@ -261,7 +261,7 @@ test("plugin config accepts later snapshots after save success includes the save
     ),
   );
 
-  await waitFor(() => expect(screen.getByRole("button", { name: "关闭 Enable search" })).toBeVisible());
+  await waitFor(() => expect(screen.getByRole("switch", { name: "关闭 Enable search" })).toBeVisible());
   expect(onSave).toHaveBeenCalledTimes(1);
 });
 
@@ -280,7 +280,7 @@ test("plugin drafts and errors stay isolated when switching during a save", asyn
   const view = renderWithFrontendProviders(React.createElement(PluginConfigContent, props));
 
   await user.click(screen.getByRole("button", { name: /Search plugin/ }));
-  await user.click(screen.getByRole("button", { name: "关闭 Enable search" }));
+  await user.click(screen.getByRole("switch", { name: "关闭 Enable search" }));
   await waitFor(() => expect(onSave).toHaveBeenCalledWith("SearchPlugin", expect.stringContaining("Enabled = false")));
 
   await user.click(screen.getByRole("button", { name: "返回技能列表" }));
@@ -308,7 +308,7 @@ test("plugin drafts and errors stay isolated when switching during a save", asyn
   expect(screen.queryByText("search rejected")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "返回技能列表" }));
   await user.click(screen.getByRole("button", { name: /Search plugin/ }));
-  expect(screen.getByRole("button", { name: "开启 Enable search" })).toBeVisible();
+  expect(screen.getByRole("switch", { name: "开启 Enable search" })).toBeVisible();
   expect(screen.getByRole("button", { name: /重试|Retry/ })).toBeVisible();
 });
 

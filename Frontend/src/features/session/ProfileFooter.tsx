@@ -84,7 +84,7 @@ export function UserFooter({
             ref={settingsTriggerRef}
             type="button"
             className={cn(
-              "mt-auto w-full transition-colors duration-150 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus data-[state=open]:bg-surface-hover",
+              "mt-auto w-full transition-colors duration-150 hover:bg-surface-hover data-[state=open]:bg-surface-hover",
               collapsed
                 ? "grid h-12 place-items-center border-t-0 px-0"
                 : "flex h-[48px] items-center gap-2 border-t border-line-subtle px-3 text-left",

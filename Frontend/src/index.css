@@ -518,6 +518,11 @@ html[data-senera-desktop-window="true"] [data-window-drag-region] {
   user-select: none;
 }
 
+html[data-senera-desktop-window="true"] :is([role="dialog"], .menu-surface) {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 html[data-senera-window-controls="custom"] [data-desktop-window-controls] {
   -webkit-app-region: no-drag;
   app-region: no-drag;

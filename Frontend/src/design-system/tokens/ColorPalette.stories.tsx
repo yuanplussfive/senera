@@ -28,13 +28,13 @@ const ColorSwatch = ({ color, label, value }: { color: string; label: string; va
 export const SeneraLight: Story = () => (
   <div className="p-8 space-y-8">
     <div>
-      <h2 className="text-ink-900 text-lg font-medium mb-1">Senera Light</h2>
-      <p className="text-ink-600 text-sm">Warm, paper-inspired neutral palette</p>
+      <h2 className="text-ink-900 text-lg font-medium mb-1">Senera 浅色主题</h2>
+      <p className="text-ink-600 text-sm">温暖的纸张中性色调</p>
     </div>
 
     <div className="grid grid-cols-2 gap-8">
       <div className="space-y-4">
-        <h3 className="text-ink-900 font-medium">Paper (Backgrounds)</h3>
+        <h3 className="text-ink-900 font-medium">Paper（背景）</h3>
         {colorRanges.paper.map((shade) => {
           const cssVar = getComputedStyle(document.documentElement).getPropertyValue(`--color-paper-${shade}`).trim();
           return <ColorSwatch key={shade} color="paper" label={`paper-${shade}`} value={cssVar} />;
@@ -42,7 +42,7 @@ export const SeneraLight: Story = () => (
       </div>
 
       <div className="space-y-4">
-        <h3 className="text-ink-900 font-medium">Ink (Foregrounds)</h3>
+        <h3 className="text-ink-900 font-medium">Ink（前景）</h3>
         {colorRanges.ink.slice(0, 7).map((shade) => {
           const cssVar = getComputedStyle(document.documentElement).getPropertyValue(`--color-ink-${shade}`).trim();
           return <ColorSwatch key={shade} color="ink" label={`ink-${shade}`} value={cssVar} />;
@@ -60,14 +60,14 @@ export const SeneraLight: Story = () => (
       </div>
 
       <div className="space-y-4">
-        <h3 className="text-ink-900 font-medium">Semantic Colors</h3>
+        <h3 className="text-ink-900 font-medium">语义颜色</h3>
         {colorRanges.moss.slice(0, 3).map((shade) => {
           const cssVar = getComputedStyle(document.documentElement).getPropertyValue(`--color-moss-${shade}`).trim();
-          return <ColorSwatch key={shade} color="moss" label={`moss-${shade} (success)`} value={cssVar} />;
+          return <ColorSwatch key={shade} color="moss" label={`moss-${shade} （成功）`} value={cssVar} />;
         })}
         {colorRanges.brick.slice(0, 3).map((shade) => {
           const cssVar = getComputedStyle(document.documentElement).getPropertyValue(`--color-brick-${shade}`).trim();
-          return <ColorSwatch key={shade} color="brick" label={`brick-${shade} (error)`} value={cssVar} />;
+          return <ColorSwatch key={shade} color="brick" label={`brick-${shade} （错误）`} value={cssVar} />;
         })}
       </div>
     </div>
@@ -77,8 +77,8 @@ export const SeneraLight: Story = () => (
 export const AllSchemes: Story = () => (
   <div className="p-8 space-y-12">
     <div>
-      <h2 className="text-ink-900 text-xl font-medium mb-2">Color Schemes</h2>
-      <p className="text-ink-600 text-sm">Senera provides 10 color schemes, each with light and dark modes</p>
+      <h2 className="text-ink-900 text-xl font-medium mb-2">颜色主题</h2>
+      <p className="text-ink-600 text-sm">Senera 提供 10 组颜色主题，每组都有浅色和深色模式</p>
     </div>
 
     {colorSchemes.map((scheme) => {
@@ -110,22 +110,22 @@ export const AllSchemes: Story = () => (
     })}
 
     <div className="rounded-lg border border-ink-200 bg-paper-100 p-6 space-y-3">
-      <h4 className="text-ink-900 font-medium">Usage Guidelines</h4>
+      <h4 className="text-ink-900 font-medium">使用规则</h4>
       <ul className="text-ink-700 text-sm space-y-2">
         <li>
-          • <span className="font-mono text-xs">paper-*</span> — Backgrounds and surfaces
+          • <span className="font-mono text-xs">paper-*</span> — 背景和表面
         </li>
         <li>
-          • <span className="font-mono text-xs">ink-*</span> — Text and foreground elements
+          • <span className="font-mono text-xs">ink-*</span> — 文字和前景元素
         </li>
         <li>
-          • <span className="font-mono text-xs">accent-*</span> — Selected accent palette
+          • <span className="font-mono text-xs">accent-*</span> — 当前选择的强调色
         </li>
         <li>
-          • <span className="font-mono text-xs">moss-*</span> — Success states
+          • <span className="font-mono text-xs">moss-*</span> — 成功状态
         </li>
         <li>
-          • <span className="font-mono text-xs">brick-*</span> — Error and destructive actions
+          • <span className="font-mono text-xs">brick-*</span> — 错误和危险操作
         </li>
       </ul>
     </div>
@@ -159,15 +159,15 @@ export const ContrastChecker: Story = () => {
   return (
     <div className="p-8 space-y-8">
       <div>
-        <h2 className="text-ink-900 text-xl font-medium mb-2">Contrast Checker</h2>
-        <p className="text-ink-600 text-sm">Verify WCAG 2.1 compliance for text readability</p>
+        <h2 className="text-ink-900 text-xl font-medium mb-2">对比度检查</h2>
+        <p className="text-ink-600 text-sm">检查文字可读性是否符合 WCAG 2.1</p>
       </div>
 
       <div className="rounded-lg border border-ink-200 p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-ink-900 font-medium">Primary Text (ink-900 on paper-50)</div>
-            <div className="text-ink-500 text-sm mt-1">Contrast Ratio: {ratio.toFixed(2)}:1</div>
+            <div className="text-ink-900 font-medium">主要文字（paper-50 上的 ink-900）</div>
+            <div className="text-ink-500 text-sm mt-1">对比度：{ratio.toFixed(2)}:1</div>
           </div>
           <div className="flex gap-4">
             <div className="text-center">
@@ -185,22 +185,22 @@ export const ContrastChecker: Story = () => {
           className="h-24 rounded-lg flex items-center justify-center text-ink-900 text-lg font-medium"
           style={{ backgroundColor: `rgb(${paper50})` }}
         >
-          Sample Text on Paper-50 Background
+          Paper-50 背景上的示例文字
         </div>
       </div>
 
       <div className="rounded-lg border border-ink-200 bg-paper-100 p-6">
-        <h4 className="text-ink-900 font-medium mb-3">WCAG Requirements</h4>
+        <h4 className="text-ink-900 font-medium mb-3">WCAG 要求</h4>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <div className="text-ink-700 font-medium">AA (Minimum)</div>
-            <div className="text-ink-600">4.5:1 for normal text</div>
-            <div className="text-ink-600">3:1 for large text</div>
+            <div className="text-ink-700 font-medium">AA（最低）</div>
+            <div className="text-ink-600">普通文字至少 4.5:1</div>
+            <div className="text-ink-600">大号文字至少 3:1</div>
           </div>
           <div>
-            <div className="text-ink-700 font-medium">AAA (Enhanced)</div>
-            <div className="text-ink-600">7:1 for normal text</div>
-            <div className="text-ink-600">4.5:1 for large text</div>
+            <div className="text-ink-700 font-medium">AAA（增强）</div>
+            <div className="text-ink-600">普通文字至少 7:1</div>
+            <div className="text-ink-600">大号文字至少 4.5:1</div>
           </div>
         </div>
       </div>

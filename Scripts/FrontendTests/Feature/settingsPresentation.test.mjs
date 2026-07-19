@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createSettingsSearchEntries,
   groupSettingsSectionResults,
   readSettingsSectionGroup,
   searchSettingsSectionResults,
@@ -28,12 +29,12 @@ describe("settings presentation", () => {
       "skills",
       "general",
       "appearance",
-      "system",
       "storage",
       "about",
     ]);
     expect(isSettingsSectionId("tools")).toBe(false);
     expect(isSettingsSectionId("memory")).toBe(false);
+    expect(isSettingsSectionId("system")).toBe(false);
   });
 
   it("groups navigation in product-domain order", () => {
@@ -45,7 +46,7 @@ describe("settings presentation", () => {
         sectionIds: ["runtime", "planning", "retrieval", "skills"],
       },
       { id: "personal", label: "个人", sectionIds: ["general", "appearance"] },
-      { id: "system", label: "系统", sectionIds: ["system", "storage", "about"] },
+      { id: "system", label: "系统", sectionIds: ["storage", "about"] },
     ]);
     expect(readSettingsSectionGroup("appearance").label).toBe("个人");
   });
@@ -63,6 +64,46 @@ describe("settings presentation", () => {
     ]);
   });
 
+  it("searches concrete config fields, skills, and tools", () => {
+    const entries = createSettingsSearchEntries(
+      [
+        {
+          name: "runtime",
+          label: "运行",
+          fields: [
+            {
+              key: "Host",
+              path: ["Server", "Host"],
+              label: "服务 Host",
+              description: "配置服务地址",
+            },
+          ],
+        },
+      ],
+      [
+        {
+          name: "DocumentPlugin",
+          title: "文档处理",
+          description: "处理文档",
+          sections: [{ fields: [{ key: "RootDir", path: ["RootDir"], label: "文档目录" }] }],
+          tools: [{ name: "DocumentTool", summary: "读取文档" }],
+        },
+      ],
+    );
+
+    expect(searchSettingsSectionResults(settingsSections, "Host", entries)[0]).toMatchObject({
+      section: { id: "runtime" },
+      details: [{ label: "字段", value: "服务 Host" }],
+    });
+    expect(searchSettingsSectionResults(settingsSections, "DocumentPlugin", entries)[0]).toMatchObject({
+      section: { id: "skills" },
+      details: [{ label: "技能", value: "文档处理" }],
+    });
+    expect(searchSettingsSectionResults(settingsSections, "DocumentTool", entries)[0]).toMatchObject({
+      section: { id: "skills" },
+      details: [{ label: "工具", value: "DocumentTool" }],
+    });
+  });
   it("searches labels, descriptions, ids, and group names", () => {
     expect(searchSettingsSections(settingsSections, "供应商").map((section) => section.id)).toEqual(["model-service"]);
     expect(searchSettingsSections(settingsSections, "个人").map((section) => section.id)).toEqual([

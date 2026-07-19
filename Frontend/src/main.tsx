@@ -16,10 +16,10 @@ import { installMotionDevTools } from "./dev/motionDevTools";
 import { SettingsWorkbench } from "./features/settings";
 import type { SettingsSectionId } from "./features/settings/types";
 import { frontendMessage } from "./i18n/frontendMessageCatalog";
-import { FrontendI18nProvider } from "./i18n/useFrontendLocale";
+import { FrontendI18nProvider, useFrontendLocale } from "./i18n/useFrontendLocale";
 import { AppMotionProvider } from "./shared/motion";
 import { AppAppearanceProvider } from "./shared/theme";
-import { Dialog, DialogActionButton, DialogActions, DialogContent, TooltipProvider } from "./shared/ui";
+import { Dialog, DialogActionButton, DialogActions, DialogContent, ErrorBoundary, TooltipProvider } from "./shared/ui";
 import { useStore } from "./store/sessionStore";
 import "./index.css";
 import "./styles/transitions.css";
@@ -34,11 +34,14 @@ if (!root) throw new Error("#root not found in index.html");
 
 createRoot(root).render(
   <StrictMode>
-    <Root />
+    <ErrorBoundary presentation="app">
+      <Root />
+    </ErrorBoundary>
   </StrictMode>,
 );
 
 function Root(): JSX.Element {
+  useFrontendLocale();
   const motionLevel = useStore((state) => state.motionLevel);
   const defaultSidebarCollapsed = useStore((state) => state.defaultSidebarCollapsed);
   const defaultRightPanelCollapsed = useStore((state) => state.defaultRightPanelCollapsed);

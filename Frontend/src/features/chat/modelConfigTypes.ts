@@ -3,10 +3,7 @@ import type {
   ConfigFormSectionData,
   ProviderModelEndpointInput,
   ProviderModelInfo,
-  ProviderModelsFailedData,
-  ProviderModelsSnapshotData,
 } from "../../api/eventTypes";
-import type { JsonConfigObject } from "../../shared/config/JsonConfigForm";
 import type { ModelProviderRuleMatchKind } from "./ModelProviderIcon";
 
 export interface ProviderEndpointDraft {
@@ -51,11 +48,6 @@ export interface ModelCapabilitiesDraft {
   DeveloperRole?: boolean;
 }
 
-export interface ModelOptionsState {
-  model: ModelProviderDraft;
-  index: number | null;
-}
-
 export interface ModelGroupDraft {
   Id: string;
   Label: string;
@@ -76,17 +68,5 @@ export interface ProviderModelGroup {
 }
 
 export type ModelConfigLayoutMode = "panel" | "embedded";
-
-export interface ModelConfigViewProps {
-  value: JsonConfigObject;
-  section?: ConfigFormSectionData;
-  disabled?: boolean;
-  layoutMode?: ModelConfigLayoutMode;
-  catalogs: Record<string, ProviderModelsSnapshotData>;
-  errors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
-  loadingProviderIds: Record<string, boolean>;
-  onFetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
-  onChange: (value: JsonConfigObject) => void;
-}
 
 export type { ConfigFormFieldData, ConfigFormSectionData, ProviderModelEndpointInput, ProviderModelInfo };

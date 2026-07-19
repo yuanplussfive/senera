@@ -1,9 +1,9 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useMemo, useRef, useState } from "react";
-import { Loader2, Plus, RefreshCw, Search, Settings2, Tags } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Search, Settings2, Star, Tags, Trash2 } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { ScrollArea, Tooltip } from "../../shared/ui";
+import { ScrollArea, Switch, Tooltip } from "../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
 import { defaultModelCapabilities, modelConfigId, providerEnabled, readModelCapabilities } from "./modelConfigData";
 import type {
@@ -24,9 +24,9 @@ import {
 
 const EMPTY_PENDING_MODEL_IDS: ReadonlySet<string> = new Set();
 const modelActionClassName =
-  "inline-flex h-7 items-center rounded-md border border-ink-200 bg-paper-50 px-2 text-[10.5px] font-medium text-ink-650 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] font-medium text-ink-650 transition hover:bg-ink-900/[0.05] hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50";
 const modelRemoveActionClassName =
-  "inline-flex h-7 items-center rounded-md border border-brick-200 bg-brick-50 px-2 text-[10.5px] font-medium text-brick-700 transition hover:border-brick-300 hover:bg-brick-100 disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] font-medium text-brick-700 transition hover:bg-brick-50 disabled:pointer-events-none disabled:opacity-50";
 
 export function ProviderModelList({
   selectedProvider,
@@ -131,7 +131,7 @@ export function ProviderModelList({
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className="text-[13.5px] font-semibold text-ink-900">{frontendMessage("config.model.title")}</span>
-              <span className="rounded-md bg-ink-900/[0.055] px-2 py-0.5 text-[10.5px] text-ink-500">
+              <span className="tabular-nums text-[11px] text-ink-450">
                 {rows.length}
               </span>
               <Tooltip content={frontendMessage("config.model.searchPlaceholder")} side="top">
@@ -182,7 +182,7 @@ export function ProviderModelList({
         </div>
       ) : (
         <ListHeader
-          title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.138.15")}
+          title={frontendMessage("config.model.title")}
           subtitle={modelListSubtitle(selectedProvider, catalog, rows.length)}
           action={
             <div className="flex items-center gap-1.5">
@@ -197,21 +197,16 @@ export function ProviderModelList({
                   <Tags className="h-3.5 w-3.5" />
                 </button>
               </Tooltip>
-              <button
-                type="button"
-                disabled={disabled || !selectedProvider}
-                className={cn(
-                  "inline-flex h-8 items-center rounded-md border px-2.5 text-[11px] font-semibold transition",
-                  configuredOnly
-                    ? "border-lime-200 bg-lime-50 text-lime-700"
-                    : "border-ink-200 bg-paper-50 text-ink-500 hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover",
-                  "disabled:pointer-events-none disabled:opacity-45",
-                )}
-                onClick={() => onConfiguredOnlyChange(!configuredOnly)}
-                aria-pressed={configuredOnly}
-              >
-                {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.166.17")}
-              </button>
+              <span className="inline-flex items-center gap-2 text-[11px] text-ink-600">
+                <span>{frontendMessage("config.model.configuredOnly")}</span>
+                <Switch
+                  checked={configuredOnly}
+                  disabled={disabled || !selectedProvider}
+                  ariaLabel={frontendMessage("config.model.configuredOnly")}
+                  className="h-8 w-10 justify-center"
+                  onCheckedChange={onConfiguredOnlyChange}
+                />
+              </span>
               {onAddManualModel ? (
                 <Tooltip content={frontendMessage("config.model.manualAdd")} side="top">
                   <button
@@ -326,16 +321,14 @@ function ProviderModelRows({
         <section
           key={group.id}
           className={cn(
-            groupedCards
-              ? "mx-3 mt-3 overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50 last:mb-3"
-              : "border-b border-ink-200/70 last:border-b-0",
+            "border-b border-ink-200/70 last:border-b-0",
           )}
         >
           <div
             ref={(element) => onGroupRef(group.id, element)}
             className={cn(
               "flex scroll-mt-0 items-center justify-between border-b border-ink-200/70 bg-paper-100 px-3",
-              groupedCards ? "h-10" : "sticky top-0 z-[1] h-8",
+              groupedCards ? "h-9" : "sticky top-0 z-[1] h-8",
             )}
           >
             <span className="flex min-w-0 items-center gap-1.5">
@@ -413,9 +406,9 @@ function ProviderModelRow({
       <span className="flex flex-wrap items-center justify-end gap-1.5">
         <ConfiguredModelBadge isDefault={isDefault} configured={Boolean(configured)} />
         {pending ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-medium text-ink-600">
+          <span className="inline-flex items-center gap-1.5 text-[10.5px] font-medium text-ink-600">
             <Loader2 className="h-3 w-3 animate-spin text-accent-content" />{" "}
-            {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.356.58")}
+            {frontendMessage("settings.modelManagement.adding")}
           </span>
         ) : configured && (onSetDefaultModel || onRemoveModel) ? (
           <>
@@ -425,6 +418,7 @@ function ProviderModelRow({
               className={modelActionClassName}
               onClick={() => onConfigureModel(model)}
             >
+              <Settings2 className="h-3 w-3" />
               {frontendMessage("chat.model.configure")}
             </button>
             {!isDefault && onSetDefaultModel ? (
@@ -434,6 +428,7 @@ function ProviderModelRow({
                 className={modelActionClassName}
                 onClick={() => onSetDefaultModel(configured)}
               >
+                <Star className="h-3 w-3" />
                 {frontendMessage("chat.model.setDefault")}
               </button>
             ) : null}
@@ -444,6 +439,7 @@ function ProviderModelRow({
                 className={modelRemoveActionClassName}
                 onClick={() => onRemoveModel(configured)}
               >
+                <Trash2 className="h-3 w-3" />
                 {frontendMessage("chat.model.remove")}
               </button>
             ) : null}
@@ -453,8 +449,8 @@ function ProviderModelRow({
             type="button"
             disabled={disabled || !providerId}
             className={iconButtonClassName}
-            title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.362.17")}
-            aria-label={frontendMessage("config.model.configure")}
+            title={frontendMessage("chat.model.configure")}
+            aria-label={frontendMessage("chat.model.configure")}
             onClick={() => onConfigureModel(model)}
           >
             <Settings2 className="h-3.5 w-3.5" />
@@ -464,7 +460,7 @@ function ProviderModelRow({
             type="button"
             disabled={disabled || !providerId}
             className={iconButtonClassName}
-            title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.371.17")}
+            title={frontendMessage("config.model.addModel")}
             aria-label={frontendMessage("config.model.addModel")}
             onClick={() => onAddModel(model)}
           >
@@ -485,8 +481,8 @@ function ConfiguredModelBadge({
 }): JSX.Element | null {
   if (isDefault) {
     return (
-      <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-accent-content">
-        DEFAULT
+      <span className="text-[10.5px] font-medium text-accent-content">
+        {frontendMessage("config.model.default")}
       </span>
     );
   }
@@ -494,8 +490,8 @@ function ConfiguredModelBadge({
     // TODO: this is a configured-state badge, not model enablement. Persisted
     // model Enabled plus runtime filtering require a backend contract first.
     return (
-      <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-moss-600">
-        {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.401.9")}
+      <span className="text-[10.5px] text-ink-500">
+        {frontendMessage("settings.modelManagement.added")}
       </span>
     );
   }
@@ -516,16 +512,16 @@ function ModelGroupSummary({
   }
   return (
     <div className="border-b border-ink-200/70 bg-paper-50 px-2.5 py-2">
-      <div className="flex min-w-0 flex-wrap gap-1.5">
+      <div className="flex min-w-0 flex-wrap gap-1">
         <button
           type="button"
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-ink-300 bg-paper-100 px-2.5 text-[11px] text-ink-750 transition-colors duration-150 hover:border-ink-400 hover:bg-paper-50"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-accent-border px-1.5 text-[11px] text-ink-750 transition-colors duration-150 hover:text-accent-content-hover"
           onClick={() => onSelectGroup(null)}
           title={frontendMessage("config.model.allModelsTitle", { count: total })}
         >
           <Tags className="h-3.5 w-3.5" />
           <span className="font-medium">
-            {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.430.41")}
+            {frontendMessage("config.model.allModels")}
           </span>
           <span className="tabular-nums text-[10px] text-ink-400">{total}</span>
         </button>
@@ -533,7 +529,7 @@ function ModelGroupSummary({
           <button
             type="button"
             key={group.id}
-            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-100 px-2.5 text-[11px] text-ink-650 transition-colors duration-150 hover:border-ink-400 hover:bg-paper-50 hover:text-ink-850"
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-transparent px-1.5 text-[11px] text-ink-650 transition-colors duration-150 hover:border-ink-350 hover:text-ink-850"
             title={`${group.label}: ${group.rows.length}`}
             onClick={() => onSelectGroup(group.id)}
           >

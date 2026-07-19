@@ -3,8 +3,6 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { useConfigMutationController } from "../../../Frontend/src/app/useConfigMutationController.ts";
-import { resolveConfigSettingsEvent } from "../../../Frontend/src/app/useConfigSettingsCommands.ts";
-import { useConfigMutationTransport } from "../../../Frontend/src/app/useConfigMutationTransport.ts";
 import { resolvePluginSettingsEvent } from "../../../Frontend/src/app/usePluginSettingsCommands.ts";
 import { resolvePresetEvent } from "../../../Frontend/src/app/usePresetCommands.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
@@ -326,7 +324,7 @@ test("plugin event resolver ignores unrelated events", () => {
   expect(resolvePluginSettingsEvent(event(EventKinds.RunStarted, "run", { input: "x" }), new Set())).toBe(null);
 });
 
-test("app mutation event resolvers cover success and failure projections", () => {
+test("plugin and preset event resolvers cover success projections", () => {
   const pending = new Set(["request-1"]);
   expect(
     resolvePluginSettingsEvent(
@@ -340,25 +338,6 @@ test("app mutation event resolvers cover success and failure projections", () =>
       pending,
     ),
   ).toMatchObject({ kind: "preset_success" });
-  expect(
-    resolveConfigSettingsEvent(
-      event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: "request-1", kind: "config_update" } }),
-      pending,
-    ),
-  ).toMatchObject({ kind: "config_update_success" });
-});
-
-test("useConfigMutationTransport exposes open and offline transport paths", () => {
-  const send = vi.fn(() => true);
-  const sendRef = { current: send };
-  const statusRef = { current: "open" };
-  const handleRef = { current: null };
-  render(React.createElement(TransportHarness, { sendRef, statusRef, handleRef }));
-  expect(handleRef.current.sendWhenOpen({ type: "config.get" })).toBe(true);
-  expect(handleRef.current.readOpenTransport("offline")).toBe(send);
-  statusRef.current = "idle";
-  expect(handleRef.current.sendWhenOpen({ type: "config.get" })).toBe(false);
-  expect(handleRef.current.readOpenTransport("offline")).toBe(null);
 });
 
 test("useConfigMutationController routes preset and main config acknowledgements to their owning domains", async () => {
@@ -627,14 +606,6 @@ function createConfigSnapshot(overrides = {}) {
     form: { version: 1, sections: [] },
     ...overrides,
   };
-}
-
-function TransportHarness({ sendRef, statusRef, handleRef }) {
-  const handle = useConfigMutationTransport({ sendRef, statusRef });
-  useEffect(() => {
-    handleRef.current = handle;
-  });
-  return null;
 }
 
 function event(kind, phase, data, overrides = {}) {

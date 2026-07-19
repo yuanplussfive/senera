@@ -1,12 +1,16 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCcw, RefreshCw } from "lucide-react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Button } from "./Button";
+import { cn } from "../../lib/util";
 
-interface ErrorBoundaryProps {
+export interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: (error: Error, reset: () => void) => ReactNode;
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
   resetKey?: unknown;
+  presentation?: "component" | "app";
+  reload?: () => void;
 }
 
 interface ErrorBoundaryState {
@@ -54,7 +58,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       // Default fallback UI
-      return <DefaultErrorFallback onReset={this.resetErrorBoundary} />;
+      return (
+        <DefaultErrorFallback
+          onReset={this.resetErrorBoundary}
+          presentation={this.props.presentation ?? "component"}
+          onReload={this.props.reload}
+        />
+      );
     }
 
     return this.props.children;
@@ -63,27 +73,48 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
 interface DefaultErrorFallbackProps {
   onReset: () => void;
+  onReload?: () => void;
+  presentation: "component" | "app";
 }
 
-function DefaultErrorFallback({ onReset }: DefaultErrorFallbackProps): JSX.Element {
+function DefaultErrorFallback({ onReset, onReload, presentation }: DefaultErrorFallbackProps): JSX.Element {
+  const appPresentation = presentation === "app";
   return (
-    <div className="flex h-full w-full items-center justify-center bg-paper-50 p-6" role="alert">
-      <div className="flex max-w-md flex-col items-center gap-4 rounded-lg border border-border-200 bg-paper-100 p-6 text-center shadow-sm">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive-100">
-          <AlertCircle aria-hidden="true" className="h-6 w-6 text-destructive-600" />
+    <main
+      className={cn(
+        "flex w-full items-center justify-center bg-paper-50 p-6",
+        appPresentation ? "min-h-screen" : "h-full",
+      )}
+      role="alert"
+    >
+      <section
+        aria-labelledby="error-boundary-title"
+        className="flex w-full max-w-[520px] flex-col gap-4 rounded-lg border border-ink-200 bg-paper-100 p-6 text-center shadow-panel"
+      >
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-brick-50">
+          <AlertCircle aria-hidden="true" className="h-6 w-6 text-brick-600" />
         </div>
         <div className="flex flex-col gap-2">
-          <h3 className="text-lg font-semibold text-text-primary">Something went wrong</h3>
-          <p className="text-sm text-text-secondary">
-            An unexpected error occurred. You can try refreshing this component, or reload the page if the problem
-            persists.
+          <h1 id="error-boundary-title" className="text-[16px] font-semibold text-ink-950">
+            {frontendMessage("app.errorBoundary.title")}
+          </h1>
+          <p className="text-[13px] leading-5 text-ink-600">
+            {frontendMessage("app.errorBoundary.description")}
           </p>
         </div>
-        <Button onClick={onReset} variant="default" className="mt-2">
-          <RefreshCw aria-hidden="true" className="mr-2 h-4 w-4" />
-          Try again
-        </Button>
-      </div>
-    </div>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button onClick={onReset} variant="outline">
+            <RefreshCw aria-hidden="true" className="h-4 w-4" />
+            {frontendMessage("app.errorBoundary.retry")}
+          </Button>
+          {appPresentation ? (
+            <Button onClick={onReload ?? (() => globalThis.location?.reload())}>
+              <RefreshCcw aria-hidden="true" className="h-4 w-4" />
+              {frontendMessage("app.errorBoundary.reload")}
+            </Button>
+          ) : null}
+        </div>
+      </section>
+    </main>
   );
 }

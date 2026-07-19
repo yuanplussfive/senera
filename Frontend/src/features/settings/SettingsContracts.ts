@@ -34,14 +34,10 @@ export interface SettingsPluginCommands {
 }
 
 /**
- * Composed handle passed as `SettingsWorkbenchProps.systemConfig` once the app root
- * is wired to `useConfigMutationController`. The controller itself does not source
- * `configSnapshot`/catalogs/errors (it takes `configSnapshot` as an input and expects
- * catalogs/errors to be read from the store by the caller), so this type layers those
- * three store-sourced fields on top of the controller's own return shape. Structurally
- * satisfies `SettingsConfigCommands` (the type the resurrected Child 2/3 components are
- * written against) with some additional fields (`ingestConfigMutationEvent`,
- * `pluginConfigOperations`, `presetOperations`, etc.) that are harmless excess properties.
+ * Composed handle passed as `SettingsWorkbenchProps.systemConfig`. The controller
+ * receives the current config snapshot as an input, while provider catalogs and
+ * errors are read from the store by the app root; this type layers those fields on
+ * top of the controller's mutation commands for the settings sections.
  */
 export interface SettingsSystemConfigHandle extends ConfigMutationController {
   configSnapshot: ConfigSnapshotData | null;

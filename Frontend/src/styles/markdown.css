@@ -99,9 +99,6 @@
   font-size: 12.5px;
   line-height: 1.7;
 }
-.markdown-renderer [data-rehype-pretty-code-figure] {
-  margin: 0.9rem 0;
-}
 .markdown-renderer__code-block {
   overflow: hidden;
   border: 1px solid var(--line-subtle);

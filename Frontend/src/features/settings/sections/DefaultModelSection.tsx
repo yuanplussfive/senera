@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { Check, Loader2 } from "lucide-react";
-import { Button } from "../../../shared/ui";
+import { Button, MenuSelect } from "../../../shared/ui";
 import { findTopField } from "../../chat/modelConfigData";
-import { MenuSelect } from "../../chat/ModelConfigPrimitives";
 import { SettingsWorkspaceState } from "../SettingsWorkspaceSurface";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { readDefaultAssistantModelCandidates, readModelServiceState } from "./modelServiceState";
@@ -70,10 +69,11 @@ export function DefaultModelSection({ systemConfig }: { systemConfig?: SettingsS
         </div>
         <div className="space-y-3 px-1 pt-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="min-w-0 flex-1" aria-label={frontendMessage("settings.model.defaultAria")}>
+            <div className="min-w-0 flex-1">
               <MenuSelect
                 value={currentModelId}
                 placeholder={frontendMessage("settings.model.defaultPlaceholder")}
+                ariaLabel={frontendMessage("settings.model.defaultAria")}
                 options={candidates.map(({ model, provider }) => ({
                   value: model.Id,
                   label: `${model.Model} · ${provider.Id}`,
@@ -87,7 +87,7 @@ export function DefaultModelSection({ systemConfig }: { systemConfig?: SettingsS
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> {frontendMessage("settings.state.saving")}
               </Button>
             ) : operation?.status === "success" ? (
-              <span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-moss-200 bg-moss-50 px-2.5 text-[11.5px] font-medium text-moss-700">
+              <span className="inline-flex h-8 items-center gap-1.5 text-[11.5px] font-medium text-moss-700">
                 <Check className="h-3.5 w-3.5" /> {frontendMessage("settings.state.saved")}
               </span>
             ) : null}

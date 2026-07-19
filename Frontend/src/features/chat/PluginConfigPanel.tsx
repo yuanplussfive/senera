@@ -3,7 +3,7 @@ import { RefreshCw, RotateCcw, Search } from "lucide-react";
 import type { PluginConfigField, PluginConfigItem, PluginConfigMutationState } from "../../api/eventTypes";
 import type { SocketStatus } from "../../api/useAgentSocket";
 import { cn } from "../../lib/util";
-import { Button, ScrollArea, Tooltip } from "../../shared/ui";
+import { Button, ScrollArea, Switch, Tooltip } from "../../shared/ui";
 import {
   ConfigSourceNotice,
   Diagnostics,
@@ -371,20 +371,24 @@ export function PluginConfigContent({
                 {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.189.65")}
               </div>
             </div>
-            <Tooltip content={frontendMessage("pluginConfig.refresh")} side="bottom">
+            <Tooltip content={frontendMessage("pluginConfig.syncTitle")} side="bottom">
               <button
                 type="button"
-                className="grid h-8 w-8 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
+                className={cn(
+                  "inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-[11.5px] text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800",
+                  layout === "compact" && "w-8 px-0",
+                )}
                 onClick={onRefresh}
-                aria-label={frontendMessage("pluginConfig.refresh")}
+                aria-label={frontendMessage("pluginConfig.syncTitle")}
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                <span className={cn(layout === "compact" && "sr-only")}>{frontendMessage("pluginConfig.sync")}</span>
               </button>
             </Tooltip>
           </div>
 
           <div className="px-3 pb-2 lg:pb-2">
-            <label className="flex h-8 items-center gap-2 rounded-lg border border-transparent bg-paper-50 px-2.5 text-ink-400 shadow-panel transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
+            <label className="flex h-8 items-center gap-2 rounded-md border border-line bg-paper-50 px-2.5 text-ink-400 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <Search className="h-3.5 w-3.5 shrink-0" />
               <input
                 value={filterText}
@@ -568,13 +572,15 @@ function PluginSelectorRows({
             key={plugin.name}
             type="button"
             className={cn(
-              "flex items-center gap-2 rounded-lg px-2.5 py-2 text-left transition",
+              "flex items-center gap-2 rounded-md px-2.5 py-2 text-left transition",
               embedded
                 ? "min-w-0 lg:gap-3 lg:px-3 lg:py-2.5"
                 : workspace
                   ? "w-full min-w-0 gap-3 px-3 py-2.5"
                   : "min-w-[172px] lg:w-full lg:min-w-0 lg:gap-3 lg:px-3 lg:py-2.5",
-              active ? "bg-paper-50 text-ink-900 shadow-panel" : "text-ink-600 hover:bg-paper-50/70 hover:text-ink-900",
+              active
+                ? "bg-ink-900/[0.055] text-ink-900"
+                : "text-ink-600 hover:bg-paper-50/70 hover:text-ink-900",
             )}
             onClick={() => onSelect(plugin.name)}
           >
@@ -597,7 +603,6 @@ function PluginSelectorRows({
                 {frontendMessage("runtime.migrated.features.chat.PluginConfigPanel.391.62")}
               </span>
             </span>
-            {active ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-solid" /> : null}
           </button>
         );
       })}
@@ -622,32 +627,14 @@ function TogglePill({
   onClick: () => void;
 }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Switch
+      checked={enabled}
       disabled={disabled}
-      onClick={onClick}
-      aria-pressed={enabled}
-      className={cn(
-        "inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-1.5 text-[12px] transition",
-        enabled ? "text-moss-600" : "text-ink-500",
-        !disabled && "hover:bg-ink-900/[0.04]",
-        disabled && "pointer-events-none opacity-45",
-      )}
-      aria-label={frontendMessage(enabled ? "pluginConfig.disableLabel" : "pluginConfig.enableLabel", { label })}
-    >
-      <span className={cn("relative h-5 w-9 rounded-full transition", enabled ? "bg-moss-500" : "bg-ink-300")}>
-        <span
-          className={cn(
-            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-            enabled && "translate-x-4",
-          )}
-        />
-      </span>
-      <span>{frontendMessage(enabled ? "pluginConfig.enabled" : "pluginConfig.disabled")}</span>
-    </button>
+      ariaLabel={frontendMessage(enabled ? "pluginConfig.disableLabel" : "pluginConfig.enableLabel", { label })}
+      onCheckedChange={() => onClick()}
+    />
   );
 }
-
 function pluginSearchText(plugin: PluginConfigItem): string {
   const fieldText = plugin.sections
     .flatMap((section) => [

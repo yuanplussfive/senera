@@ -67,6 +67,18 @@ export function ProviderConnectionList({
           const enabled = providerEnabled(provider);
           const modelCount = catalog?.models.length ?? 0;
           const protectedProvider = isProtectedProvider(provider.Id);
+          const statusText = loading
+            ? frontendMessage("settings.modelManagement.fetching")
+            : operationPending
+              ? frontendMessage("settings.provider.savingConnection")
+              : operationError
+                ? frontendMessage("settings.provider.lastSaveFailed")
+                : catalog
+                  ? frontendMessage("settings.provider.catalogSummary", {
+                      models: frontendMessage("settings.provider.modelsCount", { count: modelCount }),
+                      time: formatShortTime(catalog.fetchedAt),
+                    })
+                  : null;
           return (
             <div
               key={provider.Id}
@@ -96,34 +108,24 @@ export function ProviderConnectionList({
                   <span className="block truncate text-[13px] font-semibold" title={providerIdLabel(provider)}>
                     {providerIdLabel(provider)}
                   </span>
-                  <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-450">
-                    <ProviderStatusIcon
-                      loading={loading || operationPending}
-                      catalog={catalog}
-                      error={error || operationError}
-                    />
-                    <span className="truncate">
-                      {operationPending
-                        ? frontendMessage("settings.provider.savingConnection")
-                        : operationError
-                          ? frontendMessage("settings.provider.lastSaveFailed")
-                          : catalog
-                            ? frontendMessage("settings.provider.catalogSummary", {
-                                models: frontendMessage("settings.provider.modelsCount", { count: modelCount }),
-                                time: formatShortTime(catalog.fetchedAt),
-                              })
-                            : provider.Id || frontendMessage("settings.provider.unsetId")}
+                  {statusText ? (
+                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-ink-450">
+                      <ProviderStatusIcon
+                        loading={loading || operationPending}
+                        catalog={catalog}
+                        error={error || operationError}
+                      />
+                      <span className="truncate">{statusText}</span>
                     </span>
-                  </span>
+                  ) : null}
                 </span>
                 <span
+                  aria-hidden="true"
                   className={cn(
-                    "rounded-md border border-ink-200 bg-paper-100 px-2 py-0.5 text-[10px] font-semibold",
-                    enabled ? "text-moss-600" : "text-ink-450",
+                    "h-2 w-2 shrink-0 rounded-full transition-colors duration-150",
+                    enabled ? "bg-accent-solid" : "bg-ink-300",
                   )}
-                >
-                  {enabled ? "ON" : "OFF"}
-                </span>
+                />
               </button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -173,14 +175,7 @@ export function ProviderConnectionList({
               <div className="truncate text-[14px] font-semibold text-ink-900">
                 {frontendMessage("settings.model.serviceTitle")}
               </div>
-              <div className="mt-0.5 truncate text-[11px] text-ink-500">
-                {providerQuery
-                  ? frontendMessage("settings.provider.filteredEndpoints", {
-                      visible: providerResults.length,
-                      total: providers.length,
-                    })
-                  : frontendMessage("settings.provider.endpointsCount", { count: providers.length })}
-              </div>
+
             </div>
             <button
               type="button"

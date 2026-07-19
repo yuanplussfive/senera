@@ -1,7 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { BrainCircuit, Route, Settings2 } from "lucide-react";
+import { BrainCircuit, Route } from "lucide-react";
 import { cn } from "../../lib/util";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, ScrollArea } from "../../shared/ui";
+import { MenuSelect, ScrollArea } from "../../shared/ui";
 import {
   JsonConfigSettingsView,
   writeJsonConfigFieldValue,
@@ -58,7 +58,7 @@ export function PlanningConfigView({
             <Route className="h-4 w-4 text-ink-450" />
             {frontendMessage("runtime.migrated.features.chat.PlanningConfigView.64.13")}
           </div>
-          <div className="overflow-hidden border border-ink-200/70 bg-paper-100 shadow-panel">
+          <div className="border-y border-ink-200/70 bg-paper-100">
             <div className="grid min-w-0 gap-3 bg-paper-50 px-3 py-3 md:grid-cols-[150px_minmax(0,1fr)] md:items-start">
               <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-medium text-ink-800">
                 <BrainCircuit className="h-3.5 w-3.5 text-ink-400" />
@@ -70,11 +70,35 @@ export function PlanningConfigView({
                 <MenuSelect
                   value={selectedModelId}
                   placeholder={frontendMessage("runtime.migrated.features.chat.PlanningConfigView.75.31")}
+                  ariaLabel={frontendMessage("runtime.migrated.features.chat.PlanningConfigView.70.44")}
                   options={[
                     { value: "", label: frontendMessage("runtime.migrated.features.chat.PlanningConfigView.77.41") },
                     ...modelOptions,
                   ]}
                   disabled={Boolean(disabled)}
+                  size="md"
+                  renderValue={(value, option) => {
+                    const current = modelOptions.find((entry) => entry.value === value);
+                    return current ? (
+                      <span className="inline-flex min-w-0 items-center gap-2">
+                        <ModelProviderIcon icon={current.icon} size={16} />
+                        <span className="truncate">{current.label}</span>
+                      </span>
+                    ) : (
+                      <span className="truncate">{option?.label}</span>
+                    );
+                  }}
+                  renderOption={(option) => {
+                    const current = modelOptions.find((entry) => entry.value === option.value);
+                    return current ? (
+                      <span className="inline-flex min-w-0 items-center gap-2">
+                        <ModelProviderIcon icon={current.icon} size={16} />
+                        <span className="truncate">{current.label}</span>
+                      </span>
+                    ) : (
+                      <span className="truncate">{option.label}</span>
+                    );
+                  }}
                   onChange={(ModelProviderId) =>
                     onChange(writeOptionalPath(value, ["ActionPlanner", "Client", "ModelProviderId"], ModelProviderId))
                   }
@@ -108,52 +132,6 @@ export function PlanningConfigView({
     <ScrollArea className="h-full min-h-0 flex-1 bg-paper-50" viewportClassName="h-full">
       {content}
     </ScrollArea>
-  );
-}
-
-function MenuSelect({
-  value,
-  placeholder,
-  options,
-  disabled,
-  onChange,
-}: {
-  value: string;
-  placeholder: string;
-  options: Array<{ value: string; label: string; icon?: string }>;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}): JSX.Element {
-  const selected = options.find((option) => option.value === value);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          disabled={disabled}
-          className={cn(
-            "flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5",
-            "text-left text-[12.5px] text-ink-800 transition hover:border-accent-border-strong disabled:pointer-events-none disabled:opacity-55",
-          )}
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            {selected?.icon ? <ModelProviderIcon icon={selected.icon} size={16} /> : null}
-            <span className={cn("truncate", !selected && "text-ink-350")}>{selected?.label ?? placeholder}</span>
-          </span>
-          <Settings2 className="h-3.5 w-3.5 shrink-0 text-ink-350" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-[320px] min-w-[280px] overflow-y-auto bg-paper-50">
-        {options.map((option) => (
-          <DropdownMenuItem key={option.value || "default"} onSelect={() => onChange(option.value)}>
-            <span className="inline-flex min-w-0 items-center gap-2">
-              {option.icon ? <ModelProviderIcon icon={option.icon} size={16} /> : null}
-              <span className="truncate">{option.label}</span>
-            </span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

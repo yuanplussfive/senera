@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ArrowUpDown, BrainCircuit, Database, Eye, ImageIcon, MessageCircle, ShieldCheck } from "lucide-react";
 import { cn } from "../../lib/util";
+import { SwitchTrack } from "../../shared/ui";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ModelCapabilitiesDraft } from "./modelConfigTypes";
 
@@ -50,7 +51,7 @@ export function CapabilityToggle({
       type="button"
       disabled={disabled}
       className={cn(
-        "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition",
+        "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
         active
           ? "border-ink-300 bg-paper-50 text-ink-900"
           : "border-ink-200 bg-paper-100 text-ink-650 hover:bg-ink-900/[0.035]",
@@ -65,14 +66,7 @@ export function CapabilityToggle({
         </span>
         <span className="truncate text-[12.5px] font-medium">{label}</span>
       </span>
-      <span className={cn("relative h-5 w-9 rounded-full transition", active ? "bg-moss-500" : "bg-ink-300")}>
-        <span
-          className={cn(
-            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-            active && "translate-x-4",
-          )}
-        />
-      </span>
+      <SwitchTrack checked={active} />
     </button>
   );
 }

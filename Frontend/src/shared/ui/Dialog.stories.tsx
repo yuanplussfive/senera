@@ -1,30 +1,26 @@
 import type { Story } from "@ladle/react";
 import { useState } from "react";
-import { Dialog, DialogTrigger, DialogContent, DialogActions, DialogActionButton } from "./Dialog";
 import { Button } from "./Button";
+import { Dialog, DialogActionButton, DialogActions, DialogContent, DialogTrigger } from "./Dialog";
 
 export const BasicDialog: Story = () => {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex items-center justify-center min-h-[400px] p-8">
+    <div className="flex min-h-[400px] items-center justify-center p-8">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button>Open Dialog</Button>
+          <Button>打开对话框</Button>
         </DialogTrigger>
-        <DialogContent
-          motionPreset="modal"
-          title="Dialog Title"
-          description="This is a dialog description. It provides context about what this dialog does."
-        >
+        <DialogContent motionPreset="modal" title="保存工作区设置" description="确认后，新的设置会应用到当前工作区。">
           <div className="space-y-4">
-            <p className="text-ink-700 text-sm">This is the dialog content. You can put any content here.</p>
+            <p className="text-sm text-ink-700">这里可以放置当前任务需要集中处理的内容。</p>
             <DialogActions>
               <DialogActionButton close variant="secondary">
-                Cancel
+                取消
               </DialogActionButton>
               <DialogActionButton close variant="primary">
-                Confirm
+                确认
               </DialogActionButton>
             </DialogActions>
           </div>
@@ -38,26 +34,24 @@ export const DestructiveDialog: Story = () => {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex items-center justify-center min-h-[400px] p-8">
+    <div className="flex min-h-[400px] items-center justify-center p-8">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button variant="destructive">Delete Item</Button>
+          <Button variant="destructive">删除项目</Button>
         </DialogTrigger>
         <DialogContent
           motionPreset="modal"
-          title="Are you sure?"
-          description="This action cannot be undone. This will permanently delete the item."
+          title="确定删除这个项目吗？"
+          description="该操作无法撤销，项目及其本地记录将被永久删除。"
         >
           <div className="space-y-4">
-            <p className="text-ink-700 text-sm">
-              Please confirm that you want to proceed with this destructive action.
-            </p>
+            <p className="text-sm text-ink-700">请确认当前项目不再需要保留。</p>
             <DialogActions>
               <DialogActionButton close variant="secondary">
-                Cancel
+                取消
               </DialogActionButton>
               <DialogActionButton close variant="danger">
-                Delete
+                删除
               </DialogActionButton>
             </DialogActions>
           </div>
@@ -71,17 +65,17 @@ export const WithoutDescription: Story = () => {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex items-center justify-center min-h-[400px] p-8">
+    <div className="flex min-h-[400px] items-center justify-center p-8">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button>Open Simple Dialog</Button>
+          <Button>打开简单对话框</Button>
         </DialogTrigger>
-        <DialogContent motionPreset="modal" title="Simple Dialog">
+        <DialogContent motionPreset="modal" title="操作完成">
           <div className="space-y-4">
-            <p className="text-ink-700 text-sm">This dialog doesn't have a description, only a title.</p>
+            <p className="text-sm text-ink-700">内容较简单时可以只保留标题。</p>
             <DialogActions>
               <DialogActionButton close variant="primary">
-                Close
+                关闭
               </DialogActionButton>
             </DialogActions>
           </div>

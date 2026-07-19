@@ -3,7 +3,7 @@ import { Code2, Settings2 } from "lucide-react";
 import type { TomlTableWithoutBigInt } from "smol-toml";
 import type { PluginConfigField, PluginConfigItem, PluginConfigSection } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { ScrollArea } from "../../shared/ui";
+import { ScrollArea, SwitchTrack } from "../../shared/ui";
 import { FieldControl } from "./PluginConfigFields";
 import { readDraftValue } from "./pluginConfigDraft";
 
@@ -75,7 +75,10 @@ export function SettingsView({
   const content = (
     <div
       onBlurCapture={onCommit}
-      className={cn("mx-auto w-full max-w-[820px] px-4 py-5 sm:px-5 sm:py-8", layoutMode === "panel" && "min-h-full")}
+      className={cn(
+        "mx-auto w-full max-w-[820px] min-w-0 px-4 py-5 sm:px-5 sm:py-8",
+        layoutMode === "panel" && "min-h-full",
+      )}
     >
       {parseError ? (
         <div className="mb-5 rounded-lg border border-brick-100 bg-brick-50 px-3 py-2 text-[12.5px] text-brick-700">
@@ -120,7 +123,11 @@ export function SettingsView({
     return <div className="bg-paper-50">{content}</div>;
   }
 
-  return <ScrollArea className="min-h-0 flex-1 bg-paper-50">{content}</ScrollArea>;
+  return (
+    <ScrollArea className="min-h-0 flex-1 bg-paper-50" viewportClassName="[&>div]:!block">
+      {content}
+    </ScrollArea>
+  );
 }
 
 export function TomlView({
@@ -238,7 +245,7 @@ function PluginToolsSection({
           {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.232.104")}
         </span>
       </div>
-      <div className="plugin-config-tool-grid grid gap-2">
+      <div className="plugin-config-tool-grid divide-y divide-ink-200/70 border-y border-ink-200/70">
         {plugin.tools.map((tool) => (
           <button
             key={tool.name}
@@ -246,26 +253,14 @@ function PluginToolsSection({
             disabled={disabled}
             aria-pressed={tool.enabled}
             className={cn(
-              "flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition",
-              tool.enabled ? "border-moss-200 bg-moss-50/70 text-ink-900" : "border-ink-200 bg-paper-50 text-ink-600",
-              !disabled && "hover:border-accent-border-strong hover:bg-accent-surface-hover",
+              "flex w-full min-w-0 items-center gap-3 px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus",
+              tool.enabled ? "text-ink-900" : "text-ink-600",
+              !disabled && "hover:bg-ink-900/[0.035]",
               disabled && "pointer-events-none opacity-55",
             )}
             onClick={() => onSetToolEnabled(tool.name, !tool.enabled)}
           >
-            <span
-              className={cn(
-                "relative h-5 w-9 shrink-0 rounded-full transition",
-                tool.enabled ? "bg-moss-500" : "bg-ink-300",
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-                  tool.enabled && "translate-x-4",
-                )}
-              />
-            </span>
+            <SwitchTrack checked={tool.enabled} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[12.5px] font-medium">{tool.name}</span>
               {tool.summary ? (
@@ -305,7 +300,7 @@ function SettingsSection({
           {section.fields.length} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.302.83")}
         </span>
       </div>
-      <div className="divide-y divide-ink-200/70 overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50 shadow-panel">
+      <div className="divide-y divide-ink-200/70 border-y border-ink-200/70 bg-paper-50">
         {section.fields.map((field) => (
           <FieldControl
             key={field.path.join(".")}

@@ -1,14 +1,13 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { BrainCircuit, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "../../lib/util";
-import { Button, Dialog, DialogContent, ScrollArea } from "../../shared/ui";
+import { Button, Dialog, DialogContent, MenuSelect, ScrollArea } from "../../shared/ui";
 import { ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
 import { readBooleanWithTemplate, readModelCapabilities, readNumberWithTemplate } from "./modelConfigData";
 import type { ModelCapabilitiesDraft, ModelProviderDraft } from "./modelConfigTypes";
 import { CapabilityToggle, ModelCapabilityIconItems } from "./ModelCapabilityControls";
 import {
   MenuRow,
-  MenuSelect,
   NumberRow,
   SectionLabel,
   SettingsTable,
@@ -34,9 +33,6 @@ export function ModelOptionsDialog({
     existing: frontendMessage("config.model.applyToDraft"),
     new: frontendMessage("config.model.addToDraft"),
   },
-  groupId = "",
-  groupOptions = [],
-  onGroupChange,
 }: {
   model: ModelProviderDraft | null;
   modelIndex: number | null;
@@ -52,9 +48,6 @@ export function ModelOptionsDialog({
   onRemove: (index: number) => void;
   removeDisabledReason?: string;
   commitLabels?: { existing: string; new: string };
-  groupId?: string;
-  groupOptions?: Array<{ value: string; label: string; icon?: string }>;
-  onGroupChange?: (groupId: string) => void;
 }): JSX.Element {
   const open = model !== null;
   if (!model) {
@@ -151,20 +144,6 @@ export function ModelOptionsDialog({
                   disabled
                   icon={<Settings2 className="h-3.5 w-3.5" />}
                 />
-                {onGroupChange ? (
-                  <MenuRow
-                    icon={<BrainCircuit className="h-3.5 w-3.5" />}
-                    label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.151.82")}
-                  >
-                    <MenuSelect
-                      value={groupId}
-                      placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.154.35")}
-                      options={groupOptions}
-                      disabled={disabled}
-                      onChange={onGroupChange}
-                    />
-                  </MenuRow>
-                ) : null}
               </SettingsTable>
             </section>
 
@@ -199,6 +178,7 @@ export function ModelOptionsDialog({
                   <MenuSelect
                     value={model.Endpoint}
                     placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.188.33")}
+                    ariaLabel={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.185.77")}
                     options={endpointOptions}
                     disabled={disabled || endpointOptions.length === 0}
                     onChange={(Endpoint) => onChange({ Endpoint })}
@@ -211,6 +191,7 @@ export function ModelOptionsDialog({
                   <MenuSelect
                     value={model.Icon ?? ""}
                     placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.197.33")}
+                    ariaLabel={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.194.80")}
                     options={iconOptions}
                     disabled={disabled}
                     renderValue={(value) =>

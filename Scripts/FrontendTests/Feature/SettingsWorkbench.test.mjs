@@ -55,55 +55,10 @@ describe("SettingsWorkbench", () => {
 
     fireEvent.change(screen.getByRole("textbox", { name: "搜索设置" }), { target: { value: "供应商" } });
     expect(screen.getByText("模型")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /模型服务/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /供应商/ })).toBeInTheDocument();
     expect(screen.queryByText("个人")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /模型服务/ }));
+    fireEvent.click(screen.getByRole("button", { name: /供应商/ }));
     expect(baseProps.onSectionChange).toHaveBeenCalledWith("model-service");
-  });
-
-  it("autosaves main configuration changes without a save-button click", async () => {
-    const saveConfig = vi.fn(() => "config-request");
-    const systemConfig = {
-      configSnapshot: {
-        path: "Config.toml",
-        version: 1,
-        value: { DisplayName: "initial" },
-        source: "sqlite",
-        diagnostics: [],
-        form: {
-          version: 1,
-          sections: [
-            {
-              name: "system",
-              label: "系统",
-              keyCount: 1,
-              fields: [
-                {
-                  section: "system",
-                  key: "DisplayName",
-                  path: ["DisplayName"],
-                  label: "显示名称",
-                  type: "string",
-                  value: "initial",
-                  effectiveValue: "initial",
-                  configured: true,
-                },
-              ],
-            },
-          ],
-        },
-      },
-      configOperation: null,
-      refreshConfig: vi.fn(),
-      saveConfig,
-    };
-
-    renderWithFrontendProviders(
-      React.createElement(SettingsWorkbench, { ...baseProps, section: "system", systemConfig }),
-    );
-
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "changed" } });
-    await waitFor(() => expect(saveConfig).toHaveBeenCalledWith({ DisplayName: "changed" }));
   });
 });

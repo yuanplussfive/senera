@@ -1,9 +1,9 @@
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useEffect, useRef, useState } from "react";
 import { Check, CopyPlus, Plus, Trash2 } from "lucide-react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData, ConfigFormFieldOptionValue, ConfigFormSectionData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { ScrollArea } from "../ui";
+import { ScrollArea, Switch } from "../ui";
 import { JsonConfigRecordField } from "./JsonConfigRecordField";
 
 export type JsonConfigObject = Record<string, unknown>;
@@ -11,6 +11,7 @@ export type JsonConfigObject = Record<string, unknown>;
 export function JsonConfigSettingsView({
   layoutMode = "panel",
   sections,
+  showSectionHeading = true,
   value,
   disabled,
   emptyText = "没有可视化配置项",
@@ -19,6 +20,7 @@ export function JsonConfigSettingsView({
 }: {
   layoutMode?: "panel" | "embedded";
   sections: ConfigFormSectionData[];
+  showSectionHeading?: boolean;
   value: JsonConfigObject;
   disabled?: boolean;
   emptyText?: string;
@@ -33,25 +35,46 @@ export function JsonConfigSettingsView({
       className={cn("mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
     >
       {visibleSections.length > 0 ? (
-        <div className="space-y-7">
-          {visibleSections.map((section, sectionIndex) => (
-            <JsonSettingsSection
-              key={section.name}
-              section={section}
-              sectionIndex={sectionIndex}
-              value={value}
-              disabled={Boolean(disabled)}
-              onUpdateField={(field, nextValue) =>
-                onChange(
-                  writeJsonConfigFieldValue(value, field.path, normalizeFieldValue(field, nextValue)),
-                  field.type === "boolean" || Boolean(field.options?.length) ? "immediate" : "debounced",
-                )
-              }
+        <>
+          {visibleSections.length > 1 ? (
+            <nav
+              aria-label={frontendMessage("settings.config.sectionNavigation")}
+              className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-ink-200/70 pb-2"
+            >
+              <span className="text-[11px] font-medium text-ink-450">
+                {frontendMessage("settings.config.sectionNavigation")}:
+              </span>
+              {visibleSections.map((section) => (
+                <a
+                  key={section.name}
+                  href={"#" + jsonSectionAnchorId(section.name)}
+                  className="text-[11.5px] text-content-secondary underline decoration-ink-300 underline-offset-2 transition hover:text-content-primary"
+                >
+                  {section.label}
+                </a>
+              ))}
+            </nav>
+          ) : null}
+          <div className="space-y-7">
+            {visibleSections.map((section) => (
+              <JsonSettingsSection
+                key={section.name}
+                section={section}
+                showHeading={showSectionHeading}
+                value={value}
+                disabled={Boolean(disabled)}
+                onUpdateField={(field, nextValue) =>
+                  onChange(
+                    writeJsonConfigFieldValue(value, field.path, normalizeFieldValue(field, nextValue)),
+                    field.type === "boolean" || Boolean(field.options?.length) ? "immediate" : "debounced",
+                  )
+                }
             />
           ))}
-        </div>
+          </div>
+        </>
       ) : (
-        <div className="grid min-h-64 place-items-center border border-ink-200/70 bg-paper-50 text-[13px] text-ink-400 shadow-panel">
+        <div className="grid min-h-64 place-items-center border-y border-ink-200/70 bg-paper-50 text-[13px] text-ink-400">
           {emptyText}
         </div>
       )}
@@ -71,30 +94,31 @@ export function JsonConfigSettingsView({
 
 function JsonSettingsSection({
   section,
-  sectionIndex,
+  showHeading,
   value,
   disabled,
   onUpdateField,
 }: {
   section: ConfigFormSectionData;
-  sectionIndex: number;
+  showHeading: boolean;
   value: JsonConfigObject;
   disabled: boolean;
   onUpdateField: (field: ConfigFormFieldData, value: unknown) => void;
 }): JSX.Element {
   return (
-    <section>
-      <div className="mb-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-3 px-0.5">
-        <div className="min-w-0">
-          <h3 className="text-[13px] font-semibold text-ink-900">{section.label}</h3>
-          {section.description ? (
-            <p className="mt-0.5 text-[12px] leading-5 text-ink-500">{section.description}</p>
-          ) : null}
+    <section id={jsonSectionAnchorId(section.name)} className="scroll-mt-3">
+      {showHeading ? (
+        <div className="mb-2 min-w-0 px-0.5">
+          <div className="min-w-0">
+            <h3 className="text-[13px] font-semibold text-ink-900">{section.label}</h3>
+            {section.description ? (
+              <p className="mt-0.5 text-[12px] leading-5 text-ink-500">{section.description}</p>
+            ) : null}
+          </div>
         </div>
-        <span className="pb-0.5 font-mono text-[10.5px] text-ink-350">{String(sectionIndex + 1).padStart(2, "0")}</span>
-      </div>
+      ) : null}
 
-      <div className="overflow-hidden border border-ink-200/70 bg-paper-100 shadow-panel">
+      <div className="border-y border-ink-200/70 bg-paper-100">
         {section.fields.map((field) => (
           <JsonFieldControl
             key={field.path.join("\u001f")}
@@ -109,6 +133,10 @@ function JsonSettingsSection({
   );
 }
 
+
+function jsonSectionAnchorId(name: string): string {
+  return "json-config-section-" + name.replace(/[^A-Za-z0-9_-]+/g, "-");
+}
 function JsonFieldControl({
   field,
   value,
@@ -797,31 +825,14 @@ function TogglePill({
   onClick: () => void;
 }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Switch
+      checked={enabled}
       disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-8 shrink-0 items-center gap-2 px-1.5 text-[12px] transition",
-        enabled ? "text-moss-600" : "text-ink-500",
-        !disabled && "hover:bg-ink-900/[0.04]",
-        disabled && "pointer-events-none opacity-45",
-      )}
-      aria-label={`${enabled ? "关闭" : "开启"} ${label}`}
-    >
-      <span className={cn("relative h-5 w-9 rounded-full transition", enabled ? "bg-moss-500" : "bg-ink-300")}>
-        <span
-          className={cn(
-            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-            enabled && "translate-x-4",
-          )}
-        />
-      </span>
-      <span>{enabled ? "已启用" : "已关闭"}</span>
-    </button>
+      ariaLabel={label}
+      onCheckedChange={() => onClick()}
+    />
   );
 }
-
 const inputClassName = cn(
   "h-8 w-full min-w-0 border border-ink-200 bg-paper-100 px-2.5 text-[12.5px] text-ink-800",
   "outline-none transition placeholder:text-ink-400",

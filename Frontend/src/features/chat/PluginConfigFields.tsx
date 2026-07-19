@@ -3,6 +3,7 @@ import { Check, Plus, Trash2 } from "lucide-react";
 import type { PluginConfigField } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
+import { Switch } from "../../shared/ui";
 import {
   coerceArrayItem,
   defaultArrayItem,
@@ -306,28 +307,11 @@ function TogglePill({
   onClick: () => void;
 }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Switch
+      checked={enabled}
       disabled={disabled}
-      onClick={onClick}
-      aria-pressed={enabled}
-      className={cn(
-        "inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-1.5 text-[12px] transition",
-        enabled ? "text-moss-600" : "text-ink-500",
-        !disabled && "hover:bg-ink-900/[0.04]",
-        disabled && "pointer-events-none opacity-45",
-      )}
-      aria-label={frontendMessage(enabled ? "pluginConfig.disableLabel" : "pluginConfig.enableLabel", { label })}
-    >
-      <span className={cn("relative h-5 w-9 rounded-full transition", enabled ? "bg-moss-500" : "bg-ink-300")}>
-        <span
-          className={cn(
-            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-            enabled && "translate-x-4",
-          )}
-        />
-      </span>
-      <span>{frontendMessage(enabled ? "pluginConfig.enabled" : "pluginConfig.disabled")}</span>
-    </button>
+      ariaLabel={frontendMessage(enabled ? "pluginConfig.disableLabel" : "pluginConfig.enableLabel", { label })}
+      onCheckedChange={() => onClick()}
+    />
   );
 }
