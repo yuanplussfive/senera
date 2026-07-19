@@ -163,7 +163,7 @@ function TopBar({
         {dockTabs ? (
           <nav
             className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full border border-line-subtle bg-surface-subtle p-1"
-            aria-label="功能坞标签"
+            aria-label={frontendMessage("workflow.dock.tabs")}
             data-workflow-dock-tabs
           >
             {dockTabs.map((tab) => (
@@ -266,7 +266,15 @@ function TimelineFocusDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title={frontendMessage("workflow.panel.title")}
-        description={summary ? `${summary.completed}/${summary.total} 节点 · ${summary.tools} 工具` : undefined}
+        description={
+          summary
+            ? frontendMessage("workflow.summary.nodesAndTools", {
+                completed: summary.completed,
+                total: summary.total,
+                tools: summary.tools,
+              })
+            : undefined
+        }
         placement="inset"
         motionPreset="focus"
         frameClassName="bottom-3 left-3 right-3 top-3 sm:bottom-4 sm:left-4 sm:right-4 sm:top-4"

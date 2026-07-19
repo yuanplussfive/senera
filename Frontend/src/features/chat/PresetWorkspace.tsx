@@ -66,7 +66,7 @@ export function PresetTextEditorFallback({
         {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.90.9")}
       </div>
       <textarea
-        aria-label="角色预设内容"
+        aria-label={frontendMessage("preset.ui.content")}
         className="min-h-0 flex-1 resize-none bg-paper-50 px-4 py-3 font-mono text-[13px] leading-6 text-ink-800 outline-none placeholder:text-ink-400 focus:ring-2 focus:ring-inset focus:ring-accent-focus disabled:cursor-not-allowed disabled:opacity-60"
         disabled={disabled}
         spellCheck={false}
@@ -296,7 +296,7 @@ function PresetToolbar({
             onChange={(event) => onNameChange(withPresetFormatExtension(event.currentTarget.value, draftFormat))}
             placeholder="preset"
             spellCheck={false}
-            aria-label="预设名称"
+            aria-label={frontendMessage("preset.ui.name")}
             className="h-9 min-w-0 flex-1 rounded-lg border border-ink-200 bg-paper-50 px-3 font-mono text-[12.5px] text-ink-800 shadow-sm outline-none transition placeholder:text-ink-400 focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
           />
           <FormatSwitch value={draftFormat} onChange={onFormatChange} />

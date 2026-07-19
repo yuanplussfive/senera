@@ -15,6 +15,7 @@ import { resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { installMotionDevTools } from "./dev/motionDevTools";
 import { SettingsWorkbench } from "./features/settings";
 import type { SettingsSectionId } from "./features/settings/types";
+import { frontendMessage } from "./i18n/frontendMessageCatalog";
 import { FrontendI18nProvider } from "./i18n/useFrontendLocale";
 import { AppMotionProvider } from "./shared/motion";
 import { AppAppearanceProvider } from "./shared/theme";
@@ -166,9 +167,12 @@ function DesktopSettingsSurface({
           if (!open) void bridge?.cancelSettingsClose?.();
         }}
       >
-        <DialogContent title="放弃未保存的更改？" description="关闭设置窗口会丢失尚未保存或确认的修改。">
+        <DialogContent
+          title={frontendMessage("settings.discard.title")}
+          description={frontendMessage("settings.discard.closeDescription")}
+        >
           <DialogActions>
-            <DialogActionButton close>继续编辑</DialogActionButton>
+            <DialogActionButton close>{frontendMessage("settings.discard.continue")}</DialogActionButton>
             <DialogActionButton
               variant="danger"
               onClick={() => {
@@ -177,7 +181,7 @@ function DesktopSettingsSurface({
                 void bridge?.confirmSettingsClose?.();
               }}
             >
-              放弃更改
+              {frontendMessage("settings.discard.confirm")}
             </DialogActionButton>
           </DialogActions>
         </DialogContent>

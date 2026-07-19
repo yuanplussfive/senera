@@ -1,12 +1,17 @@
+import type { FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import type { AccentColor, ColorScheme, ResolvedTheme } from "./themeModel";
 
 export const colorSchemeGroups = [
   {
-    label: "原有配色",
+    get label() {
+      return "appearance.group.original" as FrontendMessageKey;
+    },
     items: ["senera", "classic", "mono", "forest"],
   },
   {
-    label: "新增配色",
+    get label() {
+      return "appearance.group.new" as FrontendMessageKey;
+    },
     items: ["sakura", "ocean", "lavender", "matcha", "honey", "celadon"],
   },
 ] as const satisfies readonly {
@@ -28,17 +33,17 @@ export const recommendedAccentColors = {
 } as const satisfies Record<ColorScheme, AccentColor>;
 
 export const colorSchemeStories = {
-  senera: "品牌原色。暖纸与深墨的经典搭配，焦土橘是唯一的强调色——温柔从这里开始。",
-  classic: "熟悉的现代灰阶。干净、克制、不出错，像一间采光良好的办公室。",
-  mono: "纯中性灰，不掺一点色相。把全部注意力让给内容本身。",
-  forest: "雾林般的灰绿。安静、自然、低刺激，适合长时间盯着屏幕。",
-  sakura: "樱花落在宣纸上的颜色。低饱和的粉白里透一点暖，温柔、书卷气，最适合长时间阅读与写作。",
-  ocean: "清晨海面上的一层薄雾。灰调的蓝克制而通透，给工作台带来现代、安静的距离感。",
-  lavender: "黄昏时的薰衣草田。紫得极淡，优雅里带一点浪漫，却不打扰任何内容本身。",
-  matcha: "一碗刚打好的抹茶。奶与绿交融，温厚治愈，让工具调用的过程也变得平静。",
-  honey: "午后晒暖的杏子酪。奶白色里透着蜜意，温软香甜但不腻，像一盏小灯。",
-  celadon: "雨过天青云破处。取自宋瓷釉色的灰青，含蓄、通透、有东方的克制之美。",
-} as const satisfies Record<ColorScheme, string>;
+  senera: "appearance.story.senera",
+  classic: "appearance.story.classic",
+  mono: "appearance.story.mono",
+  forest: "appearance.story.forest",
+  sakura: "appearance.story.sakura",
+  ocean: "appearance.story.ocean",
+  lavender: "appearance.story.lavender",
+  matcha: "appearance.story.matcha",
+  honey: "appearance.story.honey",
+  celadon: "appearance.story.celadon",
+} as const satisfies Record<ColorScheme, FrontendMessageKey>;
 
 export const colorSchemeSwatches = {
   senera: {

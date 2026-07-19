@@ -1,4 +1,5 @@
 import { Plus, RefreshCw, Settings2 } from "lucide-react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useMemo, useState } from "react";
 import { Dialog, DialogContent, ScrollArea } from "../../shared/ui";
 import { cn } from "../../lib/util";
@@ -61,13 +62,13 @@ export function RemoteModelPickerDialog({
     [catalog?.models, category, search],
   );
   const groupedRows = useMemo(() => groupProviderModelRows(visibleRows, groups), [groups, visibleRows]);
-  const providerLabel = provider?.Id || "选择供应商";
+  const providerLabel = provider?.Id || frontendMessage("chat.remote.emptyProvider");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="供应商模型"
-        description={`${providerLabel} · 获取模型列表后手动添加，不会覆盖本地模型`}
+        title={frontendMessage("config.model.providerModel")}
+        description={`${providerLabel} · ${frontendMessage("chat.remote.description")}`}
         motionPreset="focus"
         className="h-[min(760px,calc(100dvh_-_32px))] w-[min(980px,calc(100vw_-_24px))] max-w-none rounded-lg bg-paper-50"
         bodyClassName="flex min-h-0 flex-col"
@@ -83,7 +84,7 @@ export function RemoteModelPickerDialog({
               onClick={onRefresh}
             >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-              刷新
+              {frontendMessage("config.main.refresh")}
             </button>
           </div>
         </div>
@@ -151,13 +152,13 @@ function RemoteModelPickerRows({
   onConfigureModel: (model: ProviderModelInfo) => void;
 }): JSX.Element {
   if (!provider) {
-    return <EmptyList text="先选择供应商" />;
+    return <EmptyList text={frontendMessage("chat.remote.emptyProvider")} />;
   }
   if (loading && totalRows === 0) {
-    return <EmptyList text="正在获取模型列表" />;
+    return <EmptyList text={frontendMessage("chat.remote.loading")} />;
   }
   if (totalRows === 0) {
-    return <EmptyList text="没有匹配的远程模型" />;
+    return <EmptyList text={frontendMessage("chat.remote.emptyMatches")} />;
   }
 
   return (
@@ -218,7 +219,9 @@ function RemoteModelPickerRow({
           {model.id}
         </span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[10.5px] text-ink-400">{model.ownedBy || "供应商模型"}</span>
+          <span className="truncate text-[10.5px] text-ink-400">
+            {model.ownedBy || frontendMessage("chat.remote.ownerFallback")}
+          </span>
           <CapabilityIconStrip capabilities={capabilities} />
         </span>
       </span>
@@ -229,7 +232,7 @@ function RemoteModelPickerRow({
           </span>
         ) : configured ? (
           <span className="rounded-md border border-ink-200 bg-paper-100 px-2 py-1 text-[10.5px] font-semibold text-moss-600">
-            已添加
+            {frontendMessage("chat.remote.added")}
           </span>
         ) : null}
         <button
@@ -239,7 +242,7 @@ function RemoteModelPickerRow({
           onClick={() => onConfigureModel(model)}
         >
           {configured ? <Settings2 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-          {configured ? "配置" : "添加"}
+          {frontendMessage(configured ? "config.model.configure" : "config.model.addModel")}
         </button>
       </span>
     </div>

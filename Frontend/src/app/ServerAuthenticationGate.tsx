@@ -2,7 +2,7 @@ import { KeyRound, LoaderCircle, LogIn, RefreshCcw } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import type { ServerAuthenticationState } from "./useServerAuthentication";
-import type { ServerAuthentication } from "../api/authClient";
+import { ServerAuthenticationError, type ServerAuthentication } from "../api/authClient";
 
 export function ServerAuthenticationBoundary({
   state,
@@ -37,7 +37,7 @@ export function ServerAuthenticationGate({
     return (
       <AuthenticationStatus
         icon={<RefreshCcw className="h-5 w-5" />}
-        messageKey="auth.connectionFailed"
+        message={readServerFailureMessage(state.error)}
         actionLabel={frontendMessage("auth.retry")}
         onAction={() => void onRetry()}
       />
@@ -119,11 +119,13 @@ function LoginForm({
 function AuthenticationStatus({
   icon,
   messageKey,
+  message,
   actionLabel,
   onAction,
 }: {
   icon: JSX.Element;
-  messageKey: "auth.loading" | "auth.connectionFailed";
+  messageKey?: "auth.loading" | "auth.connectionFailed";
+  message?: string;
   actionLabel?: string;
   onAction?: () => void;
 }): JSX.Element {
@@ -131,7 +133,9 @@ function AuthenticationStatus({
     <main className="flex min-h-screen items-center justify-center bg-paper-100 px-4 py-8 text-ink-900">
       <div className="flex items-center gap-3 border border-ink-200 bg-paper-50 px-4 py-3 shadow-[0_18px_60px_rgba(24,27,31,0.12)]">
         <span className="text-ink-500">{icon}</span>
-        <p className="text-[13px] text-ink-700">{frontendMessage(messageKey)}</p>
+        {message || messageKey ? (
+          <p className="text-[13px] text-ink-700">{message ?? frontendMessage(messageKey!)}</p>
+        ) : null}
         {actionLabel && onAction ? (
           <button
             type="button"
@@ -144,4 +148,10 @@ function AuthenticationStatus({
       </div>
     </main>
   );
+}
+
+function readServerFailureMessage(error: Error): string | undefined {
+  if (!(error instanceof ServerAuthenticationError)) return undefined;
+  const message = error.message.trim();
+  return message || undefined;
 }

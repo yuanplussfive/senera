@@ -68,7 +68,7 @@ export async function logoutServerAuthentication(webSocketUrl: string, csrfToken
     },
   });
   if (!response.ok) {
-    throw new ServerAuthenticationError(response.status, "Unable to sign out.");
+    throw new ServerAuthenticationError(response.status, "");
   }
 }
 
@@ -81,7 +81,7 @@ async function readAuthenticationResponse(response: Response): Promise<ServerAut
       }
     | undefined;
   if (!response.ok || !payload?.ok || !payload.authentication) {
-    throw new ServerAuthenticationError(response.status, payload?.error?.message ?? "Authentication request failed.");
+    throw new ServerAuthenticationError(response.status, payload?.error?.message ?? "");
   }
   return payload.authentication;
 }

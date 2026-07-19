@@ -83,7 +83,7 @@ export function SessionRow({
           <button
             type="button"
             aria-current={active ? "true" : undefined}
-            aria-label={`打开会话：${title}`}
+            aria-label={frontendMessage("session.open", { title })}
             onClick={onClick}
             onKeyDown={(event) => {
               if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;

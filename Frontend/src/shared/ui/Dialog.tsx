@@ -1,3 +1,4 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { forwardRef, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
@@ -147,7 +148,7 @@ const DialogContentFrame = forwardRef<
                       "hover:bg-surface-hover hover:text-content-primary",
                       "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                     )}
-                    aria-label="关闭"
+                    aria-label={frontendMessage("desktop.window.close")}
                   >
                     <X className="h-[18px] w-[18px]" />
                   </button>

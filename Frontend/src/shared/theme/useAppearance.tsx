@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { Check, Monitor, Moon, Palette, Pilcrow, Sun, Type } from "lucide-react";
+import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { useMotionLevel, type MotionLevel } from "../motion";
 import {
@@ -80,7 +81,7 @@ export function AppearancePreferenceControl({ className }: { className?: string 
   return (
     <div className={cn("space-y-4", className)}>
       <SegmentedControl
-        label="主题"
+        label={frontendMessage("appearance.control.theme")}
         icon={<Palette className="h-3.5 w-3.5" />}
         options={themeModeOptions.map(({ value, label, Icon }) => ({
           value,
@@ -91,20 +92,17 @@ export function AppearancePreferenceControl({ className }: { className?: string 
         onChange={(themeMode) => setPreference({ themeMode })}
       />
 
-      <ColorSchemeControl
-        value={preference.colorScheme}
-        onChange={(colorScheme) => setPreference({ colorScheme })}
-      />
+      <ColorSchemeControl value={preference.colorScheme} onChange={(colorScheme) => setPreference({ colorScheme })} />
 
       <SegmentedControl
-        label="字体"
+        label={frontendMessage("appearance.control.font")}
         icon={<Type className="h-3.5 w-3.5" />}
         options={fontFamilyOptions.map(({ value, label }) => ({ value, label }))}
         value={preference.fontFamily}
         onChange={(fontFamily) => setPreference({ fontFamily })}
       />
       <SegmentedControl
-        label="字号"
+        label={frontendMessage("appearance.control.fontScale")}
         icon={<Pilcrow className="h-3.5 w-3.5" />}
         options={fontScales.map((value) => ({
           value,
@@ -126,11 +124,16 @@ function ColorSchemeControl({
 }): JSX.Element {
   return (
     <div>
-      <ControlLabel icon={<Palette className="h-3.5 w-3.5" />} label="配色" />
-      <div className="space-y-3" role="radiogroup" aria-label="配色">
+      <ControlLabel
+        icon={<Palette className="h-3.5 w-3.5" />}
+        label={frontendMessage("appearance.control.colorScheme")}
+      />
+      <div className="space-y-3" role="radiogroup" aria-label={frontendMessage("appearance.control.colorScheme")}>
         {colorSchemeGroups.map((group) => (
           <div key={group.label}>
-            <div className="mb-1.5 text-[11px] font-medium text-content-secondary">{group.label}</div>
+            <div className="mb-1.5 text-[11px] font-medium text-content-secondary">
+              {frontendMessage(group.label as FrontendMessageKey)}
+            </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {group.items.map((scheme) => {
                 const selected = value === scheme;
@@ -140,7 +143,7 @@ function ColorSchemeControl({
                     key={scheme}
                     type="button"
                     role="radio"
-                    aria-label={`配色：${colorSchemeLabels[scheme]}`}
+                    aria-label={`${frontendMessage("appearance.control.colorScheme")}: ${colorSchemeLabels[scheme]}`}
                     aria-checked={selected}
                     onClick={() => onChange(scheme)}
                     className={cn(

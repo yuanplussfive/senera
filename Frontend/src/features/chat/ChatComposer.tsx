@@ -73,10 +73,14 @@ export function ChatComposer({
   const textareaMaxHeight = prefersCompactControls ? TOUCH_TEXTAREA_MAX_HEIGHT : DESKTOP_TEXTAREA_MAX_HEIGHT;
 
   const hint = useMemo(() => {
-    if (running) return prefersCompactControls ? "可补充指令" : "输入会注入当前任务，Alt+Enter 排到任务之后";
-    if (runtime.socketStatus === "open") return "跟 senera 说点什么";
-    if (runtime.socketStatus === "connecting" || runtime.socketStatus === "idle") return "正在连接后端…";
-    return "后端未连接，请检查服务";
+    if (running) {
+      return frontendMessage(prefersCompactControls ? "chat.composer.hintRunningCompact" : "chat.composer.hintRunning");
+    }
+    if (runtime.socketStatus === "open") return frontendMessage("chat.composer.hintOpen");
+    if (runtime.socketStatus === "connecting" || runtime.socketStatus === "idle") {
+      return frontendMessage("chat.composer.hintIdle");
+    }
+    return frontendMessage("chat.composer.hintDisconnected");
   }, [prefersCompactControls, runtime.socketStatus, running]);
 
   useEffect(() => {
@@ -263,7 +267,7 @@ export function ChatComposer({
 
           <textarea
             ref={taRef}
-            aria-label="输入消息"
+            aria-label={frontendMessage("chat.composer.inputMessage")}
             value={value}
             rows={1}
             onChange={handleInput}
@@ -433,7 +437,7 @@ function AttachmentTray({
           </span>
           <IconButton
             label={frontendMessage("runtime.migrated.features.chat.ChatComposer.425.19")}
-            tooltip={entry.error ?? "移除"}
+            tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
             tooltipSide="top"
             size="sm"
             onClick={() => onRemove(entry.id)}
@@ -528,7 +532,7 @@ function ModelSelector({
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
             (disabled || chatModels.length === 0) && "pointer-events-none opacity-55",
           )}
-          aria-label="选择模型"
+          aria-label={frontendMessage("chat.composer.selectModel")}
         >
           <ModelProviderIcon className="shrink-0" icon={selected?.icon} size={14} />
           <span className="truncate">{label}</span>

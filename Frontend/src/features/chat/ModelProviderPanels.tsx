@@ -88,8 +88,11 @@ export function ProviderList({
                   <ProviderStatusIcon loading={loading} catalog={catalog} error={error} />
                   <span className="truncate">
                     {catalog
-                      ? `${catalog.models.length} 个模型 · ${formatShortTime(catalog.fetchedAt)}`
-                      : provider.Id || "未设置 ID"}
+                      ? frontendMessage("config.provider.catalogSummary", {
+                          count: catalog.models.length,
+                          time: formatShortTime(catalog.fetchedAt),
+                        })
+                      : provider.Id || frontendMessage("config.provider.idUnset")}
                   </span>
                 </span>
               </span>
@@ -106,47 +109,47 @@ export function ProviderList({
         })}
       </div>
     ) : (
-      <EmptyList text="添加供应商后填写接口地址" />
+      <EmptyList text={frontendMessage("config.provider.emptyList")} />
     );
 
   return (
     <div className={cn("flex min-h-0 flex-col", embedded ? "overflow-visible" : "h-full overflow-hidden")}>
       <ListHeader
         title={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.145.15")}
-        subtitle={`${providers.length} 个端点`}
+        subtitle={frontendMessage("config.provider.endpointCount", { count: providers.length })}
         action={
           <div className="flex items-center gap-1.5">
             {showSettingsAction ? (
-              <Tooltip content="供应商设置" side="top">
+              <Tooltip content={frontendMessage("config.provider.settings")} side="top">
                 <button
                   type="button"
                   disabled={disabled || providers.length === 0}
                   className={iconButtonClassName}
                   onClick={onOpenSettings}
-                  aria-label="供应商设置"
+                  aria-label={frontendMessage("config.provider.settings")}
                 >
                   <Settings2 className="h-3.5 w-3.5" />
                 </button>
               </Tooltip>
             ) : null}
-            <Tooltip content="删除供应商" side="top">
+            <Tooltip content={frontendMessage("config.provider.delete")} side="top">
               <button
                 type="button"
                 disabled={disabled || providers.length === 0}
                 className={cn(iconButtonClassName, "hover:border-brick-200 hover:bg-brick-50 hover:text-brick-600")}
                 onClick={() => onRemove(selectedIndex)}
-                aria-label="删除供应商"
+                aria-label={frontendMessage("config.provider.delete")}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </Tooltip>
-            <Tooltip content="添加供应商" side="top">
+            <Tooltip content={frontendMessage("config.provider.add")} side="top">
               <button
                 type="button"
                 disabled={disabled}
                 className={iconButtonClassName}
                 onClick={onAdd}
-                aria-label="添加供应商"
+                aria-label={frontendMessage("config.provider.add")}
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
@@ -194,7 +197,7 @@ export function ProviderEditor({
       <EmptyDetail
         icon={<Server className="h-5 w-5" />}
         title={frontendMessage("runtime.migrated.features.chat.ModelProviderPanels.223.69")}
-        text="添加供应商后填写接口地址并获取模型列表。"
+        text={frontendMessage("config.provider.emptyDetail")}
       />
     );
   }
@@ -208,7 +211,7 @@ export function ProviderEditor({
         <DetailTitle
           icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderIcon(provider.Id)} size={22} />}
           title={providerId}
-          subtitle={enabled ? "供应商已启用" : "供应商已关闭"}
+          subtitle={frontendMessage(enabled ? "config.provider.enabled" : "config.provider.disabled")}
           actions={
             <>
               <Button
@@ -293,7 +296,7 @@ export function ProviderEditor({
                 type="button"
                 className="grid h-8 w-8 shrink-0 place-items-center border-l border-ink-200 text-ink-450 transition hover:text-ink-800"
                 onClick={() => setShowKey((current) => !current)}
-                aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
+                aria-label={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
               >
                 {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               </button>

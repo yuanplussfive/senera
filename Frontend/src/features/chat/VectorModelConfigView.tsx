@@ -175,7 +175,9 @@ function VectorModelCard({
         >
           <MenuSelect
             value={readString(value.Model) ?? ""}
-            placeholder={providerId ? "选择模型" : "先选择供应商"}
+            placeholder={frontendMessage(
+              providerId ? "config.vector.selectModel" : "config.vector.selectProviderFirst",
+            )}
             options={modelOptions}
             disabled={disabled || !enabled || !providerId || modelOptions.length === 0}
             onChange={(Model) => onChange({ Model })}

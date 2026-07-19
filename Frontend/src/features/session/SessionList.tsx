@@ -99,9 +99,12 @@ export function SessionList({
     setConfirmation({
       title: frontendMessage("runtime.migrated.features.session.SessionList.96.14"),
       description: frontendMessage("runtime.migrated.features.session.SessionList.97.20", { value0: session.title }),
-      confirmLabel: "永久删除",
+      confirmLabel: frontendMessage("session.deleteCurrentConfirm"),
       tone: "danger",
-      details: ["删除后会话列表、消息历史和后端 SQLite 记录都会移除。", "这个操作不能通过刷新恢复。"],
+      details: [
+        frontendMessage("session.deleteCurrentDetailRecords"),
+        frontendMessage("session.deleteCurrentDetailRefresh"),
+      ],
       onConfirm: () => {
         onCloseSession(session.sessionId);
         toast.success(frontendMessage("session.deleteRequested"));
@@ -115,9 +118,9 @@ export function SessionList({
     setConfirmation({
       title: frontendMessage("runtime.migrated.features.session.SessionList.112.14"),
       description: frontendMessage("runtime.migrated.features.session.SessionList.113.20", { value0: ids.length }),
-      confirmLabel: "全部永久删除",
+      confirmLabel: frontendMessage("session.deleteAllConfirm"),
       tone: "danger",
-      details: ["每个会话都会发送后端删除请求。", "删除完成后，刷新也不会恢复这些历史。"],
+      details: [frontendMessage("session.deleteAllDetailRequests"), frontendMessage("session.deleteAllDetailRefresh")],
       onConfirm: () => {
         onCloseSessions(ids);
         toast.success(frontendMessage("session.bulkDeleteRequested", { count: ids.length }));

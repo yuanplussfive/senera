@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { IconButton } from "../../shared/ui";
 
@@ -15,7 +16,11 @@ export function ToolDock({ items }: { items: ToolDockItem[] }): JSX.Element | nu
   if (items.length === 0) return null;
 
   return (
-    <nav className="ml-auto flex items-center gap-0.5" aria-label="工具拓展坞" data-workspace-tool-dock>
+    <nav
+      className="ml-auto flex items-center gap-0.5"
+      aria-label={frontendMessage("workflow.dock.label")}
+      data-workspace-tool-dock
+    >
       {items.map((item) => (
         <IconButton
           key={item.id}

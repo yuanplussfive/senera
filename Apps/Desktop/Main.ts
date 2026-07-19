@@ -13,6 +13,7 @@ import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigServi
 import { isTrustedDesktopNavigation, resolveExternalHttpUrl } from "./DesktopNavigationPolicy.js";
 import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
 import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
+import { desktopMessage } from "./DesktopMessageCatalog.js";
 
 let serverHandle: SeneraServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -83,7 +84,7 @@ app
     const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
     const logPath = runtimePaths?.logPath ?? path.join(app.getPath("userData"), "desktop.log");
     appendDesktopLog(logPath, `startup failed\n${message}`);
-    dialog.showErrorBox("Senera 启动失败", message);
+    dialog.showErrorBox(desktopMessage("startup.failedTitle", {}, app.getLocale()), message);
     app.exit(1);
   });
 
@@ -163,12 +164,12 @@ function createDesktopTray(iconPath: string): Tray {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
-        label: "显示 Senera",
+        label: desktopMessage("tray.show", {}, app.getLocale()),
         click: showAllDesktopWindows,
       },
       { type: "separator" },
       {
-        label: "退出 Senera",
+        label: desktopMessage("tray.quit", {}, app.getLocale()),
         click: () => app.quit(),
       },
     ]),
@@ -254,7 +255,7 @@ function openSettingsWindow(options?: { section?: string }): void {
     minWidth: 820,
     minHeight: 560,
     backgroundColor: "#f7f8f6",
-    title: "Senera 设置",
+    title: desktopMessage("settings.title", {}, app.getLocale()),
     show: false,
     autoHideMenuBar: true,
     icon: runtimePaths.windowIconPath,
@@ -274,7 +275,7 @@ function openSettingsWindow(options?: { section?: string }): void {
   });
   settingsWindow.on("page-title-updated", (event) => {
     event.preventDefault();
-    settingsWindow?.setTitle("Senera 设置");
+    settingsWindow?.setTitle(desktopMessage("settings.title", {}, app.getLocale()));
   });
   registerWindowStateEvents(settingsWindow);
   registerNavigationPolicy(settingsWindow, source);

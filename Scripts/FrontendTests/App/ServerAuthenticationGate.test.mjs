@@ -8,6 +8,7 @@ import {
   ServerAuthenticationBoundary,
   ServerAuthenticationGate,
 } from "../../../Frontend/src/app/ServerAuthenticationGate.tsx";
+import { ServerAuthenticationError } from "../../../Frontend/src/api/authClient.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 
 afterEach(() => {
@@ -89,17 +90,30 @@ describe("server authentication gate", () => {
     expect(screen.queryByText("credential detail")).not.toBeInTheDocument();
   });
 
-  test("offers a retry path when the status endpoint is unavailable", async () => {
+  test("does not invent a connection message when no server detail is available", () => {
+    render(
+      React.createElement(ServerAuthenticationGate, {
+        state: { status: "failed", error: new Error("Failed to fetch") },
+        onLogin: vi.fn(),
+        onRetry: vi.fn(),
+      }),
+    );
+
+    expect(screen.queryByText(frontendMessage("auth.connectionFailed"))).not.toBeInTheDocument();
+  });
+
+  test("shows the server-provided failure detail and offers retry", async () => {
     const retry = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
     render(
       React.createElement(ServerAuthenticationGate, {
-        state: { status: "failed", error: new Error("network") },
+        state: { status: "failed", error: new ServerAuthenticationError(503, "Backend unavailable") },
         onLogin: vi.fn(),
         onRetry: retry,
       }),
     );
 
+    expect(screen.getByText("Backend unavailable")).toBeVisible();
     await user.click(screen.getByRole("button", { name: frontendMessage("auth.retry") }));
     expect(retry).toHaveBeenCalledTimes(1);
   });

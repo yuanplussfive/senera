@@ -5,6 +5,7 @@ import {
   ServerAuthenticationError,
   buildServerApiUrl,
   loginServerAuthentication,
+  logoutServerAuthentication,
   readServerAuthentication,
 } from "../../../Frontend/src/api/authClient.ts";
 
@@ -56,6 +57,24 @@ describe("server authentication API", () => {
         body: JSON.stringify({ loginName: "owner", password: "secret" }),
       }),
     );
+  });
+
+  test("keeps authentication failure detail empty when the server omits a message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ ok: false }, 503)));
+
+    await expect(
+      loginServerAuthentication("ws://agent.test", { loginName: "owner", password: "secret" }),
+    ).rejects.toMatchObject({ name: ServerAuthenticationError.name, status: 503, message: "" });
+  });
+
+  test("keeps logout failure detail empty when the server omits a message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 503 })));
+
+    await expect(logoutServerAuthentication("ws://agent.test", "csrf")).rejects.toMatchObject({
+      name: ServerAuthenticationError.name,
+      status: 503,
+      message: "",
+    });
   });
 
   test("does not turn failed authentication responses into an authenticated state", async () => {
