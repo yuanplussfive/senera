@@ -115,7 +115,7 @@ Ordinary navigation, status copy, summaries, and descriptive text use the UI fon
 - Run the scanner and review new hits; do not treat the hit count as a pass/fail score.
 - Reject new page-level radial gradients, backdrop-blur surfaces, and `transition-all`.
 - Keep ordinary product surfaces at 6-10px radius. The Desktop/Wide persistent workspace sidebar may use 12px as the single shell-level exception; avatars, toggles, progress tracks, and chat bubbles continue to follow their geometry.
-- Do not separate persistent workspace regions primarily with full-height `border-r` or full-width high-contrast top-bar `border-b`; use shell spacing, neutral surface contrast, and the existing semantic surface shadow.
+- Do not separate persistent chat workspace regions primarily with full-height `border-r` or full-width high-contrast top-bar `border-b`; use shell spacing, neutral surface contrast, and the existing semantic surface shadow. Low-contrast `border-r`/`border-b` boundaries remain valid inside the settings workbench, forms, tables, and other functional editing shells when they clarify navigation or field grouping.
 - Keep the central conversation workspace as one continuous canvas; do not wrap it in another rounded, bordered card.
 - Preserve Electron drag regions and the window-controls inset when changing workspace chrome.
 - Use monospace only when character alignment or literal technical identity matters.

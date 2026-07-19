@@ -396,6 +396,13 @@ Composer 采用三层结构。
 - 全局机械替换圆角和颜色。
 - 在同一提交中混入无关 Prettier/style churn。
 
+## 13.1. 当前 PR 自检门槛
+
+- `npm run quality.format` 只检查当前变更文件：CI 会根据 PR 或 push 的提交范围传入 `--from` / `--to`；本地还会包含 staged、working-tree 和未忽略的 untracked 文件。
+- `npm run quality.format.full` 与 `npm run quality.format.full.fix` 保留为需要时的全仓人工检查，不作为普通 PR 的自动门槛。
+- `npx tsx Scripts/VerifyFrontendRuntimeI18n.ts` 扫描 `Frontend/src` 产品源码，开发样例和设计系统 story 目录除外；产品可见字符串必须来自 catalog。Electron 主进程托盘、启动失败和设置窗口文案使用 `Apps/Desktop/DesktopMessageCatalog.ts`，不能直接写中文 UI 文案。
+- Node 开发环境变更后使用 `npm run desktop.restore` 重建 `better-sqlite3`；Electron 打包流程仍由桌面打包脚本按 Electron ABI 单独处理。
+
 ## 14. 第一阶段纵向切片
 
 真实路径：
@@ -523,7 +530,7 @@ Composer 采用三层结构。
 
 ## 20. 下一步
 
-方案 B 已被选定并完成第一阶段纵向切片。下一步先由用户审阅真实界面效果，再决定是否进入后续消息细节、主题扩展或其他 Surface；不得自动扩大到后端、Agent Definition 或全应用重构。
+方案 B 已被选定并完成第一阶段纵向切片。本节记录 2026-07-15 当时的交付门；后续提交已继续完成主题语义化、设置工作台宿主、配置即时保存与前端 i18n 收敛。后续扩展仍不得自动扩大到后端、Agent Definition 或全应用重构。
 
 ## 21. 第一阶段实施结果（2026-07-15）
 
@@ -549,7 +556,7 @@ Composer 采用三层结构。
 - 真实浏览器覆盖 1600×960、1440×960、1280×800、900×800 与 390×844；验证左右 Surface 开合、长会话、执行图和 Composer。
 - `kill-ai-slop` 复扫由初始 180 个静态命中降至 169 个；剩余命中主要是代码折叠渐变、品牌 Logo、真实进度/开关/头像和技术值 Mono 等已审查项。
 
-第一阶段到此停止，不自动进入主题任意 CSS、Agent Definition、全设置区迁移或后端重构。
+当时的第一阶段到此停止（历史记录）：不自动进入主题任意 CSS、Agent Definition、全设置区迁移或后端重构。后续主题与设置范围已在本文件后续提交记录中按用户批准继续实施；该句不再表示当前仓库状态。
 
 ## 22. 第二轮去 slop 收敛（2026-07-15）
 
