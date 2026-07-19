@@ -73,8 +73,34 @@ function command(name: string, args: readonly string[] = []): CommandInvocation 
 function clearNativeRebuildMetadata(): void {
   for (const moduleName of nativeModules) {
     const metadataPath = path.join(process.cwd(), "node_modules", moduleName, "build", "Release", ".forge-meta");
-    if (fs.existsSync(metadataPath)) {
-      fs.rmSync(metadataPath, { force: true });
+    removeNativeRebuildMetadata(metadataPath);
+  }
+}
+
+function removeNativeRebuildMetadata(metadataPath: string): void {
+  if (!fs.existsSync(metadataPath)) return;
+
+  try {
+    fs.rmSync(metadataPath, { force: true });
+    return;
+  } catch (error) {
+    if (process.platform !== "win32" || !isWindowsCleanupError(error)) {
+      throw error;
     }
   }
+
+  const shell = process.env.ComSpec ?? "cmd.exe";
+  const result = spawnSync(shell, ["/d", "/c", "del", "/f", "/a", metadataPath], {
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0 || fs.existsSync(metadataPath)) {
+    throw result.error ?? new Error(`Could not remove native rebuild metadata: ${metadataPath}`);
+  }
+}
+
+function isWindowsCleanupError(error: unknown): boolean {
+  if (!(error instanceof Error) || !("code" in error)) return false;
+  const code = error.code;
+  return code === "EPERM" || code === "EACCES" || code === "EBUSY";
 }
