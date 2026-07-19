@@ -43,6 +43,16 @@ export const ComponentRecovery: Story = () => {
   );
 };
 
+export const AppRecovery: Story = () => (
+  <main className="min-h-[520px] bg-surface-canvas p-6 text-content-primary sm:p-10">
+    <div className="mx-auto max-w-[980px]">
+      <ErrorBoundary presentation="app">
+        <FailureProbe failed />
+      </ErrorBoundary>
+    </div>
+  </main>
+);
+
 export const CustomFallback: Story = () => (
   <main className="min-h-[420px] bg-surface-canvas p-6 text-content-primary sm:p-10">
     <div className="mx-auto max-w-[680px]">

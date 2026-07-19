@@ -33,11 +33,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       console.error("ErrorBoundary caught an error:", error, errorInfo);
     }
 
-    // Call optional error handler
     this.props.onError?.(error, errorInfo);
-
-    // In production, this could send to a monitoring service
-    // Example: sendToSentry(error, errorInfo);
   }
 
   componentDidUpdate(previousProps: Readonly<ErrorBoundaryProps>): void {
@@ -52,12 +48,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   render(): ReactNode {
     if (this.state.hasError && this.state.error) {
-      // Use custom fallback if provided
       if (this.props.fallback) {
         return this.props.fallback(this.state.error, this.resetErrorBoundary);
       }
 
-      // Default fallback UI
       return (
         <DefaultErrorFallback
           onReset={this.resetErrorBoundary}
@@ -82,37 +76,42 @@ function DefaultErrorFallback({ onReset, onReload, presentation }: DefaultErrorF
   return (
     <main
       className={cn(
-        "flex w-full items-center justify-center bg-paper-50 p-6",
-        appPresentation ? "min-h-screen" : "h-full",
+        "flex w-full items-start justify-center bg-[var(--theme-bg)] px-4 py-6 sm:px-6",
+        appPresentation ? "min-h-dvh pt-[clamp(32px,12vh,120px)]" : "h-full",
       )}
       role="alert"
     >
       <section
         aria-labelledby="error-boundary-title"
-        className="flex w-full max-w-[520px] flex-col gap-4 rounded-lg border border-ink-200 bg-paper-100 p-6 text-center shadow-panel"
+        className={cn(
+          "w-full bg-paper-100",
+          appPresentation
+            ? "max-w-[860px] border-y border-ink-200/70 px-5 py-6 sm:px-8 sm:py-7"
+            : "border-y border-ink-200/70 px-4 py-5",
+        )}
       >
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-brick-50">
-          <AlertCircle aria-hidden="true" className="h-6 w-6 text-brick-600" />
-        </div>
-        <div className="flex flex-col gap-2">
-          <h1 id="error-boundary-title" className="text-[16px] font-semibold text-ink-950">
-            {frontendMessage("app.errorBoundary.title")}
-          </h1>
-          <p className="text-[13px] leading-5 text-ink-600">
-            {frontendMessage("app.errorBoundary.description")}
-          </p>
-        </div>
-        <div className="flex flex-wrap justify-center gap-2">
-          <Button onClick={onReset} variant="outline">
-            <RefreshCw aria-hidden="true" className="h-4 w-4" />
-            {frontendMessage("app.errorBoundary.retry")}
-          </Button>
-          {appPresentation ? (
-            <Button onClick={onReload ?? (() => globalThis.location?.reload())}>
-              <RefreshCcw aria-hidden="true" className="h-4 w-4" />
-              {frontendMessage("app.errorBoundary.reload")}
-            </Button>
-          ) : null}
+        <div className="flex items-start gap-4">
+          <AlertCircle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-brick-600" />
+          <div className="min-w-0 flex-1">
+            <h1 id="error-boundary-title" className="text-[15px] font-semibold text-ink-950 sm:text-[16px]">
+              {frontendMessage("app.errorBoundary.title")}
+            </h1>
+            <p className="mt-1.5 max-w-[64ch] text-[13px] leading-5 text-ink-600">
+              {frontendMessage("app.errorBoundary.description")}
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <Button onClick={onReset} size="sm">
+                <RefreshCw aria-hidden="true" className="h-4 w-4" />
+                {frontendMessage("app.errorBoundary.retry")}
+              </Button>
+              {appPresentation ? (
+                <Button onClick={onReload ?? (() => globalThis.location?.reload())} size="sm" variant="ghost">
+                  <RefreshCcw aria-hidden="true" className="h-4 w-4" />
+                  {frontendMessage("app.errorBoundary.reload")}
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </div>
       </section>
     </main>
