@@ -60,12 +60,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node
+      - id: range
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "arguments=" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            from="$PR_BASE_SHA"
+            to="$PR_HEAD_SHA"
+          else
+            from="$PUSH_BEFORE"
+            to="$PUSH_AFTER"
+          fi
+
+          if [[ "$from" =~ ^0+$ ]]; then
+            echo "arguments=" >> "$GITHUB_OUTPUT"
+          else
+            git merge-base --is-ancestor "$from" "$to"
+            echo "arguments=--from=$from --to=$to" >> "$GITHUB_OUTPUT"
+          fi
       - run: npm run policy.verify
       - run: npm run quality.baml
       - run: npm run check.types
       - run: npm run quality.lint
-      - run: npm run quality.format
+      - run: npm run quality.format -- ${{ steps.range.outputs.arguments }}
       - run: npm run test.backend
       - run: npm run test.frontend
       - run: npm run test.e2e
