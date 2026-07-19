@@ -393,7 +393,7 @@ function WorkflowDockPlaceholder({
   const { Icon } = item;
   return (
     <aside className="flex h-full flex-col bg-transparent" data-workflow-dock-placeholder={tool}>
-      <div className="flex h-[58px] items-center border-b border-line-subtle px-3 pr-12" data-workflow-dock-tabs>
+      <div className="flex h-[58px] items-center border-b border-line-subtle px-3" data-workflow-dock-tabs>
         <WorkflowDockTabs tabs={dockTabs} />
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center px-6">

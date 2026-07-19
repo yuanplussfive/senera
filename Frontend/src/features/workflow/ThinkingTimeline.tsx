@@ -156,7 +156,7 @@ function TopBar({
       <div
         className={cn(
           "relative z-10 flex items-center gap-2 border-b border-line-subtle",
-          presentation === "dock" ? "h-[58px] bg-transparent px-3 pr-12" : "h-[52px] bg-surface-raised px-3",
+          presentation === "dock" ? "h-[58px] bg-transparent px-3" : "h-[52px] bg-surface-raised px-3",
         )}
         data-window-drag-region
       >
