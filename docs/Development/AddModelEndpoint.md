@@ -29,7 +29,10 @@ Source/AgentSystem/Types/AgentConfigTypes.ts
 Source/AgentSystem/Schemas/AgentSystemConfigSchema.ts
 Source/AgentSystem/Defaults/*
 Source/AgentSystem/Config/AgentConfigFormProjector.ts
-Frontend/src/features/chat/SystemConfigPanel*
+Frontend/src/features/settings/SettingsWorkbench.tsx
+Frontend/src/features/settings/sections/ModelServiceSection.tsx
+Frontend/src/features/settings/sections/ProviderModelManagementSurface.tsx
+Frontend/src/app/useConfigMutationController.ts
 Scripts/VerifyModelProviderEndpointConfig.ts
 Scripts/VerifyModelTimeoutConfig.ts
 ```

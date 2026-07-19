@@ -18,19 +18,18 @@ The remaining group count is not a quality score. Each remaining hit below has a
 
 ## Confirmed Fixes
 
-| Files                                                                                | Finding                                                    | Resolution                                                                 |
-| ------------------------------------------------------------------------------------ | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `ModelProviderModelList.tsx`, `RemoteModelPickerDialog.tsx`                          | Nested group/count pills and colored model-state pills     | Small-radius group controls, inline counts, neutral state surfaces         |
-| `ModelCapabilityControls.tsx`                                                        | Capability icons wrapped in repeated circular tiles        | Bare semantic icons; state remains in the switch and text                  |
-| `ModelProviderPanels.tsx`, `ProviderConnectionList.tsx`, `VectorModelConfigView.tsx` | Stock green status pills                                   | Neutral surfaces with the project moss color used only for state text      |
-| `PresetOverlays.tsx`                                                                 | Blur overlays and large-radius floating panels             | Opaque surfaces, 8px radius, no backdrop blur                              |
-| `ScrollToBottomButton.tsx`                                                           | Floating pill with blur, ring, and wide shadow             | 8px radius and one compact, colorless shadow                               |
-| `PluginConfigViews.tsx`, model dialogs, provider lifecycle dialogs                   | Product surfaces still using `rounded-xl`                  | Unified to `rounded-lg`                                                    |
-| `ChatComposer.tsx`                                                                   | Regular UI guidance inherited monospace                    | UI sans for guidance; monospace retained on keyboard keys and file metrics |
-| `ProfileFooter.tsx`, `SessionRows.tsx`                                               | Connection and session summaries rendered as terminal text | UI sans with tabular numerals where needed                                 |
-| `ThinkingSummaryBar.tsx`, `WorkflowRunControls.tsx`, `StepNode.tsx`                  | Summary labels and status copy rendered as terminal text   | UI sans; durations and counts use tabular numerals                         |
-| `PresetWorkspace.tsx`, `PresetSidebar.tsx`                                           | Format controls and ordinary metadata overused monospace   | UI sans for labels; tabular numerals for measured values                   |
-| `JsonConfigArrayFieldControl.tsx`                                                    | Hard-coded warm surface `#f6f0e7`                          | Existing configuration surface token                                       |
+| Files                                                               | Finding                                                    | Resolution                                                                 |
+| ------------------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `ModelProviderModelList.tsx`                                        | Nested group/count pills and colored model-state pills     | Small-radius group controls, inline counts, neutral state surfaces         |
+| `ModelCapabilityControls.tsx`                                       | Capability icons wrapped in repeated circular tiles        | Bare semantic icons; state remains in the switch and text                  |
+| `ProviderConnectionList.tsx`, `VectorModelConfigView.tsx`           | Stock green status pills                                   | Neutral surfaces with the project moss color used only for state text      |
+| `PresetOverlays.tsx`                                                | Blur overlays and large-radius floating panels             | Opaque surfaces, 8px radius, no backdrop blur                              |
+| `ScrollToBottomButton.tsx`                                          | Floating pill with blur, ring, and wide shadow             | 8px radius and one compact, colorless shadow                               |
+| `PluginConfigViews.tsx`, model dialogs, provider lifecycle dialogs  | Product surfaces still using `rounded-xl`                  | Unified to `rounded-lg`                                                    |
+| `ChatComposer.tsx`                                                  | Regular UI guidance inherited monospace                    | UI sans for guidance; monospace retained on keyboard keys and file metrics |
+| `ProfileFooter.tsx`, `SessionRows.tsx`                              | Connection and session summaries rendered as terminal text | UI sans with tabular numerals where needed                                 |
+| `ThinkingSummaryBar.tsx`, `WorkflowRunControls.tsx`, `StepNode.tsx` | Summary labels and status copy rendered as terminal text   | UI sans; durations and counts use tabular numerals                         |
+| `PresetWorkspace.tsx`, `PresetSidebar.tsx`                          | Format controls and ordinary metadata overused monospace   | UI sans for labels; tabular numerals for measured values                   |
 
 ## Retained Findings
 
@@ -49,7 +48,7 @@ The remaining group count is not a quality score. Each remaining hit below has a
 ### 12 and 15: Non-Product Sources
 
 - `design-system/tokens/*.stories.tsx`: typography specimens intentionally demonstrate type tokens.
-- `shared/ui/Button.stories.tsx`: stars are placeholder icon content in component stories.
+- `shared/ui/Button.stories.tsx`: the add icon is a real command icon from lucide-react.
 - `Frontend/README.md`: the arrow documents an event relationship.
 
 ### 16: Pulse
@@ -90,7 +89,7 @@ Story-only hits are excluded from product QA.
 
 - `PresetWorkspace.tsx`: three mutually exclusive format options form a segmented control.
 - `SettingsWorkbench.tsx`: three mutually exclusive motion levels are a settings option set with descriptions.
-- `JsonConfigArrayFieldControl.tsx`, `JsonConfigForm.tsx`: responsive form fields, not statistic or feature cards.
+- `JsonConfigForm.tsx`: responsive form fields, not statistic or feature cards.
 - Remaining hits are component stories.
 
 ### 33: Monospace
@@ -103,6 +102,14 @@ Retained monospace text is limited to technical values:
 - Design-token specimens in stories.
 
 Ordinary navigation, status copy, summaries, and descriptive text use the UI font.
+
+## 34: 公共值选择菜单
+
+- MenuSelect 是已经确认的值选择公共组件，保留当前紧凑密度、纸面触发器、焦点边界和中性的选项列表。
+- DropdownMenu 继续负责动作菜单；值选择默认不继承动作菜单的标题、分隔线、危险操作或选中勾。
+- 供应商和模型图标只有在确实表达品牌语义时才显示，不能用通用设置图标充当尾部装饰。
+- 选项内容允许独立于触发器调整宽度，较长的模型标识不能被不必要地截断。
+- 当前方案已经确认，候选 A 和候选 B 的讨论 Story 已删除。
 
 ## Visual QA
 
@@ -121,3 +128,15 @@ Ordinary navigation, status copy, summaries, and descriptive text use the UI fon
 - Use monospace only when character alignment or literal technical identity matters.
 - Prefer neutral state surfaces; reserve terra, moss, umber, and brick for state signals.
 - Verify changed surfaces at 390px and 1440px before merging.
+
+## 35. 公共布尔开关（2026-07-19）
+
+- `shared/ui/Switch.tsx` 是所有布尔设置的生产公共组件。它统一负责轨道、滑块、细焦点边界、禁用态、`role="switch"`、`aria-checked` 和主题强调色。
+- 焦点只保留 1px 的细边界，不使用 2px 彩色光圈；开关旁边不重复显示“已启用/已关闭”或 ON/OFF。
+- 开启状态默认只使用主题强调色。moss/绿色只用于成功、连接、健康和可用状态，不是通用开关颜色。
+- `SwitchTrack` 是已经由整张卡片或整行按钮负责交互时使用的非交互视觉部分，并且标记为 `aria-hidden`，避免出现嵌套交互元素。
+- `Switch` 只渲染轨道和滑块；业务外壳可以在旁边放标题、说明或图标，但不能给开关再包一层带边框的按钮外壳，也不能重复绘制轨道。
+- 向量模型页不再把 ON/OFF 文字和 `RefreshCw` 组合成伪开关；现在使用公共开关，刷新只在确实表示刷新动作时单独保留。
+- 模型分组编辑不在本轮迁移范围，旧编辑器已经删除。未来恢复该能力时单独设计。
+
+2026-07-19 的扫描结果是 10 组、149 个命中。上一次人工确认的基线是 148；多出的 1 个来自有意新增的 `Switch.tsx` 轨道和滑块。这是有明确功能意义的控件形状，不是装饰性 slop，应继续保留在已确认的圆形几何例外中。
