@@ -8,15 +8,24 @@ const ToolArtifactRedactionSchema = z
   .object({
     Keys: z.array(ArtifactRedactionKeyPatternSchema).optional(),
     Paths: z.array(z.string().min(1)).optional(),
-    Streams: z.array(z.enum(["stdout", "stderr"])).min(1).optional(),
+    Streams: z
+      .array(z.enum(["stdout", "stderr"]))
+      .min(1)
+      .optional(),
     Transforms: z
       .array(
         z
           .object({
             Pattern: z.string().min(1),
             Replacement: z.string().optional(),
-            Flags: z.string().regex(/^[dgimsuvy]*$/).optional(),
-            Streams: z.array(z.enum(["stdout", "stderr"])).min(1).optional(),
+            Flags: z
+              .string()
+              .regex(/^[dgimsuvy]*$/)
+              .optional(),
+            Streams: z
+              .array(z.enum(["stdout", "stderr"]))
+              .min(1)
+              .optional(),
             WindowChars: z.number().int().positive().optional(),
           })
           .strict(),

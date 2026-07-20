@@ -128,14 +128,14 @@ describe("MCP form elicitation", () => {
       action: "cancel",
     });
 
-    await vi.waitFor(() => expect(onerror).toHaveBeenCalledWith(expect.objectContaining({ message: "task store unavailable" })));
+    await vi.waitFor(() =>
+      expect(onerror).toHaveBeenCalledWith(expect.objectContaining({ message: "task store unavailable" })),
+    );
     expect(raw.taskStore.storeTaskResult).toHaveBeenCalledTimes(2);
   });
 });
 
-function interactiveClient(
-  options: { taskAugmented?: boolean; url?: boolean; urlRequiredError?: boolean } = {},
-) {
+function interactiveClient(options: { taskAugmented?: boolean; url?: boolean; urlRequiredError?: boolean } = {}) {
   const taskStore = {
     createTask: vi.fn(async () => task("client-task")),
     storeTaskResult: vi.fn(async () => undefined),

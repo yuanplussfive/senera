@@ -259,21 +259,23 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     fs.watchFile(jsonConfigPath, { interval: 500 }, () => {
       try {
         const snapshot = configService.reloadFromSources();
-        void server.broadcast({
-          kind: AgentEventKinds.ConfigReloaded,
-          context: {},
-          data: {
-            configPath: snapshot.path,
-            source: snapshot.source,
-            revision: snapshot.revision,
-            databasePath: snapshot.databasePath,
-            diagnostics: snapshot.diagnostics,
-          },
-        }).catch((error) => {
-          logger.error("配置变更事件广播失败", {
-            error: error instanceof Error ? error.message : String(error),
+        void server
+          .broadcast({
+            kind: AgentEventKinds.ConfigReloaded,
+            context: {},
+            data: {
+              configPath: snapshot.path,
+              source: snapshot.source,
+              revision: snapshot.revision,
+              databasePath: snapshot.databasePath,
+              diagnostics: snapshot.diagnostics,
+            },
+          })
+          .catch((error) => {
+            logger.error("配置变更事件广播失败", {
+              error: error instanceof Error ? error.message : String(error),
+            });
           });
-        });
       } catch (error) {
         void emitAgentEvent((event: AgentDomainEvent) => server.broadcast(event), {
           kind: AgentEventKinds.ConfigFailed,

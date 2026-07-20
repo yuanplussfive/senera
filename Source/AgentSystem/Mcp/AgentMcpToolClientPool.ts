@@ -131,10 +131,7 @@ export class AgentMcpToolClientPool {
 }
 
 export function createAgentMcpToolClientPoolKey(
-  options: Pick<
-    AgentMcpToolClientOptions,
-    "server" | "executionProfile" | "terminationGraceMs" | "interactionInput"
-  >,
+  options: Pick<AgentMcpToolClientOptions, "server" | "executionProfile" | "terminationGraceMs" | "interactionInput">,
 ): string {
   return crypto
     .createHash("sha256")

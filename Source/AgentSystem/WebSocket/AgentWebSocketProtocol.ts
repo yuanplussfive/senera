@@ -10,12 +10,7 @@ import { SeneraTerminalDimensionLimits } from "../Execution/SeneraTerminalTypes.
 import { AgentApprovalDecisions } from "../Approvals/AgentApprovalTypes.js";
 import { AgentInteractionInputActions } from "../Interaction/AgentInteractionInputTypes.js";
 
-const AgentInteractionInputValueSchema = z.union([
-  z.string(),
-  z.number().finite(),
-  z.boolean(),
-  z.array(z.string()),
-]);
+const AgentInteractionInputValueSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.array(z.string())]);
 
 const AgentPresetFormatSchema = z.enum(["json", "markdown", "text"]);
 

@@ -31,10 +31,7 @@ import type { AgentSessionRunControlPolicy } from "./AgentSessionRunControlPolic
 import type { AgentSessionRunResource } from "./AgentSessionRunResource.js";
 import type { AgentSessionResource } from "./AgentSessionResource.js";
 import { releaseAgentLifecycleResources } from "../Core/AgentLifecycleResource.js";
-import {
-  resolveAgentSessionLifecycle,
-  withAgentSessionCloseFailure,
-} from "./AgentSessionLifecycleMetadata.js";
+import { resolveAgentSessionLifecycle, withAgentSessionCloseFailure } from "./AgentSessionLifecycleMetadata.js";
 import {
   AgentSessionHistoryMutationCoordinator,
   type AgentSessionHistoryMutationResult,

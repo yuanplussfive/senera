@@ -97,7 +97,12 @@ export class AgentPiResourceProjector {
   readTextFile(filePath: string): string {
     const revision = fs.statSync(filePath);
     const cached = this.textByPath.get(filePath);
-    if (cached && cached.mtimeMs === revision.mtimeMs && cached.size === revision.size && cached.ctimeMs === revision.ctimeMs) {
+    if (
+      cached &&
+      cached.mtimeMs === revision.mtimeMs &&
+      cached.size === revision.size &&
+      cached.ctimeMs === revision.ctimeMs
+    ) {
       return cached.content;
     }
     const content = fs.readFileSync(filePath, "utf8");

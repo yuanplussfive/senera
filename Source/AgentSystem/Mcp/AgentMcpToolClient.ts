@@ -209,8 +209,7 @@ export class AgentMcpToolClient {
   private readonly taskEventHandlers = new Map<string, AgentMcpTaskEventDeliveryState>();
   private readonly interactionLease = new AgentKeyedLeaseQueue<"elicitation">();
   private activeInteraction:
-    | { owner: AgentInteractionInputOwner; signal?: AbortSignal; onEvent?: AgentEventSink }
-    | undefined;
+    { owner: AgentInteractionInputOwner; signal?: AbortSignal; onEvent?: AgentEventSink } | undefined;
 
   constructor(
     private readonly client: Client,

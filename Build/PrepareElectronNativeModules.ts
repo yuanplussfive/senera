@@ -82,11 +82,7 @@ export function resolveElectronNativeStageRoot(
   return path.join(workspaceRoot, ElectronNativeStageDirectory, `electron-${electronVersion}-${architecture}`);
 }
 
-function rebuildNativeModules(
-  stagingRoot: string,
-  electronVersion: string,
-  architecture: NodeJS.Architecture,
-): void {
+function rebuildNativeModules(stagingRoot: string, electronVersion: string, architecture: NodeJS.Architecture): void {
   const result = spawnSync(
     "electron-rebuild",
     [

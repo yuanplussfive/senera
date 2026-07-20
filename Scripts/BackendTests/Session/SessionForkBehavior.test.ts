@@ -44,9 +44,12 @@ describe.each(["memory", "sqlite"] as const)("Session fork behavior (%s)", (repo
         projector.projectUserInput("request-b", "Then change it", timestamp(3)),
         projector.projectAssistantDecision("request-b", "<final_answer>B</final_answer>", timestamp(4)),
       ]);
-      store.persistTurnArtifacts("session-source", "request-a", [], [
-        { step: 1, seq: 0, kind: "answer", status: "done" },
-      ]);
+      store.persistTurnArtifacts(
+        "session-source",
+        "request-a",
+        [],
+        [{ step: 1, seq: 0, kind: "answer", status: "done" }],
+      );
       store.persistRunSnapshot({
         sessionId: "session-source",
         requestId: "request-a",

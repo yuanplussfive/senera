@@ -475,10 +475,7 @@ test("history replay does not erase a locally completed run while reconciling", 
       { sessionId: TestSessionId, requestId: TestRequestId },
     ),
   );
-  applyEvent(
-    state,
-    createEvent(EventKinds.RunCompleted, {}, { sessionId: TestSessionId, requestId: TestRequestId }),
-  );
+  applyEvent(state, createEvent(EventKinds.RunCompleted, {}, { sessionId: TestSessionId, requestId: TestRequestId }));
 
   applyEvent(
     state,
@@ -539,7 +536,10 @@ test("history replay does not erase a locally completed run while reconciling", 
       { sessionId: TestSessionId },
     ),
   );
-  applyEvent(state, createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }, { sessionId: TestSessionId }));
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }, { sessionId: TestSessionId }),
+  );
 
   const session = state.sessions[TestSessionId];
   expect(session?.messages.map((message) => message.content)).toEqual(["检查并回答", "历史答案"]);
@@ -553,10 +553,7 @@ test("terminal run snapshots win when the event outbox has only persisted run.st
     state,
     createEvent(EventKinds.RunStarted, { input: "快速完成" }, { sessionId: TestSessionId, requestId: TestRequestId }),
   );
-  applyEvent(
-    state,
-    createEvent(EventKinds.RunCompleted, {}, { sessionId: TestSessionId, requestId: TestRequestId }),
-  );
+  applyEvent(state, createEvent(EventKinds.RunCompleted, {}, { sessionId: TestSessionId, requestId: TestRequestId }));
   applyEvent(
     state,
     createEvent(

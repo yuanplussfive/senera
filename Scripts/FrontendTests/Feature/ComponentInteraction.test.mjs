@@ -197,9 +197,7 @@ test("URL interaction opens only after consent and then waits for MCP completion
     toolCallId: "call_oauth",
     createdAt: "2026-07-17T00:00:00.000Z",
   };
-  const { rerender } = render(
-    React.createElement(InteractionInputStrip, { interactions: [interaction], onResolve }),
-  );
+  const { rerender } = render(React.createElement(InteractionInputStrip, { interactions: [interaction], onResolve }));
   const user = userEvent.setup();
 
   expect(screen.getByText("accounts.example.com")).toBeInTheDocument();

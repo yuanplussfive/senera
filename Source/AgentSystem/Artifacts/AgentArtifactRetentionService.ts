@@ -117,9 +117,7 @@ export class AgentArtifactRetentionService {
       path.resolve(this.workspaceRoot, config.RootDir),
       `artifact 根目录超出工作区：${config.RootDir}`,
     );
-    const artifactRoot = (
-      await this.boundary.resolve(lexicalRoot, AgentResourceAccessIntents.Read)
-    ).absolutePath;
+    const artifactRoot = (await this.boundary.resolve(lexicalRoot, AgentResourceAccessIntents.Read)).absolutePath;
     const candidates = await scanArtifactDirectories(artifactRoot, config.MaintenanceMaxConcurrency);
     const now = Date.now();
     const removed = new Set<string>();
@@ -209,7 +207,10 @@ export class AgentArtifactRetentionService {
   }
 }
 
-async function scanArtifactDirectories(root: string, concurrency: number): Promise<{
+async function scanArtifactDirectories(
+  root: string,
+  concurrency: number,
+): Promise<{
   complete: ArtifactCandidate[];
   incomplete: IncompleteArtifactCandidate[];
   spools: OutputSpoolCandidate[];
@@ -324,19 +325,15 @@ async function readIncompleteCandidate(directory: string, concurrency: number): 
 
 async function measureDirectoryBytes(directory: string, concurrency: number): Promise<number> {
   const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => []);
-  const sizes = await runWithConcurrency(
-    entries,
-    concurrency,
-    async (entry) => {
-      const entryPath = path.join(directory, entry.name);
-      if (entry.isSymbolicLink()) return 0;
-      if (entry.isDirectory()) return measureDirectoryBytes(entryPath, concurrency);
-      return fs
-        .stat(entryPath)
-        .then((stat) => stat.size)
-        .catch(() => 0);
-    },
-  );
+  const sizes = await runWithConcurrency(entries, concurrency, async (entry) => {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isSymbolicLink()) return 0;
+    if (entry.isDirectory()) return measureDirectoryBytes(entryPath, concurrency);
+    return fs
+      .stat(entryPath)
+      .then((stat) => stat.size)
+      .catch(() => 0);
+  });
   return sizes.reduce((total, size) => total + size, 0);
 }
 
@@ -423,14 +420,24 @@ function isMissingFileError(error: unknown): boolean {
 }
 
 type QuotaCandidate =
-  | { readonly kind: "spool"; readonly value: OutputSpoolCandidate; readonly bytes: number; readonly modifiedAt: number }
+  | {
+      readonly kind: "spool";
+      readonly value: OutputSpoolCandidate;
+      readonly bytes: number;
+      readonly modifiedAt: number;
+    }
   | {
       readonly kind: "incomplete";
       readonly value: IncompleteArtifactCandidate;
       readonly bytes: number;
       readonly modifiedAt: number;
     }
-  | { readonly kind: "complete"; readonly value: ArtifactCandidate; readonly bytes: number; readonly modifiedAt: number };
+  | {
+      readonly kind: "complete";
+      readonly value: ArtifactCandidate;
+      readonly bytes: number;
+      readonly modifiedAt: number;
+    };
 
 function quotaCandidates(
   candidates: {

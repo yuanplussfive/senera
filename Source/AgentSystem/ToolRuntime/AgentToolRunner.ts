@@ -80,14 +80,13 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       );
     }
     const runtime = resolveAgentToolRuntimeCapabilities(tool);
-    const outputSpool =
-      runtime.outputStreaming
-        ? await createPluginOutputSpool(this.config, this.workspaceRoot, {
-            sessionId: context.sessionId,
-            requestId: context.requestId,
-            toolCallId: context.toolCallId,
-          })
-        : undefined;
+    const outputSpool = runtime.outputStreaming
+      ? await createPluginOutputSpool(this.config, this.workspaceRoot, {
+          sessionId: context.sessionId,
+          requestId: context.requestId,
+          toolCallId: context.toolCallId,
+        })
+      : undefined;
     const reporter = new AgentToolExecutionReporter({
       toolName: tool.name,
       callId: context.toolCallId,
@@ -126,7 +125,10 @@ export class AgentToolRunner implements AgentToolRunnerLike {
         try {
           await updateSeneraOutputSpoolState(outputSpool.descriptor, "failed");
         } catch (stateError) {
-          spoolFailure = new AggregateError([error, stateError], "Tool output spool could not be sealed or marked failed.");
+          spoolFailure = new AggregateError(
+            [error, stateError],
+            "Tool output spool could not be sealed or marked failed.",
+          );
         }
       }
     }

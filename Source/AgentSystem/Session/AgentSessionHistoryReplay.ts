@@ -231,7 +231,9 @@ function readAnswerValue(value: unknown): string | undefined {
     const nested = readTextValue(answer);
     if (nested) return nested;
   }
-  return Object.values(record).map(readAnswerValue).find((item): item is string => item !== undefined);
+  return Object.values(record)
+    .map(readAnswerValue)
+    .find((item): item is string => item !== undefined);
 }
 
 function readTextValue(value: unknown): string | undefined {

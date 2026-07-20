@@ -20,11 +20,7 @@ import {
 import { projectRunEvent } from "./runEventProjector";
 import { applyScopedRunEvent } from "./scopedRunProjector";
 import { projectSessionHistoryEvent } from "./sessionHistoryProjector";
-import {
-  deleteSessionRuntimeState,
-  ingestSessionList,
-  readFirstAvailableSessionId,
-} from "./sessionListProjection";
+import { deleteSessionRuntimeState, ingestSessionList, readFirstAvailableSessionId } from "./sessionListProjection";
 import { nowIso, syncSessionCountsFromLoadedMessages } from "./sessionProjectorCore";
 import { applyModelListSnapshotSelection, syncActiveSessionModelSelection } from "./sessionModelSelection";
 import type { StoreState } from "./types";

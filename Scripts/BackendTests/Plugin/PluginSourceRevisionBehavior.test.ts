@@ -55,7 +55,14 @@ describe("plugin source revision", () => {
         ],
         Skills: [{ Name: "ExampleSkill", DescriptionFile: "./docs/Skill.md" }],
         Templates: [{ Name: "ExampleTemplate", Path: "./templates/example.md" }],
-        McpServers: [{ Id: "example", Transport: "stdio", Command: "node", Args: ["${runtimeModule:Source/Plugins/Example/index.js}"] }],
+        McpServers: [
+          {
+            Id: "example",
+            Transport: "stdio",
+            Command: "node",
+            Args: ["${runtimeModule:Source/Plugins/Example/index.js}"],
+          },
+        ],
       }),
       "utf8",
     );

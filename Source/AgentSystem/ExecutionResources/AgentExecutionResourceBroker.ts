@@ -33,7 +33,7 @@ export interface AgentExecutionResourceBrokerOptions {
 
 export interface AgentExecutionResourceCleanupFailure {
   readonly resourceId: string;
-  readonly reason: Extract<AgentExecutionResourceDomainEvent, { kind: "execution.resource.removed" }>['data']['reason'];
+  readonly reason: Extract<AgentExecutionResourceDomainEvent, { kind: "execution.resource.removed" }>["data"]["reason"];
   readonly error: unknown;
 }
 
@@ -434,7 +434,7 @@ export class AgentExecutionResourceBroker {
 
   private recordCleanupFailure(
     resource: AgentExecutionResourceHandle,
-    reason: AgentExecutionResourceCleanupFailure['reason'],
+    reason: AgentExecutionResourceCleanupFailure["reason"],
     error: unknown,
   ): void {
     const failure = { resourceId: resource.id, reason, error } satisfies AgentExecutionResourceCleanupFailure;

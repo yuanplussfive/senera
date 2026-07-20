@@ -38,10 +38,7 @@ import {
   resolveAgentToolAvailabilitySnapshot,
   withAgentToolAvailabilitySnapshot,
 } from "../ToolRuntime/AgentToolAvailabilitySnapshot.js";
-import {
-  clearAgentSessionCancellation,
-  withAgentSessionCancellationPending,
-} from "./AgentSessionLifecycleMetadata.js";
+import { clearAgentSessionCancellation, withAgentSessionCancellationPending } from "./AgentSessionLifecycleMetadata.js";
 
 export interface AgentSessionRunCoordinatorOptions {
   store: AgentSessionStore;

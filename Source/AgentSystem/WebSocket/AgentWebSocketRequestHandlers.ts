@@ -124,11 +124,17 @@ export class AgentWebSocketSessionRequestHandlers {
 export class AgentWebSocketExecutionResourceRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
 
-  async list(request: AgentWebSocketRequestOf<"execution.resource.list">, sendEvent: AgentWebSocketEventSender): Promise<void> {
+  async list(
+    request: AgentWebSocketRequestOf<"execution.resource.list">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
     await this.sendSnapshot("list", request.sessionId, this.broker.list(this.owner(request.sessionId)), sendEvent);
   }
 
-  async inspect(request: AgentWebSocketRequestOf<"execution.resource.inspect">, sendEvent: AgentWebSocketEventSender): Promise<void> {
+  async inspect(
+    request: AgentWebSocketRequestOf<"execution.resource.inspect">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
     await this.sendSnapshot(
       "inspect",
       request.sessionId,
@@ -196,11 +202,13 @@ export class AgentWebSocketExecutionResourceRequestHandlers {
     resources: AgentExecutionResourceSnapshot[],
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    return Promise.resolve(sendEvent({
-      kind: AgentEventKinds.ExecutionResourceSnapshot,
-      context: { sessionId },
-      data: { operation, resources },
-    }));
+    return Promise.resolve(
+      sendEvent({
+        kind: AgentEventKinds.ExecutionResourceSnapshot,
+        context: { sessionId },
+        data: { operation, resources },
+      }),
+    );
   }
 
   private owner(sessionId: string) {
@@ -288,7 +296,10 @@ export class AgentWebSocketConfigRequestHandlers {
     });
   }
 
-  async updateConfig(request: AgentWebSocketRequestOf<"config.update">, sendEvent: AgentWebSocketEventSender): Promise<void> {
+  async updateConfig(
+    request: AgentWebSocketRequestOf<"config.update">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
     if (!this.context.configService) {
       throw new Error(agentErrorMessage("websocket.configServiceDisabled"));
     }
@@ -357,14 +368,22 @@ export class AgentWebSocketConfigRequestHandlers {
     request: AgentWebSocketRequestOf<"provider.model.upsert">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    return this.sendProviderModelConfigSnapshot(this.requireConfigService().upsertProviderModel(request), request, sendEvent);
+    return this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().upsertProviderModel(request),
+      request,
+      sendEvent,
+    );
   }
 
   deleteProviderModel(
     request: AgentWebSocketRequestOf<"provider.model.delete">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    return this.sendProviderModelConfigSnapshot(this.requireConfigService().deleteProviderModel(request), request, sendEvent);
+    return this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().deleteProviderModel(request),
+      request,
+      sendEvent,
+    );
   }
 
   bulkImportProviderModels(
@@ -401,43 +420,47 @@ export class AgentWebSocketConfigRequestHandlers {
     request: AgentWebSocketRequestOf<"plugin.config.update">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    return Promise.resolve(sendEvent({
-      kind: AgentEventKinds.PluginConfigSnapshot,
-      context: {},
-      data: {
-        ...this.context.pluginConfigManager.updatePluginConfig({
-          pluginName: request.pluginName,
-          toml: request.toml,
-        }),
-        operation: {
-          requestId: request.requestId,
-          kind: "update",
-          pluginName: request.pluginName,
+    return Promise.resolve(
+      sendEvent({
+        kind: AgentEventKinds.PluginConfigSnapshot,
+        context: {},
+        data: {
+          ...this.context.pluginConfigManager.updatePluginConfig({
+            pluginName: request.pluginName,
+            toml: request.toml,
+          }),
+          operation: {
+            requestId: request.requestId,
+            kind: "update",
+            pluginName: request.pluginName,
+          },
         },
-      },
-    }));
+      }),
+    );
   }
 
   setPluginEnabled(
     request: AgentWebSocketRequestOf<"plugin.config.set_enabled">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    return Promise.resolve(sendEvent({
-      kind: AgentEventKinds.PluginConfigSnapshot,
-      context: {},
-      data: {
-        ...this.context.pluginConfigManager.setPluginEnabled({
-          pluginName: request.pluginName,
-          toolName: request.toolName,
-          enabled: request.enabled,
-        }),
-        operation: {
-          requestId: request.requestId,
-          kind: "set_enabled",
-          pluginName: request.pluginName,
+    return Promise.resolve(
+      sendEvent({
+        kind: AgentEventKinds.PluginConfigSnapshot,
+        context: {},
+        data: {
+          ...this.context.pluginConfigManager.setPluginEnabled({
+            pluginName: request.pluginName,
+            toolName: request.toolName,
+            enabled: request.enabled,
+          }),
+          operation: {
+            requestId: request.requestId,
+            kind: "set_enabled",
+            pluginName: request.pluginName,
+          },
         },
-      },
-    }));
+      }),
+    );
   }
 
   private requireConfigService() {
@@ -474,17 +497,19 @@ export class AgentWebSocketConfigRequestHandlers {
   private broadcastConfigReloaded(
     snapshot: ReturnType<NonNullable<AgentWebSocketRequestContext["configService"]>["snapshot"]>,
   ): Promise<void> {
-    return Promise.resolve(this.broadcast({
-      kind: AgentEventKinds.ConfigReloaded,
-      context: {},
-      data: {
-        configPath: snapshot.path,
-        source: snapshot.source,
-        revision: snapshot.revision,
-        databasePath: snapshot.databasePath,
-        diagnostics: snapshot.diagnostics,
-      },
-    }));
+    return Promise.resolve(
+      this.broadcast({
+        kind: AgentEventKinds.ConfigReloaded,
+        context: {},
+        data: {
+          configPath: snapshot.path,
+          source: snapshot.source,
+          revision: snapshot.revision,
+          databasePath: snapshot.databasePath,
+          diagnostics: snapshot.diagnostics,
+        },
+      }),
+    );
   }
 }
 

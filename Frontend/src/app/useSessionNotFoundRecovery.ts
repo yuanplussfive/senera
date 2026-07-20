@@ -161,10 +161,7 @@ function missingSessionPlan(
   };
 }
 
-function recreateMissingMessagePlan(
-  sessionId: string,
-  lastSentMessage: LastSentMessage,
-): SessionNotFoundRecoveryPlan {
+function recreateMissingMessagePlan(sessionId: string, lastSentMessage: LastSentMessage): SessionNotFoundRecoveryPlan {
   return {
     kind: "message_recreate",
     sessionId,

@@ -22,7 +22,9 @@ export interface AgentSessionLifecycleMetadata {
   readonly close?: AgentSessionClosePendingMetadata;
 }
 
-export function resolveAgentSessionLifecycle(metadata: AgentSessionMetadata | undefined): AgentSessionLifecycleMetadata {
+export function resolveAgentSessionLifecycle(
+  metadata: AgentSessionMetadata | undefined,
+): AgentSessionLifecycleMetadata {
   return metadata?.lifecycle ?? {};
 }
 
@@ -39,7 +41,9 @@ export function withAgentSessionCancellationPending(
   };
 }
 
-export function clearAgentSessionCancellation(metadata: AgentSessionMetadata | undefined): AgentSessionMetadata | undefined {
+export function clearAgentSessionCancellation(
+  metadata: AgentSessionMetadata | undefined,
+): AgentSessionMetadata | undefined {
   return projectLifecycle(metadata, { cancellation: undefined });
 }
 

@@ -80,11 +80,9 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
     sourceNodeModulesRoots: dependencySourceNodeModulesRoots(resourceRoot),
     targetNodeModulesRoot: path.join(desktopDataRoot, NodeModulesDirectoryName),
   });
-  syncRuntimeDirectory(
-    bundledTerminalRuntimeRoot,
-    path.join(sandboxRuntimeRoot, "terminal-sidecar"),
-    { pruneExtraneous: true },
-  );
+  syncRuntimeDirectory(bundledTerminalRuntimeRoot, path.join(sandboxRuntimeRoot, "terminal-sidecar"), {
+    pruneExtraneous: true,
+  });
 
   return {
     appRoot,

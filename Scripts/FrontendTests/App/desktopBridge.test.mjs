@@ -25,18 +25,18 @@ describe("openExternalUrl", () => {
     const opened = {};
     const openWindow = vi.fn(() => opened);
 
-    await expect(
-      openExternalUrl("http://127.0.0.1:8787/callback", { bridge: undefined, openWindow }),
-    ).resolves.toBe("web");
+    await expect(openExternalUrl("http://127.0.0.1:8787/callback", { bridge: undefined, openWindow })).resolves.toBe(
+      "web",
+    );
     expect(openWindow).toHaveBeenCalledWith("http://127.0.0.1:8787/callback");
   });
 
   it("blocks insecure remote HTTP and credential-bearing URLs", async () => {
     const openWindow = vi.fn();
 
-    await expect(
-      openExternalUrl("http://accounts.example.com/login", { bridge: undefined, openWindow }),
-    ).resolves.toBe("blocked");
+    await expect(openExternalUrl("http://accounts.example.com/login", { bridge: undefined, openWindow })).resolves.toBe(
+      "blocked",
+    );
     await expect(
       openExternalUrl("https://user:secret@accounts.example.com/login", { bridge: undefined, openWindow }),
     ).resolves.toBe("blocked");

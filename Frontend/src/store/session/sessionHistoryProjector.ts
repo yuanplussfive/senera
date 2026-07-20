@@ -7,11 +7,7 @@ import {
   type SessionHistoryStepsData,
   type SessionRunHistoryChunkData,
 } from "../../api/eventTypes";
-import {
-  mergeHistoryMessages,
-  projectEntryToMessage,
-  rebuildRunFromHistory,
-} from "./historyRunProjection";
+import { mergeHistoryMessages, projectEntryToMessage, rebuildRunFromHistory } from "./historyRunProjection";
 import { ensureSession, syncSessionCountsFromLoadedMessages, upsertStep } from "./sessionProjectorCore";
 import { syncRunActiveFlags, touchRun } from "./sessionRunProjection";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";

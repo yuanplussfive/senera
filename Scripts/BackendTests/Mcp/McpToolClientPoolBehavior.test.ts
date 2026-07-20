@@ -54,9 +54,7 @@ describe("MCP tool client pool", () => {
 
   test("keeps a failed close entry for an explicit retry", async () => {
     const client = fakeClient(false);
-    client.close
-      .mockRejectedValueOnce(new Error("transport did not terminate"))
-      .mockResolvedValueOnce(undefined);
+    client.close.mockRejectedValueOnce(new Error("transport did not terminate")).mockResolvedValueOnce(undefined);
     const pool = new AgentMcpToolClientPool(vi.fn(async () => client.client));
 
     await pool.withClient(connection(), async () => "ready");

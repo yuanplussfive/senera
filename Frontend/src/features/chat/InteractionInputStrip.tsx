@@ -198,7 +198,11 @@ function UrlInteractionInputItem({
                 onClick={() => void open()}
                 className="h-7 bg-ink-900 px-2 text-paper-50 hover:bg-ink-800"
               >
-                {opening ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
+                {opening ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ExternalLink className="h-3.5 w-3.5" />
+                )}
                 {frontendMessage(opening ? "interaction.input.externalOpening" : "interaction.input.externalOpen")}
               </Button>
             )}
@@ -248,7 +252,9 @@ function InteractionField({
         {required ? <span className="ml-0.5 text-brick-600">*</span> : null}
       </span>
       <InteractionControl property={property} value={value} disabled={disabled} onChange={onChange} />
-      {property.description ? <span className="mt-1 block text-[10.5px] leading-4 text-ink-400">{property.description}</span> : null}
+      {property.description ? (
+        <span className="mt-1 block text-[10.5px] leading-4 text-ink-400">{property.description}</span>
+      ) : null}
       {error ? <span className="mt-1 block text-[10.5px] text-brick-700">{error}</span> : null}
     </label>
   );
@@ -290,9 +296,7 @@ function InteractionControl({
               disabled={disabled}
               onChange={(event) =>
                 onChange(
-                  event.target.checked
-                    ? [...selected, option.value]
-                    : selected.filter((item) => item !== option.value),
+                  event.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value),
                 )
               }
               className="h-3.5 w-3.5 accent-cyan-700"
@@ -407,7 +411,9 @@ function initialDraft(interaction: Extract<InteractionInputRunRecord, { mode: "f
 }
 
 function compactDraft(draft: InteractionDraft): InteractionInputContent {
-  return Object.fromEntries(Object.entries(draft).filter((entry): entry is [string, InteractionInputValue] => entry[1] !== undefined));
+  return Object.fromEntries(
+    Object.entries(draft).filter((entry): entry is [string, InteractionInputValue] => entry[1] !== undefined),
+  );
 }
 
 function validateDraft(
@@ -431,17 +437,24 @@ function validateDraft(
 
 function validateProperty(property: InteractionInputProperty, value: InteractionInputValue): string | undefined {
   if (property.type === "string" && typeof value === "string") {
-    if (property.minLength !== undefined && value.length < property.minLength) return frontendMessage("interaction.input.tooShort");
-    if (property.maxLength !== undefined && value.length > property.maxLength) return frontendMessage("interaction.input.tooLong");
+    if (property.minLength !== undefined && value.length < property.minLength)
+      return frontendMessage("interaction.input.tooShort");
+    if (property.maxLength !== undefined && value.length > property.maxLength)
+      return frontendMessage("interaction.input.tooLong");
   }
   if ((property.type === "number" || property.type === "integer") && typeof value === "number") {
-    if (!Number.isFinite(value) || (property.type === "integer" && !Number.isInteger(value))) return frontendMessage("interaction.input.invalidNumber");
-    if (property.minimum !== undefined && value < property.minimum) return frontendMessage("interaction.input.tooSmall", { value: property.minimum });
-    if (property.maximum !== undefined && value > property.maximum) return frontendMessage("interaction.input.tooLarge", { value: property.maximum });
+    if (!Number.isFinite(value) || (property.type === "integer" && !Number.isInteger(value)))
+      return frontendMessage("interaction.input.invalidNumber");
+    if (property.minimum !== undefined && value < property.minimum)
+      return frontendMessage("interaction.input.tooSmall", { value: property.minimum });
+    if (property.maximum !== undefined && value > property.maximum)
+      return frontendMessage("interaction.input.tooLarge", { value: property.maximum });
   }
   if (property.type === "array" && Array.isArray(value)) {
-    if (property.minItems !== undefined && value.length < property.minItems) return frontendMessage("interaction.input.tooFew");
-    if (property.maxItems !== undefined && value.length > property.maxItems) return frontendMessage("interaction.input.tooMany");
+    if (property.minItems !== undefined && value.length < property.minItems)
+      return frontendMessage("interaction.input.tooFew");
+    if (property.maxItems !== undefined && value.length > property.maxItems)
+      return frontendMessage("interaction.input.tooMany");
   }
   return undefined;
 }

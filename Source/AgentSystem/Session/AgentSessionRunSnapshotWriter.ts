@@ -2,10 +2,7 @@ import { type AgentCancellationError } from "../Core/AgentCancellation.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSession } from "./AgentSession.js";
 import { type AgentSessionStore } from "./AgentSessionStore.js";
-import {
-  clearAgentSessionCancellation,
-  resolveAgentSessionLifecycle,
-} from "./AgentSessionLifecycleMetadata.js";
+import { clearAgentSessionCancellation, resolveAgentSessionLifecycle } from "./AgentSessionLifecycleMetadata.js";
 
 export class AgentSessionRunSnapshotWriter {
   constructor(private readonly store: AgentSessionStore) {}

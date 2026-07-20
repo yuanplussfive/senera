@@ -49,7 +49,10 @@ export interface PrepareTerminalSidecarGuestRuntimeResult {
 if (isMainModule(import.meta.url)) {
   const workspaceRoot = process.cwd();
   const defaults = resolveAgentDefaults(undefined).SandboxRuntime;
-  const sandboxRuntimeBaseDir = path.resolve(workspaceRoot, readOptionValue(process.argv.slice(2), "--base-dir") ?? defaults.BaseDir);
+  const sandboxRuntimeBaseDir = path.resolve(
+    workspaceRoot,
+    readOptionValue(process.argv.slice(2), "--base-dir") ?? defaults.BaseDir,
+  );
   await prepareSeneraTerminalSidecarGuestRuntime({
     workspaceRoot,
     sandboxRuntimeBaseDir,
@@ -123,7 +126,8 @@ function installGuestDependencies(
     },
   );
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`Unable to install Terminal Sidecar guest dependencies (exit ${result.status}).`);
+  if (result.status !== 0)
+    throw new Error(`Unable to install Terminal Sidecar guest dependencies (exit ${result.status}).`);
 }
 
 async function assertPreparedRuntime(runtimeRoot: string, architecture: NodeJS.Architecture): Promise<void> {
@@ -147,7 +151,9 @@ async function isPreparedRuntimeCurrent(
       await readFile(path.join(runtimeRoot, RuntimeManifestFileName), "utf8"),
     ) as PreparedTerminalSidecarRuntimeManifest;
     await assertPreparedRuntime(runtimeRoot, architecture);
-    return manifest.fingerprint === fingerprint && manifest.architecture === architecture && manifest.platform === "linux";
+    return (
+      manifest.fingerprint === fingerprint && manifest.architecture === architecture && manifest.platform === "linux"
+    );
   } catch {
     return false;
   }

@@ -281,7 +281,6 @@ describe("Pi session lifecycle behavior", () => {
     lease.session.dispose();
     await substrate.close();
   });
-
 });
 
 const piTestConfig: AgentSystemConfig = {

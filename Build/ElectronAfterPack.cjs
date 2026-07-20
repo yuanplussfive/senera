@@ -8,7 +8,12 @@ const NativeModules = {
 module.exports = async function injectStagedElectronNativeModules(context) {
   const workspaceRoot = process.cwd();
   const electronVersion = require(path.join(workspaceRoot, "node_modules", "electron", "package.json")).version;
-  const stageRoot = path.join(workspaceRoot, ".cache", "electron-native", `electron-${electronVersion}-${process.arch}`);
+  const stageRoot = path.join(
+    workspaceRoot,
+    ".cache",
+    "electron-native",
+    `electron-${electronVersion}-${process.arch}`,
+  );
 
   for (const [moduleName, binaryName] of Object.entries(NativeModules)) {
     const source = path.join(stageRoot, "node_modules", moduleName, "build", "Release", binaryName);

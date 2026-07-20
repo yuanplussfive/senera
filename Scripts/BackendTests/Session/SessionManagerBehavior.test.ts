@@ -141,7 +141,10 @@ describe("Session manager behavior", () => {
 
     shouldFail = false;
     await fixture.manager.closeSession({ sessionId: "session-cleanup-failure" });
-    expect(fixture.store.get("session-cleanup-failure")).toEqual({ kind: "missing", sessionId: "session-cleanup-failure" });
+    expect(fixture.store.get("session-cleanup-failure")).toEqual({
+      kind: "missing",
+      sessionId: "session-cleanup-failure",
+    });
   });
 
   test("releases session resources only after the active run has settled", async () => {
@@ -537,7 +540,9 @@ describe("Session manager behavior", () => {
       expect.objectContaining({
         kind: "found",
         session: expect.not.objectContaining({
-          metadata: expect.objectContaining({ lifecycle: expect.objectContaining({ cancellation: expect.anything() }) }),
+          metadata: expect.objectContaining({
+            lifecycle: expect.objectContaining({ cancellation: expect.anything() }),
+          }),
         }),
       }),
     );
