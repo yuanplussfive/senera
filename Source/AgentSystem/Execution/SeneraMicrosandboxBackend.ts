@@ -147,9 +147,7 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
         SeneraExecutionErrorCodes.CleanupFailed,
         { reason: "rootfs_cleanup_failed", backend: this.kind },
       );
-      cleanupError = cleanupError
-        ? attachSeneraExecutionDiagnostic(cleanupError, "rootfs", materializedCleanupError)
-        : materializedCleanupError;
+      cleanupError = materializedCleanupError;
     }
 
     if (cleanupError) {

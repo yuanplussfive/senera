@@ -238,11 +238,13 @@ function readAnswerValue(value: unknown): string | undefined {
 
 function readTextValue(value: unknown): string | undefined {
   if (typeof value === "string") return value;
-  if (value === null || typeof value !== "object") return undefined;
-  if (Array.isArray(value)) return undefined;
-  const record = value as Record<string, unknown>;
-  const text = record["#text"] ?? record["#cdata"];
+  if (!isPlainRecord(value)) return undefined;
+  const text = value["#text"] ?? value["#cdata"];
   return typeof text === "string" ? text : undefined;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Object.prototype.toString.call(value) === "[object Object]";
 }
 
 class AgentSessionHistoryEntryIndex {
