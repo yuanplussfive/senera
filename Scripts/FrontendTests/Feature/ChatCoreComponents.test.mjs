@@ -10,6 +10,7 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 }));
 
 const { ChatPanel } = await import("../../../Frontend/src/features/chat/ChatPanel.tsx");
+const { AssistantMessageBody } = await import("../../../Frontend/src/features/chat/AssistantMessageBody.tsx");
 const { ChatComposer } = await import("../../../Frontend/src/features/chat/ChatComposer.tsx");
 const { ScrollToBottomButton } = await import("../../../Frontend/src/features/chat/ScrollToBottomButton.tsx");
 const { MessageActions } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
@@ -38,6 +39,20 @@ test("message actions expose fork only for stable mutable request boundaries", (
     "copy",
     "viewWorkflow",
   ]);
+});
+
+test("tool preface keeps its progress text without rendering a redundant badge", () => {
+  renderWithFrontendProviders(
+    React.createElement(AssistantMessageBody, {
+      message: {
+        kind: "AssistantToolPreface",
+        content: "我先读取项目配置。",
+      },
+    }),
+  );
+
+  expect(screen.getByText("我先读取项目配置。")).toBeInTheDocument();
+  expect(screen.queryByText("工具调用前回复")).not.toBeInTheDocument();
 });
 
 test("chat composer sends trimmed text and switches queue mode while a run is active", async () => {

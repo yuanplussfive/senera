@@ -58,7 +58,9 @@ export class AgentPluginScanner {
           rootPath,
           rootKind: pluginRoot.kind,
           manifestPath,
-          config: readLoadedPluginConfig(rootPath, this.config),
+          config: readLoadedPluginConfig(rootPath, this.config, {
+            materialize: pluginRoot.kind === "User",
+          }),
           manifest,
         });
       }

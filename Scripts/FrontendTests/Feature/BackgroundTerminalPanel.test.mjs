@@ -107,8 +107,6 @@ test("terminal controls follow the effective backend capabilities", async () => 
   const onResize = vi.fn();
   const onSignal = vi.fn();
   const baseProps = {
-    open: true,
-    onOpenChange: vi.fn(),
     outputs: {},
     onRefresh: vi.fn(),
     onWrite,
@@ -167,8 +165,6 @@ test("only the selected resource owns an xterm instance", async () => {
       TooltipProvider,
       { delayDuration: 0 },
       React.createElement(BackgroundTerminalPanel, {
-        open: true,
-        onOpenChange: vi.fn(),
         resources: [
           terminalResource([], "res_00000000000000000000000000000001", "shell-one", "2026-07-16T00:00:02.000Z"),
           terminalResource([], "res_00000000000000000000000000000002", "shell-two", "2026-07-16T00:00:01.000Z"),
@@ -200,8 +196,6 @@ test("the terminal search overlay opens from the terminal keyboard shortcut with
       TooltipProvider,
       { delayDuration: 0 },
       React.createElement(BackgroundTerminalPanel, {
-        open: true,
-        onOpenChange: vi.fn(),
         resources: [terminalResource(["interactive-input", "resize", "signals"])],
         outputs: {},
         onRefresh: vi.fn(),
@@ -232,7 +226,7 @@ test("the terminal search overlay opens from the terminal keyboard shortcut with
   expect(xterm.instances).toHaveLength(1);
 });
 
-test("the floating terminal stays non-modal and does not block approval actions", async () => {
+test("the docked terminal stays non-modal and does not block approval actions", async () => {
   const onResolve = vi.fn();
   render(
     React.createElement(
@@ -246,8 +240,6 @@ test("the floating terminal stays non-modal and does not block approval actions"
           onResolve,
         }),
         React.createElement(BackgroundTerminalPanel, {
-          open: true,
-          onOpenChange: vi.fn(),
           resources: [terminalResource([])],
           outputs: {},
           onRefresh: vi.fn(),
@@ -268,14 +260,12 @@ test("the floating terminal stays non-modal and does not block approval actions"
   expect(onResolve).toHaveBeenCalledWith("approval_terminal_test", "approve_once");
 });
 
-test("collapsing releases xterm resources and restoring recreates the selected terminal", async () => {
-  render(
+test("unmounting the terminal dock releases its xterm resource", async () => {
+  const view = render(
     React.createElement(
       TooltipProvider,
       { delayDuration: 0 },
       React.createElement(BackgroundTerminalPanel, {
-        open: true,
-        onOpenChange: vi.fn(),
         resources: [terminalResource([])],
         outputs: {},
         onRefresh: vi.fn(),
@@ -289,17 +279,11 @@ test("collapsing releases xterm resources and restoring recreates the selected t
 
   await waitFor(() => expect(xterm.instances).toHaveLength(1));
   const initialTerminal = xterm.instances[0];
-  act(() => {
-    screen.getByRole("button", { name: "折叠窗口" }).click();
-  });
+  view.unmount();
   await waitFor(() => expect(initialTerminal.disposed).toBe(true));
-  act(() => {
-    screen.getByRole("button", { name: "还原窗口" }).click();
-  });
-  await waitFor(() => expect(xterm.instances).toHaveLength(2));
 });
 
-test("terminal runtime failures stay inside the floating window and can be retried", async () => {
+test("terminal runtime failures stay inside the dock and can be retried", async () => {
   const onRetry = vi.fn();
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
   const preventExpectedError = (event) => event.preventDefault();
@@ -318,8 +302,6 @@ test("terminal runtime failures stay inside the floating window and can be retri
         React.createElement(
           TerminalRuntimeBoundary,
           {
-            open: true,
-            onOpenChange: vi.fn(),
             resetKey: 0,
             onRetry: () => {
               shouldThrow = false;

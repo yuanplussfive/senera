@@ -210,8 +210,16 @@ export function ConfigSourceNotice({ plugin }: { plugin: PluginConfigItem }): JS
 
   return (
     <div className="mt-2 rounded-md border border-ink-200 bg-paper-100 px-2 py-1.5 text-[12px] leading-5 text-ink-700">
-      {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.7")}
-      {templateName} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.27")}
+      {plugin.configExists ? (
+        <>
+          {templateName} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.56")}
+        </>
+      ) : (
+        <>
+          {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.7")}
+          {templateName} {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.205.27")}
+        </>
+      )}
     </div>
   );
 }

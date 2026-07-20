@@ -45,20 +45,40 @@ export function resolvePluginConfigFileName(config: AgentSystemConfig): string {
   return resolvePluginDiscoveryConfig(config).ConfigFileName;
 }
 
-export function readLoadedPluginConfig(pluginRootPath: string, config: AgentSystemConfig): LoadedPluginConfig {
+export interface ReadLoadedPluginConfigOptions {
+  /** Materialize a user-visible config file when the plugin only ships an example/default. */
+  materialize?: boolean;
+}
+
+export function readLoadedPluginConfig(
+  pluginRootPath: string,
+  config: AgentSystemConfig,
+  options: ReadLoadedPluginConfigOptions = {},
+): LoadedPluginConfig {
   const fileName = resolvePluginConfigFileName(config);
   const configPath = path.join(pluginRootPath, fileName);
   const templatePath = resolvePluginConfigTemplatePath(pluginRootPath, fileName);
   const schemaPath = resolvePluginConfigSchemaPath(pluginRootPath, fileName);
-  const exists = fs.existsSync(configPath);
   const templateExists = fs.existsSync(templatePath);
   const schemaExists = fs.existsSync(schemaPath);
-  const source = exists ? "file" : templateExists ? "example" : "default";
-  const toml = exists
-    ? fs.readFileSync(configPath, "utf8")
-    : templateExists
-      ? fs.readFileSync(templatePath, "utf8")
-      : defaultPluginConfigToml();
+  const templateToml = templateExists ? fs.readFileSync(templatePath, "utf8") : undefined;
+
+  if (options.materialize && !fs.existsSync(configPath)) {
+    materializePluginConfig(configPath, templateToml ?? defaultPluginConfigToml());
+  }
+
+  const exists = fs.existsSync(configPath);
+  const toml = exists ? fs.readFileSync(configPath, "utf8") : (templateToml ?? defaultPluginConfigToml());
+  const source =
+    templateToml !== undefined && toml === templateToml
+      ? "example"
+      : templateToml === undefined && toml === defaultPluginConfigToml()
+        ? "default"
+        : exists
+          ? "file"
+          : templateExists
+            ? "example"
+            : "default";
   const parsed = parseLoadedPluginConfigToml(toml, {
     schemaPath,
     schemaToml: schemaExists ? fs.readFileSync(schemaPath, "utf8") : undefined,
@@ -76,6 +96,21 @@ export function readLoadedPluginConfig(pluginRootPath: string, config: AgentSyst
     toml,
     ...parsed,
   };
+}
+
+function materializePluginConfig(configPath: string, toml: string): void {
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  try {
+    fs.writeFileSync(configPath, toml, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if (!isFileExistsError(error)) {
+      throw error;
+    }
+  }
+}
+
+function isFileExistsError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EEXIST";
 }
 
 export function parseLoadedPluginConfigToml(

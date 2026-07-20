@@ -7,7 +7,7 @@ import { useStore } from "./store/sessionStore";
 import { ChatPanel } from "./features/chat";
 import { SessionList } from "./features/session";
 import { ThinkingTimeline } from "./features/workflow";
-import { AppShell, readAppShellRenderPlan } from "./layout/AppShell";
+import { AppShell, readAppShellRenderPlan, type WorkflowDockTool } from "./layout/AppShell";
 import { type EventEnvelope, type WsRequest } from "./api/eventTypes";
 import { useChatCommands, type LastSentMessage } from "./app/useChatCommands";
 import { useGlobalShortcuts } from "./app/useGlobalShortcuts";
@@ -74,19 +74,30 @@ export function App({
   const { hasPersistentSessionPanel, hasPersistentWorkflowPanel } = responsiveMode;
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
-  const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
+  const [workflowDockTool, setWorkflowDockTool] = useState<WorkflowDockTool>("execution");
   const [terminalPanelLoadState, setTerminalPanelLoadState] = useState<TerminalPanelLoadState>({ status: "idle" });
   const [terminalRuntimeRevision, setTerminalRuntimeRevision] = useState(0);
   const uploadUrl = useMemo(() => buildUploadUrl(WS_URL), []);
   const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
   const settingsController = useWebSettingsController();
 
-  const handleOpenTerminalPanel = useCallback((): void => {
-    setTerminalPanelOpen(true);
-    setTerminalPanelLoadState((current) =>
-      current.status === "idle" || current.status === "error" ? { status: "loading" } : current,
-    );
+  const handleWorkflowDockToolChange = useCallback((tool: WorkflowDockTool): void => {
+    setWorkflowDockTool(tool);
+    if (tool === "terminal") {
+      setTerminalPanelLoadState((current) =>
+        current.status === "idle" || current.status === "error" ? { status: "loading" } : current,
+      );
+    }
   }, []);
+
+  const handleOpenTerminalPanel = useCallback((): void => {
+    handleWorkflowDockToolChange("terminal");
+    if (hasPersistentWorkflowPanel) {
+      setRightPanelCollapsed(false);
+      return;
+    }
+    setWorkflowDrawerOpen(true);
+  }, [handleWorkflowDockToolChange, hasPersistentWorkflowPanel, setRightPanelCollapsed]);
 
   useEffect(() => {
     if (terminalPanelLoadState.status !== "loading") return;
@@ -120,12 +131,13 @@ export function App({
   }, [hasPersistentSessionPanel, setSidebarCollapsed]);
 
   const handleOpenWorkflowPanel = useCallback((): void => {
+    handleWorkflowDockToolChange("execution");
     if (hasPersistentWorkflowPanel) {
       setRightPanelCollapsed(false);
       return;
     }
     setWorkflowDrawerOpen(true);
-  }, [hasPersistentWorkflowPanel, setRightPanelCollapsed]);
+  }, [handleWorkflowDockToolChange, hasPersistentWorkflowPanel, setRightPanelCollapsed]);
 
   const { resetServerKnownSessions, serverKnownSessionIdsRef, syncServerKnownSessionFromEvent } =
     useServerKnownSessions();
@@ -262,17 +274,13 @@ export function App({
     onToggleSessionPanel: handleToggleSessionPanelShortcut,
   });
   const TerminalPanel = terminalPanelLoadState.status === "ready" ? terminalPanelLoadState.Component : undefined;
-  const terminalFloatingLayer = TerminalPanel ? (
+  const terminalPanel = TerminalPanel ? (
     <TerminalRuntimeBoundary
-      open={terminalPanelOpen}
-      onOpenChange={setTerminalPanelOpen}
       resetKey={`${activeId ?? "none"}:${terminalRuntimeRevision}`}
       onRetry={() => setTerminalRuntimeRevision((revision) => revision + 1)}
     >
       <TerminalPanel
         key={terminalRuntimeRevision}
-        open={terminalPanelOpen}
-        onOpenChange={setTerminalPanelOpen}
         resources={executionResourceCommands.resources}
         outputs={executionResourceCommands.outputs}
         onRefresh={executionResourceCommands.refresh}
@@ -284,8 +292,6 @@ export function App({
     </TerminalRuntimeBoundary>
   ) : terminalPanelLoadState.status === "loading" || terminalPanelLoadState.status === "error" ? (
     <TerminalPanelStatus
-      open={terminalPanelOpen}
-      onOpenChange={setTerminalPanelOpen}
       status={terminalPanelLoadState.status}
       onRetry={
         terminalPanelLoadState.status === "error" ? () => setTerminalPanelLoadState({ status: "loading" }) : undefined
@@ -386,12 +392,14 @@ export function App({
         }
         workflowPanel={<ThinkingTimeline presentation="dock" />}
         workflowDrawer={<ThinkingTimeline presentation="panel" hidePanelTitle />}
+        terminalPanel={terminalPanel}
+        workflowDockTool={workflowDockTool}
+        onWorkflowDockToolChange={handleWorkflowDockToolChange}
         sessionDrawerOpen={sessionDrawerOpen}
         onSessionDrawerOpenChange={setSessionDrawerOpen}
         workflowDrawerOpen={workflowDrawerOpen}
         onWorkflowDrawerOpenChange={setWorkflowDrawerOpen}
         responsiveMode={responsiveMode}
-        floatingLayer={terminalFloatingLayer}
       />
       <SettingsOverlay
         controller={settingsController}

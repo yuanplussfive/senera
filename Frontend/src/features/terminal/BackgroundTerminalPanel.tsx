@@ -16,11 +16,8 @@ import {
   TerminalXtermTheme,
 } from "./terminalPresentation";
 import { TerminalSearchOverlay, TerminalStatusBar, TerminalTitlebar } from "./TerminalWorkbenchChrome";
-import { TerminalWindowFrame } from "./TerminalWindowFrame";
 
 export interface BackgroundTerminalPanelProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   resources: ExecutionResourceSnapshotData[];
   outputs: Readonly<Record<string, ExecutionResourceOutputBuffer>>;
   onRefresh: () => void;
@@ -59,11 +56,17 @@ export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JS
   };
 
   return (
-    <TerminalWindowFrame
-      open={props.open}
-      onOpenChange={props.onOpenChange}
-      resourceCount={orderedResources.length}
-      titlebarContent={
+    <section
+      className="flex h-full min-h-0 flex-col bg-[var(--terminal-canvas)]"
+      style={TerminalSurfaceStyle}
+      role="region"
+      aria-label={frontendMessage("terminal.panel.title")}
+      data-terminal-panel
+    >
+      <div
+        className="h-10 shrink-0 border-b border-[var(--terminal-separator)] bg-[var(--terminal-chrome)] px-1"
+        data-terminal-titlebar
+      >
         <TerminalTitlebar
           resources={orderedResources}
           selected={selected}
@@ -74,39 +77,36 @@ export function BackgroundTerminalPanel(props: BackgroundTerminalPanelProps): JS
           onSignal={props.onSignal}
           onStopAll={props.onStopAll}
         />
-      }
-    >
-      <div className="flex h-full min-h-0 flex-col bg-[var(--terminal-canvas)]" style={TerminalSurfaceStyle}>
-        {selected ? (
-          <>
-            <div className="relative min-h-0 flex-1 overflow-hidden">
-              {searchOpen ? (
-                <TerminalSearchOverlay
-                  query={searchQuery}
-                  onQueryChange={setSearchQuery}
-                  onRunSearch={runSearch}
-                  onClose={() => setSearchOpen(false)}
-                />
-              ) : null}
-              <TerminalViewport
-                key={selected.resourceId}
-                resource={selected}
-                output={props.outputs[selected.resourceId]?.text ?? ""}
-                searchRequest={searchRequest}
-                onWrite={props.onWrite}
-                onResize={props.onResize}
-                onSearchOpen={() => setSearchOpen(true)}
-              />
-            </div>
-            <TerminalStatusBar resource={selected} />
-          </>
-        ) : (
-          <div className="grid min-h-0 flex-1 place-items-center px-6 text-center text-[13px] text-[var(--terminal-muted)]">
-            {frontendMessage("terminal.empty")}
-          </div>
-        )}
       </div>
-    </TerminalWindowFrame>
+      {selected ? (
+        <>
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            {searchOpen ? (
+              <TerminalSearchOverlay
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
+                onRunSearch={runSearch}
+                onClose={() => setSearchOpen(false)}
+              />
+            ) : null}
+            <TerminalViewport
+              key={selected.resourceId}
+              resource={selected}
+              output={props.outputs[selected.resourceId]?.text ?? ""}
+              searchRequest={searchRequest}
+              onWrite={props.onWrite}
+              onResize={props.onResize}
+              onSearchOpen={() => setSearchOpen(true)}
+            />
+          </div>
+          <TerminalStatusBar resource={selected} />
+        </>
+      ) : (
+        <div className="grid min-h-0 flex-1 place-items-center px-6 text-center text-[13px] text-[var(--terminal-muted)]">
+          {frontendMessage("terminal.empty")}
+        </div>
+      )}
+    </section>
   );
 }
 
