@@ -475,6 +475,7 @@ function inspectVerifyWorkflow(): string[] {
       "./.github/actions/setup-node",
       "fetch-depth: 0",
       "id: range",
+      'from="$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")"',
       "GITHUB_PR_TITLE: ${{ github.event.pull_request.title }}",
       "node --import tsx Scripts/VerifyPullRequestTitle.ts",
       "npm run quality.format -- ${{ steps.range.outputs.arguments }}",
