@@ -5,7 +5,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 
 function FailureProbe({ failed }: { failed: boolean }): JSX.Element {
   if (failed) {
-    throw new Error("用于展示错误边界的模拟渲染错误");
+    throw new Error("Simulated render failure for ErrorBoundary preview");
   }
 
   return (

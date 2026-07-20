@@ -83,10 +83,16 @@ function DesktopWindowControls({ bridge }: { bridge: SeneraDesktopBridge }): JSX
       aria-label={frontendMessage("desktop.window.controls")}
       data-desktop-window-controls
     >
-      <WindowControlButton label={frontendMessage("desktop.window.minimize")} onClick={() => void bridge.minimizeWindow?.()}>
+      <WindowControlButton
+        label={frontendMessage("desktop.window.minimize")}
+        onClick={() => void bridge.minimizeWindow?.()}
+      >
         <Minus className="h-4 w-4" />
       </WindowControlButton>
-      <WindowControlButton label={frontendMessage(isMaximized ? "desktop.window.restore" : "desktop.window.maximize")} onClick={toggleMaximize}>
+      <WindowControlButton
+        label={frontendMessage(isMaximized ? "desktop.window.restore" : "desktop.window.maximize")}
+        onClick={toggleMaximize}
+      >
         {isMaximized ? <Copy className="h-4 w-4" /> : <Square className="h-4 w-4" />}
       </WindowControlButton>
       <WindowControlButton label={frontendMessage("desktop.window.close")} onClick={() => void bridge.closeWindow?.()}>

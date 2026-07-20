@@ -69,8 +69,8 @@ export function JsonConfigSettingsView({
                     field.type === "boolean" || Boolean(field.options?.length) ? "immediate" : "debounced",
                   )
                 }
-            />
-          ))}
+              />
+            ))}
           </div>
         </>
       ) : (
@@ -132,7 +132,6 @@ function JsonSettingsSection({
     </section>
   );
 }
-
 
 function jsonSectionAnchorId(name: string): string {
   return "json-config-section-" + name.replace(/[^A-Za-z0-9_-]+/g, "-");
@@ -824,14 +823,7 @@ function TogglePill({
   label: string;
   onClick: () => void;
 }): JSX.Element {
-  return (
-    <Switch
-      checked={enabled}
-      disabled={disabled}
-      ariaLabel={label}
-      onCheckedChange={() => onClick()}
-    />
-  );
+  return <Switch checked={enabled} disabled={disabled} ariaLabel={label} onCheckedChange={() => onClick()} />;
 }
 const inputClassName = cn(
   "h-8 w-full min-w-0 border border-ink-200 bg-paper-100 px-2.5 text-[12.5px] text-ink-800",

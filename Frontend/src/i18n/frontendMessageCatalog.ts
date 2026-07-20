@@ -3,7 +3,12 @@ import FrontendMessagesZhCn from "./messages/zh-CN.json" with { type: "json" };
 import { FrontendLocales, type FrontendLocale } from "./frontendLocaleModel.js";
 import { getFrontendLocale } from "./frontendLocaleStore.js";
 
-export { FrontendDefaultLocale, FrontendLocales, isFrontendLocale, resolveFrontendLocale } from "./frontendLocaleModel.js";
+export {
+  FrontendDefaultLocale,
+  FrontendLocales,
+  isFrontendLocale,
+  resolveFrontendLocale,
+} from "./frontendLocaleModel.js";
 export type { FrontendLocale } from "./frontendLocaleModel.js";
 export type FrontendMessageKey = keyof typeof FrontendMessagesZhCn;
 export type FrontendMessageParams = Readonly<Record<string, string | number | boolean | null | undefined>>;

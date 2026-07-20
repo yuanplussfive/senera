@@ -126,7 +126,8 @@ test("multi-section settings expose lightweight section navigation", () => {
 
   expect(screen.getByRole("navigation", { name: "配置分区" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Runtime" })).toHaveAttribute("href", "#json-config-section-runtime");
-  expect(screen.getByRole("link", { name: "Planning" })).toHaveAttribute("href", "#json-config-section-planning");  cleanup();
+  expect(screen.getByRole("link", { name: "Planning" })).toHaveAttribute("href", "#json-config-section-planning");
+  cleanup();
   render(
     React.createElement(JsonConfigSettingsView, {
       sections: configSections,

@@ -5,7 +5,7 @@ export const FrontendEventCatalogPath = "Frontend/src/api/generatedEventCatalog.
 export function renderFrontendEventCatalogSource(): string {
   return [
     "// Generated from Source/AgentSystem/Events/AgentEventCatalog.ts.",
-    "// Run `npm run generatefrontendevents` after editing the backend event catalog.",
+    "// Run `npm run generate.frontend-events` after editing the backend event catalog.",
     "",
     renderConstObject("EventLayers", AgentEventLayers),
     "export type EventLayer = (typeof EventLayers)[keyof typeof EventLayers];",

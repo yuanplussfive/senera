@@ -10,9 +10,7 @@ export function EmptyChatState({
   const suggestions = parseEmptySuggestions(resolveRuntimeEmptySuggestions(__SENERA_EMPTY_SUGGESTIONS__));
   return (
     <div className="flex w-full max-w-[520px] flex-col items-start text-left" data-ui-chrome>
-      <h2 className="text-[18px] font-semibold leading-7 text-ink-900">
-        {frontendMessage("chat.empty.title")}
-      </h2>
+      <h2 className="text-[18px] font-semibold leading-7 text-ink-900">{frontendMessage("chat.empty.title")}</h2>
       {suggestions.length > 0 ? (
         <div className="mt-4 w-full divide-y divide-ink-200/80 border-y border-ink-200/80">
           {suggestions.map((suggestion) =>

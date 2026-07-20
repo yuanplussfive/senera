@@ -131,9 +131,7 @@ export function ProviderModelList({
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className="text-[13.5px] font-semibold text-ink-900">{frontendMessage("config.model.title")}</span>
-              <span className="tabular-nums text-[11px] text-ink-450">
-                {rows.length}
-              </span>
+              <span className="tabular-nums text-[11px] text-ink-450">{rows.length}</span>
               <Tooltip content={frontendMessage("config.model.searchPlaceholder")} side="top">
                 <button
                   type="button"
@@ -318,12 +316,7 @@ function ProviderModelRows({
   return (
     <div>
       {groups.map((group) => (
-        <section
-          key={group.id}
-          className={cn(
-            "border-b border-ink-200/70 last:border-b-0",
-          )}
-        >
+        <section key={group.id} className={cn("border-b border-ink-200/70 last:border-b-0")}>
           <div
             ref={(element) => onGroupRef(group.id, element)}
             className={cn(
@@ -399,7 +392,9 @@ function ProviderModelRow({
           {model.id}
         </span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[10.5px] text-ink-400">{model.ownedBy || frontendMessage("config.model.providerModel")}</span>
+          <span className="truncate text-[10.5px] text-ink-400">
+            {model.ownedBy || frontendMessage("config.model.providerModel")}
+          </span>
           <CapabilityIconStrip capabilities={capabilities} />
         </span>
       </span>
@@ -481,19 +476,13 @@ function ConfiguredModelBadge({
 }): JSX.Element | null {
   if (isDefault) {
     return (
-      <span className="text-[10.5px] font-medium text-accent-content">
-        {frontendMessage("config.model.default")}
-      </span>
+      <span className="text-[10.5px] font-medium text-accent-content">{frontendMessage("config.model.default")}</span>
     );
   }
   if (configured) {
     // TODO: this is a configured-state badge, not model enablement. Persisted
     // model Enabled plus runtime filtering require a backend contract first.
-    return (
-      <span className="text-[10.5px] text-ink-500">
-        {frontendMessage("settings.modelManagement.added")}
-      </span>
-    );
+    return <span className="text-[10.5px] text-ink-500">{frontendMessage("settings.modelManagement.added")}</span>;
   }
   return null;
 }
@@ -520,9 +509,7 @@ function ModelGroupSummary({
           title={frontendMessage("config.model.allModelsTitle", { count: total })}
         >
           <Tags className="h-3.5 w-3.5" />
-          <span className="font-medium">
-            {frontendMessage("config.model.allModels")}
-          </span>
+          <span className="font-medium">{frontendMessage("config.model.allModels")}</span>
           <span className="tabular-nums text-[10px] text-ink-400">{total}</span>
         </button>
         {groups.map((group) => (

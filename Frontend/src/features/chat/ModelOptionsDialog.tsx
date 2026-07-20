@@ -6,14 +6,7 @@ import { ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
 import { readBooleanWithTemplate, readModelCapabilities, readNumberWithTemplate } from "./modelConfigData";
 import type { ModelCapabilitiesDraft, ModelProviderDraft } from "./modelConfigTypes";
 import { CapabilityToggle, ModelCapabilityIconItems } from "./ModelCapabilityControls";
-import {
-  MenuRow,
-  NumberRow,
-  SectionLabel,
-  SettingsTable,
-  TextRow,
-  ToggleRow,
-} from "./ModelConfigPrimitives";
+import { MenuRow, NumberRow, SectionLabel, SettingsTable, TextRow, ToggleRow } from "./ModelConfigPrimitives";
 
 export function ModelOptionsDialog({
   model,

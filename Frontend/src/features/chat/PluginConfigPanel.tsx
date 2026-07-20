@@ -578,9 +578,7 @@ function PluginSelectorRows({
                 : workspace
                   ? "w-full min-w-0 gap-3 px-3 py-2.5"
                   : "min-w-[172px] lg:w-full lg:min-w-0 lg:gap-3 lg:px-3 lg:py-2.5",
-              active
-                ? "bg-ink-900/[0.055] text-ink-900"
-                : "text-ink-600 hover:bg-paper-50/70 hover:text-ink-900",
+              active ? "bg-ink-900/[0.055] text-ink-900" : "text-ink-600 hover:bg-paper-50/70 hover:text-ink-900",
             )}
             onClick={() => onSelect(plugin.name)}
           >

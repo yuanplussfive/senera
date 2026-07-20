@@ -3,7 +3,16 @@ import { useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
-import { Button, Dialog, DialogActionButton, DialogActions, DialogContent, FormHint, Input, Switch } from "../../../shared/ui";
+import {
+  Button,
+  Dialog,
+  DialogActionButton,
+  DialogActions,
+  DialogContent,
+  FormHint,
+  Input,
+  Switch,
+} from "../../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
 import { DetailTitle, EmptyDetail, IconAction, inputClassName } from "../../chat/ModelConfigPrimitives";
 import { nextHeaderKey, providerEnabled, providerIdLabel } from "../../chat/modelConfigData";
@@ -109,9 +118,7 @@ export function ProviderConnectionEditor({
         />
 
         <div className="grid gap-3">
-          <ConnectionField
-            label={frontendMessage("settings.provider.apiKey")}
-          >
+          <ConnectionField label={frontendMessage("settings.provider.apiKey")}>
             <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
                 type={showKey ? "text" : "password"}
@@ -135,9 +142,7 @@ export function ProviderConnectionEditor({
               </button>
             </div>
           </ConnectionField>
-          <ConnectionField
-            label={frontendMessage("settings.provider.apiUrl")}
-          >
+          <ConnectionField label={frontendMessage("settings.provider.apiUrl")}>
             <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50 transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
                 value={provider.BaseUrl ?? ""}
@@ -177,9 +182,7 @@ export function ProviderConnectionEditor({
               <span className="text-[12px] font-semibold text-ink-750">
                 {frontendMessage("settings.provider.customHeaders")}
               </span>
-              <span className="font-mono text-[10.5px] text-ink-450">
-                {"{}"}
-              </span>
+              <span className="font-mono text-[10.5px] text-ink-450">{"{}"}</span>
             </div>
             <HeadersEditor
               headers={requestHeadersDraft}
@@ -211,13 +214,7 @@ export function ProviderConnectionEditor({
   );
 }
 
-function ConnectionField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}): JSX.Element {
+function ConnectionField({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
   return (
     <label className="block min-w-0">
       <span className="mb-1.5 block text-[12px] font-medium text-ink-650">{label}</span>

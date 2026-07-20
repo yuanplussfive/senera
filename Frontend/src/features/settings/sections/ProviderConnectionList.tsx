@@ -175,7 +175,6 @@ export function ProviderConnectionList({
               <div className="truncate text-[14px] font-semibold text-ink-900">
                 {frontendMessage("settings.model.serviceTitle")}
               </div>
-
             </div>
             <button
               type="button"

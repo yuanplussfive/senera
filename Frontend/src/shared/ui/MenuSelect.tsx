@@ -76,20 +76,23 @@ export function MenuSelect({
           {trailing ?? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-350" />}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className={cn("max-h-[320px] min-w-[240px] overflow-y-auto", contentClassName)}>
-        {options.length > 0
-          ? options.map((option, index) => (
-              <DropdownMenuItem
-                key={`${option.value || "empty"}-${index}`}
-                disabled={option.disabled}
-                onSelect={() => onChange(option.value)}
-              >
-                {renderOption ? renderOption(option) : option.label}
-              </DropdownMenuItem>
-            ))
-          : emptyState != null
-            ? <DropdownMenuItem disabled>{emptyState}</DropdownMenuItem>
-            : null}
+      <DropdownMenuContent
+        align="start"
+        className={cn("max-h-[320px] min-w-[240px] overflow-y-auto", contentClassName)}
+      >
+        {options.length > 0 ? (
+          options.map((option, index) => (
+            <DropdownMenuItem
+              key={`${option.value || "empty"}-${index}`}
+              disabled={option.disabled}
+              onSelect={() => onChange(option.value)}
+            >
+              {renderOption ? renderOption(option) : option.label}
+            </DropdownMenuItem>
+          ))
+        ) : emptyState != null ? (
+          <DropdownMenuItem disabled>{emptyState}</DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

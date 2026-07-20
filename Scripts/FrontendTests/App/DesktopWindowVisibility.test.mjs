@@ -1,8 +1,5 @@
 import { expect, test, vi } from "vitest";
-import {
-  hideDesktopWindows,
-  showDesktopWindows,
-} from "../../../Apps/Desktop/DesktopWindowVisibility.ts";
+import { hideDesktopWindows, showDesktopWindows } from "../../../Apps/Desktop/DesktopWindowVisibility.ts";
 
 test("desktop close hides every live window without destroying it", () => {
   const main = visibilityWindow();

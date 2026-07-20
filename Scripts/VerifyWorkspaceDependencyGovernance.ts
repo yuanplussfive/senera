@@ -406,9 +406,10 @@ function inspectFrontendScripts(): string[] {
   return inspectScripts(frontendPackage, "Frontend/package.json", {
     "check.types": "tsc --noEmit",
     "check.governance": `node --import tsx ../${ProjectTestCoveragePolicies.frontend.verifyEntrypoint}`,
+    "check.ladle": "node --import tsx ../Scripts/VerifyFrontendLadleContracts.ts",
     "test.behavior": `node --import tsx ../${ProjectTestCoveragePolicies.frontend.runnerEntrypoint}`,
     "test.coverage": vitestRunCommand(`../${ProjectTestCoveragePolicies.frontend.vitestConfig}`, "--coverage"),
-    test: "npm run check.types && npm run check.governance && npm run test.behavior",
+    test: "npm run check.types && npm run check.governance && npm run check.ladle && npm run test.behavior",
   });
 }
 

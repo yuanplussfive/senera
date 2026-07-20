@@ -7,20 +7,16 @@ export interface DesktopVisibilityWindow {
   focus: () => void;
 }
 
-export function hideDesktopWindows(
-  windows: readonly (DesktopVisibilityWindow | undefined)[],
-): void {
+export function hideDesktopWindows(windows: readonly (DesktopVisibilityWindow | undefined)[]): void {
   for (const window of windows) {
     if (!window || window.isDestroyed()) continue;
     window.hide();
   }
 }
 
-export function showDesktopWindows(
-  windows: readonly (DesktopVisibilityWindow | undefined)[],
-): void {
-  const availableWindows = windows.filter(
-    (window): window is DesktopVisibilityWindow => Boolean(window && !window.isDestroyed()),
+export function showDesktopWindows(windows: readonly (DesktopVisibilityWindow | undefined)[]): void {
+  const availableWindows = windows.filter((window): window is DesktopVisibilityWindow =>
+    Boolean(window && !window.isDestroyed()),
   );
   for (const window of availableWindows) {
     if (window.isMinimized()) window.restore();

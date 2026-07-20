@@ -8,11 +8,7 @@ import type { ModelCapabilitiesDraft } from "./modelConfigTypes";
 export function CapabilityIconStrip({ capabilities }: { capabilities: Required<ModelCapabilitiesDraft> }): JSX.Element {
   const enabledItems = ModelCapabilityIconItems.filter((item) => capabilities[item.key]);
   if (enabledItems.length === 0) {
-    return (
-      <span className="text-[10px] text-ink-400">
-        {frontendMessage("config.model.noCapabilities")}
-      </span>
-    );
+    return <span className="text-[10px] text-ink-400">{frontendMessage("config.model.noCapabilities")}</span>;
   }
   return (
     <span className="flex min-w-0 items-center gap-1">
@@ -61,9 +57,7 @@ export function CapabilityToggle({
       aria-pressed={active}
     >
       <span className="flex min-w-0 items-center gap-2">
-        <span className={cn("grid h-6 w-6 shrink-0 place-items-center", iconClassName)}>
-          {icon}
-        </span>
+        <span className={cn("grid h-6 w-6 shrink-0 place-items-center", iconClassName)}>{icon}</span>
         <span className="truncate text-[12.5px] font-medium">{label}</span>
       </span>
       <SwitchTrack checked={active} />

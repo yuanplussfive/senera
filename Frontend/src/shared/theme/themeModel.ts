@@ -192,9 +192,7 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
 
 export function normalizeAppearancePreference(value: unknown): AppearancePreference {
   const source = value && typeof value === "object" ? (value as Partial<AppearancePreference>) : {};
-  const colorScheme = isColorScheme(source.colorScheme)
-    ? source.colorScheme
-    : defaultAppearancePreference.colorScheme;
+  const colorScheme = isColorScheme(source.colorScheme) ? source.colorScheme : defaultAppearancePreference.colorScheme;
   return {
     themeMode: isThemeMode(source.themeMode) ? source.themeMode : defaultAppearancePreference.themeMode,
     colorScheme,

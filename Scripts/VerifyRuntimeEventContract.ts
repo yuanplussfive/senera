@@ -10,7 +10,7 @@ const generatedEventCatalogPath = path.join(workspaceRoot, ...FrontendEventCatal
 assert.equal(
   normalizeLineEndings(fs.readFileSync(generatedEventCatalogPath, "utf8")),
   normalizeLineEndings(renderFrontendEventCatalogSource()),
-  `${FrontendEventCatalogPath} is stale. Run npm run generatefrontendevents.`,
+  `${FrontendEventCatalogPath} is stale. Run npm run generate.frontend-events.`,
 );
 
 const backendKinds = parseConstObject(

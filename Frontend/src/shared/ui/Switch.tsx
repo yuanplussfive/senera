@@ -10,8 +10,10 @@ export interface SwitchTrackProps {
   className?: string;
 }
 
-export interface SwitchProps
-  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-checked" | "aria-label" | "onClick" | "onChange" | "type"> {
+export interface SwitchProps extends Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "aria-checked" | "aria-label" | "onClick" | "onChange" | "type"
+> {
   checked: boolean;
   ariaLabel: string;
   onCheckedChange: (checked: boolean) => void;
@@ -34,12 +36,7 @@ const checkedTranslateClassName: Record<SwitchSize, string> = {
   md: "translate-x-5",
 };
 
-export function SwitchTrack({
-  checked,
-  disabled = false,
-  size = "sm",
-  className,
-}: SwitchTrackProps): JSX.Element {
+export function SwitchTrack({ checked, disabled = false, size = "sm", className }: SwitchTrackProps): JSX.Element {
   return (
     <span
       aria-hidden="true"

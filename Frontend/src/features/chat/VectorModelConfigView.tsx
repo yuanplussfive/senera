@@ -176,7 +176,9 @@ function VectorModelCard({
                   {current.icon ? <ModelProviderIcon icon={current.icon} size={16} /> : null}
                   <span className="truncate">{current.label}</span>
                 </span>
-              ) : <span className="truncate">{option?.label}</span>;
+              ) : (
+                <span className="truncate">{option?.label}</span>
+              );
             }}
             renderOption={(option) => {
               const current = providerOptions.find((entry) => entry.value === option.value);
@@ -185,7 +187,9 @@ function VectorModelCard({
                   {current.icon ? <ModelProviderIcon icon={current.icon} size={16} /> : null}
                   <span className="truncate">{current.label}</span>
                 </span>
-              ) : <span className="truncate">{option.label}</span>;
+              ) : (
+                <span className="truncate">{option.label}</span>
+              );
             }}
             onChange={(ProviderId) => onChange({ ProviderId, Model: "" })}
           />
@@ -210,7 +214,9 @@ function VectorModelCard({
                   {current.icon ? <ModelProviderIcon icon={current.icon} size={16} /> : null}
                   <span className="truncate">{current.label}</span>
                 </span>
-              ) : <span className="truncate">{option?.label}</span>;
+              ) : (
+                <span className="truncate">{option?.label}</span>
+              );
             }}
             renderOption={(option) => {
               const current = modelOptions.find((entry) => entry.value === option.value);
@@ -219,7 +225,9 @@ function VectorModelCard({
                   {current.icon ? <ModelProviderIcon icon={current.icon} size={16} /> : null}
                   <span className="truncate">{current.label}</span>
                 </span>
-              ) : <span className="truncate">{option.label}</span>;
+              ) : (
+                <span className="truncate">{option.label}</span>
+              );
             }}
             onChange={(Model) => onChange({ Model })}
           />

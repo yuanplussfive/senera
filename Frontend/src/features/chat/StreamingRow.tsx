@@ -11,11 +11,7 @@ export interface StreamingRowProps {
   onResolveApproval?: (approvalId: string, status: "approved" | "denied", scope?: ApprovalResolutionScope) => void;
 }
 
-export function StreamingRow({
-  run,
-  approvalDisabled = false,
-  onResolveApproval,
-}: StreamingRowProps): JSX.Element {
+export function StreamingRow({ run, approvalDisabled = false, onResolveApproval }: StreamingRowProps): JSX.Element {
   return (
     <ConversationFrame mode="wide" className="group/msg">
       <div className="flex min-w-0 items-start gap-3" data-assistant-message>

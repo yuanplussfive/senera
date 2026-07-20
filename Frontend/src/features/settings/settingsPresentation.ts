@@ -136,7 +136,8 @@ export function createSettingsSearchEntries(
   const entries: SettingsSearchEntry[] = [];
 
   for (const section of configSections) {
-    const sectionId = section.name === "models" ? "model-service" : isSettingsSectionId(section.name) ? section.name : null;
+    const sectionId =
+      section.name === "models" ? "model-service" : isSettingsSectionId(section.name) ? section.name : null;
     if (!sectionId) continue;
     for (const field of section.fields) {
       entries.push({

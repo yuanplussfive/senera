@@ -37,11 +37,11 @@ function verifyLadleConfig(): void {
   const options = width && readObjectProperty(width, "options");
   assert.ok(options, "Ladle must define the project viewport review presets.");
   assert.deepEqual(readNumberRecord(options), {
-    "手机": 390,
-    "紧凑桌面": 900,
-    "标准桌面": 1280,
-    "宽屏桌面": 1440,
-    "超宽桌面": 1600,
+    手机: 390,
+    紧凑桌面: 900,
+    标准桌面: 1280,
+    宽屏桌面: 1440,
+    超宽桌面: 1600,
   });
 }
 
@@ -127,10 +127,7 @@ function readStringProperty(object: ts.ObjectLiteralExpression, name: string): s
   return property && ts.isStringLiteralLike(property.initializer) ? property.initializer.text : undefined;
 }
 
-function readObjectProperty(
-  object: ts.ObjectLiteralExpression,
-  name: string,
-): ts.ObjectLiteralExpression | undefined {
+function readObjectProperty(object: ts.ObjectLiteralExpression, name: string): ts.ObjectLiteralExpression | undefined {
   const property = object.properties.find((candidate): candidate is ts.PropertyAssignment => {
     if (!ts.isPropertyAssignment(candidate)) return false;
     return (ts.isIdentifier(candidate.name) || ts.isStringLiteralLike(candidate.name)) && candidate.name.text === name;

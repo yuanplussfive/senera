@@ -84,7 +84,8 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
         Capabilities: resolveModelCapabilities(defaults.ModelRuntime, Capabilities),
         TimeoutMs: optionalSecondsToMilliseconds(TimeoutSeconds) ?? defaults.ModelRuntime.TimeoutMs,
         FirstTokenTimeoutMs:
-          optionalDisabledOrSecondsToMilliseconds(FirstTokenTimeoutSeconds) ?? defaults.ModelRuntime.FirstTokenTimeoutMs,
+          optionalDisabledOrSecondsToMilliseconds(FirstTokenTimeoutSeconds) ??
+          defaults.ModelRuntime.FirstTokenTimeoutMs,
         MaxRequestMs: optionalDisabledOrSecondsToMilliseconds(MaxRequestSeconds) ?? defaults.ModelRuntime.MaxRequestMs,
         ...retryDelays,
         Icon: Icon ?? endpoint.Icon,
@@ -95,7 +96,8 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
         ApiVersion: endpoint.ApiVersion,
         Headers: { ...endpoint.Headers },
       },
-    ];  });
+    ];
+  });
 
   const ids = new Set<string>();
   for (const provider of providers) {

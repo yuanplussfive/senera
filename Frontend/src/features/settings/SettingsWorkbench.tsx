@@ -35,7 +35,11 @@ import type { PluginSettingsCommandsHandle } from "../../app/usePluginSettingsCo
 import type { MotionLevel } from "../../shared/motion";
 import { cn } from "../../lib/util";
 import { type LayoutPreferenceId } from "../session/types";
-import { createSettingsSearchEntries, groupSettingsSectionResults, searchSettingsSectionResults } from "./settingsPresentation";
+import {
+  createSettingsSearchEntries,
+  groupSettingsSectionResults,
+  searchSettingsSectionResults,
+} from "./settingsPresentation";
 import { readSettingsDraftInteraction } from "./settingsInteractionModel";
 import { SettingsWorkspaceFrame, SettingsWorkspaceState } from "./SettingsWorkspaceSurface";
 import { useConfigSettingsDraftState } from "./sections/configSettingsDraftState";
@@ -103,7 +107,8 @@ export function SettingsWorkbench({
     [pluginSettings?.pluginConfigs, systemConfig?.configSnapshot?.form.sections],
   );
   const groupedResults = useMemo(
-    () => groupSettingsSectionResults(searchSettingsSectionResults(settingsSections, sectionSearch, settingsSearchEntries)),
+    () =>
+      groupSettingsSectionResults(searchSettingsSectionResults(settingsSections, sectionSearch, settingsSearchEntries)),
     [sectionSearch, settingsSearchEntries],
   );
   const pendingChanges = configDraftState.dirty || entityDraftDirty;
@@ -929,9 +934,7 @@ function MotionLevelOption({
       onClick={onSelect}
       className={cn(
         "flex w-full items-start gap-4 px-3 py-3 text-left transition",
-        selected
-          ? "bg-accent-surface text-accent-content"
-          : "text-content-secondary hover:bg-surface-subtle",
+        selected ? "bg-accent-surface text-accent-content" : "text-content-secondary hover:bg-surface-subtle",
       )}
     >
       <span className="min-w-0 flex-1">

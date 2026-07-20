@@ -151,10 +151,7 @@ test("thinking timeline canvas lays out and renders real workflow nodes", async 
   expect(await screen.findByText("Understand request")).toBeInTheDocument();
   expect(screen.getByText("Return answer")).toBeInTheDocument();
   expect(document.querySelectorAll(".react-flow__node")).toHaveLength(2);
-  expect(document.querySelector("[data-workflow-canvas-pan]")).toHaveAttribute(
-    "data-workflow-canvas-pan",
-    "vertical",
-  );
+  expect(document.querySelector("[data-workflow-canvas-pan]")).toHaveAttribute("data-workflow-canvas-pan", "vertical");
   expect(document.querySelector("[data-workflow-canvas-bounds]")).toHaveAttribute(
     "data-workflow-canvas-bounds",
     "content",
@@ -168,10 +165,7 @@ test("focused workflow canvas allows free panning beyond the compact content bou
   renderWithFrontendProviders(React.createElement(ThinkingTimelineCanvas, { run, focusVersion: 1 }));
 
   expect(await screen.findByText("Inspect focused workflow")).toBeInTheDocument();
-  expect(document.querySelector("[data-workflow-canvas-pan]")).toHaveAttribute(
-    "data-workflow-canvas-pan",
-    "free",
-  );
+  expect(document.querySelector("[data-workflow-canvas-pan]")).toHaveAttribute("data-workflow-canvas-pan", "free");
   expect(document.querySelector("[data-workflow-canvas-bounds]")).toHaveAttribute(
     "data-workflow-canvas-bounds",
     "unbounded",

@@ -120,7 +120,9 @@ export function AddProviderDialog({
           {duplicate ? <ProviderFormError message={frontendMessage("settings.provider.duplicate")} /> : null}
         </div>
         <DialogActions className="mt-auto">
-          <DialogActionButton onClick={() => onOpenChange(false)}>{frontendMessage("settings.action.cancel")}</DialogActionButton>
+          <DialogActionButton onClick={() => onOpenChange(false)}>
+            {frontendMessage("settings.action.cancel")}
+          </DialogActionButton>
           <DialogActionButton variant="primary" disabled={invalid} onClick={submit}>
             <span className="inline-flex items-center gap-1.5">
               <Plus className="h-3.5 w-3.5" />
@@ -188,7 +190,9 @@ export function RenameProviderDialog({
           ) : null}
         </div>
         <DialogActions className="mt-auto">
-          <DialogActionButton onClick={() => onOpenChange(false)}>{frontendMessage("settings.action.cancel")}</DialogActionButton>
+          <DialogActionButton onClick={() => onOpenChange(false)}>
+            {frontendMessage("settings.action.cancel")}
+          </DialogActionButton>
           <DialogActionButton
             variant="primary"
             disabled={invalid}

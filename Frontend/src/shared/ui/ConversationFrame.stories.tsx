@@ -2,7 +2,12 @@ import type { Story } from "@ladle/react";
 import { ConversationFrame } from "./ConversationFrame";
 
 const modes = [
-  { mode: "prose", label: "正文模式", title: "助手正文", copy: "适合连续阅读的回答正文，宽度会限制在舒适的阅读范围内。" },
+  {
+    mode: "prose",
+    label: "正文模式",
+    title: "助手正文",
+    copy: "适合连续阅读的回答正文，宽度会限制在舒适的阅读范围内。",
+  },
   { mode: "user", label: "用户模式", title: "用户消息", copy: "用户内容使用更紧凑的最大宽度，并靠对话区域右侧排列。" },
   { mode: "wide", label: "宽内容模式", title: "宽内容", copy: "表格、代码预览和执行详情可以使用更宽的内容范围。" },
   { mode: "composer", label: "输入模式", title: "输入区域", copy: "输入框与对话内容共享稳定的水平对齐基线。" },

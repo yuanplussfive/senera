@@ -1,10 +1,7 @@
 import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  DesktopWindowChrome,
-  shouldUseCustomWindowControls,
-} from "../../../Frontend/src/app/DesktopWindowChrome.tsx";
+import { DesktopWindowChrome, shouldUseCustomWindowControls } from "../../../Frontend/src/app/DesktopWindowChrome.tsx";
 import { readWindowControlsInsetWidth } from "../../../Frontend/src/shared/responsive/windowControlsLayout.ts";
 
 describe("desktop window chrome", () => {

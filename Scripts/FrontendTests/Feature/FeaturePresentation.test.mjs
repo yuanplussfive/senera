@@ -112,9 +112,9 @@ test("message presentation preserves assistant content and run provider labels",
       model("currently-selected", true, false),
     ),
   ).toBe("gpt-test");
-  expect(readAssistantDisplayIcon(message, { ...run.modelProvider, capabilities: { Chat: true }, isDefault: false })).toBe(
-    "openai",
-  );
+  expect(
+    readAssistantDisplayIcon(message, { ...run.modelProvider, capabilities: { Chat: true }, isDefault: false }),
+  ).toBe("openai");
   expect(readRunDisplayIcon(run)).toBe("openai");
   expect(
     readRunDisplayIcon({
