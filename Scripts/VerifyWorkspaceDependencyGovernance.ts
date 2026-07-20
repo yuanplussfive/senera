@@ -475,6 +475,8 @@ function inspectVerifyWorkflow(): string[] {
       "./.github/actions/setup-node",
       "fetch-depth: 0",
       "id: range",
+      "GITHUB_PR_TITLE: ${{ github.event.pull_request.title }}",
+      "node --import tsx Scripts/VerifyPullRequestTitle.ts",
       "npm run quality.format -- ${{ steps.range.outputs.arguments }}",
       "npm run test.backend",
       "npm run test.frontend",

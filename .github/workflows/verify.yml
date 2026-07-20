@@ -53,6 +53,10 @@ jobs:
             git merge-base --is-ancestor "$from" "$to"
             echo "arguments=--from=$from --to=$to --verbose" >> "$GITHUB_OUTPUT"
           fi
+      - if: github.event_name == 'pull_request'
+        env:
+          GITHUB_PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node --import tsx Scripts/VerifyPullRequestTitle.ts
       - run: npm run quality.commits -- ${{ steps.range.outputs.arguments }}
 
   fast:
