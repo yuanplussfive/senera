@@ -474,6 +474,7 @@ function inspectVerifyWorkflow(): string[] {
       "name: Coverage Gate",
       "./.github/actions/setup-node",
       "fetch-depth: 0",
+      "types:\n      - opened\n      - synchronize\n      - reopened\n      - edited",
       "id: range",
       'from="$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")"',
       "GITHUB_PR_TITLE: ${{ github.event.pull_request.title }}",
