@@ -27,6 +27,8 @@ assertCommitlintResult(autofixMessage.replaceAll("\n", "\r\n"), true);
 assertCommitlintResult(squashMessage, true);
 assertCommitlintResult(squashMessage.replaceAll("\n", "\r\n"), true);
 assertCommitlintResult("fix: preserve conventional commit validation", true);
+assertCommitlintResult("feat(workspace): integrate terminal configuration (#30)", true);
+assertCommitlintResult("Integrate/local optimizations 20260720 (#30)", false);
 assertCommitlintResult(
   `fix: preserve long URL footer compatibility\n\nRefs: https://example.com/${"x".repeat(120)}`,
   true,

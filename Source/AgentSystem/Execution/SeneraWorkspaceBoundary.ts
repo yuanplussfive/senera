@@ -47,11 +47,10 @@ export interface SeneraWorkspaceBoundaryOptions {
 
 export class SeneraWorkspaceBoundary {
   readonly workspaceRoot: string;
-  private readonly canonicalRoot: Promise<CanonicalWorkspacePath>;
+  private canonicalRoot?: Promise<CanonicalWorkspacePath>;
 
   constructor(private readonly options: SeneraWorkspaceBoundaryOptions) {
     this.workspaceRoot = path.resolve(options.workspaceRoot);
-    this.canonicalRoot = realpath(this.workspaceRoot).then(asCanonicalPath);
   }
 
   async resolve(value: string | undefined, intent: AgentResourceAccessIntent): Promise<SeneraResolvedWorkspaceTarget> {
@@ -131,7 +130,7 @@ export class SeneraWorkspaceBoundary {
       };
     }
 
-    const canonicalRoot = await this.canonicalRoot;
+    const canonicalRoot = await this.resolveCanonicalRoot();
     const finalStat = await lstatIfPresent(candidate);
     if (finalStat.kind === "error") {
       return {
@@ -191,6 +190,10 @@ export class SeneraWorkspaceBoundary {
       linkTraversal,
       finalEntry,
     };
+  }
+
+  private resolveCanonicalRoot(): Promise<CanonicalWorkspacePath> {
+    return (this.canonicalRoot ??= realpath(this.workspaceRoot).then(asCanonicalPath));
   }
 }
 
