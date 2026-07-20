@@ -10,10 +10,27 @@ const autofixMessage = [
   "",
   "Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>",
 ].join("\n");
+const autofixCoauthor = autofixMessage.split("\n")[2] ?? "";
+const squashMessage = [
+  "feat(frontend): merge GitHub security autofix (#27)",
+  "",
+  "* fix(ci): allow GitHub security autofix commits",
+  "",
+  "---------",
+  "",
+  "Co-authored-by: H1ra <w7i0817@outlook.com>",
+  autofixCoauthor,
+].join("\n");
 
 assertCommitlintResult(autofixMessage, true);
 assertCommitlintResult(autofixMessage.replaceAll("\n", "\r\n"), true);
+assertCommitlintResult(squashMessage, true);
+assertCommitlintResult(squashMessage.replaceAll("\n", "\r\n"), true);
 assertCommitlintResult("fix: preserve conventional commit validation", true);
+assertCommitlintResult(
+  `fix: preserve long URL footer compatibility\n\nRefs: https://example.com/${"x".repeat(120)}`,
+  true,
+);
 assertCommitlintResult(autofixMessage.split("\n")[0] ?? "", false);
 assertCommitlintResult(
   [
@@ -21,6 +38,12 @@ assertCommitlintResult(
     "",
     "Co-authored-by: Copilot Autofix powered by AI <62310815+github-advanced-security[bot]@users.noreply.github.com>",
   ].join("\n"),
+  false,
+);
+assertCommitlintResult(`manual change\n\n${autofixCoauthor}`, false);
+assertCommitlintResult(`fix: reject unrelated long footer\n\nReviewed-by: ${"x".repeat(100)}`, false);
+assertCommitlintResult(
+  `fix: reject lookalike bot footer\n\n${autofixCoauthor.replace("github-advanced-security[bot]", "untrusted-security[bot]")}`,
   false,
 );
 
