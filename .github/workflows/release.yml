@@ -139,7 +139,14 @@ jobs:
           SENERA_RELEASE_TAG: ${{ env.RELEASE_TAG }}
           SENERA_RELEASE_SHA: ${{ steps.source.outputs.sha }}
         run: npx tsx Build/ProductReleaseInfo.ts
+      - name: Require release source to match triggering verification
+        if: github.event_name == 'workflow_run'
+        env:
+          RELEASE_SHA: ${{ steps.source.outputs.sha }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: test "$RELEASE_SHA" = "$VERIFIED_SHA"
       - name: Require successful verification
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
