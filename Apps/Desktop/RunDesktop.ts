@@ -81,13 +81,17 @@ function removeNativeRebuildMetadata(metadataPath: string): void {
     }
   }
 
-  const shell = process.env.ComSpec ?? "cmd.exe";
-  const result = spawnSync(shell, ["/d", "/c", "del", "/f", "/a", metadataPath], {
-    stdio: "ignore",
-    windowsHide: true,
-  });
-  if (result.error || result.status !== 0 || fs.existsSync(metadataPath)) {
-    throw result.error ?? new Error(`Could not remove native rebuild metadata: ${metadataPath}`);
+  try {
+    fs.unlinkSync(metadataPath);
+  } catch {
+    try {
+      fs.rmSync(metadataPath, { force: true });
+    } catch {
+      // ignore and let the existence check below raise a consistent error
+    }
+  }
+  if (fs.existsSync(metadataPath)) {
+    throw new Error(`Could not remove native rebuild metadata: ${metadataPath}`);
   }
 }
 
