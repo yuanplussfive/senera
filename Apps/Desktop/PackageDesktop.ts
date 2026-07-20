@@ -89,11 +89,22 @@ function removeNativeRebuildMetadata(metadataPath: string): void {
     }
   }
 
-  const shell = process.env.ComSpec ?? "cmd.exe";
-  const result = spawnSync(shell, ["/d", "/c", "del", "/f", "/a", metadataPath], {
-    stdio: "ignore",
-    windowsHide: true,
-  });
+  const result = spawnSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "Remove-Item",
+      "-LiteralPath",
+      metadataPath,
+      "-Force",
+    ],
+    {
+      stdio: "ignore",
+      windowsHide: true,
+    },
+  );
   if (result.error || result.status !== 0 || fs.existsSync(metadataPath)) {
     throw result.error ?? new Error(`Could not remove native rebuild metadata: ${metadataPath}`);
   }
