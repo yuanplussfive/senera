@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
+import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { ToolSearchToolName } from "./AgentToolSearchRuntimeTypes.js";

@@ -7,7 +7,6 @@ import { EmptyAgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js"
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { LoadedPlugin, RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import { AgentMarkdownPromptXmlRenderer } from "../Xml/AgentMarkdownPromptXmlRenderer.js";
-import { AgentPromptContractProjector } from "./AgentPromptContractProjector.js";
 import { buildAgentExecutionEnvironmentContext } from "./AgentExecutionEnvironmentContext.js";
 import type {
   AgentPromptContext,
@@ -48,10 +47,7 @@ export class AgentPromptContextBuilder {
         codeFenceLanguages: config.PluginDocumentation?.PromptXml?.CodeFenceLanguages,
       }),
     );
-    this.toolContextProjector = new AgentPromptToolContextProjector(
-      new AgentPromptContractProjector(),
-      documentationReader,
-    );
+    this.toolContextProjector = new AgentPromptToolContextProjector(documentationReader);
     this.skillContextProjector = new AgentPromptSkillContextProjector(documentationReader);
   }
 

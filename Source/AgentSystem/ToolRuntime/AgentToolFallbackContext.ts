@@ -6,9 +6,11 @@ import type { SeneraProcessFallbackSubject } from "../Execution/SeneraProcessFal
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 
 export interface AgentToolExecutionCorrelation {
+  readonly sessionId?: string;
   readonly requestId?: string;
   readonly step?: number;
   readonly toolCallId?: string;
+  readonly batchId?: string;
   readonly onEvent?: AgentEventSink;
 }
 
@@ -20,6 +22,7 @@ export function bindAgentToolFallbackContext(input: {
   if (
     input.profile.backend !== "sandbox" ||
     input.profile.localFallback !== "allow" ||
+    !input.correlation.sessionId ||
     !input.correlation.requestId ||
     input.correlation.step === undefined
   ) {
@@ -29,9 +32,11 @@ export function bindAgentToolFallbackContext(input: {
   return {
     ...input.profile,
     fallbackContext: {
+      sessionId: input.correlation.sessionId,
       requestId: input.correlation.requestId,
       step: input.correlation.step,
       toolCallId: input.correlation.toolCallId,
+      batchId: input.correlation.batchId,
       onEvent: input.correlation.onEvent,
       subject: projectAgentToolFallbackSubject(input.tool),
     },

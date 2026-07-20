@@ -3,16 +3,21 @@ import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 
 export type SeneraExecutionDomainEvent = {
   kind: typeof AgentEventKinds.ExecutionFallbackStarted;
-  context: Required<Pick<AgentEventContext, "requestId" | "step">>;
+  context: Required<Pick<AgentEventContext, "sessionId" | "requestId" | "step">>;
   data: {
     toolCallId?: string;
+    batchId?: string;
     pluginName: string;
     pluginVersion: string;
     toolName: string;
     manifestDigest: string;
     fromBackend: string;
     toBackend: string;
-    reason: "sandbox_unavailable" | "persistent_sandbox_unsupported";
+    reason:
+      | "sandbox_unavailable"
+      | "persistent_sandbox_unsupported"
+      | "terminal_capability_unsupported"
+      | "shell_dialect_unsupported";
     rule: string;
     approvalId?: string;
     scope?: "once" | "session";

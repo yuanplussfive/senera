@@ -177,6 +177,7 @@ jobs:
     name: Publish Container Image
     needs:
       - metadata
+      - container-smoke
     if: needs.metadata.result == 'success'
     runs-on: ubuntu-latest
     environment: release-stable
@@ -208,6 +209,68 @@ jobs:
           labels: ${{ steps.image.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  container-smoke:
+    name: Verify Container Runtime
+    needs:
+      - metadata
+    if: needs.metadata.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.tag }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: senera-release-smoke:${{ github.run_id }}-${{ github.run_attempt }}
+          cache-from: type=gha,scope=senera-release-smoke
+          cache-to: type=gha,mode=max,scope=senera-release-smoke
+      - name: Start and probe container
+        shell: bash
+        env:
+          IMAGE: senera-release-smoke:${{ github.run_id }}-${{ github.run_attempt }}
+          CONTAINER_NAME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            local status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ]; then
+              docker logs "$CONTAINER_NAME" || true
+            fi
+            docker rm --force "$CONTAINER_NAME" >/dev/null 2>&1 || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          docker run --detach --name "$CONTAINER_NAME" "$IMAGE" >/dev/null
+          while true; do
+            state="$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME")"
+            health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$CONTAINER_NAME")"
+            if [ "$state" != "running" ]; then
+              echo "Container exited before becoming healthy (state=$state, health=$health)." >&2
+              exit 1
+            fi
+            case "$health" in
+              healthy)
+                break
+                ;;
+              unhealthy|missing)
+                echo "Container healthcheck failed (state=$state, health=$health)." >&2
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+
+          docker exec "$CONTAINER_NAME" node Dist/Scripts/VerifyDockerNativeSqlite.js
+          docker exec "$CONTAINER_NAME" node Dist/Scripts/VerifyDockerUserPluginWrite.js
 
   publish:
     name: Publish Verified Release

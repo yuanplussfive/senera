@@ -6,8 +6,69 @@ import {
 } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerContext.js";
 import type { AgentToolCatalogItem } from "../../../Source/AgentSystem/ToolRuntime/AgentToolCatalogProjector.js";
 import type { ExecutedToolCallResult } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import { projectActionPlannerBamlRequestBody } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerPromptProjector.js";
+import { buildActionPlannerPromptEnvelope } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerPromptJson.js";
 
 describe("ActionPlanner context behavior", () => {
+  test("serializes machine-only planner messages without formatting whitespace", () => {
+    const projected = projectActionPlannerBamlRequestBody({
+      messages: [
+        { role: "system", content: "planner" },
+        {
+          role: "user",
+          content: JSON.stringify({
+            context: {
+              currentUserTurn: { content: "Continue" },
+              timeline: [
+                {
+                  index: 0,
+                  role: "user",
+                  kind: "user_message",
+                  content: "Earlier request",
+                  evidenceUris: [],
+                  artifactUris: [],
+                },
+              ],
+            },
+            directive: { stage: "prepareInteraction" },
+          }),
+        },
+      ],
+    });
+
+    expect(projected.messages).toHaveLength(2);
+    for (const message of projected.messages) {
+      expect(message.content).not.toContain("\n");
+      expect(() => JSON.parse(message.content)).not.toThrow();
+    }
+  });
+
+  test("does not expose unloaded tool names as executable preparation choices", () => {
+    const input = new AgentActionPlannerContextBuilder(process.cwd(), ".senera/artifacts").buildInput({
+      userMessage: "Inspect the workspace",
+      currentStep: 1,
+      dynamicTools: true,
+      loadedToolNames: ["WorkspaceInspectTool"],
+      messages: [],
+      ledger: EmptyActionPlannerLedger,
+      toolCatalog: [workspaceTool(), archiveTool()],
+    });
+    const envelope = buildActionPlannerPromptEnvelope(
+      input,
+      [
+        {
+          name: "WorkspaceInspectTool",
+          description: "Inspect the workspace.",
+          parameters: { type: "object", properties: {} },
+        },
+      ],
+      { stage: "prepareInteraction" },
+    );
+
+    expect(envelope.context.compactToolCatalog.map((tool) => tool.name)).toEqual(["WorkspaceInspectTool"]);
+    expect(JSON.stringify(envelope)).not.toContain("ArchiveTool");
+  });
+
   test("records calls and unique evidence while keeping the source ledger immutable", () => {
     const builder = new AgentActionPlannerContextBuilder(process.cwd(), ".senera/artifacts", {
       stalledStepLag: 2,

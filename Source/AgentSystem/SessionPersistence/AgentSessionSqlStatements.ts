@@ -5,8 +5,10 @@ import type {
   RunEventRow,
   RunSnapshotRow,
   SessionListRow,
+  SessionHistoryMutationRow,
   SessionRow,
   StepTraceRow,
+  TurnPreparationRow,
 } from "./AgentSessionSqlRows.js";
 
 export interface AgentSessionSqlStatements {
@@ -18,6 +20,10 @@ export interface AgentSessionSqlStatements {
   selectSession: Database.Statement<[string], SessionRow>;
   selectAllSessions: Database.Statement<[], SessionRow>;
   selectSessionList: Database.Statement<[], SessionListRow>;
+  selectPendingHistoryMutations: Database.Statement<[], SessionHistoryMutationRow>;
+  selectPendingHistoryMutation: Database.Statement<[string], SessionHistoryMutationRow>;
+  stageHistoryMutation: Database.Statement;
+  deleteHistoryMutation: Database.Statement;
   selectEntries: Database.Statement<[string], EntryRow>;
   selectRunEvents: Database.Statement<[string], RunEventRow>;
   selectSetting: Database.Statement<[string], AppSettingRow>;
@@ -28,8 +34,12 @@ export interface AgentSessionSqlStatements {
   selectRunSnapshots: Database.Statement<[string], RunSnapshotRow>;
   deleteFrom: Database.Statement;
   deleteRunEventsFrom: Database.Statement;
+  deleteRunEventOutboxFrom: Database.Statement;
   deleteStepTracesFrom: Database.Statement;
   deleteRunSnapshotsFrom: Database.Statement;
+  upsertTurnPreparation: Database.Statement;
+  selectTurnPreparation: Database.Statement<[string, string], TurnPreparationRow>;
+  deleteTurnPreparationsFrom: Database.Statement;
 }
 
 export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSessionSqlStatements {
@@ -55,8 +65,9 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
     `),
     appendRunEvent: db.prepare(`
       INSERT INTO run_events
-        (session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_json)
-      VALUES (@session_id, @request_id, @kind, @timestamp, @event_sequence, @step, @detail_id, @event_json)
+        (session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_id, reliability, event_json)
+      VALUES (@session_id, @request_id, @kind, @timestamp, @event_sequence, @step, @detail_id, @event_id, @reliability, @event_json)
+      ON CONFLICT(event_id) DO NOTHING
     `),
     selectSession: db.prepare<[string], SessionRow>(`
       SELECT id, title, status, created_at, updated_at, active_request_id, metadata
@@ -76,6 +87,25 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
       GROUP BY s.id
       ORDER BY s.updated_at DESC
     `),
+    selectPendingHistoryMutations: db.prepare<[], SessionHistoryMutationRow>(`
+      SELECT mutation_id, session_id, kind, from_request_id, pi_kind, pi_entry_id, model_provider_id, created_at
+      FROM session_history_mutations
+      ORDER BY created_at ASC
+    `),
+    selectPendingHistoryMutation: db.prepare<[string], SessionHistoryMutationRow>(`
+      SELECT mutation_id, session_id, kind, from_request_id, pi_kind, pi_entry_id, model_provider_id, created_at
+      FROM session_history_mutations
+      WHERE session_id = ?
+    `),
+    stageHistoryMutation: db.prepare(`
+      INSERT INTO session_history_mutations
+        (mutation_id, session_id, kind, from_request_id, pi_kind, pi_entry_id, model_provider_id, created_at)
+      VALUES
+        (@mutation_id, @session_id, @kind, @from_request_id, @pi_kind, @pi_entry_id, @model_provider_id, @created_at)
+    `),
+    deleteHistoryMutation: db.prepare(`
+      DELETE FROM session_history_mutations WHERE session_id = ? AND mutation_id = ?
+    `),
     selectEntries: db.prepare<[string], EntryRow>(`
       SELECT id, session_id, request_id, kind, timestamp, sequence, data
       FROM conversation_entries
@@ -83,7 +113,7 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
       ORDER BY sequence ASC
     `),
     selectRunEvents: db.prepare<[string], RunEventRow>(`
-      SELECT id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_json
+      SELECT id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_id, event_json
       FROM run_events
       WHERE session_id = ?
       ORDER BY id ASC
@@ -159,6 +189,30 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
           )
         )
     `),
+    upsertTurnPreparation: db.prepare(`
+      INSERT INTO turn_preparations (session_id, request_id, snapshot_json, created_at)
+      VALUES (@session_id, @request_id, @snapshot_json, @created_at)
+      ON CONFLICT(session_id, request_id) DO UPDATE SET
+        snapshot_json = excluded.snapshot_json,
+        created_at = excluded.created_at
+    `),
+    selectTurnPreparation: db.prepare<[string, string], TurnPreparationRow>(`
+      SELECT session_id, request_id, snapshot_json, created_at
+      FROM turn_preparations
+      WHERE session_id = ? AND request_id = ?
+    `),
+    deleteTurnPreparationsFrom: db.prepare(`
+      DELETE FROM turn_preparations
+      WHERE session_id = ?
+        AND request_id IN (
+          SELECT DISTINCT request_id FROM conversation_entries
+          WHERE session_id = ?
+            AND sequence >= (
+              SELECT MIN(sequence) FROM conversation_entries
+              WHERE session_id = ? AND request_id = ?
+            )
+        )
+    `),
     deleteFrom: db.prepare(`
       DELETE FROM conversation_entries
       WHERE session_id = ?
@@ -169,6 +223,18 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
     `),
     deleteRunEventsFrom: db.prepare(`
       DELETE FROM run_events
+      WHERE session_id = ?
+        AND request_id IN (
+          SELECT DISTINCT request_id FROM conversation_entries
+          WHERE session_id = ?
+            AND sequence >= (
+              SELECT MIN(sequence) FROM conversation_entries
+              WHERE session_id = ? AND request_id = ?
+            )
+        )
+    `),
+    deleteRunEventOutboxFrom: db.prepare(`
+      DELETE FROM event_outbox
       WHERE session_id = ?
         AND request_id IN (
           SELECT DISTINCT request_id FROM conversation_entries

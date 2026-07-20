@@ -46,8 +46,7 @@ export class AgentLoopCommandExecutor {
     signal?: AbortSignal,
   ): Promise<AgentLoopCommandResult> {
     return matchByKind(command, {
-      understand_turn: (entry) => this.planning.understandTurn(entry, onEvent, signal),
-      route_interaction: (entry) => this.planning.routeInteraction(entry, onEvent, signal),
+      prepare_interaction: (entry) => this.planning.prepareInteraction(entry, onEvent, signal),
       render_prompt: (entry) => this.renderPrompt(entry),
       run_pi_turn: (entry) => this.piTurn.run(entry, onEvent, signal),
     });

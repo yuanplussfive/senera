@@ -1,7 +1,7 @@
 export const SeneraMicrosandboxProviderId = "microsandbox";
 
 export const SeneraMicrosandboxDefaults = {
-  image: "alpine",
+  image: "node:22-bookworm-slim",
   guestWorkspaceRoot: "/workspace",
   cpus: 1,
   memoryMiB: 512,

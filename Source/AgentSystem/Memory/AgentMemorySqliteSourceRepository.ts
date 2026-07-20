@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
+import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import { uniqueTrimmed } from "./AgentMemoryCollections.js";
 import {
   buildDirectMemoryAnchor,
@@ -27,8 +27,8 @@ import {
   rowToSource,
   sourceToRow,
 } from "./AgentMemoryRowMapper.js";
-import { configureAgentMemoryDatabase, installAgentMemorySchema } from "./AgentMemorySqlSchema.js";
 import { failedAgentMemoryLearningJobStatus, memoryLearningJobFromStorageRow } from "./AgentMemoryLearningJob.js";
+import { AgentMemoryDatabaseMigrations } from "./AgentMemorySqlSchema.js";
 import { prepareAgentMemorySqlStatements, type AgentMemorySqlStatements } from "./AgentMemorySqlStatements.js";
 import { projectMemoryTime as projectTime } from "./AgentMemoryTime.js";
 import type {
@@ -52,14 +52,13 @@ import type {
 export const DefaultAgentMemoryDatabasePath = ".senera/Memory.sqlite";
 
 export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepository {
+  private readonly kernel: AgentSqliteDatabaseKernel;
   private readonly db: Database.Database;
   private readonly statements: AgentMemorySqlStatements;
 
   constructor(databasePath: string) {
-    fs.mkdirSync(path.dirname(databasePath), { recursive: true });
-    this.db = new Database(databasePath);
-    configureAgentMemoryDatabase(this.db);
-    installAgentMemorySchema(this.db);
+    this.kernel = new AgentSqliteDatabaseKernel({ databasePath, migrations: AgentMemoryDatabaseMigrations });
+    this.db = this.kernel.connection;
     this.statements = prepareAgentMemorySqlStatements(this.db);
   }
 
@@ -322,7 +321,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
   }
 
   close(): void {
-    this.db.close();
+    this.kernel.close();
   }
 
   private readExistingMemory(uri: string | undefined): AgentMemoryItemRecord {

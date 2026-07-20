@@ -12,7 +12,7 @@ try {
   await verifyWorkspaceMcpTools();
   console.log("Workspace MCP tools verification passed.");
 } finally {
-  runtime.toolSearch.close();
+  await runtime.close();
 }
 
 async function verifyWorkspaceMcpTools(): Promise<void> {

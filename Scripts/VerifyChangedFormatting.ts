@@ -25,21 +25,25 @@ if (!fs.existsSync(prettierEntrypoint)) {
   process.exit(2);
 }
 
-const result = spawnSync(
-  process.execPath,
-  [prettierEntrypoint, write ? "--write" : "--check", "--ignore-unknown", ...files],
-  {
+const prettierArgs = [prettierEntrypoint, write ? "--write" : "--check", "--ignore-unknown"];
+let exitCode = 0;
+for (const batch of batchFiles(files, prettierArgs)) {
+  const result = spawnSync(process.execPath, [...prettierArgs, ...batch], {
     cwd: workspaceRoot,
     stdio: "inherit",
     windowsHide: true,
-  },
-);
+  });
 
-if (result.error) {
-  console.error(`Unable to run Prettier: ${result.error.message}`);
-  process.exit(2);
+  if (result.error) {
+    console.error(`Unable to run Prettier: ${result.error.message}`);
+    exitCode = 2;
+    continue;
+  }
+  if (result.status !== 0) {
+    exitCode = result.status ?? 1;
+  }
 }
-process.exit(result.status ?? 1);
+process.exit(exitCode);
 
 function readOption(name: string): string | undefined {
   const prefix = `${name}=`;
@@ -79,4 +83,28 @@ function runGit(gitArgs: readonly string[]): string[] {
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function batchFiles(filesToBatch: readonly string[], fixedArgs: readonly string[]): string[][] {
+  const maxCommandLength = process.platform === "win32" ? 4_000 : 64_000;
+  const fixedLength = fixedArgs.reduce((total, argument) => total + argument.length + 1, 0);
+  const batches: string[][] = [];
+  let current: string[] = [];
+  let currentLength = fixedLength;
+
+  for (const file of filesToBatch) {
+    const nextLength = file.length + 1;
+    if (current.length > 0 && currentLength + nextLength > maxCommandLength) {
+      batches.push(current);
+      current = [];
+      currentLength = fixedLength;
+    }
+    current.push(file);
+    currentLength += nextLength;
+  }
+
+  if (current.length > 0) {
+    batches.push(current);
+  }
+  return batches;
 }

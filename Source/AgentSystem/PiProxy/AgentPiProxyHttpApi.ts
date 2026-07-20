@@ -8,7 +8,11 @@ import {
   resolveServerConfig,
 } from "../AgentDefaults.js";
 import type { AgentSystemConfig, ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
-import { AgentPiAssistantCompiler, type AgentPiAssistantCompilerPort } from "./AgentPiAssistantCompiler.js";
+import {
+  AgentPiAssistantCompiler,
+  type AgentPiAssistantCompileRequest,
+  type AgentPiAssistantCompilerPort,
+} from "./AgentPiAssistantCompiler.js";
 import { PiOpenAiChatCompletionRequestSchema } from "./AgentPiOpenAiWireTypes.js";
 import {
   AgentPiProxyContextHeader,
@@ -19,18 +23,27 @@ import {
 } from "./AgentPiProxyRuntimeContext.js";
 import { createAssistantMessageId, createToolBatchId } from "../Core/AgentIds.js";
 import { createPiTraceEvent } from "../Pi/AgentPiTraceProjector.js";
-import {
-  projectPiChatCompletionResponse,
-  projectPiChatCompletionStreamEvents,
-  projectPiModelsResponse,
-} from "./AgentPiOpenAiResponseProjector.js";
+import { projectPiModelsResponse } from "./AgentPiOpenAiResponseProjector.js";
+import { AgentPiFinalAnswerGenerator, type AgentPiFinalAnswerGeneratorPort } from "./AgentPiFinalAnswerGenerator.js";
+import { createAgentPiOpenAiResponseWriter } from "./AgentPiOpenAiResponseWriter.js";
+import type { AgentPiAssistantCompilation, AgentPiAssistantMessage } from "./AgentPiAssistantMessageTypes.js";
+import { AgentModelUsageLedger, type AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
+import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
 
 export interface AgentPiProxyHttpApiOptions {
   configSnapshot: () => AgentSystemConfig;
   compilerFactory?: (
     config: AgentSystemConfig,
     modelProvider: ResolvedAgentModelProviderConfig,
+    usageSink?: AgentModelUsageSink,
+    timingSink?: AgentModelTimingSink,
   ) => AgentPiAssistantCompilerPort;
+  finalAnswerGeneratorFactory?: (
+    config: AgentSystemConfig,
+    modelProvider: ResolvedAgentModelProviderConfig,
+    usageSink?: AgentModelUsageSink,
+    timingSink?: AgentModelTimingSink,
+  ) => AgentPiFinalAnswerGeneratorPort;
   onEvent?: AgentEventSink;
   maxRequestBytes?: number;
 }
@@ -75,12 +88,12 @@ export class AgentPiProxyHttpApi {
     try {
       await handler(request, response);
     } catch (error) {
-      const proxyError = error instanceof AgentPiProxyRequestError ? error : undefined;
-      writeJson(
-        response,
-        proxyError?.status ?? 500,
-        openAiError(proxyError?.code ?? "senera_pi_proxy_error", errorMessage(error)),
-      );
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
+      const proxyError = toPublicPiProxyError(error);
+      writeJson(response, proxyError.status, openAiError(proxyError.code, proxyError.message));
     }
   }
 
@@ -89,50 +102,124 @@ export class AgentPiProxyHttpApi {
   }
 
   private async handleChatCompletions(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
+    const config = this.options.configSnapshot();
     const payload = PiOpenAiChatCompletionRequestSchema.parse(
-      await readJsonBody(request, this.options.maxRequestBytes ?? 1_048_576),
+      await readJsonBody(request, this.options.maxRequestBytes ?? resolveServerConfig(config).RequestMaxBytes),
     );
-    const compiler = this.compiler(readSingleHeader(request.headers[AgentPiProxyModelProviderHeader]));
+    const provider = resolvePiProxyModelProvider(
+      config,
+      readSingleHeader(request.headers[AgentPiProxyModelProviderHeader]),
+    );
     const runtime = readPiProxyRuntimeContext(readSingleHeader(request.headers[AgentPiProxyContextHeader]));
-    await this.emitProxyTrace(runtime, "request", {
-      model: payload.model,
-      stream: payload.stream === true,
-      messageCount: payload.messages.length,
-      toolCount: payload.tools?.length ?? 0,
-      toolChoice: payload.tool_choice,
-    });
-    const assistantMessage = await compiler.compile({
-      request: payload,
-      runtime,
-    });
-    await this.emitProxyTrace(runtime, "compiled", {
-      kind: assistantMessage.kind,
-      contentChars: assistantMessage.content.length,
-      toolCalls: assistantMessage.toolCalls.map((call) => ({
-        name: call.name,
-        argumentKeys: Object.keys(call.arguments),
-      })),
-    });
-    await this.emitAssistantVisibleEvents(runtime, assistantMessage, payload);
+    const requestUsage = new AgentModelUsageLedger();
+    const usageSink: AgentModelUsageSink = (call) => {
+      requestUsage.record(call);
+      runtime?.usageLedger?.record(call);
+    };
+    const timingSink: AgentModelTimingSink = (timing) => this.emitProxyTrace(runtime, "model_timing", timing);
+    const compiler = this.compiler(config, provider, usageSink, timingSink);
+    const finalAnswers = this.finalAnswerGenerator(config, provider, usageSink, timingSink);
+    const lifetime = new AgentPiProxyRequestLifetime(request, response);
+    const requestStartedAt = performance.now();
+    try {
+      await this.emitProxyTrace(runtime, "provider_request", {
+        model: payload.model,
+        stream: payload.stream === true,
+        messageCount: payload.messages.length,
+        toolCount: payload.tools?.length ?? 0,
+        toolChoice: payload.tool_choice,
+      });
+      const compilation = await compiler.compile({
+        request: payload,
+        runtime,
+        signal: lifetime.signal,
+      });
+      await this.emitProxyTrace(runtime, "provider_response", {
+        ...projectCompilationTrace(compilation),
+        durationMs: Math.round(performance.now() - requestStartedAt),
+      });
+      await this.emitCompilationVisibleEvents(runtime, compilation, payload);
 
-    if (payload.stream === true) {
-      writeSse(response, projectPiChatCompletionStreamEvents(payload.model, assistantMessage));
-      return;
+      const writer = createAgentPiOpenAiResponseWriter({
+        response,
+        model: payload.model,
+        streaming: payload.stream === true,
+        usage: () => requestUsage.contextUsage(),
+        onFirstOutput: () =>
+          this.emitProxyTrace(runtime, "first_output", {
+            durationMs: Math.round(performance.now() - requestStartedAt),
+            streaming: payload.stream === true,
+          }),
+      });
+      const assistantMessage = await this.writeCompilation({
+        compilation,
+        writer,
+        finalAnswers,
+        compileRequest: { request: payload, runtime, signal: lifetime.signal },
+      });
+      await this.emitProxyTrace(runtime, "completed", {
+        kind: assistantMessage.kind,
+        contentChars: assistantMessage.content.length,
+        toolCallCount: assistantMessage.toolCalls.length,
+      });
+    } finally {
+      lifetime.dispose();
     }
-
-    writeJson(response, 200, projectPiChatCompletionResponse(payload.model, assistantMessage));
   }
 
-  private compiler(modelProviderHeader: string | undefined): AgentPiAssistantCompilerPort {
-    const config = this.options.configSnapshot();
-    const provider = resolvePiProxyModelProvider(config, modelProviderHeader);
+  private compiler(
+    config: AgentSystemConfig,
+    provider: ResolvedAgentModelProviderConfig,
+    usageSink: AgentModelUsageSink,
+    timingSink: AgentModelTimingSink,
+  ): AgentPiAssistantCompilerPort {
     if (this.options.compilerFactory) {
-      return this.options.compilerFactory(config, provider);
+      return this.options.compilerFactory(config, provider, usageSink, timingSink);
     }
     return new AgentPiAssistantCompiler({
       modelProvider: provider,
       actionPlannerConfig: resolveActionPlannerConfig(config, provider.Id),
+      usageSink,
+      timingSink,
     });
+  }
+
+  private finalAnswerGenerator(
+    config: AgentSystemConfig,
+    provider: ResolvedAgentModelProviderConfig,
+    usageSink: AgentModelUsageSink,
+    timingSink: AgentModelTimingSink,
+  ): AgentPiFinalAnswerGeneratorPort {
+    if (this.options.finalAnswerGeneratorFactory) {
+      return this.options.finalAnswerGeneratorFactory(config, provider, usageSink, timingSink);
+    }
+    return new AgentPiFinalAnswerGenerator(
+      provider,
+      resolveActionPlannerConfig(config, provider.Id).FinalAnswerClient,
+      usageSink,
+      timingSink,
+    );
+  }
+
+  private async writeCompilation(options: {
+    compilation: AgentPiAssistantCompilation;
+    writer: ReturnType<typeof createAgentPiOpenAiResponseWriter>;
+    finalAnswers: AgentPiFinalAnswerGeneratorPort;
+    compileRequest: AgentPiAssistantCompileRequest;
+  }): Promise<AgentPiAssistantMessage> {
+    if (options.compilation.kind !== "final_answer") {
+      await options.writer.writeMessage(options.compilation);
+      return options.compilation;
+    }
+
+    const runtime = options.compileRequest.runtime;
+    const stream = await options.finalAnswers.stream(options.compilation.input, {
+      requestId: runtime?.requestId ?? "pi-final-answer",
+      step: runtime?.step ?? 0,
+      signal: options.compileRequest.signal,
+    });
+    const content = await options.writer.writeFinalAnswer(stream);
+    return { kind: "final_text", content, toolCalls: [] };
   }
 
   private modelId(): string {
@@ -217,6 +304,16 @@ export class AgentPiProxyHttpApi {
       },
     });
   }
+
+  private emitCompilationVisibleEvents(
+    runtime: ReturnType<typeof readPiProxyRuntimeContext>,
+    compilation: AgentPiAssistantCompilation,
+    payload: z.infer<typeof PiOpenAiChatCompletionRequestSchema>,
+  ): Promise<void> {
+    return compilation.kind === "final_answer"
+      ? Promise.resolve()
+      : this.emitAssistantVisibleEvents(runtime, compilation, payload);
+  }
 }
 
 function readSingleHeader(value: string | string[] | undefined): string | undefined {
@@ -276,18 +373,6 @@ function writeJson(response: http.ServerResponse, status: number, payload: unkno
   response.end(JSON.stringify(payload));
 }
 
-function writeSse(response: http.ServerResponse, events: readonly unknown[]): void {
-  response.writeHead(200, {
-    "Content-Type": "text/event-stream; charset=utf-8",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-  });
-  for (const event of events) {
-    response.write(`data: ${JSON.stringify(event)}\n\n`);
-  }
-  response.end("data: [DONE]\n\n");
-}
-
 function openAiError(code: string, message: string): unknown {
   return {
     error: {
@@ -298,16 +383,57 @@ function openAiError(code: string, message: string): unknown {
   };
 }
 
-function errorMessage(error: unknown): string {
+function toPublicPiProxyError(error: unknown): AgentPiProxyRequestError {
+  if (error instanceof AgentPiProxyRequestError) return error;
   if (error instanceof z.ZodError) {
-    return error.issues.map((issue) => issue.message).join("; ");
+    return new AgentPiProxyRequestError("invalid_request", "Pi proxy request is invalid.");
   }
-  return error instanceof Error ? error.message : String(error);
+  return new AgentPiProxyRequestError("senera_pi_proxy_error", "Pi proxy request failed.", 500);
 }
 
 export function buildPiProxyBaseUrl(config: AgentSystemConfig): string {
   const server = resolveServerConfig(config);
   return `http://${clientHostForBindHost(server.Host)}:${server.Port}/v1`;
+}
+
+class AgentPiProxyRequestLifetime {
+  private readonly controller = new AbortController();
+  private readonly abort = (): void => this.controller.abort(new Error("Pi proxy client disconnected."));
+
+  constructor(
+    private readonly request: http.IncomingMessage,
+    private readonly response: http.ServerResponse,
+  ) {
+    request.once("aborted", this.abort);
+    response.once("close", this.abort);
+  }
+
+  get signal(): AbortSignal {
+    return this.controller.signal;
+  }
+
+  dispose(): void {
+    this.request.off("aborted", this.abort);
+    this.response.off("close", this.abort);
+  }
+}
+
+function projectCompilationTrace(compilation: AgentPiAssistantCompilation): Record<string, unknown> {
+  if (compilation.kind === "final_answer") {
+    return {
+      kind: compilation.kind,
+      decisionSource: compilation.decisionSource,
+      answerPlanSteps: compilation.input.answerPlan.length,
+    };
+  }
+  return {
+    kind: compilation.kind,
+    contentChars: compilation.content.length,
+    toolCalls: compilation.toolCalls.map((call) => ({
+      name: call.name,
+      argumentKeys: Object.keys(call.arguments),
+    })),
+  };
 }
 
 function clientHostForBindHost(host: string): string {

@@ -3,6 +3,7 @@ import type {
   ResolvedAgentVectorModelsConfig,
   ResolvedAgentVectorRerankConfig,
 } from "../Types/AgentConfigTypes.js";
+import { combineAbortSignals, disposeCombinedAbortSignal } from "../ModelEndpoints/ModelHttpAbort.js";
 
 export interface AgentEmbeddingRequest {
   input: readonly string[];
@@ -154,6 +155,9 @@ async function fetchWithRetries(
         throw error;
       }
       lastError = error;
+    } finally {
+      clearTimeout(timer);
+      disposeCombinedAbortSignal(signal);
     }
   }
 
@@ -274,22 +278,4 @@ async function safeReadText(response: Response): Promise<string> {
   } catch {
     return "";
   }
-}
-
-function combineAbortSignals(first: AbortSignal | null | undefined, second: AbortSignal): AbortSignal {
-  if (!first) {
-    return second;
-  }
-  if (first.aborted) {
-    return first;
-  }
-
-  const controller = new AbortController();
-  const abort = (event?: Event): void => {
-    const source = event?.target as AbortSignal | undefined;
-    controller.abort(source?.reason);
-  };
-  first.addEventListener("abort", abort, { once: true });
-  second.addEventListener("abort", abort, { once: true });
-  return controller.signal;
 }

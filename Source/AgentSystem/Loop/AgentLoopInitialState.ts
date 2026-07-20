@@ -3,6 +3,7 @@ import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageM
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import { buildInitialActionPlannerLedger } from "../ActionPlanner/AgentActionPlannerContext.js";
 import type { RunningAgentLoopMachineState } from "./AgentLoopStateTypes.js";
+import type { AgentTurnPreparationSnapshot } from "./AgentTurnPreparationSnapshot.js";
 
 export interface AgentLoopStartRequest {
   sessionId?: string;
@@ -14,6 +15,8 @@ export interface AgentLoopStartRequest {
   rootCommand?: AgentRootCommand;
   systemPromptPreamble?: string;
   emitRunStarted?: boolean;
+  preparation?: AgentTurnPreparationSnapshot;
+  onPiBranchBoundary?: (entryId: string) => void | Promise<void>;
 }
 
 export function createInitialAgentLoopState(request: AgentLoopStartRequest): RunningAgentLoopMachineState {
@@ -32,11 +35,15 @@ export function createInitialAgentLoopState(request: AgentLoopStartRequest): Run
     step: 1,
     messages: request.messages && request.messages.length > 0 ? request.messages : fallbackMessages,
     conversationEntries: [...(request.conversationEntries ?? [])],
-    loadedToolNames: request.loadedToolNames,
+    loadedToolNames: request.preparation?.loadedToolNames ?? request.loadedToolNames,
     plannerLedger: buildInitialActionPlannerLedger(request.messages),
-    rootCommand: request.rootCommand,
+    rootCommand: request.preparation?.rootCommand ?? request.rootCommand,
+    interactionRoute: request.preparation?.route,
+    turnUnderstanding: request.preparation?.turnUnderstanding,
+    initialAction: request.preparation?.initialAction,
     systemPromptPreamble: request.systemPromptPreamble,
-    activeSkills: [],
+    activeSkills: request.preparation?.activeSkills.map((skill) => structuredClone(skill)) ?? [],
     stepTraces: [],
+    onPiBranchBoundary: request.onPiBranchBoundary,
   };
 }

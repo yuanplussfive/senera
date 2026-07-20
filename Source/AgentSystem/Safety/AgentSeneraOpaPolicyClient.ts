@@ -76,6 +76,10 @@ interface AgentExecutionFallbackPolicyInputShape {
   readonly execution?: Record<string, unknown>;
 }
 
+interface AgentResourceAccessPolicyInputShape {
+  readonly resource?: Record<string, unknown>;
+}
+
 interface AgentToolApprovalFacts {
   readonly approvalMode?: string;
   readonly approvalReason?: string;
@@ -132,14 +136,26 @@ export class AgentSeneraOpaPolicyClient implements PolicyClient {
 
 function evaluateFailClosedPolicy(
   pathName: string,
-  input: AgentToolApprovalPolicyInputShape,
+  input:
+    AgentToolApprovalPolicyInputShape | AgentExecutionFallbackPolicyInputShape | AgentResourceAccessPolicyInputShape,
   data: AgentToolApprovalPolicyData,
   loadFailure: string | undefined,
 ): AgentSeneraOpaDecision {
-  const facts = buildFacts(input);
+  if (pathName === data.Entrypoints.ResourceAccess) {
+    return {
+      decision: "deny",
+      reason: [data.Reasons.ResourceUnresolved, loadFailure].filter(Boolean).join(" "),
+      rule: "resource.policy_unavailable",
+      riskSignals: ["resource.policy:unavailable"],
+    };
+  }
   if (pathName === data.Entrypoints.ExecutionFallback) {
+    const facts = buildFacts(input as AgentToolApprovalPolicyInputShape);
     return decision("deny", "execution.fallback.policy_unavailable", data.Reasons.FallbackDefaultDeny, facts);
   }
+
+  const toolInput = input as AgentToolApprovalPolicyInputShape;
+  const facts = buildFacts(toolInput);
   if (pathName !== data.Entrypoints.ToolDecision) {
     return decision("deny", "policy.entrypoint.mismatch", data.Reasons.EntrypointMismatch, facts);
   }
@@ -160,12 +176,15 @@ function projectPolicyInput(
   pathName: string,
   input: unknown,
   registry: AgentPluginRegistry,
-): AgentToolApprovalPolicyInputShape | AgentExecutionFallbackPolicyInputShape {
+): AgentToolApprovalPolicyInputShape | AgentExecutionFallbackPolicyInputShape | AgentResourceAccessPolicyInputShape {
   if (pathName === AgentToolApprovalPolicyArtifactContract.entrypoints.toolDecision) {
     return enrichPolicyInput(readPolicyInput(input), registry);
   }
   if (pathName === AgentToolApprovalPolicyArtifactContract.entrypoints.executionFallback) {
     return enrichFallbackPolicyInput(readFallbackPolicyInput(input), registry);
+  }
+  if (pathName === AgentToolApprovalPolicyArtifactContract.entrypoints.resourceAccess) {
+    return readResourceAccessPolicyInput(input);
   }
   return readPolicyInput(input);
 }
@@ -300,6 +319,12 @@ function readPolicyInput(input: unknown): AgentToolApprovalPolicyInputShape {
 function readFallbackPolicyInput(input: unknown): AgentExecutionFallbackPolicyInputShape {
   return input && typeof input === "object" && !Array.isArray(input)
     ? (input as AgentExecutionFallbackPolicyInputShape)
+    : {};
+}
+
+function readResourceAccessPolicyInput(input: unknown): AgentResourceAccessPolicyInputShape {
+  return input && typeof input === "object" && !Array.isArray(input)
+    ? (input as AgentResourceAccessPolicyInputShape)
     : {};
 }
 

@@ -3,6 +3,16 @@ import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "./Agen
 import type { EndpointRuntime, TextGenerationEndpoint, TextGenerationEndpointResult } from "./ModelEndpointTypes.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
+import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
+
+const ClaudeUsageSchema = z
+  .object({
+    input_tokens: z.number().optional(),
+    output_tokens: z.number().optional(),
+    cache_read_input_tokens: z.number().optional(),
+    cache_creation_input_tokens: z.number().optional(),
+  })
+  .passthrough();
 
 const ClaudeContentBlockSchema = z
   .object({
@@ -14,6 +24,7 @@ const ClaudeContentBlockSchema = z
 const ClaudeMessageBodySchema = z
   .object({
     content: z.array(ClaudeContentBlockSchema).optional(),
+    usage: ClaudeUsageSchema.optional(),
   })
   .passthrough();
 
@@ -26,6 +37,13 @@ const ClaudeStreamEventSchema = z
       })
       .passthrough()
       .optional(),
+    message: z
+      .object({
+        usage: ClaudeUsageSchema.optional(),
+      })
+      .passthrough()
+      .optional(),
+    usage: ClaudeUsageSchema.optional(),
   })
   .passthrough();
 
@@ -45,6 +63,7 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
           ?.filter((content) => content.type === "text")
           .map((content) => content.text ?? "")
           .join("") ?? "",
+      usage: projectClaudeUsage(body.usage),
     };
   }
 
@@ -55,7 +74,10 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
       this.authHeaders(),
       (event) => {
         const parsed = ClaudeStreamEventSchema.parse(event);
-        return parsed.type === "content_block_delta" ? (parsed.delta?.text ?? "") : "";
+        return {
+          textDelta: parsed.type === "content_block_delta" ? (parsed.delta?.text ?? "") : "",
+          usage: projectClaudeUsage(parsed.usage ?? parsed.message?.usage),
+        };
       },
       undefined,
       { signal: request.signal },
@@ -95,4 +117,14 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
       ...this.runtime.config.Headers,
     };
   }
+}
+
+function projectClaudeUsage(usage: z.infer<typeof ClaudeUsageSchema> | undefined): AgentModelUsageValue | undefined {
+  if (!usage) return undefined;
+  return createProviderReportedUsage({
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cacheReadTokens: usage.cache_read_input_tokens,
+    cacheWriteTokens: usage.cache_creation_input_tokens,
+  });
 }

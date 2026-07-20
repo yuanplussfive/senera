@@ -1,17 +1,13 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import fg from "fast-glob";
 import { resolveAgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
-import { AgentJsonFileLoader } from "../Source/AgentSystem/Config/AgentJsonFileLoader.js";
 import {
   normalizeSandboxImages,
   prepareAgentSandboxRuntime,
   type MicrosandboxModule,
 } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
-import { PluginManifestSchema } from "../Source/AgentSystem/Schemas/PluginManifestSchema.js";
-import { resolveAgentNodePluginRuntimeImage } from "../Source/AgentSystem/ToolRuntime/AgentPluginProcessExecutionProfile.js";
 import type { ResolvedAgentSandboxRuntimeConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
-import type { PluginManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
+import { prepareSeneraTerminalSidecarGuestRuntime } from "./PrepareTerminalSidecarGuestRuntime.js";
 
 export interface PrepareOptions {
   strict: boolean;
@@ -35,11 +31,15 @@ if (isEntrypoint(import.meta.url, process.argv[1])) {
   });
 }
 
-export async function prepareSandboxRuntime(options: PrepareOptions, microsandbox?: MicrosandboxModule): Promise<void> {
+export async function prepareSandboxRuntime(
+  options: PrepareOptions,
+  microsandbox?: MicrosandboxModule,
+  prepareTerminalRuntime: typeof prepareSeneraTerminalSidecarGuestRuntime = prepareSeneraTerminalSidecarGuestRuntime,
+): Promise<void> {
   const config = buildSandboxRuntimeConfig(options);
   const images = normalizeSandboxImages(config.Images, discoverSandboxImages());
   process.stdout.write(`sandbox images: ${images.join(", ")}\n`);
-  await prepareAgentSandboxRuntime({
+  const prepared = await prepareAgentSandboxRuntime({
     workspaceRoot,
     config,
     images,
@@ -50,21 +50,15 @@ export async function prepareSandboxRuntime(options: PrepareOptions, microsandbo
     microsandbox,
     log: (message) => process.stdout.write(`${message}\n`),
   });
+  await prepareTerminalRuntime({
+    workspaceRoot,
+    sandboxRuntimeBaseDir: prepared.paths.baseDir,
+    log: (message) => process.stdout.write(`${message}\n`),
+  });
 }
 
 export function discoverSandboxImages(): string[] {
-  const images = new Set<string>();
-  for (const manifestPath of discoverPluginManifestPaths()) {
-    const manifest = new AgentJsonFileLoader().load(manifestPath, PluginManifestSchema) as PluginManifest;
-    const sandboxTool = (manifest.Tools ?? []).some(
-      (tool) => tool.Execution.Boundary === "Sandbox" || tool.Execution.Boundary === "SandboxPreferred",
-    );
-    if (sandboxTool && manifest.Plugin.Entry?.Kind === "Process") {
-      images.add(resolveAgentNodePluginRuntimeImage(manifest.Runtime));
-    }
-  }
-
-  return [...images].sort((left, right) => left.localeCompare(right));
+  return [];
 }
 
 export function readOptions(args: readonly string[]): PrepareOptions {
@@ -85,16 +79,6 @@ function buildSandboxRuntimeConfig(options: PrepareOptions): ResolvedAgentSandbo
     BaseDir: options.baseDir ?? defaults.BaseDir,
     BundleDir: options.bundleDir ?? defaults.BundleDir,
   };
-}
-
-function discoverPluginManifestPaths(): string[] {
-  return fg
-    .sync(["System/Plugins/*/PluginManifest.json", "Plugins/*/PluginManifest.json"], {
-      cwd: workspaceRoot,
-      absolute: true,
-      onlyFiles: true,
-    })
-    .sort((left, right) => left.localeCompare(right));
 }
 
 function readOptionValue(args: readonly string[], name: string): string | undefined {

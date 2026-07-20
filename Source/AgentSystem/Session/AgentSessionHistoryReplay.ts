@@ -8,8 +8,11 @@ import type { StoredRunSnapshot } from "./AgentSqliteSessionRepository.js";
 import type { AgentHistoryStepRun } from "./AgentSessionEventTypes.js";
 import { type AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
 import { type AgentSessionStore } from "./AgentSessionStore.js";
+import { recoverInterruptedRunWaitEvents } from "./AgentSessionHistoryWaitRecovery.js";
+import { AgentXmlParser } from "../Xml/AgentXmlParser.js";
 
 const SessionHistoryEntryChunkSize = 50;
+const HistoryXmlParser = new AgentXmlParser();
 
 export interface AgentSessionHistoryReplayOptions {
   store: AgentSessionStore;
@@ -45,7 +48,7 @@ export class AgentSessionHistoryReplay {
         input: userEntry?.content ?? "",
         startedAt: userEntry?.timestamp ?? run.traces[0]?.startedAt ?? "",
         endedAt: assistantEntry?.timestamp,
-        status: "completed",
+        status: inferTraceRunStatus(run.traces),
         modelProvider: assistantEntry?.metadata?.run?.modelProvider ?? userEntry?.metadata?.run?.modelProvider,
         traces: run.traces,
       });
@@ -131,7 +134,10 @@ export class AgentSessionHistoryReplay {
   }
 
   private async emitRunEventChunks(request: { sessionId: string; onEvent?: AgentEventSink }): Promise<void> {
-    const runEvents = this.options.store.loadRunEvents(request.sessionId);
+    const runEvents = recoverInterruptedRunWaitEvents(
+      this.options.store.loadRunEvents(request.sessionId),
+      this.options.store.loadRunSnapshots(request.sessionId),
+    );
     for (let index = 0; index < runEvents.length; index += AgentRunEventHistoryReplayChunkSize) {
       const chunk = runEvents.slice(index, index + AgentRunEventHistoryReplayChunkSize);
       await emitAgentEvent(request.onEvent, {
@@ -164,22 +170,16 @@ export class AgentSessionHistoryReplay {
       existing.startedAt ||= snapshot.startedAt;
       existing.modelProvider ??= snapshot.modelProvider;
 
-      if (existing.traces.length > 0) {
-        existing.status = "completed";
-        existing.endedAt ??= snapshot.endedAt ?? snapshot.updatedAt;
-        return;
-      }
-
+      existing.status = projectSnapshotStatus(snapshot, existing.traces.length > 0);
       existing.endedAt = snapshot.endedAt ?? existing.endedAt;
-      existing.status = snapshot.status === "completed" ? "failed" : snapshot.status;
-      if (snapshot.status === "completed") {
+      if (existing.status === "completed" && existing.traces.length === 0) {
         existing.endedAt = snapshot.endedAt ?? snapshot.updatedAt;
         existing.traces = [createMissingRunDataTrace(snapshot)];
       }
       return;
     }
 
-    const status = snapshot.status === "completed" ? "failed" : snapshot.status;
+    const status = projectSnapshotStatus(snapshot, false);
     runsByRequest.set(snapshot.requestId, {
       requestId: snapshot.requestId,
       input: snapshot.input,
@@ -192,11 +192,59 @@ export class AgentSessionHistoryReplay {
   }
 }
 
+function inferTraceRunStatus(traces: readonly StepTrace[]): AgentHistoryStepRun["status"] {
+  const terminal = traces.at(-1)?.status;
+  if (terminal === "failed") return "failed";
+  return terminal === "done" ? "completed" : "running";
+}
+
+function projectSnapshotStatus(snapshot: StoredRunSnapshot, hasTrace: boolean): AgentHistoryStepRun["status"] {
+  if (snapshot.status !== "completed") return snapshot.status;
+  return hasTrace ? "completed" : "failed";
+}
+
 function projectAssistantHistoryVisible(text: string): { kind: "final_answer"; text: string } {
   return {
     kind: "final_answer",
-    text,
+    text: readAssistantAnswer(text) ?? text,
   };
+}
+
+function readAssistantAnswer(xml: string): string | undefined {
+  try {
+    const parsed = HistoryXmlParser.parse(xml).value;
+    return readAnswerValue(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+function readAnswerValue(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  if (Array.isArray(value)) {
+    return value.map(readAnswerValue).find((item): item is string => item !== undefined);
+  }
+  const record = value as Record<string, unknown>;
+  const answer = record.answer;
+  if (typeof answer === "string") return answer;
+  if (answer && typeof answer === "object") {
+    const nested = readTextValue(answer);
+    if (nested) return nested;
+  }
+  return Object.values(record)
+    .map(readAnswerValue)
+    .find((item): item is string => item !== undefined);
+}
+
+function readTextValue(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (!isPlainRecord(value)) return undefined;
+  const text = value["#text"] ?? value["#cdata"];
+  return typeof text === "string" ? text : undefined;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Object.prototype.toString.call(value) === "[object Object]";
 }
 
 class AgentSessionHistoryEntryIndex {

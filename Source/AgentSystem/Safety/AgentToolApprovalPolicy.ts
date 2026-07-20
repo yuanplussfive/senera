@@ -28,14 +28,16 @@ export class AgentCompositeToolApprovalPolicy implements AgentToolApprovalPolicy
   constructor(private readonly options: AgentToolApprovalPolicyOptions = {}) {}
 
   async decideToolCall(input: AgentToolApprovalPolicyInput): Promise<AgentPermissionDecision> {
-    const guardrailDecision = await this.decideWithGuardrails(input);
-    if (guardrailDecision) {
-      return guardrailDecision;
+    const manifestDecision = await this.manifestPolicy.decideToolCall(input);
+    const opaDecision = this.options.opa ? await this.decideWithOpa(input, this.options.opa) : undefined;
+    const deterministicDecision = strongestPermissionDecision([opaDecision, manifestDecision]);
+    if (deterministicDecision.action === AgentPermissionActions.Deny) {
+      return deterministicDecision;
     }
 
-    const opaDecision = this.options.opa ? await this.decideWithOpa(input, this.options.opa) : undefined;
+    const guardrailDecision = await this.decideWithGuardrails(input);
 
-    return opaDecision ?? this.manifestPolicy.decideToolCall(input);
+    return strongestPermissionDecision([guardrailDecision, deterministicDecision]);
   }
 
   private async decideWithGuardrails(
@@ -71,6 +73,32 @@ export class AgentCompositeToolApprovalPolicy implements AgentToolApprovalPolicy
       };
     }
   }
+}
+
+const PermissionActionPriority = {
+  [AgentPermissionActions.Allow]: 0,
+  [AgentPermissionActions.Ask]: 1,
+  [AgentPermissionActions.Deny]: 2,
+} as const satisfies Record<AgentPermissionAction, number>;
+
+function strongestPermissionDecision(
+  decisions: readonly (AgentPermissionDecision | undefined)[],
+): AgentPermissionDecision {
+  const available = decisions.filter((decision): decision is AgentPermissionDecision => Boolean(decision));
+  const selected = available.reduce<AgentPermissionDecision | undefined>((strongest, decision) => {
+    if (!strongest) return decision;
+    return PermissionActionPriority[decision.action] > PermissionActionPriority[strongest.action]
+      ? decision
+      : strongest;
+  }, undefined);
+  if (!selected) {
+    throw new Error("工具审批策略没有产生决策。");
+  }
+
+  return {
+    ...selected,
+    riskSignals: [...new Set(available.flatMap((decision) => decision.riskSignals))],
+  } as AgentPermissionDecision;
 }
 
 export class AgentManifestToolApprovalPolicy implements AgentToolApprovalPolicy {

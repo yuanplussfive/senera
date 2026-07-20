@@ -1,42 +1,11 @@
 import { type AgentCancellationError } from "../Core/AgentCancellation.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentSession } from "./AgentSession.js";
 import { type AgentSessionStore } from "./AgentSessionStore.js";
+import { clearAgentSessionCancellation, resolveAgentSessionLifecycle } from "./AgentSessionLifecycleMetadata.js";
 
 export class AgentSessionRunSnapshotWriter {
   constructor(private readonly store: AgentSessionStore) {}
-
-  running(input: { sessionId: string; requestId: string; text: string; startedAt: string }): void {
-    this.store.persistRunSnapshot({
-      sessionId: input.sessionId,
-      requestId: input.requestId,
-      input: input.text,
-      status: "running",
-      startedAt: input.startedAt,
-      updatedAt: input.startedAt,
-    });
-  }
-
-  completed(input: {
-    sessionId: string;
-    requestId: string;
-    text: string;
-    startedAt: string;
-    endedAt: string;
-    modelProvider?: AgentModelProviderMetadata;
-  }): void {
-    this.store.persistRunSnapshot({
-      sessionId: input.sessionId,
-      requestId: input.requestId,
-      input: input.text,
-      status: "completed",
-      startedAt: input.startedAt,
-      updatedAt: input.endedAt,
-      endedAt: input.endedAt,
-      modelProvider: input.modelProvider,
-    });
-  }
 
   cancelled(input: {
     sessionId: string;
@@ -55,20 +24,6 @@ export class AgentSessionRunSnapshotWriter {
       updatedAt: endedAt,
       endedAt,
       errorMessage: input.error.message,
-    });
-  }
-
-  failed(input: { sessionId: string; requestId: string; text: string; startedAt: string; error: unknown }): void {
-    const endedAt = new Date().toISOString();
-    this.store.persistRunSnapshot({
-      sessionId: input.sessionId,
-      requestId: input.requestId,
-      input: input.text,
-      status: "failed",
-      startedAt: input.startedAt,
-      updatedAt: endedAt,
-      endedAt,
-      errorMessage: readErrorMessage(input.error),
     });
   }
 
@@ -91,30 +46,29 @@ export class AgentSessionRunSnapshotWriter {
     });
   }
 
-  failOrphanedRunningSnapshots(): void {
+  reconcileOrphanedRunningSnapshots(): void {
     const now = new Date().toISOString();
     for (const session of this.store.listSessions()) {
+      const cancellation = resolveAgentSessionLifecycle(session.metadata).cancellation;
       const snapshots = this.store.loadRunSnapshots(session.id);
       for (const snapshot of snapshots) {
         if (snapshot.status !== "running") continue;
+        const cancelled = cancellation?.requestId === snapshot.requestId;
         this.store.persistRunSnapshot({
           ...snapshot,
-          status: "failed",
+          status: cancelled ? "cancelled" : "failed",
           updatedAt: now,
           endedAt: now,
-          errorMessage: agentErrorMessage("session.runOrphanedAfterRestart"),
+          errorMessage: cancelled
+            ? agentErrorMessage("session.runCancelled")
+            : agentErrorMessage("session.runOrphanedAfterRestart"),
         });
       }
+      if (cancellation) {
+        session.metadata = clearAgentSessionCancellation(session.metadata);
+        session.updatedAt = now;
+        this.store.persistMetadata(session);
+      }
     }
-  }
-}
-
-function readErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return agentErrorMessage("session.runFailed");
   }
 }

@@ -8,6 +8,8 @@ export type { ResponsiveMode, ResponsiveQueryMatches, ResponsiveViewport } from 
 export { createResponsiveModeStore } from "./responsiveStore";
 export type { MatchMediaReader, ResponsiveModeStore } from "./responsiveStore";
 export { useResponsiveMode } from "./useResponsiveMode";
+export { readViewportSize, useViewportSize } from "./useViewportSize";
+export type { ViewportSize } from "./useViewportSize";
 export {
   classifyModelServiceLayout,
   createModelServiceLayoutStore,

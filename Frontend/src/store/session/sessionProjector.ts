@@ -10,17 +10,19 @@ import {
   type ProviderModelsSnapshotData,
   type PluginConfigSnapshotData,
   type SessionListSnapshotData,
+  type SessionForkedData,
   type SessionNotFoundData,
   type SessionSnapshotData,
   type SessionTruncatedData,
   type UserProfileData,
+  type RequestInvalidData,
 } from "../../api/eventTypes";
 import { projectRunEvent } from "./runEventProjector";
 import { applyScopedRunEvent } from "./scopedRunProjector";
 import { projectSessionHistoryEvent } from "./sessionHistoryProjector";
-import { ingestSessionList, readFirstAvailableSessionId } from "./sessionListProjection";
+import { deleteSessionRuntimeState, ingestSessionList, readFirstAvailableSessionId } from "./sessionListProjection";
 import { nowIso, syncSessionCountsFromLoadedMessages } from "./sessionProjectorCore";
-import { applyModelListSnapshotSelection } from "./sessionModelSelection";
+import { applyModelListSnapshotSelection, syncActiveSessionModelSelection } from "./sessionModelSelection";
 import type { StoreState } from "./types";
 
 export { normalizeUserProfile } from "./userProfile";
@@ -53,6 +55,25 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
   }
 
   switch (env.kind) {
+    case EventKinds.RequestInvalid: {
+      const details = (env.data as RequestInvalidData).details;
+      const interactionId =
+        details && typeof details === "object" && "interactionId" in details
+          ? (details as { interactionId?: unknown }).interactionId
+          : undefined;
+      if (typeof interactionId !== "string") return;
+      for (const session of Object.values(state.sessions)) {
+        for (const run of session.runs) {
+          const interaction = run.interactionInputs?.find((entry) => entry.interactionId === interactionId);
+          if (!interaction) continue;
+          interaction.resolutionPending = false;
+          interaction.pendingAction = undefined;
+          run.revision += 1;
+          return;
+        }
+      }
+      return;
+    }
     case EventKinds.ModelListSnapshot: {
       applyModelListSnapshotSelection(state, env.data as ModelListSnapshotData);
       return;
@@ -113,6 +134,9 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
         existing.entryCount = data.entryCount;
         existing.messageCount = data.messageCount;
         existing.activeRequestId = data.activeRequestId;
+        if (state.historyLoadingIds[sessionId]) {
+          state.historyActiveRequestIds[sessionId] = data.activeRequestId ?? null;
+        }
       } else {
         state.sessions[sessionId] = {
           sessionId,
@@ -148,6 +172,7 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       delete state.viewedRunIdBySession[sessionId];
       delete state.missingOnServerIds[sessionId];
       delete state.historyEventRunIds[sessionId];
+      delete state.historyActiveRequestIds[sessionId];
       if (state.activeSessionId === sessionId) {
         state.activeSessionId = state.sessionOrder[0] ?? null;
       }
@@ -163,67 +188,134 @@ export function applyEvent(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
+    case EventKinds.SessionForked: {
+      if (!sessionId) return;
+      const data = env.data as SessionForkedData;
+      const session = state.sessions[sessionId];
+      if (!session) return;
+      session.title = data.title || session.title;
+      session.createdAt = data.createdAt || session.createdAt;
+      session.updatedAt = env.timestamp;
+      session.forkOrigin = {
+        sourceSessionId: data.sourceSessionId,
+        throughRequestId: data.throughRequestId,
+      };
+      const sourceModelProviderId = state.selectedModelProviderIdsBySession[data.sourceSessionId];
+      if (sourceModelProviderId) {
+        state.selectedModelProviderIdsBySession[sessionId] = sourceModelProviderId;
+      }
+      state.activeSessionId = sessionId;
+      syncActiveSessionModelSelection(state);
+      return;
+    }
+
     case EventKinds.SessionNotFound: {
       if (!sessionId) return;
-      const data = env.data as SessionNotFoundData;
-      state.historyLoadingIds[sessionId] = false;
-      delete state.historyReplayBuffers[sessionId];
-      delete state.historyStepBuffers[sessionId];
-      delete state.historyEventRunIds[sessionId];
-      delete state.historyFailedIds[sessionId];
-      if (data.operation === "session.close") {
-        delete state.pendingDeletedSessionIds[sessionId];
-        delete state.pendingCreatedSessionIds[sessionId];
-        delete state.sessions[sessionId];
-        state.sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
-        if (state.activeSessionId === sessionId) {
-          state.activeSessionId = state.sessionOrder[0] ?? null;
-        }
-        return;
-      }
-      if (data.operation === "session.history") {
-        state.missingOnServerIds[sessionId] = true;
-        delete state.historyLoadedIds[sessionId];
-        if (state.sessions[sessionId]) {
-          state.sessions[sessionId].messages = [];
-          state.sessions[sessionId].runs = [];
-          state.sessions[sessionId].entryCount = 0;
-          state.sessions[sessionId].messageCount = 0;
-        }
-        if (state.activeSessionId === sessionId) {
-          state.activeSessionId = readFirstAvailableSessionId(state, sessionId);
-        }
-      }
+      projectSessionNotFound(state, sessionId, env.data as SessionNotFoundData);
       return;
     }
 
     case EventKinds.SessionTruncated: {
       if (!sessionId) return;
       const data = env.data as SessionTruncatedData;
-      const session = state.sessions[sessionId];
-      if (!session) return;
-      // 删除从该 requestId 起的所有消息（含其本身）
-      const idx = session.messages.findIndex((m) => m.requestId === data.fromRequestId);
-      if (idx >= 0) {
-        session.messages = session.messages.slice(0, idx);
-        syncSessionCountsFromLoadedMessages(session);
-      }
-      // 同样清掉对应的 runs
-      const runIdx = session.runs.findIndex((r) => r.requestId === data.fromRequestId);
-      if (runIdx >= 0) {
-        session.runs = session.runs.slice(0, runIdx);
-      }
-      const viewedRunId = state.viewedRunIdBySession[sessionId];
-      if (viewedRunId && !session.runs.some((run) => run.requestId === viewedRunId)) {
-        delete state.viewedRunIdBySession[sessionId];
-      }
-      session.updatedAt = env.timestamp;
+      truncateSessionFromRequest(state, sessionId, data.fromRequestId, env.timestamp, {
+        retainedRequestId: data.replacementRequestId,
+      });
       return;
     }
 
     default:
       return;
   }
+}
+
+const SessionNotFoundProjectionPolicies = {
+  "session.close": "remove",
+  "session.history": "mark_missing",
+  "session.message": "mark_missing",
+  "session.fork": "mark_missing",
+} as const satisfies Record<SessionNotFoundData["operation"], "remove" | "mark_missing">;
+
+function projectSessionNotFound(state: StoreState, sessionId: string, data: SessionNotFoundData): void {
+  clearSessionRecoveryState(state, sessionId);
+  switch (SessionNotFoundProjectionPolicies[data.operation]) {
+    case "remove":
+      delete state.pendingDeletedSessionIds[sessionId];
+      delete state.pendingCreatedSessionIds[sessionId];
+      deleteSessionRuntimeState(state, sessionId);
+      if (state.activeSessionId === sessionId) state.activeSessionId = readFirstAvailableSessionId(state);
+      return;
+    case "mark_missing":
+      delete state.pendingCreatedSessionIds[sessionId];
+      state.missingOnServerIds[sessionId] = true;
+      delete state.historyLoadedIds[sessionId];
+      if (state.sessions[sessionId]) {
+        state.sessions[sessionId].messages = [];
+        state.sessions[sessionId].runs = [];
+        state.sessions[sessionId].entryCount = 0;
+        state.sessions[sessionId].messageCount = 0;
+      }
+      if (state.activeSessionId === sessionId) {
+        state.activeSessionId = readFirstAvailableSessionId(state, sessionId);
+      }
+  }
+}
+
+function clearSessionRecoveryState(state: StoreState, sessionId: string): void {
+  state.historyLoadingIds[sessionId] = false;
+  delete state.historyReplayBuffers[sessionId];
+  delete state.historyStepBuffers[sessionId];
+  delete state.historyEventRunIds[sessionId];
+  delete state.historyActiveRequestIds[sessionId];
+  delete state.historyFailedIds[sessionId];
+}
+
+export function truncateSessionFromRequest(
+  state: StoreState,
+  sessionId: string,
+  fromRequestId: string,
+  timestamp = nowIso(),
+  options: { retainedRequestId?: string } = {},
+): void {
+  const session = state.sessions[sessionId];
+  if (!session) return;
+  const retainedMessages = options.retainedRequestId
+    ? session.messages.filter((message) => message.requestId === options.retainedRequestId)
+    : [];
+  const retainedRuns = options.retainedRequestId
+    ? session.runs.filter((run) => run.requestId === options.retainedRequestId)
+    : [];
+  const messageIndex = session.messages.findIndex((message) => message.requestId === fromRequestId);
+  if (messageIndex >= 0) {
+    session.messages = appendMissingByKey(
+      session.messages.slice(0, messageIndex),
+      retainedMessages,
+      (message) => message.id,
+    );
+    syncSessionCountsFromLoadedMessages(session);
+  }
+  const runIndex = session.runs.findIndex((run) => run.requestId === fromRequestId);
+  if (runIndex >= 0) {
+    session.runs = appendMissingByKey(session.runs.slice(0, runIndex), retainedRuns, (run) => run.requestId);
+  }
+  if (
+    session.activeRequestId &&
+    !session.runs.some((run) => run.requestId === session.activeRequestId) &&
+    !session.messages.some((message) => message.requestId === session.activeRequestId)
+  ) {
+    session.activeRequestId = undefined;
+  }
+  const viewedRunId = state.viewedRunIdBySession[sessionId];
+  if (viewedRunId && !session.runs.some((run) => run.requestId === viewedRunId)) {
+    delete state.viewedRunIdBySession[sessionId];
+  }
+  session.updatedAt = timestamp;
+}
+
+function appendMissingByKey<T>(current: T[], retained: readonly T[], selectKey: (item: T) => string): T[] {
+  if (retained.length === 0) return current;
+  const currentKeys = new Set(current.map(selectKey));
+  return [...current, ...retained.filter((item) => !currentKeys.has(selectKey(item)))];
 }
 
 function isPendingDeleteResolutionEvent(kind: string): boolean {

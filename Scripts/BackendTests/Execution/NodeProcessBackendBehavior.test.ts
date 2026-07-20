@@ -1,9 +1,11 @@
 import path from "node:path";
+import fs from "node:fs/promises";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { SeneraNodeProcessBackend } from "../../../Source/AgentSystem/Execution/SeneraNodeProcessBackend.js";
 import type { SeneraProcessExecutionRequest } from "../../../Source/AgentSystem/Execution/SeneraProcessExecutionBackend.js";
 import { SeneraExecutionErrorCodes } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import { createSeneraOutputSpool } from "../../../Source/AgentSystem/Execution/SeneraOutputSpool.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -98,7 +100,7 @@ describe("Node process backend behavior", () => {
       backend.executeProcess(
         createRequest({
           cwd: process.cwd(),
-          args: ["-e", "setInterval(() => undefined, 1_000)"],
+          args: ["-e", "setTimeout(() => process.exit(0), 150)"],
           timeoutMs: 25,
         }),
       ),
@@ -128,6 +130,62 @@ describe("Node process backend behavior", () => {
     ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.StderrLimitExceeded });
   });
 
+  test("can truncate retained output without terminating a successful command", async () => {
+    const backend = new SeneraNodeProcessBackend();
+    const result = await backend.executeProcess(
+      createRequest({
+        cwd: createWorkspace(),
+        args: ["-e", "process.stdout.write('abcdefghijkl')"],
+        limits: { timeoutMs: 5_000, maxStdoutBytes: 8, maxStderrBytes: 1_024 },
+        outputOverflow: "truncate",
+      }),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Senera output truncated");
+    expect(result.stdout).toContain("abcd");
+    expect(result.stdout).toContain("ijkl");
+    expect(result.stdoutBytes).toBe(12);
+    expect(result.stdoutTruncated).toBe(true);
+  });
+
+  test("spools stdout and stderr asynchronously while retaining the bounded preview", async () => {
+    const workspace = createWorkspace();
+    const spool = await createSeneraOutputSpool(path.join(workspace, "spool"), "call");
+    const backend = new SeneraNodeProcessBackend();
+    const result = await backend.executeProcess(
+      createRequest({
+        cwd: workspace,
+        args: ["-e", "process.stdout.write('stdout-full'); process.stderr.write('stderr-full')"],
+        outputSpool: spool,
+        outputOverflow: "truncate",
+      }),
+    );
+
+    expect(result.outputCapture).toEqual(spool.descriptor);
+    expect(await fs.readFile(spool.descriptor.files.stdout, "utf8")).toBe("stdout-full");
+    expect(await fs.readFile(spool.descriptor.files.stderr, "utf8")).toBe("stderr-full");
+    await spool.cleanup();
+    await expect(fs.stat(spool.descriptor.directory)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("marks a capture as truncated when its configured disk budget is reached", async () => {
+    const workspace = createWorkspace();
+    const spool = await createSeneraOutputSpool(path.join(workspace, "spool"), "bounded", { maxBytes: 4 });
+    const result = await new SeneraNodeProcessBackend().executeProcess(
+      createRequest({
+        cwd: workspace,
+        args: ["-e", "process.stdout.write('0123456789')"],
+        outputSpool: spool,
+        outputOverflow: "truncate",
+      }),
+    );
+
+    expect(result.outputCapture?.truncated.stdout).toBe(true);
+    expect(await fs.readFile(spool.descriptor.files.stdout, "utf8")).toBe("0123");
+    await spool.cleanup();
+  });
+
   test.each([
     {
       condition: "throws synchronously",
@@ -145,7 +203,7 @@ describe("Node process backend behavior", () => {
       condition: "stalls",
       terminateProcessTree: () => new Promise<void>(() => undefined),
     },
-  ])("settles a timeout when process-tree termination $condition", async ({ terminateProcessTree }) => {
+  ])("preserves the timeout when process-tree termination $condition", async ({ terminateProcessTree }) => {
     const terminator = vi.fn(terminateProcessTree);
     const backend = new SeneraNodeProcessBackend({
       terminateProcessTree: terminator,
@@ -156,13 +214,22 @@ describe("Node process backend behavior", () => {
       backend.executeProcess(
         createRequest({
           cwd: process.cwd(),
-          args: ["-e", "setInterval(() => undefined, 1_000)"],
+          args: ["-e", "setTimeout(() => process.exit(0), 150)"],
           timeoutMs: 25,
         }),
       ),
-    ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.Timeout });
+    ).rejects.toMatchObject({
+      code: SeneraExecutionErrorCodes.Timeout,
+      details: {
+        diagnostics: {
+          cleanup: {
+            code: SeneraExecutionErrorCodes.CleanupFailed,
+          },
+        },
+      },
+    });
 
-    expect(terminator).toHaveBeenCalledWith(expect.any(Number), "SIGTERM");
+    expect(terminator).toHaveBeenCalledWith(expect.any(Number), process.platform === "win32" ? "SIGKILL" : "SIGTERM");
   });
 
   test("settles concurrent abort and timeout requests", async () => {
@@ -208,7 +275,7 @@ describe("Node process backend behavior", () => {
           cwd: createWorkspace(),
           profile: {
             name: "isolated-plugin",
-            kind: "plugin-process",
+            kind: "mcp-server",
             backend: "sandbox",
             localFallback: "deny",
           },

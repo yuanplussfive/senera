@@ -636,6 +636,7 @@ function resetStore() {
     historyReplayBuffers: {},
     historyStepBuffers: {},
     historyEventRunIds: {},
+    historyActiveRequestIds: {},
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},

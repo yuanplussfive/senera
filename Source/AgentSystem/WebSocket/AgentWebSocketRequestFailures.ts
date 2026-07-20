@@ -69,6 +69,20 @@ export function projectAgentWebSocketRequestFailure(
     return projectPresetFailure(request, error);
   }
 
+  if (request.type === "interaction.input.resolve") {
+    return {
+      kind: AgentEventKinds.RequestInvalid,
+      context: {},
+      data: {
+        message: errorMessage(error),
+        details: {
+          interactionId: request.interactionId,
+          error: serializeError(error),
+        },
+      },
+    };
+  }
+
   return projectRunFailure(request, error);
 }
 
@@ -126,7 +140,7 @@ function projectPresetFailure(request: PresetRequest, error: unknown): AgentDoma
 }
 
 function projectRunFailure(request: AgentWebSocketRequest, error: unknown): AgentDomainEvent {
-  const requestId = request.type === "session.message" ? (request.requestId ?? createRequestId()) : createRequestId();
+  const requestId = readRequestId(request) ?? createRequestId();
   return {
     kind: AgentEventKinds.RunFailed,
     context: {
@@ -138,6 +152,11 @@ function projectRunFailure(request: AgentWebSocketRequest, error: unknown): Agen
       details: serializeError(error),
     },
   };
+}
+
+function readRequestId(request: AgentWebSocketRequest): string | undefined {
+  if (!("requestId" in request)) return undefined;
+  return typeof request.requestId === "string" && request.requestId ? request.requestId : undefined;
 }
 
 function isConfigMutationRequest(request: AgentWebSocketRequest): request is ConfigMutationRequest {

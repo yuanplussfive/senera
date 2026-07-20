@@ -16,31 +16,27 @@ import {
 } from "./AgentLearningPromptJson.js";
 import type {
   AgentPiControllerActionInput,
+  AgentPiFinalAnswerInput,
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
+  AgentPiToolCard,
 } from "../PiProxy/AgentPiAssistantMessageTypes.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import { buildBamlToolRiskAuditPromptJson } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
+import { type AgentPiCompactionPromptInput, buildAgentPiCompactionPromptJson } from "../Pi/AgentPiCompactionPrompt.js";
+import { projectPlainBamlRequestBody } from "./AgentActionPlannerPromptProjector.js";
 
 export type AgentActionPlannerBamlFunctionArgs =
   | {
-      functionName: "UnderstandUserTurn";
+      functionName: "PrepareInteraction";
       input: ActionPlanInput;
+      candidateTools: AgentPiToolCard[];
     }
   | {
-      functionName: "RepairTurnUnderstanding";
+      functionName: "RepairInteractionPreparation";
       input: ActionPlanInput;
-      invalidUnderstanding: string;
-      issues: string[];
-    }
-  | {
-      functionName: "RouteInteraction";
-      input: ActionPlanInput;
-    }
-  | {
-      functionName: "RepairInteractionRoute";
-      input: ActionPlanInput;
-      invalidRoute: string;
+      candidateTools: AgentPiToolCard[];
+      invalidPreparation: string;
       issues: string[];
     }
   | {
@@ -52,6 +48,10 @@ export type AgentActionPlannerBamlFunctionArgs =
       input: AgentPiControllerActionInput;
       invalidAction: string;
       issues: string[];
+    }
+  | {
+      functionName: "GeneratePiFinalAnswer";
+      input: AgentPiFinalAnswerInput;
     }
   | {
       functionName: "FillPiToolArguments";
@@ -110,6 +110,16 @@ export type AgentActionPlannerBamlFunctionArgs =
       input: AgentMemoryWriteResolutionPromptInput;
       invalidResolution: string;
       issues: string[];
+    }
+  | {
+      functionName: "CompactPiSession";
+      input: AgentPiCompactionPromptInput;
+    }
+  | {
+      functionName: "RepairPiCompaction";
+      input: AgentPiCompactionPromptInput;
+      invalidSummary: string;
+      issues: string[];
     };
 
 export class AgentActionPlannerBamlPromptFactory {
@@ -132,34 +142,18 @@ export class AgentActionPlannerBamlPromptFactory {
     };
 
     switch (args.functionName) {
-      case "UnderstandUserTurn":
-        return baml.request.UnderstandUserTurn(
-          buildActionPlannerPromptJson(args.input, {
-            stage: "understandUserTurn",
+      case "PrepareInteraction":
+        return baml.request.PrepareInteraction(
+          buildActionPlannerPromptJson(args.input, args.candidateTools, {
+            stage: "prepareInteraction",
           }),
           options,
         );
-      case "RepairTurnUnderstanding":
-        return baml.request.RepairTurnUnderstanding(
-          buildActionPlannerPromptJson(args.input, {
-            stage: "repairTurnUnderstanding",
-            invalidUnderstanding: args.invalidUnderstanding,
-            issues: args.issues,
-          }),
-          options,
-        );
-      case "RouteInteraction":
-        return baml.request.RouteInteraction(
-          buildActionPlannerPromptJson(args.input, {
-            stage: "routeInteraction",
-          }),
-          options,
-        );
-      case "RepairInteractionRoute":
-        return baml.request.RepairInteractionRoute(
-          buildActionPlannerPromptJson(args.input, {
-            stage: "repairInteractionRoute",
-            invalidRoute: args.invalidRoute,
+      case "RepairInteractionPreparation":
+        return baml.request.RepairInteractionPreparation(
+          buildActionPlannerPromptJson(args.input, args.candidateTools, {
+            stage: "repairInteractionPreparation",
+            invalidPreparation: args.invalidPreparation,
             issues: args.issues,
           }),
           options,
@@ -177,6 +171,13 @@ export class AgentActionPlannerBamlPromptFactory {
             stage: "repairPiAction",
             invalidAction: args.invalidAction,
             issues: args.issues,
+          }),
+          options,
+        );
+      case "GeneratePiFinalAnswer":
+        return baml.request.GeneratePiFinalAnswer(
+          buildPiPromptJson(args.input, {
+            stage: "generatePiFinalAnswer",
           }),
           options,
         );
@@ -271,6 +272,22 @@ export class AgentActionPlannerBamlPromptFactory {
           }),
           options,
         );
+      case "CompactPiSession":
+        return baml.request.CompactPiSession(
+          buildAgentPiCompactionPromptJson(args.input, {
+            stage: "compactPiSession",
+          }),
+          options,
+        );
+      case "RepairPiCompaction":
+        return baml.request.RepairPiCompaction(
+          buildAgentPiCompactionPromptJson(args.input, {
+            stage: "repairPiCompaction",
+            invalidSummary: args.invalidSummary,
+            issues: args.issues,
+          }),
+          options,
+        );
     }
   }
 }
@@ -279,7 +296,9 @@ function projectPromptForBamlFunction(
   functionName: AgentActionPlannerBamlFunctionArgs["functionName"],
   body: Record<string, unknown>,
 ) {
-  return projectActionPlannerBamlRequestBody(body);
+  return functionName === "CompactPiSession" || functionName === "RepairPiCompaction"
+    ? projectPlainBamlRequestBody(body)
+    : projectActionPlannerBamlRequestBody(body);
 }
 
 function buildPiPromptJson(input: object, directive: Record<string, unknown>): string {

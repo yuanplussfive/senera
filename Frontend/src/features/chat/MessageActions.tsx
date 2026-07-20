@@ -1,4 +1,4 @@
-import { Check, Copy, GitBranch, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
+import { Check, Copy, GitBranch, GitFork, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
@@ -18,12 +18,13 @@ export interface MessageActionsProps {
   hasWorkflow: boolean;
   allowMutation?: boolean;
   showInlineActions: boolean;
+  onFork: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
   onViewWorkflow: () => void;
 }
 
-export type MessageActionIntent = "copy" | "viewWorkflow" | "regenerate" | "delete";
+export type MessageActionIntent = "copy" | "viewWorkflow" | "fork" | "regenerate" | "delete";
 
 export interface MessageActionAvailability {
   hasRequestId: boolean;
@@ -39,7 +40,7 @@ export function readMessageActionIntents({
   const intents: MessageActionIntent[] = ["copy"];
   if (!hasRequestId) return intents;
   if (hasWorkflow) intents.push("viewWorkflow");
-  if (allowMutation) intents.push("regenerate", "delete");
+  if (allowMutation) intents.push("fork", "regenerate", "delete");
   return intents;
 }
 
@@ -50,6 +51,7 @@ export function MessageActions({
   hasWorkflow,
   allowMutation = true,
   showInlineActions,
+  onFork,
   onRegenerate,
   onDelete,
   onViewWorkflow,
@@ -90,6 +92,7 @@ export function MessageActions({
               <MessageActionMenuItem
                 key={intent}
                 intent={intent}
+                onFork={onFork}
                 onRegenerate={onRegenerate}
                 onDelete={onDelete}
                 onViewWorkflow={onViewWorkflow}
@@ -104,11 +107,13 @@ export function MessageActions({
 
 function MessageActionMenuItem({
   intent,
+  onFork,
   onRegenerate,
   onDelete,
   onViewWorkflow,
 }: {
   intent: Exclude<MessageActionIntent, "copy">;
+  onFork: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
   onViewWorkflow: () => void;
@@ -117,6 +122,13 @@ function MessageActionMenuItem({
     return (
       <DropdownMenuItem icon={<GitBranch className="h-3.5 w-3.5" />} onSelect={onViewWorkflow}>
         {frontendMessage("chat.action.viewWorkflow")}
+      </DropdownMenuItem>
+    );
+  }
+  if (intent === "fork") {
+    return (
+      <DropdownMenuItem icon={<GitFork className="h-3.5 w-3.5" />} onSelect={onFork}>
+        {frontendMessage("chat.action.forkFromHere")}
       </DropdownMenuItem>
     );
   }

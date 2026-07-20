@@ -1,0 +1,374 @@
+{
+  "ManifestVersion": 2,
+  "Plugin": {
+    "Name": "AgentExecutionResourceToolPlugin",
+    "Title": "Execution Resources",
+    "Version": "0.1.0",
+    "Kind": "Tool",
+    "Description": "Start and control resumable long-running execution resources."
+  },
+  "Prompting": {
+    "Audience": "Model",
+    "Priority": 91
+  },
+  "Tools": [
+    {
+      "Name": "ShellStartTool",
+      "Loading": "Dynamic",
+      "DescriptionFile": "./docs/ShellStart.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "ShellStartToolArguments",
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": ["process:shell", "filesystem:workspace"],
+      "Execution": {
+        "Boundary": "SandboxPreferred",
+        "Network": "Allow",
+        "Workspace": "ReadWrite",
+        "LocalFallback": "Allow"
+      },
+      "Runtime": {
+        "Lifecycle": "Persistent",
+        "ProtocolVersion": 2,
+        "Capabilities": {
+          "OutputStreaming": true,
+          "InteractiveInput": true,
+          "Cancellation": true,
+          "ResumableEvents": true
+        }
+      },
+      "Observation": {
+        "MaxTokens": 6000,
+        "IncludeArtifactProjection": false,
+        "Continuation": {
+          "Kind": "cursor",
+          "Handle": "$.resourceId",
+          "Cursor": "$.cursor",
+          "State": "$.state",
+          "TerminalStates": ["completed", "failed", "cancelled"]
+        }
+      },
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "shell.start"
+      },
+      "Search": {
+        "Summary": "启动可恢复、可增量读取和交互控制的后台 shell 进程。",
+        "Capabilities": [
+          {
+            "Id": "execution.shell-start",
+            "Description": "Start a long-running interactive shell resource.",
+            "Facets": {
+              "Actions": ["start", "run-background", "serve", "monitor"],
+              "Targets": ["shell", "process", "server", "long-task"],
+              "Inputs": ["command", "cwd"],
+              "Outputs": ["resource-id", "process-state", "cursor"],
+              "Effects": ["process", "may-write-workspace", "network-possible"]
+            }
+          }
+        ],
+        "UseCases": ["需要启动开发服务器、交互式 CLI、监控命令或长时间构建时使用。"],
+        "Avoid": ["短命令优先使用 ShellCommandTool。"],
+        "Tags": ["后台进程", "长任务", "交互终端"]
+      }
+    },
+    {
+      "Name": "ExecutionResourceInspect",
+      "Loading": "Dynamic",
+      "DescriptionFile": "./docs/Inspect.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "ExecutionResourceInspectArguments",
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": ["process:shell"],
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Deny"
+      },
+      "Runtime": {
+        "Lifecycle": "Immediate",
+        "ProtocolVersion": 2
+      },
+      "Observation": {
+        "MaxTokens": 6000,
+        "IncludeArtifactProjection": false,
+        "Continuation": {
+          "Kind": "cursor",
+          "Handle": "$.resourceId",
+          "Cursor": "$.cursor",
+          "State": "$.state",
+          "TerminalStates": ["completed", "failed", "cancelled"]
+        }
+      },
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "execution.resource.inspect"
+      },
+      "Search": {
+        "Summary": "立即检查后台执行资源状态并按游标恢复已保留事件。",
+        "Capabilities": [
+          {
+            "Id": "execution.resource-inspect",
+            "Facets": {
+              "Actions": ["inspect", "resume"],
+              "Targets": ["execution-resource"],
+              "Outputs": ["process-state", "events", "cursor"]
+            }
+          }
+        ],
+        "Tags": ["后台进程", "状态检查", "断线恢复"]
+      }
+    },
+    {
+      "Name": "ExecutionResourceWait",
+      "Loading": "Dynamic",
+      "DescriptionFile": "./docs/Wait.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "ExecutionResourceWaitArguments",
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": ["process:shell"],
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Deny"
+      },
+      "Runtime": {
+        "Lifecycle": "OneShot",
+        "ProtocolVersion": 2,
+        "Capabilities": {
+          "Cancellation": true
+        }
+      },
+      "Observation": {
+        "MaxTokens": 6000,
+        "IncludeArtifactProjection": false,
+        "Continuation": {
+          "Kind": "cursor",
+          "Handle": "$.resourceId",
+          "Cursor": "$.cursor",
+          "State": "$.state",
+          "TerminalStates": ["completed", "failed", "cancelled"]
+        }
+      },
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "execution.resource.wait"
+      },
+      "Search": {
+        "Summary": "等待后台资源的新输出或终态并返回游标后的增量事件。",
+        "Capabilities": [
+          {
+            "Id": "execution.resource-wait",
+            "Facets": {
+              "Actions": ["wait", "read-output"],
+              "Targets": ["execution-resource"],
+              "Outputs": ["stdout", "stderr", "process-state", "cursor"]
+            }
+          }
+        ],
+        "Tags": ["后台进程", "增量输出", "长轮询"]
+      }
+    },
+    {
+      "Name": "ExecutionResourceWrite",
+      "Loading": "Dynamic",
+      "DescriptionFile": "./docs/Write.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "ExecutionResourceWriteArguments",
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": ["process:shell"],
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Deny"
+      },
+      "Runtime": {
+        "Lifecycle": "Immediate",
+        "ProtocolVersion": 2
+      },
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "execution.resource.write"
+      },
+      "Search": {
+        "Summary": "向后台执行资源 stdin 写入文本并处理流背压。",
+        "Capabilities": [
+          {
+            "Id": "execution.resource-write",
+            "Facets": {
+              "Actions": ["write", "answer", "send-input"],
+              "Targets": ["execution-resource", "stdin"],
+              "Inputs": ["text"]
+            }
+          }
+        ],
+        "Tags": ["后台进程", "交互输入", "stdin"]
+      }
+    },
+    {
+      "Name": "ExecutionResourceSignal",
+      "Loading": "Dynamic",
+      "DescriptionFile": "./docs/Signal.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "ExecutionResourceSignalArguments",
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": ["process:shell"],
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Deny"
+      },
+      "Runtime": {
+        "Lifecycle": "Immediate",
+        "ProtocolVersion": 2,
+        "Capabilities": {
+          "Cancellation": true
+        }
+      },
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "execution.resource.signal"
+      },
+      "Search": {
+        "Summary": "向后台进程树发送 interrupt、terminate 或 kill 信号。",
+        "Capabilities": [
+          {
+            "Id": "execution.resource-signal",
+            "Facets": {
+              "Actions": ["interrupt", "terminate", "kill"],
+              "Targets": ["execution-resource", "process-tree"],
+              "Effects": ["process-control"]
+            }
+          }
+        ],
+        "Tags": ["后台进程", "进程信号", "取消"]
+      }
+    },
+    {
+      "Name": "ExecutionResourceList",
+      "Loading": "Dynamic",
+      "DescriptionFile": "./docs/List.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "ExecutionResourceListArguments",
+      "ArtifactPolicyFile": "./CollectionArtifactPolicy.json",
+      "Permissions": ["process:shell"],
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Deny"
+      },
+      "Runtime": {
+        "Lifecycle": "Immediate",
+        "ProtocolVersion": 2
+      },
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "execution.resource.list"
+      },
+      "Search": {
+        "Summary": "列出当前会话拥有的后台终端和进程资源。",
+        "Capabilities": [
+          {
+            "Id": "execution.resource-list",
+            "Facets": {
+              "Actions": ["list", "inspect"],
+              "Targets": ["execution-resource", "terminal", "process"],
+              "Outputs": ["resource-list", "process-state"]
+            }
+          }
+        ],
+        "Tags": ["后台终端", "资源列表", "会话控制"]
+      }
+    },
+    {
+      "Name": "ExecutionResourceResize",
+      "Loading": "Dynamic",
+      "DescriptionFile": "./docs/Resize.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "ExecutionResourceResizeArguments",
+      "ArtifactPolicyFile": "./ArtifactPolicy.json",
+      "Permissions": ["process:shell"],
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Deny"
+      },
+      "Runtime": {
+        "Lifecycle": "Immediate",
+        "ProtocolVersion": 2
+      },
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "execution.resource.resize"
+      },
+      "Search": {
+        "Summary": "调整 PTY 后台终端的列数和行数。",
+        "Capabilities": [
+          {
+            "Id": "execution.resource-resize",
+            "Facets": {
+              "Actions": ["resize"],
+              "Targets": ["terminal", "execution-resource"],
+              "Inputs": ["columns", "rows"]
+            }
+          }
+        ],
+        "Tags": ["PTY", "终端尺寸", "交互终端"]
+      }
+    },
+    {
+      "Name": "ExecutionResourceStopAll",
+      "Loading": "Dynamic",
+      "DescriptionFile": "./docs/StopAll.md",
+      "SignatureFile": "./ToolSignature.ts",
+      "SignatureType": "ExecutionResourceStopAllArguments",
+      "ArtifactPolicyFile": "./CollectionArtifactPolicy.json",
+      "Permissions": ["process:shell"],
+      "Execution": {
+        "Boundary": "Local",
+        "Network": "Deny",
+        "Workspace": "ReadOnly",
+        "LocalFallback": "Deny"
+      },
+      "Runtime": {
+        "Lifecycle": "Immediate",
+        "ProtocolVersion": 2,
+        "Capabilities": {
+          "Cancellation": true
+        }
+      },
+      "Handler": {
+        "Kind": "HostCapability",
+        "Capability": "execution.resource.stop_all"
+      },
+      "Search": {
+        "Summary": "停止当前会话拥有的全部活动后台终端和进程。",
+        "Capabilities": [
+          {
+            "Id": "execution.resource-stop-all",
+            "Facets": {
+              "Actions": ["stop", "terminate"],
+              "Targets": ["execution-resource", "terminal", "process"],
+              "Effects": ["process-control"]
+            }
+          }
+        ],
+        "Tags": ["后台终端", "全部停止", "会话控制"]
+      }
+    }
+  ],
+  "Security": {
+    "TrustLevel": "System",
+    "Network": "Allow",
+    "FileSystem": {
+      "Read": ["../.."],
+      "Write": ["../.."]
+    },
+    "RequiresApproval": false
+  }
+}

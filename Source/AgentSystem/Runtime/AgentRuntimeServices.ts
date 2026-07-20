@@ -10,12 +10,9 @@ import type { AgentPiRuntimeService, AgentPiSubstrate } from "../Pi/AgentPiSubst
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 
 export interface AgentPlanningService {
-  understandTurn(
-    options: Parameters<AgentActionPlanner["understandTurn"]>[0],
-  ): ReturnType<AgentActionPlanner["understandTurn"]>;
-  routeWithInput(
-    options: Parameters<AgentActionPlanner["routeWithInput"]>[0],
-  ): ReturnType<AgentActionPlanner["routeWithInput"]>;
+  prepareInteraction(
+    options: Parameters<AgentActionPlanner["prepareInteraction"]>[0],
+  ): ReturnType<AgentActionPlanner["prepareInteraction"]>;
 }
 
 export interface AgentRetrievalService {
@@ -28,6 +25,9 @@ export interface AgentRetrievalService {
   rememberAutoSearch(
     ...args: Parameters<AgentToolSearchRuntime["rememberAutoSearch"]>
   ): ReturnType<AgentToolSearchRuntime["rememberAutoSearch"]>;
+  finishRequest(
+    ...args: Parameters<AgentToolSearchRuntime["finishRequest"]>
+  ): ReturnType<AgentToolSearchRuntime["finishRequest"]>;
   afterToolResults(
     options: Parameters<AgentToolSearchRuntime["afterToolResults"]>[0],
   ): ReturnType<AgentToolSearchRuntime["afterToolResults"]>;
@@ -92,13 +92,13 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
     pi: dependencies.piSubstrate,
     piSessions: dependencies.piSessionRegistry,
     planning: {
-      understandTurn: (options) => dependencies.actionPlanner.understandTurn(options),
-      routeWithInput: (options) => dependencies.actionPlanner.routeWithInput(options),
+      prepareInteraction: (options) => dependencies.actionPlanner.prepareInteraction(options),
     },
     retrieval: {
       resolveInitialLoadedTools: (...args) => dependencies.toolSearch.resolveInitialLoadedTools(...args),
       resolvePlannedLoadedTools: (options) => dependencies.toolSearch.resolvePlannedLoadedTools(options),
       rememberAutoSearch: (...args) => dependencies.toolSearch.rememberAutoSearch(...args),
+      finishRequest: (...args) => dependencies.toolSearch.finishRequest(...args),
       afterToolResults: (options) => dependencies.toolSearch.afterToolResults(options),
       toolUsePatterns: (options) => dependencies.toolSearch.toolUsePatterns(options),
     },

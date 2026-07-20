@@ -45,7 +45,10 @@ interface PackageExportConditions {
 
 interface ElectronBuilderConfig {
   files?: Array<string | ElectronBuilderFileSet>;
+  extraResources?: ElectronBuilderFileSet[];
   asarUnpack?: string[];
+  npmRebuild?: boolean;
+  afterPack?: string;
   extraMetadata?: {
     main?: string;
   };
@@ -191,6 +194,7 @@ function inspectRootScripts(): string[] {
     "policy.compile": "tsx Build/CompileOpaPolicy.ts",
     "policy.verify": "tsx Build/CompileOpaPolicy.ts --check",
     "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
+    "terminal.prepare": "tsx Build/PrepareTerminalSidecarGuestRuntime.ts",
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
     "check.types": "tsc --noEmit",
     build: "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
@@ -210,8 +214,8 @@ function inspectRootScripts(): string[] {
     "dev.server": "tsx Apps/ServerWatch.ts",
     "dev.server.dry-run": "tsx Apps/ServerWatch.ts --dry-run",
     desktop: "npm run build && npm --workspace senera-frontend run build && electron Dist/Apps/Desktop/Main.js",
+    "desktop.prepare-native": "tsx Build/PrepareElectronNativeModules.ts",
     "desktop.pack": "tsx Apps/Desktop/PackageDesktop.ts",
-    "desktop.restore": "npm rebuild better-sqlite3",
     "verify.suite": "node Dist/Scripts/VerifySuite.js",
     "verify.suites": "node Dist/Scripts/VerifySuite.js --list",
     "verify.workspace": "npm run build && npm run verify.suite -- workspace",
@@ -366,6 +370,14 @@ function inspectDesktopPackageConfig(): string[] {
       : ["package.json build.extraMetadata.main must point to Dist/Apps/Desktop/Main.js."]),
     ...inspectDesktopPackageScript(),
     ...inspectDesktopFileSet("Packages/ToolPluginSdk", "node_modules/@senera/tool-plugin-sdk"),
+    ...inspectDesktopFileSet("Packages/TerminalSidecar", "node_modules/@senera/terminal-sidecar"),
+    ...inspectDesktopExtraResource(".senera/sandbox-runtime/terminal-sidecar", "TerminalSidecarRuntime"),
+    ...(rootPackage.build?.npmRebuild === false
+      ? []
+      : ["package.json build.npmRebuild must be false so Sidecar Node binaries are not rebuilt for Electron."]),
+    ...(rootPackage.build?.afterPack === "Build/ElectronAfterPack.cjs"
+      ? []
+      : ["package.json build.afterPack must inject isolated Electron native module builds."]),
     ...inspectDesktopAsarUnpack([
       "senera.config.example.json",
       "System/Plugins/**",
@@ -382,9 +394,11 @@ function inspectDesktopPackageConfig(): string[] {
 function inspectDesktopPackageScript(): string[] {
   const scriptPath = path.join(workspaceRoot, "Apps", "Desktop", "PackageDesktop.ts");
   const source = fs.readFileSync(scriptPath, "utf8");
-  return source.includes("clearNativeRebuildMetadata")
-    ? []
-    : ["Apps/Desktop/PackageDesktop.ts must clear stale Electron native rebuild metadata before packaging."];
+  return inspectTextIncludes(source, "Apps/Desktop/PackageDesktop.ts", [
+    'command("npm", ["run", "terminal.prepare"])',
+    'command("npm", ["run", "desktop.prepare-native"])',
+    'command("electron-builder")',
+  ]);
 }
 
 function inspectDesktopFileSet(from: string, to: string): string[] {
@@ -392,6 +406,13 @@ function inspectDesktopFileSet(from: string, to: string): string[] {
   return fileSets.some((fileSet) => fileSet.from === from && fileSet.to === to)
     ? []
     : [`package.json build.files must package ${from} to ${to}.`];
+}
+
+function inspectDesktopExtraResource(from: string, to: string): string[] {
+  const resources = rootPackage.build?.extraResources ?? [];
+  return resources.some((resource) => resource.from === from && resource.to === to)
+    ? []
+    : [`package.json build.extraResources must package ${from} to ${to}.`];
 }
 
 function inspectDesktopAsarUnpack(expectedEntries: readonly string[]): string[] {
@@ -446,24 +467,27 @@ function inspectRootNpmPolicy(): string[] {
 }
 
 function inspectVerifyWorkflow(): string[] {
-  return inspectTextIncludes(verifyWorkflow, ".github/workflows/verify.yml", [
-    "name: Fast Gate",
-    "name: Windows Platform Smoke",
-    "name: Coverage Gate",
-    "./.github/actions/setup-node",
-    "fetch-depth: 0",
-    "id: range",
-    "npm run quality.format -- ${{ steps.range.outputs.arguments }}",
-    "npm run test.backend",
-    "npm run test.frontend",
-    "npm run test.e2e",
-    "npm run verify.suite -- workspace core e2e release",
-    "npm run verify.suite -- platform",
-    "github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'",
-    "npm run test.coverage.frontend",
-    "npm run test.coverage.backend",
-    "inputs.full_suite",
-  ]);
+  return [
+    ...inspectTextIncludes(verifyWorkflow, ".github/workflows/verify.yml", [
+      "name: Fast Gate",
+      "name: Windows Platform Smoke",
+      "name: Coverage Gate",
+      "./.github/actions/setup-node",
+      "fetch-depth: 0",
+      "id: range",
+      "npm run quality.format -- ${{ steps.range.outputs.arguments }}",
+      "npm run test.backend",
+      "npm run test.frontend",
+      "npm run test.e2e",
+      "npm run verify.suite -- workspace core e2e release",
+      "npm run verify.suite -- platform",
+      "github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'",
+      "npm run test.coverage.frontend",
+      "npm run test.coverage.backend",
+      "inputs.full_suite",
+    ]),
+    ...inspectPullRequestJobGate(verifyWorkflow, ".github/workflows/verify.yml", "coverage"),
+  ];
 }
 
 function inspectSecurityScanWorkflow(): string[] {
@@ -490,6 +514,14 @@ function inspectSecurityScanWorkflow(): string[] {
   return violations;
 }
 
+function inspectPullRequestJobGate(workflow: string, file: string, jobName: string): string[] {
+  const block = workflowJobBlock(workflow, jobName);
+  if (!block) return [`${file} must define the ${jobName} job.`];
+  return block.includes("if: github.event_name != 'pull_request'")
+    ? [`${file} ${jobName} must run for pull_request events.`]
+    : [];
+}
+
 function inspectReleaseWorkflowGates(): string[] {
   return inspectTextIncludes(productReleaseWorkflow, ".github/workflows/release.yml", [
     "workflow_run:",
@@ -508,6 +540,10 @@ function inspectReleaseWorkflowGates(): string[] {
     "type=raw,value=latest",
     "cache-from: type=gha",
     "cache-to: type=gha,mode=max",
+    "container-smoke:",
+    "load: true",
+    'docker exec "$CONTAINER_NAME" node Dist/Scripts/VerifyDockerNativeSqlite.js',
+    "- container-smoke",
     "Publish Verified Release",
     "--draft=false --latest",
   ]);

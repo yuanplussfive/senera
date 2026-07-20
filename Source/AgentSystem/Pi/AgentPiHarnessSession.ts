@@ -1,3 +1,4 @@
+import { buildSessionContext } from "@earendil-works/pi-agent-core";
 import type {
   AgentEvent,
   AgentHarnessResources,
@@ -6,6 +7,7 @@ import type {
   AgentState,
   PromptTemplate,
   Skill,
+  Session,
 } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
@@ -13,17 +15,35 @@ import type { AgentPiHarnessEvent } from "./AgentPiHarnessEvents.js";
 import { isPiCoreAgentEvent } from "./AgentPiHarnessEvents.js";
 import type { AgentPiSession, AgentPiSessionEventListener } from "./AgentPiSubstrate.js";
 import type { AgentPiModelProjection, AgentPiToolDefinition } from "./AgentPiTypes.js";
+import type {
+  AgentPiCompactionInspection,
+  AgentPiCompactionPlan,
+  AgentPiCompactionRunResult,
+  AgentPiCompactionPolicy,
+} from "./AgentPiCompactionPolicy.js";
 
 export interface AgentPiHarnessSessionOptions {
   model: AgentPiModelProjection;
   tools: readonly AgentPiToolDefinition[];
   release?: () => void;
+  persistentSession?: Session;
+  compactionPolicy?: AgentPiCompactionPolicy;
+  setCompactionRequest?: (
+    request: { plan: Extract<AgentPiCompactionPlan, { kind: "compact" }>; signal: AbortSignal } | undefined,
+  ) => void;
+  onCompactionEvent?: (
+    event: "checked" | "skipped" | "started" | "completed" | "failed",
+    inspection: AgentPiCompactionInspection,
+    payload?: unknown,
+  ) => void | Promise<void>;
 }
 
 export class AgentPiHarnessSession implements AgentPiSession {
   private history: AgentMessage[] = [];
   private lastAssistantText: string | undefined;
   private released = false;
+  private compactionAbortController: AbortController | undefined;
+  private abortPromise: Promise<void> | undefined;
 
   constructor(
     private readonly harness: AgentHarness,
@@ -82,6 +102,60 @@ export class AgentPiHarnessSession implements AgentPiSession {
     await this.harness.nextTurn(text);
   }
 
+  async compactIfNeeded(signal?: AbortSignal): Promise<AgentPiCompactionRunResult | undefined> {
+    const persistentSession = this.options.persistentSession;
+    const policy = this.options.compactionPolicy;
+    if (!persistentSession || !policy) return undefined;
+
+    await this.harness.waitForIdle();
+    await this.appendHistory();
+    const checkStartedAt = performance.now();
+    const branchEntries = await persistentSession.getBranch();
+    const context = buildSessionContext(branchEntries);
+    const plan = policy.plan(context.messages, branchEntries);
+    const inspection = plan.inspection;
+    const check = {
+      durationMs: elapsedMilliseconds(checkStartedAt),
+      branchEntryCount: branchEntries.length,
+    };
+    await this.options.onCompactionEvent?.("checked", inspection, check);
+    if (plan.kind !== "compact") {
+      await this.options.onCompactionEvent?.("skipped", inspection, {
+        ...check,
+        reason: plan.reason,
+        recommendedAction: plan.kind,
+      });
+      return { status: "skipped", reason: plan.reason, inspection };
+    }
+
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal?.reason);
+    if (signal?.aborted) abort();
+    else signal?.addEventListener("abort", abort, { once: true });
+    this.compactionAbortController = controller;
+    const timeout = setTimeout(() => controller.abort(new Error("Pi compaction timed out.")), policy.timeoutMs);
+    this.options.setCompactionRequest?.({ plan, signal: controller.signal });
+    await this.options.onCompactionEvent?.("started", inspection);
+    try {
+      const result = await this.harness.compact();
+      await this.options.onCompactionEvent?.("completed", inspection, result);
+      return { status: "compacted", inspection, ...result };
+    } catch (error) {
+      await this.options.onCompactionEvent?.("failed", inspection, error);
+      if (signal?.aborted || inspection.hardLimitExceeded) throw error;
+      return {
+        status: "failed",
+        inspection,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      this.options.setCompactionRequest?.(undefined);
+      if (this.compactionAbortController === controller) this.compactionAbortController = undefined;
+    }
+  }
+
   async setResources(resources: AgentHarnessResources<Skill, PromptTemplate>): Promise<void> {
     await this.harness.setResources(resources);
   }
@@ -94,9 +168,23 @@ export class AgentPiHarnessSession implements AgentPiSession {
     });
   }
 
-  async abort(): Promise<void> {
+  abort(): Promise<void> {
+    this.abortPromise ??= this.abortHarness();
+    return this.abortPromise;
+  }
+
+  private async abortHarness(): Promise<void> {
+    this.compactionAbortController?.abort();
     await this.harness.abort();
     await this.harness.waitForIdle();
+  }
+
+  markTurnBoundary(requestId: string): Promise<string> {
+    const persistentSession = this.options.persistentSession;
+    if (!persistentSession) {
+      throw new Error("Pi turn boundaries require a persistent session.");
+    }
+    return persistentSession.appendCustomEntry("senera.turn_boundary", { requestId });
   }
 
   dispose(): void {
@@ -117,14 +205,20 @@ export class AgentPiHarnessSession implements AgentPiSession {
   }
 
   private async appendHistory(): Promise<void> {
-    for (const message of this.history) {
+    const pending = this.history;
+    for (const message of pending) {
       await this.harness.appendMessage(message);
     }
+    this.history = [];
   }
 
   private snapshotTools(): AgentPiToolDefinition[] {
     return [...this.options.tools];
   }
+}
+
+function elapsedMilliseconds(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
 function readAssistantText(message: AgentState["messages"][number]): string {

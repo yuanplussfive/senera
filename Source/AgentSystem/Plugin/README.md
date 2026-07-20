@@ -4,7 +4,7 @@
 
 ## 模块职责
 
-- `AgentPluginScanner`：根据系统配置发现插件并读取插件配置。
+- `AgentPluginScanner`：根据系统配置发现插件并读取插件配置；用户插件首次扫描时会从 example 或最小默认值初始化可编辑的 `PluginConfig.toml`，系统插件目录保持只读。
 - `AgentPluginConfig` / `AgentPluginConfigManager`：插件配置公共 API 和配置更新入口。
 - `AgentPluginConfigSchema`：插件配置 schema 的结构定义和 schema TOML 解析。
 - `AgentPluginConfigDocument`：配置文件路径、默认 TOML、TOML 路径读写和 strict path 辅助。

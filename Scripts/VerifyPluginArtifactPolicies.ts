@@ -58,6 +58,7 @@ interface ToolPolicyFixture {
   result: unknown;
   expectedKinds: string[];
   expectedEvidenceCount?: number;
+  expectedProjectionIncludes?: string[];
 }
 
 const fixtures: Record<string, ToolPolicyFixture> = {
@@ -87,6 +88,20 @@ const fixtures: Record<string, ToolPolicyFixture> = {
       stdout: "check passed",
       stderr: "",
     },
+  },
+  ShellStartTool: executionResourceFixture("running"),
+  ExecutionResourceInspect: executionResourceFixture("running"),
+  ExecutionResourceWait: executionResourceFixture("completed"),
+  ExecutionResourceWrite: executionResourceFixture("running"),
+  ExecutionResourceSignal: executionResourceFixture("cancelled"),
+  ExecutionResourceList: {
+    expectedKinds: [],
+    result: { resources: [executionResourceFixture("running").result] },
+  },
+  ExecutionResourceResize: executionResourceFixture("running"),
+  ExecutionResourceStopAll: {
+    expectedKinds: [],
+    result: { resources: [executionResourceFixture("cancelled").result] },
   },
   WorkspaceReadFile: mcpToolResultFixture("package.json content"),
   WorkspaceListDirectory: mcpToolResultFixture("[FILE] package.json\n[DIR] Source"),
@@ -136,6 +151,7 @@ const fixtures: Record<string, ToolPolicyFixture> = {
   },
   ArtifactMemoryReadTool: {
     expectedKinds: ["artifact_memory"],
+    expectedProjectionIncludes: ["WTH1 forecast for Shanghai, China: Cloudy"],
     result: {
       artifacts: {
         item: [
@@ -307,6 +323,36 @@ const fixtures: Record<string, ToolPolicyFixture> = {
   },
 };
 
+function executionResourceFixture(state: "running" | "completed" | "cancelled"): ToolPolicyFixture {
+  return {
+    expectedKinds: [],
+    expectedProjectionIncludes: ["resource-output-sentinel"],
+    result: {
+      resourceId: "res_0123456789abcdef0123456789abcdef",
+      kind: "process",
+      state,
+      command: "node server.js",
+      cwd: workspaceRoot,
+      cursor: 3,
+      oldestCursor: 1,
+      truncated: false,
+      events: [
+        {
+          cursor: 2,
+          timestamp: "2026-07-16T00:00:00.000Z",
+          kind: "output",
+          stream: "stdout",
+          text: "resource-output-sentinel\n",
+          byteLength: 25,
+          totalBytes: 25,
+        },
+      ],
+      exitCode: state === "running" ? undefined : 0,
+      signal: state === "cancelled" ? "SIGTERM" : null,
+    },
+  };
+}
+
 void main();
 
 async function main(): Promise<void> {
@@ -369,7 +415,7 @@ async function main(): Promise<void> {
     assert.equal(result.artifact.structuredSummary?.type, "senera.tool_result_summary.v1");
     assert.equal(result.artifact.structuredSummary?.artifactUri, result.artifact.artifactUri);
     assertEvidence(result.name, result.artifact.evidence, fixture);
-    assertArtifactFiles(result.name, result.artifact);
+    assertArtifactFiles(result.name, result.artifact, fixture);
   }
 
   const ledger = new AgentActionPlannerContextBuilder(workspaceRoot, artifactRoot).advanceAfterToolResults({
@@ -472,7 +518,11 @@ function assertEvidence(
   }
 }
 
-function assertArtifactFiles(toolName: string, artifact: NonNullable<ExecutedToolCallResult["artifact"]>): void {
+function assertArtifactFiles(
+  toolName: string,
+  artifact: NonNullable<ExecutedToolCallResult["artifact"]>,
+  fixture: ToolPolicyFixture,
+): void {
   const evidenceText = fs.readFileSync(artifact.files.evidence, "utf8");
   const evidenceJson = JSON.parse(evidenceText) as {
     evidence?: Array<Record<string, unknown>>;
@@ -488,6 +538,9 @@ function assertArtifactFiles(toolName: string, artifact: NonNullable<ExecutedToo
 
   const summary = fs.readFileSync(artifact.files.summary, "utf8");
   const projection = fs.readFileSync(artifact.files.projection, "utf8");
+  for (const expected of fixture.expectedProjectionIncludes ?? []) {
+    assert.equal(projection.includes(expected), true, `${toolName} projection should include ${expected}`);
+  }
   for (const entry of artifact.evidence) {
     assert.equal(summary.includes(entry.key), false, `${toolName} summary should hide internal key`);
     assert.equal(projection.includes(entry.key), false, `${toolName} projection should hide internal key`);

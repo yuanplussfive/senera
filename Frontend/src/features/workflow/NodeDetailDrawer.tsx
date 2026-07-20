@@ -120,6 +120,23 @@ const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
         </Section>
       ) : null}
 
+      {step.toolProgress ? (
+        <Section label={frontendMessage("workflow.node.section.toolProgress")} copyValue={step.toolProgress}>
+          <DataCard>
+            <DataView value={step.toolProgress} />
+          </DataCard>
+        </Section>
+      ) : null}
+
+      {step.toolOutput && (step.toolOutput.stdout || step.toolOutput.stderr) ? (
+        <Section label={frontendMessage("workflow.node.section.toolOutput")} copyValue={step.toolOutput}>
+          <div className="space-y-2">
+            {step.toolOutput.stdout ? <ToolOutputBlock stream="stdout" text={step.toolOutput.stdout} /> : null}
+            {step.toolOutput.stderr ? <ToolOutputBlock stream="stderr" text={step.toolOutput.stderr} /> : null}
+          </div>
+        </Section>
+      ) : null}
+
       {step.toolPreview && step.toolPreview !== step.toolPresentation?.headline ? (
         <Section label={frontendMessage("workflow.node.section.resultPreview")} copyValue={step.toolPreview}>
           <MarkdownRenderer
@@ -153,6 +170,17 @@ const Body = memo(function Body({ step }: { step: TimelineStep }): JSX.Element {
     </div>
   );
 });
+
+function ToolOutputBlock({ stream, text }: { stream: "stdout" | "stderr"; text: string }): JSX.Element {
+  return (
+    <div className="overflow-hidden rounded-md border border-ink-200/70 bg-ink-950 text-paper-100">
+      <div className="border-b border-white/10 px-3 py-1 font-mono text-[10px] uppercase text-paper-300">{stream}</div>
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-relaxed">
+        {text}
+      </pre>
+    </div>
+  );
+}
 
 function ToolResultPresentationView({
   presentation,

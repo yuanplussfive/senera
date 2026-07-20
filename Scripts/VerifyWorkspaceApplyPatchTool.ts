@@ -8,6 +8,7 @@ import {
 } from "../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import { applyWorkspacePatchHostTool } from "../Source/AgentSystem/ToolRuntime/AgentWorkspaceApplyPatchRuntime.js";
 import type { AgentHostToolContext } from "../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import { SeneraLocalExecutionEnv } from "../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 
 void main();
 
@@ -87,7 +88,7 @@ async function main(): Promise<void> {
       },
       context,
     );
-    assert.equal(applied.response.ok, true);
+    assert.equal(applied.response.ok, true, JSON.stringify(applied.response));
     const result = applied.response.result as {
       applied: boolean;
       changedPaths: string[];
@@ -159,11 +160,12 @@ function createContext(workspaceRoot: string): AgentHostToolContext {
     workspaceRoot,
     tool: {
       name: "WorkspaceApplyPatch",
+      runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Progress: true } },
     },
     config: {},
     registry: {
       getTool: () => undefined,
     },
-    executionEnv: {},
+    executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
   } as unknown as AgentHostToolContext;
 }

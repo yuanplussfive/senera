@@ -10,6 +10,7 @@ import {
 } from "../Build/PrepareSandboxRuntime.js";
 import { resolveAgentSandboxRuntimePaths } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import { resolveAgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
+import { SeneraMicrosandboxDefaults } from "../Source/AgentSystem/Execution/SeneraMicrosandboxDefaults.js";
 
 interface FakeSetupBuilder {
   baseDir(path: string): FakeSetupBuilder;
@@ -122,7 +123,7 @@ class FakeSandbox {
 }
 
 const images = discoverSandboxImages();
-assert.deepEqual(images, ["node:22-bookworm-slim"]);
+assert.deepEqual(images, []);
 assert.deepEqual(readOptions(["--strict"]), {
   strict: true,
   skipImagePull: false,
@@ -142,18 +143,24 @@ assert.deepEqual(readOptions(["--skip-image-pull"]), {
 
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-prepare-"));
 try {
+  const preparedTerminalRuntimeRoots: string[] = [];
+  const prepareTerminalRuntime = async (options: { sandboxRuntimeBaseDir: string }) => {
+    preparedTerminalRuntimeRoots.push(options.sandboxRuntimeBaseDir);
+    return { runtimeRoot: options.sandboxRuntimeBaseDir, prepared: true, fingerprint: "verify" };
+  };
   const installed = new FakeMicrosandboxModule(true);
   const installedOptions = await prepareOptionsFixture(tempRoot, "installed", false);
   await writeRuntimeInstallMarkers(installedOptions);
-  await prepareSandboxRuntime(installedOptions, installed);
+  await prepareSandboxRuntime(installedOptions, installed, prepareTerminalRuntime);
   assert.equal(installed.installCount, 0);
-  assert.deepEqual(installed.createdImages, ["alpine", ...images]);
+  assert.deepEqual(installed.createdImages, [SeneraMicrosandboxDefaults.image, ...images]);
 
   const missing = new FakeMicrosandboxModule(false);
   const missingOptions = await prepareOptionsFixture(tempRoot, "missing", true);
-  await prepareSandboxRuntime(missingOptions, missing);
+  await prepareSandboxRuntime(missingOptions, missing, prepareTerminalRuntime);
   assert.equal(missing.installCount, 1);
   assert.deepEqual(missing.createdImages, []);
+  assert.deepEqual(preparedTerminalRuntimeRoots, [installedOptions.baseDir, missingOptions.baseDir]);
 } finally {
   await rm(tempRoot, { recursive: true, force: true });
 }

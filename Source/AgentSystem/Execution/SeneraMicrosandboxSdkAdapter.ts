@@ -6,6 +6,9 @@ import type {
   SeneraMicrosandboxExecRequest,
   SeneraMicrosandboxSdkAdapter,
   SeneraMicrosandboxSession,
+  SeneraMicrosandboxTerminalEvent,
+  SeneraMicrosandboxTerminalHandle,
+  SeneraMicrosandboxTerminalRequest,
 } from "./SeneraMicrosandboxTypes.js";
 
 interface MicrosandboxModule {
@@ -63,6 +66,13 @@ interface MicrosandboxSandbox {
 
 interface MicrosandboxExecHandle {
   recv(): Promise<ExecEvent | null>;
+  takeStdin?(): Promise<MicrosandboxExecSink | null>;
+  signal?(signal: number): Promise<void>;
+  kill?(): Promise<void>;
+}
+
+interface MicrosandboxExecSink {
+  write(data: Uint8Array | string): Promise<void>;
 }
 
 interface MicrosandboxExecBuilder {
@@ -72,6 +82,7 @@ interface MicrosandboxExecBuilder {
   timeout(milliseconds: number): this;
   tty(enabled: boolean): this;
   stdinNull(): this;
+  stdinPipe?(): this;
   stdinBytes(data: Buffer): this;
 }
 
@@ -198,6 +209,39 @@ class SeneraMicrosandboxSdkSession implements SeneraMicrosandboxSession {
     }
   }
 
+  async openTerminal(request: SeneraMicrosandboxTerminalRequest): Promise<SeneraMicrosandboxTerminalHandle> {
+    const handle = await this.sandbox.execStreamWith(request.command, (builder) => {
+      const configured = builder
+        .args([...request.args])
+        .cwd(request.cwd)
+        .envs(request.env)
+        .tty(false);
+      if (!configured.stdinPipe) throw terminalCapabilityUnavailable("stdin-pipe");
+      return configured.stdinPipe();
+    });
+    if (!handle.takeStdin || !handle.signal || !handle.kill) {
+      await handle.kill?.().catch(() => undefined);
+      throw terminalCapabilityUnavailable("interactive-control");
+    }
+    const signal = handle.signal.bind(handle);
+    const kill = handle.kill.bind(handle);
+    const stdin = await handle.takeStdin();
+    if (!stdin) {
+      await kill().catch(() => undefined);
+      throw new SeneraExecutionError(
+        SeneraExecutionErrorCodes.SpawnFailed,
+        "microsandbox terminal did not provide an interactive stdin channel.",
+        { backend: "microsandbox-terminal" },
+      );
+    }
+    return {
+      events: readMicrosandboxTerminalEvents(handle),
+      write: (data) => stdin.write(data),
+      signal,
+      kill,
+    };
+  }
+
   async stop(timeoutMs: number): Promise<void> {
     await this.sandbox.stopWithTimeout(timeoutMs);
   }
@@ -205,6 +249,107 @@ class SeneraMicrosandboxSdkSession implements SeneraMicrosandboxSession {
   async kill(): Promise<void> {
     await this.sandbox.kill();
   }
+}
+
+function terminalCapabilityUnavailable(capability: string): SeneraExecutionError {
+  return new SeneraExecutionError(
+    SeneraExecutionErrorCodes.SandboxUnavailable,
+    `microsandbox does not expose the ${capability} terminal capability.`,
+    {
+      backend: "microsandbox-terminal",
+      reason: "terminal_capability_unsupported",
+      capability,
+    },
+  );
+}
+
+async function* readMicrosandboxTerminalEvents(
+  handle: MicrosandboxExecHandle,
+): AsyncIterable<SeneraMicrosandboxTerminalEvent> {
+  const receiver = (handle as unknown as { inner?: { recv(): Promise<unknown> } }).inner ?? handle;
+  for (;;) {
+    const event = await receiver.recv();
+    if (event === null) return;
+    yield normalizeMicrosandboxTerminalEvent(event);
+  }
+}
+
+const MicrosandboxTerminalEventProjectors = {
+  started: (event: Record<string, unknown>): SeneraMicrosandboxTerminalEvent => ({
+    kind: "started",
+    pid: readRequiredNumber(event, "pid", "started"),
+  }),
+  stdout: (event: Record<string, unknown>): SeneraMicrosandboxTerminalEvent => ({
+    kind: "output",
+    stream: "stdout",
+    data: readRequiredBuffer(event, "stdout"),
+  }),
+  stderr: (event: Record<string, unknown>): SeneraMicrosandboxTerminalEvent => ({
+    kind: "output",
+    stream: "stderr",
+    data: readRequiredBuffer(event, "stderr"),
+  }),
+  output: (event: Record<string, unknown>): SeneraMicrosandboxTerminalEvent => ({
+    kind: "output",
+    stream: "stdout",
+    data: readRequiredBuffer(event, "output"),
+  }),
+  exited: (event: Record<string, unknown>): SeneraMicrosandboxTerminalEvent => ({
+    kind: "exit",
+    code: readRequiredNumber(event, "code", "exited"),
+  }),
+} satisfies Record<string, (event: Record<string, unknown>) => SeneraMicrosandboxTerminalEvent>;
+
+function normalizeMicrosandboxTerminalEvent(event: unknown): SeneraMicrosandboxTerminalEvent {
+  const record = readMicrosandboxEventRecord(event);
+  const kind = readMicrosandboxTerminalEventKind(record);
+  const projector = kind ? MicrosandboxTerminalEventProjectors[kind] : undefined;
+  if (projector) return projector(record);
+  throw invalidMicrosandboxTerminalEvent(event, kind);
+}
+
+function readMicrosandboxTerminalEventKind(
+  event: Record<string, unknown>,
+): keyof typeof MicrosandboxTerminalEventProjectors | undefined {
+  const value = typeof event.kind === "string" ? event.kind : event.eventType;
+  return typeof value === "string" && value in MicrosandboxTerminalEventProjectors
+    ? (value as keyof typeof MicrosandboxTerminalEventProjectors)
+    : undefined;
+}
+
+function readMicrosandboxEventRecord(event: unknown): Record<string, unknown> {
+  if (event && typeof event === "object" && !Array.isArray(event)) return event as Record<string, unknown>;
+  throw invalidMicrosandboxTerminalEvent(event);
+}
+
+function readRequiredNumber(event: Record<string, unknown>, key: string, kind: string): number {
+  const value = event[key];
+  if (typeof value === "number") return value;
+  throw invalidMicrosandboxTerminalEvent(event, kind, `missing_${key}`);
+}
+
+function readRequiredBuffer(event: Record<string, unknown>, kind: string): Buffer {
+  const value = event.data;
+  if (typeof value === "string" || value instanceof Uint8Array) return Buffer.from(value);
+  throw invalidMicrosandboxTerminalEvent(event, kind, "missing_data");
+}
+
+function invalidMicrosandboxTerminalEvent(
+  event: unknown,
+  kind?: string,
+  reason = "unknown_kind",
+): SeneraExecutionError {
+  return new SeneraExecutionError(
+    SeneraExecutionErrorCodes.SpawnFailed,
+    "microsandbox returned an invalid terminal event.",
+    {
+      backend: "microsandbox-terminal",
+      reason: "terminal_event_invalid",
+      eventKind: kind,
+      eventReason: reason,
+      event: summarizeMicrosandboxEvent(event),
+    },
+  );
 }
 
 async function* readMicrosandboxExecEvents(handle: MicrosandboxExecHandle): AsyncIterable<ExecEvent> {

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import electron from "electron";
-import { syncDesktopRuntimeDirectory } from "./DesktopRuntimeAssetSync.js";
+import { syncRuntimeDirectory } from "../RuntimeAssetSync.js";
 import { resolveDesktopResourceRoot, resolveDesktopWorkspaceRoot } from "./DesktopRuntimePathResolver.js";
 
 const { app } = electron;
@@ -61,14 +61,17 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
   const configSeedPath = path.join(resourceRoot, ConfigTemplateFileName);
   const sandboxRuntimeRoot = path.join(desktopDataRoot, "SandboxRuntime");
   const sandboxBundleRoot = path.join(desktopDataRoot, "SandboxBundles");
+  const bundledTerminalRuntimeRoot = app.isPackaged
+    ? path.join(resourceRoot, "TerminalSidecarRuntime")
+    : path.join(resourceRoot, ".senera", "sandbox-runtime", "terminal-sidecar");
 
   fs.mkdirSync(workspaceRoot, { recursive: true });
   fs.mkdirSync(desktopDataRoot, { recursive: true });
-  syncDesktopRuntimeDirectory(bundledSystemPlugins, runtimeSystemPlugins, {
+  syncRuntimeDirectory(bundledSystemPlugins, runtimeSystemPlugins, {
     preserveFileNames: [PluginConfigFileName],
     pruneExtraneous: true,
   });
-  syncDesktopRuntimeDirectory(bundledUserPlugins, runtimeUserPlugins, {
+  syncRuntimeDirectory(bundledUserPlugins, runtimeUserPlugins, {
     preserveFileNames: [PluginConfigFileName],
     pruneExtraneous: true,
   });
@@ -76,6 +79,9 @@ export function prepareDesktopRuntime(): DesktopRuntimePaths {
     pluginRoots: [bundledSystemPlugins, bundledUserPlugins],
     sourceNodeModulesRoots: dependencySourceNodeModulesRoots(resourceRoot),
     targetNodeModulesRoot: path.join(desktopDataRoot, NodeModulesDirectoryName),
+  });
+  syncRuntimeDirectory(bundledTerminalRuntimeRoot, path.join(sandboxRuntimeRoot, "terminal-sidecar"), {
+    pruneExtraneous: true,
   });
 
   return {
@@ -137,7 +143,7 @@ function syncPluginRuntimeDependencies(options: {
       throw new Error(`桌面端插件运行依赖缺失：${request.name}`);
     }
 
-    syncDesktopRuntimeDirectory(
+    syncRuntimeDirectory(
       sourcePackageRoot,
       path.join(options.targetNodeModulesRoot, ...packageNamePathParts(request.name)),
     );

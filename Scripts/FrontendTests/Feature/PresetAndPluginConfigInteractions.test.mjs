@@ -176,7 +176,7 @@ test("plugin source controls expose view changes, diagnostics, templates, and TO
   expect(screen.getByText("invalid TOML")).toBeVisible();
   expect(screen.getByText("value required")).toBeVisible();
   expect(screen.getByText("save rejected")).toBeVisible();
-  expect(screen.getByText(/PluginConfig\.example\.toml 模板草稿/)).toBeVisible();
+  expect(screen.getByText(/PluginConfig\.example\.toml 已根据示例文件初始化配置/)).toBeVisible();
 });
 
 test("plugin config autosaves changes and keeps the latest value during a snapshot refresh", async () => {

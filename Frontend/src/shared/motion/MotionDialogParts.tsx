@@ -84,7 +84,7 @@ export const MotionSheetContent = forwardRef<HTMLDivElement, MotionSheetContentP
     return (
       <motion.div
         ref={ref}
-        initial={variants.hidden}
+        initial={state === "open" ? false : variants.hidden}
         animate={variants[animationState]}
         transition={disableMotion ? { duration: 0 } : motionTimings.dialog}
         style={{ ...style, pointerEvents, willChange: "transform" }}

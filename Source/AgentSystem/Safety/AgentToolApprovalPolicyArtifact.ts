@@ -6,14 +6,19 @@ import { z } from "zod";
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
 export const AgentToolApprovalPolicyArtifactContract = Object.freeze({
-  schemaVersion: 2,
+  schemaVersion: 3,
   entrypoints: Object.freeze({
     toolDecision: "senera/tool/decision",
     executionFallback: "senera/execution/fallback",
+    resourceAccess: "senera/resource/decision",
   }),
   directorySegments: ["AgentSystem", "Safety"] as const,
   files: Object.freeze({
-    policies: ["AgentToolApprovalPolicy.rego", "AgentExecutionFallbackPolicy.rego"] as const,
+    policies: [
+      "AgentToolApprovalPolicy.rego",
+      "AgentExecutionFallbackPolicy.rego",
+      "AgentResourceAccessPolicy.rego",
+    ] as const,
     data: "AgentToolApprovalPolicy.data.json",
     wasm: "AgentToolApprovalPolicy.wasm",
     manifest: "AgentToolApprovalPolicy.artifact.json",
@@ -26,6 +31,7 @@ export const AgentToolApprovalPolicyDataSchema = z
       .object({
         ToolDecision: z.string().min(1),
         ExecutionFallback: z.string().min(1),
+        ResourceAccess: z.string().min(1),
       })
       .strict(),
     Reasons: z
@@ -46,9 +52,16 @@ export const AgentToolApprovalPolicyDataSchema = z
         FallbackNotAllowed: z.string().min(1),
         FallbackMissingTool: z.string().min(1),
         FallbackUntrusted: z.string().min(1),
+        FallbackHighImpactApproval: z.string().min(1),
         FallbackExternalApproval: z.string().min(1),
         FallbackSystemAllow: z.string().min(1),
         FallbackDefaultDeny: z.string().min(1),
+        ResourceOutsideScope: z.string().min(1),
+        ResourceUnresolved: z.string().min(1),
+        ResourceLinkEscape: z.string().min(1),
+        ResourceProtectedMutation: z.string().min(1),
+        ResourceFinalLinkMutation: z.string().min(1),
+        ResourceAllowed: z.string().min(1),
       })
       .strict(),
     HighImpact: z
@@ -61,8 +74,18 @@ export const AgentToolApprovalPolicyDataSchema = z
     Fallback: z
       .object({
         DenyTrustLevels: z.array(z.string().min(1)),
+        ApprovalPermissions: z.array(z.string().min(1)),
         ApprovalTrustLevels: z.array(z.string().min(1)),
         AutoAllowTrustLevels: z.array(z.string().min(1)),
+      })
+      .strict(),
+    ResourceAccess: z
+      .object({
+        AllowedScopes: z.array(z.string().min(1)),
+        DeniedContainments: z.array(z.string().min(1)),
+        DeniedLinkTraversals: z.array(z.string().min(1)),
+        MutationIntents: z.array(z.string().min(1)),
+        ProtectedRelativePaths: z.array(z.string().min(1)),
       })
       .strict(),
   })
@@ -115,7 +138,11 @@ export function readAgentToolApprovalPolicyData(directory: string): AgentToolApp
   const dataPath = artifactPath(directory, "data");
   const data = AgentToolApprovalPolicyDataSchema.parse(JSON.parse(fs.readFileSync(dataPath, "utf8")));
   const expectedEntrypoints = AgentToolApprovalPolicyArtifactContract.entrypoints;
-  const actualEntrypoints = [data.Entrypoints.ToolDecision, data.Entrypoints.ExecutionFallback];
+  const actualEntrypoints = [
+    data.Entrypoints.ToolDecision,
+    data.Entrypoints.ExecutionFallback,
+    data.Entrypoints.ResourceAccess,
+  ];
   if (!sameValues(actualEntrypoints, Object.values(expectedEntrypoints))) {
     throw new Error(`OPA policy data entrypoints do not match the runtime contract.`);
   }

@@ -11,10 +11,6 @@
         "sessionId": {
           "type": "string",
           "minLength": 1
-        },
-        "modelProviderId": {
-          "type": "string",
-          "minLength": 1
         }
       },
       "required": [
@@ -85,6 +81,13 @@
             ],
             "additionalProperties": false
           }
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "create_if_missing",
+            "require_existing"
+          ]
         },
         "queueMode": {
           "type": "string",
@@ -157,6 +160,112 @@
         "type",
         "sessionId",
         "requestId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.regenerate"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fromRequestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelProviderId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "uploadUri": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mime": {
+                "type": "string",
+                "minLength": 1
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "sha256": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "const": "uploaded"
+              }
+            },
+            "required": [
+              "uploadUri",
+              "name",
+              "mime",
+              "size",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "fromRequestId",
+        "requestId",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.fork"
+        },
+        "sourceSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "throughRequestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "sourceSessionId",
+        "sessionId",
+        "throughRequestId"
       ],
       "additionalProperties": false
     },
@@ -386,6 +495,86 @@
                       "type": "integer",
                       "minimum": 1,
                       "maximum": 9007199254740991
+                    },
+                    "Environment": {
+                      "type": "object",
+                      "properties": {
+                        "Inherit": {
+                          "type": "string",
+                          "enum": [
+                            "all",
+                            "allowlist",
+                            "none"
+                          ]
+                        },
+                        "IncludeOnly": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "Exclude": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "Set": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Resources": {
+                      "type": "object",
+                      "properties": {
+                        "MaxActive": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        },
+                        "MaxBufferedBytes": {
+                          "type": "integer",
+                          "minimum": 1024,
+                          "maximum": 9007199254740991
+                        },
+                        "MaxInputBytes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "MaxWaitSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 300
+                        },
+                        "IdleTtlSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "TerminalTtlSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "SweepIntervalSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "TerminationGraceSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 60
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   },
                   "additionalProperties": false
@@ -436,9 +625,14 @@
                         }
                       ]
                     },
-                    "PiSessionCreateTimeoutSeconds": {
+                    "PiTurnLeaseTimeoutSeconds": {
                       "type": "number",
                       "exclusiveMinimum": 0
+                    },
+                    "RunSettlementTimeoutSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 300
                     },
                     "PiSessions": {
                       "type": "object",
@@ -446,6 +640,54 @@
                         "RootDir": {
                           "type": "string",
                           "minLength": 1
+                        },
+                        "MaxCachedSessions": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "Compaction": {
+                          "type": "object",
+                          "properties": {
+                            "Enabled": {
+                              "type": "boolean"
+                            },
+                            "TriggerRatio": {
+                              "type": "number",
+                              "minimum": 0.5,
+                              "maximum": 0.95
+                            },
+                            "HardLimitRatio": {
+                              "type": "number",
+                              "minimum": 0.6,
+                              "maximum": 1
+                            },
+                            "TargetRatio": {
+                              "type": "number",
+                              "minimum": 0.2,
+                              "maximum": 0.8
+                            },
+                            "SummaryMaxTokens": {
+                              "type": "integer",
+                              "minimum": 512,
+                              "maximum": 32768
+                            },
+                            "TimeoutSeconds": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "UnknownContextWindowTokens": {
+                              "type": "integer",
+                              "minimum": 16384,
+                              "maximum": 9007199254740991
+                            },
+                            "UnknownModelOutputTokens": {
+                              "type": "integer",
+                              "minimum": 512,
+                              "maximum": 131072
+                            }
+                          },
+                          "additionalProperties": false
                         }
                       },
                       "additionalProperties": false
@@ -544,6 +786,52 @@
                         "MinScore": {
                           "type": "number",
                           "minimum": 0
+                        },
+                        "MaxResults": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "IntentGate": {
+                          "type": "object",
+                          "properties": {
+                            "Mode": {
+                              "type": "string",
+                              "enum": [
+                                "disabled",
+                                "side_effect_capability"
+                              ]
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "MemoryExpansion": {
+                          "type": "object",
+                          "properties": {
+                            "Mode": {
+                              "type": "string",
+                              "enum": [
+                                "disabled",
+                                "fallback",
+                                "augment"
+                              ]
+                            },
+                            "MinConfidence": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "MinEvidence": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "MaxResults": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "additionalProperties": false
                         }
                       },
                       "additionalProperties": false
@@ -683,15 +971,6 @@
                           "type": "string",
                           "minLength": 1
                         },
-                        "Provider": {
-                          "type": "string",
-                          "enum": [
-                            "openai-generic",
-                            "openai-responses",
-                            "anthropic",
-                            "google-ai"
-                          ]
-                        },
                         "Temperature": {
                           "type": "number",
                           "minimum": 0,
@@ -789,6 +1068,68 @@
                       "type": "integer",
                       "minimum": 1024,
                       "maximum": 9007199254740991
+                    },
+                    "MemoryReadStructuredJsonMaxBytes": {
+                      "type": "integer",
+                      "minimum": 1024,
+                      "maximum": 9007199254740991
+                    },
+                    "MemoryReadMaxArtifacts": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "MemoryReadMaxRefs": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "MemoryReadMaxConcurrency": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "MemoryReadCacheMaxBytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "MemoryReadCacheMaxEntries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "OutputCaptureMaxBytes": {
+                      "type": "integer",
+                      "minimum": 1024,
+                      "maximum": 9007199254740991
+                    },
+                    "MaxStoredBytes": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "MaxArtifacts": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "RetentionHours": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "IncompleteRetentionHours": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "MaintenanceIntervalMinutes": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "MaintenanceMaxConcurrency": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "additionalProperties": false
@@ -867,44 +1208,6 @@
                           "type": "string",
                           "minLength": 1
                         },
-                        "Provider": {
-                          "type": "string",
-                          "enum": [
-                            "openai-generic",
-                            "openai-responses",
-                            "anthropic",
-                            "google-ai"
-                          ]
-                        },
-                        "Temperature": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 2
-                        },
-                        "MaxTokens": {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        }
-                      },
-                      "additionalProperties": false
-                    },
-                    "TurnUnderstandingClient": {
-                      "type": "object",
-                      "properties": {
-                        "ModelProviderId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "Provider": {
-                          "type": "string",
-                          "enum": [
-                            "openai-generic",
-                            "openai-responses",
-                            "anthropic",
-                            "google-ai"
-                          ]
-                        },
                         "Temperature": {
                           "type": "number",
                           "minimum": 0,
@@ -925,14 +1228,25 @@
                           "type": "string",
                           "minLength": 1
                         },
-                        "Provider": {
+                        "Temperature": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 2
+                        },
+                        "MaxTokens": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "FinalAnswerClient": {
+                      "type": "object",
+                      "properties": {
+                        "ModelProviderId": {
                           "type": "string",
-                          "enum": [
-                            "openai-generic",
-                            "openai-responses",
-                            "anthropic",
-                            "google-ai"
-                          ]
+                          "minLength": 1
                         },
                         "Temperature": {
                           "type": "number",
@@ -1274,6 +1588,86 @@
                   "type": "integer",
                   "minimum": 1,
                   "maximum": 9007199254740991
+                },
+                "Environment": {
+                  "type": "object",
+                  "properties": {
+                    "Inherit": {
+                      "type": "string",
+                      "enum": [
+                        "all",
+                        "allowlist",
+                        "none"
+                      ]
+                    },
+                    "IncludeOnly": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "Exclude": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "Set": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Resources": {
+                  "type": "object",
+                  "properties": {
+                    "MaxActive": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "MaxBufferedBytes": {
+                      "type": "integer",
+                      "minimum": 1024,
+                      "maximum": 9007199254740991
+                    },
+                    "MaxInputBytes": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "MaxWaitSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 300
+                    },
+                    "IdleTtlSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "TerminalTtlSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "SweepIntervalSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "TerminationGraceSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 60
+                    }
+                  },
+                  "additionalProperties": false
                 }
               },
               "additionalProperties": false
@@ -1483,6 +1877,9 @@
                       },
                       "DeveloperRole": {
                         "type": "boolean"
+                      },
+                      "StreamingUsage": {
+                        "type": "boolean"
                       }
                     },
                     "additionalProperties": false
@@ -1549,6 +1946,21 @@
                   "RetryAfterMaxDelaySeconds": {
                     "type": "number",
                     "exclusiveMinimum": 0
+                  },
+                  "MaxResponseBytes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "MaxSseEventBytes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "MaxSseEvents": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   }
                 },
                 "required": [
@@ -1652,9 +2064,14 @@
                     }
                   ]
                 },
-                "PiSessionCreateTimeoutSeconds": {
+                "PiTurnLeaseTimeoutSeconds": {
                   "type": "number",
                   "exclusiveMinimum": 0
+                },
+                "RunSettlementTimeoutSeconds": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 300
                 },
                 "PiSessions": {
                   "type": "object",
@@ -1662,6 +2079,54 @@
                     "RootDir": {
                       "type": "string",
                       "minLength": 1
+                    },
+                    "MaxCachedSessions": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "Compaction": {
+                      "type": "object",
+                      "properties": {
+                        "Enabled": {
+                          "type": "boolean"
+                        },
+                        "TriggerRatio": {
+                          "type": "number",
+                          "minimum": 0.5,
+                          "maximum": 0.95
+                        },
+                        "HardLimitRatio": {
+                          "type": "number",
+                          "minimum": 0.6,
+                          "maximum": 1
+                        },
+                        "TargetRatio": {
+                          "type": "number",
+                          "minimum": 0.2,
+                          "maximum": 0.8
+                        },
+                        "SummaryMaxTokens": {
+                          "type": "integer",
+                          "minimum": 512,
+                          "maximum": 32768
+                        },
+                        "TimeoutSeconds": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "UnknownContextWindowTokens": {
+                          "type": "integer",
+                          "minimum": 16384,
+                          "maximum": 9007199254740991
+                        },
+                        "UnknownModelOutputTokens": {
+                          "type": "integer",
+                          "minimum": 512,
+                          "maximum": 131072
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   },
                   "additionalProperties": false
@@ -1760,6 +2225,52 @@
                     "MinScore": {
                       "type": "number",
                       "minimum": 0
+                    },
+                    "MaxResults": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "IntentGate": {
+                      "type": "object",
+                      "properties": {
+                        "Mode": {
+                          "type": "string",
+                          "enum": [
+                            "disabled",
+                            "side_effect_capability"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "MemoryExpansion": {
+                      "type": "object",
+                      "properties": {
+                        "Mode": {
+                          "type": "string",
+                          "enum": [
+                            "disabled",
+                            "fallback",
+                            "augment"
+                          ]
+                        },
+                        "MinConfidence": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "MinEvidence": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "MaxResults": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   },
                   "additionalProperties": false
@@ -1899,15 +2410,6 @@
                       "type": "string",
                       "minLength": 1
                     },
-                    "Provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai-generic",
-                        "openai-responses",
-                        "anthropic",
-                        "google-ai"
-                      ]
-                    },
                     "Temperature": {
                       "type": "number",
                       "minimum": 0,
@@ -2005,6 +2507,68 @@
                   "type": "integer",
                   "minimum": 1024,
                   "maximum": 9007199254740991
+                },
+                "MemoryReadStructuredJsonMaxBytes": {
+                  "type": "integer",
+                  "minimum": 1024,
+                  "maximum": 9007199254740991
+                },
+                "MemoryReadMaxArtifacts": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "MemoryReadMaxRefs": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "MemoryReadMaxConcurrency": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "MemoryReadCacheMaxBytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "MemoryReadCacheMaxEntries": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "OutputCaptureMaxBytes": {
+                  "type": "integer",
+                  "minimum": 1024,
+                  "maximum": 9007199254740991
+                },
+                "MaxStoredBytes": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "MaxArtifacts": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "RetentionHours": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "IncompleteRetentionHours": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "MaintenanceIntervalMinutes": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "MaintenanceMaxConcurrency": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
                 }
               },
               "additionalProperties": false
@@ -2083,44 +2647,6 @@
                       "type": "string",
                       "minLength": 1
                     },
-                    "Provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai-generic",
-                        "openai-responses",
-                        "anthropic",
-                        "google-ai"
-                      ]
-                    },
-                    "Temperature": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 2
-                    },
-                    "MaxTokens": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    }
-                  },
-                  "additionalProperties": false
-                },
-                "TurnUnderstandingClient": {
-                  "type": "object",
-                  "properties": {
-                    "ModelProviderId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "Provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai-generic",
-                        "openai-responses",
-                        "anthropic",
-                        "google-ai"
-                      ]
-                    },
                     "Temperature": {
                       "type": "number",
                       "minimum": 0,
@@ -2141,14 +2667,25 @@
                       "type": "string",
                       "minLength": 1
                     },
-                    "Provider": {
+                    "Temperature": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 2
+                    },
+                    "MaxTokens": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "FinalAnswerClient": {
+                  "type": "object",
+                  "properties": {
+                    "ModelProviderId": {
                       "type": "string",
-                      "enum": [
-                        "openai-generic",
-                        "openai-responses",
-                        "anthropic",
-                        "google-ai"
-                      ]
+                      "minLength": 1
                     },
                     "Temperature": {
                       "type": "number",
@@ -2633,6 +3170,9 @@
                 },
                 "DeveloperRole": {
                   "type": "boolean"
+                },
+                "StreamingUsage": {
+                  "type": "boolean"
                 }
               },
               "additionalProperties": false
@@ -2699,6 +3239,21 @@
             "RetryAfterMaxDelaySeconds": {
               "type": "number",
               "exclusiveMinimum": 0
+            },
+            "MaxResponseBytes": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "MaxSseEventBytes": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "MaxSseEvents": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
             }
           },
           "required": [
@@ -2840,6 +3395,9 @@
                   },
                   "DeveloperRole": {
                     "type": "boolean"
+                  },
+                  "StreamingUsage": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -2906,6 +3464,21 @@
               "RetryAfterMaxDelaySeconds": {
                 "type": "number",
                 "exclusiveMinimum": 0
+              },
+              "MaxResponseBytes": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "MaxSseEventBytes": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "MaxSseEvents": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
               }
             },
             "required": [
@@ -3225,28 +3798,78 @@
           "type": "string",
           "minLength": 1
         },
-        "status": {
+        "decision": {
           "type": "string",
           "enum": [
-            "approved",
-            "denied"
+            "approve_once",
+            "approve_session",
+            "deny",
+            "deny_and_interrupt"
           ]
         },
         "message": {
           "type": "string"
-        },
-        "scope": {
-          "type": "string",
-          "enum": [
-            "once",
-            "session"
-          ]
         }
       },
       "required": [
         "type",
         "approvalId",
-        "status"
+        "decision"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "interaction.input.resolve"
+        },
+        "interactionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "accept",
+            "decline",
+            "cancel"
+          ]
+        },
+        "content": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "interactionId",
+        "action"
       ],
       "additionalProperties": false
     },
@@ -3260,6 +3883,164 @@
       },
       "required": [
         "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "execution.resource.list"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "execution.resource.inspect"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceId": {
+          "type": "string",
+          "pattern": "^res_[a-f0-9]{32}$"
+        },
+        "cursor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "resourceId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "execution.resource.write"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceId": {
+          "type": "string",
+          "pattern": "^res_[a-f0-9]{32}$"
+        },
+        "input": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "resourceId",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "execution.resource.resize"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceId": {
+          "type": "string",
+          "pattern": "^res_[a-f0-9]{32}$"
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 500
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 200
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "resourceId",
+        "columns",
+        "rows"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "execution.resource.signal"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceId": {
+          "type": "string",
+          "pattern": "^res_[a-f0-9]{32}$"
+        },
+        "signal": {
+          "type": "string",
+          "enum": [
+            "interrupt",
+            "terminate",
+            "kill"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "resourceId",
+        "signal"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "execution.resource.stop_all"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "sessionId"
       ],
       "additionalProperties": false
     }

@@ -2,7 +2,49 @@
 
 这份文档写给实际部署、更新和排查 Senera 的人。日常本地开发看 README 就够了；跑 Docker、更新镜像、处理数据目录权限和沙箱状态时，看这里。
 
-## Docker 首次启动
+## 会话历史维护
+
+新的 Pi 诊断事件在持久化前会被投影为轻量历史 span。已有数据库可以显式分析和压缩，不会把昂贵维护偷偷放进服务启动链路。
+
+```powershell
+npm run maintenance.sessions
+npm run maintenance.sessions.apply
+npm run maintenance.sessions.vacuum
+```
+
+默认命令只分析。apply 使用行数和字节数双重有界的批事务重写可压缩 `pi.trace`，每个写批次后执行 WAL checkpoint，不会删除对话、运行快照、step trace 或非 Pi 事件。apply 和 vacuum 应在 Senera 服务停止时执行。`maintenance.sessions.json` 输出机器可读分析结果。
+
+## Artifact 维护
+
+服务运行期间会按 `Artifacts.MaintenanceIntervalMinutes` 自动执行 artifact 保留、总量配额和半成品回收。目录扫描使用 `Artifacts.MaintenanceMaxConcurrency` 控制文件系统并发，默认值为 4，避免大量 artifact 同时打开过多文件句柄。需要手动检查时，默认命令只分析，不删除文件：
+
+```powershell
+npm run maintenance.artifacts
+npm run maintenance.artifacts.json
+```
+
+确认报告后使用 `npm run maintenance.artifacts.apply` 执行清理。工作区、配置文件或 artifact 根目录不在默认位置时，可传 `--workspace`、`--config` 或 `--root`。
+
+自定义参数需要使用当前 npm 版本要求的双分隔符，例如：
+
+```powershell
+npm run maintenance.sessions -- -- --database=E:\data\senera.db --batch-size=100 --max-transaction-mib=16
+```
+
+## Pi Planner 延迟基准
+
+默认诊断只调用动作选择模型；所有模式都不会创建会话、执行工具或写入会话数据库：
+
+```powershell
+npm run benchmark.pi-planner
+npm run benchmark.pi-planner -- -- --planning-model-provider-id=gemini-3.5-flash --iterations=3
+npm run benchmark.pi-planner -- -- --stage=prepare-interaction --iterations=3
+npm run benchmark.pi-planner -- -- --stage=direct-flow --iterations=3
+```
+
+输出包含每次请求的首 token、总耗时、请求/响应字符数和动作类型。`--stage` 支持 `prepare-interaction`、`select-action`、`direct-flow` 或 `both`。`direct-flow` 会真实生成最终文本，但仍不创建会话、不执行工具，可用于衡量用户看到首段文本前的完整直答延迟。
+
+## Docker 启动
 
 默认容器监听 `8787`，所有运行数据都放在容器内的 `/data`。`compose.yaml` 默认使用 Docker named volume，普通部署不用先处理宿主机目录权限。
 
@@ -15,13 +57,20 @@ docker compose up -d
 docker compose logs -f senera
 ```
 
-初始化命令会依次询问登录用户名、显示名称和至少 15 位的管理员密码。账户文件只保存 `scrypt` 密码哈希。初始化完成并启动服务后，打开 `http://localhost:8787`。
+初始化命令会依次询问登录用户名、显示名称和至少 15 位的管理员密码，账户文件只保存 `scrypt` 密码哈希；只在首次使用新的数据 volume 时执行，已有管理员账户时跳过。初始化完成并启动服务后，打开 `http://localhost:8787`。
+
+### 原生 SQLite 依赖
+
+Docker 镜像运行的是标准 Node.js 22，不是 Electron，因此不需要安装系统 `sqlite3` 命令，也不需要执行 Electron ABI 重建。应用使用的 SQLite 驱动是 npm 依赖 `better-sqlite3`；镜像构建会在跳过依赖安装脚本后，使用镜像内的编译工具为 Node ABI 构建该原生模块，并在裁剪生产依赖后运行 SQLite smoke test。桌面端则由 Electron 打包流程单独准备自己的原生模块。
 
 默认 `compose.yaml` 做了这些事情：
 
-- `senera-data:/data`：配置、数据库、会话、沙箱运行目录都在这里。
+- `senera-data:/data`：配置、数据库、会话、用户插件、沙箱运行目录都在这里。
 - `${SENERA_PORT:-8787}:8787`：默认宿主机端口是 `8787`。
 - `/dev/kvm:/dev/kvm`：Linux 主机上给 microsandbox 使用硬件虚拟化。
+
+镜像内置的用户插件会在容器启动时同步到 `/data/Plugins`。该目录属于数据卷，插件的
+`PluginConfig.toml` 会保留用户修改；放入该目录的自定义插件也不会被启动同步清理。
 
 如果服务器上 `8787` 已被占用，可以这样启动：
 
@@ -217,6 +266,29 @@ docker compose up -d
 ## 沙箱状态
 
 Senera 启动时会尝试准备 microsandbox。准备成功时，外部插件可以走更强隔离；如果主机不支持或者准备失败，系统会进入 fallback 状态，服务仍然会继续运行。
+
+PTY 后台终端也通过同一执行边界路由。资源快照会返回 `requestedBoundary`、`effectiveBoundary`、
+`backend`、`capabilities`、`sandboxId` 和回退审批信息。microsandbox 当前支持交互输入和信号，但 SDK
+未提供程序化终端 resize 时不会声明 `resize`，前端会自动禁用该操作。
+
+本地命令、后台进程和 PTY 的环境继承可以统一收敛：
+
+```json
+{
+  "Defaults": {
+    "ToolExecution": {
+      "Environment": {
+        "Inherit": "none",
+        "IncludeOnly": ["PATH", "HOME"],
+        "Exclude": [],
+        "Set": {}
+      }
+    }
+  }
+}
+```
+
+`Set` 最后应用并覆盖同名值。microsandbox 不继承宿主环境，只接收执行画像和调用显式投影的变量。
 
 Linux 主机要使用更强隔离，通常需要：
 

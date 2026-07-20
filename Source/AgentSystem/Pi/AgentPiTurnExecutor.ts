@@ -13,6 +13,13 @@ import { AgentPiOpenAiTranscriptProjector } from "./AgentPiOpenAiTranscriptProje
 import type { AgentPiRuntimeService, AgentPiSessionResult } from "./AgentPiSubstrate.js";
 import type { AgentPiActiveSessionRegistry } from "./AgentPiActiveSessionRegistry.js";
 import { withPiProxyRuntimeContext } from "../PiProxy/AgentPiProxyRuntimeContext.js";
+import { AgentPiPreparedActionLease } from "../PiProxy/AgentPiPreparedActionLease.js";
+import {
+  AgentModelUsageLedger,
+  AgentModelUsageSources,
+  activeAgentModelUsageLedger,
+  type AgentModelUsage,
+} from "../ModelEndpoints/AgentModelUsage.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import { createPiTraceEvent } from "./AgentPiTraceProjector.js";
@@ -24,7 +31,7 @@ export interface AgentPiTurnRuntimePort {
     piSessions: AgentPiActiveSessionRegistry;
   };
   modelProviderConfig: ResolvedAgentModelProviderConfig;
-  agentLoopConfig: Pick<ResolvedAgentLoopConfig, "PiSessionCreateTimeoutMs">;
+  agentLoopConfig: Pick<ResolvedAgentLoopConfig, "PiTurnLeaseTimeoutMs">;
   tokenEstimator: {
     estimate(text: string): { tokenCount: number };
   };
@@ -39,8 +46,8 @@ const PiTurnTraceEvents = {
   TurnStarted: "turn.started",
   TurnCompleted: "turn.completed",
   TurnFailed: "turn.failed",
-  SessionCreateStarted: "session.create.started",
-  SessionCreateCompleted: "session.create.completed",
+  SessionLeaseStarted: "session.lease.started",
+  SessionLeaseCompleted: "session.lease.completed",
   PromptStarted: "session.prompt.started",
   PromptCompleted: "session.prompt.completed",
   CollectorDrainStarted: "collector.drain.started",
@@ -48,7 +55,7 @@ const PiTurnTraceEvents = {
 } as const;
 
 const PiTurnPhases = {
-  CreateSession: "session.create",
+  LeaseSession: "session.lease",
   Prompt: "session.prompt",
   CollectorDrain: "collector.drain",
 } as const;
@@ -70,6 +77,7 @@ export class AgentPiTurnExecutor {
       conversationEntries: command.conversationEntries,
       model,
     });
+    const usageLedger = activeAgentModelUsageLedger() ?? new AgentModelUsageLedger();
     return withPiProxyRuntimeContext(
       {
         sessionId: command.sessionId,
@@ -77,7 +85,11 @@ export class AgentPiTurnExecutor {
         step: command.step,
         onEvent,
         rootCommand: command.rootCommand,
+        interactionRoute: command.interactionRoute,
+        turnUnderstanding: command.turnUnderstanding,
         activeSkills: [...command.activeSkills],
+        usageLedger,
+        preparedAction: new AgentPiPreparedActionLease(command.initialAction),
       },
       (piProxyRuntimeContextId) => {
         const collector = new AgentPiRunCollector({
@@ -87,7 +99,15 @@ export class AgentPiTurnExecutor {
           streamModelDeltas: true,
           piProxyRuntimeContextId,
         });
-        return this.runWithContext(command, collector, projected, piProxyRuntimeContextId, signal, onEvent);
+        return this.runWithContext(
+          command,
+          collector,
+          projected,
+          piProxyRuntimeContextId,
+          usageLedger,
+          signal,
+          onEvent,
+        );
       },
     );
   }
@@ -97,6 +117,7 @@ export class AgentPiTurnExecutor {
     collector: AgentPiRunCollector,
     projected: ReturnType<AgentPiOpenAiTranscriptProjector["project"]>,
     piProxyRuntimeContextId: string,
+    usageLedger: AgentModelUsageLedger,
     signal?: AbortSignal,
     onEvent?: AgentEventSink,
   ): Promise<AgentLoopCommandResult> {
@@ -104,7 +125,8 @@ export class AgentPiTurnExecutor {
     let unsubscribe: (() => void) | undefined;
     let unregisterActiveSession: (() => void) | undefined;
     const modelTimeoutMs = this.options.runtime.modelProviderConfig.TimeoutMs;
-    const sessionCreateTimeoutMs = this.options.runtime.agentLoopConfig.PiSessionCreateTimeoutMs;
+    const turnTimeoutMs = this.options.runtime.modelProviderConfig.MaxRequestMs;
+    const sessionLeaseTimeoutMs = this.options.runtime.agentLoopConfig.PiTurnLeaseTimeoutMs;
 
     try {
       await this.emitTrace(
@@ -115,23 +137,24 @@ export class AgentPiTurnExecutor {
           inputChars: projected.input.length,
           historyMessages: projected.history.length,
           visibleTools: summarizeVisibleTools(command.loadedToolNames),
-          sessionCreateTimeoutMs,
+          sessionLeaseTimeoutMs,
           modelTimeoutMs,
+          turnTimeoutMs,
         },
         onEvent,
       );
 
       await this.emitTrace(
         command,
-        PiTurnTraceEvents.SessionCreateStarted,
+        PiTurnTraceEvents.SessionLeaseStarted,
         {
           visibleTools: summarizeVisibleTools(command.loadedToolNames),
         },
         onEvent,
       );
-      const sessionResult = await this.createSessionWithGuard(
+      const sessionResult = await this.leaseSessionWithGuard(
         () =>
-          this.options.runtime.services.pi.createSession({
+          this.options.runtime.services.pi.leaseTurn({
             requestId: command.requestId,
             sessionId: command.sessionId,
             step: command.step,
@@ -146,7 +169,7 @@ export class AgentPiTurnExecutor {
             rootCommand: command.rootCommand,
             turnUnderstanding: command.turnUnderstanding,
           }),
-        sessionCreateTimeoutMs,
+        sessionLeaseTimeoutMs,
         signal,
       );
       session = sessionResult.session;
@@ -160,7 +183,7 @@ export class AgentPiTurnExecutor {
         : undefined;
       await this.emitTrace(
         command,
-        PiTurnTraceEvents.SessionCreateCompleted,
+        PiTurnTraceEvents.SessionLeaseCompleted,
         {
           piSessionId: sessionResult.piSessionId,
           historyMigrationRequired: sessionResult.historyMigrationRequired,
@@ -175,6 +198,12 @@ export class AgentPiTurnExecutor {
         await session.setHistory(projected.history);
       }
 
+      const piBranchBoundaryId = await session.markTurnBoundary(command.requestId);
+      await command.onPiBranchBoundary?.(piBranchBoundaryId);
+
+      const compactIfNeeded = session.compactIfNeeded?.bind(session);
+      if (compactIfNeeded) await compactIfNeeded(signal);
+
       await this.emitTrace(
         command,
         PiTurnTraceEvents.PromptStarted,
@@ -185,7 +214,7 @@ export class AgentPiTurnExecutor {
       );
       await runAgentPiGuardedPhase({
         phase: PiTurnPhases.Prompt,
-        timeoutMs: modelTimeoutMs,
+        timeoutMs: turnTimeoutMs,
         signal,
         abort: () => session?.abort().catch(() => undefined),
         run: () =>
@@ -210,6 +239,9 @@ export class AgentPiTurnExecutor {
       const responseText = session.getLastAssistantText() ?? "";
       const runtimeProjection = collector.snapshot();
       const modelProvider = createModelProviderMetadata(this.options.runtime.modelProviderConfig);
+      const usage =
+        usageLedger.aggregate() ??
+        createLocalTurnUsage(this.options.runtime.tokenEstimator, command.prompt, responseText);
       const conversationEntries = this.buildConversationEntries(
         command,
         responseText,
@@ -234,11 +266,7 @@ export class AgentPiTurnExecutor {
           step: command.step,
           responseText,
           modelProvider,
-          usage: {
-            source: "local_estimate",
-            inputTokens: this.options.runtime.tokenEstimator.estimate(command.prompt).tokenCount,
-            outputTokens: this.options.runtime.tokenEstimator.estimate(responseText).tokenCount,
-          },
+          usage,
           conversationEntries,
           messages: [
             ...command.messages,
@@ -264,27 +292,29 @@ export class AgentPiTurnExecutor {
     }
   }
 
-  private async createSessionWithGuard(
-    createSession: () => Promise<AgentPiSessionResult>,
+  private async leaseSessionWithGuard(
+    leaseSession: () => Promise<AgentPiSessionResult>,
     timeoutMs: number,
     signal?: AbortSignal,
   ): Promise<AgentPiSessionResult> {
-    let createSessionPromise: Promise<AgentPiSessionResult> | undefined;
+    let leaseSessionPromise: Promise<AgentPiSessionResult> | undefined;
     try {
       return await runAgentPiGuardedPhase({
-        phase: PiTurnPhases.CreateSession,
+        phase: PiTurnPhases.LeaseSession,
         timeoutMs,
         signal,
         run: () => {
-          createSessionPromise = createSession();
-          return createSessionPromise;
+          leaseSessionPromise = leaseSession();
+          return leaseSessionPromise;
         },
       });
     } catch (error) {
-      void createSessionPromise?.then(
+      const disposeLateSession = leaseSessionPromise?.then(
         (lateSession) => lateSession.session.dispose(),
         () => undefined,
       );
+      if (signal?.aborted) await disposeLateSession;
+      else void disposeLateSession;
       throw error;
     }
   }
@@ -349,6 +379,22 @@ export class AgentPiTurnExecutor {
       ),
     ];
   }
+}
+
+function createLocalTurnUsage(
+  estimator: AgentPiTurnRuntimePort["tokenEstimator"],
+  input: string,
+  output: string,
+): AgentModelUsage {
+  const inputTokens = estimator.estimate(input).tokenCount;
+  const outputTokens = estimator.estimate(output).tokenCount;
+  return {
+    source: AgentModelUsageSources.LocalEstimate,
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    estimatedFields: ["inputTokens", "outputTokens", "totalTokens"],
+  };
 }
 
 function summarizeVisibleTools(loadedToolNames: "all" | string[]): unknown {

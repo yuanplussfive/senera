@@ -1,17 +1,11 @@
 import type Database from "better-sqlite3";
 import { AgentMemoryLearningJobStatusValues } from "./AgentMemoryLearningJob.js";
+import { defineAgentSqliteMigration } from "../Database/AgentSqliteMigration.js";
+import { runAgentSqliteMigrations } from "../Database/AgentSqliteMigrationRunner.js";
 
 const MemoryLearningJobStatusSql = AgentMemoryLearningJobStatusValues.map((status) => `'${status}'`).join(", ");
 
-export function configureAgentMemoryDatabase(db: Database.Database): void {
-  db.pragma("journal_mode = WAL");
-  db.pragma("synchronous = NORMAL");
-  db.pragma("busy_timeout = 5000");
-  db.pragma("foreign_keys = ON");
-}
-
-export function installAgentMemorySchema(db: Database.Database): void {
-  db.exec(`
+const AgentMemoryInitialSchemaSql = `
     CREATE TABLE IF NOT EXISTS memory_episodes (
       id TEXT PRIMARY KEY,
       uri TEXT NOT NULL UNIQUE,
@@ -76,18 +70,6 @@ export function installAgentMemorySchema(db: Database.Database): void {
       ON memory_sources(artifact_uri);
     CREATE INDEX IF NOT EXISTS idx_memory_sources_session_local_date
       ON memory_sources(session_id, time_zone, local_date, created_at_ms);
-
-    CREATE TABLE IF NOT EXISTS memory_learning_jobs (
-      episode_uri TEXT PRIMARY KEY,
-      status TEXT NOT NULL CHECK(status IN (${MemoryLearningJobStatusSql})),
-      attempts INTEGER NOT NULL,
-      next_attempt_at_ms INTEGER NOT NULL,
-      last_error TEXT NOT NULL,
-      updated_at_ms INTEGER NOT NULL,
-      FOREIGN KEY (episode_uri) REFERENCES memory_episodes(uri) ON DELETE CASCADE
-    );
-    CREATE INDEX IF NOT EXISTS idx_memory_learning_jobs_due
-      ON memory_learning_jobs(status, next_attempt_at_ms, updated_at_ms);
 
     CREATE TABLE IF NOT EXISTS memory_candidates (
       id TEXT PRIMARY KEY,
@@ -191,5 +173,35 @@ export function installAgentMemorySchema(db: Database.Database): void {
       ON memory_observations(memory_uri, created_at_ms);
     CREATE INDEX IF NOT EXISTS idx_memory_observations_session_time
       ON memory_observations(session_id, created_at_ms);
-  `);
+`;
+
+const AgentMemoryLearningJobsMigrationSql = `
+    CREATE TABLE IF NOT EXISTS memory_learning_jobs (
+      episode_uri TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK(status IN (${MemoryLearningJobStatusSql})),
+      attempts INTEGER NOT NULL,
+      next_attempt_at_ms INTEGER NOT NULL,
+      last_error TEXT NOT NULL,
+      updated_at_ms INTEGER NOT NULL,
+      FOREIGN KEY (episode_uri) REFERENCES memory_episodes(uri) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_learning_jobs_due
+      ON memory_learning_jobs(status, next_attempt_at_ms, updated_at_ms);
+`;
+
+export const AgentMemoryDatabaseMigrations = Object.freeze([
+  defineAgentSqliteMigration({
+    version: 1,
+    name: "memory_schema_baseline",
+    sql: AgentMemoryInitialSchemaSql,
+  }),
+  defineAgentSqliteMigration({
+    version: 2,
+    name: "memory_learning_jobs",
+    sql: AgentMemoryLearningJobsMigrationSql,
+  }),
+]);
+
+export function installAgentMemorySchema(db: Database.Database): void {
+  runAgentSqliteMigrations(db, AgentMemoryDatabaseMigrations);
 }

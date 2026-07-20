@@ -14,6 +14,27 @@ export type {
   ProviderModelGroupAssignmentInput,
 } from "./providerModelCommandTypes";
 
+export type {
+  ActionPlannerStageCompletedData,
+  ActionPlannerStageFailedData,
+  ActionPlannerStageName,
+  ActionPlannerStageStartedData,
+  TurnContextMode,
+  TurnUnderstandingData,
+} from "./plannerEventTypes";
+
+export type {
+  InteractionInputAction,
+  InteractionInputContent,
+  InteractionInputProperty,
+  InteractionInputRequestedData,
+  InteractionInputResolvedData,
+  InteractionInputSchema,
+  InteractionInputValue,
+} from "./interactionInputEventTypes";
+
+export type { RequestInvalidData, RunCancellationProgressData } from "./runControlEventTypes";
+
 export { EventKinds, EventLayers, EventPhases };
 export type { EventKind, EventLayer, EventPhase } from "./generatedEventCatalog";
 
@@ -61,6 +82,7 @@ export interface SessionListItem {
   updatedAt: string;
   entryCount: number;
   messageCount: number;
+  activeRequestId?: string;
 }
 
 export interface SessionListSnapshotData {
@@ -69,8 +91,16 @@ export interface SessionListSnapshotData {
 
 export interface SessionNotFoundData {
   sessionId: string;
-  operation: "session.message" | "session.close" | "session.history";
+  operation: "session.message" | "session.close" | "session.history" | "session.fork";
   message: string;
+}
+
+export interface SessionForkedData {
+  sessionId: string;
+  sourceSessionId: string;
+  throughRequestId: string;
+  title: string;
+  createdAt: string;
 }
 
 export interface SessionBusyData {
@@ -196,6 +226,7 @@ export interface ModelCapabilitiesData {
   Reasoning?: boolean;
   ToolCalling?: boolean;
   DeveloperRole?: boolean;
+  StreamingUsage?: boolean;
 }
 
 export interface ToolResultPresentation {
@@ -528,10 +559,20 @@ export interface UserProfileData {
 }
 
 export interface ModelUsageMetadata {
-  source: "local_estimate";
+  source: "provider_reported" | "mixed" | "local_estimate" | "unavailable";
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  estimatedFields?: Array<
+    "inputTokens" | "outputTokens" | "totalTokens" | "cacheReadTokens" | "cacheWriteTokens" | "reasoningTokens"
+  >;
+  calls?: Array<{
+    stage: string;
+    usage: Omit<ModelUsageMetadata, "calls">;
+  }>;
 }
 
 export interface ConversationEntryMetadata {
@@ -554,6 +595,7 @@ export interface SessionTruncatedData {
   sessionId: string;
   fromRequestId: string;
   removedEntries: number;
+  replacementRequestId?: string;
 }
 
 export interface RunStartedData {
@@ -602,43 +644,10 @@ export type InteractionRunMode = "direct_response" | "tool_agent_loop";
 export interface InteractionRoutedData {
   mode: InteractionRunMode;
   objective: string;
-  needsFreshEvidence: boolean;
-  needsWorkspaceRead: boolean;
-  needsSideEffect: boolean;
-  risk: string;
   preferredTools: string[];
   discoveryQueries: string[];
-  reason: string;
   loadedTools: string[] | "all";
   expectedOutputMode?: "final_text" | "open";
-}
-
-export type ActionPlannerStageName = "understandUserTurn";
-
-export type TurnContextMode = "None" | "Used" | "Insufficient";
-
-export interface TurnUnderstandingData {
-  rawUserTurn: string;
-  standaloneRequest: string;
-  contextMode: TurnContextMode;
-  contextBasis: string;
-  missingContext: string;
-}
-
-export interface ActionPlannerStageStartedData {
-  stage: ActionPlannerStageName;
-}
-
-export interface ActionPlannerStageCompletedData {
-  stage: ActionPlannerStageName;
-  selectedAction?: string;
-  repaired?: boolean;
-  turnUnderstanding?: TurnUnderstandingData;
-}
-
-export interface ActionPlannerStageFailedData {
-  stage: ActionPlannerStageName;
-  message: string;
 }
 
 export interface ModelDeltaData {
@@ -653,6 +662,7 @@ export interface ModelStartedData {
 export interface ModelCompletedData {
   text: string;
   provider?: ModelProviderMetadata;
+  usage?: ModelUsageMetadata;
 }
 
 export interface PiTraceData {
@@ -677,6 +687,34 @@ export interface ToolCallStartedData {
   toolName: string;
   callId: string;
   batchId?: string;
+}
+
+export interface ToolCallOutputData {
+  toolName: string;
+  callId: string;
+  stream: "stdout" | "stderr";
+  outputSequence: number;
+  text: string;
+  byteLength: number;
+  totalBytes: number;
+  batchId?: string;
+  resourceId?: string;
+}
+
+export interface ToolCallProgressData {
+  toolName: string;
+  callId: string;
+  progressSequence: number;
+  message?: string;
+  completed?: number;
+  total?: number;
+  unit?: string;
+  taskId?: string;
+  state?: string;
+  terminal?: boolean;
+  pollIntervalMs?: number;
+  batchId?: string;
+  resourceId?: string;
 }
 
 export interface ToolCallCompletedData {
@@ -716,21 +754,25 @@ export interface AssistantMessageCreatedData {
   reasonCode?: string;
 }
 
-export type { ApprovalRequestedData, ApprovalResolvedData, ApprovalSubjectData } from "./approvalEventTypes";
+export type {
+  ApprovalDecision,
+  ApprovalRequestedData,
+  ApprovalResolvedData,
+  ApprovalSubjectData,
+} from "./approvalEventTypes";
 
-export interface ExecutionFallbackStartedData {
-  toolCallId?: string;
-  pluginName: string;
-  pluginVersion: string;
-  toolName: string;
-  manifestDigest: string;
-  fromBackend: string;
-  toBackend: string;
-  reason: "sandbox_unavailable" | "persistent_sandbox_unsupported";
-  rule: string;
-  approvalId?: string;
-  scope?: "once" | "session";
-}
+export type {
+  ExecutionFallbackStartedData,
+  ExecutionResourceCreatedData,
+  ExecutionResourceOutputData,
+  ExecutionResourceRemovedData,
+  ExecutionResourceResizedData,
+  ExecutionResourceSnapshotData,
+  ExecutionResourceSnapshotEventData,
+  ExecutionResourceState,
+  ExecutionResourceStateData,
+  ExecutionResourceTerminalData,
+} from "./executionResourceEventTypes";
 
 export interface RunFailedData {
   message: string;

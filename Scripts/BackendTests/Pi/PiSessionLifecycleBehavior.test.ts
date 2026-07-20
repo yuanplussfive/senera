@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type {
   AgentHarnessResources,
   AgentMessage,
@@ -20,6 +20,7 @@ import type {
 } from "../../../Source/AgentSystem/Pi/AgentPiHarnessSessionPool.js";
 import {
   AgentPiSessionStore,
+  type AgentPiOpenSessionRequest,
   type AgentPiOpenSessionResult,
   type AgentPiSessionStorePort,
 } from "../../../Source/AgentSystem/Pi/AgentPiSessionStore.js";
@@ -53,12 +54,130 @@ describe("Pi session lifecycle behavior", () => {
     expect(await second.session.getEntries()).toEqual([]);
   });
 
+  test("removes a cancelled queued session open without blocking its successor", async () => {
+    const workspaceRoot = createWorkspace();
+    const env = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const writeStarted = deferred<void>();
+    const allowWrite = deferred<void>();
+    const originalWriteFile = env.writeFile.bind(env);
+    let pausedInitialWrite = false;
+    const writeFile = vi.spyOn(env, "writeFile").mockImplementation(async (...args) => {
+      if (!pausedInitialWrite) {
+        pausedInitialWrite = true;
+        writeStarted.resolve();
+        await allowWrite.promise;
+      }
+      return originalWriteFile(...args);
+    });
+    const store = new AgentPiSessionStore({
+      workspaceRoot,
+      sessionsRoot: ".senera/pi-sessions",
+      env,
+    });
+
+    const active = store.openOrCreate({ sessionId: "session-queued-open" });
+    await writeStarted.promise;
+    const controller = new AbortController();
+    const cancelled = store.openOrCreate({ sessionId: "session-queued-open", signal: controller.signal });
+    const successor = store.openOrCreate({ sessionId: "session-queued-open" });
+    controller.abort("replacement superseded queued session open");
+
+    await expect(cancelled).rejects.toMatchObject({
+      name: "AgentCancellationError",
+      message: "replacement superseded queued session open",
+    });
+    expect(writeFile).toHaveBeenCalledOnce();
+
+    allowWrite.resolve();
+    const [created, existing] = await Promise.all([active, successor]);
+    expect(created.storage).toBe("created");
+    expect(existing.storage).toBe("existing");
+    expect(created.session).toBe(existing.session);
+  });
+
+  test("indexes metadata once and reuses opened sessions without reparsing JSONL", async () => {
+    const workspaceRoot = createWorkspace();
+    const seedStore = new AgentPiSessionStore({
+      workspaceRoot,
+      sessionsRoot: ".senera/pi-sessions",
+      env: new SeneraLocalExecutionEnv({ workspaceRoot }),
+    });
+    const firstSeed = await seedStore.openOrCreate({ sessionId: "session-cache-a" });
+    await firstSeed.session.appendCustomEntry("seed", { value: "a" });
+    const secondSeed = await seedStore.openOrCreate({ sessionId: "session-cache-b" });
+    await secondSeed.session.appendCustomEntry("seed", { value: "b" });
+
+    const env = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const readTextFile = vi.spyOn(env, "readTextFile");
+    const readTextLines = vi.spyOn(env, "readTextLines");
+    const store = new AgentPiSessionStore({
+      workspaceRoot,
+      sessionsRoot: ".senera/pi-sessions",
+      env,
+    });
+
+    const [first, repeated] = await Promise.all([
+      store.openOrCreate({ sessionId: "session-cache-a" }),
+      store.openOrCreate({ sessionId: "session-cache-a" }),
+    ]);
+    expect(first.session).toBe(repeated.session);
+    expect(readTextFile).toHaveBeenCalledTimes(1);
+    expect(readTextLines).toHaveBeenCalledTimes(2);
+
+    await store.openOrCreate({ sessionId: "session-cache-b" });
+    expect(readTextFile).toHaveBeenCalledTimes(2);
+    expect(readTextLines).toHaveBeenCalledTimes(2);
+
+    await store.openOrCreate({ sessionId: "session-cache-a" });
+    await store.openOrCreate({ sessionId: "session-cache-new" });
+    expect(readTextFile).toHaveBeenCalledTimes(2);
+    expect(readTextLines).toHaveBeenCalledTimes(2);
+  });
+
+  test("bounds open session retention with the shared Pi cache policy", async () => {
+    const workspaceRoot = createWorkspace();
+    const seedStore = new AgentPiSessionStore({
+      workspaceRoot,
+      sessionsRoot: ".senera/pi-sessions",
+      env: new SeneraLocalExecutionEnv({ workspaceRoot }),
+    });
+    await (await seedStore.openOrCreate({ sessionId: "session-lru-a" })).session.appendCustomEntry("seed", {});
+    await (await seedStore.openOrCreate({ sessionId: "session-lru-b" })).session.appendCustomEntry("seed", {});
+
+    const env = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const readTextFile = vi.spyOn(env, "readTextFile");
+    const store = new AgentPiSessionStore({
+      workspaceRoot,
+      sessionsRoot: ".senera/pi-sessions",
+      env,
+      maxCachedSessions: 1,
+    });
+
+    await store.openOrCreate({ sessionId: "session-lru-a" });
+    await store.openOrCreate({ sessionId: "session-lru-b" });
+    await store.openOrCreate({ sessionId: "session-lru-a" });
+    expect(readTextFile).toHaveBeenCalledTimes(3);
+  });
+
+  test("rewinds a persisted JSONL session to an explicit turn boundary", async () => {
+    const workspaceRoot = createWorkspace();
+    const store = new AgentPiSessionStore({
+      workspaceRoot,
+      sessionsRoot: ".senera/pi-sessions",
+      env: new SeneraLocalExecutionEnv({ workspaceRoot }),
+    });
+    const opened = await store.openOrCreate({ sessionId: "session-rewind" });
+    const boundaryId = await opened.session.appendCustomEntry("senera.turn_boundary", { requestId: "request-a" });
+    await opened.session.appendCustomEntry("after-boundary", { value: 1 });
+
+    await expect(store.rewind("session-rewind", boundaryId)).resolves.toBe(true);
+    const reopened = await store.openOrCreate({ sessionId: "session-rewind" });
+    expect(await reopened.session.getLeafId()).toBe(boundaryId);
+  });
+
   test("creates, reuses, traces, and closes substrate sessions through explicit lifecycle ports", async () => {
     const workspaceRoot = createWorkspace();
-    const store = new RecordingSessionStore([
-      sessionResult("session-1", "created", 0),
-      sessionResult("session-1", "existing", 2),
-    ]);
+    const store = new RecordingSessionStore([sessionResult("session-1", "created", 0)]);
     const pool = new RecordingHarnessPool();
     const events: unknown[] = [];
     const substrate = new AgentPiSubstrate({
@@ -73,7 +192,7 @@ describe("Pi session lifecycle behavior", () => {
       harnessPool: pool,
     });
 
-    const first = await substrate.createSession({
+    const first = await substrate.leaseTurn({
       sessionId: "session-1",
       requestId: "request-1",
       step: 1,
@@ -83,7 +202,7 @@ describe("Pi session lifecycle behavior", () => {
         events.push(event);
       },
     });
-    const second = await substrate.createSession({
+    const second = await substrate.leaseTurn({
       sessionId: "session-1",
       requestId: "request-2",
       step: 2,
@@ -93,7 +212,8 @@ describe("Pi session lifecycle behavior", () => {
         events.push(event);
       },
     });
-    substrate.close();
+    await expect(substrate.rewindSession("session-1", "boundary-a")).resolves.toBe(true);
+    await substrate.close();
 
     expect(first).toMatchObject({
       piSessionId: "session-1",
@@ -101,30 +221,65 @@ describe("Pi session lifecycle behavior", () => {
     });
     expect(second).toMatchObject({
       piSessionId: "session-1",
-      historyMigrationRequired: false,
+      historyMigrationRequired: true,
     });
-    expect(store.requests).toEqual([
-      { sessionId: "session-1", fallbackId: "request-1" },
-      { sessionId: "session-1", fallbackId: "request-2" },
-    ]);
+    expect(store.requests).toEqual([{ operation: "open_or_create", sessionId: "session-1", fallbackId: "request-1" }]);
     expect(
       pool.leases.map((lease) => ({
         sessionId: lease.sessionId,
         requestId: lease.frame.requestId,
         step: lease.frame.step,
-        activeToolNames: lease.activeToolNames,
+        activeToolNames: lease.toolSet.activeToolNames,
       })),
     ).toEqual([
       { sessionId: "session-1", requestId: "request-1", step: 1, activeToolNames: [] },
       { sessionId: "session-1", requestId: "request-2", step: 2, activeToolNames: [] },
     ]);
     expect(pool.closeCount).toBe(1);
+    expect(pool.rewinds).toEqual([{ sessionId: "session-1", entryId: "boundary-a" }]);
+    expect(store.rewinds).toEqual([{ sessionId: "session-1", entryId: "boundary-a" }]);
     expect(traceTypes(events)).toEqual([
-      "core.agent.create.started",
-      "core.agent.create.completed",
-      "core.agent.create.started",
-      "core.agent.create.completed",
+      "core.turn.lease.started",
+      "core.turn.lease.completed",
+      "core.turn.lease.timing",
+      "core.turn.lease.started",
+      "core.turn.lease.completed",
+      "core.turn.lease.timing",
     ]);
+    expect(tracePayloads(events, "core.turn.lease.timing")).toEqual([
+      expect.objectContaining({
+        sessionOpenSource: "session_store",
+        sessionOpenMs: expect.any(Number),
+        harnessLeaseMs: expect.any(Number),
+        durationMs: expect.any(Number),
+      }),
+      expect.objectContaining({
+        sessionOpenSource: "harness_pool",
+        sessionOpenMs: expect.any(Number),
+        harnessLeaseMs: expect.any(Number),
+        durationMs: expect.any(Number),
+      }),
+    ]);
+  });
+
+  test("propagates turn cancellation into persistent session acquisition", async () => {
+    const workspaceRoot = createWorkspace();
+    const store = new RecordingSessionStore([sessionResult("session-cancellable-open", "created", 0)]);
+    const pool = new RecordingHarnessPool();
+    const substrate = createRecordingSubstrate(workspaceRoot, store, pool);
+    const controller = new AbortController();
+
+    const lease = await substrate.leaseTurn({
+      sessionId: "session-cancellable-open",
+      requestId: "request-cancellable-open",
+      input: "Inspect cancellation propagation",
+      visibleToolNames: [],
+      signal: controller.signal,
+    });
+
+    expect(store.openSignals).toEqual([controller.signal]);
+    lease.session.dispose();
+    await substrate.close();
   });
 });
 
@@ -162,23 +317,55 @@ const passthroughArtifactRecorder: AgentPiArtifactRecorderPort = {
 };
 
 class RecordingSessionStore implements AgentPiSessionStorePort {
-  readonly requests: Array<{ sessionId?: string; fallbackId?: string }> = [];
+  readonly requests: Array<{ operation: "open_or_create"; sessionId?: string; fallbackId?: string }> = [];
+  readonly openSignals: Array<AbortSignal | undefined> = [];
+  readonly rewinds: Array<{ sessionId: string; entryId: string }> = [];
+  readonly resets: string[] = [];
 
-  constructor(private readonly results: AgentPiOpenSessionResult[]) {}
+  constructor(
+    private readonly results: AgentPiOpenSessionResult[],
+    private readonly behavior: { rewindResult?: boolean; resetResult?: boolean } = {},
+  ) {}
 
-  async openOrCreate(request: { sessionId?: string; fallbackId?: string }): Promise<AgentPiOpenSessionResult> {
-    this.requests.push({ ...request });
+  async openOrCreate(request: AgentPiOpenSessionRequest): Promise<AgentPiOpenSessionResult> {
+    const { signal, ...identity } = request;
+    this.requests.push({ operation: "open_or_create", ...identity });
+    this.openSignals.push(signal);
+    return this.nextResult();
+  }
+
+  private nextResult(): AgentPiOpenSessionResult {
     const result = this.results.shift();
     if (!result) {
       throw new Error("Unexpected Pi session open request.");
     }
     return result;
   }
+
+  async reset(sessionId: string): Promise<boolean> {
+    this.resets.push(sessionId);
+    return this.behavior.resetResult ?? false;
+  }
+
+  async rewind(sessionId: string, entryId: string): Promise<boolean> {
+    this.rewinds.push({ sessionId, entryId });
+    return this.behavior.rewindResult ?? true;
+  }
 }
 
 class RecordingHarnessPool implements AgentPiHarnessSessionPoolPort {
   readonly leases: AgentPiHarnessLeaseInput[] = [];
+  readonly rewinds: Array<{ sessionId: string; entryId: string }> = [];
+  readonly resets: string[] = [];
   closeCount = 0;
+
+  findPersistentSession(sessionId: string) {
+    for (let index = this.leases.length - 1; index >= 0; index -= 1) {
+      const lease = this.leases[index];
+      if (lease?.sessionId === sessionId) return lease.session;
+    }
+    return undefined;
+  }
 
   async lease(input: AgentPiHarnessLeaseInput) {
     this.leases.push(input);
@@ -188,9 +375,35 @@ class RecordingHarnessPool implements AgentPiHarnessSessionPoolPort {
     };
   }
 
-  close(): void {
+  async close(): Promise<void> {
     this.closeCount += 1;
   }
+
+  async reset(sessionId: string): Promise<void> {
+    this.resets.push(sessionId);
+  }
+  async rewind(sessionId: string, entryId: string): Promise<boolean> {
+    this.rewinds.push({ sessionId, entryId });
+    return false;
+  }
+}
+
+function createRecordingSubstrate(
+  workspaceRoot: string,
+  store: AgentPiSessionStorePort,
+  pool: AgentPiHarnessSessionPoolPort,
+): AgentPiSubstrate {
+  return new AgentPiSubstrate({
+    workspaceRoot,
+    config: piTestConfig,
+    modelProvider: createModelProvider(),
+    registry: new AgentPluginRegistry(),
+    toolCallExecutor: unusedToolExecutor,
+    artifactRecorder: passthroughArtifactRecorder,
+    executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
+    sessionStore: store,
+    harnessPool: pool,
+  });
 }
 
 class FakePiSession implements AgentPiSession {
@@ -210,6 +423,9 @@ class FakePiSession implements AgentPiSession {
   async steer(_text: string): Promise<void> {}
   async followUp(_text: string): Promise<void> {}
   async nextTurn(_text: string): Promise<void> {}
+  async markTurnBoundary(requestId: string): Promise<string> {
+    return `boundary:${requestId}`;
+  }
   async setResources(_resources: AgentHarnessResources<Skill, PromptTemplate>): Promise<void> {}
   subscribe(_listener: AgentPiSessionEventListener): () => void {
     return () => {};
@@ -233,7 +449,7 @@ function sessionResult(
     sessionId,
     storage,
     session: {
-      getEntries: async () => Array.from({ length: entryCount }),
+      getLeafId: async () => (entryCount > 0 ? "leaf" : null),
     } as AgentPiOpenSessionResult["session"],
   };
 }
@@ -254,4 +470,21 @@ function traceTypes(events: readonly unknown[]): string[] {
       ? [data.eventType]
       : [];
   });
+}
+
+function tracePayloads(events: readonly unknown[], eventType: string): unknown[] {
+  return events.flatMap((event) => {
+    if (!event || typeof event !== "object" || !("kind" in event) || event.kind !== "pi.trace") return [];
+    const data = "data" in event ? event.data : undefined;
+    if (!data || typeof data !== "object" || !("eventType" in data) || data.eventType !== eventType) return [];
+    return "payload" in data ? [data.payload] : [];
+  });
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settled) => {
+    resolve = settled;
+  });
+  return { promise, resolve };
 }

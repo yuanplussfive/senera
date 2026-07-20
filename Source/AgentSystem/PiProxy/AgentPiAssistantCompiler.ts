@@ -13,6 +13,7 @@ import {
   type ParsedPiToolArgumentsDraft,
 } from "./AgentPiAssistantMessageSchema.js";
 import type {
+  AgentPiAssistantCompilation,
   AgentPiAssistantMessage,
   AgentPiAssistantMessageCompileInput,
   AgentPiControllerActionInput,
@@ -23,6 +24,12 @@ import type {
 } from "./AgentPiAssistantMessageTypes.js";
 import type { PiOpenAiChatCompletionRequest, PiOpenAiTool } from "./AgentPiOpenAiWireTypes.js";
 import { AgentPiOpenAiPlanningProjector } from "./AgentPiOpenAiPlanningProjector.js";
+import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
+import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
+import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
+import type { AgentRootCommand } from "../AgentRootCommand.js";
+import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+import { AgentPiAuthoritativeActionProjector } from "./AgentPiAuthoritativeActionProjector.js";
 
 const Ajv = (AjvModule.default ?? AjvModule) as unknown as typeof import("ajv").default;
 
@@ -42,19 +49,27 @@ export interface AgentPiAssistantCompilerOptions {
   modelProvider: ResolvedAgentModelProviderConfig;
   actionPlannerConfig: ResolvedAgentActionPlannerConfig;
   client?: AgentPiAssistantCompilerModelClient;
+  usageSink?: AgentModelUsageSink;
+  timingSink?: AgentModelTimingSink;
 }
 
 export interface AgentPiAssistantCompileRequest {
   request: PiOpenAiChatCompletionRequest;
   signal?: AbortSignal;
   runtime?: {
-    rootCommand?: unknown;
+    sessionId?: string;
+    requestId?: string;
+    step?: number;
+    rootCommand?: AgentRootCommand;
+    interactionRoute?: AgentInteractionRouteResult;
+    turnUnderstanding?: TurnUnderstanding;
     activeSkills?: unknown[];
+    preparedAction?: import("./AgentPiPreparedActionLease.js").AgentPiPreparedActionLeasePort;
   };
 }
 
 export interface AgentPiAssistantCompilerPort {
-  compile(input: AgentPiAssistantCompileRequest): Promise<AgentPiAssistantMessage>;
+  compile(input: AgentPiAssistantCompileRequest): Promise<AgentPiAssistantCompilation>;
 }
 
 export interface AgentPiAssistantCompilerModelClient {
@@ -81,6 +96,7 @@ interface AgentPiToolChoiceConstraint {
 export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
   private readonly client: AgentPiAssistantCompilerModelClient;
   private readonly planningProjector: AgentPiOpenAiPlanningProjector;
+  private readonly authoritativeActions = new AgentPiAuthoritativeActionProjector();
 
   constructor(private readonly options: AgentPiAssistantCompilerOptions) {
     this.planningProjector = new AgentPiOpenAiPlanningProjector({
@@ -88,17 +104,35 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
     });
     this.client =
       options.client ??
-      new AgentActionPlannerModelClient(options.modelProvider, options.actionPlannerConfig.Client, {
+      new AgentActionPlannerModelClient(options.modelProvider, options.actionPlannerConfig.PlanningClient, {
         maxRepairAttempts: options.actionPlannerConfig.MaxRepairAttempts,
+        usageSink: options.usageSink,
+        timingSink: options.timingSink,
       });
   }
 
-  async compile(input: AgentPiAssistantCompileRequest): Promise<AgentPiAssistantMessage> {
+  async compile(input: AgentPiAssistantCompileRequest): Promise<AgentPiAssistantCompilation> {
     const toolChoice = resolveToolChoiceConstraint(input.request);
     const promptInput = this.buildControllerInput(input, toolChoice.allowedTools);
+    const preparedAction = input.runtime?.preparedAction?.take();
+    const validatedPreparedAction = preparedAction ? this.parsePreparedAction(preparedAction, toolChoice) : undefined;
+    const authoritativeAction =
+      validatedPreparedAction ??
+      this.authoritativeActions.project({
+        input: promptInput,
+        toolExecutionRequired: toolChoice.toolsRequired,
+      });
+    if (authoritativeAction) {
+      return this.projectAction(
+        authoritativeAction,
+        promptInput,
+        input.signal,
+        validatedPreparedAction ? "preparation" : "runtime",
+      );
+    }
     const action = await this.selectAction(promptInput, toolChoice, input.signal);
 
-    return this.projectAction(action, promptInput, input.signal);
+    return this.projectAction(action, promptInput, input.signal, "model");
   }
 
   private async selectAction(
@@ -140,26 +174,56 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
     return action;
   }
 
+  private parsePreparedAction(
+    rawAction: unknown,
+    toolChoice: AgentPiToolChoiceConstraint,
+  ): ParsedPiControllerAction | undefined {
+    try {
+      return this.parseAction(rawAction, toolChoice);
+    } catch (error) {
+      if (isPlannerValidationError(error)) return undefined;
+      throw error;
+    }
+  }
+
   private async projectAction(
     action: ParsedPiControllerAction,
     input: AgentPiControllerActionInput,
     signal: AbortSignal | undefined,
-  ): Promise<AgentPiAssistantMessage> {
+    decisionSource: "model" | "runtime" | "preparation",
+  ): Promise<AgentPiAssistantCompilation> {
     const projectors = {
-      FinalAnswer: async () => ({
-        kind: "final_text" as const,
-        content: action.answer?.trim() ?? "",
-        toolCalls: [],
-      }),
+      FinalAnswer: async () => this.projectFinalAnswer(action, input, decisionSource),
       AskUser: async () => ({
         kind: "final_text" as const,
         content: action.question?.trim() ?? "",
         toolCalls: [],
       }),
       CallTools: async () => this.projectToolCallsAction(action, input, signal),
-    } satisfies Record<ParsedPiControllerAction["kind"], () => Promise<AgentPiAssistantMessage>>;
+    } satisfies Record<ParsedPiControllerAction["kind"], () => Promise<AgentPiAssistantCompilation>>;
 
     return projectors[action.kind]();
+  }
+
+  private projectFinalAnswer(
+    action: ParsedPiControllerAction,
+    input: AgentPiControllerActionInput,
+    decisionSource: "model" | "runtime" | "preparation",
+  ): Extract<AgentPiAssistantCompilation, { kind: "final_answer" }> {
+    return {
+      kind: "final_answer",
+      decisionSource,
+      input: {
+        openAiRequest: {
+          model: input.openAiRequest.model,
+          messages: [...input.openAiRequest.messages],
+          toolTranscript: input.openAiRequest.toolTranscript.map((entry) => ({ ...entry })),
+          projection: { ...input.openAiRequest.projection },
+        },
+        seneraRuntime: { ...input.seneraRuntime },
+        answerPlan: [...(action.answerPlan ?? [])],
+      },
+    };
   }
 
   private async projectToolCallsAction(
@@ -336,27 +400,24 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
     allowedTools: string[],
   ): AgentPiControllerActionInput {
     const tools = input.request.tools ?? [];
-    const base = this.buildPromptInput(input, allowedTools);
+    const base = this.buildPromptInput(input);
     const allowed = new Set(allowedTools);
+    const candidateTools = tools.filter((tool) => allowed.has(tool.function.name));
     return {
       ...base,
-      candidateTools: tools
-        .filter((tool) => allowed.has(tool.function.name))
-        .map((tool) => this.planningProjector.projectToolCard(tool)),
+      candidateTools: this.planningProjector.projectToolCards(candidateTools),
     };
   }
 
-  private buildPromptInput(
-    input: AgentPiAssistantCompileRequest,
-    allowedTools: string[],
-  ): AgentPiAssistantMessageCompileInput {
+  private buildPromptInput(input: AgentPiAssistantCompileRequest): AgentPiAssistantMessageCompileInput {
     return {
       openAiRequest: this.planningProjector.project(input.request),
-      allowedTools,
       seneraRuntime: {
         modelProviderId: this.options.modelProvider.Id,
         model: this.options.modelProvider.Model,
         rootCommand: input.runtime?.rootCommand,
+        interactionRoute: input.runtime?.interactionRoute,
+        turnUnderstanding: input.runtime?.turnUnderstanding,
         activeSkills: input.runtime?.activeSkills,
       },
     };

@@ -1,13 +1,8 @@
 import type Database from "better-sqlite3";
+import { defineAgentSqliteMigration } from "../Database/AgentSqliteMigration.js";
+import { runAgentSqliteMigrations } from "../Database/AgentSqliteMigrationRunner.js";
 
-export function configureToolSearchMemoryDatabase(db: Database.Database): void {
-  db.pragma("journal_mode = WAL");
-  db.pragma("synchronous = NORMAL");
-  db.pragma("busy_timeout = 5000");
-}
-
-export function installToolSearchMemorySchema(db: Database.Database): void {
-  db.exec(`
+const AgentToolSearchMemoryInitialSchemaSql = `
     CREATE TABLE IF NOT EXISTS tool_search_episodes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       query TEXT NOT NULL,
@@ -50,5 +45,16 @@ export function installToolSearchMemorySchema(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_tool_use_patterns_project_tool
       ON tool_use_patterns(project_id, tool_name);
-  `);
+`;
+
+export const AgentToolSearchMemoryDatabaseMigrations = Object.freeze([
+  defineAgentSqliteMigration({
+    version: 1,
+    name: "tool_search_memory_schema_baseline",
+    sql: AgentToolSearchMemoryInitialSchemaSql,
+  }),
+]);
+
+export function installToolSearchMemorySchema(db: Database.Database): void {
+  runAgentSqliteMigrations(db, AgentToolSearchMemoryDatabaseMigrations);
 }

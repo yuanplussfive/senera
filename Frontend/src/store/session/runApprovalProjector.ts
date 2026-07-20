@@ -8,12 +8,14 @@ import {
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { upsertStep } from "./sessionProjectorCore";
-import { touchRun } from "./sessionRunProjection";
+import { syncRunActiveFlags, touchRun } from "./sessionRunProjection";
 import type { ApprovalRunRecord, RunRecord, TimelineStepStatus } from "./types";
 
 const approvalStepStatus = {
   approved: "done",
   denied: "failed",
+  cancelled: "failed",
+  expired: "failed",
 } as const satisfies Record<ApprovalResolvedData["status"], TimelineStepStatus>;
 
 export const runApprovalEventHandlers = {
@@ -25,10 +27,13 @@ export const runApprovalEventHandlers = {
       approvalId: data.approvalId,
       approvalKind: data.approvalKind,
       status: data.status,
+      toolCallId: data.toolCallId,
+      batchId: data.batchId,
       title: data.title,
       reason: data.reason,
       rule: data.rule,
       riskSignals: data.riskSignals,
+      availableDecisions: data.availableDecisions,
       subject: data.subject,
       createdAt: data.createdAt,
     });
@@ -52,15 +57,22 @@ export const runApprovalEventHandlers = {
       approvalId: data.approvalId,
       approvalKind: data.approvalKind,
       status: data.status,
+      toolCallId: data.toolCallId,
+      batchId: data.batchId,
       title: data.title,
       reason: data.reason,
       rule: data.rule,
       riskSignals: data.riskSignals,
+      availableDecisions: data.availableDecisions,
       subject: data.subject,
       createdAt: data.createdAt,
       resolvedAt: data.resolvedAt,
       message: data.message,
       scope: data.scope,
+      disposition: data.disposition,
+      decision: data.decision,
+      resolutionPending: false,
+      pendingDecision: undefined,
     });
     upsertStep(run, {
       id: approvalStepId(data.approvalId),
@@ -107,6 +119,7 @@ function upsertApproval(run: RunRecord, approval: ApprovalRunRecord): void {
     approvals.push(approval);
   }
   run.approvals = approvals;
+  syncRunActiveFlags(run);
   touchRun(run);
 }
 
@@ -124,7 +137,11 @@ function approvalStepTitle(subject: ApprovalSubjectData, status: ApprovalRunReco
       ? frontendMessage("workflow.projection.approvalPending")
       : status === "approved"
         ? frontendMessage("workflow.projection.approvalGranted")
-        : frontendMessage("workflow.projection.approvalDenied");
+        : status === "denied"
+          ? frontendMessage("workflow.projection.approvalDenied")
+          : status === "expired"
+            ? frontendMessage("workflow.projection.approvalExpired")
+            : frontendMessage("workflow.projection.approvalCancelled");
   return `${target}${statusLabel}`;
 }
 

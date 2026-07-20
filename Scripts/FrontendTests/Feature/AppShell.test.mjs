@@ -62,8 +62,8 @@ test("app shell derives integrated workspace surfaces across responsive modes", 
     workflowPanelLayout: "inline",
     showChatWorkflowPanelAction: false,
   });
-  expect(readWorkflowPanelWidth(desktop)).toBe(302);
-  expect(readWorkflowPanelWidth(wide)).toBe(302);
+  expect(readWorkflowPanelWidth()).toBe(302);
+  expect(readWorkflowPanelWidth("terminal")).toBe(420);
   expect(readAppShellResponsiveEntryPlan(mobile)).toEqual({
     sidebarCollapsed: null,
     rightPanelCollapsed: null,
@@ -85,6 +85,9 @@ test("app shell applies automatic panel defaults only when entering a responsive
     chatPanel: React.createElement("div", null, "Chat panel"),
     workflowPanel: React.createElement("div", null, "Workflow panel"),
     workflowDrawer: React.createElement("div", null, "Workflow drawer"),
+    terminalPanel: React.createElement("div", null, "Terminal panel"),
+    workflowDockTool: "execution",
+    onWorkflowDockToolChange: vi.fn(),
     sessionDrawerOpen: false,
     onSessionDrawerOpenChange: vi.fn(),
     workflowDrawerOpen: false,
@@ -131,6 +134,9 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
       chatPanel: React.createElement("div", null, "Chat panel"),
       workflowPanel: React.createElement("div", null, "Workflow panel"),
       workflowDrawer: React.createElement("div", null, "Workflow drawer"),
+      terminalPanel: React.createElement("div", null, "Terminal panel"),
+      workflowDockTool: "execution",
+      onWorkflowDockToolChange: vi.fn(),
       sessionDrawerOpen: true,
       onSessionDrawerOpenChange,
       workflowDrawerOpen: true,
@@ -155,6 +161,7 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
   );
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toHaveClass("bg-surface-panel");
   expect(document.querySelector("[data-workflow-dock-gutter]")).toBeInTheDocument();
+  expect(screen.queryByText("Terminal panel")).not.toBeInTheDocument();
   expect(screen.queryByText("Session drawer")).not.toBeInTheDocument();
   expect(screen.queryByText("Workflow drawer")).not.toBeInTheDocument();
   await waitFor(() => {
@@ -164,20 +171,26 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
 });
 
 test("desktop overlay opens from a floating capsule and switches horizontal tabs", () => {
-  renderWithFrontendProviders(
-    React.createElement(AppShell, {
+  function DockHarness() {
+    const [workflowDockTool, setWorkflowDockTool] = React.useState("execution");
+    return React.createElement(AppShell, {
       sessionPanel: React.createElement("div", null, "Session panel"),
       sessionDrawer: React.createElement("div", null, "Session drawer"),
       chatPanel: React.createElement("div", null, "Chat panel"),
       workflowPanel: React.createElement(ThinkingTimeline, { presentation: "dock" }),
       workflowDrawer: React.createElement("div", null, "Workflow drawer"),
+      terminalPanel: React.createElement("div", { "data-terminal-runtime": "" }, "Live terminal"),
+      workflowDockTool,
+      onWorkflowDockToolChange: setWorkflowDockTool,
       sessionDrawerOpen: false,
       onSessionDrawerOpenChange: vi.fn(),
       workflowDrawerOpen: false,
       onWorkflowDrawerOpenChange: vi.fn(),
       responsiveMode: responsiveMode("desktop"),
-    }),
-  );
+    });
+  }
+
+  renderWithFrontendProviders(React.createElement(DockHarness));
 
   const dock = document.querySelector("[data-workflow-dock]");
   const toggle = document.querySelector("[data-workflow-dock-toggle]");
@@ -229,15 +242,15 @@ test("desktop overlay opens from a floating capsule and switches horizontal tabs
   const selectedTerminalTab = screen.getByRole("tab", { name: "终端" });
   expect(selectedTerminalTab).toHaveAttribute("aria-selected", "true");
   expect(selectedTerminalTab).toHaveClass("flex-1", "bg-surface-raised", "text-content-primary");
-  expect(document.querySelector("[data-workflow-dock-placeholder='terminal']")).toBeInTheDocument();
+  expect(document.querySelector("[data-terminal-dock='dock']")).toBeInTheDocument();
+  expect(document.querySelector("[data-terminal-runtime]")).toHaveTextContent("Live terminal");
   expect(document.querySelector("[data-workflow-dock-tabs-list]")).toHaveClass("rounded-full", "bg-surface-subtle");
-  expect(document.querySelector("[data-workflow-dock-empty-state]")).toHaveTextContent("终端功能待定");
   expect(screen.queryByRole("button", { name: "放大查看" })).not.toBeInTheDocument();
   expect(document.querySelector("[data-workflow-window-controls-cover]")).toContainElement(collapseButtonAfterReopen);
 
   act(() => selectedTerminalTab.click());
   expect(screen.getByRole("tab", { name: "终端" })).toHaveAttribute("aria-selected", "true");
-  expect(document.querySelector("[data-workflow-dock-placeholder='terminal']")).toBeInTheDocument();
+  expect(document.querySelector("[data-terminal-runtime]")).toBeInTheDocument();
 
   act(() => collapseButtonAfterReopen.click());
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
@@ -249,6 +262,36 @@ test("desktop overlay opens from a floating capsule and switches horizontal tabs
   expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "终端" })).toHaveAttribute("aria-selected", "true");
   expect(document.querySelector("[data-workflow-panel-surface]")).toBeInTheDocument();
+});
+
+test("the responsive right drawer switches from execution to the live terminal", async () => {
+  function DrawerHarness() {
+    const [workflowDockTool, setWorkflowDockTool] = React.useState("execution");
+    const [workflowDrawerOpen, setWorkflowDrawerOpen] = React.useState(true);
+    return React.createElement(AppShell, {
+      sessionPanel: React.createElement("div", null, "Session panel"),
+      sessionDrawer: React.createElement("div", null, "Session drawer"),
+      chatPanel: React.createElement("div", null, "Chat panel"),
+      workflowPanel: React.createElement(ThinkingTimeline, { presentation: "dock" }),
+      workflowDrawer: React.createElement(ThinkingTimeline, { presentation: "panel", hidePanelTitle: true }),
+      terminalPanel: React.createElement("div", { "data-terminal-runtime": "" }, "Live terminal"),
+      workflowDockTool,
+      onWorkflowDockToolChange: setWorkflowDockTool,
+      sessionDrawerOpen: false,
+      onSessionDrawerOpenChange: vi.fn(),
+      workflowDrawerOpen,
+      onWorkflowDrawerOpenChange: setWorkflowDrawerOpen,
+      responsiveMode: responsiveMode("mobile"),
+    });
+  }
+
+  renderWithFrontendProviders(React.createElement(DrawerHarness));
+
+  expect(await screen.findByRole("tab", { name: "执行" })).toHaveAttribute("aria-selected", "true");
+  act(() => screen.getByRole("tab", { name: "终端" }).click());
+  expect(await screen.findByText("Live terminal")).toBeInTheDocument();
+  expect(document.querySelector("[data-terminal-dock='drawer']")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "终端" })).toHaveAttribute("aria-selected", "true");
 });
 
 function responsiveMode(viewport) {

@@ -1,4 +1,4 @@
-import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import { createToolProcessFailureResponse } from "./AgentToolProcessEnvelope.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { readAbortMessage } from "../Core/AgentCancellation.js";

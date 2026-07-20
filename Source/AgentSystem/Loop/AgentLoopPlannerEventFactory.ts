@@ -73,13 +73,8 @@ export class AgentLoopPlannerEventFactory {
         data: {
           mode: route.mode,
           objective: route.objective,
-          needsFreshEvidence: route.needsFreshEvidence,
-          needsWorkspaceRead: route.needsWorkspaceRead,
-          needsSideEffect: route.needsSideEffect,
-          risk: route.risk,
           preferredTools: [...route.preferredTools],
           discoveryQueries: [...route.discoveryQueries],
-          reason: route.reason,
           loadedTools: loadedToolNames === "all" ? "all" : [...loadedToolNames],
           expectedOutputMode: rootCommand?.outputMode,
         },
@@ -103,10 +98,11 @@ export class AgentLoopPlannerEventFactory {
           context,
           data: {
             stage: event.stage,
-            selectedAction: event.selectedAction,
+            durationMs: event.durationMs,
+            selectedAction: event.preparation?.initialAction.kind,
             repaired: event.repaired,
-            turnUnderstanding: event.turnUnderstanding
-              ? projectTurnUnderstandingForEvent(event.turnUnderstanding)
+            turnUnderstanding: event.preparation?.turnUnderstanding
+              ? projectTurnUnderstandingForEvent(event.preparation.turnUnderstanding)
               : undefined,
           },
         };
@@ -116,6 +112,7 @@ export class AgentLoopPlannerEventFactory {
           context,
           data: {
             stage: event.stage,
+            durationMs: event.durationMs,
             message: event.message,
           },
         };

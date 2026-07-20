@@ -15,8 +15,8 @@ import {
   resolveUploadsConfig,
   resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
-
 import { mergeActionPlannerClientConfig } from "../Defaults/AgentPlannerDefaults.js";
+
 export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemConfig {
   return {
     ...config,
@@ -98,11 +98,11 @@ function projectResolvedActionPlanner(config: AgentSystemConfig): NonNullable<Ag
     MaxRepairAttempts: configured?.MaxRepairAttempts ?? defaults.MaxRepairAttempts,
     Evidence: { ...defaults.Evidence, ...configured?.Evidence },
     Client: projectResolvedPlannerClient(sharedClient),
-    TurnUnderstandingClient: projectResolvedPlannerClient(
-      mergeActionPlannerClientConfig(sharedClient, configured?.TurnUnderstandingClient),
-    ),
     PlanningClient: projectResolvedPlannerClient(
       mergeActionPlannerClientConfig(sharedClient, configured?.PlanningClient),
+    ),
+    FinalAnswerClient: projectResolvedPlannerClient(
+      mergeActionPlannerClientConfig(sharedClient, configured?.FinalAnswerClient),
     ),
   };
 }
@@ -110,7 +110,6 @@ function projectResolvedActionPlanner(config: AgentSystemConfig): NonNullable<Ag
 function projectResolvedPlannerClient(client: ReturnType<typeof mergeActionPlannerClientConfig>) {
   return {
     ModelProviderId: client.ModelProviderId,
-    Provider: client.Provider ?? AgentDefaults.ActionPlanner.Client.Provider,
     Temperature: client.Temperature ?? AgentDefaults.ActionPlanner.Client.Temperature,
     MaxTokens: client.MaxTokens ?? AgentDefaults.ActionPlanner.Client.MaxTokens,
   };
@@ -136,6 +135,22 @@ function projectResolvedToolExecution(config: AgentSystemConfig): NonNullable<Ag
       AgentDefaults.ToolExecution.TimeoutSeconds,
     MaxStdoutBytes: resolved.MaxStdoutBytes,
     MaxStderrBytes: resolved.MaxStderrBytes,
+    Environment: {
+      Inherit: resolved.Environment.Inherit,
+      IncludeOnly: [...resolved.Environment.IncludeOnly],
+      Exclude: [...resolved.Environment.Exclude],
+      Set: { ...resolved.Environment.Set },
+    },
+    Resources: {
+      MaxActive: resolved.Resources.MaxActive,
+      MaxBufferedBytes: resolved.Resources.MaxBufferedBytes,
+      MaxInputBytes: resolved.Resources.MaxInputBytes,
+      MaxWaitSeconds: resolved.Resources.MaxWaitSeconds,
+      IdleTtlSeconds: resolved.Resources.IdleTtlSeconds,
+      TerminalTtlSeconds: resolved.Resources.TerminalTtlSeconds,
+      SweepIntervalSeconds: resolved.Resources.SweepIntervalSeconds,
+      TerminationGraceSeconds: resolved.Resources.TerminationGraceSeconds,
+    },
   };
 }
 

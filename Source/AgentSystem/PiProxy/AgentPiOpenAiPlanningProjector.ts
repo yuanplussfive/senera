@@ -21,14 +21,15 @@ export interface AgentPiOpenAiPlanningProjectionStats {
   planningInputTokenBudget: number;
 }
 
-interface AgentPiOpenAiPlanningProjectionLimits {
+export interface AgentPiOpenAiPlanningProjectionLimits {
   maxMessages: number;
   messageTokens: number;
   toolMessageTokens: number;
   textPartTokens: number;
   jsonTokens: number;
-  toolDescriptionTokens: number;
-  toolSchemaTokens: number;
+  toolCatalogTokens: number;
+  minToolCardTokens: number;
+  maxToolCardTokens: number;
   planningInputTokenBudget: number;
 }
 
@@ -50,8 +51,11 @@ const PiPlanningBudgetPolicy = {
   maxToolMessageTokens: 6_000,
   minJsonTokens: 1_000,
   maxJsonTokens: 6_000,
-  minToolDescriptionTokens: 256,
-  maxToolDescriptionTokens: 1_500,
+  minToolCatalogTokens: 2_048,
+  maxToolCatalogTokens: 16_384,
+  minToolCardTokens: 256,
+  maxToolCardTokens: 2_048,
+  toolDescriptionRatio: 0.25,
 } as const;
 
 export class AgentPiOpenAiPlanningProjector {
@@ -59,7 +63,7 @@ export class AgentPiOpenAiPlanningProjector {
   private readonly tokenProjector: AgentTokenProjector;
 
   constructor(options: AgentPiOpenAiPlanningProjectorOptions) {
-    this.limits = resolvePlanningProjectionLimits(options.modelProvider);
+    this.limits = resolveAgentPiOpenAiPlanningProjectionLimits(options.modelProvider);
     this.tokenProjector = new AgentTokenProjector(options.modelProvider.Model);
   }
 
@@ -72,7 +76,6 @@ export class AgentPiOpenAiPlanningProjector {
     return {
       model: request.model,
       messages: messages.items,
-      tools: (request.tools ?? []).map((tool) => this.projectToolForPlanning(tool, stats)),
       toolTranscript: this.buildToolTranscript(request.messages, stats),
       toolChoice: request.tool_choice,
       parallelToolCalls: request.parallel_tool_calls,
@@ -90,12 +93,23 @@ export class AgentPiOpenAiPlanningProjector {
     };
   }
 
-  projectToolCard(tool: PiOpenAiTool): AgentPiToolCard {
-    return {
-      name: tool.function.name,
-      description: tool.function.description,
-      parameters: tool.function.parameters,
-    };
+  projectToolCards(tools: readonly PiOpenAiTool[]): AgentPiToolCard[] {
+    const cardTokens = clampInteger(
+      Math.floor(this.limits.toolCatalogTokens / Math.max(1, tools.length)),
+      this.limits.minToolCardTokens,
+      this.limits.maxToolCardTokens,
+    );
+    const descriptionTokens = Math.max(1, Math.floor(cardTokens * PiPlanningBudgetPolicy.toolDescriptionRatio));
+    const schemaTokens = Math.max(1, cardTokens - descriptionTokens);
+    return tools.map((tool) => {
+      const stats: ProjectionStatsAccumulator = { truncatedTextFields: 0, truncatedJsonFields: 0 };
+      const projected = this.projectToolForPlanning(tool, stats, { descriptionTokens, schemaTokens });
+      return {
+        name: projected.function.name,
+        description: projected.function.description,
+        parameters: projected.function.parameters,
+      };
+    });
   }
 
   private projectMessages(
@@ -179,15 +193,19 @@ export class AgentPiOpenAiPlanningProjector {
     });
   }
 
-  private projectToolForPlanning(tool: PiOpenAiTool, stats: ProjectionStatsAccumulator): PiOpenAiTool {
+  private projectToolForPlanning(
+    tool: PiOpenAiTool,
+    stats: ProjectionStatsAccumulator,
+    limits: { descriptionTokens: number; schemaTokens: number },
+  ): PiOpenAiTool {
     return {
       ...tool,
       function: {
         ...tool.function,
         description: tool.function.description
-          ? this.previewTextField(tool.function.description, this.limits.toolDescriptionTokens, stats)
+          ? this.previewTextField(tool.function.description, limits.descriptionTokens, stats)
           : undefined,
-        parameters: this.projectUnknownForPlanning(tool.function.parameters, this.limits.toolSchemaTokens, stats) as
+        parameters: this.projectUnknownForPlanning(tool.function.parameters, limits.schemaTokens, stats) as
           Record<string, unknown> | undefined,
       },
     };
@@ -257,7 +275,6 @@ export class AgentPiOpenAiPlanningProjector {
     const parsed = readRecordFromJson(content);
     return {
       status: readToolObservationStatus(parsed),
-      content: this.previewTextField(content, this.limits.toolMessageTokens, stats),
       summary:
         typeof parsed?.summary === "string"
           ? this.previewTextField(parsed.summary, this.limits.toolMessageTokens, stats)
@@ -276,7 +293,7 @@ export class AgentPiOpenAiPlanningProjector {
   }
 }
 
-function resolvePlanningProjectionLimits(
+export function resolveAgentPiOpenAiPlanningProjectionLimits(
   provider: Pick<ResolvedAgentModelProviderConfig, "ContextWindowTokens" | "MaxOutputTokens">,
 ): AgentPiOpenAiPlanningProjectionLimits {
   const contextWindowTokens =
@@ -315,16 +332,13 @@ function resolvePlanningProjectionLimits(
       PiPlanningBudgetPolicy.minJsonTokens,
       PiPlanningBudgetPolicy.maxJsonTokens,
     ),
-    toolDescriptionTokens: clampInteger(
-      Math.floor(planningInputTokenBudget / 64),
-      PiPlanningBudgetPolicy.minToolDescriptionTokens,
-      PiPlanningBudgetPolicy.maxToolDescriptionTokens,
+    toolCatalogTokens: clampInteger(
+      Math.floor(planningInputTokenBudget / 4),
+      PiPlanningBudgetPolicy.minToolCatalogTokens,
+      PiPlanningBudgetPolicy.maxToolCatalogTokens,
     ),
-    toolSchemaTokens: clampInteger(
-      Math.floor(planningInputTokenBudget / 16),
-      PiPlanningBudgetPolicy.minJsonTokens,
-      PiPlanningBudgetPolicy.maxJsonTokens,
-    ),
+    minToolCardTokens: PiPlanningBudgetPolicy.minToolCardTokens,
+    maxToolCardTokens: PiPlanningBudgetPolicy.maxToolCardTokens,
   };
 }
 

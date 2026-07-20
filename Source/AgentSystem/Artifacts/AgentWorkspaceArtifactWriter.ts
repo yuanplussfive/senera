@@ -8,7 +8,7 @@ import type {
   ToolWorkspaceSnapshot,
 } from "../Types/ToolRuntimeTypes.js";
 import { assertInsideRoot, toPosixPath } from "./AgentArtifactLocator.js";
-import { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
+import type { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
 
 export interface AgentWorkspaceArtifactWriterOptions {
   workspaceRoot: string;
@@ -16,6 +16,7 @@ export interface AgentWorkspaceArtifactWriterOptions {
   workspaceCapture: ToolWorkspaceCaptureResult;
   artifactDir: string;
   files: Record<string, string>;
+  fileWriter: AgentArtifactFileWriter;
 }
 
 export interface WrittenWorkspaceArtifacts {
@@ -36,11 +37,7 @@ interface WorkspaceContentWriteResult {
 }
 
 export class AgentWorkspaceArtifactWriter {
-  private readonly fileWriter: AgentArtifactFileWriter;
-
-  constructor(private readonly options: AgentWorkspaceArtifactWriterOptions) {
-    this.fileWriter = new AgentArtifactFileWriter(options.workspaceRoot);
-  }
+  constructor(private readonly options: AgentWorkspaceArtifactWriterOptions) {}
 
   async write(): Promise<WrittenWorkspaceArtifacts> {
     const before = await this.writeSnapshotContents({
@@ -57,7 +54,7 @@ export class AgentWorkspaceArtifactWriter {
       this.annotatePatchReference(change, before.byPath, after.byPath),
     );
     const patchText = this.buildUnifiedPatch(changes, before.byPath, after.byPath);
-    await this.fileWriter.writeText(this.options.files.workspacePatch, patchText, Number.MAX_SAFE_INTEGER);
+    await this.options.fileWriter.writeText(this.options.files.workspacePatch, patchText, Number.MAX_SAFE_INTEGER);
 
     return {
       before: before.snapshot,
@@ -110,7 +107,7 @@ export class AgentWorkspaceArtifactWriter {
       path.resolve(rootDir, relativePath),
       `workspace artifact 内容路径超出目录：${entry.path}`,
     );
-    await this.fileWriter.writeText(artifactPath, entry.content.text, Number.MAX_SAFE_INTEGER);
+    await this.options.fileWriter.writeText(artifactPath, entry.content.text, Number.MAX_SAFE_INTEGER);
 
     return {
       ...entry,

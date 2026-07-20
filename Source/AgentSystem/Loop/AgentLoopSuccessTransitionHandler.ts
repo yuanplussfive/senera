@@ -1,7 +1,7 @@
 import { AgentEventKinds } from "../Events/AgentEvent.js";
 import { createAssistantMessageId } from "../Core/AgentIds.js";
 import { matchByKind } from "../Core/AgentMatch.js";
-import { routeInteractionCommand, renderPromptCommand, runPiTurnCommand } from "./AgentLoopCommandBuilder.js";
+import { renderPromptCommand, runPiTurnCommand } from "./AgentLoopCommandBuilder.js";
 import type { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import type {
   AgentLoopCommandSucceeded,
@@ -14,24 +14,14 @@ export class AgentLoopSuccessTransitionHandler {
 
   handle(state: RunningAgentLoopMachineState, output: AgentLoopCommandSucceeded): AgentLoopTransition {
     return matchByKind(output, {
-      turn_understood: (entry) => {
-        const nextState: RunningAgentLoopMachineState = {
-          ...state,
-          turnUnderstanding: entry.turnUnderstanding,
-        };
-
-        return {
-          state: nextState,
-          command: routeInteractionCommand(nextState),
-          events: [],
-        };
-      },
-      interaction_routed: (entry) => {
+      interaction_prepared: (entry) => {
         const nextState: RunningAgentLoopMachineState = {
           ...state,
           loadedToolNames: entry.loadedToolNames,
           rootCommand: entry.rootCommand,
+          interactionRoute: entry.route,
           turnUnderstanding: entry.turnUnderstanding,
+          initialAction: entry.initialAction,
           activeSkills: [...entry.activeSkills],
         };
 
@@ -74,6 +64,7 @@ export class AgentLoopSuccessTransitionHandler {
           usage: entry.usage,
           conversationEntries: [...state.conversationEntries, ...entry.conversationEntries],
           turnUnderstanding: state.turnUnderstanding,
+          loadedToolNames: state.loadedToolNames === "all" ? "all" : [...state.loadedToolNames],
           stepTraces: [...state.stepTraces, ...entry.stepTraces],
         },
       },

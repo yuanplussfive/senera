@@ -74,6 +74,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
       historyReplayBuffers: {},
       historyStepBuffers: {},
       historyEventRunIds: {},
+      historyActiveRequestIds: {},
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},

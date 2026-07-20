@@ -7,6 +7,8 @@ import {
 } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
 import { previewAgentText } from "../Text/AgentTextProjection.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
+import { selectJsonValues } from "../Artifacts/AgentArtifactJsonSelector.js";
+import type { ToolObservationContinuationManifest, ToolObservationManifest } from "../Types/PluginManifestTypes.js";
 
 const ToolObservationTextLimits = {
   lineValueChars: 2_000,
@@ -20,10 +22,13 @@ const ToolObservationTokenLimits = {
   lineValueTokens: 500,
   jsonStringTokens: 500,
   projectionTokens: 4_000,
+  resultTokens: 4_000,
+  maxConfiguredResultTokens: 12_000,
 } as const;
 
 export interface AgentToolObservationRenderOptions {
   model?: string;
+  observation?: ToolObservationManifest;
 }
 
 export function projectLedgerEvidenceForTimeline(record: PlannerEvidenceRecord): Record<string, unknown> {
@@ -51,12 +56,13 @@ export function renderOpenAiToolObservationContent(
   item: Record<string, unknown>,
   options: AgentToolObservationRenderOptions = {},
 ): string {
-  return JSON.stringify(projectOpenAiToolObservation(item, createProjectionContext(options)));
+  return JSON.stringify(projectOpenAiToolObservation(item, createProjectionContext(options), options.observation));
 }
 
 export function projectOpenAiToolObservation(
   item: Record<string, unknown>,
   context: AgentToolObservationProjectionContext = createProjectionContext(),
+  observationPolicy?: ToolObservationManifest,
 ): Record<string, unknown> {
   const artifact = readRecord(item.artifact);
   const structuredSummary = readRecord(artifact?.structuredSummary);
@@ -68,19 +74,70 @@ export function projectOpenAiToolObservation(
     call_id: item.callId,
     status: readObservationStatus(item, response),
     arguments: projectOpenAiObservationValueWithContext(item.arguments, context),
+    result: projectOpenAiResult(item.result, context, observationPolicy),
+    continuation: projectOpenAiContinuation(item.result, observationPolicy?.Continuation),
     headline: projectOpenAiObservationValueWithContext(structuredSummary?.headline, context),
     summary: projectOpenAiObservationValueWithContext(structuredSummary?.summary ?? artifact?.summary, context),
-    projection: projectOpenAiProjection(artifact?.projection, context),
+    projection:
+      observationPolicy?.IncludeArtifactProjection === false
+        ? undefined
+        : projectOpenAiProjection(artifact?.projection, context),
     summary_facts: projectOpenAiObservationValueWithContext(structuredSummary?.facts, context),
     limitations: projectOpenAiObservationValueWithContext(structuredSummary?.limitations, context),
     retrieval: projectOpenAiObservationValueWithContext(structuredSummary?.retrieval, context),
     error: projectOpenAiObservationValueWithContext(item.error ?? response?.error, context),
-    result: artifact ? undefined : projectOpenAiObservationValueWithContext(item.result, context),
     artifact_uri: item.artifactUri ?? artifact?.artifactUri,
     evidence: evidence.map(projectOpenAiEvidence),
     delta: readArray(artifact?.delta).map(projectOpenAiDelta),
     workspace: projectOpenAiObservationValueWithContext(artifact?.workspace, context),
   });
+}
+
+function projectOpenAiResult(
+  value: unknown,
+  context: AgentToolObservationProjectionContext,
+  policy: ToolObservationManifest | undefined,
+): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+  const configured = policy?.MaxTokens ?? ToolObservationTokenLimits.resultTokens;
+  const tokenLimit = Math.min(
+    ToolObservationTokenLimits.maxConfiguredResultTokens,
+    Math.max(1, Math.floor(configured)),
+  );
+  return context.tokenProjector
+    ? context.tokenProjector.previewJson(value, tokenLimit)
+    : projectOpenAiObservationValueWithContext(value, context);
+}
+
+function projectOpenAiContinuation(
+  result: unknown,
+  policy: ToolObservationContinuationManifest | undefined,
+): Record<string, unknown> | undefined {
+  if (!policy) {
+    return undefined;
+  }
+  const handle = readContinuationValue(result, policy.Handle);
+  if (handle === undefined) {
+    return undefined;
+  }
+  const state = policy.State ? readContinuationValue(result, policy.State) : undefined;
+  return compactObject({
+    kind: policy.Kind,
+    handle,
+    cursor: policy.Cursor ? readContinuationValue(result, policy.Cursor) : undefined,
+    state,
+    terminal:
+      state === undefined || !policy.TerminalStates
+        ? undefined
+        : policy.TerminalStates.some((terminalState) => terminalState === String(state)),
+  });
+}
+
+function readContinuationValue(root: unknown, selector: string): string | number | boolean | undefined {
+  const value = selectJsonValues(root, selector).at(0);
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : undefined;
 }
 
 function renderToolObservationItem(item: Record<string, unknown>): string {
@@ -157,6 +214,7 @@ function projectOpenAiEvidence(value: unknown): unknown {
     return projectOpenAiObservationValue(value);
   }
 
+  const plannerMemory = readRecord(record.plannerMemory);
   return compactObject({
     evidence_uri: record.evidenceUri,
     kind: record.kind,
@@ -165,6 +223,8 @@ function projectOpenAiEvidence(value: unknown): unknown {
     label: projectOpenAiObservationValue(record.label),
     source: projectOpenAiObservationValue(record.source),
     confidence: record.confidence,
+    artifact_uri: plannerMemory?.artifactUri,
+    artifact_refs: projectOpenAiObservationValue(plannerMemory?.artifactRefs),
     facts: readArray(record.slots).map((slot) => {
       const slotRecord = readRecord(slot);
       return slotRecord

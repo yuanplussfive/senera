@@ -7,6 +7,7 @@ export type {
   HistoryReplayEntry,
   MessageRole,
   ApprovalRunRecord,
+  InteractionInputRunRecord,
   RunRecord,
   SessionRecord,
   StoreState,

@@ -15,12 +15,16 @@ import type {
 import { InteractionRunMode } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import type { AgentPromptRootCommandOptions } from "../../../Source/AgentSystem/Prompt/AgentPromptContextTypes.js";
 import type { LoadedToolsState } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchRuntimeTypes.js";
+import type { AgentToolSearchCurrentSetPolicy } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchRuntimeTypes.js";
 import type { AgentLanguageModelMessage } from "../../../Source/AgentSystem/ModelEndpoints/AgentLanguageModel.js";
+import { AgentPiSessionCacheDefaults } from "../../../Source/AgentSystem/Pi/AgentPiSessionCachePolicy.js";
+import type { ParsedPiControllerAction } from "../../../Source/AgentSystem/PiProxy/AgentPiAssistantMessageSchema.js";
 import {
   createActionPlanInput,
   createInteractionRoute,
   createTurnUnderstanding,
 } from "../Support/AgentTestFixtures.js";
+import { AgentActionPlannerValidationError } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerSchema.js";
 
 describe("Planning command handler behavior", () => {
   test("routes tool interactions through dynamic discovery, skill recommendations, and Pi root projection", async () => {
@@ -32,44 +36,63 @@ describe("Planning command handler behavior", () => {
       agentLoopConfig: dynamicLoopConfig,
     });
 
-    const result = await handler.routeInteraction({
-      kind: "route_interaction",
+    const result = await handler.prepareInteraction({
+      kind: "prepare_interaction",
       requestId: "request-1",
       step: 2,
       input: "Inspect the release workflow",
       messages: [{ role: "user", content: "fallback message" }],
       conversationEntries: [],
-      loadedToolNames: [],
+      loadedToolNames: ["WeatherTool"],
       plannerLedger: EmptyActionPlannerLedger,
-      activeSkills: [],
-      turnUnderstanding: createTurnUnderstanding("Inspect the release workflow"),
     });
 
     expect(result).toMatchObject({
       kind: "succeeded",
       output: {
-        kind: "interaction_routed",
-        loadedToolNames: ["WorkspaceReadFile", "ArtifactMemoryReadTool"],
+        kind: "interaction_prepared",
+        loadedToolNames: ["WeatherTool", "ArtifactMemoryReadTool", "WorkspaceReadFile"],
       },
     });
     const output = result.output;
-    if (output.kind !== "interaction_routed") {
-      throw new Error("Expected interaction_routed output.");
+    if (output.kind !== "interaction_prepared") {
+      throw new Error("Expected interaction_prepared output.");
     }
     expect(output.activeSkills.map((skill) => [skill.name, skill.score])).toEqual([
       ["ReleaseSkill", 0.9],
       ["EvidenceSkill", 0.7],
     ]);
     expect(output.rootCommand?.authority).toBe("senera_runtime_root");
+    expect(output.rootCommand?.action).toBe("use_tools");
+    expect(output.initialAction).toMatchObject({
+      kind: "CallTools",
+      calls: [{ toolName: "WorkspaceReadFile" }],
+    });
+    expect(fixture.candidateToolSets).toEqual([
+      [
+        {
+          name: "WeatherTool",
+          description: "WeatherTool description",
+          parameters: { type: "object", properties: {} },
+        },
+        {
+          name: "ArtifactMemoryReadTool",
+          description: "ArtifactMemoryReadTool description",
+          parameters: { type: "object", properties: {} },
+        },
+      ],
+    ]);
     expect(fixture.resolveRequests.map((request) => request.preferredTools)).toEqual([
+      ["ArtifactMemoryReadTool"],
       ["WorkspaceReadFile"],
       ["WorkspaceReadFile", "ArtifactMemoryReadTool"],
     ]);
+    expect(fixture.resolveRequests.map((request) => request.currentSetPolicy)).toEqual(["retain", "retain", "retain"]);
     expect(fixture.autoSearches).toEqual([
       {
         requestId: "request-1",
         input: "Inspect the release workflow",
-        loadedToolNames: ["WorkspaceReadFile", "ArtifactMemoryReadTool"],
+        loadedToolNames: ["WeatherTool", "ArtifactMemoryReadTool", "WorkspaceReadFile"],
       },
     ]);
   });
@@ -81,6 +104,7 @@ describe("Planning command handler behavior", () => {
         preferredTools: [],
         discoveryQueries: [],
       }),
+      skills: [],
     });
     const handler = new AgentPlanningCommandHandler({
       runtime: fixture.runtime,
@@ -89,8 +113,8 @@ describe("Planning command handler behavior", () => {
       agentLoopConfig: dynamicLoopConfig,
     });
 
-    const result = await handler.routeInteraction({
-      kind: "route_interaction",
+    const result = await handler.prepareInteraction({
+      kind: "prepare_interaction",
       requestId: "request-2",
       step: 1,
       input: "Explain the current state",
@@ -106,64 +130,200 @@ describe("Planning command handler behavior", () => {
       ],
       loadedToolNames: [],
       plannerLedger: EmptyActionPlannerLedger,
-      activeSkills: [],
     });
 
     expect(result).toMatchObject({
       output: {
-        kind: "interaction_routed",
+        kind: "interaction_prepared",
         loadedToolNames: [],
       },
     });
     expect(fixture.contextMessages[0]).toEqual([{ role: "user", content: "materialized history" }]);
     expect(fixture.resolveRequests).toEqual([]);
     expect(fixture.autoSearches).toEqual([]);
+    expect(fixture.candidateToolSets).toEqual([[]]);
+  });
+
+  test("promotes a registered dynamic tool once when preparation selected it before activation", async () => {
+    const fixture = createRuntimeFixture({
+      skills: [],
+      registeredToolNames: ["ToolSearchTool", "ShellCommandTool"],
+      promoteToolName: "ShellCommandTool",
+      initialAction: {
+        kind: "CallTools",
+        preface: "Calling the external API.",
+        calls: [
+          {
+            toolName: "ShellCommandTool",
+            purpose: "Call the user-selected API endpoint.",
+            required: true,
+          },
+        ],
+      },
+    });
+    const handler = new AgentPlanningCommandHandler({
+      runtime: fixture.runtime,
+      eventFactory: new AgentLoopEventFactory(),
+      actionPlannerContextBuilder: fixture.contextBuilder,
+      agentLoopConfig: dynamicLoopConfig,
+    });
+
+    const result = await handler.prepareInteraction({
+      kind: "prepare_interaction",
+      requestId: "request-promote-shell",
+      step: 1,
+      input: "Call an external model API with PowerShell",
+      messages: [],
+      conversationEntries: [],
+      loadedToolNames: ["ToolSearchTool"],
+      plannerLedger: EmptyActionPlannerLedger,
+    });
+
+    expect(fixture.candidateToolSets.map((tools) => tools.map((tool) => readToolName(tool)))).toEqual([
+      ["ToolSearchTool"],
+      ["ToolSearchTool", "ShellCommandTool"],
+    ]);
+    expect(result).toMatchObject({
+      output: {
+        kind: "interaction_prepared",
+        loadedToolNames: ["ToolSearchTool", "ShellCommandTool"],
+        initialAction: {
+          calls: [{ toolName: "ShellCommandTool" }],
+        },
+      },
+    });
   });
 });
 
 const dynamicLoopConfig: ResolvedAgentLoopConfig = {
   LoadedTools: "dynamic",
-  PiSessionCreateTimeoutSeconds: 20,
-  PiSessionCreateTimeoutMs: 20_000,
-  PiSessions: { RootDir: ".senera/pi-sessions" },
+  PiTurnLeaseTimeoutSeconds: 20,
+  PiTurnLeaseTimeoutMs: 20_000,
+  RunSettlementTimeoutSeconds: 15,
+  RunSettlementTimeoutMs: 15_000,
+  PiSessions: {
+    RootDir: ".senera/pi-sessions",
+    MaxCachedSessions: AgentPiSessionCacheDefaults.Capacity,
+    Compaction: {
+      Enabled: true,
+      TriggerRatio: 0.8,
+      HardLimitRatio: 0.95,
+      TargetRatio: 0.5,
+      SummaryMaxTokens: 4096,
+      TimeoutSeconds: 120,
+      TimeoutMs: 120_000,
+      UnknownContextWindowTokens: 128_000,
+      UnknownModelOutputTokens: 8_192,
+    },
+  },
 };
 
 function createRuntimeFixture(
   options: {
     route?: ReturnType<typeof createInteractionRoute>;
+    skills?: AgentActivatedSkill[];
+    registeredToolNames?: string[];
+    promoteToolName?: string;
+    initialAction?: ParsedPiControllerAction;
   } = {},
 ) {
   const contextMessages: AgentLanguageModelMessage[][] = [];
-  const resolveRequests: Array<{ preferredTools: readonly string[] }> = [];
+  const candidateToolSets: unknown[][] = [];
+  const resolveRequests: Array<{
+    preferredTools: readonly string[];
+    currentSetPolicy?: AgentToolSearchCurrentSetPolicy;
+  }> = [];
   const autoSearches: Array<{ requestId: string; input: string; loadedToolNames: "all" | string[] }> = [];
   const route = options.route ?? createInteractionRoute();
+  const initialAction: ParsedPiControllerAction =
+    options.initialAction ??
+    (route.mode === InteractionRunMode.DirectResponse
+      ? { kind: "FinalAnswer", answerPlan: ["Answer the latest request."] }
+      : {
+          kind: "CallTools",
+          preface: "Inspecting the workspace.",
+          calls: [
+            {
+              toolName: "WorkspaceReadFile",
+              purpose: "Read the workspace file.",
+              required: true,
+            },
+          ],
+        });
   const initialSkill = skill("ReleaseSkill", 0.5, ["ArtifactMemoryReadTool"]);
   const enrichedSkill = skill("ReleaseSkill", 0.9, ["ArtifactMemoryReadTool"]);
   const evidenceSkill = skill("EvidenceSkill", 0.7, ["ArtifactMemoryReadTool"]);
   let activationCount = 0;
+  let preparationCount = 0;
+  const registeredToolNames = options.registeredToolNames ?? [
+    "WeatherTool",
+    "WorkspaceReadFile",
+    "ArtifactMemoryReadTool",
+  ];
 
   const runtime = {
     services: {
       planning: {
-        understandTurn: async ({ input }: { input: ReturnType<typeof createActionPlanInput> }) => input,
-        routeWithInput: async ({ input }: { input: ReturnType<typeof createActionPlanInput> }) => ({
-          input: {
-            ...input,
-            turnUnderstanding: input.turnUnderstanding ?? createTurnUnderstanding(input.currentUserTurn.content),
-          },
-          route: projectInteractionRoute(route),
-        }),
+        prepareInteraction: async ({
+          input,
+          candidateTools = [],
+        }: {
+          input: ReturnType<typeof createActionPlanInput>;
+          candidateTools?: readonly unknown[];
+        }) => {
+          preparationCount += 1;
+          candidateToolSets.push(candidateTools.map((tool) => structuredClone(tool)));
+          if (options.promoteToolName && preparationCount === 1) {
+            throw new Error("Preparation selected an inactive registered tool.", {
+              cause: new AgentActionPlannerValidationError(
+                [`calls.0.toolName: ${options.promoteToolName} is not active`],
+                {
+                  initialAction: {
+                    kind: "CallTools",
+                    calls: [{ toolName: options.promoteToolName }],
+                  },
+                },
+              ),
+            });
+          }
+          return {
+            input: {
+              ...input,
+              turnUnderstanding: input.turnUnderstanding ?? createTurnUnderstanding(input.currentUserTurn.content),
+            },
+            route: projectInteractionRoute(route),
+            initialAction,
+          };
+        },
+      },
+      pi: {
+        planningToolCards: ({ visibleToolNames }: { visibleToolNames?: "all" | readonly string[] } = {}) =>
+          (visibleToolNames === "all" ? registeredToolNames : (visibleToolNames ?? [])).map((name) => ({
+            name,
+            description: `${name} description`,
+            parameters: { type: "object", properties: {} },
+          })),
       },
       retrieval: {
         resolvePlannedLoadedTools: (request: {
           input: string;
           loadedTools: AgentLoadedToolsConfig;
           currentLoadedTools?: LoadedToolsState;
+          currentSetPolicy?: AgentToolSearchCurrentSetPolicy;
           preferredTools?: readonly string[];
           queries?: readonly string[];
         }) => {
-          resolveRequests.push({ preferredTools: request.preferredTools ?? [] });
-          return [...new Set(request.preferredTools ?? [])];
+          resolveRequests.push({
+            preferredTools: request.preferredTools ?? [],
+            currentSetPolicy: request.currentSetPolicy,
+          });
+          const current =
+            request.currentSetPolicy === "retain" && request.currentLoadedTools !== "all"
+              ? (request.currentLoadedTools ?? [])
+              : [];
+          return [...new Set([...current, ...(request.preferredTools ?? [])])].filter((name) =>
+            registeredToolNames.includes(name),
+          );
         },
         rememberAutoSearch: (requestId: string, input: string, loadedToolNames: "all" | string[]) => {
           autoSearches.push({ requestId, input, loadedToolNames });
@@ -172,6 +332,7 @@ function createRuntimeFixture(
       promptContext: {
         plannerRoleplayPreset: async () => ({ enabled: false, activePresetName: null, documents: [] }),
         activateSkills: () => {
+          if (options.skills) return options.skills;
           activationCount += 1;
           return activationCount === 1 ? [initialSkill] : [enrichedSkill, evidenceSkill];
         },
@@ -209,7 +370,12 @@ function createRuntimeFixture(
     contextMessages,
     resolveRequests,
     autoSearches,
+    candidateToolSets,
   };
+}
+
+function readToolName(value: unknown): string {
+  return value && typeof value === "object" && "name" in value ? String(value.name) : "";
 }
 
 function skill(name: string, score: number, recommendedTools: string[]): AgentActivatedSkill {

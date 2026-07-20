@@ -19,7 +19,15 @@ export function createRunRecord(input: { requestId: string; startedAt: string; i
     decisionMode: "none",
     pendingToolArgsByName: {},
     approvals: [],
+    interactionInputs: [],
   };
+}
+
+export function syncRunActiveFlags(run: RunRecord): void {
+  const flags: NonNullable<RunRecord["activeFlags"]> = [];
+  if (run.approvals?.some((entry) => entry.status === "pending")) flags.push("waiting_for_approval");
+  if (run.interactionInputs?.some((entry) => entry.status !== "resolved")) flags.push("waiting_for_input");
+  run.activeFlags = flags.length > 0 ? flags : undefined;
 }
 
 export function touchRun(run: RunRecord): void {

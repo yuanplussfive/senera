@@ -26,6 +26,10 @@ export class AgentToolSearchUsageMemory {
     this.pendingSearches.set(requestId, [...entries, search]);
   }
 
+  finishRequest(requestId: string): void {
+    this.pendingSearches.delete(requestId);
+  }
+
   recordToolUsage(requestId: string, results: ExecutedToolCallResult[], turnUnderstanding?: TurnUnderstanding): void {
     if (!this.learningConfig.Enabled) {
       this.pendingSearches.delete(requestId);

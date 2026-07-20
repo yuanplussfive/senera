@@ -12,6 +12,7 @@ export interface AgentPluginConfigSnapshot {
 export interface AgentPluginConfigManagerOptions {
   workspaceRoot: string;
   configSnapshot: () => AgentSystemConfig;
+  onRuntimeConfigChanged?: () => void;
 }
 
 export class AgentPluginConfigManager {
@@ -25,7 +26,7 @@ export class AgentPluginConfigManager {
 
   updatePluginConfig(input: { pluginName: string; toml: string }): AgentPluginConfigSnapshot {
     const plugin = this.findPlugin(input.pluginName);
-    writePluginConfigToml(plugin.config.path, input.toml);
+    if (writePluginConfigToml(plugin.config.path, input.toml)) this.options.onRuntimeConfigChanged?.();
     return this.snapshot();
   }
 
@@ -35,7 +36,7 @@ export class AgentPluginConfigManager {
       enabled: input.enabled,
       toolName: input.toolName,
     });
-    writePluginConfigToml(plugin.config.path, toml);
+    if (writePluginConfigToml(plugin.config.path, toml)) this.options.onRuntimeConfigChanged?.();
     return this.snapshot();
   }
 

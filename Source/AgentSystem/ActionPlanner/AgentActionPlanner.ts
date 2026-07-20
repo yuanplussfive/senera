@@ -4,10 +4,10 @@ import { AgentActionPlannerModelClient, type AgentActionPlannerCoreClient } from
 import { summarizePlannerFailure } from "./AgentActionPlannerFailure.js";
 import type { AgentActionPlannerStageSink } from "./AgentActionPlannerTelemetry.js";
 import { AgentCancellationError, throwIfAborted } from "../Core/AgentCancellation.js";
-import { projectInteractionRoute, type AgentInteractionRouteResult } from "./AgentInteractionRouter.js";
-import { AgentActionPlannerUnderstanding } from "./AgentActionPlannerUnderstanding.js";
+import { projectPreparedInteractionRoute, type AgentInteractionRouteResult } from "./AgentInteractionRouter.js";
 import { isActionPlannerReady } from "./AgentActionPlannerReadiness.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentPiToolCard } from "../PiProxy/AgentPiAssistantMessageTypes.js";
 
 export type { AgentActionCapabilityNeed, AgentActionDecision, AgentActionKind } from "./AgentActionPlannerTypes.js";
 export {
@@ -18,9 +18,7 @@ export {
 } from "./AgentActionPlannerTypes.js";
 
 export class AgentActionPlanner {
-  private readonly turnUnderstandingClient: AgentActionPlannerCoreClient;
   private readonly planningClient: AgentActionPlannerCoreClient;
-  private readonly understanding: AgentActionPlannerUnderstanding;
 
   constructor(
     private readonly config: ResolvedAgentActionPlannerConfig,
@@ -29,70 +27,60 @@ export class AgentActionPlanner {
     dependencies: AgentActionPlannerDependencies = {},
   ) {
     const createClient = dependencies.createClient ?? createAgentActionPlannerClient;
-    this.turnUnderstandingClient = createClient(model, config.TurnUnderstandingClient, config.MaxRepairAttempts);
     this.planningClient = createClient(model, config.PlanningClient, config.MaxRepairAttempts);
-    this.understanding = new AgentActionPlannerUnderstanding(this.turnUnderstandingClient, config.MaxRepairAttempts);
   }
 
-  async understandTurn(options: {
+  async prepareInteraction(options: {
     input: ActionPlanInput;
-    signal?: AbortSignal;
-    onStage?: AgentActionPlannerStageSink;
-  }): Promise<ActionPlanInput> {
-    if (!this.isEnabled()) {
-      throw new Error(agentErrorMessage("actionPlanner.turnUnderstandingNotReady"));
-    }
-
-    try {
-      throwIfAborted(options.signal);
-      return await this.understanding.understandWithStage(options.input, options.onStage, options.signal);
-    } catch (error) {
-      if (error instanceof AgentCancellationError || options.signal?.aborted) {
-        throw error instanceof AgentCancellationError ? error : new AgentCancellationError();
-      }
-      throw new Error(
-        agentErrorMessage("actionPlanner.turnUnderstandingFailed", {
-          reason: summarizePlannerFailure(error),
-        }),
-        { cause: error },
-      );
-    }
-  }
-
-  async route(options: { input: ActionPlanInput; signal?: AbortSignal }): Promise<AgentInteractionRouteResult> {
-    return (await this.routeWithInput(options)).route;
-  }
-
-  async routeWithInput(options: {
-    input: ActionPlanInput;
+    candidateTools?: readonly AgentPiToolCard[];
     signal?: AbortSignal;
     onStage?: AgentActionPlannerStageSink;
   }): Promise<{
     route: AgentInteractionRouteResult;
     input: ActionPlanInput;
+    initialAction: import("../PiProxy/AgentPiAssistantMessageSchema.js").ParsedPiControllerAction;
   }> {
     if (!this.isEnabled()) {
       throw new Error(agentErrorMessage("actionPlanner.interactionRouterNotReady"));
     }
 
+    const startedAt = performance.now();
     try {
       throwIfAborted(options.signal);
-      const input = await this.understanding.understandWithStage(options.input, options.onStage, options.signal);
+      await options.onStage?.({ status: "started", stage: "prepareInteraction" });
+      const preparation = await this.planningClient.prepareInteraction(options.input, {
+        candidateTools: options.candidateTools,
+        signal: options.signal,
+      });
+      const input = {
+        ...options.input,
+        turnUnderstanding: preparation.turnUnderstanding,
+      };
+      await options.onStage?.({
+        status: "completed",
+        stage: "prepareInteraction",
+        durationMs: elapsedMilliseconds(startedAt),
+        preparation,
+      });
       return {
-        route: projectInteractionRoute(
-          await this.planningClient.routeInteraction(input, {
-            signal: options.signal,
-          }),
-        ),
+        route: projectPreparedInteractionRoute(preparation),
         input,
+        initialAction: preparation.initialAction,
       };
     } catch (error) {
       if (error instanceof AgentCancellationError || options.signal?.aborted) {
         throw error instanceof AgentCancellationError ? error : new AgentCancellationError();
       }
+      const reason = summarizePlannerFailure(error);
+      await options.onStage?.({
+        status: "failed",
+        stage: "prepareInteraction",
+        durationMs: elapsedMilliseconds(startedAt),
+        message: reason,
+      });
       throw new Error(
         agentErrorMessage("actionPlanner.interactionRouterFailed", {
-          reason: summarizePlannerFailure(error),
+          reason,
         }),
         { cause: error },
       );
@@ -102,6 +90,10 @@ export class AgentActionPlanner {
   private isEnabled(): boolean {
     return isActionPlannerReady(this.config);
   }
+}
+
+function elapsedMilliseconds(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
 export interface AgentActionPlannerDependencies {

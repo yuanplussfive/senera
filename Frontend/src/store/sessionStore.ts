@@ -14,6 +14,7 @@ import {
   bumpSessionMessageCount,
   createRunRecord,
   deleteSessionRuntimeState,
+  truncateSessionFromRequest,
   truncate,
 } from "./session/sessionProjector";
 import {
@@ -28,9 +29,15 @@ import {
   type ConversationEntryMetadata,
   type ConfigSnapshotData,
   type EventEnvelope,
+  type ApprovalDecision,
   type ApprovalRequestedData,
   type ApprovalResolvedData,
   type ApprovalSubjectData,
+  type InteractionInputAction,
+  type InteractionInputContent,
+  type InteractionInputRequestedData,
+  type InteractionInputResolvedData,
+  type InteractionInputSchema,
   type ModelProviderMetadata,
   type ModelProviderListItem,
   type PresetItem,
@@ -85,6 +92,27 @@ export interface TimelineToolBatch {
   executionMode?: "parallel" | "sequential";
 }
 
+export interface TimelineToolOutput {
+  stdout: string;
+  stderr: string;
+  stdoutBytes: number;
+  stderrBytes: number;
+  lastSequence: number;
+  truncated: boolean;
+}
+
+export interface TimelineToolProgress {
+  sequence: number;
+  message?: string;
+  completed?: number;
+  total?: number;
+  unit?: string;
+  taskId?: string;
+  state?: string;
+  terminal?: boolean;
+  pollIntervalMs?: number;
+}
+
 export interface TimelineStep {
   id: string;
   kind: TimelineStepKind;
@@ -102,6 +130,8 @@ export interface TimelineStep {
   toolPresentation?: import("../api/eventTypes").ToolResultPresentation;
   toolResult?: unknown;
   toolErrorMessage?: string;
+  toolOutput?: TimelineToolOutput;
+  toolProgress?: TimelineToolProgress;
   detailJson?: unknown;
   retryAttempt?: number;
   retryCode?: string;
@@ -123,6 +153,7 @@ export interface RunRecord {
   startedAt: string;
   endedAt?: string;
   status: "running" | "completed" | "failed" | "cancelled";
+  activeFlags?: Array<"waiting_for_approval" | "waiting_for_input">;
   input: string;
   steps: TimelineStep[];
   /** model.delta 累积（原始 token 流，可能含 XML 包装） */
@@ -139,9 +170,32 @@ export interface RunRecord {
   /** 工具参数暂存，供工具节点显示 */
   pendingToolArgsByName: Record<string, unknown>;
   approvals?: ApprovalRunRecord[];
+  interactionInputs?: InteractionInputRunRecord[];
   modelProvider?: ModelProviderMetadata;
   recoverySource?: "history";
 }
+
+interface InteractionInputRunRecordBase {
+  interactionId: string;
+  status: InteractionInputRequestedData["status"] | InteractionInputResolvedData["status"];
+  message: string;
+  toolName: string;
+  toolCallId: string;
+  batchId?: string;
+  createdAt: string;
+  action?: InteractionInputAction;
+  content?: InteractionInputContent;
+  resolutionMessage?: string;
+  resolvedAt?: string;
+  resolutionPending?: boolean;
+  pendingAction?: InteractionInputAction;
+}
+
+export type InteractionInputRunRecord = InteractionInputRunRecordBase &
+  (
+    | { mode: "form"; schema: InteractionInputSchema }
+    | { mode: "url"; externalId: string; url: string; hostname: string }
+  );
 
 export interface ApprovalRunRecord {
   approvalId: string;
@@ -151,11 +205,18 @@ export interface ApprovalRunRecord {
   reason: string;
   rule?: string;
   riskSignals?: string[];
+  toolCallId?: string;
+  batchId?: string;
+  availableDecisions: ApprovalDecision[];
   subject: ApprovalSubjectData;
   createdAt: string;
   resolvedAt?: string;
   message?: string;
   scope?: ApprovalResolvedData["scope"];
+  disposition?: ApprovalResolvedData["disposition"];
+  decision?: ApprovalResolvedData["decision"];
+  resolutionPending?: boolean;
+  pendingDecision?: ApprovalDecision;
 }
 
 export interface SessionRecord {
@@ -169,6 +230,10 @@ export interface SessionRecord {
   messages: ChatMessage[];
   runs: RunRecord[];
   activeRequestId?: string;
+  forkOrigin?: {
+    sourceSessionId: string;
+    throughRequestId: string;
+  };
 }
 
 export type HistoryReplayEntry = {
@@ -199,6 +264,8 @@ export interface StoreState {
   historyStepBuffers: Record<string, SessionHistoryStepsData["runs"]>;
   /** 回放期间已经由 run events 还原过的 requestId，避免再用精简 step traces 覆盖完整图 */
   historyEventRunIds: Record<string, Record<string, boolean>>;
+  /** 历史事件可能改写 activeRequestId；这里保留服务端实时快照用于回放收尾。 */
+  historyActiveRequestIds: Record<string, string | null>;
   /** 已确认不在后端存在、仅本地残留的 sessionId */
   missingOnServerIds: Record<string, boolean>;
   /** 本地刚创建、尚未被 session.list 快照确认的 sessionId */
@@ -233,6 +300,8 @@ export interface StoreState {
   setViewedRun: (sessionId: string, requestId: string | undefined) => void;
   registerCreatingSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
   renameSession: (sessionId: string, title: string) => void;
+  markApprovalResolutionPending: (approvalId: string, decision?: ApprovalDecision) => void;
+  markInteractionInputResolutionPending: (interactionId: string, action?: InteractionInputAction) => void;
   appendUserMessage: (
     sessionId: string,
     requestId: string,
@@ -240,6 +309,7 @@ export interface StoreState {
     attachments?: UploadAttachmentData[],
     options?: { createRun?: boolean },
   ) => void;
+  truncateFromRequest: (sessionId: string, fromRequestId: string) => void;
   advanceStreamingDisplay: (sessionId: string, requestId: string) => boolean;
   ingest: (env: EventEnvelope) => void;
   removeSession: (sessionId: string) => void;
@@ -281,6 +351,7 @@ export const useStore = create<StoreState>()(
       historyReplayBuffers: {},
       historyStepBuffers: {},
       historyEventRunIds: {},
+      historyActiveRequestIds: {},
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},
@@ -388,6 +459,34 @@ export const useStore = create<StoreState>()(
           if (session) session.title = title;
         }),
 
+      markApprovalResolutionPending: (approvalId, decision) =>
+        set((state) => {
+          for (const session of Object.values(state.sessions)) {
+            for (const run of session.runs) {
+              const approval = run.approvals?.find((entry) => entry.approvalId === approvalId);
+              if (!approval || approval.status !== "pending") continue;
+              approval.resolutionPending = decision !== undefined;
+              approval.pendingDecision = decision;
+              run.revision += 1;
+              return;
+            }
+          }
+        }),
+
+      markInteractionInputResolutionPending: (interactionId, action) =>
+        set((state) => {
+          for (const session of Object.values(state.sessions)) {
+            for (const run of session.runs) {
+              const interaction = run.interactionInputs?.find((entry) => entry.interactionId === interactionId);
+              if (!interaction || interaction.status === "resolved") continue;
+              interaction.resolutionPending = action !== undefined;
+              interaction.pendingAction = action;
+              run.revision += 1;
+              return;
+            }
+          }
+        }),
+
       removeSession: (sessionId) =>
         set((state) => {
           state.pendingDeletedSessionIds[sessionId] = true;
@@ -422,6 +521,7 @@ export const useStore = create<StoreState>()(
           state.historyReplayBuffers[sessionId] = [];
           state.historyStepBuffers[sessionId] = [];
           state.historyEventRunIds[sessionId] = {};
+          state.historyActiveRequestIds[sessionId] = state.sessions[sessionId]?.activeRequestId ?? null;
           delete state.historyFailedIds[sessionId];
         }),
 
@@ -432,6 +532,7 @@ export const useStore = create<StoreState>()(
           delete state.historyReplayBuffers[sessionId];
           delete state.historyStepBuffers[sessionId];
           delete state.historyEventRunIds[sessionId];
+          delete state.historyActiveRequestIds[sessionId];
         }),
 
       selectModelProvider: (id) =>
@@ -479,6 +580,7 @@ export const useStore = create<StoreState>()(
           state.historyReplayBuffers = {};
           state.historyStepBuffers = {};
           state.historyEventRunIds = {};
+          state.historyActiveRequestIds = {};
           state.missingOnServerIds = {};
           state.pendingCreatedSessionIds = {};
           state.pendingDeletedSessionIds = {};
@@ -515,6 +617,11 @@ export const useStore = create<StoreState>()(
             session.activeRequestId = requestId;
             session.runs.push(createRunRecord({ requestId, startedAt: nowIso(), input }));
           }
+        }),
+
+      truncateFromRequest: (sessionId, fromRequestId) =>
+        set((state) => {
+          truncateSessionFromRequest(state, sessionId, fromRequestId);
         }),
 
       advanceStreamingDisplay: (sessionId, requestId) => {

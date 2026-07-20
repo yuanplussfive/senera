@@ -2,12 +2,15 @@ import { SeneraLocalExecutionEnv } from "./SeneraLocalExecutionEnv.js";
 import { SeneraMicrosandboxBackend } from "./SeneraMicrosandboxBackend.js";
 import { SeneraNodeProcessBackend } from "./SeneraNodeProcessBackend.js";
 import { SeneraRoutingProcessBackend } from "./SeneraRoutingProcessBackend.js";
-import { createSeneraProcessBackendSpawner } from "./SeneraProcessBackendSpawner.js";
 import type { SeneraExecutionEnv } from "./SeneraExecutionTypes.js";
 import type { SeneraMicrosandboxSettings } from "./SeneraMicrosandboxDefaults.js";
 import type { AgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
 import type { SeneraProcessFallbackAuthorizer } from "./SeneraProcessFallbackAuthorization.js";
 import { createSeneraAuthorizedPersistentProcessSpawner } from "./SeneraPersistentProcessSpawner.js";
+import type { SeneraResourceAccessAuthorizer } from "./SeneraResourceAccess.js";
+import { createSeneraAuthorizedTerminalSpawner } from "./SeneraTerminalSpawner.js";
+import { SeneraProcessEnvironmentPolicy } from "./SeneraProcessEnvironment.js";
+import type { SeneraProcessEnvironmentPolicyOptions } from "./SeneraProcessEnvironment.js";
 
 export interface SeneraExecutionEnvFactoryOptions {
   workspaceRoot: string;
@@ -15,10 +18,45 @@ export interface SeneraExecutionEnvFactoryOptions {
   microsandboxSettings?: Partial<SeneraMicrosandboxSettings>;
   sandboxRuntimePaths?: AgentSandboxRuntimePaths;
   fallbackAuthorizer?: SeneraProcessFallbackAuthorizer;
+  resourceAccessPolicy?: SeneraResourceAccessAuthorizer;
+  environmentPolicy?: SeneraProcessEnvironmentPolicy | SeneraProcessEnvironmentPolicyOptions;
+  terminationGraceMs?: number;
 }
 
 export function createSeneraExecutionEnv(options: SeneraExecutionEnvFactoryOptions): SeneraExecutionEnv {
-  const localBackend = new SeneraNodeProcessBackend();
+  return createLocalExecutionEnv(options, createSharedExecutionDependencies(options), options.resourceAccessPolicy);
+}
+
+export interface SeneraExecutionEnvironments {
+  readonly system: SeneraExecutionEnv;
+  readonly tool: SeneraExecutionEnv;
+}
+
+export function createSeneraExecutionEnvironments(
+  options: SeneraExecutionEnvFactoryOptions,
+): SeneraExecutionEnvironments {
+  const dependencies = createSharedExecutionDependencies(options);
+  return {
+    system: createLocalExecutionEnv(options, dependencies),
+    tool: createLocalExecutionEnv(options, dependencies, options.resourceAccessPolicy),
+  };
+}
+
+interface SharedExecutionDependencies {
+  readonly processBackend: SeneraRoutingProcessBackend;
+  readonly persistentProcessSpawner: ReturnType<typeof createSeneraAuthorizedPersistentProcessSpawner>;
+  readonly terminalSpawner: ReturnType<typeof createSeneraAuthorizedTerminalSpawner>;
+}
+
+function createSharedExecutionDependencies(options: SeneraExecutionEnvFactoryOptions): SharedExecutionDependencies {
+  const environmentPolicy =
+    options.environmentPolicy instanceof SeneraProcessEnvironmentPolicy
+      ? options.environmentPolicy
+      : new SeneraProcessEnvironmentPolicy(options.environmentPolicy);
+  const localBackend = new SeneraNodeProcessBackend({
+    environmentPolicy,
+    terminationGraceMs: options.terminationGraceMs,
+  });
   const sandboxBackend = new SeneraMicrosandboxBackend({
     workspaceRoot: options.workspaceRoot,
     settings: options.microsandboxSettings,
@@ -30,12 +68,28 @@ export function createSeneraExecutionEnv(options: SeneraExecutionEnvFactoryOptio
     fallbackAuthorizer: options.fallbackAuthorizer,
   });
 
-  return new SeneraLocalExecutionEnv({
-    workspaceRoot: options.workspaceRoot,
+  return {
     processBackend,
-    processSpawner: createSeneraProcessBackendSpawner(processBackend),
     persistentProcessSpawner: createSeneraAuthorizedPersistentProcessSpawner({
       fallbackAuthorizer: options.fallbackAuthorizer,
+      environmentPolicy,
     }),
+    terminalSpawner: createSeneraAuthorizedTerminalSpawner({
+      fallbackAuthorizer: options.fallbackAuthorizer,
+      sandbox: sandboxBackend,
+      environmentPolicy,
+    }),
+  };
+}
+
+function createLocalExecutionEnv(
+  options: SeneraExecutionEnvFactoryOptions,
+  dependencies: SharedExecutionDependencies,
+  resourceAccessPolicy?: SeneraResourceAccessAuthorizer,
+): SeneraExecutionEnv {
+  return new SeneraLocalExecutionEnv({
+    workspaceRoot: options.workspaceRoot,
+    ...dependencies,
+    resourceAccessPolicy,
   });
 }

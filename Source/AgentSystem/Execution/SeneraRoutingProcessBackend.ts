@@ -11,6 +11,7 @@ import type {
 import { SeneraExecutionError, SeneraExecutionErrorCodes } from "./SeneraExecutionTypes.js";
 import { resolveSeneraShellInvocation } from "./SeneraShellPlatform.js";
 import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
+import { isSeneraShellDialectCompatible } from "./SeneraShellCommand.js";
 
 export interface SeneraRoutingProcessBackendOptions {
   readonly local: SeneraProcessExecutionBackend;
@@ -34,7 +35,8 @@ export class SeneraRoutingProcessBackend implements SeneraProcessExecutionBacken
   }
 
   async executeShellProcess(request: SeneraProcessShellExecutionRequest) {
-    return this.executeRouted(request, (backend) => {
+    return this.executeRouted(request, (backend, boundary) => {
+      assertShellDialect(backend, boundary, request);
       const invocation =
         backend.resolveShellInvocation?.(request.shellCommand) ?? resolveSeneraShellInvocation(request.shellCommand);
       return backend.executeProcess({
@@ -53,6 +55,7 @@ export class SeneraRoutingProcessBackend implements SeneraProcessExecutionBacken
     request: TRequest,
     execute: (
       backend: SeneraProcessExecutionBackend,
+      boundary: "local" | "sandbox",
     ) => Promise<Awaited<ReturnType<SeneraProcessExecutionBackend["executeProcess"]>>>,
   ) {
     const profile = request.profile;
@@ -62,11 +65,11 @@ export class SeneraRoutingProcessBackend implements SeneraProcessExecutionBacken
       });
     }
     if (profile.backend === "local") {
-      return execute(this.options.local);
+      return execute(this.options.local, "local");
     }
 
     try {
-      return await execute(this.options.sandbox);
+      return await execute(this.options.sandbox, "sandbox");
     } catch (error) {
       if (!isSandboxUnavailable(error)) throw error;
       if (profile.localFallback !== "allow" || !profile.fallbackContext) throw error;
@@ -74,7 +77,7 @@ export class SeneraRoutingProcessBackend implements SeneraProcessExecutionBacken
       const authorization = await this.fallbackAuthorizer.authorize({
         fromBackend: this.options.sandbox.kind,
         toBackend: this.options.local.kind,
-        reason: "sandbox_unavailable",
+        reason: readProcessFallbackReason(error),
         error,
         context: profile.fallbackContext,
         signal: request.signal,
@@ -91,27 +94,52 @@ export class SeneraRoutingProcessBackend implements SeneraProcessExecutionBacken
         await emitAgentEvent(context.onEvent, {
           kind: AgentEventKinds.ExecutionFallbackStarted,
           context: {
+            sessionId: context.sessionId,
             requestId: context.requestId,
             step: context.step,
           },
           data: {
             toolCallId: context.toolCallId,
+            batchId: context.batchId,
             pluginName: context.subject.pluginName,
             pluginVersion: context.subject.pluginVersion,
             toolName: context.subject.toolName,
             manifestDigest: context.subject.manifestDigest,
             fromBackend: this.options.sandbox.kind,
             toBackend: this.options.local.kind,
-            reason: "sandbox_unavailable",
+            reason: readProcessFallbackReason(error),
             rule: authorization.rule,
             approvalId: authorization.approvalId,
             scope: authorization.scope,
           },
         });
       }
-      return execute(this.options.local);
+      return execute(this.options.local, "local");
     }
   }
+}
+
+function assertShellDialect(
+  backend: SeneraProcessExecutionBackend,
+  boundary: "local" | "sandbox",
+  request: SeneraProcessShellExecutionRequest,
+): void {
+  const available = backend.shellDialect;
+  if (available && isSeneraShellDialectCompatible(request.shellDialect, available)) return;
+  throw new SeneraExecutionError(
+    boundary === "sandbox" ? SeneraExecutionErrorCodes.SandboxUnavailable : SeneraExecutionErrorCodes.SpawnFailed,
+    `Shell dialect ${request.shellDialect} is not supported by backend ${backend.kind}.`,
+    {
+      reason: "shell_dialect_unsupported",
+      requestedDialect: request.shellDialect,
+      availableDialect: available,
+      backend: backend.kind,
+    },
+  );
+}
+
+function readProcessFallbackReason(error: SeneraExecutionError): "sandbox_unavailable" | "shell_dialect_unsupported" {
+  return error.details.reason === "shell_dialect_unsupported" ? "shell_dialect_unsupported" : "sandbox_unavailable";
 }
 
 function isSandboxUnavailable(error: unknown): error is SeneraExecutionError {

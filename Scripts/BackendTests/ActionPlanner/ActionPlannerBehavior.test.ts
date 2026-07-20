@@ -1,19 +1,31 @@
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
-import { InteractionRunMode, type InteractionRoute } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
+import {
+  InteractionRunMode,
+  PiControllerActionKind,
+  TurnContextMode,
+  type InteractionPreparation,
+  type InteractionRoute,
+} from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import {
   AgentInteractionRunModes,
   AgentInteractionRouter,
   projectInteractionRoute,
+  projectPreparedInteractionRoute,
 } from "../../../Source/AgentSystem/ActionPlanner/AgentInteractionRouter.js";
 import {
+  collectPlannerFailureToolNames,
   issueMessages,
   isRepairablePlanningFailure,
   normalizePlanningFailure,
   stringifyIssueValue,
   summarizePlannerFailure,
 } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerFailure.js";
-import { AgentActionPlannerValidationError } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerSchema.js";
+import {
+  AgentActionPlannerValidationError,
+  parseInteractionPreparation,
+} from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerSchema.js";
+import { AgentBamlStructuredOutputError } from "../../../Source/AgentSystem/BamlClient/AgentBamlStructuredOutputRunner.js";
 
 describe("ActionPlanner behavior", () => {
   test("projects BAML interaction routes into runtime routing decisions without sharing arrays", () => {
@@ -26,13 +38,8 @@ describe("ActionPlanner behavior", () => {
     expect(projected).toMatchObject({
       mode: AgentInteractionRunModes.ToolAgentLoop,
       objective: "inspect workspace",
-      needsFreshEvidence: true,
-      needsWorkspaceRead: true,
-      needsSideEffect: false,
-      risk: "low",
       preferredTools: ["WorkspaceReadFile"],
       discoveryQueries: ["workspace read"],
-      reason: "needs current project evidence",
     });
 
     route.preferredTools.push("WeatherTool");
@@ -53,6 +60,30 @@ describe("ActionPlanner behavior", () => {
     });
   });
 
+  test("derives runtime routing from the validated initial action without a second model field", () => {
+    expect(
+      projectPreparedInteractionRoute({
+        turnUnderstanding: createPreparation().turnUnderstanding,
+        initialAction: {
+          kind: "CallTools",
+          preface: "Inspecting.",
+          calls: [{ toolName: "WorkspaceInspectTool", purpose: "Inspect.", required: true }],
+        },
+      }),
+    ).toMatchObject({
+      mode: "tool_agent_loop",
+      objective: "check project",
+      preferredTools: ["WorkspaceInspectTool"],
+      discoveryQueries: [],
+    });
+    expect(
+      projectPreparedInteractionRoute({
+        turnUnderstanding: createPreparation().turnUnderstanding,
+        initialAction: { kind: "FinalAnswer", answerPlan: ["Answer."] },
+      }).mode,
+    ).toBe("direct_response");
+  });
+
   test("classifies validation failures as repairable and preserves invalid output for repair", () => {
     const validation = new AgentActionPlannerValidationError(["calls.0.toolName: required"], { calls: [{}] });
     const zodError = z.object({ answer: z.string() }).safeParse({ answer: 1 }).error;
@@ -64,19 +95,72 @@ describe("ActionPlanner behavior", () => {
     expect(stringifyIssueValue(validation)).toContain("calls");
     expect(summarizePlannerFailure(validation)).toContain("action_planner_invalid_decision");
   });
+
+  test("recovers tool names from the structured planner failure cause chain", () => {
+    const validation = new AgentActionPlannerValidationError(["tool is not active"], {
+      initialAction: {
+        kind: "CallTools",
+        calls: [{ toolName: "ShellCommandTool" }],
+      },
+    });
+    const structured = new AgentBamlStructuredOutputError({
+      functionName: "PrepareInteraction",
+      attempts: [],
+      issues: validation.issues,
+      error: validation,
+    });
+    const routed = new Error("Interaction Router failed.", { cause: structured });
+
+    expect(collectPlannerFailureToolNames(routed)).toEqual(["ShellCommandTool"]);
+  });
+
+  test("validates initial actions against candidate tools", () => {
+    const input = createActionPlanInput();
+    const preparation = createPreparation({
+      initialAction: {
+        kind: PiControllerActionKind.CallTools,
+        preface: "Inspecting the workspace.",
+        calls: [
+          {
+            toolName: "WorkspaceInspectTool",
+            purpose: "Inspect the workspace.",
+            required: true,
+          },
+        ],
+      },
+    });
+
+    expect(parseInteractionPreparation(preparation, input, ["WorkspaceInspectTool"]).initialAction).toMatchObject({
+      kind: "CallTools",
+      calls: [{ toolName: "WorkspaceInspectTool" }],
+    });
+    expect(() => parseInteractionPreparation(preparation, input, [])).toThrow(/WorkspaceInspectTool/);
+  });
 });
+
+function createPreparation(overrides: Partial<InteractionPreparation> = {}): InteractionPreparation {
+  return {
+    turnUnderstanding: {
+      rawUserTurn: "check project",
+      standaloneRequest: "check project",
+      contextMode: TurnContextMode.None,
+      contextBasis: "",
+      missingContext: "",
+    },
+    initialAction: {
+      kind: PiControllerActionKind.FinalAnswer,
+      answerPlan: ["Answer the request."],
+    },
+    ...overrides,
+  };
+}
 
 function createRoute(overrides: Partial<InteractionRoute> = {}): InteractionRoute {
   return {
     mode: InteractionRunMode.ToolAgentLoop,
     objective: "inspect workspace",
-    needsFreshEvidence: true,
-    needsWorkspaceRead: true,
-    needsSideEffect: false,
-    risk: "low",
     preferredTools: [],
     discoveryQueries: [],
-    reason: "needs current project evidence",
     ...overrides,
   };
 }

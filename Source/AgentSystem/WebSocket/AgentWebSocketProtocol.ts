@@ -1,9 +1,16 @@
 import { z } from "zod";
+import { AgentSessionMessageDispositionValues } from "../Session/AgentSessionMessageDisposition.js";
+import { AgentSessionMessageQueueModeValues } from "../Session/AgentSessionMessageQueueMode.js";
 import { createRequestId } from "../Core/AgentIds.js";
 import { AgentUserProfileInputSchema } from "../Session/AgentUserProfile.js";
 import { AgentUploadAttachmentListSchema } from "../Uploads/AgentUploadTypes.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 import { ModelProviderEndpointSchema, ModelProviderSchema } from "../Schemas/AgentModelConfigSchema.js";
+import { SeneraTerminalDimensionLimits } from "../Execution/SeneraTerminalTypes.js";
+import { AgentApprovalDecisions } from "../Approvals/AgentApprovalTypes.js";
+import { AgentInteractionInputActions } from "../Interaction/AgentInteractionInputTypes.js";
+
+const AgentInteractionInputValueSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.array(z.string())]);
 
 const AgentPresetFormatSchema = z.enum(["json", "markdown", "text"]);
 
@@ -39,12 +46,19 @@ const AgentProviderModelBulkImportGroupAssignmentRequestSchema = AgentProviderMo
   modelId: z.string().min(1),
 });
 
+const AgentExecutionResourceIdSchema = z
+  .string()
+  .trim()
+  .regex(/^res_[a-f0-9]{32}$/i);
+const AgentExecutionResourceSessionSchema = {
+  sessionId: z.string().min(1),
+} as const;
+
 export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("session.create"),
       sessionId: z.string().min(1).optional(),
-      modelProviderId: z.string().min(1).optional(),
     })
     .strict(),
   z
@@ -55,7 +69,8 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       modelProviderId: z.string().min(1).optional(),
       input: z.string().min(1),
       attachments: AgentUploadAttachmentListSchema.optional(),
-      queueMode: z.enum(["steer", "follow_up"]).optional(),
+      disposition: z.enum(AgentSessionMessageDispositionValues).optional(),
+      queueMode: z.enum(AgentSessionMessageQueueModeValues).optional(),
     })
     .strict(),
   z
@@ -75,6 +90,25 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       type: z.literal("session.truncate_from"),
       sessionId: z.string().min(1),
       requestId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("session.regenerate"),
+      sessionId: z.string().min(1),
+      fromRequestId: z.string().min(1),
+      requestId: z.string().min(1),
+      modelProviderId: z.string().min(1).optional(),
+      input: z.string().min(1),
+      attachments: AgentUploadAttachmentListSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("session.fork"),
+      sourceSessionId: z.string().min(1),
+      sessionId: z.string().min(1),
+      throughRequestId: z.string().min(1),
     })
     .strict(),
   z
@@ -243,14 +277,71 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("approval.resolve"),
       approvalId: z.string().min(1),
-      status: z.enum(["approved", "denied"]),
+      decision: z.enum(AgentApprovalDecisions),
       message: z.string().optional(),
-      scope: z.enum(["once", "session"]).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("interaction.input.resolve"),
+      interactionId: z.string().min(1),
+      action: z.enum(AgentInteractionInputActions),
+      content: z.record(z.string(), AgentInteractionInputValueSchema).optional(),
+      message: z.string().optional(),
     })
     .strict(),
   z
     .object({
       type: z.literal("sandbox.status"),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("execution.resource.list"),
+      ...AgentExecutionResourceSessionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("execution.resource.inspect"),
+      ...AgentExecutionResourceSessionSchema,
+      resourceId: AgentExecutionResourceIdSchema,
+      cursor: z.number().int().min(0).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("execution.resource.write"),
+      ...AgentExecutionResourceSessionSchema,
+      resourceId: AgentExecutionResourceIdSchema,
+      input: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("execution.resource.resize"),
+      ...AgentExecutionResourceSessionSchema,
+      resourceId: AgentExecutionResourceIdSchema,
+      columns: z
+        .number()
+        .int()
+        .min(SeneraTerminalDimensionLimits.minColumns)
+        .max(SeneraTerminalDimensionLimits.maxColumns),
+      rows: z.number().int().min(SeneraTerminalDimensionLimits.minRows).max(SeneraTerminalDimensionLimits.maxRows),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("execution.resource.signal"),
+      ...AgentExecutionResourceSessionSchema,
+      resourceId: AgentExecutionResourceIdSchema,
+      signal: z.enum(["interrupt", "terminate", "kill"]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("execution.resource.stop_all"),
+      ...AgentExecutionResourceSessionSchema,
     })
     .strict(),
 ]);

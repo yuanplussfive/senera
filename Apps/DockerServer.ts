@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { startSeneraServer } from "./ServerRuntime.js";
+import { syncRuntimeDirectory } from "./RuntimeAssetSync.js";
 import { resolveFrontendConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { writeAgentConfigJsonMirror } from "../Source/AgentSystem/Config/AgentConfigServicePaths.js";
@@ -13,10 +14,13 @@ const ConfigPath = resolveWorkspacePath(process.env.AGENT_CONFIG_PATH?.trim() ||
 const FrontendRoot = path.join(AppRoot, "Frontend", "dist");
 const ExampleConfigPath = path.join(AppRoot, "senera.config.example.json");
 const RuntimeConfigFileName = "senera-runtime-config.js";
+const PluginConfigFileName = "PluginConfig.toml";
+const DockerUserPluginRoot = path.join(WorkspaceRoot, "Plugins");
 const DockerPluginRoots = {
   System: [path.join(AppRoot, "System", "Plugins")],
-  User: [path.join(AppRoot, "Plugins")],
+  User: [DockerUserPluginRoot],
 } as const;
+const BundledDockerUserPluginRoot = path.join(AppRoot, "Plugins");
 const DockerSandboxRuntime = {
   BaseDir: "/data/.senera/sandbox-runtime",
   BundleDir: "/data/.senera/sandbox-bundles",
@@ -26,6 +30,7 @@ main();
 
 function main(): void {
   fs.mkdirSync(WorkspaceRoot, { recursive: true });
+  syncBundledUserPlugins();
   ensureFrontendBundleExists();
   ensureRuntimeConfigFile();
 
@@ -48,6 +53,12 @@ function main(): void {
     configPath: server.configPath,
     webUrl: `http://localhost:${resolveDockerPort()}`,
     websocketUrl: server.websocketUrl,
+  });
+}
+
+function syncBundledUserPlugins(): void {
+  syncRuntimeDirectory(BundledDockerUserPluginRoot, DockerUserPluginRoot, {
+    preserveFileNames: [PluginConfigFileName],
   });
 }
 

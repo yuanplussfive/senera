@@ -1,5 +1,6 @@
 import path from "node:path";
 import { resolveSeneraShellPlatform } from "../Execution/SeneraShellPlatform.js";
+import { SeneraMicrosandboxDefaults } from "../Execution/SeneraMicrosandboxDefaults.js";
 
 export interface AgentExecutionEnvironmentContext {
   os: string;
@@ -8,6 +9,10 @@ export interface AgentExecutionEnvironmentContext {
     family: "powershell" | "posix-sh";
     command: string;
     invocation: string;
+  };
+  executionTargets: {
+    sandboxPreferred: AgentExecutionShellTarget;
+    local: AgentExecutionShellTarget;
   };
   workspace: {
     root: string;
@@ -19,6 +24,14 @@ export interface AgentExecutionEnvironmentContext {
     shell: string[];
     paths: string[];
   };
+}
+
+interface AgentExecutionShellTarget {
+  os: string;
+  boundary: "sandbox" | "local";
+  shellDialect: "posix-sh" | "powershell";
+  shellCommand: string;
+  image?: string;
 }
 
 export function buildAgentExecutionEnvironmentContext(
@@ -41,6 +54,21 @@ export function buildAgentExecutionEnvironmentContext(
           command: shell.command,
           invocation: shell.invocation,
         },
+    executionTargets: {
+      sandboxPreferred: {
+        os: "Linux",
+        boundary: "sandbox",
+        shellDialect: "posix-sh",
+        shellCommand: SeneraMicrosandboxDefaults.guestShell.command,
+        image: SeneraMicrosandboxDefaults.image,
+      },
+      local: {
+        os: osName(platform),
+        boundary: "local",
+        shellDialect: shell.family,
+        shellCommand: shell.command,
+      },
+    },
     workspace: {
       root: path.resolve(workspaceRoot),
       pathStyle: windows ? "windows" : "posix",
@@ -50,13 +78,17 @@ export function buildAgentExecutionEnvironmentContext(
     guidance: {
       shell: windows
         ? [
-            `ShellCommandTool commands run in ${shell.command} on Windows.`,
-            "Use PowerShell syntax for local inspection, for example: $c=Get-Content -Path Source\\File.ts; $c[0..120].",
+            "SandboxPreferred shell tools run in the Linux sandbox with the posix-sh dialect.",
+            `Only tools whose execution boundary is Local run in ${shell.command} with the powershell dialect.`,
+            "Set command.mode, command.dialect, and command.script explicitly; never send PowerShell syntax to a posix-sh target.",
+            "Use PowerShell syntax only for Local execution, for example: $c=Get-Content -Path Source\\File.ts; $c[0..120].",
             "Use Get-ChildItem, Select-String, Get-Content, Get-Command, and rg when they fit the task.",
             "Do not use Bash-only commands such as which, test, grep pipelines, or POSIX path syntax unless you explicitly invoke a POSIX shell.",
           ]
         : [
-            "ShellCommandTool commands run in POSIX sh on this platform.",
+            "SandboxPreferred shell tools run in the Linux sandbox with the posix-sh dialect.",
+            "Local shell tools run in POSIX sh on this platform.",
+            "Set command.mode, command.dialect, and command.script explicitly.",
             "Use POSIX shell syntax for local inspection, for example: sed -n '1,120p' Source/File.ts.",
             "Use ls, find, grep, sed, awk, and rg when they fit the task.",
           ],

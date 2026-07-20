@@ -19,6 +19,9 @@ export interface AgentModelProviderConfig {
   RetryBaseDelaySeconds?: number;
   RetryMaxDelaySeconds?: number;
   RetryAfterMaxDelaySeconds?: number;
+  MaxResponseBytes?: number;
+  MaxSseEventBytes?: number;
+  MaxSseEvents?: number;
 }
 
 export interface AgentModelCapabilitiesConfig {
@@ -29,6 +32,7 @@ export interface AgentModelCapabilitiesConfig {
   ImageOutput?: boolean;
   Reasoning?: boolean;
   DeveloperRole?: boolean;
+  StreamingUsage?: boolean;
 }
 
 export type AgentModelGroupMatchKind = "exact" | "prefix" | "suffix" | "includes";
@@ -86,6 +90,9 @@ export interface AgentModelRuntimeDefaultsConfig {
   RetryBaseDelaySeconds: number;
   RetryMaxDelaySeconds: number;
   RetryAfterMaxDelaySeconds: number;
+  MaxResponseBytes: number;
+  MaxSseEventBytes: number;
+  MaxSseEvents: number;
 }
 
 export interface ResolvedAgentModelProviderConfig {
@@ -111,6 +118,9 @@ export interface ResolvedAgentModelProviderConfig {
   RetryBaseDelayMs: number;
   RetryMaxDelayMs: number;
   RetryAfterMaxDelayMs: number;
+  MaxResponseBytes?: number;
+  MaxSseEventBytes?: number;
+  MaxSseEvents?: number;
   Headers: Record<string, string>;
 }
 

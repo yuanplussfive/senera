@@ -42,10 +42,51 @@ export function decodeArtifactMemoryContent(
   return `${JSON.stringify(projectModelSafeJson(ref, parsed, options.workspaceRoot), null, 2)}\n`;
 }
 
-export function truncateUtf8(value: string, maxBytes: number): string {
-  return Buffer.byteLength(value, "utf8") > maxBytes
-    ? Buffer.from(value).subarray(0, maxBytes).toString("utf8")
-    : value;
+export interface Utf8RangeSlice {
+  text: string;
+  startByte: number;
+  endByte: number;
+  totalBytes: number;
+}
+
+export function sliceUtf8Range(value: string, requestedStartByte: number, maxBytes: number): Utf8RangeSlice {
+  return sliceUtf8Buffer(Buffer.from(value, "utf8"), requestedStartByte, maxBytes);
+}
+
+export function sliceUtf8Buffer(encoded: Buffer, requestedStartByte: number, maxBytes: number): Utf8RangeSlice {
+  const totalBytes = encoded.byteLength;
+  const boundedStart = Math.min(totalBytes, Math.max(0, Math.floor(requestedStartByte)));
+  const startByte = alignUtf8Start(encoded, boundedStart);
+  const requestedEnd = Math.min(totalBytes, startByte + Math.max(1, Math.floor(maxBytes)));
+  const endByte = alignUtf8End(encoded, startByte, requestedEnd);
+  return {
+    text: encoded.subarray(startByte, endByte).toString("utf8"),
+    startByte,
+    endByte,
+    totalBytes,
+  };
+}
+
+function alignUtf8Start(encoded: Buffer, offset: number): number {
+  let aligned = offset;
+  while (aligned < encoded.byteLength && isUtf8ContinuationByte(encoded[aligned]!)) aligned += 1;
+  return aligned;
+}
+
+function alignUtf8End(encoded: Buffer, startByte: number, offset: number): number {
+  let aligned = offset;
+  while (aligned > startByte && aligned < encoded.byteLength && isUtf8ContinuationByte(encoded[aligned]!)) {
+    aligned -= 1;
+  }
+  if (aligned > startByte || startByte >= encoded.byteLength) return aligned;
+
+  aligned = startByte + 1;
+  while (aligned < encoded.byteLength && isUtf8ContinuationByte(encoded[aligned]!)) aligned += 1;
+  return aligned;
+}
+
+function isUtf8ContinuationByte(value: number): boolean {
+  return (value & 0xc0) === 0x80;
 }
 
 function projectModelSafeJson(ref: ReadableArtifactRef, value: unknown, workspaceRoot: string): unknown {

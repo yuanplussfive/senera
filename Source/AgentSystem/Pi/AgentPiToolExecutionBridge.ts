@@ -3,9 +3,14 @@ import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolE
 import type { AskUserControlResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import { renderOpenAiToolObservationContent } from "../ToolRuntime/AgentToolObservationRenderer.js";
+import { redactArtifactSecrets } from "../Artifacts/AgentArtifactRedaction.js";
 import { readRecord, stringifyPreview } from "../ActionPlanner/AgentActionPlannerProjectionUtils.js";
-import { readPiProxyToolCallBatchId } from "../PiProxy/AgentPiProxyRuntimeContext.js";
+import {
+  readPiProxyToolCallBatchId,
+  registerPiProxyExecutedToolResult,
+} from "../PiProxy/AgentPiProxyRuntimeContext.js";
 import type { AgentPiToolExecutionInput, AgentPiToolResult } from "./AgentPiTypes.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
@@ -38,6 +43,7 @@ export class AgentPiToolExecutionBridge {
         callId: input.toolCallId,
       },
       {
+        sessionId: input.context.sessionId,
         requestId,
         step,
         onEvent: input.context.onEvent,
@@ -52,17 +58,21 @@ export class AgentPiToolExecutionBridge {
     }
 
     const [recorded] = await this.options.recordToolArtifacts({
+      ...(input.context.sessionId ? { sessionId: input.context.sessionId } : {}),
       requestId,
       step,
       results: execution.value,
     });
     const result = recorded ?? execution.value[0];
+    if (result) {
+      registerPiProxyExecutedToolResult(input.context.piProxyRuntimeContextId, input.toolCallId, result);
+    }
     const error = readStructuredToolError(result?.result);
     if (error) {
-      throw new AgentPiToolExecutionError(error.message, result);
+      throw new AgentPiToolExecutionError(error.message, projectToolFailureDetails(result));
     }
 
-    return this.projectToolResult(input.tool.name, result);
+    return this.projectToolResult(input.tool, result);
   }
 
   private projectAskUser(toolName: string, result: AskUserControlResult): AgentPiToolResult {
@@ -76,21 +86,21 @@ export class AgentPiToolExecutionBridge {
       details: {
         senera: {
           toolName,
-          result,
         },
       },
       terminate: true,
     };
   }
 
-  private projectToolResult(toolName: string, result: ExecutedToolCallResult | undefined): AgentPiToolResult {
+  private projectToolResult(tool: RegisteredTool, result: ExecutedToolCallResult | undefined): AgentPiToolResult {
     const content = result
       ? renderOpenAiToolObservationContent(projectToolObservation(result), {
           model: this.options.model,
+          observation: tool.observation,
         })
       : JSON.stringify({
           type: "senera.tool_observation.v1",
-          tool_name: toolName,
+          tool_name: tool.name,
           status: "empty",
           summary: "Tool returned no result.",
         });
@@ -104,15 +114,23 @@ export class AgentPiToolExecutionBridge {
       ],
       details: {
         senera: {
-          toolName,
-          result: result?.result,
+          toolName: tool.name,
           artifactUri: result?.artifact?.artifactUri,
           callId: result?.callId,
-          executed: result,
         },
       },
     };
   }
+}
+
+function projectToolFailureDetails(result: ExecutedToolCallResult | undefined): Record<string, unknown> | undefined {
+  if (!result) return undefined;
+  return {
+    toolName: result.name,
+    callId: result.callId,
+    artifactUri: result.artifact?.artifactUri,
+    presentation: result.presentation,
+  };
 }
 
 function readStructuredToolError(value: unknown): { message: string } | undefined {
@@ -133,7 +151,7 @@ function projectToolObservation(result: ExecutedToolCallResult): Record<string, 
     name: result.name,
     arguments: result.arguments,
     process: result.process,
-    result: result.artifact ? undefined : result.result,
+    result: redactArtifactSecrets(result.result, result.artifactPolicy),
     artifact: result.artifact,
   };
 }

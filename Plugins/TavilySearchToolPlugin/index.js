@@ -54,19 +54,22 @@ const ConfigSchema = import_zod.z
       .strict(),
   })
   .strict();
-void (0, import_plugin_sdk.runToolPlugin)({
+void (0, import_plugin_sdk.runMcpTool)({
   toolName: "TavilySearchTool",
   argumentSchema: import_TavilySearchToolArgumentsSchema.Schema,
   resultSchema: import_TavilySearchToolResultSchema.Schema,
-  async execute(args) {
+  resultText: (result) => `Tavily returned ${result.results.item.length} search results for ${result.query}.`,
+  async execute(args, context) {
+    await context.reportProgress({ completed: 0, total: 1, message: "正在检索网络内容" });
     const config = readConfig();
     const apiKey = await claimNextApiKey(config);
     const response = await searchTavily({
       args,
       config,
       apiKey,
+      signal: context.signal,
     });
-    return {
+    const result = {
       query: response.query ?? args.query,
       answer: normalizeOptionalString(response.answer),
       results: {
@@ -90,8 +93,20 @@ void (0, import_plugin_sdk.runToolPlugin)({
         : void 0,
       source: "Tavily",
     };
+    for (const [index, item] of result.results.item.entries()) {
+      await context.reportOutput({
+        stream: "stdout",
+        text: formatSearchResultOutput(index, item),
+      });
+    }
+    await context.reportProgress({ completed: 1, total: 1, message: "网络检索已完成" });
+    return result;
   },
 });
+function formatSearchResultOutput(index, result) {
+  const content = result.content.trim().replace(/\s+/g, " ").slice(0, 320);
+  return `[${index + 1}] ${result.title}\n${result.url}${content ? `\n${content}` : ""}\n`;
+}
 function readConfig() {
   const parsed = (0, import_plugin_sdk.readPluginTomlConfig)(ConfigFileName, {
     exampleFileName: "PluginConfig.example.toml",
@@ -223,7 +238,7 @@ async function searchTavily(options) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(toTavilyPayload(options.args)),
-      signal: controller.signal,
+      signal: options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal,
     });
     const responseText = await response.text();
     if (!response.ok) {
@@ -231,12 +246,13 @@ async function searchTavily(options) {
     }
     return responseText.length > 0 ? JSON.parse(responseText) : {};
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
+    if (controller.signal.aborted && error instanceof Error && error.name === "AbortError") {
       throw new Error(
         `Tavily \u641C\u7D22\u8BF7\u6C42\u8D85\u65F6\uFF0C\u8D85\u8FC7 ${formatMillisecondsAsSeconds(timeoutMs)} \u79D2\u3002`,
         { cause: error },
       );
     }
+    if (options.signal?.aborted) throw options.signal.reason ?? error;
     throw error;
   } finally {
     clearTimeout(timer);

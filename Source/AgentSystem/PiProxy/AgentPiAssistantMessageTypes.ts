@@ -1,3 +1,7 @@
+import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
+import type { AgentRootCommand } from "../AgentRootCommand.js";
+import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+
 export type AgentPiAssistantMessageKind = "final_text" | "tool_calls";
 
 export interface AgentPiAssistantToolCall {
@@ -12,11 +16,27 @@ export interface AgentPiAssistantMessage {
   toolCalls: AgentPiAssistantToolCall[];
 }
 
+export interface AgentPiFinalAnswerInput {
+  openAiRequest: Pick<
+    AgentPiAssistantMessageCompileInput["openAiRequest"],
+    "model" | "messages" | "toolTranscript" | "projection"
+  >;
+  seneraRuntime: AgentPiAssistantMessageCompileInput["seneraRuntime"];
+  answerPlan: string[];
+}
+
+export type AgentPiAssistantCompilation =
+  | AgentPiAssistantMessage
+  | {
+      kind: "final_answer";
+      decisionSource: "model" | "runtime" | "preparation";
+      input: AgentPiFinalAnswerInput;
+    };
+
 export interface AgentPiAssistantMessageCompileInput {
   openAiRequest: {
     model: string;
     messages: unknown[];
-    tools: unknown[];
     toolTranscript: AgentPiToolTranscriptItem[];
     toolChoice?: unknown;
     parallelToolCalls?: boolean;
@@ -32,11 +52,12 @@ export interface AgentPiAssistantMessageCompileInput {
       planningInputTokenBudget: number;
     };
   };
-  allowedTools: string[];
   seneraRuntime: {
     modelProviderId: string;
     model: string;
-    rootCommand?: unknown;
+    rootCommand?: AgentRootCommand;
+    interactionRoute?: AgentInteractionRouteResult;
+    turnUnderstanding?: TurnUnderstanding;
     activeSkills?: unknown[];
   };
 }
@@ -47,7 +68,6 @@ export interface AgentPiToolTranscriptItem {
   argumentsJson: string;
   observation?: {
     status: "success" | "failure" | "empty" | "unknown";
-    content: string;
     summary?: string;
     artifactUri?: string;
     evidenceUris: string[];

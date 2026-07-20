@@ -2,7 +2,7 @@ import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { ListTree, PanelRightClose, SquareTerminal } from "lucide-react";
 import { motion, type Transition } from "framer-motion";
 import { cn } from "../lib/util";
-import { cloneElement, isValidElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { cloneElement, isValidElement, useEffect, useRef, type ReactElement, type ReactNode } from "react";
 import { IconButton, Sheet, SheetContent } from "../shared/ui";
 import { motionTimings, useMotionLevel } from "../shared/motion";
 import { useStore } from "../store/sessionStore";
@@ -11,6 +11,7 @@ import type { ResponsiveMode } from "../shared/responsive";
 const SESSION_PANEL_WIDTH = 246;
 const SESSION_PANEL_COLLAPSED_WIDTH = 58;
 const WORKFLOW_PANEL_WIDTH = 302;
+const TERMINAL_PANEL_WIDTH = 420;
 const WORKFLOW_DOCK_CAPSULE_WIDTH = 40;
 const WORKFLOW_DOCK_GUTTER_WIDTH = 46;
 const SESSION_DRAWER_WIDTH = "w-[min(360px,calc(100vw-24px))]";
@@ -22,6 +23,9 @@ interface AppShellProps {
   chatPanel: ReactNode;
   workflowPanel: ReactNode;
   workflowDrawer: ReactNode;
+  terminalPanel: ReactNode;
+  workflowDockTool: WorkflowDockTool;
+  onWorkflowDockToolChange: (tool: WorkflowDockTool) => void;
   sessionDrawerOpen: boolean;
   onSessionDrawerOpenChange: (open: boolean) => void;
   workflowDrawerOpen: boolean;
@@ -43,7 +47,7 @@ interface ResponsiveDrawerProps {
 
 type AppShellSurface = "drawer" | "persistent";
 type WorkflowPanelLayout = "drawer" | "overlay" | "inline";
-type WorkflowDockTool = "execution" | "terminal";
+export type WorkflowDockTool = "execution" | "terminal";
 
 const WORKFLOW_DOCK_ITEMS = [
   {
@@ -116,8 +120,8 @@ export function readAppShellRenderPlan(responsiveMode: ResponsiveMode): AppShell
   };
 }
 
-export function readWorkflowPanelWidth(): number {
-  return WORKFLOW_PANEL_WIDTH;
+export function readWorkflowPanelWidth(tool: WorkflowDockTool = "execution"): number {
+  return tool === "terminal" ? TERMINAL_PANEL_WIDTH : WORKFLOW_PANEL_WIDTH;
 }
 
 export function readAppShellResponsiveEntryPlan(responsiveMode: ResponsiveMode): AppShellResponsiveEntryPlan {
@@ -133,6 +137,9 @@ export function AppShell({
   chatPanel,
   workflowPanel,
   workflowDrawer,
+  terminalPanel,
+  workflowDockTool,
+  onWorkflowDockToolChange,
   sessionDrawerOpen,
   onSessionDrawerOpenChange,
   workflowDrawerOpen,
@@ -144,9 +151,8 @@ export function AppShell({
   const setSidebarCollapsed = useStore((state) => state.setSidebarCollapsed);
   const setRightPanelCollapsed = useStore((state) => state.setRightPanelCollapsed);
   const { reduceMotion, disableMotion } = useMotionLevel();
-  const [workflowDockTool, setWorkflowDockTool] = useState<WorkflowDockTool>("execution");
   const renderPlan = readAppShellRenderPlan(responsiveMode);
-  const workflowPanelWidth = readWorkflowPanelWidth();
+  const workflowPanelWidth = readWorkflowPanelWidth(workflowDockTool);
   const responsiveLayoutKey = `${renderPlan.showSessionPersistentPanel ? "persistent" : "drawer"}:${renderPlan.workflowPanelLayout}`;
   const previousResponsiveLayoutKeyRef = useRef<string | null>(null);
 
@@ -192,7 +198,7 @@ export function AppShell({
         ? motionTimings.panelClose
         : motionTimings.panelOpen;
   const handleWorkflowDockTool = (tool: WorkflowDockTool): void => {
-    setWorkflowDockTool(tool);
+    onWorkflowDockToolChange(tool);
     setRightPanelCollapsed(false);
   };
 
@@ -207,9 +213,26 @@ export function AppShell({
     dockTabs: workflowDockTabs,
   };
 
-  const renderWorkflowPanel = (): ReactNode => {
-    if (!isValidElement(workflowPanel) || typeof workflowPanel.type === "string") return workflowPanel;
-    return cloneElement(workflowPanel as ReactElement<WorkflowDockPanelProps>, workflowPanelProps);
+  const renderWorkflowPanel = (panel: ReactNode): ReactNode => {
+    if (!isValidElement(panel) || typeof panel.type === "string") return panel;
+    return cloneElement(panel as ReactElement<WorkflowDockPanelProps>, workflowPanelProps);
+  };
+
+  const renderTerminalPanel = (presentation: "dock" | "drawer"): ReactNode => {
+    return (
+      <aside className="flex h-full min-h-0 flex-col bg-transparent" data-terminal-dock={presentation}>
+        <div
+          className={cn(
+            "flex shrink-0 items-center border-b border-line-subtle px-3",
+            presentation === "dock" ? "h-[58px]" : "h-[52px]",
+          )}
+          data-workflow-dock-tabs
+        >
+          <WorkflowDockTabs tabs={workflowDockTabs} />
+        </div>
+        <div className="min-h-0 flex-1">{terminalPanel}</div>
+      </aside>
+    );
   };
 
   return (
@@ -272,7 +295,7 @@ export function AppShell({
                 animate={{ opacity: 1, x: 0 }}
                 transition={workflowPanelTransition}
                 className={cn(
-                  "pointer-events-auto absolute inset-y-0 right-0 w-[302px] overflow-hidden",
+                  "pointer-events-auto absolute inset-y-0 right-0 w-full overflow-hidden",
                   renderPlan.workflowPanelLayout === "overlay"
                     ? "border-l border-line-subtle bg-surface-panel [box-shadow:var(--theme-overlay-shadow)]"
                     : "border-l border-line-subtle bg-surface-canvas [background-image:var(--theme-bg-image)]",
@@ -299,11 +322,7 @@ export function AppShell({
                   </IconButton>
                 </div>
                 <div className="h-full w-full" data-workflow-dock-content>
-                  {workflowDockTool === "execution" ? (
-                    renderWorkflowPanel()
-                  ) : (
-                    <WorkflowDockPlaceholder tool={workflowDockTool} dockTabs={workflowDockTabs} />
-                  )}
+                  {workflowDockTool === "execution" ? renderWorkflowPanel(workflowPanel) : renderTerminalPanel("dock")}
                 </div>
               </motion.div>
             ) : null}
@@ -364,40 +383,15 @@ export function AppShell({
           open={workflowDrawerOpen}
           onOpenChange={onWorkflowDrawerOpenChange}
           side="right"
-          title={frontendMessage("workflow.panel.title")}
+          title={frontendMessage(
+            workflowDockTool === "execution" ? "workflow.dock.execution" : "workflow.dock.terminal",
+          )}
           widthClassName={WORKFLOW_DRAWER_WIDTH}
         >
-          {workflowDrawer}
+          {workflowDockTool === "execution" ? renderWorkflowPanel(workflowDrawer) : renderTerminalPanel("drawer")}
         </ResponsiveDrawer>
       ) : null}
     </div>
-  );
-}
-
-function WorkflowDockPlaceholder({
-  tool,
-  dockTabs,
-}: {
-  tool: WorkflowDockTool;
-  dockTabs: readonly WorkflowDockTab[];
-}): JSX.Element {
-  const item = WORKFLOW_DOCK_ITEMS.find(({ id }) => id === tool) ?? WORKFLOW_DOCK_ITEMS[0];
-  const { Icon } = item;
-  return (
-    <aside className="flex h-full flex-col bg-transparent" data-workflow-dock-placeholder={tool}>
-      <div className="flex h-[58px] items-center border-b border-line-subtle px-3" data-workflow-dock-tabs>
-        <WorkflowDockTabs tabs={dockTabs} />
-      </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-        <div className="flex flex-col items-center text-center" data-workflow-dock-empty-state>
-          <span className="grid h-9 w-9 place-items-center rounded-xl border border-line-subtle bg-accent-surface text-accent-content shadow-[var(--theme-node-shadow)]">
-            <Icon className="h-4 w-4" />
-          </span>
-          <p className="mt-3 text-[12.5px] font-medium text-content-primary">{item.label}</p>
-          <p className="mt-1 text-[11.5px] text-content-muted">{frontendMessage("workflow.dock.pending")}</p>
-        </div>
-      </div>
-    </aside>
   );
 }
 

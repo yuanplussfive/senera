@@ -10,6 +10,7 @@ import type { AgentCompletedRunResult } from "../Runtime/AgentExecutionProjector
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+import type { ParsedPiControllerAction } from "../PiProxy/AgentPiAssistantMessageSchema.js";
 
 export interface RunningAgentLoopMachineState {
   kind: "running";
@@ -22,10 +23,13 @@ export interface RunningAgentLoopMachineState {
   loadedToolNames: "all" | string[];
   plannerLedger: AgentActionPlannerLedger;
   rootCommand?: AgentRootCommand;
+  interactionRoute?: AgentInteractionRouteResult;
   turnUnderstanding?: TurnUnderstanding;
+  initialAction?: ParsedPiControllerAction;
   systemPromptPreamble?: string;
   activeSkills: AgentActivatedSkill[];
   stepTraces: StepTrace[];
+  onPiBranchBoundary?: (entryId: string) => void | Promise<void>;
 }
 
 export interface CompletedAgentLoopMachineState {
@@ -38,7 +42,7 @@ export type AgentLoopMachineState = RunningAgentLoopMachineState | CompletedAgen
 
 export type AgentLoopCommand =
   | {
-      kind: "understand_turn";
+      kind: "prepare_interaction";
       requestId: string;
       step: number;
       input: string;
@@ -46,18 +50,6 @@ export type AgentLoopCommand =
       conversationEntries: AgentConversationEntry[];
       loadedToolNames: "all" | string[];
       plannerLedger: AgentActionPlannerLedger;
-    }
-  | {
-      kind: "route_interaction";
-      requestId: string;
-      step: number;
-      input: string;
-      messages: AgentLanguageModelMessage[];
-      conversationEntries: AgentConversationEntry[];
-      loadedToolNames: "all" | string[];
-      plannerLedger: AgentActionPlannerLedger;
-      activeSkills: AgentActivatedSkill[];
-      turnUnderstanding?: TurnUnderstanding;
     }
   | {
       kind: "render_prompt";
@@ -81,23 +73,21 @@ export type AgentLoopCommand =
       rootCommand?: AgentRootCommand;
       loadedToolNames: "all" | string[];
       turnUnderstanding?: TurnUnderstanding;
+      interactionRoute?: AgentInteractionRouteResult;
+      initialAction?: ParsedPiControllerAction;
       activeSkills: AgentActivatedSkill[];
+      onPiBranchBoundary?: (entryId: string) => void | Promise<void>;
     };
 
 export type AgentLoopCommandSucceeded =
   | {
-      kind: "turn_understood";
-      requestId: string;
-      step: number;
-      turnUnderstanding?: TurnUnderstanding;
-    }
-  | {
-      kind: "interaction_routed";
+      kind: "interaction_prepared";
       requestId: string;
       step: number;
       route: AgentInteractionRouteResult;
       loadedToolNames: "all" | string[];
       rootCommand?: AgentRootCommand;
+      initialAction: ParsedPiControllerAction;
       turnUnderstanding?: TurnUnderstanding;
       activeSkills: AgentActivatedSkill[];
     }

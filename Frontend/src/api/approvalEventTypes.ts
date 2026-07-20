@@ -1,5 +1,8 @@
 export type ApprovalKind = "tool_call" | "execution_fallback";
 export type ApprovalResolutionScope = "once" | "session";
+export type ApprovalDecision = "approve_once" | "approve_session" | "deny" | "deny_and_interrupt";
+export type ApprovalDisposition = "proceed" | "continue" | "interrupt";
+export type ApprovalStatus = "pending" | "approved" | "denied" | "cancelled" | "expired";
 
 export interface ToolCallApprovalSubjectData {
   kind: "tool_call";
@@ -22,7 +25,7 @@ export interface ExecutionFallbackApprovalSubjectData {
   permissions: string[];
   fromBackend: string;
   toBackend: string;
-  failureReason: "sandbox_unavailable" | "persistent_sandbox_unsupported";
+  failureReason: "sandbox_unavailable" | "persistent_sandbox_unsupported" | "terminal_capability_unsupported";
 }
 
 export type ApprovalSubjectData = ToolCallApprovalSubjectData | ExecutionFallbackApprovalSubjectData;
@@ -30,10 +33,13 @@ export type ApprovalSubjectData = ToolCallApprovalSubjectData | ExecutionFallbac
 interface ApprovalEventData {
   approvalId: string;
   approvalKind: ApprovalKind;
+  toolCallId?: string;
+  batchId?: string;
   title: string;
   reason: string;
   rule?: string;
   riskSignals?: string[];
+  availableDecisions: ApprovalDecision[];
   subject: ApprovalSubjectData;
   createdAt: string;
 }
@@ -43,7 +49,9 @@ export interface ApprovalRequestedData extends ApprovalEventData {
 }
 
 export interface ApprovalResolvedData extends ApprovalEventData {
-  status: "approved" | "denied";
+  decision?: ApprovalDecision;
+  status: Exclude<ApprovalStatus, "pending">;
+  disposition: ApprovalDisposition;
   message?: string;
   scope?: ApprovalResolutionScope;
   resolvedAt: string;

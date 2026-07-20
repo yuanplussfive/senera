@@ -1,6 +1,7 @@
 import { AgentEventChannels, type AgentEventKind, getAgentEventSpec } from "./AgentEventCatalog.js";
 import type { AgentEventContext, AgentEventEnvelope } from "./AgentEventBase.js";
 import type { AgentDomainEvent, AgentEventSink } from "./AgentEventTypes.js";
+import { createOpaqueId } from "../Core/AgentIds.js";
 
 export class AgentEventSequencer {
   private sequence = 0;
@@ -30,6 +31,7 @@ export function toEventEnvelope(
   const step = context.step;
 
   return {
+    eventId: event.eventId ?? createOpaqueId("event"),
     channel: AgentEventChannels.AgentEvent,
     kind: event.kind,
     layer: spec.layer,

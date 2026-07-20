@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { applyWorkspacePatchHostTool } from "../../../Source/AgentSystem/ToolRuntime/AgentWorkspaceApplyPatchRuntime.js";
 import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
@@ -68,9 +69,12 @@ function createWorkspace(): string {
 function createContext(workspaceRoot: string): AgentHostToolContext {
   return {
     workspaceRoot,
-    tool: { name: "WorkspaceApplyPatch" },
+    tool: {
+      name: "WorkspaceApplyPatch",
+      runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Progress: true } },
+    },
     config: {},
     registry: { getTool: () => undefined },
-    executionEnv: {},
+    executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
   } as unknown as AgentHostToolContext;
 }

@@ -9,6 +9,7 @@ import {
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentExecutionResourceSnapshot } from "../ExecutionResources/AgentExecutionResourceTypes.js";
 
 export class AgentWebSocketSessionRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
@@ -19,7 +20,6 @@ export class AgentWebSocketSessionRequestHandlers {
   ): Promise<void> {
     await this.context.sessionManager.createSession({
       sessionId: request.sessionId,
-      modelProviderId: request.modelProviderId,
       onEvent: sendEvent,
     });
   }
@@ -34,6 +34,7 @@ export class AgentWebSocketSessionRequestHandlers {
       modelProviderId: request.modelProviderId,
       input: request.input,
       attachments: request.attachments,
+      disposition: request.disposition,
       queueMode: request.queueMode,
       onEvent: sendEvent,
     });
@@ -67,6 +68,30 @@ export class AgentWebSocketSessionRequestHandlers {
     });
   }
 
+  async regenerate(
+    request: AgentWebSocketRequestOf<"session.regenerate">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    await this.context.sessionManager.regenerateFromRequest({
+      sessionId: request.sessionId,
+      fromRequestId: request.fromRequestId,
+      requestId: request.requestId,
+      modelProviderId: request.modelProviderId,
+      input: request.input,
+      attachments: request.attachments,
+      onEvent: sendEvent,
+    });
+  }
+
+  async fork(request: AgentWebSocketRequestOf<"session.fork">, sendEvent: AgentWebSocketEventSender): Promise<void> {
+    await this.context.sessionManager.forkSession({
+      sourceSessionId: request.sourceSessionId,
+      sessionId: request.sessionId,
+      throughRequestId: request.throughRequestId,
+      onEvent: sendEvent,
+    });
+  }
+
   async list(sendEvent: AgentWebSocketEventSender): Promise<void> {
     await this.context.sessionManager.emitSessionListSnapshot({
       onEvent: sendEvent,
@@ -96,15 +121,119 @@ export class AgentWebSocketSessionRequestHandlers {
   }
 }
 
+export class AgentWebSocketExecutionResourceRequestHandlers {
+  constructor(private readonly context: AgentWebSocketRequestContext) {}
+
+  async list(
+    request: AgentWebSocketRequestOf<"execution.resource.list">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    await this.sendSnapshot("list", request.sessionId, this.broker.list(this.owner(request.sessionId)), sendEvent);
+  }
+
+  async inspect(
+    request: AgentWebSocketRequestOf<"execution.resource.inspect">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    await this.sendSnapshot(
+      "inspect",
+      request.sessionId,
+      [this.broker.inspect(request.resourceId, this.owner(request.sessionId), request.cursor)],
+      sendEvent,
+    );
+  }
+
+  async write(
+    request: AgentWebSocketRequestOf<"execution.resource.write">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    await this.sendSnapshot(
+      "write",
+      request.sessionId,
+      [await this.broker.write(request.resourceId, this.owner(request.sessionId), Buffer.from(request.input, "utf8"))],
+      sendEvent,
+    );
+  }
+
+  async resize(
+    request: AgentWebSocketRequestOf<"execution.resource.resize">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    await this.sendSnapshot(
+      "resize",
+      request.sessionId,
+      [
+        await this.broker.resize(request.resourceId, this.owner(request.sessionId), {
+          columns: request.columns,
+          rows: request.rows,
+        }),
+      ],
+      sendEvent,
+    );
+  }
+
+  async signal(
+    request: AgentWebSocketRequestOf<"execution.resource.signal">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    await this.sendSnapshot(
+      "signal",
+      request.sessionId,
+      [await this.broker.signal(request.resourceId, this.owner(request.sessionId), request.signal)],
+      sendEvent,
+    );
+  }
+
+  async stopAll(
+    request: AgentWebSocketRequestOf<"execution.resource.stop_all">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    await this.sendSnapshot(
+      "stop_all",
+      request.sessionId,
+      await this.broker.stopAll(this.owner(request.sessionId)),
+      sendEvent,
+    );
+  }
+
+  private sendSnapshot(
+    operation: "list" | "inspect" | "write" | "resize" | "signal" | "stop_all",
+    sessionId: string,
+    resources: AgentExecutionResourceSnapshot[],
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    return Promise.resolve(
+      sendEvent({
+        kind: AgentEventKinds.ExecutionResourceSnapshot,
+        context: { sessionId },
+        data: { operation, resources },
+      }),
+    );
+  }
+
+  private owner(sessionId: string) {
+    return {
+      workspaceRoot: this.context.workspaceRoot,
+      sessionId,
+    };
+  }
+
+  private get broker() {
+    const broker = this.context.executionResources;
+    if (!broker) throw new Error("Execution resource control is unavailable.");
+    return broker;
+  }
+}
+
 export class AgentWebSocketConfigRequestHandlers {
   constructor(
     private readonly context: AgentWebSocketRequestContext,
     private readonly broadcast: AgentWebSocketEventSender,
   ) {}
 
-  listModels(sendEvent: AgentWebSocketEventSender): void {
+  async listModels(sendEvent: AgentWebSocketEventSender): Promise<void> {
     const catalog = resolveModelProviderCatalog(this.context.configSnapshot());
-    sendEvent({
+    await sendEvent({
       kind: AgentEventKinds.ModelListSnapshot,
       context: {},
       data: {
@@ -119,7 +248,7 @@ export class AgentWebSocketConfigRequestHandlers {
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
     try {
-      sendEvent({
+      await sendEvent({
         kind: AgentEventKinds.ProviderModelsSnapshot,
         context: {},
         data: await this.context.providerModelDiscovery.listProviderModels({
@@ -129,7 +258,7 @@ export class AgentWebSocketConfigRequestHandlers {
         }),
       });
     } catch (error) {
-      sendEvent({
+      await sendEvent({
         kind: AgentEventKinds.ProviderModelsFailed,
         context: {},
         data: {
@@ -141,10 +270,10 @@ export class AgentWebSocketConfigRequestHandlers {
     }
   }
 
-  getConfig(sendEvent: AgentWebSocketEventSender): void {
+  async getConfig(sendEvent: AgentWebSocketEventSender): Promise<void> {
     const snapshot = this.context.configService?.snapshot();
     if (snapshot) {
-      sendEvent({
+      await sendEvent({
         kind: AgentEventKinds.ConfigSnapshot,
         context: {},
         data: snapshot,
@@ -153,7 +282,7 @@ export class AgentWebSocketConfigRequestHandlers {
     }
 
     const config = this.context.configSnapshot();
-    sendEvent({
+    await sendEvent({
       kind: AgentEventKinds.ConfigSnapshot,
       context: {},
       data: {
@@ -167,7 +296,10 @@ export class AgentWebSocketConfigRequestHandlers {
     });
   }
 
-  updateConfig(request: AgentWebSocketRequestOf<"config.update">, sendEvent: AgentWebSocketEventSender): void {
+  async updateConfig(
+    request: AgentWebSocketRequestOf<"config.update">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
     if (!this.context.configService) {
       throw new Error(agentErrorMessage("websocket.configServiceDisabled"));
     }
@@ -185,7 +317,7 @@ export class AgentWebSocketConfigRequestHandlers {
       source: "ui_update",
       mirrorJson: request.mirrorJson,
     });
-    sendEvent({
+    await sendEvent({
       kind: AgentEventKinds.ConfigSnapshot,
       context: {},
       data: {
@@ -196,14 +328,14 @@ export class AgentWebSocketConfigRequestHandlers {
         },
       },
     });
-    this.broadcastConfigReloaded(snapshot);
+    await this.broadcastConfigReloaded(snapshot);
   }
 
   upsertProviderEndpoint(
     request: AgentWebSocketRequestOf<"provider.endpoint.upsert">,
     sendEvent: AgentWebSocketEventSender,
-  ): void {
-    this.sendProviderModelConfigSnapshot(
+  ): Promise<void> {
+    return this.sendProviderModelConfigSnapshot(
       this.requireConfigService().upsertProviderEndpoint(request),
       request,
       sendEvent,
@@ -213,8 +345,8 @@ export class AgentWebSocketConfigRequestHandlers {
   deleteProviderEndpoint(
     request: AgentWebSocketRequestOf<"provider.endpoint.delete">,
     sendEvent: AgentWebSocketEventSender,
-  ): void {
-    this.sendProviderModelConfigSnapshot(
+  ): Promise<void> {
+    return this.sendProviderModelConfigSnapshot(
       this.requireConfigService().deleteProviderEndpoint(request),
       request,
       sendEvent,
@@ -224,8 +356,8 @@ export class AgentWebSocketConfigRequestHandlers {
   renameProviderEndpoint(
     request: AgentWebSocketRequestOf<"provider.endpoint.rename">,
     sendEvent: AgentWebSocketEventSender,
-  ): void {
-    this.sendProviderModelConfigSnapshot(
+  ): Promise<void> {
+    return this.sendProviderModelConfigSnapshot(
       this.requireConfigService().renameProviderEndpoint(request),
       request,
       sendEvent,
@@ -235,22 +367,30 @@ export class AgentWebSocketConfigRequestHandlers {
   upsertProviderModel(
     request: AgentWebSocketRequestOf<"provider.model.upsert">,
     sendEvent: AgentWebSocketEventSender,
-  ): void {
-    this.sendProviderModelConfigSnapshot(this.requireConfigService().upsertProviderModel(request), request, sendEvent);
+  ): Promise<void> {
+    return this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().upsertProviderModel(request),
+      request,
+      sendEvent,
+    );
   }
 
   deleteProviderModel(
     request: AgentWebSocketRequestOf<"provider.model.delete">,
     sendEvent: AgentWebSocketEventSender,
-  ): void {
-    this.sendProviderModelConfigSnapshot(this.requireConfigService().deleteProviderModel(request), request, sendEvent);
+  ): Promise<void> {
+    return this.sendProviderModelConfigSnapshot(
+      this.requireConfigService().deleteProviderModel(request),
+      request,
+      sendEvent,
+    );
   }
 
   bulkImportProviderModels(
     request: AgentWebSocketRequestOf<"provider.model.bulkImport">,
     sendEvent: AgentWebSocketEventSender,
-  ): void {
-    this.sendProviderModelConfigSnapshot(
+  ): Promise<void> {
+    return this.sendProviderModelConfigSnapshot(
       this.requireConfigService().bulkImportProviderModels(request),
       request,
       sendEvent,
@@ -260,16 +400,16 @@ export class AgentWebSocketConfigRequestHandlers {
   setDefaultProviderModel(
     request: AgentWebSocketRequestOf<"provider.defaultModel.set">,
     sendEvent: AgentWebSocketEventSender,
-  ): void {
-    this.sendProviderModelConfigSnapshot(
+  ): Promise<void> {
+    return this.sendProviderModelConfigSnapshot(
       this.requireConfigService().setDefaultProviderModel(request),
       request,
       sendEvent,
     );
   }
 
-  listPluginConfig(sendEvent: AgentWebSocketEventSender): void {
-    sendEvent({
+  async listPluginConfig(sendEvent: AgentWebSocketEventSender): Promise<void> {
+    await sendEvent({
       kind: AgentEventKinds.PluginConfigSnapshot,
       context: {},
       data: this.context.pluginConfigManager.snapshot(),
@@ -279,44 +419,48 @@ export class AgentWebSocketConfigRequestHandlers {
   updatePluginConfig(
     request: AgentWebSocketRequestOf<"plugin.config.update">,
     sendEvent: AgentWebSocketEventSender,
-  ): void {
-    sendEvent({
-      kind: AgentEventKinds.PluginConfigSnapshot,
-      context: {},
-      data: {
-        ...this.context.pluginConfigManager.updatePluginConfig({
-          pluginName: request.pluginName,
-          toml: request.toml,
-        }),
-        operation: {
-          requestId: request.requestId,
-          kind: "update",
-          pluginName: request.pluginName,
+  ): Promise<void> {
+    return Promise.resolve(
+      sendEvent({
+        kind: AgentEventKinds.PluginConfigSnapshot,
+        context: {},
+        data: {
+          ...this.context.pluginConfigManager.updatePluginConfig({
+            pluginName: request.pluginName,
+            toml: request.toml,
+          }),
+          operation: {
+            requestId: request.requestId,
+            kind: "update",
+            pluginName: request.pluginName,
+          },
         },
-      },
-    });
+      }),
+    );
   }
 
   setPluginEnabled(
     request: AgentWebSocketRequestOf<"plugin.config.set_enabled">,
     sendEvent: AgentWebSocketEventSender,
-  ): void {
-    sendEvent({
-      kind: AgentEventKinds.PluginConfigSnapshot,
-      context: {},
-      data: {
-        ...this.context.pluginConfigManager.setPluginEnabled({
-          pluginName: request.pluginName,
-          toolName: request.toolName,
-          enabled: request.enabled,
-        }),
-        operation: {
-          requestId: request.requestId,
-          kind: "set_enabled",
-          pluginName: request.pluginName,
+  ): Promise<void> {
+    return Promise.resolve(
+      sendEvent({
+        kind: AgentEventKinds.PluginConfigSnapshot,
+        context: {},
+        data: {
+          ...this.context.pluginConfigManager.setPluginEnabled({
+            pluginName: request.pluginName,
+            toolName: request.toolName,
+            enabled: request.enabled,
+          }),
+          operation: {
+            requestId: request.requestId,
+            kind: "set_enabled",
+            pluginName: request.pluginName,
+          },
         },
-      },
-    });
+      }),
+    );
   }
 
   private requireConfigService() {
@@ -333,35 +477,39 @@ export class AgentWebSocketConfigRequestHandlers {
       type: AgentProviderModelConfigOperationKind;
     },
     sendEvent: AgentWebSocketEventSender,
-  ): void {
-    sendEvent({
-      kind: AgentEventKinds.ConfigSnapshot,
-      context: {},
-      data: {
-        ...snapshot,
-        operation: {
-          requestId: request.requestId,
-          kind: request.type,
+  ): Promise<void> {
+    return (async () => {
+      await sendEvent({
+        kind: AgentEventKinds.ConfigSnapshot,
+        context: {},
+        data: {
+          ...snapshot,
+          operation: {
+            requestId: request.requestId,
+            kind: request.type,
+          },
         },
-      },
-    });
-    this.broadcastConfigReloaded(snapshot);
+      });
+      await this.broadcastConfigReloaded(snapshot);
+    })();
   }
 
   private broadcastConfigReloaded(
     snapshot: ReturnType<NonNullable<AgentWebSocketRequestContext["configService"]>["snapshot"]>,
-  ): void {
-    this.broadcast({
-      kind: AgentEventKinds.ConfigReloaded,
-      context: {},
-      data: {
-        configPath: snapshot.path,
-        source: snapshot.source,
-        revision: snapshot.revision,
-        databasePath: snapshot.databasePath,
-        diagnostics: snapshot.diagnostics,
-      },
-    });
+  ): Promise<void> {
+    return Promise.resolve(
+      this.broadcast({
+        kind: AgentEventKinds.ConfigReloaded,
+        context: {},
+        data: {
+          configPath: snapshot.path,
+          source: snapshot.source,
+          revision: snapshot.revision,
+          databasePath: snapshot.databasePath,
+          diagnostics: snapshot.diagnostics,
+        },
+      }),
+    );
   }
 }
 
@@ -369,7 +517,7 @@ export class AgentWebSocketPresetRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
 
   async list(sendEvent: AgentWebSocketEventSender): Promise<void> {
-    sendEvent({
+    await sendEvent({
       kind: AgentEventKinds.PresetSnapshot,
       context: {},
       data: await this.context.presetManagerFactory().snapshot({
@@ -379,7 +527,7 @@ export class AgentWebSocketPresetRequestHandlers {
   }
 
   async save(request: AgentWebSocketRequestOf<"preset.save">, sendEvent: AgentWebSocketEventSender): Promise<void> {
-    sendEvent({
+    await sendEvent({
       kind: AgentEventKinds.PresetSnapshot,
       context: {},
       data: await this.context.presetManagerFactory().save({
@@ -393,7 +541,7 @@ export class AgentWebSocketPresetRequestHandlers {
   }
 
   async delete(request: AgentWebSocketRequestOf<"preset.delete">, sendEvent: AgentWebSocketEventSender): Promise<void> {
-    sendEvent({
+    await sendEvent({
       kind: AgentEventKinds.PresetSnapshot,
       context: {},
       data: await this.context.presetManagerFactory().delete({
@@ -407,7 +555,7 @@ export class AgentWebSocketPresetRequestHandlers {
     request: AgentWebSocketRequestOf<"preset.set_active">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    sendEvent({
+    await sendEvent({
       kind: AgentEventKinds.PresetSnapshot,
       context: {},
       data: await this.context.presetManagerFactory().setActive({
@@ -441,34 +589,22 @@ export class AgentWebSocketProfileRequestHandlers {
 export class AgentWebSocketApprovalRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
 
-  resolve(request: AgentWebSocketRequestOf<"approval.resolve">, sendEvent: AgentWebSocketEventSender): void {
+  async resolve(
+    request: AgentWebSocketRequestOf<"approval.resolve">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
     const approvalRuntime = this.context.approvalRuntime;
     if (!approvalRuntime) {
       throw new Error(agentErrorMessage("websocket.approvalServiceDisabled"));
     }
 
-    const pending = approvalRuntime.getPending(request.approvalId);
-    if (!pending) {
-      sendEvent({
-        kind: AgentEventKinds.RequestInvalid,
-        context: {},
-        data: {
-          message: agentErrorMessage("approval.requestNotPending", {
-            approvalId: request.approvalId,
-          }),
-        },
-      });
-      return;
-    }
-
-    const resolution = approvalRuntime.tryResolve({
+    const resolution = await approvalRuntime.tryResolve({
       approvalId: request.approvalId,
-      status: request.status,
+      decision: request.decision,
       message: request.message,
-      scope: request.scope,
     });
     if (!resolution) {
-      sendEvent({
+      await sendEvent({
         kind: AgentEventKinds.RequestInvalid,
         context: {},
         data: {
@@ -477,29 +613,21 @@ export class AgentWebSocketApprovalRequestHandlers {
           }),
         },
       });
-      return;
     }
+  }
+}
 
-    sendEvent({
-      kind: AgentEventKinds.ApprovalResolved,
-      context: {
-        requestId: pending.requestId,
-        step: pending.step,
-      },
-      data: {
-        approvalId: pending.approvalId,
-        approvalKind: pending.kind,
-        title: pending.title,
-        reason: pending.reason,
-        rule: pending.rule,
-        riskSignals: pending.riskSignals,
-        subject: pending.subject,
-        createdAt: pending.createdAt,
-        status: resolution.status,
-        message: resolution.message,
-        scope: resolution.scope,
-        resolvedAt: resolution.resolvedAt,
-      },
+export class AgentWebSocketInteractionInputRequestHandlers {
+  constructor(private readonly context: AgentWebSocketRequestContext) {}
+
+  async resolve(request: AgentWebSocketRequestOf<"interaction.input.resolve">): Promise<void> {
+    const runtime = this.context.interactionInput;
+    if (!runtime) throw new Error("Interactive input service is unavailable.");
+    await runtime.resolve({
+      interactionId: request.interactionId,
+      action: request.action,
+      content: request.content,
+      message: request.message,
     });
   }
 }
@@ -507,8 +635,8 @@ export class AgentWebSocketApprovalRequestHandlers {
 export class AgentWebSocketSandboxRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
 
-  status(sendEvent: AgentWebSocketEventSender): void {
-    sendEvent({
+  async status(sendEvent: AgentWebSocketEventSender): Promise<void> {
+    await sendEvent({
       kind: AgentEventKinds.SandboxStatusSnapshot,
       context: {},
       data: this.context.sandboxRuntimeService.snapshot(),

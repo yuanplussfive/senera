@@ -1,55 +1,116 @@
-import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
-import { validateWorkspaceMutationPath } from "../Execution/SeneraWorkspacePath.js";
-
-const TruncationMarker = "\n[truncated]\n";
+import { randomUUID } from "node:crypto";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
+import type { Transform } from "node:stream";
+import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "../Execution/SeneraWorkspaceBoundary.js";
+import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
 
 export class AgentArtifactFileWriter {
-  private readonly workspaceRoot: string;
+  private readonly boundary: SeneraWorkspaceBoundary;
 
   constructor(workspaceRoot: string) {
-    this.workspaceRoot = path.resolve(workspaceRoot);
+    this.boundary = new SeneraWorkspaceBoundary({ workspaceRoot, linkPolicy: "deny" });
   }
 
   async writeJson(filePath: string, value: unknown): Promise<void> {
-    await this.writeText(filePath, artifactJsonText(value), Number.MAX_SAFE_INTEGER);
+    await this.writeJsonStream(filePath, value);
   }
 
   async writeBoundedJson(filePath: string, value: unknown, maxBytes: number): Promise<void> {
-    await this.writeText(filePath, boundedArtifactJsonText(value, maxBytes), maxBytes);
+    assertJsonBudget(maxBytes);
+    const target = await this.prepareTarget(filePath);
+    const source = path.join(path.dirname(target.absolutePath), `.${path.basename(filePath)}.${randomUUID()}.source`);
+    try {
+      const totalBytes = await this.writeJsonSource(source, value);
+      if (totalBytes <= maxBytes) {
+        await fs.rename(source, target.absolutePath);
+        return;
+      }
+      const preview = await readUtf8Prefix(source, maxBytes);
+      await fs.rm(source, { force: true });
+      const bounded = fitJsonPreview({ truncated: true, originalBytes: totalBytes, preview }, maxBytes);
+      await this.writeJsonStream(filePath, bounded);
+    } finally {
+      await fs.rm(source, { force: true }).catch(() => undefined);
+    }
   }
 
   async writeText(filePath: string, value: string, maxBytes: number): Promise<void> {
-    assertByteLimit(maxBytes);
-    const targetPath = path.resolve(filePath);
-    await this.assertSafeMutationPath(targetPath);
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await this.assertSafeMutationPath(targetPath);
-
+    const target = await this.prepareTarget(filePath);
+    assertJsonBudget(maxBytes);
     const text = truncateArtifactTextByBytes(value, maxBytes);
-    const tempPath = `${targetPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    const temporary = path.join(path.dirname(target.absolutePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
     try {
-      await this.assertSafeMutationPath(tempPath);
-      await fs.writeFile(tempPath, text, { encoding: "utf8", flag: "wx" });
-      await this.assertSafeMutationPath(targetPath);
-      await fs.rename(tempPath, targetPath);
+      await fs.writeFile(temporary, text, { encoding: "utf8", flag: "wx" });
+      await fs.rename(temporary, target.absolutePath);
     } finally {
-      await this.removeTemporaryFile(tempPath);
+      await fs.rm(temporary, { force: true }).catch(() => undefined);
     }
   }
 
-  private async assertSafeMutationPath(filePath: string): Promise<void> {
-    const validation = await validateWorkspaceMutationPath(this.workspaceRoot, filePath);
-    if (!validation.ok) {
-      throw new Error(validation.message);
+  private async writeJsonStream(filePath: string, value: unknown): Promise<void> {
+    const target = await this.prepareTarget(filePath);
+    const temporary = path.join(path.dirname(target.absolutePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
+    try {
+      await this.writeJsonSource(temporary, value);
+      await fs.rename(temporary, target.absolutePath);
+    } finally {
+      await fs.rm(temporary, { force: true }).catch(() => undefined);
     }
   }
 
-  private async removeTemporaryFile(filePath: string): Promise<void> {
-    const validation = await validateWorkspaceMutationPath(this.workspaceRoot, filePath);
-    if (validation.ok) {
-      await fs.rm(filePath, { force: true });
+  private async writeJsonSource(filePath: string, value: unknown): Promise<number> {
+    let bytes = 0;
+    const source = Readable.from(
+      (function* () {
+        for (const chunk of encodeJson(value)) {
+          bytes += Buffer.byteLength(chunk, "utf8");
+          yield chunk;
+        }
+        bytes += 1;
+        yield "\n";
+      })(),
+    );
+    await pipeline(source, createWriteStream(filePath, { flags: "wx", encoding: "utf8" }));
+    return bytes;
+  }
+
+  private async prepareTarget(filePath: string): Promise<{ absolutePath: string }> {
+    const initial = await this.boundary.resolve(filePath, AgentResourceAccessIntents.Replace);
+    await fs.mkdir(path.dirname(initial.absolutePath), { recursive: true });
+    return this.boundary.resolve(filePath, AgentResourceAccessIntents.Replace);
+  }
+
+  async copyFile(sourcePath: string, targetPath: string): Promise<void> {
+    await this.copyFileStream(sourcePath, targetPath);
+  }
+
+  async copyFileWithTransform(sourcePath: string, targetPath: string, transform: Transform): Promise<void> {
+    await this.copyFileStream(sourcePath, targetPath, transform);
+  }
+
+  private async copyFileStream(sourcePath: string, targetPath: string, transform?: Transform): Promise<void> {
+    const source = await this.boundary.openFile(sourcePath, AgentResourceAccessIntents.Read);
+    const target = await this.boundary.resolve(targetPath, AgentResourceAccessIntents.Replace);
+    await fs.mkdir(path.dirname(target.absolutePath), { recursive: true });
+    const temporary = path.join(path.dirname(target.absolutePath), `.${path.basename(targetPath)}.${randomUUID()}.tmp`);
+    const readStream = source.handle.createReadStream({ autoClose: false });
+    try {
+      const output = createWriteStream(temporary, { flags: "wx" });
+      if (transform) await pipeline(readStream, transform, output);
+      else await pipeline(readStream, output);
+      const current = await this.boundary.resolve(targetPath, AgentResourceAccessIntents.Replace);
+      if (current.absolutePath !== target.absolutePath) {
+        throw new SeneraWorkspaceBoundaryError("path_changed", `Artifact target changed while copying: ${targetPath}`);
+      }
+      await fs.rename(temporary, current.absolutePath);
+    } finally {
+      readStream.destroy();
+      await source.handle.close().catch(() => undefined);
+      await fs.rm(temporary, { force: true }).catch(() => undefined);
     }
   }
 }
@@ -59,69 +120,108 @@ export function truncateArtifactText(value: string, maxChars: number): string {
 }
 
 export function truncateArtifactTextByBytes(value: string, maxBytes: number): string {
-  assertByteLimit(maxBytes);
+  assertJsonBudget(maxBytes);
   if (byteLength(value) <= maxBytes) return value;
-  const markerBytes = byteLength(TruncationMarker);
-  if (markerBytes >= maxBytes) return truncateUtf8(TruncationMarker, maxBytes);
-  return `${truncateUtf8(value, maxBytes - markerBytes)}${TruncationMarker}`;
+  const marker = "\n[truncated]\n";
+  if (byteLength(marker) >= maxBytes) return Buffer.from(marker).subarray(0, maxBytes).toString("utf8");
+  const source = Buffer.from(value, "utf8");
+  let end = Math.max(0, maxBytes - byteLength(marker));
+  while (end > 0 && (source[end] & 0xc0) === 0x80) end -= 1;
+  return `${source.subarray(0, end).toString("utf8")}${marker}`;
 }
 
-function boundedArtifactJsonText(value: unknown, maxBytes: number): string {
-  assertByteLimit(maxBytes);
-  const fullText = artifactJsonText(value);
-  if (byteLength(fullText) <= maxBytes) return fullText;
-
-  const originalBytes = byteLength(fullText);
-  let lower = 0;
-  let upper = fullText.length;
-  let best: string | undefined;
-  while (lower <= upper) {
-    const middle = Math.floor((lower + upper) / 2);
-    const candidate = artifactJsonText({
-      truncated: true,
-      originalBytes,
-      preview: fullText.slice(0, middle),
-    });
-    if (byteLength(candidate) <= maxBytes) {
+function fitJsonPreview(value: { truncated: true; originalBytes: number; preview: string }, maxBytes: number) {
+  let low = 0;
+  let high = value.preview.length;
+  let best = { ...value, preview: "" };
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const candidate = { ...value, preview: value.preview.slice(0, mid) };
+    if (byteLength(`${JSON.stringify(candidate)}\n`) <= maxBytes) {
       best = candidate;
-      lower = middle + 1;
+      low = mid + 1;
     } else {
-      upper = middle - 1;
+      high = mid - 1;
     }
   }
-  if (best) return best;
-
-  for (const fallback of [{ truncated: true, originalBytes }, { truncated: true }, null]) {
-    const candidate = artifactJsonText(fallback);
-    if (byteLength(candidate) <= maxBytes) return candidate;
-  }
-  throw new Error(`Artifact JSON byte limit is too small to preserve valid JSON: ${maxBytes}`);
-}
-
-function artifactJsonText(value: unknown): string {
-  return `${JSON.stringify(value, null, 2) ?? "null"}\n`;
-}
-
-function truncateUtf8(value: string, maxBytes: number): string {
-  const buffer = Buffer.from(value, "utf8");
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  let length = Math.min(maxBytes, buffer.byteLength);
-  while (length > 0) {
-    try {
-      return decoder.decode(buffer.subarray(0, length));
-    } catch {
-      length -= 1;
-    }
-  }
-  return "";
-}
-
-function assertByteLimit(maxBytes: number): void {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
-    throw new Error(`Artifact byte limit must be a non-negative safe integer: ${maxBytes}`);
-  }
+  return best;
 }
 
 function byteLength(value: string): number {
   return Buffer.byteLength(value, "utf8");
+}
+
+function assertJsonBudget(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 1)
+    throw new RangeError(`JSON byte budget must be a positive safe integer: ${value}`);
+}
+
+async function readUtf8Prefix(filePath: string, maxBytes: number): Promise<string> {
+  const chunks: Buffer[] = [];
+  let remaining = maxBytes;
+  for await (const chunk of createReadStream(filePath)) {
+    if (remaining <= 0) break;
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    const retained = buffer.subarray(0, remaining);
+    chunks.push(retained);
+    remaining -= retained.byteLength;
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function* encodeJson(value: unknown, stack = new Set<object>()): Generator<string> {
+  if (value === null) {
+    yield "null";
+    return;
+  }
+  switch (typeof value) {
+    case "string":
+      yield JSON.stringify(value);
+      return;
+    case "number":
+      yield Number.isFinite(value) ? String(value) : "null";
+      return;
+    case "boolean":
+      yield value ? "true" : "false";
+      return;
+    case "bigint":
+      throw new TypeError("Do not know how to serialize a BigInt");
+    case "undefined":
+    case "function":
+    case "symbol":
+      yield "null";
+      return;
+  }
+
+  const object = value as object & { toJSON?: () => unknown };
+  if (typeof object.toJSON === "function") {
+    yield* encodeJson(object.toJSON(), stack);
+    return;
+  }
+  if (stack.has(object)) throw new TypeError("Converting circular structure to JSON");
+  stack.add(object);
+  try {
+    if (Array.isArray(object)) {
+      yield "[";
+      for (const [index, entry] of object.entries()) {
+        if (index > 0) yield ",";
+        yield* encodeJson(entry, stack);
+      }
+      yield "]";
+      return;
+    }
+    yield "{";
+    let first = true;
+    for (const [key, entry] of Object.entries(object)) {
+      if (entry === undefined || typeof entry === "function" || typeof entry === "symbol") continue;
+      if (!first) yield ",";
+      first = false;
+      yield JSON.stringify(key);
+      yield ":";
+      yield* encodeJson(entry, stack);
+    }
+    yield "}";
+  } finally {
+    stack.delete(object);
+  }
 }

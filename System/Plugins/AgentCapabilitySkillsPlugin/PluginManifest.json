@@ -1,4 +1,5 @@
 {
+  "ManifestVersion": 2,
   "Plugin": {
     "Name": "AgentCapabilitySkillsPlugin",
     "Title": "能力技能",

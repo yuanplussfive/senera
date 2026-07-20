@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import crypto from "node:crypto";
 import type { AgentHarnessResources, PromptTemplate, Skill } from "@earendil-works/pi-agent-core";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
@@ -19,10 +20,13 @@ export type AgentPiHarnessResources = AgentHarnessResources<Skill, PromptTemplat
 export interface AgentPiProjectedResources {
   harnessResources: AgentPiHarnessResources;
   selection: AgentPiResourceSelection;
+  fingerprint: string;
 }
 
 export class AgentPiResourceProjector {
   private readonly selector = new AgentPiResourceSelector();
+  private readonly textByPath = new Map<string, CachedText>();
+  private readonly promptTemplateByName = new Map<string, CachedPromptTemplate>();
 
   constructor(private readonly registry: AgentPluginRegistry) {}
 
@@ -32,12 +36,14 @@ export class AgentPiResourceProjector {
       templates: this.registry.listTemplates(),
     });
 
+    const harnessResources = {
+      skills: this.projectSkills(input.activeSkills),
+      promptTemplates: this.projectPromptTemplates(),
+    };
     return {
-      harnessResources: {
-        skills: this.projectSkills(input.activeSkills),
-        promptTemplates: this.projectPromptTemplates(),
-      },
+      harnessResources,
       selection,
+      fingerprint: crypto.createHash("sha256").update(JSON.stringify(harnessResources)).digest("hex"),
     };
   }
 
@@ -60,6 +66,27 @@ export class AgentPiResourceProjector {
     return [skill.title, skill.summary, ...skill.useCases].filter(hasText).join("\n");
   }
 
+  projectPromptTemplate(template: RegisteredTemplate): PromptTemplate {
+    const content = this.readTextFile(template.path);
+    const cached = this.promptTemplateByName.get(template.name);
+    if (
+      cached &&
+      cached.path === template.path &&
+      cached.description === template.description &&
+      cached.content === content
+    ) {
+      return cached.value;
+    }
+    const value = { name: template.name, description: template.description, content };
+    this.promptTemplateByName.set(template.name, {
+      path: template.path,
+      description: template.description,
+      content,
+      value,
+    });
+    return value;
+  }
+
   private projectPromptTemplates(): PromptTemplate[] {
     return this.registry
       .listTemplates()
@@ -67,19 +94,52 @@ export class AgentPiResourceProjector {
       .map((template) => this.projectPromptTemplate(template));
   }
 
-  projectPromptTemplate(template: RegisteredTemplate): PromptTemplate {
-    return {
-      name: template.name,
-      description: template.description,
-      content: this.readTextFile(template.path),
-    };
-  }
-
   readTextFile(filePath: string): string {
-    return fs.readFileSync(filePath, "utf8");
+    const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollowFlag());
+    try {
+      const revision = fs.fstatSync(descriptor);
+      if (!revision.isFile()) throw new Error(`Pi resource is not a regular file: ${filePath}`);
+      const cached = this.textByPath.get(filePath);
+      if (
+        cached &&
+        cached.mtimeMs === revision.mtimeMs &&
+        cached.size === revision.size &&
+        cached.ctimeMs === revision.ctimeMs
+      ) {
+        return cached.content;
+      }
+      const content = fs.readFileSync(descriptor, "utf8");
+      this.textByPath.set(filePath, {
+        mtimeMs: revision.mtimeMs,
+        ctimeMs: revision.ctimeMs,
+        size: revision.size,
+        content,
+      });
+      return content;
+    } finally {
+      fs.closeSync(descriptor);
+    }
   }
+}
+
+interface CachedText {
+  readonly mtimeMs: number;
+  readonly ctimeMs: number;
+  readonly size: number;
+  readonly content: string;
+}
+
+interface CachedPromptTemplate {
+  readonly path: string;
+  readonly description?: string;
+  readonly content: string;
+  readonly value: PromptTemplate;
 }
 
 function hasText(value: string | undefined): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+function noFollowFlag(): number {
+  return typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
 }

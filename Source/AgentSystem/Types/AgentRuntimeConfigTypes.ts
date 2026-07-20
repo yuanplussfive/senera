@@ -2,22 +2,52 @@ export type AgentLoadedToolsConfig = "all" | "dynamic" | string[];
 
 export interface AgentLoopConfig {
   LoadedTools?: AgentLoadedToolsConfig;
-  PiSessionCreateTimeoutSeconds?: number;
+  PiTurnLeaseTimeoutSeconds?: number;
+  RunSettlementTimeoutSeconds?: number;
   PiSessions?: AgentPiSessionsConfig;
 }
 
 export interface AgentPiSessionsConfig {
   RootDir?: string;
+  MaxCachedSessions?: number;
+  Compaction?: AgentPiCompactionConfig;
+}
+
+export interface AgentPiCompactionConfig {
+  Enabled?: boolean;
+  TriggerRatio?: number;
+  HardLimitRatio?: number;
+  TargetRatio?: number;
+  SummaryMaxTokens?: number;
+  TimeoutSeconds?: number;
+  UnknownContextWindowTokens?: number;
+  UnknownModelOutputTokens?: number;
 }
 
 export interface ResolvedAgentPiSessionsConfig {
   RootDir: string;
+  MaxCachedSessions: number;
+  Compaction: ResolvedAgentPiCompactionConfig;
+}
+
+export interface ResolvedAgentPiCompactionConfig {
+  Enabled: boolean;
+  TriggerRatio: number;
+  HardLimitRatio: number;
+  TargetRatio: number;
+  SummaryMaxTokens: number;
+  TimeoutSeconds: number;
+  TimeoutMs: number;
+  UnknownContextWindowTokens: number;
+  UnknownModelOutputTokens: number;
 }
 
 export interface ResolvedAgentLoopConfig {
   LoadedTools: AgentLoadedToolsConfig;
-  PiSessionCreateTimeoutSeconds: number;
-  PiSessionCreateTimeoutMs: number;
+  PiTurnLeaseTimeoutSeconds: number;
+  PiTurnLeaseTimeoutMs: number;
+  RunSettlementTimeoutSeconds: number;
+  RunSettlementTimeoutMs: number;
   PiSessions: ResolvedAgentPiSessionsConfig;
 }
 
@@ -35,12 +65,42 @@ export interface AgentToolExecutionConfig {
   TimeoutSeconds?: number;
   MaxStdoutBytes?: number;
   MaxStderrBytes?: number;
+  Environment?: AgentProcessEnvironmentConfig;
+  Resources?: AgentExecutionResourcesConfig;
+}
+
+export interface AgentProcessEnvironmentConfig {
+  Inherit?: "all" | "allowlist" | "none";
+  IncludeOnly?: string[];
+  Exclude?: string[];
+  Set?: Record<string, string>;
+}
+
+export interface AgentExecutionResourcesConfig {
+  MaxActive?: number;
+  MaxBufferedBytes?: number;
+  MaxInputBytes?: number;
+  MaxWaitSeconds?: number;
+  IdleTtlSeconds?: number;
+  TerminalTtlSeconds?: number;
+  SweepIntervalSeconds?: number;
+  TerminationGraceSeconds?: number;
 }
 
 export interface ResolvedAgentToolExecutionConfig {
   TimeoutMs: number;
   MaxStdoutBytes: number;
   MaxStderrBytes: number;
+  Environment: Required<AgentProcessEnvironmentConfig>;
+  Resources: ResolvedAgentExecutionResourcesConfig;
+}
+
+export interface ResolvedAgentExecutionResourcesConfig extends Required<AgentExecutionResourcesConfig> {
+  MaxWaitMs: number;
+  IdleTtlMs: number;
+  TerminalTtlMs: number;
+  SweepIntervalMs: number;
+  TerminationGraceMs: number;
 }
 
 export interface AgentSandboxRuntimeConfig {
@@ -74,6 +134,19 @@ export interface AgentArtifactsConfig {
   SummaryMaxChars?: number;
   RawJsonMaxBytes?: number;
   TextFileMaxBytes?: number;
+  MemoryReadStructuredJsonMaxBytes?: number;
+  MemoryReadMaxArtifacts?: number;
+  MemoryReadMaxRefs?: number;
+  MemoryReadMaxConcurrency?: number;
+  MemoryReadCacheMaxBytes?: number;
+  MemoryReadCacheMaxEntries?: number;
+  OutputCaptureMaxBytes?: number;
+  MaxStoredBytes?: number;
+  MaxArtifacts?: number;
+  RetentionHours?: number;
+  IncompleteRetentionHours?: number;
+  MaintenanceIntervalMinutes?: number;
+  MaintenanceMaxConcurrency?: number;
 }
 
 export interface ResolvedAgentArtifactsConfig {
@@ -81,6 +154,19 @@ export interface ResolvedAgentArtifactsConfig {
   SummaryMaxChars: number;
   RawJsonMaxBytes: number;
   TextFileMaxBytes: number;
+  MemoryReadStructuredJsonMaxBytes: number;
+  MemoryReadMaxArtifacts: number;
+  MemoryReadMaxRefs: number;
+  MemoryReadMaxConcurrency: number;
+  MemoryReadCacheMaxBytes: number;
+  MemoryReadCacheMaxEntries: number;
+  OutputCaptureMaxBytes: number;
+  MaxStoredBytes: number;
+  MaxArtifacts: number;
+  RetentionHours: number;
+  IncompleteRetentionHours: number;
+  MaintenanceIntervalMinutes: number;
+  MaintenanceMaxConcurrency: number;
 }
 
 export interface AgentUploadsConfig {

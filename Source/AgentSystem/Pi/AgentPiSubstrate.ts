@@ -35,6 +35,12 @@ import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import { AgentPiContextPolicy } from "./AgentPiContextPolicy.js";
+import type { AgentPiCompactionRunResult } from "./AgentPiCompactionPolicy.js";
+import { AgentPiCompactionPolicy } from "./AgentPiCompactionPolicy.js";
+import type { AgentPiCompactionSummarizer } from "./AgentPiCompactionSummarizer.js";
+import { AgentPiOpenAiPlanningProjector } from "../PiProxy/AgentPiOpenAiPlanningProjector.js";
+import type { AgentPiToolCard } from "../PiProxy/AgentPiAssistantMessageTypes.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 
 export interface AgentPiSubstrateOptions {
   workspaceRoot: string;
@@ -47,6 +53,7 @@ export interface AgentPiSubstrateOptions {
   toolPermissionGate?: AgentToolPermissionGate;
   sessionStore?: AgentPiSessionStorePort;
   harnessPool?: AgentPiHarnessSessionPoolPort;
+  compactionSummarizer?: AgentPiCompactionSummarizer;
 }
 
 export interface AgentPiToolCallExecutorPort {
@@ -58,7 +65,6 @@ export interface AgentPiArtifactRecorderPort {
 }
 
 export interface AgentPiSessionOptions extends AgentPiToolProjectionContext {
-  sessionId?: string;
   input?: string;
   systemPrompt?: string;
   conversationEntries?: readonly AgentConversationEntry[];
@@ -78,6 +84,8 @@ export interface AgentPiSession {
   steer(text: string): Promise<void>;
   followUp(text: string): Promise<void>;
   nextTurn(text: string): Promise<void>;
+  markTurnBoundary(requestId: string): Promise<string>;
+  compactIfNeeded?(signal?: AbortSignal): Promise<AgentPiCompactionRunResult | undefined>;
   setResources(resources: AgentHarnessResources<Skill, PromptTemplate>): Promise<void>;
   subscribe(listener: AgentPiSessionEventListener): () => void;
   abort(): Promise<void>;
@@ -96,7 +104,10 @@ export interface AgentPiRuntimeService {
   model(): AgentPiModelProjection;
   toolDefinitions(context?: AgentPiToolProjectionContext): AgentPiToolDefinition[];
   activeToolNames(context?: AgentPiToolProjectionContext): string[];
-  createSession(options?: AgentPiSessionOptions): Promise<AgentPiSessionResult>;
+  planningToolCards(context?: AgentPiToolProjectionContext): AgentPiToolCard[];
+  leaseTurn(options?: AgentPiSessionOptions): Promise<AgentPiSessionResult>;
+  rewindSession(sessionId: string, entryId: string): Promise<boolean>;
+  resetSession(sessionId: string): Promise<boolean>;
 }
 
 export class AgentPiSubstrate implements AgentPiRuntimeService {
@@ -108,16 +119,20 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
   private readonly resourceProjector: AgentPiResourceProjector;
   private readonly harnessPool: AgentPiHarnessSessionPoolPort;
   private readonly contextPolicy: AgentPiContextPolicy;
+  private readonly planningProjector: AgentPiOpenAiPlanningProjector;
 
   constructor(private readonly options: AgentPiSubstrateOptions) {
+    const piSessionsConfig = resolveAgentLoopConfig(options.config).PiSessions;
     this.provider = projectSeneraModelProviderToPi(options.modelProvider, options.config);
     this.contextPolicy = new AgentPiContextPolicy(options.modelProvider.Model);
+    this.planningProjector = new AgentPiOpenAiPlanningProjector({ modelProvider: options.modelProvider });
     this.env = options.executionEnv;
     this.sessionStore =
       options.sessionStore ??
       new AgentPiSessionStore({
         workspaceRoot: options.workspaceRoot,
-        sessionsRoot: resolveAgentLoopConfig(options.config).PiSessions.RootDir,
+        sessionsRoot: piSessionsConfig.RootDir,
+        maxCachedSessions: piSessionsConfig.MaxCachedSessions,
         env: this.env,
       });
     this.resourceProjector = new AgentPiResourceProjector(options.registry);
@@ -127,6 +142,11 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         env: this.env,
         provider: this.provider,
         modelProvider: options.modelProvider,
+        maxIdleSessions: piSessionsConfig.MaxCachedSessions,
+        compactionPolicy: piSessionsConfig.Compaction.Enabled
+          ? new AgentPiCompactionPolicy(piSessionsConfig.Compaction, options.modelProvider)
+          : undefined,
+        compactionSummarizer: options.compactionSummarizer,
       });
     this.permissionHook = new AgentPiToolPermissionHook({
       registry: options.registry,
@@ -155,9 +175,24 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
     return this.toolProjector.names(context.visibleToolNames);
   }
 
-  async createSession(options: AgentPiSessionOptions = {}): Promise<AgentPiSessionResult> {
-    const tools = this.activeToolNames(options);
-    const customTools = this.toolDefinitions(options);
+  planningToolCards(context: AgentPiToolProjectionContext = {}): AgentPiToolCard[] {
+    const definitions = this.toolProjector.createToolSet(context.visibleToolNames).materialize(() => context);
+    return this.planningProjector.projectToolCards(
+      definitions.map((tool) => ({
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        },
+      })),
+    );
+  }
+
+  async leaseTurn(options: AgentPiSessionOptions = {}): Promise<AgentPiSessionResult> {
+    throwIfAborted(options.signal);
+    const leaseStartedAt = performance.now();
+    const toolSet = this.toolProjector.createToolSet(options.visibleToolNames);
     const contextPolicy = this.contextPolicy.createFrame({
       requestId: options.requestId,
       model: this.options.modelProvider.Model,
@@ -182,26 +217,48 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         selectionScore: selection.score,
       }),
     );
-    await this.emitSubstrateTrace(options, "core.agent.create.started", {
+    const projectionMs = elapsedMilliseconds(leaseStartedAt);
+    await this.emitSubstrateTrace(options, "core.turn.lease.started", {
       model: this.provider.model.id,
       provider: this.provider.providerId,
-      toolCount: tools.length,
+      toolCount: toolSet.activeToolNames.length,
       skillCount: resources.skills?.length ?? 0,
       promptTemplateCount: resources.promptTemplates?.length ?? 0,
       selectedPromptTemplateCount: selectedPromptTemplates.length,
+      projectionMs,
     });
+    throwIfAborted(options.signal);
 
-    const persistentSession = await this.sessionStore.openOrCreate({
-      sessionId: options.sessionId,
-      fallbackId: options.requestId,
-    });
-    const entryCount = (await persistentSession.session.getEntries()).length;
+    const sessionOpenStartedAt = performance.now();
+    const requestedSessionId = options.sessionId?.trim() || options.requestId?.trim();
+    const pooledPersistentSession = requestedSessionId
+      ? this.harnessPool.findPersistentSession(requestedSessionId)
+      : undefined;
+    const persistentSession = pooledPersistentSession
+      ? {
+          sessionId: requestedSessionId!,
+          session: pooledPersistentSession,
+          storage: "existing" as const,
+        }
+      : await this.sessionStore.openOrCreate({
+          sessionId: options.sessionId,
+          fallbackId: options.requestId,
+          signal: options.signal,
+        });
+    throwIfAborted(options.signal);
+    const sessionOpenMs = elapsedMilliseconds(sessionOpenStartedAt);
+    const historyInspectionStartedAt = performance.now();
+    const piSessionHasHistory = (await persistentSession.session.getLeafId()) !== null;
+    throwIfAborted(options.signal);
+    const historyInspectionMs = elapsedMilliseconds(historyInspectionStartedAt);
+    const harnessLeaseStartedAt = performance.now();
     const harnessLease = await this.harnessPool.lease({
       sessionId: persistentSession.sessionId,
       session: persistentSession.session,
-      tools: customTools,
-      activeToolNames: tools,
+      signal: options.signal,
+      toolSet,
       resources,
+      resourceFingerprint: resourceProjection.fingerprint,
       frame: {
         sessionId: persistentSession.sessionId,
         requestId: options.requestId,
@@ -217,40 +274,67 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       },
       preflight: (event) => this.permissionHook.authorize(options, event),
     });
-    await this.emitSubstrateTrace(options, "core.agent.create.completed", {
-      piSessionId: persistentSession.sessionId,
-      piSessionStorage: persistentSession.storage,
-      harnessStorage: harnessLease.storage,
-      piSessionEntryCount: entryCount,
-      historyMigrationRequired: entryCount === 0,
-      activeToolCount: tools.length,
-      customToolCount: customTools.length,
-      toolNames: tools,
-      skillNames: resources.skills?.map((skill) => skill.name) ?? [],
-      promptTemplateNames: resources.promptTemplates?.map((template) => template.name) ?? [],
-      selectedPromptTemplateNames: selectedPromptTemplates.map((template) => template.name),
-      selectedPromptTemplates: selectedPromptTemplates.map((template) => ({
-        name: template.name,
-        resourceKinds: template.resourceKinds,
-        workflowRoles: template.workflowRoles,
-        matchedTerms: template.matchedTerms,
-        selectionScore: template.selectionScore,
-      })),
-    });
+    try {
+      throwIfAborted(options.signal);
+      const harnessLeaseMs = elapsedMilliseconds(harnessLeaseStartedAt);
+      await this.emitSubstrateTrace(options, "core.turn.lease.completed", {
+        piSessionId: persistentSession.sessionId,
+        piSessionStorage: persistentSession.storage,
+        harnessStorage: harnessLease.storage,
+        piSessionHasHistory,
+        historyMigrationRequired: !piSessionHasHistory,
+        sessionOpenSource: pooledPersistentSession ? "harness_pool" : "session_store",
+        activeToolCount: toolSet.activeToolNames.length,
+        customToolCount: toolSet.activeToolNames.length,
+        toolNames: toolSet.activeToolNames,
+        skillNames: resources.skills?.map((skill) => skill.name) ?? [],
+        promptTemplateNames: resources.promptTemplates?.map((template) => template.name) ?? [],
+        selectedPromptTemplateNames: selectedPromptTemplates.map((template) => template.name),
+        selectedPromptTemplates: selectedPromptTemplates.map((template) => ({
+          name: template.name,
+          resourceKinds: template.resourceKinds,
+          workflowRoles: template.workflowRoles,
+          matchedTerms: template.matchedTerms,
+          selectionScore: template.selectionScore,
+        })),
+      });
+      await this.emitSubstrateTrace(options, "core.turn.lease.timing", {
+        projectionMs,
+        sessionOpenMs,
+        historyInspectionMs,
+        harnessLeaseMs,
+        durationMs: elapsedMilliseconds(leaseStartedAt),
+        sessionOpenSource: pooledPersistentSession ? "harness_pool" : "session_store",
+      });
+      throwIfAborted(options.signal);
 
-    return {
-      session: harnessLease.session,
-      piSessionId: persistentSession.sessionId,
-      historyMigrationRequired: entryCount === 0,
-    };
+      return {
+        session: harnessLease.session,
+        piSessionId: persistentSession.sessionId,
+        historyMigrationRequired: !piSessionHasHistory,
+      };
+    } catch (error) {
+      harnessLease.session.dispose();
+      throw error;
+    }
+  }
+
+  async resetSession(sessionId: string): Promise<boolean> {
+    await this.harnessPool.reset(sessionId);
+    return this.sessionStore.reset(sessionId);
+  }
+
+  async rewindSession(sessionId: string, entryId: string): Promise<boolean> {
+    if (await this.harnessPool.rewind(sessionId, entryId)) return true;
+    return this.sessionStore.rewind(sessionId, entryId);
   }
 
   private resolveObjective(options: AgentPiSessionOptions): string | undefined {
     return options.rootCommand?.objective ?? options.turnUnderstanding?.standaloneRequest ?? options.input;
   }
 
-  close(): void {
-    this.harnessPool.close();
+  close(): Promise<void> {
+    return this.harnessPool.close();
   }
 
   private async emitSubstrateTrace(options: AgentPiSessionOptions, eventType: string, payload: unknown): Promise<void> {
@@ -266,4 +350,8 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       }),
     );
   }
+}
+
+function elapsedMilliseconds(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
 }

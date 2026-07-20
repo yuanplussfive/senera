@@ -18,9 +18,35 @@ const endpointProtocols = [
     endpoint: "ChatCompletions",
     completeResponse: {
       choices: [{ message: { content: [{ text: "Hello " }, { text: "world" }] } }],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 4,
+        total_tokens: 14,
+        prompt_tokens_details: { cached_tokens: 2, cache_write_tokens: 1 },
+        completion_tokens_details: { reasoning_tokens: 1 },
+      },
     },
     completeText: "Hello world",
     streamEvent: { choices: [{ delta: { content: "delta" } }] },
+    usageEvent: {
+      choices: [],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 4,
+        total_tokens: 14,
+        prompt_tokens_details: { cached_tokens: 2, cache_write_tokens: 1 },
+        completion_tokens_details: { reasoning_tokens: 1 },
+      },
+    },
+    expectedUsage: {
+      source: "provider_reported",
+      inputTokens: 7,
+      outputTokens: 4,
+      totalTokens: 14,
+      cacheReadTokens: 2,
+      cacheWriteTokens: 1,
+      reasoningTokens: 1,
+    },
     expectedPath: ["chat", "completions"],
     assertJsonRequest(request: RecordedJsonRequest) {
       expect(readHeaders(request.headers).get("authorization")).toBe("Bearer test-key");
@@ -40,9 +66,36 @@ const endpointProtocols = [
     endpoint: "Responses",
     completeResponse: {
       output: [{ content: [{ text: "Response " }, { text: "text" }] }],
+      usage: {
+        input_tokens: 12,
+        output_tokens: 5,
+        total_tokens: 17,
+        input_tokens_details: { cached_tokens: 3 },
+        output_tokens_details: { reasoning_tokens: 2 },
+      },
     },
     completeText: "Response text",
     streamEvent: { type: "response.output_text.delta", delta: "delta" },
+    usageEvent: {
+      type: "response.completed",
+      response: {
+        usage: {
+          input_tokens: 12,
+          output_tokens: 5,
+          total_tokens: 17,
+          input_tokens_details: { cached_tokens: 3 },
+          output_tokens_details: { reasoning_tokens: 2 },
+        },
+      },
+    },
+    expectedUsage: {
+      source: "provider_reported",
+      inputTokens: 9,
+      outputTokens: 5,
+      totalTokens: 17,
+      cacheReadTokens: 3,
+      reasoningTokens: 2,
+    },
     expectedPath: ["responses"],
     assertJsonRequest(request: RecordedJsonRequest) {
       expect(readHeaders(request.headers).get("authorization")).toBe("Bearer test-key");
@@ -61,9 +114,32 @@ const endpointProtocols = [
         { type: "text", text: "Claude " },
         { type: "text", text: "text" },
       ],
+      usage: {
+        input_tokens: 8,
+        output_tokens: 3,
+        cache_read_input_tokens: 2,
+        cache_creation_input_tokens: 1,
+      },
     },
     completeText: "Claude text",
     streamEvent: { type: "content_block_delta", delta: { text: "delta" } },
+    usageEvent: {
+      type: "message_delta",
+      usage: {
+        input_tokens: 8,
+        output_tokens: 3,
+        cache_read_input_tokens: 2,
+        cache_creation_input_tokens: 1,
+      },
+    },
+    expectedUsage: {
+      source: "provider_reported",
+      inputTokens: 8,
+      outputTokens: 3,
+      totalTokens: 14,
+      cacheReadTokens: 2,
+      cacheWriteTokens: 1,
+    },
     expectedPath: ["messages"],
     assertJsonRequest(request: RecordedJsonRequest) {
       const headers = readHeaders(request.headers);
@@ -78,9 +154,33 @@ const endpointProtocols = [
     endpoint: "GoogleGenerateContent",
     completeResponse: {
       candidates: [{ content: { parts: [{ text: "Google " }, { text: "text" }] } }],
+      usageMetadata: {
+        promptTokenCount: 11,
+        candidatesTokenCount: 4,
+        totalTokenCount: 16,
+        cachedContentTokenCount: 2,
+        thoughtsTokenCount: 1,
+      },
     },
     completeText: "Google text",
     streamEvent: { candidates: [{ content: { parts: [{ text: "delta" }] } }] },
+    usageEvent: {
+      usageMetadata: {
+        promptTokenCount: 11,
+        candidatesTokenCount: 4,
+        totalTokenCount: 16,
+        cachedContentTokenCount: 2,
+        thoughtsTokenCount: 1,
+      },
+    },
+    expectedUsage: {
+      source: "provider_reported",
+      inputTokens: 9,
+      outputTokens: 5,
+      totalTokens: 16,
+      cacheReadTokens: 2,
+      reasoningTokens: 1,
+    },
     expectedPath: ["models", rawPathSegment("test-model:generateContent")],
     assertJsonRequest(request: RecordedJsonRequest) {
       expect(readHeaders(request.headers).get("x-goog-api-key")).toBe("test-key");
@@ -103,7 +203,10 @@ describe("model endpoint protocol adapters", () => {
       createModelEndpointRuntime(http, { Endpoint: protocol.endpoint }),
     );
 
-    await expect(endpoint.complete(createModelRequest())).resolves.toEqual({ text: protocol.completeText });
+    await expect(endpoint.complete(createModelRequest())).resolves.toEqual({
+      text: protocol.completeText,
+      usage: protocol.expectedUsage,
+    });
 
     const request = http.jsonRequests[0];
     expect(request?.path).toEqual(protocol.expectedPath);
@@ -132,6 +235,51 @@ describe("model endpoint protocol adapters", () => {
     if (protocol.endpoint === "GoogleGenerateContent") {
       expect(request.query).toEqual({ alt: "sse" });
     }
-    expect(request.extractText(protocol.streamEvent)).toBe("delta");
+    expect(request.projectEvent(protocol.streamEvent)).toEqual({ textDelta: "delta", usage: undefined });
+    expect(request.projectEvent(protocol.usageEvent)).toEqual({ textDelta: "", usage: protocol.expectedUsage });
+    if (protocol.endpoint === "ChatCompletions") {
+      expect(readRecord(request.payload)).toMatchObject({ stream_options: { include_usage: true } });
+    }
+  });
+
+  test("allows OpenAI-compatible gateways to disable streaming usage requests", async () => {
+    const http = new RecordingModelHttp({ stream: createStaticModelStream([]) });
+    const endpoint = createModelEndpoint(
+      "ChatCompletions",
+      createModelEndpointRuntime(http, {
+        Endpoint: "ChatCompletions",
+        Capabilities: { StreamingUsage: false },
+      }),
+    );
+
+    await endpoint.stream(createModelRequest());
+
+    expect(readRecord(http.sseRequests[0]?.payload)).not.toHaveProperty("stream_options");
+  });
+
+  test("accepts OpenAI-compatible usage nested in the first stream choice", async () => {
+    const http = new RecordingModelHttp({ stream: createStaticModelStream([]) });
+    const endpoint = createModelEndpoint("ChatCompletions", createModelEndpointRuntime(http));
+
+    await endpoint.stream(createModelRequest());
+
+    expect(
+      http.sseRequests[0]?.projectEvent({
+        choices: [
+          {
+            delta: {},
+            usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+          },
+        ],
+      }),
+    ).toEqual({
+      textDelta: "",
+      usage: {
+        source: "provider_reported",
+        inputTokens: 12,
+        outputTokens: 4,
+        totalTokens: 16,
+      },
+    });
   });
 });

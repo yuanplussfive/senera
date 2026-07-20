@@ -1,20 +1,38 @@
 import crypto from "node:crypto";
 
 export function stableArtifactHash(value: unknown): string {
-  return crypto.createHash("sha1").update(stableArtifactStringify(value)).digest("hex");
+  const hash = crypto.createHash("sha1");
+  for (const chunk of stableArtifactJsonChunks(value)) hash.update(chunk);
+  return hash.digest("hex");
 }
 
 export function stableArtifactStringify(value: unknown): string {
+  return [...stableArtifactJsonChunks(value)].join("");
+}
+
+function* stableArtifactJsonChunks(value: unknown): Generator<string> {
   if (Array.isArray(value)) {
-    return `[${value.map(stableArtifactStringify).join(",")}]`;
+    yield "[";
+    for (const [index, entry] of value.entries()) {
+      if (index > 0) yield ",";
+      yield* stableArtifactJsonChunks(entry);
+    }
+    yield "]";
+    return;
   }
 
   if (value && typeof value === "object") {
-    return `{${Object.keys(value as Record<string, unknown>)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableArtifactStringify((value as Record<string, unknown>)[key])}`)
-      .join(",")}}`;
+    yield "{";
+    const record = value as Record<string, unknown>;
+    for (const [index, key] of Object.keys(record).sort().entries()) {
+      if (index > 0) yield ",";
+      yield JSON.stringify(key);
+      yield ":";
+      yield* stableArtifactJsonChunks(record[key]);
+    }
+    yield "}";
+    return;
   }
 
-  return JSON.stringify(value) ?? String(value);
+  yield JSON.stringify(value) ?? String(value);
 }

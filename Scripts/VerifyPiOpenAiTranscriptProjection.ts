@@ -130,7 +130,7 @@ function verifyPlanningProjectionUsesOpenAiSemantics(): void {
   assert.equal(projection.toolTranscript[0]?.observation?.summary, "北京晴，上海多云。");
   assert.equal(projection.toolTranscript[0]?.observation?.artifactUri, "senera://artifact/weather");
   assert.deepEqual(projection.toolTranscript[0]?.observation?.evidenceUris, ["senera://evidence/weather/beijing"]);
-  assert.equal(projection.toolTranscript[0]?.observation?.content.endsWith("..."), true);
+  assert.equal("content" in (projection.toolTranscript[0]?.observation ?? {}), false);
 }
 
 function verifyPlanningProjectionPreservesToolProgressAcrossBatches(): void {

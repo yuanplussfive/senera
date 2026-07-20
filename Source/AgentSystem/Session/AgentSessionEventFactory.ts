@@ -58,7 +58,10 @@ export class AgentSessionEventFactory {
     };
   }
 
-  notFound(sessionId: string, operation: "session.message" | "session.close" | "session.history"): AgentDomainEvent {
+  notFound(
+    sessionId: string,
+    operation: "session.message" | "session.close" | "session.history" | "session.fork",
+  ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.SessionNotFound,
       context: {

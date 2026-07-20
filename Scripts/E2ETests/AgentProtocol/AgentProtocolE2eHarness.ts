@@ -12,6 +12,7 @@ import { AgentUserProfileManager } from "../../../Source/AgentSystem/Session/Age
 import { AgentApprovalRuntime } from "../../../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
 import { AgentSandboxRuntimeService } from "../../../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
 import { AgentLogger } from "../../../Source/AgentSystem/Diagnostics/AgentLogger.js";
+import { AgentCallbackRunEventWriter } from "../../../Source/AgentSystem/WebSocket/AgentCallbackRunEventWriter.js";
 import { AgentEventKinds } from "../../../Source/AgentSystem/Events/AgentEventCatalog.js";
 import type { AgentDomainEvent, AgentEventEnvelope } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
@@ -19,12 +20,14 @@ import type { AgentCompletedRunResult } from "../../../Source/AgentSystem/Runtim
 import type { AgentRunRequest } from "../../../Source/AgentSystem/Loop/AgentLoop.js";
 import { AgentLocalAdminAccountStore } from "../../../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
 import { AgentConfigService } from "../../../Source/AgentSystem/Config/AgentConfigService.js";
+import { resolveAgentLoopConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
+import { createAgentRequestCancellationResource } from "../../../Source/AgentSystem/Session/AgentSessionRunResource.js";
 
 export interface AgentProtocolE2eHarness {
   readonly workspaceRoot: string;
   readonly websocketUrl: string;
   readonly client: AgentProtocolE2eClient;
-  stop(): void;
+  stop(): Promise<void>;
 }
 
 export interface AgentProtocolE2eAuthentication {
@@ -38,7 +41,7 @@ type ScriptedLoopHandler = (request: AgentRunRequest) => Promise<AgentCompletedR
 
 export async function createAgentProtocolE2eHarness(
   handler: ScriptedLoopHandler = defaultScriptedLoopHandler,
-  options: { authentication?: AgentProtocolE2eAuthentication } = {},
+  options: { authentication?: AgentProtocolE2eAuthentication; approvalRuntime?: AgentApprovalRuntime } = {},
 ): Promise<AgentProtocolE2eHarness> {
   const workspaceRoot = mkdtempSync(path.join(os.tmpdir(), "senera-e2e-"));
   const authentication = options.authentication;
@@ -62,7 +65,7 @@ export async function createAgentProtocolE2eHarness(
   const configSnapshot = () => configService.snapshot().value;
   const repository = new InMemorySessionRepository();
   const store = new AgentSessionStore({ repository });
-  const approvalRuntime = new AgentApprovalRuntime();
+  const approvalRuntime = options.approvalRuntime ?? new AgentApprovalRuntime();
   const sandboxRuntimeService = new AgentSandboxRuntimeService({
     workspaceRoot,
     configSnapshot: () => config,
@@ -71,7 +74,10 @@ export async function createAgentProtocolE2eHarness(
 
   const sessionManager = new AgentSessionManager({
     store,
-    approvalRuntime,
+    runResources: [createAgentRequestCancellationResource("approval", approvalRuntime)],
+    runControl: {
+      settlementTimeoutMs: resolveAgentLoopConfig(config).RunSettlementTimeoutMs,
+    },
     loopFactory: () => new ScriptedAgentLoop(handler),
   });
   const server = new AgentWebSocketServer({
@@ -80,6 +86,7 @@ export async function createAgentProtocolE2eHarness(
     configSnapshot,
     workspaceRoot,
     sessionManager,
+    eventWriter: new AgentCallbackRunEventWriter((events) => sessionManager.recordRunEvents(events)),
     userProfileManager: new AgentUserProfileManager(repository),
     approvalRuntime,
     sandboxRuntimeService,
@@ -100,9 +107,9 @@ export async function createAgentProtocolE2eHarness(
     workspaceRoot,
     websocketUrl,
     client,
-    stop: () => {
+    stop: async () => {
       client.close();
-      server.stop();
+      await server.stop();
       configService.close();
       repository.close();
       rmSync(workspaceRoot, { recursive: true, force: true });

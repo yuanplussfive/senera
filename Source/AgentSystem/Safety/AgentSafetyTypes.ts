@@ -14,8 +14,10 @@ export const AgentPermissionActions = {
 export type AgentPermissionAction = (typeof AgentPermissionActions)[keyof typeof AgentPermissionActions];
 
 export interface AgentToolPermissionRequest {
+  sessionId: string;
   requestId: string;
   toolCallId?: string;
+  batchId?: string;
   step: number;
   toolName: string;
   arguments: Record<string, unknown>;

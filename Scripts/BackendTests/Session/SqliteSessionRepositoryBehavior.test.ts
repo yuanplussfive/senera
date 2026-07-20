@@ -152,19 +152,89 @@ describe("SQLite session repository behavior", () => {
         });
       }
 
-      const runEventsRemoved = repository.deleteRunEventsFrom("session-delete", "request-b");
-      expect(repository.deleteStepTracesFrom("session-delete", "request-b")).toBe(1);
-      expect(repository.deleteRunSnapshotsFrom("session-delete", "request-b")).toBe(2);
-      expect(repository.deleteEntriesFrom("session-delete", "request-b")).toBe(2);
+      const removed = repository.truncateFromRequest("session-delete", "request-b");
 
       expect(repository.loadEntries("session-delete").map((entry) => entry.requestId)).toEqual(["request-a"]);
-      expect(runEventsRemoved).toBe(2);
+      expect(removed).toBe(2);
+      expect(repository.loadRunEvents("session-delete")).toHaveLength(1);
       expect(repository.loadStepTraces("session-delete").map((run) => run.requestId)).toEqual(["request-a"]);
       expect(repository.loadRunSnapshots("session-delete").map((snapshot) => snapshot.requestId)).toEqual([
         "request-a",
       ]);
       expect(repository.deleteSession("session-delete")).toBe(true);
       expect(repository.loadSession("session-delete")).toBeUndefined();
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test("rolls back the entire turn commit when a terminal event cannot be serialized", () => {
+    const fixture = createRepository();
+    const { repository } = fixture;
+    try {
+      repository.upsertSession({
+        id: "session-atomic-turn",
+        status: "idle",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        conversation: [],
+      });
+
+      expect(() =>
+        repository.persistTurnCommit({
+          sessionId: "session-atomic-turn",
+          requestId: "request-atomic-turn",
+          session: {
+            id: "session-atomic-turn",
+            status: "running",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:01.000Z",
+            activeRequest: {
+              requestId: "request-atomic-turn",
+              input: "Commit atomically",
+              startedAt: "2026-01-01T00:00:00.000Z",
+            },
+            conversation: [],
+          },
+          entries: [{ sequence: 0, entry: userEntry("request-atomic-turn", "Commit atomically") }],
+          traces: [
+            {
+              requestId: "request-atomic-turn",
+              turnSequence: 0,
+              trace: { step: 1, seq: 0, kind: "answer", status: "done" },
+            },
+          ],
+          snapshot: {
+            sessionId: "session-atomic-turn",
+            requestId: "request-atomic-turn",
+            input: "Commit atomically",
+            status: "completed",
+            startedAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:01.000Z",
+            endedAt: "2026-01-01T00:00:01.000Z",
+          },
+          runEvents: [
+            {
+              eventId: "event-atomic-turn",
+              channel: AgentEventChannels.AgentEvent,
+              kind: AgentEventKinds.RunCompleted,
+              layer: AgentEventLayers.Terminal,
+              phase: AgentEventPhases.Run,
+              requestId: "request-atomic-turn",
+              sessionId: "session-atomic-turn",
+              timestamp: "2026-01-01T00:00:01.000Z",
+              sequence: 1,
+              data: { unserializable: 1n },
+            },
+          ],
+        }),
+      ).toThrow();
+
+      expect(repository.loadEntries("session-atomic-turn")).toEqual([]);
+      expect(repository.loadSession("session-atomic-turn")).toEqual(expect.objectContaining({ status: "idle" }));
+      expect(repository.loadStepTraces("session-atomic-turn")).toEqual([]);
+      expect(repository.loadRunSnapshots("session-atomic-turn")).toEqual([]);
+      expect(repository.loadRunEvents("session-atomic-turn")).toEqual([]);
     } finally {
       fixture.cleanup();
     }

@@ -9,14 +9,6 @@ export interface PluginPromptingManifest {
   Priority?: number;
 }
 
-export interface PluginEntryManifest {
-  Kind: "Process";
-  Command: string;
-  Args?: string[];
-  Cwd?: string;
-  Env?: Record<string, string>;
-}
-
 export interface PluginMcpServerManifest {
   Id: string;
   Transport: "stdio";
@@ -24,15 +16,6 @@ export interface PluginMcpServerManifest {
   Args?: string[];
   Cwd?: string;
   Env?: Record<string, string>;
-}
-
-export interface PluginRuntimeManifest {
-  Kind: "Node";
-  NodeVersion: string;
-  PackageManager: "npm";
-  Install?: "none" | "install" | "ci";
-  Script: string;
-  SandboxProfile: string;
 }
 
 export interface PluginSandboxManifest {

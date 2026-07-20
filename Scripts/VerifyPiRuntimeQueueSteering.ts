@@ -13,6 +13,8 @@ import type { AgentPiSession } from "../Source/AgentSystem/Pi/AgentPiSubstrate.j
 import { AgentSessionManager } from "../Source/AgentSystem/Session/AgentSessionManager.js";
 import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
 import { AgentSessionStatuses } from "../Source/AgentSystem/Session/AgentSession.js";
+import { AgentSessionMessageQueueModes } from "../Source/AgentSystem/Session/AgentSessionMessageQueueMode.js";
+import { AgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
 import type { AgentRunRequest } from "../Source/AgentSystem/Loop/AgentLoop.js";
 import type { AgentCompletedRunResult } from "../Source/AgentSystem/Runtime/AgentExecutionProjector.js";
 
@@ -36,6 +38,9 @@ async function main(): Promise<void> {
   const manager = new AgentSessionManager({
     store,
     piSessions,
+    runControl: {
+      settlementTimeoutMs: AgentDefaults.AgentLoop.RunSettlementTimeoutMs,
+    },
     loopFactory: () => fakeLoop as unknown as AgentLoop,
   });
 
@@ -55,6 +60,7 @@ async function main(): Promise<void> {
     sessionId,
     requestId: steeringRequestId,
     input: "补充说明 Pi 是否真正接管运行中消息",
+    queueMode: AgentSessionMessageQueueModes.Steer,
     onEvent: collectEvent,
   });
   fakeLoop.complete();
@@ -183,6 +189,10 @@ class QueueAwareFakePiSession implements AgentPiSession {
   }
 
   async nextTurn(): Promise<void> {}
+
+  async markTurnBoundary(requestId: string): Promise<string> {
+    return `boundary:${requestId}`;
+  }
 
   async setResources(): Promise<void> {}
 

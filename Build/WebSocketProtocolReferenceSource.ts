@@ -19,6 +19,8 @@ const requestDescriptions = {
   "session.close": "关闭并从服务端删除会话。",
   "session.cancel": "取消会话当前正在执行的请求。",
   "session.truncate_from": "从指定请求起截断会话历史。",
+  "session.regenerate": "从指定请求起截断旧分支，并在同一命令中提交替代输入。",
+  "session.fork": "复制指定请求及之前的完整可重放状态，创建独立会话分支。",
   "session.list": "获取服务端当前可用会话的摘要列表。",
   "session.history": "拉取指定会话的可重放历史；`refresh` 用于主动重新同步。",
   "session.rename": "更新会话显示标题。",
@@ -42,8 +44,15 @@ const requestDescriptions = {
   "preset.set_active": "设置当前激活预设，`name: null` 表示取消激活。",
   "profile.get": "获取用户画像。",
   "profile.update": "更新用户名称和头像等画像字段。",
-  "approval.resolve": "提交一次性或会话级的审批决定。",
+  "approval.resolve": "提交审批决定：单次允许、会话允许、拒绝继续或拒绝并中断。",
+  "interaction.input.resolve": "提交 MCP 表单交互结果：接受并返回字段、明确拒绝或取消。",
   "sandbox.status": "获取当前沙箱运行时状态和降级信息。",
+  "execution.resource.list": "列出指定会话拥有的后台执行资源。",
+  "execution.resource.inspect": "按游标检查指定后台执行资源。",
+  "execution.resource.write": "向指定后台终端或进程写入输入。",
+  "execution.resource.resize": "调整指定 PTY 终端的字符网格尺寸。",
+  "execution.resource.signal": "向指定后台执行资源发送控制信号。",
+  "execution.resource.stop_all": "停止指定会话拥有的全部活动后台执行资源。",
 } as const satisfies Record<AgentWebSocketRequest["type"], string>;
 
 const eventPayloadSources: Record<
@@ -89,6 +98,21 @@ const eventPayloadSources: Record<
   request: {
     label: "运行事件类型",
     path: "../../Source/AgentSystem/Events/AgentRunEventTypes.ts",
+  },
+};
+
+const eventPayloadSourceOverrides: Partial<Record<AgentEventKind, { label: string; path: string }>> = {
+  [AgentEventKinds.ExecutionFallbackStarted]: {
+    label: "执行事件类型",
+    path: "../../Source/AgentSystem/Execution/SeneraExecutionEventTypes.ts",
+  },
+  [AgentEventKinds.InteractionInputRequested]: {
+    label: "交互输入事件类型",
+    path: "../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts",
+  },
+  [AgentEventKinds.InteractionInputResolved]: {
+    label: "交互输入事件类型",
+    path: "../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts",
   },
 };
 
@@ -145,6 +169,20 @@ export function renderWebSocketProtocolReference(): string {
     "```",
     "",
     "请求结构不合法时，服务端会发送 `request.invalid`。成功请求不会返回独立 ACK，而是通过下方领域事件表达过程和结果。",
+    "",
+    "### 审批决定",
+    "",
+    "`approval.resolve` 接收声明式 `decision`，不接收客户端指定的终态。`approve_once` 只允许当前调用，`approve_session` 在当前会话内授予同一审批主体，`deny` 拒绝当前操作但允许 Agent 继续，`deny_and_interrupt` 同时中断当前运行。服务端据此生成 `approved`、`denied`、`cancelled` 或 `expired` 终态及 `proceed`、`continue` 或 `interrupt` disposition。",
+    "",
+    "```json",
+    "{",
+    '  "type": "approval.resolve",',
+    '  "approvalId": "approval_01",',
+    '  "decision": "approve_once"',
+    "}",
+    "```",
+    "",
+    "审批状态由服务端维护。客户端应以 `approval.requested` 和 `approval.resolved` 为准，使用 `approvalId` 关联一次审批，并使用事件 envelope 的 `sessionId`、`requestId`、`step` 以及载荷中的 `toolCallId`、`batchId` 关联具体执行。取消和过期同样会产生 `approval.resolved`，不能通过本地删除待审批项推断终态。",
     "",
     "## 服务端事件 Envelope",
     "",
@@ -210,13 +248,7 @@ function payloadSourceForEvent(
   kind: AgentEventKind,
   phase: (typeof AgentEventSpecTable)[AgentEventKind]["phase"],
 ): { label: string; path: string } {
-  if (kind === AgentEventKinds.ExecutionFallbackStarted) {
-    return {
-      label: "执行事件类型",
-      path: "../../Source/AgentSystem/Execution/SeneraExecutionEventTypes.ts",
-    };
-  }
-  return eventPayloadSources[phase];
+  return eventPayloadSourceOverrides[kind] ?? eventPayloadSources[phase];
 }
 
 function fileName(filePath: string): string {

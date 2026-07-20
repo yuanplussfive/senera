@@ -3,6 +3,23 @@ import type {
   ResolvedAgentActionPlannerClientConfig,
 } from "./AgentPlannerConfigTypes.js";
 
+export const AgentToolSearchMemoryExpansionModes = {
+  Disabled: "disabled",
+  Fallback: "fallback",
+  Augment: "augment",
+} as const;
+
+export type AgentToolSearchMemoryExpansionMode =
+  (typeof AgentToolSearchMemoryExpansionModes)[keyof typeof AgentToolSearchMemoryExpansionModes];
+
+export const AgentToolSearchIntentGateModes = {
+  Disabled: "disabled",
+  SideEffectCapability: "side_effect_capability",
+} as const;
+
+export type AgentToolSearchIntentGateMode =
+  (typeof AgentToolSearchIntentGateModes)[keyof typeof AgentToolSearchIntentGateModes];
+
 export interface AgentToolSearchConfig {
   Embedding?: {
     Enabled?: boolean;
@@ -24,6 +41,16 @@ export interface AgentToolSearchConfig {
     MmrLambda?: number;
     MmrCandidateScoreRatio?: number;
     MinScore?: number;
+    MaxResults?: number;
+    IntentGate?: {
+      Mode?: AgentToolSearchIntentGateMode;
+    };
+    MemoryExpansion?: {
+      Mode?: AgentToolSearchMemoryExpansionMode;
+      MinConfidence?: number;
+      MinEvidence?: number;
+      MaxResults?: number;
+    };
   };
   Rerank?: {
     Enabled?: boolean;
@@ -54,6 +81,16 @@ export interface ResolvedAgentToolSearchConfig {
     MmrLambda: number;
     MmrCandidateScoreRatio: number;
     MinScore: number;
+    MaxResults: number;
+    IntentGate: {
+      Mode: AgentToolSearchIntentGateMode;
+    };
+    MemoryExpansion: {
+      Mode: AgentToolSearchMemoryExpansionMode;
+      MinConfidence: number;
+      MinEvidence: number;
+      MaxResults: number;
+    };
   };
   Rerank: {
     Enabled: boolean;

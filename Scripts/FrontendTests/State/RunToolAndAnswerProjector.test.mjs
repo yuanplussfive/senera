@@ -158,3 +158,117 @@ test("tool.call.result.detail attaches structured result to the matching tool ca
     },
   });
 });
+
+test("tool output and progress are projected incrementally and deduplicated by sequence", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "运行测试" }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ToolCallStarted,
+      { index: 0, toolName: "ShellCommandTool", callId: "call_shell" },
+      { step: 1, sequence: 2, phase: "tool" },
+    ),
+  );
+  const firstOutput = {
+    toolName: "ShellCommandTool",
+    callId: "call_shell",
+    stream: "stdout",
+    outputSequence: 1,
+    text: "running tests\n",
+    byteLength: 14,
+    totalBytes: 14,
+  };
+  applyEvent(state, createEvent(EventKinds.ToolCallOutput, firstOutput, { step: 1, sequence: 3, phase: "tool" }));
+  applyEvent(state, createEvent(EventKinds.ToolCallOutput, firstOutput, { step: 1, sequence: 4, phase: "tool" }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ToolCallProgress,
+      {
+        toolName: "ShellCommandTool",
+        callId: "call_shell",
+        progressSequence: 1,
+        message: "2 of 4 suites",
+        completed: 2,
+        total: 4,
+        unit: "suite",
+      },
+      { step: 1, sequence: 5, phase: "tool" },
+    ),
+  );
+
+  const run = state.sessions[TestSessionId]?.runs.find((item) => item.requestId === TestRequestId);
+  const toolStep = run?.steps.find((step) => step.id === "tool-call_shell");
+  expect(toolStep?.toolOutput?.stdout).toBe("running tests\n");
+  expect(toolStep?.toolOutput?.stdoutBytes).toBe(14);
+  expect(toolStep?.toolOutput?.lastSequence).toBe(1);
+  expect(toolStep?.toolProgress).toEqual({
+    sequence: 1,
+    message: "2 of 4 suites",
+    completed: 2,
+    total: 4,
+    unit: "suite",
+  });
+  expect(toolStep?.description).toBe("2 of 4 suites");
+});
+
+test("background resource events continue updating their originating tool after the start call completes", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "启动开发服务" }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ToolCallStarted,
+      { index: 0, toolName: "ShellStartTool", callId: "call_server" },
+      { step: 1, sequence: 2, phase: "tool" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ToolCallCompleted,
+      { index: 0, toolName: "ShellStartTool", callId: "call_server" },
+      { step: 1, sequence: 3, phase: "tool" },
+    ),
+  );
+  applyEvent(state, createEvent(EventKinds.RunCompleted, { answer: "已启动" }, { sequence: 4, phase: "run" }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ExecutionResourceOutput,
+      {
+        resourceId: "res_0123456789abcdef0123456789abcdef",
+        toolCallId: "call_server",
+        toolName: "ShellStartTool",
+        cursor: 2,
+        stream: "stdout",
+        text: "ready on 4173\n",
+        byteLength: 14,
+        totalBytes: 14,
+      },
+      { step: 1, sequence: 5, phase: "tool" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ExecutionResourceState,
+      {
+        resourceId: "res_0123456789abcdef0123456789abcdef",
+        toolCallId: "call_server",
+        toolName: "ShellStartTool",
+        cursor: 3,
+        state: "completed",
+        exitCode: 0,
+        reason: "exit:0",
+      },
+      { step: 1, sequence: 6, phase: "tool" },
+    ),
+  );
+
+  const run = state.sessions[TestSessionId]?.runs.find((item) => item.requestId === TestRequestId);
+  const toolStep = run?.steps.find((step) => step.id === "tool-call_server");
+  expect(toolStep?.toolOutput?.stdout).toBe("ready on 4173\n");
+  expect(toolStep?.toolProgress).toEqual(expect.objectContaining({ sequence: 3, message: "completed: exit:0" }));
+});

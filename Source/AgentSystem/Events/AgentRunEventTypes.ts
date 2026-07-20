@@ -15,6 +15,16 @@ export type AgentRunDomainEvent =
       };
     }
   | {
+      kind: typeof AgentEventKinds.RunCancellationProgress;
+      context: AgentRequestContext & Partial<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        stage: "started" | "component_completed" | "component_failed" | "completed" | "failed";
+        component?: "agent_loop" | "pi_session";
+        durationMs?: number;
+        message?: string;
+      };
+    }
+  | {
       kind: typeof AgentEventKinds.AssistantMessageCreated;
       context: AgentVisibleAssistantContext;
       data: {

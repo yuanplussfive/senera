@@ -1,6 +1,7 @@
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import { createInitialAgentLoopState, type AgentLoopStartRequest } from "./AgentLoopInitialState.js";
-import { understandTurnCommand } from "./AgentLoopCommandBuilder.js";
+import { prepareInteractionCommand } from "./AgentLoopCommandBuilder.js";
+import { renderPromptCommand } from "./AgentLoopCommandBuilder.js";
 import { AgentLoopTransitionReducer } from "./AgentLoopTransitionReducer.js";
 import type {
   AgentLoopCommandResult,
@@ -19,11 +20,30 @@ export class AgentLoopStateMachine {
 
   start(request: AgentLoopStartRequest): AgentLoopTransition {
     const state = createInitialAgentLoopState(request);
+    const runStarted =
+      request.emitRunStarted === false ? [] : [this.eventFactory.runStarted(request.requestId, request.input)];
+
+    if (request.preparation) {
+      return {
+        state,
+        command: renderPromptCommand(state),
+        events: [
+          ...runStarted,
+          ...this.eventFactory.interactionRouted(
+            request.requestId,
+            state.step,
+            request.preparation.route,
+            request.preparation.loadedToolNames,
+            request.preparation.rootCommand,
+          ),
+        ],
+      };
+    }
 
     return {
       state,
-      command: understandTurnCommand(state),
-      events: request.emitRunStarted === false ? [] : [this.eventFactory.runStarted(request.requestId, request.input)],
+      command: prepareInteractionCommand(state),
+      events: runStarted,
     };
   }
 

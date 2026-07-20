@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
-import type { ApprovalResolutionScope } from "../../api/approvalEventTypes";
+import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
+import type { ApprovalDecision } from "../../api/approvalEventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
@@ -20,11 +21,17 @@ interface MessageListProps {
   runs: RunRecord[];
   currentRun?: RunRecord;
   userProfile: UserProfile;
+  onForkFromMessage: (m: ChatMessage) => void;
   onRegenerate: (m: ChatMessage) => void;
   onEditUserMessage: (m: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (m: ChatMessage) => void;
   onViewWorkflow: (m: ChatMessage) => void;
-  onResolveApproval?: (approvalId: string, status: "approved" | "denied", scope?: ApprovalResolutionScope) => void;
+  onResolveApproval?: (approvalId: string, decision: ApprovalDecision) => void;
+  onResolveInteractionInput?: (
+    interactionId: string,
+    action: InteractionInputAction,
+    content?: InteractionInputContent,
+  ) => void;
   approvalDisabled?: boolean;
 }
 
@@ -58,11 +65,13 @@ export function MessageList({
   runs,
   currentRun,
   userProfile,
+  onForkFromMessage,
   onRegenerate,
   onEditUserMessage,
   onDeleteFromMessage,
   onViewWorkflow,
   onResolveApproval,
+  onResolveInteractionInput,
   approvalDisabled = false,
 }: MessageListProps): JSX.Element {
   const { reduceMotion, disableMotion } = useMotionLevel();
@@ -203,6 +212,7 @@ export function MessageList({
                       run={item.run}
                       approvalDisabled={approvalDisabled}
                       onResolveApproval={onResolveApproval}
+                      onResolveInteractionInput={onResolveInteractionInput}
                     />
                   </MotionMessageItem>
                 </div>
@@ -245,6 +255,7 @@ export function MessageList({
                     }}
                     userProfile={userProfile}
                     showInlineActions={showInlineMessageActions}
+                    onFork={() => onForkFromMessage(item)}
                     onRegenerate={() => onRegenerate(item)}
                     onDelete={() => setDeleting(item)}
                     onViewWorkflow={() => onViewWorkflow(item)}

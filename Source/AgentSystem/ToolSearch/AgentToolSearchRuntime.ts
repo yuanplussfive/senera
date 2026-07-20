@@ -8,11 +8,16 @@ import type {
   ResolvedAgentModelProviderConfig,
 } from "../Types/AgentConfigTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
+import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { AgentToolSearchIndex, type AgentToolSearchResult } from "./AgentToolSearchIndex.js";
 import { AgentToolSearchMemory, type AgentToolUsePattern } from "./AgentToolSearchMemory.js";
-import type { LoadedToolsState } from "./AgentToolSearchRuntimeTypes.js";
+import {
+  AgentToolSearchCurrentSetPolicies,
+  type AgentToolSearchCurrentSetPolicy,
+  type LoadedToolsState,
+} from "./AgentToolSearchRuntimeTypes.js";
+import { ToolLoadingModes } from "../Types/PluginToolManifestTypes.js";
 import {
   ToolSearchArgumentsSchema,
   invalidToolSearchArgumentsResult,
@@ -78,13 +83,14 @@ export class AgentToolSearchRuntime {
       loadedToolNames: bootstrap,
     }).map((result) => result.toolName);
 
-    return this.capVisibleTools([...bootstrap, ...discovered]);
+    return this.mergeVisibleTools([...bootstrap, ...discovered]);
   }
 
   resolvePlannedLoadedTools(options: {
     input: string;
     loadedTools: AgentLoadedToolsConfig;
     currentLoadedTools?: LoadedToolsState;
+    currentSetPolicy?: AgentToolSearchCurrentSetPolicy;
     preferredTools?: readonly string[];
     queries?: readonly string[];
     needs?: readonly AgentActionCapabilityNeed[];
@@ -95,10 +101,10 @@ export class AgentToolSearchRuntime {
     }
 
     const bootstrap = this.bootstrapToolNames();
-    const current =
-      options.currentLoadedTools === "all"
-        ? this.registry.listTools().map((tool) => tool.name)
-        : (options.currentLoadedTools ?? []);
+    const current = this.projectCurrentLoadedTools(
+      options.currentLoadedTools,
+      options.currentSetPolicy ?? AgentToolSearchCurrentSetPolicies.Retain,
+    );
     const preferred = this.existingToolNames(options.preferredTools ?? []);
     const discovered = buildPlannedToolSearchQueries(options, (text) => this.tokenize(text)).flatMap((query) =>
       this.search({
@@ -109,7 +115,7 @@ export class AgentToolSearchRuntime {
       }).map((result) => result.toolName),
     );
 
-    return this.capVisibleTools([...bootstrap, ...current, ...preferred, ...discovered]);
+    return this.mergeVisibleTools([...bootstrap, ...current, ...preferred, ...discovered]);
   }
 
   rememberAutoSearch(requestId: string, query: string, loadedToolNames: LoadedToolsState): void {
@@ -117,7 +123,7 @@ export class AgentToolSearchRuntime {
       return;
     }
 
-    const candidates = loadedToolNames.filter((name) => !this.systemToolNames().includes(name));
+    const candidates = loadedToolNames.filter((name) => !this.bootstrapToolNames().includes(name));
     if (candidates.length === 0) {
       return;
     }
@@ -129,6 +135,10 @@ export class AgentToolSearchRuntime {
       candidates,
       timestamp: Date.now(),
     });
+  }
+
+  finishRequest(requestId: string): void {
+    this.usageMemory.finishRequest(requestId);
   }
 
   afterToolResults(options: {
@@ -143,7 +153,7 @@ export class AgentToolSearchRuntime {
       return options.loadedTools;
     }
 
-    return this.capVisibleTools([
+    return this.mergeVisibleTools([
       ...options.loadedTools,
       ...options.execution.value.map((result) => result.name),
       ...this.usageMemory.extractSearchResultToolNames(options.execution.value),
@@ -226,20 +236,26 @@ export class AgentToolSearchRuntime {
     return toolNames.filter((name) => Boolean(this.registry.getTool(name)));
   }
 
-  private capVisibleTools(toolNames: readonly string[]): string[] {
+  private projectCurrentLoadedTools(
+    current: LoadedToolsState | undefined,
+    policy: AgentToolSearchCurrentSetPolicy,
+  ): string[] {
+    return CurrentSetProjectors[policy](
+      current,
+      this.registry.listTools().map((tool) => tool.name),
+    );
+  }
+
+  private mergeVisibleTools(toolNames: readonly string[]): string[] {
     const unique = [...new Set(toolNames)].filter((name) => Boolean(this.registry.getTool(name)));
     const required = this.bootstrapToolNames();
     return [...required, ...unique.filter((name) => !required.includes(name))];
   }
 
   private bootstrapToolNames(): string[] {
-    return [...new Set([...this.systemToolNames()])];
-  }
-
-  private systemToolNames(): string[] {
     return this.registry
       .listTools()
-      .filter((tool) => tool.plugin.rootKind === "System")
+      .filter((tool) => tool.loading === ToolLoadingModes.Bootstrap)
       .map((tool) => tool.name);
   }
 
@@ -248,6 +264,15 @@ export class AgentToolSearchRuntime {
     return this.index;
   }
 }
+
+const CurrentSetProjectors = {
+  [AgentToolSearchCurrentSetPolicies.Retain]: (current: LoadedToolsState | undefined, allTools: readonly string[]) =>
+    current === "all" ? [...allTools] : [...(current ?? [])],
+  [AgentToolSearchCurrentSetPolicies.Replace]: () => [],
+} satisfies Record<
+  AgentToolSearchCurrentSetPolicy,
+  (current: LoadedToolsState | undefined, allTools: readonly string[]) => string[]
+>;
 
 function createProjectId(workspaceRoot: string): string {
   return crypto.createHash("sha1").update(workspaceRoot.toLowerCase()).digest("hex");

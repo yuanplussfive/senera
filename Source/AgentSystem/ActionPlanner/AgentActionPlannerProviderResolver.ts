@@ -7,9 +7,9 @@ export function resolvePlannerProvider(
   model: ResolvedAgentModelProviderConfig,
   overrides: ResolvedAgentActionPlannerClientConfig,
 ): ResolvedAgentModelProviderConfig {
+  const selectedProvider = overrides.ModelProvider;
   return {
-    ...model,
-    Endpoint: resolvePlannerEndpoint(overrides.Provider),
+    ...selectedProvider,
     BaseUrl: overrides.BaseUrl,
     ApiKey: overrides.ApiKey,
     Model: overrides.Model,
@@ -18,19 +18,3 @@ export function resolvePlannerProvider(
     Stream: false,
   };
 }
-
-function resolvePlannerEndpoint(
-  provider: ResolvedAgentActionPlannerClientConfig["Provider"],
-): ResolvedAgentModelProviderConfig["Endpoint"] {
-  return ProviderEndpointMap[provider];
-}
-
-const ProviderEndpointMap = {
-  "openai-generic": "ChatCompletions",
-  "openai-responses": "Responses",
-  anthropic: "ClaudeMessages",
-  "google-ai": "GoogleGenerateContent",
-} as const satisfies Record<
-  ResolvedAgentActionPlannerClientConfig["Provider"],
-  ResolvedAgentModelProviderConfig["Endpoint"]
->;

@@ -47,7 +47,7 @@ headers: {
 `model` 名称反推。模型名可以在多个配置中重复；provider ID 才唯一选择 endpoint、
 API key、模型和运行时参数。
 
-`ActionPlanner.Client`、`TurnUnderstandingClient` 或 `PlanningClient` 显式设置
+`ActionPlanner.Client` 或 `PlanningClient` 显式设置
 `ModelProviderId` 时，那个配置是有意的 planner 覆盖策略；它不同于 Pi Proxy 丢失
 会话 provider 后的默认值回退，不能混为一类问题。
 
@@ -96,14 +96,18 @@ Action Planner 和 Pi Harness。按 provider 无限缓存这些对象会使 Elec
 
 - `AgentSystemRuntimeCache.acquire(modelProviderId?)` 返回
   `{ runtime, release() }`，不再暴露无生命周期的 `get()`。
-- `AgentPiSessionBootstrapServiceOptions.acquireRuntime(modelProviderId?)`
-  返回同样的运行时租约。
+- `AgentPiSessionMutationServiceOptions.acquireRuntime(modelProviderId?)`
+  仅为已有 Pi 会话的 rewind/reset 获取运行时租约；创建空会话不会构建 Pi runtime。
+- Pi JSONL 与 harness 只在首个实际 turn 的 `leaseTurn()` 中惰性建立，
+  `PiTurnLeaseTimeoutSeconds` 约束该租约阶段，而不是 `session.create`。
+- `RunSettlementTimeoutSeconds` 约束 destructive branch transition 等待旧 run、审批、工具和 Pi
+  harness 进入空闲状态的时间；超时只拒绝新操作，不绕过分支隔离屏障。
 - `AgentPiHarnessSession.subscribe(listener)` 必须返回 core listener 的
   `void | Promise<void>` 结果，供 Pi Harness 等待。
 - `AgentPiTurnExecutor` 必须把 `collector.collect(event)` 直接作为 session
   subscriber 的返回值，不能在中间层使用 `void` 丢弃它。
-- `AgentPiHarnessSessionPool` 默认最多保留 8 个 idle harness；active lease
-  只能在 release 后参与 LRU 淘汰。
+- `AgentLoop.PiSessions.MaxCachedSessions` 同时约束打开的 Pi session tree 与 idle harness；
+  active lease 只能在 release 后参与 LRU 淘汰。默认值由 `AgentDefaultCatalog` 提供。
 
 ### 3. Contracts
 
@@ -129,18 +133,24 @@ generation 可以短暂与新 generation 共存，直到旧租约释放。
 淘汰时释放 hooks 并 abort 旧 harness；下一次访问通过持久 Pi `Session` 重建上下文，
 active harness 则始终保留到 lease release。
 
+新建空 Senera 会话不构造 runtime，也不建立 Pi JSONL。首个实际 `session.message` 通过
+`create_if_missing` 原子建立 Senera 会话，Pi 只在 `leaseTurn()` 中 `open_or_create`。
+同一会话后续回合优先复用 harness 持有的 persistent session，避免每轮
+`readTextFile + split + JSON.parse` 整棵树。metadata 在首次 turn lease 时建立一次完整索引，
+后续按 session ID 查找。
+
 ### 4. Validation & Error Matrix
 
-| 条件                                   | 行为                                                   |
-| -------------------------------------- | ------------------------------------------------------ |
-| 同 provider、同配置 fingerprint        | 复用 runtime 并增加 lease                              |
-| 切换 provider，旧 runtime 空闲         | 先关闭旧 runtime，再构造新 runtime                     |
-| 切换 provider，旧 runtime active       | 保留旧 runtime，直到 release                           |
-| Pi bootstrap 超时但创建 Promise 未结束 | 延迟 release，待迟到 session dispose 后释放            |
-| `message_update`                       | 保留 `model.delta`；不发送或持久化完整 Pi trace        |
-| executor 的 slow `model.delta` sink    | prompt 等待 collector 完成，不能绕过为 fire-and-forget |
-| trace payload 有数百个属性             | 只读取摘要和 sanitation 上限内的属性                   |
-| idle Pi harness 超过上限               | 淘汰 LRU idle harness，不 abort active harness         |
+| 条件                                    | 行为                                                   |
+| --------------------------------------- | ------------------------------------------------------ |
+| 同 provider、同配置 fingerprint         | 复用 runtime 并增加 lease                              |
+| 切换 provider，旧 runtime 空闲          | 先关闭旧 runtime，再构造新 runtime                     |
+| 切换 provider，旧 runtime active        | 保留旧 runtime，直到 release                           |
+| Pi turn lease 超时但租约 Promise 未结束 | 迟到的 session 自动 dispose，不泄漏 harness lease      |
+| `message_update`                        | 保留 `model.delta`；不发送或持久化完整 Pi trace        |
+| executor 的 slow `model.delta` sink     | prompt 等待 collector 完成，不能绕过为 fire-and-forget |
+| trace payload 有数百个属性              | 只读取摘要和 sanitation 上限内的属性                   |
+| idle Pi harness 超过上限                | 淘汰 LRU idle harness，不 abort active harness         |
 
 ### 5. Good / Base / Bad Cases
 
@@ -157,8 +167,8 @@ active harness 则始终保留到 lease release。
 - `AgentSystemRuntimeCache.test.ts` 覆盖同 provider 复用、空闲先关闭、active lease
   保护、配置 generation 和 idempotent release。
 - `PiStreamingStability.test.ts` 覆盖 harness 等待 async listener、`model.delta`
-  顺序、executor 的慢 sink 背压、`message_update` 不产生 Pi trace、宽对象读取上限、
-  trace payload 截断，以及 bootstrap 的正常和超时释放路径。
+  顺序、executor 的慢 sink 背压、`message_update` 不产生 Pi trace、宽对象读取上限和
+  trace payload 截断。
 - `AgentPiHarnessSessionPool.test.ts` 覆盖 idle LRU 淘汰和 active harness 保护。
 
 ### 7. Wrong vs Correct
