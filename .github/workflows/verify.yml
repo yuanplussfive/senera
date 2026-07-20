@@ -115,6 +115,7 @@ jobs:
     needs:
       - fast
       - platform-windows
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node

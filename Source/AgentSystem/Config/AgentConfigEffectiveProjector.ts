@@ -1,7 +1,6 @@
 import type { AgentModelProviderEndpointConfig, AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import {
   AgentDefaults,
-  resolveActionPlannerConfig,
   resolveAgentDefaults,
   resolveAgentLoopConfig,
   resolveArtifactsConfig,
@@ -12,11 +11,11 @@ import {
   resolvePresetsConfig,
   resolveServerConfig,
   resolveToolExecutionConfig,
-  resolveToolLearningConfig,
   resolveToolSearchConfig,
   resolveUploadsConfig,
   resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
+import { mergeActionPlannerClientConfig } from "../Defaults/AgentPlannerDefaults.js";
 
 export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemConfig {
   return {
@@ -91,32 +90,39 @@ function defaultModelProviderEndpointFields(id: string) {
 }
 
 function projectResolvedActionPlanner(config: AgentSystemConfig): NonNullable<AgentSystemConfig["ActionPlanner"]> {
-  const resolved = resolveActionPlannerConfig(config);
+  const defaults = resolveAgentDefaults(config).ActionPlanner;
+  const configured = config.ActionPlanner;
+  const sharedClient = mergeActionPlannerClientConfig(defaults.Client, configured?.Client);
   return {
-    Enabled: resolved.Enabled,
-    MaxRepairAttempts: resolved.MaxRepairAttempts,
-    Evidence: resolved.Evidence,
-    Client: projectResolvedPlannerClient(resolved.Client),
-    PlanningClient: projectResolvedPlannerClient(resolved.PlanningClient),
-    FinalAnswerClient: projectResolvedPlannerClient(resolved.FinalAnswerClient),
+    Enabled: configured?.Enabled ?? defaults.Enabled,
+    MaxRepairAttempts: configured?.MaxRepairAttempts ?? defaults.MaxRepairAttempts,
+    Evidence: { ...defaults.Evidence, ...configured?.Evidence },
+    Client: projectResolvedPlannerClient(sharedClient),
+    PlanningClient: projectResolvedPlannerClient(
+      mergeActionPlannerClientConfig(sharedClient, configured?.PlanningClient),
+    ),
+    FinalAnswerClient: projectResolvedPlannerClient(
+      mergeActionPlannerClientConfig(sharedClient, configured?.FinalAnswerClient),
+    ),
   };
 }
 
-function projectResolvedPlannerClient(client: ReturnType<typeof resolveActionPlannerConfig>["Client"]) {
+function projectResolvedPlannerClient(client: ReturnType<typeof mergeActionPlannerClientConfig>) {
   return {
     ModelProviderId: client.ModelProviderId,
-    Temperature: client.Temperature,
-    MaxTokens: client.MaxTokens,
+    Temperature: client.Temperature ?? AgentDefaults.ActionPlanner.Client.Temperature,
+    MaxTokens: client.MaxTokens ?? AgentDefaults.ActionPlanner.Client.MaxTokens,
   };
 }
 
 function projectResolvedToolLearning(config: AgentSystemConfig): NonNullable<AgentSystemConfig["ToolLearning"]> {
-  const resolved = resolveToolLearningConfig(config);
+  const defaults = resolveAgentDefaults(config).ToolLearning;
+  const configured = config.ToolLearning;
   return {
-    Enabled: resolved.Enabled,
-    MaxRepairAttempts: resolved.MaxRepairAttempts,
-    Patterns: resolved.Patterns,
-    Client: projectResolvedPlannerClient(resolved.Client),
+    Enabled: configured?.Enabled ?? defaults.Enabled,
+    MaxRepairAttempts: configured?.MaxRepairAttempts ?? defaults.MaxRepairAttempts,
+    Patterns: { ...defaults.Patterns, ...configured?.Patterns },
+    Client: projectResolvedPlannerClient(mergeActionPlannerClientConfig(defaults.Client, configured?.Client)),
   };
 }
 
