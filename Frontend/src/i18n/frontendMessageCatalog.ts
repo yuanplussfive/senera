@@ -1,16 +1,17 @@
 import FrontendMessagesEnUs from "./messages/en-US.json" with { type: "json" };
 import FrontendMessagesZhCn from "./messages/zh-CN.json" with { type: "json" };
+import { FrontendLocales, type FrontendLocale } from "./frontendLocaleModel.js";
+import { getFrontendLocale } from "./frontendLocaleStore.js";
 
-export const FrontendLocales = {
-  ZhCn: "zh-CN",
-  EnUs: "en-US",
-} as const;
-
-export type FrontendLocale = (typeof FrontendLocales)[keyof typeof FrontendLocales];
+export {
+  FrontendDefaultLocale,
+  FrontendLocales,
+  isFrontendLocale,
+  resolveFrontendLocale,
+} from "./frontendLocaleModel.js";
+export type { FrontendLocale } from "./frontendLocaleModel.js";
 export type FrontendMessageKey = keyof typeof FrontendMessagesZhCn;
 export type FrontendMessageParams = Readonly<Record<string, string | number | boolean | null | undefined>>;
-
-export const FrontendDefaultLocale = FrontendLocales.ZhCn;
 
 const FrontendMessageCatalog = {
   [FrontendLocales.ZhCn]: FrontendMessagesZhCn,
@@ -20,17 +21,9 @@ const FrontendMessageCatalog = {
 export function frontendMessage(
   key: FrontendMessageKey,
   params: FrontendMessageParams = {},
-  locale: FrontendLocale = FrontendDefaultLocale,
+  locale: FrontendLocale = getFrontendLocale(),
 ): string {
   return formatFrontendMessage(FrontendMessageCatalog[locale][key], params);
-}
-
-export function isFrontendLocale(value: string): value is FrontendLocale {
-  return Object.values(FrontendLocales).includes(value as FrontendLocale);
-}
-
-export function resolveFrontendLocale(value: string | null | undefined): FrontendLocale {
-  return value && isFrontendLocale(value) ? value : FrontendDefaultLocale;
 }
 
 export function formatFrontendMessage(template: string, params: FrontendMessageParams): string {

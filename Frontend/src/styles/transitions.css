@@ -83,3 +83,57 @@ html[data-motion-level="none"] .dialog-presence[data-state="closed"] {
     animation-iteration-count: 1 !important;
   }
 }
+
+.menu-surface {
+  transform-origin: var(--menu-surface-transform-origin, center);
+  will-change: transform, opacity;
+}
+
+.dropdown-menu-surface {
+  --menu-surface-transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+}
+
+.context-menu-surface {
+  --menu-surface-transform-origin: var(--radix-context-menu-content-transform-origin);
+}
+
+.menu-surface[data-state="open"] {
+  animation: menu-surface-in 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.menu-surface[data-state="closed"] {
+  animation: menu-surface-out 90ms ease-in both;
+}
+
+html[data-motion-level="reduced"] .menu-surface[data-state],
+html[data-motion-level="none"] .menu-surface[data-state] {
+  animation-duration: 0.001ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-surface[data-state] {
+    animation-duration: 0.001ms !important;
+  }
+}
+
+@keyframes menu-surface-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes menu-surface-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.99);
+  }
+}

@@ -12,6 +12,8 @@ import {
   createAppearanceBootstrapConfig,
   createAppearanceBootstrapScript,
 } from "../../../Frontend/src/shared/theme/themeBootstrap.ts";
+import { recommendedAccentColors } from "../../../Frontend/src/shared/theme/themeData.ts";
+
 describe("themeBootstrap", () => {
   it("derives early bootstrap values from the shared appearance contract", () => {
     expect(createAppearanceBootstrapConfig()).toEqual({
@@ -24,12 +26,14 @@ describe("themeBootstrap", () => {
         fontFamily: [...appearanceFontFamilies],
         fontScale: [...fontScales],
       },
+      accentColorByScheme: recommendedAccentColors,
     });
   });
+
   it("serializes a self-contained early bootstrap script", () => {
     const script = createAppearanceBootstrapScript();
     expect(script).toContain(appearancePreferenceStorageKey);
     expect(script).toContain("document.documentElement");
-    expect(script).toContain("data");
+    expect(script).toContain('"colorScheme":"senera"');
   });
 });

@@ -76,6 +76,7 @@ describe("session persistence migration", () => {
       4,
     );
     expect(migrated).toMatchObject({
+      defaultRightPanelCollapsed: true,
       motionLevel: "full",
     });
   });

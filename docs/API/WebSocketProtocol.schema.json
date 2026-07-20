@@ -317,6 +317,19 @@
           "type": "string",
           "minLength": 1
         },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "mirrorJson": {
+          "type": "boolean"
+        },
         "config": {
           "type": "object",
           "properties": {
@@ -2392,9 +2405,6 @@
             "ModelProviders"
           ],
           "additionalProperties": false
-        },
-        "mirrorJson": {
-          "type": "boolean"
         }
       },
       "required": [

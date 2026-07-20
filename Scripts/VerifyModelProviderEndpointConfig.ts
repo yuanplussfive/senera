@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import {
   resolveActionPlannerConfig,
   resolveModelProviderConfig,
+  resolveModelProviderCatalog,
   resolveVectorModelsConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
 import { resolveModelProviderEndpointCatalog } from "../Source/AgentSystem/Defaults/AgentModelProviderDefaults.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { projectAgentConfigForm } from "../Source/AgentSystem/Config/AgentConfigFormProjector.js";
 
 const config: AgentSystemConfig = {
   DefaultModelProviderId: "chat-main",
@@ -124,5 +126,64 @@ assert.throws(
     }),
   /ModelProviderEndpoints\[\]\.Id=dup/,
 );
+
+const disabledProviderConfig: AgentSystemConfig = {
+  ...config,
+  DefaultModelProviderId: "disabled-model",
+  ModelProviderEndpoints: [
+    {
+      Id: "disabled-provider",
+      Enabled: false,
+      BaseUrl: "https://disabled.example.test/v1",
+    },
+    {
+      Id: "enabled-provider",
+      Enabled: true,
+      BaseUrl: "https://enabled.example.test/v1",
+    },
+  ],
+  ModelProviders: [
+    {
+      Id: "disabled-model",
+      ProviderId: "disabled-provider",
+      Endpoint: "ChatCompletions",
+      Model: "disabled-model",
+    },
+    {
+      Id: "enabled-model",
+      ProviderId: "enabled-provider",
+      Endpoint: "Responses",
+      Model: "enabled-model",
+    },
+  ],
+  ActionPlanner: {
+    Client: { Provider: "openai-generic" },
+  },
+  VectorModels: {
+    Embedding: { ProviderId: "disabled-provider", Model: "disabled-embedding" },
+    Rerank: { ProviderId: "disabled-provider", Model: "disabled-rerank" },
+  },
+};
+
+const activeCatalog = resolveModelProviderCatalog(disabledProviderConfig);
+assert.equal(activeCatalog.defaultId, "enabled-model");
+assert.deepEqual(
+  activeCatalog.providers.map((provider) => provider.Id),
+  ["enabled-model"],
+);
+assert.throws(() => activeCatalog.resolve("disabled-model"), /模型配置不存在/);
+
+const disabledVector = resolveVectorModelsConfig(disabledProviderConfig);
+assert.equal(disabledVector.Embedding.Enabled, false);
+assert.equal(disabledVector.Rerank.Enabled, false);
+assert.equal(disabledVector.Embedding.BaseUrl, "https://disabled.example.test/v1");
+
+const allDisabledProviderConfig: AgentSystemConfig = {
+  ...disabledProviderConfig,
+  ModelProviderEndpoints: disabledProviderConfig.ModelProviderEndpoints?.filter((endpoint) => !endpoint.Enabled),
+  ModelProviders: disabledProviderConfig.ModelProviders.filter((model) => model.ProviderId === "disabled-provider"),
+  DefaultModelProviderId: "disabled-model",
+};
+assert.doesNotThrow(() => projectAgentConfigForm(allDisabledProviderConfig));
 
 console.log("Model provider endpoint config verification passed.");

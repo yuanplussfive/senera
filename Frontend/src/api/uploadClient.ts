@@ -25,6 +25,8 @@ export interface UploadFileOptions {
   headers?: Readonly<Record<string, string>>;
 }
 
+export const DEFAULT_UPLOAD_TIMEOUT_MS = 30_000;
+
 export function buildUploadUrl(webSocketUrl: string): string {
   const url = new URL(webSocketUrl, window.location.href);
   url.protocol = url.protocol === "wss:" ? "https:" : "http:";
@@ -60,7 +62,7 @@ export function uploadFile(
       }
 
       const [upload] = payload.uploads;
-      if (!upload) {
+      if (!isUploadAttachment(upload)) {
         reject(new Error(frontendMessage("upload.emptyResponse")));
         return;
       }
@@ -84,6 +86,7 @@ export function uploadFile(
     });
 
     request.open("POST", uploadUrl);
+    request.timeout = DEFAULT_UPLOAD_TIMEOUT_MS;
     request.withCredentials = true;
     for (const [name, value] of Object.entries(options.headers ?? {})) {
       request.setRequestHeader(name, value);
@@ -92,7 +95,7 @@ export function uploadFile(
   });
 }
 
-function parseUploadResponse(value: string): UploadResponse | UploadErrorResponse {
+function parseUploadResponse(value: string): unknown {
   try {
     return JSON.parse(value) as UploadResponse | UploadErrorResponse;
   } catch {
@@ -105,10 +108,31 @@ function parseUploadResponse(value: string): UploadResponse | UploadErrorRespons
   }
 }
 
-function isUploadSuccess(status: number, payload: UploadResponse | UploadErrorResponse): payload is UploadResponse {
-  return status >= 200 && status < 300 && payload.ok;
+function isUploadSuccess(status: number, payload: unknown): payload is UploadResponse {
+  return status >= 200 && status < 300 && isRecord(payload) && payload.ok === true && Array.isArray(payload.uploads);
 }
 
-function readUploadErrorMessage(payload: UploadResponse | UploadErrorResponse): string {
-  return payload.ok ? frontendMessage("upload.failed") : (payload.error?.message ?? frontendMessage("upload.failed"));
+function readUploadErrorMessage(payload: unknown): string {
+  if (!isRecord(payload) || payload.ok !== false || !isRecord(payload.error)) {
+    return frontendMessage("upload.failed");
+  }
+  return typeof payload.error.message === "string" ? payload.error.message : frontendMessage("upload.failed");
+}
+
+function isUploadAttachment(value: unknown): value is UploadAttachmentData {
+  return (
+    isRecord(value) &&
+    typeof value.uploadUri === "string" &&
+    typeof value.name === "string" &&
+    typeof value.mime === "string" &&
+    typeof value.size === "number" &&
+    Number.isFinite(value.size) &&
+    value.size >= 0 &&
+    value.status === "uploaded" &&
+    (value.sha256 === undefined || typeof value.sha256 === "string")
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

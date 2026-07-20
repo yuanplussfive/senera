@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FileRejection } from "react-dropzone";
-import { AlertTriangle, BookUser } from "lucide-react";
+import { AlertTriangle, BookUser, Check } from "lucide-react";
 import type { PresetFormat, PresetItem, PresetMutationState } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../../shared/responsive";
@@ -324,7 +324,7 @@ export function PresetControl({
           className={cn(
             "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px]",
             "text-ink-500 transition hover:bg-ink-900/[0.045] hover:text-ink-800",
-            "focus:outline-none focus:ring-2 focus:ring-terra-200/60",
+            "focus:outline-none focus:ring-2 focus:ring-accent-focus",
             disabled && "pointer-events-none opacity-55",
           )}
           aria-label={frontendMessage("preset.ui.title")}
@@ -333,8 +333,8 @@ export function PresetControl({
         >
           <BookUser className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">{frontendMessage("preset.ui.shortTitle")}</span>
-          {activePreset ? <span className="h-1.5 w-1.5 rounded-full bg-terra-500" /> : null}
-          {hasDiagnostics ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
+          {activePreset ? <Check className="h-3 w-3 text-accent-content" aria-hidden="true" /> : null}
+          {hasDiagnostics ? <AlertTriangle className="h-3.5 w-3.5 text-umber-500" /> : null}
         </button>
       </Tooltip>
 
@@ -342,7 +342,7 @@ export function PresetControl({
         title={frontendMessage("preset.ui.title")}
         description={rootDir || frontendMessage("preset.ui.localPresets")}
         motionPreset="focus"
-        className="h-[min(900px,calc(100dvh_-_20px))] max-h-none w-[min(1440px,calc(100vw_-_20px))] max-w-none rounded-xl bg-paper-100 sm:w-[min(1440px,calc(100vw_-_32px))]"
+        className="h-[min(900px,calc(100dvh_-_20px))] max-h-none w-[min(1440px,calc(100vw_-_20px))] max-w-none rounded-lg bg-paper-100 sm:w-[min(1440px,calc(100vw_-_32px))]"
         bodyClassName="flex min-h-0 flex-1 bg-paper-100"
       >
         <FileDropZone

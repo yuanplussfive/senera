@@ -7,6 +7,8 @@ export interface I18nRuntimeGovernanceArea {
   root: string;
   include: readonly string[];
   allowedFiles?: readonly string[];
+  allowedFilePatterns?: readonly RegExp[];
+  exclude?: readonly string[];
 }
 
 export interface I18nRuntimeGovernanceOptions {
@@ -27,13 +29,19 @@ const UserVisibleCalleeNames = new Set([
 ]);
 
 const UserVisiblePropertyNames = new Set([
+  "aria-label",
+  "confirmLabel",
   "description",
+  "details",
+  "emptyText",
   "errorMessage",
   "label",
   "message",
   "placeholder",
   "recommendation",
   "suggestion",
+  "subtitle",
+  "text",
   "title",
   "tooltip",
 ]);
@@ -52,11 +60,23 @@ function inspectArea(workspaceRoot: string, area: I18nRuntimeGovernanceArea): st
   const allowedFiles = new Set(
     (area.allowedFiles ?? []).map((file) => normalizePath(path.resolve(workspaceRoot, ...file.split("/")))),
   );
+  const allowedFilePatterns = area.allowedFilePatterns ?? [];
+  const excludedPaths = (area.exclude ?? []).map((file) => normalizePath(path.resolve(root, ...file.split("/"))));
 
   return area.include
     .flatMap((include) => collectSourceFiles(path.resolve(root, ...include.split("/"))))
     .filter((file, index, files) => files.indexOf(file) === index)
-    .filter((file) => !allowedFiles.has(normalizePath(file)))
+    .filter(
+      (file) =>
+        !allowedFiles.has(normalizePath(file)) &&
+        !allowedFilePatterns.some((pattern) => pattern.test(normalizePath(file))),
+    )
+    .filter(
+      (file) =>
+        !excludedPaths.some(
+          (excluded) => normalizePath(file) === excluded || normalizePath(file).startsWith(`${excluded}/`),
+        ),
+    )
     .flatMap((file) => inspectFile(workspaceRoot, file));
 }
 
@@ -116,38 +136,48 @@ function isUserVisibleString(node: ts.Node): boolean {
     return false;
   }
 
-  const parent = node.parent;
-  if (!parent) {
+  let current = node.parent;
+  while (current && isTransparentExpressionWrapper(current)) {
+    current = current.parent;
+  }
+  if (!current) {
     return false;
   }
 
-  if (ts.isJsxAttribute(parent)) {
-    return UserVisiblePropertyNames.has(readJsxAttributeName(parent.name));
+  if (ts.isJsxAttribute(current)) {
+    return UserVisiblePropertyNames.has(readJsxAttributeName(current.name));
   }
 
-  if (ts.isPropertyAssignment(parent)) {
-    return isUserVisiblePropertyName(parent.name);
+  if (ts.isPropertyAssignment(current)) {
+    return isUserVisiblePropertyName(current.name);
   }
 
-  if (ts.isCallExpression(parent)) {
-    return isUserVisibleCall(parent);
+  if (ts.isCallExpression(current)) {
+    return isUserVisibleCall(current);
   }
 
-  if (ts.isNewExpression(parent) && isIdentifierText(parent.expression, "Error")) {
+  if (ts.isNewExpression(current) && isIdentifierText(current.expression, "Error")) {
     return true;
   }
 
-  if (ts.isConditionalExpression(parent) || ts.isParenthesizedExpression(parent)) {
-    return isUserVisibleString(parent);
-  }
-
-  if (ts.isArrayLiteralExpression(parent)) {
-    return isArrayAssignedToUserVisibleProperty(parent);
+  if (ts.isArrayLiteralExpression(current)) {
+    return isArrayAssignedToUserVisibleProperty(current);
   }
 
   return false;
 }
 
+function isTransparentExpressionWrapper(node: ts.Node): boolean {
+  return (
+    ts.isConditionalExpression(node) ||
+    ts.isParenthesizedExpression(node) ||
+    ts.isJsxExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isNonNullExpression(node) ||
+    ts.isTemplateExpression(node)
+  );
+}
 function isUserVisibleCall(node: ts.CallExpression): boolean {
   const expression = node.expression;
   if (isIdentifierText(expression, "frontendMessage") || isIdentifierText(expression, "agentErrorMessage")) {

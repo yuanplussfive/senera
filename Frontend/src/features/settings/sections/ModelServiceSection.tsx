@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft } from "lucide-react";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { SettingsWorkspaceState } from "../SettingsWorkspaceSurface";
-import { useModelServiceLayout } from "../../../shared/responsive";
+import { classifySettingsContentLayout, useObservedLayout } from "../../../shared/responsive";
 import { cn } from "../../../lib/util";
+import { Dialog, DialogActionButton, DialogActions, DialogContent, ScrollArea } from "../../../shared/ui";
 import { findItemField, findTopField, readFieldOptions, toProviderEndpointInput } from "../../chat/modelConfigData";
 import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { AddProviderDialog, RenameProviderDialog } from "./ProviderConnectionDialogs";
@@ -20,13 +23,22 @@ import { ProviderModelLifecycleDialogs } from "./ProviderModelLifecycleDialogs";
 const EMPTY_DRAFT: Record<string, unknown> = {};
 
 /** Provider/model management. Default assignment lives in DefaultModelSection. */
-export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsSystemConfigHandle }): JSX.Element {
+export function ModelServiceSection({
+  systemConfig,
+  onDirtyChange,
+}: {
+  systemConfig?: SettingsSystemConfigHandle;
+  onDirtyChange?: (dirty: boolean) => void;
+}): JSX.Element {
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
-  const [openCatalogSignal, setOpenCatalogSignal] = useState(0);
   const [modelPendingRemoval, setModelPendingRemoval] = useState<ModelProviderDraft | null>(null);
   const [providerPendingRemoval, setProviderPendingRemoval] = useState<ProviderEndpointDraft | null>(null);
-  const layout = useModelServiceLayout();
+  const [pendingProviderSelection, setPendingProviderSelection] = useState<ProviderEndpointDraft | null>(null);
+  const { ref: layoutRef, layout } = useObservedLayout<HTMLDivElement, "compact" | "standard" | "wide">(
+    classifySettingsContentLayout,
+    "standard",
+  );
   const snapshot = systemConfig?.configSnapshot ?? null;
   const modelSection = snapshot?.form.sections.find((section) => section.name === "models") ?? null;
   const state =
@@ -61,7 +73,7 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
       selectedProvider: null,
       selectedProviderModelList: null,
       defaultModel: null,
-      defaultModelStatus: "待设置",
+      defaultModelStatus: frontendMessage("settings.diagnostics.unset"),
       defaultSlots: [],
       diagnostics: [],
       catalogSignalCount: 0,
@@ -93,11 +105,19 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
     onFetchProviderModels: systemConfig?.fetchProviderModels ?? noopCommands.fetchProviderModels,
     onRenameProviderEndpoint: systemConfig?.renameProviderEndpoint ?? noopCommands.renameProviderEndpoint,
     onUpsertProviderEndpoint: systemConfig?.upsertProviderEndpoint ?? noopCommands.upsertProviderEndpoint,
+    onRefreshConfig: systemConfig?.refreshConfig,
+    socketStatus: systemConfig?.socketStatus,
   });
 
-  if (!systemConfig) return <SettingsWorkspaceState>正在连接主配置服务</SettingsWorkspaceState>;
+  useEffect(() => {
+    onDirtyChange?.(actions.dirty);
+    return () => onDirtyChange?.(false);
+  }, [actions.dirty, onDirtyChange]);
+
+  if (!systemConfig)
+    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingMain")}</SettingsWorkspaceState>;
   if (!snapshot || !modelSection || !state)
-    return <SettingsWorkspaceState>主配置连接后会加载模型服务</SettingsWorkspaceState>;
+    return <SettingsWorkspaceState>{frontendMessage("settings.state.loadingModelService")}</SettingsWorkspaceState>;
 
   const selectedProvider =
     state.providers.find((provider) => provider.Id === (selectedProviderId ?? state.providers[0]?.Id)) ?? null;
@@ -121,24 +141,29 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
       initialSelectedProviderId={selectedProvider?.Id}
       initialManualAdd={false}
       showProviderList={false}
-      showFetchAction={false}
+      showFetchAction
       fetchEndpoint={actions.connectionDraft ? toProviderEndpointInput(actions.connectionDraft) : undefined}
-      openCatalogSignal={openCatalogSignal}
+      embedded
     />
   );
   const providerList = (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-ink-200/70 bg-[var(--theme-config-list-bg)] shadow-sm">
+    <section className="flex min-h-0 flex-col overflow-hidden bg-[var(--theme-config-list-bg)]">
       <ProviderConnectionList
         providers={state.providers}
         catalogs={systemConfig.providerModelCatalogs}
         errors={systemConfig.providerModelErrors}
         loadingProviderIds={systemConfig.providerModelLoadingIds}
+        operations={systemConfig.providerEndpointOperations}
         selectedProviderId={actions.acceptedProvider?.Id ?? null}
-        disabled={actions.saving}
+        disabled={false}
         onRequestAdd={() => actions.setShowAddDialog(true)}
         onSelect={(provider) => {
-          const selected = actions.selectProvider(provider);
-          if (selected && layout === "mobile") setMobileDetailOpen(true);
+          const selected = actions.commitAndSelectProvider(provider);
+          if (!selected) {
+            setPendingProviderSelection(provider);
+            return;
+          }
+          if (layout === "compact") setMobileDetailOpen(true);
         }}
         onRename={actions.setRenameTarget}
         onDelete={setProviderPendingRemoval}
@@ -146,45 +171,38 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
     </section>
   );
   const detail = (
-    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50 shadow-sm">
-      <div className="min-h-[320px] flex-1 overflow-hidden">
+    <ScrollArea className="h-full min-h-0 bg-paper-50" viewportClassName="h-full">
+      <section className="min-w-0 bg-paper-50">
         <ProviderConnectionEditor
           acceptedProvider={actions.acceptedProvider}
-          catalog={actions.selectedProviderCatalog}
           dirty={actions.dirty}
           draftProvider={actions.connectionDraft}
-          error={actions.selectedProviderError}
           localError={actions.localError}
-          loading={actions.selectedProviderLoading}
           operation={actions.providerOperation}
           providerModelCount={actions.selectedProviderModelCount}
           providerIndex={actions.selectedProviderIndex}
-          disabled={actions.saving}
-          onCancel={actions.resetDraft}
+          disabled={false}
           onChange={actions.updateDraftProvider}
           onConfirm={actions.confirmDraft}
-          onFetch={(force) => {
-            setOpenCatalogSignal((value) => value + 1);
-            actions.fetchSelectedProvider(force);
-          }}
           onDelete={actions.acceptedProvider ? () => setProviderPendingRemoval(actions.acceptedProvider!) : undefined}
         />
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden border-t border-ink-200/70">{modelSurface}</div>
-    </section>
+        <div className="min-h-[360px] border-t border-ink-200/70">{modelSurface}</div>
+      </section>
+    </ScrollArea>
   );
 
   const content =
-    layout === "mobile" ? (
-      <div className="relative h-full min-h-0 overflow-hidden bg-paper-50 p-2">
+    layout === "compact" ? (
+      <div className="relative h-full min-h-0 overflow-hidden bg-paper-50">
         {mobileDetailOpen ? (
-          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-ink-200/70 bg-paper-50">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden bg-paper-50">
             <button
               type="button"
-              className="flex shrink-0 items-center gap-1.5 border-b border-ink-200/70 px-3 py-2.5 text-left text-[12.5px] font-medium text-ink-600 transition hover:text-ink-900"
+              className="flex h-11 shrink-0 items-center gap-1.5 border-b border-ink-200/70 px-3 text-left text-[12.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.025] hover:text-ink-900"
               onClick={() => setMobileDetailOpen(false)}
             >
-              返回供应商列表
+              <ChevronLeft className="h-4 w-4" />
+              {frontendMessage("settings.model.serviceBack")}
             </button>
             <div className="min-h-0 flex-1 overflow-hidden">{detail}</div>
           </div>
@@ -195,17 +213,17 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
     ) : (
       <div
         className={cn(
-          "grid h-full min-h-0 gap-3 bg-paper-50 p-3",
-          layout === "tablet" ? "grid-cols-[280px_minmax(0,1fr)]" : "grid-cols-[260px_minmax(0,1fr)]",
+          "grid h-full min-h-0 overflow-hidden bg-paper-50",
+          layout === "standard" ? "grid-cols-[230px_minmax(0,1fr)]" : "grid-cols-[250px_minmax(0,1fr)]",
         )}
       >
         {providerList}
-        {detail}
+        <div className="min-h-0 min-w-0 overflow-hidden border-l border-ink-200/70">{detail}</div>
       </div>
     );
 
   return (
-    <>
+    <div ref={layoutRef} className="h-full min-h-0 overflow-hidden">
       {content}
       <AddProviderDialog
         open={actions.showAddDialog}
@@ -234,6 +252,31 @@ export function ModelServiceSection({ systemConfig }: { systemConfig?: SettingsS
           return provider ? actions.deleteProvider(provider, input) : false;
         }}
       />
-    </>
+      <Dialog
+        open={pendingProviderSelection !== null}
+        onOpenChange={(open) => !open && setPendingProviderSelection(null)}
+      >
+        <DialogContent
+          title={frontendMessage("settings.discard.connectionTitle")}
+          description={frontendMessage("settings.discard.connectionDescription")}
+        >
+          <DialogActions>
+            <DialogActionButton close>{frontendMessage("settings.discard.continue")}</DialogActionButton>
+            <DialogActionButton
+              variant="danger"
+              onClick={() => {
+                const provider = pendingProviderSelection;
+                setPendingProviderSelection(null);
+                if (!provider) return;
+                actions.discardAndSelectProvider(provider);
+                if (layout === "compact") setMobileDetailOpen(true);
+              }}
+            >
+              {frontendMessage("settings.discard.confirm")}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

@@ -1,12 +1,16 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCcw, RefreshCw } from "lucide-react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Button } from "./Button";
+import { cn } from "../../lib/util";
 
-interface ErrorBoundaryProps {
+export interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: (error: Error, reset: () => void) => ReactNode;
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
   resetKey?: unknown;
+  presentation?: "component" | "app";
+  reload?: () => void;
 }
 
 interface ErrorBoundaryState {
@@ -29,11 +33,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       console.error("ErrorBoundary caught an error:", error, errorInfo);
     }
 
-    // Call optional error handler
     this.props.onError?.(error, errorInfo);
-
-    // In production, this could send to a monitoring service
-    // Example: sendToSentry(error, errorInfo);
   }
 
   componentDidUpdate(previousProps: Readonly<ErrorBoundaryProps>): void {
@@ -48,13 +48,17 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   render(): ReactNode {
     if (this.state.hasError && this.state.error) {
-      // Use custom fallback if provided
       if (this.props.fallback) {
         return this.props.fallback(this.state.error, this.resetErrorBoundary);
       }
 
-      // Default fallback UI
-      return <DefaultErrorFallback onReset={this.resetErrorBoundary} />;
+      return (
+        <DefaultErrorFallback
+          onReset={this.resetErrorBoundary}
+          presentation={this.props.presentation ?? "component"}
+          onReload={this.props.reload}
+        />
+      );
     }
 
     return this.props.children;
@@ -63,27 +67,53 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
 interface DefaultErrorFallbackProps {
   onReset: () => void;
+  onReload?: () => void;
+  presentation: "component" | "app";
 }
 
-function DefaultErrorFallback({ onReset }: DefaultErrorFallbackProps): JSX.Element {
+function DefaultErrorFallback({ onReset, onReload, presentation }: DefaultErrorFallbackProps): JSX.Element {
+  const appPresentation = presentation === "app";
   return (
-    <div className="flex h-full w-full items-center justify-center bg-paper-50 p-6" role="alert">
-      <div className="flex max-w-md flex-col items-center gap-4 rounded-lg border border-border-200 bg-paper-100 p-6 text-center shadow-sm">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive-100">
-          <AlertCircle aria-hidden="true" className="h-6 w-6 text-destructive-600" />
+    <main
+      className={cn(
+        "flex w-full items-start justify-center bg-[var(--theme-bg)] px-4 py-6 sm:px-6",
+        appPresentation ? "min-h-dvh pt-[clamp(32px,12vh,120px)]" : "h-full",
+      )}
+      role="alert"
+    >
+      <section
+        aria-labelledby="error-boundary-title"
+        className={cn(
+          "w-full bg-paper-100",
+          appPresentation
+            ? "max-w-[860px] border-y border-ink-200/70 px-5 py-6 sm:px-8 sm:py-7"
+            : "border-y border-ink-200/70 px-4 py-5",
+        )}
+      >
+        <div className="flex items-start gap-4">
+          <AlertCircle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-brick-600" />
+          <div className="min-w-0 flex-1">
+            <h1 id="error-boundary-title" className="text-[15px] font-semibold text-ink-950 sm:text-[16px]">
+              {frontendMessage("app.errorBoundary.title")}
+            </h1>
+            <p className="mt-1.5 max-w-[64ch] text-[13px] leading-5 text-ink-600">
+              {frontendMessage("app.errorBoundary.description")}
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <Button onClick={onReset} size="sm">
+                <RefreshCw aria-hidden="true" className="h-4 w-4" />
+                {frontendMessage("app.errorBoundary.retry")}
+              </Button>
+              {appPresentation ? (
+                <Button onClick={onReload ?? (() => globalThis.location?.reload())} size="sm" variant="ghost">
+                  <RefreshCcw aria-hidden="true" className="h-4 w-4" />
+                  {frontendMessage("app.errorBoundary.reload")}
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-2">
-          <h3 className="text-lg font-semibold text-text-primary">Something went wrong</h3>
-          <p className="text-sm text-text-secondary">
-            An unexpected error occurred. You can try refreshing this component, or reload the page if the problem
-            persists.
-          </p>
-        </div>
-        <Button onClick={onReset} variant="default" className="mt-2">
-          <RefreshCw aria-hidden="true" className="mr-2 h-4 w-4" />
-          Try again
-        </Button>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

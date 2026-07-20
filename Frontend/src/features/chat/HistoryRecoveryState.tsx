@@ -3,7 +3,7 @@ import { AlertCircle, RefreshCw } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
-import { Button } from "../../shared/ui";
+import { Button, ConversationFrame } from "../../shared/ui";
 
 export function HistoryRecoveryState({
   failed,
@@ -51,87 +51,83 @@ export function HistoryRecoveryState({
     );
   }
 
-  const rows = Math.min(4, Math.max(2, Math.ceil(messageCount / 3)));
+  const rows = Math.min(6, Math.max(5, Math.ceil(messageCount / 3)));
   return (
-    <div className="flex flex-1 flex-col justify-end px-4 pb-8 sm:px-6">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+    <div
+      className="flex flex-1 flex-col justify-end overflow-hidden pb-5 pt-6"
+      role="status"
+      aria-busy="true"
+      aria-label={frontendMessage("session.historyRestoring", { count: messageCount })}
+      data-history-skeleton
+    >
+      <div className="flex w-full flex-col gap-5">
         {Array.from({ length: rows }).map((_, index) => (
           <HistorySkeletonRow
             key={index}
             index={index}
-            align={index % 2 === 0 ? "right" : "left"}
-            width={index % 2 === 0 ? "w-[54%]" : "w-[68%]"}
+            role={index % 2 === 0 ? "user" : "assistant"}
             motionLevel={effectiveMotionLevel}
           />
         ))}
-        <div
-          className="mt-1 flex items-center justify-center gap-2 text-center text-[12px] text-ink-400"
-          role="status"
-          aria-live="polite"
-        >
-          <LoadingDots motionLevel={effectiveMotionLevel} />
-          <span>{frontendMessage("session.historyRestoring", { count: messageCount })}</span>
-        </div>
       </div>
+      <span className="sr-only" aria-live="polite">
+        {frontendMessage("session.historyRestoring", { count: messageCount })}
+      </span>
     </div>
   );
 }
 
 function HistorySkeletonRow({
-  align,
-  width,
+  role,
   index,
   motionLevel,
 }: {
-  align: "left" | "right";
-  width: string;
+  role: "user" | "assistant";
   index: number;
   motionLevel: MotionLevel;
 }): JSX.Element {
-  const isRight = align === "right";
+  const isUser = role === "user";
   return (
     <motion.div
-      className={isRight ? "flex justify-end" : "flex justify-start"}
       initial={motionLevel === "none" ? false : "hidden"}
       animate="show"
-      variants={readHistoryRowVariants(motionLevel, isRight)}
+      variants={readHistoryRowVariants(motionLevel, isUser)}
       transition={motionLevel === "none" ? { duration: 0 } : { ...motionTimings.base, delay: index * 0.045 }}
     >
-      <div className={`${width} min-w-[180px] max-w-[520px]`}>
-        <div
-          className={cn(
-            "shimmer rounded-2xl",
-            isRight ? "ml-auto h-10 rounded-br-md bg-ink-800/20" : "h-16 rounded-bl-md bg-ink-700/25",
-          )}
-        />
-        <div className={cn("mt-1 h-2 rounded bg-ink-800/15", isRight ? "ml-auto w-16" : "w-20")} />
-      </div>
+      {isUser ? <UserMessageSkeleton index={index} /> : <AssistantMessageSkeleton index={index} />}
     </motion.div>
   );
 }
 
-function LoadingDots({ motionLevel }: { motionLevel: MotionLevel }): JSX.Element {
+function UserMessageSkeleton({ index }: { index: number }): JSX.Element {
   return (
-    <span
-      className={cn(
-        "thinking-loader inline-flex h-4 items-center gap-1",
-        motionLevel === "none" && "thinking-loader--static",
-      )}
-      aria-hidden="true"
-      data-motion-level={motionLevel}
-    >
-      {[0, 1, 2].map((index) => (
-        <span
-          key={index}
-          className="thinking-loader-dot block h-1.5 w-1.5 rounded-full bg-terra-500/75"
-          style={{ animationDelay: `${index * 140}ms` }}
-        />
-      ))}
-    </span>
+    <ConversationFrame mode="user" className="items-start justify-end gap-2.5" aria-hidden="true">
+      <div className={cn("flex flex-col items-end", index % 4 === 0 ? "w-[46%]" : "w-[58%]")}>
+        <span className="shimmer h-2 w-16 rounded-sm" />
+        <span className="shimmer mt-2 h-11 w-full rounded-lg rounded-tr-sm" />
+      </div>
+      <span className="shimmer h-8 w-8 shrink-0 rounded-full" />
+    </ConversationFrame>
   );
 }
 
-function readHistoryRowVariants(level: MotionLevel, isRight: boolean) {
+function AssistantMessageSkeleton({ index }: { index: number }): JSX.Element {
+  return (
+    <ConversationFrame mode="wide" aria-hidden="true">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="shimmer h-8 w-8 shrink-0 rounded-md" />
+        <div className={cn("min-w-0 flex-1", index % 4 === 1 ? "max-w-[72%]" : "max-w-[82%]")}>
+          <span className="shimmer block h-3 w-24 rounded-sm" />
+          <span className="shimmer mt-3 block h-3 w-full rounded-sm" />
+          <span className="shimmer mt-2 block h-3 w-[88%] rounded-sm" />
+          <span className="shimmer mt-2 block h-3 w-[62%] rounded-sm" />
+        </div>
+      </div>
+    </ConversationFrame>
+  );
+}
+
+function readHistoryRowVariants(level: MotionLevel, isUser: boolean) {
   if (level === "none") {
     return {
       hidden: { opacity: 1 },
@@ -145,7 +141,7 @@ function readHistoryRowVariants(level: MotionLevel, isRight: boolean) {
     };
   }
   return {
-    hidden: { opacity: 0, x: isRight ? 12 : -12, y: 4 },
+    hidden: { opacity: 0, x: isUser ? 8 : -8, y: 3 },
     show: { opacity: 1, x: 0, y: 0 },
   };
 }

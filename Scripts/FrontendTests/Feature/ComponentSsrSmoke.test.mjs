@@ -27,7 +27,7 @@ test("chat header and empty state render stable first-screen copy", () => {
   );
 
   expect(header).toMatch(/会话标题/);
-  expect(header).toMatch(/failed/);
+  expect(header).toMatch(/失败/);
   expect(empty).toMatch(/今天想做点什么/);
   expect(empty).toMatch(/整理日志/);
 });

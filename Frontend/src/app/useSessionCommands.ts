@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import type { WsRequest } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { generateId } from "../lib/util";
-import { useStore, type UserProfile } from "../store/sessionStore";
+import { DEFAULT_SESSION_TITLE, useStore, type StoreState, type UserProfile } from "../store/sessionStore";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export interface UseSessionCommandsOptions {
@@ -17,7 +17,7 @@ export interface SessionCommandsHandle {
   closeSession: (sessionId: string) => void;
   closeSessions: (sessionIds: string[]) => void;
   createSession: () => void;
-  renameSession: (sessionId: string, title: string) => void;
+  renameSession: (sessionId: string, title: string) => boolean;
   updateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
 }
 
@@ -30,6 +30,23 @@ export function normalizeSessionTitle(title: string): string | null {
   return nextTitle ? nextTitle : null;
 }
 
+export function findReusableEmptySessionId({
+  sessions,
+  sessionOrder,
+}: Pick<StoreState, "sessions" | "sessionOrder">): string | undefined {
+  return sessionOrder.find((sessionId) => {
+    const session = sessions[sessionId];
+    if (!session || session.status === "closed" || session.title !== DEFAULT_SESSION_TITLE) return false;
+    return (
+      session.entryCount === 0 &&
+      session.messageCount === 0 &&
+      session.messages.length === 0 &&
+      session.runs.length === 0 &&
+      !session.activeRequestId
+    );
+  });
+}
+
 export function useSessionCommands({
   send,
   serverKnownSessionIdsRef,
@@ -40,9 +57,16 @@ export function useSessionCommands({
   const registerSession = useStore((state) => state.registerCreatingSession);
   const removeSession = useStore((state) => state.removeSession);
   const renameStoreSession = useStore((state) => state.renameSession);
+  const selectSession = useStore((state) => state.selectSession);
   const setUserProfile = useStore((state) => state.setUserProfile);
 
   const createSession = useCallback((): void => {
+    const reusableSessionId = findReusableEmptySessionId(useStore.getState());
+    if (reusableSessionId) {
+      selectSession(reusableSessionId);
+      return;
+    }
+
     if (status !== "open") {
       toast.warning(frontendMessage("session.createOffline"));
       return;
@@ -61,7 +85,7 @@ export function useSessionCommands({
 
     registerSession(sessionId, undefined, defaultModelProviderId);
     serverKnownSessionIdsRef.current.add(sessionId);
-  }, [defaultModelProviderId, registerSession, send, serverKnownSessionIdsRef, status]);
+  }, [defaultModelProviderId, registerSession, selectSession, send, serverKnownSessionIdsRef, status]);
 
   const closeSession = useCallback(
     (sessionId: string): void => {
@@ -104,14 +128,18 @@ export function useSessionCommands({
   );
 
   const renameSession = useCallback(
-    (sessionId: string, title: string): void => {
+    (sessionId: string, title: string): boolean => {
       const nextTitle = normalizeSessionTitle(title);
-      if (!nextTitle) return;
+      if (!nextTitle) return false;
 
+      if (status !== "open" || !send({ type: "session.rename", sessionId, title: nextTitle })) {
+        toast.error(frontendMessage("session.renameDisconnected"));
+        return false;
+      }
       renameStoreSession(sessionId, nextTitle);
-      send({ type: "session.rename", sessionId, title: nextTitle });
+      return true;
     },
-    [renameStoreSession, send],
+    [renameStoreSession, send, status],
   );
 
   const updateUserProfile = useCallback(

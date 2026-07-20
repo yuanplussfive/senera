@@ -1,20 +1,12 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { BrainCircuit, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "../../lib/util";
-import { Button, Dialog, DialogContent, ScrollArea } from "../../shared/ui";
+import { Button, Dialog, DialogContent, MenuSelect, ScrollArea } from "../../shared/ui";
 import { ModelProviderIcon, ModelProviderIconNames } from "./ModelProviderIcon";
 import { readBooleanWithTemplate, readModelCapabilities, readNumberWithTemplate } from "./modelConfigData";
 import type { ModelCapabilitiesDraft, ModelProviderDraft } from "./modelConfigTypes";
 import { CapabilityToggle, ModelCapabilityIconItems } from "./ModelCapabilityControls";
-import {
-  MenuRow,
-  MenuSelect,
-  NumberRow,
-  SectionLabel,
-  SettingsTable,
-  TextRow,
-  ToggleRow,
-} from "./ModelConfigPrimitives";
+import { MenuRow, NumberRow, SectionLabel, SettingsTable, TextRow, ToggleRow } from "./ModelConfigPrimitives";
 
 export function ModelOptionsDialog({
   model,
@@ -26,13 +18,14 @@ export function ModelOptionsDialog({
   onOpenChange,
   onChange,
   onCommit,
+  onCommitDraft,
   onSetDefault,
   onRemove,
   removeDisabledReason,
-  commitLabels = { existing: "应用到草稿", new: "添加到草稿" },
-  groupId = "",
-  groupOptions = [],
-  onGroupChange,
+  commitLabels = {
+    existing: frontendMessage("config.model.applyToDraft"),
+    new: frontendMessage("config.model.addToDraft"),
+  },
 }: {
   model: ModelProviderDraft | null;
   modelIndex: number | null;
@@ -43,13 +36,11 @@ export function ModelOptionsDialog({
   onOpenChange: (open: boolean) => void;
   onChange: (patch: Partial<ModelProviderDraft>) => void;
   onCommit: () => void;
+  onCommitDraft?: () => void;
   onSetDefault?: (modelId: string) => void;
   onRemove: (index: number) => void;
   removeDisabledReason?: string;
   commitLabels?: { existing: string; new: string };
-  groupId?: string;
-  groupOptions?: Array<{ value: string; label: string; icon?: string }>;
-  onGroupChange?: (groupId: string) => void;
 }): JSX.Element {
   const open = model !== null;
   if (!model) {
@@ -109,11 +100,11 @@ export function ModelOptionsDialog({
         title={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.121.15")}
         description={model.Model}
         motionPreset="focus"
-        className="h-[min(720px,calc(100dvh_-_48px))] w-[min(760px,calc(100vw_-_32px))] max-w-none rounded-xl bg-paper-50"
+        className="h-[min(720px,calc(100dvh_-_48px))] w-[min(760px,calc(100vw_-_32px))] max-w-none rounded-lg bg-paper-50"
         bodyClassName="flex min-h-0 flex-col"
       >
         <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
-          <div className="space-y-5 px-5 py-4">
+          <div className="space-y-5 px-5 py-4" onBlurCapture={onCommitDraft}>
             <section>
               <SectionLabel
                 icon={<SlidersHorizontal className="h-4 w-4" />}
@@ -146,20 +137,6 @@ export function ModelOptionsDialog({
                   disabled
                   icon={<Settings2 className="h-3.5 w-3.5" />}
                 />
-                {onGroupChange ? (
-                  <MenuRow
-                    icon={<BrainCircuit className="h-3.5 w-3.5" />}
-                    label={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.151.82")}
-                  >
-                    <MenuSelect
-                      value={groupId}
-                      placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.154.35")}
-                      options={groupOptions}
-                      disabled={disabled}
-                      onChange={onGroupChange}
-                    />
-                  </MenuRow>
-                ) : null}
               </SettingsTable>
             </section>
 
@@ -194,6 +171,7 @@ export function ModelOptionsDialog({
                   <MenuSelect
                     value={model.Endpoint}
                     placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.188.33")}
+                    ariaLabel={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.185.77")}
                     options={endpointOptions}
                     disabled={disabled || endpointOptions.length === 0}
                     onChange={(Endpoint) => onChange({ Endpoint })}
@@ -206,6 +184,7 @@ export function ModelOptionsDialog({
                   <MenuSelect
                     value={model.Icon ?? ""}
                     placeholder={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.197.33")}
+                    ariaLabel={frontendMessage("runtime.migrated.features.chat.ModelOptionsDialog.194.80")}
                     options={iconOptions}
                     disabled={disabled}
                     renderValue={(value) =>
@@ -343,7 +322,11 @@ export function ModelOptionsDialog({
             }}
           >
             <Trash2 className="h-3.5 w-3.5" />
-            {removeDisabledReason ? "先更换默认" : isSaved ? "移除" : "未保存"}
+            {removeDisabledReason
+              ? frontendMessage("config.model.changeDefaultFirst")
+              : isSaved
+                ? frontendMessage("config.model.remove")
+                : frontendMessage("config.model.unsaved")}
           </button>
           <div className="flex items-center gap-2">
             {onSetDefault ? (
@@ -353,13 +336,13 @@ export function ModelOptionsDialog({
                 className={cn(
                   "inline-flex h-8 items-center rounded-md border px-3 text-[12px] transition",
                   isDefault
-                    ? "border-terra-200 bg-terra-50 text-terra-700"
-                    : "border-ink-200 bg-paper-50 text-ink-650 hover:border-terra-200 hover:text-terra-700",
+                    ? "border-accent-border bg-accent-surface text-accent-content"
+                    : "border-ink-200 bg-paper-50 text-ink-650 hover:border-accent-border-strong hover:text-accent-content-hover",
                   "disabled:pointer-events-none disabled:opacity-50",
                 )}
                 onClick={() => onSetDefault(model.Id)}
               >
-                {isDefault ? "DEFAULT" : "设为默认"}
+                {isDefault ? frontendMessage("config.model.default") : frontendMessage("config.model.setDefault")}
               </button>
             ) : null}
             <Button size="sm" disabled={disabled} onClick={onCommit}>

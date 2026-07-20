@@ -28,6 +28,7 @@ export interface SocketTransportRefs {
 
 export interface ConfigMutationController {
   configOperation: ConfigMutationState | null;
+  socketStatus: SocketStatus;
   deleteProviderEndpoint: (providerId: string, options?: ProviderEndpointDeleteOptions) => string | null;
   fetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
   ingestConfigMutationEvent: (env: EventEnvelope) => boolean;
@@ -57,7 +58,8 @@ export function useConfigMutationController({
   sendRef,
   statusRef,
 }: SocketTransportRefs): ConfigMutationController {
-  const configCommands = useConfigCommands({ sendRef, statusRef });
+  const socketStatus = statusRef.current;
+  const configCommands = useConfigCommands({ configSnapshot, sendRef, statusRef });
   const endpointMutations = useProviderEndpointMutations({ configSnapshot, sendRef, statusRef });
   const providerModelMutations = useProviderModelMutations({ configSnapshot, sendRef, statusRef });
   const send = sendRef.current ?? (() => false);
@@ -92,6 +94,7 @@ export function useConfigMutationController({
       refreshPluginConfigs: configCommands.refreshPluginConfigs,
       refreshPresets: configCommands.refreshPresets,
       saveConfig: configCommands.saveConfig,
+      socketStatus,
       savePluginConfig: pluginMutations.savePluginConfig,
       savePreset: presetMutations.savePreset,
       renameProviderEndpoint: endpointMutations.renameProviderEndpoint,
@@ -110,6 +113,7 @@ export function useConfigMutationController({
       pluginMutations,
       presetMutations,
       providerModelMutations,
+      socketStatus,
     ],
   );
 }

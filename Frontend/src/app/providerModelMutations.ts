@@ -12,6 +12,7 @@ import type {
   ProviderModelConfigRequest as ProviderModelCommandRequest,
   ProviderModelGroupAssignmentInput,
 } from "../api/providerModelCommandTypes";
+import { readConfigFailureCode } from "./configMutationFailure";
 
 export type ProviderModelOperationKind = Extract<
   ProviderModelConfigOperationKind,
@@ -51,6 +52,7 @@ export function readMatchingProviderModelOperation(
   operation: PendingProviderModelOperation;
   requestId: string;
   message?: string;
+  errorCode?: string;
 } | null {
   const data =
     env.kind === EventKinds.ConfigSnapshot
@@ -67,7 +69,12 @@ export function readMatchingProviderModelOperation(
     kind: env.kind === EventKinds.ConfigSnapshot ? "success" : "failure",
     operation,
     requestId,
-    ...(env.kind === EventKinds.ConfigFailed ? { message: (data as ConfigFailedData).message } : {}),
+    ...(env.kind === EventKinds.ConfigFailed
+      ? {
+          message: (data as ConfigFailedData).message,
+          errorCode: readConfigFailureCode((data as ConfigFailedData).details),
+        }
+      : {}),
   };
 }
 

@@ -8,6 +8,7 @@ import {
   readStoredAppearancePreference,
   readSystemTheme,
   type AppearancePreference,
+  type AppearancePreferenceUpdate,
   type AppearanceSnapshot,
 } from "./themeModel";
 import { applyAppearanceSnapshotToDocument, runAppearanceTransition } from "./themeDom";
@@ -29,7 +30,7 @@ export interface AppearanceStore {
   getSnapshot: () => AppearanceSnapshot;
   getServerSnapshot: () => AppearanceSnapshot;
   subscribe: (listener: AppearanceListener) => () => void;
-  setPreference: (preference: Partial<AppearancePreference>) => void;
+  setPreference: (preference: AppearancePreferenceUpdate) => void;
   setMotionLevel: (motionLevel: MotionLevel, prefersReducedMotion?: boolean) => void;
 }
 

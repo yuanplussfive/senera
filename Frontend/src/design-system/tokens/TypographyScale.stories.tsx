@@ -10,42 +10,42 @@ const fontScales = {
 export const TypeScale: Story = () => (
   <div className="p-8 space-y-8">
     <div>
-      <h2 className="text-ink-900 text-xl font-medium mb-2">Typography Scale</h2>
-      <p className="text-ink-600 text-sm">Senera's type system with 4 scaling options</p>
+      <h2 className="text-ink-900 text-xl font-medium mb-2">字号比例</h2>
+      <p className="text-ink-600 text-sm">Senera 的文字系统，提供 4 档缩放比例</p>
     </div>
 
     <div className="space-y-6">
       <div>
-        <h3 className="text-ink-900 font-medium mb-4">Font Families</h3>
+        <h3 className="text-ink-900 font-medium mb-4">字体族</h3>
         <div className="space-y-3">
           <div className="rounded-lg border border-ink-200 p-4">
-            <div className="text-ink-500 text-xs mb-2">UI Font (Sans)</div>
+            <div className="text-ink-500 text-xs mb-2">界面字体（无衬线）</div>
             <div
               className="text-ink-900 text-lg font-medium"
-              style={{ fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif" }}
+              style={{ fontFamily: '"Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif' }}
             >
-              Geist — The quick brown fox jumps over the lazy dog
+              Segoe UI Variable — 清晰的界面文字帮助用户快速理解当前状态
             </div>
             <div className="text-ink-600 text-sm mt-2 font-mono">
-              font-family: "Geist", ui-sans-serif, system-ui, sans-serif
+              font-family: "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif
             </div>
           </div>
 
           <div className="rounded-lg border border-ink-200 p-4">
-            <div className="text-ink-500 text-xs mb-2">Display Font (Serif)</div>
+            <div className="text-ink-500 text-xs mb-2">展示字体（衬线）</div>
             <div
               className="text-ink-900 text-lg font-medium"
               style={{ fontFamily: "Fraunces, ui-serif, Georgia, serif" }}
             >
-              Fraunces — The quick brown fox jumps over the lazy dog
+              Fraunces — 清晰的界面文字帮助用户快速理解当前状态
             </div>
             <div className="text-ink-600 text-sm mt-2 font-mono">font-family: "Fraunces", ui-serif, Georgia, serif</div>
           </div>
 
           <div className="rounded-lg border border-ink-200 p-4">
-            <div className="text-ink-500 text-xs mb-2">Mono Font</div>
+            <div className="text-ink-500 text-xs mb-2">等宽字体</div>
             <div className="text-ink-900 text-lg font-medium font-mono">
-              JetBrains Mono — The quick brown fox jumps over the lazy dog
+              JetBrains Mono — 清晰的界面文字帮助用户快速理解当前状态
             </div>
             <div className="text-ink-600 text-sm mt-2 font-mono">
               font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas
@@ -55,15 +55,15 @@ export const TypeScale: Story = () => (
       </div>
 
       <div>
-        <h3 className="text-ink-900 font-medium mb-4">Font Scales</h3>
+        <h3 className="text-ink-900 font-medium mb-4">字号缩放</h3>
         <div className="space-y-4">
           {Object.entries(fontScales).map(([key, { value, label }]) => (
             <div key={key} className="rounded-lg border border-ink-200 p-4">
               <div className="text-ink-500 text-xs mb-3">{label}</div>
               <div style={{ fontSize: `calc(16px * ${value})` }}>
-                <div className="text-ink-900 text-base font-medium mb-2">Base text at {label}</div>
-                <div className="text-ink-700 text-sm mb-2">Secondary text scales proportionally with the base</div>
-                <div className="text-ink-600 text-xs">Small text maintains readability</div>
+                <div className="text-ink-900 text-base font-medium mb-2">基础文字，当前比例：{label}</div>
+                <div className="text-ink-700 text-sm mb-2">次要文字随基础字号按比例缩放</div>
+                <div className="text-ink-600 text-xs">小号文字仍保持可读性</div>
               </div>
             </div>
           ))}
@@ -71,48 +71,48 @@ export const TypeScale: Story = () => (
       </div>
 
       <div>
-        <h3 className="text-ink-900 font-medium mb-4">Type Hierarchy</h3>
+        <h3 className="text-ink-900 font-medium mb-4">文字层级</h3>
         <div className="rounded-lg border border-ink-200 p-6 space-y-3">
-          <div className="text-ink-900 text-2xl font-medium">Heading 1 (24px)</div>
-          <div className="text-ink-900 text-xl font-medium">Heading 2 (20px)</div>
-          <div className="text-ink-900 text-lg font-medium">Heading 3 (18px)</div>
-          <div className="text-ink-900 text-base font-medium">Heading 4 (16px)</div>
-          <div className="text-ink-700 text-base">Body text (16px)</div>
-          <div className="text-ink-600 text-sm">Secondary text (14px)</div>
-          <div className="text-ink-500 text-xs">Caption text (12px)</div>
+          <div className="text-ink-900 text-2xl font-medium">一级标题（24px）</div>
+          <div className="text-ink-900 text-xl font-medium">二级标题（20px）</div>
+          <div className="text-ink-900 text-lg font-medium">三级标题（18px）</div>
+          <div className="text-ink-900 text-base font-medium">四级标题（16px）</div>
+          <div className="text-ink-700 text-base">正文（16px）</div>
+          <div className="text-ink-600 text-sm">次要文字（14px）</div>
+          <div className="text-ink-500 text-xs">说明文字（12px）</div>
         </div>
       </div>
 
       <div>
-        <h3 className="text-ink-900 font-medium mb-4">Line Heights</h3>
+        <h3 className="text-ink-900 font-medium mb-4">行高</h3>
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-lg border border-ink-200 p-4">
-            <div className="text-ink-500 text-xs mb-2">Tight (1.2) — UI Elements</div>
+            <div className="text-ink-500 text-xs mb-2">紧凑（1.2）— 界面元素</div>
             <div className="text-ink-900 text-sm" style={{ lineHeight: 1.2 }}>
-              Tight line height is used for buttons, labels, and compact UI elements where vertical space is limited.
+              紧凑行高适合按钮、标签和垂直空间有限的紧凑界面元素。
             </div>
           </div>
 
           <div className="rounded-lg border border-ink-200 p-4">
-            <div className="text-ink-500 text-xs mb-2">Normal (1.5) — Default</div>
+            <div className="text-ink-500 text-xs mb-2">正常（1.5）— 默认</div>
             <div className="text-ink-900 text-sm" style={{ lineHeight: 1.5 }}>
-              Normal line height provides balanced readability for most interface text and short paragraphs.
+              正常行高适合大多数界面文字和短段落。
             </div>
           </div>
 
           <div className="rounded-lg border border-ink-200 p-4">
-            <div className="text-ink-500 text-xs mb-2">Relaxed (1.75) — Long-form</div>
+            <div className="text-ink-500 text-xs mb-2">舒展（1.75）— 长文本</div>
             <div className="text-ink-900 text-sm" style={{ lineHeight: 1.75 }}>
-              Relaxed line height improves readability for longer text passages and content-heavy sections.
+              舒展行高可以提升长段落和内容密集区域的阅读体验。
             </div>
           </div>
 
           <div className="rounded-lg border border-ink-200 p-4">
-            <div className="text-ink-500 text-xs mb-2">Loose (2.0) — Code</div>
+            <div className="text-ink-500 text-xs mb-2">宽松（2.0）— 代码</div>
             <div className="text-ink-900 text-sm font-mono" style={{ lineHeight: 2.0 }}>
               const example = true;
               <br />
-              // Loose for code
+              // 代码使用宽松行高
             </div>
           </div>
         </div>
@@ -124,14 +124,14 @@ export const TypeScale: Story = () => (
 export const ChatTypography: Story = () => (
   <div className="p-8 space-y-8">
     <div>
-      <h2 className="text-ink-900 text-xl font-medium mb-2">Chat Typography</h2>
-      <p className="text-ink-600 text-sm">Specialized type settings for chat messages</p>
+      <h2 className="text-ink-900 text-xl font-medium mb-2">对话文字</h2>
+      <p className="text-ink-600 text-sm">对话消息使用的专用文字设置</p>
     </div>
 
     <div className="space-y-6">
       <div className="rounded-lg border border-ink-200 p-6 space-y-4">
         <div>
-          <div className="text-ink-500 text-xs mb-2">User Message</div>
+          <div className="text-ink-500 text-xs mb-2">用户消息</div>
           <div
             className="text-ink-900 rounded-2xl bg-paper-200 px-4 py-3 inline-block"
             style={{
@@ -139,14 +139,14 @@ export const ChatTypography: Story = () => (
               lineHeight: "var(--theme-chat-user-line-height)",
             }}
           >
-            This is a user message with optimized readability.
+            这是一条经过可读性优化的用户消息。
             <br />
-            Font size: 14.5px, Line height: 1.55
+            字号：14.5px，行高：1.55
           </div>
         </div>
 
         <div>
-          <div className="text-ink-500 text-xs mb-2">Assistant Message</div>
+          <div className="text-ink-500 text-xs mb-2">助手消息</div>
           <div
             className="text-ink-900"
             style={{
@@ -154,23 +154,23 @@ export const ChatTypography: Story = () => (
               lineHeight: "var(--theme-chat-assistant-line-height)",
             }}
           >
-            This is an assistant message with slightly larger text for easier scanning.
+            助手消息使用稍大的文字，方便快速浏览。
             <br />
-            Font size: 15px, Line height: 1.75
+            字号：15px，行高：1.75
           </div>
         </div>
       </div>
 
       <div className="rounded-lg border border-ink-200 bg-paper-100 p-6">
-        <h4 className="text-ink-900 font-medium mb-3">Typography Guidelines</h4>
+        <h4 className="text-ink-900 font-medium mb-3">文字使用规则</h4>
         <ul className="text-ink-700 text-sm space-y-2">
-          <li>• User messages use compact spacing (1.55) for density</li>
-          <li>• Assistant messages use relaxed spacing (1.75) for readability</li>
+          <li>• 用户消息使用紧凑行高（1.55），保持信息密度</li>
+          <li>• 助手消息使用舒展行高（1.75），提升阅读性</li>
           <li>
-            • Font scales apply globally via <span className="font-mono text-xs">--theme-font-scale</span>
+            • 全局字号缩放通过 <span className="font-mono text-xs">--theme-font-scale</span>
           </li>
           <li>
-            • All text respects <span className="font-mono text-xs">prefers-reduced-motion</span>
+            • 所有文字都遵守 <span className="font-mono text-xs">prefers-reduced-motion</span>
           </li>
         </ul>
       </div>

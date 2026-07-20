@@ -37,7 +37,7 @@ describe("themeDom", () => {
     const snapshot = createAppearanceSnapshot({
       preference: {
         themeMode: "dark",
-        colorScheme: "forest",
+        colorScheme: "ocean",
         accentColor: "violet",
         fontFamily: "system",
         fontScale: "large",
@@ -47,8 +47,8 @@ describe("themeDom", () => {
     applyAppearanceSnapshotToDocument(snapshot, documentRef);
     expect(root.dataset.theme).toBe("dark");
     expect(root.dataset.themePreference).toBe("dark");
-    expect(root.dataset.colorScheme).toBe("forest");
-    expect(root.dataset.accentColor).toBe("violet");
+    expect(root.dataset.colorScheme).toBe("ocean");
+    expect(root.dataset.accentColor).toBe("sky");
     expect(root.dataset.fontFamily).toBe("system");
     expect(root.dataset.fontScale).toBe("large");
     expect(root.style.colorScheme).toBe("dark");

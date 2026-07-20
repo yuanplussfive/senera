@@ -3,8 +3,6 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { useConfigMutationController } from "../../../Frontend/src/app/useConfigMutationController.ts";
-import { resolveConfigSettingsEvent } from "../../../Frontend/src/app/useConfigSettingsCommands.ts";
-import { useConfigMutationTransport } from "../../../Frontend/src/app/useConfigMutationTransport.ts";
 import { resolvePluginSettingsEvent } from "../../../Frontend/src/app/usePluginSettingsCommands.ts";
 import { resolvePresetEvent } from "../../../Frontend/src/app/usePresetCommands.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
@@ -74,12 +72,7 @@ test("useConfigMutationController tracks plugin config requests through success 
       status: "success",
     }),
   );
-  expect(readTestToastCalls()).toContainEqual(
-    expect.objectContaining({
-      variant: "success",
-      title: "插件配置已保存",
-    }),
-  );
+  expect(readTestToastCalls()).not.toContainEqual(expect.objectContaining({ variant: "success" }));
 });
 
 test("useConfigMutationController handles offline commands and unmatched events without claiming them", async () => {
@@ -224,6 +217,19 @@ test("useConfigMutationController rejects provider model mutations without confi
   expect(readTestToastCalls()).toContainEqual(expect.objectContaining({ title: frontendMessage("config.mainFailed") }));
 });
 
+test("useConfigMutationController emits one offline toast when provider model config is unavailable", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  render(React.createElement(ConfigMutationHarness, { send, status: "idle", handleRef }));
+
+  await act(async () => {
+    expect(handleRef.current.setDefaultProviderModel("gpt-test")).toBe(null);
+  });
+
+  expect(readTestToastCalls()).toHaveLength(1);
+  expect(readTestToastCalls()[0]).toEqual(expect.objectContaining({ title: frontendMessage("config.mainOffline") }));
+});
+
 test("useConfigMutationController covers provider model commands and acknowledgements", async () => {
   const send = vi.fn(() => true);
   const handleRef = { current: null };
@@ -318,7 +324,7 @@ test("plugin event resolver ignores unrelated events", () => {
   expect(resolvePluginSettingsEvent(event(EventKinds.RunStarted, "run", { input: "x" }), new Set())).toBe(null);
 });
 
-test("app mutation event resolvers cover success and failure projections", () => {
+test("plugin and preset event resolvers cover success projections", () => {
   const pending = new Set(["request-1"]);
   expect(
     resolvePluginSettingsEvent(
@@ -332,25 +338,6 @@ test("app mutation event resolvers cover success and failure projections", () =>
       pending,
     ),
   ).toMatchObject({ kind: "preset_success" });
-  expect(
-    resolveConfigSettingsEvent(
-      event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: "request-1", kind: "config_update" } }),
-      pending,
-    ),
-  ).toMatchObject({ kind: "config_update_success" });
-});
-
-test("useConfigMutationTransport exposes open and offline transport paths", () => {
-  const send = vi.fn(() => true);
-  const sendRef = { current: send };
-  const statusRef = { current: "open" };
-  const handleRef = { current: null };
-  render(React.createElement(TransportHarness, { sendRef, statusRef, handleRef }));
-  expect(handleRef.current.sendWhenOpen({ type: "config.get" })).toBe(true);
-  expect(handleRef.current.readOpenTransport("offline")).toBe(send);
-  statusRef.current = "idle";
-  expect(handleRef.current.sendWhenOpen({ type: "config.get" })).toBe(false);
-  expect(handleRef.current.readOpenTransport("offline")).toBe(null);
 });
 
 test("useConfigMutationController routes preset and main config acknowledgements to their owning domains", async () => {
@@ -358,6 +345,7 @@ test("useConfigMutationController routes preset and main config acknowledgements
   const handleRef = { current: null };
   render(
     React.createElement(ConfigMutationHarness, {
+      configSnapshot: createConfigSnapshot(),
       send,
       status: "open",
       handleRef,
@@ -403,10 +391,10 @@ test("useConfigMutationController routes preset and main config acknowledgements
   expect(handleRef.current.presetOperations[presetRequestId]).toMatchObject({ status: "success", kind: "save" });
   expect(handleRef.current.configOperation).toMatchObject({ status: "success", kind: "config_update" });
   expect(readTestToastCalls()).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ variant: "success", title: frontendMessage("preset.saved") }),
-      expect.objectContaining({ variant: "success", title: frontendMessage("config.mainSaved") }),
-    ]),
+    expect.arrayContaining([expect.objectContaining({ variant: "success", title: frontendMessage("preset.saved") })]),
+  );
+  expect(readTestToastCalls()).not.toContainEqual(
+    expect.objectContaining({ variant: "success", title: frontendMessage("config.mainSaved") }),
   );
 });
 
@@ -416,6 +404,7 @@ test("useConfigMutationController rolls back disconnected sends and records prov
 
   render(
     React.createElement(ConfigMutationHarness, {
+      configSnapshot: createConfigSnapshot(),
       send,
       status: "open",
       handleRef,
@@ -579,11 +568,8 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
     }),
   );
   expect(handleRef.current.providerEndpointOperations["custom-delete"].status).toBe("pending");
-  expect(readTestToastCalls()).toContainEqual(
-    expect.objectContaining({
-      variant: "success",
-      title: "供应商连接已保存",
-    }),
+  expect(readTestToastCalls()).not.toContainEqual(
+    expect.objectContaining({ variant: "success", title: "供应商连接已保存" }),
   );
   expect(readTestToastCalls()).toContainEqual(
     expect.objectContaining({
@@ -609,12 +595,17 @@ function ConfigMutationHarness({ configSnapshot = null, send, status, handleRef 
   return null;
 }
 
-function TransportHarness({ sendRef, statusRef, handleRef }) {
-  const handle = useConfigMutationTransport({ sendRef, statusRef });
-  useEffect(() => {
-    handleRef.current = handle;
-  });
-  return null;
+function createConfigSnapshot(overrides = {}) {
+  return {
+    path: "Config.toml",
+    version: 1,
+    revision: 4,
+    value: {},
+    source: "sqlite",
+    diagnostics: [],
+    form: { version: 1, sections: [] },
+    ...overrides,
+  };
 }
 
 function event(kind, phase, data, overrides = {}) {

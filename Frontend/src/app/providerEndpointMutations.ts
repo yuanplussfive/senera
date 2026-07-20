@@ -5,6 +5,7 @@ import type {
   ProviderModelConfigRequest,
 } from "../api/providerModelCommandTypes";
 import type { FrontendMessageKey } from "../i18n/frontendMessageCatalog";
+import { readConfigFailureCode } from "./configMutationFailure";
 
 export type ProviderEndpointOperationKind = Extract<
   ProviderModelConfigOperationKind,
@@ -66,6 +67,7 @@ export type ProviderEndpointMutationResolution =
       providerId: string;
       requestId: string;
       message: string;
+      errorCode?: string;
     };
 
 export function resolveProviderEndpointMutationEvent(
@@ -95,6 +97,7 @@ export function resolveProviderEndpointMutationEvent(
           providerId: pending.providerId,
           requestId: data.operation.requestId,
           message: data.message,
+          errorCode: readConfigFailureCode(data.details),
         }
       : null;
   }

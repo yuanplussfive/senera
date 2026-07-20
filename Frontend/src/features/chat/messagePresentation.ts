@@ -1,6 +1,6 @@
 import type { ModelProviderListItem } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord } from "../../store/sessionStore";
-import { formatModelProviderName } from "./modelProvider";
+import { formatModelProviderName, readModelProviderIcon } from "./modelProvider";
 
 export function readAssistantDisplayName(
   message: Pick<ChatMessage, "metadata">,
@@ -16,9 +16,23 @@ export function readAssistantDisplayContent(
   return message.content;
 }
 
+export function readAssistantDisplayIcon(
+  message: Pick<ChatMessage, "metadata">,
+  selectedModelProvider?: ModelProviderListItem,
+): string | undefined {
+  return readModelProviderIcon(message.metadata?.run?.modelProvider ?? selectedModelProvider);
+}
+
 export function readRunDisplayName(
   run: Pick<RunRecord, "modelProvider">,
   selectedModelProvider?: ModelProviderListItem,
 ): string {
   return formatModelProviderName(run.modelProvider ?? selectedModelProvider);
+}
+
+export function readRunDisplayIcon(
+  run: Pick<RunRecord, "modelProvider">,
+  selectedModelProvider?: ModelProviderListItem,
+): string | undefined {
+  return readModelProviderIcon(run.modelProvider ?? selectedModelProvider);
 }

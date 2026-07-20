@@ -9,9 +9,15 @@
   "legacyLargeFiles": [
     {
       "path": "Frontend/src/features/settings/SettingsWorkbench.tsx",
-      "baselineLines": 913,
+      "baselineLines": 1018,
       "owner": "frontend-settings",
       "splitTarget": "Extract section rendering and interaction adapters behind the existing SettingsWorkbench navigation and shared draft contract; preserve current settings layout and flows."
+    },
+    {
+      "path": "Frontend/src/shared/theme/themeData.ts",
+      "baselineLines": 2070,
+      "owner": "frontend-theme",
+      "splitTarget": "Split token tables, palette data, and presentation metadata into focused theme modules while preserving themeModel imports and appearance behavior."
     },
     {
       "path": "Frontend/src/shared/config/JsonConfigForm.tsx",

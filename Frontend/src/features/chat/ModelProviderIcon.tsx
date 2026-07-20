@@ -73,12 +73,10 @@ export function readModelProviderIconSrc(icon: string, baseUrl: string = import.
   return `${withTrailingSlash(baseUrl)}icons/model-providers/${assetName}`;
 }
 
-export function inferModelProviderIcon(value: string): ModelProviderIconName | undefined {
+export function inferModelProviderIcon(value: string, fallbackToDefault = true): ModelProviderIconName | undefined {
   const normalized = value.toLowerCase();
-  return (
-    ModelProviderIconRuleConfig.rules.find((rule) => iconRuleMatches(rule.match, normalized, rule.values))?.icon ??
-    ModelProviderIconRuleConfig.defaultIcon
-  );
+  const match = ModelProviderIconRuleConfig.rules.find((rule) => iconRuleMatches(rule.match, normalized, rule.values));
+  return match?.icon ?? (fallbackToDefault ? ModelProviderIconRuleConfig.defaultIcon : undefined);
 }
 
 export function readDefaultModelGroupRules(): ModelProviderModelGroupRule[] {

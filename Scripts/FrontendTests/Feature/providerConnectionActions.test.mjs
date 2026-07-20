@@ -152,6 +152,184 @@ test("new provider presets remain editable after the identity snapshot arrives",
   expect(handleRef.current.actions.connectionDraft?.BaseUrl).toBe("https://preset.example.test/v1");
 });
 
+test("provider connection commits the latest draft and immediate patches", async () => {
+  const handleRef = { current: null };
+  const onUpsertProviderEndpoint = vi.fn(() => "save-request");
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onUpsertProviderEndpoint,
+      state: createState("alpha"),
+    }),
+  );
+
+  await act(async () => {
+    handleRef.current.actions.updateDraftProvider({ ApiKey: "secret" });
+  });
+  await act(async () => {
+    handleRef.current.actions.confirmDraft();
+  });
+  expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(expect.objectContaining({ Id: "alpha", ApiKey: "secret" }));
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onUpsertProviderEndpoint,
+        operations: {
+          alpha: {
+            requestId: "save-request",
+            kind: "provider.endpoint.upsert",
+            status: "success",
+            updatedAt: "2026-07-12T00:00:00.000Z",
+          },
+        },
+        state: createState("alpha"),
+      }),
+    );
+  });
+  await act(async () => {
+    handleRef.current.actions.confirmDraft({ Enabled: false });
+  });
+  expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(expect.objectContaining({ Id: "alpha", Enabled: false }));
+});
+
+test("provider connection sends the newest draft after an in-flight save completes", async () => {
+  const handleRef = { current: null };
+  const onUpsertProviderEndpoint = vi.fn().mockReturnValueOnce("first-save").mockReturnValueOnce("second-save");
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onUpsertProviderEndpoint,
+      state: createState("alpha"),
+    }),
+  );
+
+  await act(async () => {
+    handleRef.current.actions.confirmDraft({ ApiKey: "first" });
+    handleRef.current.actions.confirmDraft({ ApiKey: "latest" });
+  });
+  expect(onUpsertProviderEndpoint).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onUpsertProviderEndpoint,
+        operations: {
+          alpha: {
+            requestId: "first-save",
+            kind: "provider.endpoint.upsert",
+            status: "success",
+            updatedAt: "2026-07-12T00:00:00.000Z",
+          },
+        },
+        state: {
+          ...createState("alpha"),
+          providers: [{ ...createState("alpha").providers[0], ApiKey: "first" }],
+        },
+      }),
+    );
+  });
+
+  expect(onUpsertProviderEndpoint).toHaveBeenCalledTimes(2);
+  expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(expect.objectContaining({ Id: "alpha", ApiKey: "latest" }));
+});
+
+test("provider reset follows the saved snapshot when the response arrives", async () => {
+  const handleRef = { current: null };
+  const onUpsertProviderEndpoint = vi.fn(() => "save-request");
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onUpsertProviderEndpoint,
+      state: createState("alpha"),
+    }),
+  );
+
+  await act(async () => {
+    handleRef.current.actions.confirmDraft({ ApiKey: "secret" });
+    handleRef.current.actions.resetDraft();
+  });
+
+  expect(handleRef.current.actions.connectionDraft?.ApiKey).toBeUndefined();
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onUpsertProviderEndpoint,
+        operations: {
+          alpha: {
+            requestId: "save-request",
+            kind: "provider.endpoint.upsert",
+            status: "success",
+            updatedAt: "2026-07-12T00:00:00.000Z",
+          },
+        },
+        state: {
+          ...createState("alpha"),
+          providers: [{ ...createState("alpha").providers[0], ApiKey: "secret" }],
+        },
+      }),
+    );
+  });
+
+  expect(handleRef.current.actions.connectionDraft?.ApiKey).toBe("secret");
+  expect(handleRef.current.actions.dirty).toBe(false);
+});
+
+test("provider drafts and errors stay isolated when switching during a save", async () => {
+  const handleRef = { current: null };
+  const onUpsertProviderEndpoint = vi.fn(() => "alpha-save");
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onUpsertProviderEndpoint,
+      state: createMultiState(),
+    }),
+  );
+  const beta = createMultiState().providers[1];
+
+  await act(async () => {
+    handleRef.current.actions.updateDraftProvider({ ApiKey: "alpha-secret" });
+    handleRef.current.actions.confirmDraft();
+    handleRef.current.actions.commitAndSelectProvider(beta);
+  });
+
+  expect(handleRef.current.selectedProviderId).toBe("beta");
+  expect(handleRef.current.actions.connectionDraft?.ApiKey).toBeUndefined();
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onUpsertProviderEndpoint,
+        operations: {
+          alpha: {
+            requestId: "alpha-save",
+            kind: "provider.endpoint.upsert",
+            status: "error",
+            message: "alpha rejected",
+            updatedAt: "2026-07-12T00:00:00.000Z",
+          },
+        },
+        state: createMultiState(),
+      }),
+    );
+  });
+
+  expect(handleRef.current.selectedProviderId).toBe("beta");
+  expect(handleRef.current.actions.localError).toBeNull();
+
+  await act(async () => {
+    handleRef.current.actions.commitAndSelectProvider(createMultiState().providers[0]);
+  });
+
+  expect(handleRef.current.actions.connectionDraft?.ApiKey).toBe("alpha-secret");
+  expect(handleRef.current.actions.localError).toBe("alpha rejected");
+});
+
 function ActionsHarness({
   handleRef,
   onRender,
@@ -209,5 +387,17 @@ function createState(providerId, baseUrl = `https://${providerId}.example.test/v
     enabledProviders: 1,
     providerCount: 1,
     providerIssues: [],
+  };
+}
+
+function createMultiState() {
+  const alpha = createState("alpha").providers[0];
+  const beta = createState("beta").providers[0];
+  return {
+    ...createState("alpha"),
+    providers: [alpha, beta],
+    selectedProvider: alpha,
+    providerCount: 2,
+    enabledProviders: 2,
   };
 }

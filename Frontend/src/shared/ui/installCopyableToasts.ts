@@ -10,12 +10,7 @@ export function installCopyableToasts(): void {
   if (installed) return;
   installed = true;
 
-  toast.success = withCopyAction(toast.success);
-  toast.info = withCopyAction(toast.info);
-  toast.warning = withCopyAction(toast.warning);
   toast.error = withCopyAction(toast.error);
-  toast.message = withCopyAction(toast.message);
-  toast.loading = withCopyAction(toast.loading);
 }
 
 function withCopyAction(method: ToastMethod): ToastMethod {

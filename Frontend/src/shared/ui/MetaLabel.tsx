@@ -17,7 +17,7 @@ const metaLabelSizeClasses: Record<MetaLabelSize, string> = {
 };
 
 export function metaLabelClassName(size: MetaLabelSize = "md", className?: string): string {
-  return cn("font-mono uppercase tracking-wider text-ink-400", metaLabelSizeClasses[size], className);
+  return cn("select-none font-medium text-ink-500", metaLabelSizeClasses[size], className);
 }
 
 export function MetaLabel<T extends ElementType = "span">({

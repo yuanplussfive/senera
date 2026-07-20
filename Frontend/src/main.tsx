@@ -1,20 +1,25 @@
-import { StrictMode, useEffect, useRef } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
 import { App } from "./App";
 import { resolveAppSurface, resolveSettingsSection } from "./app/appSurface";
+import { readDesktopBridge } from "./app/desktopBridge";
+import { DesktopWindowChrome } from "./app/DesktopWindowChrome";
 import { buildSettingsSurfaceSyncRequests } from "./app/settingsSurfaceSync";
-import { useConfigMutationController } from "./app/useConfigMutationController";
-import { usePluginSettingsCommands } from "./app/usePluginSettingsCommands";
+import { ServerAuthenticationBoundary } from "./app/ServerAuthenticationGate";
+import { useServerAuthentication } from "./app/useServerAuthentication";
+import { useSettingsRuntime } from "./app/useSettingsRuntime";
 import { useAgentSocket, type SocketStatus } from "./api/useAgentSocket";
 import type { WsRequest } from "./api/eventTypes";
-import type { SettingsSystemConfigHandle } from "./features/settings/SettingsContracts";
 import { resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { installMotionDevTools } from "./dev/motionDevTools";
 import { SettingsWorkbench } from "./features/settings";
+import type { SettingsSectionId } from "./features/settings/types";
+import { frontendMessage } from "./i18n/frontendMessageCatalog";
+import { FrontendI18nProvider, useFrontendLocale } from "./i18n/useFrontendLocale";
 import { AppMotionProvider } from "./shared/motion";
 import { AppAppearanceProvider } from "./shared/theme";
-import { TooltipProvider } from "./shared/ui";
+import { Dialog, DialogActionButton, DialogActions, DialogContent, ErrorBoundary, TooltipProvider } from "./shared/ui";
 import { useStore } from "./store/sessionStore";
 import "./index.css";
 import "./styles/transitions.css";
@@ -24,112 +29,166 @@ import "./styles/markdown.css";
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const root = document.getElementById("root");
 
-if (import.meta.env.DEV) {
-  installMotionDevTools();
-}
-
-if (!root) {
-  throw new Error("#root not found in index.html");
-}
+if (import.meta.env.DEV) installMotionDevTools();
+if (!root) throw new Error("#root not found in index.html");
 
 createRoot(root).render(
   <StrictMode>
-    <Root />
+    <ErrorBoundary presentation="app">
+      <Root />
+    </ErrorBoundary>
   </StrictMode>,
 );
 
 function Root(): JSX.Element {
+  useFrontendLocale();
   const motionLevel = useStore((state) => state.motionLevel);
   const defaultSidebarCollapsed = useStore((state) => state.defaultSidebarCollapsed);
   const defaultRightPanelCollapsed = useStore((state) => state.defaultRightPanelCollapsed);
   const setDefaultSidebarCollapsed = useStore((state) => state.setDefaultSidebarCollapsed);
   const setDefaultRightPanelCollapsed = useStore((state) => state.setDefaultRightPanelCollapsed);
   const setMotionLevel = useStore((state) => state.setMotionLevel);
-  const surface = resolveAppSurface(window.location);
+  const isDesktop = Boolean(readDesktopBridge()?.isDesktop);
+  const surface = resolveAppSurface(window.location, isDesktop);
   const settingsSection = resolveSettingsSection(window.location);
+  const authentication = useServerAuthentication(WS_URL);
+
   return (
-    <AppMotionProvider level={motionLevel}>
-      <AppAppearanceProvider motionLevel={motionLevel}>
-        {surface === "settings" ? (
-          <SettingsSurface
-            initialSection={settingsSection}
-            values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
-            motionLevel={motionLevel}
-            onValueChange={(id, value) => {
-              if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-              if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
-            }}
-            onMotionLevelChange={setMotionLevel}
-          />
-        ) : (
-          <App />
-        )}
-      </AppAppearanceProvider>
-    </AppMotionProvider>
+    <FrontendI18nProvider>
+      <AppMotionProvider level={motionLevel}>
+        <AppAppearanceProvider motionLevel={motionLevel}>
+          <DesktopWindowChrome surface={surface}>
+            <ServerAuthenticationBoundary
+              state={authentication.state}
+              onLogin={authentication.login}
+              onRetry={authentication.refresh}
+            >
+              {(resolvedAuthentication) =>
+                surface === "settings" ? (
+                  <DesktopSettingsSurface
+                    initialSection={settingsSection}
+                    values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
+                    motionLevel={motionLevel}
+                    onValueChange={(id, value) => {
+                      if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
+                      if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
+                    }}
+                    onMotionLevelChange={setMotionLevel}
+                  />
+                ) : (
+                  <App
+                    onLogout={resolvedAuthentication.account ? authentication.logout : undefined}
+                    uploadCsrfToken={resolvedAuthentication.csrfToken}
+                  />
+                )
+              }
+            </ServerAuthenticationBoundary>
+          </DesktopWindowChrome>
+        </AppAppearanceProvider>
+      </AppMotionProvider>
+    </FrontendI18nProvider>
   );
 }
 
-type SettingsSurfaceProps = React.ComponentProps<typeof SettingsWorkbench>;
-
-function SettingsSurface(props: SettingsSurfaceProps): JSX.Element {
+function DesktopSettingsSurface({
+  initialSection,
+  values,
+  motionLevel,
+  onValueChange,
+  onMotionLevelChange,
+}: {
+  initialSection: SettingsSectionId;
+  values: React.ComponentProps<typeof SettingsWorkbench>["values"];
+  motionLevel: React.ComponentProps<typeof SettingsWorkbench>["motionLevel"];
+  onValueChange: React.ComponentProps<typeof SettingsWorkbench>["onValueChange"];
+  onMotionLevelChange: React.ComponentProps<typeof SettingsWorkbench>["onMotionLevelChange"];
+}): JSX.Element {
+  const [section, setSection] = useState(initialSection);
+  const [pendingChanges, setPendingChanges] = useState(false);
+  const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
   const ingest = useStore((state) => state.ingest);
-  const configSnapshot = useStore((state) => state.configSnapshot);
-  const providerModelCatalogs = useStore((state) => state.providerModelCatalogs);
-  const providerModelErrors = useStore((state) => state.providerModelErrors);
   const sendRef = useRef<((request: WsRequest) => boolean) | null>(null);
   const statusRef = useRef<SocketStatus>("idle");
-  const configSettingsEventHandlerRef = useRef<
-    ReturnType<typeof useConfigMutationController>["ingestConfigMutationEvent"]
-  >(() => false);
-  const pluginSettingsEventHandlerRef = useRef<
-    ReturnType<typeof usePluginSettingsCommands>["handlePluginSettingsEvent"]
-  >(() => false);
+  const settingsEventHandlerRef = useRef<(env: Parameters<typeof ingest>[0]) => boolean>(() => false);
   const { status, send } = useAgentSocket({
     url: WS_URL,
     onEvent: (env) => {
       ingest(env);
-      void configSettingsEventHandlerRef.current(env);
-      void pluginSettingsEventHandlerRef.current(env);
+      settingsEventHandlerRef.current(env);
     },
   });
-
-  useEffect(() => {
-    sendRef.current = send;
-  }, [send]);
-
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
-
-  const configMutations = useConfigMutationController({
-    configSnapshot,
-    sendRef,
-    statusRef,
-  });
-  configSettingsEventHandlerRef.current = configMutations.ingestConfigMutationEvent;
-  const pluginSettings = usePluginSettingsCommands({
-    send,
-    status,
-  });
-  pluginSettingsEventHandlerRef.current = pluginSettings.handlePluginSettingsEvent;
-
-  const systemConfig: SettingsSystemConfigHandle = {
-    ...configMutations,
-    configSnapshot,
-    providerModelCatalogs,
-    providerModelErrors,
-  };
+  sendRef.current = send;
+  statusRef.current = status;
+  const runtime = useSettingsRuntime({ sendRef, statusRef });
+  settingsEventHandlerRef.current = runtime.controller.ingestConfigMutationEvent;
+  const bridge = readDesktopBridge();
 
   useEffect(() => {
     if (status !== "open") return;
-    for (const request of buildSettingsSurfaceSyncRequests()) {
-      send(request);
-    }
+    for (const request of buildSettingsSurfaceSyncRequests()) send(request);
   }, [send, status]);
+
+  useEffect(() => {
+    void bridge?.setSettingsDirty?.(pendingChanges);
+  }, [bridge, pendingChanges]);
+
+  useEffect(() => {
+    return bridge?.onSettingsCloseRequested?.(() => setCloseConfirmationOpen(true));
+  }, [bridge]);
+
+  const changeSection = (nextSection: SettingsSectionId): void => {
+    const search = new URLSearchParams(window.location.search);
+    search.set("surface", "settings");
+    search.set("section", nextSection);
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}?${search.toString()}`);
+    setSection(nextSection);
+  };
 
   return (
     <TooltipProvider delayDuration={300}>
-      <SettingsWorkbench {...props} pluginSettings={pluginSettings} systemConfig={systemConfig} />
+      <SettingsWorkbench
+        section={section}
+        onSectionChange={changeSection}
+        onPendingChangesChange={setPendingChanges}
+        environment={{
+          appVersion: __SENERA_APP_VERSION__,
+          frontendVersion: __SENERA_FRONTEND_VERSION__,
+          mode: import.meta.env.MODE,
+          surface: "desktop",
+        }}
+        values={values}
+        motionLevel={motionLevel}
+        onValueChange={onValueChange}
+        onMotionLevelChange={onMotionLevelChange}
+        pluginSettings={runtime.pluginSettings}
+        systemConfig={runtime.systemConfig}
+      />
+      <Dialog
+        open={closeConfirmationOpen}
+        onOpenChange={(open) => {
+          setCloseConfirmationOpen(open);
+          if (!open) void bridge?.cancelSettingsClose?.();
+        }}
+      >
+        <DialogContent
+          title={frontendMessage("settings.discard.title")}
+          description={frontendMessage("settings.discard.closeDescription")}
+        >
+          <DialogActions>
+            <DialogActionButton close>{frontendMessage("settings.discard.continue")}</DialogActionButton>
+            <DialogActionButton
+              variant="danger"
+              onClick={() => {
+                setCloseConfirmationOpen(false);
+                setPendingChanges(false);
+                void bridge?.confirmSettingsClose?.();
+              }}
+            >
+              {frontendMessage("settings.discard.confirm")}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
       <Toaster
         position="bottom-right"
         toastOptions={{

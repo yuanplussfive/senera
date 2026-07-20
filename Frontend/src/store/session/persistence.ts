@@ -38,7 +38,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     const motionLevel = fromVersion < 4 ? "full" : readPersistedMotionLevel(p.motionLevel);
     return {
       defaultSidebarCollapsed: readPersistedBoolean(p.defaultSidebarCollapsed, false),
-      defaultRightPanelCollapsed: readPersistedBoolean(p.defaultRightPanelCollapsed, false),
+      defaultRightPanelCollapsed: readPersistedBoolean(p.defaultRightPanelCollapsed, true),
       motionLevel,
       selectedModelProviderId: p.selectedModelProviderId,
       selectedModelProviderIdsBySession: readPersistedModelSelectionBySession(p.selectedModelProviderIdsBySession),
@@ -49,7 +49,7 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
   merge: (persisted, current) => {
     const p = (persisted ?? {}) as Partial<StoreState>;
     const defaultSidebarCollapsed = p.defaultSidebarCollapsed ?? false;
-    const defaultRightPanelCollapsed = p.defaultRightPanelCollapsed ?? false;
+    const defaultRightPanelCollapsed = p.defaultRightPanelCollapsed ?? true;
     return {
       ...current,
       sidebarCollapsed: defaultSidebarCollapsed,

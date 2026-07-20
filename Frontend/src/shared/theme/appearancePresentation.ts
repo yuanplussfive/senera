@@ -7,6 +7,8 @@ import {
   type FontScale,
   type ThemeMode,
 } from "./themeModel";
+import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
+import { colorSchemeStories, colorSchemeSwatches, recommendedAccentColors } from "./themeData";
 
 export type AppearancePreferenceId = keyof AppearancePreference;
 
@@ -22,43 +24,114 @@ export interface AppearanceTokenRow {
 }
 
 export const themeModeLabels = {
-  system: "系统",
-  light: "浅色",
-  dark: "深色",
+  get system() {
+    return frontendMessage("appearance.themeMode.system");
+  },
+  get light() {
+    return frontendMessage("appearance.themeMode.light");
+  },
+  get dark() {
+    return frontendMessage("appearance.themeMode.dark");
+  },
 } as const satisfies Record<ThemeMode, string>;
 
 export const colorSchemeLabels = {
-  senera: "Senera 暖纸",
-  classic: "冷灰",
-  mono: "墨灰",
-  forest: "森绿",
+  get senera() {
+    return frontendMessage("appearance.scheme.senera");
+  },
+  get classic() {
+    return frontendMessage("appearance.scheme.classic");
+  },
+  get mono() {
+    return frontendMessage("appearance.scheme.mono");
+  },
+  get forest() {
+    return frontendMessage("appearance.scheme.forest");
+  },
+  get sakura() {
+    return frontendMessage("appearance.scheme.sakura");
+  },
+  get ocean() {
+    return frontendMessage("appearance.scheme.ocean");
+  },
+  get lavender() {
+    return frontendMessage("appearance.scheme.lavender");
+  },
+  get matcha() {
+    return frontendMessage("appearance.scheme.matcha");
+  },
+  get honey() {
+    return frontendMessage("appearance.scheme.honey");
+  },
+  get celadon() {
+    return frontendMessage("appearance.scheme.celadon");
+  },
 } as const satisfies Record<ColorScheme, string>;
 
 export const accentColorLabels = {
-  terra: "陶土",
-  violet: "紫藤",
-  moss: "苔绿",
-  sky: "天蓝",
+  get terra() {
+    return frontendMessage("appearance.accent.terra");
+  },
+  get sky() {
+    return frontendMessage("appearance.accent.sky");
+  },
+  get moss() {
+    return frontendMessage("appearance.accent.moss");
+  },
+  get violet() {
+    return frontendMessage("appearance.accent.violet");
+  },
+  get rose() {
+    return frontendMessage("appearance.accent.rose");
+  },
+  get apricot() {
+    return frontendMessage("appearance.accent.apricot");
+  },
+  get jade() {
+    return frontendMessage("appearance.accent.jade");
+  },
 } as const satisfies Record<AccentColor, string>;
 
 export const fontFamilyLabels = {
-  brand: "品牌",
-  system: "系统",
+  get brand() {
+    return frontendMessage("appearance.fontFamily.brand");
+  },
+  get system() {
+    return frontendMessage("appearance.fontFamily.system");
+  },
 } as const satisfies Record<AppearanceFontFamily, string>;
 
 export const fontScaleLabels = {
-  compact: "紧凑",
-  standard: "标准",
-  comfortable: "舒展",
-  large: "大字",
+  get compact() {
+    return frontendMessage("appearance.fontScale.compact");
+  },
+  get standard() {
+    return frontendMessage("appearance.fontScale.standard");
+  },
+  get comfortable() {
+    return frontendMessage("appearance.fontScale.comfortable");
+  },
+  get large() {
+    return frontendMessage("appearance.fontScale.large");
+  },
 } as const satisfies Record<FontScale, string>;
 
 const appearanceFieldLabels = {
-  themeMode: "主题",
-  colorScheme: "配色",
-  accentColor: "强调色",
-  fontFamily: "字体",
-  fontScale: "字号",
+  get themeMode() {
+    return frontendMessage("appearance.control.theme");
+  },
+  get colorScheme() {
+    return frontendMessage("appearance.control.colorScheme");
+  },
+  get accentColor() {
+    return frontendMessage("appearance.control.accent");
+  },
+  get fontFamily() {
+    return frontendMessage("appearance.control.font");
+  },
+  get fontScale() {
+    return frontendMessage("appearance.control.fontScale");
+  },
 } as const satisfies Record<AppearancePreferenceId, string>;
 
 export function createAppearanceSummary(preference: AppearancePreference): AppearanceSummaryItem[] {
@@ -112,15 +185,35 @@ export function readAppearanceTokenRows(preference: AppearancePreference): Appea
 }
 
 export function readSchemeSwatch(value: ColorScheme): string {
-  if (value === "classic") return "#f9fafb";
-  if (value === "mono") return "#f5f5f5";
-  if (value === "forest") return "#f5f7f5";
-  return "#f8f8f6";
+  return toRgbColor(colorSchemeSwatches[value].paper[1] ?? colorSchemeSwatches[value].paper[0]);
+}
+
+export function readSchemeSwatchStrip(value: ColorScheme): string[] {
+  const swatch = colorSchemeSwatches[value];
+  return [...swatch.paper.slice(0, 3), ...swatch.ink.slice(0, 2)].map(toRgbColor);
+}
+
+export function readColorSchemeStory(value: ColorScheme): string {
+  return frontendMessage(colorSchemeStories[value] as FrontendMessageKey);
+}
+
+export function readRecommendedAccent(value: ColorScheme): AccentColor {
+  return recommendedAccentColors[value];
 }
 
 export function readAccentSwatch(value: AccentColor): string {
-  if (value === "violet") return "#7e67c2";
-  if (value === "moss") return "#5a7d4c";
-  if (value === "sky") return "#3b82f6";
-  return "#b45d40";
+  const values: Record<AccentColor, string> = {
+    terra: "180 93 64",
+    sky: "59 130 246",
+    moss: "90 125 76",
+    violet: "107 83 177",
+    rose: "176 92 101",
+    apricot: "167 103 62",
+    jade: "47 128 124",
+  };
+  return toRgbColor(values[value]);
+}
+
+function toRgbColor(value: string): string {
+  return `rgb(${value})`;
 }

@@ -1,3 +1,4 @@
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { forwardRef, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
@@ -28,7 +29,10 @@ export const DialogOverlay = forwardRef<HTMLDivElement, React.ComponentPropsWith
   ({ className, style, ...props }, ref) => (
     <DialogPrimitive.Overlay ref={ref} asChild forceMount {...props}>
       <MotionDialogOverlay
-        className={cn("dialog-presence fixed inset-0 z-50 bg-ink-950/34 [will-change:opacity]", className)}
+        className={cn(
+          "dialog-presence fixed inset-0 z-50 bg-[var(--theme-dialog-backdrop)] [will-change:opacity]",
+          className,
+        )}
         style={mergeDialogPresenceStyle(style)}
       />
     </DialogPrimitive.Overlay>
@@ -45,6 +49,8 @@ type DialogContentSnapshot = {
   description?: string;
   motionPreset: DialogMotionPreset;
   panelClassName?: string;
+  showClose: boolean;
+  showHeader: boolean;
   title?: string;
 };
 
@@ -56,6 +62,8 @@ const DialogContentFrame = forwardRef<
     bodyClassName?: string;
     frameClassName?: string;
     panelClassName?: string;
+    showClose: boolean;
+    showHeader: boolean;
     motionPreset: DialogMotionPreset;
     contentInitial?: false | VariantLabels;
     contentVariants?: Variants;
@@ -72,6 +80,8 @@ const DialogContentFrame = forwardRef<
       bodyClassName,
       frameClassName: _frameClassName,
       panelClassName,
+      showClose,
+      showHeader,
       motionPreset,
       contentInitial,
       contentVariants,
@@ -91,6 +101,8 @@ const DialogContentFrame = forwardRef<
       description,
       motionPreset,
       panelClassName,
+      showClose,
+      showHeader,
       title,
     };
     const openContentRef = useRef(liveContent);
@@ -113,32 +125,44 @@ const DialogContentFrame = forwardRef<
           variants={content.contentVariants}
           transition={content.contentTransition}
         >
-          <div className="flex items-start gap-3 border-b border-ink-200/50 bg-paper-50 px-4 py-3.5">
-            <div className="min-w-0 flex-1">
-              <DialogPrimitive.Title className="truncate text-[13.5px] font-medium text-ink-900">
-                {content.title ?? ""}
-              </DialogPrimitive.Title>
-              {content.description ? (
-                <DialogPrimitive.Description className="mt-0.5 truncate text-[12px] text-ink-500">
-                  {content.description}
-                </DialogPrimitive.Description>
+          {content.showHeader ? (
+            <div className="flex items-start gap-4 bg-surface-panel px-8 pb-4 pt-7">
+              <div className="min-w-0 flex-1">
+                <DialogPrimitive.Title className="text-[20px] font-semibold leading-7 text-content-strong">
+                  {content.title ?? ""}
+                </DialogPrimitive.Title>
+                {content.description ? (
+                  <DialogPrimitive.Description className="mt-1.5 text-[13px] leading-5 text-content-secondary">
+                    {content.description}
+                  </DialogPrimitive.Description>
+                ) : null}
+              </div>
+              {content.showClose ? (
+                <DialogClose asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      "grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-content-muted",
+                      "cursor-pointer",
+                      "transition-colors duration-150 ease-out",
+                      "hover:bg-surface-hover hover:text-content-primary",
+                      "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+                    )}
+                    aria-label={frontendMessage("desktop.window.close")}
+                  >
+                    <X className="h-[18px] w-[18px]" />
+                  </button>
+                </DialogClose>
               ) : null}
             </div>
-            <DialogClose asChild>
-              <button
-                type="button"
-                className={cn(
-                  "grid h-8 w-8 flex-shrink-0 place-items-center rounded-md text-ink-400",
-                  "transition-colors duration-100",
-                  "hover:bg-ink-900/[0.08] hover:text-ink-900",
-                  "focus:outline-none focus:ring-2 focus:ring-terra-300/60",
-                )}
-                aria-label="关闭"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </DialogClose>
-          </div>
+          ) : (
+            <>
+              <DialogPrimitive.Title className="sr-only">{content.title ?? ""}</DialogPrimitive.Title>
+              {content.description ? (
+                <DialogPrimitive.Description className="sr-only">{content.description}</DialogPrimitive.Description>
+              ) : null}
+            </>
+          )}
           <div className={content.bodyClassName}>{content.children}</div>
         </MotionDialogContent>
       </div>
@@ -156,6 +180,8 @@ export const DialogContent = forwardRef<
     frameClassName?: string;
     placement?: "center" | "inset";
     motionPreset?: DialogMotionPreset;
+    showClose?: boolean;
+    showHeader?: boolean;
     contentInitial?: false | VariantLabels;
     contentVariants?: Variants;
     contentTransition?: Transition;
@@ -171,6 +197,8 @@ export const DialogContent = forwardRef<
       frameClassName,
       placement = "center",
       motionPreset = "modal",
+      showClose = true,
+      showHeader = true,
       contentInitial,
       contentVariants,
       contentTransition,
@@ -189,15 +217,18 @@ export const DialogContent = forwardRef<
             frameClassName,
           )}
           panelClassName={cn(
-            "w-[min(720px,calc(100vw-28px))] max-h-[min(720px,calc(100vh-28px))]",
-            "flex flex-col overflow-hidden rounded-xl border border-ink-200/80 bg-paper-50 shadow-soft [contain:layout_paint] [will-change:opacity,transform]",
+            "w-[min(600px,calc(100vw-32px))] max-h-[min(800px,calc(100dvh-32px))]",
+            "flex flex-col overflow-hidden [will-change:opacity,transform]",
             placement === "inset" && "min-h-0 flex-1",
             className,
+            "rounded-[10px] border border-line bg-surface-panel",
           )}
           title={title}
           description={description}
           bodyClassName={bodyClassName}
           motionPreset={motionPreset}
+          showClose={showClose}
+          showHeader={showHeader}
           contentInitial={contentInitial}
           contentVariants={contentVariants}
           contentTransition={contentTransition}
@@ -223,13 +254,15 @@ export interface DialogActionButtonProps extends ButtonHTMLAttributes<HTMLButton
 }
 
 const dialogActionVariantClasses: Record<DialogActionVariant, string> = {
-  secondary: "text-ink-600 hover:bg-ink-900/[0.05] hover:text-ink-900",
-  primary: "bg-ink-900 font-medium text-paper-50 hover:bg-ink-800",
-  danger: "bg-brick-500 font-medium text-paper-50 hover:bg-brick-600 focus:ring-brick-200/60",
+  secondary:
+    "border border-line bg-surface-panel text-content-secondary shadow-[0_1px_2px_rgb(33_30_24/0.04)] hover:border-line-strong hover:bg-surface-hover hover:text-content-primary",
+  primary:
+    "bg-accent-solid font-medium text-accent-on-solid shadow-accent hover:bg-accent-solid-hover active:bg-accent-solid-pressed",
+  danger: "bg-brick-500 font-medium text-paper-50 shadow-[0_1px_2px_rgb(146_64_14/0.24)] hover:bg-brick-600",
 };
 
 export function DialogActions({ children, className }: DialogActionsProps): JSX.Element {
-  return <div className={cn("flex justify-end gap-2", className)}>{children}</div>;
+  return <div className={cn("flex justify-end gap-2 border-t border-ink-200/70 pt-5", className)}>{children}</div>;
 }
 
 export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButtonProps>(
@@ -239,7 +272,7 @@ export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButt
         ref={ref}
         type={type}
         className={cn(
-          "h-8 rounded-md px-3 text-[12.5px] transition focus:outline-none focus:ring-2 focus:ring-terra-200/60 disabled:cursor-not-allowed disabled:opacity-45",
+          "h-10 cursor-pointer rounded-lg px-4 text-[13px] transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:cursor-not-allowed disabled:opacity-45",
           dialogActionVariantClasses[variant],
           className,
         )}

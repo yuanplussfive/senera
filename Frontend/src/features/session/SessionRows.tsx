@@ -1,5 +1,5 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { ChevronDown, MessageSquare, PencilLine, SquarePen, Trash2 } from "lucide-react";
+import { CircleAlert, LoaderCircle, MoreHorizontal, PencilLine, SquarePen, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState } from "react";
 import { cn } from "../../lib/util";
@@ -12,9 +12,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
   IconButton,
-  LogoMark,
 } from "../../shared/ui";
-import { motionTimings, readTapScale, useMotionLevel } from "../../shared/motion";
+import { motionTimings, useMotionLevel } from "../../shared/motion";
 import { ContextSessionMenuItems, DropdownSessionMenuItems } from "./SessionMenuActions";
 import type { SessionMenuAction } from "./types";
 
@@ -22,7 +21,6 @@ interface SessionRowProps {
   active: boolean;
   sessionId: string;
   title: string;
-  subtitle: string;
   accent: "idle" | "running" | "failed";
   onClick: () => void;
   showInlineActions: boolean;
@@ -34,7 +32,6 @@ export function SessionRow({
   active,
   sessionId,
   title,
-  subtitle,
   accent,
   onClick,
   showInlineActions,
@@ -43,7 +40,7 @@ export function SessionRow({
 }: SessionRowProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const { reduceMotion, disableMotion } = useMotionLevel();
-  const tapScale = readTapScale(disableMotion || reduceMotion ? "reduced" : "full");
+  const animateSelection = !reduceMotion && !disableMotion;
   const actions: SessionMenuAction[] = [
     {
       id: "rename",
@@ -63,80 +60,91 @@ export function SessionRow({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <motion.div
+        <div
           data-session-row={sessionId}
-          whileTap={tapScale ? { scale: tapScale } : undefined}
-          transition={motionTimings.fast}
           className={cn(
-            "group relative isolate mt-0.5 grid w-full grid-cols-[24px_minmax(0,1fr)_28px] items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
-            "data-[state=open]:bg-[var(--theme-session-active-bg)]",
-            active ? "text-ink-900" : "text-ink-700 hover:bg-ink-900/[0.03]",
+            "group relative isolate grid w-full items-center rounded-[9px] px-2.5 text-left transition-colors duration-150",
+            showInlineActions ? "h-11" : "h-9",
+            showInlineActions ? "grid-cols-[minmax(0,1fr)_28px] gap-1" : "grid-cols-1",
+            "data-[state=open]:bg-surface-hover",
+            active
+              ? "text-content-primary"
+              : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
           )}
         >
+          {active ? (
+            <motion.span
+              layoutId={animateSelection ? "active-session-surface" : undefined}
+              transition={animateSelection ? { layout: motionTimings.selection } : { duration: 0 }}
+              className="pointer-events-none absolute inset-0 z-0 rounded-[9px] bg-[var(--theme-session-active-bg)]"
+              data-active-session-indicator
+            />
+          ) : null}
           <button
             type="button"
             aria-current={active ? "true" : undefined}
-            aria-label={`打开会话：${title}`}
+            aria-label={frontendMessage("session.open", { title })}
             onClick={onClick}
-            className="absolute inset-0 z-10 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300"
+            onKeyDown={(event) => {
+              if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
+              event.preventDefault();
+              const rect = event.currentTarget.getBoundingClientRect();
+              event.currentTarget.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                  bubbles: true,
+                  clientX: rect.left + Math.min(rect.width / 2, 120),
+                  clientY: rect.top + Math.min(rect.height / 2, 24),
+                }),
+              );
+            }}
+            className="absolute inset-0 z-10 cursor-pointer rounded-[9px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
           />
-          {active ? (
-            <motion.span
-              key={sessionId}
-              layoutId="active-session-indicator"
-              className="pointer-events-none absolute inset-0 z-0 rounded-lg bg-[var(--theme-session-active-bg)]"
-              transition={
-                reduceMotion || disableMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 42 }
-              }
-            />
-          ) : null}
-          <div className="pointer-events-none relative z-20 mt-0.5 grid h-5 w-5 place-items-center">
-            {accent === "running" ? (
-              <span className="block h-1.5 w-1.5 rounded-full bg-umber-500 motion-safe:animate-pulse" />
-            ) : accent === "failed" ? (
-              <span className="block h-1.5 w-1.5 rounded-full bg-brick-500" />
-            ) : (
-              <MessageSquare className="h-3.5 w-3.5 text-ink-500" />
-            )}
-          </div>
           <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
-            <div className="flex min-w-0 items-center gap-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              {accent === "running" ? (
+                <LoaderCircle
+                  className="h-3 w-3 shrink-0 animate-spin text-umber-600"
+                  aria-label={frontendMessage("session.statusRunning")}
+                />
+              ) : accent === "failed" ? (
+                <CircleAlert
+                  className="h-3 w-3 shrink-0 text-brick-600"
+                  aria-label={frontendMessage("session.statusFailed")}
+                />
+              ) : null}
               <span
                 title={title}
-                className="block min-w-0 max-w-full truncate text-[13px] font-medium leading-tight cursor-[inherit] select-none"
+                className={cn(
+                  "block min-w-0 max-w-full cursor-[inherit] select-none truncate text-[13px] leading-5 transition-colors duration-150",
+                  active ? "font-medium" : "font-normal",
+                )}
               >
                 {title}
               </span>
             </div>
-            <div className="mt-0.5 truncate font-mono text-[10.5px] text-ink-400 cursor-[inherit] select-none">
-              {subtitle}
-            </div>
           </div>
 
-          <div className="relative z-20">
-            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-              <DropdownMenuTrigger asChild>
-                <IconButton
-                  label="more"
-                  size="sm"
-                  tone="muted"
-                  touchSafe
-                  className={cn(
-                    "justify-self-end hover:bg-ink-900/[0.06]",
-                    menuOpen || active || showInlineActions
-                      ? "opacity-100"
-                      : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
-                  )}
-                >
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </IconButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[190px]">
-                <DropdownSessionMenuItems actions={actions} separateLast />
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </motion.div>
+          {showInlineActions ? (
+            <div className="relative z-20">
+              <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <IconButton
+                    label="more"
+                    size="sm"
+                    tone="muted"
+                    touchSafe
+                    className="justify-self-end hover:bg-surface-hover"
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </IconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[190px]">
+                  <DropdownSessionMenuItems actions={actions} separateLast />
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ) : null}
+        </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-[196px]">
         <ContextMenuLabel>{frontendMessage("runtime.migrated.features.session.SessionRows.141.27")}</ContextMenuLabel>
@@ -149,14 +157,13 @@ export function SessionRow({
 export function EmptyState({ onNewSession }: { onNewSession: () => void }): JSX.Element {
   return (
     <div className="mt-8 flex flex-col items-center px-4 text-center">
-      <LogoMark size={24} />
-      <div className="mt-2 text-[13px] text-ink-700">
+      <div className="text-[13px] text-content-secondary">
         {frontendMessage("runtime.migrated.features.session.SessionRows.152.54")}
       </div>
       <button
         type="button"
         onClick={onNewSession}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 py-1 text-[12px] text-ink-800 transition hover:border-ink-300 hover:bg-paper-200/60"
+        className="mt-3 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary"
       >
         <SquarePen className="h-3 w-3" />
         {frontendMessage("runtime.migrated.features.session.SessionRows.159.9")}

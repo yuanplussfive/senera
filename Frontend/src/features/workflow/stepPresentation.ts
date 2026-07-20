@@ -108,14 +108,14 @@ export function readStepAccent(step: Pick<TimelineStep, "kind" | "status">): Ste
     case "tool":
       return {
         border: "border-ink-200/70",
-        iconBg: "bg-terra-50",
-        iconFg: "text-terra-500",
+        iconBg: "bg-accent-surface",
+        iconFg: "text-accent-content",
       };
     case "retry":
       return {
-        border: "border-terra-100",
-        iconBg: "bg-terra-50",
-        iconFg: "text-terra-600",
+        border: "border-accent-border",
+        iconBg: "bg-accent-surface",
+        iconFg: "text-accent-content",
       };
     case "answer":
       return {

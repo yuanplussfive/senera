@@ -1,9 +1,9 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { useMemo, useRef } from "react";
-import { Loader2, Plus, RefreshCw, Settings2, Tags } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Loader2, Plus, RefreshCw, Search, Settings2, Star, Tags, Trash2 } from "lucide-react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { ScrollArea, Tooltip } from "../../shared/ui";
+import { ScrollArea, Switch, Tooltip } from "../../shared/ui";
 import { inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
 import { defaultModelCapabilities, modelConfigId, providerEnabled, readModelCapabilities } from "./modelConfigData";
 import type {
@@ -24,9 +24,9 @@ import {
 
 const EMPTY_PENDING_MODEL_IDS: ReadonlySet<string> = new Set();
 const modelActionClassName =
-  "inline-flex h-7 items-center rounded-md border border-ink-200 bg-paper-50 px-2 text-[10.5px] font-medium text-ink-650 transition hover:border-terra-300 hover:bg-terra-50 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] font-medium text-ink-650 transition hover:bg-ink-900/[0.05] hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50";
 const modelRemoveActionClassName =
-  "inline-flex h-7 items-center rounded-md border border-brick-200 bg-brick-50 px-2 text-[10.5px] font-medium text-brick-700 transition hover:border-brick-300 hover:bg-brick-100 disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] font-medium text-brick-700 transition hover:bg-brick-50 disabled:pointer-events-none disabled:opacity-50";
 
 export function ProviderModelList({
   selectedProvider,
@@ -50,6 +50,7 @@ export function ProviderModelList({
   onFetch,
   onAddManualModel,
   showFetchAction = true,
+  compactHeader = false,
   onConfigureModel,
   onSetDefaultModel,
   onRemoveModel,
@@ -76,12 +77,14 @@ export function ProviderModelList({
   onFetch: (force?: boolean) => void;
   onAddManualModel?: () => void;
   showFetchAction?: boolean;
+  compactHeader?: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
   onSetDefaultModel?: (model: ModelProviderDraft) => void;
   onRemoveModel?: (model: ModelProviderDraft) => void;
   onAddModel?: (model: ProviderModelInfo) => void;
 }): JSX.Element {
   const embedded = layoutMode === "embedded";
+  const [compactSearchOpen, setCompactSearchOpen] = useState(false);
   const scrollTopRef = useRef<HTMLDivElement | null>(null);
   const groupRefs = useRef(new Map<string, HTMLElement>());
   const scrollToGroup = (groupId: string | null): void => {
@@ -109,6 +112,7 @@ export function ProviderModelList({
         onSetDefaultModel={onSetDefaultModel}
         onRemoveModel={onRemoveModel}
         onAddModel={onAddModel}
+        groupedCards={compactHeader}
         onGroupRef={(groupId, element) => {
           if (element) {
             groupRefs.current.set(groupId, element);
@@ -122,71 +126,124 @@ export function ProviderModelList({
 
   return (
     <div className={cn("flex min-h-0 flex-col", embedded ? "overflow-visible" : "h-full overflow-hidden")}>
-      <ListHeader
-        title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.138.15")}
-        subtitle={modelListSubtitle(selectedProvider, catalog, rows.length)}
-        action={
-          <div className="flex items-center gap-1.5">
-            <Tooltip content="模型分组" side="top">
-              <button
-                type="button"
-                disabled={disabled}
-                className={iconButtonClassName}
-                onClick={onOpenModelGroups}
-                aria-label="模型分组"
-              >
-                <Tags className="h-3.5 w-3.5" />
-              </button>
-            </Tooltip>
-            <button
-              type="button"
-              disabled={disabled || !selectedProvider}
-              className={cn(
-                "inline-flex h-8 items-center rounded-md border px-2.5 text-[11px] font-semibold transition",
-                configuredOnly
-                  ? "border-lime-200 bg-lime-50 text-lime-700"
-                  : "border-ink-200 bg-paper-50 text-ink-500 hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700",
-                "disabled:pointer-events-none disabled:opacity-45",
-              )}
-              onClick={() => onConfiguredOnlyChange(!configuredOnly)}
-              aria-pressed={configuredOnly}
-            >
-              {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.166.17")}
-            </button>
-            {onAddManualModel ? (
-              <Tooltip content="手动添加模型" side="top">
+      {compactHeader ? (
+        <div className="border-b border-ink-200/70 bg-paper-50 px-3 py-3">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-[13.5px] font-semibold text-ink-900">{frontendMessage("config.model.title")}</span>
+              <span className="tabular-nums text-[11px] text-ink-450">{rows.length}</span>
+              <Tooltip content={frontendMessage("config.model.searchPlaceholder")} side="top">
                 <button
                   type="button"
                   disabled={disabled || !selectedProvider}
-                  className={iconButtonClassName}
-                  onClick={onAddManualModel}
-                  aria-label="手动添加模型"
+                  className="grid h-8 w-8 place-items-center rounded-md text-ink-450 transition hover:bg-ink-900/[0.05] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-45"
+                  onClick={() => setCompactSearchOpen((current) => !current)}
+                  aria-label={frontendMessage("config.model.searchPlaceholder")}
+                  aria-pressed={compactSearchOpen}
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Search className="h-4 w-4" />
                 </button>
               </Tooltip>
-            ) : null}
-            {showFetchAction ? (
-              <Tooltip content="获取模型列表" side="top">
+            </div>
+            <div className="flex items-center gap-1.5">
+              {showFetchAction ? (
                 <button
                   type="button"
                   disabled={disabled || loading || !enabled || !selectedProvider?.Id}
-                  className={iconButtonClassName}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[11.5px] font-medium text-ink-650 transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-45"
                   onClick={() => onFetch(true)}
-                  aria-label="获取模型列表"
                 >
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  {frontendMessage("config.model.fetchList")}
+                </button>
+              ) : null}
+              {onAddManualModel ? (
+                <Tooltip content={frontendMessage("config.model.customModel")} side="top">
+                  <button
+                    type="button"
+                    disabled={disabled || !selectedProvider}
+                    className={iconButtonClassName}
+                    onClick={onAddManualModel}
+                    aria-label={frontendMessage("config.model.addCustomModel")}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </Tooltip>
+              ) : null}
+            </div>
+          </div>
+          {compactSearchOpen ? (
+            <div className="mt-2.5">
+              <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <ListHeader
+          title={frontendMessage("config.model.title")}
+          subtitle={modelListSubtitle(selectedProvider, catalog, rows.length)}
+          action={
+            <div className="flex items-center gap-1.5">
+              <Tooltip content={frontendMessage("config.model.modelGroups")} side="top">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  className={iconButtonClassName}
+                  onClick={onOpenModelGroups}
+                  aria-label={frontendMessage("config.model.modelGroups")}
+                >
+                  <Tags className="h-3.5 w-3.5" />
                 </button>
               </Tooltip>
-            ) : null}
+              <span className="inline-flex items-center gap-2 text-[11px] text-ink-600">
+                <span>{frontendMessage("config.model.configuredOnly")}</span>
+                <Switch
+                  checked={configuredOnly}
+                  disabled={disabled || !selectedProvider}
+                  ariaLabel={frontendMessage("config.model.configuredOnly")}
+                  className="h-8 w-10 justify-center"
+                  onCheckedChange={onConfiguredOnlyChange}
+                />
+              </span>
+              {onAddManualModel ? (
+                <Tooltip content={frontendMessage("config.model.manualAdd")} side="top">
+                  <button
+                    type="button"
+                    disabled={disabled || !selectedProvider}
+                    className={iconButtonClassName}
+                    onClick={onAddManualModel}
+                    aria-label={frontendMessage("config.model.manualAdd")}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </Tooltip>
+              ) : null}
+              {showFetchAction ? (
+                <Tooltip content={frontendMessage("config.model.fetchList")} side="top">
+                  <button
+                    type="button"
+                    disabled={disabled || loading || !enabled || !selectedProvider?.Id}
+                    className={iconButtonClassName}
+                    onClick={() => onFetch(true)}
+                    aria-label={frontendMessage("config.model.fetchList")}
+                  >
+                    {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  </button>
+                </Tooltip>
+              ) : null}
+            </div>
+          }
+        />
+      )}
+      {compactHeader ? null : (
+        <div className="grid gap-2 border-b border-ink-200/70 bg-paper-50/75 p-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
+          <div className="flex min-w-0 items-center justify-end gap-1.5">
+            <ProviderCatalogStatus catalog={catalog} error={error} loading={loading} disabled={!enabled} />
           </div>
-        }
-      />
-      <div className="grid gap-2 border-b border-ink-200/70 bg-paper-50/75 p-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-        <SearchInput value={search} disabled={disabled || !selectedProvider} onChange={onSearch} />
-        <ProviderCatalogStatus catalog={catalog} error={error} loading={loading} disabled={!enabled} />
-      </div>
-      <ModelGroupSummary groups={groups} total={rows.length} onSelectGroup={scrollToGroup} />
+        </div>
+      )}
+      {compactHeader ? null : <ModelGroupSummary groups={groups} total={rows.length} onSelectGroup={scrollToGroup} />}
       {embedded ? (
         <div className="min-h-0">{modelRows}</div>
       ) : (
@@ -216,6 +273,7 @@ function ProviderModelRows({
   onSetDefaultModel,
   onRemoveModel,
   onAddModel,
+  groupedCards,
   onGroupRef,
 }: {
   selectedProvider: ProviderEndpointDraft | null;
@@ -232,6 +290,7 @@ function ProviderModelRows({
   onSetDefaultModel?: (model: ModelProviderDraft) => void;
   onRemoveModel?: (model: ModelProviderDraft) => void;
   onAddModel?: (model: ProviderModelInfo) => void;
+  groupedCards: boolean;
   onGroupRef: (groupId: string, element: HTMLElement | null) => void;
 }): JSX.Element {
   const selectedProviderId = selectedProvider?.Id ?? "";
@@ -242,33 +301,34 @@ function ProviderModelRows({
   );
 
   if (!selectedProvider) {
-    return <EmptyList text="先添加供应商" />;
+    return <EmptyList text={frontendMessage("config.model.addProviderFirst")} />;
   }
   if (!enabled) {
-    return <EmptyList text="当前供应商已关闭" />;
+    return <EmptyList text={frontendMessage("config.model.providerDisabled")} />;
   }
   if (!catalog && rows.length === 0) {
-    return <EmptyList text="点击获取模型列表读取 /models 列表" />;
+    return <EmptyList text={frontendMessage("config.model.fetchHint")} />;
   }
   if (rows.length === 0) {
-    return <EmptyList text="没有匹配的模型" />;
+    return <EmptyList text={frontendMessage("config.model.noMatches")} />;
   }
 
   return (
     <div>
       {groups.map((group) => (
-        <section key={group.id} className="border-b border-ink-200/70 last:border-b-0">
+        <section key={group.id} className={cn("border-b border-ink-200/70 last:border-b-0")}>
           <div
             ref={(element) => onGroupRef(group.id, element)}
-            className="sticky top-0 z-[1] flex h-8 scroll-mt-0 items-center justify-between border-b border-ink-200/70 bg-paper-100 px-3"
+            className={cn(
+              "flex scroll-mt-0 items-center justify-between border-b border-ink-200/70 bg-paper-100 px-3",
+              groupedCards ? "h-9" : "sticky top-0 z-[1] h-8",
+            )}
           >
             <span className="flex min-w-0 items-center gap-1.5">
               <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
               <span className="truncate text-[11.5px] font-semibold text-ink-700">{group.label}</span>
             </span>
-            <span className="rounded-full bg-ink-900/[0.055] px-2 py-0.5 text-[10.5px] text-ink-500">
-              {group.rows.length}
-            </span>
+            <span className="tabular-nums text-[10.5px] text-ink-400">{group.rows.length}</span>
           </div>
           <div className="divide-y divide-ink-200/70">
             {group.rows.map((model) => (
@@ -332,16 +392,18 @@ function ProviderModelRow({
           {model.id}
         </span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[10.5px] text-ink-400">{model.ownedBy || "供应商模型"}</span>
+          <span className="truncate text-[10.5px] text-ink-400">
+            {model.ownedBy || frontendMessage("config.model.providerModel")}
+          </span>
           <CapabilityIconStrip capabilities={capabilities} />
         </span>
       </span>
       <span className="flex flex-wrap items-center justify-end gap-1.5">
         <ConfiguredModelBadge isDefault={isDefault} configured={Boolean(configured)} />
         {pending ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10.5px] font-semibold text-sky-700">
-            <Loader2 className="h-3 w-3 animate-spin" />{" "}
-            {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.356.58")}
+          <span className="inline-flex items-center gap-1.5 text-[10.5px] font-medium text-ink-600">
+            <Loader2 className="h-3 w-3 animate-spin text-accent-content" />{" "}
+            {frontendMessage("settings.modelManagement.adding")}
           </span>
         ) : configured && (onSetDefaultModel || onRemoveModel) ? (
           <>
@@ -351,6 +413,7 @@ function ProviderModelRow({
               className={modelActionClassName}
               onClick={() => onConfigureModel(model)}
             >
+              <Settings2 className="h-3 w-3" />
               {frontendMessage("chat.model.configure")}
             </button>
             {!isDefault && onSetDefaultModel ? (
@@ -360,6 +423,7 @@ function ProviderModelRow({
                 className={modelActionClassName}
                 onClick={() => onSetDefaultModel(configured)}
               >
+                <Star className="h-3 w-3" />
                 {frontendMessage("chat.model.setDefault")}
               </button>
             ) : null}
@@ -370,6 +434,7 @@ function ProviderModelRow({
                 className={modelRemoveActionClassName}
                 onClick={() => onRemoveModel(configured)}
               >
+                <Trash2 className="h-3 w-3" />
                 {frontendMessage("chat.model.remove")}
               </button>
             ) : null}
@@ -379,8 +444,8 @@ function ProviderModelRow({
             type="button"
             disabled={disabled || !providerId}
             className={iconButtonClassName}
-            title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.362.17")}
-            aria-label="配置模型"
+            title={frontendMessage("chat.model.configure")}
+            aria-label={frontendMessage("chat.model.configure")}
             onClick={() => onConfigureModel(model)}
           >
             <Settings2 className="h-3.5 w-3.5" />
@@ -390,8 +455,8 @@ function ProviderModelRow({
             type="button"
             disabled={disabled || !providerId}
             className={iconButtonClassName}
-            title={frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.371.17")}
-            aria-label="添加模型"
+            title={frontendMessage("config.model.addModel")}
+            aria-label={frontendMessage("config.model.addModel")}
             onClick={() => onAddModel(model)}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -411,19 +476,13 @@ function ConfiguredModelBadge({
 }): JSX.Element | null {
   if (isDefault) {
     return (
-      <span className="rounded-full border border-terra-200 bg-terra-50 px-2 py-1 text-[10.5px] font-semibold text-terra-700">
-        DEFAULT
-      </span>
+      <span className="text-[10.5px] font-medium text-accent-content">{frontendMessage("config.model.default")}</span>
     );
   }
   if (configured) {
     // TODO: this is a configured-state badge, not model enablement. Persisted
     // model Enabled plus runtime filtering require a backend contract first.
-    return (
-      <span className="rounded-full border border-lime-200 bg-lime-50 px-2 py-1 text-[10.5px] font-semibold text-lime-700">
-        {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.401.9")}
-      </span>
-    );
+    return <span className="text-[10.5px] text-ink-500">{frontendMessage("settings.modelManagement.added")}</span>;
   }
   return null;
 }
@@ -442,32 +501,28 @@ function ModelGroupSummary({
   }
   return (
     <div className="border-b border-ink-200/70 bg-paper-50 px-2.5 py-2">
-      <div className="flex min-w-0 flex-wrap gap-1.5">
+      <div className="flex min-w-0 flex-wrap gap-1">
         <button
           type="button"
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-ink-300 bg-paper-100 px-2.5 text-[11px] text-ink-750 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-accent-border px-1.5 text-[11px] text-ink-750 transition-colors duration-150 hover:text-accent-content-hover"
           onClick={() => onSelectGroup(null)}
-          title={`所有模型: ${total}`}
+          title={frontendMessage("config.model.allModelsTitle", { count: total })}
         >
           <Tags className="h-3.5 w-3.5" />
-          <span className="font-medium">
-            {frontendMessage("runtime.migrated.features.chat.ModelProviderModelList.430.41")}
-          </span>
-          <span className="rounded-full bg-ink-900/[0.06] px-1.5 py-0.5 text-[10px] text-ink-500">{total}</span>
+          <span className="font-medium">{frontendMessage("config.model.allModels")}</span>
+          <span className="tabular-nums text-[10px] text-ink-400">{total}</span>
         </button>
         {groups.map((group) => (
           <button
             type="button"
             key={group.id}
-            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-ink-200 bg-paper-100 px-2.5 text-[11px] text-ink-650 transition hover:border-terra-200 hover:bg-terra-50 hover:text-terra-700"
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 border-b border-transparent px-1.5 text-[11px] text-ink-650 transition-colors duration-150 hover:border-ink-350 hover:text-ink-850"
             title={`${group.label}: ${group.rows.length}`}
             onClick={() => onSelectGroup(group.id)}
           >
             <ModelProviderIcon icon={group.icon} size={14} className="rounded" />
             <span className="max-w-24 truncate font-medium">{group.label}</span>
-            <span className="rounded-full bg-ink-900/[0.06] px-1.5 py-0.5 text-[10px] text-ink-500">
-              {group.rows.length}
-            </span>
+            <span className="tabular-nums text-[10px] text-ink-400">{group.rows.length}</span>
           </button>
         ))}
       </div>
@@ -481,15 +536,17 @@ function modelListSubtitle(
   visibleRows: number,
 ): string {
   if (!selectedProvider) {
-    return "选择供应商后显示模型";
+    return frontendMessage("config.model.selectProviderHint");
   }
   if (!providerEnabled(selectedProvider)) {
-    return "当前供应商已关闭";
+    return frontendMessage("config.model.providerDisabled");
   }
   if (!catalog) {
-    return visibleRows > 0 ? `${visibleRows} 个已配置模型` : "获取后显示可用模型";
+    return visibleRows > 0
+      ? frontendMessage("config.model.configuredCount", { count: visibleRows })
+      : frontendMessage("config.model.fetchToShow");
   }
   return visibleRows === catalog.models.length
-    ? `${catalog.models.length} 个模型`
-    : `${visibleRows} / ${catalog.models.length} 个模型`;
+    ? frontendMessage("config.model.count", { count: catalog.models.length })
+    : frontendMessage("config.model.filteredCount", { visible: visibleRows, total: catalog.models.length });
 }

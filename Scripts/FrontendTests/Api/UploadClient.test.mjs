@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { buildUploadUrl, uploadFile } from "../../../Frontend/src/api/uploadClient.ts";
+import { buildUploadUrl, DEFAULT_UPLOAD_TIMEOUT_MS, uploadFile } from "../../../Frontend/src/api/uploadClient.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 
 afterEach(() => {
@@ -38,6 +38,7 @@ test("upload client projects secure WebSocket URLs and reports upload progress",
   expect(request.method).toBe("POST");
   expect(request.url).toBe(uploadUrl);
   expect(request.withCredentials).toBe(true);
+  expect(request.timeout).toBe(DEFAULT_UPLOAD_TIMEOUT_MS);
   expect(request.body).toBeInstanceOf(FormData);
   expect(progress.mock.calls.map(([value]) => value)).toEqual([
     { loaded: 2, total: 5, ratio: 0.4 },
@@ -85,6 +86,14 @@ test("upload client rejects malformed, failed, and empty success responses", asy
   const empty = uploadFile("http://agent.test/api/uploads", file);
   TestXmlHttpRequest.instances.at(-1).respond(200, { ok: true, uploads: [] });
   await expect(empty).rejects.toThrow(frontendMessage("upload.emptyResponse"));
+
+  const missingUploads = uploadFile("http://agent.test/api/uploads", file);
+  TestXmlHttpRequest.instances.at(-1).respond(200, { ok: true });
+  await expect(missingUploads).rejects.toThrow(frontendMessage("upload.failed"));
+
+  const invalidUpload = uploadFile("http://agent.test/api/uploads", file);
+  TestXmlHttpRequest.instances.at(-1).respond(200, { ok: true, uploads: [{}] });
+  await expect(invalidUpload).rejects.toThrow(frontendMessage("upload.emptyResponse"));
 });
 
 test("forwards caller-provided CSRF headers without exposing cookie values", async () => {

@@ -1,7 +1,25 @@
 import { KeyRound, LoaderCircle, LogIn, RefreshCcw } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import type { ServerAuthenticationState } from "./useServerAuthentication";
+import { ServerAuthenticationError, type ServerAuthentication } from "../api/authClient";
+
+export function ServerAuthenticationBoundary({
+  state,
+  onLogin,
+  onRetry,
+  children,
+}: {
+  state: ServerAuthenticationState;
+  onLogin: (credentials: { loginName: string; password: string }) => Promise<void>;
+  onRetry: () => Promise<void>;
+  children: (authentication: ServerAuthentication) => ReactNode;
+}): JSX.Element {
+  if (state.status === "authenticated") {
+    return <>{children(state.authentication)}</>;
+  }
+  return <ServerAuthenticationGate state={state} onLogin={onLogin} onRetry={onRetry} />;
+}
 
 export function ServerAuthenticationGate({
   state,
@@ -19,7 +37,7 @@ export function ServerAuthenticationGate({
     return (
       <AuthenticationStatus
         icon={<RefreshCcw className="h-5 w-5" />}
-        messageKey="auth.connectionFailed"
+        message={readServerFailureMessage(state.error)}
         actionLabel={frontendMessage("auth.retry")}
         onAction={() => void onRetry()}
       />
@@ -57,7 +75,7 @@ function LoginForm({
         onSubmit={submit}
       >
         <div className="flex items-center gap-3">
-          <span className="grid h-9 w-9 place-items-center bg-terra-50 text-terra-700">
+          <span className="grid h-9 w-9 place-items-center bg-accent-surface text-accent-content">
             <KeyRound className="h-4 w-4" aria-hidden="true" />
           </span>
           <h1 className="text-[16px] font-semibold leading-6 text-ink-950">{frontendMessage("auth.title")}</h1>
@@ -67,7 +85,7 @@ function LoginForm({
           <input
             autoComplete="username"
             autoFocus
-            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-terra-200/50"
+            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
             value={loginName}
             onChange={(event) => setLoginName(event.target.value)}
             required
@@ -78,7 +96,7 @@ function LoginForm({
           <input
             type="password"
             autoComplete="current-password"
-            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-terra-200/50"
+            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
@@ -101,11 +119,13 @@ function LoginForm({
 function AuthenticationStatus({
   icon,
   messageKey,
+  message,
   actionLabel,
   onAction,
 }: {
   icon: JSX.Element;
-  messageKey: "auth.loading" | "auth.connectionFailed";
+  messageKey?: "auth.loading" | "auth.connectionFailed";
+  message?: string;
   actionLabel?: string;
   onAction?: () => void;
 }): JSX.Element {
@@ -113,12 +133,14 @@ function AuthenticationStatus({
     <main className="flex min-h-screen items-center justify-center bg-paper-100 px-4 py-8 text-ink-900">
       <div className="flex items-center gap-3 border border-ink-200 bg-paper-50 px-4 py-3 shadow-[0_18px_60px_rgba(24,27,31,0.12)]">
         <span className="text-ink-500">{icon}</span>
-        <p className="text-[13px] text-ink-700">{frontendMessage(messageKey)}</p>
+        {message || messageKey ? (
+          <p className="text-[13px] text-ink-700">{message ?? frontendMessage(messageKey!)}</p>
+        ) : null}
         {actionLabel && onAction ? (
           <button
             type="button"
             onClick={onAction}
-            className="text-[13px] font-medium text-terra-700 hover:text-terra-800"
+            className="text-[13px] font-medium text-accent-content hover:text-accent-content-hover"
           >
             {actionLabel}
           </button>
@@ -126,4 +148,10 @@ function AuthenticationStatus({
       </div>
     </main>
   );
+}
+
+function readServerFailureMessage(error: Error): string | undefined {
+  if (!(error instanceof ServerAuthenticationError)) return undefined;
+  const message = error.message.trim();
+  return message || undefined;
 }

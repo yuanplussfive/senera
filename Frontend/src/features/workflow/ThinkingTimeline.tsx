@@ -1,15 +1,21 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Lightbulb, Loader2, Maximize2, PanelRightClose, PanelRightOpen, Clock3, ListTree, Wrench } from "lucide-react";
-import { useStore, type RunRecord } from "../../store/sessionStore";
-import { useResponsiveMode } from "../../shared/responsive";
 import { cn } from "../../lib/util";
+import { ListTree, Loader2, Maximize2, PanelRightClose } from "lucide-react";
+import { useStore, type RunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { Dialog, DialogContent, IconButton, MetaLabel } from "../../shared/ui";
+import { Dialog, DialogContent, IconButton } from "../../shared/ui";
 import { summarizeRun } from "./runSummary";
 import { shouldLoadWorkflowCanvas } from "./canvasLoadPolicy";
 import { RunSelector, RunSummaryStrip } from "./WorkflowRunControls";
 import { motionSprings, motionTimings, readFocusPanelVariants, useMotionLevel } from "../../shared/motion";
+
+export type ThinkingTimelineDockTab = {
+  id: string;
+  label: string;
+  active: boolean;
+  onSelect: () => void;
+};
 
 const LazyThinkingTimelineCanvas = lazy(() =>
   import("./ThinkingTimelineCanvas").then((module) => ({
@@ -20,24 +26,37 @@ const LazyThinkingTimelineCanvas = lazy(() =>
 export function ThinkingTimeline({
   presentation = "auto",
   hidePanelTitle = false,
+  dockTabs,
+  onClosePanel,
 }: {
-  presentation?: "auto" | "panel" | "rail";
+  presentation?: "auto" | "dock" | "panel";
   hidePanelTitle?: boolean;
+  dockTabs?: readonly ThinkingTimelineDockTab[];
+  onClosePanel?: () => void;
 }): JSX.Element {
-  return <ThinkingPanel presentation={presentation} hidePanelTitle={hidePanelTitle} />;
+  return (
+    <ThinkingPanel
+      presentation={presentation}
+      hidePanelTitle={hidePanelTitle}
+      dockTabs={dockTabs}
+      onClosePanel={onClosePanel}
+    />
+  );
 }
 
 function ThinkingPanel({
   presentation,
   hidePanelTitle,
+  dockTabs,
+  onClosePanel,
 }: {
-  presentation: "auto" | "panel" | "rail";
+  presentation: "auto" | "dock" | "panel";
   hidePanelTitle: boolean;
+  dockTabs?: readonly ThinkingTimelineDockTab[];
+  onClosePanel?: () => void;
 }): JSX.Element {
   const activeId = useStore((s) => s.activeSessionId);
   const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
-  const collapsed = useStore((s) => s.rightPanelCollapsed);
-  const toggleCollapsed = useStore((s) => s.toggleRightPanel);
   const viewedRunId = useStore((s) => (activeId ? s.viewedRunIdBySession[activeId] : undefined));
   const setViewedRun = useStore((s) => s.setViewedRun);
   const [focusOpen, setFocusOpen] = useState(false);
@@ -63,49 +82,33 @@ function ThinkingPanel({
     }
   }, [activeId, viewedRunId, selectedRun, latestRun?.requestId, setViewedRun]);
 
-  const isRail = presentation === "rail" || (presentation === "auto" && collapsed);
-
   const toggleFocus = useCallback(() => {
     setFocusOpen((value) => !value);
   }, []);
-
-  if (isRail) {
-    return (
-      <aside className="flex h-full w-[44px] shrink-0 flex-col items-center border-l border-ink-200/60 bg-paper-100/40 py-3">
-        <IconButton
-          label={frontendMessage("workflow.panel.expand")}
-          tooltip={frontendMessage("workflow.panel.expand")}
-          tooltipSide="left"
-          onClick={toggleCollapsed}
-        >
-          <PanelRightOpen className="h-4 w-4" />
-        </IconButton>
-        <Lightbulb className="mt-2 h-4 w-4 text-terra-500" />
-      </aside>
-    );
-  }
 
   return (
     <>
       <aside
         className={cn(
-          "flex h-full shrink-0 flex-col border-l border-ink-200/60 bg-paper-100/40",
-          presentation === "panel" ? "w-full border-l-0" : "w-full",
+          "flex h-full w-full shrink-0 flex-col",
+          presentation === "dock" ? "bg-transparent" : "bg-surface-raised",
         )}
+        data-ui-chrome
+        data-panel-presentation={presentation}
       >
         <TopBar
           run={run}
           runs={runs}
           currentRunId={run?.requestId}
           pinnedToHistory={isPinnedToHistory}
-          focusOpen={focusOpen}
           hideTitle={hidePanelTitle}
+          presentation={presentation}
+          dockTabs={dockTabs}
           onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
           onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
-          onToggleFocus={toggleFocus}
-          onCollapse={presentation === "panel" ? undefined : toggleCollapsed}
+          onClosePanel={onClosePanel}
         />
-        <CanvasArea run={run} />
+        <CanvasArea run={run} focusOpen={focusOpen} onToggleFocus={toggleFocus} />
       </aside>
       <TimelineFocusDialog
         open={focusOpen}
@@ -128,90 +131,109 @@ function TopBar({
   runs,
   currentRunId,
   pinnedToHistory,
-  focusOpen,
   hideTitle,
+  presentation,
+  dockTabs,
   onSelect,
   onFollowLatest,
-  onToggleFocus,
-  onCollapse,
+  onClosePanel,
 }: {
   run?: RunRecord;
   runs: RunRecord[];
   currentRunId?: string;
   pinnedToHistory: boolean;
-  focusOpen: boolean;
   hideTitle?: boolean;
+  presentation: "auto" | "dock" | "panel";
+  dockTabs?: readonly ThinkingTimelineDockTab[];
   onSelect: (requestId: string) => void;
   onFollowLatest: () => void;
-  onToggleFocus: () => void;
-  onCollapse?: () => void;
+  onClosePanel?: () => void;
 }): JSX.Element {
   const summary = run ? summarizeRun(run) : undefined;
 
   return (
     <>
-      <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 bg-paper-100/70 px-3">
-        {onCollapse ? (
-          <IconButton
-            label="collapse"
-            tooltip={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.176.21")}
-            tooltipSide="left"
-            size="sm"
-            className="h-7 w-7 text-ink-500"
-            onClick={onCollapse}
-          >
-            <PanelRightClose className="h-4 w-4" />
-          </IconButton>
-        ) : null}
-        {hideTitle ? null : (
-          <>
-            <Lightbulb className="h-4 w-4 text-terra-500" />
-            <span className="text-[13px] font-medium text-ink-800">
-              {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.188.68")}
-            </span>
-          </>
+      <div
+        className={cn(
+          "relative z-10 flex items-center gap-2 border-b border-line-subtle",
+          presentation === "dock" ? "h-[58px] bg-transparent px-3" : "h-[52px] bg-surface-raised px-3",
         )}
-        <div className="ml-auto flex min-w-0 items-center gap-2">
-          <MetaLabel as="div" size="sm" className="hidden min-w-0 items-center gap-1.5 sm:flex">
-            {run ? (
-              <span>
-                {summary?.completed}/{summary?.total}
-                {summary && summary.failed > 0 ? (
-                  <span className="ml-1 text-brick-500">
-                    ·{summary.failed} {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.196.106")}
-                  </span>
-                ) : null}
-              </span>
-            ) : null}
-          </MetaLabel>
-          {pinnedToHistory ? (
-            <div className="flex shrink-0 items-center gap-1 rounded-md border border-ink-200/60 bg-paper-50/80 p-0.5 shadow-[var(--shadow-bubble-user)]">
+        data-window-drag-region
+      >
+        {dockTabs ? (
+          <nav
+            className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full border border-line-subtle bg-surface-subtle p-1"
+            aria-label={frontendMessage("workflow.dock.tabs")}
+            data-workflow-dock-tabs
+          >
+            {dockTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={tab.active}
+                onClick={tab.onSelect}
+                className={cn(
+                  "min-w-0 flex-1 rounded-full px-1.5 py-1.5 text-[12px] font-medium text-content-muted transition-[background-color,color,box-shadow] duration-150 hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+                  tab.active && "bg-surface-raised text-content-primary shadow-sm",
+                  !tab.active && "hover:bg-surface-hover",
+                )}
+                data-workflow-dock-tab={tab.id}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        ) : hideTitle ? null : (
+          <nav
+            className="flex min-w-0 items-center gap-2"
+            aria-label={frontendMessage("workflow.panel.title")}
+            data-workspace-tool-dock
+          >
+            <ListTree className="h-4 w-4 shrink-0 text-content-secondary" />
+            <span className="truncate text-[13px] font-medium text-content-primary">
+              {frontendMessage("workflow.panel.title")}
+            </span>
+          </nav>
+        )}
+        {onClosePanel ? (
+          <div className="ml-auto">
+            <IconButton
+              label={frontendMessage("workflow.panel.collapse")}
+              tone="muted"
+              tooltip={frontendMessage("workflow.panel.collapse")}
+              tooltipSide="bottom"
+              onClick={onClosePanel}
+            >
+              <PanelRightClose className="h-4 w-4" />
+            </IconButton>
+          </div>
+        ) : null}
+      </div>
+
+      {runs.length > 0 ? (
+        <div
+          className={cn(
+            "shrink-0",
+            presentation === "dock"
+              ? "mx-3 mt-3 rounded-[14px] border border-line-subtle bg-surface-raised px-3 py-2.5 shadow-[var(--theme-node-shadow)]"
+              : "border-b border-line-subtle bg-surface-subtle/45 px-3 py-2",
+          )}
+          data-workflow-run-summary
+        >
+          <RunSelector runs={runs} currentRunId={currentRunId} onSelect={onSelect} pinnedToHistory={pinnedToHistory} />
+          <div className="mt-1 flex min-w-0 items-center justify-between gap-2 px-1">
+            {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
+            {pinnedToHistory ? (
               <button
                 type="button"
                 onClick={onFollowLatest}
-                className="h-7 rounded px-2 text-[11.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
+                className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
               >
-                {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.207.15")}
+                {frontendMessage("workflow.panel.followLatest")}
               </button>
-            </div>
-          ) : null}
-          <IconButton
-            label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.212.19")}
-            tooltip={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.213.21")}
-            tooltipSide="bottom"
-            aria-pressed={focusOpen}
-            onClick={onToggleFocus}
-          >
-            <Maximize2 className="h-4 w-4" />
-          </IconButton>
-        </div>
-      </div>
-
-      {/* Run 选择器 */}
-      {runs.length > 0 ? (
-        <div className="border-b border-ink-200/40 bg-paper-50/70 px-3 py-2">
-          {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
-          <RunSelector runs={runs} currentRunId={currentRunId} onSelect={onSelect} pinnedToHistory={pinnedToHistory} />
+            ) : null}
+          </div>
         </div>
       ) : null}
     </>
@@ -243,13 +265,21 @@ function TimelineFocusDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.264.15")}
-        description={summary ? `${summary.completed}/${summary.total} 节点 · ${summary.tools} 工具` : undefined}
+        title={frontendMessage("workflow.panel.title")}
+        description={
+          summary
+            ? frontendMessage("workflow.summary.nodesAndTools", {
+                completed: summary.completed,
+                total: summary.total,
+                tools: summary.tools,
+              })
+            : undefined
+        }
         placement="inset"
         motionPreset="focus"
         frameClassName="bottom-3 left-3 right-3 top-3 sm:bottom-4 sm:left-4 sm:right-4 sm:top-4"
         className="h-auto max-h-none w-auto max-w-none rounded-lg"
-        bodyClassName="flex min-h-0 flex-1 flex-col bg-paper-100/40"
+        bodyClassName="flex min-h-0 flex-1 flex-col bg-surface-subtle"
       >
         <motion.div
           variants={readFocusPanelVariants(effectiveLevel)}
@@ -260,23 +290,25 @@ function TimelineFocusDialog({
           className="min-h-0 flex flex-1 flex-col"
         >
           {runs.length > 0 ? (
-            <div className="shrink-0 border-b border-ink-200/40 bg-paper-50/70 px-3 py-2 sm:px-4">
-              {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
+            <div className="shrink-0 border-b border-line-subtle bg-surface-subtle/45 px-3 py-2 sm:px-4">
               <RunSelector
                 runs={runs}
                 currentRunId={currentRunId}
                 onSelect={onSelect}
                 pinnedToHistory={pinnedToHistory}
               />
-              {pinnedToHistory ? (
-                <button
-                  type="button"
-                  onClick={onFollowLatest}
-                  className="mt-2 h-8 rounded-md px-2.5 text-[12px] font-medium text-ink-600 transition hover:bg-ink-900/[0.05] hover:text-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70"
-                >
-                  {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.295.19")}
-                </button>
-              ) : null}
+              <div className="mt-1 flex min-w-0 items-center justify-between gap-2 px-1">
+                {summary && run ? <RunSummaryStrip run={run} summary={summary} /> : null}
+                {pinnedToHistory ? (
+                  <button
+                    type="button"
+                    onClick={onFollowLatest}
+                    className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+                  >
+                    {frontendMessage("workflow.panel.followLatest")}
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : null}
           <CanvasArea run={run} focusVersion={open ? 1 : 0} />
@@ -288,28 +320,69 @@ function TimelineFocusDialog({
 
 // ---------- 画布 ----------
 
-function CanvasArea({ run, focusVersion = 0 }: { run?: RunRecord; focusVersion?: number }): JSX.Element {
+function CanvasArea({
+  run,
+  focusVersion = 0,
+  focusOpen = false,
+  onToggleFocus,
+}: {
+  run?: RunRecord;
+  focusVersion?: number;
+  focusOpen?: boolean;
+  onToggleFocus?: () => void;
+}): JSX.Element {
   if (!shouldLoadWorkflowCanvas(run)) {
     return (
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+      <div
+        className="relative flex flex-1 items-center justify-center overflow-hidden bg-transparent"
+        data-workflow-execution-content
+      >
+        <CanvasFocusAction focusOpen={focusOpen} onToggleFocus={onToggleFocus} />
         <EmptyCanvas />
       </div>
     );
   }
 
   return (
-    <Suspense fallback={<CanvasLoading />}>
-      <LazyThinkingTimelineCanvas run={run} focusVersion={focusVersion} />
-    </Suspense>
+    <div className="relative flex min-h-0 flex-1 overflow-hidden bg-transparent" data-workflow-execution-content>
+      <CanvasFocusAction focusOpen={focusOpen} onToggleFocus={onToggleFocus} />
+      <Suspense fallback={<CanvasLoading />}>
+        <LazyThinkingTimelineCanvas run={run} focusVersion={focusVersion} />
+      </Suspense>
+    </div>
+  );
+}
+
+function CanvasFocusAction({
+  focusOpen,
+  onToggleFocus,
+}: {
+  focusOpen: boolean;
+  onToggleFocus?: () => void;
+}): JSX.Element | null {
+  if (!onToggleFocus) return null;
+  return (
+    <IconButton
+      label={frontendMessage("workflow.panel.focus")}
+      tone="muted"
+      tooltip={frontendMessage("workflow.panel.focus")}
+      tooltipSide="left"
+      aria-pressed={focusOpen}
+      onClick={onToggleFocus}
+      className="absolute right-3 top-3 z-20 border border-line-subtle bg-surface-raised shadow-sm"
+      data-workflow-focus-action
+    >
+      <Maximize2 className="h-4 w-4" />
+    </IconButton>
   );
 }
 
 function CanvasLoading(): JSX.Element {
   return (
-    <div className="relative flex flex-1 items-center justify-center overflow-hidden">
-      <div className="inline-flex items-center gap-2 rounded-md border border-ink-200/60 bg-paper-50/80 px-3 py-2 text-[12px] text-ink-500 shadow-bubble-ai">
+    <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-transparent">
+      <div className="inline-flex items-center gap-2 text-[12px] text-content-secondary">
         <Loader2 className="h-3.5 w-3.5 animate-spin text-umber-500" />
-        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.336.9")}
+        {frontendMessage("workflow.panel.loadingGraph")}
       </div>
     </div>
   );
@@ -317,7 +390,6 @@ function CanvasLoading(): JSX.Element {
 
 function EmptyCanvas(): JSX.Element {
   const { level, reduceMotion, disableMotion } = useMotionLevel();
-  const { isCoarsePointer } = useResponsiveMode();
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
   return (
     <motion.div
@@ -327,45 +399,13 @@ function EmptyCanvas(): JSX.Element {
       transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.soft}
       className="flex max-w-[320px] flex-col items-center px-6 text-center"
     >
-      <div className="grid h-11 w-11 place-items-center rounded-xl border border-ink-200/70 bg-paper-50 shadow-[var(--shadow-bubble-user)]">
-        <ListTree className="h-5 w-5 text-ink-500" />
-      </div>
-      <p className="mt-3 text-[13px] font-medium text-ink-850">
-        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.358.9")}
+      <ListTree className="h-5 w-5 text-content-muted" />
+      <p className="mt-4 text-[13px] font-semibold text-content-primary">
+        {frontendMessage("workflow.panel.emptyTitle")}
       </p>
-      <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
-        {frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.361.9")}
-      </p>
-      <div className="mt-3 grid w-full grid-cols-2 gap-1.5 text-left">
-        <EmptyHint
-          icon={<ListTree className="h-3 w-3" />}
-          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.364.66")}
-        />
-        <EmptyHint
-          icon={<Wrench className="h-3 w-3" />}
-          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.365.64")}
-        />
-        <EmptyHint
-          icon={<Maximize2 className="h-3 w-3" />}
-          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.366.67")}
-        />
-        <EmptyHint
-          icon={<Clock3 className="h-3 w-3" />}
-          label={frontendMessage("runtime.migrated.features.workflow.ThinkingTimeline.367.64")}
-        />
-      </div>
-      <p className="mt-3 text-[11px] text-ink-400">
-        {isCoarsePointer ? "可拖拽节点，拖动画布，双指缩放。" : "可拖拽节点，滚轮平移，Ctrl+滚轮缩放。"}
+      <p className="mt-1.5 text-[12.5px] leading-relaxed text-content-secondary">
+        {frontendMessage("workflow.panel.emptyDescription")}
       </p>
     </motion.div>
-  );
-}
-
-function EmptyHint({ icon, label }: { icon: JSX.Element; label: string }): JSX.Element {
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-ink-200/60 bg-paper-50/70 px-2 py-1.5 text-[11.5px] text-ink-600">
-      <span className="shrink-0 text-ink-400">{icon}</span>
-      <span className="truncate">{label}</span>
-    </span>
   );
 }

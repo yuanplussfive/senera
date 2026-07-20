@@ -20,7 +20,8 @@ export const SheetPortal = DialogPrimitive.Portal;
 export const SheetTitle = DialogPrimitive.Title;
 export const SheetDescription = DialogPrimitive.Description;
 
-export const sheetOverlayClassName = "dialog-presence fixed inset-0 z-50 bg-ink-950/24 [will-change:opacity]";
+export const sheetOverlayClassName =
+  "dialog-presence fixed inset-0 z-50 bg-[var(--theme-sheet-backdrop)] [will-change:opacity]";
 const sheetPresenceExitMs = 240;
 const sheetDeferredContentDelayMs = 96;
 
@@ -162,7 +163,7 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
         className={cn(
           "dialog-presence",
           "fixed top-0 z-50 flex h-full w-[min(360px,calc(100vw-24px))] flex-col overflow-hidden",
-          "border-ink-200 bg-paper-50 shadow-soft outline-none",
+          "border-ink-200 bg-paper-50 outline-none",
           sideClasses[content.side],
           content.className,
         )}
@@ -189,9 +190,9 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
                 <button
                   type="button"
                   className={cn(
-                    "grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-500 transition",
+                    "grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-ink-500 transition",
                     "hover:bg-ink-900/[0.05] hover:text-ink-800",
-                    "focus:outline-none focus:ring-2 focus:ring-terra-200/60",
+                    "focus:outline-none",
                   )}
                   aria-label={frontendMessage("ui.close")}
                 >

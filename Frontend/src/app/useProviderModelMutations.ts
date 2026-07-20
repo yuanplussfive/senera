@@ -54,8 +54,9 @@ export function useProviderModelMutations({
   const start = useCallback(
     (kind: ProviderModelOperationKind, modelId: string, request: ProviderModelConfigRequest): string | null => {
       const send = readOpenTransport();
-      if (!send || !configSnapshot) {
-        if (!configSnapshot) toast.error(frontendMessage("config.mainFailed"));
+      if (!send) return null;
+      if (!configSnapshot) {
+        toast.error(frontendMessage("config.mainFailed"));
         return null;
       }
       const requestId = generateId();
@@ -109,12 +110,17 @@ export function useProviderModelMutations({
         requestId: resolution.requestId,
         kind: resolution.operation.kind,
         status: resolution.kind === "success" ? "success" : "error",
-        ...(resolution.message ? { message: resolution.message } : {}),
+        ...(resolution.message ? { message: resolution.message, errorCode: resolution.errorCode } : {}),
         updatedAt: timestamp(),
       },
     });
-    if (resolution.kind === "success") toast.success(frontendMessage("config.mainSaved"));
-    else toast.error(frontendMessage("config.mainFailed"), { description: resolution.message });
+    if (resolution.kind === "success") {
+      if (resolution.operation.kind === "provider.model.delete") {
+        toast.success(frontendMessage("config.mainSaved"));
+      }
+    } else {
+      toast.error(frontendMessage("config.mainFailed"), { description: resolution.message });
+    }
     return true;
   }, []);
 

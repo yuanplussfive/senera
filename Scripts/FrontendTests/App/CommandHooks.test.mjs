@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useChatCommands } from "../../../Frontend/src/app/useChatCommands.ts";
 import { useSessionCommands } from "../../../Frontend/src/app/useSessionCommands.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
-import { useStore } from "../../../Frontend/src/store/sessionStore.ts";
+import { DEFAULT_SESSION_TITLE, useStore } from "../../../Frontend/src/store/sessionStore.ts";
 import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
 import { installMemoryLocalStorage, registerTestSession, resetFrontendStore } from "../frontendStoreTestHarness.mjs";
 
@@ -76,6 +76,33 @@ test("useChatCommands blocks sends while history is recovering without mutating 
     expect.objectContaining({
       variant: "warning",
       title: frontendMessage("chat.historyRecovering"),
+    }),
+  );
+});
+
+test("useChatCommands preserves local state and retry context when message delivery fails", () => {
+  const sessionId = "session-send-failed";
+  registerTestSession(sessionId, "Existing session");
+  const send = vi.fn(() => false);
+  const lastSendRef = { current: null };
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: sessionId, handleRef, lastSendRef, send });
+
+  let accepted = true;
+  act(() => {
+    accepted = handleRef.current.sendMessage("Keep this draft");
+  });
+
+  expect(accepted).toBe(false);
+  expect(useStore.getState().sessions[sessionId]).toMatchObject({
+    messages: [],
+    runs: [],
+  });
+  expect(lastSendRef.current).toBeNull();
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "error",
+      title: frontendMessage("chat.sendDisconnected"),
     }),
   );
 });
@@ -187,6 +214,10 @@ test("useSessionCommands creates, renames, and synchronizes sessions only after 
   expect(serverKnownSessionIdsRef.current).toContain(created.sessionId);
   expect(useStore.getState().activeSessionId).toBe(created.sessionId);
 
+  act(() => handleRef.current.createSession());
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(useStore.getState().activeSessionId).toBe(created.sessionId);
+
   act(() => handleRef.current.renameSession(created.sessionId, "  Renamed session  "));
   expect(useStore.getState().sessions[created.sessionId].title).toBe("Renamed session");
   expect(send).toHaveBeenLastCalledWith({
@@ -194,6 +225,47 @@ test("useSessionCommands creates, renames, and synchronizes sessions only after 
     sessionId: created.sessionId,
     title: "Renamed session",
   });
+});
+
+test("useSessionCommands reuses an existing empty new conversation while offline", () => {
+  registerTestSession("session-empty", DEFAULT_SESSION_TITLE);
+  registerTestSession("session-current", "Current work");
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderSessionCommands({ handleRef, send, status: "closed" });
+
+  act(() => handleRef.current.createSession());
+
+  expect(send).not.toHaveBeenCalled();
+  expect(useStore.getState().activeSessionId).toBe("session-empty");
+  expect(readTestToastCalls()).not.toContainEqual(
+    expect.objectContaining({ title: frontendMessage("session.createOffline") }),
+  );
+});
+
+test.each([
+  { status: "closed", sendResult: true },
+  { status: "open", sendResult: false },
+])("useSessionCommands keeps the original title when rename delivery fails ($status)", ({ status, sendResult }) => {
+  registerTestSession("session-rename", "Original title");
+  const send = vi.fn(() => sendResult);
+  const handleRef = { current: null };
+  renderSessionCommands({ handleRef, send, status });
+
+  let accepted = true;
+  act(() => {
+    accepted = handleRef.current.renameSession("session-rename", "New title");
+  });
+
+  expect(accepted).toBe(false);
+  expect(useStore.getState().sessions["session-rename"].title).toBe("Original title");
+  expect(send).toHaveBeenCalledTimes(status === "open" ? 1 : 0);
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({
+      variant: "error",
+      title: frontendMessage("session.renameDisconnected"),
+    }),
+  );
 });
 
 test("useSessionCommands keeps failed bulk deletions and reports the partial result", () => {

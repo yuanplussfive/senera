@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
 import { appendDesktopLog, prepareDesktopRuntime, type DesktopRuntimePaths } from "./DesktopRuntime.js";
 import {
@@ -10,13 +10,22 @@ import {
 } from "./DesktopFrontendSource.js";
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
 import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
+import { isTrustedDesktopNavigation, resolveExternalHttpUrl } from "./DesktopNavigationPolicy.js";
+import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
+import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
+import { desktopMessage } from "./DesktopMessageCatalog.js";
 
 let serverHandle: SeneraServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
+let desktopTray: Tray | undefined;
+let forceSettingsWindowClose = false;
+let desktopQuitting = false;
+const settingsClosePolicy = new DesktopClosePolicy();
 let runtimePaths: DesktopRuntimePaths | undefined;
 let frontendSource: DesktopFrontendSource | undefined;
 const desktopModuleDir = path.dirname(fileURLToPath(import.meta.url));
+const remoteDebuggingPort = process.env.SENERA_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
 
 const settingsSectionIds = new Set([
   "model-service",
@@ -28,15 +37,14 @@ const settingsSectionIds = new Set([
   "storage",
   "general",
   "appearance",
-  "tools",
   "skills",
-  "memory",
-  "integrations",
-  "usage",
   "about",
 ]);
 
 app.setName("Senera");
+if (remoteDebuggingPort) {
+  app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort);
+}
 Menu.setApplicationMenu(null);
 
 app
@@ -48,6 +56,7 @@ app
       `starting desktop runtime workspace=${runtimePaths.workspaceRoot} configDatabase=${runtimePaths.configDatabasePath}`,
     );
     const paths = runtimePaths;
+    desktopTray = createDesktopTray(paths.windowIconPath);
     frontendSource = createDesktopFrontendSource({
       devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
       frontendIndexHtml: paths.frontendIndexHtml,
@@ -68,27 +77,26 @@ app
     void loadDesktopFrontend(mainWindow, frontendSource);
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        mainWindow = createMainWindow();
-        void loadDesktopFrontend(mainWindow, readFrontendSource());
-      }
+      showAllDesktopWindows();
     });
   })
   .catch((error) => {
     const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
     const logPath = runtimePaths?.logPath ?? path.join(app.getPath("userData"), "desktop.log");
     appendDesktopLog(logPath, `startup failed\n${message}`);
-    dialog.showErrorBox("Senera 启动失败", message);
+    dialog.showErrorBox(desktopMessage("startup.failedTitle", {}, app.getLocale()), message);
     app.exit(1);
   });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
+app.on("before-quit", (event) => {
+  if (!desktopQuitting && requestDirtySettingsConfirmation("quit")) {
+    event.preventDefault();
+    return;
   }
-});
-
-app.on("before-quit", () => {
+  desktopQuitting = true;
+  forceSettingsWindowClose = true;
+  desktopTray?.destroy();
+  desktopTray = undefined;
   serverHandle?.stop();
   serverHandle = undefined;
 });
@@ -97,11 +105,89 @@ function registerDesktopIpc(): void {
   ipcMain.handle("senera:settings.open", (_event, options?: { section?: string }) => {
     openSettingsWindow(options);
   });
+  ipcMain.handle("senera:settings.dirty", (event, dirty: boolean) => {
+    if (settingsWindow && event.sender === settingsWindow.webContents) {
+      settingsClosePolicy.setDirty(Boolean(dirty));
+    }
+  });
+  ipcMain.handle("senera:settings.confirm-close", (event) => {
+    if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
+    const closeIntent = settingsClosePolicy.confirm();
+    forceSettingsWindowClose = true;
+    settingsWindow.close();
+    if (closeIntent === "main") {
+      mainWindow?.close();
+    } else if (closeIntent === "quit") {
+      desktopQuitting = true;
+      app.quit();
+    }
+  });
+  ipcMain.handle("senera:settings.cancel-close", (event) => {
+    if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
+    settingsClosePolicy.cancel();
+  });
+  ipcMain.handle("senera:window.minimize", (event) => {
+    resolveManagedWindow(event)?.minimize();
+  });
+  ipcMain.handle("senera:window.toggle-maximize", (event) => {
+    const target = resolveManagedWindow(event);
+    if (!target) return undefined;
+    if (target.isMaximized()) target.unmaximize();
+    else target.maximize();
+    return readWindowState(target);
+  });
+  ipcMain.handle("senera:window.close", (event) => {
+    const target = resolveManagedWindow(event);
+    if (!target) return;
+    if (target === settingsWindow) {
+      if (requestDirtySettingsConfirmation("settings")) return;
+      forceSettingsWindowClose = true;
+      target.close();
+      return;
+    }
+    hideAllDesktopWindows();
+  });
+  ipcMain.handle("senera:window.get-state", (event) => {
+    const target = resolveManagedWindow(event);
+    return target ? readWindowState(target) : undefined;
+  });
 }
 
 function resolveSettingsSection(section: string | undefined): string {
   if (!settingsSectionIds.has(section ?? "")) return "model-service";
   return section as string;
+}
+
+function createDesktopTray(iconPath: string): Tray {
+  const tray = new Tray(iconPath);
+  tray.setToolTip("Senera");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: desktopMessage("tray.show", {}, app.getLocale()),
+        click: showAllDesktopWindows,
+      },
+      { type: "separator" },
+      {
+        label: desktopMessage("tray.quit", {}, app.getLocale()),
+        click: () => app.quit(),
+      },
+    ]),
+  );
+  tray.on("click", showAllDesktopWindows);
+  return tray;
+}
+
+function hideAllDesktopWindows(): void {
+  hideDesktopWindows([mainWindow, settingsWindow]);
+}
+
+function showAllDesktopWindows(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createMainWindow();
+    void loadDesktopFrontend(mainWindow, readFrontendSource());
+  }
+  showDesktopWindows([mainWindow, settingsWindow]);
 }
 
 function createMainWindow(): BrowserWindow {
@@ -114,6 +200,7 @@ function createMainWindow(): BrowserWindow {
     title: "Senera",
     icon: runtimePaths?.windowIconPath,
     autoHideMenuBar: true,
+    ...readWindowFrameOptions(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -125,9 +212,17 @@ function createMainWindow(): BrowserWindow {
     event.preventDefault();
     window.setTitle("Senera");
   });
+  registerNavigationPolicy(window, readFrontendSource());
+  registerWindowStateEvents(window);
+  window.on("close", (event) => {
+    if (desktopQuitting) return;
+    event.preventDefault();
+    hideAllDesktopWindows();
+  });
   window.on("closed", () => {
     mainWindow = undefined;
     if (settingsWindow && !settingsWindow.isDestroyed()) {
+      forceSettingsWindowClose = true;
       settingsWindow.close();
     }
   });
@@ -145,10 +240,12 @@ function openSettingsWindow(options?: { section?: string }): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     if (settingsWindow.isMinimized()) settingsWindow.restore();
     settingsWindow.focus();
-    void loadDesktopFrontend(settingsWindow, source, {
-      surface: "settings",
-      section,
-    });
+    if (!settingsClosePolicy.dirty) {
+      void loadDesktopFrontend(settingsWindow, source, {
+        surface: "settings",
+        section,
+      });
+    }
     return;
   }
 
@@ -158,10 +255,11 @@ function openSettingsWindow(options?: { section?: string }): void {
     minWidth: 820,
     minHeight: 560,
     backgroundColor: "#f7f8f6",
-    title: "Senera 设置",
+    title: desktopMessage("settings.title", {}, app.getLocale()),
     show: false,
     autoHideMenuBar: true,
     icon: runtimePaths.windowIconPath,
+    ...readWindowFrameOptions(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -170,20 +268,83 @@ function openSettingsWindow(options?: { section?: string }): void {
     },
   });
 
+  settingsClosePolicy.reset();
+  forceSettingsWindowClose = false;
   settingsWindow.once("ready-to-show", () => {
     settingsWindow?.show();
   });
   settingsWindow.on("page-title-updated", (event) => {
     event.preventDefault();
-    settingsWindow?.setTitle("Senera 设置");
+    settingsWindow?.setTitle(desktopMessage("settings.title", {}, app.getLocale()));
+  });
+  registerWindowStateEvents(settingsWindow);
+  registerNavigationPolicy(settingsWindow, source);
+  settingsWindow.on("close", (event) => {
+    if (forceSettingsWindowClose || !settingsClosePolicy.dirty) return;
+    event.preventDefault();
+    requestDirtySettingsConfirmation("settings");
   });
   settingsWindow.on("closed", () => {
     settingsWindow = undefined;
+    settingsClosePolicy.reset();
+    forceSettingsWindowClose = false;
   });
 
   void loadDesktopFrontend(settingsWindow, source, {
     surface: "settings",
     section,
+  });
+}
+
+function readWindowFrameOptions(): { frame: false } | { titleBarStyle: "hiddenInset" } {
+  return process.platform === "darwin" ? { titleBarStyle: "hiddenInset" } : { frame: false };
+}
+
+function resolveManagedWindow(event: IpcMainInvokeEvent): BrowserWindow | undefined {
+  const target = BrowserWindow.fromWebContents(event.sender);
+  return target && (target === mainWindow || target === settingsWindow) ? target : undefined;
+}
+
+function readWindowState(window: BrowserWindow): { isMaximized: boolean } {
+  return { isMaximized: window.isMaximized() };
+}
+
+function registerWindowStateEvents(window: BrowserWindow): void {
+  const publishState = (): void => {
+    if (window.isDestroyed() || window.webContents.isDestroyed()) return;
+    window.webContents.send("senera:window.state-changed", readWindowState(window));
+  };
+  window.on("maximize", publishState);
+  window.on("unmaximize", publishState);
+}
+
+function requestDirtySettingsConfirmation(intent: DesktopCloseIntent): boolean {
+  if (!settingsWindow || settingsWindow.isDestroyed() || !settingsClosePolicy.request(intent)) return false;
+  if (settingsWindow.isMinimized()) settingsWindow.restore();
+  settingsWindow.show();
+  settingsWindow.focus();
+  settingsWindow.webContents.send("senera:settings.request-close");
+  return true;
+}
+
+function registerNavigationPolicy(window: BrowserWindow, source: DesktopFrontendSource): void {
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalHttpUrl(url);
+    return { action: "deny" };
+  });
+  window.webContents.on("will-navigate", (event, url) => {
+    if (isTrustedDesktopNavigation(url, source)) return;
+    event.preventDefault();
+    openExternalHttpUrl(url);
+  });
+}
+
+function openExternalHttpUrl(value: string): void {
+  const url = resolveExternalHttpUrl(value);
+  if (!url) return;
+  void shell.openExternal(url).catch((error) => {
+    if (!runtimePaths) return;
+    appendDesktopLog(runtimePaths.logPath, "external navigation failed url=" + url + " error=" + String(error));
   });
 }
 

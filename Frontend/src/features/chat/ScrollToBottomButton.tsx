@@ -31,11 +31,10 @@ export function ScrollToBottomButton({ visible, onClick }: ScrollToBottomButtonP
             exit={motionExit}
             transition={transition}
             onClick={onClick}
-            className="flex h-9 items-center gap-1.5 rounded-full bg-ink-900/90 px-3.5 text-[13px] font-medium text-paper-50 shadow-lg ring-1 ring-ink-900/10 backdrop-blur-sm transition hover:bg-ink-800 focus:outline-none focus:ring-2 focus:ring-terra-300"
+            className="grid h-8 w-8 place-items-center rounded-full border border-line-subtle bg-surface-raised text-content-secondary shadow-[0_2px_8px_-4px_rgb(24_25_28/0.22)] transition-colors duration-150 hover:bg-surface-hover hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
             aria-label={frontendMessage("chat.scrollToBottom")}
           >
-            <ArrowDown className="h-4 w-4" />
-            {frontendMessage("chat.backToBottom")}
+            <ArrowDown className="h-3.5 w-3.5" />
           </motion.button>
         </motion.div>
       ) : null}

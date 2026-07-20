@@ -9,7 +9,7 @@ import type {
   ResolvedAgentVectorModelsConfig,
 } from "../Types/AgentConfigTypes.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
-import { resolveModelProviderConfig, resolveModelProviderEndpointConfig } from "./AgentModelProviderDefaults.js";
+import { resolveModelProviderConfig, resolveModelProviderEndpointCatalog } from "./AgentModelProviderDefaults.js";
 import { mergeActionPlannerClientConfig, resolveActionPlannerClientConfig } from "./AgentPlannerDefaults.js";
 import { optionalSecondsToMilliseconds } from "./AgentTimeDefaults.js";
 
@@ -53,8 +53,9 @@ export function resolveVectorModelsConfig(config: AgentSystemConfig): ResolvedAg
     ...configuredRerank,
     TimeoutMs: optionalSecondsToMilliseconds(rerankTimeoutSeconds) ?? defaults.VectorModels.Rerank.TimeoutMs,
   };
-  const embeddingEndpoint = resolveModelProviderEndpointConfig(config, embedding.ProviderId);
-  const rerankEndpoint = resolveModelProviderEndpointConfig(config, rerank.ProviderId);
+  const endpointCatalog = resolveModelProviderEndpointCatalog(config);
+  const embeddingEndpoint = endpointCatalog.resolveKnown(embedding.ProviderId);
+  const rerankEndpoint = endpointCatalog.resolveKnown(rerank.ProviderId);
 
   return {
     Embedding: {
@@ -110,10 +111,10 @@ export function resolvePresetsConfig(config: AgentSystemConfig): ResolvedAgentPr
 
 function resolveVectorHttpConfig(
   config: (Required<AgentVectorEmbeddingConfig> | Required<AgentVectorRerankConfig>) & { TimeoutMs: number },
-  endpoint: ReturnType<typeof resolveModelProviderEndpointConfig>,
+  endpoint: ReturnType<typeof resolveModelProviderEndpointCatalog>["endpoints"][number],
 ) {
   return {
-    Enabled: config.Enabled,
+    Enabled: config.Enabled && endpoint.Enabled,
     BaseUrl: endpoint.BaseUrl,
     ApiKey: endpoint.ApiKey,
     Model: config.Model,

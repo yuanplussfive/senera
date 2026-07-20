@@ -62,12 +62,12 @@ export function PresetTextEditorFallback({
 }): JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col bg-paper-50">
-      <div role="alert" className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+      <div role="alert" className="shrink-0 border-b border-ink-200 bg-paper-100 px-3 py-2 text-[12px] text-ink-700">
         {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.90.9")}
       </div>
       <textarea
-        aria-label="角色预设内容"
-        className="min-h-0 flex-1 resize-none bg-paper-50 px-4 py-3 font-mono text-[13px] leading-6 text-ink-800 outline-none placeholder:text-ink-400 focus:ring-2 focus:ring-inset focus:ring-terra-200 disabled:cursor-not-allowed disabled:opacity-60"
+        aria-label={frontendMessage("preset.ui.content")}
+        className="min-h-0 flex-1 resize-none bg-paper-50 px-4 py-3 font-mono text-[13px] leading-6 text-ink-800 outline-none placeholder:text-ink-400 focus:ring-2 focus:ring-inset focus:ring-accent-focus disabled:cursor-not-allowed disabled:opacity-60"
         disabled={disabled}
         spellCheck={false}
         value={content}
@@ -82,9 +82,9 @@ const statusPillClass = cva(
   {
     variants: {
       state: {
-        active: "border-terra-200 bg-terra-50 text-terra-700",
+        active: "border-accent-border bg-accent-surface text-accent-content",
         busy: "border-ink-200 bg-paper-50 text-ink-500",
-        dirty: "border-amber-200 bg-amber-50 text-amber-800",
+        dirty: "border-ink-200 bg-paper-100 text-umber-600",
         idle: "border-ink-200 bg-paper-50 text-ink-500",
       },
     },
@@ -209,9 +209,9 @@ export function PresetInspector({
               jsonIssue
                 ? "border-brick-200 bg-brick-50 text-brick-700"
                 : dirty
-                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  ? "border-ink-200 bg-paper-100 text-umber-600"
                   : active
-                    ? "border-terra-200 bg-terra-50 text-terra-700"
+                    ? "border-accent-border bg-accent-surface text-accent-content"
                     : "border-ink-200 bg-paper-50 text-ink-500",
             )}
           >
@@ -238,7 +238,7 @@ export function PresetInspector({
 
           {jsonIssue ? (
             <section className="px-3.5 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-brick-600">
+              <div className="text-[11px] font-medium text-brick-600">
                 {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.263.97")}
               </div>
               <div className="mt-2 whitespace-pre-wrap border-l-2 border-brick-300 bg-brick-50/70 px-2.5 py-2 text-[11.5px] leading-5 text-brick-700">
@@ -296,8 +296,8 @@ function PresetToolbar({
             onChange={(event) => onNameChange(withPresetFormatExtension(event.currentTarget.value, draftFormat))}
             placeholder="preset"
             spellCheck={false}
-            aria-label="预设名称"
-            className="h-9 min-w-0 flex-1 rounded-lg border border-ink-200 bg-paper-50 px-3 font-mono text-[12.5px] text-ink-800 shadow-sm outline-none transition placeholder:text-ink-400 focus:border-terra-300 focus:ring-2 focus:ring-terra-100"
+            aria-label={frontendMessage("preset.ui.name")}
+            className="h-9 min-w-0 flex-1 rounded-lg border border-ink-200 bg-paper-50 px-3 font-mono text-[12.5px] text-ink-800 shadow-sm outline-none transition placeholder:text-ink-400 focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
           />
           <FormatSwitch value={draftFormat} onChange={onFormatChange} />
         </div>
@@ -378,14 +378,14 @@ function PresetEditor({
           <span className="grid h-7 w-7 place-items-center border border-ink-200/70 bg-paper-50 text-ink-500">
             <ScrollText className="h-3.5 w-3.5" />
           </span>
-          <span className="font-mono text-[11px] font-medium text-ink-600">{formatLabel}</span>
+          <span className="text-[11px] font-medium text-ink-600">{formatLabel}</span>
           {jsonIssue ? (
             <span className="truncate rounded-md bg-brick-50 px-1.5 py-0.5 text-[11px] text-brick-700">
               {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.409.15")}
             </span>
           ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-2 font-mono text-[10.5px] text-ink-400">
+        <div className="flex shrink-0 items-center gap-2 text-[10.5px] tabular-nums text-ink-400">
           <span>{formatTokenState(tokenState)}</span>
           <span>
             {formatInteger(stats.lines)} {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.415.46")}
@@ -445,7 +445,7 @@ function PresetMetricGrid({
       </div>
       <div className="grid grid-cols-[72px_minmax(0,1fr)] border-t border-ink-200/70 px-3.5 py-2 text-[11.5px] leading-5">
         <span className="text-ink-400">{frontendMessage("runtime.migrated.features.chat.PresetWorkspace.468.40")}</span>
-        <span className="min-w-0 truncate font-mono text-ink-700">{formatLabel}</span>
+        <span className="min-w-0 truncate text-ink-700">{formatLabel}</span>
         {updatedAt ? (
           <>
             <span className="text-ink-400">
@@ -463,7 +463,7 @@ function MetricCell({ label, value }: { label: string; value: string }): JSX.Ele
   return (
     <div className="border-r border-t border-ink-200/70 px-3.5 py-2 first:border-t-0 [&:nth-child(2)]:border-r-0 [&:nth-child(2)]:border-t-0 [&:nth-child(4)]:border-r-0">
       <div className="text-[10.5px] text-ink-400">{label}</div>
-      <div className="mt-0.5 truncate font-mono text-[12.5px] text-ink-800">{value}</div>
+      <div className="mt-0.5 truncate text-[12.5px] tabular-nums text-ink-800">{value}</div>
     </div>
   );
 }
@@ -481,7 +481,7 @@ function PresetInfoSection({
 }): JSX.Element {
   return (
     <section className="px-3.5 py-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+      <div className="text-[11px] font-medium text-ink-500">
         {frontendMessage("runtime.migrated.features.chat.PresetWorkspace.509.87")}
       </div>
       <dl className="mt-2 divide-y divide-ink-200/70 border-y border-ink-200/70">
@@ -553,7 +553,7 @@ function FormatSwitch({
           key={item.value}
           type="button"
           className={cn(
-            "inline-flex min-w-12 items-center justify-center rounded-md px-2 font-mono text-[11px] transition",
+            "inline-flex min-w-12 items-center justify-center rounded-md px-2 text-[11px] font-medium transition",
             value === item.value ? "bg-paper-50 text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800",
           )}
           onClick={() => onChange(item.value)}
@@ -583,7 +583,7 @@ function Diagnostics({
             "whitespace-pre-wrap rounded-md border px-2 py-1.5 text-[12px]",
             item.severity === "error"
               ? "border-brick-200 bg-brick-50 text-brick-700"
-              : "border-amber-200 bg-amber-50 text-amber-800",
+              : "border-ink-200 bg-paper-100 text-umber-600",
           )}
         >
           {item.message}

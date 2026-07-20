@@ -1,23 +1,26 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { Check, Monitor, Moon, Palette, Pilcrow, Sun, Type } from "lucide-react";
+import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { useMotionLevel, type MotionLevel } from "../motion";
 import {
-  accentColors,
-  colorSchemes,
   fontScales,
   type AppearanceFontFamily,
-  type AppearancePreference,
+  type AppearancePreferenceUpdate,
   type AppearanceSnapshot,
+  type ColorScheme,
   type ThemeMode,
 } from "./themeModel";
+import { colorSchemeGroups } from "./themeData";
 import {
   accentColorLabels,
   colorSchemeLabels,
   fontFamilyLabels,
   fontScaleLabels,
   readAccentSwatch,
-  readSchemeSwatch,
+  readColorSchemeStory,
+  readRecommendedAccent,
+  readSchemeSwatchStrip,
   themeModeLabels,
 } from "./appearancePresentation";
 import { createAppearanceStore } from "./themeStore";
@@ -32,7 +35,7 @@ export function useAppearance(): AppearanceSnapshot {
   );
 }
 
-export function useSetAppearancePreference(): (preference: Partial<AppearancePreference>) => void {
+export function useSetAppearancePreference(): (preference: AppearancePreferenceUpdate) => void {
   return appearanceStore.setPreference;
 }
 
@@ -76,9 +79,9 @@ export function AppearancePreferenceControl({ className }: { className?: string 
   const setPreference = useSetAppearancePreference();
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn("space-y-4", className)}>
       <SegmentedControl
-        label="主题"
+        label={frontendMessage("appearance.control.theme")}
         icon={<Palette className="h-3.5 w-3.5" />}
         options={themeModeOptions.map(({ value, label, Icon }) => ({
           value,
@@ -88,37 +91,18 @@ export function AppearancePreferenceControl({ className }: { className?: string 
         value={preference.themeMode}
         onChange={(themeMode) => setPreference({ themeMode })}
       />
+
+      <ColorSchemeControl value={preference.colorScheme} onChange={(colorScheme) => setPreference({ colorScheme })} />
+
       <SegmentedControl
-        label="配色"
-        icon={<Palette className="h-3.5 w-3.5" />}
-        options={colorSchemes.map((value) => ({
-          value,
-          label: colorSchemeLabels[value],
-          swatch: readSchemeSwatch(value),
-        }))}
-        value={preference.colorScheme}
-        onChange={(colorScheme) => setPreference({ colorScheme })}
-      />
-      <SegmentedControl
-        label="强调色"
-        icon={<Check className="h-3.5 w-3.5" />}
-        options={accentColors.map((value) => ({
-          value,
-          label: accentColorLabels[value],
-          swatch: readAccentSwatch(value),
-        }))}
-        value={preference.accentColor}
-        onChange={(accentColor) => setPreference({ accentColor })}
-      />
-      <SegmentedControl
-        label="字体"
+        label={frontendMessage("appearance.control.font")}
         icon={<Type className="h-3.5 w-3.5" />}
         options={fontFamilyOptions.map(({ value, label }) => ({ value, label }))}
         value={preference.fontFamily}
         onChange={(fontFamily) => setPreference({ fontFamily })}
       />
       <SegmentedControl
-        label="字号"
+        label={frontendMessage("appearance.control.fontScale")}
         icon={<Pilcrow className="h-3.5 w-3.5" />}
         options={fontScales.map((value) => ({
           value,
@@ -127,6 +111,80 @@ export function AppearancePreferenceControl({ className }: { className?: string 
         value={preference.fontScale}
         onChange={(fontScale) => setPreference({ fontScale })}
       />
+    </div>
+  );
+}
+
+function ColorSchemeControl({
+  value,
+  onChange,
+}: {
+  value: ColorScheme;
+  onChange: (value: ColorScheme) => void;
+}): JSX.Element {
+  return (
+    <div>
+      <ControlLabel
+        icon={<Palette className="h-3.5 w-3.5" />}
+        label={frontendMessage("appearance.control.colorScheme")}
+      />
+      <div className="space-y-3" role="radiogroup" aria-label={frontendMessage("appearance.control.colorScheme")}>
+        {colorSchemeGroups.map((group) => (
+          <div key={group.label}>
+            <div className="mb-1.5 text-[11px] font-medium text-content-secondary">
+              {frontendMessage(group.label as FrontendMessageKey)}
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {group.items.map((scheme) => {
+                const selected = value === scheme;
+                const recommended = readRecommendedAccent(scheme);
+                return (
+                  <button
+                    key={scheme}
+                    type="button"
+                    role="radio"
+                    aria-label={`${frontendMessage("appearance.control.colorScheme")}: ${colorSchemeLabels[scheme]}`}
+                    aria-checked={selected}
+                    onClick={() => onChange(scheme)}
+                    className={cn(
+                      "min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow] duration-150",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+                      selected
+                        ? "border-accent-border-strong bg-accent-surface shadow-panel"
+                        : "border-line-subtle bg-surface-panel hover:border-line-strong hover:bg-surface-subtle",
+                    )}
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-content-primary">
+                        {colorSchemeLabels[scheme]}
+                      </span>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-[10.5px] text-content-secondary">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full border border-line-subtle"
+                          style={{ background: readAccentSwatch(recommended) }}
+                          aria-hidden="true"
+                        />
+                        {accentColorLabels[recommended]}
+                      </span>
+                      {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-accent-content" /> : null}
+                    </span>
+                    <span className="mt-2 flex gap-1" aria-hidden="true">
+                      {readSchemeSwatchStrip(scheme).map((color, index) => (
+                        <span
+                          key={`${scheme}-${index}`}
+                          className="h-3 flex-1 rounded-[4px] border border-black/[0.04]"
+                          style={{ background: color }}
+                        />
+                      ))}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-[11.5px] leading-5 text-content-secondary">{readColorSchemeStory(value)}</p>
     </div>
   );
 }
@@ -140,18 +198,15 @@ function SegmentedControl<TValue extends string>({
 }: {
   label: string;
   icon: JSX.Element;
-  options: Array<{ value: TValue; label: string; icon?: JSX.Element; swatch?: string }>;
+  options: Array<{ value: TValue; label: string; icon?: JSX.Element }>;
   value: TValue;
   onChange: (value: TValue) => void;
 }): JSX.Element {
   return (
     <div>
-      <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-ink-600">
-        {icon}
-        {label}
-      </div>
+      <ControlLabel icon={icon} label={label} />
       <div
-        className="grid grid-flow-col auto-cols-fr rounded-lg border border-ink-200/70 bg-paper-50 p-1"
+        className="grid grid-flow-col auto-cols-fr rounded-lg border border-line-subtle bg-surface-panel p-1"
         role="radiogroup"
         aria-label={label}
       >
@@ -166,26 +221,27 @@ function SegmentedControl<TValue extends string>({
               onClick={() => onChange(option.value)}
               className={cn(
                 "inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition",
-                "focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-200/70",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                 selected
-                  ? "bg-paper-100 text-ink-900 shadow-panel"
-                  : "text-ink-500 hover:bg-paper-100/80 hover:text-ink-850",
+                  ? "bg-surface-subtle text-content-primary shadow-panel"
+                  : "text-content-secondary hover:bg-surface-subtle hover:text-content-primary",
               )}
             >
-              {option.swatch ? (
-                <span
-                  className="h-3 w-3 shrink-0 rounded-full border border-ink-200"
-                  style={{ background: option.swatch }}
-                  aria-hidden="true"
-                />
-              ) : (
-                option.icon
-              )}
+              {option.icon}
               <span className="truncate">{option.label}</span>
             </button>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function ControlLabel({ icon, label }: { icon: JSX.Element; label: string }): JSX.Element {
+  return (
+    <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-content-secondary">
+      {icon}
+      {label}
     </div>
   );
 }

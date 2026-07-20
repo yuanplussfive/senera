@@ -76,7 +76,7 @@ export function CollapsibleCodeBlock({
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
-        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 py-1.5 text-[12px] font-medium text-ink-600 transition hover:bg-ink-50 hover:text-ink-800 focus:outline-none focus:ring-2 focus:ring-terra-300"
+        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 py-1.5 text-[12px] font-medium text-ink-600 transition hover:bg-ink-50 hover:text-ink-800 focus:outline-none focus:ring-2 focus:ring-accent-focus"
       >
         {isExpanded ? (
           <>

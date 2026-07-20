@@ -183,6 +183,10 @@ function inspectRootScripts(): string[] {
     "quality.baml": "baml check --from baml_src",
     "quality.baml.generate": "baml generate --from baml_src",
     "quality.security": "npm audit --audit-level=high",
+    "quality.format": "tsx Scripts/VerifyChangedFormatting.ts",
+    "quality.format.fix": "tsx Scripts/VerifyChangedFormatting.ts --write",
+    "quality.format.full": 'prettier "**/*" --check --ignore-unknown',
+    "quality.format.full.fix": 'prettier "**/*" --write --ignore-unknown',
     "quality.coverage": "npm run test.coverage.frontend && npm run test.coverage.backend",
     "policy.compile": "tsx Build/CompileOpaPolicy.ts",
     "policy.verify": "tsx Build/CompileOpaPolicy.ts --check",
@@ -402,9 +406,10 @@ function inspectFrontendScripts(): string[] {
   return inspectScripts(frontendPackage, "Frontend/package.json", {
     "check.types": "tsc --noEmit",
     "check.governance": `node --import tsx ../${ProjectTestCoveragePolicies.frontend.verifyEntrypoint}`,
+    "check.ladle": "node --import tsx ../Scripts/VerifyFrontendLadleContracts.ts",
     "test.behavior": `node --import tsx ../${ProjectTestCoveragePolicies.frontend.runnerEntrypoint}`,
     "test.coverage": vitestRunCommand(`../${ProjectTestCoveragePolicies.frontend.vitestConfig}`, "--coverage"),
-    test: "npm run check.types && npm run check.governance && npm run test.behavior",
+    test: "npm run check.types && npm run check.governance && npm run check.ladle && npm run test.behavior",
   });
 }
 
@@ -446,6 +451,9 @@ function inspectVerifyWorkflow(): string[] {
     "name: Windows Platform Smoke",
     "name: Coverage Gate",
     "./.github/actions/setup-node",
+    "fetch-depth: 0",
+    "id: range",
+    "npm run quality.format -- ${{ steps.range.outputs.arguments }}",
     "npm run test.backend",
     "npm run test.frontend",
     "npm run test.e2e",

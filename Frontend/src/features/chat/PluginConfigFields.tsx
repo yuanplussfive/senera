@@ -3,6 +3,7 @@ import { Check, Plus, Trash2 } from "lucide-react";
 import type { PluginConfigField } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
+import { Switch } from "../../shared/ui";
 import {
   coerceArrayItem,
   defaultArrayItem,
@@ -26,16 +27,14 @@ export function FieldControl({
 }): JSX.Element {
   return (
     <div
-      className={cn(
-        "grid min-w-0 gap-3 px-4 py-3.5 transition hover:bg-paper-100/45 md:grid-cols-[minmax(220px,1fr)_minmax(250px,320px)]",
-        field.type === "array" ? "md:items-start" : "md:items-center",
-      )}
+      data-field-type={field.type}
+      className="plugin-config-field grid min-w-0 gap-3 px-4 py-3.5 transition hover:bg-paper-100/45"
     >
       <div className="min-w-0 pr-2">
         <div className="text-[13px] font-medium text-ink-900">{field.label}</div>
         {field.description ? <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>
-      <div className="min-w-0 md:justify-self-end">{renderFieldInput(field, value, disabled, onChange)}</div>
+      <div className="plugin-config-field__control min-w-0">{renderFieldInput(field, value, disabled, onChange)}</div>
     </div>
   );
 }
@@ -43,7 +42,7 @@ export function FieldControl({
 export const inputClassName = cn(
   "h-8 w-full rounded-lg border border-ink-200 bg-paper-100 px-2.5 text-[12.5px] text-ink-800",
   "outline-none transition placeholder:text-ink-400",
-  "focus:border-terra-300 focus:ring-2 focus:ring-terra-100",
+  "focus:border-accent-border focus:ring-2 focus:ring-accent-focus",
   "disabled:pointer-events-none disabled:opacity-55",
 );
 
@@ -286,7 +285,7 @@ function ArrayFieldControl({
       <button
         type="button"
         disabled={disabled}
-        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-paper-50 px-2.5 text-[12px] text-ink-600 transition hover:border-terra-300 hover:text-terra-700 disabled:pointer-events-none disabled:opacity-50"
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-paper-50 px-2.5 text-[12px] text-ink-600 transition hover:border-accent-border-strong hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50"
         onClick={() => onChange([...value, defaultArrayItem(itemType)])}
       >
         <Plus className="h-3.5 w-3.5" />
@@ -308,27 +307,11 @@ function TogglePill({
   onClick: () => void;
 }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Switch
+      checked={enabled}
       disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-1.5 text-[12px] transition",
-        enabled ? "text-moss-600" : "text-ink-500",
-        !disabled && "hover:bg-ink-900/[0.04]",
-        disabled && "pointer-events-none opacity-45",
-      )}
-      aria-label={frontendMessage(enabled ? "pluginConfig.disableLabel" : "pluginConfig.enableLabel", { label })}
-    >
-      <span className={cn("relative h-5 w-9 rounded-full transition", enabled ? "bg-moss-500" : "bg-ink-300")}>
-        <span
-          className={cn(
-            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-paper-50 shadow-sm transition-transform",
-            enabled && "translate-x-4",
-          )}
-        />
-      </span>
-      <span>{frontendMessage(enabled ? "pluginConfig.enabled" : "pluginConfig.disabled")}</span>
-    </button>
+      ariaLabel={frontendMessage(enabled ? "pluginConfig.disableLabel" : "pluginConfig.enableLabel", { label })}
+      onCheckedChange={() => onClick()}
+    />
   );
 }

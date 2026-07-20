@@ -1,34 +1,35 @@
 import type { Story } from "@ladle/react";
+import { FormField, FormHint, FormLabel, Input } from "./Form";
 import { MetaLabel } from "./MetaLabel";
 
 export const Sizes: Story = () => (
-  <div className="flex items-center justify-center min-h-[400px] p-8">
-    <div className="space-y-8 w-full max-w-2xl">
+  <div className="flex min-h-[400px] items-center justify-center p-8">
+    <div className="w-full max-w-2xl space-y-8">
       <div>
-        <h3 className="text-ink-900 font-medium mb-4">Size Variants</h3>
+        <h3 className="mb-4 font-medium text-ink-900">尺寸</h3>
         <div className="space-y-4">
           <div className="flex items-center gap-4">
-            <MetaLabel size="xs">Extra Small</MetaLabel>
-            <span className="text-ink-500 text-sm">— 9.5px</span>
+            <MetaLabel size="xs">超小</MetaLabel>
+            <span className="text-sm text-ink-500">9.5px</span>
           </div>
           <div className="flex items-center gap-4">
-            <MetaLabel size="sm">Small</MetaLabel>
-            <span className="text-ink-500 text-sm">— 10px</span>
+            <MetaLabel size="sm">小号</MetaLabel>
+            <span className="text-sm text-ink-500">10px</span>
           </div>
           <div className="flex items-center gap-4">
-            <MetaLabel size="md">Medium (Default)</MetaLabel>
-            <span className="text-ink-500 text-sm">— 10.5px</span>
+            <MetaLabel size="md">中号（默认）</MetaLabel>
+            <span className="text-sm text-ink-500">10.5px</span>
           </div>
         </div>
       </div>
 
-      <div className="rounded-lg border border-ink-200 bg-paper-100 p-6">
-        <h4 className="text-ink-900 font-medium mb-3">Characteristics</h4>
-        <ul className="text-ink-700 text-sm space-y-2">
-          <li>• Monospace font for tabular alignment</li>
-          <li>• Uppercase with wide tracking</li>
-          <li>• Color: ink-400 (muted foreground)</li>
-          <li>• Used for metadata, labels, and auxiliary info</li>
+      <div className="border-t border-ink-200 pt-5">
+        <h4 className="mb-3 font-medium text-ink-900">当前特征</h4>
+        <ul className="space-y-2 text-sm text-ink-700">
+          <li>使用等宽字体，便于元数据对齐</li>
+          <li>使用大写和较宽字距表达辅助信息</li>
+          <li>默认使用 ink-400 弱化前景色</li>
+          <li>适合元数据、标签和补充说明</li>
         </ul>
       </div>
     </div>
@@ -36,59 +37,50 @@ export const Sizes: Story = () => (
 );
 
 export const UseCases: Story = () => (
-  <div className="flex items-center justify-center min-h-[500px] p-8">
-    <div className="space-y-6 w-full max-w-2xl">
+  <div className="flex min-h-[500px] items-center justify-center p-8">
+    <div className="w-full max-w-2xl space-y-6">
       <div>
-        <h3 className="text-ink-900 font-medium mb-4">Common Use Cases</h3>
+        <h3 className="mb-4 font-medium text-ink-900">常见位置</h3>
+        <p className="text-sm text-ink-600">MetaLabel 只承担辅助层级，不替代主要标题。</p>
       </div>
 
-      <div className="space-y-4">
-        <div className="rounded-lg border border-ink-200 bg-paper-50 p-4">
-          <MetaLabel>Section Header</MetaLabel>
-          <div className="text-ink-900 text-base mt-2">Main Content Title</div>
-          <div className="text-ink-700 text-sm mt-1">Supporting description text goes here</div>
+      <div className="grid gap-5 border-y border-ink-200 py-5">
+        <div>
+          <MetaLabel>区块标题</MetaLabel>
+          <div className="mt-2 text-base text-ink-900">主要内容标题</div>
+          <div className="mt-1 text-sm text-ink-700">这里放置一行补充说明。</div>
         </div>
 
-        <div className="rounded-lg border border-ink-200 bg-paper-50 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <MetaLabel>Status</MetaLabel>
-            <span className="text-moss-600 text-sm font-medium">Active</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <MetaLabel>Created</MetaLabel>
-            <span className="text-ink-700 text-sm">2024-07-12</span>
-          </div>
+        <div className="flex items-center justify-between border-t border-ink-200 pt-4">
+          <MetaLabel>状态</MetaLabel>
+          <span className="text-sm font-medium text-moss-600">可用</span>
         </div>
 
-        <div className="rounded-lg border border-ink-200 bg-paper-50 p-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <MetaLabel size="sm">Category</MetaLabel>
-              <div className="text-ink-900 text-sm mt-1">Planning</div>
-            </div>
-            <div>
-              <MetaLabel size="sm">Status</MetaLabel>
-              <div className="text-ink-900 text-sm mt-1">Active</div>
-            </div>
-            <div>
-              <MetaLabel size="sm">Updated</MetaLabel>
-              <div className="text-ink-900 text-sm mt-1">Today</div>
-            </div>
+        <div className="grid grid-cols-3 gap-4 border-t border-ink-200 pt-4">
+          <div>
+            <MetaLabel size="sm">类别</MetaLabel>
+            <div className="mt-1 text-sm text-ink-900">规划</div>
+          </div>
+          <div>
+            <MetaLabel size="sm">状态</MetaLabel>
+            <div className="mt-1 text-sm text-ink-900">可用</div>
+          </div>
+          <div>
+            <MetaLabel size="sm">更新时间</MetaLabel>
+            <div className="mt-1 text-sm text-ink-900">刚刚</div>
           </div>
         </div>
 
-        <div className="rounded-lg border border-ink-200 bg-paper-50 overflow-hidden">
-          <div className="bg-paper-200 px-4 py-2 border-b border-ink-200">
-            <MetaLabel size="sm">Record Details</MetaLabel>
-          </div>
-          <div className="p-4 space-y-3">
+        <div className="border-t border-ink-200 pt-4">
+          <MetaLabel size="sm">记录详情</MetaLabel>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <div>
-              <MetaLabel size="xs">Owner</MetaLabel>
-              <div className="text-ink-900 text-sm mt-0.5">Design team</div>
+              <MetaLabel size="xs">负责人</MetaLabel>
+              <div className="mt-0.5 text-sm text-ink-900">设计团队</div>
             </div>
             <div>
-              <MetaLabel size="xs">Updated</MetaLabel>
-              <div className="text-ink-900 text-sm mt-0.5">2024-07-12 14:32:15</div>
+              <MetaLabel size="xs">更新时间</MetaLabel>
+              <div className="mt-0.5 text-sm text-ink-900">2026-07-19 14:32</div>
             </div>
           </div>
         </div>
@@ -98,77 +90,56 @@ export const UseCases: Story = () => (
 );
 
 export const InForms: Story = () => (
-  <div className="flex items-center justify-center min-h-[400px] p-8">
+  <div className="flex min-h-[440px] items-center justify-center p-8">
     <div className="w-full max-w-md">
-      <h3 className="text-ink-900 font-medium mb-6">Form Field Labels</h3>
+      <h3 className="mb-6 font-medium text-ink-900">表单辅助标签</h3>
       <div className="space-y-4">
-        <div>
-          <MetaLabel as="label" htmlFor="name">
-            Name
+        <FormField>
+          <FormLabel>名称</FormLabel>
+          <Input placeholder="输入名称" />
+        </FormField>
+        <FormField>
+          <MetaLabel as="label" htmlFor="meta-email">
+            联系邮箱
           </MetaLabel>
-          <input
-            id="name"
-            type="text"
-            placeholder="Enter your name"
-            className="mt-1.5 w-full h-9 px-3 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-terra-200/70"
-          />
-        </div>
-
-        <div>
-          <MetaLabel as="label" htmlFor="email">
-            Email Address
+          <Input id="meta-email" type="email" placeholder="name@example.com" />
+          <FormHint>只用于发送必要的通知。</FormHint>
+        </FormField>
+        <FormField>
+          <MetaLabel as="label" htmlFor="meta-note">
+            备注
           </MetaLabel>
-          <input
-            id="email"
-            type="email"
-            placeholder="you@example.com"
-            className="mt-1.5 w-full h-9 px-3 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-terra-200/70"
-          />
-        </div>
-
-        <div>
-          <MetaLabel as="label" htmlFor="notes">
-            Notes
-          </MetaLabel>
-          <textarea
-            id="notes"
-            rows={4}
-            placeholder="Add a note..."
-            className="mt-1.5 w-full px-3 py-2 rounded-lg border border-ink-200 bg-paper-50 text-ink-900 text-sm focus:outline-none focus:ring-2 focus:ring-terra-200/70 resize-none"
-          />
-        </div>
+          <Input id="meta-note" placeholder="补充一条说明" />
+        </FormField>
       </div>
     </div>
   </div>
 );
 
 export const WithCustomColors: Story = () => (
-  <div className="flex items-center justify-center min-h-[400px] p-8">
-    <div className="space-y-6 w-full max-w-2xl">
+  <div className="flex min-h-[400px] items-center justify-center p-8">
+    <div className="w-full max-w-2xl space-y-6">
       <div>
-        <h3 className="text-ink-900 font-medium mb-4">Custom Color Variants</h3>
-        <p className="text-ink-600 text-sm">Override default color with className</p>
+        <h3 className="mb-4 font-medium text-ink-900">语义颜色</h3>
+        <p className="text-sm text-ink-600">只有状态确实需要时才覆盖默认颜色。</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="rounded-lg border border-ink-200 bg-paper-50 p-4">
-          <MetaLabel className="text-moss-600">Success</MetaLabel>
-          <div className="text-ink-900 text-sm mt-2">Operation completed successfully</div>
+        <div className="border border-ink-200 bg-paper-50 p-4">
+          <MetaLabel className="text-moss-600">成功</MetaLabel>
+          <div className="mt-2 text-sm text-ink-900">操作已完成</div>
         </div>
-
-        <div className="rounded-lg border border-ink-200 bg-paper-50 p-4">
-          <MetaLabel className="text-brick-600">Error</MetaLabel>
-          <div className="text-ink-900 text-sm mt-2">Something went wrong</div>
+        <div className="border border-ink-200 bg-paper-50 p-4">
+          <MetaLabel className="text-brick-600">错误</MetaLabel>
+          <div className="mt-2 text-sm text-ink-900">需要检查输入</div>
         </div>
-
-        <div className="rounded-lg border border-ink-200 bg-paper-50 p-4">
-          <MetaLabel className="text-terra-600">Warning</MetaLabel>
-          <div className="text-ink-900 text-sm mt-2">Please review this action</div>
+        <div className="border border-ink-200 bg-paper-50 p-4">
+          <MetaLabel className="text-accent-content">提醒</MetaLabel>
+          <div className="mt-2 text-sm text-ink-900">请确认当前操作</div>
         </div>
-
-        <div className="rounded-lg border border-ink-200 bg-paper-50 p-4">
-          <MetaLabel className="text-ink-600">Info</MetaLabel>
-          <div className="text-ink-900 text-sm mt-2">Additional information here</div>
+        <div className="border border-ink-200 bg-paper-50 p-4">
+          <MetaLabel className="text-ink-600">信息</MetaLabel>
+          <div className="mt-2 text-sm text-ink-900">这里是补充信息</div>
         </div>
       </div>
     </div>

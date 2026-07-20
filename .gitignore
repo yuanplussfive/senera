@@ -4,6 +4,7 @@
 senera.config.json
 .npm-cache/
 .cache/
+.playwright-mcp/
 Dist/
 Frontend/dist/
 coverage/

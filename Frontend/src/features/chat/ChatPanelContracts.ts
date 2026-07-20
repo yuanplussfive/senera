@@ -10,7 +10,6 @@ import type {
   ProviderModelsSnapshotData,
   PluginConfigItem,
   PluginConfigMutationState,
-  SandboxStatusSnapshotData,
   UploadAttachmentData,
 } from "../../api/eventTypes";
 import type { SocketStatus } from "../../api/useAgentSocket";
@@ -60,13 +59,12 @@ export interface ChatPresetConfig {
 
 export interface ChatRuntimeState {
   socketStatus: SocketStatus;
-  sandboxStatus: SandboxStatusSnapshotData | null;
   uploadUrl: string;
   uploadCsrfToken?: string;
 }
 
 export interface ChatMessageActions {
-  onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
+  onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
   onCancel: () => void;
   onRegenerate: (message: ChatMessage) => void;
   onEditUserMessage: (message: ChatMessage, nextContent: string) => void;

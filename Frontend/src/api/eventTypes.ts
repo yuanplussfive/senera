@@ -508,6 +508,7 @@ export interface ConfigMutationState {
   kind: ConfigOperationKind;
   status: PluginConfigMutationStatus;
   message?: string;
+  errorCode?: string;
   updatedAt: string;
 }
 

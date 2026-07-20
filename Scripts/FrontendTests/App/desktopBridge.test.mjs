@@ -1,109 +1,69 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  isMigratedSettingsSection,
-  openDesktopSettingsOrFallback,
-  openSettingsSurface,
-} from "../../../Frontend/src/app/desktopBridge.ts";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { openDesktopSettings, readDesktopBridge } from "../../../Frontend/src/app/desktopBridge.ts";
+import { isTrustedDesktopNavigation, resolveExternalHttpUrl } from "../../../Apps/Desktop/DesktopNavigationPolicy.ts";
+import { DesktopClosePolicy } from "../../../Apps/Desktop/DesktopClosePolicy.ts";
 
-describe("openDesktopSettingsOrFallback", () => {
+describe("desktop settings bridge", () => {
   it("opens the first settings section when no target is specified", async () => {
     const openSettings = vi.fn().mockResolvedValue(undefined);
-    const fallback = vi.fn();
-
-    await expect(
-      openSettingsSurface({
-        bridge: { isDesktop: true, openSettings },
-        fallback,
-      }),
-    ).resolves.toBe("desktop");
-
+    await expect(openDesktopSettings({ bridge: { isDesktop: true, openSettings } })).resolves.toBe(true);
     expect(openSettings).toHaveBeenCalledWith({ section: "model-service" });
-    expect(fallback).not.toHaveBeenCalled();
   });
 
-  it("opens the desktop settings window for migrated sections", async () => {
+  it("opens an explicitly requested desktop settings section", async () => {
     const openSettings = vi.fn().mockResolvedValue(undefined);
-    const fallback = vi.fn();
-
     await expect(
-      openDesktopSettingsOrFallback({
-        bridge: { isDesktop: true, openSettings },
-        fallback,
-        section: "appearance",
-      }),
-    ).resolves.toBe("desktop");
-
+      openDesktopSettings({ bridge: { isDesktop: true, openSettings }, section: "appearance" }),
+    ).resolves.toBe(true);
     expect(openSettings).toHaveBeenCalledWith({ section: "appearance" });
-    expect(fallback).not.toHaveBeenCalled();
   });
 
-  it("uses the fallback for legacy compatibility sections", async () => {
-    const openSettings = vi.fn().mockResolvedValue(undefined);
-    const fallback = vi.fn();
+  it("does not claim a web surface", async () => {
+    await expect(openDesktopSettings({ bridge: undefined, section: "runtime" })).resolves.toBe(false);
+  });
 
-    await expect(
-      openDesktopSettingsOrFallback({
-        bridge: { isDesktop: true, openSettings },
-        section: "tools",
-        fallback,
+  it("reads the exposed desktop bridge", () => {
+    const previous = window.seneraDesktop;
+    const bridge = { isDesktop: true, openSettings: vi.fn().mockResolvedValue(undefined) };
+    window.seneraDesktop = bridge;
+    expect(readDesktopBridge()).toBe(bridge);
+    window.seneraDesktop = previous;
+  });
+});
+
+describe("desktop main-process policies", () => {
+  it("requires confirmation for dirty main-window and app close requests", () => {
+    const policy = new DesktopClosePolicy();
+    expect(policy.request("main")).toBe(false);
+
+    policy.setDirty(true);
+    expect(policy.request("main")).toBe(true);
+    policy.cancel();
+    expect(policy.dirty).toBe(true);
+
+    expect(policy.request("main")).toBe(true);
+    expect(policy.request("quit")).toBe(true);
+    expect(policy.confirm()).toBe("quit");
+    expect(policy.dirty).toBe(false);
+  });
+
+  it("allows only trusted frontend navigation and external HTTP URLs", () => {
+    const filePath = path.resolve("Frontend", "dist", "index.html");
+    const trustedFileUrl = pathToFileURL(filePath);
+    trustedFileUrl.searchParams.set("surface", "settings");
+
+    expect(isTrustedDesktopNavigation(trustedFileUrl.toString(), { kind: "file", filePath })).toBe(true);
+    expect(isTrustedDesktopNavigation("https://attacker.example/", { kind: "file", filePath })).toBe(false);
+    expect(
+      isTrustedDesktopNavigation("https://frontend.example/settings", {
+        kind: "url",
+        url: "https://frontend.example/",
       }),
-    ).resolves.toBe("fallback");
-
-    expect(openSettings).not.toHaveBeenCalled();
-    expect(fallback).toHaveBeenCalledTimes(1);
-  });
-
-  it("navigates web surfaces to migrated settings sections", async () => {
-    const assign = vi.fn();
-    const fallback = vi.fn();
-
-    await expect(
-      openSettingsSurface({
-        bridge: undefined,
-        fallback,
-        location: { assign },
-        section: "runtime",
-      }),
-    ).resolves.toBe("web");
-
-    expect(assign).toHaveBeenCalledWith("?surface=settings&section=runtime");
-    expect(fallback).not.toHaveBeenCalled();
-  });
-
-  it("uses the fallback when the desktop bridge fails", async () => {
-    const fallback = vi.fn();
-
-    await expect(
-      openDesktopSettingsOrFallback({
-        bridge: {
-          isDesktop: true,
-          openSettings: vi.fn().mockRejectedValue(new Error("ipc failed")),
-        },
-        fallback,
-        section: "about",
-      }),
-    ).resolves.toBe("fallback");
-
-    expect(fallback).toHaveBeenCalledTimes(1);
-  });
-
-  it("identifies the current migrated settings surface set", () => {
-    expect(isMigratedSettingsSection("model-service")).toBe(true);
-    expect(isMigratedSettingsSection("default-model")).toBe(true);
-    expect(isMigratedSettingsSection("appearance")).toBe(true);
-    expect(isMigratedSettingsSection("general")).toBe(true);
-    expect(isMigratedSettingsSection("system")).toBe(true);
-    expect(isMigratedSettingsSection("runtime")).toBe(true);
-    expect(isMigratedSettingsSection("planning")).toBe(true);
-    expect(isMigratedSettingsSection("retrieval")).toBe(true);
-    expect(isMigratedSettingsSection("storage")).toBe(true);
-    expect(isMigratedSettingsSection("skills")).toBe(true);
-    expect(isMigratedSettingsSection("about")).toBe(true);
-    expect(isMigratedSettingsSection("tools")).toBe(false);
-  });
-
-  it("does not treat retired providers/models IDs as migrated settings", () => {
-    expect(isMigratedSettingsSection("providers")).toBe(false);
-    expect(isMigratedSettingsSection("models")).toBe(false);
+    ).toBe(true);
+    expect(resolveExternalHttpUrl("https://docs.example/path")).toBe("https://docs.example/path");
+    expect(resolveExternalHttpUrl("javascript:alert(1)")).toBeNull();
+    expect(resolveExternalHttpUrl("file:///sensitive.txt")).toBeNull();
   });
 });

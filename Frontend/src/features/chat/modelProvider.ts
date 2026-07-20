@@ -1,5 +1,6 @@
 import type { ModelProviderListItem, ModelProviderMetadata } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { inferModelProviderIcon } from "./ModelProviderIcon";
 
 export function readSelectedModelProvider(
   models: ModelProviderListItem[],
@@ -16,4 +17,14 @@ export function formatModelProviderName(provider?: ModelProviderMetadata | Model
   if (!provider) return frontendMessage("config.model.assistantFallback");
   const model = provider.model?.trim();
   return model || frontendMessage("config.model.assistantFallback");
+}
+
+export function readModelProviderIcon(provider?: ModelProviderMetadata | ModelProviderListItem): string | undefined {
+  if (!provider) return undefined;
+  if ("icon" in provider && provider.icon?.trim()) return provider.icon;
+  for (const candidate of [provider.model, provider.id, provider.baseUrl, provider.kind]) {
+    const icon = inferModelProviderIcon(candidate, false);
+    if (icon) return icon;
+  }
+  return inferModelProviderIcon(provider.model);
 }

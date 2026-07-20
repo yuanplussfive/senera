@@ -101,6 +101,7 @@ function readResponsiveQueryMatches(
     tabletUp: matchMedia(responsiveMediaQueries.tabletUp).matches,
     desktopUp: matchMedia(responsiveMediaQueries.desktopUp).matches,
     wideUp: matchMedia(responsiveMediaQueries.wideUp).matches,
+    workflowInlineUp: matchMedia(responsiveMediaQueries.workflowInlineUp).matches,
     supportsHover: matchMedia(responsiveMediaQueries.supportsHover).matches,
     hasPrimaryCoarsePointer: matchMedia(responsiveMediaQueries.hasPrimaryCoarsePointer).matches,
     hasAnyCoarsePointer: matchMedia(responsiveMediaQueries.hasAnyCoarsePointer).matches,

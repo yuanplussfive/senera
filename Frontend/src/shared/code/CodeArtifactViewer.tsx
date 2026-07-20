@@ -94,22 +94,25 @@ export function CodeArtifactViewer({
               >
                 {frontendMessage("runtime.migrated.shared.code.CodeArtifactViewer.103.17")}
               </button>
-              <Tooltip content={copied ? "已复制" : "复制"} side="top">
+              <Tooltip
+                content={copied ? frontendMessage("clipboard.copied") : frontendMessage("clipboard.copyToast")}
+                side="top"
+              >
                 <button
                   type="button"
                   className="code-artifact-viewer__iconbtn"
                   onClick={copyCode}
-                  aria-label="复制代码"
+                  aria-label={frontendMessage("code.copy")}
                 >
                   {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
                 </button>
               </Tooltip>
-              <Tooltip content="下载" side="top">
+              <Tooltip content={frontendMessage("code.download")} side="top">
                 <button
                   type="button"
                   className="code-artifact-viewer__iconbtn"
                   onClick={downloadCode}
-                  aria-label="下载代码文件"
+                  aria-label={frontendMessage("code.downloadFile")}
                 >
                   <Download className="h-3.5 w-3.5" />
                 </button>

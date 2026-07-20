@@ -1,7 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { BrainCircuit, Layers3, RefreshCw, Server, SlidersHorizontal } from "lucide-react";
+import { BrainCircuit, Layers3, Server, SlidersHorizontal } from "lucide-react";
 import { cn } from "../../lib/util";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, ScrollArea } from "../../shared/ui";
+import { MenuSelect, ScrollArea, Switch } from "../../shared/ui";
 import {
   JsonConfigSettingsView,
   writeJsonConfigFieldValue,
@@ -143,16 +143,17 @@ function VectorModelCard({
     }));
 
   return (
-    <div className="overflow-hidden border border-ink-200/70 bg-paper-100 shadow-panel">
+    <div className="overflow-hidden border border-ink-200/70 bg-paper-100">
       <div className="flex items-start justify-between gap-3 border-b border-ink-200/70 bg-[var(--theme-config-list-bg)] px-4 py-3">
         <div className="min-w-0">
           <div className="text-[13px] font-semibold text-ink-900">{title}</div>
           <div className="mt-0.5 text-[11.5px] leading-4 text-ink-500">{description}</div>
         </div>
-        <SwitchButton
-          enabled={enabled}
+        <Switch
+          checked={enabled}
           disabled={disabled}
-          onChange={(nextEnabled) => onChange({ Enabled: nextEnabled })}
+          ariaLabel={title}
+          onCheckedChange={(Enabled) => onChange({ Enabled })}
         />
       </div>
 
@@ -164,8 +165,32 @@ function VectorModelCard({
           <MenuSelect
             value={providerId}
             placeholder={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.180.25")}
+            ariaLabel={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.177.70")}
             options={providerOptions}
             disabled={disabled || !enabled || providerOptions.length === 0}
+            emptyState={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.384.38")}
+            renderValue={(value, option) => {
+              const current = providerOptions.find((entry) => entry.value === value);
+              return current ? (
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  {current.icon ? <ModelProviderIcon icon={current.icon} size={16} /> : null}
+                  <span className="truncate">{current.label}</span>
+                </span>
+              ) : (
+                <span className="truncate">{option?.label}</span>
+              );
+            }}
+            renderOption={(option) => {
+              const current = providerOptions.find((entry) => entry.value === option.value);
+              return current ? (
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  {current.icon ? <ModelProviderIcon icon={current.icon} size={16} /> : null}
+                  <span className="truncate">{current.label}</span>
+                </span>
+              ) : (
+                <span className="truncate">{option.label}</span>
+              );
+            }}
             onChange={(ProviderId) => onChange({ ProviderId, Model: "" })}
           />
         </SettingLine>
@@ -175,13 +200,39 @@ function VectorModelCard({
         >
           <MenuSelect
             value={readString(value.Model) ?? ""}
-            placeholder={providerId ? "选择模型" : "先选择供应商"}
+            placeholder={frontendMessage(
+              providerId ? "config.vector.selectModel" : "config.vector.selectProviderFirst",
+            )}
+            ariaLabel={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.186.76")}
             options={modelOptions}
             disabled={disabled || !enabled || !providerId || modelOptions.length === 0}
+            emptyState={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.384.38")}
+            renderValue={(value, option) => {
+              const current = modelOptions.find((entry) => entry.value === value);
+              return current ? (
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  {current.icon ? <ModelProviderIcon icon={current.icon} size={16} /> : null}
+                  <span className="truncate">{current.label}</span>
+                </span>
+              ) : (
+                <span className="truncate">{option?.label}</span>
+              );
+            }}
+            renderOption={(option) => {
+              const current = modelOptions.find((entry) => entry.value === option.value);
+              return current ? (
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  {current.icon ? <ModelProviderIcon icon={current.icon} size={16} /> : null}
+                  <span className="truncate">{current.label}</span>
+                </span>
+              ) : (
+                <span className="truncate">{option.label}</span>
+              );
+            }}
             onChange={(Model) => onChange({ Model })}
           />
           {providerId && modelOptions.length === 0 ? (
-            <div className="mt-1.5 text-[11px] text-amber-700">
+            <div className="mt-1.5 text-[11px] text-umber-600">
               {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.196.15")}
               {capability === "Embedding" ? "向量嵌入" : "重排序"}
               {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.196.70")}
@@ -345,87 +396,6 @@ function TextLine({
   );
 }
 
-function SwitchButton({
-  enabled,
-  disabled,
-  onChange,
-}: {
-  enabled: boolean;
-  disabled: boolean;
-  onChange: (enabled: boolean) => void;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-full border px-2 text-[11px] font-semibold transition",
-        enabled ? "border-lime-200 bg-lime-50 text-lime-700" : "border-ink-200 bg-paper-50 text-ink-450",
-        disabled && "pointer-events-none opacity-50",
-      )}
-      onClick={() => onChange(!enabled)}
-    >
-      <RefreshCw className="h-3 w-3" />
-      {enabled ? "ON" : "OFF"}
-    </button>
-  );
-}
-
-function MenuSelect({
-  value,
-  placeholder,
-  options,
-  disabled,
-  onChange,
-}: {
-  value: string;
-  placeholder: string;
-  options: Array<{ value: string; label: string; icon?: string }>;
-  disabled?: boolean;
-  onChange: (value: string) => void;
-}): JSX.Element {
-  const selected = options.find((option) => option.value === value);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          disabled={disabled}
-          className={cn(
-            "inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-left text-[12.5px] text-ink-800",
-            "outline-none transition hover:bg-ink-900/[0.035] focus-visible:border-terra-300 focus-visible:ring-2 focus-visible:ring-terra-100",
-            "disabled:pointer-events-none disabled:opacity-55",
-          )}
-        >
-          <span className={cn("inline-flex min-w-0 items-center gap-2", !selected && "text-ink-400")}>
-            {selected?.icon ? <ModelProviderIcon icon={selected.icon} size={16} /> : null}
-            <span className="truncate">{selected?.label ?? placeholder}</span>
-          </span>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
-      >
-        {options.length > 0 ? (
-          options.map((option) => (
-            <DropdownMenuItem key={option.value} onSelect={() => onChange(option.value)}>
-              <span className="inline-flex min-w-0 items-center gap-2">
-                {option.icon ? <ModelProviderIcon icon={option.icon} size={16} /> : null}
-                <span className="truncate">{option.label}</span>
-              </span>
-            </DropdownMenuItem>
-          ))
-        ) : (
-          <DropdownMenuItem disabled>
-            {frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.384.38")}
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 function readVectorConfig(value: JsonConfigObject, key: VectorCapability): Record<string, unknown> {
   const vectorModels = isRecord(value.VectorModels) ? value.VectorModels : {};
   const config = vectorModels[key];
@@ -489,6 +459,6 @@ function isRecord(value: unknown): value is JsonConfigObject {
 const inputClassName = cn(
   "h-8 w-full min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12.5px] text-ink-800",
   "outline-none transition placeholder:text-ink-400",
-  "focus:border-terra-300 focus:ring-2 focus:ring-terra-100",
+  "focus:border-accent-border focus:ring-2 focus:ring-accent-focus",
   "disabled:pointer-events-none disabled:opacity-55",
 );

@@ -4,6 +4,7 @@ import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 installLocalStorage();
 const { clearPersistedStore, DEFAULT_SESSION_TITLE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
+const { PERSIST_KEY } = await import("../../../Frontend/src/store/session/persistence.ts");
 
 beforeEach(() => {
   clearPersistedStore();
@@ -27,6 +28,71 @@ beforeEach(() => {
     selectedModelProviderId: null,
     defaultModelProviderId: null,
     selectedModelProviderIdsBySession: {},
+  });
+});
+
+test("cross-window preference refresh preserves manually toggled panels when their defaults are unchanged", () => {
+  useStore.setState({
+    defaultSidebarCollapsed: false,
+    defaultRightPanelCollapsed: false,
+    sidebarCollapsed: true,
+    rightPanelCollapsed: true,
+    motionLevel: "full",
+    selectedModelProviderId: "provider_a",
+    selectedModelProviderIdsBySession: { session_a: "provider_a" },
+  });
+
+  window.dispatchEvent(
+    new StorageEvent("storage", {
+      key: PERSIST_KEY,
+      newValue: JSON.stringify({
+        state: {
+          defaultSidebarCollapsed: false,
+          defaultRightPanelCollapsed: false,
+          motionLevel: "full",
+          selectedModelProviderId: "provider_a",
+          selectedModelProviderIdsBySession: { session_a: "provider_a" },
+        },
+        version: 5,
+      }),
+    }),
+  );
+
+  expect(useStore.getState()).toMatchObject({
+    sidebarCollapsed: true,
+    rightPanelCollapsed: true,
+  });
+});
+
+test("cross-window layout default changes still apply to the live panels", () => {
+  useStore.setState({
+    defaultSidebarCollapsed: false,
+    defaultRightPanelCollapsed: false,
+    sidebarCollapsed: false,
+    rightPanelCollapsed: false,
+  });
+
+  window.dispatchEvent(
+    new StorageEvent("storage", {
+      key: PERSIST_KEY,
+      newValue: JSON.stringify({
+        state: {
+          defaultSidebarCollapsed: true,
+          defaultRightPanelCollapsed: true,
+          motionLevel: useStore.getState().motionLevel,
+          selectedModelProviderId: useStore.getState().selectedModelProviderId,
+          selectedModelProviderIdsBySession: useStore.getState().selectedModelProviderIdsBySession,
+        },
+        version: 5,
+      }),
+    }),
+  );
+
+  expect(useStore.getState()).toMatchObject({
+    defaultSidebarCollapsed: true,
+    defaultRightPanelCollapsed: true,
+    sidebarCollapsed: true,
+    rightPanelCollapsed: true,
   });
 });
 

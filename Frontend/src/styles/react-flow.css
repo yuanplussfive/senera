@@ -6,7 +6,7 @@
   background: rgb(var(--color-paper-50)) !important;
   border: 1px solid rgb(var(--color-ink-200)) !important;
   border-radius: 8px !important;
-  box-shadow: var(--shadow-panel) !important;
+  box-shadow: none !important;
   overflow: hidden;
 }
 .react-flow__controls-button {

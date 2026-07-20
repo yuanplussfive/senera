@@ -11,7 +11,7 @@ const presetListItemClass = cva(
   {
     variants: {
       active: {
-        true: "border-terra-200/80 bg-paper-50 text-ink-900 shadow-panel",
+        true: "border-accent-border bg-paper-50 text-ink-900 shadow-panel",
         false: "border-transparent text-ink-600 hover:border-ink-200/70 hover:bg-paper-50/70 hover:text-ink-900",
       },
     },
@@ -58,7 +58,7 @@ export function PresetSidebar({
             <span
               className={cn(
                 "inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[10.5px]",
-                enabled ? "bg-terra-50 text-terra-700" : "bg-ink-900/[0.045] text-ink-400",
+                enabled ? "bg-accent-surface text-accent-content" : "bg-ink-900/[0.045] text-ink-400",
               )}
             >
               {frontendMessage(enabled ? "preset.ui.enabled" : "preset.ui.disabled")}
@@ -113,7 +113,7 @@ export function PresetSidebar({
             onChange={(event) => onFilterTextChange(event.currentTarget.value)}
             placeholder={frontendMessage("preset.ui.searchPlaceholder")}
             spellCheck={false}
-            className="h-8 w-full rounded-lg border border-ink-200 bg-paper-50 pl-8 pr-2.5 text-[12px] text-ink-800 shadow-sm outline-none transition placeholder:text-ink-400 focus:border-terra-300 focus:ring-2 focus:ring-terra-100"
+            className="h-8 w-full rounded-lg border border-ink-200 bg-paper-50 pl-8 pr-2.5 text-[12px] text-ink-800 shadow-sm outline-none transition placeholder:text-ink-400 focus:border-accent-border focus:ring-2 focus:ring-accent-focus"
           />
         </div>
       </div>
@@ -157,7 +157,7 @@ function PresetListItem({
       <span
         className={cn(
           "grid h-8 w-8 shrink-0 place-items-center rounded-md",
-          preset.active ? "bg-terra-100 text-terra-700" : "bg-ink-900/[0.045] text-ink-400",
+          preset.active ? "bg-accent-surface-hover text-accent-content" : "bg-ink-900/[0.045] text-ink-400",
         )}
       >
         <BookUser className="h-3.5 w-3.5" />
@@ -166,12 +166,12 @@ function PresetListItem({
         <span className="block truncate text-[13px] font-medium">
           {displayName || frontendMessage("preset.ui.unnamed")}
         </span>
-        <span className="mt-0.5 block truncate font-mono text-[10.5px] text-ink-400">
+        <span className="mt-0.5 block truncate text-[10.5px] tabular-nums text-ink-400">
           {formatLabel} · {formatPresetTime(preset.updatedAt)}
         </span>
       </span>
-      {preset.active ? <Check className="h-3.5 w-3.5 shrink-0 text-terra-500" /> : null}
-      {preset.diagnostics.length > 0 ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" /> : null}
+      {preset.active ? <Check className="h-3.5 w-3.5 shrink-0 text-accent-content" /> : null}
+      {preset.diagnostics.length > 0 ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-umber-500" /> : null}
     </button>
   );
 }

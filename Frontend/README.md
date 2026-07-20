@@ -1,6 +1,6 @@
 # senera Frontend
 
-senera 后端 WebSocket 服务的三栏式 Web 界面。
+senera 后端 WebSocket 服务的响应式 Agent 工作台。
 
 ## 启动
 
@@ -11,15 +11,30 @@ senera 后端 WebSocket 服务的三栏式 Web 界面。
 npm run server     # 默认监听 ws://127.0.0.1:8787
 ```
 
-再启动前端：
+再启动前端（依赖在仓库根目录安装）：
 
 ```bash
-# 在 Frontend/ 目录
+# 在仓库根目录
 npm install        # 仅第一次需要
-npm run dev        # 默认 http://127.0.0.1:5173
+npm run dev.frontend
 ```
 
 打开浏览器即可。前端会自动建一个空会话并连后端。
+
+## 组件 Ladle
+
+Ladle 直接展示 `src` 中的真实公共组件，并复用前端 Vite 配置、全局样式和主题 token。面向人的 Story 文案使用中文；公共组件的新增和变更规则见 [前端 Ladle 组件约束](../docs/Development/FrontendLadleConstraints.md)。
+
+```bash
+# 在仓库根目录启动组件工作台
+npm --workspace senera-frontend run ladle
+
+# 检查公共组件与 Story 是否同步
+npm --workspace senera-frontend run check.ladle
+
+# 生成静态 Ladle，用于验证所有 Story 可以完整构建
+npm --workspace senera-frontend run ladle:build
+```
 
 ## 配置
 
@@ -46,8 +61,9 @@ src/
     sessionStore.ts       Zustand store + 事件→状态投影
   features/
     session/              左栏：会话列表、用户资料和会话操作
-    chat/                 中栏：对话消息、输入框、配置面板和审批条
-    workflow/             右栏：思考过程时间线、工具节点和详情抽屉
+    chat/                 主画布：对话消息、输入框和审批条
+    settings/             设置工作台、供应商连接和模型服务管理
+    workflow/             执行面板：思考过程时间线、工具节点和详情抽屉
   shared/
     ui/                   无业务语义的 UI primitives
     code/                 Markdown / code 渲染能力
@@ -70,4 +86,4 @@ src/
 
 ## 协议同步
 
-后端事件枚举以 `Source/AgentSystem/Events/AgentEventCatalog.ts` 为单源。修改事件枚举后运行 `npm run generatefrontendevents`，CI 会校验生成物是否过期；事件 data DTO 仍保留在 `src/api/eventTypes.ts`，只表达前端实际读取的字段。
+后端事件枚举以 `Source/AgentSystem/Events/AgentEventCatalog.ts` 为单源。修改事件枚举后在仓库根目录运行 `npm run generate.frontend-events`，CI 会校验生成物是否过期；事件 data DTO 仍保留在 `src/api/eventTypes.ts`，只表达前端实际读取的字段。

@@ -2,6 +2,7 @@ import type { TargetAndTransition, Transition, Variants } from "framer-motion";
 import type { MotionLevel } from "./types";
 
 const easeOut = [0.22, 1, 0.36, 1] as const;
+const easeInOut = [0.4, 0, 0.2, 1] as const;
 export type DialogMotionPreset = "modal" | "focus";
 export type DialogPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
 export type DrawerPanelVariants = Record<"hidden" | "show" | "exit", TargetAndTransition>;
@@ -21,6 +22,9 @@ export const motionTimings = {
   modalOpen: { duration: 0.16, ease: easeOut } satisfies Transition,
   modalClose: { duration: 0.1, ease: easeOut } satisfies Transition,
   slow: { duration: 0.18, ease: easeOut } satisfies Transition,
+  selection: { duration: 0.24, ease: easeInOut } satisfies Transition,
+  panelOpen: { duration: 0.28, ease: easeOut } satisfies Transition,
+  panelClose: { duration: 0.22, ease: easeOut } satisfies Transition,
 };
 
 export const motionRules = {

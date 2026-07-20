@@ -19,7 +19,6 @@ test("session rows expose an independent keyboard-operable selection button", as
       active: true,
       sessionId: "session-1",
       title: "Release plan",
-      subtitle: "3 messages",
       accent: "idle",
       onClick,
       showInlineActions: true,
@@ -30,6 +29,8 @@ test("session rows expose an independent keyboard-operable selection button", as
 
   const selection = screen.getByRole("button", { name: "打开会话：Release plan" });
   expect(selection).toHaveAttribute("aria-current", "true");
+  expect(selection.closest("[data-session-row]")).toHaveClass("h-11");
+  expect(document.querySelector("[data-active-session-indicator]")).not.toBeNull();
 
   await user.click(selection);
   selection.focus();
@@ -39,13 +40,13 @@ test("session rows expose an independent keyboard-operable selection button", as
   expect(screen.getByRole("button", { name: "more" })).toBeInTheDocument();
 });
 
-test("session row exposes its secondary action when keyboard-focused", () => {
+test("desktop session rows expose context actions without a duplicate overflow button", async () => {
+  const user = userEvent.setup();
   renderWithFrontendProviders(
     React.createElement(SessionRow, {
       active: false,
       sessionId: "session-2",
       title: "Hidden actions",
-      subtitle: "1 message",
       accent: "idle",
       onClick: vi.fn(),
       showInlineActions: false,
@@ -54,5 +55,11 @@ test("session row exposes its secondary action when keyboard-focused", () => {
     }),
   );
 
-  expect(screen.getByRole("button", { name: "more" })).toHaveClass("focus-visible:opacity-100");
+  const selection = screen.getByRole("button", { name: "打开会话：Hidden actions" });
+  expect(selection.closest("[data-session-row]")).toHaveClass("h-9");
+  expect(screen.queryByText("1 message")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "more" })).not.toBeInTheDocument();
+  selection.focus();
+  await user.keyboard("{Shift>}{F10}{/Shift}");
+  expect(await screen.findByRole("menu")).toBeVisible();
 });

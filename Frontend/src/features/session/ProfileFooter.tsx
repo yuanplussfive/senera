@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Info, Palette, Settings2, User } from "lucide-react";
+import {
+  Camera,
+  Info,
+  LoaderCircle,
+  Settings,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  User,
+  UserRoundPen,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { toast } from "sonner";
-import { openSettingsSurface } from "../../app/desktopBridge";
+import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
 import type { UserProfile } from "../../store/sessionStore";
+import type { SettingsSectionId } from "../settings/types";
 import { cn } from "../../lib/util";
 import {
   Dialog,
@@ -12,7 +25,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
+  DropdownMenuMeta,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../shared/ui";
@@ -28,17 +41,24 @@ import {
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export function UserFooter({
+  collapsed = false,
   profile,
   socketStatus,
+  sandboxStatus,
   onUpdateProfile,
   onLogout,
+  onOpenSettings,
 }: {
+  collapsed?: boolean;
   profile: UserProfile;
   socketStatus: string;
+  sandboxStatus?: SandboxStatusSnapshotData | null;
   onUpdateProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
-  onLogout: () => Promise<void>;
+  onLogout?: () => Promise<void>;
+  onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const statusLabel =
     socketStatus === "open"
       ? frontendMessage("connection.open")
@@ -47,84 +67,69 @@ export function UserFooter({
         : socketStatus === "error"
           ? frontendMessage("connection.error")
           : frontendMessage("connection.closed");
-  const statusColor =
+  const StatusIcon =
+    socketStatus === "open" ? Wifi : socketStatus === "connecting" || socketStatus === "idle" ? LoaderCircle : WifiOff;
+  const statusIconClass =
     socketStatus === "open"
-      ? "bg-moss-500"
+      ? "text-moss-600"
       : socketStatus === "connecting" || socketStatus === "idle"
-        ? "bg-umber-500 motion-safe:animate-pulse"
-        : "bg-brick-500";
+        ? "animate-spin text-umber-600"
+        : "text-brick-600";
 
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
+            ref={settingsTriggerRef}
             type="button"
-            className="flex h-14 w-full items-center gap-2 border-t border-ink-200/70 px-3 text-left transition hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra-300 data-[state=open]:bg-ink-900/[0.045]"
+            className={cn(
+              "mt-auto w-full transition-colors duration-150 hover:bg-surface-hover data-[state=open]:bg-surface-hover",
+              collapsed
+                ? "grid h-12 place-items-center border-t-0 px-0"
+                : "flex h-[48px] items-center gap-2 border-t border-line-subtle px-3 text-left",
+            )}
           >
             <UserAvatar profile={profile} />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px] text-ink-800">{profile.name}</div>
-              <div className="flex items-center gap-1 font-mono text-[10px] text-ink-400">
-                <span className={cn("inline-block h-1.5 w-1.5 rounded-full", statusColor)} />
-                {statusLabel}
-              </div>
-            </div>
-            <Settings2 className="h-3.5 w-3.5 shrink-0 text-ink-350" />
+            {collapsed ? null : (
+              <>
+                <div className="min-w-0 flex-1 truncate text-[13px] text-content-primary">{profile.name}</div>
+                <Settings className="h-3.5 w-3.5 shrink-0 text-content-muted" />
+              </>
+            )}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" className="w-[244px]">
-          <DropdownMenuLabel>
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.77.30")}
-          </DropdownMenuLabel>
-          <DropdownMenuItem icon={<User className="h-3.5 w-3.5" />} onSelect={() => setOpen(true)}>
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.82.13")}
+        <DropdownMenuContent
+          align={collapsed ? "end" : "start"}
+          side={collapsed ? "right" : "top"}
+          collisionPadding={8}
+          className="w-[220px]"
+        >
+          <DropdownMenuItem icon={<UserRoundPen className="h-3.5 w-3.5" />} onSelect={() => setOpen(true)}>
+            {frontendMessage("profile.menu.edit")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel>
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.85.30")}
-          </DropdownMenuLabel>
           <DropdownMenuItem
-            icon={<Palette className="h-3.5 w-3.5" />}
-            onSelect={() => {
-              void openSettingsSurface({
-                section: "appearance",
-                fallback: () => undefined,
-              });
-            }}
+            icon={<Settings className="h-3.5 w-3.5" />}
+            onSelect={() => onOpenSettings(undefined, settingsTriggerRef.current)}
           >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.95.13")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            icon={<Settings2 className="h-3.5 w-3.5" />}
-            onSelect={() => {
-              void openSettingsSurface({
-                section: "general",
-                fallback: () => undefined,
-              });
-            }}
-          >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.106.13")}
+            {frontendMessage("profile.menu.settings")}
           </DropdownMenuItem>
           <DropdownMenuItem
             icon={<Info className="h-3.5 w-3.5" />}
-            onSelect={() => {
-              void openSettingsSurface({
-                section: "about",
-                fallback: () => undefined,
-              });
-            }}
+            onSelect={() => onOpenSettings("about", settingsTriggerRef.current)}
           >
-            {frontendMessage("runtime.migrated.features.session.ProfileFooter.117.13")}
+            {frontendMessage("profile.menu.about")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <div className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[12px] text-ink-500">
-            <span className={cn("inline-block h-1.5 w-1.5 rounded-full", statusColor)} />
-            <span className="min-w-0 flex-1 truncate">
-              {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}
-            </span>
-            <span className="font-mono text-[10.5px] text-ink-400">{statusLabel}</span>
-          </div>
+          <DropdownMenuMeta
+            aria-live="polite"
+            icon={<StatusIcon className={cn("h-3.5 w-3.5", statusIconClass)} aria-hidden="true" />}
+            value={statusLabel}
+          >
+            {frontendMessage("runtime.migrated.features.session.ProfileFooter.122.55")}
+          </DropdownMenuMeta>
+          <SandboxStatusMeta status={sandboxStatus} />
         </DropdownMenuContent>
       </DropdownMenu>
       <ProfileDialog
@@ -136,15 +141,71 @@ export function UserFooter({
           setOpen(false);
           toast.success(frontendMessage("profile.saved"));
         }}
-        onLogout={async () => {
-          try {
-            await onLogout();
-          } catch {
-            toast.error(frontendMessage("auth.logoutFailed"));
-          }
-        }}
+        onLogout={
+          onLogout
+            ? async () => {
+                try {
+                  await onLogout();
+                } catch {
+                  toast.error(frontendMessage("auth.logoutFailed"));
+                }
+              }
+            : undefined
+        }
       />
     </>
+  );
+}
+
+function SandboxStatusMeta({ status }: { status?: SandboxStatusSnapshotData | null }): JSX.Element {
+  const state = status?.state ?? "unknown";
+  const detail = status?.message ?? frontendMessage("sandbox.status.unsynced");
+  const suffix =
+    status?.effectiveMode === "fallback"
+      ? frontendMessage("sandbox.status.fallbackSuffix")
+      : frontendMessage("sandbox.status.sandboxSuffix");
+  const table = {
+    unknown: {
+      label: frontendMessage("sandbox.status.unknown"),
+      Icon: Shield,
+      className: "text-content-muted",
+    },
+    preparing: {
+      label: frontendMessage("sandbox.status.preparing"),
+      Icon: Shield,
+      className: "text-umber-600",
+    },
+    ready: {
+      label: frontendMessage("sandbox.status.ready"),
+      Icon: ShieldCheck,
+      className: "text-moss-600",
+    },
+    fallback: {
+      label: frontendMessage("sandbox.status.fallback"),
+      Icon: ShieldAlert,
+      className: "text-brick-600",
+    },
+  } satisfies Record<
+    SandboxRuntimeState,
+    {
+      label: string;
+      Icon: typeof Shield;
+      className: string;
+    }
+  >;
+  const presentation = table[state];
+  const StatusIcon = presentation.Icon;
+
+  return (
+    <DropdownMenuMeta
+      aria-label={`${frontendMessage("sandbox.status.label")}: ${presentation.label}`}
+      title={`${detail} ${suffix}`}
+      icon={<StatusIcon className={`h-3.5 w-3.5 ${presentation.className}`} aria-hidden="true" />}
+      value={presentation.label}
+      data-sandbox-status={state}
+    >
+      {frontendMessage("sandbox.status.label")}
+    </DropdownMenuMeta>
   );
 }
 
@@ -155,7 +216,7 @@ function UserAvatar({ profile, size = "normal" }: { profile: UserProfile; size?:
   return (
     <div
       className={cn(
-        "grid shrink-0 place-items-center overflow-hidden bg-ink-900 font-semibold text-paper-50 ring-1 ring-ink-900/10",
+        "grid shrink-0 place-items-center overflow-hidden bg-content-strong font-semibold text-content-inverse ring-1 ring-line-subtle",
         className,
       )}
     >
@@ -181,7 +242,7 @@ function ProfileDialog({
   profile: UserProfile;
   onOpenChange: (open: boolean) => void;
   onSubmit: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
-  onLogout: () => Promise<void>;
+  onLogout?: () => Promise<void>;
 }): JSX.Element {
   const [draftName, setDraftName] = useState(profile.name);
   const [draftAvatar, setDraftAvatar] = useState<string | null>(profile.avatarDataUrl);
@@ -235,10 +296,11 @@ function ProfileDialog({
         title={frontendMessage("profile.title")}
         description={frontendMessage("profile.description")}
         className="w-[min(420px,calc(100vw-28px))]"
-        bodyClassName="p-4"
+        bodyClassName="px-6 pb-6"
       >
         <form
-          className="space-y-4"
+          className="space-y-0"
+          data-profile-editor
           onSubmit={(event) => {
             event.preventDefault();
             const name = draftName.trim();
@@ -270,7 +332,7 @@ function ProfileDialog({
             />
           )}
 
-          <label className="block">
+          <label className="mt-5 block border-t border-ink-200/70 pt-5">
             <span className="mb-1.5 block text-[12px] font-medium text-ink-600">
               {frontendMessage("profile.displayName")}
             </span>
@@ -279,15 +341,20 @@ function ProfileDialog({
               value={draftName}
               maxLength={48}
               onChange={(event) => setDraftName(event.target.value)}
-              className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-terra-200/50"
+              className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-accent-focus"
               placeholder={frontendMessage("profile.namePlaceholder")}
             />
           </label>
 
-          <DialogActions>
-            <DialogActionButton className="mr-auto text-brick-700 hover:bg-brick-50" onClick={() => void onLogout()}>
-              {frontendMessage("auth.signOut")}
-            </DialogActionButton>
+          <DialogActions className="mt-6">
+            {onLogout ? (
+              <DialogActionButton
+                className="mr-auto border-0 bg-transparent px-2 text-brick-600 shadow-none hover:bg-transparent hover:text-brick-700"
+                onClick={() => void onLogout()}
+              >
+                {frontendMessage("auth.signOut")}
+              </DialogActionButton>
+            ) : null}
             <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
             <DialogActionButton type="submit" variant="primary">
               {frontendMessage("profile.save")}
@@ -313,37 +380,35 @@ function AvatarPicker({
   onRemove: () => void;
 }): JSX.Element {
   return (
-    <div className="overflow-hidden rounded-xl border border-ink-200/70 bg-paper-100/65">
-      <div className="flex items-center gap-4 p-3">
-        <UserAvatar profile={{ name, avatarDataUrl, updatedAt }} size="large" />
-        <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium text-ink-900">{frontendMessage("profile.avatar")}</div>
-          <div className="mt-1 text-[12px] leading-5 text-ink-500">{frontendMessage("profile.avatarHint")}</div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-ink-900 px-3 text-[12.5px] font-medium text-paper-50 transition hover:bg-ink-800">
-              <Camera className="h-3.5 w-3.5" />
-              {frontendMessage("profile.selectImage")}
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="sr-only"
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-                  event.currentTarget.value = "";
-                  if (file) onReadFile(file);
-                }}
-              />
-            </label>
-            {avatarDataUrl ? (
-              <button
-                type="button"
-                onClick={onRemove}
-                className="h-8 rounded-md px-2.5 text-[12.5px] text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-900"
-              >
-                {frontendMessage("profile.removeAvatar")}
-              </button>
-            ) : null}
-          </div>
+    <div className="flex items-center gap-4 py-1">
+      <UserAvatar profile={{ name, avatarDataUrl, updatedAt }} size="large" />
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium text-ink-900">{frontendMessage("profile.avatar")}</div>
+        <div className="mt-0.5 text-[12px] leading-5 text-ink-500">{frontendMessage("profile.avatarHint")}</div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-ink-200 bg-paper-50 px-3 text-[12.5px] font-medium text-ink-700 transition-colors hover:border-ink-300 hover:bg-ink-900/[0.035] hover:text-ink-900">
+            <Camera className="h-3.5 w-3.5" />
+            {frontendMessage("profile.selectImage")}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (file) onReadFile(file);
+              }}
+            />
+          </label>
+          {avatarDataUrl ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="h-8 cursor-pointer rounded-md px-2.5 text-[12.5px] text-ink-500 transition-colors hover:bg-ink-900/[0.05] hover:text-ink-900"
+            >
+              {frontendMessage("profile.removeAvatar")}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
@@ -386,7 +451,7 @@ function AvatarCropper({
   };
 
   return (
-    <div className="rounded-xl border border-ink-200/70 bg-paper-100/65 p-3">
+    <div className="rounded-lg border border-ink-200/70 bg-paper-100/65 p-3">
       <div className="flex flex-col items-center">
         <div
           ref={frameRef}

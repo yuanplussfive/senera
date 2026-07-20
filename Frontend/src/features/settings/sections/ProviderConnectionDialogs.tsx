@@ -1,9 +1,18 @@
 import { Pencil, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import { cn } from "../../../lib/util";
-import { Button, Dialog, DialogContent } from "../../../shared/ui";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
+import {
+  Dialog,
+  DialogActionButton,
+  DialogActions,
+  DialogContent,
+  FormField,
+  FormHint,
+  FormLabel,
+  Input,
+  MenuSelect,
+} from "../../../shared/ui";
 import { ModelProviderIcon } from "../../chat/ModelProviderIcon";
-import { inputClassName, MenuSelect } from "../../chat/ModelConfigPrimitives";
 import { normalizeProviderEndpointDraft } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { ProviderFormError } from "./ProviderConnectionFeedback";
@@ -58,27 +67,32 @@ export function AddProviderDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="添加供应商"
-        description="先创建供应商身份；密钥和地址会在右侧连接表单里确认。"
-        className="w-[min(460px,calc(100vw_-_24px))] rounded-xl bg-paper-50"
+        title={frontendMessage("settings.provider.addCustomTitle")}
+        description={frontendMessage("settings.provider.addCustomDescription")}
+        className="min-h-[540px] w-[min(600px,calc(100vw_-_32px))]"
+        bodyClassName="flex min-h-0 flex-1 flex-col px-8 pb-7 pt-3"
       >
-        <div className="space-y-3">
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-ink-700">供应商名称</span>
-            <input
+        <div className="grid gap-6">
+          <FormField>
+            <FormLabel required>{frontendMessage("settings.provider.nameLabel")}</FormLabel>
+            <Input
+              autoFocus
               value={providerId}
-              placeholder="custom-openai"
-              className={cn(inputClassName, "rounded-md border border-ink-200 bg-paper-50")}
+              placeholder={frontendMessage("settings.provider.namePlaceholder")}
+              aria-invalid={duplicate}
               onChange={(event) => setProviderId(event.currentTarget.value)}
             />
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-ink-700">类型 / 预设</span>
+            <FormHint>{frontendMessage("settings.provider.nameHint")}</FormHint>
+          </FormField>
+          <FormField>
+            <FormLabel>{frontendMessage("settings.provider.presetLabel")}</FormLabel>
             <MenuSelect
               value={presetId}
-              placeholder="选择预设"
+              placeholder={frontendMessage("settings.provider.presetPlaceholder")}
+              ariaLabel={frontendMessage("settings.provider.presetLabel")}
               options={providerPresets.map((entry) => ({ value: entry.id, label: entry.label }))}
               disabled={false}
+              triggerClassName="h-11 rounded-lg px-3.5 text-[14px] hover:border-ink-300"
               renderValue={(value) => {
                 const current = providerPresets.find((entry) => entry.id === value);
                 return current ? (
@@ -101,18 +115,21 @@ export function AddProviderDialog({
               }}
               onChange={setPresetId}
             />
-          </label>
-          {duplicate ? <ProviderFormError message="这个供应商名称已存在或属于内置身份，请换一个自定义名称。" /> : null}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>
-              取消
-            </Button>
-            <Button size="sm" disabled={invalid} onClick={submit}>
-              <Plus className="h-3.5 w-3.5" />
-              添加
-            </Button>
-          </div>
+            <FormHint>{frontendMessage("settings.provider.presetHint")}</FormHint>
+          </FormField>
+          {duplicate ? <ProviderFormError message={frontendMessage("settings.provider.duplicate")} /> : null}
         </div>
+        <DialogActions className="mt-auto">
+          <DialogActionButton onClick={() => onOpenChange(false)}>
+            {frontendMessage("settings.action.cancel")}
+          </DialogActionButton>
+          <DialogActionButton variant="primary" disabled={invalid} onClick={submit}>
+            <span className="inline-flex items-center gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              {frontendMessage("settings.action.add")}
+            </span>
+          </DialogActionButton>
+        </DialogActions>
       </DialogContent>
     </Dialog>
   );
@@ -147,34 +164,46 @@ export function RenameProviderDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="重命名供应商"
-        description="只用于自定义供应商身份；关联模型引用由后端命令一起更新。"
-        className="w-[min(420px,calc(100vw_-_24px))] rounded-xl bg-paper-50"
+        title={frontendMessage("settings.provider.renameTitle")}
+        description={frontendMessage("settings.provider.renameDescription")}
+        className="min-h-[420px] w-[min(560px,calc(100vw_-_32px))]"
+        bodyClassName="flex min-h-0 flex-1 flex-col px-8 pb-7 pt-3"
       >
-        <div className="space-y-3">
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-ink-700">新的供应商名称</span>
-            <input
+        <div>
+          <FormField>
+            <FormLabel required>{frontendMessage("settings.provider.newNameLabel")}</FormLabel>
+            <Input
+              autoFocus
               value={nextProviderId}
-              className={cn(inputClassName, "rounded-md border border-ink-200 bg-paper-50")}
+              aria-invalid={Boolean(
+                targetId &&
+                targetId !== provider?.Id &&
+                (providers.some((entry) => entry.Id === targetId) || isProtectedProvider(targetId)),
+              )}
               onChange={(event) => setNextProviderId(event.currentTarget.value)}
             />
-          </label>
+          </FormField>
           {targetId &&
           targetId !== provider?.Id &&
           (providers.some((entry) => entry.Id === targetId) || isProtectedProvider(targetId)) ? (
-            <ProviderFormError message="这个名称已存在或属于内置身份。" />
+            <ProviderFormError message={frontendMessage("settings.provider.nameConflict")} />
           ) : null}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>
-              取消
-            </Button>
-            <Button size="sm" disabled={invalid} onClick={() => provider && onRename(provider.Id, targetId)}>
-              <Pencil className="h-3.5 w-3.5" />
-              重命名
-            </Button>
-          </div>
         </div>
+        <DialogActions className="mt-auto">
+          <DialogActionButton onClick={() => onOpenChange(false)}>
+            {frontendMessage("settings.action.cancel")}
+          </DialogActionButton>
+          <DialogActionButton
+            variant="primary"
+            disabled={invalid}
+            onClick={() => provider && onRename(provider.Id, targetId)}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <Pencil className="h-3.5 w-3.5" />
+              {frontendMessage("settings.action.rename")}
+            </span>
+          </DialogActionButton>
+        </DialogActions>
       </DialogContent>
     </Dialog>
   );

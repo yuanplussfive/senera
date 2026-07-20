@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState, type AriaRole, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, ChevronRight, GitBranch, Workflow, Wrench } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, GitBranch, Loader2, Workflow, Wrench, X } from "lucide-react";
 import { cn } from "../../lib/util";
 import { type RunRecord } from "../../store/sessionStore";
-import { deriveFeedModel, statusDotClass, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
-import { MetaLabel } from "../../shared/ui";
+import { deriveFeedModel, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
 import { motionTimings, readFeedItemVariants, useMotionLevel, type MotionLevel } from "../../shared/motion";
 
 export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
@@ -31,7 +30,7 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
       <FeedHeadline item={model.headline} stepCount={run.steps.length} />
-      <div className="relative ml-1 pl-5 before:absolute before:left-[5px] before:top-1 before:bottom-0 before:w-px before:bg-ink-200/70">
+      <div className="ml-6 overflow-hidden rounded-xl border border-line-subtle bg-surface-raised shadow-panel">
         {model.groups.map((group) =>
           group.collapsible ? (
             <FeedGroupBlock
@@ -47,7 +46,7 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
               motionLevel={effectiveLevel}
             />
           ) : (
-            <div key={group.id} className="mt-1 flex flex-col gap-1">
+            <div key={group.id} className="flex flex-col">
               <AnimatePresence initial={false}>
                 {group.items.map((item) => (
                   <FeedRow key={item.id} item={item} motionLevel={effectiveLevel} />
@@ -57,13 +56,13 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
           ),
         )}
       </div>
-      <div className="ml-1 pl-5">
+      <div className="ml-6">
         <AnimatePresence mode="wait" initial={false}>
           {model.bodyText ? (
             <FeedMotionBlock
               key="body"
               motionLevel={effectiveLevel}
-              className="pt-2 text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-ink-800"
+              className="pt-2 text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
             >
               <span className="whitespace-pre-wrap break-words">{model.bodyText}</span>
               <span className="caret-blink" />
@@ -73,7 +72,7 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
           )}
         </AnimatePresence>
         {model.footer ? (
-          <FeedMotionBlock motionLevel={effectiveLevel} className="pt-1.5 font-mono text-[10.5px] text-ink-400">
+          <FeedMotionBlock motionLevel={effectiveLevel} className="pt-1.5 font-mono text-[10.5px] text-content-muted">
             {model.footer}
           </FeedMotionBlock>
         ) : null}
@@ -85,14 +84,16 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
 function FeedHeadline({ item, stepCount }: { item: FeedItem; stepCount: number }): JSX.Element {
   return (
     <div className="flex min-w-0 items-start gap-2.5">
-      <span className={cn("mt-[7px] inline-block h-2 w-2 shrink-0 rounded-full", statusDotClass(item.status, true))} />
+      <FeedStatusIcon status={item.status} className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13.5px] font-medium text-ink-900">{item.title}</span>
-          <MetaLabel>{stepCount} steps</MetaLabel>
-          {item.meta ? <MetaLabel>{item.meta}</MetaLabel> : null}
+          <span className="text-[13.5px] font-medium text-content-primary">{item.title}</span>
+          <span className="text-[10.5px] tabular-nums text-content-muted">{stepCount} steps</span>
+          {item.meta ? <span className="text-[10.5px] tabular-nums text-content-muted">{item.meta}</span> : null}
         </div>
-        {item.subtitle ? <div className="mt-0.5 text-[12px] leading-relaxed text-ink-500">{item.subtitle}</div> : null}
+        {item.subtitle ? (
+          <div className="mt-0.5 text-[12px] leading-relaxed text-content-secondary">{item.subtitle}</div>
+        ) : null}
       </div>
     </div>
   );
@@ -116,24 +117,20 @@ function FeedGroupBlock({
       <button
         type="button"
         onClick={onToggle}
-        className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-paper-100/80"
+        className="flex min-w-0 items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
       >
-        <Icon className="h-3.5 w-3.5 shrink-0 text-ink-500" />
-        <span className="min-w-0 flex-1 text-[12.75px] text-ink-900">{group.label}</span>
-        {group.meta ? <span className="font-mono text-[10.5px] text-ink-400">{group.meta}</span> : null}
+        <Icon className="h-3.5 w-3.5 shrink-0 text-content-secondary" />
+        <span className="min-w-0 flex-1 text-[12.75px] font-medium text-content-primary">{group.label}</span>
+        {group.meta ? <span className="font-mono text-[10.5px] text-content-muted">{group.meta}</span> : null}
         {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-400" />
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-content-muted" />
         ) : (
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-400" />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-content-muted" />
         )}
       </button>
       <AnimatePresence initial={false}>
         {expanded ? (
-          <FeedMotionBlock
-            key="tools"
-            motionLevel={motionLevel}
-            className="ml-3 flex flex-col gap-1 border-l border-ink-200/60 pl-3"
-          >
+          <FeedMotionBlock key="tools" motionLevel={motionLevel} className="flex flex-col divide-y divide-line-subtle">
             <AnimatePresence initial={false}>
               {group.items.map((item) => (
                 <FeedRow key={item.id} item={item} compact motionLevel={motionLevel} />
@@ -162,22 +159,31 @@ function FeedRow({
       animate="show"
       exit="exit"
       transition={motionLevel === "none" ? { duration: 0 } : motionTimings.base}
-      className={cn("flex min-w-0 items-start gap-2 rounded-lg px-2 py-1.5", compact && "py-1")}
+      className={cn("flex min-w-0 items-start gap-2 px-2.5 py-2", compact && "py-1.5")}
     >
       {item.kind === "tool" ? (
-        <span className={cn("mt-[5px] inline-block h-1.5 w-1.5 shrink-0 rounded-full", statusDotClass(item.status))} />
+        <Wrench className="mt-[1px] h-3.5 w-3.5 shrink-0 text-content-muted" />
       ) : (
-        <GitBranch className="mt-[1px] h-3.5 w-3.5 shrink-0 text-ink-400" />
+        <GitBranch className="mt-[1px] h-3.5 w-3.5 shrink-0 text-content-muted" />
       )}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[12.75px] text-ink-900">{item.title}</div>
-        {item.subtitle ? <div className="mt-0.5 truncate text-[11.5px] text-ink-500">{item.subtitle}</div> : null}
+        <div className="truncate text-[12.75px] text-content-primary">{item.title}</div>
+        {item.subtitle ? (
+          <div className="mt-0.5 truncate text-[11.5px] text-content-secondary">{item.subtitle}</div>
+        ) : null}
       </div>
       {item.meta ? (
         <span className={cn("shrink-0 pt-px text-[11.5px]", statusTextClass(item.status))}>{item.meta}</span>
       ) : null}
     </motion.div>
   );
+}
+
+function FeedStatusIcon({ status, className }: { status: FeedItem["status"]; className?: string }): JSX.Element {
+  if (status === "running")
+    return <Loader2 className={cn("h-4 w-4 shrink-0 animate-spin text-umber-600", className)} />;
+  if (status === "failed") return <X className={cn("h-4 w-4 shrink-0 text-brick-600", className)} />;
+  return <Check className={cn("h-4 w-4 shrink-0 text-content-secondary", className)} />;
 }
 
 function FeedMotionBlock({
@@ -213,33 +219,14 @@ function PendingLine({ label, motionLevel }: { label: string; motionLevel: Motio
   return (
     <FeedMotionBlock
       motionLevel={motionLevel}
-      className="my-1.5 inline-flex max-w-full items-center gap-2 py-1 text-[12.75px] leading-relaxed text-ink-500"
+      className="my-1.5 inline-flex max-w-full items-center gap-2 py-1 text-[12.75px] leading-relaxed text-content-secondary"
       role="status"
       ariaLive="polite"
     >
-      <ThinkingLoader motionLevel={motionLevel} />
+      <Loader2
+        className={cn("h-3.5 w-3.5 shrink-0 text-content-secondary", motionLevel !== "none" && "animate-spin")}
+      />
       <span className="min-w-0 truncate">{label}</span>
     </FeedMotionBlock>
-  );
-}
-
-function ThinkingLoader({ motionLevel }: { motionLevel: MotionLevel }): JSX.Element {
-  return (
-    <span
-      className={cn(
-        "thinking-loader inline-flex h-4 w-5 shrink-0 items-center justify-center gap-0.5",
-        motionLevel === "none" && "thinking-loader--static",
-      )}
-      aria-hidden="true"
-      data-motion-level={motionLevel}
-    >
-      {[0, 1, 2].map((index) => (
-        <span
-          key={`thinking-loader-dot-${index}`}
-          className="thinking-loader-dot block h-1 w-1 rounded-full bg-ink-400/85"
-          style={{ animationDelay: `${index * 140}ms` }}
-        />
-      ))}
-    </span>
   );
 }
