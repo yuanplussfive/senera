@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.3.1](https://github.com/yuanplussfive/senera/compare/v1.3.0...v1.3.1) (2026-07-20)
+
+
+### 问题修复
+
+* **ci:** prevent invalid squash commit titles ([#31](https://github.com/yuanplussfive/senera/issues/31)) ([ae43787](https://github.com/yuanplussfive/senera/commit/ae437877adfc1f951199aa5c6d3b1836a0e43feb))
+
 ## [1.3.0](https://github.com/yuanplussfive/senera/compare/v1.2.0...v1.3.0) (2026-07-20)
 
 
