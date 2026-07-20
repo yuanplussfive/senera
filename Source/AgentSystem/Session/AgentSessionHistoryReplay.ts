@@ -238,7 +238,8 @@ function readAnswerValue(value: unknown): string | undefined {
 
 function readTextValue(value: unknown): string | undefined {
   if (typeof value === "string") return value;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  if (value === null || typeof value !== "object") return undefined;
+  if (Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
   const text = record["#text"] ?? record["#cdata"];
   return typeof text === "string" ? text : undefined;

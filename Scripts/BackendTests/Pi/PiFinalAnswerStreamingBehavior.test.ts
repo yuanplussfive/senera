@@ -103,7 +103,7 @@ describe("Pi final-answer streaming", () => {
     expect(generator.inputs).toHaveLength(0);
   });
 
-  test("returns a JSON error before SSE headers when action compilation fails", async () => {
+  test("does not expose action compilation details before SSE headers", async () => {
     const generator = new FakeFinalAnswerGenerator(async function* () {
       yield "unexpected failed-decision final answer";
     });
@@ -116,7 +116,8 @@ describe("Pi final-answer streaming", () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(body).toContain("Action validation failed after repair.");
+    expect(body).toContain("Pi proxy request failed.");
+    expect(body).not.toContain("Action validation failed after repair.");
     expect(body).not.toContain("data: [DONE]");
     expect(generator.inputs).toHaveLength(0);
   });
@@ -132,7 +133,8 @@ describe("Pi final-answer streaming", () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(body).toContain("最终回答生成完成，但没有产生用户可见文本。");
+    expect(body).toContain("Pi proxy request failed.");
+    expect(body).not.toContain("最终回答生成完成，但没有产生用户可见文本。");
     expect(body).not.toContain("data: [DONE]");
     expect(generator.inputs).toHaveLength(1);
   });

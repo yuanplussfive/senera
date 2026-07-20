@@ -95,24 +95,30 @@ export class AgentPiResourceProjector {
   }
 
   readTextFile(filePath: string): string {
-    const revision = fs.statSync(filePath);
-    const cached = this.textByPath.get(filePath);
-    if (
-      cached &&
-      cached.mtimeMs === revision.mtimeMs &&
-      cached.size === revision.size &&
-      cached.ctimeMs === revision.ctimeMs
-    ) {
-      return cached.content;
+    const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollowFlag());
+    try {
+      const revision = fs.fstatSync(descriptor);
+      if (!revision.isFile()) throw new Error(`Pi resource is not a regular file: ${filePath}`);
+      const cached = this.textByPath.get(filePath);
+      if (
+        cached &&
+        cached.mtimeMs === revision.mtimeMs &&
+        cached.size === revision.size &&
+        cached.ctimeMs === revision.ctimeMs
+      ) {
+        return cached.content;
+      }
+      const content = fs.readFileSync(descriptor, "utf8");
+      this.textByPath.set(filePath, {
+        mtimeMs: revision.mtimeMs,
+        ctimeMs: revision.ctimeMs,
+        size: revision.size,
+        content,
+      });
+      return content;
+    } finally {
+      fs.closeSync(descriptor);
     }
-    const content = fs.readFileSync(filePath, "utf8");
-    this.textByPath.set(filePath, {
-      mtimeMs: revision.mtimeMs,
-      ctimeMs: revision.ctimeMs,
-      size: revision.size,
-      content,
-    });
-    return content;
   }
 }
 
@@ -132,4 +138,8 @@ interface CachedPromptTemplate {
 
 function hasText(value: string | undefined): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+function noFollowFlag(): number {
+  return typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
 }

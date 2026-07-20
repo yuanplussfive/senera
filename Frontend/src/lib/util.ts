@@ -45,8 +45,13 @@ export function hasMeasuredDuration(startIso?: string, endIso?: string): boolean
 }
 
 export function generateId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
+  const webCrypto = globalThis.crypto;
+  if (typeof webCrypto?.randomUUID === "function") {
+    return webCrypto.randomUUID();
   }
-  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  if (typeof webCrypto?.getRandomValues !== "function") {
+    throw new Error("A secure random source is required to generate identifiers.");
+  }
+  const bytes = webCrypto.getRandomValues(new Uint8Array(16));
+  return `id-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }

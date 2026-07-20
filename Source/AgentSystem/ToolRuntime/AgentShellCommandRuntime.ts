@@ -87,7 +87,7 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
   });
   const reporting = openAgentHostToolReportingScope(context);
   let outputSpool: Awaited<ReturnType<typeof createSeneraOutputSpool>> | undefined;
-  let handoffSpool = true;
+  let cleanupOutputSpool = false;
   try {
     outputSpool = await createSeneraOutputSpool(
       assertInsideRoot(
@@ -121,7 +121,7 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
       outputSpool,
       profile: executionProfile,
     });
-    handoffSpool = result.outputCapture === undefined;
+    cleanupOutputSpool = result.outputCapture === undefined;
     return {
       response: createToolProcessSuccessResponse({
         command: parsed.data.command.script,
@@ -143,7 +143,6 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
       outputCapture: result.outputCapture,
     };
   } catch (error) {
-    handoffSpool = false;
     const failure = shellExecutionFailure({
       error,
       command: parsed.data.command.script,
@@ -155,7 +154,7 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
     return failure;
   } finally {
     await reporting.close();
-    if (handoffSpool) await outputSpool?.cleanup();
+    if (cleanupOutputSpool) await outputSpool?.cleanup();
   }
 };
 

@@ -43,21 +43,16 @@ test("cross-window preference refresh preserves manually toggled panels when the
     selectedModelProviderIdsBySession: { session_a: "provider_a" },
   });
 
-  window.dispatchEvent(
-    new StorageEvent("storage", {
-      key: PERSIST_KEY,
-      newValue: JSON.stringify({
-        state: {
-          defaultSidebarCollapsed: false,
-          defaultRightPanelCollapsed: false,
-          motionLevel: "full",
-          selectedModelProviderId: "provider_a",
-          selectedModelProviderIdsBySession: { session_a: "provider_a" },
-        },
-        version: 5,
-      }),
-    }),
-  );
+  dispatchPersistedStorage({
+    state: {
+      defaultSidebarCollapsed: false,
+      defaultRightPanelCollapsed: false,
+      motionLevel: "full",
+      selectedModelProviderId: "provider_a",
+      selectedModelProviderIdsBySession: { session_a: "provider_a" },
+    },
+    version: 5,
+  });
 
   expect(useStore.getState()).toMatchObject({
     sidebarCollapsed: true,
@@ -73,21 +68,16 @@ test("cross-window layout default changes still apply to the live panels", () =>
     rightPanelCollapsed: false,
   });
 
-  window.dispatchEvent(
-    new StorageEvent("storage", {
-      key: PERSIST_KEY,
-      newValue: JSON.stringify({
-        state: {
-          defaultSidebarCollapsed: true,
-          defaultRightPanelCollapsed: true,
-          motionLevel: useStore.getState().motionLevel,
-          selectedModelProviderId: useStore.getState().selectedModelProviderId,
-          selectedModelProviderIdsBySession: useStore.getState().selectedModelProviderIdsBySession,
-        },
-        version: 5,
-      }),
-    }),
-  );
+  dispatchPersistedStorage({
+    state: {
+      defaultSidebarCollapsed: true,
+      defaultRightPanelCollapsed: true,
+      motionLevel: useStore.getState().motionLevel,
+      selectedModelProviderId: useStore.getState().selectedModelProviderId,
+      selectedModelProviderIdsBySession: useStore.getState().selectedModelProviderIdsBySession,
+    },
+    version: 5,
+  });
 
   expect(useStore.getState()).toMatchObject({
     defaultSidebarCollapsed: true,
@@ -242,4 +232,13 @@ function installLocalStorage() {
       return storage.size;
     },
   };
+}
+
+function dispatchPersistedStorage(value) {
+  const event = new Event("storage");
+  Object.defineProperties(event, {
+    key: { value: PERSIST_KEY },
+    newValue: { value: JSON.stringify(value) },
+  });
+  window.dispatchEvent(event);
 }

@@ -118,7 +118,7 @@ export class AgentArtifactRetentionService {
       `artifact 根目录超出工作区：${config.RootDir}`,
     );
     const artifactRoot = (await this.boundary.resolve(lexicalRoot, AgentResourceAccessIntents.Read)).absolutePath;
-    const candidates = await scanArtifactDirectories(artifactRoot, config.MaintenanceMaxConcurrency);
+    const candidates = await scanArtifactDirectories(artifactRoot, config.MaintenanceMaxConcurrency, this.boundary);
     const now = Date.now();
     const removed = new Set<string>();
     let removedBytes = 0;
@@ -210,6 +210,7 @@ export class AgentArtifactRetentionService {
 async function scanArtifactDirectories(
   root: string,
   concurrency: number,
+  boundary: SeneraWorkspaceBoundary,
 ): Promise<{
   complete: ArtifactCandidate[];
   incomplete: IncompleteArtifactCandidate[];
@@ -218,8 +219,8 @@ async function scanArtifactDirectories(
   const complete: ArtifactCandidate[] = [];
   const incomplete: IncompleteArtifactCandidate[] = [];
   const [spools] = await Promise.all([
-    scanOutputSpoolDirectories(path.join(root, OutputSpoolDirectoryName), concurrency),
-    scanDirectory(root, complete, incomplete, concurrency),
+    scanOutputSpoolDirectories(path.join(root, OutputSpoolDirectoryName), concurrency, boundary),
+    scanDirectory(root, complete, incomplete, concurrency, boundary),
   ]);
   return { complete, incomplete, spools };
 }
@@ -229,44 +230,52 @@ async function scanDirectory(
   complete: ArtifactCandidate[],
   incomplete: IncompleteArtifactCandidate[],
   concurrency: number,
+  boundary: SeneraWorkspaceBoundary,
 ): Promise<void> {
   const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => []);
   if (entries.some((entry) => entry.isFile() && entry.name === AgentArtifactFileNames.manifest)) {
-    const candidate = await readCompleteCandidate(directory, concurrency);
+    const candidate = await readCompleteCandidate(boundary, directory, concurrency);
     if (candidate) complete.push(candidate);
     return;
   }
   if (entries.some((entry) => entry.isFile() && entry.name === ".artifact-writing")) {
-    incomplete.push(await readIncompleteCandidate(directory, concurrency));
+    incomplete.push(await readIncompleteCandidate(boundary, directory, concurrency));
   }
   await runWithConcurrency(
     entries.filter(
       (entry) => entry.isDirectory() && !entry.isSymbolicLink() && entry.name !== OutputSpoolDirectoryName,
     ),
     concurrency,
-    (entry) => scanDirectory(path.join(directory, entry.name), complete, incomplete, concurrency),
+    (entry) => scanDirectory(path.join(directory, entry.name), complete, incomplete, concurrency, boundary),
   );
 }
 
-async function scanOutputSpoolDirectories(root: string, concurrency: number): Promise<OutputSpoolCandidate[]> {
+async function scanOutputSpoolDirectories(
+  root: string,
+  concurrency: number,
+  boundary: SeneraWorkspaceBoundary,
+): Promise<OutputSpoolCandidate[]> {
   const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
   return runWithConcurrency(
     entries.filter((entry) => entry.isDirectory() && !entry.isSymbolicLink()),
     concurrency,
-    (entry) => readOutputSpoolCandidate(path.join(root, entry.name), concurrency),
+    (entry) => readOutputSpoolCandidate(boundary, path.join(root, entry.name), concurrency),
   );
 }
 
-async function readOutputSpoolCandidate(directory: string, concurrency: number): Promise<OutputSpoolCandidate> {
+async function readOutputSpoolCandidate(
+  boundary: SeneraWorkspaceBoundary,
+  directory: string,
+  concurrency: number,
+): Promise<OutputSpoolCandidate> {
   const markerPath = path.join(directory, SeneraOutputSpoolMarkerFileName);
-  const [directoryStat, markerStat, rawMarker] = await Promise.all([
+  const [directoryStat, markerSnapshot] = await Promise.all([
     fs.stat(directory),
-    fs.stat(markerPath).catch(() => undefined),
-    fs.readFile(markerPath, "utf8").catch(() => ""),
+    readOptionalTextFileSnapshot(boundary, markerPath),
   ]);
   let marker: Record<string, unknown> = {};
   try {
-    marker = JSON.parse(rawMarker) as Record<string, unknown>;
+    marker = JSON.parse(markerSnapshot?.content ?? "") as Record<string, unknown>;
   } catch {
     // A directory without a readable marker is still stale output and is retained only for the grace period.
   }
@@ -274,22 +283,25 @@ async function readOutputSpoolCandidate(directory: string, concurrency: number):
   return {
     directory,
     bytes: await measureDirectoryBytes(directory, concurrency),
-    modifiedAt: markerStat?.mtimeMs ?? directoryStat.mtimeMs,
+    modifiedAt: markerSnapshot?.modifiedAt ?? directoryStat.mtimeMs,
     sessionId: typeof marker.sessionId === "string" ? marker.sessionId : undefined,
     state,
   };
 }
 
-async function readCompleteCandidate(directory: string, concurrency: number): Promise<ArtifactCandidate | undefined> {
+async function readCompleteCandidate(
+  boundary: SeneraWorkspaceBoundary,
+  directory: string,
+  concurrency: number,
+): Promise<ArtifactCandidate | undefined> {
   const manifestPath = path.join(directory, AgentArtifactFileNames.manifest);
-  const [stat, bytes, rawManifest] = await Promise.all([
-    fs.stat(manifestPath),
+  const [manifestSnapshot, bytes] = await Promise.all([
+    readTextFileSnapshot(boundary, manifestPath),
     measureDirectoryBytes(directory, concurrency),
-    fs.readFile(manifestPath, "utf8"),
   ]);
   let manifest: { sessionId?: unknown; createdAt?: unknown } = {};
   try {
-    manifest = JSON.parse(rawManifest) as typeof manifest;
+    manifest = JSON.parse(manifestSnapshot.content) as typeof manifest;
   } catch {
     // An invalid manifest is still retained until the normal age/quota policy removes it.
   }
@@ -297,30 +309,57 @@ async function readCompleteCandidate(directory: string, concurrency: number): Pr
   return {
     directory,
     bytes,
-    modifiedAt: Number.isFinite(createdAt) ? createdAt : stat.mtimeMs,
+    modifiedAt: Number.isFinite(createdAt) ? createdAt : manifestSnapshot.modifiedAt,
     sessionId: typeof manifest.sessionId === "string" ? manifest.sessionId : undefined,
   };
 }
 
-async function readIncompleteCandidate(directory: string, concurrency: number): Promise<IncompleteArtifactCandidate> {
+async function readIncompleteCandidate(
+  boundary: SeneraWorkspaceBoundary,
+  directory: string,
+  concurrency: number,
+): Promise<IncompleteArtifactCandidate> {
   const markerPath = path.join(directory, ".artifact-writing");
-  const [stat, rawMarker] = await Promise.all([fs.stat(markerPath), fs.readFile(markerPath, "utf8").catch(() => "")]);
+  const marker = await readTextFileSnapshot(boundary, markerPath);
   let sessionId: string | undefined;
   let state: IncompleteArtifactCandidate["state"] = "failed";
   try {
-    const marker = JSON.parse(rawMarker) as { sessionId?: unknown; state?: unknown };
-    sessionId = typeof marker.sessionId === "string" ? marker.sessionId : undefined;
-    state = marker.state === "writing" ? "writing" : "failed";
+    const parsed = JSON.parse(marker.content) as { sessionId?: unknown; state?: unknown };
+    sessionId = typeof parsed.sessionId === "string" ? parsed.sessionId : undefined;
+    state = parsed.state === "writing" ? "writing" : "failed";
   } catch {
     // Markers written by older versions only contain an ISO timestamp.
   }
   return {
     directory,
     bytes: await measureDirectoryBytes(directory, concurrency),
-    modifiedAt: stat.mtimeMs,
+    modifiedAt: marker.modifiedAt,
     sessionId,
     state,
   };
+}
+
+interface TextFileSnapshot {
+  readonly content: string;
+  readonly modifiedAt: number;
+}
+
+async function readTextFileSnapshot(boundary: SeneraWorkspaceBoundary, filePath: string): Promise<TextFileSnapshot> {
+  const opened = await boundary.openFile(filePath, AgentResourceAccessIntents.Read);
+  try {
+    const [stat, content] = await Promise.all([opened.handle.stat(), opened.handle.readFile({ encoding: "utf8" })]);
+    if (!stat.isFile()) throw new Error(`Artifact metadata is not a regular file: ${filePath}`);
+    return { content, modifiedAt: stat.mtimeMs };
+  } finally {
+    await opened.handle.close();
+  }
+}
+
+async function readOptionalTextFileSnapshot(
+  boundary: SeneraWorkspaceBoundary,
+  filePath: string,
+): Promise<TextFileSnapshot | undefined> {
+  return readTextFileSnapshot(boundary, filePath).catch(() => undefined);
 }
 
 async function measureDirectoryBytes(directory: string, concurrency: number): Promise<number> {

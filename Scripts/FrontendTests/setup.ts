@@ -30,6 +30,8 @@ if (typeof window !== "undefined") {
 }
 
 class SeneraTestResizeObserver implements ResizeObserver {
+  constructor(_callback: ResizeObserverCallback) {}
+
   observe(): void {}
   unobserve(): void {}
   disconnect(): void {}

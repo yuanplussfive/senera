@@ -88,16 +88,12 @@ export class AgentPiProxyHttpApi {
     try {
       await handler(request, response);
     } catch (error) {
-      const proxyError = error instanceof AgentPiProxyRequestError ? error : undefined;
       if (response.headersSent) {
-        response.destroy(error instanceof Error ? error : new Error(String(error)));
+        response.destroy();
         return;
       }
-      writeJson(
-        response,
-        proxyError?.status ?? 500,
-        openAiError(proxyError?.code ?? "senera_pi_proxy_error", errorMessage(error)),
-      );
+      const proxyError = toPublicPiProxyError(error);
+      writeJson(response, proxyError.status, openAiError(proxyError.code, proxyError.message));
     }
   }
 
@@ -387,11 +383,12 @@ function openAiError(code: string, message: string): unknown {
   };
 }
 
-function errorMessage(error: unknown): string {
+function toPublicPiProxyError(error: unknown): AgentPiProxyRequestError {
+  if (error instanceof AgentPiProxyRequestError) return error;
   if (error instanceof z.ZodError) {
-    return error.issues.map((issue) => issue.message).join("; ");
+    return new AgentPiProxyRequestError("invalid_request", "Pi proxy request is invalid.");
   }
-  return error instanceof Error ? error.message : String(error);
+  return new AgentPiProxyRequestError("senera_pi_proxy_error", "Pi proxy request failed.", 500);
 }
 
 export function buildPiProxyBaseUrl(config: AgentSystemConfig): string {
