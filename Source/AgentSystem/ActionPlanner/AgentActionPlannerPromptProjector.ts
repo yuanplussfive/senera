@@ -95,13 +95,9 @@ function projectPlannerConversationMessages(
     ...timeline.map(projectTimelineTurnMessage),
     {
       role: "user",
-      content: JSON.stringify(
-        {
-          [PlannerPromptKeys.PlannerInput]: plannerInput,
-        },
-        null,
-        2,
-      ),
+      content: serializePlannerMessage({
+        [PlannerPromptKeys.PlannerInput]: plannerInput,
+      }),
     },
   ];
 }
@@ -129,23 +125,23 @@ function readPlannerTimeline(value: unknown): PlannerTimelineTurnRecord[] {
 function projectTimelineTurnMessage(turn: PlannerTimelineTurnRecord): AgentLanguageModelMessage {
   return {
     role: turn.role,
-    content: JSON.stringify(
-      {
-        [PlannerPromptKeys.Turn]: compactObject({
-          index: turn.index,
-          role: turn.role,
-          kind: turn.kind,
-          step: turn.step,
-          content: turn.payloadJson ? undefined : turn.content,
-          payload: decodePlannerTimelinePayload(turn.payloadJson ?? undefined),
-          evidenceUris: turn.evidenceUris,
-          artifactUris: turn.artifactUris,
-        }),
-      },
-      null,
-      2,
-    ),
+    content: serializePlannerMessage({
+      [PlannerPromptKeys.Turn]: compactObject({
+        index: turn.index,
+        role: turn.role,
+        kind: turn.kind,
+        step: turn.step,
+        content: turn.payloadJson ? undefined : turn.content,
+        payload: decodePlannerTimelinePayload(turn.payloadJson ?? undefined),
+        evidenceUris: turn.evidenceUris,
+        artifactUris: turn.artifactUris,
+      }),
+    }),
   };
+}
+
+function serializePlannerMessage(value: unknown): string {
+  return JSON.stringify(value);
 }
 
 function omitRecordKeys(record: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {

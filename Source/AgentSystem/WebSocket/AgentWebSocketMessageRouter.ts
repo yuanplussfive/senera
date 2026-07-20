@@ -6,6 +6,8 @@ import { projectAgentWebSocketRequestFailure } from "./AgentWebSocketRequestFail
 import {
   AgentWebSocketApprovalRequestHandlers,
   AgentWebSocketConfigRequestHandlers,
+  AgentWebSocketExecutionResourceRequestHandlers,
+  AgentWebSocketInteractionInputRequestHandlers,
   AgentWebSocketPresetRequestHandlers,
   AgentWebSocketProfileRequestHandlers,
   AgentWebSocketSandboxRequestHandlers,
@@ -13,6 +15,7 @@ import {
 } from "./AgentWebSocketRequestHandlers.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentWebSocketRequestScheduler } from "./AgentWebSocketRequestScheduler.js";
 
 export class AgentWebSocketMessageRouter {
   private readonly session: AgentWebSocketSessionRequestHandlers;
@@ -20,13 +23,17 @@ export class AgentWebSocketMessageRouter {
   private readonly preset: AgentWebSocketPresetRequestHandlers;
   private readonly profile: AgentWebSocketProfileRequestHandlers;
   private readonly approval: AgentWebSocketApprovalRequestHandlers;
+  private readonly interactionInput: AgentWebSocketInteractionInputRequestHandlers;
   private readonly sandbox: AgentWebSocketSandboxRequestHandlers;
+  private readonly executionResources: AgentWebSocketExecutionResourceRequestHandlers;
+  private readonly scheduler = new AgentWebSocketRequestScheduler();
 
   constructor(
     private readonly options: {
       context: AgentWebSocketRequestContext;
-      sendEnvelope: (socket: WebSocket, event: AgentDomainEvent) => void;
-      broadcast: (event: AgentDomainEvent) => void;
+      sendEnvelope: (socket: WebSocket, event: AgentDomainEvent) => void | Promise<void>;
+      broadcast: (event: AgentDomainEvent) => void | Promise<void>;
+      flushPersistence?: () => Promise<void>;
     },
   ) {
     this.session = new AgentWebSocketSessionRequestHandlers(options.context);
@@ -34,25 +41,41 @@ export class AgentWebSocketMessageRouter {
     this.preset = new AgentWebSocketPresetRequestHandlers(options.context);
     this.profile = new AgentWebSocketProfileRequestHandlers(options.context);
     this.approval = new AgentWebSocketApprovalRequestHandlers(options.context);
+    this.interactionInput = new AgentWebSocketInteractionInputRequestHandlers(options.context);
     this.sandbox = new AgentWebSocketSandboxRequestHandlers(options.context);
+    this.executionResources = new AgentWebSocketExecutionResourceRequestHandlers(options.context);
   }
 
   async handleMessage(socket: WebSocket, data: RawData): Promise<void> {
     const parsed = this.parseMessage(data);
     if (!parsed.ok) {
-      this.options.sendEnvelope(socket, parsed.event);
+      await this.options.sendEnvelope(socket, parsed.event);
       return;
     }
 
-    const sendEvent = (event: AgentDomainEvent): void => {
-      this.options.sendEnvelope(socket, event);
+    const sendEvent = (event: AgentDomainEvent): void | Promise<void> => {
+      return this.options.sendEnvelope(socket, event);
     };
 
     try {
-      await this.dispatch(parsed.request, sendEvent);
+      await this.scheduler.run(parsed.request, () => this.dispatch(parsed.request, sendEvent));
+      await this.options.flushPersistence?.();
     } catch (error) {
-      sendEvent(projectAgentWebSocketRequestFailure(parsed.request, error, this.options.context));
+      await sendEvent(projectAgentWebSocketRequestFailure(parsed.request, error, this.options.context));
+      await this.recoverOptimisticRequest(parsed.request, sendEvent);
     }
+  }
+
+  private async recoverOptimisticRequest(
+    request: AgentWebSocketRequest,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    if (request.type !== "session.regenerate") return;
+    await this.options.context.sessionManager.replayHistory({
+      sessionId: request.sessionId,
+      refresh: true,
+      onEvent: sendEvent,
+    });
   }
 
   private async dispatch(request: AgentWebSocketRequest, sendEvent: AgentWebSocketEventSender): Promise<void> {
@@ -62,6 +85,8 @@ export class AgentWebSocketMessageRouter {
       "session.close": (entry) => this.session.close(entry, sendEvent),
       "session.cancel": (entry) => this.session.cancel(entry, sendEvent),
       "session.truncate_from": (entry) => this.session.truncateFrom(entry, sendEvent),
+      "session.regenerate": (entry) => this.session.regenerate(entry, sendEvent),
+      "session.fork": (entry) => this.session.fork(entry, sendEvent),
       "session.list": () => this.session.list(sendEvent),
       "session.history": (entry) => this.session.history(entry, sendEvent),
       "session.rename": (entry) => this.session.rename(entry, sendEvent),
@@ -86,7 +111,14 @@ export class AgentWebSocketMessageRouter {
       "profile.get": () => this.profile.get(sendEvent),
       "profile.update": (entry) => this.profile.update(entry, sendEvent),
       "approval.resolve": (entry) => this.approval.resolve(entry, sendEvent),
+      "interaction.input.resolve": (entry) => this.interactionInput.resolve(entry),
       "sandbox.status": () => this.sandbox.status(sendEvent),
+      "execution.resource.list": (entry) => this.executionResources.list(entry, sendEvent),
+      "execution.resource.inspect": (entry) => this.executionResources.inspect(entry, sendEvent),
+      "execution.resource.write": (entry) => this.executionResources.write(entry, sendEvent),
+      "execution.resource.resize": (entry) => this.executionResources.resize(entry, sendEvent),
+      "execution.resource.signal": (entry) => this.executionResources.signal(entry, sendEvent),
+      "execution.resource.stop_all": (entry) => this.executionResources.stopAll(entry, sendEvent),
     });
   }
 

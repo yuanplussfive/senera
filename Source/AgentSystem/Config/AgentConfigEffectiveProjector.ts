@@ -1,6 +1,7 @@
 import type { AgentModelProviderEndpointConfig, AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import {
   AgentDefaults,
+  resolveActionPlannerConfig,
   resolveAgentDefaults,
   resolveAgentLoopConfig,
   resolveArtifactsConfig,
@@ -11,12 +12,12 @@ import {
   resolvePresetsConfig,
   resolveServerConfig,
   resolveToolExecutionConfig,
+  resolveToolLearningConfig,
   resolveToolSearchConfig,
   resolveUploadsConfig,
   resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
 
-import { mergeActionPlannerClientConfig } from "../Defaults/AgentPlannerDefaults.js";
 export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemConfig {
   return {
     ...config,
@@ -90,40 +91,32 @@ function defaultModelProviderEndpointFields(id: string) {
 }
 
 function projectResolvedActionPlanner(config: AgentSystemConfig): NonNullable<AgentSystemConfig["ActionPlanner"]> {
-  const defaults = resolveAgentDefaults(config).ActionPlanner;
-  const configured = config.ActionPlanner;
-  const sharedClient = mergeActionPlannerClientConfig(defaults.Client, configured?.Client);
+  const resolved = resolveActionPlannerConfig(config);
   return {
-    Enabled: configured?.Enabled ?? defaults.Enabled,
-    MaxRepairAttempts: configured?.MaxRepairAttempts ?? defaults.MaxRepairAttempts,
-    Evidence: { ...defaults.Evidence, ...configured?.Evidence },
-    Client: projectResolvedPlannerClient(sharedClient),
-    TurnUnderstandingClient: projectResolvedPlannerClient(
-      mergeActionPlannerClientConfig(sharedClient, configured?.TurnUnderstandingClient),
-    ),
-    PlanningClient: projectResolvedPlannerClient(
-      mergeActionPlannerClientConfig(sharedClient, configured?.PlanningClient),
-    ),
+    Enabled: resolved.Enabled,
+    MaxRepairAttempts: resolved.MaxRepairAttempts,
+    Evidence: resolved.Evidence,
+    Client: projectResolvedPlannerClient(resolved.Client),
+    PlanningClient: projectResolvedPlannerClient(resolved.PlanningClient),
+    FinalAnswerClient: projectResolvedPlannerClient(resolved.FinalAnswerClient),
   };
 }
 
-function projectResolvedPlannerClient(client: ReturnType<typeof mergeActionPlannerClientConfig>) {
+function projectResolvedPlannerClient(client: ReturnType<typeof resolveActionPlannerConfig>["Client"]) {
   return {
     ModelProviderId: client.ModelProviderId,
-    Provider: client.Provider ?? AgentDefaults.ActionPlanner.Client.Provider,
-    Temperature: client.Temperature ?? AgentDefaults.ActionPlanner.Client.Temperature,
-    MaxTokens: client.MaxTokens ?? AgentDefaults.ActionPlanner.Client.MaxTokens,
+    Temperature: client.Temperature,
+    MaxTokens: client.MaxTokens,
   };
 }
 
 function projectResolvedToolLearning(config: AgentSystemConfig): NonNullable<AgentSystemConfig["ToolLearning"]> {
-  const defaults = resolveAgentDefaults(config).ToolLearning;
-  const configured = config.ToolLearning;
+  const resolved = resolveToolLearningConfig(config);
   return {
-    Enabled: configured?.Enabled ?? defaults.Enabled,
-    MaxRepairAttempts: configured?.MaxRepairAttempts ?? defaults.MaxRepairAttempts,
-    Patterns: { ...defaults.Patterns, ...configured?.Patterns },
-    Client: projectResolvedPlannerClient(mergeActionPlannerClientConfig(defaults.Client, configured?.Client)),
+    Enabled: resolved.Enabled,
+    MaxRepairAttempts: resolved.MaxRepairAttempts,
+    Patterns: resolved.Patterns,
+    Client: projectResolvedPlannerClient(resolved.Client),
   };
 }
 
@@ -136,6 +129,22 @@ function projectResolvedToolExecution(config: AgentSystemConfig): NonNullable<Ag
       AgentDefaults.ToolExecution.TimeoutSeconds,
     MaxStdoutBytes: resolved.MaxStdoutBytes,
     MaxStderrBytes: resolved.MaxStderrBytes,
+    Environment: {
+      Inherit: resolved.Environment.Inherit,
+      IncludeOnly: [...resolved.Environment.IncludeOnly],
+      Exclude: [...resolved.Environment.Exclude],
+      Set: { ...resolved.Environment.Set },
+    },
+    Resources: {
+      MaxActive: resolved.Resources.MaxActive,
+      MaxBufferedBytes: resolved.Resources.MaxBufferedBytes,
+      MaxInputBytes: resolved.Resources.MaxInputBytes,
+      MaxWaitSeconds: resolved.Resources.MaxWaitSeconds,
+      IdleTtlSeconds: resolved.Resources.IdleTtlSeconds,
+      TerminalTtlSeconds: resolved.Resources.TerminalTtlSeconds,
+      SweepIntervalSeconds: resolved.Resources.SweepIntervalSeconds,
+      TerminationGraceSeconds: resolved.Resources.TerminationGraceSeconds,
+    },
   };
 }
 

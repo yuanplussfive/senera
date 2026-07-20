@@ -13,12 +13,14 @@ COPY System/Plugins ./System/Plugins
 COPY Plugins ./Plugins
 
 RUN npm ci --ignore-scripts
+RUN npm rebuild better-sqlite3 --build-from-source
 
 COPY . .
 
 RUN npm run build
 RUN npm --workspace senera-frontend run build
 RUN npm prune --omit=dev
+RUN node Dist/Scripts/VerifyDockerNativeSqlite.js
 
 FROM node:22-trixie-slim AS runtime
 
@@ -39,7 +41,7 @@ COPY --from=builder /app/Plugins ./Plugins
 COPY --from=builder /app/Packages ./Packages
 COPY --from=builder /app/senera.config.example.json ./senera.config.example.json
 
-RUN mkdir -p /data \
+RUN mkdir -p /data/Plugins \
   && chown -R node:node /data /app/Frontend/dist
 
 USER node

@@ -27,7 +27,7 @@ const PiPlannedToolCallSchema = z
 const PiControllerActionSchema = z
   .object({
     kind: z.enum(["FinalAnswer", "AskUser", "CallTools"]),
-    answer: z.string().optional(),
+    answerPlan: z.array(z.string().trim().min(1)).optional(),
     question: z.string().optional(),
     preface: z.string().optional(),
     calls: z.array(PiPlannedToolCallSchema).optional(),
@@ -49,9 +49,13 @@ export function parsePiControllerAction(
   value: unknown,
   options: {
     allowedTools: readonly string[];
+    implicitFinalAnswerPlan?: string;
   },
 ): ParsedPiControllerAction {
-  const parsed = safeParseNormalizedBamlOutput(PiControllerActionSchema, value);
+  const parsed = safeParseNormalizedBamlOutput(
+    PiControllerActionSchema,
+    projectImplicitFinalAnswerPlan(value, options.implicitFinalAnswerPlan),
+  );
   if (!parsed.success) {
     throw new AgentActionPlannerValidationError(parsed.structuredIssues, parsed.normalized);
   }
@@ -62,6 +66,12 @@ export function parsePiControllerAction(
   }
 
   return parsed.data;
+}
+
+function projectImplicitFinalAnswerPlan(value: unknown, plan: string | undefined): unknown {
+  if (!plan || !value || typeof value !== "object" || Array.isArray(value)) return value;
+  const action = value as Record<string, unknown>;
+  return action.kind === "FinalAnswer" && action.answerPlan == null ? { ...action, answerPlan: [plan] } : value;
 }
 
 export function parsePiToolArgumentsDraft(value: unknown): ParsedPiToolArgumentsDraft {
@@ -85,12 +95,13 @@ function validatePiControllerAction(
 
   const validators = {
     FinalAnswer: () => {
-      if (!action.answer?.trim()) {
-        issues.push(createAgentStructuredIssue(agentErrorMessage("pi.finalAnswerMissingAnswer"), ["answer"]));
+      if (!action.answerPlan?.length) {
+        issues.push(createAgentStructuredIssue(agentErrorMessage("pi.finalAnswerMissingPlan"), ["answerPlan"]));
       }
       if (calls.length > 0) {
         issues.push(createAgentStructuredIssue(agentErrorMessage("pi.finalAnswerContainsCalls"), ["calls"]));
       }
+      rejectFields(action, ["question", "preface"], issues);
     },
     AskUser: () => {
       if (!action.question?.trim()) {
@@ -99,6 +110,7 @@ function validatePiControllerAction(
       if (calls.length > 0) {
         issues.push(createAgentStructuredIssue(agentErrorMessage("pi.askUserContainsCalls"), ["calls"]));
       }
+      rejectFields(action, ["answerPlan", "preface"], issues);
     },
     CallTools: () => {
       if (!action.preface?.trim()) {
@@ -107,6 +119,7 @@ function validatePiControllerAction(
       if (calls.length === 0) {
         issues.push(createAgentStructuredIssue(agentErrorMessage("pi.callToolsMissingCalls"), ["calls"]));
       }
+      rejectFields(action, ["answerPlan", "question"], issues);
     },
   } satisfies Record<ParsedPiControllerAction["kind"], () => void>;
 
@@ -137,4 +150,18 @@ function validatePiControllerAction(
   });
 
   return issues;
+}
+
+function rejectFields(
+  action: ParsedPiControllerAction,
+  fields: readonly (keyof ParsedPiControllerAction)[],
+  issues: AgentStructuredIssue[],
+): void {
+  for (const field of fields) {
+    if (action[field] !== undefined) {
+      issues.push(
+        createAgentStructuredIssue(agentErrorMessage("pi.actionContainsIncompatibleField", { field }), [field]),
+      );
+    }
+  }
 }

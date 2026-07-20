@@ -66,7 +66,7 @@ async function verifyToolResultProjection(): Promise<void> {
   });
   assert.equal(result.details.senera.toolName, "SeneraEchoTool");
   assert.equal(result.details.senera.callId, "call_echo");
-  assert.equal(result.details.senera.executed?.artifact?.artifactUri, "senera://artifact/art_0123456789abcdef01234567");
+  assert.equal(result.details.senera.artifactUri, "senera://artifact/art_0123456789abcdef01234567");
   const text = result.content[0]?.type === "text" ? result.content[0].text : "";
   assert.match(text, /senera\.tool_observation\.v1/);
   assert.match(text, /evidence_uri/);
@@ -123,7 +123,8 @@ async function verifyLargeToolResultProjectionIsBudgeted(): Promise<void> {
 
   assert.match(text, /\.\.\./);
   assert.equal(text.includes(hugeText.slice(0, 200_000)), false);
-  assert.ok(text.length < 10_000, `Pi tool result text should stay compact, got ${text.length}`);
+  assert.ok(text.length < 24_000, `Pi tool result text should stay within its token projection, got ${text.length}`);
+  assert.ok(JSON.stringify(result).length < 32_000, "Pi persisted tool details must not retain the raw result.");
 }
 
 async function verifyAskUserProjection(): Promise<void> {
@@ -149,7 +150,6 @@ async function verifyAskUserProjection(): Promise<void> {
   });
 
   assert.equal(result.terminate, true);
-  assert.equal((result.details.senera.result as { question?: string }).question, "需要哪个目录？");
   assert.match(result.content[0]?.type === "text" ? result.content[0].text : "", /需要用户输入/);
 }
 

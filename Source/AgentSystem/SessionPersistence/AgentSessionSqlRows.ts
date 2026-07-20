@@ -15,6 +15,17 @@ export interface SessionListRow extends SessionRow {
   message_count: number;
 }
 
+export interface SessionHistoryMutationRow {
+  mutation_id: string;
+  session_id: string;
+  kind: string;
+  from_request_id: string;
+  pi_kind: string;
+  pi_entry_id: string | null;
+  model_provider_id: string | null;
+  created_at: string;
+}
+
 export interface EntryRow {
   id: string;
   session_id: string;
@@ -34,6 +45,7 @@ export interface RunEventRow {
   event_sequence: number;
   step: number | null;
   detail_id: string | null;
+  event_id: string;
   event_json: string;
 }
 
@@ -61,4 +73,11 @@ export interface RunSnapshotRow {
   ended_at: string | null;
   error_message: string | null;
   model_provider: string | null;
+}
+
+export interface TurnPreparationRow {
+  session_id: string;
+  request_id: string;
+  snapshot_json: string;
+  created_at: string;
 }

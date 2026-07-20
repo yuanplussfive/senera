@@ -10,10 +10,11 @@ import {
 } from "./DesktopFrontendSource.js";
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
 import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
-import { isTrustedDesktopNavigation, resolveExternalHttpUrl } from "./DesktopNavigationPolicy.js";
+import { isTrustedDesktopNavigation } from "./DesktopNavigationPolicy.js";
 import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
 import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
 import { desktopMessage } from "./DesktopMessageCatalog.js";
+import { resolveAgentExternalUrl } from "../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
 
 let serverHandle: SeneraServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -97,8 +98,11 @@ app.on("before-quit", (event) => {
   forceSettingsWindowClose = true;
   desktopTray?.destroy();
   desktopTray = undefined;
-  serverHandle?.stop();
+  const handle = serverHandle;
   serverHandle = undefined;
+  if (!handle) return;
+  event.preventDefault();
+  void handle.stop().finally(() => app.quit());
 });
 
 function registerDesktopIpc(): void {
@@ -150,6 +154,10 @@ function registerDesktopIpc(): void {
   ipcMain.handle("senera:window.get-state", (event) => {
     const target = resolveManagedWindow(event);
     return target ? readWindowState(target) : undefined;
+  });
+  ipcMain.handle("senera:external-url.open", async (_event, input: string) => {
+    const external = resolveAgentExternalUrl(input);
+    await shell.openExternal(external.url, { activate: true });
   });
 }
 
@@ -340,11 +348,18 @@ function registerNavigationPolicy(window: BrowserWindow, source: DesktopFrontend
 }
 
 function openExternalHttpUrl(value: string): void {
-  const url = resolveExternalHttpUrl(value);
-  if (!url) return;
-  void shell.openExternal(url).catch((error) => {
+  let externalUrl: string;
+  try {
+    externalUrl = resolveAgentExternalUrl(value).url;
+  } catch (error) {
+    if (runtimePaths) {
+      appendDesktopLog(runtimePaths.logPath, "blocked external navigation: " + String(error));
+    }
+    return;
+  }
+  void shell.openExternal(externalUrl, { activate: true }).catch((error) => {
     if (!runtimePaths) return;
-    appendDesktopLog(runtimePaths.logPath, "external navigation failed url=" + url + " error=" + String(error));
+    appendDesktopLog(runtimePaths.logPath, "external navigation failed url=" + externalUrl + " error=" + String(error));
   });
 }
 

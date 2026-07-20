@@ -10,7 +10,6 @@ const config: AgentSystemConfig = {
     ActionPlanner: {
       Enabled: true,
       Client: {
-        Provider: "openai-generic",
         Temperature: 0.1,
         MaxTokens: -1,
       },
@@ -73,6 +72,18 @@ assert.equal(loadedTools.effectiveValue, "dynamic");
 const plannerProvider = findField(form, ["ActionPlanner", "Client", "Provider"]);
 assert.equal(plannerProvider.type, "string");
 assert.ok(plannerProvider.options?.includes("openai-generic"));
+
+const toolSearchMaxResults = findField(form, ["ToolSearch", "Ranking", "MaxResults"]);
+assert.equal(toolSearchMaxResults.type, "number");
+assert.equal(toolSearchMaxResults.effectiveValue, 6);
+
+const intentGateMode = findField(form, ["ToolSearch", "Ranking", "IntentGate", "Mode"]);
+assert.deepEqual(intentGateMode.options, ["disabled", "side_effect_capability"]);
+assert.equal(intentGateMode.effectiveValue, "side_effect_capability");
+
+const memoryExpansionMode = findField(form, ["ToolSearch", "Ranking", "MemoryExpansion", "Mode"]);
+assert.deepEqual(memoryExpansionMode.options, ["disabled", "fallback", "augment"]);
+assert.equal(memoryExpansionMode.effectiveValue, "fallback");
 
 console.log("Agent config form projection verified.");
 

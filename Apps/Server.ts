@@ -2,9 +2,11 @@ import { startSeneraServer } from "./ServerRuntime.js";
 
 function main(): void {
   const handle = startSeneraServer();
+  let shutdownPromise: Promise<void> | undefined;
   const shutdown = (): void => {
-    handle.stop();
-    process.exit(0);
+    shutdownPromise ??= handle.stop().finally(() => {
+      process.exit(0);
+    });
   };
 
   process.on("SIGINT", shutdown);

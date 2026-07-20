@@ -13,6 +13,7 @@ export const AgentArtifactFileNames = {
   manifest: "manifest.json",
   input: "input.redacted.json",
   raw: "raw.json",
+  rawPreview: "raw.preview.json",
   summary: "summary.md",
   summaryJson: "summary.json",
   evidence: "evidence.json",
@@ -22,6 +23,8 @@ export const AgentArtifactFileNames = {
   workspaceAfter: "workspace.after.json",
   workspaceDiff: "workspace.diff.json",
   workspacePatch: "workspace.patch",
+  stdout: "stdout.txt",
+  stderr: "stderr.txt",
   workspaceBeforeDir: "workspace/before",
   workspaceAfterDir: "workspace/after",
 } as const;

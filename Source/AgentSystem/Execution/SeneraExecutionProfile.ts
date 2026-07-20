@@ -34,7 +34,7 @@ export interface SeneraProcessMicrosandboxProfile {
 
 export interface SeneraProcessExecutionProfile {
   name: string;
-  kind: "shell" | "plugin-process" | "mcp-server";
+  kind: "shell" | "mcp-server";
   backend?: SeneraProcessBackendPreference;
   localFallback?: SeneraProcessLocalFallback;
   microsandbox?: SeneraProcessMicrosandboxProfile;

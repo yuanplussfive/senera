@@ -148,6 +148,118 @@ describe("ToolSearch core", () => {
     expect(results[0]?.matchedCapabilities[0]?.matchedFacets).toContain("Actions");
     expect(results.map((result) => result.toolName)).not.toContain("WeatherTool");
   });
+
+  test("uses learned aliases as a bounded fallback instead of polluting lexical candidates", () => {
+    const index = new AgentToolSearchIndex(
+      createRegistry([
+        createTool({
+          name: "WorkspaceReadFile",
+          title: "Read file",
+          summary: "Read project files from the workspace",
+          tags: ["workspace", "read"],
+          actions: ["read"],
+          targets: ["workspace", "file"],
+          priority: 10,
+        }),
+        createTool({
+          name: "WeatherTool",
+          title: "Weather",
+          summary: "Fetch weather forecast",
+          tags: ["weather"],
+          actions: ["forecast"],
+          targets: ["weather", "city"],
+          priority: 50,
+        }),
+      ]),
+      createToolSearchConfig(),
+    );
+    const learnedWeather = {
+      toolName: "WeatherTool",
+      evidence: 4,
+      confidence: 0.9,
+      rankScore: 1,
+      signals: [
+        {
+          term: "meteorology-alias",
+          source: "toolLearning.trigger",
+          support: 4,
+          confidence: 0.9,
+          score: 4,
+          lastSeenAt: 1,
+        },
+      ],
+    };
+
+    const lexical = index.search({
+      query: "read workspace file",
+      memoryEvidence: [learnedWeather],
+    });
+    const learnedFallback = index.search({
+      query: "meteorology-alias",
+      memoryEvidence: [learnedWeather],
+    });
+    const weakFallback = index.search({
+      query: "weak-alias",
+      memoryEvidence: [{ ...learnedWeather, evidence: 2, confidence: 0.79 }],
+    });
+
+    expect(lexical.map((result) => result.toolName)).toEqual(["WorkspaceReadFile"]);
+    expect(learnedFallback.map((result) => result.toolName)).toEqual(["WeatherTool"]);
+    expect(weakFallback).toEqual([]);
+  });
+
+  test("caps diversified search output with the configured result budget", () => {
+    const config = createToolSearchConfig();
+    config.Ranking.MaxResults = 1;
+    const index = new AgentToolSearchIndex(
+      createRegistry([
+        createTool({
+          name: "WorkspaceReadFile",
+          title: "Read file",
+          summary: "Read workspace files",
+          tags: ["workspace", "file", "read"],
+          actions: ["read"],
+          targets: ["workspace", "file"],
+          priority: 10,
+        }),
+        createTool({
+          name: "WorkspaceEditFile",
+          title: "Edit file",
+          summary: "Edit workspace files",
+          tags: ["workspace", "file", "edit"],
+          actions: ["edit"],
+          targets: ["workspace", "file"],
+          priority: 20,
+        }),
+      ]),
+      config,
+    );
+
+    expect(index.search({ query: "workspace file" })).toHaveLength(1);
+  });
+
+  test("requires capability intent before recalling tools that declare side effects", () => {
+    const tool = createTool({
+      name: "WorkspaceEditFile",
+      title: "Edit file",
+      summary: "Apply targeted edits to workspace files",
+      tags: ["workspace", "edit"],
+      actions: ["edit", "replace"],
+      targets: ["workspace", "file"],
+      examples: ["update a tool description"],
+      sideEffect: "write-workspace",
+      priority: 10,
+    });
+    const index = new AgentToolSearchIndex(createRegistry([tool]), createToolSearchConfig());
+
+    expect(index.search({ query: "tool description" })).toEqual([]);
+    expect(index.search({ query: "edit workspace file" }).map((result) => result.toolName)).toEqual([
+      "WorkspaceEditFile",
+    ]);
+    expect(index.search({ query: "use WorkspaceEditFile" }).map((result) => result.toolName)).toEqual([
+      "WorkspaceEditFile",
+    ]);
+  });
 });
 
 function createRegistry(tools: RegisteredTool[]): AgentToolSearchRegistryReader {
@@ -164,8 +276,11 @@ function createTool(options: {
   actions: string[];
   targets: string[];
   priority: number;
+  examples?: string[];
+  sideEffect?: string;
 }): RegisteredTool {
   return {
+    loading: "Dynamic",
     plugin: {
       rootPath: "",
       rootKind: "System",
@@ -186,6 +301,7 @@ function createTool(options: {
         diagnostics: [],
       },
       manifest: {
+        ManifestVersion: 2,
         Plugin: {
           Name: `${options.name}Plugin`,
           Title: options.title,
@@ -201,6 +317,7 @@ function createTool(options: {
     name: options.name,
     permissions: [],
     handler: { kind: "HostCapability", capability: options.name },
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
     execution: {
       Boundary: "Local",
       Network: "Deny",
@@ -212,6 +329,7 @@ function createTool(options: {
       Summary: options.summary,
       Tags: options.tags,
       UseCases: [options.summary],
+      Examples: options.examples,
       Capabilities: [
         {
           Id: `${options.name}.capability`,
@@ -220,7 +338,9 @@ function createTool(options: {
           Facets: {
             Actions: options.actions,
             Targets: options.targets,
+            Effects: options.sideEffect ? [options.sideEffect] : undefined,
           },
+          Risk: options.sideEffect ? { SideEffect: options.sideEffect } : undefined,
         },
       ],
     },
@@ -248,6 +368,16 @@ function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
       MmrLambda: 0.72,
       MmrCandidateScoreRatio: 0.92,
       MinScore: 0,
+      MaxResults: 6,
+      IntentGate: {
+        Mode: "side_effect_capability",
+      },
+      MemoryExpansion: {
+        Mode: "fallback",
+        MinConfidence: 0.8,
+        MinEvidence: 3,
+        MaxResults: 2,
+      },
     },
     Rerank: {
       Enabled: true,

@@ -147,6 +147,7 @@ export class AgentToolObservationProjector {
       }
 
       const record = entry as Record<string, unknown>;
+      const plannerMemory = readRecord(record.plannerMemory);
       return compactObject({
         evidenceUri: record.evidenceUri,
         kind: record.kind,
@@ -155,6 +156,8 @@ export class AgentToolObservationProjector {
         label: record.label,
         source: record.source,
         confidence: record.confidence,
+        artifactUri: plannerMemory?.artifactUri,
+        artifactRefs: readFlexibleArrayItems(plannerMemory?.artifactRefs, this.protocol.items.arrayItem),
         slots: this.projectEvidenceSlots(record.slots),
       });
     });
@@ -237,4 +240,8 @@ export class AgentToolObservationProjector {
 
 function readArtifactUri(value: string | undefined): string | undefined {
   return value ? (normalizeAgentArtifactUri(value) ?? value) : undefined;
+}
+
+function readFlexibleArrayItems(value: unknown, itemKey: string): unknown[] {
+  return Array.isArray(value) ? value : readArrayItems(value, itemKey);
 }

@@ -1,7 +1,13 @@
 import crypto from "node:crypto";
 import { normalizeOpaDecision, type PolicyClient } from "@ai-sdk/policy-opa";
 import { type AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
-import { AgentApprovalKinds } from "../Approvals/AgentApprovalTypes.js";
+import {
+  AgentApprovalDecisions,
+  AgentApprovalDispositions,
+  AgentApprovalKinds,
+  AgentApprovalStatuses,
+} from "../Approvals/AgentApprovalTypes.js";
+import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import {
   type SeneraProcessFallbackAuthorization,
   type SeneraProcessFallbackAuthorizationRequest,
@@ -65,12 +71,21 @@ export class AgentExecutionFallbackAuthorizer implements SeneraProcessFallbackAu
       signal: request.signal,
       approval: {
         kind: AgentApprovalKinds.ExecutionFallback,
+        sessionId: request.context.sessionId,
         requestId: request.context.requestId,
         step: request.context.step,
+        toolCallId: request.context.toolCallId,
+        batchId: request.context.batchId,
         title: `允许 ${subject.pluginTitle} 在本机运行`,
         reason: metadata.reason,
         rule: metadata.rule,
         riskSignals: metadata.riskSignals,
+        availableDecisions: [
+          AgentApprovalDecisions.ApproveOnce,
+          AgentApprovalDecisions.ApproveSession,
+          AgentApprovalDecisions.Deny,
+          AgentApprovalDecisions.DenyAndInterrupt,
+        ],
         subject: {
           kind: AgentApprovalKinds.ExecutionFallback,
           ...subject,
@@ -80,7 +95,10 @@ export class AgentExecutionFallbackAuthorizer implements SeneraProcessFallbackAu
         },
       },
     });
-    if (resolution.status !== "approved") {
+    if (resolution.status !== AgentApprovalStatuses.Approved) {
+      if (resolution.disposition === AgentApprovalDispositions.Interrupt) {
+        throw new AgentCancellationError(resolution.message ?? "用户中断了本地回退审批。");
+      }
       throw fallbackDenied(request, {
         ...metadata,
         reason: resolution.message ?? "用户拒绝了本地回退审批。",
@@ -169,6 +187,7 @@ function fallbackGrantFingerprint(request: SeneraProcessFallbackAuthorizationReq
     .createHash("sha256")
     .update(
       JSON.stringify({
+        sessionId: request.context.sessionId,
         subject: request.context.subject,
         fromBackend: request.fromBackend,
         toBackend: request.toBackend,

@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import { AgentPromptContractProjector } from "../Prompt/AgentPromptContractProjector.js";
 import type { ToolSearchDocument } from "./AgentToolSearchTypes.js";
 import { capabilityFacetEntries, capabilityRiskText, capabilitySearchText } from "./AgentToolSearchCapabilities.js";
 
@@ -31,8 +30,6 @@ export const ToolSearchDocumentStoreFields = [
 ] satisfies Array<keyof ToolSearchDocument>;
 
 export class AgentToolSearchDocumentBuilder {
-  private readonly contractProjector = new AgentPromptContractProjector();
-
   build(tool: RegisteredTool): ToolSearchDocument {
     const search = tool.search;
     const title = tool.plugin.manifest.Plugin.Title ?? tool.name;
@@ -100,7 +97,7 @@ export class AgentToolSearchDocumentBuilder {
     }
 
     try {
-      const contract = this.contractProjector.projectFromFile(tool.signatureFile, "arguments", tool.signatureType);
+      const contract = tool.contract?.arguments;
       const fields = contract?.properties.flatMap(readContractPropertyTokens) ?? [];
       return fields.map((field) => field.name).join(" ");
     } catch {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { AgentJsonFileLoader } from "../Source/AgentSystem/Config/AgentJsonFileLoader.js";
 import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
@@ -17,12 +18,18 @@ import type {
 } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { PluginManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
 
+const sessionsRoot = createTemporarySessionsRoot("harness-reuse");
 const config: AgentSystemConfig = {
   Server: {
     Host: "127.0.0.1",
     Port: 8787,
   },
   DefaultModelProviderId: "verification-model",
+  AgentLoop: {
+    PiSessions: {
+      RootDir: sessionsRoot,
+    },
+  },
   ModelProviderEndpoints: [
     {
       Id: "verification-provider",
@@ -91,7 +98,7 @@ const substrate = new AgentPiSubstrate({
 
 const sessionId = `verify-pi-harness-reuse-${randomUUID()}`;
 const events: AgentDomainEvent[] = [];
-const first = await substrate.createSession({
+const first = await substrate.leaseTurn({
   sessionId,
   requestId: "verify-pi-harness-reuse-1",
   step: 1,
@@ -104,7 +111,7 @@ const first = await substrate.createSession({
 });
 first.session.dispose();
 
-const second = await substrate.createSession({
+const second = await substrate.leaseTurn({
   sessionId,
   requestId: "verify-pi-harness-reuse-2",
   step: 1,
@@ -116,25 +123,33 @@ const second = await substrate.createSession({
   },
 });
 second.session.dispose();
-substrate.close();
+await substrate.close();
 
 assert.equal(first.piSessionId, sessionId);
 assert.equal(second.piSessionId, sessionId);
 assert.equal(first.historyMigrationRequired, true);
 assert.deepEqual(
-  tracePayloads(events, "core.agent.create.completed").map((payload) => payload.harnessStorage),
+  tracePayloads(events, "core.turn.lease.completed").map((payload) => payload.harnessStorage),
   ["created", "existing"],
 );
 assert.deepEqual(
-  tracePayloads(events, "core.agent.create.completed").map((payload) => payload.piSessionStorage),
+  tracePayloads(events, "core.turn.lease.completed").map((payload) => payload.piSessionStorage),
   ["created", "existing"],
 );
 assert.deepEqual(
-  tracePayloads(events, "core.agent.create.completed").map((payload) => payload.piSessionId),
+  tracePayloads(events, "core.turn.lease.completed").map((payload) => payload.piSessionId),
   [sessionId, sessionId],
 );
 
 console.log("Pi harness session reuse verification passed.");
+
+function createTemporarySessionsRoot(name: string): string {
+  const parent = path.resolve(".senera/tmp");
+  fs.mkdirSync(parent, { recursive: true });
+  const root = fs.mkdtempSync(path.join(parent, `verify-${name}-`));
+  process.once("exit", () => fs.rmSync(root, { recursive: true, force: true }));
+  return root;
+}
 
 function tracePayloads(events: readonly AgentDomainEvent[], eventType: string): Record<string, unknown>[] {
   return events.flatMap((event) => {

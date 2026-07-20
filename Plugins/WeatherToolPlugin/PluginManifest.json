@@ -1,24 +1,20 @@
 {
+  "ManifestVersion": 2,
   "Plugin": {
     "Name": "WeatherToolPlugin",
     "Title": "天气查询",
     "Version": "0.1.0",
-    "Kind": "Tool",
-    "Entry": {
-      "Kind": "Process",
-      "Command": "npm",
-      "Args": ["run", "tool"],
-      "Cwd": "."
+    "Kind": "Tool"
+  },
+  "McpServers": [
+    {
+      "Id": "weather",
+      "Transport": "stdio",
+      "Command": "${node}",
+      "Args": ["${pluginRoot}/index.js"],
+      "Cwd": "${pluginRoot}"
     }
-  },
-  "Runtime": {
-    "Kind": "Node",
-    "NodeVersion": "22",
-    "PackageManager": "npm",
-    "Install": "none",
-    "Script": "tool",
-    "SandboxProfile": "node-plugin"
-  },
+  ],
   "Sandbox": {
     "Network": "Allow",
     "Workspace": {
@@ -36,6 +32,7 @@
   "Tools": [
     {
       "Name": "WeatherTool",
+      "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
@@ -232,6 +229,19 @@
         "UseCases": ["天气、气温、降雨、城市预报、经纬度天气查询。"],
         "Examples": ["上海 天气 预报", "北京 明天 降雨", "New York weather", "东京 三天 天气"],
         "Avoid": ["不要用于查询新闻、网页或本地代码。"]
+      },
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "weather",
+        "Tool": "WeatherTool"
+      },
+      "Runtime": {
+        "Lifecycle": "Persistent",
+        "Capabilities": {
+          "Progress": true,
+          "OutputStreaming": true,
+          "Cancellation": true
+        }
       }
     }
   ],

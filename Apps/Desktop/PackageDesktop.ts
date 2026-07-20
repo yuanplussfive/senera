@@ -5,6 +5,7 @@ import process from "node:process";
 import { isMainModule } from "../../Source/AgentSystem/Core/AgentPath.js";
 
 const { sync: spawnSync } = crossSpawn;
+const nativeModules = ["better-sqlite3"];
 
 interface CommandInvocation {
   command: string;
@@ -14,10 +15,10 @@ interface CommandInvocation {
 const steps = [
   command("npm", ["run", "build"]),
   command("npm", ["--workspace", "senera-frontend", "run", "build"]),
+  command("npm", ["run", "terminal.prepare"]),
+  command("npm", ["run", "desktop.prepare-native"]),
   command("electron-builder"),
 ];
-
-const nativeModules = ["better-sqlite3"];
 
 if (isMainModule(import.meta.url)) {
   process.exitCode = packageDesktop();
@@ -25,7 +26,6 @@ if (isMainModule(import.meta.url)) {
 
 export function packageDesktop(): number {
   let exitCode = 0;
-
   try {
     clearNativeRebuildMetadata();
     for (const step of steps) {
@@ -38,11 +38,8 @@ export function packageDesktop(): number {
   } finally {
     const restoreCode = run(command("npm", ["rebuild", "better-sqlite3"]));
     clearNativeRebuildMetadata();
-    if (exitCode === 0 && restoreCode !== 0) {
-      exitCode = restoreCode;
-    }
+    if (exitCode === 0 && restoreCode !== 0) exitCode = restoreCode;
   }
-
   return exitCode;
 }
 
@@ -69,7 +66,6 @@ function command(name: string, args: readonly string[] = []): CommandInvocation 
     arguments: [...args],
   };
 }
-
 function clearNativeRebuildMetadata(): void {
   for (const moduleName of nativeModules) {
     const metadataPath = path.join(process.cwd(), "node_modules", moduleName, "build", "Release", ".forge-meta");

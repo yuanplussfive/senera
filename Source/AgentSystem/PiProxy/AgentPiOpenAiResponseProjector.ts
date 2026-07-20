@@ -5,7 +5,9 @@ import type {
   PiOpenAiChatCompletionChoiceMessage,
   PiOpenAiModelsResponse,
   PiOpenAiToolCall,
+  PiOpenAiUsage,
 } from "./AgentPiOpenAiWireTypes.js";
+import type { AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
 
 export function projectPiModelsResponse(modelId: string): PiOpenAiModelsResponse {
   return {
@@ -24,6 +26,7 @@ export function projectPiModelsResponse(modelId: string): PiOpenAiModelsResponse
 export function projectPiChatCompletionResponse(
   model: string,
   message: AgentPiAssistantMessage,
+  usage?: AgentModelUsageValue,
 ): PiOpenAiChatCompletionResponse {
   return {
     id: createOpaqueId("chatcmpl"),
@@ -37,71 +40,97 @@ export function projectPiChatCompletionResponse(
         finish_reason: message.kind === "tool_calls" ? "tool_calls" : "stop",
       },
     ],
+    usage: projectPiOpenAiUsage(usage),
   };
 }
 
 export function projectPiChatCompletionStreamEvents(model: string, message: AgentPiAssistantMessage): unknown[] {
-  const id = createOpaqueId("chatcmpl");
-  const created = unixNow();
-  const base = {
-    id,
-    object: "chat.completion.chunk",
-    created,
-    model,
-  };
+  return new AgentPiChatCompletionStreamProjector(model).messageEvents(message);
+}
 
-  const roleEvent = {
-    ...base,
-    choices: [
-      {
-        index: 0,
-        delta: { role: "assistant" },
-        finish_reason: null,
-      },
-    ],
-  };
+export class AgentPiChatCompletionStreamProjector {
+  private readonly base: Record<string, unknown>;
 
-  if (message.kind === "tool_calls") {
-    return [
-      roleEvent,
-      ...contentDeltaEvents(base, message.content),
-      ...message.toolCalls.flatMap((call, index) => toolCallDeltaEvents(base, call, index)),
-      {
-        ...base,
-        choices: [
-          {
-            index: 0,
-            delta: {},
-            finish_reason: "tool_calls",
-          },
-        ],
-      },
-    ];
+  constructor(model: string) {
+    this.base = {
+      id: createOpaqueId("chatcmpl"),
+      object: "chat.completion.chunk",
+      created: unixNow(),
+      model,
+    };
   }
 
-  return [
-    roleEvent,
-    {
-      ...base,
+  roleEvent(): unknown {
+    return this.chunk({ role: "assistant" }, null);
+  }
+
+  textDeltaEvent(content: string): unknown {
+    return this.chunk({ content }, null);
+  }
+
+  finishEvent(reason: "stop" | "tool_calls"): unknown {
+    return this.chunk({}, reason);
+  }
+
+  usageEvent(usage: AgentModelUsageValue | undefined): unknown | undefined {
+    const projected = projectPiOpenAiUsage(usage);
+    return projected
+      ? {
+          ...this.base,
+          choices: [],
+          usage: projected,
+        }
+      : undefined;
+  }
+
+  messageEvents(message: AgentPiAssistantMessage): unknown[] {
+    const roleEvent = this.roleEvent();
+
+    if (message.kind === "tool_calls") {
+      return [
+        roleEvent,
+        ...contentDeltaEvents(this.base, message.content),
+        ...message.toolCalls.flatMap((call, index) => toolCallDeltaEvents(this.base, call, index)),
+        this.finishEvent("tool_calls"),
+      ];
+    }
+
+    return [roleEvent, this.textDeltaEvent(message.content), this.finishEvent("stop")];
+  }
+
+  private chunk(delta: Record<string, unknown>, finishReason: "stop" | "tool_calls" | null): unknown {
+    return {
+      ...this.base,
       choices: [
         {
           index: 0,
-          delta: { content: message.content },
-          finish_reason: null,
+          delta,
+          finish_reason: finishReason,
         },
       ],
-    },
-    {
-      ...base,
-      choices: [
-        {
-          index: 0,
-          delta: {},
-          finish_reason: "stop",
-        },
-      ],
-    },
-  ];
+    };
+  }
+}
+
+export function projectPiOpenAiUsage(usage: AgentModelUsageValue | undefined): PiOpenAiUsage | undefined {
+  if (!usage) return undefined;
+  const promptTokens = (usage.inputTokens ?? 0) + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
+  const completionTokens = usage.outputTokens ?? 0;
+  const totalTokens = Math.max(usage.totalTokens ?? 0, promptTokens + completionTokens);
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: totalTokens,
+    prompt_tokens_details:
+      usage.cacheReadTokens !== undefined || usage.cacheWriteTokens !== undefined
+        ? {
+            cached_tokens: usage.cacheReadTokens,
+            cache_write_tokens: usage.cacheWriteTokens,
+          }
+        : undefined,
+    completion_tokens_details:
+      usage.reasoningTokens === undefined ? undefined : { reasoning_tokens: usage.reasoningTokens },
+  };
 }
 
 function projectMessage(message: AgentPiAssistantMessage): PiOpenAiChatCompletionChoiceMessage {

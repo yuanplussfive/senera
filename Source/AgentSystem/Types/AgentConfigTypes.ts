@@ -18,7 +18,6 @@ export type {
 } from "./AgentModelConfigTypes.js";
 export type {
   AgentActionPlannerClientConfig,
-  AgentActionPlannerClientProvider,
   AgentActionPlannerConfig,
   AgentActionPlannerEvidenceConfig,
   ResolvedAgentActionPlannerClientConfig,
@@ -27,8 +26,10 @@ export type {
 export type {
   AgentArtifactsConfig,
   AgentConfigStoreConfig,
+  AgentExecutionResourcesConfig,
   AgentLoadedToolsConfig,
   AgentLoopConfig,
+  AgentPiCompactionConfig,
   AgentPresetsConfig,
   AgentSandboxRuntimeConfig,
   AgentServerAccessControlConfig,
@@ -40,7 +41,9 @@ export type {
   AgentUploadsConfig,
   ResolvedAgentArtifactsConfig,
   ResolvedAgentConfigStoreConfig,
+  ResolvedAgentExecutionResourcesConfig,
   ResolvedAgentLoopConfig,
+  ResolvedAgentPiCompactionConfig,
   ResolvedAgentPersistenceConfig,
   ResolvedAgentPluginDiscoveryConfig,
   ResolvedAgentPluginRootsConfig,

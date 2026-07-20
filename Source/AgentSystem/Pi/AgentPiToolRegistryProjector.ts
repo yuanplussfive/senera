@@ -1,9 +1,9 @@
+import crypto from "node:crypto";
 import { AgentMarkdownPromptXmlRenderer } from "../Xml/AgentMarkdownPromptXmlRenderer.js";
 import { normalizeMarkdownSectionText } from "../Xml/AgentMarkdownSections.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
-import { AgentPromptContractProjector } from "../Prompt/AgentPromptContractProjector.js";
 import { AgentPromptDocumentationReader } from "../Prompt/AgentPromptDocumentationReader.js";
 import { resolveAgentPromptSections } from "../Prompt/AgentPromptSectionResolver.js";
 import type { AgentPiToolExecutionBridge } from "./AgentPiToolExecutionBridge.js";
@@ -15,6 +15,12 @@ export interface AgentPiToolRegistryProjectorOptions {
   execution: AgentPiToolExecutionBridge;
 }
 
+export interface AgentPiToolSet {
+  readonly fingerprint: string;
+  readonly activeToolNames: readonly string[];
+  materialize(context: () => AgentPiToolProjectionContext): AgentPiToolDefinition[];
+}
+
 const EmptyObjectParameterSchema = {
   type: "object",
   properties: {},
@@ -22,7 +28,6 @@ const EmptyObjectParameterSchema = {
 } as const;
 
 export class AgentPiToolRegistryProjector {
-  private readonly contractProjector = new AgentPromptContractProjector();
   private readonly documentationReader: AgentPromptDocumentationReader;
 
   constructor(private readonly options: AgentPiToolRegistryProjectorOptions) {
@@ -35,11 +40,23 @@ export class AgentPiToolRegistryProjector {
   }
 
   project(context: AgentPiToolProjectionContext = {}): AgentPiToolDefinition[] {
-    return this.visibleTools(context.visibleToolNames).map((tool) => this.projectTool(tool, context));
+    return this.createToolSet(context.visibleToolNames).materialize(() => context);
   }
 
   names(visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"]): string[] {
     return this.visibleTools(visibleToolNames).map((tool) => tool.name);
+  }
+
+  createToolSet(visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"]): AgentPiToolSet {
+    const tools = this.visibleTools(visibleToolNames);
+    const descriptors = tools.map((tool) => this.projectDescriptor(tool));
+    const activeToolNames = descriptors.map((descriptor) => descriptor.name);
+    const fingerprint = crypto.createHash("sha256").update(stableSerialize(descriptors)).digest("hex");
+    return {
+      fingerprint,
+      activeToolNames,
+      materialize: (context) => tools.map((tool, index) => this.materializeTool(tool, descriptors[index]!, context)),
+    };
   }
 
   private visibleTools(visibleToolNames: AgentPiToolProjectionContext["visibleToolNames"] = "all"): RegisteredTool[] {
@@ -51,22 +68,32 @@ export class AgentPiToolRegistryProjector {
     return this.options.registry.listTools().filter((tool) => visible.has(tool.name));
   }
 
-  private projectTool(tool: RegisteredTool, context: AgentPiToolProjectionContext): AgentPiToolDefinition {
+  private materializeTool(
+    tool: RegisteredTool,
+    descriptor: Omit<AgentPiToolDefinition, "execute">,
+    context: () => AgentPiToolProjectionContext,
+  ): AgentPiToolDefinition {
     return {
-      name: tool.name,
-      label: tool.plugin.manifest.Plugin.Title ?? tool.name,
-      description: this.projectDescription(tool),
-      parameters: this.projectParameterSchema(tool),
-      executionMode: "sequential",
+      ...descriptor,
       execute: (toolCallId, params, signal) =>
         this.options.execution.execute({
           tool,
           toolCallId,
           params: normalizeToolParams(params),
           signal,
-          context,
+          context: context(),
         }),
     };
+  }
+
+  private projectDescriptor(tool: RegisteredTool): Omit<AgentPiToolDefinition, "execute"> {
+    return Object.freeze({
+      name: tool.name,
+      label: tool.plugin.manifest.Plugin.Title ?? tool.name,
+      description: this.projectDescription(tool),
+      parameters: tool.contract?.arguments?.jsonSchema ?? EmptyObjectParameterSchema,
+      executionMode: "sequential" as const,
+    });
   }
 
   private projectDescription(tool: RegisteredTool): string {
@@ -80,18 +107,21 @@ export class AgentPiToolRegistryProjector {
       .filter(Boolean)
       .join("\n\n");
   }
-
-  private projectParameterSchema(tool: RegisteredTool): Record<string, unknown> {
-    return (
-      this.contractProjector.projectFromFile(tool.signatureFile, "arguments", tool.signatureType)?.jsonSchema ?? {
-        ...EmptyObjectParameterSchema,
-      }
-    );
-  }
 }
 
 function normalizeToolParams(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 function resolveConfiguredToolDescriptionSections(config: AgentSystemConfig) {

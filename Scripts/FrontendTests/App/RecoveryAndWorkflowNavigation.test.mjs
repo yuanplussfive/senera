@@ -5,8 +5,8 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { useSessionNotFoundRecovery } from "../../../Frontend/src/app/useSessionNotFoundRecovery.ts";
-import { useSessionTruncateReplay } from "../../../Frontend/src/app/useSessionTruncateReplay.ts";
 import { useWorkflowNavigation } from "../../../Frontend/src/app/useWorkflowNavigation.ts";
+import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 import { useStore } from "../../../Frontend/src/store/sessionStore.ts";
 import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
 import { resetFrontendStore } from "../frontendStoreTestHarness.mjs";
@@ -21,7 +21,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("recreates a missing message session and replays the last message exactly once", () => {
+test("atomically recreates a missing session while replaying the last message exactly once", () => {
   const send = vi.fn(() => true);
   const ingest = vi.fn();
   const knownSessions = { current: new Set(["session-missing"]) };
@@ -55,18 +55,15 @@ test("recreates a missing message session and replays the last message exactly o
   });
 
   expect(handled).toBe(true);
-  expect(send).toHaveBeenNthCalledWith(1, {
-    type: "session.create",
-    sessionId: "session-missing",
-    modelProviderId: "primary",
-  });
-  expect(send).toHaveBeenNthCalledWith(2, {
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send).toHaveBeenCalledWith({
     type: "session.message",
     sessionId: "session-missing",
     requestId: "request-original",
     input: "Continue the task",
     attachments: lastSentMessage.current.attachments,
     modelProviderId: "primary",
+    disposition: "create_if_missing",
     queueMode: "enqueue",
   });
   expect(knownSessions.current.has("session-missing")).toBe(true);
@@ -99,6 +96,40 @@ test("keeps history failure in the projector and refreshes the catalog for a mis
   expect(knownSessions.current.has("history")).toBe(false);
   expect(knownSessions.current.has("closing")).toBe(false);
   expect(readTestToastCalls().map((call) => call.variant)).toEqual(["warning", "message"]);
+});
+
+test("marks a missing fork source without replaying the last message as an empty session", () => {
+  const send = vi.fn(() => true);
+  const ingest = vi.fn();
+  const knownSessions = { current: new Set(["fork-source"]) };
+  const event = sessionNotFoundEvent("session.fork", "fork-source");
+  const handleRef = { current: null };
+  render(
+    React.createElement(SessionNotFoundRecoveryHarness, {
+      handleRef,
+      ingest,
+      lastSendRef: {
+        current: {
+          sessionId: "fork-source",
+          requestId: "request-last",
+          input: "This must not be replayed",
+        },
+      },
+      sendRef: { current: send },
+      serverKnownSessionIdsRef: knownSessions,
+    }),
+  );
+
+  act(() => {
+    expect(handleRef.current.handleSessionNotFound(event)).toBe(true);
+  });
+
+  expect(send).not.toHaveBeenCalled();
+  expect(ingest).toHaveBeenCalledWith(event);
+  expect(knownSessions.current.has("fork-source")).toBe(false);
+  expect(readTestToastCalls()).toContainEqual(
+    expect.objectContaining({ variant: "warning", title: frontendMessage("session.forkSourceMissingTitle") }),
+  );
 });
 
 test("opens the workflow drawer for a run referenced by the selected message", () => {
@@ -157,72 +188,6 @@ test("expands the persistent panel and reports a missing workflow without changi
   expect(readTestToastCalls()).toContainEqual(expect.objectContaining({ variant: "info" }));
 });
 
-test("replays queued input after truncation and keeps replay state atomic when transport fails", () => {
-  const appendUserMessage = vi.fn();
-  const send = vi.fn(() => true);
-  const lastSentMessage = { current: null };
-  const pendingAfterTruncate = {
-    current: [
-      {
-        sessionId: "session-a",
-        requestId: "request-truncate",
-        nextInput: "Updated prompt",
-        modelProviderId: "primary",
-      },
-    ],
-  };
-  const handleRef = { current: null };
-  render(
-    React.createElement(SessionTruncateReplayHarness, {
-      appendUserMessage,
-      createRequestId: () => "request-replay",
-      handleRef,
-      lastSendRef: lastSentMessage,
-      pendingAfterTruncateRef: pendingAfterTruncate,
-      sendRef: { current: send },
-    }),
-  );
-
-  act(() => {
-    expect(handleRef.current.replayAfterSessionTruncated(sessionTruncatedEvent("session-a", "request-truncate"))).toBe(
-      true,
-    );
-  });
-  expect(send).toHaveBeenCalledWith({
-    type: "session.message",
-    sessionId: "session-a",
-    requestId: "request-replay",
-    modelProviderId: "primary",
-    input: "Updated prompt",
-    attachments: undefined,
-  });
-  expect(appendUserMessage).toHaveBeenCalledWith("session-a", "request-replay", "Updated prompt", undefined);
-  expect(lastSentMessage.current).toMatchObject({ requestId: "request-replay", input: "Updated prompt" });
-  expect(pendingAfterTruncate.current).toEqual([]);
-
-  const failedPending = {
-    current: [{ sessionId: "session-a", requestId: "request-failed", nextInput: "Retry input" }],
-  };
-  const failedHandleRef = { current: null };
-  render(
-    React.createElement(SessionTruncateReplayHarness, {
-      appendUserMessage,
-      createRequestId: () => "request-never-sent",
-      handleRef: failedHandleRef,
-      lastSendRef: { current: null },
-      pendingAfterTruncateRef: failedPending,
-      sendRef: { current: () => false },
-    }),
-  );
-  act(() => {
-    expect(
-      failedHandleRef.current.replayAfterSessionTruncated(sessionTruncatedEvent("session-a", "request-failed")),
-    ).toBe(true);
-  });
-  expect(failedPending.current).toEqual([]);
-  expect(readTestToastCalls()).toContainEqual(expect.objectContaining({ variant: "error" }));
-});
-
 function SessionNotFoundRecoveryHarness({ handleRef, ...options }) {
   const handle = useSessionNotFoundRecovery(options);
   useEffect(() => {
@@ -239,14 +204,6 @@ function WorkflowNavigationHarness({ handleRef, ...options }) {
   return null;
 }
 
-function SessionTruncateReplayHarness({ handleRef, ...options }) {
-  const handle = useSessionTruncateReplay(options);
-  useEffect(() => {
-    handleRef.current = handle;
-  }, [handle, handleRef]);
-  return null;
-}
-
 function sessionNotFoundEvent(operation, sessionId) {
   return {
     channel: "agent.event",
@@ -257,19 +214,6 @@ function sessionNotFoundEvent(operation, sessionId) {
     timestamp: "2026-07-12T00:00:00.000Z",
     sessionId,
     data: { operation, sessionId, message: "missing" },
-  };
-}
-
-function sessionTruncatedEvent(sessionId, fromRequestId) {
-  return {
-    channel: "agent.event",
-    kind: EventKinds.SessionTruncated,
-    layer: "session",
-    phase: "event",
-    sequence: 1,
-    timestamp: "2026-07-12T00:00:00.000Z",
-    sessionId,
-    data: { sessionId, fromRequestId, removedEntries: 1 },
   };
 }
 

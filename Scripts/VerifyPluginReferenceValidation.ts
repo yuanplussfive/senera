@@ -115,6 +115,7 @@ function pluginFixture(options: {
     manifestPath: path.join(rootPath, "PluginManifest.json"),
     config: loadedPluginConfig(rootPath, options.available ?? true),
     manifest: {
+      ManifestVersion: 2,
       Plugin: {
         Name: options.name,
         Version: "0.1.0",
@@ -126,6 +127,7 @@ function pluginFixture(options: {
           Kind: "HostCapability",
           Capability: options.toolCapabilities?.[toolName] ?? `verify.${toolName}`,
         },
+        Runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
         Execution: {
           Boundary: "Local",
           Network: "Deny",

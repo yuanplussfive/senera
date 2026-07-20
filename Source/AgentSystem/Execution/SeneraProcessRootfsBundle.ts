@@ -33,14 +33,13 @@ export async function createSeneraProcessRootfsBundle(input: {
       packageRoot: input.packageRoot,
     });
     for (const dependency of dependencies) {
-      copySourceTree({
-        source: dependency.rootPath,
-        target: path.join(bundleRoot, relativeFromWorkspace(input.workspaceRoot, dependency.rootPath)),
-      });
-      copySourceTree({
-        source: dependency.rootPath,
-        target: path.join(bundleRoot, "node_modules", ...dependency.name.split("/")),
-      });
+      const targets = new Set(
+        [
+          path.join(bundleRoot, relativeFromWorkspace(input.workspaceRoot, dependency.rootPath)),
+          path.join(bundleRoot, "node_modules", ...dependency.name.split("/")),
+        ].map((target) => path.resolve(target)),
+      );
+      for (const target of targets) copySourceTree({ source: dependency.rootPath, target });
     }
 
     return {

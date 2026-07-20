@@ -10,6 +10,10 @@ import type { AgentSessionManager } from "../Session/AgentSessionManager.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
 import type { AgentSandboxRuntimeService } from "../Sandbox/AgentSandboxRuntimeService.js";
+import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
+import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
+import type { AgentWebSocketEventPersistenceOptions } from "./AgentWebSocketEventSender.js";
+import type { AgentRunEventWriter } from "./AgentRunEventWriter.js";
 
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
@@ -23,7 +27,11 @@ export interface AgentWebSocketServerOptions {
   logger?: AgentLogger;
   eventLogger?: AgentServerEventLogger;
   approvalRuntime?: AgentApprovalRuntime;
+  interactionInput?: AgentInteractionInputRuntime;
   sandboxRuntimeService?: AgentSandboxRuntimeService;
+  executionResources?: AgentExecutionResourceBroker;
+  eventPersistence?: AgentWebSocketEventPersistenceOptions;
+  eventWriter: AgentRunEventWriter;
 }
 
 export interface AgentWebSocketRequestContext {
@@ -36,7 +44,10 @@ export interface AgentWebSocketRequestContext {
   providerModelDiscovery: AgentProviderModelDiscovery;
   presetManagerFactory: () => AgentPresetManager;
   approvalRuntime?: AgentApprovalRuntime;
+  interactionInput?: AgentInteractionInputRuntime;
   sandboxRuntimeService: AgentSandboxRuntimeService;
+  executionResources?: AgentExecutionResourceBroker;
+  workspaceRoot: string;
 }
 
-export type AgentWebSocketEventSender = (event: AgentDomainEvent) => void;
+export type AgentWebSocketEventSender = (event: AgentDomainEvent) => void | Promise<void>;

@@ -305,7 +305,7 @@ function projectCurrentToolEvidence(
     }
 
     const toolName = readString(record.toolName);
-    const artifactUri = readString(observation.artifact_uri ?? observation.artifactUri);
+    const observationArtifactUri = readString(observation.artifact_uri ?? observation.artifactUri);
     return readArray(observation.evidence).flatMap((entry) => {
       const evidence = readRecord(entry);
       const evidenceUri = readString(evidence?.evidence_uri ?? evidence?.evidenceUri);
@@ -321,9 +321,13 @@ function projectCurrentToolEvidence(
           display: readString(evidence?.display),
           locator: readString(evidence?.locator),
           toolName,
-          artifactUri,
+          artifactUri: readString(evidence?.artifact_uri ?? evidence?.artifactUri) ?? observationArtifactUri,
           facts: readEvidenceFacts(evidence),
-          artifactRefs: [],
+          artifactRefs: uniqueStrings(
+            readArray(evidence?.artifact_refs ?? evidence?.artifactRefs).flatMap((ref) =>
+              typeof ref === "string" ? [ref] : [],
+            ),
+          ),
           source: "current_tool_result",
         },
         tokenProjector,

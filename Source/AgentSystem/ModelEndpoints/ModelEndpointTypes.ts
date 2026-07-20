@@ -1,6 +1,7 @@
 import type { AgentLanguageModelRequest, AgentLanguageModelStream } from "./AgentLanguageModel.js";
 import type { resolveModelProviderConfig } from "../AgentDefaults.js";
 import type { ModelHttpClient } from "./ModelHttpClient.js";
+import type { AgentModelUsageValue } from "./AgentModelUsage.js";
 import { ClaudeMessagesEndpoint } from "./ClaudeMessagesEndpoint.js";
 import { GoogleGenerateContentEndpoint } from "./GoogleGenerateContentEndpoint.js";
 import { OpenAiChatCompletionsEndpoint } from "./OpenAiChatCompletionsEndpoint.js";
@@ -13,6 +14,7 @@ export type ModelHttpPathSegment = string | { value: string; encode: "component"
 
 export interface TextGenerationEndpointResult {
   text: string;
+  usage?: AgentModelUsageValue;
 }
 
 export interface TextGenerationEndpoint {

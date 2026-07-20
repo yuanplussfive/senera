@@ -21,4 +21,5 @@ contextBridge.exposeInMainWorld("seneraDesktop", {
   },
   confirmSettingsClose: () => ipcRenderer.invoke("senera:settings.confirm-close"),
   cancelSettingsClose: () => ipcRenderer.invoke("senera:settings.cancel-close"),
+  openExternalUrl: (url) => ipcRenderer.invoke("senera:external-url.open", url),
 });

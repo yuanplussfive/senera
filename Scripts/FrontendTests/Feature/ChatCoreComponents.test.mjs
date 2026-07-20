@@ -15,6 +15,7 @@ const { ScrollToBottomButton } = await import("../../../Frontend/src/features/ch
 const { MessageActions } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
+const { readMessageActionIntents } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
 
@@ -23,6 +24,20 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.restoreAllMocks();
   clearPersistedStore();
+});
+
+test("message actions expose fork only for stable mutable request boundaries", () => {
+  expect(readMessageActionIntents({ hasRequestId: false, hasWorkflow: false })).toEqual(["copy"]);
+  expect(readMessageActionIntents({ hasRequestId: true, hasWorkflow: false })).toEqual([
+    "copy",
+    "fork",
+    "regenerate",
+    "delete",
+  ]);
+  expect(readMessageActionIntents({ hasRequestId: true, hasWorkflow: true, allowMutation: false })).toEqual([
+    "copy",
+    "viewWorkflow",
+  ]);
 });
 
 test("chat composer sends trimmed text and switches queue mode while a run is active", async () => {
@@ -607,6 +622,7 @@ function createMessageActions(overrides = {}) {
   return {
     onSend: vi.fn(),
     onCancel: vi.fn(),
+    onForkFromMessage: vi.fn(),
     onRegenerate: vi.fn(),
     onEditUserMessage: vi.fn(),
     onDeleteFromMessage: vi.fn(),
@@ -626,6 +642,7 @@ function createMessageListProps(overrides = {}) {
       avatarDataUrl: null,
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
+    onForkFromMessage: vi.fn(),
     onRegenerate: vi.fn(),
     onEditUserMessage: vi.fn(),
     onDeleteFromMessage: vi.fn(),
@@ -671,6 +688,7 @@ function createApproval(overrides = {}) {
     approvalId: "approval-1",
     status: "pending",
     approvalKind: "tool_call",
+    availableDecisions: ["approve_once", "deny", "deny_and_interrupt"],
     title: "Review tool call",
     reason: "The tool needs approval.",
     subject: {

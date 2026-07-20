@@ -1,33 +1,45 @@
 import { createParser } from "eventsource-parser";
 import type { AgentLanguageModelStreamChunk } from "./AgentLanguageModel.js";
 import type { JsonObject } from "./ModelEndpointTypes.js";
+import type { AgentModelUsageValue } from "./AgentModelUsage.js";
 import { readAbortFailure } from "./ModelHttpAbort.js";
-import { ModelRequestTimeoutError } from "./ModelHttpErrors.js";
+import { ModelRequestTimeoutError, ModelResponseLimitError } from "./ModelHttpErrors.js";
 import { parseModelHttpJsonObject } from "./ModelHttpJson.js";
 
 export async function* parseModelEventStreamText(
   body: ReadableStream<Uint8Array>,
-  extractText: (event: JsonObject) => string,
+  projectEvent: (event: JsonObject) => ModelSseEventProjection,
   options: {
     requestSignal: AbortSignal;
     firstTokenTimeoutMs: number;
     dispose: () => void;
     normalizeError: (error: unknown) => Error;
+    onUsage?: (usage: AgentModelUsageValue) => void;
+    maxResponseBytes: number;
+    maxEventBytes: number;
+    maxEvents: number;
   },
 ): AsyncGenerator<AgentLanguageModelStreamChunk> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const events: JsonObject[] = [];
+  let responseBytes = 0;
+  let eventCount = 0;
   const parser = createParser({
     onEvent: (event) => {
       if (event.data === "[DONE]") return;
+      eventCount += 1;
+      if (eventCount > options.maxEvents) throw new ModelResponseLimitError("SSE events", options.maxEvents);
+      if (Buffer.byteLength(event.data, "utf8") > options.maxEventBytes) {
+        throw new ModelResponseLimitError("SSE event", options.maxEventBytes);
+      }
       events.push(parseModelHttpJsonObject(JSON.parse(event.data) as unknown));
     },
     onError: (error) => {
       throw error;
     },
   });
-  let accumulatedText = "";
+  const textChunks: string[] = [];
   let firstTokenSeen = false;
   const firstTokenController = new AbortController();
   const firstTokenTimer =
@@ -46,6 +58,10 @@ export async function* parseModelEventStreamText(
         firstTokenSeen || options.firstTokenTimeoutMs === -1 ? undefined : firstTokenController.signal,
       );
       if (value) {
+        responseBytes += value.byteLength;
+        if (responseBytes > options.maxResponseBytes) {
+          throw new ModelResponseLimitError("SSE response", options.maxResponseBytes);
+        }
         parser.feed(decoder.decode(value, { stream: !done }));
       }
       if (done) {
@@ -55,16 +71,18 @@ export async function* parseModelEventStreamText(
       while (events.length > 0) {
         const event = events.shift();
         if (!event) continue;
-        const textDelta = extractText(event);
+        const projection = projectEvent(event);
+        if (projection.usage) options.onUsage?.(projection.usage);
+        const textDelta = projection.textDelta ?? "";
         if (!textDelta) continue;
         if (!firstTokenSeen) {
           firstTokenSeen = true;
           if (firstTokenTimer) clearTimeout(firstTokenTimer);
         }
-        accumulatedText += textDelta;
+        textChunks.push(textDelta);
         yield {
           textDelta,
-          accumulatedText,
+          accumulatedText: textChunks.join(""),
         };
       }
 
@@ -77,6 +95,11 @@ export async function* parseModelEventStreamText(
     options.dispose();
     reader.releaseLock();
   }
+}
+
+export interface ModelSseEventProjection {
+  textDelta?: string;
+  usage?: AgentModelUsageValue;
 }
 
 function readStreamChunk(

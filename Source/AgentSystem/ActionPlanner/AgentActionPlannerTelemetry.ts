@@ -1,7 +1,7 @@
-import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+import type { ParsedInteractionPreparation } from "./AgentActionPlannerSchema.js";
 
 export const AgentActionPlannerStageNames = {
-  UnderstandUserTurn: "understandUserTurn",
+  PrepareInteraction: "prepareInteraction",
 } as const;
 
 export type AgentActionPlannerStageName =
@@ -13,13 +13,15 @@ export interface AgentActionPlannerStageStarted {
 
 export interface AgentActionPlannerStageCompleted {
   stage: AgentActionPlannerStageName;
+  durationMs: number;
   selectedAction?: string;
   repaired?: boolean;
-  turnUnderstanding?: TurnUnderstanding;
+  preparation?: ParsedInteractionPreparation;
 }
 
 export interface AgentActionPlannerStageFailed {
   stage: AgentActionPlannerStageName;
+  durationMs: number;
   message: string;
 }
 

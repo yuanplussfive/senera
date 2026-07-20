@@ -4,7 +4,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
 import type { SeneraPersistentProcessSpawner } from "../Execution/SeneraPersistentProcessTypes.js";
-import { AgentMcpStdioTransport } from "./AgentMcpStdioTransport.js";
+import {
+  AgentMcpDefaultFrameBytes,
+  AgentMcpDefaultStderrBytes,
+  AgentMcpStdioTransport,
+} from "./AgentMcpStdioTransport.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 const nodeRequire = createRequire(import.meta.url);
@@ -30,6 +34,7 @@ export interface AgentMcpFilesystemClientOptions {
   requestTimeoutMs: number;
   spawnPersistentProcess: SeneraPersistentProcessSpawner;
   executionProfile: SeneraProcessExecutionProfile;
+  terminationGraceMs: number;
   signal?: AbortSignal;
 }
 
@@ -60,6 +65,9 @@ export async function withAgentMcpFilesystemClient<TValue>(
     signal: options.signal,
     profile: options.executionProfile,
     spawnPersistentProcess: options.spawnPersistentProcess,
+    terminationGraceMs: options.terminationGraceMs,
+    maxFrameBytes: AgentMcpDefaultFrameBytes,
+    maxStderrBytes: AgentMcpDefaultStderrBytes,
   });
   const client = new Client(
     {
@@ -68,6 +76,7 @@ export async function withAgentMcpFilesystemClient<TValue>(
     },
     {
       capabilities: {},
+      enforceStrictCapabilities: true,
     },
   );
 

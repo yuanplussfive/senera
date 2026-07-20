@@ -1,0 +1,6 @@
+{
+  "Summary": {
+    "Template": "{{ toolName }} resource {{ result.resourceId }}: {{ result.state }}",
+    "ArtifactTemplate": "- resourceId: {{ result.resourceId }}\n  state: {{ result.state }}\n  cursor: {{ result.cursor }}{% if result.exitCode != blank %}\n  exitCode: {{ result.exitCode }}{% endif %}{% if result.signal %}\n  signal: {{ result.signal }}{% endif %}{% if result.truncated %}\n  outputHistoryTruncated: true{% endif %}{% for event in result.events %}{% if event.kind == 'output' %}\n\n[{{ event.stream }} cursor={{ event.cursor }}]\n{{ event.text }}{% elsif event.kind == 'state' %}\n\n[state cursor={{ event.cursor }}] {{ event.state }}{% if event.reason %}: {{ event.reason }}{% endif %}{% endif %}{% endfor %}"
+  }
+}

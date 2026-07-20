@@ -3,19 +3,16 @@ export interface AgentActionPlannerConfig {
   MaxRepairAttempts?: number;
   Evidence?: AgentActionPlannerEvidenceConfig;
   Client?: AgentActionPlannerClientConfig;
-  TurnUnderstandingClient?: AgentActionPlannerClientConfig;
   PlanningClient?: AgentActionPlannerClientConfig;
+  FinalAnswerClient?: AgentActionPlannerClientConfig;
 }
 
 export interface AgentActionPlannerEvidenceConfig {
   StalledStepLag?: number;
 }
 
-export type AgentActionPlannerClientProvider = "openai-generic" | "openai-responses" | "anthropic" | "google-ai";
-
 export interface AgentActionPlannerClientConfig {
   ModelProviderId?: string;
-  Provider?: AgentActionPlannerClientProvider;
   Temperature?: number;
   /** -1 means do not send a provider token limit field. */
   MaxTokens?: number;
@@ -26,16 +23,17 @@ export interface ResolvedAgentActionPlannerConfig {
   MaxRepairAttempts: number;
   Evidence: Required<AgentActionPlannerEvidenceConfig>;
   Client: ResolvedAgentActionPlannerClientConfig;
-  TurnUnderstandingClient: ResolvedAgentActionPlannerClientConfig;
   PlanningClient: ResolvedAgentActionPlannerClientConfig;
+  FinalAnswerClient: ResolvedAgentActionPlannerClientConfig;
 }
 
 export interface ResolvedAgentActionPlannerClientConfig {
   ModelProviderId?: string;
-  Provider: AgentActionPlannerClientProvider;
+  ModelProvider: ResolvedAgentModelProviderConfig;
   BaseUrl: string;
   ApiKey: string;
   Model: string;
   Temperature: number;
   MaxTokens: number;
 }
+import type { ResolvedAgentModelProviderConfig } from "./AgentModelConfigTypes.js";

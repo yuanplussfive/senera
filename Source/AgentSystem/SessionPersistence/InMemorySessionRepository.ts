@@ -8,11 +8,15 @@ import {
 } from "../Session/AgentUserProfile.js";
 import type {
   AgentSessionRepository,
+  AgentSessionForkSnapshot,
+  AgentSessionTurnCommit,
   StoredRunSnapshot,
   StoredStepTraceRun,
-} from "../Session/AgentSqliteSessionRepository.js";
+} from "../Session/AgentSessionRepository.js";
 import type { AgentSession } from "../Session/AgentSession.js";
 import type { StepTrace } from "../Runtime/AgentStepTrace.js";
+import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
+import type { AgentSessionHistoryMutation } from "../Session/AgentSessionHistoryMutation.js";
 
 export class InMemorySessionRepository implements AgentSessionRepository {
   private readonly sessions = new Map<string, AgentSession>();
@@ -20,6 +24,8 @@ export class InMemorySessionRepository implements AgentSessionRepository {
   private readonly stepTraces = new Map<string, Array<{ requestId: string; turnSequence: number; trace: StepTrace }>>();
   private readonly runEvents = new Map<string, AgentEventEnvelope[]>();
   private readonly runSnapshots = new Map<string, Map<string, StoredRunSnapshot>>();
+  private readonly turnPreparations = new Map<string, Map<string, AgentTurnPreparationSnapshot>>();
+  private readonly historyMutations = new Map<string, AgentSessionHistoryMutation>();
   private userProfile = createDefaultAgentUserProfile();
 
   listSessions(): Array<AgentSession & { entryCount: number; messageCount: number }> {
@@ -53,8 +59,70 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     }));
   }
 
+  listPendingHistoryMutations(): AgentSessionHistoryMutation[] {
+    return [...this.historyMutations.values()]
+      .map((mutation) => structuredClone(mutation))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
+
+  loadPendingHistoryMutation(sessionId: string): AgentSessionHistoryMutation | undefined {
+    const mutation = this.historyMutations.get(sessionId);
+    return mutation ? structuredClone(mutation) : undefined;
+  }
+
+  stageHistoryMutation(mutation: AgentSessionHistoryMutation): void {
+    if (this.historyMutations.has(mutation.sessionId)) {
+      throw new Error(`Session already has a pending history mutation: ${mutation.sessionId}`);
+    }
+    this.historyMutations.set(mutation.sessionId, structuredClone(mutation));
+  }
+
+  commitHistoryMutation(mutationId: string, session: AgentSession): number {
+    const mutation = this.historyMutations.get(session.id);
+    if (!mutation || mutation.mutationId !== mutationId) {
+      throw new Error(`Pending session history mutation does not match: ${session.id}`);
+    }
+
+    this.deleteStepTracesFrom(session.id, mutation.fromRequestId);
+    this.deleteRunEventsFrom(session.id, mutation.fromRequestId);
+    this.deleteRunSnapshotsFrom(session.id, mutation.fromRequestId);
+    this.deleteTurnPreparationsFrom(session.id, mutation.fromRequestId);
+    const removed = this.deleteEntriesFrom(session.id, mutation.fromRequestId);
+    this.upsertSession(session);
+    this.historyMutations.delete(session.id);
+    return removed;
+  }
+
   loadEntries(sessionId: string): AgentConversationEntry[] {
     return [...(this.entries.get(sessionId) ?? [])];
+  }
+
+  createFork(snapshot: AgentSessionForkSnapshot): void {
+    const sessionId = snapshot.session.id;
+    if (this.sessions.has(sessionId)) {
+      throw new Error(`Session fork target already exists: ${sessionId}`);
+    }
+
+    const session = structuredClone({ ...snapshot.session, conversation: [] });
+    const entries = snapshot.entries.map(({ entry }) => structuredClone(entry));
+    const traces = snapshot.traces.map((item) => structuredClone(item));
+    const events = snapshot.runEvents.map((event) => structuredClone(event));
+    const runSnapshots = new Map(
+      snapshot.runSnapshots.map((runSnapshot) => [runSnapshot.requestId, structuredClone(runSnapshot)]),
+    );
+    const turnPreparations = new Map(
+      snapshot.turnPreparations.map(({ requestId, snapshot: preparation }) => [
+        requestId,
+        structuredClone(preparation),
+      ]),
+    );
+
+    this.sessions.set(sessionId, session);
+    this.entries.set(sessionId, entries);
+    if (traces.length > 0) this.stepTraces.set(sessionId, traces);
+    if (events.length > 0) this.runEvents.set(sessionId, events);
+    if (runSnapshots.size > 0) this.runSnapshots.set(sessionId, runSnapshots);
+    if (turnPreparations.size > 0) this.turnPreparations.set(sessionId, turnPreparations);
   }
 
   upsertSession(session: AgentSession): void {
@@ -83,6 +151,21 @@ export class InMemorySessionRepository implements AgentSessionRepository {
       list.push(...traces);
       this.stepTraces.set(sessionId, list);
     }
+  }
+
+  persistTurnCommit(commit: AgentSessionTurnCommit): void {
+    if (commit.session) this.upsertSession(commit.session);
+    this.persistTurnArtifacts(commit.sessionId, commit.entries, commit.traces);
+    this.upsertRunSnapshot(commit.snapshot);
+    this.appendRunEvents(commit.sessionId, commit.runEvents);
+  }
+
+  truncateFromRequest(sessionId: string, requestId: string): number {
+    this.deleteStepTracesFrom(sessionId, requestId);
+    this.deleteRunEventsFrom(sessionId, requestId);
+    this.deleteRunSnapshotsFrom(sessionId, requestId);
+    this.deleteTurnPreparationsFrom(sessionId, requestId);
+    return this.deleteEntriesFrom(sessionId, requestId);
   }
 
   loadStepTraces(sessionId: string): StoredStepTraceRun[] {
@@ -158,6 +241,32 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     return removed;
   }
 
+  upsertTurnPreparation(sessionId: string, requestId: string, snapshot: AgentTurnPreparationSnapshot): void {
+    const preparations = this.turnPreparations.get(sessionId) ?? new Map<string, AgentTurnPreparationSnapshot>();
+    preparations.set(requestId, structuredClone(snapshot));
+    this.turnPreparations.set(sessionId, preparations);
+  }
+
+  loadTurnPreparation(sessionId: string, requestId: string): AgentTurnPreparationSnapshot | undefined {
+    const snapshot = this.turnPreparations.get(sessionId)?.get(requestId);
+    return snapshot ? structuredClone(snapshot) : undefined;
+  }
+
+  deleteTurnPreparationsFrom(sessionId: string, requestId: string): number {
+    const preparations = this.turnPreparations.get(sessionId);
+    if (!preparations) return 0;
+    const entries = this.entries.get(sessionId) ?? [];
+    const anchor = entries.findIndex((entry) => entry.requestId === requestId);
+    if (anchor < 0) return 0;
+    const removedRequestIds = new Set(entries.slice(anchor).map((entry) => entry.requestId));
+    let removed = 0;
+    for (const removedRequestId of removedRequestIds) {
+      removed += Number(preparations.delete(removedRequestId));
+    }
+    if (preparations.size === 0) this.turnPreparations.delete(sessionId);
+    return removed;
+  }
+
   renameSession(_sessionId: string, _title: string): void {}
 
   deleteSession(sessionId: string): boolean {
@@ -166,12 +275,24 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     this.stepTraces.delete(sessionId);
     this.runEvents.delete(sessionId);
     this.runSnapshots.delete(sessionId);
+    this.turnPreparations.delete(sessionId);
+    this.historyMutations.delete(sessionId);
     return had;
   }
 
   appendRunEvent(sessionId: string, event: AgentEventEnvelope): void {
+    this.appendRunEvents(sessionId, [event]);
+  }
+
+  appendRunEvents(sessionId: string, events: readonly AgentEventEnvelope[]): void {
+    if (events.length === 0) return;
     const list = this.runEvents.get(sessionId) ?? [];
-    list.push(event);
+    const eventIds = new Set(list.flatMap((event) => (event.eventId ? [event.eventId] : [])));
+    for (const event of events) {
+      if (event.eventId && eventIds.has(event.eventId)) continue;
+      list.push(event);
+      if (event.eventId) eventIds.add(event.eventId);
+    }
     this.runEvents.set(sessionId, list);
   }
 

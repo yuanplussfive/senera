@@ -3,6 +3,66 @@ import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
 
+test("regeneration truncation acknowledgement preserves the optimistic replacement request", () => {
+  const state = createTestState();
+  const originalRequestId = "request-original";
+  const replacementRequestId = "request-replacement";
+
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunStarted, { input: "Original input" }, { requestId: originalRequestId, sequence: 1 }),
+  );
+  state.sessions[TestSessionId].messages.push(
+    {
+      id: `${originalRequestId}-user`,
+      role: "user",
+      content: "Original input",
+      createdAt: "2026-07-09T00:00:00.000Z",
+      requestId: originalRequestId,
+    },
+    {
+      id: `${originalRequestId}-assistant`,
+      role: "assistant",
+      content: "Original answer",
+      createdAt: "2026-07-09T00:00:01.000Z",
+      requestId: originalRequestId,
+    },
+    {
+      id: `${replacementRequestId}-user`,
+      role: "user",
+      content: "Original input",
+      createdAt: "2026-07-09T00:00:02.000Z",
+      requestId: replacementRequestId,
+    },
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunStarted, { input: "Original input" }, { requestId: replacementRequestId, sequence: 2 }),
+  );
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionTruncated,
+      {
+        sessionId: TestSessionId,
+        fromRequestId: originalRequestId,
+        removedEntries: 2,
+        replacementRequestId,
+      },
+      { requestId: undefined, sequence: 3, phase: "session" },
+    ),
+  );
+
+  expect(state.sessions[TestSessionId].messages).toEqual([
+    expect.objectContaining({ id: `${replacementRequestId}-user`, requestId: replacementRequestId }),
+  ]);
+  expect(state.sessions[TestSessionId].runs).toEqual([
+    expect.objectContaining({ requestId: replacementRequestId, status: "running" }),
+  ]);
+  expect(state.sessions[TestSessionId].activeRequestId).toBe(replacementRequestId);
+});
+
 test("decision events project prompt, route, planner stage, and fallback plan state", () => {
   const state = createTestState();
 
@@ -26,13 +86,8 @@ test("decision events project prompt, route, planner stage, and fallback plan st
       {
         mode: "tool_agent_loop",
         objective: "检查项目测试",
-        needsFreshEvidence: true,
-        needsWorkspaceRead: true,
-        needsSideEffect: false,
-        risk: "low",
         preferredTools: ["WorkspaceReadFile"],
         discoveryQueries: ["tests"],
-        reason: "需要读取仓库证据",
         loadedTools: "all",
         expectedOutputMode: "open",
       },
@@ -44,7 +99,7 @@ test("decision events project prompt, route, planner stage, and fallback plan st
     createEvent(
       EventKinds.ActionPlannerStageStarted,
       {
-        stage: "understandUserTurn",
+        stage: "prepareInteraction",
       },
       { step: 1, sequence: 4, phase: "decision" },
     ),
@@ -54,7 +109,7 @@ test("decision events project prompt, route, planner stage, and fallback plan st
     createEvent(
       EventKinds.ActionPlannerStageCompleted,
       {
-        stage: "understandUserTurn",
+        stage: "prepareInteraction",
         selectedAction: "CallTools",
         repaired: false,
         turnUnderstanding: {
@@ -97,7 +152,7 @@ test("decision events project prompt, route, planner stage, and fallback plan st
     promptLines: 42,
     promptTokenCount: 330,
   });
-  expect(run.steps.find((step) => step.id.includes("understandUserTurn"))).toMatchObject({
+  expect(run.steps.find((step) => step.id.includes("prepareInteraction"))).toMatchObject({
     status: "done",
     decisionKind: "CallTools",
   });

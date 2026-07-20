@@ -1,4 +1,5 @@
 {
+  "ManifestVersion": 2,
   "Plugin": {
     "Name": "WorkspacePatchToolPlugin",
     "Title": "Workspace Patch Tool",
@@ -12,6 +13,7 @@
   "Tools": [
     {
       "Name": "WorkspaceApplyPatch",
+      "Loading": "Dynamic",
       "DescriptionFile": "./docs/WorkspaceApplyPatch.md",
       "SignatureFile": "./ToolSignature.ts",
       "SignatureType": "WorkspaceApplyPatchArguments",
@@ -24,6 +26,14 @@
         "Network": "Deny",
         "Workspace": "ReadWrite",
         "LocalFallback": "Deny"
+      },
+      "Runtime": {
+        "Lifecycle": "Immediate",
+        "ProtocolVersion": 2,
+        "Capabilities": {
+          "Progress": true,
+          "Cancellation": true
+        }
       },
       "ArtifactPolicyFile": "./WorkspacePatchArtifactPolicy.json",
       "Permissions": ["filesystem:read:workspace", "filesystem:write:workspace"],

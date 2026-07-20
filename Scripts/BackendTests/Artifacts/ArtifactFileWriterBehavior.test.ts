@@ -62,10 +62,8 @@ describe("artifact file writer", () => {
     const linked = path.join(workspace, "linked");
     fs.symlinkSync(outside, linked, process.platform === "win32" ? "junction" : "dir");
 
-    await expect(writer.writeText(path.join(outside, "direct.txt"), "blocked", 100)).rejects.toThrow(/路径超出工作区/);
-    await expect(writer.writeText(path.join(linked, "linked.txt"), "blocked", 100)).rejects.toThrow(
-      /符号链接或目录联接/,
-    );
+    await expect(writer.writeText(path.join(outside, "direct.txt"), "blocked", 100)).rejects.toThrow(/工作区边界/);
+    await expect(writer.writeText(path.join(linked, "linked.txt"), "blocked", 100)).rejects.toThrow(/工作区边界/);
     expect(fs.existsSync(path.join(outside, "direct.txt"))).toBe(false);
     expect(fs.existsSync(path.join(outside, "linked.txt"))).toBe(false);
   });

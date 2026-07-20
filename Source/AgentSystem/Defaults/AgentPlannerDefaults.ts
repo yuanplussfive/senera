@@ -31,15 +31,15 @@ export function resolveActionPlannerConfig(
       ...configured?.Evidence,
     },
     Client: sharedClient,
-    TurnUnderstandingClient: resolveActionPlannerClientConfig({
-      config,
-      baseProvider: provider,
-      configuredClient: mergeActionPlannerClientConfig(sharedClientConfig, configured?.TurnUnderstandingClient),
-    }),
     PlanningClient: resolveActionPlannerClientConfig({
       config,
       baseProvider: provider,
       configuredClient: mergeActionPlannerClientConfig(sharedClientConfig, configured?.PlanningClient),
+    }),
+    FinalAnswerClient: resolveActionPlannerClientConfig({
+      config,
+      baseProvider: provider,
+      configuredClient: mergeActionPlannerClientConfig(sharedClientConfig, configured?.FinalAnswerClient),
     }),
   };
 }
@@ -52,11 +52,9 @@ export function resolveActionPlannerClientConfig(options: {
   const configured = options.configuredClient;
   const modelProviderId = configured.ModelProviderId;
   const provider = modelProviderId ? resolveModelProviderConfig(options.config, modelProviderId) : options.baseProvider;
-  const configuredProvider = configured.Provider;
-
   return {
     ModelProviderId: modelProviderId,
-    Provider: configuredProvider ?? AgentDefaults.ActionPlanner.Client.Provider,
+    ModelProvider: provider,
     BaseUrl: provider.BaseUrl,
     ApiKey: provider.ApiKey,
     Model: provider.Model,

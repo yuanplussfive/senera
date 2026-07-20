@@ -1,6 +1,7 @@
 import type { ToolArtifactPolicyManifest, ToolArtifactWorkspaceManifest } from "../Types/PluginManifestTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { AgentWorkspaceArtifactWriter } from "./AgentWorkspaceArtifactWriter.js";
+import type { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
 
 export function writeToolWorkspaceArtifacts(input: {
   workspaceRoot: string;
@@ -9,6 +10,7 @@ export function writeToolWorkspaceArtifacts(input: {
   workspaceCapture: NonNullable<ExecutedToolCallResult["workspaceCapture"]>;
   artifactDir: string;
   files: Record<string, string>;
+  fileWriter: AgentArtifactFileWriter;
 }) {
   return new AgentWorkspaceArtifactWriter({
     workspaceRoot: input.workspaceRoot,
@@ -16,6 +18,7 @@ export function writeToolWorkspaceArtifacts(input: {
     workspaceCapture: input.workspaceCapture,
     artifactDir: input.artifactDir,
     files: input.files,
+    fileWriter: input.fileWriter,
   }).write();
 }
 

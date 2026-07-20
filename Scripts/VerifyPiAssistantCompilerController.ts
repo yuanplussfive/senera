@@ -30,7 +30,7 @@ async function verifyLargeOpenAiMessagesAreBudgetedForPlanning(): Promise<void> 
   const client = new FakePiCompilerClient({
     action: {
       kind: "FinalAnswer",
-      answer: "Done.",
+      answerPlan: ["Summarize completion."],
     },
   });
 
@@ -65,7 +65,9 @@ async function verifyLargeOpenAiMessagesAreBudgetedForPlanning(): Promise<void> 
     },
   });
 
-  assert.equal(message.kind, "final_text");
+  assert.equal(message.kind, "final_answer");
+  if (message.kind !== "final_answer") throw new Error("Expected a final-answer generation plan.");
+  assert.deepEqual(message.input.answerPlan, ["Summarize completion."]);
   const projected = JSON.stringify(client.selectInputs[0]?.openAiRequest.messages);
   assert.equal(projected.includes(hugeToolResult.slice(0, 200_000)), false);
   assert.equal(projected.includes("..."), true);
@@ -167,6 +169,7 @@ async function verifyHintsAndArgumentRepair(): Promise<void> {
 
   assert.equal(client.fillCalls.length, 1);
   assert.equal(client.repairArgumentCalls.length, 1);
+  if (message.kind !== "tool_calls") throw new Error("Expected compiled tool calls.");
   assert.deepEqual(
     message.toolCalls.map((call) => call.arguments),
     [{ query: "status" }, { key: "status" }],
@@ -177,7 +180,7 @@ async function verifyToolChoiceRepairAndParallelFalse(): Promise<void> {
   const client = new FakePiCompilerClient({
     action: {
       kind: "FinalAnswer",
-      answer: "This violates forced tool choice.",
+      answerPlan: ["This violates forced tool choice."],
     },
     repairAction: {
       kind: "CallTools",
@@ -217,7 +220,6 @@ async function verifyToolChoiceRepairAndParallelFalse(): Promise<void> {
   });
 
   assert.equal(client.repairActionCalls.length, 1);
-  assert.deepEqual(client.selectInputs[0]?.allowedTools, ["LookupTool"]);
   assert.deepEqual(
     client.selectInputs[0]?.candidateTools.map((tool) => tool.name),
     ["LookupTool"],
@@ -286,7 +288,11 @@ async function verifyAllowedToolChoiceSubset(): Promise<void> {
   });
 
   assert.equal(client.repairActionCalls.length, 1);
-  assert.deepEqual(client.selectInputs[0]?.allowedTools, ["SearchTool"]);
+  assert.deepEqual(
+    client.selectInputs[0]?.candidateTools.map((tool) => tool.name),
+    ["SearchTool"],
+  );
+  if (message.kind !== "tool_calls") throw new Error("Expected compiled tool calls.");
   assert.deepEqual(
     message.toolCalls.map((call) => call.name),
     ["SearchTool"],
@@ -469,15 +475,7 @@ const actionPlannerConfig: ResolvedAgentActionPlannerConfig = {
     StalledStepLag: 2,
   },
   Client: {
-    Provider: "openai-generic",
-    BaseUrl: "https://example.invalid/v1",
-    ApiKey: "test-key",
-    Model: "test-model",
-    Temperature: 0,
-    MaxTokens: -1,
-  },
-  TurnUnderstandingClient: {
-    Provider: "openai-generic",
+    ModelProvider: modelProvider,
     BaseUrl: "https://example.invalid/v1",
     ApiKey: "test-key",
     Model: "test-model",
@@ -485,7 +483,15 @@ const actionPlannerConfig: ResolvedAgentActionPlannerConfig = {
     MaxTokens: -1,
   },
   PlanningClient: {
-    Provider: "openai-generic",
+    ModelProvider: modelProvider,
+    BaseUrl: "https://example.invalid/v1",
+    ApiKey: "test-key",
+    Model: "test-model",
+    Temperature: 0,
+    MaxTokens: -1,
+  },
+  FinalAnswerClient: {
+    ModelProvider: modelProvider,
     BaseUrl: "https://example.invalid/v1",
     ApiKey: "test-key",
     Model: "test-model",

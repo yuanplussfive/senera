@@ -12,6 +12,8 @@ import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { AgentKeyedLeaseQueue } from "../Core/AgentKeyedLeaseQueue.js";
 import { AgentPiProxyContextHeader } from "../PiProxy/AgentPiProxyRuntimeContext.js";
 import type { AgentPiHarnessEvent, AgentPiHarnessTraceContext } from "./AgentPiHarnessEvents.js";
 import { isPiCoreAgentEvent, projectPiHarnessTraceEvent } from "./AgentPiHarnessEvents.js";
@@ -20,6 +22,16 @@ import type { AgentPiSession } from "./AgentPiSubstrate.js";
 import { renderPiHarnessSystemPrompt, type AgentPiSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
 import { applyAgentPiContextPolicy, type AgentPiContextPolicyFrame } from "./AgentPiContextPolicy.js";
 import type { AgentPiProviderProjection, AgentPiToolDefinition } from "./AgentPiTypes.js";
+import type { AgentPiToolProjectionContext } from "./AgentPiTypes.js";
+import type { AgentPiToolSet } from "./AgentPiToolRegistryProjector.js";
+import type {
+  AgentPiCompactionInspection,
+  AgentPiCompactionPlan,
+  AgentPiCompactionPolicy,
+} from "./AgentPiCompactionPolicy.js";
+import type { AgentPiCompactionSummarizer } from "./AgentPiCompactionSummarizer.js";
+import { createPiTraceEvent } from "./AgentPiTraceProjector.js";
+import { resolveAgentPiSessionCacheCapacity } from "./AgentPiSessionCachePolicy.js";
 
 type AgentPiHarness = AgentHarness<Skill, PromptTemplate, AgentPiToolDefinition>;
 type AgentPiHarnessOptions = AgentHarnessOptions<Skill, PromptTemplate, AgentPiToolDefinition>;
@@ -44,14 +56,17 @@ export interface AgentPiHarnessSessionPoolOptions {
   modelProvider: ResolvedAgentModelProviderConfig;
   maxIdleSessions?: number;
   harnessFactory?: (options: AgentPiHarnessOptions) => AgentPiHarness;
+  compactionPolicy?: AgentPiCompactionPolicy;
+  compactionSummarizer?: AgentPiCompactionSummarizer;
 }
 
 export interface AgentPiHarnessLeaseInput {
   sessionId: string;
   session: AgentPiHarnessOptions["session"];
-  tools: readonly AgentPiToolDefinition[];
-  activeToolNames: readonly string[];
+  signal?: AbortSignal;
+  toolSet: AgentPiToolSet;
   resources: AgentHarnessResources<Skill, PromptTemplate>;
+  resourceFingerprint: string;
   frame: AgentPiHarnessSessionFrame;
   preflight: (event: {
     toolCallId: string;
@@ -62,7 +77,10 @@ export interface AgentPiHarnessLeaseInput {
 
 export interface AgentPiHarnessSessionPoolPort {
   lease(input: AgentPiHarnessLeaseInput): Promise<AgentPiHarnessLeaseResult>;
-  close(): void;
+  findPersistentSession(sessionId: string): AgentPiHarnessOptions["session"] | undefined;
+  rewind(sessionId: string, entryId: string): Promise<boolean>;
+  reset(sessionId: string): Promise<void>;
+  close(): Promise<void>;
 }
 export interface AgentPiHarnessLeaseResult {
   session: AgentPiSession;
@@ -81,14 +99,22 @@ export function composePiProxyRequestHeaders(
     : { ...providerHeaders };
 }
 
-const DefaultMaxIdleSessions = 8;
-
 interface PooledHarness {
   readonly harness: AgentPiHarness;
   readonly frame: AgentPiMutableHarnessFrame;
   readonly disposeTrace: () => void;
   readonly disposeContextPolicy: () => void;
+  readonly persistentSession: AgentPiHarnessOptions["session"];
+  disposeCompaction: () => void;
   disposePreflight?: () => void;
+  compactionRequest?: {
+    plan: Extract<AgentPiCompactionPlan, { kind: "compact" }>;
+    signal: AbortSignal;
+  };
+  shutdownPromise?: Promise<void>;
+  tools: AgentPiToolDefinition[];
+  toolFingerprint: string;
+  resourceFingerprint: string;
   activeLeases: number;
   lastAccess: number;
 }
@@ -111,16 +137,24 @@ class AgentPiMutableHarnessFrame {
 
 export class AgentPiHarnessSessionPool {
   private readonly sessions = new Map<string, PooledHarness>();
-  private readonly leaseQueues = new Map<string, Promise<void>>();
+  private readonly leases = new AgentKeyedLeaseQueue<string>();
   private readonly maxIdleSessions: number;
+  private closePromise: Promise<void> | undefined;
   private accessSequence = 0;
 
   constructor(private readonly options: AgentPiHarnessSessionPoolOptions) {
-    this.maxIdleSessions = normalizeMaxIdleSessions(options.maxIdleSessions);
+    this.maxIdleSessions = resolveAgentPiSessionCacheCapacity(options.maxIdleSessions);
+  }
+
+  findPersistentSession(sessionId: string): AgentPiHarnessOptions["session"] | undefined {
+    const pooled = this.sessions.get(sessionId);
+    if (!pooled) return undefined;
+    pooled.lastAccess = this.nextAccessSequence();
+    return pooled.persistentSession;
   }
 
   async lease(input: AgentPiHarnessLeaseInput): Promise<AgentPiHarnessLeaseResult> {
-    const releaseLease = await this.acquireLease(input.sessionId);
+    const releaseLease = await this.acquireLease(input.sessionId, input.signal);
     let pooled: PooledHarness | undefined;
     try {
       const leased = await this.openOrCreate(input);
@@ -133,7 +167,14 @@ export class AgentPiHarnessSessionPool {
         storage: leased.storage,
         session: new AgentPiHarnessSession(pooled.harness, {
           model: this.options.provider.model,
-          tools: input.tools,
+          tools: pooled.tools,
+          persistentSession: input.session,
+          compactionPolicy: this.options.compactionSummarizer ? this.options.compactionPolicy : undefined,
+          setCompactionRequest: (request) => {
+            pooled!.compactionRequest = request;
+          },
+          onCompactionEvent: (event, inspection, payload) =>
+            this.emitCompactionTrace(pooled!.frame.snapshot(), event, inspection, payload),
           release: () => this.releasePooledHarness(input.sessionId, pooled!, releaseLease),
         }),
       };
@@ -147,37 +188,45 @@ export class AgentPiHarnessSessionPool {
     }
   }
 
-  close(): void {
-    for (const pooled of this.sessions.values()) {
-      this.disposePooledHarness(pooled);
-    }
-    this.sessions.clear();
+  close(): Promise<void> {
+    return (this.closePromise ??= this.closeSessions());
   }
 
-  private async acquireLease(sessionId: string): Promise<() => void> {
-    const previous = this.leaseQueues.get(sessionId) ?? Promise.resolve();
-    let releaseCurrent!: () => void;
-    const current = new Promise<void>((resolve) => {
-      releaseCurrent = resolve;
-    });
-    const tail = previous.catch(() => undefined).then(() => current);
-    this.leaseQueues.set(sessionId, tail);
-    await previous.catch(() => undefined);
+  private async closeSessions(): Promise<void> {
+    const sessions = [...this.sessions.values()];
+    this.sessions.clear();
+    await Promise.allSettled(sessions.map((pooled) => this.shutdownPooledHarness(pooled)));
+  }
 
-    let released = false;
-    return () => {
-      if (released) {
-        return;
+  async reset(sessionId: string): Promise<void> {
+    const releaseLease = await this.acquireLease(sessionId);
+    try {
+      const pooled = this.sessions.get(sessionId);
+      if (pooled && this.sessions.get(sessionId) === pooled) {
+        this.sessions.delete(sessionId);
+        await this.shutdownPooledHarness(pooled);
       }
+    } finally {
+      releaseLease();
+    }
+  }
 
-      released = true;
-      releaseCurrent();
-      void tail.finally(() => {
-        if (this.leaseQueues.get(sessionId) === tail) {
-          this.leaseQueues.delete(sessionId);
-        }
-      });
-    };
+  async rewind(sessionId: string, entryId: string): Promise<boolean> {
+    const releaseLease = await this.acquireLease(sessionId);
+    try {
+      const pooled = this.sessions.get(sessionId);
+      if (!pooled) return false;
+      await pooled.harness.waitForIdle();
+      if (!(await pooled.persistentSession.getEntry(entryId))) return false;
+      await pooled.persistentSession.moveTo(entryId);
+      return true;
+    } finally {
+      releaseLease();
+    }
+  }
+
+  private async acquireLease(sessionId: string, signal?: AbortSignal): Promise<() => void> {
+    return this.leases.acquire(sessionId, signal);
   }
 
   private async openOrCreate(input: AgentPiHarnessLeaseInput): Promise<{
@@ -193,11 +242,12 @@ export class AgentPiHarnessSessionPool {
     }
 
     const frame = new AgentPiMutableHarnessFrame(input.frame);
+    const tools = input.toolSet.materialize(() => projectToolContext(frame.snapshot()));
     const harnessOptions: AgentPiHarnessOptions = {
       env: this.options.env,
       session: input.session,
-      tools: [...input.tools],
-      activeToolNames: [...input.activeToolNames],
+      tools,
+      activeToolNames: [...input.toolSet.activeToolNames],
       resources: input.resources,
       model: {
         ...this.options.provider.model,
@@ -232,9 +282,33 @@ export class AgentPiHarnessSessionPool {
       frame,
       disposeTrace,
       disposeContextPolicy,
+      persistentSession: input.session,
+      disposeCompaction: () => undefined,
+      tools,
+      toolFingerprint: input.toolSet.fingerprint,
+      resourceFingerprint: input.resourceFingerprint,
       activeLeases: 0,
       lastAccess: this.nextAccessSequence(),
     };
+    pooled.disposeCompaction = harness.on("session_before_compact", async (event) => {
+      const request = pooled.compactionRequest;
+      const summarizer = this.options.compactionSummarizer;
+      if (!request || !summarizer) return undefined;
+      const currentLeafId = event.branchEntries.at(-1)?.id;
+      if (currentLeafId !== request.plan.leafEntryId) {
+        throw new Error("Pi session branch changed after compaction planning.");
+      }
+      return {
+        compaction: await summarizer.summarize({
+          preparation: request.plan.preparation,
+          inspection: request.plan.inspection,
+          objective: frame.snapshot().rootCommand?.objective ?? frame.snapshot().turnUnderstanding?.standaloneRequest,
+          customInstructions: event.customInstructions,
+          evidence: frame.snapshot().contextPolicy?.historicalEvidence,
+          signal: request.signal,
+        }),
+      };
+    });
     this.sessions.set(input.sessionId, pooled);
     return {
       value: pooled,
@@ -243,20 +317,37 @@ export class AgentPiHarnessSessionPool {
   }
 
   private async configurePooledHarness(pooled: PooledHarness, input: AgentPiHarnessLeaseInput): Promise<void> {
-    pooled.frame.update(input.frame);
-    pooled.disposePreflight?.();
-    pooled.disposePreflight = pooled.harness.on("tool_call", (event) =>
-      input.preflight({
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        input: event.input,
-      }),
-    );
+    const cancellation = createHarnessCancellation(pooled.harness, input.signal);
+    try {
+      pooled.frame.update(input.frame);
+      pooled.disposePreflight?.();
+      pooled.disposePreflight = pooled.harness.on("tool_call", (event) =>
+        input.preflight({
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          input: event.input,
+        }),
+      );
 
-    await pooled.harness.waitForIdle();
-    await pooled.harness.setTools([...input.tools], [...input.activeToolNames]);
-    await pooled.harness.setResources(input.resources);
-    await pooled.harness.setStreamOptions(this.streamOptions(input.frame));
+      await pooled.harness.waitForIdle();
+      throwIfAborted(input.signal);
+      if (pooled.toolFingerprint !== input.toolSet.fingerprint) {
+        const tools = input.toolSet.materialize(() => projectToolContext(pooled.frame.snapshot()));
+        await pooled.harness.setTools(tools, [...input.toolSet.activeToolNames]);
+        throwIfAborted(input.signal);
+        pooled.tools = tools;
+        pooled.toolFingerprint = input.toolSet.fingerprint;
+      }
+      if (pooled.resourceFingerprint !== input.resourceFingerprint) {
+        await pooled.harness.setResources(input.resources);
+        throwIfAborted(input.signal);
+        pooled.resourceFingerprint = input.resourceFingerprint;
+      }
+      await pooled.harness.setStreamOptions(this.streamOptions(input.frame));
+      throwIfAborted(input.signal);
+    } finally {
+      await cancellation.dispose();
+    }
   }
 
   private streamOptions(frame: AgentPiHarnessSessionFrame) {
@@ -294,14 +385,21 @@ export class AgentPiHarnessSessionPool {
       return;
     }
     this.sessions.delete(sessionId);
-    this.disposePooledHarness(pooled);
+    void this.shutdownPooledHarness(pooled).catch(() => undefined);
   }
 
-  private disposePooledHarness(pooled: PooledHarness): void {
-    pooled.disposePreflight?.();
-    pooled.disposeContextPolicy();
-    pooled.disposeTrace();
-    void pooled.harness.abort().catch(() => undefined);
+  private shutdownPooledHarness(pooled: PooledHarness): Promise<void> {
+    if (!pooled.shutdownPromise) {
+      pooled.disposePreflight?.();
+      pooled.disposeContextPolicy();
+      pooled.disposeCompaction();
+      pooled.disposeTrace();
+      pooled.shutdownPromise = (async () => {
+        await pooled.harness.abort();
+        await pooled.harness.waitForIdle();
+      })();
+    }
+    return pooled.shutdownPromise;
   }
 
   private nextAccessSequence(): number {
@@ -319,13 +417,104 @@ export class AgentPiHarnessSessionPool {
       await emitAgentEvent(frame.onEvent, projected);
     }
   }
+
+  private async emitCompactionTrace(
+    frame: AgentPiHarnessSessionFrame,
+    event: "checked" | "skipped" | "started" | "completed" | "failed",
+    inspection: AgentPiCompactionInspection,
+    payload?: unknown,
+  ): Promise<void> {
+    const check = projectCompactionCheck(payload);
+    if (event === "checked" && check) {
+      await emitAgentEvent(
+        frame.onEvent,
+        createPiTraceEvent({
+          ...traceContextFromFrame(frame),
+          source: "substrate",
+          eventType: "compaction.check.timing",
+          payload: check,
+        }),
+      );
+    }
+    await emitAgentEvent(
+      frame.onEvent,
+      createPiTraceEvent({
+        ...traceContextFromFrame(frame),
+        source: "substrate",
+        eventType: `compaction.${event}`,
+        payload: {
+          ...inspection,
+          result:
+            event === "completed"
+              ? projectCompactionResult(payload)
+              : event === "skipped"
+                ? projectCompactionSkipResult(payload)
+                : undefined,
+          error: event === "failed" && payload instanceof Error ? payload.message : undefined,
+        },
+      }),
+    );
+  }
 }
 
-function normalizeMaxIdleSessions(value: number | undefined): number {
-  if (value === undefined) {
-    return DefaultMaxIdleSessions;
-  }
-  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : DefaultMaxIdleSessions;
+function createHarnessCancellation(harness: AgentPiHarness, signal?: AbortSignal): { dispose(): Promise<void> } {
+  let cancellation: Promise<unknown> | undefined;
+  const abort = (): void => {
+    cancellation ??= harness.abort().catch(() => undefined);
+  };
+
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
+
+  return {
+    async dispose(): Promise<void> {
+      signal?.removeEventListener("abort", abort);
+      if (signal?.aborted) abort();
+      await cancellation;
+    },
+  };
+}
+
+function projectToolContext(frame: AgentPiHarnessSessionFrame): AgentPiToolProjectionContext {
+  return {
+    sessionId: frame.sessionId,
+    requestId: frame.requestId,
+    step: frame.step,
+    onEvent: frame.onEvent,
+    piProxyRuntimeContextId: frame.piProxyRuntimeContextId,
+    activeSkills: frame.activeSkills,
+    rootCommand: frame.rootCommand,
+    turnUnderstanding: frame.turnUnderstanding,
+  };
+}
+
+function projectCompactionResult(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const result = value as Record<string, unknown>;
+  return {
+    firstKeptEntryId: result.firstKeptEntryId,
+    tokensBefore: result.tokensBefore,
+    summaryChars: typeof result.summary === "string" ? result.summary.length : undefined,
+    details: result.details,
+  };
+}
+
+function projectCompactionCheck(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const result = value as Record<string, unknown>;
+  const projected = Object.fromEntries(
+    ["durationMs", "branchEntryCount"].flatMap((key) => (typeof result[key] === "number" ? [[key, result[key]]] : [])),
+  );
+  return Object.keys(projected).length > 0 ? projected : undefined;
+}
+
+function projectCompactionSkipResult(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const result = value as Record<string, unknown>;
+  return {
+    reason: result.reason,
+    recommendedAction: result.recommendedAction,
+  };
 }
 
 function traceContextFromFrame(frame: AgentPiHarnessSessionFrame): AgentPiHarnessTraceContext {

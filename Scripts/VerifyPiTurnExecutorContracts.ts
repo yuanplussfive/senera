@@ -13,7 +13,10 @@ import type {
   AgentPiSessionResult,
   AgentPiSessionEventListener,
 } from "../Source/AgentSystem/Pi/AgentPiSubstrate.js";
-import { readPiProxyRuntimeContext } from "../Source/AgentSystem/PiProxy/AgentPiProxyRuntimeContext.js";
+import {
+  readPiProxyRuntimeContext,
+  registerPiProxyExecutedToolResult,
+} from "../Source/AgentSystem/PiProxy/AgentPiProxyRuntimeContext.js";
 import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import type { AgentLoopCommand, AgentLoopCommandResult } from "../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
@@ -96,8 +99,8 @@ async function main(): Promise<void> {
     true,
   );
   assertPiTrace(events, "turn.started");
-  assertPiTrace(events, "session.create.started");
-  assertPiTrace(events, "session.create.completed");
+  assertPiTrace(events, "session.lease.started");
+  assertPiTrace(events, "session.lease.completed");
   assertPiTrace(events, "session.prompt.started");
   assertPiTrace(events, "session.prompt.completed");
   assertPiTrace(events, "turn.completed");
@@ -165,7 +168,7 @@ function createRuntime(pi: FakePiRuntime): AgentPiTurnRuntimePort {
     },
     modelProviderConfig,
     agentLoopConfig: {
-      PiSessionCreateTimeoutMs: 20_000,
+      PiTurnLeaseTimeoutMs: 20_000,
     },
     tokenEstimator: {
       estimate: (text: string) => ({ tokenCount: text.length }),
@@ -396,8 +399,13 @@ class FakePiRuntime {
     return ["SeneraEchoTool"];
   }
 
-  async createSession(options: AgentPiSessionOptions): Promise<AgentPiSessionResult> {
+  planningToolCards() {
+    return [];
+  }
+
+  async leaseTurn(options: AgentPiSessionOptions): Promise<AgentPiSessionResult> {
     this.lastSessionOptions = options;
+    this.session.piProxyRuntimeContextId = options.piProxyRuntimeContextId;
     this.createStartedResolve();
     if (this.deferCreate) {
       await this.createFinished;
@@ -411,6 +419,14 @@ class FakePiRuntime {
     } finally {
       this.createReturnedResolve();
     }
+  }
+
+  async resetSession(): Promise<boolean> {
+    return false;
+  }
+
+  async rewindSession(): Promise<boolean> {
+    return false;
   }
 
   async finishCreate(): Promise<void> {
@@ -429,6 +445,7 @@ class FakePiSession {
   abortCount = 0;
   unsubscribeCount = 0;
   promptFailure?: Error;
+  piProxyRuntimeContextId?: string;
   onPromptStarted?: () => void;
   private promptStartedResolve!: () => void;
   private promptFinishResolve!: () => void;
@@ -449,6 +466,10 @@ class FakePiSession {
 
   setHistory(messages: readonly unknown[]): void {
     this.assignedHistory.splice(0, this.assignedHistory.length, ...messages);
+  }
+
+  async markTurnBoundary(requestId: string): Promise<string> {
+    return `boundary:${requestId}`;
   }
 
   async prompt(text: string, options: unknown): Promise<void> {
@@ -528,6 +549,7 @@ class FakePiSession {
         text: "检查当前工作区",
       },
     });
+    registerPiProxyExecutedToolResult(this.piProxyRuntimeContextId, "call_echo", executedToolResult());
     await this.emit({
       type: "tool_execution_end",
       toolCallId: "call_echo",
@@ -572,7 +594,6 @@ class FakePiSession {
           details: {
             senera: {
               toolName: "SeneraEchoTool",
-              executed: executedToolResult(),
             },
           },
           isError: false,
@@ -656,7 +677,6 @@ function projectPiToolResult(): unknown {
     details: {
       senera: {
         toolName: "SeneraEchoTool",
-        executed: executedToolResult(),
       },
     },
   };

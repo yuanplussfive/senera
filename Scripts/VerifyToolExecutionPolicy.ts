@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { buildAgentPluginProcessExecutionPlan } from "../Source/AgentSystem/ToolRuntime/AgentPluginProcessExecutionProfile.js";
 import { resolveAgentToolExecutionPolicy } from "../Source/AgentSystem/ToolRuntime/AgentToolExecutionPolicy.js";
 import type { LoadedPlugin, RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
 import type { ToolExecutionManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
@@ -25,14 +24,6 @@ function main(): void {
   assert.equal(localPolicy.network, "default");
   assert.equal(localPolicy.workspaceMount, "writable");
   assert.equal(localPolicy.localFallback, "allow");
-  const localPlan = buildAgentPluginProcessExecutionPlan({
-    workspaceRoot,
-    tool: localTool,
-  });
-  assert.equal(localPlan.profile.backend, "local");
-  assert.equal(localPlan.profile.microsandbox, undefined);
-  assert.equal(localPlan.guestContext.workspaceRoot, workspaceRoot);
-  assert.equal(localPlan.guestContext.pluginRoot, path.join(workspaceRoot, "System", "Plugins", "VerifyLocalPlugin"));
 
   const sandboxTool = createTool({
     plugin: createPlugin({
@@ -47,20 +38,10 @@ function main(): void {
     },
   });
   const sandboxPolicy = resolveAgentToolExecutionPolicy(sandboxTool);
-  const sandboxPlan = buildAgentPluginProcessExecutionPlan({
-    workspaceRoot,
-    tool: sandboxTool,
-  });
   assert.equal(sandboxPolicy.mode, "sandbox");
   assert.equal(sandboxPolicy.network, "disabled");
   assert.equal(sandboxPolicy.workspaceMount, "readonly");
   assert.equal(sandboxPolicy.localFallback, "deny");
-  assert.equal(sandboxPlan.profile.backend, "sandbox");
-  assert.equal(sandboxPlan.profile.localFallback, "deny");
-  assert.equal(sandboxPlan.profile.microsandbox?.guestWorkspaceRoot, "/workspace");
-  assert.equal(sandboxPlan.profile.microsandbox?.guestWorkdir, "/opt/senera/runtime/Plugins/VerifyUserPlugin");
-  assert.equal(sandboxPlan.guestContext.workspaceRoot, "/workspace");
-  assert.equal(sandboxPlan.guestContext.pluginRoot, "/opt/senera/runtime/Plugins/VerifyUserPlugin");
 
   const sandboxPreferredTool = createTool({
     plugin: createPlugin({
@@ -125,28 +106,17 @@ function createPlugin(input: { rootKind: LoadedPlugin["rootKind"]; pluginRoot: s
       diagnostics: [],
     },
     manifest: {
+      ManifestVersion: 2,
       Plugin: {
         Name: path.basename(input.pluginRoot),
         Version: "0.0.0",
         Kind: "Tool",
-        Entry: {
-          Kind: "Process",
-          Command: "npm",
-          Args: ["run", "tool"],
-          Cwd: ".",
-        },
-      },
-      Runtime: {
-        Kind: "Node",
-        NodeVersion: "22",
-        PackageManager: "npm",
-        Install: "none",
-        Script: "tool",
-        SandboxProfile: "node-plugin",
       },
       Tools: [
         {
           Name: "VerifyTool",
+          Handler: { Kind: "HostCapability", Capability: "verify" },
+          Runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 },
           Execution: DefaultExecution,
         },
       ],
@@ -169,11 +139,14 @@ function createTool(input: {
   return {
     plugin: input.plugin,
     name: "VerifyTool",
+    loading: "Dynamic",
     permissions: input.permissions ?? [],
     execution: input.execution,
     handler: {
-      kind: "PluginProcess",
+      kind: "HostCapability",
+      capability: "verify",
     },
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 },
     evidenceCapabilities: [],
   };
 }

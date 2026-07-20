@@ -25,6 +25,7 @@ export type AgentPlannerDomainEvent =
       context: AgentStepContext;
       data: {
         stage: AgentActionPlannerStageName;
+        durationMs: number;
         selectedAction?: string;
         repaired?: boolean;
         turnUnderstanding?: AgentTurnUnderstandingEventData;
@@ -35,6 +36,7 @@ export type AgentPlannerDomainEvent =
       context: AgentStepContext;
       data: {
         stage: AgentActionPlannerStageName;
+        durationMs: number;
         message: string;
       };
     }
@@ -44,13 +46,8 @@ export type AgentPlannerDomainEvent =
       data: {
         mode: AgentInteractionRunMode;
         objective: string;
-        needsFreshEvidence: boolean;
-        needsWorkspaceRead: boolean;
-        needsSideEffect: boolean;
-        risk: string;
         preferredTools: string[];
         discoveryQueries: string[];
-        reason: string;
         loadedTools: AgentLoadedToolNames;
         expectedOutputMode?: AgentExpectedOutputMode;
       };

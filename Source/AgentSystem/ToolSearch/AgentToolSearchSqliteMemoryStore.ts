@@ -1,6 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
+import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import { mergePatternAggregate } from "./AgentToolSearchMemoryProjection.js";
 import type {
   AgentToolLearningProjection,
@@ -17,32 +16,36 @@ import {
   rowToTermAggregate,
   termAggregateRecord,
 } from "./AgentToolSearchMemoryCodec.js";
-import { configureToolSearchMemoryDatabase, installToolSearchMemorySchema } from "./AgentToolSearchMemorySqlSchema.js";
+import { AgentToolSearchMemoryDatabaseMigrations } from "./AgentToolSearchMemorySqlSchema.js";
 import {
   prepareToolSearchMemorySqlStatements,
   type ToolSearchMemorySqlStatements,
 } from "./AgentToolSearchMemorySqlStatements.js";
 
 export class SqliteToolSearchMemoryStore implements AgentToolSearchMemoryStore {
+  private readonly kernel: AgentSqliteDatabaseKernel;
   private readonly db: Database.Database;
   private readonly stmts: ToolSearchMemorySqlStatements;
+  private readonly persistEpisode: (episode: AgentToolSearchEpisode, projection: AgentToolLearningProjection) => void;
 
   constructor(databasePath: string) {
-    fs.mkdirSync(path.dirname(databasePath), { recursive: true });
-    this.db = new Database(databasePath);
-    configureToolSearchMemoryDatabase(this.db);
-    installToolSearchMemorySchema(this.db);
+    this.kernel = new AgentSqliteDatabaseKernel({
+      databasePath,
+      migrations: AgentToolSearchMemoryDatabaseMigrations,
+    });
+    this.db = this.kernel.connection;
     this.stmts = prepareToolSearchMemorySqlStatements(this.db);
+    this.persistEpisode = this.db.transaction(
+      (episode: AgentToolSearchEpisode, projection: AgentToolLearningProjection) => {
+        this.stmts.insertEpisode.run(episodeRecord(episode));
+        for (const term of projection.terms) this.stmts.insertTerm.run(termAggregateRecord(term));
+        for (const pattern of projection.patterns) this.upsertPattern(pattern);
+      },
+    );
   }
 
   add(episode: AgentToolSearchEpisode, projection: AgentToolLearningProjection): void {
-    this.stmts.insertEpisode.run(episodeRecord(episode));
-    for (const term of projection.terms) {
-      this.stmts.insertTerm.run(termAggregateRecord(term));
-    }
-    for (const pattern of projection.patterns) {
-      this.upsertPattern(pattern);
-    }
+    this.persistEpisode(episode, projection);
   }
 
   list(projectId: string, limit: number): AgentToolSearchEpisode[] {
@@ -62,7 +65,7 @@ export class SqliteToolSearchMemoryStore implements AgentToolSearchMemoryStore {
   }
 
   close(): void {
-    this.db.close();
+    this.kernel.close();
   }
 
   private upsertPattern(pattern: AgentToolUsePatternAggregate): void {

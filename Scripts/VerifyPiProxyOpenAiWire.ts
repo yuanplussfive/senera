@@ -26,6 +26,7 @@ import type {
   AgentSystemConfig,
   ResolvedAgentModelProviderConfig,
 } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { AgentRootCommand } from "../Source/AgentSystem/AgentRootCommand.js";
 
 const config: AgentSystemConfig = {
   Server: {
@@ -190,9 +191,27 @@ assert.equal(finalCompletion.choices[0]?.finish_reason, "stop");
 assert.equal(finalCompletion.choices[0]?.message.content, "完成。");
 
 async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
-  const rootCommand = {
+  const rootCommand: AgentRootCommand = {
     authority: "senera_runtime_root",
+    action: "use_tools",
+    outputMode: "open",
+    toolAccess: "restricted",
     objective: "verify context forwarding",
+    instruction: "verify context forwarding",
+    allowedTools: ["SeneraEchoTool"],
+    forbiddenOutputs: [],
+    insufficiencyPolicy: "ask",
+    preferredTools: ["SeneraEchoTool"],
+    toolSearchQueries: [],
+    needs: [],
+    includeToolCatalog: true,
+    visibleOutput: {
+      audience: "runtime",
+      start: "",
+      format: "text",
+      rules: [],
+      repair: { instruction: "", rules: [] },
+    },
   };
   const activeSkills = [
     {

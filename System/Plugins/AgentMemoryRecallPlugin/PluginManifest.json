@@ -1,4 +1,5 @@
 {
+  "ManifestVersion": 2,
   "Plugin": {
     "Name": "AgentMemoryRecallPlugin",
     "Title": "长期记忆召回",
@@ -13,6 +14,7 @@
   "Tools": [
     {
       "Name": "MemoryRecallTool",
+      "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["memory:read"],
@@ -178,6 +180,13 @@
         ],
         "Avoid": ["项目文件、网页事实、工具原始结果正文应使用对应工具读取。"],
         "Tags": ["长期记忆", "用户偏好", "用户画像", "知识", "剧情"]
+      },
+      "Runtime": {
+        "Lifecycle": "Immediate",
+        "ProtocolVersion": 2,
+        "Capabilities": {
+          "Cancellation": true
+        }
       }
     }
   ],

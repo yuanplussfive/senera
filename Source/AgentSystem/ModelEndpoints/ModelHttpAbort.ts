@@ -1,6 +1,8 @@
 import type { ModelProviderConfig } from "./ModelEndpointTypes.js";
 import { ModelRequestTimeoutError } from "./ModelHttpErrors.js";
 
+const combinedSignalDisposers = new WeakMap<AbortSignal, () => void>();
+
 export interface ModelRequestLifetime {
   signal: AbortSignal;
   dispose: () => void;
@@ -24,7 +26,10 @@ export function createModelRequestLifetime(config: ModelProviderConfig, parent?:
   const timer = setTimeout(() => timeout.abort(new ModelRequestTimeoutError("max_request")), config.MaxRequestMs);
   return {
     signal,
-    dispose: () => clearTimeout(timer),
+    dispose: () => {
+      clearTimeout(timer);
+      disposeCombinedAbortSignal(signal);
+    },
   };
 }
 
@@ -41,9 +46,20 @@ export function combineAbortSignals(first: AbortSignal | null | undefined, secon
     return controller.signal;
   }
 
+  const dispose = (): void => {
+    first.removeEventListener("abort", abort);
+    second.removeEventListener("abort", abort);
+    combinedSignalDisposers.delete(controller.signal);
+  };
+  combinedSignalDisposers.set(controller.signal, dispose);
+  controller.signal.addEventListener("abort", dispose, { once: true });
   first.addEventListener("abort", abort, { once: true });
   second.addEventListener("abort", abort, { once: true });
   return controller.signal;
+}
+
+export function disposeCombinedAbortSignal(signal: AbortSignal): void {
+  combinedSignalDisposers.get(signal)?.();
 }
 
 export function readAbortFailure(...signals: Array<AbortSignal | null | undefined>): { reason: unknown } | undefined {

@@ -5,6 +5,7 @@ import type {
 import type { RegisteredTool } from "./PluginRuntimeTypes.js";
 import type { ToolArtifactPolicyManifest } from "./PluginManifestTypes.js";
 import type { AgentToolResultSummary } from "./AgentToolResultSummaryTypes.js";
+import type { SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
 
 export interface ExecutedToolCallResult {
   callId: string;
@@ -15,6 +16,7 @@ export interface ExecutedToolCallResult {
     signal: NodeJS.Signals | null;
     stderr: string;
   };
+  outputCapture?: SeneraOutputSpoolDescriptor;
   result: unknown;
   artifact?: ExecutedToolCallArtifact;
   presentation?: AgentToolResultPresentation;
@@ -165,6 +167,7 @@ export interface ToolArtifactEvidenceModelSlotRecord {
 export interface ToolArtifactEvidencePlannerMemoryRecord {
   facts: ToolArtifactEvidenceModelSlotRecord[];
   artifactRefs: string[];
+  artifactUri?: string;
 }
 
 export interface ToolArtifactDeltaRecord {
@@ -185,17 +188,6 @@ export interface AgentPluginRegistryLike {
   getTool(name: string): RegisteredTool | undefined;
 }
 
-export interface AgentToolProcessRequest {
-  tool: string;
-  arguments: Record<string, unknown>;
-  context: AgentToolProcessContext;
-}
-
-export interface AgentToolProcessContext {
-  workspaceRoot: string;
-  pluginRoot: string;
-}
-
 export interface AgentToolProcessError {
   code: import("../Xml/AgentXmlStatus.js").AgentExecutionErrorCode;
   message: string;
@@ -203,18 +195,11 @@ export interface AgentToolProcessError {
   details?: {
     phase?: import("../Xml/AgentXmlStatus.js").AgentToolProcessErrorPhase;
     issues?: unknown;
-    modulePath?: string;
     runtime?: string;
     timeoutMs?: number;
     maxStdoutBytes?: number;
     maxStderrBytes?: number;
     actualBytes?: number;
-    type?: unknown;
-    version?: unknown;
-    expectedType?: string;
-    expectedVersion?: number;
-    receivedLine?: string;
-    parseError?: string;
     pluginName?: string;
     toolName?: string;
     exitCode?: number | null;

@@ -2,6 +2,7 @@ import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes
 
 export interface AgentModelCompatibility {
   supportsDeveloperRole: boolean;
+  supportsStreamingUsage: boolean;
 }
 
 export function resolveAgentModelCompatibility(
@@ -9,5 +10,6 @@ export function resolveAgentModelCompatibility(
 ): AgentModelCompatibility {
   return {
     supportsDeveloperRole: provider.Capabilities?.DeveloperRole === true,
+    supportsStreamingUsage: provider.Capabilities?.StreamingUsage !== false,
   };
 }

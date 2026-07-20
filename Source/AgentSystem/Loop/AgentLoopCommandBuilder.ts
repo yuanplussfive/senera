@@ -1,8 +1,8 @@
 import type { AgentLoopCommand, RunningAgentLoopMachineState } from "./AgentLoopStateTypes.js";
 
-export function understandTurnCommand(state: RunningAgentLoopMachineState): AgentLoopCommand {
+export function prepareInteractionCommand(state: RunningAgentLoopMachineState): AgentLoopCommand {
   return {
-    kind: "understand_turn",
+    kind: "prepare_interaction",
     requestId: state.requestId,
     step: state.step,
     input: state.input,
@@ -10,21 +10,6 @@ export function understandTurnCommand(state: RunningAgentLoopMachineState): Agen
     conversationEntries: state.conversationEntries,
     loadedToolNames: state.loadedToolNames,
     plannerLedger: state.plannerLedger,
-  };
-}
-
-export function routeInteractionCommand(state: RunningAgentLoopMachineState): AgentLoopCommand {
-  return {
-    kind: "route_interaction",
-    requestId: state.requestId,
-    step: state.step,
-    input: state.input,
-    messages: state.messages,
-    conversationEntries: state.conversationEntries,
-    loadedToolNames: state.loadedToolNames,
-    plannerLedger: state.plannerLedger,
-    activeSkills: state.activeSkills,
-    turnUnderstanding: state.turnUnderstanding,
   };
 }
 
@@ -54,6 +39,9 @@ export function runPiTurnCommand(state: RunningAgentLoopMachineState, prompt: st
     rootCommand: state.rootCommand,
     loadedToolNames: state.loadedToolNames,
     turnUnderstanding: state.turnUnderstanding,
+    interactionRoute: state.interactionRoute,
+    initialAction: state.initialAction,
     activeSkills: state.activeSkills,
+    onPiBranchBoundary: state.onPiBranchBoundary,
   };
 }

@@ -1,5 +1,5 @@
 import { throwIfAborted } from "../Core/AgentCancellation.js";
-import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
+import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";

@@ -1,9 +1,11 @@
+import crypto from "node:crypto";
 import { resolveFrom } from "../Core/AgentPath.js";
 import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { isLoadedPluginToolEnabled } from "./AgentPluginConfig.js";
 import { ToolArtifactPolicySchema } from "../Schemas/PluginManifestSchema.js";
 import type { RootCommandManifest, ToolArtifactPolicyManifest, ToolManifest } from "../Types/PluginManifestTypes.js";
+import { ToolLoadingModes } from "../Types/PluginToolManifestTypes.js";
 import type {
   LoadedPlugin,
   RegisteredSkill,
@@ -11,6 +13,7 @@ import type {
   RegisteredTool,
   RegisteredToolHandler,
 } from "../Types/PluginRuntimeTypes.js";
+import { AgentPromptContractProjector } from "../Prompt/AgentPromptContractProjector.js";
 
 export interface AgentPluginRuntimeContributions {
   tools: RegisteredTool[];
@@ -20,6 +23,8 @@ export interface AgentPluginRuntimeContributions {
 }
 
 export class AgentPluginRuntimeContractProjector {
+  private readonly contractProjector = new AgentPromptContractProjector();
+
   project(plugin: LoadedPlugin): AgentPluginRuntimeContributions {
     return {
       tools: this.projectTools(plugin),
@@ -35,17 +40,44 @@ export class AgentPluginRuntimeContractProjector {
       .map((tool) => ({
         plugin,
         name: tool.Name,
+        loading: tool.Loading ?? ToolLoadingModes.Dynamic,
         descriptionFile: tool.DescriptionFile ? resolveFrom(plugin.rootPath, tool.DescriptionFile) : undefined,
         signatureFile: tool.SignatureFile ? resolveFrom(plugin.rootPath, tool.SignatureFile) : undefined,
         signatureType: tool.SignatureType,
+        contract: this.projectToolContract(plugin, tool),
         permissions: tool.Permissions ?? [],
         handler: readToolHandler(tool),
         execution: tool.Execution,
+        runtime: tool.Runtime,
+        observation: tool.Observation,
         search: tool.Search,
         evidenceCapabilities: tool.EvidenceCapabilities ?? [],
         approval: tool.Approval,
         artifactPolicy: readToolArtifactPolicy(plugin, tool),
       }));
+  }
+
+  private projectToolContract(plugin: LoadedPlugin, tool: ToolManifest) {
+    const signatureFile = tool.SignatureFile ? resolveFrom(plugin.rootPath, tool.SignatureFile) : undefined;
+    const argumentsContract = this.contractProjector.projectFromFile(signatureFile, "arguments", tool.SignatureType);
+    const digest = crypto
+      .createHash("sha256")
+      .update(
+        JSON.stringify({
+          manifestVersion: plugin.manifest.ManifestVersion,
+          plugin: plugin.manifest.Plugin.Name,
+          pluginVersion: plugin.manifest.Plugin.Version,
+          tool: tool.Name,
+          signatureType: tool.SignatureType,
+          observation: tool.Observation,
+          arguments: argumentsContract,
+        }),
+      )
+      .digest("hex");
+    return deepFreeze({
+      digest,
+      arguments: argumentsContract,
+    });
   }
 
   private projectSkills(plugin: LoadedPlugin): RegisteredSkill[] {
@@ -72,6 +104,12 @@ export class AgentPluginRuntimeContractProjector {
   }
 }
 
+function deepFreeze<T>(value: T): T {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const nested of Object.values(value as Record<string, unknown>)) deepFreeze(nested);
+  return Object.freeze(value);
+}
+
 function readToolArtifactPolicy(plugin: LoadedPlugin, tool: ToolManifest): ToolArtifactPolicyManifest | undefined {
   const fromFile = tool.ArtifactPolicyFile
     ? (new AgentJsonFileLoader().load(
@@ -93,6 +131,8 @@ function mergeArtifactPolicy(
 
   const redactionKeys = [...(base?.Redact?.Keys ?? []), ...(override?.Redact?.Keys ?? [])];
   const redactionPaths = [...(base?.Redact?.Paths ?? []), ...(override?.Redact?.Paths ?? [])];
+  const redactionStreams = [...new Set([...(base?.Redact?.Streams ?? []), ...(override?.Redact?.Streams ?? [])])];
+  const redactionTransforms = [...(base?.Redact?.Transforms ?? []), ...(override?.Redact?.Transforms ?? [])];
   const evidence = [...(base?.Evidence ?? []), ...(override?.Evidence ?? [])];
   const workspacePaths = [...(base?.Workspace?.Paths ?? []), ...(override?.Workspace?.Paths ?? [])];
   const merged: ToolArtifactPolicyManifest = {};
@@ -103,6 +143,8 @@ function mergeArtifactPolicy(
       ...(override?.Redact ?? {}),
       ...(redactionKeys.length > 0 ? { Keys: redactionKeys } : {}),
       ...(redactionPaths.length > 0 ? { Paths: redactionPaths } : {}),
+      ...(redactionStreams.length > 0 ? { Streams: redactionStreams } : {}),
+      ...(redactionTransforms.length > 0 ? { Transforms: redactionTransforms } : {}),
     };
   }
 
@@ -133,21 +175,15 @@ function mergeArtifactPolicy(
 
 function readToolHandler(tool: ToolManifest): RegisteredToolHandler {
   const handler = tool.Handler;
-
-  const handlers = {
-    HostCapability: () =>
-      ({
-        kind: "HostCapability",
-        capability: handler?.Kind === "HostCapability" ? handler.Capability : "",
-      }) satisfies RegisteredToolHandler,
-    McpTool: () =>
-      ({
+  switch (handler.Kind) {
+    case "HostCapability":
+      return { kind: "HostCapability", capability: handler.Capability };
+    case "McpTool":
+      return {
         kind: "McpTool",
-        server: handler?.Kind === "McpTool" ? handler.Server : "",
-        tool: handler?.Kind === "McpTool" ? handler.Tool : "",
-      }) satisfies RegisteredToolHandler,
-    PluginProcess: () => ({ kind: "PluginProcess" }) satisfies RegisteredToolHandler,
-  } satisfies Record<NonNullable<ToolManifest["Handler"]>["Kind"] | "PluginProcess", () => RegisteredToolHandler>;
-
-  return handlers[handler?.Kind ?? "PluginProcess"]();
+        server: handler.Server,
+        tool: handler.Tool,
+        resources: handler.Resources ?? [],
+      };
+  }
 }

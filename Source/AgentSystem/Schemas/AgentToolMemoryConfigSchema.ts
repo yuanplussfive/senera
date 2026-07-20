@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { disabledOrPositiveInteger } from "./AgentConfigSchemaPrimitives.js";
 import { ActionPlannerClientSchema } from "./AgentPlannerConfigSchema.js";
+import {
+  AgentToolSearchIntentGateModes,
+  AgentToolSearchMemoryExpansionModes,
+} from "../Types/AgentToolAndMemoryConfigTypes.js";
 
 export const ToolSearchSchema = z
   .object({
@@ -31,6 +35,30 @@ export const ToolSearchSchema = z
         MmrLambda: z.number().min(0).max(1).optional(),
         MmrCandidateScoreRatio: z.number().min(0).max(1).optional(),
         MinScore: z.number().min(0).optional(),
+        MaxResults: z.number().int().min(1).optional(),
+        IntentGate: z
+          .object({
+            Mode: z
+              .enum([AgentToolSearchIntentGateModes.Disabled, AgentToolSearchIntentGateModes.SideEffectCapability])
+              .optional(),
+          })
+          .strict()
+          .optional(),
+        MemoryExpansion: z
+          .object({
+            Mode: z
+              .enum([
+                AgentToolSearchMemoryExpansionModes.Disabled,
+                AgentToolSearchMemoryExpansionModes.Fallback,
+                AgentToolSearchMemoryExpansionModes.Augment,
+              ])
+              .optional(),
+            MinConfidence: z.number().min(0).max(1).optional(),
+            MinEvidence: z.number().min(0).optional(),
+            MaxResults: z.number().int().min(1).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

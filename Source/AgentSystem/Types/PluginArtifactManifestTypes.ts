@@ -8,6 +8,16 @@ export interface ToolArtifactPolicyManifest {
 export interface ToolArtifactRedactionManifest {
   Keys?: string[];
   Paths?: string[];
+  Streams?: Array<"stdout" | "stderr">;
+  Transforms?: ToolArtifactRedactionTransformManifest[];
+}
+
+export interface ToolArtifactRedactionTransformManifest {
+  Pattern: string;
+  Replacement?: string;
+  Flags?: string;
+  Streams?: Array<"stdout" | "stderr">;
+  WindowChars?: number;
 }
 
 export interface ToolArtifactEvidenceManifest {
@@ -56,6 +66,8 @@ export interface ToolArtifactEvidenceModelProjectionManifest {
 export interface ToolArtifactEvidencePlannerMemoryManifest {
   Facts: string[];
   ArtifactRefs?: string[];
+  ArtifactUri?: string;
+  ArtifactRefsSlot?: string;
 }
 
 export interface ToolArtifactEvidenceProjectionManifest {

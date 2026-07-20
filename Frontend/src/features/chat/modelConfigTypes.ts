@@ -46,6 +46,7 @@ export interface ModelCapabilitiesDraft {
   ImageOutput?: boolean;
   Reasoning?: boolean;
   DeveloperRole?: boolean;
+  StreamingUsage?: boolean;
 }
 
 export interface ModelGroupDraft {

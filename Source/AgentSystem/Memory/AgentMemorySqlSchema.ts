@@ -1,17 +1,11 @@
 import type Database from "better-sqlite3";
 import { AgentMemoryLearningJobStatusValues } from "./AgentMemoryLearningJob.js";
+import { defineAgentSqliteMigration } from "../Database/AgentSqliteMigration.js";
+import { runAgentSqliteMigrations } from "../Database/AgentSqliteMigrationRunner.js";
 
 const MemoryLearningJobStatusSql = AgentMemoryLearningJobStatusValues.map((status) => `'${status}'`).join(", ");
 
-export function configureAgentMemoryDatabase(db: Database.Database): void {
-  db.pragma("journal_mode = WAL");
-  db.pragma("synchronous = NORMAL");
-  db.pragma("busy_timeout = 5000");
-  db.pragma("foreign_keys = ON");
-}
-
-export function installAgentMemorySchema(db: Database.Database): void {
-  db.exec(`
+const AgentMemoryInitialSchemaSql = `
     CREATE TABLE IF NOT EXISTS memory_episodes (
       id TEXT PRIMARY KEY,
       uri TEXT NOT NULL UNIQUE,
@@ -191,5 +185,16 @@ export function installAgentMemorySchema(db: Database.Database): void {
       ON memory_observations(memory_uri, created_at_ms);
     CREATE INDEX IF NOT EXISTS idx_memory_observations_session_time
       ON memory_observations(session_id, created_at_ms);
-  `);
+`;
+
+export const AgentMemoryDatabaseMigrations = Object.freeze([
+  defineAgentSqliteMigration({
+    version: 1,
+    name: "memory_schema_baseline",
+    sql: AgentMemoryInitialSchemaSql,
+  }),
+]);
+
+export function installAgentMemorySchema(db: Database.Database): void {
+  runAgentSqliteMigrations(db, AgentMemoryDatabaseMigrations);
 }

@@ -3,15 +3,19 @@ import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentSystemRuntime } from "./AgentSystemRuntime.js";
+import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
+import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
+import { createAgentRuntimePreparationFingerprint } from "./AgentRuntimePreparationFingerprint.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
   revision?: number;
+  sourceRevisions?: Readonly<Record<string, string | number>>;
   config: AgentSystemConfig;
 }
 
 export interface AgentSystemRuntimeCacheRuntime {
-  close(): void;
+  close(): void | Promise<void>;
 }
 
 export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
@@ -21,11 +25,15 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   modelProviderId?: string;
   logger?: AgentLogger;
   approvalRuntime?: AgentApprovalRuntime;
+  interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
+  executionResources?: AgentExecutionResourceBroker;
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {
+  readonly fingerprint: string;
+  readonly preparationFingerprint: string;
   readonly runtime: TRuntime;
   release(): void;
 }
@@ -36,14 +44,17 @@ export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRunt
   snapshot: () => AgentSystemRuntimeCacheSnapshot;
   logger?: AgentLogger;
   approvalRuntime?: AgentApprovalRuntime;
+  interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
+  executionResources?: AgentExecutionResourceBroker;
   maxIdleEntries?: number;
   runtimeFactory?: (input: AgentSystemRuntimeCacheRuntimeFactoryInput) => TRuntime;
 }
 
 interface RuntimeCacheEntry<TRuntime extends AgentSystemRuntimeCacheRuntime> {
   readonly fingerprint: string;
+  readonly preparationFingerprint: string;
   readonly runtime: TRuntime;
   leases: number;
   lastAccess: number;
@@ -51,6 +62,7 @@ interface RuntimeCacheEntry<TRuntime extends AgentSystemRuntimeCacheRuntime> {
 
 export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRuntime = AgentSystemRuntime> {
   private readonly entries = new Map<string, RuntimeCacheEntry<TRuntime>>();
+  private readonly pendingClosures = new Set<Promise<void>>();
   private readonly maxIdleEntries: number;
   private accessSequence = 0;
 
@@ -63,10 +75,15 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     const fingerprint = runtimeFingerprint(snapshot, modelProviderId);
     let entry = this.entries.get(fingerprint);
     if (!entry) {
-      // Close idle generations before a new heavyweight runtime is constructed.
+      // Start closing idle generations before a new heavyweight runtime is constructed.
       this.evictIdleEntries();
       entry = {
         fingerprint,
+        preparationFingerprint: createAgentRuntimePreparationFingerprint({
+          config: snapshot.config,
+          modelProviderId,
+          sourceRevisions: snapshot.sourceRevisions,
+        }),
         runtime: this.createRuntime(snapshot, modelProviderId),
         leases: 0,
         lastAccess: 0,
@@ -79,11 +96,15 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     return this.createLease(entry);
   }
 
-  clear(): void {
+  async clear(): Promise<void> {
     for (const entry of this.entries.values()) {
-      entry.runtime.close();
+      void this.beginRuntimeClose(entry.runtime).catch(() => undefined);
     }
     this.entries.clear();
+    const outcomes = await Promise.allSettled([...this.pendingClosures]);
+    const failures = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, "Runtime cache shutdown failed.");
   }
 
   private createRuntime(snapshot: AgentSystemRuntimeCacheSnapshot, modelProviderId: string | undefined): TRuntime {
@@ -95,8 +116,10 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         modelProviderId,
         logger: this.options.logger,
         approvalRuntime: this.options.approvalRuntime,
+        interactionInput: this.options.interactionInput,
         piSessionRegistry: this.options.piSessionRegistry,
         resourcesPath: this.options.resourcesPath,
+        executionResources: this.options.executionResources,
       });
     }
 
@@ -107,14 +130,18 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       modelProviderId,
       logger: this.options.logger,
       approvalRuntime: this.options.approvalRuntime,
+      interactionInput: this.options.interactionInput,
       piSessionRegistry: this.options.piSessionRegistry,
       resourcesPath: this.options.resourcesPath,
+      executionResources: this.options.executionResources,
     }) as unknown as TRuntime;
   }
 
   private createLease(entry: RuntimeCacheEntry<TRuntime>): AgentSystemRuntimeLease<TRuntime> {
     let released = false;
     return {
+      fingerprint: entry.fingerprint,
+      preparationFingerprint: entry.preparationFingerprint,
       runtime: entry.runtime,
       release: () => {
         if (released) {
@@ -136,7 +163,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         continue;
       }
 
-      entry.runtime.close();
+      this.closeEvictedRuntime(entry.runtime);
       this.entries.delete(fingerprint);
     }
   }
@@ -146,7 +173,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       .filter((entry) => entry.leases === 0)
       .sort((left, right) => right.lastAccess - left.lastAccess);
     for (const entry of idleEntries.slice(this.maxIdleEntries)) {
-      entry.runtime.close();
+      this.closeEvictedRuntime(entry.runtime);
       this.entries.delete(entry.fingerprint);
     }
   }
@@ -155,6 +182,27 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     this.accessSequence += 1;
     return this.accessSequence;
   }
+
+  private closeEvictedRuntime(runtime: TRuntime): void {
+    void this.beginRuntimeClose(runtime).catch((error) => {
+      this.options.logger?.warn("runtime_cache.close.failed", { error });
+    });
+  }
+
+  private beginRuntimeClose(runtime: TRuntime): Promise<void> {
+    let closure: Promise<void>;
+    try {
+      closure = Promise.resolve(runtime.close());
+    } catch (error) {
+      closure = Promise.reject(error);
+    }
+    this.pendingClosures.add(closure);
+    void closure.then(
+      () => this.pendingClosures.delete(closure),
+      () => this.pendingClosures.delete(closure),
+    );
+    return closure;
+  }
 }
 
 function runtimeCacheKey(modelProviderId: string | undefined): string {
@@ -162,7 +210,18 @@ function runtimeCacheKey(modelProviderId: string | undefined): string {
 }
 
 function runtimeFingerprint(snapshot: AgentSystemRuntimeCacheSnapshot, modelProviderId: string | undefined): string {
-  return JSON.stringify([snapshot.version, snapshot.revision ?? "json", runtimeCacheKey(modelProviderId)]);
+  return JSON.stringify([
+    snapshot.version,
+    snapshot.revision ?? "json",
+    stableSourceRevisions(snapshot.sourceRevisions),
+    runtimeCacheKey(modelProviderId),
+  ]);
+}
+
+function stableSourceRevisions(
+  revisions: AgentSystemRuntimeCacheSnapshot["sourceRevisions"],
+): ReadonlyArray<readonly [string, string | number]> {
+  return Object.entries(revisions ?? {}).sort(([left], [right]) => left.localeCompare(right));
 }
 
 function normalizeMaxIdleEntries(value: number | undefined): number {

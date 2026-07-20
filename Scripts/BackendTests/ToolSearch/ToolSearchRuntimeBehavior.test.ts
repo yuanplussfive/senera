@@ -27,6 +27,78 @@ import {
 } from "./ToolSearchTestFixtures.js";
 
 describe("ToolSearch runtime behavior", () => {
+  test("separates system ownership from bootstrap loading", () => {
+    const runtime = new AgentToolSearchRuntime(
+      createRegistry([
+        createTool({
+          name: ToolSearchToolName,
+          title: "Tool search",
+          summary: "Find tools",
+          tags: ["search"],
+          actions: ["search"],
+          targets: ["tools"],
+          priority: 100,
+          rootKind: "System",
+          loading: "Bootstrap",
+        }),
+        createTool({
+          name: "ShellCommandTool",
+          title: "Shell command",
+          summary: "Run one shell command",
+          tags: ["shell", "command"],
+          actions: ["execute"],
+          targets: ["process"],
+          priority: 90,
+          rootKind: "System",
+          loading: "Dynamic",
+        }),
+        createTool({
+          name: "WeatherTool",
+          title: "Weather",
+          summary: "Fetch a weather forecast",
+          tags: ["weather"],
+          actions: ["forecast"],
+          targets: ["city"],
+          priority: 50,
+          rootKind: "User",
+          loading: "Dynamic",
+        }),
+      ]) as unknown as AgentPluginRegistry,
+      createToolSearchConfig(),
+      createToolLearningConfig(),
+      "E:/workspace",
+      createModelProvider(),
+    );
+
+    expect(
+      runtime.resolvePlannedLoadedTools({
+        input: "no matching capability",
+        loadedTools: "dynamic",
+        currentLoadedTools: [],
+      }),
+    ).toEqual([ToolSearchToolName]);
+    expect(
+      runtime.resolvePlannedLoadedTools({
+        input: "run a shell command",
+        loadedTools: "dynamic",
+        currentLoadedTools: ["WeatherTool"],
+        currentSetPolicy: "replace",
+        preferredTools: ["ShellCommandTool"],
+      }),
+    ).toEqual([ToolSearchToolName, "ShellCommandTool"]);
+    expect(
+      runtime.resolvePlannedLoadedTools({
+        input: "run a shell command",
+        loadedTools: "dynamic",
+        currentLoadedTools: ["WeatherTool"],
+        currentSetPolicy: "retain",
+        preferredTools: ["ShellCommandTool"],
+      }),
+    ).toEqual([ToolSearchToolName, "WeatherTool", "ShellCommandTool"]);
+
+    runtime.close();
+  });
+
   test("host handler validates arguments, searches visible tools, and remembers candidates", async () => {
     const runtime = new AgentToolSearchRuntime(
       createRegistry([
@@ -39,6 +111,7 @@ describe("ToolSearch runtime behavior", () => {
           targets: ["tools"],
           priority: 100,
           rootKind: "System",
+          loading: "Bootstrap",
         }),
         createTool({
           name: "WorkspaceReadFile",
@@ -186,6 +259,36 @@ describe("ToolSearch runtime behavior", () => {
         }),
       }),
     );
+    memory.close();
+  });
+
+  test("request finalization discards abandoned search-learning state", () => {
+    const memory = new AgentToolSearchMemory(createToolSearchConfig(), "E:/workspace");
+    const learningRuntime = { enqueue: vi.fn() };
+    const usage = new AgentToolSearchUsageMemory(
+      memory,
+      "project-a",
+      createToolLearningConfig({ Enabled: true }),
+      learningRuntime,
+    );
+    usage.rememberSearch("request-abandoned", {
+      query: "read package",
+      queryTokens: ["read", "package"],
+      plannerTags: [],
+      candidates: ["WorkspaceReadFile"],
+      timestamp: 1,
+    });
+
+    usage.finishRequest("request-abandoned");
+    usage.recordToolUsage("request-abandoned", [
+      toolResult({
+        name: "WorkspaceReadFile",
+        arguments: { path: "package.json" },
+        artifact: artifactWithEvidence(),
+      }),
+    ]);
+
+    expect(learningRuntime.enqueue).not.toHaveBeenCalled();
     memory.close();
   });
 

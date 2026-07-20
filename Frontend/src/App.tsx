@@ -9,13 +9,12 @@ import { SessionList } from "./features/session";
 import { ThinkingTimeline } from "./features/workflow";
 import { AppShell, readAppShellRenderPlan } from "./layout/AppShell";
 import { type EventEnvelope, type WsRequest } from "./api/eventTypes";
-import { useChatCommands, type LastSentMessage, type PendingAfterTruncate } from "./app/useChatCommands";
+import { useChatCommands, type LastSentMessage } from "./app/useChatCommands";
 import { useGlobalShortcuts } from "./app/useGlobalShortcuts";
 import { useSessionCommands } from "./app/useSessionCommands";
 import { useSessionCatalogSync } from "./app/useSessionCatalogSync";
 import { useSessionHistoryRecovery } from "./app/useSessionHistoryRecovery";
 import { useSessionNotFoundRecovery } from "./app/useSessionNotFoundRecovery";
-import { useSessionTruncateReplay } from "./app/useSessionTruncateReplay";
 import { useServerKnownSessions } from "./app/useServerKnownSessions";
 import { useSandboxRuntimeStatus } from "./app/useSandboxRuntimeStatus";
 import { useSocketErrorToasts } from "./app/useSocketErrorToasts";
@@ -27,8 +26,16 @@ import { resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { useSettingsRuntime } from "./app/useSettingsRuntime";
 import { useWebSettingsController } from "./app/useWebSettingsController";
 import { SettingsOverlay } from "./features/settings";
+import { useExecutionResourceCommands } from "./app/useExecutionResourceCommands";
+import { TerminalPanelStatus, TerminalRuntimeBoundary } from "./features/terminal/TerminalPanelStatus";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
+type BackgroundTerminalPanelComponent = (typeof import("./features/terminal"))["BackgroundTerminalPanel"];
+type TerminalPanelLoadState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; Component: BackgroundTerminalPanelComponent }
+  | { status: "error" };
 installCopyableToasts();
 
 export function App({
@@ -67,15 +74,41 @@ export function App({
   const { hasPersistentSessionPanel, hasPersistentWorkflowPanel } = responsiveMode;
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
+  const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
+  const [terminalPanelLoadState, setTerminalPanelLoadState] = useState<TerminalPanelLoadState>({ status: "idle" });
+  const [terminalRuntimeRevision, setTerminalRuntimeRevision] = useState(0);
   const uploadUrl = useMemo(() => buildUploadUrl(WS_URL), []);
   const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
   const settingsController = useWebSettingsController();
 
+  const handleOpenTerminalPanel = useCallback((): void => {
+    setTerminalPanelOpen(true);
+    setTerminalPanelLoadState((current) =>
+      current.status === "idle" || current.status === "error" ? { status: "loading" } : current,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (terminalPanelLoadState.status !== "loading") return;
+    let active = true;
+    void import("./features/terminal").then(
+      (module) => {
+        if (active) setTerminalPanelLoadState({ status: "ready", Component: module.BackgroundTerminalPanel });
+      },
+      () => {
+        if (active) setTerminalPanelLoadState({ status: "error" });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [terminalPanelLoadState.status]);
+
   const sendRef = useRef<((req: WsRequest) => boolean) | null>(null);
   const statusRef = useRef<SocketStatus>("idle");
   const lastSendRef = useRef<LastSentMessage | null>(null);
-  const pendingAfterTruncateRef = useRef<PendingAfterTruncate[]>([]);
   const settingsEventHandlerRef = useRef<(env: EventEnvelope) => boolean>(() => false);
+  const executionResourceEventHandlerRef = useRef<(env: EventEnvelope) => boolean>(() => false);
   const { sandboxStatus, ingestSandboxEvent } = useSandboxRuntimeStatus();
 
   const handleOpenSessionPanel = useCallback((): void => {
@@ -107,13 +140,6 @@ export function App({
     markUserProfileSynced,
     sendRef,
   });
-  const { replayAfterSessionTruncated } = useSessionTruncateReplay({
-    appendUserMessage,
-    lastSendRef,
-    pendingAfterTruncateRef,
-    sendRef,
-  });
-
   // Stabilize event handlers to prevent WebSocket reconnection
   const eventHandlersRef = useRef({
     syncServerKnownSessionFromEvent,
@@ -122,7 +148,6 @@ export function App({
     ingest,
     runSocketPostIngestEffects,
     ingestSandboxEvent,
-    replayAfterSessionTruncated,
   });
 
   useEffect(() => {
@@ -133,7 +158,6 @@ export function App({
       ingest,
       runSocketPostIngestEffects,
       ingestSandboxEvent,
-      replayAfterSessionTruncated,
     };
   });
 
@@ -154,7 +178,7 @@ export function App({
         handlers.runSocketPostIngestEffects(env);
         handlers.ingestSandboxEvent(env);
         settingsEventHandlerRef.current(env);
-        handlers.replayAfterSessionTruncated(env);
+        executionResourceEventHandlerRef.current(env);
       },
       [], // Empty deps - handlers read from ref
     ),
@@ -164,6 +188,12 @@ export function App({
   statusRef.current = status;
   const settingsRuntime = useSettingsRuntime({ sendRef, statusRef });
   settingsEventHandlerRef.current = settingsRuntime.controller.ingestConfigMutationEvent;
+  const executionResourceCommands = useExecutionResourceCommands({
+    activeSessionId: activeId,
+    send,
+    status,
+  });
+  executionResourceEventHandlerRef.current = executionResourceCommands.handleEvent;
 
   const { requestSessionHistory } = useSessionHistoryRecovery({
     activeSessionId: activeId,
@@ -196,14 +226,15 @@ export function App({
     cancelActiveSession: handleCancel,
     deleteFromMessage: handleDeleteFromMessage,
     editUserMessage: handleEditUserMessage,
+    forkFromMessage: handleForkFromMessage,
     regenerateMessage: handleRegenerate,
     resolveApproval: handleResolveApproval,
+    resolveInteractionInput: handleResolveInteractionInput,
     sendMessage: handleSend,
   } = useChatCommands({
     activeSessionId: activeId,
     appendUserMessage,
     lastSendRef,
-    pendingAfterTruncateRef,
     registerSession,
     send,
     serverKnownSessionIdsRef,
@@ -230,6 +261,37 @@ export function App({
     onNewSession: handleNewSession,
     onToggleSessionPanel: handleToggleSessionPanelShortcut,
   });
+  const TerminalPanel = terminalPanelLoadState.status === "ready" ? terminalPanelLoadState.Component : undefined;
+  const terminalFloatingLayer = TerminalPanel ? (
+    <TerminalRuntimeBoundary
+      open={terminalPanelOpen}
+      onOpenChange={setTerminalPanelOpen}
+      resetKey={`${activeId ?? "none"}:${terminalRuntimeRevision}`}
+      onRetry={() => setTerminalRuntimeRevision((revision) => revision + 1)}
+    >
+      <TerminalPanel
+        key={terminalRuntimeRevision}
+        open={terminalPanelOpen}
+        onOpenChange={setTerminalPanelOpen}
+        resources={executionResourceCommands.resources}
+        outputs={executionResourceCommands.outputs}
+        onRefresh={executionResourceCommands.refresh}
+        onWrite={executionResourceCommands.write}
+        onResize={executionResourceCommands.resize}
+        onSignal={executionResourceCommands.signal}
+        onStopAll={executionResourceCommands.stopAll}
+      />
+    </TerminalRuntimeBoundary>
+  ) : terminalPanelLoadState.status === "loading" || terminalPanelLoadState.status === "error" ? (
+    <TerminalPanelStatus
+      open={terminalPanelOpen}
+      onOpenChange={setTerminalPanelOpen}
+      status={terminalPanelLoadState.status}
+      onRetry={
+        terminalPanelLoadState.status === "error" ? () => setTerminalPanelLoadState({ status: "loading" }) : undefined
+      }
+    />
+  ) : null;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -296,15 +358,18 @@ export function App({
                 socketStatus: status,
                 uploadUrl,
                 uploadCsrfToken,
+                sandboxStatus,
               }}
               messageActions={{
                 onSend: handleSend,
                 onCancel: handleCancel,
+                onForkFromMessage: handleForkFromMessage,
                 onRegenerate: handleRegenerate,
                 onEditUserMessage: handleEditUserMessage,
                 onDeleteFromMessage: handleDeleteFromMessage,
                 onViewWorkflow: handleViewWorkflow,
                 onResolveApproval: handleResolveApproval,
+                onResolveInteractionInput: handleResolveInteractionInput,
               }}
               navigationActions={{
                 onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction ? handleOpenSessionPanel : undefined,
@@ -313,6 +378,7 @@ export function App({
                   (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)
                     ? handleOpenWorkflowPanel
                     : undefined,
+                onOpenTerminalPanel: activeId ? handleOpenTerminalPanel : undefined,
                 onRetryHistory: requestSessionHistory,
               }}
             />
@@ -325,6 +391,7 @@ export function App({
         workflowDrawerOpen={workflowDrawerOpen}
         onWorkflowDrawerOpenChange={setWorkflowDrawerOpen}
         responsiveMode={responsiveMode}
+        floatingLayer={terminalFloatingLayer}
       />
       <SettingsOverlay
         controller={settingsController}

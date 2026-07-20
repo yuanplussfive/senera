@@ -1,7 +1,8 @@
 {
+  "ManifestVersion": 2,
   "Plugin": {
     "Name": "AgentShellToolPlugin",
-    "Title": "Host Shell Tool",
+    "Title": "Shell Tool",
     "Version": "0.1.0",
     "Kind": "Tool"
   },
@@ -12,14 +13,23 @@
   "Tools": [
     {
       "Name": "ShellCommandTool",
+      "Loading": "Bootstrap",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["process:shell", "filesystem:workspace"],
       "Execution": {
-        "Boundary": "Local",
+        "Boundary": "SandboxPreferred",
         "Network": "Allow",
         "Workspace": "ReadWrite",
-        "LocalFallback": "Deny"
+        "LocalFallback": "Allow"
+      },
+      "Runtime": {
+        "Lifecycle": "OneShot",
+        "ProtocolVersion": 2,
+        "Capabilities": {
+          "OutputStreaming": true,
+          "Cancellation": true
+        }
       },
       "Handler": {
         "Kind": "HostCapability",
@@ -72,12 +82,12 @@
         }
       },
       "Search": {
-        "Summary": "在工作区内执行当前平台 shell 命令，用于测试、构建、git、诊断、脚本和快速只读文件片段检查；文件编辑不要走 shell。",
+        "Summary": "在策略选择的工作区执行边界内运行显式方言的 shell 命令，用于测试、构建、git、诊断和脚本；文件编辑不要走 shell。",
         "Capabilities": [
           {
             "Id": "host.shell-command",
-            "Title": "Host shell command",
-            "Description": "Run current-platform shell commands in the workspace for tests, builds, checks, git, scripts, diagnostics, and quick read-only inspection.",
+            "Title": "Policy-routed shell command",
+            "Description": "Run an explicitly typed shell command in the policy-selected workspace execution boundary.",
             "Facets": {
               "Actions": ["run", "execute", "test", "build", "check", "inspect", "slice-file", "search"],
               "Targets": [

@@ -131,6 +131,7 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
       chatPanel: React.createElement("div", null, "Chat panel"),
       workflowPanel: React.createElement("div", null, "Workflow panel"),
       workflowDrawer: React.createElement("div", null, "Workflow drawer"),
+      floatingLayer: React.createElement("div", null, "Floating terminal"),
       sessionDrawerOpen: true,
       onSessionDrawerOpenChange,
       workflowDrawerOpen: true,
@@ -155,6 +156,7 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
   );
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toHaveClass("bg-surface-panel");
   expect(document.querySelector("[data-workflow-dock-gutter]")).toBeInTheDocument();
+  expect(screen.getByText("Floating terminal").parentElement).toHaveAttribute("data-workbench-floating-layer");
   expect(screen.queryByText("Session drawer")).not.toBeInTheDocument();
   expect(screen.queryByText("Workflow drawer")).not.toBeInTheDocument();
   await waitFor(() => {

@@ -49,6 +49,69 @@ describe("AgentSystemRuntimeCache", () => {
     expect(replacement.runtime.closeCount).toBe(0);
   });
 
+  test("invalidates runtime and preparation state when a non-JSON source revision changes", () => {
+    let pluginRevision = 0;
+    const runtimes: FakeRuntime[] = [];
+    const cache = new AgentSystemRuntimeCache<FakeRuntime>({
+      workspaceRoot: "runtime-cache-test",
+      configPath: "runtime-cache-test.json",
+      snapshot: () => ({
+        version: 1,
+        revision: 1,
+        sourceRevisions: { plugins: pluginRevision },
+        config: {} as AgentSystemConfig,
+      }),
+      runtimeFactory: ({ modelProviderId }) => {
+        const runtime = new FakeRuntime(modelProviderId ?? "default", []);
+        runtimes.push(runtime);
+        return runtime;
+      },
+    });
+
+    const first = cache.acquire("deepseek-flash");
+    first.release();
+    pluginRevision += 1;
+    const replacement = cache.acquire("deepseek-flash");
+
+    expect(replacement.runtime).not.toBe(first.runtime);
+    expect(replacement.fingerprint).not.toBe(first.fingerprint);
+    expect(replacement.preparationFingerprint).not.toBe(first.preparationFingerprint);
+    expect(runtimes).toHaveLength(2);
+    replacement.release();
+  });
+
+  test("separates runtime generations from semantic preparation compatibility", () => {
+    let revision = 1;
+    let config = { second: 2, first: 1 } as unknown as AgentSystemConfig;
+    const cache = new AgentSystemRuntimeCache<FakeRuntime>({
+      workspaceRoot: "runtime-cache-test",
+      configPath: "runtime-cache-test.json",
+      snapshot: () => ({
+        version: revision,
+        revision,
+        config,
+      }),
+      runtimeFactory: ({ modelProviderId }) => new FakeRuntime(modelProviderId ?? "default", []),
+    });
+
+    const first = cache.acquire("deepseek-flash");
+    first.release();
+    revision += 1;
+    config = { first: 1, second: 2 } as unknown as AgentSystemConfig;
+    const newGeneration = cache.acquire("deepseek-flash");
+
+    expect(newGeneration.runtime).not.toBe(first.runtime);
+    expect(newGeneration.fingerprint).not.toBe(first.fingerprint);
+    expect(newGeneration.preparationFingerprint).toBe(first.preparationFingerprint);
+    newGeneration.release();
+
+    config = { first: 1, second: 3 } as unknown as AgentSystemConfig;
+    revision += 1;
+    const incompatible = cache.acquire("deepseek-flash");
+    expect(incompatible.preparationFingerprint).not.toBe(first.preparationFingerprint);
+    incompatible.release();
+  });
+
   test("makes release idempotent and supports zero retained idle runtimes", () => {
     const fixture = createCache(0);
     const lease = fixture.cache.acquire("deepseek-flash");
@@ -57,6 +120,31 @@ describe("AgentSystemRuntimeCache", () => {
     lease.release();
 
     expect(lease.runtime.closeCount).toBe(1);
+  });
+
+  test("waits for asynchronous runtime shutdown when clearing the cache", async () => {
+    const closeGate = createDeferred();
+    let shutdownCompleted = false;
+    const cache = new AgentSystemRuntimeCache<AgentSystemRuntimeCacheRuntime>({
+      workspaceRoot: "runtime-cache-test",
+      configPath: "runtime-cache-test.json",
+      snapshot: () => ({ version: 1, config: {} as AgentSystemConfig }),
+      runtimeFactory: () => ({
+        close: async () => {
+          await closeGate.promise;
+          shutdownCompleted = true;
+        },
+      }),
+    });
+    cache.acquire().release();
+
+    const clearing = cache.clear();
+    await Promise.resolve();
+    expect(shutdownCompleted).toBe(false);
+
+    closeGate.resolve();
+    await clearing;
+    expect(shutdownCompleted).toBe(true);
   });
 });
 
@@ -110,4 +198,12 @@ function createCache(maxIdleEntries = 1): {
       revision += 1;
     },
   };
+}
+
+function createDeferred(): { promise: Promise<void>; resolve(): void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((settled) => {
+    resolve = settled;
+  });
+  return { promise, resolve };
 }

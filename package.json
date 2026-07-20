@@ -14,11 +14,6 @@
       "types": "./Source/AgentSystem/AgentSystemRuntime.ts",
       "import": "./Dist/Source/AgentSystem/AgentSystemRuntime.js",
       "default": "./Dist/Source/AgentSystem/AgentSystemRuntime.js"
-    },
-    "./plugin-sdk": {
-      "types": "./Source/AgentSystem/AgentToolPluginSdk.ts",
-      "import": "./Dist/Source/AgentSystem/AgentToolPluginSdk.js",
-      "default": "./Dist/Source/AgentSystem/AgentToolPluginSdk.js"
     }
   },
   "scripts": {
@@ -39,7 +34,21 @@
     "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
     "generate.protocol-reference": "tsx Build/GenerateWebSocketProtocolReference.ts",
     "access.admin": "tsx Apps/AdminAccess.ts",
+    "maintenance.sessions": "tsx Apps/SessionMaintenance.ts",
+    "maintenance.sessions.apply": "tsx Apps/SessionMaintenance.ts --apply",
+    "maintenance.sessions.vacuum": "tsx Apps/SessionMaintenance.ts --apply --vacuum",
+    "maintenance.sessions.json": "tsx Apps/SessionMaintenance.ts --output=json",
+    "maintenance.pi-sessions": "tsx Apps/PiSessionMaintenance.ts",
+    "maintenance.pi-sessions.apply": "tsx Apps/PiSessionMaintenance.ts --apply",
+    "maintenance.pi-sessions.json": "tsx Apps/PiSessionMaintenance.ts --output=json",
+    "maintenance.artifacts": "tsx Apps/ArtifactMaintenance.ts",
+    "maintenance.artifacts.apply": "tsx Apps/ArtifactMaintenance.ts --apply",
+    "maintenance.artifacts.json": "tsx Apps/ArtifactMaintenance.ts --output=json",
+    "benchmark.pi-planner": "tsx Apps/PiPlannerBenchmark.ts",
+    "benchmark.tool-search": "tsx Apps/ToolSearchBenchmark.ts",
+    "terminal.prepare": "tsx Build/PrepareTerminalSidecarGuestRuntime.ts",
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
+    "verify.sandbox.real": "npm run build && tsx Scripts/VerifySeneraMicrosandboxRealTerminal.ts",
     "check.types": "tsc --noEmit",
     "build": "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     "dev": "concurrently -k -n server,frontend -c blue,green \"npm run dev.server\" \"npm run dev.frontend\"",
@@ -58,8 +67,8 @@
     "dev.server": "tsx Apps/ServerWatch.ts",
     "dev.server.dry-run": "tsx Apps/ServerWatch.ts --dry-run",
     "desktop": "npm run build && npm --workspace senera-frontend run build && electron Dist/Apps/Desktop/Main.js",
+    "desktop.prepare-native": "tsx Build/PrepareElectronNativeModules.ts",
     "desktop.pack": "tsx Apps/Desktop/PackageDesktop.ts",
-    "desktop.restore": "npm rebuild better-sqlite3",
     "verify.suite": "node Dist/Scripts/VerifySuite.js",
     "verify.suites": "node Dist/Scripts/VerifySuite.js --list",
     "verify.workspace": "npm run build && npm run verify.suite -- workspace",
@@ -71,7 +80,10 @@
     "ci": "npm run quality.security && npm run quality.baml && npm run policy.verify && npm run check.types && npm run quality.lint && npm run quality.format && npm run test.backend && npm run test.frontend && npm run test.e2e && npm run build && npm run verify.suite -- workspace core e2e platform release && npm run quality.coverage",
     "test": "npm run check.types && npm run test.backend && npm run test.frontend",
     "desktop.live": "tsx Apps/Desktop/RunDesktopLive.ts",
-    "desktop.verify": "npm run build && npm --workspace senera-frontend run build"
+    "desktoplive": "npm run desktop.live",
+    "desktop.verify": "npm run build && npm --workspace senera-frontend run build",
+    "desktopverify": "npm run desktop.verify",
+    "desktoppack": "npm run desktop.pack"
   },
   "keywords": [],
   "author": "",
@@ -82,6 +94,8 @@
     "productName": "Senera",
     "icon": "Apps/Desktop/Assets/senera-icon",
     "publish": null,
+    "npmRebuild": false,
+    "afterPack": "Build/ElectronAfterPack.cjs",
     "directories": {
       "output": "Release"
     },
@@ -98,8 +112,24 @@
           "**/*"
         ]
       },
+      {
+        "from": "Packages/TerminalSidecar",
+        "to": "node_modules/@senera/terminal-sidecar",
+        "filter": [
+          "**/*"
+        ]
+      },
       "senera.config.example.json",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".senera/sandbox-runtime/terminal-sidecar",
+        "to": "TerminalSidecarRuntime",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "extraMetadata": {
       "main": "Dist/Apps/Desktop/Main.js"
@@ -140,6 +170,7 @@
     "@modelcontextprotocol/server-filesystem": "^2026.7.4",
     "@node-rs/jieba": "^2.0.1",
     "@open-policy-agent/opa-wasm": "^1.10.0",
+    "@senera/terminal-sidecar": "^0.1.0",
     "@senera/tool-plugin-sdk": "file:Packages/ToolPluginSdk",
     "@types/better-sqlite3": "^7.6.13",
     "@types/busboy": "^1.5.4",
@@ -188,6 +219,7 @@
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
     "@eslint/js": "^10.0.1",
+    "@ladle/react": "^5.1.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -220,8 +252,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.63.0",
     "vite": "^7.3.6",
-    "vitest": "^4.1.10",
-    "@ladle/react": "^5.1.1"
+    "vitest": "^4.1.10"
   },
   "optionalDependencies": {
     "@boundaryml/baml-darwin-arm64": "^0.222.0",

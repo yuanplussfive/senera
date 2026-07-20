@@ -1,5 +1,7 @@
 import {
   EventKinds,
+  type ExecutionResourceOutputData,
+  type ExecutionResourceStateData,
   type ActionPlannedData,
   type ActionPlannerStageCompletedData,
   type ActionPlannerStageFailedData,
@@ -13,6 +15,8 @@ import {
   type ToolCallResultDetailData,
   type ToolCallCompletedData,
   type ToolCallFailedData,
+  type ToolCallOutputData,
+  type ToolCallProgressData,
   type ToolCallStartedData,
   type ToolCallsPlannedData,
 } from "../../api/eventTypes";
@@ -32,6 +36,7 @@ import { currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
 import { touchRun } from "./sessionRunProjection";
 import { timelineScopeFromEvent, toolBatchFromEvent } from "./timelineProjection";
 import { mergeToolResultPresentation, readToolResultPresentation } from "./toolResultPresentation";
+import { projectToolOutput, projectToolProgress } from "./toolRuntimeProjection";
 import type { StoreState } from "./types";
 
 export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): boolean {
@@ -216,6 +221,63 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         toolBatch: toolBatchFromEvent(env, data),
         scope,
       });
+      return true;
+    }
+
+    case EventKinds.ToolCallOutput: {
+      const data = env.data as ToolCallOutputData;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.callId));
+      if (step) {
+        projectToolOutput(step, data);
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.ToolCallProgress: {
+      const data = env.data as ToolCallProgressData;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.callId));
+      if (step) {
+        projectToolProgress(step, data);
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.ExecutionResourceOutput: {
+      const data = env.data as ExecutionResourceOutputData;
+      if (!data.toolCallId) return true;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.toolCallId));
+      if (step) {
+        projectToolOutput(step, {
+          toolName: data.toolName ?? step.toolName ?? "ExecutionResource",
+          callId: data.toolCallId,
+          stream: data.stream,
+          outputSequence: data.cursor,
+          text: data.text,
+          byteLength: data.byteLength,
+          totalBytes: data.totalBytes,
+          resourceId: data.resourceId,
+        });
+        touchRun(run);
+      }
+      return true;
+    }
+
+    case EventKinds.ExecutionResourceState: {
+      const data = env.data as ExecutionResourceStateData;
+      if (!data.toolCallId) return true;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.toolCallId));
+      if (step) {
+        projectToolProgress(step, {
+          toolName: data.toolName ?? step.toolName ?? "ExecutionResource",
+          callId: data.toolCallId,
+          progressSequence: data.cursor,
+          message: data.reason ? `${data.state}: ${data.reason}` : data.state,
+          resourceId: data.resourceId,
+        });
+        touchRun(run);
+      }
       return true;
     }
 

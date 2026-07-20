@@ -1,4 +1,5 @@
 {
+  "ManifestVersion": 2,
   "Plugin": {
     "Name": "AgentTemplatePlugin",
     "Title": "Agent Prompt Templates",

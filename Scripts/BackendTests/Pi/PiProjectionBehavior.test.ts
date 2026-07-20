@@ -80,6 +80,16 @@ describe("Pi projection behavior", () => {
     expect(isAsciiHeaderValue(projected.headers[AgentPiProxyModelProviderHeader] ?? "")).toBe(true);
   });
 
+  test("uses bounded model metadata when provider limits are unknown", () => {
+    const projected = projectSeneraModelProviderToPi(
+      createProvider({ ContextWindowTokens: -1, MaxModelOutputTokens: -1, MaxOutputTokens: -1 }),
+      createConfig(),
+    );
+
+    expect(projected.model.contextWindow).toBe(128_000);
+    expect(projected.model.maxTokens).toBe(8_192);
+  });
+
   test("injects a single hidden runtime context message with current tool evidence and retrieval tools", () => {
     const policy = new AgentPiContextPolicy("test-model");
     const frame = policy.createFrame({
@@ -109,6 +119,8 @@ describe("Pi projection behavior", () => {
                   evidence_uri: "senera://evidence/weather-beijing",
                   kind: "weather",
                   label: "Beijing forecast",
+                  artifact_uri: "senera://artifact/weather-source",
+                  artifact_refs: ["raw", "evidence"],
                   facts: [{ name: "city", value: "Beijing" }],
                 },
               ],
@@ -138,7 +150,14 @@ describe("Pi projection behavior", () => {
     const details = readContextDetails(contextMessages[0]);
     expect(details).toBeDefined();
     const contextDetails = details as {
-      evidence: Array<{ evidenceUri: string; toolName?: string; facts: Array<{ name: string; value: string }> }>;
+      evidence: Array<{
+        evidenceUri: string;
+        toolName?: string;
+        artifactUri?: string;
+        artifactRefs: string[];
+        facts: Array<{ name: string; value: string }>;
+      }>;
+      artifacts: Array<{ artifactUri: string; evidenceUris: string[]; refs: string[] }>;
       retrievalTools: Array<{ toolName: string; summary?: string }>;
       stats: { currentToolEvidence: number; retrievalTools: number };
     };
@@ -146,8 +165,17 @@ describe("Pi projection behavior", () => {
       expect.objectContaining({
         evidenceUri: "senera://evidence/weather-beijing",
         toolName: "WeatherTool",
+        artifactUri: "senera://artifact/weather-source",
+        artifactRefs: ["raw", "evidence"],
         facts: [{ name: "city", value: "Beijing" }],
       }),
+    ]);
+    expect(contextDetails.artifacts).toEqual([
+      {
+        artifactUri: "senera://artifact/weather-source",
+        evidenceUris: ["senera://evidence/weather-beijing"],
+        refs: ["raw", "evidence"],
+      },
     ]);
     expect(contextDetails.retrievalTools).toEqual([
       expect.objectContaining({
@@ -207,6 +235,7 @@ function createConfig(overrides: Partial<AgentSystemConfig> = {}): AgentSystemCo
 
 function createRetrievalTool(name: string, capability: string): RegisteredTool {
   return {
+    loading: "Dynamic",
     plugin: {
       rootPath: "",
       rootKind: "System",
@@ -224,6 +253,7 @@ function createRetrievalTool(name: string, capability: string): RegisteredTool {
         diagnostics: [],
       },
       manifest: {
+        ManifestVersion: 2,
         Plugin: {
           Name: `${name}Plugin`,
           Title: name,
@@ -236,6 +266,7 @@ function createRetrievalTool(name: string, capability: string): RegisteredTool {
     name,
     permissions: [],
     handler: { kind: "HostCapability", capability },
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
     execution: {
       Boundary: "Local",
       Network: "Deny",

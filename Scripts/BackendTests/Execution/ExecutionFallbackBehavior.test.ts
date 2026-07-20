@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import type { PolicyClient } from "@ai-sdk/policy-opa";
 import { AgentApprovalRuntime } from "../../../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
+import { AgentApprovalDecisions } from "../../../Source/AgentSystem/Approvals/AgentApprovalTypes.js";
 import { AgentPluginRegistry } from "../../../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
 import type { AgentDomainEvent, AgentEventSink } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentExecutionFallbackAuthorizer } from "../../../Source/AgentSystem/Safety/AgentExecutionFallbackAuthorizer.js";
@@ -208,14 +209,51 @@ describe("execution fallback approval", () => {
     const first = authorizer.authorize(request);
     await vi.waitFor(() => expect(events).toHaveLength(1));
     const approvalId = String(readRecord(events[0]?.data).approvalId);
-    approvalRuntime.resolve({ approvalId, status: "approved", scope: "session" });
+    await approvalRuntime.resolve({ approvalId, decision: AgentApprovalDecisions.ApproveSession });
 
     await expect(first).resolves.toMatchObject({ approvalId, scope: "session" });
     await expect(authorizer.authorize(request)).resolves.toMatchObject({
       scope: "session",
       rule: "execution.fallback.external_approval.session_grant",
     });
-    expect(events).toHaveLength(1);
+    expect(events.filter((event) => event.kind === "approval.requested")).toHaveLength(1);
+  });
+
+  test("does not reuse a session grant across conversations", async () => {
+    const approvalRuntime = new AgentApprovalRuntime();
+    const events: AgentDomainEvent[] = [];
+    const authorizer = new AgentExecutionFallbackAuthorizer({
+      registry: new AgentPluginRegistry(),
+      approvalRuntime,
+      policyClient: new StaticPolicyClient({
+        decision: "requires-approval",
+        rule: "execution.fallback.external_approval",
+        reason: "External plugin requires approval.",
+      }),
+    });
+    const firstRequest = createAuthorizationRequest((event) => {
+      events.push(event);
+    }, "session-a");
+    const first = authorizer.authorize(firstRequest);
+    await vi.waitFor(() => expect(events).toHaveLength(1));
+    await approvalRuntime.resolve({
+      approvalId: String(readRecord(events[0]?.data).approvalId),
+      decision: AgentApprovalDecisions.ApproveSession,
+    });
+    await first;
+
+    const second = authorizer.authorize(
+      createAuthorizationRequest((event) => {
+        events.push(event);
+      }, "session-b"),
+    );
+    await vi.waitFor(() => expect(events.filter((event) => event.kind === "approval.requested")).toHaveLength(2));
+    const secondApproval = events.filter((event) => event.kind === "approval.requested").at(-1);
+    await approvalRuntime.resolve({
+      approvalId: String(readRecord(secondApproval?.data).approvalId),
+      decision: AgentApprovalDecisions.Deny,
+    });
+    await expect(second).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.SandboxUnavailable });
   });
 
   test("preserves denial and cancellation without creating a local grant", async () => {
@@ -235,9 +273,9 @@ describe("execution fallback approval", () => {
     });
     const pending = authorizer.authorize(request);
     await vi.waitFor(() => expect(events).toHaveLength(1));
-    approvalRuntime.resolve({
+    await approvalRuntime.resolve({
       approvalId: String(readRecord(events[0]?.data).approvalId),
-      status: "denied",
+      decision: AgentApprovalDecisions.Deny,
       message: "Denied by user.",
     });
 
@@ -284,7 +322,7 @@ function createRequest(
     limits: { timeoutMs: 1_000, maxStdoutBytes: 1_024, maxStderrBytes: 1_024 },
     profile: {
       name: "test-profile",
-      kind: "plugin-process",
+      kind: "mcp-server",
       backend,
       localFallback,
       fallbackContext,
@@ -292,8 +330,9 @@ function createRequest(
   };
 }
 
-function createFallbackContext(onEvent?: AgentEventSink): SeneraProcessFallbackContext {
+function createFallbackContext(onEvent?: AgentEventSink, sessionId = "session-1"): SeneraProcessFallbackContext {
   return {
+    sessionId,
     requestId: "request-1",
     step: 1,
     toolCallId: "call-1",
@@ -314,13 +353,16 @@ function createFallbackContext(onEvent?: AgentEventSink): SeneraProcessFallbackC
   };
 }
 
-function createAuthorizationRequest(onEvent: AgentEventSink): SeneraProcessFallbackAuthorizationRequest {
+function createAuthorizationRequest(
+  onEvent: AgentEventSink,
+  sessionId?: string,
+): SeneraProcessFallbackAuthorizationRequest {
   return {
     fromBackend: "microsandbox",
     toBackend: "node",
     reason: "sandbox_unavailable",
     error: sandboxUnavailable(),
-    context: createFallbackContext(onEvent),
+    context: createFallbackContext(onEvent, sessionId),
   };
 }
 

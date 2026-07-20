@@ -1,14 +1,16 @@
 import { useCallback, type MutableRefObject } from "react";
 import { toast } from "sonner";
 import type { UploadAttachmentData, WsRequest } from "../api/eventTypes";
+import type { ApprovalDecision } from "../api/approvalEventTypes";
+import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { useStore, type ChatMessage } from "../store/sessionStore";
 import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
-export interface PendingAfterTruncate {
+export interface RegenerateFromRequest {
   sessionId: string;
-  requestId: string;
+  fromRequestId: string;
   nextInput: string;
   attachments?: UploadAttachmentData[];
   modelProviderId?: string;
@@ -24,7 +26,6 @@ export interface UseChatCommandsOptions {
     options?: { createRun?: boolean },
   ) => void;
   lastSendRef: MutableRefObject<LastSentMessage | null>;
-  pendingAfterTruncateRef: MutableRefObject<PendingAfterTruncate[]>;
   registerSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
   send: (request: WsRequest) => boolean;
   serverKnownSessionIdsRef: MutableRefObject<Set<string>>;
@@ -35,10 +36,15 @@ export interface ChatCommandsHandle {
   cancelActiveSession: () => void;
   deleteFromMessage: (message: ChatMessage) => void;
   editUserMessage: (message: ChatMessage, nextContent: string) => void;
+  forkFromMessage: (message: ChatMessage) => void;
   regenerateMessage: (message: ChatMessage) => void;
-  resolveApproval: (approvalId: string, status: "approved" | "denied") => void;
+  resolveApproval: (approvalId: string, decision: ApprovalDecision) => void;
+  resolveInteractionInput: (
+    interactionId: string,
+    action: InteractionInputAction,
+    content?: InteractionInputContent,
+  ) => void;
   sendMessage: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
-  sendAfterTruncate: (pending: PendingAfterTruncate) => boolean;
 }
 
 export type MessageQueueMode = Extract<WsRequest, { type: "session.message" }>["queueMode"];
@@ -55,18 +61,6 @@ export interface LastSentMessage {
 export type SendTargetResolution =
   | { kind: "blocked_history_loading"; sessionId: string }
   | { kind: "ready"; sessionId: string; shouldCreateSession: boolean };
-
-export interface PendingReplayConsumption {
-  appendUserMessage: {
-    attachments?: UploadAttachmentData[];
-    input: string;
-    requestId: string;
-    sessionId: string;
-  };
-  lastSentMessage: LastSentMessage;
-  messageRequest: Extract<WsRequest, { type: "session.message" }>;
-  nextQueue: PendingAfterTruncate[];
-}
 
 export function resolveSendTargetSession({
   activeSessionId,
@@ -86,66 +80,6 @@ export function resolveSendTargetSession({
     return { kind: "ready", sessionId: createSessionId(), shouldCreateSession: true };
   }
   return { kind: "ready", sessionId: activeSessionId, shouldCreateSession: false };
-}
-
-export function upsertPendingAfterTruncate(
-  queue: readonly PendingAfterTruncate[],
-  pending: PendingAfterTruncate,
-): PendingAfterTruncate[] {
-  return [
-    ...queue.filter((item) => item.sessionId !== pending.sessionId || item.requestId !== pending.requestId),
-    pending,
-  ];
-}
-
-export function removePendingAfterTruncate(
-  queue: readonly PendingAfterTruncate[],
-  pending: Pick<PendingAfterTruncate, "requestId" | "sessionId">,
-): PendingAfterTruncate[] {
-  return queue.filter((item) => item.sessionId !== pending.sessionId || item.requestId !== pending.requestId);
-}
-
-export function consumePendingAfterTruncate({
-  createRequestId,
-  fromRequestId,
-  queue,
-  sessionId,
-}: {
-  createRequestId: () => string;
-  fromRequestId: string;
-  queue: readonly PendingAfterTruncate[];
-  sessionId: string;
-}): PendingReplayConsumption | null {
-  const pending = queue.find((item) => item.sessionId === sessionId && item.requestId === fromRequestId);
-  if (!pending) return null;
-
-  const requestId = createRequestId();
-  const messageRequest: Extract<WsRequest, { type: "session.message" }> = {
-    type: "session.message",
-    sessionId: pending.sessionId,
-    requestId,
-    modelProviderId: pending.modelProviderId,
-    input: pending.nextInput,
-    attachments: pending.attachments,
-  };
-
-  return {
-    appendUserMessage: {
-      sessionId: pending.sessionId,
-      requestId,
-      input: pending.nextInput,
-      attachments: pending.attachments,
-    },
-    lastSentMessage: {
-      sessionId: pending.sessionId,
-      requestId,
-      input: pending.nextInput,
-      attachments: pending.attachments,
-      modelProviderId: pending.modelProviderId,
-    },
-    messageRequest,
-    nextQueue: removePendingAfterTruncate(queue, pending),
-  };
 }
 
 export function findRegenerateInput({
@@ -192,28 +126,40 @@ export function useChatCommands({
   activeSessionId,
   appendUserMessage,
   lastSendRef,
-  pendingAfterTruncateRef,
   registerSession,
   send,
   serverKnownSessionIdsRef,
   status,
 }: UseChatCommandsOptions): ChatCommandsHandle {
-  const sendAfterTruncate = useCallback(
-    (pending: PendingAfterTruncate): boolean => {
-      pendingAfterTruncateRef.current = upsertPendingAfterTruncate(pendingAfterTruncateRef.current, pending);
-
+  const regenerateFromRequest = useCallback(
+    (request: RegenerateFromRequest): boolean => {
+      const requestId = generateId();
       const ok = send({
-        type: "session.truncate_from",
-        sessionId: pending.sessionId,
-        requestId: pending.requestId,
+        type: "session.regenerate",
+        sessionId: request.sessionId,
+        fromRequestId: request.fromRequestId,
+        requestId,
+        modelProviderId: request.modelProviderId,
+        input: request.nextInput,
+        attachments: request.attachments,
       });
       if (!ok) {
-        pendingAfterTruncateRef.current = removePendingAfterTruncate(pendingAfterTruncateRef.current, pending);
         toast.error(frontendMessage("chat.operationDisconnected"));
+        return false;
       }
-      return ok;
+
+      useStore.getState().truncateFromRequest(request.sessionId, request.fromRequestId);
+      lastSendRef.current = {
+        sessionId: request.sessionId,
+        requestId,
+        input: request.nextInput,
+        attachments: request.attachments,
+        modelProviderId: request.modelProviderId,
+      };
+      appendUserMessage(request.sessionId, requestId, request.nextInput, request.attachments);
+      return true;
     },
-    [pendingAfterTruncateRef, send],
+    [appendUserMessage, lastSendRef, send],
   );
 
   const cancelActiveSession = useCallback((): void => {
@@ -237,15 +183,36 @@ export function useChatCommands({
         return;
       }
 
-      sendAfterTruncate({
+      regenerateFromRequest({
         sessionId: activeSessionId,
-        requestId: result.requestId,
+        fromRequestId: result.requestId,
         nextInput: result.input,
         attachments: result.attachments,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
       });
     },
-    [activeSessionId, sendAfterTruncate, status],
+    [activeSessionId, regenerateFromRequest, status],
+  );
+
+  const forkFromMessage = useCallback(
+    (message: ChatMessage): void => {
+      if (!activeSessionId || status !== "open") return;
+      if (!message.requestId) {
+        toast.error(frontendMessage("chat.forkMissingRequestId"));
+        return;
+      }
+
+      const ok = send({
+        type: "session.fork",
+        sourceSessionId: activeSessionId,
+        sessionId: generateId(),
+        throughRequestId: message.requestId,
+      });
+      if (!ok) {
+        toast.error(frontendMessage("chat.forkDisconnected"));
+      }
+    },
+    [activeSessionId, send, status],
   );
 
   const editUserMessage = useCallback(
@@ -261,15 +228,15 @@ export function useChatCommands({
         return;
       }
 
-      sendAfterTruncate({
+      regenerateFromRequest({
         sessionId: activeSessionId,
-        requestId: message.requestId,
+        fromRequestId: message.requestId,
         nextInput: trimmed,
         attachments: message.attachments,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
       });
     },
-    [activeSessionId, sendAfterTruncate, status],
+    [activeSessionId, regenerateFromRequest, status],
   );
 
   const deleteFromMessage = useCallback(
@@ -314,34 +281,8 @@ export function useChatCommands({
         serverKnownSessionIdsRef.current.delete(activeSessionId);
       }
 
-      if (target.shouldCreateSession) {
-        const ok = send({
-          type: "session.create",
-          sessionId: targetSessionId,
-          modelProviderId,
-        });
-        if (!ok) {
-          toast.error(frontendMessage("chat.createSessionDisconnected"));
-          return false;
-        }
-        registerSession(targetSessionId, undefined, modelProviderId);
-        serverKnownSessionIdsRef.current.add(targetSessionId);
-      }
-
       const requestId = generateId();
-      if (!serverKnownSessionIdsRef.current.has(targetSessionId)) {
-        const ok = send({
-          type: "session.create",
-          sessionId: targetSessionId,
-          modelProviderId,
-        });
-        if (!ok) {
-          toast.error(frontendMessage("chat.createSessionDisconnected"));
-          return false;
-        }
-        serverKnownSessionIdsRef.current.add(targetSessionId);
-      }
-
+      const createIfMissing = !serverKnownSessionIdsRef.current.has(targetSessionId);
       const ok = send({
         type: "session.message",
         sessionId: targetSessionId,
@@ -349,12 +290,17 @@ export function useChatCommands({
         modelProviderId,
         input,
         attachments,
+        disposition: createIfMissing ? "create_if_missing" : undefined,
         queueMode,
       });
       if (!ok) {
         toast.error(frontendMessage("chat.sendDisconnected"));
         return false;
       }
+      if (target.shouldCreateSession) {
+        registerSession(targetSessionId, undefined, modelProviderId);
+      }
+      serverKnownSessionIdsRef.current.add(targetSessionId);
       appendUserMessage(targetSessionId, requestId, input, attachments, {
         createRun: queueMode === undefined,
       });
@@ -365,24 +311,41 @@ export function useChatCommands({
   );
 
   const resolveApproval = useCallback(
-    (approvalId: string, approvalStatus: "approved" | "denied"): void => {
+    (approvalId: string, decision: ApprovalDecision): void => {
       if (!activeSessionId || status !== "open") return;
       send({
         type: "approval.resolve",
         approvalId,
-        status: approvalStatus,
+        decision,
       });
     },
     [activeSessionId, send, status],
+  );
+
+  const resolveInteractionInput = useCallback(
+    (interactionId: string, action: InteractionInputAction, content?: InteractionInputContent): void => {
+      if (status !== "open") {
+        toast.error(frontendMessage("interaction.input.resolveOffline"));
+        return;
+      }
+      useStore.getState().markInteractionInputResolutionPending(interactionId, action);
+      const ok = send({ type: "interaction.input.resolve", interactionId, action, content });
+      if (!ok) {
+        useStore.getState().markInteractionInputResolutionPending(interactionId);
+        toast.error(frontendMessage("interaction.input.resolveDisconnected"));
+      }
+    },
+    [send, status],
   );
 
   return {
     cancelActiveSession,
     deleteFromMessage,
     editUserMessage,
+    forkFromMessage,
     regenerateMessage,
     resolveApproval,
+    resolveInteractionInput,
     sendMessage,
-    sendAfterTruncate,
   };
 }

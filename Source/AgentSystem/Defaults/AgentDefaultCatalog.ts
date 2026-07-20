@@ -8,7 +8,17 @@ import type {
 } from "./AgentDefaultValueTypes.js";
 import { moduleDirPath } from "../Core/AgentPath.js";
 import { SeneraMicrosandboxDefaults } from "../Execution/SeneraMicrosandboxDefaults.js";
+import { SeneraDefaultTerminationGraceMs } from "../Execution/SeneraTerminationPolicy.js";
+import { AgentPiSessionCacheDefaults } from "../Pi/AgentPiSessionCachePolicy.js";
+import {
+  AgentToolSearchIntentGateModes,
+  AgentToolSearchMemoryExpansionModes,
+} from "../Types/AgentToolAndMemoryConfigTypes.js";
+import { AgentModelResponseBudgetDefaults } from "../ModelEndpoints/ModelResponseBudget.js";
+import { SeneraDefaultProcessEnvironmentIncludeOnly } from "../Execution/SeneraProcessEnvironment.js";
 
+const Mebibyte = 1024 * 1024;
+const DefaultLargePayloadBytes = 64 * Mebibyte;
 const DefaultModelProviderEndpoints = JSON.parse(
   fs.readFileSync(path.join(moduleDirPath(import.meta.url), "AgentDefaultModelProviderEndpoints.json"), "utf8"),
 ) as ResolvedAgentModelProviderEndpointConfig[];
@@ -35,6 +45,7 @@ export const AgentDefaults = {
       ImageOutput: false,
       Reasoning: false,
       DeveloperRole: false,
+      StreamingUsage: true,
     },
     ContextWindowTokens: -1,
     MaxModelOutputTokens: -1,
@@ -48,11 +59,30 @@ export const AgentDefaults = {
     RetryBaseDelaySeconds: 0.25,
     RetryMaxDelaySeconds: 10,
     RetryAfterMaxDelaySeconds: 60,
+    MaxResponseBytes: AgentModelResponseBudgetDefaults.maxResponseBytes,
+    MaxSseEventBytes: AgentModelResponseBudgetDefaults.maxSseEventBytes,
+    MaxSseEvents: AgentModelResponseBudgetDefaults.maxSseEvents,
   },
   ToolExecution: {
     TimeoutSeconds: 120,
-    MaxStdoutBytes: 1000000,
-    MaxStderrBytes: 1000000,
+    MaxStdoutBytes: DefaultLargePayloadBytes,
+    MaxStderrBytes: DefaultLargePayloadBytes,
+    Environment: {
+      Inherit: "allowlist",
+      IncludeOnly: [...SeneraDefaultProcessEnvironmentIncludeOnly],
+      Exclude: [],
+      Set: {},
+    },
+    Resources: {
+      MaxActive: 8,
+      MaxBufferedBytes: DefaultLargePayloadBytes,
+      MaxInputBytes: Mebibyte,
+      MaxWaitSeconds: 30,
+      IdleTtlSeconds: 1800,
+      TerminalTtlSeconds: 300,
+      SweepIntervalSeconds: 30,
+      TerminationGraceSeconds: SeneraDefaultTerminationGraceMs / 1000,
+    },
   },
   SandboxRuntime: {
     BaseDir: ".senera/sandbox-runtime",
@@ -62,10 +92,24 @@ export const AgentDefaults = {
   },
   AgentLoop: {
     LoadedTools: "dynamic",
-    PiSessionCreateTimeoutSeconds: 20,
-    PiSessionCreateTimeoutMs: 20000,
+    PiTurnLeaseTimeoutSeconds: 120,
+    PiTurnLeaseTimeoutMs: 120000,
+    RunSettlementTimeoutSeconds: 15,
+    RunSettlementTimeoutMs: 15000,
     PiSessions: {
       RootDir: ".senera/pi-sessions",
+      MaxCachedSessions: AgentPiSessionCacheDefaults.Capacity,
+      Compaction: {
+        Enabled: true,
+        TriggerRatio: 0.8,
+        HardLimitRatio: 0.95,
+        TargetRatio: 0.5,
+        SummaryMaxTokens: 4096,
+        TimeoutSeconds: 120,
+        TimeoutMs: 120000,
+        UnknownContextWindowTokens: 128000,
+        UnknownModelOutputTokens: 8192,
+      },
     },
   },
   ToolSearch: {
@@ -88,6 +132,16 @@ export const AgentDefaults = {
       MmrLambda: 0.72,
       MmrCandidateScoreRatio: 0.92,
       MinScore: 0,
+      MaxResults: 6,
+      IntentGate: {
+        Mode: AgentToolSearchIntentGateModes.SideEffectCapability,
+      },
+      MemoryExpansion: {
+        Mode: AgentToolSearchMemoryExpansionModes.Fallback,
+        MinConfidence: 0.8,
+        MinEvidence: 3,
+        MaxResults: 2,
+      },
     },
     Rerank: {
       Enabled: true,
@@ -126,7 +180,6 @@ export const AgentDefaults = {
       MaxPromptPatterns: 2,
     },
     Client: {
-      Provider: "openai-generic",
       Temperature: 0.1,
       MaxTokens: -1,
     },
@@ -150,17 +203,14 @@ export const AgentDefaults = {
       StalledStepLag: 2,
     },
     Client: {
-      Provider: "openai-generic",
-      Temperature: 0.1,
-      MaxTokens: -1,
-    },
-    TurnUnderstandingClient: {
-      Provider: "openai-generic",
       Temperature: 0.1,
       MaxTokens: -1,
     },
     PlanningClient: {
-      Provider: "openai-generic",
+      Temperature: 0.1,
+      MaxTokens: -1,
+    },
+    FinalAnswerClient: {
       Temperature: 0.1,
       MaxTokens: -1,
     },
@@ -168,8 +218,21 @@ export const AgentDefaults = {
   Artifacts: {
     RootDir: ".senera/artifacts/runs",
     SummaryMaxChars: 2400,
-    RawJsonMaxBytes: 1048576,
-    TextFileMaxBytes: 262144,
+    RawJsonMaxBytes: DefaultLargePayloadBytes,
+    TextFileMaxBytes: DefaultLargePayloadBytes,
+    MemoryReadStructuredJsonMaxBytes: 8 * Mebibyte,
+    MemoryReadMaxArtifacts: 16,
+    MemoryReadMaxRefs: 8,
+    MemoryReadMaxConcurrency: 4,
+    MemoryReadCacheMaxBytes: 134217728,
+    MemoryReadCacheMaxEntries: 64,
+    OutputCaptureMaxBytes: DefaultLargePayloadBytes,
+    MaxStoredBytes: 10 * 1024 * 1024 * 1024,
+    MaxArtifacts: 10_000,
+    RetentionHours: 720,
+    IncompleteRetentionHours: 24,
+    MaintenanceIntervalMinutes: 15,
+    MaintenanceMaxConcurrency: 4,
   },
   Uploads: {
     RootDir: ".senera/uploads",
@@ -203,7 +266,7 @@ export const AgentDefaults = {
     Host: "127.0.0.1",
     Port: 8787,
     HotReload: true,
-    RequestMaxBytes: 1048576,
+    RequestMaxBytes: DefaultLargePayloadBytes,
     AccessControl: {
       Mode: "auto",
       AccountFile: ".senera/access/admin-account.json",

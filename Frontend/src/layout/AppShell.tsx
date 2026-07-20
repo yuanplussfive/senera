@@ -22,6 +22,7 @@ interface AppShellProps {
   chatPanel: ReactNode;
   workflowPanel: ReactNode;
   workflowDrawer: ReactNode;
+  floatingLayer?: ReactNode;
   sessionDrawerOpen: boolean;
   onSessionDrawerOpenChange: (open: boolean) => void;
   workflowDrawerOpen: boolean;
@@ -133,6 +134,7 @@ export function AppShell({
   chatPanel,
   workflowPanel,
   workflowDrawer,
+  floatingLayer,
   sessionDrawerOpen,
   onSessionDrawerOpenChange,
   workflowDrawerOpen,
@@ -369,6 +371,11 @@ export function AppShell({
         >
           {workflowDrawer}
         </ResponsiveDrawer>
+      ) : null}
+      {floatingLayer ? (
+        <div data-workbench-floating-layer className="pointer-events-none absolute inset-0 z-40 overflow-hidden">
+          {floatingLayer}
+        </div>
       ) : null}
     </div>
   );

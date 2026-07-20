@@ -1,5 +1,6 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentModelProviderMetadata } from "./AgentModelMetadata.js";
+import type { AgentModelUsageValue } from "./AgentModelUsage.js";
 
 export interface AgentLanguageModelRequest {
   requestId: string;
@@ -17,6 +18,7 @@ export interface AgentLanguageModelMessage {
 
 export interface AgentLanguageModelResponse {
   text: string;
+  usage?: AgentModelUsageValue;
 }
 
 export interface AgentLanguageModelStreamChunk {
@@ -27,6 +29,7 @@ export interface AgentLanguageModelStreamChunk {
 export interface AgentLanguageModelStream {
   abort(): void;
   readonly metadata: AgentModelProviderMetadata;
+  readonly usage?: AgentModelUsageValue;
   [Symbol.asyncIterator](): AsyncIterableIterator<AgentLanguageModelStreamChunk>;
 }
 

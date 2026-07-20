@@ -36,7 +36,7 @@ export type AgentSessionDomainEvent =
       context: Required<Pick<AgentEventContext, "sessionId">>;
       data: {
         sessionId: string;
-        operation: "session.message" | "session.close" | "session.history";
+        operation: "session.message" | "session.close" | "session.history" | "session.fork";
         message: string;
       };
     }
@@ -52,6 +52,7 @@ export type AgentSessionDomainEvent =
           updatedAt: string;
           entryCount: number;
           messageCount: number;
+          activeRequestId?: string;
         }>;
       };
     }
@@ -104,6 +105,18 @@ export type AgentSessionDomainEvent =
         sessionId: string;
         fromRequestId: string;
         removedEntries: number;
+        replacementRequestId?: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionForked;
+      context: Required<Pick<AgentEventContext, "sessionId">>;
+      data: {
+        sessionId: string;
+        sourceSessionId: string;
+        throughRequestId: string;
+        title: string;
+        createdAt: string;
       };
     };
 

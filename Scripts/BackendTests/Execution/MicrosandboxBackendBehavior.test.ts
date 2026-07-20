@@ -52,7 +52,7 @@ describe("Microsandbox backend behavior", () => {
     expect(sdk.createRequests).toEqual([
       expect.objectContaining({
         name: "sandbox-test",
-        image: "alpine",
+        image: "node:22-bookworm-slim",
         guestWorkspaceRoot: "/workspace",
         guestWorkdir: "/workspace/Source/AgentSystem",
         network: "disabled",
@@ -101,7 +101,7 @@ describe("Microsandbox backend behavior", () => {
   test.each([
     ["stdout", SeneraExecutionErrorCodes.StdoutLimitExceeded],
     ["stderr", SeneraExecutionErrorCodes.StderrLimitExceeded],
-  ] as const)("kills the session when %s exceeds its byte budget", async (kind, code) => {
+  ] as const)("stops the session when %s exceeds its byte budget", async (kind, code) => {
     const workspaceRoot = createWorkspace();
     const session = new ScriptedMicrosandboxSession([
       { kind, data: Buffer.from("too-large") },
@@ -123,8 +123,37 @@ describe("Microsandbox backend behavior", () => {
       ),
     ).rejects.toMatchObject({ code });
 
-    expect(session.killCount).toBe(1);
+    expect(session.killCount).toBe(0);
     expect(session.stopCount).toBe(1);
+  });
+
+  test("preserves the output-limit error when sandbox cleanup also fails", async () => {
+    const workspaceRoot = createWorkspace();
+    const session = new ScriptedMicrosandboxSession([{ kind: "stdout", data: Buffer.from("too-large") }], {
+      stopError: new Error("stop failed"),
+      killError: new Error("kill failed"),
+    });
+    const backend = new SeneraMicrosandboxBackend({
+      workspaceRoot,
+      sdk: new RecordingMicrosandboxSdk(session),
+    });
+
+    await expect(
+      backend.executeProcess(
+        processRequest(workspaceRoot, {
+          limits: { timeoutMs: 5_000, maxStdoutBytes: 3, maxStderrBytes: 1_024 },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: SeneraExecutionErrorCodes.StdoutLimitExceeded,
+      details: {
+        diagnostics: {
+          cleanup: { code: SeneraExecutionErrorCodes.CleanupFailed },
+        },
+      },
+    });
+    expect(session.stopCount).toBe(1);
+    expect(session.killCount).toBe(1);
   });
 
   test("aborts an active sandbox execution and still stops the session", async () => {
@@ -141,7 +170,7 @@ describe("Microsandbox backend behavior", () => {
     controller.abort("cancelled by operator");
 
     await expect(pending).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.Aborted });
-    expect(session.killCount).toBe(1);
+    expect(session.killCount).toBe(0);
     expect(session.stopCount).toBe(1);
   });
 
@@ -160,10 +189,10 @@ describe("Microsandbox backend behavior", () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     await rejection;
-    expect(session.killCount).toBe(1);
+    expect(session.killCount).toBe(0);
   });
 
-  test("rejects local-only and incomplete plugin profiles before creating a sandbox", async () => {
+  test("rejects local-only and incomplete sandbox profiles before creating a sandbox", async () => {
     const workspaceRoot = createWorkspace();
     const sdk = new RecordingMicrosandboxSdk(new ScriptedMicrosandboxSession([]));
     const backend = new SeneraMicrosandboxBackend({ workspaceRoot, sdk });
@@ -178,7 +207,7 @@ describe("Microsandbox backend behavior", () => {
     await expect(
       backend.executeProcess(
         processRequest(workspaceRoot, {
-          profile: { name: "plugin", kind: "plugin-process" },
+          profile: { name: "mcp", kind: "mcp-server", backend: "sandbox" },
         }),
       ),
     ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.SandboxUnavailable });
@@ -219,7 +248,10 @@ class ScriptedMicrosandboxSession implements SeneraMicrosandboxSession {
   stopCount = 0;
   killCount = 0;
 
-  constructor(private readonly events: readonly SeneraMicrosandboxExecEvent[]) {}
+  constructor(
+    private readonly events: readonly SeneraMicrosandboxExecEvent[],
+    private readonly cleanupFailures: { stopError?: Error; killError?: Error } = {},
+  ) {}
 
   async *exec(request: SeneraMicrosandboxExecRequest): AsyncIterable<SeneraMicrosandboxExecEvent> {
     this.execRequests.push(request);
@@ -228,10 +260,12 @@ class ScriptedMicrosandboxSession implements SeneraMicrosandboxSession {
 
   async stop(): Promise<void> {
     this.stopCount += 1;
+    if (this.cleanupFailures.stopError) throw this.cleanupFailures.stopError;
   }
 
   async kill(): Promise<void> {
     this.killCount += 1;
+    if (this.cleanupFailures.killError) throw this.cleanupFailures.killError;
   }
 }
 

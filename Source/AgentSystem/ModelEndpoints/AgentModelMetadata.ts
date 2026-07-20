@@ -1,4 +1,10 @@
 import type { resolveModelProviderConfig } from "../AgentDefaults.js";
+import type { AgentModelUsage } from "./AgentModelUsage.js";
+import type { AgentPiSessionLifecycleMetadata } from "../Pi/AgentPiSessionLifecycleMetadata.js";
+import type { AgentToolAvailabilitySnapshot } from "../ToolRuntime/AgentToolAvailabilitySnapshot.js";
+import type { AgentSessionLifecycleMetadata } from "../Session/AgentSessionLifecycleMetadata.js";
+
+export type { AgentModelUsage } from "./AgentModelUsage.js";
 
 export interface AgentModelProviderMetadata {
   id: string;
@@ -6,13 +12,6 @@ export interface AgentModelProviderMetadata {
   endpoint: string;
   baseUrl: string;
   model: string;
-}
-
-export interface AgentModelUsage {
-  source: "local_estimate";
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
 }
 
 export interface AgentRunMetadata {
@@ -26,6 +25,9 @@ export interface AgentConversationEntryMetadata {
 
 export interface AgentSessionMetadata {
   lastRun?: AgentRunMetadata;
+  piSession?: AgentPiSessionLifecycleMetadata;
+  toolAvailability?: AgentToolAvailabilitySnapshot;
+  lifecycle?: AgentSessionLifecycleMetadata;
   title?: string;
 }
 

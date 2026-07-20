@@ -59,8 +59,10 @@ export class AgentWebSocketServer {
     });
     this.eventSender = new AgentWebSocketEventEnvelopeSender({
       logger: this.logger,
-      sessionManager: options.sessionManager,
+      eventWriter: options.eventWriter,
       eventLogger: options.eventLogger,
+      maxBufferedBytes: this.serverConfig.RequestMaxBytes,
+      persistence: options.eventPersistence,
     });
     const uploadStore = createUploadStore(options, configSnapshot);
     this.uploadApi = new AgentUploadHttpApi({
@@ -91,10 +93,14 @@ export class AgentWebSocketServer {
         providerModelDiscovery,
         presetManagerFactory: () => createPresetManager(options, configSnapshot()),
         approvalRuntime: options.approvalRuntime,
+        interactionInput: options.interactionInput,
         sandboxRuntimeService,
+        executionResources: options.executionResources,
+        workspaceRoot: options.workspaceRoot ?? process.cwd(),
       },
       sendEnvelope: (socket, event) => this.eventSender.sendEnvelope(socket, event),
       broadcast: (event) => this.broadcast(event),
+      flushPersistence: () => this.eventSender.flush(),
     });
   }
 
@@ -131,7 +137,7 @@ export class AgentWebSocketServer {
     this.heartbeatTimer.unref();
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.uploadApi.stopMaintenance();
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
@@ -142,10 +148,11 @@ export class AgentWebSocketServer {
     }
     this.server?.close();
     this.httpServer?.close();
+    await this.eventSender.close();
   }
 
-  broadcast(event: AgentDomainEvent): void {
-    this.eventSender.broadcast(this.server?.clients ?? [], event);
+  broadcast(event: AgentDomainEvent): Promise<void> {
+    return this.eventSender.broadcast(this.server?.clients ?? [], event);
   }
 
   private handleUpgrade(request: http.IncomingMessage, socket: Duplex, head: Buffer): void {
@@ -171,11 +178,19 @@ export class AgentWebSocketServer {
         socket.close(authorization.failure.status === 429 ? 1013 : 1008, "Access denied");
         return;
       }
-      void this.messageRouter.handleMessage(socket, data);
+      void this.messageRouter.handleMessage(socket, data).catch((error) => {
+        this.logger.error("WebSocket 请求处理失败", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     });
     socket.on("pong", () => this.accessGuard.recordPong(socket));
-    socket.on("close", () => this.accessGuard.unregisterConnection(socket));
-    socket.on("error", () => this.accessGuard.unregisterConnection(socket));
+    socket.on("close", () => {
+      this.accessGuard.unregisterConnection(socket);
+    });
+    socket.on("error", () => {
+      this.accessGuard.unregisterConnection(socket);
+    });
   }
 
   private heartbeat(): void {

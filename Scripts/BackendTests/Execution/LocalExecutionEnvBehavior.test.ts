@@ -65,6 +65,8 @@ describe("Local execution environment behavior", () => {
 
   test("rejects paths and working directories outside the workspace", async () => {
     const workspaceRoot = createWorkspace();
+    const outsideRoot = createWorkspace();
+    fs.symlinkSync(outsideRoot, path.join(workspaceRoot, "escape"), process.platform === "win32" ? "junction" : "dir");
     const env = new SeneraLocalExecutionEnv({ workspaceRoot });
     const outside = path.resolve(workspaceRoot, "..", "outside.txt");
 
@@ -83,7 +85,16 @@ describe("Local execution environment behavior", () => {
     await expect(
       env.executeShell({
         command: "pwd",
+        dialect: process.platform === "win32" ? "powershell" : "posix-sh",
         cwd: outside,
+        limits: executionLimits(),
+      }),
+    ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.InvalidWorkspacePath });
+    await expect(
+      env.executeShell({
+        command: "pwd",
+        dialect: process.platform === "win32" ? "powershell" : "posix-sh",
+        cwd: "escape",
         limits: executionLimits(),
       }),
     ).rejects.toMatchObject({ code: SeneraExecutionErrorCodes.InvalidWorkspacePath });
@@ -172,6 +183,7 @@ describe("Local execution environment behavior", () => {
 
 class RecordingProcessBackend implements SeneraProcessExecutionBackend {
   readonly kind = "recording";
+  readonly shellDialect = process.platform === "win32" ? "powershell" : "posix-sh";
   readonly requests: SeneraProcessExecutionRequest[] = [];
   failure?: Error;
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { syncDesktopRuntimeDirectory } from "../Apps/Desktop/DesktopRuntimeAssetSync.js";
+import { syncRuntimeDirectory } from "../Apps/RuntimeAssetSync.js";
 
 const tempRoot = path.join(process.cwd(), ".senera", "tmp", "verify-desktop-runtime-sync");
 fs.mkdirSync(tempRoot, { recursive: true });
@@ -19,7 +19,7 @@ try {
   writeText(path.join(targetRoot, "RemovedPlugin", "PluginManifest.json"), "{}");
   writeText(path.join(targetRoot, "WeatherToolPlugin", "stale.txt"), "stale");
 
-  syncDesktopRuntimeDirectory(sourceRoot, targetRoot, {
+  syncRuntimeDirectory(sourceRoot, targetRoot, {
     preserveFileNames: ["PluginConfig.toml"],
     pruneExtraneous: true,
   });
@@ -36,7 +36,7 @@ try {
   writeText(path.join(packageSourceRoot, "package.json"), "{}");
   writeText(path.join(packageTargetRoot, "generated.cache"), "keep");
 
-  syncDesktopRuntimeDirectory(packageSourceRoot, packageTargetRoot);
+  syncRuntimeDirectory(packageSourceRoot, packageTargetRoot);
 
   assert.equal(readText(path.join(packageTargetRoot, "generated.cache")), "keep");
 

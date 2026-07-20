@@ -53,7 +53,7 @@ describe("Pi harness pool behavior", () => {
     expect(second.storage).toBe("existing");
     expect(second.session.getActiveToolNames()).toEqual([]);
     second.session.dispose();
-    pool.close();
+    await pool.close();
   });
 
   test("returns a released lease only once and closes without a model request", async () => {
@@ -79,7 +79,25 @@ describe("Pi harness pool behavior", () => {
 
     expect(reused.storage).toBe("existing");
     reused.session.dispose();
-    pool.close();
+    await pool.close();
+  });
+
+  test("resets persistent JSONL state and recreates a clean session", async () => {
+    const workspaceRoot = createWorkspace();
+    const env = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const store = new AgentPiSessionStore({ workspaceRoot, sessionsRoot: ".senera/pi-sessions", env });
+    const opened = await store.openOrCreate({ sessionId: "session-reset" });
+    await opened.session.appendMessage({
+      role: "user",
+      content: [{ type: "text", text: "stale history" }],
+      timestamp: Date.now(),
+    });
+
+    await expect(store.reset("session-reset")).resolves.toBe(true);
+    const recreated = await store.openOrCreate({ sessionId: "session-reset" });
+
+    expect(recreated.storage).toBe("created");
+    expect(await recreated.session.getEntries()).toEqual([]);
   });
 });
 
@@ -113,9 +131,13 @@ function leaseInput(
   return {
     sessionId,
     session,
-    tools: [],
-    activeToolNames: [],
+    toolSet: {
+      fingerprint: "empty-tools",
+      activeToolNames: [],
+      materialize: () => [],
+    },
     resources: emptyResources(),
+    resourceFingerprint: "empty-resources",
     frame: {
       sessionId,
       requestId,

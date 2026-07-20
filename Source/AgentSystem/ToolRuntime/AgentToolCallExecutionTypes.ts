@@ -19,6 +19,7 @@ export interface AskUserControlResult {
 }
 
 export interface AgentToolCallExecutionContext {
+  sessionId?: string;
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;

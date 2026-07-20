@@ -25,6 +25,7 @@ registry.registerPlugin({
   manifestPath: path.join(pluginRoot, "PluginManifest.json"),
   config: loadedPluginConfig(pluginRoot),
   manifest: {
+    ManifestVersion: 2,
     Plugin: {
       Name: "VerifyPiResourcePlugin",
       Version: "0.1.0",

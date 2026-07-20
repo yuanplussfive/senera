@@ -4,6 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { ResolvedAgentSandboxRuntimeConfig } from "../Types/AgentConfigTypes.js";
+import { normalizeSandboxImages } from "./AgentSandboxRuntimeImages.js";
+
+export { normalizeSandboxImages } from "./AgentSandboxRuntimeImages.js";
 
 export interface AgentSandboxRuntimePaths {
   baseDir: string;
@@ -155,15 +158,6 @@ export function configureMicrosandboxRuntime(
 ): void {
   process.env.MSB_PATH = paths.msbPath;
   microsandbox.setRuntimeLibkrunfwPath(paths.libkrunfwPath);
-}
-
-export function normalizeSandboxImages(
-  configuredImages: readonly string[],
-  extraImages: readonly string[] = [],
-): string[] {
-  return [...new Set([...configuredImages, ...extraImages].map((image) => image.trim()).filter(Boolean))].sort(
-    (left, right) => left.localeCompare(right),
-  );
 }
 
 async function loadMicrosandbox(): Promise<MicrosandboxModule> {

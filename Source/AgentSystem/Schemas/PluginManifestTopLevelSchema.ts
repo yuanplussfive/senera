@@ -1,9 +1,7 @@
 import { z } from "zod";
 import {
-  PluginEntrySchema,
   PluginKindSchema,
   PluginMcpServerSchema,
-  PluginRuntimeSchema,
   PluginSandboxSchema,
   PromptingSchema,
   SecuritySchema,
@@ -15,6 +13,7 @@ import { RootCommandSchema } from "./PluginRootCommandManifestSchema.js";
 
 export const PluginManifestSchema = z
   .object({
+    ManifestVersion: z.literal(2),
     Plugin: z
       .object({
         Name: z.string().min(1),
@@ -22,10 +21,8 @@ export const PluginManifestSchema = z
         Version: z.string().min(1),
         Kind: PluginKindSchema,
         Description: z.string().optional(),
-        Entry: PluginEntrySchema.optional(),
       })
       .strict(),
-    Compatibility: z.record(z.string(), z.unknown()).optional(),
     Tools: z.array(ToolSchema).optional(),
     McpServers: z.array(PluginMcpServerSchema).optional(),
     Skills: z.array(SkillSchema).optional(),
@@ -33,7 +30,6 @@ export const PluginManifestSchema = z
     Prompts: z.array(z.unknown()).optional(),
     Templates: z.array(TemplateSchema).optional(),
     RootCommands: z.array(RootCommandSchema).optional(),
-    Runtime: PluginRuntimeSchema.optional(),
     Sandbox: PluginSandboxSchema.optional(),
     Security: SecuritySchema.optional(),
     Prompting: PromptingSchema.optional(),

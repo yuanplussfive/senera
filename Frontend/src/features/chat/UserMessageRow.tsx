@@ -20,6 +20,7 @@ export interface UserMessageRowProps {
   onEditDraftChange?: (value: string) => void;
   onCancelEdit?: () => void;
   onSubmitEdit?: () => void;
+  onFork: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
   onViewWorkflow: () => void;
@@ -36,6 +37,7 @@ export function UserMessageRow({
   onEditDraftChange,
   onCancelEdit,
   onSubmitEdit,
+  onFork,
   onRegenerate,
   onDelete,
   onViewWorkflow,
@@ -79,6 +81,7 @@ export function UserMessageRow({
               hasRequestId={!!message.requestId}
               hasWorkflow={!!run}
               showInlineActions={showInlineActions}
+              onFork={onFork}
               onRegenerate={onRegenerate}
               onDelete={onDelete}
               onViewWorkflow={onViewWorkflow}

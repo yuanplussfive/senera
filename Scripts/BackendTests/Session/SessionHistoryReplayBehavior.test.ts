@@ -165,6 +165,121 @@ describe("Session history replay behavior", () => {
       }),
     ]);
   });
+
+  test("extracts the user-visible answer from persisted final-answer XML", async () => {
+    const fixture = createReplayFixture();
+    const sessionId = "assistant-xml-session";
+    fixture.store.open(sessionId);
+    fixture.store.persistEntries(sessionId, [
+      assistantEntry("request-xml", "<FinalAnswer><answer>XML answer</answer></FinalAnswer>", 1),
+    ]);
+    const events: AgentDomainEvent[] = [];
+
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    const chunk = events.find((event) => event.kind === AgentEventKinds.SessionHistoryChunk);
+    expect(readRecord(chunk?.data)?.entries).toEqual([
+      expect.objectContaining({ visible: { kind: "final_answer", text: "XML answer" } }),
+    ]);
+  });
+
+  test("keeps a failed snapshot failed even when partial traces were persisted", () => {
+    const fixture = createReplayFixture();
+    const sessionId = "failed-with-trace";
+    const requestId = "request-failed-with-trace";
+    fixture.store.open(sessionId);
+    const entries = [userEntry(requestId, "Run the task", 1)];
+    fixture.store.persistEntries(sessionId, entries);
+    fixture.store.persistTurnArtifacts(
+      sessionId,
+      requestId,
+      [],
+      [
+        {
+          step: 1,
+          seq: 0,
+          kind: "tool",
+          status: "done",
+          startedAt: timestamp(1),
+          endedAt: timestamp(2),
+        },
+      ],
+    );
+    fixture.store.persistRunSnapshot({
+      ...snapshot(sessionId, requestId, "failed", 1),
+      errorMessage: "The next step failed.",
+    });
+
+    expect(fixture.replay.buildStepRuns(sessionId, entries)).toEqual([
+      expect.objectContaining({ requestId, status: "failed", traces: expect.any(Array) }),
+    ]);
+  });
+
+  test("recovers unresolved approvals and interaction input for terminal runs", async () => {
+    const fixture = createReplayFixture();
+    const sessionId = "interrupted-waits-session";
+    const requestId = "request-interrupted";
+    fixture.store.open(sessionId);
+    fixture.store.persistEntries(sessionId, [userEntry(requestId, "Run an approved command", 1)]);
+    fixture.store.persistRunSnapshot({
+      ...snapshot(sessionId, requestId, "failed", 1),
+      errorMessage: "Run interrupted by server restart.",
+    });
+    fixture.store.persistRunEvent(sessionId, runEvent(sessionId, requestId, 1));
+    fixture.store.persistRunEvent(
+      sessionId,
+      waitEvent(sessionId, requestId, 2, AgentEventKinds.ApprovalRequested, {
+        approvalId: "approval-interrupted",
+        status: "pending",
+      }),
+    );
+    fixture.store.persistRunEvent(
+      sessionId,
+      waitEvent(sessionId, requestId, 3, AgentEventKinds.InteractionInputRequested, {
+        interactionId: "interaction-interrupted",
+        status: "pending",
+      }),
+    );
+    const events: AgentDomainEvent[] = [];
+
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    const chunks = events.filter((event) => event.kind === AgentEventKinds.SessionRunHistoryChunk);
+    const replayed = chunks.flatMap((event) => {
+      const value = readRecord(event.data)?.events;
+      return Array.isArray(value) ? value : [];
+    }) as AgentEventEnvelope[];
+    expect(replayed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: AgentEventKinds.ApprovalResolved,
+          data: expect.objectContaining({
+            approvalId: "approval-interrupted",
+            status: "cancelled",
+            disposition: "interrupt",
+          }),
+        }),
+        expect.objectContaining({
+          kind: AgentEventKinds.InteractionInputResolved,
+          data: expect.objectContaining({
+            interactionId: "interaction-interrupted",
+            status: "resolved",
+            action: "cancel",
+          }),
+        }),
+      ]),
+    );
+  });
 });
 
 function createReplayFixture() {
@@ -228,6 +343,27 @@ function runEvent(sessionId: string, requestId: string, sequence: number): Agent
     sessionId,
     requestId,
     data: { input: requestId },
+  };
+}
+
+function waitEvent(
+  sessionId: string,
+  requestId: string,
+  sequence: number,
+  kind: typeof AgentEventKinds.ApprovalRequested | typeof AgentEventKinds.InteractionInputRequested,
+  data: Record<string, unknown>,
+): AgentEventEnvelope {
+  return {
+    channel: AgentEventChannels.AgentEvent,
+    kind,
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Approval,
+    sequence,
+    timestamp: timestamp(sequence),
+    sessionId,
+    requestId,
+    step: 1,
+    data,
   };
 }
 

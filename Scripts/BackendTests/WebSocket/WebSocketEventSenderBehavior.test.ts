@@ -4,15 +4,15 @@ import { AgentEventKinds } from "../../../Source/AgentSystem/Events/AgentEvent.j
 import { AgentWebSocketEventEnvelopeSender } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketEventSender.js";
 import type { AgentLogger } from "../../../Source/AgentSystem/Diagnostics/AgentLogger.js";
 import type { AgentServerEventLogger } from "../../../Source/AgentSystem/Diagnostics/AgentServerEventLogger.js";
-import type { AgentSessionManager } from "../../../Source/AgentSystem/Session/AgentSessionManager.js";
+import { AgentCallbackRunEventWriter } from "../../../Source/AgentSystem/WebSocket/AgentCallbackRunEventWriter.js";
 
 describe("WebSocket event envelope sender", () => {
-  test("broadcasts one sequenced envelope to open clients without persisting session history", () => {
+  test("broadcasts one sequenced envelope to open clients without persisting session history", async () => {
     const fixture = createSenderFixture();
     const first = createSocket(true);
     const second = createSocket(true);
 
-    fixture.sender.broadcast([first.socket, second.socket], runStartedEvent());
+    await fixture.sender.broadcast([first.socket, second.socket], runStartedEvent());
 
     expect(first.send).toHaveBeenCalledTimes(1);
     expect(second.send).toHaveBeenCalledWith(first.send.mock.calls[0]?.[0]);
@@ -23,39 +23,41 @@ describe("WebSocket event envelope sender", () => {
       sequence: 1,
     });
     expect(fixture.event).toHaveBeenCalledTimes(1);
-    expect(fixture.recordRunEvent).not.toHaveBeenCalled();
+    expect(fixture.recordRunEvents).not.toHaveBeenCalled();
   });
 
-  test("ignores closed clients", () => {
+  test("ignores closed clients", async () => {
     const fixture = createSenderFixture();
     const closed = createSocket(false);
 
-    fixture.sender.broadcast([closed.socket], runStartedEvent());
+    await fixture.sender.broadcast([closed.socket], runStartedEvent());
 
     expect(closed.send).not.toHaveBeenCalled();
   });
 
-  test("persists projected run events before sending direct envelopes", () => {
+  test("persists projected run events before sending direct envelopes", async () => {
     const fixture = createSenderFixture();
     const client = createSocket(true);
 
-    fixture.sender.sendEnvelope(client.socket, runStartedEvent());
+    await fixture.sender.sendEnvelope(client.socket, runStartedEvent());
+    await fixture.sender.flush();
 
-    expect(fixture.recordRunEvent).toHaveBeenCalledWith(
+    expect(fixture.recordRunEvents).toHaveBeenCalledWith([
       expect.objectContaining({ kind: AgentEventKinds.RunStarted, sequence: 1 }),
-    );
+    ]);
     expect(client.send).toHaveBeenCalledTimes(1);
   });
 
-  test("logs persistence failures without preventing delivery", () => {
+  test("logs persistence failures without preventing delivery", async () => {
     const failure = new Error("database unavailable");
     const fixture = createSenderFixture(failure);
     const client = createSocket(true);
 
-    fixture.sender.sendEnvelope(client.socket, runStartedEvent());
+    await fixture.sender.sendEnvelope(client.socket, runStartedEvent());
+    await expect(fixture.sender.flush()).rejects.toThrow(failure);
 
-    expect(fixture.warn).toHaveBeenCalledWith(
-      "执行事件持久化失败",
+    expect(fixture.error).toHaveBeenCalledWith(
+      "执行事件持久化进入失败状态",
       expect.objectContaining({ requestId: "request-1", error: failure.message }),
     );
     expect(client.send).toHaveBeenCalledTimes(1);
@@ -64,18 +66,20 @@ describe("WebSocket event envelope sender", () => {
 
 function createSenderFixture(recordFailure?: Error) {
   const warn = vi.fn();
+  const error = vi.fn();
   const event = vi.fn();
-  const recordRunEvent = vi.fn(() => {
+  const recordRunEvents = vi.fn(() => {
     if (recordFailure) throw recordFailure;
   });
   return {
     warn,
+    error,
     event,
-    recordRunEvent,
+    recordRunEvents,
     sender: new AgentWebSocketEventEnvelopeSender({
-      logger: { warn } as unknown as AgentLogger,
+      logger: { warn, error } as unknown as AgentLogger,
       eventLogger: { event } as unknown as AgentServerEventLogger,
-      sessionManager: { recordRunEvent } as unknown as AgentSessionManager,
+      eventWriter: new AgentCallbackRunEventWriter(recordRunEvents),
     }),
   };
 }

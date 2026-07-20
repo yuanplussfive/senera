@@ -79,12 +79,32 @@ function projectScopedEvidenceRule(root: unknown, rule: ToolArtifactEvidenceMani
         modelSlots: projectModelSlots(slots, rule.ModelProjection.Slots),
         plannerMemory: {
           facts: projectModelSlots(slots, rule.PlannerMemory.Facts),
-          artifactRefs: [...(rule.PlannerMemory.ArtifactRefs ?? [])],
+          artifactRefs: projectPlannerArtifactRefs(slots, rule),
+          artifactUri: projectPlannerArtifactUri(slots, rule),
         },
         metadata: projectSlots(root, record, rule.Metadata ?? {}),
       },
     ];
   });
+}
+
+function projectPlannerArtifactUri(
+  slots: Record<string, unknown>,
+  rule: ToolArtifactEvidenceManifest,
+): string | undefined {
+  const slotName = rule.PlannerMemory.ArtifactUri;
+  return slotName ? normalizeModelSlotValue(slots[slotName]) : undefined;
+}
+
+function projectPlannerArtifactRefs(slots: Record<string, unknown>, rule: ToolArtifactEvidenceManifest): string[] {
+  const staticRefs = rule.PlannerMemory.ArtifactRefs ?? [];
+  const slotName = rule.PlannerMemory.ArtifactRefsSlot;
+  const selected = slotName ? slots[slotName] : undefined;
+  const dynamicRefs = (Array.isArray(selected) ? selected : [selected]).flatMap((value) => {
+    const normalized = normalizeModelSlotValue(value);
+    return normalized ? [normalized] : [];
+  });
+  return [...new Set([...staticRefs, ...dynamicRefs])];
 }
 
 function projectModelSlots(

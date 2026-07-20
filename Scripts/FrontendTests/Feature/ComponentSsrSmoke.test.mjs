@@ -43,6 +43,7 @@ test("approval strip SSR smoke covers pending action controls", () => {
           reason: "工具需要审批",
           rule: "high-impact",
           riskSignals: ["workspace-write", "shell"],
+          availableDecisions: ["approve_once", "deny", "deny_and_interrupt"],
           approvalKind: "tool_call",
           createdAt: "2026-07-09T00:00:00.000Z",
           subject: {
