@@ -91,15 +91,7 @@ function removeNativeRebuildMetadata(metadataPath: string): void {
 
   const result = spawnSync(
     "powershell.exe",
-    [
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      "Remove-Item",
-      "-LiteralPath",
-      metadataPath,
-      "-Force",
-    ],
+    ["-NoProfile", "-NonInteractive", "-Command", "Remove-Item", "-LiteralPath", metadataPath, "-Force"],
     {
       stdio: "ignore",
       windowsHide: true,
