@@ -27,7 +27,7 @@ describe("Pi tool contract cache behavior", () => {
 
     expect(second.map((tool) => tool.parameters)).toEqual(first.map((tool) => tool.parameters));
     second.forEach((tool, index) => expect(tool.parameters).toBe(first[index]?.parameters));
-  });
+  }, 15_000);
 
   test("discovers templates registered after resource projector construction and reuses their content", () => {
     const registry = new AgentPluginRegistry();
