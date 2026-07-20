@@ -264,13 +264,25 @@ function removeNativeRebuildMetadata(metadataPath: string): void {
     }
   }
 
-  const shell = process.env.ComSpec ?? "cmd.exe";
-  const result = spawnSync(shell, ["/d", "/c", "del", "/f", "/a", metadataPath], {
-    stdio: "ignore",
-    windowsHide: true,
-  });
-  if (result.error || result.status !== 0 || fs.existsSync(metadataPath)) {
-    throw result.error ?? new Error(`Could not remove native rebuild metadata: ${metadataPath}`);
+  const maxAttempts = 5;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      fs.rmSync(metadataPath, { force: true });
+      if (!fs.existsSync(metadataPath)) {
+        return;
+      }
+    } catch (error) {
+      if (!isWindowsCleanupError(error)) {
+        throw error;
+      }
+    }
+
+    // Brief blocking pause before retrying to handle transient Windows file locks.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+  }
+
+  if (fs.existsSync(metadataPath)) {
+    throw new Error(`Could not remove native rebuild metadata: ${metadataPath}`);
   }
 }
 
