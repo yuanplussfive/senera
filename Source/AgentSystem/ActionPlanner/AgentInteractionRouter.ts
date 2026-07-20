@@ -1,6 +1,7 @@
 import { InteractionRunMode, type ActionPlanInput, type InteractionRoute } from "../BamlClient/baml_client/types.js";
 import { normalizeBamlOptionalFields } from "../BamlClient/AgentBamlOutputNormalizer.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
+import type { ParsedInteractionPreparation } from "./AgentActionPlannerSchema.js";
 
 export const AgentInteractionRunModes = {
   DirectResponse: "direct_response",
@@ -12,13 +13,8 @@ export type AgentInteractionRunMode = (typeof AgentInteractionRunModes)[keyof ty
 export interface AgentInteractionRouteResult {
   mode: AgentInteractionRunMode;
   objective: string;
-  needsFreshEvidence: boolean;
-  needsWorkspaceRead: boolean;
-  needsSideEffect: boolean;
-  risk: string;
   preferredTools: string[];
   discoveryQueries: string[];
-  reason: string;
   raw: InteractionRoute;
 }
 
@@ -43,14 +39,38 @@ export function projectInteractionRoute(route: InteractionRoute): AgentInteracti
   return {
     mode: projectInteractionRunMode(normalized.mode),
     objective: normalized.objective,
-    needsFreshEvidence: normalized.needsFreshEvidence,
-    needsWorkspaceRead: normalized.needsWorkspaceRead,
-    needsSideEffect: normalized.needsSideEffect,
-    risk: normalized.risk,
     preferredTools: [...normalized.preferredTools],
     discoveryQueries: [...normalized.discoveryQueries],
-    reason: normalized.reason,
     raw: normalized,
+  };
+}
+
+export function projectPreparedInteractionRoute(
+  preparation: Pick<ParsedInteractionPreparation, "turnUnderstanding" | "initialAction">,
+): AgentInteractionRouteResult {
+  const toolNames =
+    preparation.initialAction.kind === "CallTools"
+      ? [...new Set((preparation.initialAction.calls ?? []).map((call) => call.toolName))]
+      : [];
+  const mode =
+    preparation.initialAction.kind === "CallTools"
+      ? AgentInteractionRunModes.ToolAgentLoop
+      : AgentInteractionRunModes.DirectResponse;
+  const rawMode =
+    mode === AgentInteractionRunModes.ToolAgentLoop
+      ? InteractionRunMode.ToolAgentLoop
+      : InteractionRunMode.DirectResponse;
+  return {
+    mode,
+    objective: preparation.turnUnderstanding.standaloneRequest,
+    preferredTools: toolNames,
+    discoveryQueries: [],
+    raw: {
+      mode: rawMode,
+      objective: preparation.turnUnderstanding.standaloneRequest,
+      preferredTools: [...toolNames],
+      discoveryQueries: [],
+    },
   };
 }
 

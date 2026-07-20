@@ -5,6 +5,8 @@ import type {
   ResolvedAgentToolSearchConfig,
 } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/PluginRuntimeTypes.js";
+import type { ToolLoadingMode } from "../../../Source/AgentSystem/Types/PluginManifestTypes.js";
+import { createModelProvider } from "../Support/AgentTestFixtures.js";
 
 export function createRegistry(tools: RegisteredTool[]): AgentToolSearchRegistryReader & {
   getTool(name: string): RegisteredTool | undefined;
@@ -24,8 +26,10 @@ export function createTool(options: {
   targets: string[];
   priority: number;
   rootKind?: PluginRootKind;
+  loading?: ToolLoadingMode;
 }): RegisteredTool {
   return {
+    loading: options.loading ?? "Dynamic",
     plugin: {
       rootPath: "",
       rootKind: options.rootKind ?? "System",
@@ -46,6 +50,7 @@ export function createTool(options: {
         diagnostics: [],
       },
       manifest: {
+        ManifestVersion: 2,
         Plugin: {
           Name: `${options.name}Plugin`,
           Title: options.title,
@@ -61,6 +66,7 @@ export function createTool(options: {
     name: options.name,
     permissions: [],
     handler: { kind: "HostCapability", capability: options.name },
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
     execution: {
       Boundary: "Local",
       Network: "Deny",
@@ -108,6 +114,16 @@ export function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
       MmrLambda: 0.72,
       MmrCandidateScoreRatio: 0.92,
       MinScore: 0,
+      MaxResults: 6,
+      IntentGate: {
+        Mode: "side_effect_capability",
+      },
+      MemoryExpansion: {
+        Mode: "fallback",
+        MinConfidence: 0.8,
+        MinEvidence: 3,
+        MaxResults: 2,
+      },
     },
     Rerank: {
       Enabled: true,
@@ -123,7 +139,7 @@ export function createToolLearningConfig(
 ): ResolvedAgentToolLearningConfig {
   const client = {
     ModelProviderId: undefined,
-    Provider: "openai-generic" as const,
+    ModelProvider: createModelProvider(),
     BaseUrl: "https://model.example/v1",
     ApiKey: "test-key",
     Model: "test-model",

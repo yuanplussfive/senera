@@ -99,7 +99,7 @@ export function readExpectedOutputMode(data: ActionPlannedData): RunRecord["expe
 
 function plannerStageBaseTitle(stage: ActionPlannerStageName): string {
   switch (stage) {
-    case "understandUserTurn":
+    case "prepareInteraction":
       return frontendMessage("workflow.plan.plannerStageUnderstand");
   }
 }
@@ -111,10 +111,6 @@ export const InteractionModeTitle = {
 
 export function summarizeInteractionRoute(data: InteractionRoutedData): string {
   const objective = data.objective ? truncate(data.objective, 96) : undefined;
-  const reason = data.reason ? truncate(data.reason, 96) : undefined;
-  const evidence = data.needsFreshEvidence ? frontendMessage("workflow.plan.needsFreshEvidence") : undefined;
-  const workspace = data.needsWorkspaceRead ? frontendMessage("workflow.plan.workspaceRead") : undefined;
-  const effect = data.needsSideEffect ? frontendMessage("workflow.plan.hasSideEffect") : undefined;
   const tools =
     data.preferredTools.length > 0
       ? frontendMessage("workflow.plan.candidateSkills", { count: data.preferredTools.length })
@@ -123,7 +119,7 @@ export function summarizeInteractionRoute(data: InteractionRoutedData): string {
     data.discoveryQueries.length > 0
       ? frontendMessage("workflow.plan.toolSearchIntents", { count: data.discoveryQueries.length })
       : undefined;
-  return [objective, reason, evidence, workspace, effect, tools, search].filter(Boolean).join(" · ");
+  return [objective, tools, search].filter(Boolean).join(" · ");
 }
 
 export function toolPlanTitle(data: ToolCallsPlannedData): string {

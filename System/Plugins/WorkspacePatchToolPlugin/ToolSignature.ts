@@ -18,6 +18,18 @@ export type WorkspaceApplyPatchUpdateOperation = {
 
   // 只包含 @@ hunk 的 unified patch，不包含 diff --git、---、+++ 文件头。
   patch: string;
+
+  // 可选的当前文件 SHA-256。文件与读取时不一致则拒绝提交。
+  expectedSha256?: string;
+};
+
+export type WorkspaceApplyPatchReplaceOperation = {
+  // 用完整文本替换已有文件，适合大范围重写。
+  kind: "replace";
+
+  path: string;
+  content: string;
+  expectedSha256?: string;
 };
 
 export type WorkspaceApplyPatchDeleteOperation = {
@@ -26,6 +38,8 @@ export type WorkspaceApplyPatchDeleteOperation = {
 
   // 工作区内相对路径，或工作区内绝对路径。
   path: string;
+
+  expectedSha256?: string;
 };
 
 export type WorkspaceApplyPatchMoveOperation = {
@@ -40,6 +54,8 @@ export type WorkspaceApplyPatchMoveOperation = {
 
   // 可选。只包含 @@ hunk 的 unified patch，应用到源文件内容后写入目标。
   patch?: string;
+
+  expectedSha256?: string;
 };
 
 export type WorkspaceApplyPatchCreateDirectoryOperation = {
@@ -64,6 +80,7 @@ export type WorkspaceApplyPatchDeleteDirectoryOperation = {
 export type WorkspaceApplyPatchOperation =
   | WorkspaceApplyPatchAddOperation
   | WorkspaceApplyPatchUpdateOperation
+  | WorkspaceApplyPatchReplaceOperation
   | WorkspaceApplyPatchDeleteOperation
   | WorkspaceApplyPatchMoveOperation
   | WorkspaceApplyPatchCreateDirectoryOperation

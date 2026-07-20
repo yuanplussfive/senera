@@ -3,6 +3,7 @@ import { AgentToolPermissionDeniedError } from "../Safety/AgentToolPermissionGat
 import { projectAgentToolSafetyMetadata } from "../Safety/AgentToolSafetyMetadata.js";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { AgentPiToolProjectionContext } from "./AgentPiTypes.js";
+import { readPiProxyToolCallBatchId } from "../PiProxy/AgentPiProxyRuntimeContext.js";
 
 export interface AgentPiToolPermissionHookOptions {
   registry: AgentPluginRegistry;
@@ -34,8 +35,10 @@ export class AgentPiToolPermissionHook {
     const tool = this.options.registry.getTool(event.toolName);
     try {
       await this.options.permissionGate.authorize({
+        sessionId: context.sessionId ?? context.requestId ?? event.toolCallId,
         requestId: context.requestId ?? event.toolCallId,
         toolCallId: event.toolCallId,
+        batchId: readPiProxyToolCallBatchId(context.piProxyRuntimeContextId, event.toolCallId),
         step: context.step ?? 1,
         toolName: event.toolName,
         arguments: event.input,

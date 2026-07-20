@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
 import { appendDesktopLog, prepareDesktopRuntime, type DesktopRuntimePaths } from "./DesktopRuntime.js";
 import {
@@ -10,6 +10,7 @@ import {
 } from "./DesktopFrontendSource.js";
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
 import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
+import { resolveAgentExternalUrl } from "../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
 
 let serverHandle: SeneraServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -88,14 +89,21 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("before-quit", () => {
-  serverHandle?.stop();
+app.on("before-quit", (event) => {
+  const handle = serverHandle;
+  if (!handle) return;
+  event.preventDefault();
   serverHandle = undefined;
+  void handle.stop().finally(() => app.quit());
 });
 
 function registerDesktopIpc(): void {
   ipcMain.handle("senera:settings.open", (_event, options?: { section?: string }) => {
     openSettingsWindow(options);
+  });
+  ipcMain.handle("senera:external-url.open", async (_event, input: string) => {
+    const external = resolveAgentExternalUrl(input);
+    await shell.openExternal(external.url, { activate: true });
   });
 }
 
@@ -125,6 +133,7 @@ function createMainWindow(): BrowserWindow {
     event.preventDefault();
     window.setTitle("Senera");
   });
+  secureExternalNavigation(window);
   window.on("closed", () => {
     mainWindow = undefined;
     if (settingsWindow && !settingsWindow.isDestroyed()) {
@@ -173,6 +182,7 @@ function openSettingsWindow(options?: { section?: string }): void {
   settingsWindow.once("ready-to-show", () => {
     settingsWindow?.show();
   });
+  secureExternalNavigation(settingsWindow);
   settingsWindow.on("page-title-updated", (event) => {
     event.preventDefault();
     settingsWindow?.setTitle("Senera 设置");
@@ -185,6 +195,25 @@ function openSettingsWindow(options?: { section?: string }): void {
     surface: "settings",
     section,
   });
+}
+
+function secureExternalNavigation(window: BrowserWindow): void {
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    void openExternalUrlFromDesktop(url);
+    return { action: "deny" };
+  });
+}
+
+async function openExternalUrlFromDesktop(input: string): Promise<void> {
+  try {
+    const external = resolveAgentExternalUrl(input);
+    await shell.openExternal(external.url, { activate: true });
+  } catch (error) {
+    appendDesktopLog(
+      runtimePaths?.logPath ?? path.join(app.getPath("userData"), "desktop.log"),
+      `blocked external URL: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 function readFrontendSource(): DesktopFrontendSource {

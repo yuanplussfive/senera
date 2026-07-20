@@ -16,6 +16,9 @@ export interface AgentModelProviderConfig {
   FirstTokenTimeoutSeconds?: number;
   MaxRequestSeconds?: number;
   MaxNetworkRetries?: number;
+  MaxResponseBytes?: number;
+  MaxSseEventBytes?: number;
+  MaxSseEvents?: number;
 }
 
 export interface AgentModelCapabilitiesConfig {
@@ -26,6 +29,7 @@ export interface AgentModelCapabilitiesConfig {
   ImageOutput?: boolean;
   Reasoning?: boolean;
   DeveloperRole?: boolean;
+  StreamingUsage?: boolean;
 }
 
 export type AgentModelGroupMatchKind = "exact" | "prefix" | "suffix" | "includes";
@@ -80,6 +84,9 @@ export interface AgentModelRuntimeDefaultsConfig {
   FirstTokenTimeoutSeconds: number;
   MaxRequestSeconds: number;
   MaxNetworkRetries: number;
+  MaxResponseBytes: number;
+  MaxSseEventBytes: number;
+  MaxSseEvents: number;
 }
 
 export interface ResolvedAgentModelProviderConfig {
@@ -102,6 +109,9 @@ export interface ResolvedAgentModelProviderConfig {
   FirstTokenTimeoutMs: number;
   MaxRequestMs: number;
   MaxNetworkRetries: number;
+  MaxResponseBytes?: number;
+  MaxSseEventBytes?: number;
+  MaxSseEvents?: number;
   Headers: Record<string, string>;
 }
 

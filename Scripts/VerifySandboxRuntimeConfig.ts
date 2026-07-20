@@ -6,11 +6,12 @@ import {
   resolveAgentSandboxRuntimePaths,
 } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { SeneraMicrosandboxDefaults } from "../Source/AgentSystem/Execution/SeneraMicrosandboxDefaults.js";
 
 const defaults = resolveAgentDefaults(undefined).SandboxRuntime;
 assert.equal(defaults.BaseDir, ".senera/sandbox-runtime");
 assert.equal(defaults.BundleDir, ".senera/sandbox-bundles");
-assert.deepEqual(defaults.Images, ["alpine"]);
+assert.deepEqual(defaults.Images, [SeneraMicrosandboxDefaults.image]);
 
 const config = {
   SandboxRuntime: {

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { parse as parseToml, type TomlTableWithoutBigInt } from "smol-toml";
 import { resolvePluginDiscoveryConfig } from "../AgentDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
@@ -143,10 +144,20 @@ export function validatePluginConfigTomlForWrite(toml: string, configPath?: stri
   }
 }
 
-export function writePluginConfigToml(configPath: string, toml: string): void {
+export function writePluginConfigToml(configPath: string, toml: string): boolean {
   validatePluginConfigTomlForWrite(toml, configPath);
+  const next = ensureFinalNewline(toml);
+  if (fs.existsSync(configPath) && fs.readFileSync(configPath, "utf8") === next) return false;
+
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, ensureFinalNewline(toml), "utf8");
+  const temporaryPath = path.join(path.dirname(configPath), `.${path.basename(configPath)}.${randomUUID()}.tmp`);
+  try {
+    fs.writeFileSync(temporaryPath, next, { encoding: "utf8", flag: "wx" });
+    fs.renameSync(temporaryPath, configPath);
+  } finally {
+    fs.rmSync(temporaryPath, { force: true });
+  }
+  return true;
 }
 
 export function setPluginConfigEnabled(

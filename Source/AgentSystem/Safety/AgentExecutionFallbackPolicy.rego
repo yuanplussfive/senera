@@ -39,6 +39,14 @@ fallback := {
   input.tool.plugin.trustLevel in data.senera.tool_approval.Fallback.DenyTrustLevels
 } else := {
   "decision": "requires-approval",
+  "reason": data.senera.tool_approval.Reasons.FallbackHighImpactApproval,
+  "rule": "execution.fallback.high_impact_approval",
+  "riskSignals": fallback_risk_signals,
+} if {
+  some permission in input.execution.permissions
+  permission in data.senera.tool_approval.Fallback.ApprovalPermissions
+} else := {
+  "decision": "requires-approval",
   "reason": data.senera.tool_approval.Reasons.FallbackExternalApproval,
   "rule": "execution.fallback.external_approval",
   "riskSignals": fallback_risk_signals,
@@ -81,6 +89,10 @@ fallback_risk_signals contains sprintf("execution.network:%s", [input.execution.
 
 fallback_risk_signals contains sprintf("execution.workspace:%s", [input.execution.workspace]) if {
   input.execution.workspace
+}
+
+fallback_risk_signals contains sprintf("execution.permission:%s", [permission]) if {
+  some permission in input.execution.permissions
 }
 
 fallback_risk_signals contains sprintf("plugin.trustLevel:%s", [input.tool.plugin.trustLevel]) if {

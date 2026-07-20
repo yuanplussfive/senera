@@ -1,6 +1,7 @@
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
 
 type AgentStepContext = Required<Pick<AgentEventContext, "requestId" | "step">> &
   Partial<Pick<AgentEventContext, "sessionId">>;
@@ -27,6 +28,7 @@ export type AgentModelDomainEvent =
       data: {
         text: string;
         provider?: AgentModelProviderMetadata;
+        usage?: AgentModelUsageValue;
       };
     }
   | {

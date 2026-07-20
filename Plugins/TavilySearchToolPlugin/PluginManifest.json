@@ -1,24 +1,20 @@
 {
+  "ManifestVersion": 2,
   "Plugin": {
     "Name": "TavilySearchToolPlugin",
     "Title": "网页搜索",
     "Version": "0.1.0",
-    "Kind": "Tool",
-    "Entry": {
-      "Kind": "Process",
-      "Command": "npm",
-      "Args": ["run", "tool"],
-      "Cwd": "."
+    "Kind": "Tool"
+  },
+  "McpServers": [
+    {
+      "Id": "tavily",
+      "Transport": "stdio",
+      "Command": "${node}",
+      "Args": ["${pluginRoot}/index.js"],
+      "Cwd": "${pluginRoot}"
     }
-  },
-  "Runtime": {
-    "Kind": "Node",
-    "NodeVersion": "22",
-    "PackageManager": "npm",
-    "Install": "none",
-    "Script": "tool",
-    "SandboxProfile": "node-plugin"
-  },
+  ],
   "Sandbox": {
     "Network": "Allow",
     "Workspace": {
@@ -36,6 +32,7 @@
   "Tools": [
     {
       "Name": "TavilySearchTool",
+      "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["network:https://api.tavily.com", "filesystem:read:PluginConfig.toml", "filesystem:write:.state"],
@@ -124,6 +121,19 @@
         ],
         "Examples": ["OpenAI 最新新闻", "Tavily API 文档", "公司最近动态 对比", "latest release notes web search"],
         "Avoid": ["不要用于搜索本地代码或读取工作区文件。"]
+      },
+      "Handler": {
+        "Kind": "McpTool",
+        "Server": "tavily",
+        "Tool": "TavilySearchTool"
+      },
+      "Runtime": {
+        "Lifecycle": "Persistent",
+        "Capabilities": {
+          "Progress": true,
+          "OutputStreaming": true,
+          "Cancellation": true
+        }
       }
     }
   ],

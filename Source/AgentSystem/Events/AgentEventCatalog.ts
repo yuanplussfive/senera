@@ -35,7 +35,9 @@ export const AgentEventKinds = {
   SessionRunHistoryChunk: "session.run_history.chunk",
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
+  SessionForked: "session.forked",
   RunStarted: "run.started",
+  RunCancellationProgress: "run.cancellation.progress",
   PromptSummary: "prompt.summary",
   ActionPlannerStageStarted: "action.planner.stage.started",
   ActionPlannerStageCompleted: "action.planner.stage.completed",
@@ -48,13 +50,23 @@ export const AgentEventKinds = {
   PiTrace: "pi.trace",
   ToolCallsPlanned: "tool.calls.planned",
   ToolCallStarted: "tool.call.started",
+  ToolCallOutput: "tool.call.output",
+  ToolCallProgress: "tool.call.progress",
   ToolCallCompleted: "tool.call.completed",
   ToolCallFailed: "tool.call.failed",
   ToolCallResultDetail: "tool.call.result.detail",
   AssistantMessageCreated: "assistant.message.created",
   ApprovalRequested: "approval.requested",
   ApprovalResolved: "approval.resolved",
+  InteractionInputRequested: "interaction.input.requested",
+  InteractionInputResolved: "interaction.input.resolved",
   ExecutionFallbackStarted: "execution.fallback.started",
+  ExecutionResourceCreated: "execution.resource.created",
+  ExecutionResourceOutput: "execution.resource.output",
+  ExecutionResourceResized: "execution.resource.resized",
+  ExecutionResourceState: "execution.resource.state",
+  ExecutionResourceRemoved: "execution.resource.removed",
+  ExecutionResourceSnapshot: "execution.resource.snapshot",
   SandboxStatusSnapshot: "sandbox.status.snapshot",
   RunCompleted: "run.completed",
   RunFailed: "run.failed",
@@ -134,7 +146,15 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
   },
+  [AgentEventKinds.SessionForked]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
+  },
   [AgentEventKinds.RunStarted]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Run,
+  },
+  [AgentEventKinds.RunCancellationProgress]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Run,
   },
@@ -186,6 +206,14 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Tool,
   },
+  [AgentEventKinds.ToolCallOutput]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Tool,
+  },
+  [AgentEventKinds.ToolCallProgress]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Tool,
+  },
   [AgentEventKinds.ToolCallCompleted]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Tool,
@@ -210,9 +238,41 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Approval,
   },
+  [AgentEventKinds.InteractionInputRequested]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Tool,
+  },
+  [AgentEventKinds.InteractionInputResolved]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Tool,
+  },
   [AgentEventKinds.ExecutionFallbackStarted]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Approval,
+  },
+  [AgentEventKinds.ExecutionResourceCreated]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Tool,
+  },
+  [AgentEventKinds.ExecutionResourceOutput]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Tool,
+  },
+  [AgentEventKinds.ExecutionResourceState]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Tool,
+  },
+  [AgentEventKinds.ExecutionResourceResized]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Tool,
+  },
+  [AgentEventKinds.ExecutionResourceRemoved]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Tool,
+  },
+  [AgentEventKinds.ExecutionResourceSnapshot]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Tool,
   },
   [AgentEventKinds.SandboxStatusSnapshot]: {
     layer: AgentEventLayers.Snapshot,

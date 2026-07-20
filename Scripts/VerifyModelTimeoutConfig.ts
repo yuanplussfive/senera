@@ -49,7 +49,7 @@ assert.deepEqual(resolvePersistenceConfig(parsedBase), {
   DatabasePath: ".senera/senera.db",
 });
 assert.equal(resolveToolExecutionConfig(parsedBase).TimeoutMs, 120000);
-assert.equal(resolveAgentLoopConfig(parsedBase).PiSessionCreateTimeoutMs, 20000);
+assert.equal(resolveAgentLoopConfig(parsedBase).PiTurnLeaseTimeoutMs, 120000);
 assert.equal(resolveAgentDefaults(parsedBase).Server.Port, 8787);
 
 const configuredDefaults = parseConfig({
@@ -88,7 +88,8 @@ const configuredDefaults = parseConfig({
     },
   },
   AgentLoop: {
-    PiSessionCreateTimeoutSeconds: 7,
+    PiTurnLeaseTimeoutSeconds: 7,
+    RunSettlementTimeoutSeconds: 3,
   },
 });
 assert.deepEqual(resolvePluginRootsConfig(configuredDefaults), {
@@ -96,11 +97,15 @@ assert.deepEqual(resolvePluginRootsConfig(configuredDefaults), {
   User: ["./ExternalTools"],
 });
 assert.equal(resolveToolExecutionConfig(configuredDefaults).TimeoutMs, 90000);
-assert.equal(resolveAgentLoopConfig(configuredDefaults).PiSessionCreateTimeoutMs, 7000);
+assert.equal(resolveAgentLoopConfig(configuredDefaults).PiTurnLeaseTimeoutMs, 7000);
+assert.equal(resolveAgentLoopConfig(configuredDefaults).RunSettlementTimeoutMs, 3000);
 assert.equal(resolveAgentDefaults(configuredDefaults).Server.Port, 8787);
 assert.equal(resolveModelProviderConfig(configuredDefaults).Temperature, 0.7);
 assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Model, "test-model");
-assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Provider, "openai-generic");
+assert.equal(
+  resolveActionPlannerConfig(configuredDefaults).Client.ModelProvider.Endpoint,
+  resolveModelProviderConfig(configuredDefaults).Endpoint,
+);
 assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Temperature, 0.3);
 assert.equal(resolveActionPlannerConfig(configuredDefaults).PlanningClient.Model, "test-model");
 assert.equal(resolveFrontendConfig(configuredDefaults).DevServer.Port, 5174);
@@ -156,14 +161,13 @@ const splitPlanner = resolveActionPlannerConfig(
     ActionPlanner: {
       PlanningClient: {
         ModelProviderId: "gpt-planner",
-        Provider: "openai-responses",
         Temperature: 0.1,
         MaxTokens: 4096,
       },
     },
   }),
 );
-assert.equal(splitPlanner.PlanningClient.Provider, "openai-responses");
+assert.equal(splitPlanner.PlanningClient.ModelProvider.Endpoint, "Responses");
 assert.equal(splitPlanner.PlanningClient.Model, "gpt-planner-model");
 assert.equal(splitPlanner.PlanningClient.MaxTokens, 4096);
 

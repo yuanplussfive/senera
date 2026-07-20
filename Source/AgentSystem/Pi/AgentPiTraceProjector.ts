@@ -13,10 +13,17 @@ export interface AgentPiTraceInput {
   payload?: unknown;
 }
 
-const SensitiveKeyPattern = /api[-_]?key|authorization|token|secret|password/i;
-const MaxTraceStringLength = 4_096;
-const MaxTraceCollectionEntries = 32;
-const MaxTraceDepth = 5;
+const SensitiveTraceKeyNames = new Set(["authorization", "secret", "password", "credential"]);
+const SensitiveTokenQualifiers = new Set(["access", "api", "auth", "bearer", "csrf", "id", "refresh", "session"]);
+const MaxTraceStringLength = 1_024;
+const MaxTracePayloadStringCharacters = 16_384;
+const MaxTracePayloadEntries = 24;
+const MaxTraceDepth = 4;
+
+interface TraceProjectionBudget {
+  remainingEntries: number;
+  remainingStringCharacters: number;
+}
 
 export function createPiTraceEvent(input: AgentPiTraceInput): AgentDomainEvent {
   return {
@@ -72,23 +79,30 @@ function summarizePiTracePayload(value: unknown): string {
   const record = readRecord(value);
   if (!record) return "";
   return takeEnumerableEntries(record, 6)
-    .entries.map(([key, entry]) => `${key}=${summarizePrimitive(entry)}`)
+    .entries.map(([key, entry]) => `${key}=${isSensitiveTraceKey(key) ? "[redacted]" : summarizePrimitive(entry)}`)
     .join(" ");
 }
 
-function sanitizePiTracePayload(value: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
+function sanitizePiTracePayload(
+  value: unknown,
+  budget: TraceProjectionBudget = createTraceProjectionBudget(),
+  seen = new WeakSet<object>(),
+  depth = 0,
+): unknown {
   if (value === undefined || value === null) return value;
-  if (typeof value === "string") return summarizeText(value, MaxTraceStringLength);
+  if (typeof value === "string") return projectTraceString(value, budget);
   if (typeof value === "number" || typeof value === "boolean") return value;
   if (depth >= MaxTraceDepth) return "[truncated]";
   if (Array.isArray(value)) {
     if (seen.has(value)) return "[circular]";
     seen.add(value);
-    const entries = value
-      .slice(0, MaxTraceCollectionEntries)
-      .map((entry) => sanitizePiTracePayload(entry, seen, depth + 1));
-    if (value.length > MaxTraceCollectionEntries) {
-      entries.push(`[${value.length - MaxTraceCollectionEntries} additional entries omitted]`);
+    const entries: unknown[] = [];
+    for (const entry of value) {
+      if (!consumeTraceEntry(budget)) break;
+      entries.push(sanitizePiTracePayload(entry, budget, seen, depth + 1));
+    }
+    if (entries.length < value.length) {
+      entries.push(`[${value.length - entries.length} additional entries omitted]`);
     }
     return entries;
   }
@@ -98,17 +112,58 @@ function sanitizePiTracePayload(value: unknown, seen = new WeakSet<object>(), de
   if (seen.has(record)) return "[circular]";
   seen.add(record);
 
-  const { entries, truncated } = takeEnumerableEntries(record, MaxTraceCollectionEntries);
-  const sanitized = Object.fromEntries(
-    entries.map(([key, entry]) => [
-      key,
-      SensitiveKeyPattern.test(key) ? "[redacted]" : sanitizePiTracePayload(entry, seen, depth + 1),
-    ]),
-  );
+  const entries: Array<[string, unknown]> = [];
+  let truncated = false;
+  for (const key in record) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+    if (!consumeTraceEntry(budget)) {
+      truncated = true;
+      break;
+    }
+    entries.push([
+      summarizeText(key, 128),
+      isSensitiveTraceKey(key) ? "[redacted]" : sanitizePiTracePayload(record[key], budget, seen, depth + 1),
+    ]);
+  }
+  const sanitized = Object.fromEntries(entries);
   if (truncated) {
     sanitized["[truncated]"] = "additional properties omitted";
   }
   return sanitized;
+}
+
+function isSensitiveTraceKey(key: string): boolean {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  if (words.some((word) => SensitiveTraceKeyNames.has(word))) return true;
+  if (words.length === 1 && words[0] === "token") return true;
+
+  const tokenIndex = words.indexOf("token");
+  return tokenIndex >= 0 && words.some((word, index) => index !== tokenIndex && SensitiveTokenQualifiers.has(word));
+}
+
+function createTraceProjectionBudget(): TraceProjectionBudget {
+  return {
+    remainingEntries: MaxTracePayloadEntries,
+    remainingStringCharacters: MaxTracePayloadStringCharacters,
+  };
+}
+
+function consumeTraceEntry(budget: TraceProjectionBudget): boolean {
+  if (budget.remainingEntries <= 0) return false;
+  budget.remainingEntries -= 1;
+  return true;
+}
+
+function projectTraceString(value: string, budget: TraceProjectionBudget): string {
+  const limit = Math.min(MaxTraceStringLength, budget.remainingStringCharacters);
+  if (limit <= 0) return "[truncated]";
+  const projected = summarizeText(value, limit);
+  budget.remainingStringCharacters = Math.max(0, budget.remainingStringCharacters - projected.length);
+  return projected;
 }
 
 function takeEnumerableEntries(

@@ -274,10 +274,12 @@ function executedToolResultFixture(): ExecutedToolCallResult {
 function registeredToolFixture(name: string, capability: string): RegisteredTool {
   return {
     name,
+    loading: "Dynamic",
     handler: {
       kind: "HostCapability",
       capability,
     },
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
     execution: DefaultExecution,
     permissions: [],
     evidenceCapabilities: [
@@ -322,6 +324,7 @@ function registeredToolFixture(name: string, capability: string): RegisteredTool
         diagnostics: [],
       },
       manifest: {
+        ManifestVersion: 2,
         Plugin: {
           Name: `${name}Plugin`,
           Version: "0.1.0",
@@ -335,6 +338,7 @@ function registeredToolFixture(name: string, capability: string): RegisteredTool
               Kind: "HostCapability",
               Capability: capability,
             },
+            Runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
             Execution: DefaultExecution,
           },
         ],

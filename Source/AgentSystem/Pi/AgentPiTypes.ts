@@ -5,15 +5,12 @@ import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
-import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 
 export type AgentPiToolDetails = {
   senera: {
     toolName: string;
-    result: unknown;
     artifactUri?: string;
     callId?: string;
-    executed?: ExecutedToolCallResult;
   };
 };
 
@@ -23,6 +20,7 @@ export type AgentPiToolResult = AgentToolResult<AgentPiToolDetails>;
 export type AgentPiToolUpdate = AgentToolUpdateCallback<AgentPiToolDetails>;
 
 export interface AgentPiToolProjectionContext {
+  sessionId?: string;
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;

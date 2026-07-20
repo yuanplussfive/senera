@@ -1,5 +1,13 @@
 export type LoadedToolsState = "all" | string[];
 
+export const AgentToolSearchCurrentSetPolicies = {
+  Retain: "retain",
+  Replace: "replace",
+} as const;
+
+export type AgentToolSearchCurrentSetPolicy =
+  (typeof AgentToolSearchCurrentSetPolicies)[keyof typeof AgentToolSearchCurrentSetPolicies];
+
 export const ToolSearchToolName = "ToolSearchTool";
 
 export interface PendingToolSearch {

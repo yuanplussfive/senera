@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { AgentApprovalRuntime } from "../../../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
 import { AgentEventKinds } from "../../../Source/AgentSystem/Events/AgentEventCatalog.js";
 import {
   AgentProtocolE2eClient,
@@ -8,27 +9,134 @@ import {
 
 const openHarnesses: AgentProtocolE2eHarness[] = [];
 
-afterEach(() => {
+afterEach(async () => {
+  const stops: Promise<void>[] = [];
   while (openHarnesses.length > 0) {
-    openHarnesses.pop()?.stop();
+    const harness = openHarnesses.pop();
+    if (harness) stops.push(harness.stop());
   }
+  await Promise.allSettled(stops);
 });
 
 describe("agent protocol E2E", () => {
+  test("dispatches approval resolution on the same websocket while a run is waiting", async () => {
+    const approvalRuntime = new AgentApprovalRuntime({ defaultDeadlineMs: 5_000 });
+    const harness = await createAgentProtocolE2eHarness(
+      async (request) => {
+        const resolution = await approvalRuntime.requestApproval({
+          approval: {
+            kind: "tool_call",
+            sessionId: request.sessionId ?? "e2e-session",
+            requestId: request.requestId ?? "e2e-approval-request",
+            step: 1,
+            title: "E2E approval",
+            reason: "Verify same-socket approval dispatch.",
+            availableDecisions: ["approve_once"],
+            subject: {
+              kind: "tool_call",
+              toolName: "E2ETool",
+              arguments: {},
+            },
+          },
+          onEvent: request.onEvent,
+          signal: request.signal,
+        });
+        if (resolution.status !== "approved") {
+          throw new Error(`Approval did not proceed: ${resolution.status}`);
+        }
+        await request.onEvent?.({
+          kind: AgentEventKinds.RunCompleted,
+          context: { requestId: request.requestId },
+          data: {},
+        });
+        return {
+          terminal: { kind: "FinalAnswer", content: "approved" },
+          decisionXml: "<FinalAnswer><answer>approved</answer></FinalAnswer>",
+          conversationEntries: [],
+          stepTraces: [],
+        };
+      },
+      { approvalRuntime },
+    );
+    openHarnesses.push(harness);
+    const sessionId = "session_e2e_same_socket_approval";
+    const requestId = "request_e2e_same_socket_approval";
+
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId,
+      input: "需要审批",
+      disposition: "create_if_missing",
+    });
+    const requested = await harness.client.waitForEvent(
+      AgentEventKinds.ApprovalRequested,
+      (event) => event.sessionId === sessionId && event.requestId === requestId,
+    );
+    const approvalId = readDataRecord(requested).approvalId;
+    expect(approvalId).toEqual(expect.any(String));
+
+    harness.client.send({
+      type: "approval.resolve",
+      approvalId: approvalId as string,
+      decision: "approve_once",
+    });
+    await harness.client.waitForEvent(
+      AgentEventKinds.ApprovalResolved,
+      (event) => event.sessionId === sessionId && event.requestId === requestId,
+      { timeoutMs: 1_000 },
+    );
+    await harness.client.waitForEvent(
+      AgentEventKinds.RunCompleted,
+      (event) => event.sessionId === sessionId && event.requestId === requestId,
+      { timeoutMs: 1_000 },
+    );
+  });
+
+  test("dispatches cancellation on the same websocket while a run is waiting", async () => {
+    const harness = await createHarness(async (request) => {
+      await new Promise<void>((resolve) => {
+        if (request.signal?.aborted) {
+          resolve();
+          return;
+        }
+        request.signal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+      throw request.signal?.reason ?? new Error("run cancelled");
+    });
+    const sessionId = "session_e2e_same_socket_cancel";
+    const requestId = "request_e2e_same_socket_cancel";
+
+    harness.client.send({
+      type: "session.message",
+      sessionId,
+      requestId,
+      input: "等待取消",
+      disposition: "create_if_missing",
+    });
+    await harness.client.waitForEvent(AgentEventKinds.RunStarted, (event) => event.sessionId === sessionId);
+
+    harness.client.send({ type: "session.cancel", sessionId });
+    await harness.client.waitForEvent(
+      AgentEventKinds.RunCancelled,
+      (event) => event.sessionId === sessionId && event.requestId === requestId,
+      { timeoutMs: 1_000 },
+    );
+  });
+
   test("websocket session message emits run lifecycle and replayable history", async () => {
     const harness = await createHarness();
     const sessionId = "session_e2e_direct";
     const requestId = "request_e2e_direct";
-
-    harness.client.send({ type: "session.create", sessionId });
-    await harness.client.waitForEvent(AgentEventKinds.SessionCreated, (event) => event.sessionId === sessionId);
 
     harness.client.send({
       type: "session.message",
       sessionId,
       requestId,
       input: "检查协议链路",
+      disposition: "create_if_missing",
     });
+    await harness.client.waitForEvent(AgentEventKinds.SessionCreated, (event) => event.sessionId === sessionId);
     await harness.client.waitForKinds([
       AgentEventKinds.RunStarted,
       AgentEventKinds.ModelStarted,
@@ -176,8 +284,10 @@ describe("agent protocol E2E", () => {
   });
 });
 
-async function createHarness(): Promise<AgentProtocolE2eHarness> {
-  const harness = await createAgentProtocolE2eHarness();
+async function createHarness(
+  handler?: Parameters<typeof createAgentProtocolE2eHarness>[0],
+): Promise<AgentProtocolE2eHarness> {
+  const harness = await createAgentProtocolE2eHarness(handler);
   openHarnesses.push(harness);
   return harness;
 }

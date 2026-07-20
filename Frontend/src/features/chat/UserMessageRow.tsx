@@ -13,6 +13,7 @@ export interface UserMessageRowProps {
   userProfile: UserProfile;
   showInlineActions: boolean;
   onClickBubble?: () => void;
+  onFork: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
   onViewWorkflow: () => void;
@@ -24,6 +25,7 @@ export function UserMessageRow({
   userProfile,
   showInlineActions,
   onClickBubble,
+  onFork,
   onRegenerate,
   onDelete,
   onViewWorkflow,
@@ -59,6 +61,7 @@ export function UserMessageRow({
           hasRequestId={!!message.requestId}
           hasWorkflow={!!run}
           showInlineActions={showInlineActions}
+          onFork={onFork}
           onRegenerate={onRegenerate}
           onDelete={onDelete}
           onViewWorkflow={onViewWorkflow}

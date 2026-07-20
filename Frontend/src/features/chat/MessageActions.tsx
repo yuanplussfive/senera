@@ -1,4 +1,4 @@
-import { Check, Copy, GitBranch, RotateCcw, Trash2 } from "lucide-react";
+import { Check, Copy, GitBranch, GitFork, RotateCcw, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
@@ -11,12 +11,13 @@ export interface MessageActionsProps {
   hasWorkflow: boolean;
   allowMutation?: boolean;
   showInlineActions: boolean;
+  onFork: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
   onViewWorkflow: () => void;
 }
 
-export type MessageActionIntent = "copy" | "viewWorkflow" | "regenerate" | "delete";
+export type MessageActionIntent = "copy" | "viewWorkflow" | "fork" | "regenerate" | "delete";
 
 export interface MessageActionAvailability {
   hasRequestId: boolean;
@@ -32,7 +33,7 @@ export function readMessageActionIntents({
   const intents: MessageActionIntent[] = ["copy"];
   if (!hasRequestId) return intents;
   if (hasWorkflow) intents.push("viewWorkflow");
-  if (allowMutation) intents.push("regenerate", "delete");
+  if (allowMutation) intents.push("fork", "regenerate", "delete");
   return intents;
 }
 
@@ -43,6 +44,7 @@ export function MessageActions({
   hasWorkflow,
   allowMutation = true,
   showInlineActions,
+  onFork,
   onRegenerate,
   onDelete,
   onViewWorkflow,
@@ -73,6 +75,12 @@ export function MessageActions({
             return (
               <ActionBtn key={intent} label={frontendMessage("chat.action.viewWorkflow")} onClick={onViewWorkflow}>
                 <GitBranch className="h-3.5 w-3.5" />
+              </ActionBtn>
+            );
+          case "fork":
+            return (
+              <ActionBtn key={intent} label={frontendMessage("chat.action.forkFromHere")} onClick={onFork}>
+                <GitFork className="h-3.5 w-3.5" />
               </ActionBtn>
             );
           case "regenerate":

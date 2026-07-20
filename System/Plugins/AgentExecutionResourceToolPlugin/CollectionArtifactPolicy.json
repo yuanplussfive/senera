@@ -1,0 +1,6 @@
+{
+  "Summary": {
+    "Template": "{{ toolName }} returned {{ result.resources | size }} execution resources",
+    "ArtifactTemplate": "{% for resource in result.resources %}- resourceId: {{ resource.resourceId }}\n  kind: {{ resource.kind }}\n  state: {{ resource.state }}\n  command: {{ resource.command }}\n  cwd: {{ resource.cwd }}\n  cursor: {{ resource.cursor }}\n{% endfor %}"
+  }
+}

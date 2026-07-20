@@ -1,4 +1,13 @@
-import { Lightbulb, PanelLeftOpen, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
+import {
+  Clock3,
+  Lightbulb,
+  MessageSquareText,
+  PanelLeftOpen,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  SquareTerminal,
+} from "lucide-react";
 import type { SandboxRuntimeState, SandboxStatusSnapshotData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
@@ -7,15 +16,21 @@ import { IconButton, Tooltip } from "../../shared/ui";
 export function ChatHeader({
   title,
   runStatus,
+  waitingForApproval = false,
+  waitingForInput = false,
   sandboxStatus,
   onOpenSessionPanel,
   onOpenWorkflowPanel,
+  onOpenTerminalPanel,
 }: {
   title: string;
   runStatus?: "running" | "completed" | "failed" | "cancelled";
+  waitingForApproval?: boolean;
+  waitingForInput?: boolean;
   sandboxStatus?: SandboxStatusSnapshotData | null;
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
+  onOpenTerminalPanel?: () => void;
 }): JSX.Element {
   return (
     <div className="flex h-14 shrink-0 items-center gap-2 border-b border-ink-200/60 px-3 sm:px-6">
@@ -33,7 +48,17 @@ export function ChatHeader({
       <h1 className="min-w-0 flex-1 truncate font-serif text-[17px] italic text-ink-900" style={{ fontWeight: 500 }}>
         {title}
       </h1>
-      {runStatus === "failed" ? (
+      {waitingForApproval ? (
+        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-umber-200 bg-umber-50 px-2 py-0.5 font-mono text-[10px] text-umber-700">
+          <Clock3 className="h-3 w-3" />
+          {frontendMessage("approval.waiting")}
+        </span>
+      ) : waitingForInput ? (
+        <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-0.5 font-mono text-[10px] text-cyan-700">
+          <MessageSquareText className="h-3 w-3" />
+          {frontendMessage("interaction.input.pending")}
+        </span>
+      ) : runStatus === "failed" ? (
         <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-brick-200/60 bg-brick-50/60 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-brick-600">
           failed
         </span>
@@ -43,6 +68,17 @@ export function ChatHeader({
         </span>
       ) : null}
       <SandboxStatusBadge status={sandboxStatus} />
+      {onOpenTerminalPanel ? (
+        <IconButton
+          label={frontendMessage("terminal.panel.open")}
+          tooltip={frontendMessage("terminal.panel.open")}
+          tooltipSide="bottom"
+          onClick={onOpenTerminalPanel}
+          touchSafe
+        >
+          <SquareTerminal className="h-4 w-4" />
+        </IconButton>
+      ) : null}
       {onOpenWorkflowPanel ? (
         <IconButton
           label={frontendMessage("workflow.panel.open")}

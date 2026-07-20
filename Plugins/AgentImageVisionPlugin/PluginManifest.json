@@ -1,4 +1,5 @@
 {
+  "ManifestVersion": 2,
   "Plugin": {
     "Name": "AgentImageVisionPlugin",
     "Title": "图片识别",
@@ -13,6 +14,7 @@
   "Tools": [
     {
       "Name": "ImageVisionTool",
+      "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["filesystem:read:uploads", "network:model-provider"],
@@ -113,6 +115,13 @@
         "UseCases": ["上传图片视觉描述、OCR、截图错误识别。", "UI 截图结构、文字、异常状态分析。"],
         "Examples": ["上传图片 OCR", "截图错误识别", "界面截图视觉检查", "image upload vision analysis"],
         "Avoid": ["不要对非图片附件直接调用；先探测文件类型。", "不要猜测 uploadUri。"]
+      },
+      "Runtime": {
+        "Lifecycle": "Immediate",
+        "ProtocolVersion": 2,
+        "Capabilities": {
+          "Cancellation": true
+        }
       }
     }
   ],

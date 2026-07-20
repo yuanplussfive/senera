@@ -22,13 +22,17 @@ describe("agent model endpoint client", () => {
     const client = new AgentModelEndpointClient(createSystemConfig({ stream: false }));
     const events: AgentDomainEvent[] = [];
 
-    await expect(client.complete(requestWithEvents(events))).resolves.toEqual({ text: "Completed response" });
+    await expect(client.complete(requestWithEvents(events))).resolves.toMatchObject({
+      text: "Completed response",
+      usage: { source: "local_estimate" },
+    });
 
     expect(events.map((event) => event.kind)).toEqual([AgentEventKinds.ModelStarted, AgentEventKinds.ModelCompleted]);
     expect(events[1]).toMatchObject({
       data: {
         text: "Completed response",
         provider: client.metadata,
+        usage: { source: "local_estimate" },
       },
     });
   });
@@ -42,6 +46,7 @@ describe("agent model endpoint client", () => {
           createSseResponse([
             'data: {"choices":[{"delta":{"content":"First "}}]}\n\n',
             'data: {"choices":[{"delta":{"content":"second"}}]}\n\n',
+            'data: {"choices":[],"usage":{"prompt_tokens":9,"completion_tokens":2,"total_tokens":11}}\n\n',
             "data: [DONE]\n\n",
           ]),
         ),
@@ -59,7 +64,14 @@ describe("agent model endpoint client", () => {
       AgentEventKinds.ModelStarted,
       AgentEventKinds.ModelDelta,
       AgentEventKinds.ModelDelta,
+      AgentEventKinds.ModelCompleted,
     ]);
+    expect(stream.usage).toMatchObject({
+      source: "provider_reported",
+      inputTokens: 9,
+      outputTokens: 2,
+      totalTokens: 11,
+    });
     expect(JSON.stringify(events)).not.toContain("test-secret");
   });
 

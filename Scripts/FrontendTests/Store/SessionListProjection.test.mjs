@@ -78,6 +78,26 @@ test("server refresh normalizes running metadata and settles completed history l
   expect(state.historyReplayBuffers.recovering).toBeDefined();
 });
 
+test("session list ingest projects the server-authoritative active request", () => {
+  const state = createState({
+    sessions: {
+      active: session("active", { activeRequestId: "request-stale" }),
+    },
+    sessionOrder: ["active"],
+  });
+
+  ingestSessionList(state, [listItem("active", { status: "running", activeRequestId: "request-current" })]);
+  expect(state.sessions.active).toEqual(
+    expect.objectContaining({
+      status: "ready",
+      activeRequestId: "request-current",
+    }),
+  );
+
+  ingestSessionList(state, [listItem("active", { status: "idle" })]);
+  expect(state.sessions.active.activeRequestId).toBeUndefined();
+});
+
 test("availability and runtime deletion ignore missing or pending-deleted sessions", () => {
   const state = createState({
     sessions: {
@@ -112,6 +132,7 @@ function createState(overrides = {}) {
     historyReplayBuffers: {},
     historyStepBuffers: {},
     historyEventRunIds: {},
+    historyActiveRequestIds: {},
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},

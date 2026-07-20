@@ -1,9 +1,49 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   isMigratedSettingsSection,
+  openExternalUrl,
   openDesktopSettingsOrFallback,
   openSettingsSurface,
 } from "../../../Frontend/src/app/desktopBridge.ts";
+
+describe("openExternalUrl", () => {
+  it("uses the desktop bridge for a validated HTTPS URL", async () => {
+    const openDesktopUrl = vi.fn().mockResolvedValue(undefined);
+    const openWindow = vi.fn();
+
+    await expect(
+      openExternalUrl("https://accounts.example.com/login", {
+        bridge: { isDesktop: true, openExternalUrl: openDesktopUrl },
+        openWindow,
+      }),
+    ).resolves.toBe("desktop");
+
+    expect(openDesktopUrl).toHaveBeenCalledWith("https://accounts.example.com/login");
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it("opens validated web URLs with opener isolation", async () => {
+    const opened = {};
+    const openWindow = vi.fn(() => opened);
+
+    await expect(
+      openExternalUrl("http://127.0.0.1:8787/callback", { bridge: undefined, openWindow }),
+    ).resolves.toBe("web");
+    expect(openWindow).toHaveBeenCalledWith("http://127.0.0.1:8787/callback");
+  });
+
+  it("blocks insecure remote HTTP and credential-bearing URLs", async () => {
+    const openWindow = vi.fn();
+
+    await expect(
+      openExternalUrl("http://accounts.example.com/login", { bridge: undefined, openWindow }),
+    ).resolves.toBe("blocked");
+    await expect(
+      openExternalUrl("https://user:secret@accounts.example.com/login", { bridge: undefined, openWindow }),
+    ).resolves.toBe("blocked");
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+});
 
 describe("openDesktopSettingsOrFallback", () => {
   it("opens the first settings section when no target is specified", async () => {

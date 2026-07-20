@@ -1,11 +1,10 @@
 import { z } from "zod";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
-import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import { createToolProcessSuccessResponse, toolProcessFailureResult } from "./AgentToolProcessEnvelope.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { cancelledToolProcessResult } from "./AgentToolCancellation.js";
-import { resolveToolExecutionConfig } from "../AgentDefaults.js";
-import { resolveWorkspacePath } from "../Execution/SeneraWorkspacePath.js";
+import { resolveArtifactsConfig, resolveToolExecutionConfig } from "../AgentDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import {
   SeneraExecutionError,
@@ -14,12 +13,19 @@ import {
 } from "../Execution/SeneraExecutionTypes.js";
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
 import { resolveAgentToolExecutionPolicy } from "./AgentToolExecutionPolicy.js";
+import { bindAgentToolFallbackContext } from "./AgentToolFallbackContext.js";
+import { SeneraShellCommandSpecSchema } from "../Execution/SeneraShellCommand.js";
+import { openAgentHostToolReportingScope } from "./AgentToolHostCapabilityRegistry.js";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { createSeneraOutputSpool } from "../Execution/SeneraOutputSpool.js";
+import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
 
 const ShellExecutionProfileName = "host-shell";
 
 const ShellCommandArgumentsSchema = z
   .object({
-    command: z.string().trim().min(1),
+    command: SeneraShellCommandSpecSchema,
     cwd: z.string().trim().min(1).optional(),
     timeoutMs: z.coerce
       .number()
@@ -50,11 +56,12 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
     });
   }
 
-  const cwdResult = resolveWorkspacePath(context.workspaceRoot, parsed.data.cwd);
+  const cwdResult = await context.executionEnv.canonicalPath(parsed.data.cwd ?? ".");
   if (!cwdResult.ok) {
+    const message = cwdResult.error.message;
     return shellFailure({
       code: AgentExecutionErrorCodes.InvalidToolArguments,
-      message: cwdResult.message,
+      message,
       details: {
         phase: AgentToolProcessErrorPhases.RuntimeExecution,
         cwd: parsed.data.cwd,
@@ -62,7 +69,7 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
       },
       diagnostics: [
         {
-          message: cwdResult.message,
+          message,
           pointer: "/cwd",
           path: ["cwd"],
           suggestion: agentErrorMessage("tool.shellCwdSuggestion"),
@@ -72,11 +79,36 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
   }
 
   const toolExecution = resolveToolExecutionConfig(context.config);
-  const executionProfile = buildShellExecutionProfile(context.tool);
+  const artifactsConfig = resolveArtifactsConfig(context.config);
+  const executionProfile = bindAgentToolFallbackContext({
+    profile: createAgentShellExecutionProfile(context.tool),
+    tool: context.tool,
+    correlation: context,
+  });
+  const reporting = openAgentHostToolReportingScope(context);
+  let outputSpool: Awaited<ReturnType<typeof createSeneraOutputSpool>> | undefined;
+  let handoffSpool = true;
   try {
+    outputSpool = await createSeneraOutputSpool(
+      assertInsideRoot(
+        context.workspaceRoot,
+        path.resolve(context.workspaceRoot, artifactsConfig.RootDir, ".spool"),
+        `artifact spool 根目录超出工作区：${artifactsConfig.RootDir}`,
+      ),
+      randomUUID(),
+      {
+        maxBytes: artifactsConfig.OutputCaptureMaxBytes,
+        metadata: {
+          sessionId: context.sessionId,
+          requestId: context.requestId,
+          toolCallId: context.toolCallId,
+        },
+      },
+    );
     const result = await context.executionEnv.executeShell({
-      command: parsed.data.command,
-      cwd: cwdResult.absolutePath,
+      command: parsed.data.command.script,
+      dialect: parsed.data.command.dialect,
+      cwd: cwdResult.value,
       timeoutMs: parsed.data.timeoutMs,
       limits: {
         timeoutMs: toolExecution.TimeoutMs,
@@ -84,35 +116,52 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
         maxStderrBytes: toolExecution.MaxStderrBytes,
       },
       signal: context.signal,
+      onOutput: (chunk) => reporting.reporter.output(chunk),
+      outputOverflow: "truncate",
+      outputSpool,
       profile: executionProfile,
     });
-
+    handoffSpool = result.outputCapture === undefined;
     return {
       response: createToolProcessSuccessResponse({
-        command: parsed.data.command,
-        cwd: cwdResult.absolutePath,
+        command: parsed.data.command.script,
+        shellDialect: parsed.data.command.dialect,
+        cwd: cwdResult.value,
         exitCode: result.exitCode,
         signal: result.signal,
         stdout: result.stdout,
         stderr: result.stderr,
+        stdoutBytes: result.stdoutBytes,
+        stderrBytes: result.stderrBytes,
+        stdoutTruncated: result.stdoutTruncated,
+        stderrTruncated: result.stderrTruncated,
       }),
       stdout: result.stdout,
       stderr: result.stderr,
       exitCode: result.exitCode,
       signal: result.signal,
+      outputCapture: result.outputCapture,
     };
   } catch (error) {
-    return shellExecutionFailure({
+    handoffSpool = false;
+    const failure = shellExecutionFailure({
       error,
-      command: parsed.data.command,
-      cwd: cwdResult.absolutePath,
+      command: parsed.data.command.script,
+      cwd: cwdResult.value,
       timeoutMs: parsed.data.timeoutMs ?? toolExecution.TimeoutMs,
       signal: context.signal,
     });
+    failure.outputCapture = outputSpool?.descriptor;
+    return failure;
+  } finally {
+    await reporting.close();
+    if (handoffSpool) await outputSpool?.cleanup();
   }
 };
 
-function buildShellExecutionProfile(tool: Parameters<AgentHostToolHandler>[1]["tool"]): SeneraProcessExecutionProfile {
+export function createAgentShellExecutionProfile(
+  tool: Parameters<AgentHostToolHandler>[1]["tool"],
+): SeneraProcessExecutionProfile {
   const policy = resolveAgentToolExecutionPolicy(tool);
   const local = policy.mode === "local";
   return {
@@ -182,6 +231,7 @@ const AgentShellErrorCodeBySeneraCode = {
   [SeneraExecutionErrorCodes.StderrLimitExceeded]: AgentExecutionErrorCodes.ToolProcessStderrLimitExceeded,
   [SeneraExecutionErrorCodes.SandboxUnavailable]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
   [SeneraExecutionErrorCodes.SpawnFailed]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
+  [SeneraExecutionErrorCodes.CleanupFailed]: AgentExecutionErrorCodes.PluginExecutionError,
   [SeneraExecutionErrorCodes.Unknown]: AgentExecutionErrorCodes.ToolProcessSpawnFailed,
 } satisfies Record<SeneraExecutionErrorCode, (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes]>;
 

@@ -5,6 +5,7 @@ import {
 } from "../Source/AgentSystem/Runtime/AgentRuntimeModule.js";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import type { LoadedToolsState } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
+import { SeneraMicrosandboxDefaults } from "../Source/AgentSystem/Execution/SeneraMicrosandboxDefaults.js";
 import { verificationConfigPath } from "./VerificationConfig.js";
 
 const workspaceRoot = process.cwd();
@@ -50,6 +51,13 @@ assert.ok(baseContext.ToolCards.some((tool) => tool.name === visibleToolName));
 assert.equal(baseContext.ExecutionEnvironment.workspace.root, workspaceRoot);
 assert.equal(baseContext.ExecutionEnvironment.workspace.preferredPathForm, "workspace-relative");
 assert.ok(baseContext.ExecutionEnvironment.shell.invocation.length > 0);
+assert.deepEqual(baseContext.ExecutionEnvironment.executionTargets.sandboxPreferred, {
+  os: "Linux",
+  boundary: "sandbox",
+  shellDialect: "posix-sh",
+  shellCommand: "/bin/sh",
+  image: SeneraMicrosandboxDefaults.image,
+});
 const baseTemplate = runtime.registry.getTemplate("BaseSystemPrompt");
 assert.ok(baseTemplate);
 const renderedBasePrompt = runtime.promptRenderer.renderFileSync(baseTemplate.path, {
@@ -57,6 +65,14 @@ const renderedBasePrompt = runtime.promptRenderer.renderFileSync(baseTemplate.pa
 });
 assert.ok(renderedBasePrompt.includes("<execution_environment>"));
 assert.ok(renderedBasePrompt.includes("<preferred_path_form>workspace-relative</preferred_path_form>"));
+assert.ok(renderedBasePrompt.includes("<shell_dialect>posix-sh</shell_dialect>"));
+
+const shellStartDefinition = runtime.services.pi.toolDefinitions().find((tool) => tool.name === "ShellStartTool");
+assert.ok(shellStartDefinition);
+const shellStartSchema = JSON.stringify(shellStartDefinition.parameters);
+for (const requiredField of ['"mode"', '"dialect"', '"script"', '"posix-sh"', '"powershell"']) {
+  assert.ok(shellStartSchema.includes(requiredField), `ShellStartTool schema is missing ${requiredField}`);
+}
 
 const shellSearchResults = runtime.toolSearch.search({
   query: "PowerShell Get-Content read file slice rg search shell",
@@ -137,7 +153,6 @@ assert.deepEqual(observedAutoSearch, {
   loadedToolNames: loadedTools,
 });
 
-runtime.toolSearch.close();
-runtimeWithModule.toolSearch.close();
+await Promise.all([runtime.close(), runtimeWithModule.close()]);
 
 console.log("Agent runtime services verification passed.");

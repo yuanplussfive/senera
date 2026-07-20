@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { AgentEventKinds } from "../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentLoopStateMachine } from "../Source/AgentSystem/Loop/AgentLoopStateMachine.js";
-import { consumeTurnUnderstood } from "./ActionPlannerFixture.js";
 import {
   AgentInteractionRunModes,
   type AgentInteractionRouteResult,
 } from "../Source/AgentSystem/ActionPlanner/AgentInteractionRouter.js";
 import type { AgentRootCommand } from "../Source/AgentSystem/AgentRootCommand.js";
-import { InteractionRunMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
+import { InteractionRunMode, TurnContextMode } from "../Source/AgentSystem/BamlClient/baml_client/types.js";
 
 const machine = new AgentLoopStateMachine();
 
@@ -17,18 +16,28 @@ const started = machine.start({
   loadedToolNames: ["WorkspaceListDirectory"],
   emitRunStarted: false,
 });
-const understood = consumeTurnUnderstood(machine, started);
-
-assert.equal(understood.state.kind, "running");
-const routed = machine.consume(understood.state, {
+assert.equal(started.state.kind, "running");
+const routed = machine.consume(started.state, {
   kind: "succeeded",
   output: {
-    kind: "interaction_routed",
+    kind: "interaction_prepared",
     requestId: "verify-pi-agent-loop-substrate",
     step: 1,
     route: routeFixture(),
     loadedToolNames: ["WorkspaceListDirectory"],
     rootCommand: rootCommandFixture(),
+    initialAction: {
+      kind: "CallTools",
+      preface: "Inspecting the workspace.",
+      calls: [{ toolName: "WorkspaceListDirectory", purpose: "List the workspace.", required: true }],
+    },
+    turnUnderstanding: {
+      rawUserTurn: "使用工具检查项目",
+      standaloneRequest: "使用工具检查项目",
+      contextMode: TurnContextMode.None,
+      contextBasis: "",
+      missingContext: "",
+    },
     activeSkills: [],
   },
 });
@@ -136,23 +145,13 @@ function routeFixture(): AgentInteractionRouteResult {
   return {
     mode: AgentInteractionRunModes.ToolAgentLoop,
     objective: "使用工具检查项目",
-    needsFreshEvidence: true,
-    needsWorkspaceRead: true,
-    needsSideEffect: false,
-    risk: "read",
     preferredTools: ["WorkspaceListDirectory"],
     discoveryQueries: [],
-    reason: "Tool route is delegated to Pi substrate.",
     raw: {
       mode: InteractionRunMode.ToolAgentLoop,
       objective: "使用工具检查项目",
-      needsFreshEvidence: true,
-      needsWorkspaceRead: true,
-      needsSideEffect: false,
-      risk: "read",
       preferredTools: ["WorkspaceListDirectory"],
       discoveryQueries: [],
-      reason: "Tool route is delegated to Pi substrate.",
     },
   };
 }

@@ -3,16 +3,6 @@ import { ToolSearchSchema } from "./PluginSearchManifestSchema.js";
 
 export const PluginKindSchema = z.enum(["System", "Tool", "Resource", "Prompt", "Skill", "Adapter", "Provider"]);
 
-export const PluginEntrySchema = z
-  .object({
-    Kind: z.literal("Process"),
-    Command: z.string().min(1),
-    Args: z.array(z.string()).optional(),
-    Cwd: z.string().min(1).optional(),
-    Env: z.record(z.string(), z.string()).optional(),
-  })
-  .strict();
-
 export const PluginMcpServerSchema = z
   .object({
     Id: z.string().min(1),
@@ -21,17 +11,6 @@ export const PluginMcpServerSchema = z
     Args: z.array(z.string()).optional(),
     Cwd: z.string().min(1).optional(),
     Env: z.record(z.string(), z.string()).optional(),
-  })
-  .strict();
-
-export const PluginRuntimeSchema = z
-  .object({
-    Kind: z.literal("Node"),
-    NodeVersion: z.string().min(1),
-    PackageManager: z.enum(["npm"]),
-    Install: z.enum(["none", "install", "ci"]).optional(),
-    Script: z.string().min(1),
-    SandboxProfile: z.string().min(1),
   })
   .strict();
 

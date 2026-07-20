@@ -8,6 +8,7 @@ import {
   resolveModelProviderConfig,
   resolvePresetsConfig,
   resolveSandboxRuntimeConfig,
+  resolveToolExecutionConfig,
   resolveToolLearningConfig,
   resolveToolSearchConfig,
 } from "../AgentDefaults.js";
@@ -34,13 +35,19 @@ import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
 import { AgentToolPermissionGate } from "../Safety/AgentToolPermissionGate.js";
 import { createAgentToolApprovalPolicy } from "../Safety/AgentToolApprovalPolicyFactory.js";
+import { AgentSeneraOpaPolicyClient } from "../Safety/AgentSeneraOpaPolicyClient.js";
+import { AgentResourceAccessPolicy } from "../Safety/AgentResourceAccessPolicy.js";
 import { createAgentBamlToolRiskAuditor } from "../Safety/AgentBamlToolRiskAuditor.js";
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
 import { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
-import { createSeneraExecutionEnv } from "../Execution/SeneraExecutionEnvFactory.js";
+import { createSeneraExecutionEnvironments } from "../Execution/SeneraExecutionEnvFactory.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { AgentExecutionFallbackAuthorizer } from "../Safety/AgentExecutionFallbackAuthorizer.js";
 import { resolveAgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
+import { AgentPiCompactionSummarizer } from "../Pi/AgentPiCompactionSummarizer.js";
+import { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
+import { resolveAgentExecutionResourceLimits } from "../ExecutionResources/AgentExecutionResourceConfig.js";
+import { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 
 export class AgentSystemRuntime {
   readonly registry = new AgentPluginRegistry();
@@ -66,12 +73,17 @@ export class AgentSystemRuntime {
   readonly actionPlanner: AgentActionPlanner;
   readonly skillActivation: AgentSkillActivationService;
   readonly approvalRuntime: AgentApprovalRuntime;
+  readonly interactionInput: AgentInteractionInputRuntime;
   readonly executionEnv: SeneraExecutionEnv;
+  readonly toolExecutionEnv: SeneraExecutionEnv;
+  readonly executionResources: AgentExecutionResourceBroker;
   readonly toolPermissionGate: AgentToolPermissionGate;
   readonly piSubstrate: AgentPiSubstrate;
   readonly piSessionRegistry: AgentPiActiveSessionRegistry;
   readonly services: AgentRuntimeServices;
-  private closed = false;
+  private closePromise: Promise<void> | undefined;
+  private readonly ownsExecutionResources: boolean;
+  private readonly ownsInteractionInput: boolean;
 
   private constructor(
     readonly workspaceRoot: string,
@@ -81,24 +93,43 @@ export class AgentSystemRuntime {
     readonly runtimeModules: readonly AgentRuntimeModule[] = [],
     readonly logger?: AgentLogger,
     injectedApprovalRuntime?: AgentApprovalRuntime,
+    injectedInteractionInput?: AgentInteractionInputRuntime,
     injectedPiSessionRegistry?: AgentPiActiveSessionRegistry,
     readonly resourcesPath?: string,
+    injectedExecutionResources?: AgentExecutionResourceBroker,
   ) {
     this.approvalRuntime = injectedApprovalRuntime ?? new AgentApprovalRuntime();
+    this.ownsInteractionInput = !injectedInteractionInput;
+    this.interactionInput = injectedInteractionInput ?? new AgentInteractionInputRuntime();
     this.piSessionRegistry = injectedPiSessionRegistry ?? new AgentPiActiveSessionRegistry();
+    const authorizationPolicyClient = new AgentSeneraOpaPolicyClient({ registry: this.registry });
     const sandboxRuntimeConfig = resolveSandboxRuntimeConfig(config);
-    this.executionEnv = createSeneraExecutionEnv({
+    const executionResourceLimits = resolveAgentExecutionResourceLimits(config);
+    const executionEnvironments = createSeneraExecutionEnvironments({
       workspaceRoot: this.workspaceRoot,
       resourcesPath: this.resourcesPath,
       sandboxRuntimePaths: resolveAgentSandboxRuntimePaths(this.workspaceRoot, sandboxRuntimeConfig),
       microsandboxSettings: {
         image: sandboxRuntimeConfig.Images[0],
       },
+      environmentPolicy: resolveToolExecutionConfig(config).Environment,
+      terminationGraceMs: executionResourceLimits.terminationGraceMs,
       fallbackAuthorizer: new AgentExecutionFallbackAuthorizer({
         registry: this.registry,
         approvalRuntime: this.approvalRuntime,
+        policyClient: authorizationPolicyClient,
       }),
+      resourceAccessPolicy: new AgentResourceAccessPolicy(authorizationPolicyClient),
     });
+    this.executionEnv = executionEnvironments.system;
+    this.toolExecutionEnv = executionEnvironments.tool;
+    this.ownsExecutionResources = !injectedExecutionResources;
+    this.executionResources =
+      injectedExecutionResources ??
+      new AgentExecutionResourceBroker({
+        workspaceRoot: this.workspaceRoot,
+        limits: executionResourceLimits,
+      });
     this.modelProviderConfig = resolveModelProviderConfig(config, modelProviderId);
     this.agentLoopConfig = resolveAgentLoopConfig(config);
     this.toolSearchConfig = resolveToolSearchConfig(config);
@@ -134,6 +165,7 @@ export class AgentSystemRuntime {
     this.toolPermissionGate = new AgentToolPermissionGate({
       policy: createAgentToolApprovalPolicy({
         registry: this.registry,
+        policyClient: authorizationPolicyClient,
         auditors: [
           createAgentBamlToolRiskAuditor({
             client: new AgentActionPlannerModelClient(this.modelProviderConfig, this.actionPlannerConfig.Client, {
@@ -150,10 +182,12 @@ export class AgentSystemRuntime {
       config,
       protocol: this.xmlPolicy.protocol,
       workspaceRoot: this.workspaceRoot,
-      executionEnv: this.executionEnv,
+      executionEnv: this.toolExecutionEnv,
       toolSearch: this.toolSearch,
+      executionResources: this.executionResources,
       configPath: this.configPath,
       emitLifecycleEvents: false,
+      interactionInput: this.interactionInput,
     });
     this.piSubstrate = new AgentPiSubstrate({
       workspaceRoot: this.workspaceRoot,
@@ -164,6 +198,17 @@ export class AgentSystemRuntime {
       artifactRecorder: this.artifactRecorder,
       executionEnv: this.executionEnv,
       toolPermissionGate: this.toolPermissionGate,
+      compactionSummarizer: new AgentPiCompactionSummarizer(
+        new AgentActionPlannerModelClient(
+          this.modelProviderConfig,
+          {
+            ...this.actionPlannerConfig.Client,
+            Temperature: 0,
+            MaxTokens: this.agentLoopConfig.PiSessions.Compaction.SummaryMaxTokens,
+          },
+          { maxRepairAttempts: this.actionPlannerConfig.MaxRepairAttempts },
+        ),
+      ),
     });
     this.services = new AgentRuntimeModuleComposer().compose(
       createDefaultAgentRuntimeServices({
@@ -182,14 +227,22 @@ export class AgentSystemRuntime {
     );
   }
 
-  close(): void {
-    if (this.closed) {
-      return;
-    }
+  close(): Promise<void> {
+    return (this.closePromise ??= this.closeResources());
+  }
 
-    this.closed = true;
-    this.piSubstrate.close();
-    this.toolSearch.close();
+  private async closeResources(): Promise<void> {
+    const closures = [
+      this.piSubstrate.close(),
+      this.toolCallExecutor.close(),
+      Promise.resolve().then(() => this.toolSearch.close()),
+      ...(this.ownsInteractionInput ? [this.interactionInput.close()] : []),
+      ...(this.ownsExecutionResources ? [this.executionResources.close()] : []),
+    ];
+    const outcomes = await Promise.allSettled(closures);
+    const failures = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, "Agent runtime shutdown failed.");
   }
 
   static load(
@@ -200,8 +253,10 @@ export class AgentSystemRuntime {
       runtimeModules?: readonly AgentRuntimeModule[];
       logger?: AgentLogger;
       approvalRuntime?: AgentApprovalRuntime;
+      interactionInput?: AgentInteractionInputRuntime;
       piSessionRegistry?: AgentPiActiveSessionRegistry;
       resourcesPath?: string;
+      executionResources?: AgentExecutionResourceBroker;
     } = {},
   ): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
@@ -215,8 +270,10 @@ export class AgentSystemRuntime {
       options.runtimeModules,
       options.logger,
       options.approvalRuntime,
+      options.interactionInput,
       options.piSessionRegistry,
       options.resourcesPath,
+      options.executionResources,
     );
     const scanner = new AgentPluginScanner(workspaceRoot, runtime.config);
     for (const plugin of scanner.scan()) {
@@ -235,8 +292,10 @@ export class AgentSystemRuntime {
     runtimeModules?: readonly AgentRuntimeModule[];
     logger?: AgentLogger;
     approvalRuntime?: AgentApprovalRuntime;
+    interactionInput?: AgentInteractionInputRuntime;
     piSessionRegistry?: AgentPiActiveSessionRegistry;
     resourcesPath?: string;
+    executionResources?: AgentExecutionResourceBroker;
   }): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
     const configPath = path.resolve(workspaceRoot, options.configPath ?? "senera.config.json");
@@ -249,8 +308,10 @@ export class AgentSystemRuntime {
       options.runtimeModules,
       options.logger,
       options.approvalRuntime,
+      options.interactionInput,
       options.piSessionRegistry,
       options.resourcesPath,
+      options.executionResources,
     );
     const scanner = new AgentPluginScanner(workspaceRoot, runtime.config);
     for (const plugin of scanner.scan()) {

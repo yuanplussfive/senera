@@ -32,7 +32,7 @@ export function parseAgentSocketEventData(data: unknown): EventEnvelope {
  * 单连接 + 指数退避自动重连。后端协议本身是无状态的（每次请求自带 sessionId），
  * 因此重连不需要恢复服务端状态，只需要 UI 重新订阅事件流即可。
  *
- * 流式优化：对 model.delta 这类高频事件，
+ * 流式优化：对模型增量和终端输出这类高频事件，
  * 累积到浏览器帧再回放给 onEvent；同时用最大等待窗口保证实时输出不会被拖到最终事件。
  */
 export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {

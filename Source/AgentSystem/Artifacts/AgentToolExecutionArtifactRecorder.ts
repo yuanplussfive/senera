@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import type { ResolvedAgentArtifactsConfig } from "../Types/AgentConfigTypes.js";
 import type {
   ExecutedToolCallArtifact,
@@ -8,14 +7,25 @@ import type {
   ToolWorkspaceChange,
 } from "../Types/ToolRuntimeTypes.js";
 import { createAgentArtifactLocator } from "./AgentArtifactLocator.js";
-import { writeArtifactJson, writeArtifactText, writeBoundedArtifactJson } from "./AgentArtifactFileWriter.js";
-import { redactArtifactSecrets } from "./AgentArtifactRedaction.js";
+import { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
+import {
+  createArtifactStreamRedactionTransform,
+  hasArtifactStreamRedaction,
+  isArtifactStreamFullyRedacted,
+  redactArtifactSecrets,
+} from "./AgentArtifactRedaction.js";
 import { stableArtifactHash } from "./AgentArtifactStableJson.js";
 import { collectArtifactEvidence } from "./AgentArtifactEvidenceProjection.js";
 import { buildArtifactProjection, buildArtifactSummary } from "./AgentArtifactTemplateProjection.js";
 import { AgentToolResultSummaryCompiler } from "./AgentToolResultSummaryCompiler.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 import { writeToolWorkspaceArtifacts } from "./AgentToolWorkspaceArtifactRecorder.js";
+import { updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { createReadStream } from "node:fs";
+import { createHash } from "node:crypto";
+import { ReadableArtifactRefDefinitions, ReadableArtifactRefs } from "../Memory/AgentArtifactMemoryTypes.js";
 
 export interface AgentToolExecutionArtifactRecorderOptions {
   workspaceRoot: string;
@@ -24,6 +34,7 @@ export interface AgentToolExecutionArtifactRecorderOptions {
 }
 
 export interface RecordToolArtifactsInput {
+  sessionId?: string;
   requestId: string;
   step: number;
   results: readonly ExecutedToolCallResult[];
@@ -32,9 +43,11 @@ export interface RecordToolArtifactsInput {
 export class AgentToolExecutionArtifactRecorder {
   private readonly options: AgentToolExecutionArtifactRecorderOptions;
   private readonly summaryCompiler: AgentToolResultSummaryCompiler;
+  private readonly fileWriter: AgentArtifactFileWriter;
 
   constructor(options: AgentToolExecutionArtifactRecorderOptions) {
     this.options = options;
+    this.fileWriter = new AgentArtifactFileWriter(options.workspaceRoot);
     this.summaryCompiler = new AgentToolResultSummaryCompiler({
       model: options.model,
     });
@@ -46,6 +59,7 @@ export class AgentToolExecutionArtifactRecorder {
 
     for (const [index, result] of input.results.entries()) {
       const artifact = await this.recordOne({
+        sessionId: input.sessionId,
         requestId: input.requestId,
         step: input.step,
         callIndex: index + 1,
@@ -67,6 +81,7 @@ export class AgentToolExecutionArtifactRecorder {
   }
 
   private async recordOne(input: {
+    sessionId?: string;
     requestId: string;
     step: number;
     callIndex: number;
@@ -97,6 +112,7 @@ export class AgentToolExecutionArtifactRecorder {
           workspaceCapture: input.result.workspaceCapture,
           artifactDir: locator.absoluteDir,
           files: locator.files,
+          fileWriter: this.fileWriter,
         })
       : undefined;
     const delta = buildArtifactDelta({
@@ -165,10 +181,11 @@ export class AgentToolExecutionArtifactRecorder {
       projection,
     };
 
-    await fs.mkdir(locator.absoluteDir, { recursive: true });
     await writeToolArtifactFiles({
+      fileWriter: this.fileWriter,
       config: this.options.config,
       artifact,
+      sessionId: input.sessionId,
       requestId: input.requestId,
       step: input.step,
       callIndex: input.callIndex,
@@ -238,8 +255,10 @@ function readRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 async function writeToolArtifactFiles(input: {
+  fileWriter: AgentArtifactFileWriter;
   config: ResolvedAgentArtifactsConfig;
   artifact: ExecutedToolCallArtifact;
+  sessionId?: string;
   requestId: string;
   step: number;
   callIndex: number;
@@ -254,10 +273,89 @@ async function writeToolArtifactFiles(input: {
   relativeDir: string;
   workspaceArtifacts?: Awaited<ReturnType<typeof writeToolWorkspaceArtifacts>>;
 }): Promise<void> {
-  await writeArtifactJson(input.artifact.files.manifest, {
-    schemaVersion: 1,
+  const writingMarker = path.join(input.absoluteDir, ".artifact-writing");
+  const startedAt = new Date().toISOString();
+  const writingState = { sessionId: input.sessionId, state: "writing", startedAt } as const;
+  let committed = false;
+  try {
+    await input.fileWriter.writeText(writingMarker, JSON.stringify(writingState), 1024);
+    if (input.result.outputCapture) {
+      await copyCapturedOutput(input, "stdout");
+      await copyCapturedOutput(input, "stderr");
+    }
+    await input.fileWriter.writeJson(input.artifact.files.input, input.redactedInput);
+    await input.fileWriter.writeJson(input.artifact.files.raw, input.redactedRaw);
+    await input.fileWriter.writeBoundedJson(
+      input.artifact.files.rawPreview,
+      input.redactedRaw,
+      input.config.RawJsonMaxBytes,
+    );
+    await input.fileWriter.writeText(
+      input.artifact.files.summary,
+      input.artifact.summary,
+      input.config.TextFileMaxBytes,
+    );
+    await input.fileWriter.writeJson(input.artifact.files.summaryJson, input.artifact.structuredSummary);
+    await input.fileWriter.writeJson(input.artifact.files.evidence, {
+      artifactId: input.artifact.artifactId,
+      artifactUri: input.artifact.artifactUri,
+      artifactPath: input.absoluteDir,
+      evidence: input.artifact.evidence,
+    });
+    await input.fileWriter.writeText(
+      input.artifact.files.projection,
+      input.artifact.projection ?? "",
+      input.config.TextFileMaxBytes,
+    );
+    await input.fileWriter.writeJson(input.artifact.files.delta, {
+      artifactId: input.artifact.artifactId,
+      artifactUri: input.artifact.artifactUri,
+      artifactPath: input.absoluteDir,
+      delta: input.artifact.delta,
+    });
+    if (input.workspaceArtifacts) {
+      await input.fileWriter.writeJson(input.artifact.files.workspaceBefore, input.workspaceArtifacts.before);
+      await input.fileWriter.writeJson(input.artifact.files.workspaceAfter, input.workspaceArtifacts.after);
+      await input.fileWriter.writeJson(input.artifact.files.workspaceDiff, {
+        artifactId: input.artifact.artifactId,
+        artifactUri: input.artifact.artifactUri,
+        artifactPath: input.absoluteDir,
+        patch: input.workspaceArtifacts.patch,
+        changes: input.workspaceArtifacts.changes,
+      });
+    }
+
+    await input.fileWriter.writeJson(input.artifact.files.manifest, await buildArtifactManifest(input));
+    committed = true;
+  } finally {
+    if (committed) {
+      if (input.result.outputCapture) {
+        await updateSeneraOutputSpoolState(input.result.outputCapture, "committed").catch(() => undefined);
+        await cleanupOutputCapture(input.result.outputCapture);
+      }
+      await fs.rm(writingMarker, { force: true }).catch(() => undefined);
+    } else if (input.result.outputCapture) {
+      await updateSeneraOutputSpoolState(input.result.outputCapture, "failed").catch(() => undefined);
+    }
+    if (!committed) {
+      await input.fileWriter
+        .writeText(
+          writingMarker,
+          JSON.stringify({ ...writingState, state: "failed", failedAt: new Date().toISOString() }),
+          1024,
+        )
+        .catch(() => undefined);
+    }
+  }
+}
+
+async function buildArtifactManifest(input: Parameters<typeof writeToolArtifactFiles>[0]) {
+  return {
+    schemaVersion: 2,
     artifactId: input.artifact.artifactId,
     artifactUri: input.artifact.artifactUri,
+    createdAt: new Date().toISOString(),
+    sessionId: input.sessionId,
     workspaceRoot: input.workspaceRoot,
     rootDir: input.rootDir,
     absoluteDir: input.absoluteDir,
@@ -270,6 +368,20 @@ async function writeToolArtifactFiles(input: {
     argsHash: input.argsHash,
     resultHash: input.resultHash,
     process: input.result.process,
+    outputCapture: input.result.outputCapture
+      ? {
+          refs: ["stdout", "stderr"],
+          redacted: {
+            stdout: hasArtifactStreamRedaction(input.result.artifactPolicy, "stdout"),
+            stderr: hasArtifactStreamRedaction(input.result.artifactPolicy, "stderr"),
+          },
+          truncated: input.result.outputCapture.truncated,
+          files: {
+            stdout: input.artifact.files.stdout,
+            stderr: input.artifact.files.stderr,
+          },
+        }
+      : undefined,
     workspace: input.workspaceArtifacts
       ? {
           beforeCount: input.workspaceArtifacts.before.files.length,
@@ -286,40 +398,56 @@ async function writeToolArtifactFiles(input: {
           patch: input.workspaceArtifacts.patch,
         }
       : undefined,
+    contents: await collectArtifactContents(input.artifact.files),
     files: input.artifact.files,
-  });
-  await writeArtifactJson(input.artifact.files.input, input.redactedInput);
-  await writeBoundedArtifactJson(input.artifact.files.raw, input.redactedRaw, input.config.RawJsonMaxBytes);
-  await writeArtifactText(input.artifact.files.summary, input.artifact.summary, input.config.TextFileMaxBytes);
-  await writeArtifactJson(input.artifact.files.summaryJson, input.artifact.structuredSummary);
-  await writeArtifactJson(input.artifact.files.evidence, {
-    artifactId: input.artifact.artifactId,
-    artifactUri: input.artifact.artifactUri,
-    artifactPath: input.absoluteDir,
-    evidence: input.artifact.evidence,
-  });
-  await writeArtifactText(
-    input.artifact.files.projection,
-    input.artifact.projection ?? "",
-    input.config.TextFileMaxBytes,
+  };
+}
+
+async function collectArtifactContents(files: Readonly<Record<string, string>>) {
+  const contents = await Promise.all(
+    ReadableArtifactRefs.map(async (ref) => {
+      const definition = ReadableArtifactRefDefinitions[ref];
+      const filePath = files[definition.file];
+      if (!filePath) return undefined;
+      const stat = await fs.stat(filePath).catch(() => undefined);
+      if (!stat?.isFile()) return undefined;
+      return {
+        ref,
+        mediaType: definition.mediaType,
+        byteLength: stat.size,
+        sha256: await hashArtifactFile(filePath),
+      };
+    }),
   );
-  await writeArtifactJson(input.artifact.files.delta, {
-    artifactId: input.artifact.artifactId,
-    artifactUri: input.artifact.artifactUri,
-    artifactPath: input.absoluteDir,
-    delta: input.artifact.delta,
-  });
-  if (!input.workspaceArtifacts) {
+  return contents.filter((entry) => entry !== undefined);
+}
+
+async function hashArtifactFile(filePath: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+async function copyCapturedOutput(
+  input: Parameters<typeof writeToolArtifactFiles>[0],
+  stream: "stdout" | "stderr",
+): Promise<void> {
+  const capture = input.result.outputCapture;
+  if (!capture) return;
+  const target = input.artifact.files[stream];
+  if (isArtifactStreamFullyRedacted(input.result.artifactPolicy, stream)) {
+    await input.fileWriter.writeText(target, "[REDACTED]\n", input.config.TextFileMaxBytes);
     return;
   }
+  const transform = createArtifactStreamRedactionTransform(input.result.artifactPolicy, stream);
+  if (transform) {
+    await input.fileWriter.copyFileWithTransform(capture.files[stream], target, transform);
+    return;
+  }
+  await input.fileWriter.copyFile(capture.files[stream], target);
+}
 
-  await writeArtifactJson(input.artifact.files.workspaceBefore, input.workspaceArtifacts.before);
-  await writeArtifactJson(input.artifact.files.workspaceAfter, input.workspaceArtifacts.after);
-  await writeArtifactJson(input.artifact.files.workspaceDiff, {
-    artifactId: input.artifact.artifactId,
-    artifactUri: input.artifact.artifactUri,
-    artifactPath: input.absoluteDir,
-    patch: input.workspaceArtifacts.patch,
-    changes: input.workspaceArtifacts.changes,
-  });
+async function cleanupOutputCapture(capture: ExecutedToolCallResult["outputCapture"]): Promise<void> {
+  if (!capture) return;
+  await fs.rm(capture.directory, { recursive: true, force: true }).catch(() => undefined);
 }

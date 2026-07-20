@@ -4,6 +4,10 @@ import type {
   ToolEvidenceCapabilityManifest,
   ToolSearchCapabilityFacetsManifest,
 } from "../Types/PluginManifestTypes.js";
+import {
+  resolveAgentToolRuntimeCapabilities,
+  type AgentToolRuntimeCapabilities,
+} from "./AgentToolRuntimeCapabilities.js";
 
 export interface AgentToolCatalogItem {
   name: string;
@@ -17,6 +21,7 @@ export interface AgentToolCatalogItem {
   avoid: string[];
   permissions: string[];
   evidenceCapabilities: AgentToolCatalogEvidenceCapability[];
+  runtime?: AgentToolRuntimeCapabilities;
 }
 
 export interface AgentToolCatalogEvidenceCapability {
@@ -78,6 +83,7 @@ export class AgentToolCatalogProjector {
       examples: search?.Examples ?? [],
       avoid: search?.Avoid ?? [],
       permissions: tool.permissions,
+      runtime: resolveAgentToolRuntimeCapabilities(tool),
       evidenceCapabilities: [
         ...tool.evidenceCapabilities.map(projectEvidenceCapability),
         ...projectArtifactEvidenceCapabilities(tool),

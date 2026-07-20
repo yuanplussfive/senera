@@ -15,9 +15,11 @@ export interface SeneraProcessFallbackSubject {
 }
 
 export interface SeneraProcessFallbackContext {
+  readonly sessionId: string;
   readonly requestId: string;
   readonly step: number;
   readonly toolCallId?: string;
+  readonly batchId?: string;
   readonly onEvent?: AgentEventSink;
   readonly subject: SeneraProcessFallbackSubject;
 }
@@ -25,7 +27,11 @@ export interface SeneraProcessFallbackContext {
 export interface SeneraProcessFallbackAuthorizationRequest {
   readonly fromBackend: string;
   readonly toBackend: string;
-  readonly reason: "sandbox_unavailable" | "persistent_sandbox_unsupported";
+  readonly reason:
+    | "sandbox_unavailable"
+    | "persistent_sandbox_unsupported"
+    | "terminal_capability_unsupported"
+    | "shell_dialect_unsupported";
   readonly error: Error;
   readonly context: SeneraProcessFallbackContext;
   readonly signal?: AbortSignal;

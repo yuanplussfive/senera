@@ -146,6 +146,7 @@ function resetSessionStore(overrides = {}) {
     historyReplayBuffers: {},
     historyStepBuffers: {},
     historyEventRunIds: {},
+    historyActiveRequestIds: {},
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},

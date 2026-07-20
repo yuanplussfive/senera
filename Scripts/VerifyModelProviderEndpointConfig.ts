@@ -54,10 +54,10 @@ assert.equal(provider.ApiKey, "provider-key");
 assert.equal(provider.Model, "mistral-large-latest");
 
 const planner = resolveActionPlannerConfig(config);
-assert.equal(planner.Client.Provider, "openai-generic");
+assert.equal(planner.Client.ModelProvider.Endpoint, "ChatCompletions");
 assert.equal(planner.Client.BaseUrl, "https://provider.test/v1");
 assert.equal(planner.Client.ApiKey, "provider-key");
-assert.equal(planner.PlanningClient.Provider, "openai-generic");
+assert.equal(planner.PlanningClient.ModelProvider.Endpoint, "ChatCompletions");
 assert.equal(planner.PlanningClient.Model, "mistral-large-latest");
 assert.equal(planner.PlanningClient.MaxTokens, 2048);
 

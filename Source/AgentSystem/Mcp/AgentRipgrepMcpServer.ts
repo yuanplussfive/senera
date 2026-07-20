@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { rgPath } from "@vscode/ripgrep";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { resolveAgentRipgrepWorkspaceTarget } from "./AgentRipgrepWorkspace.js";
 
 const RipgrepTools = {
   search: "search",
@@ -66,7 +67,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const args = readRecord(request.params.arguments);
-  const result = await runRipgrep(ripgrepArgs(request.params.name, args));
+  const requestedPath = readRequiredString(args.path, "path");
+  const target = await resolveAgentRipgrepWorkspaceTarget(process.cwd(), requestedPath);
+  const result = await runRipgrep(ripgrepArgs(request.params.name, args, target.searchPath), target.cwd);
   const text = result.stderr && result.exitCode !== 0 ? `${result.stdout}${result.stderr}` : result.stdout;
 
   return {
@@ -83,10 +86,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 await server.connect(new StdioServerTransport());
 
-function ripgrepArgs(toolName: string, args: Record<string, unknown>): string[] {
+function ripgrepArgs(toolName: string, args: Record<string, unknown>, searchPath: string): string[] {
   const toolArgs: Record<string, () => string[]> = {
-    [RipgrepTools.search]: () => searchArgs(args),
-    [RipgrepTools.listFiles]: () => listFilesArgs(args),
+    [RipgrepTools.search]: () => searchArgs(args, searchPath),
+    [RipgrepTools.listFiles]: () => listFilesArgs(args, searchPath),
   };
   const createArgs = toolArgs[toolName];
   if (!createArgs) {
@@ -96,7 +99,7 @@ function ripgrepArgs(toolName: string, args: Record<string, unknown>): string[] 
   return createArgs();
 }
 
-function searchArgs(args: Record<string, unknown>): string[] {
+function searchArgs(args: Record<string, unknown>, searchPath: string): string[] {
   return [
     "--color",
     "never",
@@ -106,12 +109,14 @@ function searchArgs(args: Record<string, unknown>): string[] {
     ...optionalValueFlag("--glob", readString(args.filePattern)),
     ...optionalValueFlag("--max-count", readPositiveInteger(args.maxResults)),
     ...optionalValueFlag("--context", readNonNegativeInteger(args.context)),
+    "--regexp",
     readRequiredString(args.pattern, "pattern"),
-    readRequiredString(args.path, "path"),
+    "--",
+    searchPath,
   ];
 }
 
-function listFilesArgs(args: Record<string, unknown>): string[] {
+function listFilesArgs(args: Record<string, unknown>, searchPath: string): string[] {
   return [
     "--files",
     "--color",
@@ -119,13 +124,15 @@ function listFilesArgs(args: Record<string, unknown>): string[] {
     ...optionalFlag(args.includeHidden === true, "--hidden"),
     ...optionalValueFlag("--glob", readString(args.filePattern)),
     ...optionalValueFlag("--type", readString(args.fileType)),
-    readRequiredString(args.path, "path"),
+    "--",
+    searchPath,
   ];
 }
 
-function runRipgrep(args: readonly string[]): Promise<RipgrepExecutionResult> {
+function runRipgrep(args: readonly string[], cwd: string): Promise<RipgrepExecutionResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(rgPath, [...args], {
+      cwd,
       windowsHide: true,
     });
     const chunks = {

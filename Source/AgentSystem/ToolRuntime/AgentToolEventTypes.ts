@@ -30,6 +30,40 @@ export type AgentToolDomainEvent =
       };
     }
   | {
+      kind: typeof AgentEventKinds.ToolCallOutput;
+      context: AgentToolEventContext;
+      data: {
+        toolName: string;
+        callId: string;
+        stream: "stdout" | "stderr";
+        outputSequence: number;
+        text: string;
+        byteLength: number;
+        totalBytes: number;
+        batchId?: string;
+        resourceId?: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.ToolCallProgress;
+      context: AgentToolEventContext;
+      data: {
+        toolName: string;
+        callId: string;
+        progressSequence: number;
+        message?: string;
+        completed?: number;
+        total?: number;
+        unit?: string;
+        taskId?: string;
+        state?: string;
+        terminal?: boolean;
+        pollIntervalMs?: number;
+        batchId?: string;
+        resourceId?: string;
+      };
+    }
+  | {
       kind: typeof AgentEventKinds.ToolCallCompleted;
       context: AgentToolEventContext;
       data: {

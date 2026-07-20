@@ -10,20 +10,67 @@
     },
     "AgentLoop": {
       "LoadedTools": "dynamic",
+      "PiTurnLeaseTimeoutSeconds": 120,
+      "RunSettlementTimeoutSeconds": 15,
       "PiSessions": {
-        "RootDir": ".senera/pi-sessions"
+        "RootDir": ".senera/pi-sessions",
+        "MaxCachedSessions": 8,
+        "Compaction": {
+          "Enabled": true,
+          "TriggerRatio": 0.8,
+          "HardLimitRatio": 0.95,
+          "TargetRatio": 0.5,
+          "SummaryMaxTokens": 4096,
+          "TimeoutSeconds": 120,
+          "UnknownContextWindowTokens": 128000,
+          "UnknownModelOutputTokens": 8192
+        }
       }
     },
     "ToolExecution": {
       "TimeoutSeconds": 120,
-      "MaxStdoutBytes": 1000000,
-      "MaxStderrBytes": 1000000
+      "MaxStdoutBytes": 67108864,
+      "MaxStderrBytes": 67108864,
+      "Environment": {
+        "Inherit": "allowlist",
+        "IncludeOnly": [
+          "PATH",
+          "HOME",
+          "USER",
+          "USERNAME",
+          "USERPROFILE",
+          "TMP",
+          "TEMP",
+          "TMPDIR",
+          "SystemRoot",
+          "ComSpec",
+          "PATHEXT",
+          "PWD",
+          "TERM",
+          "TERM_PROGRAM",
+          "LANG",
+          "LC_*",
+          "CI"
+        ],
+        "Exclude": [],
+        "Set": {}
+      },
+      "Resources": {
+        "MaxActive": 8,
+        "MaxBufferedBytes": 67108864,
+        "MaxInputBytes": 1048576,
+        "MaxWaitSeconds": 30,
+        "IdleTtlSeconds": 1800,
+        "TerminalTtlSeconds": 300,
+        "SweepIntervalSeconds": 30,
+        "TerminationGraceSeconds": 2
+      }
     },
     "SandboxRuntime": {
       "BaseDir": ".senera/sandbox-runtime",
       "BundleDir": ".senera/sandbox-bundles",
       "ImportBundlesOnStartup": true,
-      "Images": ["alpine"]
+      "Images": ["node:22-bookworm-slim"]
     },
     "ToolSearch": {
       "Memory": {
@@ -36,7 +83,17 @@
         "RrfK": 60,
         "MmrLambda": 0.72,
         "MmrCandidateScoreRatio": 0.92,
-        "MinScore": 0
+        "MinScore": 0,
+        "MaxResults": 6,
+        "IntentGate": {
+          "Mode": "side_effect_capability"
+        },
+        "MemoryExpansion": {
+          "Mode": "fallback",
+          "MinConfidence": 0.8,
+          "MinEvidence": 3,
+          "MaxResults": 2
+        }
       },
       "Rerank": {
         "Enabled": true,
@@ -82,8 +139,20 @@
     "Artifacts": {
       "RootDir": ".senera/artifacts/runs",
       "SummaryMaxChars": 2400,
-      "RawJsonMaxBytes": 1048576,
-      "TextFileMaxBytes": 262144
+      "RawJsonMaxBytes": 67108864,
+      "TextFileMaxBytes": 67108864,
+      "MemoryReadStructuredJsonMaxBytes": 8388608,
+      "MemoryReadMaxArtifacts": 16,
+      "MemoryReadMaxRefs": 8,
+      "MemoryReadMaxConcurrency": 4,
+      "MemoryReadCacheMaxBytes": 134217728,
+      "MemoryReadCacheMaxEntries": 64,
+      "MaxStoredBytes": 10737418240,
+      "MaxArtifacts": 10000,
+      "RetentionHours": 720,
+      "IncompleteRetentionHours": 24,
+      "MaintenanceIntervalMinutes": 15,
+      "MaintenanceMaxConcurrency": 4
     },
     "Uploads": {
       "RootDir": ".senera/uploads",
@@ -117,7 +186,10 @@
       "Enabled": true,
       "MaxRepairAttempts": 1,
       "Client": {
-        "Provider": "openai-generic",
+        "Temperature": 0.1,
+        "MaxTokens": -1
+      },
+      "FinalAnswerClient": {
         "Temperature": 0.1,
         "MaxTokens": -1
       }
@@ -126,7 +198,7 @@
       "Host": "127.0.0.1",
       "Port": 8787,
       "HotReload": true,
-      "RequestMaxBytes": 1048576,
+      "RequestMaxBytes": 67108864,
       "AccessControl": {
         "Mode": "auto",
         "AccountFile": ".senera/access/admin-account.json",
@@ -169,7 +241,8 @@
       "ProviderId": "main",
       "Icon": "mistral",
       "Capabilities": {
-        "DeveloperRole": false
+        "DeveloperRole": false,
+        "StreamingUsage": true
       },
       "Endpoint": "ChatCompletions",
       "Model": "mistral-large-latest",

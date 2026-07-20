@@ -10,6 +10,7 @@ import type {
   ModelHttpPathSegment,
 } from "../../../Source/AgentSystem/ModelEndpoints/ModelEndpointTypes.js";
 import type { ResolvedAgentModelProviderConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { ModelSseEventProjection } from "../../../Source/AgentSystem/ModelEndpoints/ModelSseStreamParser.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 
 export function createModelEndpointRuntime(
@@ -61,11 +62,11 @@ export class RecordingModelHttp {
     path: ModelHttpPathSegment[],
     payload: unknown,
     headers: HeadersInit,
-    extractText: (event: JsonObject) => string,
+    projectEvent: (event: JsonObject) => ModelSseEventProjection,
     query?: Record<string, string>,
     options: { signal?: AbortSignal } = {},
   ): Promise<AgentLanguageModelStream> {
-    this.sseRequests.push({ extractText, headers, options, path, payload, query });
+    this.sseRequests.push({ projectEvent, headers, options, path, payload, query });
     return this.responses.stream ?? createStaticModelStream([]);
   }
 }
@@ -78,7 +79,7 @@ export interface RecordedJsonRequest {
 }
 
 export interface RecordedSseRequest extends RecordedJsonRequest {
-  readonly extractText: (event: JsonObject) => string;
+  readonly projectEvent: (event: JsonObject) => ModelSseEventProjection;
   readonly query?: Record<string, string>;
 }
 

@@ -13,7 +13,7 @@ import {
   normalizeToolStringArgument,
 } from "../ToolRuntime/AgentToolArgumentNormalization.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
-import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessRunner.js";
+import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";

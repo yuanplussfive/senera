@@ -46,6 +46,22 @@ describe("OPA tool approval policy", () => {
     ).resolves.toMatchObject(expected);
   });
 
+  it.each(resourcePolicyCases())("applies resource rule: $name", async ({ input, expected }) => {
+    const artifact = readAgentToolApprovalPolicyArtifact(policyDirectory);
+    const client = await createAgentOpaWasmPolicyClient({
+      wasm: artifact.wasm,
+      data: {
+        senera: {
+          tool_approval: artifact.data,
+        },
+      },
+    });
+
+    await expect(
+      client.evaluate(AgentToolApprovalPolicyArtifactContract.entrypoints.resourceAccess, input),
+    ).resolves.toMatchObject(expected);
+  });
+
   it("fails closed when the verified WASM artifact cannot be loaded", async () => {
     const client = new AgentSeneraOpaPolicyClient({
       registry: new AgentPluginRegistry(),
@@ -91,6 +107,15 @@ describe("OPA tool approval policy", () => {
     ).resolves.toMatchObject({
       decision: "deny",
       rule: "execution.fallback.policy_unavailable",
+    });
+
+    await expect(
+      client.evaluate(AgentToolApprovalPolicyArtifactContract.entrypoints.resourceAccess, {
+        resource: safeResource(),
+      }),
+    ).resolves.toMatchObject({
+      decision: "deny",
+      rule: "resource.policy_unavailable",
     });
   });
 
@@ -222,12 +247,14 @@ function fallbackPolicyCases() {
     registered = true,
     rootKind = "System",
     trustLevel = "External",
+    permissions = [],
   }: {
     boundary?: string;
     localFallback?: string;
     registered?: boolean;
     rootKind?: string;
     trustLevel?: string;
+    permissions?: string[];
   }) => ({
     tool: {
       name: "FallbackTool",
@@ -239,6 +266,7 @@ function fallbackPolicyCases() {
       localFallback,
       network: "Allow",
       workspace: "ReadOnly",
+      permissions,
       from: "microsandbox",
       to: "node",
     },
@@ -271,9 +299,62 @@ function fallbackPolicyCases() {
       expected: { decision: "requires-approval", rule: "execution.fallback.external_approval" },
     },
     {
+      name: "system shell fallback requires approval",
+      input: fallbackInput({ trustLevel: "System", permissions: ["process:shell"] }),
+      expected: { decision: "requires-approval", rule: "execution.fallback.high_impact_approval" },
+    },
+    {
       name: "registered system plugin can use policy-approved fallback",
       input: fallbackInput({ trustLevel: "System" }),
       expected: { decision: "allow", rule: "execution.fallback.system_allow" },
     },
   ];
+}
+
+function resourcePolicyCases() {
+  const withResource = (resource: Record<string, unknown>) => ({
+    resource: {
+      ...safeResource(),
+      ...resource,
+    },
+  });
+
+  return [
+    {
+      name: "safe workspace read",
+      input: withResource({}),
+      expected: { decision: "allow", rule: "resource.allowed" },
+    },
+    {
+      name: "outside canonical target",
+      input: withResource({ containment: "outside" }),
+      expected: { decision: "deny", rule: "resource.containment.denied" },
+    },
+    {
+      name: "external directory link",
+      input: withResource({ linkTraversal: "external" }),
+      expected: { decision: "deny", rule: "resource.link_escape" },
+    },
+    {
+      name: "protected workspace mutation",
+      input: withResource({ intent: "replace", relativePath: ".git/config" }),
+      expected: { decision: "deny", rule: "resource.protected.mutation" },
+    },
+    {
+      name: "final link mutation",
+      input: withResource({ intent: "remove", finalEntry: "link" }),
+      expected: { decision: "deny", rule: "resource.final_link.mutation" },
+    },
+  ];
+}
+
+function safeResource() {
+  return {
+    scope: "workspace",
+    intent: "read",
+    relativePath: "notes/readme.txt",
+    containment: "inside",
+    linkTraversal: "none",
+    finalEntry: "file",
+  };
 }

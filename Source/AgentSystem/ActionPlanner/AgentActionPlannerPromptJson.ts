@@ -1,20 +1,13 @@
 import type { ActionPlanInput } from "../BamlClient/baml_client/index.js";
+import type { AgentPiToolCard } from "../PiProxy/AgentPiAssistantMessageTypes.js";
 
 export type AgentActionPlannerPromptStage =
   | {
-      stage: "understandUserTurn";
+      stage: "prepareInteraction";
     }
   | {
-      stage: "repairTurnUnderstanding";
-      invalidUnderstanding: string;
-      issues: readonly string[];
-    }
-  | {
-      stage: "routeInteraction";
-    }
-  | {
-      stage: "repairInteractionRoute";
-      invalidRoute: string;
+      stage: "repairInteractionPreparation";
+      invalidPreparation: string;
       issues: readonly string[];
     };
 
@@ -36,31 +29,37 @@ export interface AgentActionPlannerPromptContext {
   evidenceState: ActionPlanInput["evidenceState"];
   plannerJournal: ActionPlanInput["plannerJournal"];
   activeSkills: ActionPlanInput["activeSkills"];
+  candidateTools: AgentPiToolCard[];
 }
 
-export function buildActionPlannerPromptJson(input: ActionPlanInput, directive: AgentActionPlannerPromptStage): string {
-  return JSON.stringify(buildActionPlannerPromptEnvelope(input, directive), null, 2);
+export function buildActionPlannerPromptJson(
+  input: ActionPlanInput,
+  candidateTools: readonly AgentPiToolCard[],
+  directive: AgentActionPlannerPromptStage,
+): string {
+  return JSON.stringify(buildActionPlannerPromptEnvelope(input, candidateTools, directive), null, 2);
 }
 
 export function buildActionPlannerPromptEnvelope(
   input: ActionPlanInput,
+  candidateTools: readonly AgentPiToolCard[],
   directive: AgentActionPlannerPromptStage,
 ): AgentActionPlannerPromptEnvelope {
-  const includeRoleplayPreset =
-    directive.stage === "understandUserTurn" || directive.stage === "repairTurnUnderstanding";
+  const candidateToolNames = new Set(candidateTools.map((tool) => tool.name));
   return {
     context: {
       currentUserTurn: input.currentUserTurn,
       turnUnderstanding: input.turnUnderstanding,
-      ...(includeRoleplayPreset ? { roleplayPreset: input.roleplayPreset } : {}),
+      roleplayPreset: input.roleplayPreset,
       timeline: input.timeline,
       runState: input.runState,
       toolTagCatalog: input.toolTagCatalog,
-      compactToolCatalog: input.compactToolCatalog,
+      compactToolCatalog: input.compactToolCatalog.filter((tool) => candidateToolNames.has(tool.name)),
       evidenceMemory: input.evidenceMemory,
       evidenceState: input.evidenceState,
       plannerJournal: input.plannerJournal,
       activeSkills: input.activeSkills,
+      candidateTools: candidateTools.map((tool) => structuredClone(tool)),
     },
     directive,
   };

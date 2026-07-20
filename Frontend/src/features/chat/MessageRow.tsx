@@ -15,6 +15,7 @@ interface MessageRowProps {
   selectedModelProvider?: ModelProviderListItem;
   userProfile: UserProfile;
   showInlineActions: boolean;
+  onFork: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
   onViewWorkflow: () => void;
@@ -28,6 +29,7 @@ export function MessageRow({
   selectedModelProvider,
   userProfile,
   showInlineActions,
+  onFork,
   onRegenerate,
   onDelete,
   onViewWorkflow,
@@ -40,6 +42,7 @@ export function MessageRow({
         userProfile={userProfile}
         showInlineActions={showInlineActions}
         onClickBubble={onClickBubble}
+        onFork={onFork}
         onRegenerate={onRegenerate}
         onDelete={onDelete}
         onViewWorkflow={onViewWorkflow}
@@ -70,6 +73,7 @@ export function MessageRow({
           hasWorkflow={!!run}
           allowMutation={message.kind !== "AssistantToolPreface"}
           showInlineActions={showInlineActions}
+          onFork={onFork}
           onRegenerate={onRegenerate}
           onDelete={onDelete}
           onViewWorkflow={onViewWorkflow}

@@ -9,6 +9,17 @@ import type {
 import { rawPathSegment } from "./ModelHttpClient.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
+import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
+
+const GoogleUsageSchema = z
+  .object({
+    promptTokenCount: z.number().optional(),
+    candidatesTokenCount: z.number().optional(),
+    totalTokenCount: z.number().optional(),
+    cachedContentTokenCount: z.number().optional(),
+    thoughtsTokenCount: z.number().optional(),
+  })
+  .passthrough();
 
 const GooglePartSchema = z
   .object({
@@ -32,6 +43,7 @@ const GoogleGenerateContentBodySchema = z
           .passthrough(),
       )
       .optional(),
+    usageMetadata: GoogleUsageSchema.optional(),
   })
   .passthrough();
 
@@ -45,7 +57,7 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
       }),
     );
 
-    return { text: readGoogleText(body) };
+    return { text: readGoogleText(body), usage: projectGoogleUsage(body.usageMetadata) };
   }
 
   async stream(request: AgentLanguageModelRequest): Promise<AgentLanguageModelStream> {
@@ -53,7 +65,13 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
       this.path("streamGenerateContent"),
       this.buildPayload(request),
       this.authHeaders(),
-      (event) => readGoogleText(GoogleGenerateContentBodySchema.parse(event)),
+      (event) => {
+        const body = GoogleGenerateContentBodySchema.parse(event);
+        return {
+          textDelta: readGoogleText(body),
+          usage: projectGoogleUsage(body.usageMetadata),
+        };
+      },
       { alt: "sse" },
       { signal: request.signal },
     );
@@ -98,6 +116,23 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
       ...this.runtime.config.Headers,
     };
   }
+}
+
+function projectGoogleUsage(usage: z.infer<typeof GoogleUsageSchema> | undefined): AgentModelUsageValue | undefined {
+  if (!usage) return undefined;
+  const cacheReadTokens = usage.cachedContentTokenCount;
+  const thoughtsTokens = usage.thoughtsTokenCount;
+  return createProviderReportedUsage({
+    inputTokens:
+      usage.promptTokenCount === undefined ? undefined : Math.max(0, usage.promptTokenCount - (cacheReadTokens ?? 0)),
+    outputTokens:
+      usage.candidatesTokenCount === undefined && thoughtsTokens === undefined
+        ? undefined
+        : (usage.candidatesTokenCount ?? 0) + (thoughtsTokens ?? 0),
+    totalTokens: usage.totalTokenCount,
+    cacheReadTokens,
+    reasoningTokens: thoughtsTokens,
+  });
 }
 
 function readGoogleText(body: z.infer<typeof GoogleGenerateContentBodySchema>): string {

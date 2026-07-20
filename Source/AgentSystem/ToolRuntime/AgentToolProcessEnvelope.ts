@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AgentToolProcessError, AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
-import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 
 export const AgentToolProcessResponseEnvelope = {
   Type: "tool_result",

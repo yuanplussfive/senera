@@ -18,6 +18,8 @@ export default defineConfig({
   base: "./",
   plugins: [appearanceBootstrapPlugin(), react()],
   define: {
+    // react-draggable 4.7 reads this build-time debug flag through Node's process global.
+    "process.env.DRAGGABLE_DEBUG": "false",
     __SENERA_DEFAULT_WS_URL__: JSON.stringify(frontendConfig.Client.WebSocketUrl),
     __SENERA_DEFAULT_MODEL_LABEL__: JSON.stringify(frontendConfig.Client.ModelLabel),
     __SENERA_DEFAULT_USER_NAME__: JSON.stringify(frontendConfig.Client.UserName),

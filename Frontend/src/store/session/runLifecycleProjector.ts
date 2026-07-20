@@ -1,4 +1,10 @@
-import { EventKinds, type RunFailedData, type RunStartedData, type SessionBusyData } from "../../api/eventTypes";
+import {
+  EventKinds,
+  type RunCancellationProgressData,
+  type RunFailedData,
+  type RunStartedData,
+  type SessionBusyData,
+} from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { bumpSessionMessageCount, currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
 import { createRunRecord, touchRun } from "./sessionRunProjection";
@@ -37,6 +43,31 @@ export const runLifecycleEventHandlers = {
     delete state.viewedRunIdBySession[sessionId];
   },
 
+  [EventKinds.RunCancellationProgress]: (state, env) => {
+    const run = readCurrentRun(state, env);
+    if (!run) return;
+    const data = env.data as RunCancellationProgressData;
+    const terminal = data.stage === "completed" || data.stage === "failed";
+    const component = data.component ? frontendMessage(cancellationComponentMessages[data.component]) : undefined;
+    const duration = data.durationMs === undefined ? undefined : `${data.durationMs}ms`;
+    upsertStep(run, {
+      id: `${run.requestId}-cancellation`,
+      kind: "error",
+      title: frontendMessage(
+        data.stage === "completed"
+          ? "run.cancellation.completed"
+          : data.stage === "failed"
+            ? "run.cancellation.failed"
+            : "run.cancellation.started",
+      ),
+      description: [component, duration, data.message].filter(Boolean).join(" · ") || undefined,
+      status: data.stage === "failed" || data.stage === "component_failed" ? "failed" : terminal ? "done" : "running",
+      startedAt: env.timestamp,
+      endedAt: terminal ? env.timestamp : undefined,
+      detailJson: data,
+    });
+  },
+
   [EventKinds.RunCompleted]: (state, env) => {
     const run = readCurrentRun(state, env);
     if (!run) return;
@@ -70,6 +101,7 @@ export const runLifecycleEventHandlers = {
       delete state.historyReplayBuffers[sessionId];
       delete state.historyStepBuffers[sessionId];
       delete state.historyEventRunIds[sessionId];
+      delete state.historyActiveRequestIds[sessionId];
       return;
     }
     if (run) {
@@ -154,6 +186,11 @@ export const runLifecycleEventHandlers = {
     session.updatedAt = env.timestamp;
   },
 } satisfies RunEventHandlerMap;
+
+const cancellationComponentMessages = {
+  agent_loop: "run.cancellation.component.agent_loop",
+  pi_session: "run.cancellation.component.pi_session",
+} as const;
 
 function hasHistoryTraceRun(state: StoreState, sessionId: string, requestId?: string): boolean {
   if (!requestId) return false;

@@ -16,6 +16,11 @@ import type { AgentCompletedRunResult } from "../Source/AgentSystem/Runtime/Agen
 import { AgentSessionRunCoordinator } from "../Source/AgentSystem/Session/AgentSessionRunCoordinator.js";
 import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
 import type { AgentLoop } from "../Source/AgentSystem/Loop/AgentLoop.js";
+import { AgentDefaults } from "../Source/AgentSystem/AgentDefaults.js";
+
+const runControl = {
+  settlementTimeoutMs: AgentDefaults.AgentLoop.RunSettlementTimeoutMs,
+};
 
 const fixedTimestamp = "2026-07-08T10:00:00.000Z";
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-memory-source-"));
@@ -68,6 +73,7 @@ async function verifyCoordinatorRecordsOnlyFreshEntries(): Promise<void> {
     conversationPolicy: new AgentConversationPolicy(),
     conversationProjector: new AgentConversationProjector(),
     memory,
+    runControl,
     loopFactory: () =>
       ({
         run: async (): Promise<AgentCompletedRunResult> => ({
@@ -114,6 +120,7 @@ async function verifyCoordinatorLogsMemoryFailures(): Promise<void> {
     conversationProjector: new AgentConversationProjector(),
     memory,
     logger: new AgentLogger({ output: output as unknown as NodeJS.WriteStream }),
+    runControl,
     loopFactory: () =>
       ({
         run: async (): Promise<AgentCompletedRunResult> => ({

@@ -1,9 +1,7 @@
 import type {
-  PluginEntryManifest,
   PluginKind,
   PluginPromptingManifest,
   PluginMcpServerManifest,
-  PluginRuntimeManifest,
   PluginSandboxManifest,
   PluginSecurityManifest,
   PromptManifest,
@@ -27,17 +25,16 @@ export type {
   ToolArtifactEvidenceSlotScope,
   ToolArtifactPolicyManifest,
   ToolArtifactRedactionManifest,
+  ToolArtifactRedactionTransformManifest,
   ToolArtifactSummaryManifest,
   ToolArtifactWorkspaceManifest,
   ToolArtifactWorkspacePathManifest,
 } from "./PluginArtifactManifestTypes.js";
 export type {
-  PluginEntryManifest,
   PluginKind,
   PluginPromptingManifest,
   PluginMcpServerManifest,
   PluginRootKind,
-  PluginRuntimeManifest,
   PluginSandboxManifest,
   PluginSecurityManifest,
   PromptManifest,
@@ -62,19 +59,27 @@ export type {
   ToolEvidenceCapabilityManifest,
   ToolExecutionManifest,
   ToolHandlerManifest,
+  ToolLoadingMode,
   ToolManifest,
+  ToolRuntimeCapabilitiesManifest,
+  ToolRuntimeManifest,
+  ToolResourceAccessIntentManifest,
+  ToolResourceArgumentManifest,
+  ToolResourceIntentCaseManifest,
+  ToolResourceIntentManifest,
+  ToolObservationContinuationManifest,
+  ToolObservationManifest,
 } from "./PluginToolManifestTypes.js";
 
 export interface PluginManifest {
+  ManifestVersion: 2;
   Plugin: {
     Name: string;
     Title?: string;
     Version: string;
     Kind: PluginKind;
     Description?: string;
-    Entry?: PluginEntryManifest;
   };
-  Compatibility?: Record<string, unknown>;
   Tools?: ToolManifest[];
   McpServers?: PluginMcpServerManifest[];
   Skills?: SkillManifest[];
@@ -82,7 +87,6 @@ export interface PluginManifest {
   Prompts?: PromptManifest[];
   Templates?: TemplateManifest[];
   RootCommands?: RootCommandManifest[];
-  Runtime?: PluginRuntimeManifest;
   Sandbox?: PluginSandboxManifest;
   Security?: PluginSecurityManifest;
   Prompting?: PluginPromptingManifest;

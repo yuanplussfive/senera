@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { PolicyClient } from "@ai-sdk/policy-opa";
 import { AgentApprovalRuntime } from "../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
+import { AgentApprovalDecisions } from "../Source/AgentSystem/Approvals/AgentApprovalTypes.js";
 import {
   ToolRiskAuditDecision,
   ToolRiskLevel,
@@ -28,7 +29,7 @@ await verifyAutomaticRiskApprovalFlow();
 await verifyAiSdkGuardrailsPathTraversalApproval();
 await verifyAiSdkGuardrailsSqlInjectionApproval();
 await verifyBamlToolRiskAskApproval();
-await verifyBamlToolRiskDenyBlocksExecution();
+await verifyBamlToolRiskDenyRequiresApproval();
 await verifyBamlToolRiskAllowFallsThroughToOpa();
 await verifyBamlToolRiskFailureFallsThroughToManifest();
 await verifyManifestDenyBlocksExecution();
@@ -71,9 +72,9 @@ async function verifyManifestApprovalFlow(): Promise<void> {
   const approval = readApprovalEvent(events);
   assert.equal(approval.rule, "opa.tool.manifest.ask");
   assert.equal(approval.reason, "Manifest 要求写入前确认。");
-  runtime.tryResolve({
+  await runtime.tryResolve({
     approvalId: String(approval.approvalId),
-    status: "approved",
+    decision: AgentApprovalDecisions.ApproveOnce,
     message: "验证批准",
   });
 
@@ -125,9 +126,9 @@ async function verifyAutomaticRiskApprovalFlow(): Promise<void> {
   assert.match(String(approval.reason), /高影响权限/);
   assert.ok(readArray(approval.riskSignals).includes("risk.permission:write"));
   assert.ok(readArray(approval.riskSignals).includes("risk.sideEffect:write-workspace"));
-  runtime.tryResolve({
+  await runtime.tryResolve({
     approvalId: String(approval.approvalId),
-    status: "approved",
+    decision: AgentApprovalDecisions.ApproveOnce,
   });
 
   assert.equal(await pending, undefined);
@@ -159,9 +160,9 @@ async function verifyAiSdkGuardrailsPathTraversalApproval(): Promise<void> {
   assert.match(String(approval.reason), /Path traversal/);
   assert.ok(readArray(approval.riskSignals).includes("guardrail.status:user-approval"));
   assert.ok(readArray(approval.riskSignals).includes("guardrail.name:path-traversal-prevention"));
-  runtime.tryResolve({
+  await runtime.tryResolve({
     approvalId: String(approval.approvalId),
-    status: "approved",
+    decision: AgentApprovalDecisions.ApproveOnce,
   });
 
   assert.equal(await pending, undefined);
@@ -192,9 +193,9 @@ async function verifyAiSdkGuardrailsSqlInjectionApproval(): Promise<void> {
   assert.equal(approval.rule, "ai-sdk-guardrails.sql-injection-prevention");
   assert.match(String(approval.reason), /SQL injection/);
   assert.ok(readArray(approval.riskSignals).includes("guardrail.name:sql-injection-prevention"));
-  runtime.tryResolve({
+  await runtime.tryResolve({
     approvalId: String(approval.approvalId),
-    status: "approved",
+    decision: AgentApprovalDecisions.ApproveOnce,
   });
 
   assert.equal(await pending, undefined);
@@ -229,16 +230,19 @@ async function verifyBamlToolRiskAskApproval(): Promise<void> {
   assert.equal(approval.rule, "baml-tool-risk.ask");
   assert.equal(approval.reason, "语义审计要求用户确认高影响工具调用。");
   assert.ok(readArray(approval.riskSignals).includes("baml.concern:destructive-effect"));
-  runtime.tryResolve({
+  await runtime.tryResolve({
     approvalId: String(approval.approvalId),
-    status: "approved",
+    decision: AgentApprovalDecisions.ApproveOnce,
   });
 
   assert.equal(await pending, undefined);
 }
 
-async function verifyBamlToolRiskDenyBlocksExecution(): Promise<void> {
+async function verifyBamlToolRiskDenyRequiresApproval(): Promise<void> {
+  const runtime = new AgentApprovalRuntime();
+  const events: AgentDomainEvent[] = [];
   const hook = createHook({
+    approvalRuntime: runtime,
     registry: createRegistry([createToolFixture("SemanticDeniedTool")]),
     policy: createBamlRiskPolicy(
       createToolRiskAudit({
@@ -250,17 +254,22 @@ async function verifyBamlToolRiskDenyBlocksExecution(): Promise<void> {
     ),
   });
 
-  assert.deepEqual(
-    await hook.authorize(createHookContext([], "verify-baml-risk-deny"), {
-      toolCallId: "call_baml_deny",
-      toolName: "SemanticDeniedTool",
-      input: {},
-    }),
-    {
-      block: true,
-      reason: "语义审计拒绝越界工具调用。",
-    },
-  );
+  const pending = hook.authorize(createHookContext(events, "verify-baml-risk-deny"), {
+    toolCallId: "call_baml_deny",
+    toolName: "SemanticDeniedTool",
+    input: {},
+  });
+
+  await waitForApproval(events);
+  const approval = readApprovalEvent(events);
+  assert.equal(approval.rule, "baml-tool-risk.deny.requires-approval");
+  assert.ok(readArray(approval.riskSignals).includes("baml.decision:Deny"));
+  await runtime.tryResolve({
+    approvalId: String(approval.approvalId),
+    decision: AgentApprovalDecisions.ApproveOnce,
+  });
+
+  assert.equal(await pending, undefined);
 }
 
 async function verifyBamlToolRiskAllowFallsThroughToOpa(): Promise<void> {
@@ -290,9 +299,9 @@ async function verifyBamlToolRiskAllowFallsThroughToOpa(): Promise<void> {
 
   await waitForApproval(events);
   assert.equal(readApprovalEvent(events).rule, "opa.user-approval");
-  runtime.tryResolve({
+  await runtime.tryResolve({
     approvalId: String(readApprovalEvent(events).approvalId),
-    status: "approved",
+    decision: AgentApprovalDecisions.ApproveOnce,
   });
 
   assert.equal(await pending, undefined);
@@ -364,9 +373,9 @@ async function verifyUnknownToolRequiresApproval(): Promise<void> {
   const approval = readApprovalEvent(events);
   assert.equal(approval.rule, "opa.tool.registry.missing");
   assert.match(String(approval.reason), /未在插件注册表中声明/);
-  runtime.tryResolve({
+  await runtime.tryResolve({
     approvalId: String(approval.approvalId),
-    status: "denied",
+    decision: AgentApprovalDecisions.Deny,
     message: "验证拒绝未知工具",
   });
 
@@ -413,9 +422,9 @@ async function verifyOpaDecisionTakesPrecedence(): Promise<void> {
   const approval = readApprovalEvent(events);
   assert.equal(approval.rule, "opa.user-approval");
   assert.equal(approval.reason, "OPA 要求确认。");
-  runtime.tryResolve({
+  await runtime.tryResolve({
     approvalId: String(approval.approvalId),
-    status: "approved",
+    decision: AgentApprovalDecisions.ApproveOnce,
   });
 
   assert.equal(await pending, undefined);
@@ -485,9 +494,9 @@ async function verifyPiBamlRuntimeContextReachesApprovalPolicy(): Promise<void> 
 
   await waitForApproval(events);
   assert.equal(readRecord(capturedRuntimeContext?.rootCommand).objective, "验证运行上下文");
-  runtime.tryResolve({
+  await runtime.tryResolve({
     approvalId: String(readApprovalEvent(events).approvalId),
-    status: "approved",
+    decision: AgentApprovalDecisions.ApproveOnce,
   });
   assert.equal(await pending, undefined);
 }
@@ -501,10 +510,12 @@ async function verifyApprovalEmitFailureCleansPending(): Promise<void> {
       },
       approval: {
         kind: "tool_call",
+        sessionId: "verify-approval-emit-failed-session",
         requestId: "verify-approval-emit-failed",
         step: 1,
         title: "验证发送失败清理",
         reason: "验证事件发送失败不会留下 pending。",
+        availableDecisions: [AgentApprovalDecisions.ApproveOnce, AgentApprovalDecisions.Deny],
         subject: {
           kind: "tool_call",
           toolName: "SeneraWriteTool",
@@ -522,10 +533,12 @@ async function verifyCancelByRequestIdCleansPending(): Promise<void> {
     onEvent: async () => undefined,
     approval: {
       kind: "tool_call",
+      sessionId: "verify-approval-cancel-session",
       requestId: "verify-approval-cancel",
       step: 1,
       title: "验证取消",
       reason: "验证运行取消时审批被清理。",
+      availableDecisions: [AgentApprovalDecisions.ApproveOnce, AgentApprovalDecisions.Deny],
       subject: {
         kind: "tool_call",
         toolName: "SeneraWriteTool",
@@ -535,8 +548,8 @@ async function verifyCancelByRequestIdCleansPending(): Promise<void> {
   });
 
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(runtime.cancelByRequestId("verify-approval-cancel"), 1);
-  await assert.rejects(pending);
+  assert.equal(await runtime.cancelByRequestId("verify-approval-cancel"), 1);
+  assert.equal((await pending).status, "cancelled");
 }
 
 function createHook(options: {
@@ -559,6 +572,7 @@ function createHook(options: {
 
 function createHookContext(events: AgentDomainEvent[], requestId: string) {
   return {
+    sessionId: `${requestId}-session`,
     requestId,
     step: 1,
     visibleToolNames: "all" as const,
@@ -638,6 +652,7 @@ function createPluginFixture(tools: RegisteredTool[]): LoadedPlugin {
         Permissions: [...tool.permissions],
         Approval: tool.approval,
         Execution: tool.execution,
+        Runtime: tool.runtime,
         Handler: {
           Kind: "HostCapability" as const,
           Capability: tool.handler.kind === "HostCapability" ? tool.handler.capability : "verify",
@@ -680,6 +695,7 @@ function createToolFixture(
       diagnostics: [],
     },
     manifest: {
+      ManifestVersion: 2,
       Plugin: {
         Name: "VerifyPlugin",
         Title: "Verify Plugin",
@@ -696,6 +712,7 @@ function createToolFixture(
 
   return {
     name,
+    loading: "Dynamic",
     descriptionFile: undefined,
     signatureFile: undefined,
     signatureType: undefined,
@@ -704,6 +721,7 @@ function createToolFixture(
       kind: "HostCapability",
       capability: "verify",
     },
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
     search: {
       Capabilities: [
         {

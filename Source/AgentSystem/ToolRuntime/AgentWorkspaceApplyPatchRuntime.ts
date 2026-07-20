@@ -1,14 +1,24 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { applyPatch } from "diff";
 import { z } from "zod";
 import { resolveWorkspacePath, workspaceRelativePath } from "../Execution/SeneraWorkspacePath.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
-import type { AgentToolProcessRunResult } from "./AgentToolProcessRunner.js";
+import { openAgentHostToolReportingScope } from "./AgentToolHostCapabilityRegistry.js";
+import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "./AgentToolProcessEnvelope.js";
+import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
+import type { FileInfo } from "@earendil-works/pi-agent-core";
+import { WorkspaceApplyPatchError, type WorkspacePatchFailureInput } from "./AgentWorkspacePatchError.js";
+import {
+  addWorkspaceMissingPrecondition as addMissingPrecondition,
+  applyWorkspacePatchTransaction as applyPatchPlan,
+  captureWorkspaceFilePrecondition as captureExistingFilePrecondition,
+  readWorkspaceTextFileWithPrecondition as readExistingFile,
+  validateWorkspacePatchPreconditions as validatePatchPreconditions,
+  type WorkspacePatchPrecondition,
+  type WorkspacePatchTarget,
+} from "./AgentWorkspacePatchTransaction.js";
 
 const MaxOperations = 64;
 const MaxFuzzFactor = 3;
@@ -16,6 +26,11 @@ const DeleteFile = Symbol("delete-file");
 
 const WorkspacePathSchema = z.string().trim().min(1);
 const HunkPatchSchema = z.string().trim().min(1);
+const Sha256Schema = z
+  .string()
+  .trim()
+  .regex(/^[a-fA-F0-9]{64}$/)
+  .transform((value) => value.toLowerCase());
 
 const WorkspacePatchOperationSchema = z.discriminatedUnion("kind", [
   z
@@ -30,12 +45,22 @@ const WorkspacePatchOperationSchema = z.discriminatedUnion("kind", [
       kind: z.literal("update"),
       path: WorkspacePathSchema,
       patch: HunkPatchSchema,
+      expectedSha256: Sha256Schema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("replace"),
+      path: WorkspacePathSchema,
+      content: z.string(),
+      expectedSha256: Sha256Schema.optional(),
     })
     .strict(),
   z
     .object({
       kind: z.literal("delete"),
       path: WorkspacePathSchema,
+      expectedSha256: Sha256Schema.optional(),
     })
     .strict(),
   z
@@ -44,6 +69,7 @@ const WorkspacePatchOperationSchema = z.discriminatedUnion("kind", [
       source: WorkspacePathSchema,
       destination: WorkspacePathSchema,
       patch: HunkPatchSchema.optional(),
+      expectedSha256: Sha256Schema.optional(),
     })
     .strict(),
   z
@@ -72,11 +98,7 @@ const WorkspaceApplyPatchArgumentsSchema = z
 type WorkspaceApplyPatchArguments = z.infer<typeof WorkspaceApplyPatchArgumentsSchema>;
 type WorkspacePatchOperation = z.infer<typeof WorkspacePatchOperationSchema>;
 
-interface ResolvedWorkspaceTarget {
-  input: string;
-  relativePath: string;
-  absolutePath: string;
-}
+type ResolvedWorkspaceTarget = WorkspacePatchTarget;
 
 interface PatchPlan {
   dryRun: boolean;
@@ -86,6 +108,7 @@ interface PatchPlan {
   deletes: Map<string, PlannedFileDelete>;
   createDirectories: Map<string, PlannedDirectoryCreate>;
   deleteDirectories: Map<string, PlannedDirectoryDelete>;
+  preconditions: Map<string, WorkspacePatchPrecondition>;
 }
 
 interface PlannedFileWrite {
@@ -135,10 +158,30 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
     });
   }
 
+  const reporting = openAgentHostToolReportingScope(context);
   try {
-    const plan = await buildPatchPlan(parsed.data, context.workspaceRoot);
+    const plan = await buildPatchPlan(parsed.data, context.workspaceRoot, context.executionEnv);
+    reporting.reporter.progress({
+      message: "Workspace patch planned.",
+      completed: 1,
+      total: plan.dryRun ? 1 : 3,
+      unit: "stage",
+    });
     if (!plan.dryRun) {
-      await applyPatchPlan(plan);
+      await validatePatchPreconditions(plan, context.executionEnv);
+      reporting.reporter.progress({
+        message: "Workspace patch preconditions validated.",
+        completed: 2,
+        total: 3,
+        unit: "stage",
+      });
+      await applyPatchPlan(plan, context.executionEnv);
+      reporting.reporter.progress({
+        message: "Workspace patch applied.",
+        completed: 3,
+        total: 3,
+        unit: "stage",
+      });
     }
 
     const changedPaths = collectChangedPaths(plan);
@@ -164,10 +207,16 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
             toolName: context.tool.name,
           },
         });
+  } finally {
+    await reporting.close();
   }
 };
 
-async function buildPatchPlan(args: WorkspaceApplyPatchArguments, workspaceRoot: string): Promise<PatchPlan> {
+async function buildPatchPlan(
+  args: WorkspaceApplyPatchArguments,
+  workspaceRoot: string,
+  files: SeneraExecutionEnv,
+): Promise<PatchPlan> {
   const plan: PatchPlan = {
     dryRun: args.dryRun === true,
     fuzzFactor: args.fuzzFactor ?? 0,
@@ -176,6 +225,7 @@ async function buildPatchPlan(args: WorkspaceApplyPatchArguments, workspaceRoot:
     deletes: new Map(),
     createDirectories: new Map(),
     deleteDirectories: new Map(),
+    preconditions: new Map(),
   };
   const pendingFiles = new Map<string, PendingFileState>();
 
@@ -184,6 +234,7 @@ async function buildPatchPlan(args: WorkspaceApplyPatchArguments, workspaceRoot:
       operation,
       index,
       workspaceRoot,
+      files,
       plan,
       pendingFiles,
     });
@@ -197,6 +248,7 @@ async function planOperation(input: {
   operation: WorkspacePatchOperation;
   index: number;
   workspaceRoot: string;
+  files: SeneraExecutionEnv;
   plan: PatchPlan;
   pendingFiles: Map<string, PendingFileState>;
 }): Promise<void> {
@@ -207,6 +259,9 @@ async function planOperation(input: {
       return;
     case "update":
       await planUpdateOperation({ ...input, operation: input.operation }, pointer);
+      return;
+    case "replace":
+      await planReplaceOperation({ ...input, operation: input.operation }, pointer);
       return;
     case "delete":
       await planDeleteOperation({ ...input, operation: input.operation }, pointer);
@@ -227,6 +282,7 @@ async function planAddOperation(
   input: {
     operation: Extract<WorkspacePatchOperation, { kind: "add" }>;
     workspaceRoot: string;
+    files: SeneraExecutionEnv;
     plan: PatchPlan;
     pendingFiles: Map<string, PendingFileState>;
   },
@@ -234,7 +290,7 @@ async function planAddOperation(
 ): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const existing = await lstatOrUndefined(target.absolutePath);
+  const existing = await fileInfoOrUndefined(input.files, target.relativePath, `${pointer}/path`);
   if (existing) {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.addFileExists", { path: target.relativePath }),
@@ -242,6 +298,7 @@ async function planAddOperation(
       suggestion: agentErrorMessage("workspacePatch.addFileExistsSuggestion"),
     });
   }
+  addMissingPrecondition(input.plan, target, `${pointer}/path`);
 
   addWrite(
     input.plan,
@@ -263,6 +320,7 @@ async function planUpdateOperation(
   input: {
     operation: Extract<WorkspacePatchOperation, { kind: "update" }>;
     workspaceRoot: string;
+    files: SeneraExecutionEnv;
     plan: PatchPlan;
     pendingFiles: Map<string, PendingFileState>;
   },
@@ -270,7 +328,13 @@ async function planUpdateOperation(
 ): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const content = await readExistingFile(target, `${pointer}/path`);
+  const content = await readExistingFile(
+    input.files,
+    target,
+    `${pointer}/path`,
+    input.plan,
+    input.operation.expectedSha256,
+  );
   const patched = applyHunkPatch({
     oldPath: target.relativePath,
     newPath: target.relativePath,
@@ -296,10 +360,11 @@ async function planUpdateOperation(
   });
 }
 
-async function planDeleteOperation(
+async function planReplaceOperation(
   input: {
-    operation: Extract<WorkspacePatchOperation, { kind: "delete" }>;
+    operation: Extract<WorkspacePatchOperation, { kind: "replace" }>;
     workspaceRoot: string;
+    files: SeneraExecutionEnv;
     plan: PatchPlan;
     pendingFiles: Map<string, PendingFileState>;
   },
@@ -307,14 +372,48 @@ async function planDeleteOperation(
 ): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const stat = await requiredStat(target, `${pointer}/path`);
-  if (!stat.isFile()) {
+  await captureExistingFilePrecondition(
+    input.files,
+    target,
+    `${pointer}/path`,
+    input.plan,
+    input.operation.expectedSha256,
+  );
+  addWrite(input.plan, input.pendingFiles, { target, content: input.operation.content }, `${pointer}/path`);
+  input.plan.operations.push({
+    kind: "replace",
+    path: target.relativePath,
+    changedPaths: [target.relativePath],
+  });
+}
+
+async function planDeleteOperation(
+  input: {
+    operation: Extract<WorkspacePatchOperation, { kind: "delete" }>;
+    workspaceRoot: string;
+    files: SeneraExecutionEnv;
+    plan: PatchPlan;
+    pendingFiles: Map<string, PendingFileState>;
+  },
+  pointer: string,
+): Promise<void> {
+  const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
+  ensurePathUnused(input.plan, target, `${pointer}/path`);
+  const stat = await requiredFileInfo(input.files, target, `${pointer}/path`);
+  if (stat.kind !== "file") {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.deleteFileOnly", { path: target.relativePath }),
       pointer: `${pointer}/path`,
       suggestion: agentErrorMessage("workspacePatch.deleteFileOnlySuggestion"),
     });
   }
+  await captureExistingFilePrecondition(
+    input.files,
+    target,
+    `${pointer}/path`,
+    input.plan,
+    input.operation.expectedSha256,
+  );
 
   input.plan.deletes.set(target.relativePath, { target });
   input.pendingFiles.set(target.relativePath, DeleteFile);
@@ -329,6 +428,7 @@ async function planMoveOperation(
   input: {
     operation: Extract<WorkspacePatchOperation, { kind: "move" }>;
     workspaceRoot: string;
+    files: SeneraExecutionEnv;
     plan: PatchPlan;
     pendingFiles: Map<string, PendingFileState>;
   },
@@ -344,14 +444,25 @@ async function planMoveOperation(
   }
   ensurePathUnused(input.plan, source, `${pointer}/source`);
   ensurePathUnused(input.plan, destination, `${pointer}/destination`);
-  const content = await readExistingFile(source, `${pointer}/source`);
-  const destinationExisting = await lstatOrUndefined(destination.absolutePath);
+  const content = await readExistingFile(
+    input.files,
+    source,
+    `${pointer}/source`,
+    input.plan,
+    input.operation.expectedSha256,
+  );
+  const destinationExisting = await fileInfoOrUndefined(
+    input.files,
+    destination.relativePath,
+    `${pointer}/destination`,
+  );
   if (destinationExisting) {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.moveDestinationExists", { path: destination.relativePath }),
       pointer: `${pointer}/destination`,
     });
   }
+  addMissingPrecondition(input.plan, destination, `${pointer}/destination`);
 
   const nextContent = input.operation.patch
     ? applyHunkPatch({
@@ -387,14 +498,15 @@ async function planCreateDirectoryOperation(
   input: {
     operation: Extract<WorkspacePatchOperation, { kind: "createDirectory" }>;
     workspaceRoot: string;
+    files: SeneraExecutionEnv;
     plan: PatchPlan;
   },
   pointer: string,
 ): Promise<void> {
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensureNotWorkspaceRoot(target, `${pointer}/path`, agentErrorMessage("workspacePatch.createDirectoryRoot"));
-  const existing = await lstatOrUndefined(target.absolutePath);
-  if (existing && !existing.isDirectory()) {
+  const existing = await fileInfoOrUndefined(input.files, target.relativePath, `${pointer}/path`);
+  if (existing && existing.kind !== "directory") {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.directoryTargetNotDirectory", { path: target.relativePath }),
       pointer: `${pointer}/path`,
@@ -402,7 +514,7 @@ async function planCreateDirectoryOperation(
   }
 
   ensurePathUnused(input.plan, target, `${pointer}/path`, {
-    allowExistingDirectoryCreate: existing?.isDirectory() === true,
+    allowExistingDirectoryCreate: existing?.kind === "directory",
   });
   input.plan.createDirectories.set(target.relativePath, { target });
   input.plan.operations.push({
@@ -416,6 +528,7 @@ async function planDeleteDirectoryOperation(
   input: {
     operation: Extract<WorkspacePatchOperation, { kind: "deleteDirectory" }>;
     workspaceRoot: string;
+    files: SeneraExecutionEnv;
     plan: PatchPlan;
   },
   pointer: string,
@@ -423,8 +536,8 @@ async function planDeleteDirectoryOperation(
   const target = resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensureNotWorkspaceRoot(target, `${pointer}/path`, agentErrorMessage("workspacePatch.deleteDirectoryRoot"));
   ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const stat = await requiredStat(target, `${pointer}/path`);
-  if (!stat.isDirectory()) {
+  const stat = await requiredFileInfo(input.files, target, `${pointer}/path`);
+  if (stat.kind !== "directory") {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.deleteDirectoryOnly", { path: target.relativePath }),
       pointer: `${pointer}/path`,
@@ -441,31 +554,6 @@ async function planDeleteDirectoryOperation(
     path: target.relativePath,
     changedPaths: [target.relativePath],
   });
-}
-
-async function applyPatchPlan(plan: PatchPlan): Promise<void> {
-  for (const directory of plan.createDirectories.values()) {
-    await fs.mkdir(directory.target.absolutePath, { recursive: true });
-  }
-
-  for (const write of plan.writes.values()) {
-    await atomicWriteFile(write.target.absolutePath, write.content);
-  }
-
-  for (const deletion of plan.deletes.values()) {
-    await fs.rm(deletion.target.absolutePath, { force: false });
-  }
-
-  for (const deletion of plan.deleteDirectories.values()) {
-    if (deletion.recursive) {
-      await fs.rm(deletion.target.absolutePath, {
-        force: false,
-        recursive: true,
-      });
-    } else {
-      await fs.rmdir(deletion.target.absolutePath);
-    }
-  }
 }
 
 function applyHunkPatch(input: {
@@ -535,22 +623,12 @@ function normalizeHunkPatch(value: string, pointer: string): string {
   return hunkPatch.endsWith("\n") ? hunkPatch : `${hunkPatch}\n`;
 }
 
-async function readExistingFile(target: ResolvedWorkspaceTarget, pointer: string): Promise<string> {
-  const stat = await requiredStat(target, pointer);
-  if (!stat.isFile()) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.targetNotFile", { path: target.relativePath }),
-      pointer,
-    });
-  }
-  return fs.readFile(target.absolutePath, "utf8");
-}
-
-async function requiredStat(
+async function requiredFileInfo(
+  files: SeneraExecutionEnv,
   target: ResolvedWorkspaceTarget,
   pointer: string,
-): Promise<Awaited<ReturnType<typeof fs.lstat>>> {
-  const stat = await lstatOrUndefined(target.absolutePath);
+): Promise<FileInfo> {
+  const stat = await fileInfoOrUndefined(files, target.relativePath, pointer);
   if (!stat) {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.pathMissing", { path: target.relativePath }),
@@ -560,15 +638,15 @@ async function requiredStat(
   return stat;
 }
 
-async function lstatOrUndefined(filePath: string): Promise<Awaited<ReturnType<typeof fs.lstat>> | undefined> {
-  try {
-    return await fs.lstat(filePath);
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
-      return undefined;
-    }
-    throw error;
-  }
+async function fileInfoOrUndefined(
+  files: SeneraExecutionEnv,
+  filePath: string,
+  pointer: string,
+): Promise<FileInfo | undefined> {
+  const result = await files.fileInfo(filePath);
+  if (result.ok) return result.value;
+  if (result.error.code === "not_found") return undefined;
+  throw fileResultError(result.error, filePath, pointer);
 }
 
 function resolveTarget(workspaceRoot: string, value: string, pointer: string): ResolvedWorkspaceTarget {
@@ -597,7 +675,6 @@ function resolveTarget(workspaceRoot: string, value: string, pointer: string): R
 
   return {
     input: value,
-    absolutePath: resolved.absolutePath,
     relativePath,
   };
 }
@@ -687,57 +764,19 @@ function isInsideDirectory(filePath: string, directoryPath: string): boolean {
   return filePath === directoryPath || filePath.startsWith(`${directoryPath}/`);
 }
 
-async function atomicWriteFile(filePath: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
-  await fs.writeFile(tempPath, content, "utf8");
-  await fs.rename(tempPath, filePath);
+function fileResultError(error: Error, filePath: string, pointer: string): WorkspaceApplyPatchError {
+  return new WorkspaceApplyPatchError({
+    message: error.message,
+    pointer,
+    suggestion: agentErrorMessage("workspacePatch.fileOperationSuggestion", { path: filePath }),
+  });
 }
 
-function workspacePatchFailure(input: {
-  code: (typeof AgentExecutionErrorCodes)[keyof typeof AgentExecutionErrorCodes];
-  message: string;
-  diagnostics?: AgentSourceDiagnostic[];
-  details?: NonNullable<AgentToolProcessRunResult["response"]["error"]>["details"];
-}): AgentToolProcessRunResult {
+function workspacePatchFailure(input: WorkspacePatchFailureInput): AgentToolProcessRunResult {
   return toolProcessFailureResult({
     code: input.code,
     message: input.message,
     diagnostics: input.diagnostics,
     details: input.details,
   });
-}
-
-class WorkspaceApplyPatchError extends Error {
-  readonly pointer: string;
-  readonly suggestion?: string;
-
-  constructor(input: { message: string; pointer: string; suggestion?: string }) {
-    super(input.message);
-    this.name = "WorkspaceApplyPatchError";
-    this.pointer = input.pointer;
-    this.suggestion = input.suggestion;
-  }
-
-  toFailureInput(toolName: string): Parameters<typeof workspacePatchFailure>[0] {
-    return {
-      code: AgentExecutionErrorCodes.InvalidToolArguments,
-      message: this.message,
-      diagnostics: [
-        {
-          message: this.message,
-          pointer: this.pointer,
-          suggestion: this.suggestion,
-        },
-      ],
-      details: {
-        phase: AgentToolProcessErrorPhases.RuntimeExecution,
-        toolName,
-      },
-    };
-  }
-}
-
-function isNodeError(value: unknown): value is NodeJS.ErrnoException {
-  return value instanceof Error && "code" in value;
 }

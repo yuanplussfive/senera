@@ -4,11 +4,10 @@ import { AgentEventKinds, type AgentDomainEvent, type AgentEventSink } from "../
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import { clampField, type StepTrace } from "../Runtime/AgentStepTrace.js";
-import { type AgentToolResultPresentation, type ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 import type { AgentOpenAiTranscriptMessage } from "../Conversation/AgentOpenAiTranscript.js";
-import { readPiProxyToolCallBatchId } from "../PiProxy/AgentPiProxyRuntimeContext.js";
-import type { AgentPiToolDetails } from "./AgentPiTypes.js";
+import { readPiProxyToolCallBatchId, takePiProxyExecutedToolResult } from "../PiProxy/AgentPiProxyRuntimeContext.js";
 import { projectPiSessionTraceEvent } from "./AgentPiTraceProjector.js";
 
 export interface AgentPiRunCollectorOptions {
@@ -131,7 +130,10 @@ export class AgentPiRunCollector {
     };
     this.activeToolTraces.delete(event.toolCallId);
 
-    const executed = readExecutedToolResult(event.result);
+    const captured = takePiProxyExecutedToolResult(this.options.piProxyRuntimeContextId, event.toolCallId);
+    const presentation =
+      captured?.presentation ?? (captured ? projectAgentToolResultPresentation(captured) : undefined);
+    const executed = captured && presentation ? { ...captured, presentation } : captured;
     if (executed) {
       this.executedTools.push(executed);
     }
@@ -155,7 +157,7 @@ export class AgentPiRunCollector {
           active.seq,
           event.toolName,
           event.toolCallId,
-          readToolPresentation(event.result),
+          presentation,
           { batchId: this.batchIdFor(event.toolCallId) },
         );
     return [
@@ -213,8 +215,8 @@ export class AgentPiRunCollector {
       callId: event.toolCallId,
       batchId: this.batchIdFor(event.toolCallId),
       toolArgs: clampField(executed?.arguments ?? active.args),
-      toolPreview: readToolPresentation(event.result)?.headline,
-      toolPresentation: readToolPresentation(event.result),
+      toolPreview: executed?.presentation?.headline,
+      toolPresentation: executed?.presentation,
       toolResult: clampField(executed?.result ?? event.result),
       toolErrorMessage: event.isError ? readToolErrorMessage(event.result) : undefined,
     };
@@ -288,25 +290,6 @@ function readToolResultContent(result: ToolResultMessage): string {
     status: result.isError ? "failure" : "success",
     content: result.content,
   });
-}
-
-function readExecutedToolResult(value: unknown): ExecutedToolCallResult | undefined {
-  const details = readToolDetails(value);
-  return details?.senera.executed;
-}
-
-function readToolDetails(value: unknown): AgentPiToolDetails | undefined {
-  const details = readRecord(value)?.details;
-  return isAgentPiToolDetails(details) ? details : undefined;
-}
-
-function isAgentPiToolDetails(value: unknown): value is AgentPiToolDetails {
-  return Boolean(readRecord(readRecord(value)?.senera));
-}
-
-function readToolPresentation(value: unknown): AgentToolResultPresentation | undefined {
-  const executed = readExecutedToolResult(value);
-  return executed?.presentation ?? (executed ? projectAgentToolResultPresentation(executed) : undefined);
 }
 
 function readToolErrorMessage(value: unknown): string {

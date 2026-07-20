@@ -13,6 +13,7 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { ModelHttpClient } from "./ModelHttpClient.js";
 import type { TextGenerationEndpoint } from "./ModelEndpointTypes.js";
 import { createModelEndpoint } from "./ModelEndpointTypes.js";
+import { AgentModelUsageResolver, type AgentModelUsageValue } from "./AgentModelUsage.js";
 
 type ModelProviderConfig = ReturnType<typeof resolveModelProviderConfig>;
 
@@ -21,6 +22,7 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
 
   private readonly providerConfig: ModelProviderConfig;
   private readonly endpoint: TextGenerationEndpoint;
+  private readonly usageResolver: AgentModelUsageResolver;
 
   constructor(config: AgentSystemConfig, modelProviderId?: string) {
     this.providerConfig = resolveModelProviderConfig(config, modelProviderId);
@@ -33,6 +35,7 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
     }
 
     this.metadata = createModelProviderMetadata(this.providerConfig);
+    this.usageResolver = new AgentModelUsageResolver(this.providerConfig.Model);
     this.endpoint = createModelEndpoint(this.providerConfig.Endpoint, {
       config: this.providerConfig,
       http: new ModelHttpClient(this.providerConfig, this.metadata),
@@ -41,25 +44,16 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
 
   async complete(request: AgentLanguageModelRequest): Promise<AgentLanguageModelResponse> {
     if (this.providerConfig.Stream) {
-      return { text: await this.collectStream(request) };
+      return this.collectStream(request);
     }
 
     await this.emitStarted(request);
     const result = await this.endpoint.complete(request);
+    const usage = this.usageResolver.resolve(request, result.text, result.usage);
 
-    await emitAgentEvent(request.onEvent, {
-      kind: AgentEventKinds.ModelCompleted,
-      context: {
-        requestId: request.requestId,
-        step: request.step,
-      },
-      data: {
-        text: result.text,
-        provider: this.metadata,
-      },
-    });
+    await this.emitCompleted(request, result.text, usage);
 
-    return result;
+    return { text: result.text, usage };
   }
 
   async stream(request: AgentLanguageModelRequest): Promise<AgentLanguageModelStream> {
@@ -67,7 +61,10 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
     const stream = await this.endpoint.stream(request);
 
     let accumulatedText = "";
+    let usage: AgentModelUsageValue | undefined;
     const metadata = this.metadata;
+    const usageResolver = this.usageResolver;
+    const emitCompleted = this.emitCompleted.bind(this);
     const chunks = (async function* (): AsyncGenerator<AgentLanguageModelStreamChunk> {
       for await (const chunk of stream) {
         accumulatedText += chunk.textDelta;
@@ -86,10 +83,15 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
           accumulatedText,
         };
       }
+      usage = usageResolver.resolve(request, accumulatedText, stream.usage);
+      await emitCompleted(request, accumulatedText, usage);
     })();
 
     return {
       metadata,
+      get usage() {
+        return usage;
+      },
       abort: () => stream.abort(),
       [Symbol.asyncIterator]: () => chunks,
     };
@@ -109,12 +111,31 @@ export class AgentModelEndpointClient implements AgentLanguageModel {
     });
   }
 
-  private async collectStream(request: AgentLanguageModelRequest): Promise<string> {
+  private async collectStream(request: AgentLanguageModelRequest): Promise<AgentLanguageModelResponse> {
     const stream = await this.stream(request);
     let text = "";
     for await (const chunk of stream) {
       text = chunk.accumulatedText;
     }
-    return text;
+    return { text, usage: stream.usage };
+  }
+
+  private async emitCompleted(
+    request: AgentLanguageModelRequest,
+    text: string,
+    usage: AgentModelUsageValue,
+  ): Promise<void> {
+    await emitAgentEvent(request.onEvent, {
+      kind: AgentEventKinds.ModelCompleted,
+      context: {
+        requestId: request.requestId,
+        step: request.step,
+      },
+      data: {
+        text,
+        provider: this.metadata,
+        usage,
+      },
+    });
   }
 }

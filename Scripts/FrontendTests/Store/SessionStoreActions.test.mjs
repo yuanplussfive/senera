@@ -20,6 +20,7 @@ beforeEach(() => {
     historyReplayBuffers: {},
     historyStepBuffers: {},
     historyEventRunIds: {},
+    historyActiveRequestIds: {},
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},

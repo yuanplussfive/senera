@@ -12,6 +12,21 @@
     <command>{{ ExecutionEnvironment.shell.command | escape }}</command>
     <invocation>{{ ExecutionEnvironment.shell.invocation | escape }}</invocation>
   </shell>
+  <execution_targets>
+    <sandbox_preferred>
+      <boundary>{{ ExecutionEnvironment.executionTargets.sandboxPreferred.boundary | escape }}</boundary>
+      <os>{{ ExecutionEnvironment.executionTargets.sandboxPreferred.os | escape }}</os>
+      <image>{{ ExecutionEnvironment.executionTargets.sandboxPreferred.image | escape }}</image>
+      <shell_dialect>{{ ExecutionEnvironment.executionTargets.sandboxPreferred.shellDialect | escape }}</shell_dialect>
+      <shell_command>{{ ExecutionEnvironment.executionTargets.sandboxPreferred.shellCommand | escape }}</shell_command>
+    </sandbox_preferred>
+    <local>
+      <boundary>{{ ExecutionEnvironment.executionTargets.local.boundary | escape }}</boundary>
+      <os>{{ ExecutionEnvironment.executionTargets.local.os | escape }}</os>
+      <shell_dialect>{{ ExecutionEnvironment.executionTargets.local.shellDialect | escape }}</shell_dialect>
+      <shell_command>{{ ExecutionEnvironment.executionTargets.local.shellCommand | escape }}</shell_command>
+    </local>
+  </execution_targets>
   <guidance>
 {% for rule in ExecutionEnvironment.guidance.shell %}
     <rule>{{ rule | escape }}</rule>

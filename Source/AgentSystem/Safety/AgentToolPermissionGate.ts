@@ -1,5 +1,11 @@
 import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
-import { AgentApprovalKinds } from "../Approvals/AgentApprovalTypes.js";
+import {
+  AgentApprovalDecisions,
+  AgentApprovalDispositions,
+  AgentApprovalKinds,
+  AgentApprovalStatuses,
+} from "../Approvals/AgentApprovalTypes.js";
+import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import { AgentPermissionActions, type AgentPermissionDecision } from "./AgentSafetyTypes.js";
 import type { AgentToolApprovalPolicy, AgentToolApprovalPolicyInput } from "./AgentToolApprovalPolicy.js";
@@ -53,12 +59,20 @@ export class AgentToolPermissionGate {
       signal: request.signal,
       approval: {
         kind: AgentApprovalKinds.ToolCall,
+        sessionId: request.sessionId,
         requestId: request.requestId,
         step: request.step,
+        toolCallId: request.toolCallId,
+        batchId: request.batchId,
         title: `允许工具调用：${request.toolName}`,
         reason: decision.reason,
         rule: decision.rule,
         riskSignals: decision.riskSignals,
+        availableDecisions: [
+          AgentApprovalDecisions.ApproveOnce,
+          AgentApprovalDecisions.Deny,
+          AgentApprovalDecisions.DenyAndInterrupt,
+        ],
         subject: {
           kind: AgentApprovalKinds.ToolCall,
           toolName: request.toolName,
@@ -67,7 +81,7 @@ export class AgentToolPermissionGate {
       },
     });
 
-    if (resolution.status === "approved") {
+    if (resolution.status === AgentApprovalStatuses.Approved) {
       return {
         action: AgentPermissionActions.Allow,
         rule: decision.rule,
@@ -76,10 +90,17 @@ export class AgentToolPermissionGate {
       };
     }
 
-    throw new AgentToolPermissionDeniedError(resolution.message ?? "用户拒绝了工具调用审批。", {
+    if (resolution.disposition === AgentApprovalDispositions.Interrupt) {
+      throw new AgentCancellationError(resolution.message ?? "用户中断了工具调用审批。");
+    }
+
+    const message =
+      resolution.message ??
+      (resolution.status === AgentApprovalStatuses.Expired ? "工具调用审批已过期。" : "用户拒绝了工具调用审批。");
+    throw new AgentToolPermissionDeniedError(message, {
       action: AgentPermissionActions.Deny,
       rule: decision.rule,
-      reason: resolution.message ?? "用户拒绝了工具调用审批。",
+      reason: message,
       riskSignals: decision.riskSignals,
     });
   }

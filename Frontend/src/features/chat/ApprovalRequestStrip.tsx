@@ -1,22 +1,58 @@
-import { useState } from "react";
-import { Check, ShieldCheck, X } from "lucide-react";
+import { Check, CircleStop, LoaderCircle, ShieldCheck, X } from "lucide-react";
+import type { ComponentType } from "react";
+import type { ApprovalDecision } from "../../api/approvalEventTypes";
 import type { ApprovalRunRecord } from "../../store/sessionStore";
-import type { ApprovalResolutionScope } from "../../api/approvalEventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Button, MetaLabel } from "../../shared/ui";
 
 export interface ApprovalRequestStripProps {
   approvals: ApprovalRunRecord[];
   disabled?: boolean;
-  onResolve: (approvalId: string, status: "approved" | "denied", scope?: ApprovalResolutionScope) => void;
+  onResolve: (approvalId: string, decision: ApprovalDecision) => void;
 }
+
+interface ApprovalDecisionPresentation {
+  Icon: ComponentType<{ className?: string }>;
+  variant: "default" | "ghost";
+  className: string;
+  label: (approval: ApprovalRunRecord) => string;
+}
+
+const ApprovalDecisionPresentations = {
+  approve_once: {
+    Icon: Check,
+    variant: "default",
+    className: "h-7 bg-ink-900 px-2 text-paper-50 hover:bg-ink-800",
+    label: (approval) =>
+      frontendMessage(
+        approval.availableDecisions.includes("approve_session") ? "approval.allowOnce" : "approval.allow",
+      ),
+  },
+  approve_session: {
+    Icon: ShieldCheck,
+    variant: "default",
+    className: "h-7 bg-ink-900 px-2 text-paper-50 hover:bg-ink-800",
+    label: () => frontendMessage("approval.allowSession"),
+  },
+  deny: {
+    Icon: X,
+    variant: "ghost",
+    className: "h-7 px-2 text-ink-500 hover:bg-brick-50 hover:text-brick-700",
+    label: () => frontendMessage("approval.deny"),
+  },
+  deny_and_interrupt: {
+    Icon: CircleStop,
+    variant: "ghost",
+    className: "h-7 px-2 text-brick-700 hover:bg-brick-50",
+    label: () => frontendMessage("approval.denyAndInterrupt"),
+  },
+} satisfies Record<ApprovalDecision, ApprovalDecisionPresentation>;
 
 export function ApprovalRequestStrip({
   approvals,
   disabled = false,
   onResolve,
 }: ApprovalRequestStripProps): JSX.Element | null {
-  const [resolvingIds, setResolvingIds] = useState<Record<string, boolean>>({});
   const pendingApprovals = approvals.filter((approval) => approval.status === "pending");
   if (pendingApprovals.length === 0) return null;
 
@@ -26,15 +62,8 @@ export function ApprovalRequestStrip({
         <ApprovalRequestItem
           key={approval.approvalId}
           approval={approval}
-          disabled={disabled || resolvingIds[approval.approvalId]}
-          onResolve={(approvalId, status, scope) => {
-            setResolvingIds((current) => ({ ...current, [approvalId]: true }));
-            if (scope) {
-              onResolve(approvalId, status, scope);
-            } else {
-              onResolve(approvalId, status);
-            }
-          }}
+          disabled={disabled || approval.resolutionPending === true}
+          onResolve={onResolve}
         />
       ))}
     </div>
@@ -89,56 +118,49 @@ function ApprovalRequestItem({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={disabled}
-            onClick={() => onResolve(approval.approvalId, "denied")}
-            className="h-7 px-2 text-ink-500 hover:bg-brick-50 hover:text-brick-700"
-            aria-label={frontendMessage(isFallback ? "approval.fallback.deny" : "approval.tool.deny")}
-          >
-            <X className="h-3.5 w-3.5" />
-            {frontendMessage("approval.deny")}
-          </Button>
-          {isFallback ? (
-            <>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={disabled}
-                onClick={() => onResolve(approval.approvalId, "approved", "once")}
-                className="h-7 px-2 text-ink-700 hover:bg-ink-100"
-                aria-label={frontendMessage("approval.fallback.allowOnce")}
-              >
-                <Check className="h-3.5 w-3.5" />
-                {frontendMessage("approval.allowOnce")}
-              </Button>
-              <Button
-                size="sm"
-                disabled={disabled}
-                onClick={() => onResolve(approval.approvalId, "approved", "session")}
-                className="h-7 bg-ink-900 px-2 text-paper-50 hover:bg-ink-800"
-                aria-label={frontendMessage("approval.fallback.allowSession")}
-              >
-                <ShieldCheck className="h-3.5 w-3.5" />
-                {frontendMessage("approval.allowSession")}
-              </Button>
-            </>
-          ) : (
-            <Button
-              size="sm"
+          {approval.availableDecisions.map((decision) => (
+            <ApprovalDecisionButton
+              key={decision}
+              approval={approval}
+              decision={decision}
               disabled={disabled}
-              onClick={() => onResolve(approval.approvalId, "approved")}
-              className="h-7 bg-ink-900 px-2 text-paper-50 hover:bg-ink-800"
-              aria-label={frontendMessage("approval.tool.allow")}
-            >
-              <Check className="h-3.5 w-3.5" />
-              {frontendMessage("approval.allow")}
-            </Button>
-          )}
+              onResolve={onResolve}
+            />
+          ))}
         </div>
       </div>
     </section>
+  );
+}
+
+function ApprovalDecisionButton({
+  approval,
+  decision,
+  disabled,
+  onResolve,
+}: {
+  approval: ApprovalRunRecord;
+  decision: ApprovalDecision;
+  disabled: boolean;
+  onResolve: ApprovalRequestStripProps["onResolve"];
+}): JSX.Element {
+  const presentation = ApprovalDecisionPresentations[decision];
+  const resolving = approval.resolutionPending === true && approval.pendingDecision === decision;
+  const Icon = resolving ? LoaderCircle : presentation.Icon;
+  const label = resolving ? frontendMessage("approval.resolving") : presentation.label(approval);
+
+  return (
+    <Button
+      size="sm"
+      variant={presentation.variant}
+      disabled={disabled}
+      onClick={() => onResolve(approval.approvalId, decision)}
+      className={presentation.className}
+      aria-label={label}
+    >
+      <Icon className={`h-3.5 w-3.5${resolving ? " animate-spin" : ""}`} />
+      {label}
+    </Button>
   );
 }
 
@@ -163,7 +185,6 @@ function approvalRiskLabels(approval: ApprovalRunRecord): string[] {
 function summarizeApprovalArguments(args: Record<string, unknown>): string {
   const entries = Object.entries(args).slice(0, 3);
   if (entries.length === 0) return "";
-
   return entries.map(([key, value]) => `${key}=${summarizeValue(value)}`).join(" · ");
 }
 
@@ -176,6 +197,5 @@ function summarizeValue(value: unknown): string {
         : value && typeof value === "object"
           ? "{...}"
           : String(value);
-
   return text.length > 42 ? `${text.slice(0, 39)}...` : text;
 }

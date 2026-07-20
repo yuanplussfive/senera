@@ -28,6 +28,21 @@ export function resolveAgentDefaults(
       ),
       MaxStdoutBytes: defaults?.ToolExecution?.MaxStdoutBytes ?? AgentDefaults.ToolExecution.MaxStdoutBytes,
       MaxStderrBytes: defaults?.ToolExecution?.MaxStderrBytes ?? AgentDefaults.ToolExecution.MaxStderrBytes,
+      Environment: {
+        ...AgentDefaults.ToolExecution.Environment,
+        ...defaults?.ToolExecution?.Environment,
+        IncludeOnly: [
+          ...(defaults?.ToolExecution?.Environment?.IncludeOnly ?? AgentDefaults.ToolExecution.Environment.IncludeOnly),
+        ],
+        Exclude: [
+          ...(defaults?.ToolExecution?.Environment?.Exclude ?? AgentDefaults.ToolExecution.Environment.Exclude),
+        ],
+        Set: {
+          ...AgentDefaults.ToolExecution.Environment.Set,
+          ...(defaults?.ToolExecution?.Environment?.Set ?? {}),
+        },
+      },
+      Resources: resolveExecutionResourceDefaults(defaults?.ToolExecution?.Resources),
     },
     SandboxRuntime: {
       ...AgentDefaults.SandboxRuntime,
@@ -40,9 +55,20 @@ export function resolveAgentDefaults(
       PiSessions: {
         ...AgentDefaults.AgentLoop.PiSessions,
         ...defaults?.AgentLoop?.PiSessions,
+        Compaction: {
+          ...AgentDefaults.AgentLoop.PiSessions.Compaction,
+          ...defaults?.AgentLoop?.PiSessions?.Compaction,
+          TimeoutMs: secondsToMilliseconds(
+            defaults?.AgentLoop?.PiSessions?.Compaction?.TimeoutSeconds ??
+              AgentDefaults.AgentLoop.PiSessions.Compaction.TimeoutSeconds,
+          ),
+        },
       },
-      PiSessionCreateTimeoutMs: secondsToMilliseconds(
-        defaults?.AgentLoop?.PiSessionCreateTimeoutSeconds ?? AgentDefaults.AgentLoop.PiSessionCreateTimeoutSeconds,
+      PiTurnLeaseTimeoutMs: secondsToMilliseconds(
+        defaults?.AgentLoop?.PiTurnLeaseTimeoutSeconds ?? AgentDefaults.AgentLoop.PiTurnLeaseTimeoutSeconds,
+      ),
+      RunSettlementTimeoutMs: secondsToMilliseconds(
+        defaults?.AgentLoop?.RunSettlementTimeoutSeconds ?? AgentDefaults.AgentLoop.RunSettlementTimeoutSeconds,
       ),
     },
     ToolSearch: {
@@ -57,6 +83,14 @@ export function resolveAgentDefaults(
       Ranking: {
         ...AgentDefaults.ToolSearch.Ranking,
         ...defaults?.ToolSearch?.Ranking,
+        IntentGate: {
+          ...AgentDefaults.ToolSearch.Ranking.IntentGate,
+          ...defaults?.ToolSearch?.Ranking?.IntentGate,
+        },
+        MemoryExpansion: {
+          ...AgentDefaults.ToolSearch.Ranking.MemoryExpansion,
+          ...defaults?.ToolSearch?.Ranking?.MemoryExpansion,
+        },
       },
       Rerank: {
         ...AgentDefaults.ToolSearch.Rerank,
@@ -116,13 +150,13 @@ export function resolveAgentDefaults(
         ...AgentDefaults.ActionPlanner.Client,
         ...defaults?.ActionPlanner?.Client,
       },
-      TurnUnderstandingClient: {
-        ...AgentDefaults.ActionPlanner.TurnUnderstandingClient,
-        ...defaults?.ActionPlanner?.TurnUnderstandingClient,
-      },
       PlanningClient: {
         ...AgentDefaults.ActionPlanner.PlanningClient,
         ...defaults?.ActionPlanner?.PlanningClient,
+      },
+      FinalAnswerClient: {
+        ...AgentDefaults.ActionPlanner.FinalAnswerClient,
+        ...defaults?.ActionPlanner?.FinalAnswerClient,
       },
     },
     Artifacts: {
@@ -178,6 +212,23 @@ export function resolveAgentDefaults(
       ...AgentDefaults.ConfigStore,
       ...defaults?.ConfigStore,
     },
+  };
+}
+
+function resolveExecutionResourceDefaults(
+  configured: NonNullable<NonNullable<AgentSystemConfig["Defaults"]>["ToolExecution"]>["Resources"],
+) {
+  const resources = {
+    ...AgentDefaults.ToolExecution.Resources,
+    ...configured,
+  };
+  return {
+    ...resources,
+    MaxWaitMs: secondsToMilliseconds(resources.MaxWaitSeconds),
+    IdleTtlMs: secondsToMilliseconds(resources.IdleTtlSeconds),
+    TerminalTtlMs: secondsToMilliseconds(resources.TerminalTtlSeconds),
+    SweepIntervalMs: secondsToMilliseconds(resources.SweepIntervalSeconds),
+    TerminationGraceMs: secondsToMilliseconds(resources.TerminationGraceSeconds),
   };
 }
 

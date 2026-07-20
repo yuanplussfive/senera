@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ActionPlanInput,  ActionRunState,  EvidenceSlot,  ExecutionDeltaOp,  InteractionRoute,  InteractionRunMode,  MemoryCandidate,  MemoryConsolidationAction,  MemoryConsolidationResult,  MemoryLearningResult,  MemoryWriteDecision,  MemoryWriteResolutionResult,  PiControllerAction,  PiControllerActionKind,  PiPlannedToolCall,  PiToolArgumentsDraft,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerRoleplayPreset,  PlannerRoleplayPresetDocument,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel,  TurnContextMode,  TurnUnderstanding } from "./types.js"
+import type {  ActionPlanInput,  ActionRunState,  EvidenceSlot,  ExecutionDeltaOp,  InteractionPreparation,  InteractionRoute,  InteractionRunMode,  MemoryCandidate,  MemoryConsolidationAction,  MemoryConsolidationResult,  MemoryLearningResult,  MemoryWriteDecision,  MemoryWriteResolutionResult,  PiCompactionDecision,  PiCompactionSummary,  PiControllerAction,  PiControllerActionKind,  PiPlannedToolCall,  PiToolArgumentsDraft,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerRoleplayPreset,  PlannerRoleplayPresetDocument,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolLearningRecord,  ToolLearningResult,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel,  TurnContextMode,  TurnUnderstanding } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -62,16 +62,15 @@ export namespace partial_types {
       name?: string | null
       value?: string | null
     }
+    export interface InteractionPreparation {
+      turnUnderstanding?: TurnUnderstanding | null
+      initialAction?: PiControllerAction | null
+    }
     export interface InteractionRoute {
       mode?: types.InteractionRunMode | null
       objective?: string | null
-      needsFreshEvidence?: boolean | null
-      needsWorkspaceRead?: boolean | null
-      needsSideEffect?: boolean | null
-      risk?: string | null
       preferredTools: string[]
       discoveryQueries: string[]
-      reason?: string | null
     }
     export interface MemoryCandidate {
       type?: string | null
@@ -121,9 +120,23 @@ export namespace partial_types {
     export interface MemoryWriteResolutionResult {
       decision?: MemoryWriteDecision | null
     }
+    export interface PiCompactionDecision {
+      decision?: string | null
+      rationale?: string | null
+    }
+    export interface PiCompactionSummary {
+      goals: string[]
+      constraints: string[]
+      completed: string[]
+      inProgress: string[]
+      blocked: string[]
+      decisions: PiCompactionDecision[]
+      nextSteps: string[]
+      criticalContext: string[]
+    }
     export interface PiControllerAction {
       kind?: types.PiControllerActionKind | null
-      answer?: string | null
+      answerPlan?: string[] | null
       question?: string | null
       preface?: string | null
       calls?: PiPlannedToolCall[] | null

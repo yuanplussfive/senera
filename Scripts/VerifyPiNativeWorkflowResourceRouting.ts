@@ -27,9 +27,14 @@ const turnUnderstanding: TurnUnderstanding = {
   missingContext: "",
 };
 const workflowSkill = workflowSkillFixture();
+type ToolResolutionCall = {
+  preferredTools?: readonly string[];
+  currentLoadedTools?: LoadedToolsState;
+};
+
 const observed = {
   plannerActiveSkills: [] as AgentActivatedSkill[],
-  resolveCalls: [] as Array<{ preferredTools?: readonly string[]; currentLoadedTools?: LoadedToolsState }>,
+  resolveCalls: [] as ToolResolutionCall[],
   rememberedLoadedTools: undefined as LoadedToolsState | undefined,
   rootPreferredTools: [] as string[],
 };
@@ -48,27 +53,36 @@ const handler = new AgentPlanningCommandHandler({
   } as ResolvedAgentLoopConfig,
 });
 
-const result = await handler.routeInteraction(routeCommand());
+const result = await handler.prepareInteraction(routeCommand());
 
 assert.equal(result.kind, "succeeded");
-assert.equal(result.output.kind, "interaction_routed");
+assert.equal(result.output.kind, "interaction_prepared");
 assert.deepEqual(
   observed.plannerActiveSkills.map((skill) => skill.name),
   ["ExecutionWorkflowSkill"],
 );
-assert.equal(observed.resolveCalls.length, 2);
-assert.deepEqual(observed.resolveCalls[0]?.preferredTools, ["WorkspaceGrep"]);
-assert.deepEqual(observed.resolveCalls[1]?.preferredTools, [
-  "WorkspaceGrep",
+assert.deepEqual(
+  observed.resolveCalls.map(({ preferredTools }) => preferredTools),
+  [
+    ["WorkspaceApplyPatch", "ShellCommandTool"],
+    ["WorkspaceGrep"],
+    ["WorkspaceGrep", "WorkspaceApplyPatch", "ShellCommandTool"],
+  ],
+);
+assertToolSet(observed.resolveCalls[0]?.currentLoadedTools, ["SystemTool"]);
+assertToolSet(observed.resolveCalls[1]?.currentLoadedTools, ["SystemTool", "WorkspaceApplyPatch", "ShellCommandTool"]);
+assertToolSet(observed.resolveCalls[2]?.currentLoadedTools, [
+  "SystemTool",
   "WorkspaceApplyPatch",
   "ShellCommandTool",
+  "WorkspaceGrep",
 ]);
 assert.deepEqual(observed.rootPreferredTools, ["WorkspaceGrep", "WorkspaceApplyPatch", "ShellCommandTool"]);
 assert.deepEqual(
   result.output.activeSkills.map((skill) => skill.name),
   ["ExecutionWorkflowSkill"],
 );
-assert.deepEqual(result.output.loadedToolNames, [
+assertToolSet(result.output.loadedToolNames, [
   "SystemTool",
   "WorkspaceGrep",
   "WorkspaceApplyPatch",
@@ -88,13 +102,32 @@ function fakeRuntime(): AgentSystemRuntime {
   return {
     services: {
       planning: {
-        routeWithInput: async (input: { input: unknown }) => ({
+        prepareInteraction: async (input: { input: unknown }) => ({
           route,
+          initialAction: {
+            kind: "CallTools" as const,
+            calls: [
+              {
+                toolName: "WorkspaceGrep",
+                purpose: "Inspect the workspace before editing",
+                required: true,
+                argumentHints: {},
+              },
+            ],
+          },
           input: {
             ...(input.input as Record<string, unknown>),
             turnUnderstanding,
           },
         }),
+      },
+      pi: {
+        planningToolCards: ({ visibleToolNames }: { visibleToolNames?: "all" | readonly string[] } = {}) =>
+          (visibleToolNames === "all" ? [] : (visibleToolNames ?? [])).map((name) => ({
+            name,
+            description: `${name} verification tool`,
+            parameters: { type: "object", properties: {} },
+          })),
       },
       promptContext: {
         activateSkills: () => [workflowSkill],
@@ -113,12 +146,10 @@ function fakeRuntime(): AgentSystemRuntime {
         },
       },
       retrieval: {
-        resolvePlannedLoadedTools: (options: {
-          currentLoadedTools?: LoadedToolsState;
-          preferredTools?: readonly string[];
-        }) => {
+        resolvePlannedLoadedTools: (options: ToolResolutionCall) => {
           observed.resolveCalls.push(options);
-          return uniqueTools(["SystemTool", ...(options.preferredTools ?? [])]);
+          if (options.currentLoadedTools === "all") return "all";
+          return uniqueTools(["SystemTool", ...(options.currentLoadedTools ?? []), ...(options.preferredTools ?? [])]);
         },
         rememberAutoSearch: (_requestId: string, _query: string, loadedTools: LoadedToolsState) => {
           observed.rememberedLoadedTools = loadedTools;
@@ -128,9 +159,9 @@ function fakeRuntime(): AgentSystemRuntime {
   } as unknown as AgentSystemRuntime;
 }
 
-function routeCommand(): Extract<AgentLoopCommand, { kind: "route_interaction" }> {
+function routeCommand(): Extract<AgentLoopCommand, { kind: "prepare_interaction" }> {
   return {
-    kind: "route_interaction",
+    kind: "prepare_interaction",
     requestId: "verify-pi-native-workflow-resource-routing",
     step: 1,
     input: "继续全面优化拓展",
@@ -149,8 +180,6 @@ function routeCommand(): Extract<AgentLoopCommand, { kind: "route_interaction" }
       deltas: [],
       lastNewEvidenceStep: 0,
     },
-    activeSkills: [],
-    turnUnderstanding,
   };
 }
 
@@ -158,23 +187,13 @@ function routeFixture(): AgentInteractionRouteResult {
   return {
     mode: AgentInteractionRunModes.ToolAgentLoop,
     objective: "继续全面优化拓展代码质量",
-    needsFreshEvidence: true,
-    needsWorkspaceRead: true,
-    needsSideEffect: true,
-    risk: "workspace-write",
     preferredTools: ["WorkspaceGrep"],
     discoveryQueries: ["Pi workflow resources"],
-    reason: "Implementation work should run through Pi tool loop.",
     raw: {
       mode: InteractionRunMode.ToolAgentLoop,
       objective: "继续全面优化拓展代码质量",
-      needsFreshEvidence: true,
-      needsWorkspaceRead: true,
-      needsSideEffect: true,
-      risk: "workspace-write",
       preferredTools: ["WorkspaceGrep"],
       discoveryQueries: ["Pi workflow resources"],
-      reason: "Implementation work should run through Pi tool loop.",
     },
   };
 }
@@ -231,4 +250,10 @@ function rootCommandFixture(loadedToolNames: LoadedToolsState, preferredTools: r
 
 function uniqueTools(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function assertToolSet(actual: LoadedToolsState | undefined, expected: readonly string[]): void {
+  assert.notEqual(actual, undefined);
+  assert.notEqual(actual, "all");
+  assert.deepEqual(new Set(actual), new Set(expected));
 }

@@ -4,7 +4,23 @@
   "private": true,
   "type": "commonjs",
   "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./protocol": {
+      "types": "./protocol.d.ts",
+      "default": "./protocol.js"
+    },
+    "./task-store": {
+      "types": "./task-store.d.ts",
+      "default": "./task-store.js"
+    }
+  },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "smol-toml": "^1.6.1",
     "zod": "^4.4.3"
   }

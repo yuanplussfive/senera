@@ -84,7 +84,14 @@ function assertNoDeadMachineConfig() {
 }
 
 function assertPiRuntimeFieldsRemain() {
-  for (const field of ["LoadedTools", "PiSessionCreateTimeoutSeconds", "PiSessions", "PiSessionCreateTimeoutMs"]) {
+  for (const field of [
+    "LoadedTools",
+    "PiTurnLeaseTimeoutSeconds",
+    "PiSessions",
+    "PiTurnLeaseTimeoutMs",
+    "RunSettlementTimeoutSeconds",
+    "RunSettlementTimeoutMs",
+  ]) {
     assert.equal(
       files.runtimeTypes.includes(field) || field in AgentDefaults.AgentLoop,
       true,

@@ -27,6 +27,29 @@ describe("Execution behavior", () => {
     expect(output.stderrBytes).toBe(Buffer.byteLength(stderrText));
   });
 
+  test("retains bounded head and tail output without losing total byte accounting", () => {
+    const output = new SeneraProcessOutputBuffer({ maxStdoutBytes: 8 });
+
+    output.pushStdout("abcd");
+    output.pushStdout("efgh");
+    output.pushStdout("ijkl");
+
+    expect(output.stdout()).toBe("abcd\n... Senera output truncated ...\nijkl");
+    expect(output.stdoutBytes).toBe(12);
+    expect(output.stdoutTruncated).toBe(true);
+  });
+
+  test("bounds a single oversized chunk without retaining the full process output", () => {
+    const output = new SeneraProcessOutputBuffer({ maxStdoutBytes: 8 });
+
+    output.pushStdout("a".repeat(10 * 1024 * 1024));
+
+    expect(output.stdoutBytes).toBe(10 * 1024 * 1024);
+    expect(output.stdoutTruncated).toBe(true);
+    expect(Buffer.byteLength(output.stdout())).toBeGreaterThan(8);
+    expect(output.stdout()).toContain("Senera output truncated");
+  });
+
   test("projects host paths into stable POSIX guest paths", () => {
     const hostRoot = path.resolve("workspace");
     const nested = path.join(hostRoot, "dir", "file.txt");

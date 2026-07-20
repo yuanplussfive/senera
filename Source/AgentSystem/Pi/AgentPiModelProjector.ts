@@ -7,6 +7,7 @@ import {
   encodePiProxyModelProviderHeaderValue,
 } from "../PiProxy/AgentPiProxyRuntimeContext.js";
 import { resolveAgentModelCompatibility } from "../ModelEndpoints/ModelCompatibility.js";
+import { resolveAgentLoopConfig } from "../AgentDefaults.js";
 
 const FreeCostModel = {
   input: 0,
@@ -15,7 +16,6 @@ const FreeCostModel = {
   cacheWrite: 0,
 } as const;
 
-const UnlimitedTokenBudget = Number.MAX_SAFE_INTEGER;
 const SeneraPiProxyProviderId = "senera-pi-proxy";
 const SeneraPiProxyApi: AgentPiModelApi = "openai-completions";
 const SeneraPiProxyApiKey = "senera-local";
@@ -26,6 +26,7 @@ export function projectSeneraModelProviderToPi(
 ): AgentPiProviderProjection {
   const capabilities = provider.Capabilities ?? {};
   const compatibility = resolveAgentModelCompatibility(provider);
+  const compaction = resolveAgentLoopConfig(config).PiSessions.Compaction;
   const proxyBaseUrl = buildPiProxyBaseUrl(config);
   const model = {
     id: provider.Model,
@@ -36,8 +37,11 @@ export function projectSeneraModelProviderToPi(
     reasoning: capabilities.Reasoning === true,
     input: capabilities.Vision === true ? ["text", "image"] : ["text"],
     cost: { ...FreeCostModel },
-    contextWindow: positiveOrUnlimited(provider.ContextWindowTokens),
-    maxTokens: positiveOrUnlimited(provider.MaxModelOutputTokens),
+    contextWindow: positiveOrFallback(provider.ContextWindowTokens, compaction.UnknownContextWindowTokens),
+    maxTokens: positiveOrFallback(
+      provider.MaxModelOutputTokens,
+      positiveOrFallback(provider.MaxOutputTokens, compaction.UnknownModelOutputTokens),
+    ),
     compat: {
       supportsDeveloperRole: compatibility.supportsDeveloperRole,
     },
@@ -59,6 +63,6 @@ export function projectSeneraModelProviderToPi(
   };
 }
 
-function positiveOrUnlimited(value: number | undefined): number {
-  return value === undefined || value <= 0 ? UnlimitedTokenBudget : value;
+function positiveOrFallback(value: number | undefined, fallback: number): number {
+  return value === undefined || value <= 0 ? fallback : value;
 }

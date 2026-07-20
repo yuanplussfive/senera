@@ -9,8 +9,12 @@ import {
   type AgentSessionRepository,
 } from "../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
 import { AgentWebSocketServer } from "../Source/AgentSystem/WebSocket/AgentWebSocketServer.js";
+import { AgentSqliteRunEventWriter } from "../Source/AgentSystem/WebSocket/AgentSqliteRunEventWriter.js";
+import { AgentCallbackRunEventWriter } from "../Source/AgentSystem/WebSocket/AgentCallbackRunEventWriter.js";
 import {
   resolvePersistenceConfig,
+  resolveAgentLoopConfig,
+  resolveArtifactsConfig,
   resolveSandboxRuntimeConfig,
   resolveServerConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
@@ -18,6 +22,7 @@ import { AgentModelEndpointClient } from "../Source/AgentSystem/ModelEndpoints/A
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { AgentUserProfileManager } from "../Source/AgentSystem/Session/AgentUserProfile.js";
 import { AgentPluginConfigManager } from "../Source/AgentSystem/Plugin/AgentPluginConfigManager.js";
+import { AgentPluginScanner } from "../Source/AgentSystem/Plugin/AgentPluginScanner.js";
 import {
   DefaultAgentMemoryDatabasePath,
   resolveAgentMemoryDatabasePath,
@@ -32,10 +37,15 @@ import { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
 import { AgentServerEventLogger } from "../Source/AgentSystem/Diagnostics/AgentServerEventLogger.js";
 import { AgentApprovalRuntime } from "../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
 import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
-import { AgentPiSessionBootstrapService } from "../Source/AgentSystem/Pi/AgentPiSessionBootstrapService.js";
+import { AgentPiSessionMutationService } from "../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
 import { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
 import { prepareAgentSandboxRuntime } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
+import { AgentExecutionResourceBroker } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceBroker.js";
+import { resolveAgentExecutionResourceLimits } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceConfig.js";
+import { AgentInteractionInputRuntime } from "../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
+import { createAgentRequestCancellationResource } from "../Source/AgentSystem/Session/AgentSessionRunResource.js";
+import { AgentArtifactRetentionService } from "../Source/AgentSystem/Artifacts/AgentArtifactRetentionService.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
@@ -50,7 +60,7 @@ export interface SeneraServerHandle {
   workspaceRoot: string;
   configPath: string;
   websocketUrl: string;
-  stop(): void;
+  stop(): Promise<void>;
 }
 
 type ServerEventLogDetail = "compact" | "verbose";
@@ -75,23 +85,39 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     source: configSource,
   });
   const approvalRuntime = new AgentApprovalRuntime();
+  const interactionInput = new AgentInteractionInputRuntime();
   const piSessionRegistry = new AgentPiActiveSessionRegistry();
   const projectRuntimeConfig = (config: AgentSystemConfig): AgentSystemConfig =>
     options.runtimeConfigProjection?.(config) ?? config;
   const initialSnapshot = configService.snapshot();
   const initialConfig = projectRuntimeConfig(initialSnapshot.value);
+  const configSnapshot = (): AgentSystemConfig => projectRuntimeConfig(configService.snapshot().value);
   const runtimeSnapshot = () => {
     const snapshot = configService.snapshot();
+    const config = projectRuntimeConfig(snapshot.value);
     return {
       version: snapshot.version,
       revision: snapshot.revision,
-      config: projectRuntimeConfig(snapshot.value),
+      sourceRevisions: {
+        plugins: AgentPluginScanner.sourceRevision(workspaceRoot, config),
+      },
+      config,
     };
   };
-  const configSnapshot = () => runtimeSnapshot().config;
   const sandboxRuntimeService = new AgentSandboxRuntimeService({
     workspaceRoot,
     configSnapshot,
+  });
+  const executionResources = new AgentExecutionResourceBroker({
+    workspaceRoot,
+    limits: () => resolveAgentExecutionResourceLimits(configSnapshot()),
+    onCleanupFailure: (failure) => {
+      logger.error("后台执行资源清理失败", {
+        resourceId: failure.resourceId,
+        reason: failure.reason,
+        error: failure.error instanceof Error ? failure.error.message : String(failure.error),
+      });
+    },
   });
   const runtimeCache = new AgentSystemRuntimeCache({
     workspaceRoot,
@@ -99,8 +125,10 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     snapshot: runtimeSnapshot,
     logger,
     approvalRuntime,
+    interactionInput,
     piSessionRegistry,
     resourcesPath: options.resourcesPath,
+    executionResources,
   });
 
   const loopFactory = (modelProviderId?: string) => {
@@ -110,9 +138,11 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
       const loop = new AgentLoop({
         runtime: lease.runtime,
         model,
+        preparationFingerprint: lease.preparationFingerprint,
       });
 
       return {
+        preparationFingerprint: lease.preparationFingerprint,
         run: async (...args: Parameters<AgentLoop["run"]>) => {
           try {
             return await loop.run(...args);
@@ -126,10 +156,11 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
       throw error;
     }
   };
-  const piSessionBootstrap = new AgentPiSessionBootstrapService({
+  const piSessionMutations = new AgentPiSessionMutationService({
     acquireRuntime: (modelProviderId) => runtimeCache.acquire(modelProviderId),
   });
 
+  const persistence = resolvePersistenceConfig(initialConfig);
   const repository = createRepository(workspaceRoot, initialConfig);
   const memorySourceRepository = new SqliteAgentMemorySourceRepository(
     resolveAgentMemoryDatabasePath(workspaceRoot, DefaultAgentMemoryDatabasePath),
@@ -143,6 +174,11 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     sourceRepository: memorySourceRepository,
     learning: memoryLearning,
   });
+  const artifactRetention = new AgentArtifactRetentionService({
+    workspaceRoot,
+    config: () => resolveArtifactsConfig(configSnapshot()),
+    onError: (error) => logger.warn("artifact.retention.failed", { error: serializeError(error) }),
+  });
   const sessionStore = new AgentSessionStore({ repository });
   sessionStore.hydrate();
 
@@ -151,10 +187,29 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     store: sessionStore,
     memoryService,
     logger,
-    approvalRuntime,
+    runResources: [
+      createAgentRequestCancellationResource("approval", approvalRuntime),
+      createAgentRequestCancellationResource("interaction_input", interactionInput),
+    ],
+    sessionResources: [
+      {
+        id: "execution_resources",
+        release: ({ sessionId }) => executionResources.releaseAll({ workspaceRoot, sessionId }),
+      },
+    ],
     piSessions: piSessionRegistry,
-    piSessionBootstrap,
+    piSessionMutations,
+    runControl: {
+      get settlementTimeoutMs() {
+        return resolveAgentLoopConfig(configSnapshot()).RunSettlementTimeoutMs;
+      },
+    },
+    artifactSessionCleanup: artifactRetention,
   });
+  const eventWriter =
+    persistence.Kind === "sqlite"
+      ? new AgentSqliteRunEventWriter({ databasePath: path.resolve(workspaceRoot, persistence.DatabasePath) })
+      : new AgentCallbackRunEventWriter((events) => sessionManager.recordRunEvents(events));
   const userProfileManager = new AgentUserProfileManager(repository);
   const pluginConfigManager = new AgentPluginConfigManager({
     workspaceRoot,
@@ -171,18 +226,31 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     userProfileManager,
     pluginConfigManager,
     approvalRuntime,
+    interactionInput,
     sandboxRuntimeService,
+    executionResources,
     logger,
     eventLogger,
+    eventWriter,
   });
+  approvalRuntime.setEventSink((event) => server.broadcast(event));
+  interactionInput.setEventSink((event) => server.broadcast(event));
+  executionResources.setEventSink((event) => server.broadcast(event));
 
   server.start();
+  artifactRetention.start();
   startSandboxRuntimePreparation({
     workspaceRoot,
     config: initialConfig,
     sandboxRuntimeService,
     logger,
-    broadcast: (event) => server.broadcast(event),
+    broadcast: (event) => {
+      void server.broadcast(event).catch((error) => {
+        logger.error("沙箱准备事件广播失败", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    },
   });
   if (configSource.kind === "json" && resolveServerConfig(initialConfig).HotReload) {
     const jsonConfigPath = configSource.configPath;
@@ -190,7 +258,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     fs.watchFile(jsonConfigPath, { interval: 500 }, () => {
       try {
         const snapshot = configService.reloadFromSources();
-        server.broadcast({
+        void server.broadcast({
           kind: AgentEventKinds.ConfigReloaded,
           context: {},
           data: {
@@ -200,6 +268,10 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
             databasePath: snapshot.databasePath,
             diagnostics: snapshot.diagnostics,
           },
+        }).catch((error) => {
+          logger.error("配置变更事件广播失败", {
+            error: error instanceof Error ? error.message : String(error),
+          });
         });
       } catch (error) {
         void emitAgentEvent((event: AgentDomainEvent) => server.broadcast(event), {
@@ -216,21 +288,35 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   }
 
   const serverConfig = resolveServerConfig(initialConfig);
+  let stopPromise: Promise<void> | undefined;
 
   return {
     workspaceRoot,
     configPath,
     websocketUrl: `ws://${serverConfig.Host}:${serverConfig.Port}`,
-    stop: () => {
-      if (watchedConfigPath) {
-        fs.unwatchFile(watchedConfigPath);
-      }
-      runtimeCache.clear();
-      server.stop();
-      configService.close();
-      memoryService.close();
-      repository.close();
-    },
+    stop: () =>
+      (stopPromise ??= (async () => {
+        if (watchedConfigPath) fs.unwatchFile(watchedConfigPath);
+        let serverFailure: unknown;
+        try {
+          await server.stop();
+        } catch (error) {
+          serverFailure = error;
+        }
+        try {
+          await Promise.all([
+            runtimeCache.clear(),
+            executionResources.close(),
+            interactionInput.close(),
+            artifactRetention.close(),
+          ]);
+        } finally {
+          configService.close();
+          memoryService.close();
+          repository.close();
+        }
+        if (serverFailure) throw serverFailure;
+      })()),
   };
 }
 

@@ -1,6 +1,8 @@
 import type { AgentEventChannel, AgentEventKind, AgentEventLayer, AgentEventPhase } from "./AgentEventCatalog.js";
 
 export interface AgentEventEnvelope<TKind extends string = AgentEventKind, TData = unknown> {
+  /** Stable identity used for idempotent persistence and replay. */
+  readonly eventId?: string;
   channel: AgentEventChannel;
   kind: TKind;
   layer: AgentEventLayer;

@@ -4,6 +4,27 @@ import type { EndpointRuntime, TextGenerationEndpoint, TextGenerationEndpointRes
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { resolveAgentModelCompatibility } from "./ModelCompatibility.js";
 import { buildOpenAiInput } from "./OpenAiMessageProjection.js";
+import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
+
+const OpenAiResponsesUsageSchema = z
+  .object({
+    input_tokens: z.number().optional(),
+    output_tokens: z.number().optional(),
+    total_tokens: z.number().optional(),
+    input_tokens_details: z
+      .object({
+        cached_tokens: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+    output_tokens_details: z
+      .object({
+        reasoning_tokens: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
 
 const TextPartSchema = z
   .object({
@@ -23,6 +44,7 @@ const ResponsesBodySchema = z
           .passthrough(),
       )
       .optional(),
+    usage: OpenAiResponsesUsageSchema.optional(),
   })
   .passthrough();
 
@@ -30,6 +52,13 @@ const ResponsesStreamEventSchema = z
   .object({
     type: z.string().optional(),
     delta: z.string().optional(),
+    usage: OpenAiResponsesUsageSchema.optional(),
+    response: z
+      .object({
+        usage: OpenAiResponsesUsageSchema.optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
@@ -59,6 +88,7 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
           .map((content) => content.text ?? "")
           .join("") ??
         "",
+      usage: projectResponsesUsage(body.usage),
     };
   }
 
@@ -79,9 +109,13 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
       this.authHeaders(),
       (event) => {
         const parsed = ResponsesStreamEventSchema.parse(event);
-        return parsed.type === "response.output_text.delta" || parsed.type === "response_output_text_delta"
-          ? (parsed.delta ?? "")
-          : "";
+        return {
+          textDelta:
+            parsed.type === "response.output_text.delta" || parsed.type === "response_output_text_delta"
+              ? (parsed.delta ?? "")
+              : "",
+          usage: projectResponsesUsage(parsed.response?.usage ?? parsed.usage),
+        };
       },
       undefined,
       {
@@ -100,4 +134,19 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
   private buildInput(request: AgentLanguageModelRequest) {
     return buildOpenAiInput(request, resolveAgentModelCompatibility(this.runtime.config));
   }
+}
+
+function projectResponsesUsage(
+  usage: z.infer<typeof OpenAiResponsesUsageSchema> | undefined,
+): AgentModelUsageValue | undefined {
+  if (!usage) return undefined;
+  const cacheReadTokens = usage.input_tokens_details?.cached_tokens;
+  return createProviderReportedUsage({
+    inputTokens:
+      usage.input_tokens === undefined ? undefined : Math.max(0, usage.input_tokens - (cacheReadTokens ?? 0)),
+    outputTokens: usage.output_tokens,
+    totalTokens: usage.total_tokens,
+    cacheReadTokens,
+    reasoningTokens: usage.output_tokens_details?.reasoning_tokens,
+  });
 }

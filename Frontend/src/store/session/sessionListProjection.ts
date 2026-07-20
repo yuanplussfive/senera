@@ -52,6 +52,7 @@ export function deleteSessionRuntimeState(state: StoreState, sessionId: string):
   delete state.historyReplayBuffers[sessionId];
   delete state.historyStepBuffers[sessionId];
   delete state.historyEventRunIds[sessionId];
+  delete state.historyActiveRequestIds[sessionId];
   delete state.viewedRunIdBySession[sessionId];
   delete state.missingOnServerIds[sessionId];
   delete state.selectedModelProviderIdsBySession[sessionId];
@@ -67,6 +68,10 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     existing.createdAt = item.createdAt;
     existing.entryCount = item.entryCount;
     existing.messageCount = item.messageCount;
+    existing.activeRequestId = item.activeRequestId;
+    if (state.historyLoadingIds[item.sessionId]) {
+      state.historyActiveRequestIds[item.sessionId] = item.activeRequestId ?? null;
+    }
     settleStaleHistoryLoading(state, existing);
     return;
   }
@@ -81,6 +86,7 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     messageCount: item.messageCount,
     messages: [],
     runs: [],
+    activeRequestId: item.activeRequestId,
   };
   state.sessions[item.sessionId] = session;
   settleStaleHistoryLoading(state, session);
@@ -101,6 +107,7 @@ function settleStaleHistoryLoading(state: StoreState, session: SessionRecord): v
   delete state.historyReplayBuffers[session.sessionId];
   delete state.historyStepBuffers[session.sessionId];
   delete state.historyEventRunIds[session.sessionId];
+  delete state.historyActiveRequestIds[session.sessionId];
 }
 
 function syncActiveSessionAfterListIngest(state: StoreState, visibleItems: readonly SessionListItem[]): void {

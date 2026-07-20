@@ -7,9 +7,9 @@ import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/Age
 import { AgentPiHarnessSession } from "../../../Source/AgentSystem/Pi/AgentPiHarnessSession.js";
 import { AgentPiRunCollector } from "../../../Source/AgentSystem/Pi/AgentPiRunCollector.js";
 import {
-  AgentPiSessionBootstrapService,
-  type AgentPiSessionBootstrapRuntime,
-} from "../../../Source/AgentSystem/Pi/AgentPiSessionBootstrapService.js";
+  AgentPiSessionMutationService,
+  type AgentPiSessionMutationRuntime,
+} from "../../../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
 import type { AgentPiSession } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
 import {
   AgentPiTurnExecutor,
@@ -96,86 +96,50 @@ describe("Pi streaming stability", () => {
     expect(promptWasBlocked).toBe(true);
   });
 
-  test("releases the runtime lease after Pi session bootstrap", async () => {
+  test("traces Pi session mutations and releases their runtime lease", async () => {
     let releases = 0;
-    let disposed = false;
+    const events: Array<{ kind: string; data: Record<string, unknown> }> = [];
     const runtime = {
-      agentLoopConfig: {
-        PiSessionCreateTimeoutMs: 1_000,
-      },
       services: {
         pi: {
-          createSession: async () => ({
-            session: {
-              dispose: () => {
-                disposed = true;
-              },
-              getActiveToolNames: () => [],
-            },
-            piSessionId: "bootstrap-session",
-            historyMigrationRequired: false,
+          rewindSession: async () => true,
+        },
+      },
+    } as unknown as AgentPiSessionMutationRuntime;
+    const mutations = new AgentPiSessionMutationService({
+      acquireRuntime: () => ({
+        runtime,
+        release: () => {
+          releases += 1;
+        },
+      }),
+    });
+
+    await expect(
+      mutations.rewind({
+        sessionId: "rewind-session",
+        entryId: "turn-boundary",
+        onEvent: (event) => {
+          events.push(event as (typeof events)[number]);
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(releases).toBe(1);
+    expect(events).toEqual([
+      expect.objectContaining({
+        kind: AgentEventKinds.PiTrace,
+        data: expect.objectContaining({
+          eventType: "session.rewind.completed",
+          payload: expect.objectContaining({
+            mutated: true,
+            runtimeAcquireMs: expect.any(Number),
+            operationMs: expect.any(Number),
+            durationMs: expect.any(Number),
           }),
-        },
-      },
-    } as unknown as AgentPiSessionBootstrapRuntime;
-    const bootstrap = new AgentPiSessionBootstrapService({
-      acquireRuntime: () => ({
-        runtime,
-        release: () => {
-          releases += 1;
-        },
+        }),
       }),
-    });
-
-    await bootstrap.bootstrap({
-      sessionId: "bootstrap-session",
-      modelProviderId: "deepseek-pro",
-    });
-
-    expect(disposed).toBe(true);
-    expect(releases).toBe(1);
-  });
-
-  test("retains a bootstrap lease until a timed-out session creation settles", async () => {
-    let releases = 0;
-    let disposed = false;
-    let resolveSession!: (value: unknown) => void;
-    const lateSession = new Promise<unknown>((resolve) => {
-      resolveSession = resolve;
-    });
-    const runtime = {
-      agentLoopConfig: {
-        PiSessionCreateTimeoutMs: 1,
-      },
-      services: {
-        pi: {
-          createSession: async () => lateSession,
-        },
-      },
-    } as unknown as AgentPiSessionBootstrapRuntime;
-    const bootstrap = new AgentPiSessionBootstrapService({
-      acquireRuntime: () => ({
-        runtime,
-        release: () => {
-          releases += 1;
-        },
-      }),
-    });
-
-    await bootstrap.bootstrap({ sessionId: "late-bootstrap-session" });
-    expect(releases).toBe(0);
-
-    resolveSession({
-      session: {
-        dispose: () => {
-          disposed = true;
-        },
-      },
-    });
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    expect(disposed).toBe(true);
-    expect(releases).toBe(1);
+    ]);
   });
 
   test("bounds diagnostic Pi trace payloads before event serialization", () => {
@@ -211,10 +175,10 @@ describe("Pi streaming stability", () => {
       nested: { one: { two: { three: { four: unknown } } } };
     };
 
-    expect(payload.text.length).toBeLessThan(4_120);
+    expect(payload.text.length).toBeLessThan(1_050);
     expect(payload.text).toContain("[truncated]");
-    expect(payload.entries).toHaveLength(33);
-    expect(payload.nested.one.two.three.four).toBe("[truncated]");
+    expect(payload.entries.length).toBeLessThanOrEqual(24);
+    expect(JSON.stringify(payload).length).toBeLessThan(20_000);
   });
 
   test("does not read every property from a wide trace payload", () => {
@@ -242,7 +206,7 @@ describe("Pi streaming stability", () => {
     }
 
     expect(reads).toBeLessThan(40);
-    expect(Object.keys(trace.data.payload as Record<string, unknown>)).toHaveLength(33);
+    expect(Object.keys(trace.data.payload as Record<string, unknown>)).toHaveLength(25);
   });
 });
 
@@ -314,6 +278,10 @@ class BackpressurePiSession {
 
   async setHistory(): Promise<void> {}
 
+  async markTurnBoundary(): Promise<string> {
+    return "backpressure-boundary";
+  }
+
   async prompt(): Promise<void> {
     this.resolvePromptStarted();
     await this.listener?.(messageUpdate("partial"));
@@ -346,7 +314,7 @@ function createTurnRuntime(session: BackpressurePiSession): AgentPiTurnRuntimePo
     services: {
       pi: {
         model: () => createModel(),
-        createSession: async () => ({
+        leaseTurn: async () => ({
           session: session as unknown as AgentPiSession,
           piSessionId: "backpressure-session",
           historyMigrationRequired: false,
@@ -359,7 +327,7 @@ function createTurnRuntime(session: BackpressurePiSession): AgentPiTurnRuntimePo
       TimeoutMs: 1_000,
     } as AgentPiTurnRuntimePort["modelProviderConfig"],
     agentLoopConfig: {
-      PiSessionCreateTimeoutMs: 1_000,
+      PiTurnLeaseTimeoutMs: 1_000,
     },
     tokenEstimator: {
       estimate: (text: string) => ({ tokenCount: text.length }),

@@ -21,6 +21,32 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
     message: "任务开始",
     tokens: [readRequestHandle(event.requestId)],
   }),
+  "run.cancellation.progress": (event) => {
+    const data = normalizeRecord(event.data);
+    return {
+      message: "任务取消进度",
+      tokens: [
+        readRequestHandle(event.requestId),
+        readStringToken(data.stage),
+        readStringToken(data.component),
+        typeof data.durationMs === "number" ? `${data.durationMs}ms` : undefined,
+      ],
+    };
+  },
+  "interaction.input.requested": (event) => {
+    const data = normalizeRecord(event.data);
+    return {
+      message: "工具等待用户输入",
+      tokens: [formatStepToken(event.step), readStringToken(data.toolName), readStringToken(data.interactionId)],
+    };
+  },
+  "interaction.input.resolved": (event) => {
+    const data = normalizeRecord(event.data);
+    return {
+      message: "工具用户输入已处理",
+      tokens: [formatStepToken(event.step), readStringToken(data.toolName), readStringToken(data.action)],
+    };
+  },
   "prompt.summary": (event) => {
     const data = normalizeRecord(event.data);
     return {

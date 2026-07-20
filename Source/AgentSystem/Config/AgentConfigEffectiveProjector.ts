@@ -97,15 +97,14 @@ function projectResolvedActionPlanner(config: AgentSystemConfig): NonNullable<Ag
     MaxRepairAttempts: resolved.MaxRepairAttempts,
     Evidence: resolved.Evidence,
     Client: projectResolvedPlannerClient(resolved.Client),
-    TurnUnderstandingClient: projectResolvedPlannerClient(resolved.TurnUnderstandingClient),
     PlanningClient: projectResolvedPlannerClient(resolved.PlanningClient),
+    FinalAnswerClient: projectResolvedPlannerClient(resolved.FinalAnswerClient),
   };
 }
 
 function projectResolvedPlannerClient(client: ReturnType<typeof resolveActionPlannerConfig>["Client"]) {
   return {
     ModelProviderId: client.ModelProviderId,
-    Provider: client.Provider,
     Temperature: client.Temperature,
     MaxTokens: client.MaxTokens,
   };
@@ -130,6 +129,22 @@ function projectResolvedToolExecution(config: AgentSystemConfig): NonNullable<Ag
       AgentDefaults.ToolExecution.TimeoutSeconds,
     MaxStdoutBytes: resolved.MaxStdoutBytes,
     MaxStderrBytes: resolved.MaxStderrBytes,
+    Environment: {
+      Inherit: resolved.Environment.Inherit,
+      IncludeOnly: [...resolved.Environment.IncludeOnly],
+      Exclude: [...resolved.Environment.Exclude],
+      Set: { ...resolved.Environment.Set },
+    },
+    Resources: {
+      MaxActive: resolved.Resources.MaxActive,
+      MaxBufferedBytes: resolved.Resources.MaxBufferedBytes,
+      MaxInputBytes: resolved.Resources.MaxInputBytes,
+      MaxWaitSeconds: resolved.Resources.MaxWaitSeconds,
+      IdleTtlSeconds: resolved.Resources.IdleTtlSeconds,
+      TerminalTtlSeconds: resolved.Resources.TerminalTtlSeconds,
+      SweepIntervalSeconds: resolved.Resources.SweepIntervalSeconds,
+      TerminationGraceSeconds: resolved.Resources.TerminationGraceSeconds,
+    },
   };
 }
 

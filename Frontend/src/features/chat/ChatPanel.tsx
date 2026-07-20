@@ -45,9 +45,12 @@ export function ChatPanel({
       <ChatHeader
         title={session?.title ?? DEFAULT_SESSION_TITLE}
         runStatus={currentRun?.status}
+        waitingForApproval={currentRun?.activeFlags?.includes("waiting_for_approval") === true}
+        waitingForInput={currentRun?.activeFlags?.includes("waiting_for_input") === true}
         sandboxStatus={runtime.sandboxStatus}
         onOpenSessionPanel={navigationActions?.onOpenSessionPanel}
         onOpenWorkflowPanel={navigationActions?.onOpenWorkflowPanel}
+        onOpenTerminalPanel={navigationActions?.onOpenTerminalPanel}
       />
       <AnimatePresence mode="wait" initial={false}>
         {shouldShowHistoryRecovery ? (
@@ -85,11 +88,13 @@ export function ChatPanel({
                 assistantAvatarIcon={assistantAvatarIcon}
                 selectedModelProvider={selectedModelProvider}
                 userProfile={userProfile}
+                onForkFromMessage={messageActions.onForkFromMessage}
                 onRegenerate={messageActions.onRegenerate}
                 onEditUserMessage={messageActions.onEditUserMessage}
                 onDeleteFromMessage={messageActions.onDeleteFromMessage}
                 onViewWorkflow={messageActions.onViewWorkflow}
                 onResolveApproval={messageActions.onResolveApproval}
+                onResolveInteractionInput={messageActions.onResolveInteractionInput}
                 approvalDisabled={runtime.socketStatus !== "open"}
               />
             </ErrorBoundary>

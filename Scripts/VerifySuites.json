@@ -3,7 +3,7 @@
   "suites": {
     "workspace": {
       "description": "Root workspace dependency and install-boundary governance.",
-      "patterns": ["VerifyWorkspaceDependencyGovernance.js"]
+      "patterns": ["VerifyWorkspaceDependencyGovernance.js", "VerifyCommitMessagePolicy.js"]
     },
     "contracts": {
       "description": "Static architecture contracts that should fail before runtime tests.",
@@ -23,10 +23,10 @@
         "VerifyFrontendRuntimeI18n.js",
         "VerifyPluginArtifactPolicies.js",
         "VerifyPluginReferenceValidation.js",
-        "VerifyPluginProcessRuntimeManifest.js",
+        "VerifyPluginRuntimeManifest.js",
         "VerifyToolExecutionPolicy.js",
         "VerifyWorkspaceApplyPatchTool.js",
-        "VerifyPluginProcessBundleProjection.js",
+        "VerifyPluginRuntimeBundleProjection.js",
         "VerifyToolSignatureMappingAndPlanValidation.js",
         "VerifyModelProviderEndpointConfig.js",
         "VerifyOpenAiCompatibleMessageProjection.js",
@@ -38,8 +38,8 @@
         "VerifyMemorySourceIdempotency.js",
         "VerifyPiResourceProjection.js",
         "VerifyPiNativeWorkflowResourceRouting.js",
-        "VerifyPiSessionBootstrap.js",
-        "VerifyPiSessionManagerBootstrap.js",
+        "VerifyPiTurnLease.js",
+        "VerifyPiSessionLazyLifecycle.js",
         "VerifyPiHarnessSessionReuse.js",
         "VerifyPiRuntimeQueueSteering.js",
         "VerifyPiAgentLoopSubstrate.js",
@@ -83,7 +83,12 @@
     },
     "release": {
       "description": "Container and desktop release metadata and runtime policies.",
-      "patterns": ["VerifyDockerRuntimeSandboxPolicy.js", "VerifyProductReleaseInfo.js"]
+      "patterns": [
+        "VerifyDockerNativeSqlite.js",
+        "VerifyDockerPluginRuntime.js",
+        "VerifyDockerRuntimeSandboxPolicy.js",
+        "VerifyProductReleaseInfo.js"
+      ]
     },
     "all-local": {
       "description": "Every maintained local verification script except the suite runner.",

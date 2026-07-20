@@ -137,6 +137,7 @@ export class AgentActionPlannerLedgerUpdater {
           display: entry.display,
           label: entry.label,
           ...artifactReference,
+          artifactUri: entry.plannerMemory.artifactUri ?? artifactReference.artifactUri,
           source: entry.source,
           confidence: entry.confidence,
           modelSlots: entry.modelSlots,

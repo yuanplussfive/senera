@@ -41,6 +41,9 @@ export type AgentModelRuntimeDefaultsConfig = {
   FirstTokenTimeoutSeconds: number;
   MaxRequestSeconds: number;
   MaxNetworkRetries: number;
+  MaxResponseBytes: number;
+  MaxSseEventBytes: number;
+  MaxSseEvents: number;
 };
 
 export type ResolvedAgentModelRuntimeDefaultsConfig = AgentModelRuntimeDefaultsConfig & {
@@ -68,12 +71,12 @@ export type AgentToolLearningDefaultsConfig = Required<Omit<AgentToolLearningCon
 };
 
 export type AgentActionPlannerDefaultsConfig = Required<
-  Omit<AgentActionPlannerConfig, "Evidence" | "Client" | "TurnUnderstandingClient" | "PlanningClient">
+  Omit<AgentActionPlannerConfig, "Evidence" | "Client" | "PlanningClient" | "FinalAnswerClient">
 > & {
   Evidence: Required<NonNullable<AgentActionPlannerConfig["Evidence"]>>;
   Client: AgentActionPlannerClientDefaultsConfig;
-  TurnUnderstandingClient: AgentActionPlannerClientDefaultsConfig;
   PlanningClient: AgentActionPlannerClientDefaultsConfig;
+  FinalAnswerClient: AgentActionPlannerClientDefaultsConfig;
 };
 
 export interface ResolvedAgentDefaultsConfig {

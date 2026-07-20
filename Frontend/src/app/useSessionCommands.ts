@@ -52,7 +52,6 @@ export function useSessionCommands({
     const ok = send({
       type: "session.create",
       sessionId,
-      modelProviderId: defaultModelProviderId ?? undefined,
     });
     if (!ok) {
       toast.error(frontendMessage("session.createDisconnected"));

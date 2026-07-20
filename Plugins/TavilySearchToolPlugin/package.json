@@ -4,7 +4,7 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "tool": "node index.js"
+    "mcp": "node index.js"
   },
   "dependencies": {
     "@senera/tool-plugin-sdk": "file:../../Packages/ToolPluginSdk"

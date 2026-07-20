@@ -35,26 +35,23 @@ test("useChatCommands creates a missing session and sends its first message as o
 
   act(() => handleRef.current.sendMessage("Inspect the workspace"));
 
-  const [createRequest, messageRequest] = send.mock.calls.map(([request]) => request);
-  expect(createRequest).toEqual({
-    type: "session.create",
-    sessionId: expect.any(String),
-    modelProviderId: "model-primary",
-  });
+  expect(send).toHaveBeenCalledTimes(1);
+  const messageRequest = send.mock.calls[0][0];
   expect(messageRequest).toMatchObject({
     type: "session.message",
-    sessionId: createRequest.sessionId,
+    sessionId: expect.any(String),
     requestId: expect.any(String),
     modelProviderId: "model-primary",
     input: "Inspect the workspace",
+    disposition: "create_if_missing",
   });
-  expect(serverKnownSessionIdsRef.current).toContain(createRequest.sessionId);
+  expect(serverKnownSessionIdsRef.current).toContain(messageRequest.sessionId);
   expect(lastSendRef.current).toMatchObject({
-    sessionId: createRequest.sessionId,
+    sessionId: messageRequest.sessionId,
     requestId: messageRequest.requestId,
     input: "Inspect the workspace",
   });
-  expect(useStore.getState().sessions[createRequest.sessionId]).toMatchObject({
+  expect(useStore.getState().sessions[messageRequest.sessionId]).toMatchObject({
     title: "Inspect the workspace",
     messages: [expect.objectContaining({ content: "Inspect the workspace", role: "user" })],
   });
@@ -80,35 +77,37 @@ test("useChatCommands blocks sends while history is recovering without mutating 
   );
 });
 
-test("useChatCommands rolls back failed truncate queues and preserves retry context", () => {
-  const pendingAfterTruncateRef = { current: [] };
+test("useChatCommands leaves local history unchanged when regenerate delivery fails", () => {
+  const sessionId = "session-a";
+  const requestId = "request-a";
+  registerTestSession(sessionId);
+  useStore.getState().appendUserMessage(sessionId, requestId, "retry input");
   const send = vi.fn(() => false);
   const handleRef = { current: null };
   renderChatCommands({
-    activeSessionId: "session-a",
+    activeSessionId: sessionId,
     handleRef,
-    pendingAfterTruncateRef,
     send,
   });
-  const pending = {
-    sessionId: "session-a",
-    requestId: "request-a",
-    nextInput: "retry input",
-    modelProviderId: "model-a",
+  const assistantMessage = {
+    id: "assistant-a",
+    role: "assistant",
+    content: "answer",
+    createdAt: "2026-07-11T00:00:00.000Z",
+    requestId,
   };
 
-  let accepted = true;
-  act(() => {
-    accepted = handleRef.current.sendAfterTruncate(pending);
-  });
+  act(() => handleRef.current.regenerateMessage(assistantMessage));
 
-  expect(accepted).toBe(false);
-  expect(pendingAfterTruncateRef.current).toEqual([]);
-  expect(send).toHaveBeenCalledWith({
-    type: "session.truncate_from",
-    sessionId: "session-a",
-    requestId: "request-a",
-  });
+  expect(useStore.getState().sessions[sessionId].messages).toHaveLength(1);
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "session.regenerate",
+      sessionId,
+      fromRequestId: requestId,
+      input: "retry input",
+    }),
+  );
   expect(readTestToastCalls()).toContainEqual(
     expect.objectContaining({
       variant: "error",
@@ -117,19 +116,17 @@ test("useChatCommands rolls back failed truncate queues and preserves retry cont
   );
 });
 
-test("useChatCommands regenerates from the matching user message and validates edits", () => {
+test("useChatCommands regenerates from the matching user message immediately with one request", () => {
   const sessionId = "session-edit";
   const requestId = "request-original";
   registerTestSession(sessionId);
   useStore.getState().appendUserMessage(sessionId, requestId, "Original input");
   useStore.setState({ selectedModelProviderId: "model-edits" });
   const send = vi.fn(() => true);
-  const pendingAfterTruncateRef = { current: [] };
   const handleRef = { current: null };
   renderChatCommands({
     activeSessionId: sessionId,
     handleRef,
-    pendingAfterTruncateRef,
     send,
   });
   const assistantMessage = {
@@ -141,28 +138,87 @@ test("useChatCommands regenerates from the matching user message and validates e
   };
 
   act(() => handleRef.current.regenerateMessage(assistantMessage));
-  expect(pendingAfterTruncateRef.current).toContainEqual({
-    sessionId,
-    requestId,
-    nextInput: "Original input",
-    attachments: undefined,
-    modelProviderId: "model-edits",
-  });
+  expect(send).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      type: "session.regenerate",
+      sessionId,
+      fromRequestId: requestId,
+      input: "Original input",
+      modelProviderId: "model-edits",
+    }),
+  );
+  expect(useStore.getState().sessions[sessionId].messages).toEqual([
+    expect.objectContaining({ role: "user", content: "Original input" }),
+  ]);
+  expect(useStore.getState().sessions[sessionId].runs).toHaveLength(1);
+  expect(send.mock.calls.map(([request]) => request.type)).toEqual(["session.regenerate"]);
+});
 
-  act(() => handleRef.current.editUserMessage(assistantMessage, "   "));
+test("useChatCommands requests a non-destructive fork without creating a local placeholder", () => {
+  const sessionId = "session-source";
+  registerTestSession(sessionId);
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: sessionId, handleRef, send });
+  const message = {
+    id: "assistant-a",
+    role: "assistant",
+    content: "Answer A",
+    createdAt: "2026-07-17T00:00:00.000Z",
+    requestId: "request-a",
+  };
+
+  act(() => handleRef.current.forkFromMessage(message));
+
+  expect(send).toHaveBeenCalledWith({
+    type: "session.fork",
+    sourceSessionId: sessionId,
+    sessionId: expect.any(String),
+    throughRequestId: "request-a",
+  });
+  expect(useStore.getState().sessionOrder).toEqual([sessionId]);
+  expect(useStore.getState().activeSessionId).toBe(sessionId);
+});
+
+test("useChatCommands validates and applies edited user messages through regeneration", () => {
+  const sessionId = "session-edit";
+  const requestId = "request-original";
+  registerTestSession(sessionId);
+  useStore.getState().appendUserMessage(sessionId, requestId, "Original input");
+  useStore.setState({ selectedModelProviderId: "model-edits" });
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({
+    activeSessionId: sessionId,
+    handleRef,
+    send,
+  });
+  const userMessage = useStore.getState().sessions[sessionId].messages[0];
+
+  act(() => handleRef.current.editUserMessage(userMessage, "   "));
   expect(readTestToastCalls()).toContainEqual(
     expect.objectContaining({
       variant: "error",
       title: frontendMessage("chat.contentRequired"),
     }),
   );
+  expect(send).not.toHaveBeenCalled();
 
-  act(() => handleRef.current.editUserMessage(assistantMessage, "  Revised input  "));
-  expect(pendingAfterTruncateRef.current.at(-1)).toMatchObject({
-    sessionId,
-    requestId,
-    nextInput: "Revised input",
-  });
+  act(() => handleRef.current.editUserMessage(userMessage, "  Updated input  "));
+
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "session.regenerate",
+      sessionId,
+      fromRequestId: requestId,
+      input: "Updated input",
+      modelProviderId: "model-edits",
+    }),
+  );
+  expect(useStore.getState().sessions[sessionId].messages).toEqual([
+    expect.objectContaining({ role: "user", content: "Updated input" }),
+  ]);
+  expect(useStore.getState().sessions[sessionId].runs).toHaveLength(1);
 });
 
 test("useSessionCommands creates, renames, and synchronizes sessions only after successful delivery", () => {
@@ -182,7 +238,6 @@ test("useSessionCommands creates, renames, and synchronizes sessions only after 
   expect(created).toMatchObject({
     type: "session.create",
     sessionId: expect.any(String),
-    modelProviderId: "model-session",
   });
   expect(serverKnownSessionIdsRef.current).toContain(created.sessionId);
   expect(useStore.getState().activeSessionId).toBe(created.sessionId);
@@ -242,7 +297,6 @@ function renderChatCommands({
   activeSessionId,
   handleRef,
   lastSendRef = { current: null },
-  pendingAfterTruncateRef = { current: [] },
   send,
   serverKnownSessionIdsRef = { current: new Set([activeSessionId].filter(Boolean)) },
 }) {
@@ -252,7 +306,6 @@ function renderChatCommands({
       appendUserMessage: useStore.getState().appendUserMessage,
       handleRef,
       lastSendRef,
-      pendingAfterTruncateRef,
       registerSession: useStore.getState().registerCreatingSession,
       send,
       serverKnownSessionIdsRef,

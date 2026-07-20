@@ -41,9 +41,31 @@ export interface SeneraMicrosandboxExecRequest {
 export type SeneraMicrosandboxExecEvent =
   { kind: "stdout"; data: Buffer } | { kind: "stderr"; data: Buffer } | { kind: "exit"; code: number };
 
+export interface SeneraMicrosandboxTerminalRequest {
+  command: string;
+  args: readonly string[];
+  cwd: string;
+  env: Record<string, string>;
+}
+
+export type SeneraMicrosandboxTerminalEvent =
+  | { kind: "started"; pid: number }
+  | { kind: "output"; stream: "stdout" | "stderr"; data: Buffer }
+  | { kind: "exit"; code: number };
+
+export interface SeneraMicrosandboxTerminalHandle {
+  readonly events: AsyncIterable<SeneraMicrosandboxTerminalEvent>;
+  write(data: Uint8Array | string): Promise<void>;
+  signal(signal: number): Promise<void>;
+  kill(): Promise<void>;
+}
+
 export interface SeneraMicrosandboxSession {
   exec(request: SeneraMicrosandboxExecRequest): AsyncIterable<SeneraMicrosandboxExecEvent>;
+  openTerminal?(request: SeneraMicrosandboxTerminalRequest): Promise<SeneraMicrosandboxTerminalHandle>;
+  /** Requests graceful session shutdown and rejects if the adapter cannot confirm it in time. */
   stop(timeoutMs: number): Promise<void>;
+  /** Force-terminates a session after graceful shutdown fails or is unconfirmed. */
   kill(): Promise<void>;
 }
 

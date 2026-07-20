@@ -1,9 +1,13 @@
 import {
   EventKinds,
+  type ExecutionResourceOutputData,
+  type ExecutionResourceStateData,
   type AssistantMessageCreatedData,
   type ToolCallResultDetailData,
   type ToolCallCompletedData,
   type ToolCallFailedData,
+  type ToolCallOutputData,
+  type ToolCallProgressData,
   type ToolCallStartedData,
   type ToolCallsPlannedData,
 } from "../../api/eventTypes";
@@ -15,6 +19,7 @@ import { alignRunDisplayTarget, touchRun } from "./sessionRunProjection";
 import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
 import { toolBatchFromEvent } from "./timelineProjection";
 import { mergeToolResultPresentation, readToolResultPresentation } from "./toolResultPresentation";
+import { projectToolOutput, projectToolProgress } from "./toolRuntimeProjection";
 
 export const runToolAndAnswerEventHandlers = {
   [EventKinds.AssistantMessageCreated]: (state, env) => {
@@ -96,6 +101,63 @@ export const runToolAndAnswerEventHandlers = {
       toolBatch: toolBatchFromEvent(env, data),
       toolArgs: run.pendingToolArgsByName[data.toolName],
     });
+  },
+
+  [EventKinds.ToolCallOutput]: (state, env) => {
+    const run = readCurrentRun(state, env);
+    if (!run) return;
+    const data = env.data as ToolCallOutputData;
+    const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
+    if (!step) return;
+    projectToolOutput(step, data);
+    touchRun(run);
+  },
+
+  [EventKinds.ToolCallProgress]: (state, env) => {
+    const run = readCurrentRun(state, env);
+    if (!run) return;
+    const data = env.data as ToolCallProgressData;
+    const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
+    if (!step) return;
+    projectToolProgress(step, data);
+    touchRun(run);
+  },
+
+  [EventKinds.ExecutionResourceOutput]: (state, env) => {
+    const run = readCurrentRun(state, env);
+    if (!run) return;
+    const data = env.data as ExecutionResourceOutputData;
+    if (!data.toolCallId) return;
+    const step = run.steps.find((item) => item.id === `tool-${data.toolCallId}`);
+    if (!step) return;
+    projectToolOutput(step, {
+      toolName: data.toolName ?? step.toolName ?? "ExecutionResource",
+      callId: data.toolCallId,
+      stream: data.stream,
+      outputSequence: data.cursor,
+      text: data.text,
+      byteLength: data.byteLength,
+      totalBytes: data.totalBytes,
+      resourceId: data.resourceId,
+    });
+    touchRun(run);
+  },
+
+  [EventKinds.ExecutionResourceState]: (state, env) => {
+    const run = readCurrentRun(state, env);
+    if (!run) return;
+    const data = env.data as ExecutionResourceStateData;
+    if (!data.toolCallId) return;
+    const step = run.steps.find((item) => item.id === `tool-${data.toolCallId}`);
+    if (!step) return;
+    projectToolProgress(step, {
+      toolName: data.toolName ?? step.toolName ?? "ExecutionResource",
+      callId: data.toolCallId,
+      progressSequence: data.cursor,
+      message: data.reason ? `${data.state}: ${data.reason}` : data.state,
+      resourceId: data.resourceId,
+    });
+    touchRun(run);
   },
 
   [EventKinds.ToolCallCompleted]: (state, env) => {

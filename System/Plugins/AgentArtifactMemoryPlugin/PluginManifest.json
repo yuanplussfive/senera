@@ -1,8 +1,9 @@
 {
+  "ManifestVersion": 2,
   "Plugin": {
     "Name": "AgentArtifactMemoryPlugin",
     "Title": "Artifact Memory Reader",
-    "Version": "0.1.0",
+    "Version": "0.3.0",
     "Kind": "Tool",
     "Description": "Loads persisted artifact memories by canonical artifact URI."
   },
@@ -13,6 +14,7 @@
   "Tools": [
     {
       "Name": "ArtifactMemoryReadTool",
+      "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
       "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["filesystem:read:artifacts"],
@@ -26,6 +28,10 @@
         "Workspace": "ReadOnly",
         "LocalFallback": "Deny"
       },
+      "Observation": {
+        "MaxTokens": 6000,
+        "IncludeArtifactProjection": false
+      },
       "Artifacts": {
         "Evidence": [
           {
@@ -37,7 +43,12 @@
               "status": "$.status",
               "message": "$.message",
               "availableRefCount": "$.availableRefCount",
-              "memoryCount": "$.memoryCount"
+              "memoryCount": "$.memoryCount",
+              "loadedRefs": "$.memories.item[*].ref",
+              "unavailableRefCount": "$.unavailableRefCount",
+              "oversizedRefCount": "$.oversizedRefCount",
+              "failedRefCount": "$.failedRefCount",
+              "refStatuses": "$.refResults.item[*].status"
             },
             "Identity": {
               "Parts": ["artifactUri", "status"]
@@ -52,24 +63,51 @@
             "Metadata": {
               "status": "$.status",
               "availableRefCount": "$.availableRefCount",
-              "memoryCount": "$.memoryCount"
+              "memoryCount": "$.memoryCount",
+              "unavailableRefCount": "$.unavailableRefCount",
+              "oversizedRefCount": "$.oversizedRefCount",
+              "failedRefCount": "$.failedRefCount"
             },
             "ModelProjection": {
-              "Slots": ["artifactUri", "artifactId", "status", "message", "availableRefCount", "memoryCount"]
+              "Slots": [
+                "artifactUri",
+                "artifactId",
+                "status",
+                "message",
+                "availableRefCount",
+                "memoryCount",
+                "loadedRefs",
+                "unavailableRefCount",
+                "oversizedRefCount",
+                "failedRefCount",
+                "refStatuses"
+              ]
             },
             "PlannerMemory": {
-              "Facts": ["artifactUri", "artifactId", "status", "availableRefCount", "memoryCount"],
-              "ArtifactRefs": ["evidence", "projection"]
+              "Facts": [
+                "artifactUri",
+                "artifactId",
+                "status",
+                "availableRefCount",
+                "memoryCount",
+                "loadedRefs",
+                "unavailableRefCount",
+                "oversizedRefCount",
+                "failedRefCount",
+                "refStatuses"
+              ],
+              "ArtifactUri": "artifactUri",
+              "ArtifactRefsSlot": "loadedRefs"
             },
             "Projection": {
-              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.artifactUri }} (loaded {{ e.slots.memoryCount }} refs)\n{% endfor %}",
-              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} artifact memory\n  uri: {{ e.slots.artifactUri }}\n  status: {{ e.slots.status }}\n  availableRefs: {{ e.slots.availableRefCount }}\n  loadedRefs: {{ e.slots.memoryCount }}\n  message: {{ e.slots.message }}\n{% endfor %}"
+              "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.status }} {{ e.slots.artifactUri }} (loaded={{ e.slots.memoryCount }} unavailable={{ e.slots.unavailableRefCount }} oversized={{ e.slots.oversizedRefCount }} failed={{ e.slots.failedRefCount }})\n{% endfor %}",
+              "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} artifact memory\n  uri: {{ e.slots.artifactUri }}\n  status: {{ e.slots.status }}\n  availableRefs: {{ e.slots.availableRefCount }}\n  loadedRefs: {{ e.slots.memoryCount }}\n  unavailableRefs: {{ e.slots.unavailableRefCount }}\n  oversizedRefs: {{ e.slots.oversizedRefCount }}\n  failedRefs: {{ e.slots.failedRefCount }}\n  message: {{ e.slots.message }}\n{% endfor %}"
             }
           }
         ],
         "Summary": {
           "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
-          "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+          "ArtifactTemplate": "{% for artifact in result.artifacts.item %}- sourceArtifactUri: {{ artifact.artifactUri }}\n  status: {{ artifact.status }}\n  loadedRefs: {{ artifact.memoryCount }}\n  unavailableRefs: {{ artifact.unavailableRefCount }}\n  oversizedRefs: {{ artifact.oversizedRefCount }}\n  failedRefs: {{ artifact.failedRefCount }}\n{% for read in artifact.refResults.item %}  - ref={{ read.ref }} status={{ read.status }} message={{ read.message }}{% if read.alternativeRef %} alternativeRef={{ read.alternativeRef }}{% endif %}\n{% endfor %}{% for memory in artifact.memories.item %}\n## {{ memory.ref }} bytes={{ memory.range.startByte }}..{{ memory.range.endByte }}/{{ memory.range.totalBytes }} complete={{ memory.range.complete }}{% if memory.range.nextStartByte %} nextStartByte={{ memory.range.nextStartByte }}{% endif %}\n{{ memory.content }}\n{% endfor %}{% endfor %}"
         }
       },
       "Search": {
@@ -83,7 +121,16 @@
               "Actions": ["read", "hydrate", "inspect"],
               "Targets": ["artifact-memory", "artifact-projection", "artifact-evidence"],
               "Inputs": ["artifact-uri", "artifact-uri-list", "artifact-ref"],
-              "Outputs": ["artifact-memory", "projection-text", "evidence-json"],
+              "Outputs": [
+                "artifact-memory",
+                "projection-text",
+                "evidence-json",
+                "raw-json",
+                "raw-blob",
+                "raw-preview",
+                "stdout-text",
+                "stderr-text"
+              ],
               "Evidence": ["artifact-memory"],
               "Effects": ["read-only"]
             },
@@ -106,6 +153,13 @@
           "只需要轻量 facts 就能回答时不要读取完整 artifact。"
         ],
         "Tags": ["证据读取", "产物记忆", "上下文恢复", "历史资料"]
+      },
+      "Runtime": {
+        "Lifecycle": "Immediate",
+        "ProtocolVersion": 2,
+        "Capabilities": {
+          "Cancellation": true
+        }
       }
     }
   ],

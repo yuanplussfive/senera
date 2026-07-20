@@ -1,5 +1,14 @@
 import type { ReactNode } from "react";
-import { ArrowUpDown, BrainCircuit, Database, Eye, ImageIcon, MessageCircle, ShieldCheck } from "lucide-react";
+import {
+  Activity,
+  ArrowUpDown,
+  BrainCircuit,
+  Database,
+  Eye,
+  ImageIcon,
+  MessageCircle,
+  ShieldCheck,
+} from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ModelCapabilitiesDraft } from "./modelConfigTypes";
@@ -121,6 +130,12 @@ export const ModelCapabilityIconItems = [
     label: "Developer Role",
     icon: <ShieldCheck className="h-3 w-3" />,
     className: "border-cyan-200 bg-cyan-50 text-cyan-700",
+  },
+  {
+    key: "StreamingUsage",
+    label: frontendMessage("config.model.capability.streamingUsage"),
+    icon: <Activity className="h-3 w-3" />,
+    className: "border-amber-200 bg-amber-50 text-amber-700",
   },
 ] as const satisfies readonly {
   key: keyof ModelCapabilitiesDraft;

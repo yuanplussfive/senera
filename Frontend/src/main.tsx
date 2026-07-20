@@ -15,6 +15,7 @@ import { SettingsWorkbench } from "./features/settings";
 import { AppMotionProvider } from "./shared/motion";
 import { AppAppearanceProvider } from "./shared/theme";
 import { TooltipProvider } from "./shared/ui";
+import { AppErrorBoundary } from "./app/AppErrorBoundary";
 import { useStore } from "./store/sessionStore";
 import "./index.css";
 import "./styles/transitions.css";
@@ -34,7 +35,9 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <Root />
+    <AppErrorBoundary>
+      <Root />
+    </AppErrorBoundary>
   </StrictMode>,
 );
 

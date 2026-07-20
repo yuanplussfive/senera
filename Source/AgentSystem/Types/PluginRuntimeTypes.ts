@@ -6,14 +6,16 @@ import type {
   ToolArtifactPolicyManifest,
   ToolEvidenceCapabilityManifest,
   ToolExecutionManifest,
+  ToolRuntimeManifest,
+  ToolObservationManifest,
   ToolApprovalManifest,
   ToolSearchManifest,
+  ToolLoadingMode,
+  ToolResourceArgumentManifest,
 } from "./PluginManifestTypes.js";
+import type { AgentPromptContractView } from "../Prompt/AgentPromptContractTypes.js";
 
 export type RegisteredToolHandler =
-  | {
-      kind: "PluginProcess";
-    }
   | {
       kind: "HostCapability";
       capability: string;
@@ -22,7 +24,13 @@ export type RegisteredToolHandler =
       kind: "McpTool";
       server: string;
       tool: string;
+      resources: readonly ToolResourceArgumentManifest[];
     };
+
+export interface RegisteredToolContract {
+  readonly digest: string;
+  readonly arguments?: AgentPromptContractView;
+}
 
 export interface LoadedPlugin {
   rootPath: string;
@@ -35,12 +43,16 @@ export interface LoadedPlugin {
 export interface RegisteredTool {
   plugin: LoadedPlugin;
   name: string;
+  loading: ToolLoadingMode;
   descriptionFile?: string;
   signatureFile?: string;
   signatureType?: string;
+  contract?: RegisteredToolContract;
   permissions: string[];
   handler: RegisteredToolHandler;
   execution: ToolExecutionManifest;
+  runtime: ToolRuntimeManifest;
+  observation?: ToolObservationManifest;
   search?: ToolSearchManifest;
   evidenceCapabilities: ToolEvidenceCapabilityManifest[];
   approval?: ToolApprovalManifest;

@@ -12,9 +12,11 @@ import type {
   PluginConfigMutationState,
   SandboxStatusSnapshotData,
   UploadAttachmentData,
+  InteractionInputAction,
+  InteractionInputContent,
 } from "../../api/eventTypes";
 import type { SocketStatus } from "../../api/useAgentSocket";
-import type { ApprovalResolutionScope } from "../../api/approvalEventTypes";
+import type { ApprovalDecision } from "../../api/approvalEventTypes";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatMessage, UserProfile } from "../../store/sessionStore";
 
@@ -68,16 +70,23 @@ export interface ChatRuntimeState {
 export interface ChatMessageActions {
   onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => void;
   onCancel: () => void;
+  onForkFromMessage: (message: ChatMessage) => void;
   onRegenerate: (message: ChatMessage) => void;
   onEditUserMessage: (message: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (message: ChatMessage) => void;
   onViewWorkflow: (message: ChatMessage) => void;
-  onResolveApproval: (approvalId: string, status: "approved" | "denied", scope?: ApprovalResolutionScope) => void;
+  onResolveApproval: (approvalId: string, decision: ApprovalDecision) => void;
+  onResolveInteractionInput: (
+    interactionId: string,
+    action: InteractionInputAction,
+    content?: InteractionInputContent,
+  ) => void;
 }
 
 export interface ChatNavigationActions {
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
+  onOpenTerminalPanel?: () => void;
   onRetryHistory?: (sessionId: string) => void;
 }
 

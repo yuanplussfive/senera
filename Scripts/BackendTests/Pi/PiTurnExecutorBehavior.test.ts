@@ -46,7 +46,7 @@ describe("Pi turn executor behavior", () => {
     ]);
     expect(events.some((event) => event.kind === AgentEventKinds.ModelDelta)).toBe(true);
     expect(traceTypes(events)).toEqual(
-      expect.arrayContaining(["turn.started", "session.create.completed", "turn.completed"]),
+      expect.arrayContaining(["turn.started", "session.lease.completed", "turn.completed"]),
     );
   });
 
@@ -78,16 +78,42 @@ describe("Pi turn executor behavior", () => {
     expect(fixture.activeSessions.get(command.sessionId!)).toBeUndefined();
   });
 
-  test("disposes a session that finishes creating after cancellation", async () => {
+  test("does not apply the per-network timeout to human or tool wait time inside a turn", async () => {
+    const fixture = new PiTurnRuntimeFixture({ deferPrompt: true, modelTimeoutMs: 10, maxRequestMs: -1 });
+    const command = createPiTurnCommand();
+    const pending = new AgentPiTurnExecutor({ runtime: fixture.runtime }).run(command);
+
+    await fixture.session.promptStarted;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(fixture.session.disposed).toBe(false);
+    expect(fixture.activeSessions.get(command.sessionId!)).toBeDefined();
+
+    fixture.session.completePrompt();
+    await expect(pending).resolves.toMatchObject({ kind: "succeeded" });
+  });
+
+  test("does not report lease cancellation before a non-cooperative lease has settled", async () => {
     const fixture = new PiTurnRuntimeFixture({ deferSessionCreate: true });
     const controller = new AbortController();
     const executor = new AgentPiTurnExecutor({ runtime: fixture.runtime });
     const pending = executor.run(createPiTurnCommand(), undefined, controller.signal);
+    let settled = false;
+    void pending.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
 
     await fixture.sessionCreateStarted;
     controller.abort("cancel during session creation");
-    await expect(pending).rejects.toMatchObject({ name: "AgentCancellationError" });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
     fixture.completeSessionCreate();
+    await expect(pending).rejects.toMatchObject({ name: "AgentCancellationError" });
     await fixture.session.disposedPromise;
 
     expect(fixture.session.disposed).toBe(true);
@@ -152,6 +178,8 @@ class PiTurnRuntimeFixture {
       deferPrompt?: boolean;
       deferSessionCreate?: boolean;
       promptFailure?: Error;
+      modelTimeoutMs?: number;
+      maxRequestMs?: number;
     } = {},
   ) {
     this.session = new ScriptedPiSession(behavior);
@@ -161,7 +189,10 @@ class PiTurnRuntimeFixture {
           model: () => piModel(),
           toolDefinitions: () => [],
           activeToolNames: () => [],
-          createSession: async (options) => {
+          planningToolCards: () => [],
+          rewindSession: async () => false,
+          resetSession: async () => false,
+          leaseTurn: async (options) => {
             this.lastSessionOptions = options;
             this.resolveSessionCreateStarted();
             if (this.behavior.deferSessionCreate) {
@@ -180,8 +211,12 @@ class PiTurnRuntimeFixture {
         },
         piSessions: this.activeSessions,
       },
-      modelProviderConfig,
-      agentLoopConfig: { PiSessionCreateTimeoutMs: 5_000 },
+      modelProviderConfig: {
+        ...modelProviderConfig,
+        TimeoutMs: behavior.modelTimeoutMs ?? modelProviderConfig.TimeoutMs,
+        MaxRequestMs: behavior.maxRequestMs ?? modelProviderConfig.MaxRequestMs,
+      },
+      agentLoopConfig: { PiTurnLeaseTimeoutMs: 5_000 },
       tokenEstimator: { estimate: (text) => ({ tokenCount: text.length }) },
       conversationProjector: new AgentConversationProjector(),
     };
@@ -249,6 +284,9 @@ class ScriptedPiSession implements AgentPiSession {
   async steer(): Promise<void> {}
   async followUp(): Promise<void> {}
   async nextTurn(): Promise<void> {}
+  async markTurnBoundary(requestId: string): Promise<string> {
+    return `boundary:${requestId}`;
+  }
   async setResources(): Promise<void> {}
 
   subscribe(listener: AgentPiSessionEventListener): () => void {

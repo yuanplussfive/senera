@@ -1,5 +1,5 @@
 import type { ModelProviderConfig } from "./ModelEndpointTypes.js";
-import { combineAbortSignals, readAbortFailure } from "./ModelHttpAbort.js";
+import { combineAbortSignals, disposeCombinedAbortSignal, readAbortFailure } from "./ModelHttpAbort.js";
 import { ModelProviderHttpError, ModelRequestTimeoutError, safeReadResponseBody } from "./ModelHttpErrors.js";
 
 export async function fetchModelHttpWithRetries(
@@ -39,6 +39,9 @@ export async function fetchModelHttpWithRetries(
         throw abortFailure?.reason ?? error;
       }
       lastError = abortFailure?.reason ?? error;
+    } finally {
+      clearTimeout(timer);
+      disposeCombinedAbortSignal(signal);
     }
   }
 

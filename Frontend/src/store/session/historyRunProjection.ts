@@ -18,7 +18,11 @@ export type HistoryVisibleEntry = {
   text: string;
 };
 
-export function projectEntryToMessage(entry: ConversationEntryDto, visible?: HistoryVisibleEntry): ChatMessage | null {
+export function projectEntryToMessage(
+  entry: ConversationEntryDto,
+  visible?: HistoryVisibleEntry,
+  completedRequestIds?: ReadonlySet<string>,
+): ChatMessage | null {
   if (entry.kind === "user.message") {
     return {
       id: `${entry.requestId}-user`,
@@ -32,7 +36,7 @@ export function projectEntryToMessage(entry: ConversationEntryDto, visible?: His
   }
 
   if (entry.kind === "assistant.decision") {
-    if (!isTerminalAssistantEntry(entry)) return null;
+    if (!isTerminalAssistantEntry(entry, completedRequestIds)) return null;
     if (!visible || !visible.text) return null;
     const isAsk = visible.kind === "ask_user";
     return {
@@ -49,8 +53,8 @@ export function projectEntryToMessage(entry: ConversationEntryDto, visible?: His
   return null;
 }
 
-function isTerminalAssistantEntry(entry: ConversationEntryDto): boolean {
-  return Boolean(entry.metadata?.run);
+function isTerminalAssistantEntry(entry: ConversationEntryDto, completedRequestIds?: ReadonlySet<string>): boolean {
+  return Boolean(entry.metadata?.run) || completedRequestIds?.has(entry.requestId) === true;
 }
 
 export function upsertMessageByRequestId(session: SessionRecord, message: ChatMessage): void {
@@ -118,6 +122,7 @@ export function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][numbe
     decisionMode: "none",
     pendingToolArgsByName: {},
     approvals: [],
+    interactionInputs: [],
     modelProvider: run.modelProvider,
     recoverySource: run.status === "running" ? "history" : undefined,
   };

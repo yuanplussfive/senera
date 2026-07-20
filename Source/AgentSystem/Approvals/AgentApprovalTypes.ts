@@ -13,21 +13,44 @@ export const AgentApprovalStatuses = {
   Approved: "approved",
   Denied: "denied",
   Cancelled: "cancelled",
+  Expired: "expired",
 } as const;
 
 export type AgentApprovalStatus = (typeof AgentApprovalStatuses)[keyof typeof AgentApprovalStatuses];
 
+export const AgentApprovalDecisions = {
+  ApproveOnce: "approve_once",
+  ApproveSession: "approve_session",
+  Deny: "deny",
+  DenyAndInterrupt: "deny_and_interrupt",
+} as const;
+
+export type AgentApprovalDecision = (typeof AgentApprovalDecisions)[keyof typeof AgentApprovalDecisions];
+
+export const AgentApprovalDispositions = {
+  Proceed: "proceed",
+  Continue: "continue",
+  Interrupt: "interrupt",
+} as const;
+
+export type AgentApprovalDisposition = (typeof AgentApprovalDispositions)[keyof typeof AgentApprovalDispositions];
+
 export interface AgentApprovalRequest {
   approvalId: string;
   kind: AgentApprovalKind;
+  sessionId: string;
   requestId: string;
   step: number;
+  toolCallId?: string;
+  batchId?: string;
   title: string;
   reason: string;
   rule?: string;
   riskSignals?: readonly string[];
+  availableDecisions: readonly AgentApprovalDecision[];
   subject: AgentApprovalSubject;
   createdAt: string;
+  deadlineAt?: string;
 }
 
 export type AgentApprovalSubject =
@@ -47,21 +70,30 @@ export type AgentApprovalScope = "once" | "session";
 
 export interface AgentApprovalResolution {
   approvalId: string;
-  status: Extract<AgentApprovalStatus, "approved" | "denied">;
+  decision?: AgentApprovalDecision;
+  status: Exclude<AgentApprovalStatus, "pending">;
+  disposition: AgentApprovalDisposition;
   message?: string;
   scope?: AgentApprovalScope;
   resolvedAt: string;
+}
+
+export interface AgentApprovalResolveCommand {
+  approvalId: string;
+  decision: AgentApprovalDecision;
+  message?: string;
 }
 
 export interface AgentApprovalWaitOptions {
   approval: Omit<AgentApprovalRequest, "approvalId" | "createdAt">;
   onEvent?: AgentEventSink;
   signal?: AbortSignal;
+  deadlineMs?: number;
 }
 
 export interface AgentApprovalRuntime {
   requestApproval(options: AgentApprovalWaitOptions): Promise<AgentApprovalResolution>;
-  resolve(resolution: Omit<AgentApprovalResolution, "resolvedAt">): AgentApprovalResolution;
-  tryResolve(resolution: Omit<AgentApprovalResolution, "resolvedAt">): AgentApprovalResolution | undefined;
-  cancelByRequestId(requestId: string, error?: unknown): number;
+  resolve(command: AgentApprovalResolveCommand): Promise<AgentApprovalResolution>;
+  tryResolve(command: AgentApprovalResolveCommand): Promise<AgentApprovalResolution | undefined>;
+  cancelByRequestId(requestId: string, error?: unknown): Promise<number>;
 }

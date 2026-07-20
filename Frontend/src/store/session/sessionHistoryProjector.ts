@@ -9,11 +9,11 @@ import {
 } from "../../api/eventTypes";
 import {
   mergeHistoryMessages,
-  mergeHistoryRuns,
   projectEntryToMessage,
   rebuildRunFromHistory,
 } from "./historyRunProjection";
-import { syncSessionCountsFromLoadedMessages, upsertStep } from "./sessionProjectorCore";
+import { ensureSession, syncSessionCountsFromLoadedMessages, upsertStep } from "./sessionProjectorCore";
+import { syncRunActiveFlags, touchRun } from "./sessionRunProjection";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ChatMessage, SessionRecord, StoreState } from "./types";
 
@@ -37,9 +37,9 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     const sessionId = env.sessionId;
     if (!sessionId) return;
     const data = env.data as SessionHistoryStartedData;
-    const session = state.sessions[sessionId];
-    if (!session) return;
-    if (!data.refresh) {
+    const session = ensureSession(state, sessionId);
+    const hasLocalConversation = session.messages.length > 0 || session.runs.length > 0;
+    if (!data.refresh && !hasLocalConversation) {
       session.messages = [];
       session.runs = [];
     }
@@ -48,6 +48,7 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     state.historyReplayBuffers[sessionId] = [];
     state.historyStepBuffers[sessionId] = [];
     state.historyEventRunIds[sessionId] = {};
+    state.historyActiveRequestIds[sessionId] = session.activeRequestId ?? null;
     state.historyLoadingIds[sessionId] = true;
     if (!data.refresh) {
       delete state.historyLoadedIds[sessionId];
@@ -60,7 +61,7 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     const sessionId = env.sessionId;
     if (!sessionId) return;
     const data = env.data as SessionHistoryChunkData;
-    if (!state.sessions[sessionId]) return;
+    ensureSession(state, sessionId);
     const buffer = state.historyReplayBuffers[sessionId];
     if (!state.historyLoadingIds[sessionId] || !buffer) return;
     buffer.push(...data.entries);
@@ -70,7 +71,7 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     const sessionId = env.sessionId;
     if (!sessionId) return;
     const data = env.data as SessionHistoryStepsData;
-    if (!state.sessions[sessionId]) return;
+    ensureSession(state, sessionId);
     if (!state.historyLoadingIds[sessionId]) return;
     state.historyStepBuffers[sessionId] = data.runs;
   },
@@ -80,7 +81,7 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     if (!sessionId) return;
     const data = env.data as SessionRunHistoryChunkData;
     if (data.sessionId && data.sessionId !== sessionId) return;
-    if (!state.sessions[sessionId]) return;
+    ensureSession(state, sessionId);
     if (!state.historyLoadingIds[sessionId]) return;
     const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
     state.historyEventRunIds[sessionId] = eventRunIds;
@@ -103,32 +104,30 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     const data = env.data as SessionHistoryCompletedData;
     if (data.sessionId && data.sessionId !== sessionId) return;
     if (!state.historyLoadingIds[sessionId]) return;
-    const session = state.sessions[sessionId];
-    if (!session) return;
+    const session = ensureSession(state, sessionId);
     const buffer = state.historyReplayBuffers[sessionId] ?? [];
-    const nextMessages = buffer
-      .map((item) => projectEntryToMessage(item.entry, item.visible))
-      .filter((message): message is ChatMessage => Boolean(message));
     const stepRuns = state.historyStepBuffers[sessionId] ?? [];
+    const completedRequestIds = new Set(
+      stepRuns.filter((run) => run.status === "completed").map((run) => run.requestId),
+    );
+    const nextMessages = buffer
+      .map((item) => projectEntryToMessage(item.entry, item.visible, completedRequestIds))
+      .filter((message): message is ChatMessage => Boolean(message));
     const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
-    const traceOnlyRuns = stepRuns.filter((run) => !eventRunIds[run.requestId]);
-    const hasTraceOnlyRuns = traceOnlyRuns.length > 0;
-    const nextRuns = hasTraceOnlyRuns ? traceOnlyRuns.map((run) => rebuildRunFromHistory(run)) : session.runs;
+    const activeRequestId = state.historyActiveRequestIds[sessionId] ?? undefined;
     if (data.refresh) {
       mergeHistoryMessages(session, nextMessages);
-      if (hasTraceOnlyRuns) {
-        mergeHistoryRuns(session, nextRuns);
-      }
     } else {
       // Run events restore visible intermediate messages; conversation entries restore durable turns.
       // Merge them so a tool preface cannot be erased when history replay completes.
       mergeHistoryMessages(session, nextMessages);
-      session.runs = nextRuns;
     }
+    reconcileHistoryStepRuns(session, stepRuns);
     closeRecoveredRunningRuns(
       session,
       env.timestamp,
       new Set([...stepRuns.map((run) => run.requestId), ...Object.keys(eventRunIds)]),
+      activeRequestId,
     );
     clearHistoryLoadingState(state, sessionId);
     state.historyLoadedIds[sessionId] = true;
@@ -136,11 +135,46 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
   },
 };
 
+function reconcileHistoryStepRuns(session: SessionRecord, snapshots: SessionHistoryStepsData["runs"]): void {
+  for (const snapshot of snapshots) {
+    const recovered = rebuildRunFromHistory(snapshot);
+    const existing = session.runs.find((run) => run.requestId === snapshot.requestId);
+    if (!existing) {
+      session.runs.push(recovered);
+      continue;
+    }
+
+    existing.input ||= recovered.input;
+    existing.startedAt ||= recovered.startedAt;
+    existing.modelProvider ??= recovered.modelProvider;
+    existing.endedAt = recovered.endedAt ?? existing.endedAt;
+
+    // The run snapshot is the durable lifecycle authority. A stale running
+    // snapshot must not downgrade a terminal live event observed meanwhile.
+    if (recovered.status !== "running" || existing.status === "running") {
+      existing.status = recovered.status;
+    }
+    if (existing.status !== "running") {
+      existing.recoverySource = undefined;
+    }
+
+    const existingStepIds = new Set(existing.steps.map((step) => step.id));
+    for (const step of recovered.steps) {
+      if (!existingStepIds.has(step.id)) {
+        existing.steps.push(step);
+      }
+    }
+    touchRun(existing);
+  }
+  session.runs.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+}
+
 function clearHistoryLoadingState(state: StoreState, sessionId: string): void {
   state.historyLoadingIds[sessionId] = false;
   delete state.historyReplayBuffers[sessionId];
   delete state.historyStepBuffers[sessionId];
   delete state.historyEventRunIds[sessionId];
+  delete state.historyActiveRequestIds[sessionId];
   delete state.historyFailedIds[sessionId];
   delete state.missingOnServerIds[sessionId];
 }
@@ -149,15 +183,17 @@ function closeRecoveredRunningRuns(
   session: SessionRecord,
   timestamp: string,
   recoveredRunIds: ReadonlySet<string>,
+  activeRequestId: string | undefined,
 ): void {
   for (const run of session.runs) {
-    if (run.status !== "running" || !recoveredRunIds.has(run.requestId)) {
+    if (run.status !== "running" || !recoveredRunIds.has(run.requestId) || run.requestId === activeRequestId) {
       continue;
     }
 
     run.status = "cancelled";
     run.endedAt = timestamp;
     run.recoverySource = "history";
+    settleInterruptedRunWaits(run, timestamp);
     upsertStep(run, {
       id: `${run.requestId}-history-interrupted`,
       kind: "error",
@@ -169,7 +205,47 @@ function closeRecoveredRunningRuns(
     });
   }
 
-  if (session.activeRequestId && recoveredRunIds.has(session.activeRequestId)) {
-    session.activeRequestId = undefined;
+  session.activeRequestId = activeRequestId;
+}
+
+function settleInterruptedRunWaits(run: SessionRecord["runs"][number], timestamp: string): void {
+  const message = frontendMessage("workflow.projection.historyInterruptedDescription");
+
+  for (const approval of run.approvals ?? []) {
+    if (approval.status !== "pending") continue;
+    approval.status = "cancelled";
+    approval.resolvedAt = timestamp;
+    approval.message = message;
+    approval.disposition = "interrupt";
+    approval.resolutionPending = false;
+    approval.pendingDecision = undefined;
+    settlePendingStep(run, `approval-${approval.approvalId}`, timestamp, message);
   }
+
+  for (const interaction of run.interactionInputs ?? []) {
+    if (interaction.status === "resolved") continue;
+    interaction.status = "resolved";
+    interaction.action = "cancel";
+    interaction.resolvedAt = timestamp;
+    interaction.resolutionMessage = message;
+    interaction.resolutionPending = false;
+    interaction.pendingAction = undefined;
+    settlePendingStep(run, `interaction-input-${interaction.interactionId}`, timestamp, message);
+  }
+
+  syncRunActiveFlags(run);
+  touchRun(run);
+}
+
+function settlePendingStep(
+  run: SessionRecord["runs"][number],
+  stepId: string,
+  timestamp: string,
+  description: string,
+): void {
+  const step = run.steps.find((entry) => entry.id === stepId);
+  if (!step || step.status !== "pending") return;
+  step.status = "failed";
+  step.endedAt = timestamp;
+  step.description = description;
 }

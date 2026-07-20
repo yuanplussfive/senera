@@ -40,6 +40,17 @@ export const AgentTerminalLifecycleActivityProjectors: AgentTerminalActivityProj
       tone: AgentTerminalActivityTone.Progress,
       state: "active",
     }),
+  "run.cancellation.progress": (event) => {
+    const data = normalizeRecord(event.data);
+    const stage = readString(data.stage);
+    return patchWithActivity({
+      key: "run.cancellation",
+      title: stage === "completed" ? "旧任务已停止" : stage === "failed" ? "旧任务停止失败" : "正在停止旧任务",
+      detail: data,
+      tone: stage === "failed" ? AgentTerminalActivityTone.Error : AgentTerminalActivityTone.Progress,
+      state: stage === "completed" || stage === "failed" ? "completed" : "active",
+    });
+  },
   "run.completed": (event) =>
     patchWithActivity(
       {

@@ -13,12 +13,13 @@ import { parseToolRiskAudit, parseToolRiskAuditProfile } from "./AgentBamlToolRi
 
 const ProfileFileName = "AgentBamlToolRiskAuditProfile.json";
 
-type InterruptingToolRiskDecision = Exclude<ToolRiskAuditDecision, typeof ToolRiskAuditDecision.Allow>;
-
 const PermissionActionByAuditDecision = {
   [ToolRiskAuditDecision.Ask]: AgentPermissionActions.Ask,
-  [ToolRiskAuditDecision.Deny]: AgentPermissionActions.Deny,
-} satisfies Record<InterruptingToolRiskDecision, AgentPermissionDecision["action"]>;
+  [ToolRiskAuditDecision.Deny]: AgentPermissionActions.Ask,
+} satisfies Record<
+  Exclude<ToolRiskAuditDecision, typeof ToolRiskAuditDecision.Allow>,
+  AgentPermissionDecision["action"]
+>;
 
 export interface AgentBamlToolRiskAuditorOptions {
   readonly client: Pick<AgentActionPlannerModelClient, "auditToolRisk">;
@@ -51,7 +52,10 @@ export class AgentBamlToolRiskAuditor implements AgentToolGuardrailAuditor {
         ? undefined
         : {
             action: PermissionActionByAuditDecision[audit.decision],
-            rule: `baml-tool-risk.${audit.decision.toLowerCase()}`,
+            rule:
+              audit.decision === ToolRiskAuditDecision.Deny
+                ? "baml-tool-risk.deny.requires-approval"
+                : "baml-tool-risk.ask",
             reason: audit.reason,
             riskSignals: riskSignals(audit),
           };
@@ -76,6 +80,7 @@ function readDefaultProfile(): AgentBamlToolRiskAuditProfile {
 
 function riskSignals(audit: ReturnType<typeof parseToolRiskAudit>): string[] {
   return [
+    `baml.decision:${audit.decision}`,
     `baml.riskLevel:${audit.riskLevel}`,
     `baml.confidence:${audit.confidence.toFixed(2)}`,
     `baml.tripwire:${String(audit.tripwire)}`,

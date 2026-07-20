@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  type InteractionPreparation as BamlInteractionPreparation,
   TurnContextMode,
   type ActionPlanInput,
   type TurnUnderstanding as BamlTurnUnderstanding,
@@ -12,6 +13,12 @@ import {
   type AgentStructuredIssue,
 } from "../Diagnostics/AgentStructuredIssue.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { parsePiControllerAction } from "../PiProxy/AgentPiAssistantMessageSchema.js";
+import type { ParsedPiControllerAction } from "../PiProxy/AgentPiAssistantMessageSchema.js";
+
+export type ParsedInteractionPreparation = Omit<BamlInteractionPreparation, "initialAction"> & {
+  initialAction: ParsedPiControllerAction;
+};
 
 const NonEmptyStringSchema = z.string().trim().min(1);
 const TrimmedStringSchema = z.string().trim();
@@ -64,6 +71,23 @@ export function parseTurnUnderstanding(
     );
   }
   return parsed;
+}
+
+export function parseInteractionPreparation(
+  preparation: BamlInteractionPreparation,
+  input: Pick<ActionPlanInput, "currentUserTurn">,
+  allowedTools: readonly string[],
+): ParsedInteractionPreparation {
+  const understanding = parseTurnUnderstanding(preparation.turnUnderstanding, input);
+  const initialAction = parsePiControllerAction(preparation.initialAction, {
+    allowedTools,
+    implicitFinalAnswerPlan: understanding.standaloneRequest,
+  });
+  return {
+    ...preparation,
+    turnUnderstanding: understanding,
+    initialAction,
+  };
 }
 
 export class AgentActionPlannerValidationError extends Error {

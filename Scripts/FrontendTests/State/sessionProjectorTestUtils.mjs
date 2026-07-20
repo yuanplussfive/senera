@@ -19,6 +19,7 @@ export function createTestState() {
     historyReplayBuffers: {},
     historyStepBuffers: {},
     historyEventRunIds: {},
+    historyActiveRequestIds: {},
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},
     pendingDeletedSessionIds: {},

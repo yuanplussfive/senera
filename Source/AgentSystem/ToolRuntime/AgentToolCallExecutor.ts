@@ -13,6 +13,7 @@ import { AgentToolRunner, type AgentToolRunnerLike } from "./AgentToolRunner.js"
 import type { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
 import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
+import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import { SeneraLocalExecutionEnv } from "../Execution/SeneraLocalExecutionEnv.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { projectAgentToolResultPresentation } from "./AgentToolResultPresentation.js";
@@ -22,6 +23,7 @@ import type {
   AgentToolCallExecutionResult,
   AskUserControlResult,
 } from "./AgentToolCallExecutionTypes.js";
+import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 
 export interface AgentToolCallExecutorOptions {
   registry: AgentPluginRegistry;
@@ -31,16 +33,20 @@ export interface AgentToolCallExecutorOptions {
   workspaceRoot?: string;
   hostCapabilities?: AgentToolHostCapabilityRegistry;
   toolSearch?: AgentToolSearchRuntime;
+  executionResources?: AgentExecutionResourceBroker;
   executionEnv?: SeneraExecutionEnv;
   configPath?: string;
   emitLifecycleEvents?: boolean;
+  interactionInput?: AgentInteractionInputRuntime;
 }
 
 export class AgentToolCallExecutor {
   private readonly events = new AgentLoopEventFactory();
   private readonly toolRunner: AgentToolRunnerLike;
+  private readonly ownedToolRunner?: AgentToolRunner;
   private readonly workspaceCapture: AgentWorkspaceChangeCapture;
   private readonly emitLifecycleEvents: boolean;
+  private closePromise: Promise<void> | undefined;
 
   constructor(private readonly options: AgentToolCallExecutorOptions) {
     const workspaceRoot = options.workspaceRoot ?? process.cwd();
@@ -53,19 +59,25 @@ export class AgentToolCallExecutor {
     this.workspaceCapture = new AgentWorkspaceChangeCapture({
       workspaceRoot,
     });
-    this.toolRunner =
-      options.toolRunner ??
-      new AgentToolRunner(
-        options.config,
-        options.protocol,
-        workspaceRoot,
-        options.hostCapabilities ??
-          createDefaultHostCapabilityRegistry({
-            toolSearch: options.toolSearch,
-          }),
-        options.registry,
-        executionEnv,
-      );
+    this.ownedToolRunner = options.toolRunner
+      ? undefined
+      : new AgentToolRunner(
+          options.config,
+          workspaceRoot,
+          options.hostCapabilities ??
+            createDefaultHostCapabilityRegistry({
+              toolSearch: options.toolSearch,
+              executionResources: options.executionResources,
+            }),
+          options.registry,
+          executionEnv,
+          options.interactionInput,
+        );
+    this.toolRunner = options.toolRunner ?? this.ownedToolRunner!;
+  }
+
+  close(): Promise<void> {
+    return (this.closePromise ??= this.ownedToolRunner?.close() ?? Promise.resolve());
   }
 
   async execute(
@@ -127,9 +139,11 @@ export class AgentToolCallExecutor {
 
     throwIfAborted(context.signal);
     const execution = await this.toolRunner.run(tool, args, {
+      sessionId: context.sessionId,
       requestId: context.requestId,
       step: context.step,
       toolCallId: callId,
+      batchId: context.batchId,
       configPath: this.options.configPath,
       onEvent: context.onEvent,
       visibleToolNames: context.loadedToolNames === "all" ? undefined : context.loadedToolNames,
@@ -148,6 +162,7 @@ export class AgentToolCallExecutor {
         signal: execution.signal,
         stderr: execution.stderr,
       },
+      outputCapture: execution.outputCapture,
       result,
       artifactPolicy: tool.artifactPolicy,
       workspaceCapture,

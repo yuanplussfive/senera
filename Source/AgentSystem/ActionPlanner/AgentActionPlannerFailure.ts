@@ -118,6 +118,45 @@ export function summarizePlannerFailure(error: unknown): string {
   return error instanceof Error ? truncateOneLine(error.message, 160) : truncateOneLine(String(error), 160);
 }
 
+export function collectPlannerFailureToolNames(error: unknown): string[] {
+  const names = new Set<string>();
+  const visited = new Set<unknown>();
+
+  const visit = (value: unknown): void => {
+    if (value == null || visited.has(value)) return;
+    if (typeof value === "object") visited.add(value);
+
+    if (value instanceof AgentActionPlannerValidationError) {
+      collectToolNames(value.invalidDecision, names);
+      return;
+    }
+    if (value instanceof AgentBamlStructuredOutputError) {
+      visit(value.originalError);
+      return;
+    }
+    if (value instanceof Error) {
+      visit(value.cause);
+    }
+  };
+
+  visit(error);
+  return [...names];
+}
+
+function collectToolNames(value: unknown, names: Set<string>): void {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectToolNames(entry, names));
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.toolName === "string" && record.toolName.trim()) {
+    names.add(record.toolName.trim());
+  }
+  Object.values(record).forEach((entry) => collectToolNames(entry, names));
+}
+
 function withPlannerDetails(code: string, details: string | readonly string[]): string {
   const values = Array.isArray(details) ? details : [details];
   const summary = values.map(collapseWhitespace).filter(Boolean).slice(0, 6).join("; ");

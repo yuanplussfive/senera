@@ -2,7 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { parsePluginTomlConfig, readPluginTomlConfig, runToolPlugin, z } = require("@senera/tool-plugin-sdk");
+const { parsePluginTomlConfig, readPluginTomlConfig, runMcpTool, z } = require("@senera/tool-plugin-sdk");
 const { Schema: ArgumentSchema } = require("./Schemas/WeatherToolArgumentsSchema.js");
 const { Schema: ResultSchema } = require("./Schemas/WeatherToolResultSchema.js");
 
@@ -56,7 +56,11 @@ const Providers = {
         url.searchParams.set("days", String(options.args.days));
         url.searchParams.set("alerts", "no");
       }
-      return normalizeWeatherApi(await fetchJson(url, options.timeoutMs), options.args.location, options.config.unit);
+      return normalizeWeatherApi(
+        await fetchJson(url, options.timeoutMs, undefined, options.signal),
+        options.args.location,
+        options.config.unit,
+      );
     },
   },
   [ProviderNames.QWeather]: {
@@ -68,7 +72,7 @@ const Providers = {
       nowUrl.searchParams.set("location", location.id);
       nowUrl.searchParams.set("lang", options.language);
       nowUrl.searchParams.set("unit", options.config.unit === "imperial" ? "i" : "m");
-      const now = await fetchQWeatherJson(nowUrl, options.timeoutMs, options.apiKey);
+      const now = await fetchQWeatherJson(nowUrl, options.timeoutMs, options.apiKey, options.signal);
       const forecast = options.args.days > 1 ? await fetchQWeatherForecast(options, location.id) : undefined;
       return normalizeQWeather(now, forecast, location, options.args.location, options.config.unit);
     },
@@ -84,28 +88,44 @@ const Providers = {
       url.searchParams.set("lang", options.language);
       url.searchParams.set("include", options.args.days > 1 ? "current,days" : "current");
       url.searchParams.set("contentType", "json");
-      return normalizeVisualCrossing(await fetchJson(url, options.timeoutMs), options.args.location, options.args.days);
+      return normalizeVisualCrossing(
+        await fetchJson(url, options.timeoutMs, undefined, options.signal),
+        options.args.location,
+        options.args.days,
+      );
     },
   },
 };
 
-void runToolPlugin({
+void runMcpTool({
   toolName: "WeatherTool",
   argumentSchema: ArgumentSchema,
   resultSchema: ResultSchema,
-  async execute(args) {
+  resultText: (result) => formatWeatherOutput(result).trim(),
+  async execute(args, context) {
+    await context.reportProgress({ completed: 0, total: 1, message: "正在请求天气服务" });
     const config = readConfig();
     const provider = Providers[config.provider];
     const apiKey = await claimNextApiKey(config);
-    return provider.fetch({
+    const result = await provider.fetch({
       args,
       apiKey,
       config: resolveProviderConfig(config, provider),
       language: args.language ?? config.language,
       timeoutMs: args.timeoutMs ?? config.timeoutMs,
+      signal: context.signal,
     });
+    await context.reportOutput({ stream: "stdout", text: formatWeatherOutput(result) });
+    await context.reportProgress({ completed: 1, total: 1, message: "天气数据已返回" });
+    return result;
   },
 });
+
+function formatWeatherOutput(result) {
+  const location = result.resolvedLocation ?? result.location;
+  const temperature = result.temperature === undefined ? "" : ` ${result.temperature} ${result.temperatureUnit ?? ""}`;
+  return `${location}: ${result.condition}${temperature}\n`;
+}
 
 function readConfig() {
   const parsed = readConfigFile();
@@ -256,7 +276,7 @@ async function fetchQWeatherForecast(options, locationId) {
   url.searchParams.set("location", locationId);
   url.searchParams.set("lang", options.language);
   url.searchParams.set("unit", options.config.unit === "imperial" ? "i" : "m");
-  return fetchQWeatherJson(url, options.timeoutMs, options.apiKey);
+  return fetchQWeatherJson(url, options.timeoutMs, options.apiKey, options.signal);
 }
 
 async function lookupQWeatherLocation(options) {
@@ -264,7 +284,7 @@ async function lookupQWeatherLocation(options) {
   url.searchParams.set("location", options.args.location);
   url.searchParams.set("lang", options.language);
   url.searchParams.set("number", "1");
-  const response = await fetchQWeatherJson(url, options.timeoutMs, options.apiKey);
+  const response = await fetchQWeatherJson(url, options.timeoutMs, options.apiKey, options.signal);
   const [location] = Array.isArray(response.location) ? response.location : [];
   if (!location) {
     throw new Error(`QWeather 没有找到天气位置：${options.args.location}`);
@@ -284,10 +304,15 @@ function isLegacyQWeatherGeoHost(value) {
   }
 }
 
-async function fetchQWeatherJson(url, timeoutMs, apiKey) {
-  const response = await fetchJson(url, timeoutMs, {
-    "X-QW-Api-Key": apiKey,
-  });
+async function fetchQWeatherJson(url, timeoutMs, apiKey, signal) {
+  const response = await fetchJson(
+    url,
+    timeoutMs,
+    {
+      "X-QW-Api-Key": apiKey,
+    },
+    signal,
+  );
   const code = stringOrUndefined(asRecord(response).code);
   if (code && code !== "200") {
     throw new Error(`QWeather 请求失败：code=${code} path=${url.pathname}`);
@@ -295,22 +320,24 @@ async function fetchQWeatherJson(url, timeoutMs, apiKey) {
   return response;
 }
 
-async function fetchJson(url, timeoutMs, headers = undefined) {
+async function fetchJson(url, timeoutMs, headers = undefined, signal = undefined) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { signal: controller.signal, headers });
+    const requestSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+    const response = await fetch(url, { signal: requestSignal, headers });
     const text = await response.text();
     if (!response.ok) {
       throw new Error(`天气接口请求失败：${response.status} ${response.statusText} ${text}`);
     }
     return text.length > 0 ? JSON.parse(text) : {};
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
+    if (controller.signal.aborted && error instanceof Error && error.name === "AbortError") {
       throw new Error(`天气接口请求超时，超过 ${formatMillisecondsAsSeconds(timeoutMs)} 秒：${url.hostname}`, {
         cause: error,
       });
     }
+    if (signal?.aborted) throw signal.reason ?? error;
     throw error;
   } finally {
     clearTimeout(timer);

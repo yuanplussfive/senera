@@ -292,3 +292,345 @@ test("history replay preserves every tool preface while reconciling the durable 
   expect(session?.messages.filter((message) => message.kind === "AssistantFinal")).toHaveLength(1);
   expect(session?.messageCount).toBe(4);
 });
+
+test("history replay preserves a recovered run that the server still reports active", () => {
+  const state = createTestState();
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionSnapshot,
+      {
+        sessionId: TestSessionId,
+        status: "running",
+        createdAt: "2026-07-09T00:00:00.000Z",
+        updatedAt: "2026-07-09T00:00:01.000Z",
+        entryCount: 1,
+        messageCount: 1,
+        turnCount: 1,
+        activeRequestId: TestRequestId,
+      },
+      { requestId: TestRequestId, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryStarted,
+      { sessionId: TestSessionId, totalEntries: 1, messageCount: 1 },
+      { requestId: undefined, sequence: 2, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: TestSessionId,
+        events: [createEvent(EventKinds.RunStarted, { input: "wait for approval" }, { sequence: 3 })],
+      },
+      { requestId: undefined, sequence: 3, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: TestSessionId },
+      { requestId: undefined, sequence: 4, phase: "session" },
+    ),
+  );
+
+  const session = state.sessions[TestSessionId];
+  expect(session?.activeRequestId).toBe(TestRequestId);
+  expect(session?.runs).toEqual([
+    expect.objectContaining({
+      requestId: TestRequestId,
+      status: "running",
+    }),
+  ]);
+  expect(session?.runs[0]?.steps.some((step) => step.id.endsWith("history-interrupted"))).toBe(false);
+});
+
+test("history replay interrupts recovered runs that are no longer active on the server", () => {
+  const state = createTestState();
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionSnapshot,
+      {
+        sessionId: TestSessionId,
+        status: "idle",
+        createdAt: "2026-07-09T00:00:00.000Z",
+        updatedAt: "2026-07-09T00:00:01.000Z",
+        entryCount: 1,
+        messageCount: 1,
+        turnCount: 1,
+      },
+      { requestId: undefined, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryStarted,
+      { sessionId: TestSessionId, totalEntries: 1, messageCount: 1 },
+      { requestId: undefined, sequence: 2, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: TestSessionId,
+        events: [
+          createEvent(EventKinds.RunStarted, { input: "orphaned run" }, { sequence: 3 }),
+          createEvent(
+            EventKinds.ApprovalRequested,
+            {
+              approvalId: "approval-orphaned",
+              approvalKind: "tool_call",
+              status: "pending",
+              title: "Approve shell",
+              reason: "high impact",
+              availableDecisions: ["approve_once", "deny", "deny_and_interrupt"],
+              subject: { kind: "tool_call", toolName: "ShellCommandTool", arguments: { command: "pwd" } },
+              createdAt: "2026-07-09T00:00:02.000Z",
+            },
+            { sequence: 4, phase: "approval" },
+          ),
+          createEvent(
+            EventKinds.InteractionInputRequested,
+            {
+              interactionId: "interaction-orphaned",
+              mode: "form",
+              status: "pending",
+              message: "Choose a target",
+              toolName: "AskUserTool",
+              toolCallId: "call-ask-user",
+              createdAt: "2026-07-09T00:00:03.000Z",
+              schema: { type: "object", properties: {} },
+            },
+            { sequence: 5, phase: "approval" },
+          ),
+        ],
+      },
+      { requestId: undefined, sequence: 3, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: TestSessionId },
+      { requestId: undefined, sequence: 4, phase: "session" },
+    ),
+  );
+
+  const run = state.sessions[TestSessionId]?.runs[0];
+  expect(run?.status).toBe("cancelled");
+  expect(run?.recoverySource).toBe("history");
+  expect(run?.activeFlags).toBeUndefined();
+  expect(run?.approvals).toEqual([
+    expect.objectContaining({
+      approvalId: "approval-orphaned",
+      status: "cancelled",
+      disposition: "interrupt",
+      resolvedAt: expect.any(String),
+      resolutionPending: false,
+    }),
+  ]);
+  expect(run?.interactionInputs).toEqual([
+    expect.objectContaining({
+      interactionId: "interaction-orphaned",
+      status: "resolved",
+      action: "cancel",
+      resolvedAt: expect.any(String),
+      resolutionPending: false,
+    }),
+  ]);
+  expect(run?.steps).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: "approval-approval-orphaned", status: "failed" }),
+      expect.objectContaining({ id: "interaction-input-interaction-orphaned", status: "failed" }),
+      expect.objectContaining({
+        id: `${TestRequestId}-history-interrupted`,
+        status: "failed",
+      }),
+    ]),
+  );
+});
+
+test("history replay does not erase a locally completed run while reconciling", () => {
+  const state = createTestState();
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunStarted, { input: "检查并回答" }, { sessionId: TestSessionId, requestId: TestRequestId }),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.AssistantMessageCreated,
+      { messageId: "live-answer", kind: "final_answer", content: "实时答案", terminal: true },
+      { sessionId: TestSessionId, requestId: TestRequestId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunCompleted, {}, { sessionId: TestSessionId, requestId: TestRequestId }),
+  );
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryStarted,
+      { sessionId: TestSessionId, totalEntries: 2, messageCount: 2 },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: TestSessionId,
+        entries: [
+          {
+            entry: {
+              id: "history-user",
+              requestId: TestRequestId,
+              timestamp: "2026-07-09T00:00:01.000Z",
+              kind: "user.message",
+              content: "检查并回答",
+            },
+          },
+          {
+            entry: {
+              id: "history-answer",
+              requestId: TestRequestId,
+              timestamp: "2026-07-09T00:00:02.000Z",
+              kind: "assistant.decision",
+              xml: "<FinalAnswer><answer>历史答案</answer></FinalAnswer>",
+            },
+            visible: { kind: "final_answer", text: "历史答案" },
+          },
+        ],
+      },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: TestSessionId,
+        runs: [
+          {
+            requestId: TestRequestId,
+            input: "检查并回答",
+            startedAt: "2026-07-09T00:00:01.000Z",
+            endedAt: "2026-07-09T00:00:02.000Z",
+            status: "completed",
+            traces: [],
+          },
+        ],
+      },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(state, createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }, { sessionId: TestSessionId }));
+
+  const session = state.sessions[TestSessionId];
+  expect(session?.messages.map((message) => message.content)).toEqual(["检查并回答", "历史答案"]);
+  expect(session?.runs[0]?.status).toBe("completed");
+  expect(state.historyLoadedIds[TestSessionId]).toBe(true);
+});
+
+test("terminal run snapshots win when the event outbox has only persisted run.started", () => {
+  const state = createTestState();
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunStarted, { input: "快速完成" }, { sessionId: TestSessionId, requestId: TestRequestId }),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunCompleted, {}, { sessionId: TestSessionId, requestId: TestRequestId }),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryStarted,
+      { sessionId: TestSessionId, totalEntries: 0, messageCount: 0 },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: TestSessionId,
+        runs: [
+          {
+            requestId: TestRequestId,
+            input: "快速完成",
+            startedAt: "2026-07-09T00:00:01.000Z",
+            endedAt: "2026-07-09T00:00:02.000Z",
+            status: "completed",
+            traces: [
+              {
+                step: 1,
+                seq: 1,
+                kind: "answer",
+                status: "done",
+                title: "回答完成",
+              },
+            ],
+          },
+        ],
+      },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: TestSessionId,
+        events: [createEvent(EventKinds.RunStarted, { input: "快速完成" }, { sequence: 1 })],
+      },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }, { sessionId: TestSessionId }),
+  );
+
+  const run = state.sessions[TestSessionId]?.runs[0];
+  expect(run?.status).toBe("completed");
+  expect(run?.endedAt).toBe("2026-07-09T00:00:02.000Z");
+  expect(run?.steps).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "answer", status: "done" })]));
+  expect(run?.steps.some((step) => step.id.endsWith("history-interrupted"))).toBe(false);
+});
+
+test("history events can hydrate a session before a snapshot arrives", () => {
+  const state = createTestState();
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryStarted,
+      { sessionId: TestSessionId, totalEntries: 0, messageCount: 0 },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }, { sessionId: TestSessionId }),
+  );
+
+  expect(state.sessions[TestSessionId]).toBeTruthy();
+  expect(state.historyLoadedIds[TestSessionId]).toBe(true);
+});

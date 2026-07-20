@@ -13,6 +13,7 @@ export const ModelCapabilitiesSchema = z
     ImageOutput: z.boolean().optional(),
     Reasoning: z.boolean().optional(),
     DeveloperRole: z.boolean().optional(),
+    StreamingUsage: z.boolean().optional(),
   })
   .strict();
 
@@ -39,6 +40,9 @@ export const ModelProviderSchema = z
     FirstTokenTimeoutSeconds: disabledOrPositiveNumber("FirstTokenTimeoutSeconds").optional(),
     MaxRequestSeconds: disabledOrPositiveNumber("MaxRequestSeconds").optional(),
     MaxNetworkRetries: z.number().int().min(0).optional(),
+    MaxResponseBytes: z.number().int().positive().optional(),
+    MaxSseEventBytes: z.number().int().positive().optional(),
+    MaxSseEvents: z.number().int().positive().optional(),
   })
   .strict();
 

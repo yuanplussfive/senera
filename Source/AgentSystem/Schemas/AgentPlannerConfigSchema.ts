@@ -5,7 +5,6 @@ export const ActionPlannerClientSchema = (path: string) =>
   z
     .object({
       ModelProviderId: z.string().min(1).optional(),
-      Provider: z.enum(["openai-generic", "openai-responses", "anthropic", "google-ai"]).optional(),
       Temperature: z.number().min(0).max(2).optional(),
       MaxTokens: disabledOrPositiveInteger(`${path}.MaxTokens`).optional(),
     })
@@ -22,7 +21,7 @@ export const ActionPlannerSchema = z
       .strict()
       .optional(),
     Client: ActionPlannerClientSchema("ActionPlanner.Client").optional(),
-    TurnUnderstandingClient: ActionPlannerClientSchema("ActionPlanner.TurnUnderstandingClient").optional(),
     PlanningClient: ActionPlannerClientSchema("ActionPlanner.PlanningClient").optional(),
+    FinalAnswerClient: ActionPlannerClientSchema("ActionPlanner.FinalAnswerClient").optional(),
   })
   .strict();

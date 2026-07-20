@@ -18,6 +18,20 @@ export class ModelRequestTimeoutError extends Error {
   }
 }
 
+export class ModelResponseLimitError extends Error {
+  constructor(
+    readonly kind: "response" | "SSE response" | "SSE event" | "SSE events",
+    readonly limit: number,
+  ) {
+    super(
+      kind === "SSE events"
+        ? `Model SSE stream exceeded the configured ${limit}-event budget.`
+        : `Model ${kind} exceeded the configured ${limit}-byte budget.`,
+    );
+    this.name = "ModelResponseLimitError";
+  }
+}
+
 export function normalizeModelHttpError(config: ModelProviderConfig, error: unknown): Error {
   if (error instanceof ModelProviderHttpError) {
     return new Error(

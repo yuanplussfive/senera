@@ -1,5 +1,11 @@
 import { createOpaqueId } from "../Core/AgentIds.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
+import type { AgentModelUsageLedger } from "../ModelEndpoints/AgentModelUsage.js";
+import type { AgentInteractionRouteResult } from "../ActionPlanner/AgentInteractionRouter.js";
+import type { AgentRootCommand } from "../AgentRootCommand.js";
+import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type { AgentPiPreparedActionLeasePort } from "./AgentPiPreparedActionLease.js";
 
 export const AgentPiProxyContextHeader = "x-senera-pi-context-id";
 export const AgentPiProxyModelProviderHeader = "x-senera-model-provider-id";
@@ -21,9 +27,14 @@ export interface AgentPiProxyRuntimeContext {
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;
-  rootCommand?: unknown;
+  rootCommand?: AgentRootCommand;
+  interactionRoute?: AgentInteractionRouteResult;
+  turnUnderstanding?: TurnUnderstanding;
   activeSkills?: unknown[];
   toolBatchIdsByCallId?: Map<string, string>;
+  executedToolResultsByCallId?: Map<string, ExecutedToolCallResult>;
+  usageLedger?: AgentModelUsageLedger;
+  preparedAction?: AgentPiPreparedActionLeasePort;
 }
 
 const contexts = new Map<string, AgentPiProxyRuntimeContext>();
@@ -63,6 +74,29 @@ export function readPiProxyToolCallBatchId(
   }
 
   return contexts.get(contextId)?.toolBatchIdsByCallId?.get(callId);
+}
+
+export function registerPiProxyExecutedToolResult(
+  contextId: string | undefined,
+  callId: string,
+  result: ExecutedToolCallResult,
+): void {
+  const context = readPiProxyRuntimeContext(contextId);
+  if (!context) return;
+
+  const results = context.executedToolResultsByCallId ?? new Map<string, ExecutedToolCallResult>();
+  results.set(callId, result);
+  context.executedToolResultsByCallId = results;
+}
+
+export function takePiProxyExecutedToolResult(
+  contextId: string | undefined,
+  callId: string,
+): ExecutedToolCallResult | undefined {
+  const results = readPiProxyRuntimeContext(contextId)?.executedToolResultsByCallId;
+  const result = results?.get(callId);
+  results?.delete(callId);
+  return result;
 }
 
 export function releasePiProxyRuntimeContext(id: string | undefined): void {

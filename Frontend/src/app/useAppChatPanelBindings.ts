@@ -1,9 +1,11 @@
 import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import type { AgentSocketHandle, SocketStatus } from "../api/useAgentSocket";
-import type { ApprovalResolutionScope } from "../api/approvalEventTypes";
+import type { ApprovalDecision } from "../api/approvalEventTypes";
+import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import type { ChatMessageActions, ChatNavigationActions, ChatRuntimeState } from "../features/chat/ChatPanelContracts";
+import { useStore } from "../store/sessionStore";
 
 export interface AppChatPanelBindings {
   chatMessageActions: ChatMessageActions;
@@ -30,28 +32,48 @@ export function useAppChatPanelBindings({
   send: AgentSocketHandle["send"];
   status: SocketStatus;
 }): AppChatPanelBindings {
-  const { onCancel, onDeleteFromMessage, onEditUserMessage, onRegenerate, onSend, onViewWorkflow } = messageHandlers;
+  const { onCancel, onDeleteFromMessage, onEditUserMessage, onForkFromMessage, onRegenerate, onSend, onViewWorkflow } =
+    messageHandlers;
   const { onOpenSessionPanel, onOpenWorkflowPanel, onRetryHistory, showSessionPanelAction, showWorkflowPanelAction } =
     navigationHandlers;
   const { sandboxStatus, uploadUrl, uploadCsrfToken } = runtime;
+  const markApprovalResolutionPending = useStore((state) => state.markApprovalResolutionPending);
+  const markInteractionInputResolutionPending = useStore((state) => state.markInteractionInputResolutionPending);
 
   const handleResolveApproval = useCallback(
-    (approvalId: string, approvalStatus: "approved" | "denied", scope?: ApprovalResolutionScope): void => {
+    (approvalId: string, decision: ApprovalDecision): void => {
       if (status !== "open") {
         toast.error(frontendMessage("approval.resolveOffline"));
         return;
       }
+      markApprovalResolutionPending(approvalId, decision);
       const ok = send({
         type: "approval.resolve",
         approvalId,
-        status: approvalStatus,
-        ...(scope ? { scope } : {}),
+        decision,
       });
       if (!ok) {
+        markApprovalResolutionPending(approvalId);
         toast.error(frontendMessage("approval.resolveDisconnected"));
       }
     },
-    [send, status],
+    [markApprovalResolutionPending, send, status],
+  );
+
+  const handleResolveInteractionInput = useCallback(
+    (interactionId: string, action: InteractionInputAction, content?: InteractionInputContent): void => {
+      if (status !== "open") {
+        toast.error(frontendMessage("interaction.input.resolveOffline"));
+        return;
+      }
+      markInteractionInputResolutionPending(interactionId, action);
+      const ok = send({ type: "interaction.input.resolve", interactionId, action, content });
+      if (!ok) {
+        markInteractionInputResolutionPending(interactionId);
+        toast.error(frontendMessage("interaction.input.resolveDisconnected"));
+      }
+    },
+    [markInteractionInputResolutionPending, send, status],
   );
 
   const chatRuntime = useMemo<ChatRuntimeState>(
@@ -69,12 +91,24 @@ export function useAppChatPanelBindings({
       onCancel,
       onDeleteFromMessage,
       onEditUserMessage,
+      onForkFromMessage,
       onRegenerate,
       onSend,
       onViewWorkflow,
       onResolveApproval: handleResolveApproval,
+      onResolveInteractionInput: handleResolveInteractionInput,
     }),
-    [handleResolveApproval, onCancel, onDeleteFromMessage, onEditUserMessage, onRegenerate, onSend, onViewWorkflow],
+    [
+      handleResolveApproval,
+      handleResolveInteractionInput,
+      onCancel,
+      onDeleteFromMessage,
+      onEditUserMessage,
+      onForkFromMessage,
+      onRegenerate,
+      onSend,
+      onViewWorkflow,
+    ],
   );
 
   const chatNavigationActions = useMemo<ChatNavigationActions>(

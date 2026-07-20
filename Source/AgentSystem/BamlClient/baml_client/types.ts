@@ -102,7 +102,7 @@ export interface ActionPlanInput {
   compactToolCatalog: ToolCatalogSummaryItem[]
   toolCatalog: ToolCatalogItem[]
   activeSkills: PlannerActiveSkill[]
-
+  
 }
 
 export interface ActionRunState {
@@ -112,26 +112,27 @@ export interface ActionRunState {
   progress: ProgressSignals
   warnings: RepeatedCallWarning[]
   calls: PlannerToolCallStateItem[]
-
+  
 }
 
 export interface EvidenceSlot {
   name: string
   value: string
+  
+}
 
+export interface InteractionPreparation {
+  turnUnderstanding: TurnUnderstanding
+  initialAction: PiControllerAction
+  
 }
 
 export interface InteractionRoute {
   mode: InteractionRunMode
   objective: string
-  needsFreshEvidence: boolean
-  needsWorkspaceRead: boolean
-  needsSideEffect: boolean
-  risk: string
   preferredTools: string[]
   discoveryQueries: string[]
-  reason: string
-
+  
 }
 
 export interface MemoryCandidate {
@@ -144,7 +145,7 @@ export interface MemoryCandidate {
   sourceRefs: string[]
   reason: string
   confidence: number
-
+  
 }
 
 export interface MemoryConsolidationAction {
@@ -160,17 +161,17 @@ export interface MemoryConsolidationAction {
   targetMemoryUri?: string | null
   reason: string
   confidence: number
-
+  
 }
 
 export interface MemoryConsolidationResult {
   actions: MemoryConsolidationAction[]
-
+  
 }
 
 export interface MemoryLearningResult {
   candidates: MemoryCandidate[]
-
+  
 }
 
 export interface MemoryWriteDecision {
@@ -186,21 +187,39 @@ export interface MemoryWriteDecision {
   targetMemoryUri?: string | null
   reason: string
   confidence: number
-
+  
 }
 
 export interface MemoryWriteResolutionResult {
   decision: MemoryWriteDecision
+  
+}
 
+export interface PiCompactionDecision {
+  decision: string
+  rationale: string
+  
+}
+
+export interface PiCompactionSummary {
+  goals: string[]
+  constraints: string[]
+  completed: string[]
+  inProgress: string[]
+  blocked: string[]
+  decisions: PiCompactionDecision[]
+  nextSteps: string[]
+  criticalContext: string[]
+  
 }
 
 export interface PiControllerAction {
   kind: PiControllerActionKind
-  answer?: string | null
+  answerPlan?: string[] | null
   question?: string | null
   preface?: string | null
   calls?: PiPlannedToolCall[] | null
-
+  
 }
 
 export interface PiPlannedToolCall {
@@ -209,14 +228,14 @@ export interface PiPlannedToolCall {
   required: boolean
   dependsOn?: number[] | null
   argumentHints?: Record<string, ToolCallArgumentValue> | null
-
+  
 }
 
 export interface PiToolArgumentsDraft {
   arguments: Record<string, ToolCallArgumentValue>
   missingInputs: string[]
   assumptions: string[]
-
+  
 }
 
 export interface PlannerActiveSkill {
@@ -227,13 +246,13 @@ export interface PlannerActiveSkill {
   avoid: string[]
   recommendedTools: string[]
   evidenceRequirements: PlannerEvidenceRequirement[]
-
+  
 }
 
 export interface PlannerCurrentUserTurn {
   requestId?: string | null
   content: string
-
+  
 }
 
 export interface PlannerEvidenceMemoryItem {
@@ -246,7 +265,7 @@ export interface PlannerEvidenceMemoryItem {
   artifactUri: string
   facts: EvidenceSlot[]
   artifactRefs: string[]
-
+  
 }
 
 export interface PlannerEvidenceRequirement {
@@ -255,7 +274,7 @@ export interface PlannerEvidenceRequirement {
   minimumQuality: string[]
   minimum: number
   purpose: string
-
+  
 }
 
 export interface PlannerEvidenceStateItem {
@@ -270,7 +289,7 @@ export interface PlannerEvidenceStateItem {
   confidence?: number | null
   facts: EvidenceSlot[]
   artifactRefs: string[]
-
+  
 }
 
 export interface PlannerJournalItem {
@@ -281,14 +300,14 @@ export interface PlannerJournalItem {
   artifactUris: string[]
   loadedTools: string[]
   outcome: string
-
+  
 }
 
 export interface PlannerRoleplayPreset {
   enabled: boolean
   activePresetName?: string | null
   documents: PlannerRoleplayPresetDocument[]
-
+  
 }
 
 export interface PlannerRoleplayPresetDocument {
@@ -297,7 +316,7 @@ export interface PlannerRoleplayPresetDocument {
   title: string
   updatedAt: string
   content: string
-
+  
 }
 
 export interface PlannerTimelineTurn {
@@ -309,7 +328,7 @@ export interface PlannerTimelineTurn {
   payloadJson?: string | null
   evidenceUris: string[]
   artifactUris: string[]
-
+  
 }
 
 export interface PlannerToolCallStateItem {
@@ -321,7 +340,7 @@ export interface PlannerToolCallStateItem {
   resultKind: string
   argumentsPreview: string
   error: string
-
+  
 }
 
 export interface ProgressSignals {
@@ -330,7 +349,7 @@ export interface ProgressSignals {
   lastNewEvidenceStep: number
   repeatedCallCount: number
   stalled: boolean
-
+  
 }
 
 export interface RepeatedCallWarning {
@@ -338,7 +357,7 @@ export interface RepeatedCallWarning {
   argsHash: string
   count: number
   lastStep: number
-
+  
 }
 
 export interface ToolCapabilityFacets {
@@ -348,7 +367,7 @@ export interface ToolCapabilityFacets {
   Outputs?: string[] | null
   Evidence?: string[] | null
   Effects?: string[] | null
-
+  
 }
 
 export interface ToolCapabilityItem {
@@ -357,13 +376,13 @@ export interface ToolCapabilityItem {
   description: string
   facets: ToolCapabilityFacets
   risk?: ToolCapabilityRisk | null
-
+  
 }
 
 export interface ToolCapabilityRisk {
   sideEffect?: string | null
   permission?: string | null
-
+  
 }
 
 export interface ToolCatalogItem {
@@ -378,7 +397,7 @@ export interface ToolCatalogItem {
   permissions: string[]
   evidenceCapabilities: ToolEvidenceCapabilityItem[]
   loaded: boolean
-
+  
 }
 
 export interface ToolCatalogSummaryItem {
@@ -392,7 +411,7 @@ export interface ToolCatalogSummaryItem {
   permissions: string[]
   loaded: boolean
   rootKind: string
-
+  
 }
 
 export interface ToolEvidenceCapabilityItem {
@@ -401,7 +420,7 @@ export interface ToolEvidenceCapabilityItem {
   satisfies: string[]
   kinds: string[]
   capabilityIds: string[]
-
+  
 }
 
 export interface ToolLearningRecord {
@@ -411,12 +430,12 @@ export interface ToolLearningRecord {
   triggers: string[]
   reason: string
   confidence: number
-
+  
 }
 
 export interface ToolLearningResult {
   records: ToolLearningRecord[]
-
+  
 }
 
 export interface ToolRiskAudit {
@@ -427,7 +446,7 @@ export interface ToolRiskAudit {
   reason: string
   matchedConcerns: string[]
   safeAlternative?: string | null
-
+  
 }
 
 export interface TurnUnderstanding {
@@ -436,7 +455,7 @@ export interface TurnUnderstanding {
   contextMode: TurnContextMode
   contextBasis: string
   missingContext: string
-
+  
 }
 
 export interface ToolCallArgumentValue {

@@ -32,6 +32,7 @@ test("complete tool-assisted run projects chat messages, approvals, tool details
         approvalKind: "tool_call",
         title: "需要确认天气查询",
         reason: "外部网络请求",
+        availableDecisions: ["approve_once", "deny", "deny_and_interrupt"],
         subject: {
           kind: "tool_call",
           toolName: "WeatherTool",
@@ -52,6 +53,7 @@ test("complete tool-assisted run projects chat messages, approvals, tool details
         approvalKind: "tool_call",
         title: "需要确认天气查询",
         reason: "外部网络请求",
+        availableDecisions: ["approve_once", "deny", "deny_and_interrupt"],
         subject: {
           kind: "tool_call",
           toolName: "WeatherTool",
@@ -59,6 +61,8 @@ test("complete tool-assisted run projects chat messages, approvals, tool details
         },
         createdAt: "2026-07-09T00:00:01.000Z",
         status: "approved",
+        decision: "approve_once",
+        disposition: "proceed",
         resolvedAt: "2026-07-09T00:00:02.000Z",
         message: "允许",
       },

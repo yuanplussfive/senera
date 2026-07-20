@@ -140,7 +140,7 @@ export class AgentPlannerMemoryProjector {
             display: entry.display,
             label: entry.label,
             toolName: result.name,
-            artifactUri: readArtifactUri(artifact.artifactUri),
+            artifactUri: readArtifactUri(entry.plannerMemory.artifactUri ?? artifact.artifactUri),
             facts: entry.plannerMemory.facts,
             artifactRefs: entry.plannerMemory.artifactRefs,
           })),

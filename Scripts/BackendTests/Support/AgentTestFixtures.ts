@@ -8,6 +8,7 @@ import type {
 } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { InteractionRunMode, TurnContextMode } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import type { AgentActionPlannerCoreClient } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerModelClient.js";
+import type { ParsedInteractionPreparation } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerSchema.js";
 import type {
   ResolvedAgentActionPlannerConfig,
   ResolvedAgentModelProviderConfig,
@@ -70,13 +71,28 @@ export function createInteractionRoute(overrides: Partial<InteractionRoute> = {}
   return {
     mode: InteractionRunMode.ToolAgentLoop,
     objective: "Inspect the workspace",
-    needsFreshEvidence: true,
-    needsWorkspaceRead: true,
-    needsSideEffect: false,
-    risk: "low",
     preferredTools: ["WorkspaceReadFile"],
     discoveryQueries: ["workspace"],
-    reason: "Current workspace evidence is required.",
+    ...overrides,
+  };
+}
+
+export function createInteractionPreparation(
+  overrides: Partial<ParsedInteractionPreparation> = {},
+): ParsedInteractionPreparation {
+  return {
+    turnUnderstanding: createTurnUnderstanding(),
+    initialAction: {
+      kind: "CallTools",
+      preface: "Inspecting the workspace.",
+      calls: [
+        {
+          toolName: "WorkspaceReadFile",
+          purpose: "Read the requested workspace file.",
+          required: true,
+        },
+      ],
+    },
     ...overrides,
   };
 }
@@ -86,7 +102,7 @@ export function createPlannerConfig(
 ): ResolvedAgentActionPlannerConfig {
   const client = {
     ModelProviderId: undefined,
-    Provider: "openai-generic" as const,
+    ModelProvider: createModelProvider(),
     BaseUrl: "https://model.example/v1",
     ApiKey: "test-key",
     Model: "test-model",
@@ -100,9 +116,9 @@ export function createPlannerConfig(
       StalledStepLag: 2,
     },
     Client: { ...client },
-    TurnUnderstandingClient: { ...client },
     PlanningClient: { ...client },
     ...overrides,
+    FinalAnswerClient: { ...(overrides.FinalAnswerClient ?? client) },
   };
 }
 
@@ -131,36 +147,23 @@ export function createModelProvider(
 }
 
 export class FakePlannerClient implements AgentActionPlannerCoreClient {
-  readonly understandInputs: ActionPlanInput[] = [];
-  readonly routeInputs: ActionPlanInput[] = [];
-  readonly repairs: Array<{ invalidUnderstanding: string; issues: string[] }> = [];
+  readonly preparationInputs: ActionPlanInput[] = [];
+  readonly preparationCandidateTools: Array<
+    readonly import("../../../Source/AgentSystem/PiProxy/AgentPiAssistantMessageTypes.js").AgentPiToolCard[]
+  > = [];
 
-  constructor(
-    private readonly understanding: TurnUnderstanding | Error,
-    private readonly route: InteractionRoute | Error = createInteractionRoute(),
-    private readonly repairedUnderstanding: TurnUnderstanding | Error = understanding,
-  ) {}
+  constructor(private readonly preparation: ParsedInteractionPreparation | Error = createInteractionPreparation()) {}
 
-  async understandUserTurn(input: ActionPlanInput): Promise<TurnUnderstanding> {
-    this.understandInputs.push(input);
-    return resolveFixture(this.understanding);
-  }
-
-  async routeInteraction(input: ActionPlanInput): Promise<InteractionRoute> {
-    this.routeInputs.push(input);
-    return resolveFixture(this.route);
-  }
-
-  async repairTurnUnderstanding(options: {
-    input: ActionPlanInput;
-    invalidUnderstanding: string;
-    issues: string[];
-  }): Promise<TurnUnderstanding> {
-    this.repairs.push({
-      invalidUnderstanding: options.invalidUnderstanding,
-      issues: options.issues,
-    });
-    return resolveFixture(this.repairedUnderstanding);
+  async prepareInteraction(
+    input: ActionPlanInput,
+    options?: {
+      candidateTools?: readonly import("../../../Source/AgentSystem/PiProxy/AgentPiAssistantMessageTypes.js").AgentPiToolCard[];
+      signal?: AbortSignal;
+    },
+  ): Promise<ParsedInteractionPreparation> {
+    this.preparationInputs.push(input);
+    this.preparationCandidateTools.push(options?.candidateTools ?? []);
+    return resolveFixture(this.preparation);
   }
 }
 

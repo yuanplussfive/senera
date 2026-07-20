@@ -6,6 +6,8 @@ import type {
   ToolWorkspaceSnapshot,
 } from "../Types/ToolRuntimeTypes.js";
 import { assertInsideRoot } from "./AgentArtifactLocator.js";
+import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "../Execution/SeneraWorkspaceBoundary.js";
+import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
 import type { WorkspaceCaptureOptions } from "./AgentWorkspaceCaptureTypes.js";
 import {
   countLines,
@@ -21,12 +23,15 @@ export class AgentWorkspaceSnapshotBuilder {
   private readonly files: ToolWorkspaceFileSnapshot[] = [];
   private readonly visited = new Set<string>();
   private readonly warnings: string[] = [];
+  private readonly boundary: SeneraWorkspaceBoundary;
   private stopped = false;
 
   constructor(
     private readonly workspaceRoot: string,
     private readonly options: WorkspaceCaptureOptions,
-  ) {}
+  ) {
+    this.boundary = new SeneraWorkspaceBoundary({ workspaceRoot });
+  }
 
   async capture(relativePath: string, depth: number): Promise<void> {
     if (this.stopped) {
@@ -73,11 +78,19 @@ export class AgentWorkspaceSnapshotBuilder {
   }
 
   private async snapshotPath(relativePath: string): Promise<ToolWorkspaceFileSnapshot> {
-    const absolutePath = assertInsideRoot(
+    const addressedPath = assertInsideRoot(
       this.workspaceRoot,
       path.resolve(this.workspaceRoot, relativePath),
       `workspace snapshot 路径超出工作区：${relativePath}`,
     );
+    let absolutePath: string;
+    try {
+      absolutePath = (await this.boundary.resolve(relativePath, AgentResourceAccessIntents.Read)).absolutePath;
+    } catch (error) {
+      if (!(error instanceof SeneraWorkspaceBoundaryError)) throw error;
+      this.warnings.push(`workspace snapshot rejected unsafe path: ${relativePath}`);
+      return missingWorkspaceSnapshot(relativePath, addressedPath);
+    }
 
     try {
       const stat = await fs.lstat(absolutePath);

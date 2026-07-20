@@ -118,12 +118,12 @@ test("useAppChatPanelBindings sends approvals and exposes only available navigat
     }),
   );
 
-  act(() => handleRef.current.chatMessageActions.onResolveApproval("approval-a", "approved"));
+  act(() => handleRef.current.chatMessageActions.onResolveApproval("approval-a", "approve_once"));
 
   expect(send).toHaveBeenCalledWith({
     type: "approval.resolve",
     approvalId: "approval-a",
-    status: "approved",
+    decision: "approve_once",
   });
   expect(handleRef.current.chatNavigationActions.onOpenSessionPanel).toBeUndefined();
   expect(handleRef.current.chatNavigationActions.onOpenWorkflowPanel).toBe(onOpenWorkflowPanel);
@@ -133,12 +133,11 @@ test("useAppChatPanelBindings sends approvals and exposes only available navigat
     uploadUrl: "http://127.0.0.1/api/uploads",
   });
 
-  act(() => handleRef.current.chatMessageActions.onResolveApproval("approval-fallback", "approved", "session"));
+  act(() => handleRef.current.chatMessageActions.onResolveApproval("approval-fallback", "approve_session"));
   expect(send).toHaveBeenLastCalledWith({
     type: "approval.resolve",
     approvalId: "approval-fallback",
-    status: "approved",
-    scope: "session",
+    decision: "approve_session",
   });
 });
 
@@ -162,7 +161,7 @@ test.each([
     const handleRef = { current: null };
     render(React.createElement(ChatPanelBindingsHarness, { handleRef, send, status }));
 
-    act(() => handleRef.current.chatMessageActions.onResolveApproval("approval-b", "denied"));
+    act(() => handleRef.current.chatMessageActions.onResolveApproval("approval-b", "deny"));
 
     expect(send).toHaveBeenCalledTimes(expectedSendCount);
     expect(readTestToastCalls()).toContainEqual(
@@ -204,6 +203,7 @@ function createMessageHandlers() {
     onCancel: vi.fn(),
     onDeleteFromMessage: vi.fn(),
     onEditUserMessage: vi.fn(),
+    onForkFromMessage: vi.fn(),
     onRegenerate: vi.fn(),
     onSend: vi.fn(),
     onViewWorkflow: vi.fn(),
