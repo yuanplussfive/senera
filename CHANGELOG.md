@@ -4,6 +4,18 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.3.0](https://github.com/yuanplussfive/senera/compare/v1.2.0...v1.3.0) (2026-07-20)
+
+
+### 新增功能
+
+* **frontend:** 重构 Agent 工作区、设置体验与桌面交互 ([#27](https://github.com/yuanplussfive/senera/issues/27)) ([f3ca594](https://github.com/yuanplussfive/senera/commit/f3ca594a70d33cbdad134c850544eb8347cb14b6))
+
+
+### 问题修复
+
+* **ci:** allow autofix coauthor in squash commits ([#28](https://github.com/yuanplussfive/senera/issues/28)) ([507b8bc](https://github.com/yuanplussfive/senera/commit/507b8bc2da5495d4924bf4b64b2c72559f34d1c2))
+
 ## [1.2.0](https://github.com/yuanplussfive/senera/compare/v1.1.0...v1.2.0) (2026-07-14)
 
 

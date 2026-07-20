@@ -1,6 +1,6 @@
 {
   "name": "senera",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Observable, verifiable agent runtime and desktop workbench.",
   "workspaces": [
     "Packages/*",
