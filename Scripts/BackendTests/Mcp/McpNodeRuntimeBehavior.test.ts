@@ -5,6 +5,11 @@ import { resolveMcpServerManifest } from "../../../Source/AgentSystem/Mcp/AgentM
 import { createAgentMcpNodeRuntimeLaunch } from "../../../Source/AgentSystem/Mcp/AgentMcpNodeRuntime.js";
 import type { PluginMcpServerManifest } from "../../../Source/AgentSystem/Types/PluginManifestTypes.js";
 
+const FixturePaths = {
+  workspaceRoot: path.resolve("mcp-node-runtime-workspace"),
+  pluginRoot: path.resolve("mcp-node-runtime-plugin"),
+};
+
 describe("MCP Node runtime launch", () => {
   test("uses the embedded Electron executable in Node mode without inheriting a conflicting mode", () => {
     const launch = createAgentMcpNodeRuntimeLaunch(
@@ -47,11 +52,11 @@ describe("MCP Node runtime launch", () => {
     expect(nodeServer).toMatchObject({
       command: process.execPath,
       args: ["server.js"],
-      cwd: path.resolve("C:/workspace"),
+      cwd: FixturePaths.workspaceRoot,
     });
     expect(packageBinServer.command).toBe(process.execPath);
     expect(packageBinServer.args[0]).toMatch(/@modelcontextprotocol[\\/]server-filesystem[\\/]dist[\\/]index\.js$/u);
-    expect(packageBinServer.args.slice(1)).toEqual(["C:/workspace"]);
+    expect(packageBinServer.args.slice(1)).toEqual([FixturePaths.workspaceRoot]);
   });
 
   test("leaves an explicit native MCP executable unchanged", () => {
@@ -61,7 +66,7 @@ describe("MCP Node runtime launch", () => {
       id: "fixture",
       command: "C:/tools/mcp-server.exe",
       args: ["--stdio"],
-      cwd: path.resolve("C:/workspace"),
+      cwd: FixturePaths.workspaceRoot,
       env: undefined,
     });
   });
@@ -80,10 +85,7 @@ describe("MCP Node runtime launch", () => {
 });
 
 function context() {
-  return {
-    workspaceRoot: "C:/workspace",
-    pluginRoot: "C:/plugin",
-  };
+  return FixturePaths;
 }
 
 function server(command: string, args: string[]): PluginMcpServerManifest {
