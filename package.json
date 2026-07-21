@@ -33,6 +33,8 @@
     "policy.verify": "tsx Build/CompileOpaPolicy.ts --check",
     "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
     "generate.protocol-reference": "tsx Build/GenerateWebSocketProtocolReference.ts",
+    "generate.tool-contracts": "tsx Build/GenerateToolContractBundles.ts",
+    "verify.tool-contracts": "tsx Build/GenerateToolContractBundles.ts --check",
     "access.admin": "tsx Apps/AdminAccess.ts",
     "maintenance.sessions": "tsx Apps/SessionMaintenance.ts",
     "maintenance.sessions.apply": "tsx Apps/SessionMaintenance.ts --apply",
@@ -50,7 +52,7 @@
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
     "verify.sandbox.real": "npm run build && tsx Scripts/VerifySeneraMicrosandboxRealTerminal.ts",
     "check.types": "tsc --noEmit",
-    "build": "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
+    "build": "npm run verify.tool-contracts && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     "dev": "concurrently -k -n server,frontend -c blue,green \"npm run dev.server\" \"npm run dev.frontend\"",
     "docker.up": "docker compose pull && docker compose up -d",
     "docker.down": "docker compose down",
@@ -117,13 +119,6 @@
         "to": "node_modules/@senera/terminal-sidecar",
         "filter": [
           "**/*"
-        ]
-      },
-      {
-        "from": "node_modules/ts-json-schema-generator/node_modules/typescript/lib",
-        "to": "node_modules/typescript/lib",
-        "filter": [
-          "**/*.d.ts"
         ]
       },
       "senera.config.example.json",
@@ -216,8 +211,6 @@
     "saxes": "^6.0.0",
     "smol-toml": "^1.6.1",
     "tree-kill": "^1.2.2",
-    "ts-json-schema-generator": "^2.9.0",
-    "typescript": "^6.0.3",
     "tslib": "2.8.1",
     "ws": "^8.20.0",
     "yauzl": "^3.4.0",
@@ -226,7 +219,6 @@
   "devDependencies": {
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
-    "@electron/asar": "^3.4.1",
     "@eslint/js": "^10.0.1",
     "@ladle/react": "^5.1.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -258,6 +250,8 @@
     "semver": "^7.8.5",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.22.4",
+    "ts-json-schema-generator": "^2.9.0",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.63.0",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"

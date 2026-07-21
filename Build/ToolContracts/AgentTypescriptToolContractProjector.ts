@@ -1,25 +1,23 @@
-import fs from "node:fs";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import ts from "typescript";
-import { AgentXmlCodec } from "../Xml/AgentXmlCodec.js";
-import { createXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
-import { AgentPromptContractAstReader } from "./AgentPromptContractAstReader.js";
-import { AgentPromptContractRenderer } from "./AgentPromptContractRenderer.js";
-import { AgentPromptContractJsonSchemaCatalog } from "./AgentPromptContractJsonSchema.js";
-import type { AgentPromptContractView } from "./AgentPromptContractTypes.js";
+import { AgentPromptContractRenderer } from "../../Source/AgentSystem/Prompt/AgentPromptContractRenderer.js";
+import type { AgentPromptContractView } from "../../Source/AgentSystem/Prompt/AgentPromptContractTypes.js";
+import { AgentXmlCodec } from "../../Source/AgentSystem/Xml/AgentXmlCodec.js";
+import { createXmlProtocolSpec } from "../../Source/AgentSystem/Xml/AgentXmlPolicy.js";
+import { AgentTypescriptToolContractAstReader } from "./AgentTypescriptToolContractAstReader.js";
+import { AgentTypescriptToolContractJsonSchemaCatalog } from "./AgentTypescriptToolContractJsonSchema.js";
 
-export type { AgentPromptContractProperty, AgentPromptContractView } from "./AgentPromptContractTypes.js";
-
-export class AgentPromptContractProjector {
+export class AgentTypescriptToolContractProjector {
   private readonly protocol = createXmlProtocolSpec();
-  private readonly reader = new AgentPromptContractAstReader({
+  private readonly reader = new AgentTypescriptToolContractAstReader({
     arrayItemName: this.protocol.items.arrayItem,
   });
   private readonly renderer = new AgentPromptContractRenderer({
     xmlCodec: new AgentXmlCodec(this.protocol),
     arrayItemName: this.protocol.items.arrayItem,
   });
-  private readonly schemaCatalog = new AgentPromptContractJsonSchemaCatalog();
+  private readonly schemaCatalog = new AgentTypescriptToolContractJsonSchemaCatalog();
   private readonly fileCache = new Map<string, { sourceText: string; sourceDigest: string }>();
   private readonly contractCache = new Map<string, AgentPromptContractView>();
 

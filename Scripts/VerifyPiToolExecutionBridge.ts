@@ -189,8 +189,6 @@ function createToolFixture(name: string): RegisteredTool {
   return {
     name,
     descriptionFile: undefined,
-    signatureFile: undefined,
-    signatureType: undefined,
     permissions: [],
     handler: {
       kind: "HostCapability",

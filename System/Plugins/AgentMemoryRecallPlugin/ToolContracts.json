@@ -1,0 +1,36 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "MemoryRecallTool": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#default",
+        "file": "./ToolSignature.ts",
+        "sha256": "17f2e6eda8a837537bcbb9516662b97fac82b9952939ebb1c470fa873410ae2d"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "想回忆的用户、偏好、知识或剧情上下文。" },
+          "scope": {
+            "type": "string",
+            "enum": ["all", "profile", "preference", "knowledge", "scene"],
+            "description": "记忆范围；默认 all。"
+          },
+          "limit": { "type": "number", "description": "返回条数；默认由工具内部策略决定。" },
+          "refs": {
+            "type": "object",
+            "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+            "required": ["item"],
+            "additionalProperties": false,
+            "description": "可选的精确引用，可传 memoryUri、sourceRef、evidenceUri 或 artifactUri。"
+          }
+        },
+        "required": ["query"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    }
+  }
+}

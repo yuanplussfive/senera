@@ -13,7 +13,8 @@ import type {
   RegisteredTool,
   RegisteredToolHandler,
 } from "../Types/PluginRuntimeTypes.js";
-import { AgentPromptContractProjector } from "../Prompt/AgentPromptContractProjector.js";
+import { AgentToolContractBundleLoader } from "../ToolContracts/AgentToolContractBundleLoader.js";
+import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 
 export interface AgentPluginRuntimeContributions {
   tools: RegisteredTool[];
@@ -23,7 +24,8 @@ export interface AgentPluginRuntimeContributions {
 }
 
 export class AgentPluginRuntimeContractProjector {
-  private readonly contractProjector = new AgentPromptContractProjector();
+  private readonly contractBundles = new AgentToolContractBundleLoader();
+  private readonly contractProjector = new AgentJsonSchemaPromptContractProjector();
 
   project(plugin: LoadedPlugin): AgentPluginRuntimeContributions {
     return {
@@ -35,6 +37,7 @@ export class AgentPluginRuntimeContractProjector {
   }
 
   private projectTools(plugin: LoadedPlugin): RegisteredTool[] {
+    this.assertToolContractCoverage(plugin);
     return (plugin.manifest.Tools ?? [])
       .filter((tool) => isLoadedPluginToolEnabled(plugin, tool.Name))
       .map((tool) => ({
@@ -42,8 +45,6 @@ export class AgentPluginRuntimeContractProjector {
         name: tool.Name,
         loading: tool.Loading ?? ToolLoadingModes.Dynamic,
         descriptionFile: tool.DescriptionFile ? resolveFrom(plugin.rootPath, tool.DescriptionFile) : undefined,
-        signatureFile: tool.SignatureFile ? resolveFrom(plugin.rootPath, tool.SignatureFile) : undefined,
-        signatureType: tool.SignatureType,
         contract: this.projectToolContract(plugin, tool),
         permissions: tool.Permissions ?? [],
         handler: readToolHandler(tool),
@@ -57,9 +58,36 @@ export class AgentPluginRuntimeContractProjector {
       }));
   }
 
+  private assertToolContractCoverage(plugin: LoadedPlugin): void {
+    const tools = plugin.manifest.Tools ?? [];
+    if (tools.length === 0) return;
+    const contractFile = plugin.manifest.Contracts?.File;
+    if (!contractFile) {
+      throw new Error(`Plugin ${plugin.manifest.Plugin.Name} does not declare a tool contract bundle.`);
+    }
+    const bundle = this.contractBundles.load(plugin.rootPath, contractFile);
+    const declared = new Set(tools.map((tool) => tool.Name));
+    const bundled = new Set(Object.keys(bundle.tools));
+    const missing = [...declared].filter((name) => !bundled.has(name));
+    const extraneous = [...bundled].filter((name) => !declared.has(name));
+    if (missing.length === 0 && extraneous.length === 0) return;
+    throw new Error(
+      [
+        `Tool contract bundle for ${plugin.manifest.Plugin.Name} does not match its manifest.`,
+        ...(missing.length > 0 ? [`Missing: ${missing.join(", ")}`] : []),
+        ...(extraneous.length > 0 ? [`Extraneous: ${extraneous.join(", ")}`] : []),
+      ].join("\n"),
+    );
+  }
+
   private projectToolContract(plugin: LoadedPlugin, tool: ToolManifest) {
-    const signatureFile = tool.SignatureFile ? resolveFrom(plugin.rootPath, tool.SignatureFile) : undefined;
-    const argumentsContract = this.contractProjector.projectFromFile(signatureFile, "arguments", tool.SignatureType);
+    const contractFile = plugin.manifest.Contracts?.File;
+    if (!contractFile) throw new Error(`Plugin ${plugin.manifest.Plugin.Name} has no tool contract bundle.`);
+    const definition = this.contractBundles.load(plugin.rootPath, contractFile).tools[tool.Name];
+    if (!definition) {
+      throw new Error(`Tool contract bundle for ${plugin.manifest.Plugin.Name} does not define ${tool.Name}.`);
+    }
+    const argumentsContract = this.contractProjector.project(definition.inputSchema);
     const digest = crypto
       .createHash("sha256")
       .update(
@@ -68,7 +96,7 @@ export class AgentPluginRuntimeContractProjector {
           plugin: plugin.manifest.Plugin.Name,
           pluginVersion: plugin.manifest.Plugin.Version,
           tool: tool.Name,
-          signatureType: tool.SignatureType,
+          contractSourceDigest: definition.source.sha256,
           observation: tool.Observation,
           arguments: argumentsContract,
         }),

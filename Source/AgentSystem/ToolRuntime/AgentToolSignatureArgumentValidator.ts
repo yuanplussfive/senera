@@ -1,6 +1,6 @@
 import * as AjvModule from "ajv";
 import type { ErrorObject, ValidateFunction } from "ajv";
-import type { AgentPromptContractView } from "../Prompt/AgentPromptContractProjector.js";
+import type { AgentPromptContractView } from "../Prompt/AgentPromptContractTypes.js";
 
 const Ajv = (AjvModule.default ?? AjvModule) as unknown as typeof import("ajv").default;
 
@@ -19,6 +19,10 @@ export function validateToolSignatureArguments(input: {
 }): string[] {
   const validate = validatorFor(input.contract.jsonSchema);
   return validate(input.args) ? [] : (validate.errors ?? []).map((error) => formatAjvIssue(error, input.path));
+}
+
+export function assertToolContractSchema(schema: Record<string, unknown>): void {
+  validatorFor(schema);
 }
 
 function validatorFor(schema: Record<string, unknown>): ValidateFunction {

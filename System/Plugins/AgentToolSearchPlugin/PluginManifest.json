@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "AgentToolSearchPlugin",
     "Title": "Tool Search",
@@ -16,7 +17,6 @@
       "Name": "ToolSearchTool",
       "Loading": "Bootstrap",
       "DescriptionFile": "./docs/Tool.md",
-      "SignatureFile": "./ToolSignature.ts",
       "Permissions": [],
       "Handler": {
         "Kind": "HostCapability",

@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import crypto from "node:crypto";
 import type { RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import type { ToolSearchDocument } from "./AgentToolSearchTypes.js";
@@ -92,22 +91,13 @@ export class AgentToolSearchDocumentBuilder {
   }
 
   private readSignatureParams(tool: RegisteredTool): string {
-    if (!tool.signatureFile || !fs.existsSync(tool.signatureFile)) {
-      return "";
-    }
-
-    try {
-      const contract = tool.contract?.arguments;
-      const fields = contract?.properties.flatMap(readContractPropertyTokens) ?? [];
-      return fields.map((field) => field.name).join(" ");
-    } catch {
-      return "";
-    }
+    const fields = tool.contract?.arguments?.properties.flatMap(readContractPropertyTokens) ?? [];
+    return fields.map((field) => field.name).join(" ");
   }
 }
 
 function readContractPropertyTokens(
-  property: import("../Prompt/AgentPromptContractProjector.js").AgentPromptContractProperty,
+  property: import("../Prompt/AgentPromptContractTypes.js").AgentPromptContractProperty,
 ): Array<{ name: string; typeText: string; comment: string }> {
   return [
     {

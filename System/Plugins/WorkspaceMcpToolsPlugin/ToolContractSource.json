@@ -1,0 +1,14 @@
+{
+  "contractSourceVersion": 1,
+  "tools": {
+    "WorkspaceReadFile": { "file": "./ToolSignature.ts", "type": "WorkspaceReadFileArguments" },
+    "WorkspaceListDirectory": { "file": "./ToolSignature.ts", "type": "WorkspaceListDirectoryArguments" },
+    "WorkspaceSearchFiles": { "file": "./ToolSignature.ts", "type": "WorkspaceSearchFilesArguments" },
+    "WorkspaceGrep": { "file": "./ToolSignature.ts", "type": "WorkspaceGrepArguments" },
+    "WorkspaceListFiles": { "file": "./ToolSignature.ts", "type": "WorkspaceListFilesArguments" },
+    "WorkspaceEditFile": { "file": "./ToolSignature.ts", "type": "WorkspaceEditFileArguments" },
+    "WorkspaceWriteFile": { "file": "./ToolSignature.ts", "type": "WorkspaceWriteFileArguments" },
+    "WorkspaceCreateDirectory": { "file": "./ToolSignature.ts", "type": "WorkspaceCreateDirectoryArguments" },
+    "WorkspaceMoveFile": { "file": "./ToolSignature.ts", "type": "WorkspaceMoveFileArguments" }
+  }
+}

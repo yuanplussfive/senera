@@ -18,6 +18,7 @@ import { createSeneraOutputSpool, updateSeneraOutputSpoolState } from "../Execut
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
+import { validateToolSignatureArguments } from "./AgentToolSignatureArgumentValidator.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -67,6 +68,17 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     args: Record<string, unknown>,
     context: AgentToolRunnerContext = {},
   ): Promise<AgentToolProcessRunResult> {
+    const argumentContract = tool.contract?.arguments;
+    if (argumentContract) {
+      const issues = validateToolSignatureArguments({ contract: argumentContract, args, path: [tool.name] });
+      if (issues.length > 0) {
+        return this.failure(
+          `Invalid arguments for ${tool.name}.`,
+          { toolName: tool.name, issues },
+          AgentExecutionErrorCodes.InvalidToolArguments,
+        );
+      }
+    }
     const unsupportedRuntime = explainUnsupportedAgentToolRuntime(tool);
     if (unsupportedRuntime.length > 0) {
       return this.failure(

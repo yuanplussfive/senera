@@ -1,0 +1,8 @@
+{
+  "contractSourceVersion": 1,
+  "tools": {
+    "ImageVisionTool": {
+      "file": "./ToolSignature.ts"
+    }
+  }
+}

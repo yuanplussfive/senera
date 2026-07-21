@@ -1,0 +1,52 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "MemoryWriteTool": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#default",
+        "file": "./ToolSignature.ts",
+        "sha256": "6b4b9d2f4853a05756da4a38d146e7e47bb1cce1efc3689458c7ea6f03bb8858"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": ["create", "reinforce", "update", "supersede"],
+            "description": "默认 create；reinforce/update/supersede 需要 targetMemoryUri。"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["profile", "preference", "knowledge", "scene"],
+            "description": "长期记忆类型。"
+          },
+          "subject": { "type": "string", "description": "记忆主体，例如 assistant_work_style、用户饮料偏好。" },
+          "claim": { "type": "string", "description": "需要长期记住的具体陈述。" },
+          "howToApply": { "type": "string", "description": "以后如何使用这条记忆。" },
+          "tags": {
+            "type": "object",
+            "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+            "required": ["item"],
+            "additionalProperties": false,
+            "description": "简短分类标签。"
+          },
+          "triggers": {
+            "type": "object",
+            "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+            "required": ["item"],
+            "additionalProperties": false,
+            "description": "未来哪些自然表达应召回这条记忆。"
+          },
+          "confidence": { "type": "number", "description": "模型对这条显式记忆的置信度，0 到 1。" },
+          "targetMemoryUri": { "type": "string", "description": "update/supersede 目标记忆 URI。" },
+          "reason": { "type": "string", "description": "可选写入原因。" }
+        },
+        "required": ["type", "subject", "claim", "howToApply", "tags", "triggers", "confidence"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    }
+  }
+}

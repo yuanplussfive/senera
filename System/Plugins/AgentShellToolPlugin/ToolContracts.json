@@ -1,0 +1,42 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "ShellCommandTool": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#default",
+        "file": "./ToolSignature.ts",
+        "sha256": "eeb533b41dc3aede44fb2de17becb29e1eaf59e4b4ef7a2147d48081604f6e9d"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "object",
+            "properties": {
+              "mode": { "type": "string", "const": "shell" },
+              "dialect": { "type": "string", "enum": ["posix-sh", "powershell"] },
+              "script": { "type": "string" }
+            },
+            "required": ["mode", "dialect", "script"],
+            "additionalProperties": false,
+            "description": "明确声明脚本方言。SandboxPreferred 默认目标是 Linux/posix-sh；只有 Local 工具才使用 powershell。"
+          },
+          "cwd": {
+            "type": "string",
+            "description": "执行目录，相对工作区根目录；默认 \".\"。必须留在工作区内。优先使用工作区相对路径。"
+          },
+          "timeoutMs": {
+            "type": "number",
+            "description": "超时时间，毫秒；默认使用系统 ToolExecution.TimeoutMs，最大 1800000。"
+          },
+          "justification": { "type": "string", "description": "简短说明为什么需要执行该命令，便于用户查看执行记录。" }
+        },
+        "required": ["command"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    }
+  }
+}

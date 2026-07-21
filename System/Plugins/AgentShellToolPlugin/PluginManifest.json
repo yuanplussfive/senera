@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "AgentShellToolPlugin",
     "Title": "Shell Tool",
@@ -15,7 +16,6 @@
       "Name": "ShellCommandTool",
       "Loading": "Bootstrap",
       "DescriptionFile": "./docs/Tool.md",
-      "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["process:shell", "filesystem:workspace"],
       "Execution": {
         "Boundary": "SandboxPreferred",

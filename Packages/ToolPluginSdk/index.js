@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const path = require("node:path");
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
@@ -28,6 +29,41 @@ const TaskEventsReadRequestSchema = z.object({
     })
     .strict(),
 });
+
+const ToolContractVersion = 1;
+
+function createToolContractBundle(definitions, options = {}) {
+  const sourceIdentity = readOptionalString(options.sourceIdentity);
+  const sourceFile = readOptionalString(options.sourceFile);
+  if (options.sourceIdentity !== undefined && !sourceIdentity) {
+    throw new TypeError("sourceIdentity must be a non-empty string when provided.");
+  }
+  if (options.sourceFile !== undefined && !sourceFile) {
+    throw new TypeError("sourceFile must be a non-empty string when provided.");
+  }
+
+  const tools = {};
+  for (const definition of definitions) {
+    const toolName = readOptionalString(definition?.toolName);
+    if (!toolName) throw new TypeError("Every tool contract definition must have a non-empty toolName.");
+    if (Object.hasOwn(tools, toolName)) throw new Error(`Duplicate tool contract definition: ${toolName}`);
+
+    const inputSchema = z.toJSONSchema(definition.argumentSchema, { target: "draft-7" });
+    const outputSchema = z.toJSONSchema(definition.resultSchema, { target: "draft-7" });
+    const schemaDigest = stableJson({ inputSchema, outputSchema });
+    tools[toolName] = {
+      source: {
+        kind: "schema",
+        identity: sourceIdentity ? `${sourceIdentity}#${toolName}` : toolName,
+        ...(sourceFile ? { file: sourceFile } : {}),
+        sha256: crypto.createHash("sha256").update(schemaDigest).digest("hex"),
+      },
+      inputSchema,
+      outputSchema,
+    };
+  }
+  return deepFreeze({ contractVersion: ToolContractVersion, tools });
+}
 
 async function runMcpTool(definition) {
   return runMcpToolSuite([definition]);
@@ -344,6 +380,26 @@ function readOptionalString(value) {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function stableJson(value) {
+  return JSON.stringify(sortJsonValue(value));
+}
+
+function sortJsonValue(value) {
+  if (Array.isArray(value)) return value.map(sortJsonValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, sortJsonValue(nested)]),
+  );
+}
+
+function deepFreeze(value) {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const nested of Object.values(value)) deepFreeze(nested);
+  return Object.freeze(value);
+}
+
 function mcpErrorResult(error) {
   const normalized = normalizeToolPluginError(error);
   return {
@@ -403,6 +459,8 @@ function parsePluginTomlConfig(content) {
 }
 
 module.exports = {
+  ToolContractVersion,
+  createToolContractBundle,
   runMcpTool,
   runMcpToolSuite,
   parsePluginTomlConfig,

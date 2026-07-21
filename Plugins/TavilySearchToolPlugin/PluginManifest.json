@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "TavilySearchToolPlugin",
     "Title": "网页搜索",
@@ -34,7 +35,6 @@
       "Name": "TavilySearchTool",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
-      "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["network:https://api.tavily.com", "filesystem:read:PluginConfig.toml", "filesystem:write:.state"],
       "Execution": {
         "Boundary": "SandboxPreferred",

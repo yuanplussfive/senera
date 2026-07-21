@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "WeatherTool": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#default",
+        "file": "./ToolSignature.ts",
+        "sha256": "a304ef5f559cae15daf46e29f48ec9abc4da4db0237c6c392757d0ef43976d0b"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string",
+            "description": "城市、地区、地址、邮编或国家地区组合，例如 北京、上海浦东、Tokyo、New York。"
+          },
+          "days": { "type": "number", "description": "查询天数。1 表示当前天气；2-7 返回当前天气和逐日预报。" },
+          "language": { "type": "string", "description": "返回语言；默认使用插件配置，例如 zh 或 en。" },
+          "timeoutMs": { "type": "number", "description": "请求超时；通常不需要填写。" }
+        },
+        "required": ["location"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    }
+  }
+}

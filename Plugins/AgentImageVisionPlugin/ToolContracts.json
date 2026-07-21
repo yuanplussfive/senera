@@ -1,0 +1,31 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "ImageVisionTool": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#default",
+        "file": "./ToolSignature.ts",
+        "sha256": "86ebb6cdf519b994f3911e800a32d5065257fcf80bb1f6fdebab2faf42144e24"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "uploadUri": {
+            "type": "string",
+            "description": "Opaque upload handle copied from an attachment, for example \"senera://upload/upl_0123abcd\"."
+          },
+          "task": {
+            "type": "string",
+            "description": "The visual task requested by the user, such as \"describe\", \"ocr\", \"inspect-ui\", or \"answer-question\"."
+          },
+          "question": { "type": "string", "description": "Optional natural-language question about the image." }
+        },
+        "required": ["uploadUri", "task"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    }
+  }
+}

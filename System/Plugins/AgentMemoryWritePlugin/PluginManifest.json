@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "AgentMemoryWritePlugin",
     "Title": "长期记忆写入",
@@ -16,7 +17,6 @@
       "Name": "MemoryWriteTool",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
-      "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["memory:write"],
       "Handler": {
         "Kind": "HostCapability",

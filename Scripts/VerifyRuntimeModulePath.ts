@@ -1,31 +1,31 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { moduleDirPath, toRuntimeModulePath } from "../Source/AgentSystem/Core/AgentPath.js";
+import { AgentToolContractBundleLoader } from "../Source/AgentSystem/ToolContracts/AgentToolContractBundleLoader.js";
 
-const runtimeAppRoot = path.resolve(moduleDirPath(import.meta.url), "..", "..");
-const desktopRuntimeSchemaPath = path.join(
-  os.homedir(),
-  "AppData",
-  "Roaming",
-  "Senera",
-  "runtime",
-  "System",
-  "Plugins",
-  "AgentShellToolPlugin",
-  "ToolSignature.ts",
-);
-const expectedModulePath = path.join(
-  runtimeAppRoot,
-  "Dist",
-  "System",
-  "Plugins",
-  "AgentShellToolPlugin",
-  "ToolSignature.js",
-);
+const pluginRoot = path.join(process.cwd(), "System", "Plugins", "AgentShellToolPlugin");
+const contractPath = path.join(pluginRoot, "ToolContracts.json");
+const bundle = new AgentToolContractBundleLoader().load(pluginRoot, "./ToolContracts.json");
 
-assert.equal(toRuntimeModulePath(desktopRuntimeSchemaPath), expectedModulePath);
-assert.equal(fs.existsSync(expectedModulePath), true);
+assert.equal(fs.existsSync(contractPath), true);
+assert.ok(bundle.tools.ShellCommandTool);
+assert.deepEqual(findRuntimeToolchainImports(path.join(process.cwd(), "Dist", "Source")), []);
 
-console.log("Runtime module path verification passed.");
+console.log("Runtime tool contract path verification passed.");
+
+function findRuntimeToolchainImports(runtimeRoot: string): string[] {
+  const forbiddenSpecifiers = ["typescript", "ts-json-schema-generator"];
+  return walkJavaScriptFiles(runtimeRoot).flatMap((filePath) => {
+    const source = fs.readFileSync(filePath, "utf8");
+    return forbiddenSpecifiers
+      .filter((specifier) => source.includes(`from "${specifier}`) || source.includes(`require("${specifier}`))
+      .map((specifier) => `${path.relative(runtimeRoot, filePath)} imports ${specifier}`);
+  });
+}
+
+function walkJavaScriptFiles(directory: string): string[] {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? walkJavaScriptFiles(entryPath) : path.extname(entry.name) === ".js" ? [entryPath] : [];
+  });
+}

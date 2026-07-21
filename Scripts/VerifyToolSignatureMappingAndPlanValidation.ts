@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { AgentPromptContractProjector } from "../Source/AgentSystem/Prompt/AgentPromptContractProjector.js";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import {
   parsePiControllerAction,
@@ -36,12 +35,7 @@ async function main(): Promise<void> {
     ]);
     assert.deepEqual(schemaFieldNames(readFile.parameters), ["path", "head", "tail"]);
 
-    const projector = new AgentPromptContractProjector();
-    const contract = projector.projectFromFile(
-      runtime.registry.getTool("WorkspaceGrep")?.signatureFile,
-      "arguments",
-      "WorkspaceGrepArguments",
-    );
+    const contract = runtime.registry.getTool("WorkspaceGrep")?.contract?.arguments;
     assert.deepEqual(
       contract?.properties.map((property) => property.name),
       schemaFieldNames(grep.parameters),

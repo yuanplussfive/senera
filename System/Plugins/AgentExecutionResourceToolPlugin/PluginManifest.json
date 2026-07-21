@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "AgentExecutionResourceToolPlugin",
     "Title": "Execution Resources",
@@ -16,8 +17,6 @@
       "Name": "ShellStartTool",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/ShellStart.md",
-      "SignatureFile": "./ToolSignature.ts",
-      "SignatureType": "ShellStartToolArguments",
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell", "filesystem:workspace"],
       "Execution": {
@@ -75,8 +74,6 @@
       "Name": "ExecutionResourceInspect",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Inspect.md",
-      "SignatureFile": "./ToolSignature.ts",
-      "SignatureType": "ExecutionResourceInspectArguments",
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
@@ -123,8 +120,6 @@
       "Name": "ExecutionResourceWait",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Wait.md",
-      "SignatureFile": "./ToolSignature.ts",
-      "SignatureType": "ExecutionResourceWaitArguments",
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
@@ -174,8 +169,6 @@
       "Name": "ExecutionResourceWrite",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Write.md",
-      "SignatureFile": "./ToolSignature.ts",
-      "SignatureType": "ExecutionResourceWriteArguments",
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
@@ -211,8 +204,6 @@
       "Name": "ExecutionResourceSignal",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Signal.md",
-      "SignatureFile": "./ToolSignature.ts",
-      "SignatureType": "ExecutionResourceSignalArguments",
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
@@ -251,8 +242,6 @@
       "Name": "ExecutionResourceList",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/List.md",
-      "SignatureFile": "./ToolSignature.ts",
-      "SignatureType": "ExecutionResourceListArguments",
       "ArtifactPolicyFile": "./CollectionArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
@@ -288,8 +277,6 @@
       "Name": "ExecutionResourceResize",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Resize.md",
-      "SignatureFile": "./ToolSignature.ts",
-      "SignatureType": "ExecutionResourceResizeArguments",
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
@@ -325,8 +312,6 @@
       "Name": "ExecutionResourceStopAll",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/StopAll.md",
-      "SignatureFile": "./ToolSignature.ts",
-      "SignatureType": "ExecutionResourceStopAllArguments",
       "ArtifactPolicyFile": "./CollectionArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {

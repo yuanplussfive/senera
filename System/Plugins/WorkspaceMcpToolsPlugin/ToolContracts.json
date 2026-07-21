@@ -1,0 +1,200 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "WorkspaceReadFile": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#WorkspaceReadFileArguments",
+        "file": "./ToolSignature.ts",
+        "type": "WorkspaceReadFileArguments",
+        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "绝对路径或工作区内文件路径。MCP filesystem server 会限制在允许目录内。"
+          },
+          "head": { "type": "number", "description": "可选起始行。" },
+          "tail": { "type": "number", "description": "可选尾部行数。" }
+        },
+        "required": ["path"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "WorkspaceListDirectory": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#WorkspaceListDirectoryArguments",
+        "file": "./ToolSignature.ts",
+        "type": "WorkspaceListDirectoryArguments",
+        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": { "path": { "type": "string", "description": "绝对路径或工作区内目录路径。" } },
+        "required": ["path"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "WorkspaceSearchFiles": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#WorkspaceSearchFilesArguments",
+        "file": "./ToolSignature.ts",
+        "type": "WorkspaceSearchFilesArguments",
+        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "搜索根目录。" },
+          "pattern": { "type": "string", "description": "glob 路径模式，例如 **/*AgentLoop*。" },
+          "excludePatterns": { "type": "array", "items": { "type": "string" }, "description": "排除模式。" }
+        },
+        "required": ["path", "pattern"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "WorkspaceGrep": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#WorkspaceGrepArguments",
+        "file": "./ToolSignature.ts",
+        "type": "WorkspaceGrepArguments",
+        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "pattern": { "type": "string", "description": "要搜索的文本或正则模式。" },
+          "path": { "type": "string", "description": "搜索路径。" },
+          "caseSensitive": { "type": "boolean", "description": "是否区分大小写。" },
+          "filePattern": { "type": "string", "description": "glob 文件过滤，例如 *.ts。" },
+          "maxResults": { "type": "number", "description": "最大结果数量。" },
+          "context": { "type": "number", "description": "上下文行数。" }
+        },
+        "required": ["pattern", "path"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "WorkspaceListFiles": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#WorkspaceListFilesArguments",
+        "file": "./ToolSignature.ts",
+        "type": "WorkspaceListFilesArguments",
+        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "要列出文件的路径。" },
+          "filePattern": { "type": "string", "description": "glob 文件过滤，例如 *.ts。" },
+          "fileType": { "type": "string", "description": "ripgrep 文件类型，例如 ts、json。" },
+          "includeHidden": { "type": "boolean", "description": "是否包含隐藏文件。" }
+        },
+        "required": ["path"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "WorkspaceEditFile": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#WorkspaceEditFileArguments",
+        "file": "./ToolSignature.ts",
+        "type": "WorkspaceEditFileArguments",
+        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "绝对路径或工作区内文件路径。" },
+          "edits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": { "oldText": { "type": "string" }, "newText": { "type": "string" } },
+              "required": ["oldText", "newText"],
+              "additionalProperties": false
+            },
+            "description": "一个或多个局部替换操作。"
+          },
+          "dryRun": { "type": "boolean", "description": "是否只预览 diff，不写入文件。" }
+        },
+        "required": ["path", "edits"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "WorkspaceWriteFile": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#WorkspaceWriteFileArguments",
+        "file": "./ToolSignature.ts",
+        "type": "WorkspaceWriteFileArguments",
+        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "绝对路径或工作区内文件路径。" },
+          "content": { "type": "string", "description": "完整文件内容。会覆盖已有文件。" }
+        },
+        "required": ["path", "content"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "WorkspaceCreateDirectory": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#WorkspaceCreateDirectoryArguments",
+        "file": "./ToolSignature.ts",
+        "type": "WorkspaceCreateDirectoryArguments",
+        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": { "path": { "type": "string", "description": "要创建或确认存在的目录路径。" } },
+        "required": ["path"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "WorkspaceMoveFile": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#WorkspaceMoveFileArguments",
+        "file": "./ToolSignature.ts",
+        "type": "WorkspaceMoveFileArguments",
+        "sha256": "b7f15a59a41cd30520729dc6f93f1d5d4c89a9414b7ca4f553c612c5dd24f908"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "source": { "type": "string", "description": "源文件或目录路径。" },
+          "destination": { "type": "string", "description": "目标文件或目录路径。目标已存在时 MCP server 会失败。" }
+        },
+        "required": ["source", "destination"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    }
+  }
+}
