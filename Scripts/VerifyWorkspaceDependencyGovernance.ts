@@ -86,6 +86,7 @@ const rootOwnedToolchainDependencies = new Map(
     prettier: "^3.9.5",
     tailwindcss: "^3.4.17",
     "ts-json-schema-generator": "^2.9.0",
+    typescript: "^6.0.3",
     tsx: "^4.22.4",
     vite: "^7.3.6",
     vitest: "^4.1.10",
@@ -251,7 +252,6 @@ function inspectRootRuntimeDependencies(): string[] {
     "package.json",
     {
       "@senera/tool-plugin-sdk": "file:Packages/ToolPluginSdk",
-      typescript: "^6.0.3",
     },
     "dependencies",
   );
