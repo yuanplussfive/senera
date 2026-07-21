@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { AgentPluginRegistry } from "../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
 import type { RootCommandToolSelectorManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
 import type { LoadedPlugin } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
+import { writeToolContractFixture } from "./Support/ToolContractFixture.js";
+
+const fixtureCollectionRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-plugin-references-"));
+process.on("exit", () => fs.rmSync(fixtureCollectionRoot, { recursive: true, force: true }));
 
 const registry = new AgentPluginRegistry();
 registry.registerPlugin(
@@ -108,7 +114,9 @@ function pluginFixture(options: {
   rootKind?: LoadedPlugin["rootKind"];
 }): LoadedPlugin {
   const rootKind = options.rootKind ?? "System";
-  const rootPath = path.join(process.cwd(), rootKind === "System" ? "System" : "Plugins", options.name);
+  const rootPath = path.join(fixtureCollectionRoot, options.name);
+  fs.mkdirSync(rootPath, { recursive: true });
+  writeToolContractFixture(rootPath, options.name, options.tools);
   return {
     rootPath,
     rootKind,
@@ -121,6 +129,7 @@ function pluginFixture(options: {
         Version: "0.1.0",
         Kind: "System",
       },
+      Contracts: { File: "./ToolContracts.json" },
       Tools: options.tools.map((toolName) => ({
         Name: toolName,
         Handler: {

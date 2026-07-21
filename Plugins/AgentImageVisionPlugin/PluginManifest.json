@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "AgentImageVisionPlugin",
     "Title": "图片识别",
@@ -16,7 +17,6 @@
       "Name": "ImageVisionTool",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
-      "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["filesystem:read:uploads", "network:model-provider"],
       "Handler": {
         "Kind": "HostCapability",

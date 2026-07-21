@@ -1,7 +1,10 @@
 import ts from "typescript";
-import type { ContractProjectionNode, ResolvedTypeShape } from "./AgentPromptContractTypes.js";
+import type {
+  ContractProjectionNode,
+  ResolvedTypeShape,
+} from "../../Source/AgentSystem/Prompt/AgentPromptContractTypes.js";
 
-export class AgentPromptContractAstReader {
+export class AgentTypescriptToolContractAstReader {
   constructor(
     private readonly options: {
       arrayItemName: string;

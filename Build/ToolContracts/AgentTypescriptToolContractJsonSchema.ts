@@ -6,7 +6,7 @@ interface ContractSchemaGeneratorCacheEntry {
   schemas: Map<string, Record<string, unknown>>;
 }
 
-export class AgentPromptContractJsonSchemaCatalog {
+export class AgentTypescriptToolContractJsonSchemaCatalog {
   private readonly generators = new Map<string, ContractSchemaGeneratorCacheEntry>();
 
   create(sourceFilePath: string, typeName: string, sourceDigest: string): Record<string, unknown> {

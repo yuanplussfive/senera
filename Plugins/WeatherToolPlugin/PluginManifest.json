@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "WeatherToolPlugin",
     "Title": "天气查询",
@@ -34,7 +35,6 @@
       "Name": "WeatherTool",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
-      "SignatureFile": "./ToolSignature.ts",
       "Permissions": [
         "network:https://api.weatherapi.com",
         "network:https://devapi.qweather.com",

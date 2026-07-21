@@ -5,7 +5,7 @@
 ## 模块职责
 
 - `AgentToolCallExecutor`：校验可见工具、捕获工作区变更并发出 planned/started/completed/failed/detail 事件。
-- `AgentToolRunner`：按 `Handler.Kind` 声明式调度 HostCapability 或 MCP 工具。
+- `AgentToolRunner`：先按统一 JSON Schema 契约校验参数，再按 `Handler.Kind` 声明式调度 HostCapability 或 MCP 工具。
 - `AgentToolHostCapabilityRegistry`：注册 shell、patch、execution resource、memory 等宿主能力。
 - `AgentMcpToolRunner` / `AgentMcpToolClientPool`：执行 MCP 工具；`Persistent` 复用按 server 与安全 profile 隔离的连接，`OneShot` 每次调用独立连接，`RemoteJob` 使用 MCP Tasks 投影长任务状态、结果与取消。
 - `AgentToolExecutionReporter`：把宿主输出和 MCP progress 统一投影为增量工具事件。

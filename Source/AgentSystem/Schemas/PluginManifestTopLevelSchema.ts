@@ -14,6 +14,12 @@ import { RootCommandSchema } from "./PluginRootCommandManifestSchema.js";
 export const PluginManifestSchema = z
   .object({
     ManifestVersion: z.literal(2),
+    Contracts: z
+      .object({
+        File: z.string().min(1),
+      })
+      .strict()
+      .optional(),
     Plugin: z
       .object({
         Name: z.string().min(1),
@@ -35,4 +41,13 @@ export const PluginManifestSchema = z
     Prompting: PromptingSchema.optional(),
     XmlProtocol: z.record(z.string(), z.unknown()).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((manifest, context) => {
+    if ((manifest.Tools?.length ?? 0) > 0 && !manifest.Contracts) {
+      context.addIssue({
+        code: "custom",
+        path: ["Contracts"],
+        message: "Plugins that declare tools must provide a versioned tool contract bundle.",
+      });
+    }
+  });

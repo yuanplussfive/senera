@@ -1,0 +1,167 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "ShellStartTool": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#ShellStartToolArguments",
+        "file": "./ToolSignature.ts",
+        "type": "ShellStartToolArguments",
+        "sha256": "6237df7ba6441b1bf532109a0e3c2bb58a7398a3338af6ec9b218ae2e243ce36"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "object",
+            "properties": {
+              "mode": { "type": "string", "const": "shell" },
+              "dialect": { "type": "string", "enum": ["posix-sh", "powershell"] },
+              "script": { "type": "string" }
+            },
+            "required": ["mode", "dialect", "script"],
+            "additionalProperties": false
+          },
+          "cwd": { "type": "string" },
+          "justification": { "type": "string" },
+          "columns": { "type": "number" },
+          "rows": { "type": "number" }
+        },
+        "required": ["command"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "ExecutionResourceInspect": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#ExecutionResourceInspectArguments",
+        "file": "./ToolSignature.ts",
+        "type": "ExecutionResourceInspectArguments",
+        "sha256": "6237df7ba6441b1bf532109a0e3c2bb58a7398a3338af6ec9b218ae2e243ce36"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": { "resourceId": { "type": "string" }, "cursor": { "type": "number" } },
+        "required": ["resourceId"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "ExecutionResourceWait": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#ExecutionResourceWaitArguments",
+        "file": "./ToolSignature.ts",
+        "type": "ExecutionResourceWaitArguments",
+        "sha256": "6237df7ba6441b1bf532109a0e3c2bb58a7398a3338af6ec9b218ae2e243ce36"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "resourceId": { "type": "string" },
+          "cursor": { "type": "number" },
+          "timeoutMs": { "type": "number" }
+        },
+        "required": ["resourceId"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "ExecutionResourceWrite": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#ExecutionResourceWriteArguments",
+        "file": "./ToolSignature.ts",
+        "type": "ExecutionResourceWriteArguments",
+        "sha256": "6237df7ba6441b1bf532109a0e3c2bb58a7398a3338af6ec9b218ae2e243ce36"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "resourceId": { "type": "string" },
+          "input": { "type": "string" },
+          "appendNewline": { "type": "boolean" }
+        },
+        "required": ["resourceId", "input"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "ExecutionResourceSignal": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#ExecutionResourceSignalArguments",
+        "file": "./ToolSignature.ts",
+        "type": "ExecutionResourceSignalArguments",
+        "sha256": "6237df7ba6441b1bf532109a0e3c2bb58a7398a3338af6ec9b218ae2e243ce36"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "resourceId": { "type": "string" },
+          "signal": { "type": "string", "enum": ["interrupt", "terminate", "kill"] }
+        },
+        "required": ["resourceId", "signal"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "ExecutionResourceList": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#ExecutionResourceListArguments",
+        "file": "./ToolSignature.ts",
+        "type": "ExecutionResourceListArguments",
+        "sha256": "6237df7ba6441b1bf532109a0e3c2bb58a7398a3338af6ec9b218ae2e243ce36"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": { "not": {} },
+        "definitions": {}
+      }
+    },
+    "ExecutionResourceResize": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#ExecutionResourceResizeArguments",
+        "file": "./ToolSignature.ts",
+        "type": "ExecutionResourceResizeArguments",
+        "sha256": "6237df7ba6441b1bf532109a0e3c2bb58a7398a3338af6ec9b218ae2e243ce36"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "resourceId": { "type": "string" },
+          "columns": { "type": "number" },
+          "rows": { "type": "number" }
+        },
+        "required": ["resourceId", "columns", "rows"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    },
+    "ExecutionResourceStopAll": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#ExecutionResourceStopAllArguments",
+        "file": "./ToolSignature.ts",
+        "type": "ExecutionResourceStopAllArguments",
+        "sha256": "6237df7ba6441b1bf532109a0e3c2bb58a7398a3338af6ec9b218ae2e243ce36"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": { "not": {} },
+        "definitions": {}
+      }
+    }
+  }
+}

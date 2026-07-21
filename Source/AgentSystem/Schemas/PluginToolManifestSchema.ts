@@ -141,8 +141,6 @@ export const ToolSchema = z
     Name: z.string().min(1),
     Loading: z.enum([ToolLoadingModes.Bootstrap, ToolLoadingModes.Dynamic]).optional(),
     DescriptionFile: z.string().min(1).optional(),
-    SignatureFile: z.string().min(1).optional(),
-    SignatureType: z.string().min(1).optional(),
     Permissions: z.array(z.string()).optional(),
     Handler: ToolHandlerSchema,
     Execution: ToolExecutionSchema,

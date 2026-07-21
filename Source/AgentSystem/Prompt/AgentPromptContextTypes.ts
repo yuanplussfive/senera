@@ -2,7 +2,7 @@ import type { AgentActionDecision } from "../ActionPlanner/AgentActionPlanner.js
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { AgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
-import type { AgentPromptContractView } from "./AgentPromptContractProjector.js";
+import type { AgentPromptContractView } from "./AgentPromptContractTypes.js";
 import type { AgentExecutionEnvironmentContext } from "./AgentExecutionEnvironmentContext.js";
 
 export interface AgentPromptToolContext {

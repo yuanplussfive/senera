@@ -76,7 +76,6 @@ const rootOwnedToolchainDependencies = new Map(
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@electron/asar": "^3.4.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.7.0",
@@ -84,8 +83,11 @@ const rootOwnedToolchainDependencies = new Map(
     autoprefixer: "^10.4.20",
     jsdom: "^29.1.1",
     postcss: "^8.4.49",
+    prettier: "^3.9.5",
     tailwindcss: "^3.4.17",
+    "ts-json-schema-generator": "^2.9.0",
     tsx: "^4.22.4",
+    typescript: "^6.0.3",
     vite: "^7.3.6",
     vitest: "^4.1.10",
   }),
@@ -194,10 +196,12 @@ function inspectRootScripts(): string[] {
     "policy.compile": "tsx Build/CompileOpaPolicy.ts",
     "policy.verify": "tsx Build/CompileOpaPolicy.ts --check",
     "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
+    "generate.tool-contracts": "tsx Build/GenerateToolContractBundles.ts",
+    "verify.tool-contracts": "tsx Build/GenerateToolContractBundles.ts --check",
     "terminal.prepare": "tsx Build/PrepareTerminalSidecarGuestRuntime.ts",
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
     "check.types": "tsc --noEmit",
-    build: "npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
+    build: "npm run verify.tool-contracts && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     dev: 'concurrently -k -n server,frontend -c blue,green "npm run dev.server" "npm run dev.frontend"',
     "docker.up": "docker compose pull && docker compose up -d",
     "docker.down": "docker compose down",
@@ -248,7 +252,6 @@ function inspectRootRuntimeDependencies(): string[] {
     "package.json",
     {
       "@senera/tool-plugin-sdk": "file:Packages/ToolPluginSdk",
-      typescript: "^6.0.3",
     },
     "dependencies",
   );
@@ -372,10 +375,6 @@ function inspectDesktopPackageConfig(): string[] {
     ...inspectDesktopPackageScript(),
     ...inspectDesktopFileSet("Packages/ToolPluginSdk", "node_modules/@senera/tool-plugin-sdk"),
     ...inspectDesktopFileSet("Packages/TerminalSidecar", "node_modules/@senera/terminal-sidecar"),
-    ...inspectDesktopFileSet(
-      "node_modules/ts-json-schema-generator/node_modules/typescript/lib",
-      "node_modules/typescript/lib",
-    ),
     ...inspectDesktopExtraResource(".senera/sandbox-runtime/terminal-sidecar", "TerminalSidecarRuntime"),
     ...(rootPackage.build?.npmRebuild === false
       ? []

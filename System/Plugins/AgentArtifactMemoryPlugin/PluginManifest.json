@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "AgentArtifactMemoryPlugin",
     "Title": "Artifact Memory Reader",
@@ -16,7 +17,6 @@
       "Name": "ArtifactMemoryReadTool",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
-      "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["filesystem:read:artifacts"],
       "Handler": {
         "Kind": "HostCapability",

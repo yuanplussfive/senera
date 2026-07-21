@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "WorkspacePatchToolPlugin",
     "Title": "Workspace Patch Tool",
@@ -15,8 +16,6 @@
       "Name": "WorkspaceApplyPatch",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/WorkspaceApplyPatch.md",
-      "SignatureFile": "./ToolSignature.ts",
-      "SignatureType": "WorkspaceApplyPatchArguments",
       "Handler": {
         "Kind": "HostCapability",
         "Capability": "workspace.apply_patch"

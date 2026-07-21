@@ -12,8 +12,6 @@ export interface ToolManifest {
   Name: string;
   Loading?: ToolLoadingMode;
   DescriptionFile?: string;
-  SignatureFile?: string;
-  SignatureType?: string;
   Permissions?: string[];
   Handler: ToolHandlerManifest;
   Execution: ToolExecutionManifest;

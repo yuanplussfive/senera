@@ -1,0 +1,13 @@
+{
+  "contractSourceVersion": 1,
+  "tools": {
+    "ShellStartTool": { "file": "./ToolSignature.ts", "type": "ShellStartToolArguments" },
+    "ExecutionResourceInspect": { "file": "./ToolSignature.ts", "type": "ExecutionResourceInspectArguments" },
+    "ExecutionResourceWait": { "file": "./ToolSignature.ts", "type": "ExecutionResourceWaitArguments" },
+    "ExecutionResourceWrite": { "file": "./ToolSignature.ts", "type": "ExecutionResourceWriteArguments" },
+    "ExecutionResourceSignal": { "file": "./ToolSignature.ts", "type": "ExecutionResourceSignalArguments" },
+    "ExecutionResourceList": { "file": "./ToolSignature.ts", "type": "ExecutionResourceListArguments" },
+    "ExecutionResourceResize": { "file": "./ToolSignature.ts", "type": "ExecutionResourceResizeArguments" },
+    "ExecutionResourceStopAll": { "file": "./ToolSignature.ts", "type": "ExecutionResourceStopAllArguments" }
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "WorkspaceApplyPatch": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#WorkspaceApplyPatchArguments",
+        "file": "./ToolSignature.ts",
+        "type": "WorkspaceApplyPatchArguments",
+        "sha256": "f6bdbc98aaeb2c4d71ea1c23568d0034743d1fcaeb1df919663eda17204aba7c"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "operations": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "add" },
+                    "path": { "type": "string" },
+                    "content": { "type": "string" }
+                  },
+                  "required": ["kind", "path", "content"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "update" },
+                    "path": { "type": "string" },
+                    "patch": { "type": "string" },
+                    "expectedSha256": { "type": "string" }
+                  },
+                  "required": ["kind", "path", "patch"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "replace" },
+                    "path": { "type": "string" },
+                    "content": { "type": "string" },
+                    "expectedSha256": { "type": "string" }
+                  },
+                  "required": ["kind", "path", "content"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "delete" },
+                    "path": { "type": "string" },
+                    "expectedSha256": { "type": "string" }
+                  },
+                  "required": ["kind", "path"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "move" },
+                    "source": { "type": "string" },
+                    "destination": { "type": "string" },
+                    "patch": { "type": "string" },
+                    "expectedSha256": { "type": "string" }
+                  },
+                  "required": ["kind", "source", "destination"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "createDirectory" },
+                    "path": { "type": "string" }
+                  },
+                  "required": ["kind", "path"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "deleteDirectory" },
+                    "path": { "type": "string" },
+                    "recursive": { "type": "boolean" }
+                  },
+                  "required": ["kind", "path"],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "description": "一个逻辑补丁内的文件/目录操作。每个路径只能出现一次；同一文件多个修改应合并成一个 hunk patch。"
+          },
+          "dryRun": { "type": "boolean", "description": "true 时只校验并计算计划，不写入磁盘。" },
+          "fuzzFactor": { "type": "number", "description": "允许的 hunk 上下文模糊匹配行数。默认 0，最大 3。" }
+        },
+        "required": ["operations"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    }
+  }
+}

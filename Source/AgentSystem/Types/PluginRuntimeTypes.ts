@@ -45,8 +45,6 @@ export interface RegisteredTool {
   name: string;
   loading: ToolLoadingMode;
   descriptionFile?: string;
-  signatureFile?: string;
-  signatureType?: string;
   contract?: RegisteredToolContract;
   permissions: string[];
   handler: RegisteredToolHandler;

@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { PolicyClient } from "@ai-sdk/policy-opa";
 import { AgentApprovalRuntime } from "../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
 import { AgentApprovalDecisions } from "../Source/AgentSystem/Approvals/AgentApprovalTypes.js";
@@ -16,6 +20,7 @@ import { createAgentToolApprovalPolicy } from "../Source/AgentSystem/Safety/Agen
 import { AgentToolPermissionGate } from "../Source/AgentSystem/Safety/AgentToolPermissionGate.js";
 import type { ToolApprovalManifest, ToolExecutionManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
 import type { LoadedPlugin, RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
+import { writeToolContractFixture } from "./Support/ToolContractFixture.js";
 
 const DefaultExecution = {
   Boundary: "Local",
@@ -23,6 +28,8 @@ const DefaultExecution = {
   Workspace: "ReadOnly",
   LocalFallback: "Allow",
 } satisfies ToolExecutionManifest;
+const pluginFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-safety-plugin-"));
+process.on("exit", () => fs.rmSync(pluginFixtureRoot, { recursive: true, force: true }));
 
 await verifyManifestApprovalFlow();
 await verifyAutomaticRiskApprovalFlow();
@@ -643,10 +650,21 @@ function createPluginFixture(tools: RegisteredTool[]): LoadedPlugin {
     throw new Error("Missing plugin fixture.");
   }
 
+  const rootPath = path.join(pluginFixtureRoot, crypto.randomUUID());
+  fs.mkdirSync(rootPath, { recursive: true });
+  writeToolContractFixture(
+    rootPath,
+    plugin.manifest.Plugin.Name,
+    tools.map((tool) => tool.name),
+  );
+
   return {
     ...plugin,
+    rootPath,
+    manifestPath: path.join(rootPath, "PluginManifest.json"),
     manifest: {
       ...plugin.manifest,
+      Contracts: { File: "./ToolContracts.json" },
       Tools: tools.map((tool) => ({
         Name: tool.name,
         Permissions: [...tool.permissions],
@@ -714,8 +732,6 @@ function createToolFixture(
     name,
     loading: "Dynamic",
     descriptionFile: undefined,
-    signatureFile: undefined,
-    signatureType: undefined,
     permissions: options.permissions ?? [],
     handler: {
       kind: "HostCapability",

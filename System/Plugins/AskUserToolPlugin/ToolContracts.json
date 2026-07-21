@@ -1,0 +1,27 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "AskUserTool": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#default",
+        "file": "./ToolSignature.ts",
+        "sha256": "29e65fe651fea7e5237c23ae2dcf3c971e5cde73ae56670bdb288b8736052bbd"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "question": { "type": "string", "description": "必须。要展示给用户的澄清问题；应具体、简短。" },
+          "reason_code": {
+            "type": "string",
+            "description": "可选。机器可读原因码，例如 missing_location、missing_scope。"
+          }
+        },
+        "required": ["question"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    }
+  }
+}

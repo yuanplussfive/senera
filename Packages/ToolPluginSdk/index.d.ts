@@ -45,12 +45,42 @@ export interface McpToolSuiteOptions {
   taskEventStore?: TaskEventStore;
 }
 
+export type ToolContractJsonSchema = Readonly<Record<string, unknown>>;
+
+export interface ToolContractBundleOptions {
+  /** Stable package or source identity. The tool name is appended to keep each contract independently traceable. */
+  sourceIdentity?: string;
+  /** Optional authoring file path included for diagnostics only. */
+  sourceFile?: string;
+}
+
+export interface ToolContractBundleDefinition {
+  readonly source: {
+    readonly kind: "schema";
+    readonly identity: string;
+    readonly file?: string;
+    readonly sha256: string;
+  };
+  readonly inputSchema: ToolContractJsonSchema;
+  readonly outputSchema: ToolContractJsonSchema;
+}
+
+export interface ToolContractBundle {
+  readonly contractVersion: typeof ToolContractVersion;
+  readonly tools: Readonly<Record<string, ToolContractBundleDefinition>>;
+}
+
 export interface ReadPluginTomlConfigOptions {
   cwd?: string;
   exampleFileName?: string;
 }
 
 export function runMcpTool<TArguments, TResult>(definition: McpToolDefinition<TArguments, TResult>): Promise<void>;
+export const ToolContractVersion: 1;
+export function createToolContractBundle(
+  definitions: readonly McpToolDefinition[],
+  options?: ToolContractBundleOptions,
+): ToolContractBundle;
 export function runMcpToolSuite(
   definitions: readonly McpToolDefinition[],
   options?: McpToolSuiteOptions,

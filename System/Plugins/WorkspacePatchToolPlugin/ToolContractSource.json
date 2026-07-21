@@ -1,0 +1,9 @@
+{
+  "contractSourceVersion": 1,
+  "tools": {
+    "WorkspaceApplyPatch": {
+      "file": "./ToolSignature.ts",
+      "type": "WorkspaceApplyPatchArguments"
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "TavilySearchTool": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#default",
+        "file": "./ToolSignature.ts",
+        "sha256": "e30ce958883571f45874dc92559be7238859a63c948f6194ae8a976897413876"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "搜索查询。必须是明确、可直接检索的问题或关键词。" },
+          "searchDepth": {
+            "type": "string",
+            "enum": ["basic", "advanced", "fast", "ultra-fast"],
+            "description": "搜索深度；默认 basic。advanced 更相关但更慢更贵；fast/ultra-fast 更低延迟。"
+          },
+          "topic": {
+            "type": "string",
+            "enum": ["general", "news", "finance"],
+            "description": "搜索主题；默认 general。新闻实时事件使用 news，财经市场类信息使用 finance。"
+          },
+          "maxResults": { "type": "number", "description": "返回结果数量，范围 1..20；默认 5。" },
+          "includeAnswer": {
+            "anyOf": [
+              { "type": "boolean" },
+              { "type": "string", "const": "basic" },
+              { "type": "string", "const": "advanced" }
+            ],
+            "description": "是否包含 Tavily 生成的答案；默认 false。可用 basic 或 advanced 控制答案深度。"
+          },
+          "includeRawContent": {
+            "anyOf": [
+              { "type": "boolean" },
+              { "type": "string", "const": "markdown" },
+              { "type": "string", "const": "text" }
+            ],
+            "description": "是否包含原始正文；默认 false。markdown 返回清理后的 Markdown，text 返回纯文本。"
+          },
+          "includeImages": { "type": "boolean", "description": "是否包含图片搜索结果；默认 false。" },
+          "includeImageDescriptions": {
+            "type": "boolean",
+            "description": "includeImages 为 true 时，是否包含图片描述；默认 false。"
+          },
+          "includeFavicon": { "type": "boolean", "description": "是否包含每个搜索结果的 favicon；默认 false。" },
+          "includeDomains": {
+            "type": "object",
+            "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+            "required": ["item"],
+            "additionalProperties": false,
+            "description": "只搜索这些域名。XML 写法：<includeDomains><item>example.com</item></includeDomains>。",
+            "x-senera-xml-hint": "<includeDomains><item>example.com</item></includeDomains>"
+          },
+          "excludeDomains": {
+            "type": "object",
+            "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+            "required": ["item"],
+            "additionalProperties": false,
+            "description": "排除这些域名。XML 写法：<excludeDomains><item>example.com</item></excludeDomains>。",
+            "x-senera-xml-hint": "<excludeDomains><item>example.com</item></excludeDomains>"
+          },
+          "timeRange": {
+            "type": "string",
+            "enum": ["day", "week", "month", "year", "d", "w", "m", "y"],
+            "description": "发布时间范围过滤。"
+          },
+          "days": { "type": "number", "description": "news 主题可用，表示向前追溯多少天。" },
+          "startDate": { "type": "string", "description": "起始日期，格式 YYYY-MM-DD。" },
+          "endDate": { "type": "string", "description": "结束日期，格式 YYYY-MM-DD。" },
+          "chunksPerSource": {
+            "type": "number",
+            "description": "advanced 搜索时每个来源最多返回的内容片段数，范围 1..3。"
+          },
+          "country": {
+            "type": "string",
+            "description": "general 主题可用，用于提升指定国家/地区的结果，例如 china、united states。"
+          },
+          "autoParameters": { "type": "boolean", "description": "让 Tavily 自动选择部分搜索参数；默认 false。" },
+          "exactMatch": { "type": "boolean", "description": "是否只返回包含查询中引号短语的结果；默认 false。" },
+          "includeUsage": { "type": "boolean", "description": "是否返回 Tavily credit 用量；默认 true。" },
+          "safeSearch": {
+            "type": "boolean",
+            "description": "企业版安全搜索过滤；默认 false。不支持 fast 或 ultra-fast。"
+          },
+          "timeoutMs": {
+            "type": "number",
+            "description": "本次 Tavily HTTP 请求超时，范围 1000..300000；默认使用插件配置 timeout_seconds。"
+          }
+        },
+        "required": ["query"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    }
+  }
+}

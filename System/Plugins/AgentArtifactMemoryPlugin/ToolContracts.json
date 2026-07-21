@@ -1,0 +1,93 @@
+{
+  "contractVersion": 1,
+  "tools": {
+    "ArtifactMemoryReadTool": {
+      "source": {
+        "kind": "typescript",
+        "identity": "./ToolSignature.ts#default",
+        "file": "./ToolSignature.ts",
+        "sha256": "13bcabe9d3f217ee3f3939eb2f4136c9f7851d0a7a80ecd919641110ddd690c0"
+      },
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "artifactUris": {
+            "type": "object",
+            "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+            "required": ["item"],
+            "additionalProperties": false,
+            "description": "One or more canonical artifact memory URIs, for example \"senera://artifact/art_1234567890abcdef12345678\"."
+          },
+          "refs": {
+            "type": "object",
+            "properties": {
+              "item": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "summary",
+                    "projection",
+                    "evidence",
+                    "delta",
+                    "raw",
+                    "rawBlob",
+                    "rawPreview",
+                    "workspaceDiff",
+                    "workspacePatch",
+                    "stdout",
+                    "stderr"
+                  ]
+                }
+              }
+            },
+            "required": ["item"],
+            "additionalProperties": false,
+            "description": "Memory refs to load. Omit to read projection only."
+          },
+          "maxBytesPerRef": {
+            "type": "number",
+            "description": "Optional per-ref response budget. Runtime caps this at the artifact text-file budget."
+          },
+          "startBytePerRef": {
+            "type": "number",
+            "description": "UTF-8 byte offset applied to each requested ref. Use a prior range.nextStartByte to continue."
+          },
+          "refRanges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "enum": [
+                    "summary",
+                    "projection",
+                    "evidence",
+                    "delta",
+                    "raw",
+                    "rawBlob",
+                    "rawPreview",
+                    "workspaceDiff",
+                    "workspacePatch",
+                    "stdout",
+                    "stderr"
+                  ]
+                },
+                "maxBytes": { "type": "number" },
+                "startByte": { "type": "number" }
+              },
+              "required": ["ref", "maxBytes"],
+              "additionalProperties": false
+            },
+            "description": "Optional per-ref ranges. This avoids applying one offset/budget to unrelated refs."
+          }
+        },
+        "required": ["artifactUris"],
+        "additionalProperties": false,
+        "definitions": {}
+      }
+    }
+  }
+}

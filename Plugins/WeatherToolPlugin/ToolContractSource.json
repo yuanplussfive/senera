@@ -1,0 +1,8 @@
+{
+  "contractSourceVersion": 1,
+  "tools": {
+    "WeatherTool": {
+      "file": "./ToolSignature.ts"
+    }
+  }
+}

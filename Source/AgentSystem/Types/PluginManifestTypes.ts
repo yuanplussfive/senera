@@ -73,6 +73,9 @@ export type {
 
 export interface PluginManifest {
   ManifestVersion: 2;
+  Contracts?: {
+    File: string;
+  };
   Plugin: {
     Name: string;
     Title?: string;

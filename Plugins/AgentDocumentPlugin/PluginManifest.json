@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "AgentDocumentPlugin",
     "Title": "文档处理",
@@ -16,7 +17,6 @@
       "Name": "DocumentTool",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
-      "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["filesystem:read:uploads"],
       "Handler": {
         "Kind": "HostCapability",

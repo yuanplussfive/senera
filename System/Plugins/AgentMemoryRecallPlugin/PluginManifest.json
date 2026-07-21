@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "AgentMemoryRecallPlugin",
     "Title": "长期记忆召回",
@@ -16,7 +17,6 @@
       "Name": "MemoryRecallTool",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
-      "SignatureFile": "./ToolSignature.ts",
       "Permissions": ["memory:read"],
       "Handler": {
         "Kind": "HostCapability",

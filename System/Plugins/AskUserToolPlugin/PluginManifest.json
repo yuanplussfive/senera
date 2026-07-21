@@ -1,5 +1,6 @@
 {
   "ManifestVersion": 2,
+  "Contracts": { "File": "./ToolContracts.json" },
   "Plugin": {
     "Name": "AskUserToolPlugin",
     "Title": "询问用户",
@@ -15,7 +16,6 @@
       "Name": "AskUserTool",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
-      "SignatureFile": "./ToolSignature.ts",
       "Permissions": [],
       "Execution": {
         "Boundary": "Local",

@@ -1,0 +1,8 @@
+{
+  "contractSourceVersion": 1,
+  "tools": {
+    "AskUserTool": {
+      "file": "./ToolSignature.ts"
+    }
+  }
+}
