@@ -41,10 +41,8 @@ const pluginCollectionRoots = [path.join(workspaceRoot, "System", "Plugins"), pa
 const projector = new AgentTypescriptToolContractProjector();
 const changed: string[] = [];
 
-for (const pluginRoot of discoverPluginRoots(pluginCollectionRoots)) {
-  const manifestPath = path.join(pluginRoot, "PluginManifest.json");
+for (const { pluginRoot, manifestPath, manifest } of discoverPlugins(pluginCollectionRoots)) {
   const bundlePath = path.join(pluginRoot, "ToolContracts.json");
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as SourcePluginManifest;
   const declaredTools = manifest.Tools ?? [];
   if (declaredTools.length === 0) continue;
   const authoring = readToolContractAuthoringManifest(pluginRoot);
@@ -75,10 +73,10 @@ for (const pluginRoot of discoverPluginRoots(pluginCollectionRoots)) {
 
   const bundle: AgentToolContractBundle = { contractVersion: AgentToolContractVersion, tools };
   const expected = await format(JSON.stringify(bundle), { ...prettierConfig, parser: "json", filepath: bundlePath });
-  const actual = fs.existsSync(bundlePath) ? fs.readFileSync(bundlePath, "utf8") : undefined;
+  const actual = readOptionalUtf8(bundlePath);
   if (actual === expected) continue;
   changed.push(path.relative(workspaceRoot, bundlePath));
-  if (!check) fs.writeFileSync(bundlePath, expected, "utf8");
+  if (!check) writeUtf8Atomically(bundlePath, expected);
 }
 
 if (check && changed.length > 0) {
@@ -91,23 +89,29 @@ process.stdout.write(
     : `Tool contract bundles ${check ? "would change" : "updated"}: ${changed.length}\n`,
 );
 
-function discoverPluginRoots(collectionRoots: readonly string[]): string[] {
+function discoverPlugins(
+  collectionRoots: readonly string[],
+): Array<{ pluginRoot: string; manifestPath: string; manifest: SourcePluginManifest }> {
   return collectionRoots.flatMap((collectionRoot) =>
     fs
       .readdirSync(collectionRoot, { withFileTypes: true })
-      .filter(
-        (entry) => entry.isDirectory() && fs.existsSync(path.join(collectionRoot, entry.name, "PluginManifest.json")),
-      )
-      .map((entry) => path.join(collectionRoot, entry.name)),
+      .filter((entry) => entry.isDirectory())
+      .flatMap((entry) => {
+        const pluginRoot = path.join(collectionRoot, entry.name);
+        const manifestPath = path.join(pluginRoot, "PluginManifest.json");
+        const content = readOptionalUtf8(manifestPath);
+        return content === undefined
+          ? []
+          : [{ pluginRoot, manifestPath, manifest: JSON.parse(content) as SourcePluginManifest }];
+      }),
   );
 }
 
 function readToolContractAuthoringManifest(pluginRoot: string): ToolContractAuthoringManifest {
   const authoringPath = path.join(pluginRoot, "ToolContractSource.json");
-  if (!fs.existsSync(authoringPath)) {
-    throw new Error(`${pluginRoot}: missing ToolContractSource.json for declared tools.`);
-  }
-  return ToolContractAuthoringManifestSchema.parse(JSON.parse(fs.readFileSync(authoringPath, "utf8")));
+  const content = readOptionalUtf8(authoringPath);
+  if (content === undefined) throw new Error(`${pluginRoot}: missing ToolContractSource.json for declared tools.`);
+  return ToolContractAuthoringManifestSchema.parse(JSON.parse(content));
 }
 
 function assertToolCoverage(
@@ -137,6 +141,43 @@ function resolveInsidePluginRoot(pluginRoot: string, file: string): string {
     throw new Error(`Tool contract authoring source must stay inside its plugin root: ${file}`);
   }
   return resolved;
+}
+
+function readOptionalUtf8(filePath: string): string | undefined {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    if (nodeErrorCode(error) === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+function writeUtf8Atomically(filePath: string, content: string): void {
+  const temporaryPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
+  );
+  fs.writeFileSync(temporaryPath, content, { encoding: "utf8", flag: "wx" });
+  try {
+    fs.renameSync(temporaryPath, filePath);
+  } catch (error) {
+    try {
+      fs.unlinkSync(temporaryPath);
+    } catch (cleanupError) {
+      if (nodeErrorCode(cleanupError) !== "ENOENT") {
+        throw new AggregateError([error, cleanupError], `Could not replace generated tool contract: ${filePath}`, {
+          cause: cleanupError,
+        });
+      }
+    }
+    throw error;
+  }
+}
+
+function nodeErrorCode(error: unknown): string | undefined {
+  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
 }
 
 function normalizeRelativePath(filePath: string): string {
