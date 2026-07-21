@@ -442,6 +442,10 @@
         "config": {
           "type": "object",
           "properties": {
+            "ConfigVersion": {
+              "type": "number",
+              "const": 1
+            },
             "Defaults": {
               "type": "object",
               "properties": {

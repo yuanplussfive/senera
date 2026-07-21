@@ -69,9 +69,10 @@ assert.equal(loadedTools.type, "string");
 assert.equal(loadedTools.value, undefined);
 assert.equal(loadedTools.effectiveValue, "dynamic");
 
-const plannerProvider = findField(form, ["ActionPlanner", "Client", "Provider"]);
-assert.equal(plannerProvider.type, "string");
-assert.ok(plannerProvider.options?.includes("openai-generic"));
+const plannerModel = findField(form, ["ActionPlanner", "Client", "ModelProviderId"]);
+assert.equal(plannerModel.type, "string");
+assert.equal(findOptionalField(form, ["ActionPlanner", "Client", "Provider"]), undefined);
+assert.equal(findOptionalField(form, ["ActionPlanner", "FinalAnswerClient", "Provider"]), undefined);
 
 const toolSearchMaxResults = findField(form, ["ToolSearch", "Ranking", "MaxResults"]);
 assert.equal(toolSearchMaxResults.type, "number");
@@ -88,9 +89,13 @@ assert.equal(memoryExpansionMode.effectiveValue, "fallback");
 console.log("Agent config form projection verified.");
 
 function findField(form: ReturnType<typeof projectAgentConfigForm>, path: readonly string[]) {
-  const field = form.sections
-    .flatMap((section) => section.fields)
-    .find((candidate) => candidate.path.join(".") === path.join("."));
+  const field = findOptionalField(form, path);
   assert.ok(field, `Missing config form field: ${path.join(".")}`);
   return field;
+}
+
+function findOptionalField(form: ReturnType<typeof projectAgentConfigForm>, path: readonly string[]) {
+  return form.sections
+    .flatMap((section) => section.fields)
+    .find((candidate) => candidate.path.join(".") === path.join("."));
 }

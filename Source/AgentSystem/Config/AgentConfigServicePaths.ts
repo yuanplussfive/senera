@@ -20,3 +20,27 @@ export function writeAgentConfigJsonMirror(config: AgentSystemConfig, configPath
   fs.writeFileSync(tempPath, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
   fs.renameSync(tempPath, configPath);
 }
+
+export function persistMigratedAgentConfigJson(
+  config: AgentSystemConfig,
+  configPath: string,
+  sourceVersion: number,
+): { backupPath?: string } {
+  const backupPath = `${configPath}.v${sourceVersion}.bak`;
+  let createdBackupPath: string | undefined;
+  try {
+    fs.copyFileSync(configPath, backupPath, fs.constants.COPYFILE_EXCL);
+    createdBackupPath = backupPath;
+  } catch (error) {
+    if (!isAlreadyExistsError(error)) {
+      throw error;
+    }
+  }
+
+  writeAgentConfigJsonMirror(config, configPath);
+  return { backupPath: createdBackupPath };
+}
+
+function isAlreadyExistsError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "EEXIST";
+}

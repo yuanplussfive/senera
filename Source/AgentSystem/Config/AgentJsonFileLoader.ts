@@ -22,6 +22,8 @@ export interface AgentJsonDiagnostic {
   issues?: unknown;
 }
 
+export type AgentJsonPayloadTransform = (payload: unknown) => unknown;
+
 export class AgentJsonFileError extends Error {
   constructor(
     message: string,
@@ -32,7 +34,7 @@ export class AgentJsonFileError extends Error {
 }
 
 export class AgentJsonFileLoader {
-  load<T>(filePath: string, schema: ZodType<T>): T {
+  load<T>(filePath: string, schema: ZodType<T>, transform?: AgentJsonPayloadTransform): T {
     const absolutePath = path.resolve(filePath);
     const text = fs.readFileSync(absolutePath, "utf8");
     const sourceBuilder = new AgentSourceDiagnosticBuilder(text);
@@ -75,7 +77,7 @@ export class AgentJsonFileLoader {
       );
     }
 
-    const result = schema.safeParse(mapped.data);
+    const result = schema.safeParse(transform ? transform(mapped.data) : mapped.data);
     if (!result.success) {
       const firstIssue = result.error.issues[0];
       const pointer = firstIssue ? this.zodPathToPointer(firstIssue.path) : "";

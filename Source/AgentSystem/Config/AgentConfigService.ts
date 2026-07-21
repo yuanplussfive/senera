@@ -1,5 +1,4 @@
 import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
-import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { resolveConfigStoreConfig } from "../AgentDefaults.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
@@ -29,6 +28,7 @@ import { formatConfigIssues } from "./AgentConfigDiagnostics.js";
 import {
   resolveConfigPath,
   resolveConfigStoreDatabasePath,
+  persistMigratedAgentConfigJson,
   writeAgentConfigJsonMirror,
 } from "./AgentConfigServicePaths.js";
 import { migrateAgentConfigPayload } from "./AgentConfigMigration.js";
@@ -75,17 +75,23 @@ interface AgentConfigRevisionLoadResult {
   repaired: AgentConfigRepairResult;
 }
 
+interface AgentConfigMigrationSummary {
+  migratedPaths: string[];
+  removedPaths: string[];
+  sourceVersion?: number;
+  targetVersion?: number;
+}
+
 type AgentConfigRepairResult =
   | {
       kind: "none";
     }
   | {
       kind: "migrated";
+      sourceVersion: number;
+      targetVersion: number;
       migratedPaths: string[];
       removedPaths: string[];
-    }
-  | {
-      kind: "seed_reimported";
     };
 
 export class AgentConfigService {
@@ -99,7 +105,12 @@ export class AgentConfigService {
       source: AgentConfigSourceOptions;
     },
   ) {
-    this.snapshotValue = this.initialize(1);
+    try {
+      this.snapshotValue = this.initialize(1);
+    } catch (error) {
+      this.closeRepository();
+      throw error;
+    }
   }
 
   snapshot(): AgentConfigSnapshot {
@@ -200,7 +211,16 @@ export class AgentConfigService {
     source: Extract<AgentConfigSourceOptions, { kind: "json" }>,
     version: number,
   ): AgentConfigSnapshot {
-    const jsonConfig = AgentConfigLoader.load(source.configPath);
+    const loadedJson = AgentConfigLoader.loadWithMetadata(source.configPath);
+    const jsonConfig = loadedJson.config;
+    const migrationDiagnostics = loadedJson.migration
+      ? [
+          migrationDiagnostic(
+            loadedJson.migration,
+            persistMigratedAgentConfigJson(jsonConfig, source.configPath, loadedJson.migration.sourceVersion),
+          ),
+        ]
+      : [];
     const store = resolveConfigStoreConfig(jsonConfig);
     if (!store.Enabled) {
       return {
@@ -208,44 +228,28 @@ export class AgentConfigService {
         version,
         value: jsonConfig,
         source: "json",
-        diagnostics: [],
+        diagnostics: migrationDiagnostics,
         form: projectAgentConfigForm(jsonConfig),
       };
     }
 
-    try {
-      const databasePath = this.resolveDatabasePath(jsonConfig);
-      const repository = this.repositoryForPath(databasePath);
-      const latest = this.readLatestValidRevision(repository, jsonConfig) ?? {
-        revision: repository.appendRevision({
-          config: jsonConfig,
-          source: "json_import",
-        }),
-        repaired: { kind: "none" },
-      };
-      return this.snapshotFromRevision(latest.revision.config, latest.revision, {
-        path: source.configPath,
-        databasePath,
-        version,
-        diagnostics: diagnosticsForRepair(latest.repaired),
-      });
-    } catch (error) {
-      return {
-        path: source.configPath,
-        version,
-        value: jsonConfig,
-        source: "json",
-        databasePath: this.resolveDatabasePath(jsonConfig),
-        diagnostics: [
-          {
-            severity: "error",
-            message: agentErrorMessage("config.databaseUnavailableJsonMirror"),
-            details: error instanceof Error ? error.message : String(error),
-          },
-        ],
-        form: projectAgentConfigForm(jsonConfig),
-      };
-    }
+    const databasePath = this.resolveDatabasePath(jsonConfig);
+    const repository = this.repositoryForPath(databasePath);
+    const latest = repository.latestRevision()
+      ? this.readLatestValidRevision(repository)
+      : {
+          revision: repository.appendRevision({
+            config: jsonConfig,
+            source: "json_import",
+          }),
+          repaired: { kind: "none" } as const,
+        };
+    return this.snapshotFromRevision(latest.revision.config, latest.revision, {
+      path: source.configPath,
+      databasePath,
+      version,
+      diagnostics: [...migrationDiagnostics, ...diagnosticsForRepair(latest.repaired)],
+    });
   }
 
   private initializeSqlitePrimary(
@@ -269,13 +273,7 @@ export class AgentConfigService {
       });
     }
 
-    const loaded = this.readLatestValidRevision(repository, seedConfig) ?? {
-      revision: repository.appendRevision({
-        config: seedConfig,
-        source: "seed",
-      }),
-      repaired: { kind: "none" },
-    };
+    const loaded = this.readLatestValidRevision(repository);
 
     return this.snapshotFromRevision(loaded.revision.config, loaded.revision, {
       path: this.readSourceLabel(source),
@@ -318,17 +316,30 @@ export class AgentConfigService {
       mirrorJson: input.mirrorJson,
     });
   }
-  private readLatestValidRevision(
-    repository: AgentConfigSqliteRepository,
-    seedConfig: AgentSystemConfig,
-  ): AgentConfigRevisionLoadResult | undefined {
+  private readLatestValidRevision(repository: AgentConfigSqliteRepository): AgentConfigRevisionLoadResult {
     const latest = repository.latestRevision();
     if (!latest) {
-      return undefined;
+      throw new Error("Configuration database does not contain a latest revision.");
     }
 
-    const result = AgentSystemConfigSchema.safeParse(latest.config);
+    const migrated = migrateAgentConfigPayload(latest.config);
+    const result = AgentSystemConfigSchema.safeParse(migrated?.config ?? latest.config);
     if (result.success) {
+      if (migrated) {
+        return {
+          revision: repository.appendRevision({
+            config: result.data,
+            source: "migration",
+          }),
+          repaired: {
+            kind: "migrated",
+            sourceVersion: migrated.sourceVersion,
+            targetVersion: migrated.targetVersion,
+            migratedPaths: migrated.migratedPaths,
+            removedPaths: migrated.removedPaths,
+          },
+        };
+      }
       return {
         revision: {
           ...latest,
@@ -338,36 +349,11 @@ export class AgentConfigService {
       };
     }
 
-    const migrated = migrateAgentConfigPayload(latest.config, AgentSystemConfigSchema);
-    if (migrated) {
-      return {
-        revision: repository.appendRevision({
-          config: migrated.config,
-          source: "migration",
-        }),
-        repaired: {
-          kind: "migrated",
-          migratedPaths: migrated.migratedPaths,
-          removedPaths: migrated.removedPaths,
-        },
-      };
-    }
-
-    if (seedConfig === latest.config) {
-      throw new Error(
-        agentErrorMessage("config.databaseInvalid", {
-          issues: formatConfigIssues(result.error.issues),
-        }),
-      );
-    }
-
-    return {
-      revision: repository.appendRevision({
-        config: seedConfig,
-        source: "seed",
+    throw new Error(
+      agentErrorMessage("config.databaseInvalid", {
+        issues: formatConfigIssues(result.error.issues),
       }),
-      repaired: { kind: "seed_reimported" },
-    };
+    );
   }
 
   private snapshotFromRevision(
@@ -393,7 +379,8 @@ export class AgentConfigService {
   }
 
   private validateConfig(config: AgentSystemConfig): AgentSystemConfig {
-    return AgentSystemConfigSchema.parse(config);
+    const migrated = migrateAgentConfigPayload(config);
+    return AgentSystemConfigSchema.parse(migrated?.config ?? config);
   }
 
   private resolveDatabasePath(config: AgentSystemConfig): string {
@@ -410,7 +397,7 @@ export class AgentConfigService {
 }
 
 export function loadConfigFile(filePath: string): AgentSystemConfig {
-  return new AgentJsonFileLoader().load(filePath, AgentSystemConfigSchema);
+  return AgentConfigLoader.load(filePath);
 }
 
 function diagnosticsForRepair(repair: AgentConfigRepairResult): AgentConfigDiagnostic[] {
@@ -419,13 +406,26 @@ function diagnosticsForRepair(repair: AgentConfigRepairResult): AgentConfigDiagn
   }
 
   if (repair.kind === "migrated") {
-    return [];
+    return [migrationDiagnostic(repair)];
   }
 
-  return [
-    {
-      severity: "warning",
-      message: agentErrorMessage("config.databaseLegacyReimported"),
+  return [];
+}
+
+function migrationDiagnostic(
+  migration: AgentConfigMigrationSummary,
+  persistence?: { backupPath?: string },
+): AgentConfigDiagnostic {
+  return {
+    severity: "warning",
+    message: agentErrorMessage("config.migrationApplied", {
+      sourceVersion: migration.sourceVersion ?? "legacy",
+      targetVersion: migration.targetVersion ?? "current",
+    }),
+    details: {
+      migratedPaths: migration.migratedPaths,
+      removedPaths: migration.removedPaths,
+      ...(persistence?.backupPath ? { backupPath: persistence.backupPath } : {}),
     },
-  ];
+  };
 }

@@ -21,6 +21,7 @@ import type {
   AgentModelProviderConfig,
   AgentModelProviderEndpointConfig,
 } from "./AgentModelConfigTypes.js";
+import type { CurrentAgentConfigVersion } from "../Config/AgentConfigVersion.js";
 
 export interface AgentDefaultsConfig {
   PluginRoots?: {
@@ -52,6 +53,7 @@ export interface AgentDefaultsConfig {
 }
 
 export interface AgentSystemConfig {
+  ConfigVersion?: typeof CurrentAgentConfigVersion;
   Defaults?: AgentDefaultsConfig;
   PluginRoots?: {
     System?: string[];

@@ -754,19 +754,6 @@
             "required": false
           },
           {
-            "path": ["ActionPlanner", "Client", "Provider"],
-            "label": "Planner 协议",
-            "type": "string",
-            "options": ["openai-generic", "openai-responses", "anthropic", "google-ai"],
-            "optionLabels": {
-              "openai-generic": "Chat Completions",
-              "openai-responses": "Responses",
-              "anthropic": "Claude Messages",
-              "google-ai": "Google Generate Content"
-            },
-            "required": false
-          },
-          {
             "path": ["ActionPlanner", "Client", "ModelProviderId"],
             "label": "Planner 模型",
             "description": "为空时继承当前主模型。",
@@ -790,19 +777,6 @@
             "type": "number",
             "min": -1,
             "step": 1,
-            "required": false
-          },
-          {
-            "path": ["ActionPlanner", "FinalAnswerClient", "Provider"],
-            "label": "最终回答协议",
-            "type": "string",
-            "options": ["openai-generic", "openai-responses", "anthropic", "google-ai"],
-            "optionLabels": {
-              "openai-generic": "Chat Completions",
-              "openai-responses": "Responses",
-              "anthropic": "Claude Messages",
-              "google-ai": "Google Generate Content"
-            },
             "required": false
           },
           {

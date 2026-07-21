@@ -53,7 +53,8 @@
         "VerifyMcpPersistentProcessBoundary.js",
         "VerifyAgentSafetyApproval.js",
         "VerifyComplexityBudget.js",
-        "VerifyConfigServiceSqliteSource.js"
+        "VerifyConfigServiceSqliteSource.js",
+        "VerifyConfigServiceJsonMigration.js"
       ]
     },
     "frontend": {

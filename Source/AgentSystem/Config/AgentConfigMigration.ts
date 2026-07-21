@@ -1,163 +1,206 @@
-import type { ZodIssue, ZodType } from "zod";
+import { CurrentAgentConfigVersion } from "./AgentConfigVersion.js";
 
-export interface AgentConfigMigrationResult<TConfig> {
-  config: TConfig;
+export interface AgentConfigMigrationResult {
+  config: unknown;
+  sourceVersion: number;
+  targetVersion: number;
   migratedPaths: string[];
   removedPaths: string[];
 }
 
-export interface AgentConfigUnknownKeyMigrationResult<TConfig> {
-  config: TConfig;
-  removedPaths: string[];
+export class AgentConfigMigrationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AgentConfigMigrationError";
+  }
 }
 
-export function migrateAgentConfigPayload<TConfig>(
-  config: unknown,
-  schema: ZodType<TConfig>,
-): AgentConfigMigrationResult<TConfig> | undefined {
-  const legacy = migrateLegacyAgentConfigFields(config);
-  const parsed = schema.safeParse(legacy.config);
-  if (parsed.success) {
-    return legacy.migratedPaths.length > 0
-      ? {
-          config: parsed.data,
-          migratedPaths: legacy.migratedPaths,
-          removedPaths: [],
-        }
-      : undefined;
-  }
-
-  const unknown = migrateUnknownConfigKeys(legacy.config, schema);
-  if (!unknown) {
+export function migrateAgentConfigPayload(config: unknown): AgentConfigMigrationResult | undefined {
+  if (!isRecord(config)) {
     return undefined;
   }
 
-  return {
-    config: unknown.config,
-    migratedPaths: legacy.migratedPaths,
-    removedPaths: unknown.removedPaths,
-  };
-}
+  const sourceVersion = readConfigVersion(config);
+  if (sourceVersion === CurrentAgentConfigVersion) {
+    return undefined;
+  }
 
-export function migrateUnknownConfigKeys<TConfig>(
-  config: unknown,
-  schema: ZodType<TConfig>,
-): AgentConfigUnknownKeyMigrationResult<TConfig> | undefined {
   const working = cloneJsonValue(config);
-  const removedPaths: string[] = [];
-
-  while (true) {
-    const parsed = schema.safeParse(working);
-    if (parsed.success) {
-      return removedPaths.length > 0
-        ? {
-            config: parsed.data,
-            removedPaths,
-          }
-        : undefined;
-    }
-
-    const removableIssues = parsed.error.issues.filter(isUnrecognizedKeysIssue);
-    if (removableIssues.length === 0) {
-      return undefined;
-    }
-
-    let changed = false;
-    for (const issue of removableIssues) {
-      changed = removeUnknownKeys(working, issue, removedPaths) || changed;
-    }
-
-    if (!changed) {
-      return undefined;
-    }
-  }
-}
-
-function removeUnknownKeys(
-  target: unknown,
-  issue: Extract<ZodIssue, { code: "unrecognized_keys" }>,
-  removedPaths: string[],
-): boolean {
-  const parent = readPath(target, issue.path);
-  if (!isRecord(parent)) {
-    return false;
-  }
-
-  let changed = false;
-  for (const key of issue.keys) {
-    if (!(key in parent)) {
-      continue;
-    }
-    delete parent[key];
-    removedPaths.push(formatConfigPath([...issue.path, key]));
-    changed = true;
-  }
-  return changed;
-}
-
-function readPath(target: unknown, path: readonly PropertyKey[]): unknown {
-  let current = target;
-  for (const segment of path) {
-    if (typeof segment !== "string" && typeof segment !== "number") {
-      return undefined;
-    }
-    if (!isRecord(current) && !Array.isArray(current)) {
-      return undefined;
-    }
-    current = current[segment as keyof typeof current];
-  }
-  return current;
-}
-
-function formatConfigPath(path: readonly PropertyKey[]): string {
-  return path.length > 0 ? path.map(String).join(".") : "<root>";
-}
-
-function isUnrecognizedKeysIssue(issue: ZodIssue): issue is Extract<ZodIssue, { code: "unrecognized_keys" }> {
-  return issue.code === "unrecognized_keys";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function migrateLegacyAgentConfigFields(input: unknown): {
-  config: unknown;
-  migratedPaths: string[];
-} {
-  const config = cloneJsonValue(input);
-  if (!isRecord(config)) {
-    return {
-      config,
-      migratedPaths: [],
-    };
+  if (!isRecord(working)) {
+    throw new AgentConfigMigrationError("Configuration payload must be a JSON object.");
   }
 
   const migratedPaths: string[] = [];
-  migrateAgentLoopRepairAttempts(config, "");
+  const removedPaths: string[] = [];
+  let version = sourceVersion;
+  while (version < CurrentAgentConfigVersion) {
+    switch (version) {
+      case 0:
+        migrateVersionZeroToOne(working, migratedPaths, removedPaths);
+        version = 1;
+        break;
+      default:
+        throw new AgentConfigMigrationError(`No migration is registered for configuration version ${version}.`);
+    }
+  }
+
+  working.ConfigVersion = CurrentAgentConfigVersion;
+  migratedPaths.push("ConfigVersion");
+  return {
+    config: working,
+    sourceVersion,
+    targetVersion: CurrentAgentConfigVersion,
+    migratedPaths,
+    removedPaths,
+  };
+}
+
+function readConfigVersion(config: Record<string, unknown>): number {
+  if (!Object.hasOwn(config, "ConfigVersion")) {
+    return 0;
+  }
+
+  const version = config.ConfigVersion;
+  if (!Number.isInteger(version) || typeof version !== "number" || version < 0) {
+    throw new AgentConfigMigrationError("ConfigVersion must be a non-negative integer.");
+  }
+  if (version > CurrentAgentConfigVersion) {
+    throw new AgentConfigMigrationError(
+      `Configuration version ${version} is newer than this Senera runtime supports (${CurrentAgentConfigVersion}).`,
+    );
+  }
+  return version;
+}
+
+function migrateVersionZeroToOne(
+  config: Record<string, unknown>,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  const modelProviderIds = readModelProviderIds(config);
+  migrateLegacyContainer(config, "", modelProviderIds, migratedPaths, removedPaths);
+
   const defaults = config.Defaults;
   if (isRecord(defaults)) {
-    migrateAgentLoopRepairAttempts(defaults, "Defaults.");
+    migrateLegacyContainer(defaults, "Defaults.", modelProviderIds, migratedPaths, removedPaths);
   }
 
-  return {
-    config,
-    migratedPaths,
-  };
-
-  function migrateAgentLoopRepairAttempts(container: Record<string, unknown>, prefix: string): void {
-    const agentLoop = container.AgentLoop;
-    if (!isRecord(agentLoop) || !Object.prototype.hasOwnProperty.call(agentLoop, "MaxRepairAttempts")) {
-      return;
+  const pluginDocumentation = config.PluginDocumentation;
+  if (isRecord(pluginDocumentation) && removeProperty(pluginDocumentation, "DecisionActionDescription")) {
+    removedPaths.push("PluginDocumentation.DecisionActionDescription");
+    if (Object.keys(pluginDocumentation).length === 0) {
+      delete config.PluginDocumentation;
+      removedPaths.push("PluginDocumentation");
     }
-
-    const actionPlanner = ensureRecord(container, "ActionPlanner");
-    if (!Object.prototype.hasOwnProperty.call(actionPlanner, "MaxRepairAttempts")) {
-      actionPlanner.MaxRepairAttempts = agentLoop.MaxRepairAttempts;
-    }
-    delete agentLoop.MaxRepairAttempts;
-    migratedPaths.push(`${prefix}AgentLoop.MaxRepairAttempts`);
   }
+}
+
+function migrateLegacyContainer(
+  container: Record<string, unknown>,
+  prefix: string,
+  modelProviderIds: ReadonlySet<string>,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  migrateAgentLoopRepairAttempts(container, prefix, migratedPaths);
+  removeLegacyProperty(container, "Cli", prefix, removedPaths);
+  removeLegacyProperty(container, "AgentDelegation", prefix, removedPaths);
+
+  const toolExecution = container.ToolExecution;
+  if (isRecord(toolExecution) && removeProperty(toolExecution, "Mode")) {
+    removedPaths.push(`${prefix}ToolExecution.Mode`);
+  }
+
+  const agentLoop = container.AgentLoop;
+  if (isRecord(agentLoop) && removeProperty(agentLoop, "MaxSteps")) {
+    removedPaths.push(`${prefix}AgentLoop.MaxSteps`);
+  }
+
+  const actionPlanner = container.ActionPlanner;
+  if (!isRecord(actionPlanner)) {
+    return;
+  }
+  for (const clientKey of ["Client", "PlanningClient", "FinalAnswerClient"] as const) {
+    const client = actionPlanner[clientKey];
+    if (isRecord(client)) {
+      migratePlannerClientProvider(
+        client,
+        `${prefix}ActionPlanner.${clientKey}`,
+        modelProviderIds,
+        migratedPaths,
+        removedPaths,
+      );
+    }
+  }
+}
+
+function migrateAgentLoopRepairAttempts(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+): void {
+  const agentLoop = container.AgentLoop;
+  if (!isRecord(agentLoop) || !Object.hasOwn(agentLoop, "MaxRepairAttempts")) {
+    return;
+  }
+
+  const actionPlanner = ensureRecord(container, "ActionPlanner");
+  if (!Object.hasOwn(actionPlanner, "MaxRepairAttempts")) {
+    actionPlanner.MaxRepairAttempts = agentLoop.MaxRepairAttempts;
+  }
+  delete agentLoop.MaxRepairAttempts;
+  migratedPaths.push(`${prefix}AgentLoop.MaxRepairAttempts`);
+}
+
+function migratePlannerClientProvider(
+  client: Record<string, unknown>,
+  path: string,
+  modelProviderIds: ReadonlySet<string>,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  const provider = client.Provider;
+  if (!Object.hasOwn(client, "Provider")) {
+    return;
+  }
+
+  if (!Object.hasOwn(client, "ModelProviderId") && typeof provider === "string" && modelProviderIds.has(provider)) {
+    client.ModelProviderId = provider;
+    migratedPaths.push(`${path}.Provider`);
+  } else {
+    removedPaths.push(`${path}.Provider`);
+  }
+  delete client.Provider;
+}
+
+function readModelProviderIds(config: Record<string, unknown>): ReadonlySet<string> {
+  if (!Array.isArray(config.ModelProviders)) {
+    return new Set<string>();
+  }
+  return new Set(
+    config.ModelProviders.flatMap((provider) =>
+      isRecord(provider) && typeof provider.Id === "string" ? [provider.Id] : [],
+    ),
+  );
+}
+
+function removeLegacyProperty(
+  container: Record<string, unknown>,
+  key: string,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  if (removeProperty(container, key)) {
+    removedPaths.push(`${prefix}${key}`);
+  }
+}
+
+function removeProperty(container: Record<string, unknown>, key: string): boolean {
+  if (!Object.hasOwn(container, key)) {
+    return false;
+  }
+  delete container[key];
+  return true;
 }
 
 function ensureRecord(container: Record<string, unknown>, key: string): Record<string, unknown> {
@@ -165,10 +208,13 @@ function ensureRecord(container: Record<string, unknown>, key: string): Record<s
   if (isRecord(current)) {
     return current;
   }
-
   const next: Record<string, unknown> = {};
   container[key] = next;
   return next;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function cloneJsonValue(value: unknown): unknown {

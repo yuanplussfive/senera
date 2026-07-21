@@ -4,6 +4,7 @@ import path from "node:path";
 import { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentConfigSqliteRepository } from "../Source/AgentSystem/Config/AgentConfigSqliteRepository.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { CurrentAgentConfigVersion } from "../Source/AgentSystem/Config/AgentConfigVersion.js";
 
 const tempRoot = path.join(process.cwd(), ".senera", "tmp", "verify-config-service");
 fs.mkdirSync(tempRoot, { recursive: true });
@@ -49,6 +50,7 @@ try {
   const first = service.snapshot();
   assert.equal(first.source, "sqlite");
   assert.equal(first.revision, 1);
+  assert.equal(first.value.ConfigVersion, CurrentAgentConfigVersion);
   assert.equal(first.value.ModelProviders[0].Model, "initial-model");
   assert.ok(first.databasePath?.endsWith(path.join(".senera", "Config.sqlite")));
 
@@ -219,11 +221,15 @@ try {
       seedConfig: desktopSeedConfig,
     },
   });
+  const { ConfigVersion: _currentConfigVersion, ...legacyBaseConfig } = service.snapshot().value;
   const legacyConfig = {
-    ...service.snapshot().value,
+    ...legacyBaseConfig,
     Defaults: {
       ...service.snapshot().value.Defaults,
       Cli: {
+        Enabled: true,
+      },
+      AgentDelegation: {
         Enabled: true,
       },
       ToolExecution: {
@@ -234,6 +240,20 @@ try {
         MaxSteps: -1,
         MaxRepairAttempts: 2,
       },
+      ActionPlanner: {
+        Client: {
+          Provider: "desktop/updated-model",
+        },
+        PlanningClient: {
+          Provider: "openai-generic",
+        },
+      },
+    },
+    Cli: {
+      Enabled: true,
+    },
+    AgentDelegation: {
+      Enabled: true,
     },
     ToolExecution: {
       Mode: "SandboxPreferred",
@@ -241,6 +261,12 @@ try {
     },
     ActionPlanner: {
       MaxRepairAttempts: 7,
+      Client: {
+        Provider: "desktop/updated-model",
+      },
+      FinalAnswerClient: {
+        Provider: "openai-generic",
+      },
     },
     AgentLoop: {
       MaxSteps: -1,
@@ -272,6 +298,7 @@ try {
   });
   const migratedSnapshot = reloaded.snapshot();
   assert.equal(migratedSnapshot.revision, 5);
+  assert.equal(migratedSnapshot.value.ConfigVersion, CurrentAgentConfigVersion);
   assert.equal(migratedSnapshot.value.ToolExecution?.TimeoutSeconds, 30);
   assert.equal(migratedSnapshot.value.ActionPlanner?.MaxRepairAttempts, 7);
   assert.equal("Mode" in (migratedSnapshot.value.ToolExecution ?? {}), false);
@@ -279,17 +306,49 @@ try {
   assert.equal("MaxSteps" in (migratedSnapshot.value.AgentLoop ?? {}), false);
   assert.equal("MaxRepairAttempts" in (migratedSnapshot.value.AgentLoop ?? {}), false);
   assert.equal("Cli" in (migratedSnapshot.value.Defaults ?? {}), false);
+  assert.equal("AgentDelegation" in (migratedSnapshot.value.Defaults ?? {}), false);
   assert.equal(migratedSnapshot.value.Defaults?.ActionPlanner?.MaxRepairAttempts, 2);
   assert.equal("Mode" in (migratedSnapshot.value.Defaults?.ToolExecution ?? {}), false);
   assert.equal("MaxRepairAttempts" in (migratedSnapshot.value.Defaults?.AgentLoop ?? {}), false);
+  assert.equal(migratedSnapshot.value.Defaults?.ActionPlanner?.Client?.ModelProviderId, "desktop/updated-model");
+  assert.equal("Provider" in (migratedSnapshot.value.Defaults?.ActionPlanner?.PlanningClient ?? {}), false);
+  assert.equal("Cli" in migratedSnapshot.value, false);
+  assert.equal("AgentDelegation" in migratedSnapshot.value, false);
+  assert.equal(migratedSnapshot.value.ActionPlanner?.Client?.ModelProviderId, "desktop/updated-model");
+  assert.equal("Provider" in (migratedSnapshot.value.ActionPlanner?.FinalAnswerClient ?? {}), false);
   assert.equal(migratedSnapshot.value.ModelProviders[0].Id, "desktop/updated-model");
   assert.equal(migratedSnapshot.value.ModelProviderEndpoints?.[0]?.BaseUrl, "https://desktop.example.invalid/v1");
-  assert.deepEqual(migratedSnapshot.diagnostics, []);
+  assert.equal(migratedSnapshot.diagnostics.length, 1);
+  assert.equal(migratedSnapshot.diagnostics[0].severity, "warning");
   reloaded.close();
   reloaded = undefined;
   const migratedRepository = new AgentConfigSqliteRepository(desktopDatabasePath);
   assert.equal(migratedRepository.latestRevision()?.source, "migration");
+  const invalidRevision = migratedRepository.appendRevision({
+    config: {
+      ...migratedSnapshot.value,
+      ConfigVersion: CurrentAgentConfigVersion,
+      UnexpectedLegacyKey: true,
+    } as unknown as AgentSystemConfig,
+    source: "migration",
+  });
   migratedRepository.close();
+
+  assert.throws(
+    () =>
+      new AgentConfigService({
+        workspaceRoot,
+        source: {
+          kind: "sqlite",
+          databasePath: desktopDatabasePath,
+          seedConfig: desktopSeedConfig,
+        },
+      }),
+    /配置数据库中的配置结构无效/,
+  );
+  const preservedInvalidRepository = new AgentConfigSqliteRepository(desktopDatabasePath);
+  assert.equal(preservedInvalidRepository.latestRevision()?.revision, invalidRevision.revision);
+  preservedInvalidRepository.close();
 
   console.log("Config service SQLite source verification passed.");
 } finally {
