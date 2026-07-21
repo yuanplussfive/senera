@@ -21,6 +21,7 @@ import {
   ToolSearchSchema,
   VectorModelsSchema,
 } from "./AgentToolMemoryConfigSchema.js";
+import { CurrentAgentConfigVersion } from "../Config/AgentConfigVersion.js";
 
 const AgentDefaultsSchema = z
   .object({
@@ -46,6 +47,7 @@ const AgentDefaultsSchema = z
 
 export const AgentSystemConfigSchema = z
   .object({
+    ConfigVersion: z.literal(CurrentAgentConfigVersion).optional(),
     Defaults: AgentDefaultsSchema.optional(),
     PluginRoots: PluginRootsSchema.optional(),
     PluginDiscovery: PluginDiscoverySchema.optional(),
