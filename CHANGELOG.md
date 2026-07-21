@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.4.0](https://github.com/yuanplussfive/senera/compare/v1.3.3...v1.4.0) (2026-07-21)
+
+
+### 新增功能
+
+* **config:** migrate legacy configuration sources ([#39](https://github.com/yuanplussfive/senera/issues/39)) ([db8ec2c](https://github.com/yuanplussfive/senera/commit/db8ec2c464000be76a68db0ff9109a0aee6e872e))
+
 ## [1.3.3](https://github.com/yuanplussfive/senera/compare/v1.3.2...v1.3.3) (2026-07-21)
 
 
