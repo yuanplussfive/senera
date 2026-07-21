@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, test, vi } from "vitest";
 import {
+  AgentMcpStdioConnectionClosedError,
   AgentMcpStdioStartupError,
   AgentMcpStdioTransport,
   AgentMcpStdioTransportCloseError,
@@ -56,6 +57,26 @@ describe("MCP stdio transport", () => {
       signal: null,
       stderr: "fatal: configuration is invalid\n",
     } satisfies Partial<AgentMcpStdioStartupError>);
+  });
+
+  test("reports bounded exit diagnostics when a connected server closes unexpectedly", async () => {
+    const child = new FakePersistentProcessChild();
+    const transport = createTransport(child, 5);
+    const errors: Error[] = [];
+    transport.onerror = (error) => errors.push(error);
+
+    await transport.start();
+    child.emitStderr("fatal: runtime configuration is invalid\n");
+    child.emitClose(23);
+
+    await vi.waitFor(() => expect(errors).toHaveLength(1));
+    expect(errors[0]).toBeInstanceOf(AgentMcpStdioConnectionClosedError);
+    expect(errors[0]).toMatchObject({
+      command: "mcp-server",
+      exitCode: 23,
+      signal: null,
+      stderr: "fatal: runtime configuration is invalid\n",
+    } satisfies Partial<AgentMcpStdioConnectionClosedError>);
   });
 
   test("reclaims a child whose spawn completes after close begins", async () => {
