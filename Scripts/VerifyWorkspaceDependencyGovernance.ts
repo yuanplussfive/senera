@@ -76,6 +76,7 @@ const rootOwnedToolchainDependencies = new Map(
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@electron/asar": "^3.4.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.7.0",
@@ -371,6 +372,10 @@ function inspectDesktopPackageConfig(): string[] {
     ...inspectDesktopPackageScript(),
     ...inspectDesktopFileSet("Packages/ToolPluginSdk", "node_modules/@senera/tool-plugin-sdk"),
     ...inspectDesktopFileSet("Packages/TerminalSidecar", "node_modules/@senera/terminal-sidecar"),
+    ...inspectDesktopFileSet(
+      "node_modules/ts-json-schema-generator/node_modules/typescript/lib",
+      "node_modules/typescript/lib",
+    ),
     ...inspectDesktopExtraResource(".senera/sandbox-runtime/terminal-sidecar", "TerminalSidecarRuntime"),
     ...(rootPackage.build?.npmRebuild === false
       ? []

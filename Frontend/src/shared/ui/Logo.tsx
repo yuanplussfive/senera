@@ -12,7 +12,7 @@ export function LogoMark({ className, size = 22 }: LogoProps): JSX.Element {
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      <img src="/favicon.svg" alt="" className="h-full w-full object-contain" draggable={false} />
+      <img src="./favicon.svg" alt="" className="h-full w-full object-contain" draggable={false} />
     </span>
   );
 }

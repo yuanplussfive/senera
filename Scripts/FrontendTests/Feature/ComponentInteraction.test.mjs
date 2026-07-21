@@ -5,6 +5,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { ApprovalRequestStrip } from "../../../Frontend/src/features/chat/ApprovalRequestStrip.tsx";
 import { EmptyChatState } from "../../../Frontend/src/features/chat/EmptyChatState.tsx";
 import { InteractionInputStrip } from "../../../Frontend/src/features/chat/InteractionInputStrip.tsx";
+import { LogoMark } from "../../../Frontend/src/shared/ui/Logo.tsx";
 
 const { openExternalUrl } = vi.hoisted(() => ({ openExternalUrl: vi.fn() }));
 vi.mock("../../../Frontend/src/app/desktopBridge.ts", () => ({ openExternalUrl }));
@@ -109,6 +110,12 @@ test("empty chat suggestions behave as real user actions", async () => {
   await user.click(screen.getByRole("button", { name: "整理日志" }));
 
   expect(onSelectSuggestion).toHaveBeenCalledWith("整理日志");
+});
+
+test("logo mark uses a document-relative asset path for packaged desktop windows", () => {
+  const { container } = render(React.createElement(LogoMark));
+
+  expect(container.querySelector("img")).toHaveAttribute("src", "./favicon.svg");
 });
 
 test("interaction form collects schema-driven values for the suspended tool call", async () => {

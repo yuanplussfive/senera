@@ -398,7 +398,7 @@ test("message list refreshes the user profile while keeping the project identity
   expect(screen.getByAltText("Ada")).toBeInTheDocument();
   expect(screen.getByText("Senera")).toHaveClass("text-[13.5px]", "font-semibold");
   expect(document.querySelector("[data-message-avatar='assistant']")).toHaveClass("h-8", "w-8");
-  expect(document.querySelector('[data-message-avatar="assistant"] img[src="/favicon.svg"]')).not.toBeNull();
+  expect(document.querySelector('[data-message-avatar="assistant"] img[src="./favicon.svg"]')).not.toBeNull();
   expect(document.querySelector("[data-message-avatar='assistant']")).not.toHaveClass(
     "rounded-full",
     "border",
@@ -421,7 +421,7 @@ test("message list refreshes the user profile while keeping the project identity
 
   expect(screen.getByAltText("Grace")).toBeInTheDocument();
   expect(screen.queryByText("Beta")).not.toBeInTheDocument();
-  expect(document.querySelector('[data-message-avatar="assistant"] img[src="/favicon.svg"]')).not.toBeNull();
+  expect(document.querySelector('[data-message-avatar="assistant"] img[src="./favicon.svg"]')).not.toBeNull();
 });
 
 test("user messages edit inline and keep the existing replay command", async () => {
