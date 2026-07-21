@@ -32,7 +32,7 @@ export type ExecutionResourceSignalArguments = {
   signal: "interrupt" | "terminate" | "kill";
 };
 
-export type ExecutionResourceListArguments = {};
+export type ExecutionResourceListArguments = Record<string, never>;
 
 export type ExecutionResourceResizeArguments = {
   resourceId: string;
@@ -40,4 +40,4 @@ export type ExecutionResourceResizeArguments = {
   rows: number;
 };
 
-export type ExecutionResourceStopAllArguments = {};
+export type ExecutionResourceStopAllArguments = Record<string, never>;
