@@ -9,6 +9,7 @@ import {
   AgentMcpDefaultStderrBytes,
   AgentMcpStdioTransport,
 } from "./AgentMcpStdioTransport.js";
+import { createAgentMcpNodeRuntimeLaunch, type AgentMcpNodeRuntime } from "./AgentMcpNodeRuntime.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 const nodeRequire = createRequire(import.meta.url);
@@ -58,10 +59,12 @@ export async function withAgentMcpFilesystemClient<TValue>(
   options: AgentMcpFilesystemClientOptions,
   operation: (client: AgentMcpFilesystemClient) => Promise<TValue>,
 ): Promise<TValue> {
+  const launch = createAgentMcpFilesystemServerLaunch(options.workspaceRoot);
   const transport = new AgentMcpStdioTransport({
-    command: process.execPath,
-    args: [resolveMcpFilesystemServerEntry(), options.workspaceRoot],
+    command: launch.command,
+    args: launch.args,
     cwd: options.workspaceRoot,
+    env: launch.env,
     signal: options.signal,
     profile: options.executionProfile,
     spawnPersistentProcess: options.spawnPersistentProcess,
@@ -86,6 +89,15 @@ export async function withAgentMcpFilesystemClient<TValue>(
   } finally {
     await client.close();
   }
+}
+
+export function createAgentMcpFilesystemServerLaunch(workspaceRoot: string, runtime?: AgentMcpNodeRuntime) {
+  return createAgentMcpNodeRuntimeLaunch(
+    {
+      args: [resolveMcpFilesystemServerEntry(), workspaceRoot],
+    },
+    runtime,
+  );
 }
 
 export class AgentMcpFilesystemClient {

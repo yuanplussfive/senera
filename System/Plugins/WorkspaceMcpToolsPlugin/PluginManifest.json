@@ -15,8 +15,8 @@
     {
       "Id": "filesystem",
       "Transport": "stdio",
-      "Command": "${packageBin:@modelcontextprotocol/server-filesystem:mcp-server-filesystem}",
-      "Args": ["${workspaceRoot}"],
+      "Command": "${node}",
+      "Args": ["${packageBin:@modelcontextprotocol/server-filesystem:mcp-server-filesystem}", "${workspaceRoot}"],
       "Cwd": "${workspaceRoot}"
     },
     {

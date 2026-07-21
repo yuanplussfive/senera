@@ -170,6 +170,10 @@ export async function openAgentMcpToolClient(options: AgentMcpToolClientOptions)
     maxFrameBytes: options.maxFrameBytes,
     maxStderrBytes: options.maxStderrBytes,
   });
+  let connectionFailure: Error | undefined;
+  transport.onerror = (error) => {
+    connectionFailure ??= error;
+  };
   const clientTaskStore = options.interactionInput ? new InMemoryTaskStore() : undefined;
   const client = new Client(
     {
@@ -196,8 +200,12 @@ export async function openAgentMcpToolClient(options: AgentMcpToolClientOptions)
       enforceStrictCapabilities: true,
     },
   );
-  const toolClient = new AgentMcpToolClient(client, options, clientTaskStore);
-  await client.connect(transport, mcpRequestOptions(options));
+  const toolClient = new AgentMcpToolClient(client, options, clientTaskStore, () => connectionFailure);
+  try {
+    await client.connect(transport, mcpRequestOptions(options));
+  } catch (error) {
+    throw preferMcpConnectionFailure(error, connectionFailure);
+  }
   return toolClient;
 }
 
@@ -215,6 +223,7 @@ export class AgentMcpToolClient {
     private readonly client: Client,
     private readonly options: AgentMcpToolClientOptions,
     private readonly clientTaskStore?: Pick<InMemoryTaskStore, "cleanup">,
+    private readonly connectionFailure?: () => Error | undefined,
   ) {
     client.onclose = () => {
       this._closed = true;
@@ -276,7 +285,11 @@ export class AgentMcpToolClient {
   }
 
   async callTool(name: string, args: Record<string, unknown>, options: AgentMcpToolCallOptions = {}): Promise<unknown> {
-    return this.withInteractionScope(options, () => this.callToolWithinScope(name, args, options));
+    try {
+      return await this.withInteractionScope(options, () => this.callToolWithinScope(name, args, options));
+    } catch (error) {
+      throw this.withConnectionFailure(error);
+    }
   }
 
   private async callToolWithinScope(
@@ -409,7 +422,15 @@ export class AgentMcpToolClient {
   }
 
   async reattachTask(taskId: string, options: AgentMcpToolCallOptions = {}): Promise<unknown> {
-    return this.withInteractionScope(options, () => this.reattachTaskWithinScope(taskId, options));
+    try {
+      return await this.withInteractionScope(options, () => this.reattachTaskWithinScope(taskId, options));
+    } catch (error) {
+      throw this.withConnectionFailure(error);
+    }
+  }
+
+  private withConnectionFailure(error: unknown): unknown {
+    return preferMcpConnectionFailure(error, this.connectionFailure?.());
   }
 
   private async reattachTaskWithinScope(taskId: string, options: AgentMcpToolCallOptions): Promise<unknown> {
@@ -662,6 +683,10 @@ function deliverAgentMcpTaskEvent(state: AgentMcpTaskEventDeliveryState, event: 
     }
     state.cursor.value = cursor;
   }
+}
+
+function preferMcpConnectionFailure(error: unknown, failure: Error | undefined): unknown {
+  return failure && error instanceof McpError && error.code === ErrorCode.ConnectionClosed ? failure : error;
 }
 
 function mcpRequestOptions(options: AgentMcpToolClientOptions, call: AgentMcpToolCallOptions = {}): RequestOptions {

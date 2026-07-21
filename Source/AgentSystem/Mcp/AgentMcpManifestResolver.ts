@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createAgentMcpNodeRuntimeLaunch } from "./AgentMcpNodeRuntime.js";
 import { resolveNodePackageBin } from "./AgentMcpPackageResolver.js";
 import type { PluginMcpServerManifest } from "../Types/PluginManifestTypes.js";
 
+const NodeCommandTemplate = "${node}";
 const TemplateResolvers = [
   {
     pattern: /\$\{node\}/g,
@@ -19,6 +21,7 @@ const TemplateResolvers = [
 ] as const;
 
 const PackageBinPattern = /\$\{packageBin:([^}:]+)(?::([^}]+))?\}/g;
+const PackageBinCommandPattern = /^\$\{packageBin:([^}:]+)(?::([^}]+))?\}$/u;
 const RuntimeModulePattern = /\$\{runtimeModule:([^}]+)\}/g;
 
 export interface AgentMcpManifestTemplateContext {
@@ -48,14 +51,38 @@ export function resolveMcpServerManifest(
   manifest: PluginMcpServerManifest,
   context: AgentMcpManifestTemplateContext,
 ): ResolvedMcpServerManifest {
+  const args = resolveServerArgs(manifest.Args ?? [], context);
+  const env = manifest.Env
+    ? Object.fromEntries(Object.entries(manifest.Env).map(([key, value]) => [key, resolveTemplate(value, context)]))
+    : undefined;
+  const launch = resolveServerLaunch(manifest.Command, args, env, context);
   return {
     id: manifest.Id,
-    command: resolveTemplate(manifest.Command, context),
-    args: resolveServerArgs(manifest.Args ?? [], context),
+    command: launch.command,
+    args: launch.args,
     cwd: resolvePathTemplate(manifest.Cwd ?? "${workspaceRoot}", context),
-    env: manifest.Env
-      ? Object.fromEntries(Object.entries(manifest.Env).map(([key, value]) => [key, resolveTemplate(value, context)]))
-      : undefined,
+    env: launch.env,
+  };
+}
+
+function resolveServerLaunch(
+  commandTemplate: string,
+  args: readonly string[],
+  env: Record<string, string> | undefined,
+  context: AgentMcpManifestTemplateContext,
+): Pick<ResolvedMcpServerManifest, "command" | "args" | "env"> {
+  if (commandTemplate === NodeCommandTemplate) {
+    return createAgentMcpNodeRuntimeLaunch({ args, env });
+  }
+
+  if (PackageBinCommandPattern.test(commandTemplate)) {
+    return createAgentMcpNodeRuntimeLaunch({ args: [resolveTemplate(commandTemplate, context), ...args], env });
+  }
+
+  return {
+    command: resolveTemplate(commandTemplate, context),
+    args: [...args],
+    env,
   };
 }
 

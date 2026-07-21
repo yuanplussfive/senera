@@ -10,8 +10,8 @@ import type {
 } from "../Execution/SeneraPersistentProcessTypes.js";
 import { SeneraProcessOutputBuffer } from "../Execution/SeneraProcessOutputBuffer.js";
 
-const McpStartupStderrLimitBytes = 16 * 1024;
-const McpStartupErrorSummaryChars = 512;
+const McpDiagnosticStderrLimitBytes = 16 * 1024;
+const McpErrorSummaryChars = 512;
 export const AgentMcpDefaultFrameBytes = 64 * 1024 * 1024;
 export const AgentMcpDefaultStderrBytes = 1024 * 1024;
 
@@ -36,6 +36,22 @@ export class AgentMcpStdioStartupError extends Error {
     const summary = summarizeDiagnostic(stderr);
     super(`MCP stdio server exited during startup with ${outcome}.${summary ? ` stderr: ${summary}` : ""}`);
     this.name = "AgentMcpStdioStartupError";
+  }
+}
+
+export class AgentMcpStdioConnectionClosedError extends Error {
+  constructor(
+    readonly command: string,
+    readonly pid: number | undefined,
+    readonly exitCode: number | null,
+    readonly signal: NodeJS.Signals | null,
+    readonly stderr: string,
+  ) {
+    const target = pid === undefined ? "MCP stdio server" : `MCP stdio server ${pid}`;
+    const outcome = signal ? `signal ${signal}` : `exit code ${exitCode ?? "unknown"}`;
+    const summary = summarizeDiagnostic(stderr);
+    super(`${target} closed unexpectedly with ${outcome}.${summary ? ` stderr: ${summary}` : ""}`);
+    this.name = "AgentMcpStdioConnectionClosedError";
   }
 }
 
@@ -80,9 +96,7 @@ export class AgentMcpStdioTransport implements Transport {
   private readonly stderrStream: PassThrough | null;
   private readonly maxFrameBytes: number;
   private frameBytes = 0;
-  private readonly startupOutput = new SeneraProcessOutputBuffer({
-    maxStderrBytes: McpStartupStderrLimitBytes,
-  });
+  private readonly diagnosticOutput: SeneraProcessOutputBuffer;
   private child: SeneraPersistentProcessChild | undefined;
   private state: AgentMcpStdioTransportState = AgentMcpStdioTransportStates.Idle;
   private spawnPromise: Promise<SeneraPersistentProcessChild> | undefined;
@@ -102,6 +116,9 @@ export class AgentMcpStdioTransport implements Transport {
     const maxStderrBytes = options.maxStderrBytes ?? AgentMcpDefaultStderrBytes;
     assertPositiveBudget(this.maxFrameBytes, "MCP frame bytes");
     assertPositiveBudget(maxStderrBytes, "MCP stderr bytes");
+    this.diagnosticOutput = new SeneraProcessOutputBuffer({
+      maxStderrBytes: Math.min(maxStderrBytes, McpDiagnosticStderrLimitBytes),
+    });
     this.stderrStream = options.pipeStderr === false ? null : new BoundedPassThrough(maxStderrBytes);
   }
 
@@ -163,7 +180,7 @@ export class AgentMcpStdioTransport implements Transport {
     this.state = AgentMcpStdioTransportStates.Closing;
     this.settleStart(
       "reject",
-      new AgentMcpStdioStartupError(this.options.command, undefined, undefined, this.startupOutput.stderr()),
+      new AgentMcpStdioStartupError(this.options.command, undefined, undefined, this.diagnosticOutput.stderr()),
     );
     const closing = this.closeTransport().finally(() => {
       if (this.closePromise === closing) this.closePromise = undefined;
@@ -237,7 +254,7 @@ export class AgentMcpStdioTransport implements Transport {
     });
     child.stdout.on("error", (error) => this.reportError(error));
     child.stderr?.on("data", (chunk) => {
-      if (this.state === AgentMcpStdioTransportStates.Starting) this.startupOutput.pushStderr(chunk);
+      this.diagnosticOutput.pushStderr(chunk);
       this.stderrStream?.write(chunk);
     });
   }
@@ -260,9 +277,20 @@ export class AgentMcpStdioTransport implements Transport {
     signal: NodeJS.Signals | null,
   ): void {
     if (this.child === child) this.child = undefined;
-    const starting = this.state === AgentMcpStdioTransportStates.Starting;
+    const state = this.state;
     this.state = AgentMcpStdioTransportStates.Closed;
-    if (starting) this.settleStart("reject", this.startupError(exitCode, signal));
+    if (state === AgentMcpStdioTransportStates.Starting) {
+      this.settleStart("reject", this.startupError(exitCode, signal));
+    } else if (state === AgentMcpStdioTransportStates.Running) {
+      this.transportError ??= new AgentMcpStdioConnectionClosedError(
+        this.options.command,
+        child.pid,
+        exitCode,
+        signal,
+        this.diagnosticOutput.stderr(),
+      );
+      this.onerror?.(this.transportError);
+    }
     this.onclose?.();
   }
 
@@ -304,7 +332,7 @@ export class AgentMcpStdioTransport implements Transport {
     exitCode: number | null | undefined,
     signal: NodeJS.Signals | null | undefined,
   ): AgentMcpStdioStartupError {
-    return new AgentMcpStdioStartupError(this.options.command, exitCode, signal, this.startupOutput.stderr());
+    return new AgentMcpStdioStartupError(this.options.command, exitCode, signal, this.diagnosticOutput.stderr());
   }
 
   private async closeTransport(): Promise<void> {
@@ -403,9 +431,7 @@ function tryKill(child: SeneraPersistentProcessChild, signal: NodeJS.Signals, fa
 
 function summarizeDiagnostic(value: string): string {
   const normalized = value.replace(/\s+/gu, " ").trim();
-  return normalized.length > McpStartupErrorSummaryChars
-    ? `${normalized.slice(0, McpStartupErrorSummaryChars)}...`
-    : normalized;
+  return normalized.length > McpErrorSummaryChars ? `${normalized.slice(0, McpErrorSummaryChars)}...` : normalized;
 }
 
 function toError(error: unknown): Error {
