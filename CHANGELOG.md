@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.3.3](https://github.com/yuanplussfive/senera/compare/v1.3.2...v1.3.3) (2026-07-21)
+
+
+### 问题修复
+
+* **release:** resolve verification gates ([#37](https://github.com/yuanplussfive/senera/issues/37)) ([be78bb7](https://github.com/yuanplussfive/senera/commit/be78bb7a064cc0fbb8e78d4e6a4a70f7a7738cfc))
+
 ## [1.3.2](https://github.com/yuanplussfive/senera/compare/v1.3.1...v1.3.2) (2026-07-20)
 
 
