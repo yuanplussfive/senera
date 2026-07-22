@@ -51,15 +51,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@0.35.0
+      - name: Generate Trivy SARIF report
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          ignore-unfixed: true
+          exit-code: "0"
+          format: sarif
+          output: trivy-results.sarif
+      - name: Enforce Trivy severity gate
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
           scan-ref: .
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-          format: sarif
-          output: trivy-results.sarif
+          format: table
       - uses: github/codeql-action/upload-sarif@v3
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         with:

@@ -510,10 +510,27 @@ function inspectSecurityScanWorkflow(): string[] {
     "queries: security-extended,security-and-quality",
     "actions/dependency-review-action@v4",
     "aquasecurity/trivy-action@0.35.0",
-    'exit-code: "1"',
     "github/codeql-action/upload-sarif@v3",
     "npm run quality.security",
   ]);
+  const trivyJob = workflowJobBlock(securityScanWorkflow, "trivy-filesystem");
+  if (trivyJob) {
+    violations.push(
+      ...inspectWorkflowNamedStep(trivyJob, label, "Generate Trivy SARIF report", [
+        "aquasecurity/trivy-action@0.35.0",
+        'exit-code: "0"',
+        "format: sarif",
+        "output: trivy-results.sarif",
+      ]),
+      ...inspectWorkflowNamedStep(trivyJob, label, "Enforce Trivy severity gate", [
+        "aquasecurity/trivy-action@0.35.0",
+        "severity: HIGH,CRITICAL",
+        "ignore-unfixed: true",
+        'exit-code: "1"',
+        "format: table",
+      ]),
+    );
+  }
   for (const jobName of ["dependency-audit", "codeql", "trivy-filesystem"]) {
     const block = workflowJobBlock(securityScanWorkflow, jobName);
     if (!block) {
@@ -721,6 +738,27 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
 
 function inspectTextIncludes(source: string, label: string, expectedTerms: readonly string[]): string[] {
   return expectedTerms.filter((term) => !source.includes(term)).map((term) => `${label} must include ${term}.`);
+}
+
+function inspectWorkflowNamedStep(
+  jobSource: string,
+  workflowLabel: string,
+  stepName: string,
+  expectedTerms: readonly string[],
+): string[] {
+  const block = workflowNamedStepBlock(jobSource, stepName);
+  if (!block) return [`${workflowLabel} must define step ${stepName}.`];
+  return inspectTextIncludes(block, `${workflowLabel} step ${stepName}`, expectedTerms);
+}
+
+function workflowNamedStepBlock(jobSource: string, stepName: string): string | undefined {
+  const marker = `\n      - name: ${stepName}\n`;
+  const start = jobSource.indexOf(marker);
+  if (start < 0) return undefined;
+  const nextStep = /^ {6}- (?:name|uses|run):/gm;
+  nextStep.lastIndex = start + marker.length;
+  const next = nextStep.exec(jobSource);
+  return jobSource.slice(start, next?.index ?? jobSource.length);
 }
 
 function workflowJobBlock(source: string, jobName: string): string | undefined {
