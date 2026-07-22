@@ -444,7 +444,7 @@
           "properties": {
             "ConfigVersion": {
               "type": "number",
-              "const": 1
+              "const": 2
             },
             "Defaults": {
               "type": "object",
@@ -795,19 +795,6 @@
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 9007199254740991
-                        },
-                        "IntentGate": {
-                          "type": "object",
-                          "properties": {
-                            "Mode": {
-                              "type": "string",
-                              "enum": [
-                                "disabled",
-                                "side_effect_capability"
-                              ]
-                            }
-                          },
-                          "additionalProperties": false
                         },
                         "MemoryExpansion": {
                           "type": "object",
@@ -2234,19 +2221,6 @@
                       "type": "integer",
                       "minimum": 1,
                       "maximum": 9007199254740991
-                    },
-                    "IntentGate": {
-                      "type": "object",
-                      "properties": {
-                        "Mode": {
-                          "type": "string",
-                          "enum": [
-                            "disabled",
-                            "side_effect_capability"
-                          ]
-                        }
-                      },
-                      "additionalProperties": false
                     },
                     "MemoryExpansion": {
                       "type": "object",
