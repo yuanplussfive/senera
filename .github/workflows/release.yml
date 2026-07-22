@@ -180,14 +180,16 @@ jobs:
           ARTIFACT_PATH: ${{ needs.metadata.outputs.desktop_artifact_path }}
         run: gh release upload $env:RELEASE_TAG $env:ARTIFACT_PATH --clobber
 
-  container:
-    name: Publish Container Image
+  container-build:
+    name: Build Container Candidate
     needs:
       - metadata
-      - container-smoke
     if: needs.metadata.result == 'success'
     runs-on: ubuntu-latest
-    environment: release-stable
+    timeout-minutes: 20
+    outputs:
+      reference: ${{ steps.image.outputs.tags }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -203,44 +205,41 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/senera
           tags: |
-            type=raw,value=${{ needs.metadata.outputs.container_version_tag }}
-            type=raw,value=${{ needs.metadata.outputs.container_minor_tag }}
             type=raw,value=sha-${{ needs.metadata.outputs.source_sha }}
-            type=raw,value=latest
-      - uses: docker/build-push-action@v6
+          labels: |
+            org.opencontainers.image.version=${{ needs.metadata.outputs.version }}
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
           tags: ${{ steps.image.outputs.tags }}
           labels: ${{ steps.image.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          pull: true
+          cache-from: type=gha,scope=senera-release-container
+          cache-to: type=gha,mode=max,scope=senera-release-container,ignore-error=true
 
   container-smoke:
     name: Verify Container Runtime
     needs:
       - metadata
-    if: needs.metadata.result == 'success'
+      - container-build
+    if: needs.metadata.result == 'success' && needs.container-build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      CONTAINER_HEALTH_TIMEOUT_SECONDS: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
         with:
-          ref: ${{ needs.metadata.outputs.tag }}
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          load: true
-          tags: senera-release-smoke:${{ github.run_id }}-${{ github.run_attempt }}
-          cache-from: type=gha,scope=senera-release-smoke
-          cache-to: type=gha,mode=max,scope=senera-release-smoke
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
       - name: Start and probe container
         shell: bash
         env:
-          IMAGE: senera-release-smoke:${{ github.run_id }}-${{ github.run_attempt }}
+          IMAGE: ${{ needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest }}
           CONTAINER_NAME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
@@ -256,7 +255,9 @@ jobs:
           }
           trap cleanup EXIT
 
+          docker pull "$IMAGE"
           docker run --detach --name "$CONTAINER_NAME" "$IMAGE" >/dev/null
+          deadline=$((SECONDS + CONTAINER_HEALTH_TIMEOUT_SECONDS))
           while true; do
             state="$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME")"
             health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$CONTAINER_NAME")"
@@ -273,11 +274,64 @@ jobs:
                 exit 1
                 ;;
             esac
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Container did not become healthy within ${CONTAINER_HEALTH_TIMEOUT_SECONDS} seconds (state=$state, health=$health)." >&2
+              exit 1
+            fi
             sleep 5
           done
 
           docker exec "$CONTAINER_NAME" node Dist/Scripts/VerifyDockerNativeSqlite.js
           docker exec "$CONTAINER_NAME" node Dist/Scripts/VerifyDockerUserPluginWrite.js
+
+  container:
+    name: Publish Container Image
+    needs:
+      - metadata
+      - container-build
+      - container-smoke
+    if: >-
+      needs.metadata.result == 'success' &&
+      needs.container-build.result == 'success' &&
+      needs.container-smoke.result == 'success'
+    runs-on: ubuntu-latest
+    environment: release-stable
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: image
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/senera
+          tags: |
+            type=raw,value=${{ needs.metadata.outputs.container_version_tag }}
+            type=raw,value=${{ needs.metadata.outputs.container_minor_tag }}
+            type=raw,value=latest
+      - name: Promote verified container digest
+        shell: bash
+        env:
+          SOURCE_IMAGE: ${{ needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest }}
+          TARGET_TAGS: ${{ steps.image.outputs.tags }}
+        run: |
+          set -euo pipefail
+
+          tag_arguments=()
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              tag_arguments+=(--tag "$tag")
+            fi
+          done <<< "$TARGET_TAGS"
+
+          if [ "${#tag_arguments[@]}" -eq 0 ]; then
+            echo "No stable container tags were generated." >&2
+            exit 1
+          fi
+
+          docker buildx imagetools create "${tag_arguments[@]}" "$SOURCE_IMAGE"
 
   publish:
     name: Publish Verified Release

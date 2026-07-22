@@ -1,25 +1,36 @@
+x-senera-runtime: &senera-runtime
+  image: ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:latest}
+  pull_policy: always
+  environment:
+    SENERA_WORKSPACE_ROOT: /data
+    AGENT_CONFIG_PATH: /data/senera.config.json
+    SENERA_SERVER_HOST: 0.0.0.0
+    SENERA_SERVER_PORT: 8787
+    SENERA_BIND_ADDRESS: ${SENERA_BIND_ADDRESS:-127.0.0.1}
+    SENERA_ALLOWED_ORIGINS: ${SENERA_ALLOWED_ORIGINS:-}
+    SENERA_PUBLIC_WS_URL: ${SENERA_PUBLIC_WS_URL:-}
+  volumes:
+    - senera-data:/data
+
 services:
   senera:
-    image: ${SENERA_IMAGE:-ghcr.io/yuanplussfive/senera:latest}
-    pull_policy: always
+    <<: *senera-runtime
     container_name: senera
     ports:
       - "${SENERA_BIND_ADDRESS:-127.0.0.1}:${SENERA_PORT:-8787}:8787"
-    environment:
-      SENERA_WORKSPACE_ROOT: /data
-      AGENT_CONFIG_PATH: /data/senera.config.json
-      SENERA_SERVER_HOST: 0.0.0.0
-      SENERA_SERVER_PORT: 8787
-      SENERA_BIND_ADDRESS: ${SENERA_BIND_ADDRESS:-127.0.0.1}
-      SENERA_ALLOWED_ORIGINS: ${SENERA_ALLOWED_ORIGINS:-}
-      SENERA_PUBLIC_WS_URL: ${SENERA_PUBLIC_WS_URL:-}
-    volumes:
-      - senera-data:/data
     devices:
       - /dev/kvm:/dev/kvm
     cap_add:
       - NET_ADMIN
     restart: unless-stopped
+
+  senera-admin:
+    <<: *senera-runtime
+    profiles:
+      - admin
+    entrypoint:
+      - node
+      - Dist/Apps/AdminAccess.js
 
 volumes:
   senera-data:
