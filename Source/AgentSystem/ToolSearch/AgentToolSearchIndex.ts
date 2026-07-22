@@ -96,6 +96,7 @@ export class AgentToolSearchIndex {
       toolName: doc.toolName,
       title: doc.title,
       pluginName: doc.pluginName,
+      sources: doc.sources.map((source) => ({ ...source })),
       summary: doc.summary,
       whenToUse: doc.whenToUse,
       permissions: doc.permissions.split(/\s+/).filter(Boolean),

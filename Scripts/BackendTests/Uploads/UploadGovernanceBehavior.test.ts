@@ -13,6 +13,10 @@ import type { ResolvedAgentUploadsConfig } from "../../../Source/AgentSystem/Typ
 const KIBIBYTE = 1_024;
 const HOUR_MS = 60 * 60 * 1_000;
 const UploadRootDir = ".uploads";
+const OnePixelPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 const roots: string[] = [];
 const servers: http.Server[] = [];
 
@@ -136,6 +140,78 @@ describe("upload governance behavior", () => {
     await expect(response.json()).resolves.toMatchObject({ ok: false, error: { code: "upload_file_missing" } });
   });
 
+  test("serves detected raster images through GET and HEAD with private revalidation", async () => {
+    const harness = await createHttpHarness();
+    const attachment = await saveBytes(harness.store, "pixel.png", OnePixelPng, "image/png");
+    const contentUrl = buildContentUrl(harness.baseUrl, attachment.uploadUri);
+
+    const response = await fetch(contentUrl);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("content-length")).toBe(String(OnePixelPng.byteLength));
+    expect(response.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(OnePixelPng);
+
+    const head = await fetch(contentUrl, { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(head.headers.get("content-length")).toBe(String(OnePixelPng.byteLength));
+    expect((await head.arrayBuffer()).byteLength).toBe(0);
+
+    const preflight = await fetch(contentUrl, {
+      method: "OPTIONS",
+      headers: { Origin: "http://frontend.test" },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("http://frontend.test");
+    expect(preflight.headers.get("access-control-allow-methods")).toBe("GET, HEAD, POST, OPTIONS");
+  });
+
+  test("returns 304 when the upload image ETag matches", async () => {
+    const harness = await createHttpHarness();
+    const attachment = await saveBytes(harness.store, "cached.png", OnePixelPng, "image/png");
+    const contentUrl = buildContentUrl(harness.baseUrl, attachment.uploadUri);
+    const initial = await fetch(contentUrl);
+    const etag = initial.headers.get("etag");
+    expect(etag).toBe(`"${attachment.sha256}"`);
+
+    const cached = await fetch(contentUrl, { headers: { "If-None-Match": etag! } });
+    expect(cached.status).toBe(304);
+    expect((await cached.arrayBuffer()).byteLength).toBe(0);
+  });
+
+  test("rejects missing, traversing, and non-raster upload content references", async () => {
+    const harness = await createHttpHarness();
+    const text = await saveText(harness.store, "notes.txt", "not an image");
+    const svg = await saveBytes(
+      harness.store,
+      "vector.svg",
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+      "image/svg+xml",
+    );
+
+    const textResponse = await fetch(buildContentUrl(harness.baseUrl, text.uploadUri));
+    expect(textResponse.status).toBe(415);
+    await expect(textResponse.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "upload_content_unsupported" },
+    });
+
+    const svgResponse = await fetch(buildContentUrl(harness.baseUrl, svg.uploadUri));
+    expect(svgResponse.status).toBe(415);
+
+    const missingResponse = await fetch(`${harness.baseUrl}/api/uploads/upl_missing/content`);
+    expect(missingResponse.status).toBe(404);
+    await expect(missingResponse.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "upload_content_not_found" },
+    });
+
+    const traversalResponse = await fetch(`${harness.baseUrl}/api/uploads/${encodeURIComponent("../outside")}/content`);
+    expect(traversalResponse.status).toBe(404);
+  });
+
   test("removes expired uploads and abandoned incomplete directories", async () => {
     const createdAt = new Date("2026-01-01T00:00:00.000Z");
     let now = createdAt;
@@ -190,7 +266,10 @@ async function createHttpHarness(
   overrides: Partial<ResolvedAgentUploadsConfig> = {},
 ): Promise<UploadStoreHarness & { baseUrl: string }> {
   const harness = createStore(overrides);
-  const api = new AgentUploadHttpApi({ store: harness.store });
+  const api = new AgentUploadHttpApi({
+    store: harness.store,
+    isOriginAllowed: (origin) => origin === "http://frontend.test",
+  });
   const server = http.createServer((request, response) => {
     void api.handle(request, response);
   });
@@ -226,6 +305,19 @@ function saveText(store: AgentUploadStore, name: string, content: string) {
     originalName: name,
     declaredMime: "text/plain",
   });
+}
+
+function saveBytes(store: AgentUploadStore, name: string, content: Buffer, declaredMime: string) {
+  return store.save({
+    stream: Readable.from([content]),
+    originalName: name,
+    declaredMime,
+  });
+}
+
+function buildContentUrl(baseUrl: string, uploadUri: string): string {
+  const uploadId = new URL(uploadUri).pathname.split("/").filter(Boolean)[0];
+  return `${baseUrl}/api/uploads/${encodeURIComponent(uploadId)}/content`;
 }
 
 async function postFiles(baseUrl: string, files: readonly { name: string; content: string }[]): Promise<Response> {

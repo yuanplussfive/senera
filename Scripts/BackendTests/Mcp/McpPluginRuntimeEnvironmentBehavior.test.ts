@@ -64,10 +64,9 @@ function tool(
     Name: name,
     Handler: { Kind: "McpTool", Server: server, Tool: protocolTool },
     Execution: {
-      Boundary: "Local",
+      Targets: ["Local"],
       Network: "Deny",
       Workspace: "ReadOnly",
-      LocalFallback: "Deny",
     },
     Runtime: { Lifecycle: lifecycle },
   };

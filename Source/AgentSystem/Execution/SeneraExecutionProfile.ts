@@ -1,7 +1,6 @@
 export type SeneraProcessNetworkMode = "disabled" | "default";
 export type SeneraProcessWorkspaceMountMode = "readonly" | "writable";
 export type SeneraProcessBackendPreference = "local" | "sandbox";
-export type SeneraProcessLocalFallback = "allow" | "deny";
 
 export interface SeneraProcessWritableMount {
   hostPath: string;
@@ -36,8 +35,5 @@ export interface SeneraProcessExecutionProfile {
   name: string;
   kind: "shell" | "mcp-server";
   backend?: SeneraProcessBackendPreference;
-  localFallback?: SeneraProcessLocalFallback;
   microsandbox?: SeneraProcessMicrosandboxProfile;
-  fallbackContext?: SeneraProcessFallbackContext;
 }
-import type { SeneraProcessFallbackContext } from "./SeneraProcessFallbackAuthorization.js";

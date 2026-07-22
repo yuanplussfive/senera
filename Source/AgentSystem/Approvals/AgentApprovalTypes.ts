@@ -1,9 +1,8 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
-import type { SeneraProcessFallbackSubject } from "../Execution/SeneraProcessFallbackAuthorization.js";
+import type { AgentToolExecutionPlan } from "../ToolRuntime/AgentToolExecutionPlan.js";
 
 export const AgentApprovalKinds = {
   ToolCall: "tool_call",
-  ExecutionFallback: "execution_fallback",
 } as const;
 
 export type AgentApprovalKind = (typeof AgentApprovalKinds)[keyof typeof AgentApprovalKinds];
@@ -53,18 +52,12 @@ export interface AgentApprovalRequest {
   deadlineAt?: string;
 }
 
-export type AgentApprovalSubject =
-  | {
-      kind: typeof AgentApprovalKinds.ToolCall;
-      toolName: string;
-      arguments: Record<string, unknown>;
-    }
-  | ({
-      kind: typeof AgentApprovalKinds.ExecutionFallback;
-      fromBackend: string;
-      toBackend: string;
-      failureReason: string;
-    } & SeneraProcessFallbackSubject);
+export type AgentApprovalSubject = {
+  kind: typeof AgentApprovalKinds.ToolCall;
+  toolName: string;
+  arguments: Record<string, unknown>;
+  execution?: AgentToolExecutionPlan;
+};
 
 export type AgentApprovalScope = "once" | "session";
 

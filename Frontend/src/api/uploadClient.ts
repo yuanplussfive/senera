@@ -27,12 +27,40 @@ export interface UploadFileOptions {
 
 export const DEFAULT_UPLOAD_TIMEOUT_MS = 30_000;
 
+const UploadReference = {
+  protocol: "senera:",
+  host: "upload",
+} as const;
+
+const UploadHttpPath = "/api/uploads";
+
 export function buildUploadUrl(webSocketUrl: string): string {
   const url = new URL(webSocketUrl, window.location.href);
   url.protocol = url.protocol === "wss:" ? "https:" : "http:";
-  url.pathname = "/api/uploads";
+  url.pathname = UploadHttpPath;
   url.search = "";
   url.hash = "";
+  return url.toString();
+}
+
+export function buildUploadContentUrl(uploadBaseUrl: string, uploadUri: string): string | undefined {
+  const uploadId = parseUploadId(uploadUri);
+  if (!uploadId) return undefined;
+
+  let url: URL;
+  try {
+    url = new URL(uploadBaseUrl, window.location.href);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol === "ws:" || url.protocol === "wss:") {
+    url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+  }
+  url.pathname = `${UploadHttpPath}/${encodeURIComponent(uploadId)}/content`;
+  url.search = "";
+  url.hash = "";
+  url.username = "";
+  url.password = "";
   return url.toString();
 }
 
@@ -135,4 +163,35 @@ function isUploadAttachment(value: unknown): value is UploadAttachmentData {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function parseUploadId(value: string): string | undefined {
+  let uri: URL;
+  try {
+    uri = new URL(value);
+  } catch {
+    return undefined;
+  }
+
+  if (
+    uri.protocol !== UploadReference.protocol ||
+    uri.hostname !== UploadReference.host ||
+    uri.username ||
+    uri.password ||
+    uri.port ||
+    uri.search ||
+    uri.hash
+  ) {
+    return undefined;
+  }
+
+  const segments = uri.pathname.split("/").filter(Boolean);
+  if (segments.length !== 1) return undefined;
+
+  try {
+    const uploadId = decodeURIComponent(segments[0]);
+    return uploadId && uploadId !== "." && uploadId !== ".." && !/[\\/]/u.test(uploadId) ? uploadId : undefined;
+  } catch {
+    return undefined;
+  }
 }

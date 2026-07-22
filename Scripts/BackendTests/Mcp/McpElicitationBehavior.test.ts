@@ -230,7 +230,7 @@ function clientOptions(interactionInput: AgentInteractionInputRuntime) {
     server: { id: "elicitation", command: "test", args: [], cwd: process.cwd() },
     requestTimeoutMs: 1_000,
     spawnPersistentProcess: vi.fn(),
-    executionProfile: { name: "elicitation", kind: "mcp-server", backend: "local", localFallback: "deny" } as const,
+    executionProfile: { name: "elicitation", kind: "mcp-server", backend: "local" } as const,
     terminationGraceMs: 100,
     interactionInput,
   };

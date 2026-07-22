@@ -53,6 +53,24 @@ Plugins/<ToolPlugin>            外部工具、业务工具、用户可扩展工
 
 插件位于 `System/Plugins` 只表示系统信任与所有权，不等于工具应常驻模型上下文。第三方 v2 manifest 缺少 `Loading` 时按 `Dynamic` 处理。
 
+工具插件应该在顶层 `Discovery.Sources` 声明稳定、泛化的能力来源。来源不是插件名；多个插件可以共同声明同一个 ID，并由运行时合并：
+
+```json
+{
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "workspace",
+        "Title": "Workspace",
+        "Description": "Files, directories, and source code in the current workspace."
+      }
+    ]
+  }
+}
+```
+
+同一 ID 的标题和说明必须一致。工具默认继承插件声明的全部来源；跨多个来源的插件可以在工具的 `Search.SourceIds` 中选择子集。普通 `Search.Tags` 仍用于自然语言召回，不应充当来源枚举。
+
 Handler 与 Runtime 使用单一合同：
 
 - `HostCapability` 必须声明 `ProtocolVersion: 2`，支持 `Immediate`、`OneShot`、`Persistent` 和 `RemoteJob`。

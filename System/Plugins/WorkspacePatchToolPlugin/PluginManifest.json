@@ -7,6 +7,15 @@
     "Version": "0.1.0",
     "Kind": "Tool"
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "workspace",
+        "Title": "Workspace",
+        "Description": "Files, directories, and source code in the current workspace."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 92
@@ -21,10 +30,9 @@
         "Capability": "workspace.apply_patch"
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadWrite",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadWrite"
       },
       "Runtime": {
         "Lifecycle": "Immediate",

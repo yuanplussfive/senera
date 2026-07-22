@@ -14,6 +14,19 @@ import {
   readFocusPanelVariants,
   readTapScale,
 } from "../../../Frontend/src/shared/motion/index.ts";
+import { mergeScheduledScroll } from "../../../Frontend/src/features/chat/useVirtuosoAutoStickToBottom.ts";
+
+test("chat scroll scheduling prioritizes new items and preserves smooth requests", () => {
+  expect(
+    mergeScheduledScroll({ kind: "align-bottom", behavior: "auto" }, { kind: "last-item", behavior: "auto" }),
+  ).toEqual({ kind: "last-item", behavior: "auto" });
+  expect(
+    mergeScheduledScroll({ kind: "last-item", behavior: "smooth" }, { kind: "align-bottom", behavior: "auto" }),
+  ).toEqual({ kind: "last-item", behavior: "smooth" });
+  expect(
+    mergeScheduledScroll({ kind: "last-item", behavior: "auto" }, { kind: "last-item", behavior: "smooth" }),
+  ).toEqual({ kind: "last-item", behavior: "smooth" });
+});
 
 test("responsive mode derives stable layout capabilities from media query matches", () => {
   const desktop = deriveResponsiveMode({

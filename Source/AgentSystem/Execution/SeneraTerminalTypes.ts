@@ -43,13 +43,6 @@ export interface SeneraTerminalBackendDescriptor {
   readonly persistenceScope?: SeneraTerminalPersistenceScope;
 }
 
-export interface SeneraTerminalFallbackMetadata {
-  readonly reason: "sandbox_unavailable" | "terminal_capability_unsupported" | "shell_dialect_unsupported";
-  readonly rule: string;
-  readonly approvalId?: string;
-  readonly scope?: "once" | "session";
-}
-
 export interface SeneraTerminalExecutionMetadata {
   readonly requestedBoundary: SeneraTerminalBoundary;
   readonly effectiveBoundary: SeneraTerminalBoundary;
@@ -59,7 +52,6 @@ export interface SeneraTerminalExecutionMetadata {
   readonly capabilityProviders?: Partial<Record<SeneraTerminalCapability, SeneraTerminalCapabilityProvider>>;
   readonly persistenceScope?: SeneraTerminalPersistenceScope;
   readonly sandboxId?: string;
-  readonly fallback?: SeneraTerminalFallbackMetadata;
 }
 
 export const SeneraTerminalDefaults = {

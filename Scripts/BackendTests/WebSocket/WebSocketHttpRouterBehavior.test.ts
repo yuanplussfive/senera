@@ -51,6 +51,15 @@ describe("WebSocket HTTP router", () => {
     });
   });
 
+  test("authorizes upload content reads without CSRF", async () => {
+    const fixture = createRouterFixture({ upload: true });
+
+    await fixture.router.handle(request("GET", "/api/uploads/upl_fixture/content"), fixture.response.value);
+
+    expect(fixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: false });
+    expect(fixture.upload.handle).toHaveBeenCalledTimes(1);
+  });
+
   test("authorizes read-only Pi proxy requests without CSRF", async () => {
     const fixture = createRouterFixture({ pi: true });
 

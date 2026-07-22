@@ -79,6 +79,26 @@ test("missing delta text is treated as an empty string without dropping the even
   expect(coalesced[0].sequence).toBe(1);
 });
 
+test("non-streaming events remain ordering barriers inside a frame batch", () => {
+  const boundary = {
+    ...event("session_a", "request_a", 1, 2, ""),
+    kind: EventKinds.ToolCallStarted,
+    phase: "tool",
+    data: { toolName: "WorkspaceReadFile", callId: "call_a" },
+  };
+  const coalesced = coalesceStreamingEvents([
+    event("session_a", "request_a", 1, 1, "before"),
+    boundary,
+    event("session_a", "request_a", 1, 3, "after"),
+  ]);
+
+  expect(coalesced.map((item) => [item.kind, item.sequence])).toEqual([
+    [EventKinds.ModelDelta, 1],
+    [EventKinds.ToolCallStarted, 2],
+    [EventKinds.ModelDelta, 3],
+  ]);
+});
+
 function event(sessionId, requestId, step, sequence, text) {
   return {
     channel: "agent.event",

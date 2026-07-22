@@ -51,7 +51,7 @@ assert.ok(baseContext.ToolCards.some((tool) => tool.name === visibleToolName));
 assert.equal(baseContext.ExecutionEnvironment.workspace.root, workspaceRoot);
 assert.equal(baseContext.ExecutionEnvironment.workspace.preferredPathForm, "workspace-relative");
 assert.ok(baseContext.ExecutionEnvironment.shell.invocation.length > 0);
-assert.deepEqual(baseContext.ExecutionEnvironment.executionTargets.sandboxPreferred, {
+assert.deepEqual(baseContext.ExecutionEnvironment.executionTargets.sandbox, {
   os: "Linux",
   boundary: "sandbox",
   shellDialect: "posix-sh",
@@ -72,6 +72,20 @@ assert.ok(shellStartDefinition);
 const shellStartSchema = JSON.stringify(shellStartDefinition.parameters);
 for (const requiredField of ['"mode"', '"dialect"', '"script"', '"posix-sh"', '"powershell"']) {
   assert.ok(shellStartSchema.includes(requiredField), `ShellStartTool schema is missing ${requiredField}`);
+}
+
+const discoverySources = runtime.registry.listDiscoverySources();
+const toolSearchDefinition = runtime.services.pi.toolDefinitions().find((tool) => tool.name === "ToolSearchTool");
+assert.ok(toolSearchDefinition);
+const toolSearchProperties = readRecord(toolSearchDefinition.parameters.properties);
+const preferredSourcesSchema = readRecord(toolSearchProperties.preferredSources);
+const preferredSourceItems = readRecord(preferredSourcesSchema.items);
+assert.deepEqual(
+  preferredSourceItems.enum,
+  discoverySources.map((source) => source.id),
+);
+for (const source of discoverySources) {
+  assert.ok(toolSearchDefinition.description.includes(`${source.id}: ${source.title}`));
 }
 
 const shellSearchResults = runtime.toolSearch.search({
@@ -156,3 +170,8 @@ assert.deepEqual(observedAutoSearch, {
 await Promise.all([runtime.close(), runtimeWithModule.close()]);
 
 console.log("Agent runtime services verification passed.");
+
+function readRecord(value: unknown): Record<string, unknown> {
+  assert.ok(value && typeof value === "object" && !Array.isArray(value));
+  return value as Record<string, unknown>;
+}

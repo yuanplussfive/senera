@@ -1,117 +1,85 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { resolveAgentToolExecutionPolicy } from "../Source/AgentSystem/ToolRuntime/AgentToolExecutionPolicy.js";
+import {
+  AgentToolExecutionTargetError,
+  resolveAgentToolInvocation,
+} from "../Source/AgentSystem/ToolRuntime/AgentToolExecutionPlan.js";
 import type { LoadedPlugin, RegisteredTool } from "../Source/AgentSystem/Types/PluginRuntimeTypes.js";
 import type { ToolExecutionManifest } from "../Source/AgentSystem/Types/PluginManifestTypes.js";
 
 const workspaceRoot = process.cwd();
 
 function main(): void {
-  const localTool = createTool({
-    plugin: createPlugin({
-      rootKind: "System",
-      pluginRoot: path.join(workspaceRoot, "System", "Plugins", "VerifyLocalPlugin"),
-    }),
-    execution: {
-      Boundary: "Local",
-      Network: "Allow",
-      Workspace: "ReadWrite",
-      LocalFallback: "Allow",
-    },
+  const local = resolveAgentToolInvocation(
+    createTool({ execution: { Targets: ["Local"], Network: "Allow", Workspace: "ReadWrite" } }),
+    { command: "echo local" },
+  );
+  assert.deepEqual(local.arguments, { command: "echo local" });
+  assert.deepEqual(local.executionPlan, {
+    target: "Local",
+    backend: "local",
+    network: "default",
+    workspaceMount: "writable",
+    availableTargets: ["Local"],
   });
-  const localPolicy = resolveAgentToolExecutionPolicy(localTool);
-  assert.equal(localPolicy.mode, "local");
-  assert.equal(localPolicy.network, "default");
-  assert.equal(localPolicy.workspaceMount, "writable");
-  assert.equal(localPolicy.localFallback, "allow");
 
-  const sandboxTool = createTool({
-    plugin: createPlugin({
-      rootKind: "User",
-      pluginRoot: path.join(workspaceRoot, "Plugins", "VerifyUserPlugin"),
-    }),
-    execution: {
-      Boundary: "Sandbox",
-      Network: "Deny",
-      Workspace: "ReadOnly",
-      LocalFallback: "Deny",
-    },
+  const sandbox = resolveAgentToolInvocation(
+    createTool({ execution: { Targets: ["Sandbox"], Network: "Deny", Workspace: "ReadOnly" } }),
+    { command: "pwd" },
+  );
+  assert.deepEqual(sandbox.executionPlan, {
+    target: "Sandbox",
+    backend: "sandbox",
+    network: "disabled",
+    workspaceMount: "readonly",
+    availableTargets: ["Sandbox"],
   });
-  const sandboxPolicy = resolveAgentToolExecutionPolicy(sandboxTool);
-  assert.equal(sandboxPolicy.mode, "sandbox");
-  assert.equal(sandboxPolicy.network, "disabled");
-  assert.equal(sandboxPolicy.workspaceMount, "readonly");
-  assert.equal(sandboxPolicy.localFallback, "deny");
 
-  const sandboxPreferredTool = createTool({
-    plugin: createPlugin({
-      rootKind: "System",
-      pluginRoot: path.join(workspaceRoot, "System", "Plugins", "VerifySandboxPreferredPlugin"),
-    }),
+  const selectableTool = createTool({
     permissions: ["process:shell"],
-    execution: {
-      Boundary: "SandboxPreferred",
-      Network: "Allow",
-      Workspace: "ReadWrite",
-      LocalFallback: "Allow",
-    },
+    execution: { Targets: ["Sandbox", "Local"], Network: "Allow", Workspace: "ReadWrite" },
   });
-  const sandboxPreferredPolicy = resolveAgentToolExecutionPolicy(sandboxPreferredTool);
-  assert.equal(sandboxPreferredPolicy.mode, "sandbox-preferred");
-  assert.equal(sandboxPreferredPolicy.network, "default");
-  assert.equal(sandboxPreferredPolicy.workspaceMount, "writable");
-  assert.equal(sandboxPreferredPolicy.localFallback, "allow");
-
-  const externalLocalTool = createTool({
-    plugin: createPlugin({
-      rootKind: "User",
-      pluginRoot: path.join(workspaceRoot, "Plugins", "VerifyExternalLocalPlugin"),
-    }),
-    execution: {
-      Boundary: "Local",
-      Network: "Deny",
-      Workspace: "ReadOnly",
-      LocalFallback: "Allow",
-    },
+  assert.throws(
+    () => resolveAgentToolInvocation(selectableTool, { command: "echo target" }),
+    AgentToolExecutionTargetError,
+  );
+  const selectable = resolveAgentToolInvocation(selectableTool, {
+    command: "echo target",
+    executionTarget: "Sandbox",
   });
-  assert.equal(resolveAgentToolExecutionPolicy(externalLocalTool).mode, "local");
+  assert.deepEqual(selectable.arguments, { command: "echo target" });
+  assert.equal(selectable.executionPlan.backend, "sandbox");
+  assert.deepEqual(selectable.executionPlan.availableTargets, ["Sandbox", "Local"]);
 
-  const missingExecutionTool = {
-    ...localTool,
-    execution: undefined,
-  } as unknown as RegisteredTool;
-  assert.throws(() => resolveAgentToolExecutionPolicy(missingExecutionTool), /工具缺少 Execution 配置/);
+  assert.throws(
+    () => resolveAgentToolInvocation(selectableTool, { executionTarget: "Remote" }),
+    AgentToolExecutionTargetError,
+  );
 
-  console.log("Tool execution policy verification passed.");
+  console.log("Tool execution plan verification passed.");
 }
 
-function createPlugin(input: { rootKind: LoadedPlugin["rootKind"]; pluginRoot: string }): LoadedPlugin {
+function createPlugin(): LoadedPlugin {
+  const pluginRoot = path.join(workspaceRoot, "System", "Plugins", "VerifyExecutionPlugin");
   return {
-    rootPath: input.pluginRoot,
-    rootKind: input.rootKind,
-    manifestPath: path.join(input.pluginRoot, "PluginManifest.json"),
+    rootPath: pluginRoot,
+    rootKind: "System",
+    manifestPath: path.join(pluginRoot, "PluginManifest.json"),
     config: {
       fileName: "PluginConfig.toml",
-      path: path.join(input.pluginRoot, "PluginConfig.toml"),
+      path: path.join(pluginRoot, "PluginConfig.toml"),
       exists: false,
       source: "default",
       templateExists: false,
       needsUserConfig: false,
       toml: "",
       sections: [],
-      runtime: {
-        enabled: true,
-        tools: {},
-      },
+      runtime: { enabled: true, tools: {} },
       diagnostics: [],
     },
     manifest: {
       ManifestVersion: 2,
-      Plugin: {
-        Name: path.basename(input.pluginRoot),
-        Version: "0.0.0",
-        Kind: "Tool",
-      },
+      Plugin: { Name: "VerifyExecutionPlugin", Version: "0.0.0", Kind: "Tool" },
       Tools: [
         {
           Name: "VerifyTool",
@@ -125,27 +93,20 @@ function createPlugin(input: { rootKind: LoadedPlugin["rootKind"]; pluginRoot: s
 }
 
 const DefaultExecution = {
-  Boundary: "Sandbox",
+  Targets: ["Sandbox"],
   Network: "Deny",
   Workspace: "ReadOnly",
-  LocalFallback: "Deny",
 } satisfies ToolExecutionManifest;
 
-function createTool(input: {
-  plugin: LoadedPlugin;
-  permissions?: string[];
-  execution: ToolExecutionManifest;
-}): RegisteredTool {
+function createTool(input: { permissions?: string[]; execution: ToolExecutionManifest }): RegisteredTool {
   return {
-    plugin: input.plugin,
+    plugin: createPlugin(),
     name: "VerifyTool",
     loading: "Dynamic",
     permissions: input.permissions ?? [],
+    sources: [],
     execution: input.execution,
-    handler: {
-      kind: "HostCapability",
-      capability: "verify",
-    },
+    handler: { kind: "HostCapability", capability: "verify" },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 },
     evidenceCapabilities: [],
   };

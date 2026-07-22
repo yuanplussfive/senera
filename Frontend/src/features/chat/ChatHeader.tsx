@@ -131,11 +131,11 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
 } {
   const state = status?.state ?? "unknown";
   const detail = status?.message ?? frontendMessage("sandbox.status.unsynced");
-  const fallbackSuffix =
-    status?.effectiveMode === "fallback"
-      ? frontendMessage("sandbox.status.fallbackSuffix")
+  const availabilitySuffix =
+    status?.effectiveMode === "unavailable"
+      ? frontendMessage("sandbox.status.unavailableSuffix")
       : frontendMessage("sandbox.status.sandboxSuffix");
-  const commonTooltip = `${detail} ${fallbackSuffix}`;
+  const commonTooltip = `${detail} ${availabilitySuffix}`;
 
   const table = {
     unknown: {
@@ -156,8 +156,8 @@ function readSandboxStatusPresentation(status?: SandboxStatusSnapshotData | null
       Icon: ShieldCheck,
       className: "border-moss-200 bg-moss-50/70 text-moss-700 hover:bg-moss-50",
     },
-    fallback: {
-      label: frontendMessage("sandbox.status.fallback"),
+    unavailable: {
+      label: frontendMessage("sandbox.status.unavailable"),
       tooltip: commonTooltip,
       Icon: ShieldAlert,
       className: "border-brick-200 bg-brick-50/70 text-brick-700 hover:bg-brick-50",

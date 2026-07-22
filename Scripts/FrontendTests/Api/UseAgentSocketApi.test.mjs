@@ -91,6 +91,38 @@ test("agent socket owns connection state, ordered streaming delivery, malformed 
   expect(handleRef.current.status).toBe("connecting");
 });
 
+test("agent socket delivers one ordered transaction for events received in the same frame", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", TestWebSocket);
+  vi.stubGlobal("requestAnimationFrame", (callback) => window.setTimeout(() => callback(performance.now()), 16));
+  vi.stubGlobal("cancelAnimationFrame", (id) => window.clearTimeout(id));
+  const onEvents = vi.fn();
+  const handleRef = { current: null };
+  render(
+    React.createElement(SocketHarness, {
+      handleRef,
+      onEvents,
+      url: "ws://agent.test/runtime",
+    }),
+  );
+
+  const socket = TestWebSocket.instances[0];
+  act(() => socket.open());
+  act(() => {
+    socket.receive(event(EventKinds.ModelDelta, 1, { text: "stream " }));
+    socket.receive(event(EventKinds.ModelDelta, 2, { text: "chunk" }));
+    socket.receive(event(EventKinds.RunCompleted, 3, {}));
+  });
+
+  expect(onEvents).not.toHaveBeenCalled();
+  act(() => vi.advanceTimersByTime(16));
+  expect(onEvents).toHaveBeenCalledTimes(1);
+  expect(onEvents.mock.calls[0][0].map((value) => [value.kind, value.sequence, value.data])).toEqual([
+    [EventKinds.ModelDelta, 1, { text: "stream chunk" }],
+    [EventKinds.RunCompleted, 3, {}],
+  ]);
+});
+
 test("agent socket turns synchronous connection failures into retryable error state", () => {
   vi.useFakeTimers();
   vi.stubGlobal(

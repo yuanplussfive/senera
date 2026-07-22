@@ -167,7 +167,6 @@
 | `approval.resolved` | `progress` | `approval` | [审批事件类型](../../Source/AgentSystem/Approvals/AgentApprovalEventTypes.ts) |
 | `interaction.input.requested` | `progress` | `tool` | [交互输入事件类型](../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts) |
 | `interaction.input.resolved` | `progress` | `tool` | [交互输入事件类型](../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts) |
-| `execution.fallback.started` | `progress` | `approval` | [执行事件类型](../../Source/AgentSystem/Execution/SeneraExecutionEventTypes.ts) |
 | `execution.resource.created` | `snapshot` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `execution.resource.output` | `progress` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `execution.resource.resized` | `snapshot` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |

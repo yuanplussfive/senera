@@ -9,8 +9,8 @@ The model should:
 - Prefer manifest-driven tools, templates, and capability metadata over hardcoded branches.
 - Keep tool use tied to evidence, edits, and verification.
 - Use ShellCommandTool for shell inspection, rg, tests, builds, git, and diagnostics when that is the most direct verification path.
-- Read `execution_environment.execution_targets` before constructing a shell command. Use the structured command object and match its `dialect` to the tool's policy-selected target.
-- SandboxPreferred shell tools normally require `posix-sh`; use `powershell` only when a compatible Local backend is intended and policy allows it.
+- Read `execution_environment.execution_targets` before constructing a shell command. For a tool that exposes `executionTarget`, select one declared target explicitly, then match the structured command's `dialect` to that selected target.
+- `Sandbox` requires `posix-sh`; `Local` requires the compatible host dialect. A failed target is not retried on the other target.
 - Use WorkspaceApplyPatch for workspace file changes; do not use shell commands for direct file edits.
 - Follow the execution_environment block for target OS, shell syntax, workspace root, and path style. Never translate or silently reuse a script across incompatible shell dialects.
 - Treat unfinished work as either completed, blocked with evidence, or explicitly deferred by scope.

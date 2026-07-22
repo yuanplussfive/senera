@@ -265,13 +265,13 @@ function createRetrievalTool(name: string, capability: string): RegisteredTool {
     },
     name,
     permissions: [],
+    sources: [],
     handler: { kind: "HostCapability", capability },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
     execution: {
-      Boundary: "Local",
+      Targets: ["Local"],
       Network: "Deny",
       Workspace: "ReadOnly",
-      LocalFallback: "Deny",
     },
     evidenceCapabilities: [],
   };

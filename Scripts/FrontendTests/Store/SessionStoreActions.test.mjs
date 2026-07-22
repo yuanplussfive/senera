@@ -214,6 +214,29 @@ test("ingest applies model snapshots and keeps selected provider stable", () => 
   expect(state.modelProviders[0].model).toBe("mistral-large-latest");
 });
 
+test("ingestMany preserves sequential projection semantics with one store notification", () => {
+  const events = [modelSnapshot("provider_a", "mistral-large-latest", 1), modelSnapshot("provider_b", "gpt-4.1", 2)];
+
+  for (const event of events) useStore.getState().ingest(event);
+  const sequential = readModelSelection();
+
+  useStore.setState({
+    modelProviders: [],
+    selectedModelProviderId: null,
+    defaultModelProviderId: null,
+    selectedModelProviderIdsBySession: {},
+  });
+  let notifications = 0;
+  const unsubscribe = useStore.subscribe(() => {
+    notifications += 1;
+  });
+  useStore.getState().ingestMany(events);
+  unsubscribe();
+
+  expect(readModelSelection()).toEqual(sequential);
+  expect(notifications).toBe(1);
+});
+
 function installLocalStorage() {
   const storage = new Map();
   globalThis.localStorage = {
@@ -241,4 +264,40 @@ function dispatchPersistedStorage(value) {
     newValue: { value: JSON.stringify(value) },
   });
   window.dispatchEvent(event);
+}
+
+function modelSnapshot(providerId, model, sequence) {
+  return {
+    channel: "agent.event",
+    kind: EventKinds.ModelListSnapshot,
+    layer: "snapshot",
+    phase: "config",
+    sequence,
+    timestamp: `2026-07-22T00:00:0${sequence}.000Z`,
+    data: {
+      defaultModelProviderId: providerId,
+      models: [
+        {
+          id: providerId,
+          icon: providerId === "provider_a" ? "mistral" : "openai",
+          capabilities: { Chat: true },
+          kind: "OpenAICompatible",
+          endpoint: "ChatCompletions",
+          baseUrl: "https://example.invalid/v1",
+          model,
+          isDefault: true,
+        },
+      ],
+    },
+  };
+}
+
+function readModelSelection() {
+  const state = useStore.getState();
+  return {
+    modelProviders: state.modelProviders,
+    selectedModelProviderId: state.selectedModelProviderId,
+    defaultModelProviderId: state.defaultModelProviderId,
+    selectedModelProviderIdsBySession: state.selectedModelProviderIdsBySession,
+  };
 }

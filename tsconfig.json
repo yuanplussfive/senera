@@ -11,5 +11,5 @@
     "outDir": "Dist",
     "rootDir": "."
   },
-  "include": ["Apps/**/*.ts", "Build/**/*.ts", "Source/**/*.ts", "Scripts/**/*.ts", "System/**/*.ts"]
+  "include": ["Apps/**/*.ts", "Build/**/*.ts", "Plugins/**/*.ts", "Source/**/*.ts", "Scripts/**/*.ts", "System/**/*.ts"]
 }

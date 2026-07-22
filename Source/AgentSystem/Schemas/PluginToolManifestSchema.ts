@@ -5,45 +5,20 @@ import {
   inspectPluginToolRuntimeCapabilityContract,
   inspectPluginToolRuntimeContract,
 } from "../Types/PluginToolRuntimeContract.js";
-import { ToolLoadingModes } from "../Types/PluginToolManifestTypes.js";
+import { ToolExecutionTargets, ToolLoadingModes } from "../Types/PluginToolManifestTypes.js";
+import { isAgentMcpJsonPointer } from "../Mcp/AgentMcpJsonPointer.js";
 
-const JsonPointerSchema = z.string().regex(/^(?:\/(?:[^~/]|~[01])*)+$/u, "Expected a non-root RFC 6901 JSON Pointer.");
+const JsonPointerSchema = z.string().refine(isAgentMcpJsonPointer, "Expected a non-root RFC 6901 JSON Pointer.");
 
-const ToolResourceAccessIntentSchema = z.enum(["inspect", "read", "create", "replace", "remove", "execute"]);
-const ToolResourceIntentSelectorSchema = z
-  .object({
-    Selector: JsonPointerSchema,
-    Cases: z
-      .array(
-        z
-          .object({
-            Equals: z.union([z.string(), z.number(), z.boolean(), z.null()]),
-            Intent: ToolResourceAccessIntentSchema,
-          })
-          .strict(),
-      )
-      .min(1),
-    Default: ToolResourceAccessIntentSchema,
-  })
-  .strict()
-  .superRefine((selector, context) => {
-    const seen = new Set<string>();
-    selector.Cases.forEach((entry, index) => {
-      const identity = JSON.stringify(entry.Equals);
-      if (seen.has(identity)) {
-        context.addIssue({
-          code: "custom",
-          path: ["Cases", index, "Equals"],
-          message: "Resource intent selector cases must use unique scalar values.",
-        });
-      }
-      seen.add(identity);
-    });
-  });
 const ToolResourceArgumentSchema = z
   .object({
+    Capability: z.string().trim().min(1),
     Pointer: JsonPointerSchema,
-    Intent: z.union([ToolResourceAccessIntentSchema, ToolResourceIntentSelectorSchema]),
+    Binding: z
+      .string()
+      .regex(/^[A-Za-z][A-Za-z0-9_]*$/u, "Resource binding must be an identifier.")
+      .optional(),
+    Parameters: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 
@@ -83,21 +58,23 @@ const ToolApprovalSchema = z
 
 const ToolExecutionSchema = z
   .object({
-    Boundary: z.enum(["Local", "Sandbox", "SandboxPreferred"]),
+    Targets: z.array(z.enum([ToolExecutionTargets.Sandbox, ToolExecutionTargets.Local])).min(1),
     Network: z.enum(["Allow", "Deny"]),
     Workspace: z.enum(["ReadOnly", "ReadWrite"]),
-    LocalFallback: z.enum(["Allow", "Deny"]),
   })
   .strict()
   .superRefine((execution, context) => {
-    const requiredFallback = execution.Boundary === "SandboxPreferred" ? "Allow" : "Deny";
-    if (execution.LocalFallback !== requiredFallback) {
-      context.addIssue({
-        code: "custom",
-        path: ["LocalFallback"],
-        message: `${execution.Boundary} requires LocalFallback=${requiredFallback}.`,
-      });
-    }
+    const seen = new Set<string>();
+    execution.Targets.forEach((target, index) => {
+      if (seen.has(target)) {
+        context.addIssue({
+          code: "custom",
+          path: ["Targets", index],
+          message: `Execution target ${target} may only be declared once.`,
+        });
+      }
+      seen.add(target);
+    });
   });
 
 const ToolRuntimeCapabilitiesSchema = z

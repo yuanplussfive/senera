@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowUp, Check, ChevronDown, Loader2, Paperclip, RotateCcw, Square, X } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadAttachmentData, ModelProviderListItem } from "../../api/eventTypes";
 import { uploadFile, type UploadProgress } from "../../api/uploadClient";
+import { isImageFilePreview } from "../../lib/filePreview";
 import { cn, generateId } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useResponsiveMode } from "../../shared/responsive";
@@ -24,6 +25,7 @@ import { ModelProviderIcon } from "./ModelProviderIcon";
 import { readChatModelProviders, readSelectedModelProvider } from "./modelProvider";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatModelConfig, ChatPresetConfig } from "./ChatPanelContracts";
+import { useUploadPreviewRegistry } from "./UploadPreviewRegistry";
 
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
@@ -52,6 +54,8 @@ type PendingAttachment = {
   progress?: UploadProgress;
   attachment?: UploadAttachmentData;
   error?: string;
+  previewUrl?: string;
+  previewUnavailable?: boolean;
 };
 
 export function ChatComposer({
@@ -69,8 +73,14 @@ export function ChatComposer({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
+  const ownedPreviewUrlsRef = useRef(new Set<string>());
+  const uploadPreviewRegistry = useUploadPreviewRegistry();
   const { prefersCompactControls } = useResponsiveMode();
   const textareaMaxHeight = prefersCompactControls ? TOUCH_TEXTAREA_MAX_HEIGHT : DESKTOP_TEXTAREA_MAX_HEIGHT;
+  const revokePreviewUrl = useCallback((previewUrl: string | undefined): void => {
+    if (!previewUrl || !ownedPreviewUrlsRef.current.delete(previewUrl)) return;
+    URL.revokeObjectURL(previewUrl);
+  }, []);
 
   const hint = useMemo(() => {
     if (running) {
@@ -107,6 +117,16 @@ export function ChatComposer({
     el.style.height = value ? `${Math.min(el.scrollHeight, textareaMaxHeight)}px` : "auto";
   }, [textareaMaxHeight, value]);
 
+  useEffect(
+    () => () => {
+      for (const previewUrl of ownedPreviewUrlsRef.current) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      ownedPreviewUrlsRef.current.clear();
+    },
+    [],
+  );
+
   const submit = (queueMode?: MessageQueueMode): void => {
     const text = value.trim();
     const uploading = pendingAttachments.some((attachment) => attachment.status === "uploading");
@@ -116,6 +136,14 @@ export function ChatComposer({
     );
     const sent = onSend(text, attachments.length > 0 ? attachments : undefined, queueMode);
     if (sent === false) return;
+    for (const entry of pendingAttachments) {
+      if (entry.previewUrl && entry.status === "uploaded" && entry.attachment) {
+        uploadPreviewRegistry.register(entry.attachment.uploadUri, entry.previewUrl);
+        ownedPreviewUrlsRef.current.delete(entry.previewUrl);
+      } else {
+        revokePreviewUrl(entry.previewUrl);
+      }
+    }
     setValue("");
     setPendingAttachments([]);
     if (taRef.current) taRef.current.style.height = "auto";
@@ -142,6 +170,10 @@ export function ChatComposer({
     if (files.length === 0) return;
     for (const file of files) {
       const id = generateId();
+      const previewUrl = isImageFilePreview({ name: file.name, mime: file.type })
+        ? URL.createObjectURL(file)
+        : undefined;
+      if (previewUrl) ownedPreviewUrlsRef.current.add(previewUrl);
       setPendingAttachments((current) => [
         ...current,
         {
@@ -151,6 +183,7 @@ export function ChatComposer({
           size: file.size,
           status: "uploading",
           progress: { loaded: 0, total: file.size, ratio: file.size === 0 ? 1 : 0 },
+          previewUrl,
         },
       ]);
       void uploadFile(runtime.uploadUrl, file, {
@@ -186,6 +219,18 @@ export function ChatComposer({
           toast.error(frontendMessage("upload.fileFailed"), { description: message });
         });
     }
+  };
+
+  const removeAttachment = (id: string): void => {
+    revokePreviewUrl(pendingAttachments.find((entry) => entry.id === id)?.previewUrl);
+    setPendingAttachments((current) => current.filter((entry) => entry.id !== id));
+  };
+
+  const markPreviewUnavailable = (id: string): void => {
+    revokePreviewUrl(pendingAttachments.find((entry) => entry.id === id)?.previewUrl);
+    setPendingAttachments((current) =>
+      current.map((entry) => (entry.id === id ? { ...entry, previewUrl: undefined, previewUnavailable: true } : entry)),
+    );
   };
 
   const acceptsDraggedFiles = (event: React.DragEvent): boolean =>
@@ -261,7 +306,8 @@ export function ChatComposer({
           {pendingAttachments.length > 0 ? (
             <AttachmentTray
               attachments={pendingAttachments}
-              onRemove={(id) => setPendingAttachments((current) => current.filter((entry) => entry.id !== id))}
+              onRemove={removeAttachment}
+              onPreviewUnavailable={markPreviewUnavailable}
             />
           ) : null}
 
@@ -393,67 +439,113 @@ function hasActiveInteractionLayer(event: KeyboardEvent): boolean {
 function AttachmentTray({
   attachments,
   onRemove,
+  onPreviewUnavailable,
 }: {
   attachments: PendingAttachment[];
   onRemove: (id: string) => void;
+  onPreviewUnavailable: (id: string) => void;
 }): JSX.Element {
   return (
     <div className="flex flex-wrap gap-1.5 px-0.5 pb-1">
-      {attachments.map((entry) => (
-        <div
-          key={entry.id}
-          className={cn(
-            "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]",
-            entry.status === "uploading" && "min-w-[210px]",
-            entry.status === "error"
-              ? "border-brick-200 bg-brick-50 text-brick-700"
-              : "border-line-subtle bg-surface-raised text-content-secondary",
-          )}
-        >
-          <span className="relative shrink-0">
-            <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
+      {attachments.map((entry) =>
+        entry.previewUrl ? (
+          <div
+            key={entry.id}
+            className={cn(
+              "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-surface-muted",
+              entry.status === "error" ? "border-brick-300" : "border-line-subtle",
+            )}
+          >
+            <img
+              src={entry.previewUrl}
+              alt={entry.fileName}
+              title={entry.fileName}
+              className="h-full w-full object-contain"
+              onError={() => onPreviewUnavailable(entry.id)}
+            />
             {entry.status === "uploading" ? (
-              <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-surface-raised bg-surface-raised">
-                <Loader2 className="h-2.5 w-2.5 animate-spin text-accent-content" />
+              <span className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-ink-950/70 px-1 py-1">
+                <UploadProgressBar progress={entry.progress} className="min-w-0 flex-1 bg-paper-50/25" />
+                <span className="font-mono text-[9px] text-paper-50">{formatUploadProgress(entry.progress)}</span>
               </span>
             ) : null}
             {entry.status === "error" ? (
-              <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-brick-50">
-                <AlertCircle className="h-2.5 w-2.5 text-brick-500" />
+              <span className="absolute bottom-1 left-1 grid h-4 w-4 place-items-center rounded-full bg-brick-50">
+                <AlertCircle className="h-3 w-3 text-brick-500" />
               </span>
             ) : null}
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate">{entry.fileName}</span>
-              <span className="shrink-0 font-mono text-[10px] text-content-muted">{formatFileSize(entry.size)}</span>
+            <IconButton
+              label={frontendMessage("chat.attachment.remove")}
+              tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
+              tooltipSide="top"
+              size="sm"
+              className="absolute right-0.5 top-0.5 bg-ink-950/70 text-paper-50 hover:bg-ink-900"
+              onClick={() => onRemove(entry.id)}
+            >
+              <X className="h-3 w-3" />
+            </IconButton>
+          </div>
+        ) : (
+          <div
+            key={entry.id}
+            className={cn(
+              "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]",
+              entry.status === "uploading" && "min-w-[210px]",
+              entry.status === "error"
+                ? "border-brick-200 bg-brick-50 text-brick-700"
+                : "border-line-subtle bg-surface-raised text-content-secondary",
+            )}
+          >
+            <span className="relative shrink-0">
+              <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
               {entry.status === "uploading" ? (
-                <span className="shrink-0 font-mono text-[10px] text-accent-content">
-                  {formatUploadProgress(entry.progress)}
+                <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-surface-raised bg-surface-raised">
+                  <Loader2 className="h-2.5 w-2.5 animate-spin text-accent-content" />
+                </span>
+              ) : null}
+              {entry.status === "error" ? (
+                <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-brick-50">
+                  <AlertCircle className="h-2.5 w-2.5 text-brick-500" />
                 </span>
               ) : null}
             </span>
-            {entry.status === "uploading" ? <UploadProgressBar progress={entry.progress} /> : null}
-          </span>
-          <IconButton
-            label={frontendMessage("runtime.migrated.features.chat.ChatComposer.425.19")}
-            tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
-            tooltipSide="top"
-            size="sm"
-            onClick={() => onRemove(entry.id)}
-          >
-            <X className="h-3 w-3" />
-          </IconButton>
-        </div>
-      ))}
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate">{entry.fileName}</span>
+                <span className="shrink-0 font-mono text-[10px] text-content-muted">{formatFileSize(entry.size)}</span>
+                {entry.status === "uploading" ? (
+                  <span className="shrink-0 font-mono text-[10px] text-accent-content">
+                    {formatUploadProgress(entry.progress)}
+                  </span>
+                ) : null}
+              </span>
+              {entry.previewUnavailable ? (
+                <span className="text-[10px] text-content-muted">
+                  {frontendMessage("chat.attachment.previewUnavailable")}
+                </span>
+              ) : null}
+              {entry.status === "uploading" ? <UploadProgressBar progress={entry.progress} /> : null}
+            </span>
+            <IconButton
+              label={frontendMessage("chat.attachment.remove")}
+              tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
+              tooltipSide="top"
+              size="sm"
+              onClick={() => onRemove(entry.id)}
+            >
+              <X className="h-3 w-3" />
+            </IconButton>
+          </div>
+        ),
+      )}
     </div>
   );
 }
 
-function UploadProgressBar({ progress }: { progress?: UploadProgress }): JSX.Element {
+function UploadProgressBar({ progress, className }: { progress?: UploadProgress; className?: string }): JSX.Element {
   const ratio = readProgressRatio(progress);
   return (
-    <span className="h-1 overflow-hidden rounded-full bg-surface-muted">
+    <span className={cn("h-1 overflow-hidden rounded-full bg-surface-muted", className)}>
       <span
         className={cn(
           "block h-full origin-left rounded-full bg-accent-solid transition-transform duration-150",
@@ -467,7 +559,7 @@ function UploadProgressBar({ progress }: { progress?: UploadProgress }): JSX.Ele
 
 function formatUploadProgress(progress?: UploadProgress): string {
   const ratio = readProgressRatio(progress);
-  return ratio === undefined ? "上传中" : `${Math.round(ratio * 100)}%`;
+  return ratio === undefined ? frontendMessage("chat.composer.uploading") : `${Math.round(ratio * 100)}%`;
 }
 
 function readProgressRatio(progress?: UploadProgress): number | undefined {

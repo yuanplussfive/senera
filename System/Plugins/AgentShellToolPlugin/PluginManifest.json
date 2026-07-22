@@ -7,6 +7,15 @@
     "Version": "0.1.0",
     "Kind": "Tool"
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "execution",
+        "Title": "Execution",
+        "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 90
@@ -18,10 +27,9 @@
       "DescriptionFile": "./docs/Tool.md",
       "Permissions": ["process:shell", "filesystem:workspace"],
       "Execution": {
-        "Boundary": "SandboxPreferred",
+        "Targets": ["Sandbox", "Local"],
         "Network": "Allow",
-        "Workspace": "ReadWrite",
-        "LocalFallback": "Allow"
+        "Workspace": "ReadWrite"
       },
       "Runtime": {
         "Lifecycle": "OneShot",

@@ -61,7 +61,6 @@ export const EventKinds = {
   ApprovalResolved: "approval.resolved",
   InteractionInputRequested: "interaction.input.requested",
   InteractionInputResolved: "interaction.input.resolved",
-  ExecutionFallbackStarted: "execution.fallback.started",
   ExecutionResourceCreated: "execution.resource.created",
   ExecutionResourceOutput: "execution.resource.output",
   ExecutionResourceResized: "execution.resource.resized",

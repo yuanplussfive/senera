@@ -230,7 +230,10 @@ describe("agent protocol E2E", () => {
     const sandbox = await harness.client.waitForEvent(AgentEventKinds.SandboxStatusSnapshot, undefined, {
       afterSequence: invalid.sequence,
     });
-    expect(readDataRecord(sandbox).state).toBe("fallback");
+    expect(readDataRecord(sandbox)).toMatchObject({
+      state: "unavailable",
+      effectiveMode: "unavailable",
+    });
   });
 
   test("history replay remains isolated when multiple sessions share one websocket", async () => {

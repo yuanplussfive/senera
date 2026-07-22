@@ -1,8 +1,13 @@
 [senera]
-enabled = true
+# 启用插件
+enabled = false
 
 [tavily]
-api_keys = [ "tvly-YOUR_API_KEY" ]
+# 接口密钥
+api_keys = [  ]
+# 服务地址
 base_url = "https://api.tavily.com"
+# 请求超时
 timeout_seconds = 300
+# 状态目录
 state_dir = ".state"

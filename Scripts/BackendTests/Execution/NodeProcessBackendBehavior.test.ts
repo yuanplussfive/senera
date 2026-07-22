@@ -265,27 +265,6 @@ describe("Node process backend behavior", () => {
       ),
     ]);
   });
-
-  test("refuses local execution when the profile requires sandbox isolation", async () => {
-    const backend = new SeneraNodeProcessBackend();
-
-    await expect(
-      backend.executeProcess(
-        createRequest({
-          cwd: createWorkspace(),
-          profile: {
-            name: "isolated-plugin",
-            kind: "mcp-server",
-            backend: "sandbox",
-            localFallback: "deny",
-          },
-        }),
-      ),
-    ).rejects.toMatchObject({
-      code: SeneraExecutionErrorCodes.SandboxUnavailable,
-      details: { backend: "node-local", profile: "isolated-plugin" },
-    });
-  });
 });
 
 function createRequest(

@@ -7,6 +7,7 @@ export interface AgentToolSearchRerankDocument {
   title: string;
   pluginName: string;
   pluginTitle: string;
+  sourceText: string;
   tags: string;
   summary: string;
   whenToUse: string;
@@ -44,6 +45,7 @@ const TextFeatureFields = [
   { feature: "field.tool_name", read: (doc) => doc.toolName },
   { feature: "field.title", read: (doc) => doc.title },
   { feature: "field.plugin", read: (doc) => `${doc.pluginName} ${doc.pluginTitle}` },
+  { feature: "field.sources", read: (doc) => doc.sourceText },
   { feature: "field.tags", read: (doc) => doc.tags },
   { feature: "field.summary", read: (doc) => doc.summary },
   { feature: "field.when_to_use", read: (doc) => doc.whenToUse },
@@ -60,11 +62,13 @@ export const AgentToolSearchRerankDefaultWeights = {
   "rank.exact": 0.18,
   "rank.memory": 0.14,
   "rank.priority": 0.06,
+  "rank.source": 0.18,
   "match.coverage": 0.16,
   "match.information": 0.18,
   "field.tool_name": 0.18,
   "field.title": 0.14,
   "field.plugin": 0.08,
+  "field.sources": 0.18,
   "field.tags": 0.24,
   "field.summary": 0.13,
   "field.when_to_use": 0.14,

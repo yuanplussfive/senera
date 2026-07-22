@@ -11,6 +11,7 @@ import { UserMessageRow } from "./UserMessageRow";
 interface MessageRowProps {
   message: ChatMessage;
   run?: RunRecord;
+  uploadUrl: string;
   onClickBubble?: () => void;
   isEditing?: boolean;
   editDraft?: string;
@@ -28,6 +29,7 @@ interface MessageRowProps {
 export function MessageRow({
   message,
   run,
+  uploadUrl,
   onClickBubble,
   isEditing = false,
   editDraft = "",
@@ -46,6 +48,7 @@ export function MessageRow({
       <UserMessageRow
         message={message}
         run={run}
+        uploadUrl={uploadUrl}
         userProfile={userProfile}
         showInlineActions={showInlineActions}
         onClickBubble={onClickBubble}
@@ -71,6 +74,8 @@ export function MessageRow({
   }
 
   const displayContent = readAssistantDisplayContent(message, run);
+  const isStreamingPreface =
+    message.kind === "AssistantToolPreface" && run?.status === "running" && run.displayMessageId === message.id;
 
   return (
     <ConversationFrame mode="wide" className="group/msg">
@@ -79,9 +84,13 @@ export function MessageRow({
         <div className="min-w-0 flex-1">
           <MessageMeta title="Senera" timestamp={message.createdAt} />
           {message.kind !== "AssistantToolPreface" ? (
-            <ThinkingSummaryBar run={run} onViewWorkflow={onViewWorkflow} />
+            <ThinkingSummaryBar
+              run={run}
+              presentation={run?.status === "running" ? "live-final-answer" : "terminal-only"}
+              onViewWorkflow={onViewWorkflow}
+            />
           ) : null}
-          <AssistantMessageBody message={{ ...message, content: displayContent }} />
+          <AssistantMessageBody message={{ ...message, content: displayContent }} streaming={isStreamingPreface} />
           <MessageActions
             content={displayContent}
             placement="left"

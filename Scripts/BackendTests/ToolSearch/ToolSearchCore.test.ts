@@ -46,6 +46,15 @@ describe("ToolSearch core", () => {
       title: "Read file",
       pluginName: "workspace",
       pluginTitle: "Workspace",
+      sourceText: "workspace Workspace Files and source code in the current workspace.",
+      sourceIds: ["workspace"],
+      sources: [
+        {
+          id: "workspace",
+          title: "Workspace",
+          description: "Files and source code in the current workspace.",
+        },
+      ],
       tags: "workspace read",
       summary: "Read files",
       whenToUse: "Inspect workspace files",
@@ -134,6 +143,7 @@ describe("ToolSearch core", () => {
           actions: ["forecast"],
           targets: ["weather", "city"],
           priority: 50,
+          sourceId: "web",
         }),
       ]),
       createToolSearchConfig(),
@@ -169,6 +179,7 @@ describe("ToolSearch core", () => {
           actions: ["forecast"],
           targets: ["weather", "city"],
           priority: 50,
+          sourceId: "web",
         }),
       ]),
       createToolSearchConfig(),
@@ -238,7 +249,43 @@ describe("ToolSearch core", () => {
     expect(index.search({ query: "workspace file" })).toHaveLength(1);
   });
 
-  test("requires capability intent before recalling tools that declare side effects", () => {
+  test("uses preferred sources as a soft ranking signal without filtering candidates", () => {
+    const index = new AgentToolSearchIndex(
+      createRegistry([
+        createTool({
+          name: "WorkspaceLookup",
+          title: "Workspace lookup",
+          summary: "Find current project information",
+          tags: ["information", "search"],
+          actions: ["search"],
+          targets: ["information"],
+          priority: 10,
+          sourceId: "workspace",
+        }),
+        createTool({
+          name: "WebLookup",
+          title: "Web lookup",
+          summary: "Find current public information",
+          tags: ["information", "search"],
+          actions: ["search"],
+          targets: ["information"],
+          priority: 20,
+          sourceId: "web",
+        }),
+      ]),
+      createToolSearchConfig(),
+    );
+
+    const results = index.search({
+      query: "find current information",
+      preferredSourceIds: ["web"],
+    });
+
+    expect(results.map((result) => result.toolName)).toEqual(["WebLookup", "WorkspaceLookup"]);
+    expect(results.every((result) => result.sources.length === 1)).toBe(true);
+  });
+
+  test("keeps relevant tools discoverable before execution approval", () => {
     const tool = createTool({
       name: "WorkspaceEditFile",
       title: "Edit file",
@@ -252,7 +299,7 @@ describe("ToolSearch core", () => {
     });
     const index = new AgentToolSearchIndex(createRegistry([tool]), createToolSearchConfig());
 
-    expect(index.search({ query: "tool description" })).toEqual([]);
+    expect(index.search({ query: "tool description" }).map((result) => result.toolName)).toEqual(["WorkspaceEditFile"]);
     expect(index.search({ query: "edit workspace file" }).map((result) => result.toolName)).toEqual([
       "WorkspaceEditFile",
     ]);
@@ -278,7 +325,9 @@ function createTool(options: {
   priority: number;
   examples?: string[];
   sideEffect?: string;
+  sourceId?: string;
 }): RegisteredTool {
+  const sourceId = options.sourceId ?? "workspace";
   return {
     loading: "Dynamic",
     plugin: {
@@ -316,13 +365,22 @@ function createTool(options: {
     },
     name: options.name,
     permissions: [],
+    sources: [
+      {
+        Id: sourceId,
+        Title: sourceId === "web" ? "Web" : "Workspace",
+        Description:
+          sourceId === "web"
+            ? "Public internet information and current external data."
+            : "Files and source code in the current workspace.",
+      },
+    ],
     handler: { kind: "HostCapability", capability: options.name },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
     execution: {
-      Boundary: "Local",
+      Targets: ["Local"],
       Network: "Deny",
       Workspace: "ReadOnly",
-      LocalFallback: "Deny",
     },
     evidenceCapabilities: [],
     search: {
@@ -369,9 +427,6 @@ function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
       MmrCandidateScoreRatio: 0.92,
       MinScore: 0,
       MaxResults: 6,
-      IntentGate: {
-        Mode: "side_effect_capability",
-      },
       MemoryExpansion: {
         Mode: "fallback",
         MinConfidence: 0.8,

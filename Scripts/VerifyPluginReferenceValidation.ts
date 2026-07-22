@@ -138,10 +138,9 @@ function pluginFixture(options: {
         },
         Runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
         Execution: {
-          Boundary: "Local",
+          Targets: ["Local"],
           Network: "Deny",
           Workspace: "ReadOnly",
-          LocalFallback: "Deny",
         },
       })),
       Skills: [

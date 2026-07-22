@@ -103,11 +103,10 @@ function createPlugin(): LoadedPlugin {
 }
 
 const DefaultExecution = {
-  Boundary: "Local",
+  Targets: ["Local"],
   Network: "Deny",
   Workspace: "ReadWrite",
-  LocalFallback: "Deny",
-} as const;
+} satisfies import("../Source/AgentSystem/Types/PluginManifestTypes.js").ToolExecutionManifest;
 
 function createTool(plugin: LoadedPlugin): RegisteredTool {
   return {
@@ -115,6 +114,7 @@ function createTool(plugin: LoadedPlugin): RegisteredTool {
     name: "ShellCommandTool",
     loading: "Dynamic",
     permissions: [],
+    sources: [],
     handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.ShellRun },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 },
     execution: DefaultExecution,

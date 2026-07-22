@@ -7,11 +7,35 @@ import { ToolSearchToolName } from "./AgentToolSearchRuntimeTypes.js";
 export const ToolSearchArgumentsSchema = z
   .object({
     query: z.preprocess(coerceStringLike, z.string().trim().min(1)),
+    preferredSources: z.array(z.string().trim().min(1)).min(1).optional(),
     includeLoaded: z.preprocess(coerceBooleanLike, z.boolean()).optional(),
   })
   .strict();
 
 export type ToolSearchArguments = z.infer<typeof ToolSearchArgumentsSchema>;
+
+export function createToolSearchArgumentsSchema(sourceIds: readonly string[]) {
+  const knownSources = new Set(sourceIds);
+  return ToolSearchArgumentsSchema.superRefine((arguments_, context) => {
+    const seen = new Set<string>();
+    arguments_.preferredSources?.forEach((sourceId, index) => {
+      if (seen.has(sourceId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["preferredSources", index],
+          message: `Tool discovery source ${sourceId} may only be selected once.`,
+        });
+      } else if (!knownSources.has(sourceId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["preferredSources", index],
+          message: `Unknown tool discovery source: ${sourceId}.`,
+        });
+      }
+      seen.add(sourceId);
+    });
+  });
+}
 
 export function invalidToolSearchArgumentsResult(
   issues: z.ZodError<ToolSearchArguments>["issues"],

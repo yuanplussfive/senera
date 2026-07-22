@@ -5,172 +5,156 @@ strict = true
 [[form.sections]]
 id = "senera"
 label = "启用状态"
-description = "控制文档解析插件是否参与外部技能集。"
 
 [[form.sections.fields]]
-path = ["senera", "enabled"]
+path = [ "senera", "enabled" ]
 label = "启用插件"
-description = "关闭后文档解析工具不会参与外部工具集。"
 type = "boolean"
 
 [[form.sections]]
 id = "document"
 label = "文档模式"
-description = "配置文档解析的默认模式和可用模式。"
 
 [[form.sections.fields]]
-path = ["document", "defaultMode"]
+path = [ "document", "defaultMode" ]
 label = "默认处理模式"
-description = "auto 会先探测，匹配到可解析文档时自动抽取正文。"
 type = "string"
-options = ["auto", "probe", "extract"]
+options = [ "auto", "probe", "extract" ]
 
 [[form.sections.fields]]
-path = ["document", "modes"]
+path = [ "document", "modes" ]
 label = "允许模式"
-description = "允许的处理模式。"
 type = "array"
 itemType = "string"
 
 [[form.sections]]
 id = "probe"
 label = "文件探测"
-description = "配置 MIME、编码和容器结构探测的采样范围。"
 
 [[form.sections.fields]]
-path = ["probe", "sampleBytes"]
+path = [ "probe", "sampleBytes" ]
 label = "采样字节数"
-description = "文件探测读取的头部采样字节数。"
 type = "number"
 min = 1
 step = 1024
 
 [[form.sections.fields]]
-path = ["probe", "containerMaxEntries"]
+path = [ "probe", "containerMaxEntries" ]
 label = "容器入口数"
-description = "ZIP 容器探测最多保留的入口文件名数量。"
 type = "number"
 min = 1
 step = 1
 
 [[form.sections.fields]]
-path = ["probe", "containerMaxEntryBytes"]
+path = [ "probe", "containerMaxEntryBytes" ]
 label = "容器入口字节数"
-description = "ZIP 容器内单个探测入口最多读取的字节数。"
 type = "number"
 min = 1
 step = 1024
 
 [[form.sections.fields]]
-path = ["probe", "contentTypesEntryName"]
+path = [ "probe", "contentTypesEntryName" ]
 label = "内容类型入口"
-description = "OOXML/包结构内容类型清单入口。"
 type = "string"
 
 [[form.sections]]
 id = "parse"
 label = "解析选项"
-description = "配置文档抽取时是否保留附加结构。"
 
 [[form.sections.fields]]
-path = ["parse", "ocr"]
+path = [ "parse", "ocr" ]
 label = "启用 OCR"
-description = "默认关闭，图片理解优先使用 ImageVisionTool。"
 type = "boolean"
 
 [[form.sections.fields]]
-path = ["parse", "extractAttachments"]
+path = [ "parse", "extractAttachments" ]
 label = "抽取附件"
-description = "默认关闭，避免 base64 膨胀。"
 type = "boolean"
 
 [[form.sections.fields]]
-path = ["parse", "includeRawContent"]
+path = [ "parse", "includeRawContent" ]
 label = "保留原始内容"
-description = "是否把原始 XML/RTF 写入 AST。"
 type = "boolean"
 
 [[form.sections.fields]]
-path = ["parse", "ignoreNotes"]
+path = [ "parse", "ignoreNotes" ]
 label = "忽略备注"
-description = "是否忽略 PPT 备注、脚注等 notes。"
 type = "boolean"
 
 [[form.sections.fields]]
-path = ["parse", "ignoreComments"]
+path = [ "parse", "ignoreComments" ]
 label = "忽略批注"
-description = "是否忽略批注。"
 type = "boolean"
 
 [[form.sections.fields]]
-path = ["parse", "ignoreHeadersAndFooters"]
+path = [ "parse", "ignoreHeadersAndFooters" ]
 label = "忽略页眉页脚"
-description = "是否忽略页眉页脚。"
 type = "boolean"
 
 [[form.sections.fields]]
-path = ["parse", "ignoreSlideMasters"]
+path = [ "parse", "ignoreSlideMasters" ]
 label = "忽略母版"
-description = "是否忽略 PPT slide master。"
 type = "boolean"
 
 [[form.sections.fields]]
-path = ["parse", "ignoreInternalLinks"]
+path = [ "parse", "ignoreInternalLinks" ]
 label = "忽略内部链接"
-description = "是否忽略内部锚点链接。"
 type = "boolean"
 
 [[form.sections.fields]]
-path = ["parse", "newlineDelimiter"]
+path = [ "parse", "newlineDelimiter" ]
 label = "换行分隔符"
-description = "文本输出换行分隔符。"
 type = "string"
 
 [[form.sections]]
 id = "output"
 label = "输出限制"
-description = "控制返回给模型的文本、Markdown 和分块预算。"
 
 [[form.sections.fields]]
-path = ["output", "maxFileBytes"]
+path = [ "output", "maxFileBytes" ]
 label = "最大文件字节数"
-description = "允许抽取的最大文件字节数。"
 type = "number"
 min = 1
 step = 1024
 
 [[form.sections.fields]]
-path = ["output", "maxTextChars"]
+path = [ "output", "maxTextChars" ]
 label = "文本预览字符数"
-description = "返回给模型的纯文本预览最大字符数。"
 type = "number"
-min = 1
+min = 0
 step = 100
 
 [[form.sections.fields]]
-path = ["output", "maxMarkdownChars"]
+path = [ "output", "maxMarkdownChars" ]
 label = "Markdown 预览字符数"
-description = "返回给模型的 Markdown 预览最大字符数。"
 type = "number"
-min = 1
+min = 0
 step = 100
 
 [[form.sections.fields]]
-path = ["output", "maxChunks"]
+path = [ "output", "maxChunks" ]
 label = "Chunk 数量"
-description = "返回给模型的 chunk 数量上限。"
 type = "number"
-min = 1
+min = 0
 step = 1
 
 [[form.sections.fields]]
-path = ["output", "maxChunkChars"]
+path = [ "output", "maxChunkChars" ]
 label = "Chunk 字符数"
-description = "单个 chunk 最大字符数。"
 type = "number"
-min = 1
+min = 0
 step = 100
 
+[[form.sections]]
+id = "extractors"
+label = "抽取器"
+description = "抽取器是可扩展的具名表；保留默认映射或按插件文档调整。"
+
+[[form.sections.fields]]
+path = [ "extractors" ]
+label = "抽取器配置"
+type = "table"
+
 [[form.allowedPaths]]
-path = ["extractors"]
+path = [ "extractors" ]
 recursive = true

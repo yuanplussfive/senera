@@ -1,3 +1,5 @@
+import type { McpUploadResource } from "@senera/tool-plugin-sdk";
+
 export type ImageVisionToolArguments = {
   // Opaque upload handle copied from an attachment, for example "senera://upload/upl_0123abcd".
   uploadUri: string;
@@ -7,6 +9,11 @@ export type ImageVisionToolArguments = {
 
   // Optional natural-language question about the image.
   question?: string;
+
+  // Host-authorized upload descriptor populated from the declared resource binding.
+  resources?: {
+    image?: McpUploadResource;
+  };
 };
 
 export type ImageVisionToolResult = {

@@ -8,11 +8,16 @@ import {
 
 export type SocketStatus = "idle" | "connecting" | "open" | "closed" | "error";
 
-export interface UseAgentSocketOptions {
+interface UseAgentSocketBaseOptions {
   url: string;
-  onEvent: (env: EventEnvelope) => void;
   onMalformedEvent?: (error: unknown) => void;
 }
+
+export type UseAgentSocketOptions = UseAgentSocketBaseOptions &
+  (
+    | { onEvent: (env: EventEnvelope) => void; onEvents?: never }
+    | { onEvent?: never; onEvents: (events: readonly EventEnvelope[]) => void }
+  );
 
 export interface AgentSocketHandle {
   status: SocketStatus;
@@ -32,11 +37,11 @@ export function parseAgentSocketEventData(data: unknown): EventEnvelope {
  * 单连接 + 指数退避自动重连。后端协议本身是无状态的（每次请求自带 sessionId），
  * 因此重连不需要恢复服务端状态，只需要 UI 重新订阅事件流即可。
  *
- * 流式优化：对模型增量和终端输出这类高频事件，
- * 累积到浏览器帧再回放给 onEvent；同时用最大等待窗口保证实时输出不会被拖到最终事件。
+ * 单事件消费者只合并模型增量和终端输出。批量消费者将当前帧的全部事件按协议顺序交付，
+ * 让状态层在一次事务中完成投影；最大等待窗口保证后台标签页仍能及时推进。
  */
 export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
-  const { url, onEvent, onMalformedEvent } = opts;
+  const { url, onEvent, onEvents, onMalformedEvent } = opts;
   const [status, setStatus] = useState<SocketStatus>("idle");
   const wsRef = useRef<WebSocket | null>(null);
   const connectSeqRef = useRef(0);
@@ -44,8 +49,10 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   const retryTimerRef = useRef<number | null>(null);
   const closedByUserRef = useRef(false);
   const onEventRef = useRef(onEvent);
+  const onEventsRef = useRef(onEvents);
   const onMalformedEventRef = useRef(onMalformedEvent);
   onEventRef.current = onEvent;
+  onEventsRef.current = onEvents;
   onMalformedEventRef.current = onMalformedEvent;
 
   // rAF 批量队列
@@ -69,8 +76,15 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     const queue = pendingRef.current;
     if (queue.length === 0) return;
     pendingRef.current = [];
-    for (const env of coalesceStreamingEvents(queue)) {
-      onEventRef.current(env);
+    const events = coalesceStreamingEvents(queue);
+    const batchConsumer = onEventsRef.current;
+    if (batchConsumer) {
+      batchConsumer(events);
+      return;
+    }
+    const eventConsumer = onEventRef.current;
+    for (const env of events) {
+      eventConsumer?.(env);
     }
   }, [clearFlushSchedule]);
 
@@ -85,6 +99,11 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
 
   const dispatch = useCallback(
     (env: EventEnvelope): void => {
+      if (onEventsRef.current) {
+        pendingRef.current.push(env);
+        scheduleFlush();
+        return;
+      }
       if (isBufferedStreamingEvent(env.kind)) {
         pendingRef.current.push(env);
         scheduleFlush();
@@ -94,7 +113,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       if (pendingRef.current.length > 0) {
         flush();
       }
-      onEventRef.current(env);
+      onEventRef.current?.(env);
     },
     [flush, scheduleFlush],
   );

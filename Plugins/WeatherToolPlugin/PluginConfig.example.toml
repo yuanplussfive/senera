@@ -1,11 +1,19 @@
 [senera]
-enabled = true
+# 启用插件
+enabled = false
 
 [weather]
+# 天气服务
 provider = "qweather"
-api_keys = [ "replace-with-your-api-key" ]
+# 接口密钥
+api_keys = [  ]
+# 接口域名
 api_host = "your-id.re.qweatherapi.com"
+# 语言
 language = "zh"
+# 单位
 unit = "metric"
+# 请求超时
 timeout_seconds = 15
+# 状态目录
 state_dir = ".state"

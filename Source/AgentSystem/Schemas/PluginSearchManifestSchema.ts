@@ -33,6 +33,7 @@ export const ToolSearchCapabilitySchema = z
 
 export const ToolSearchSchema = z
   .object({
+    SourceIds: z.array(z.string().min(1)).min(1).optional(),
     Summary: z.string().min(1).optional(),
     Tags: z.array(z.string().min(1)).optional(),
     Capabilities: z.array(ToolSearchCapabilitySchema).optional(),
@@ -40,4 +41,17 @@ export const ToolSearchSchema = z
     Examples: z.array(z.string().min(1)).optional(),
     Avoid: z.array(z.string().min(1)).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((search, context) => {
+    const seen = new Set<string>();
+    search.SourceIds?.forEach((sourceId, index) => {
+      if (seen.has(sourceId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["SourceIds", index],
+          message: `Tool discovery source ${sourceId} may only be selected once.`,
+        });
+      }
+      seen.add(sourceId);
+    });
+  });

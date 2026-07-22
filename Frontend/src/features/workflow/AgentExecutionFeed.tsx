@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type AriaRole, type ReactNode } from "react";
+import { useId, useMemo, useState, type AriaRole, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown, ChevronRight, GitBranch, Loader2, Workflow, Wrench, X } from "lucide-react";
 import { cn } from "../../lib/util";
@@ -6,26 +6,11 @@ import { type RunRecord } from "../../store/sessionStore";
 import { deriveFeedModel, statusTextClass, type FeedGroup, type FeedItem } from "./feedModel";
 import { motionTimings, readFeedItemVariants, useMotionLevel, type MotionLevel } from "../../shared/motion";
 
-export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
+export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; showBody?: boolean }): JSX.Element {
   const model = useMemo(() => deriveFeedModel(run), [run]);
-  const groupSignature = useMemo(
-    () => model.groups.map((group) => `${group.id}:${group.items.length}:${group.defaultExpanded ? 1 : 0}`).join("|"),
-    [model.groups],
-  );
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(() => new Set());
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
-
-  useEffect(() => {
-    setExpandedGroups((current) => {
-      const next: Record<string, boolean> = {};
-      for (const group of model.groups) {
-        if (!group.collapsible) continue;
-        next[group.id] = current[group.id] ?? group.defaultExpanded ?? true;
-      }
-      return next;
-    });
-  }, [run.requestId, groupSignature, model.groups]);
 
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
@@ -36,47 +21,44 @@ export function AgentExecutionFeed({ run }: { run: RunRecord }): JSX.Element {
             <FeedGroupBlock
               key={group.id}
               group={group}
-              expanded={expandedGroups[group.id] ?? group.defaultExpanded ?? true}
-              onToggle={() =>
-                setExpandedGroups((current) => ({
-                  ...current,
-                  [group.id]: !(current[group.id] ?? group.defaultExpanded ?? true),
-                }))
-              }
+              expanded={expandedGroups.has(group.id)}
+              onToggle={() => setExpandedGroups((current) => toggleSetEntry(current, group.id))}
               motionLevel={effectiveLevel}
             />
           ) : (
             <div key={group.id} className="flex flex-col">
-              <AnimatePresence initial={false}>
-                {group.items.map((item) => (
-                  <FeedRow key={item.id} item={item} motionLevel={effectiveLevel} />
-                ))}
-              </AnimatePresence>
+              {group.items.map((item) => (
+                <FeedRow key={item.id} item={item} />
+              ))}
             </div>
           ),
         )}
       </div>
-      <div className="ml-6">
-        <AnimatePresence mode="wait" initial={false}>
-          {model.bodyText ? (
-            <FeedMotionBlock
-              key="body"
-              motionLevel={effectiveLevel}
-              className="pt-2 text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
-            >
-              <span className="whitespace-pre-wrap break-words">{model.bodyText}</span>
-              <span className="caret-blink" />
-            </FeedMotionBlock>
-          ) : (
-            <PendingLine key="pending" label={model.placeholder} motionLevel={effectiveLevel} />
-          )}
-        </AnimatePresence>
-        {model.footer ? (
+      {showBody ? (
+        <div className="ml-6">
+          <AnimatePresence mode="wait" initial={false}>
+            {model.bodyText ? (
+              <FeedMotionBlock
+                key="body"
+                motionLevel={effectiveLevel}
+                className="pt-2 text-[length:var(--theme-chat-assistant-font-size)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
+              >
+                <span className="whitespace-pre-wrap break-words">{model.bodyText}</span>
+                <span className="caret-blink" />
+              </FeedMotionBlock>
+            ) : (
+              <PendingLine key="pending" label={model.placeholder} motionLevel={effectiveLevel} />
+            )}
+          </AnimatePresence>
+        </div>
+      ) : null}
+      {model.footer ? (
+        <div className="ml-6">
           <FeedMotionBlock motionLevel={effectiveLevel} className="pt-1.5 font-mono text-[10.5px] text-content-muted">
             {model.footer}
           </FeedMotionBlock>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -111,12 +93,16 @@ function FeedGroupBlock({
   motionLevel: MotionLevel;
 }): JSX.Element {
   const Icon = group.variant === "delegation" ? Workflow : group.variant === "tools" ? Wrench : GitBranch;
+  const contentId = useId();
 
   return (
     <div className="flex flex-col gap-1.5 py-0.5">
       <button
         type="button"
         onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={contentId}
+        data-feed-group={group.id}
         className="flex min-w-0 items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
       >
         <Icon className="h-3.5 w-3.5 shrink-0 text-content-secondary" />
@@ -130,12 +116,12 @@ function FeedGroupBlock({
       </button>
       <AnimatePresence initial={false}>
         {expanded ? (
-          <FeedMotionBlock key="tools" motionLevel={motionLevel} className="flex flex-col divide-y divide-line-subtle">
-            <AnimatePresence initial={false}>
+          <FeedMotionBlock key="details" motionLevel={motionLevel}>
+            <div id={contentId} className="flex flex-col divide-y divide-line-subtle">
               {group.items.map((item) => (
-                <FeedRow key={item.id} item={item} compact motionLevel={motionLevel} />
+                <FeedRow key={item.id} item={item} compact />
               ))}
-            </AnimatePresence>
+            </div>
           </FeedMotionBlock>
         ) : null}
       </AnimatePresence>
@@ -143,24 +129,9 @@ function FeedGroupBlock({
   );
 }
 
-function FeedRow({
-  item,
-  compact = false,
-  motionLevel,
-}: {
-  item: FeedItem;
-  compact?: boolean;
-  motionLevel: MotionLevel;
-}): JSX.Element {
+function FeedRow({ item, compact = false }: { item: FeedItem; compact?: boolean }): JSX.Element {
   return (
-    <motion.div
-      variants={readFeedItemVariants(motionLevel)}
-      initial="hidden"
-      animate="show"
-      exit="exit"
-      transition={motionLevel === "none" ? { duration: 0 } : motionTimings.base}
-      className={cn("flex min-w-0 items-start gap-2 px-2.5 py-2", compact && "py-1.5")}
-    >
+    <div className={cn("flex min-w-0 items-start gap-2 px-2.5 py-2", compact && "py-1.5")}>
       {item.kind === "tool" ? (
         <Wrench className="mt-[1px] h-3.5 w-3.5 shrink-0 text-content-muted" />
       ) : (
@@ -175,8 +146,15 @@ function FeedRow({
       {item.meta ? (
         <span className={cn("shrink-0 pt-px text-[11.5px]", statusTextClass(item.status))}>{item.meta}</span>
       ) : null}
-    </motion.div>
+    </div>
   );
+}
+
+function toggleSetEntry(values: ReadonlySet<string>, value: string): ReadonlySet<string> {
+  const next = new Set(values);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
 }
 
 function FeedStatusIcon({ status, className }: { status: FeedItem["status"]; className?: string }): JSX.Element {

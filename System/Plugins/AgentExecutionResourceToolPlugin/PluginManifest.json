@@ -8,6 +8,15 @@
     "Kind": "Tool",
     "Description": "Start and control resumable long-running execution resources."
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "execution",
+        "Title": "Execution",
+        "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 91
@@ -20,10 +29,9 @@
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell", "filesystem:workspace"],
       "Execution": {
-        "Boundary": "SandboxPreferred",
+        "Targets": ["Sandbox", "Local"],
         "Network": "Allow",
-        "Workspace": "ReadWrite",
-        "LocalFallback": "Allow"
+        "Workspace": "ReadWrite"
       },
       "Runtime": {
         "Lifecycle": "Persistent",
@@ -77,10 +85,9 @@
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Runtime": {
         "Lifecycle": "Immediate",
@@ -123,10 +130,9 @@
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Runtime": {
         "Lifecycle": "OneShot",
@@ -172,10 +178,9 @@
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Runtime": {
         "Lifecycle": "Immediate",
@@ -207,10 +212,9 @@
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Runtime": {
         "Lifecycle": "Immediate",
@@ -245,10 +249,9 @@
       "ArtifactPolicyFile": "./CollectionArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Runtime": {
         "Lifecycle": "Immediate",
@@ -280,10 +283,9 @@
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Runtime": {
         "Lifecycle": "Immediate",
@@ -315,10 +317,9 @@
       "ArtifactPolicyFile": "./CollectionArtifactPolicy.json",
       "Permissions": ["process:shell"],
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Runtime": {
         "Lifecycle": "Immediate",

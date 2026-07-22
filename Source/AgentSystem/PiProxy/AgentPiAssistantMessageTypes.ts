@@ -74,7 +74,33 @@ export interface AgentPiToolTranscriptItem {
   };
 }
 
+export interface AgentPiToolParameterOutlineProperty {
+  path: string;
+  types: string[];
+  required: boolean;
+  description?: string;
+  allowedValues?: unknown[];
+}
+
+export type AgentPiToolParameterContract =
+  | {
+      format: "json_schema";
+      schema: unknown;
+    }
+  | {
+      format: "json_schema_outline";
+      rootTypes: string[];
+      properties: AgentPiToolParameterOutlineProperty[];
+      omittedProperties: number;
+    };
+
 export interface AgentPiToolCard {
+  name: string;
+  description?: string;
+  parameterContract: AgentPiToolParameterContract;
+}
+
+export interface AgentPiToolContract {
   name: string;
   description?: string;
   parameters?: unknown;
@@ -97,7 +123,7 @@ export interface AgentPiToolArgumentsInput {
   call: AgentPiPlannedToolCall & {
     planIndex: number;
   };
-  tool: AgentPiToolCard;
+  tool: AgentPiToolContract;
   seneraRuntime: AgentPiAssistantMessageCompileInput["seneraRuntime"];
 }
 

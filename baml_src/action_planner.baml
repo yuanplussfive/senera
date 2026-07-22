@@ -324,7 +324,8 @@ function PrepareInteraction(promptJson: string) -> InteractionPreparation {
     - Use AskUser only when indispensable context is missing and no candidate tool can obtain it.
     - Use CallTools when the request needs fresh facts, workspace inspection, external lookup, file inspection, edits, execution, verification, persistence, approvals, or another side effect.
     - CallTools may use only exact names from plannerInput.candidateTools.
-    - candidateTools defines the only executable tools and their exact JSON schemas. For CallTools, emit a short preface and one or more immediately executable calls with complete grounded argumentHints; never invent required values.
+    - candidateTools defines the only executable tools and bounded parameter contracts for planning. parameterContract.format=json_schema carries a complete schema; json_schema_outline carries a structural summary whose omittedProperties reports excluded fields.
+    - For CallTools, emit a short preface and one or more immediately executable calls with grounded argumentHints. The host validates hints against the complete authoritative schema and invokes the dedicated argument-filling stage when hints are absent or invalid; never invent required values.
     - Independent calls omit dependsOn; dependencies may reference only earlier zero-based call indexes.
     - Prior user and assistant messages are JSON timeline cards. Read turn.kind, turn.role, and turn.payload as the conversation timeline.
     - Read plannerInput from the latest user JSON object's plannerInput property.
@@ -398,14 +399,14 @@ function SelectPiAction(promptJson: string) -> PiControllerAction {
     - Do not emit a generic or repeated preface. If the immediately preceding assistant tool-call message already announced the same work, either proceed to FinalAnswer/AskUser or state the concrete new follow-up work.
     - For CallTools, calls must list one or more tool intents and should include complete executable argumentHints whenever the required values are grounded in the current conversation or tool observations.
     - Use only exact tool names from plannerInput.candidateTools.
-    - candidateTools contains the compact tool cards available for this decision. Prefer the smallest sufficient set of calls.
+    - candidateTools contains compact tool cards available for this decision. Read each parameterContract according to its format and prefer the smallest sufficient set of calls.
     - If tool_choice limits the allowed tool subset, candidateTools already contains only that subset.
     - The host generates OpenAI tool call ids. Do not invent ids or reference call_xxx values.
     - dependsOn references zero-based indexes of earlier calls in the same calls array only. Omit it when there is no dependency.
     - Only use dependsOn for true data dependencies where a later call needs an earlier tool result.
     - Independent calls with no dependsOn may run concurrently when plannerInput.openAiRequest.parallelToolCalls is not false.
     - If plannerInput.openAiRequest.parallelToolCalls is false, return only the first immediately executable tool intent.
-    - argumentHints are host-validated executable drafts, not provider-native tool calls. Include every known required argument and correctly shaped nested value so the host can execute without a separate argument-filling model call.
+    - argumentHints are optional host-validated drafts, not provider-native tool calls. Include complete schema-shaped hints only when all required values are grounded; otherwise omit argumentHints so the host can use the complete authoritative schema in its argument-filling stage.
     - Do not invent missing required values. When a required value is unavailable and no tool can obtain it, use AskUser instead of emitting an incomplete required call.
     - Do not repeat a tool call with the same tool name and equivalent arguments when toolTranscript already contains a successful observation for that call, unless the user explicitly asks to refresh or the previous observation failed.
     - Respect tool_choice from plannerInput.openAiRequest when present.
@@ -438,7 +439,7 @@ function RepairPiAction(promptJson: string) -> PiControllerAction {
     - For FinalAnswer, answerPlan must be non-empty and question, preface, and calls must be empty or omitted.
     - For AskUser, question must be non-empty and calls must be empty or omitted.
     - For CallTools, preface must be short and calls must contain at least one call.
-    - For CallTools, repair argumentHints into complete schema-shaped executable drafts whenever the required values are grounded; leave them incomplete only when the missing value cannot be recovered.
+    - For CallTools, repair argumentHints into complete schema-shaped executable drafts only when the required values are grounded; omit argumentHints when the bounded parameterContract is insufficient or a required value cannot be recovered.
     - A user message whose JSON content has type=senera.pi_context_policy.v1 is Senera runtime context, not the user's task.
     - Use senera.pi_context_policy.v1 retrievalTools only by exact listed tool name when evidence or artifact details need hydration.
     - Use only exact tool names from plannerInput.candidateTools.

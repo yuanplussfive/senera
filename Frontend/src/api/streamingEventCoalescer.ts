@@ -1,7 +1,5 @@
 import { EventKinds, type EventEnvelope, type ExecutionResourceOutputData } from "./eventTypes";
 
-type EventIndex = Map<string, number>;
-
 export const StreamingEventFlushPolicy = {
   targetFrameRateHz: 60,
   maxPendingFrames: 3,
@@ -19,40 +17,33 @@ export function isBufferedStreamingEvent(kind: string): boolean {
 
 export function coalesceStreamingEvents(queue: readonly EventEnvelope[]): EventEnvelope[] {
   const merged: EventEnvelope[] = [];
-  const modelIndexes: EventIndex = new Map();
-  const resourceOutputIndexes: EventIndex = new Map();
 
-  for (const env of queue) {
-    if (env.kind === EventKinds.ModelDelta) {
-      mergeIndexedEvent(merged, modelIndexes, modelDeltaKey(env), env, mergeModelDelta);
+  for (const current of queue) {
+    const previousIndex = merged.length - 1;
+    const previous = merged[previousIndex];
+    const coalesced = previous ? mergeAdjacentStreamingEvents(previous, current) : undefined;
+    if (coalesced) {
+      merged[previousIndex] = coalesced;
       continue;
     }
-    if (env.kind === EventKinds.ExecutionResourceOutput) {
-      mergeIndexedEvent(merged, resourceOutputIndexes, resourceOutputKey(env), env, mergeResourceOutput);
-      continue;
-    }
-    merged.push(env);
+    merged.push(current);
   }
 
   return merged;
 }
 
-function mergeIndexedEvent(
-  events: EventEnvelope[],
-  indexes: EventIndex,
-  key: string,
-  current: EventEnvelope,
-  merge: (previous: EventEnvelope, current: EventEnvelope) => EventEnvelope | undefined,
-): void {
-  const index = indexes.get(key);
-  const previous = index === undefined ? undefined : events[index];
-  const next = previous ? merge(previous, current) : undefined;
-  if (next && index !== undefined) {
-    events[index] = next;
-    return;
+function mergeAdjacentStreamingEvents(previous: EventEnvelope, current: EventEnvelope): EventEnvelope | undefined {
+  if (previous.kind !== current.kind) return undefined;
+  if (current.kind === EventKinds.ModelDelta && modelDeltaKey(previous) === modelDeltaKey(current)) {
+    return mergeModelDelta(previous, current);
   }
-  indexes.set(key, events.length);
-  events.push(current);
+  if (
+    current.kind === EventKinds.ExecutionResourceOutput &&
+    resourceOutputKey(previous) === resourceOutputKey(current)
+  ) {
+    return mergeResourceOutput(previous, current);
+  }
+  return undefined;
 }
 
 function modelDeltaKey(env: EventEnvelope): string {

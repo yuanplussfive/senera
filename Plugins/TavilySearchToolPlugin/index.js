@@ -29,31 +29,11 @@ var __toESM = (mod, isNodeMode, target) => (
 );
 var import_node_fs = __toESM(require("node:fs"));
 var import_node_path = __toESM(require("node:path"));
-var import_zod = require("@senera/tool-plugin-sdk");
 var import_plugin_sdk = require("@senera/tool-plugin-sdk");
 var import_TavilySearchToolArgumentsSchema = require("./Schemas/TavilySearchToolArgumentsSchema.js");
 var import_TavilySearchToolResultSchema = require("./Schemas/TavilySearchToolResultSchema.js");
+var import_PluginConfig_definition = require("./PluginConfig.definition.cjs");
 const ConfigFileName = "PluginConfig.toml";
-const DefaultBaseUrl = "https://api.tavily.com";
-const DefaultTimeoutMs = 3e5;
-const DefaultStateDir = ".state";
-const ConfigSchema = import_zod.z
-  .object({
-    senera: import_zod.z.unknown().optional(),
-    tavily: import_zod.z
-      .object({
-        api_keys: import_zod.z.array(import_zod.z.string().trim().min(1)).min(1),
-        base_url: import_zod.z.string().trim().url().default(DefaultBaseUrl),
-        timeout_seconds: import_zod.z.coerce
-          .number()
-          .positive()
-          .max(300)
-          .default(DefaultTimeoutMs / 1e3),
-        state_dir: import_zod.z.string().trim().min(1).default(DefaultStateDir),
-      })
-      .strict(),
-  })
-  .strict();
 void (0, import_plugin_sdk.runMcpTool)({
   toolName: "TavilySearchTool",
   argumentSchema: import_TavilySearchToolArgumentsSchema.Schema,
@@ -111,7 +91,7 @@ function readConfig() {
   const parsed = (0, import_plugin_sdk.readPluginTomlConfig)(ConfigFileName, {
     exampleFileName: "PluginConfig.example.toml",
   });
-  const result = ConfigSchema.safeParse(parsed);
+  const result = import_PluginConfig_definition.configuration.schema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
       `Tavily 插件配置无效：${import_node_path.default.resolve(process.cwd(), ConfigFileName)}：${result.error.message}`,

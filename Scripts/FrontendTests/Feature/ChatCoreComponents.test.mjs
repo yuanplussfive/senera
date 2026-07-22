@@ -11,7 +11,9 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 
 const { ChatPanel } = await import("../../../Frontend/src/features/chat/ChatPanel.tsx");
 const { AssistantMessageBody } = await import("../../../Frontend/src/features/chat/AssistantMessageBody.tsx");
+const { StreamingRow } = await import("../../../Frontend/src/features/chat/StreamingRow.tsx");
 const { ChatComposer } = await import("../../../Frontend/src/features/chat/ChatComposer.tsx");
+const { UploadPreviewProvider } = await import("../../../Frontend/src/features/chat/UploadPreviewRegistry.tsx");
 const { ScrollToBottomButton } = await import("../../../Frontend/src/features/chat/ScrollToBottomButton.tsx");
 const { MessageActions } = await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
@@ -55,18 +57,67 @@ test("tool preface keeps its progress text without rendering a redundant badge",
   expect(screen.queryByText("工具调用前回复")).not.toBeInTheDocument();
 });
 
+test("streaming assistant content uses the same readable body and caret for prefaces and answers", () => {
+  renderWithFrontendProviders(
+    React.createElement(AssistantMessageBody, {
+      message: {
+        kind: "AssistantFinal",
+        content: "正在生成的回答",
+      },
+      streaming: true,
+    }),
+  );
+
+  expect(document.querySelector("[data-assistant-streaming-body]")).toBeInTheDocument();
+  expect(screen.getByText("正在生成的回答")).toBeInTheDocument();
+  expect(document.querySelector("[data-assistant-streaming-body] .caret-blink")).toBeInTheDocument();
+});
+
+test("live tool preface is a separate message above the execution feed", () => {
+  renderWithFrontendProviders(
+    React.createElement(StreamingRow, {
+      run: createRun({
+        visibleKind: "tool_preface",
+        displayText: "搜索当前已加载的工具目录……",
+        steps: [
+          {
+            id: "model-step",
+            kind: "model",
+            title: "调用模型",
+            status: "running",
+            startedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    }),
+  );
+
+  const preface = document.querySelector("[data-assistant-tool-preface-stream]");
+  expect(preface).toBeInTheDocument();
+  expect(preface).toContainElement(screen.getByText("搜索当前已加载的工具目录……"));
+  expect(
+    document.querySelector("[data-assistant-tool-preface-stream] [data-assistant-streaming-body]"),
+  ).toBeInTheDocument();
+  expect(
+    document.querySelector("[data-assistant-tool-preface-stream] + .conversation-frame--wide"),
+  ).toBeInTheDocument();
+  expect(screen.getAllByText("搜索当前已加载的工具目录……")).toHaveLength(1);
+});
+
 test("chat composer sends trimmed text and switches queue mode while a run is active", async () => {
   const onSend = vi.fn();
   const onCancel = vi.fn();
   const user = userEvent.setup();
 
   const { rerender } = renderWithFrontendProviders(
-    React.createElement(
-      ChatComposer,
-      createComposerProps({
-        onSend,
-        onCancel,
-      }),
+    withUploadPreviewProvider(
+      React.createElement(
+        ChatComposer,
+        createComposerProps({
+          onSend,
+          onCancel,
+        }),
+      ),
     ),
   );
 
@@ -83,13 +134,15 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
   expect(onSend).toHaveBeenLastCalledWith("hello project", undefined, undefined);
 
   rerender(
-    React.createElement(
-      ChatComposer,
-      createComposerProps({
-        running: true,
-        onSend,
-        onCancel,
-      }),
+    withUploadPreviewProvider(
+      React.createElement(
+        ChatComposer,
+        createComposerProps({
+          running: true,
+          onSend,
+          onCancel,
+        }),
+      ),
     ),
   );
 
@@ -119,11 +172,13 @@ test("chat composer preserves a failed draft and leaves Escape to active interac
   const onCancel = vi.fn();
   const user = userEvent.setup();
   const { rerender } = renderWithFrontendProviders(
-    React.createElement(
-      React.Fragment,
-      null,
-      React.createElement(ChatComposer, createComposerProps({ running: true, onSend, onCancel })),
-      React.createElement("div", { role: "dialog", "aria-label": "Open dialog" }, "Dialog content"),
+    withUploadPreviewProvider(
+      React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(ChatComposer, createComposerProps({ running: true, onSend, onCancel })),
+        React.createElement("div", { role: "dialog", "aria-label": "Open dialog" }, "Dialog content"),
+      ),
     ),
   );
 
@@ -135,7 +190,11 @@ test("chat composer preserves a failed draft and leaves Escape to active interac
   await user.keyboard("{Escape}");
   expect(onCancel).not.toHaveBeenCalled();
 
-  rerender(React.createElement(ChatComposer, createComposerProps({ running: true, onSend, onCancel })));
+  rerender(
+    withUploadPreviewProvider(
+      React.createElement(ChatComposer, createComposerProps({ running: true, onSend, onCancel })),
+    ),
+  );
   const preventedEscape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
   preventedEscape.preventDefault();
   window.dispatchEvent(preventedEscape);
@@ -146,32 +205,34 @@ test("chat model selector keeps the current conversation choice and exposes the 
   const onApplyDefaultModel = vi.fn();
   const user = userEvent.setup();
   renderWithFrontendProviders(
-    React.createElement(
-      ChatComposer,
-      createComposerProps({
-        modelConfig: {
-          modelProviders: [
-            {
-              id: "openai:gpt-4o",
-              icon: "openai",
-              capabilities: { Chat: true },
-              model: "gpt-4o",
-              isDefault: false,
-            },
-            {
-              id: "anthropic:sonnet",
-              icon: "anthropic",
-              capabilities: { Chat: true },
-              model: "claude-sonnet",
-              isDefault: true,
-            },
-          ],
-          selectedModelProviderId: "openai:gpt-4o",
-          defaultModelProviderId: "anthropic:sonnet",
-          onSelectModelProvider: vi.fn(),
-          onApplyDefaultModel,
-        },
-      }),
+    withUploadPreviewProvider(
+      React.createElement(
+        ChatComposer,
+        createComposerProps({
+          modelConfig: {
+            modelProviders: [
+              {
+                id: "openai:gpt-4o",
+                icon: "openai",
+                capabilities: { Chat: true },
+                model: "gpt-4o",
+                isDefault: false,
+              },
+              {
+                id: "anthropic:sonnet",
+                icon: "anthropic",
+                capabilities: { Chat: true },
+                model: "claude-sonnet",
+                isDefault: true,
+              },
+            ],
+            selectedModelProviderId: "openai:gpt-4o",
+            defaultModelProviderId: "anthropic:sonnet",
+            onSelectModelProvider: vi.fn(),
+            onApplyDefaultModel,
+          },
+        }),
+      ),
     ),
   );
 
@@ -633,6 +694,10 @@ function createChatPanelProps(overrides = {}) {
   };
 }
 
+function withUploadPreviewProvider(child) {
+  return React.createElement(UploadPreviewProvider, null, child);
+}
+
 function createMessageActions(overrides = {}) {
   return {
     onSend: vi.fn(),
@@ -650,6 +715,7 @@ function createMessageActions(overrides = {}) {
 function createMessageListProps(overrides = {}) {
   return {
     sessionId: "session-1",
+    uploadUrl: "http://agent.test/api/uploads",
     messages: [],
     runs: [],
     userProfile: {

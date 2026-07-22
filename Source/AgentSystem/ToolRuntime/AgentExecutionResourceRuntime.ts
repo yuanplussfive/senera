@@ -6,7 +6,6 @@ import { SeneraShellCommandSpecSchema } from "../Execution/SeneraShellCommand.js
 import { SeneraTerminalDimensionLimits } from "../Execution/SeneraTerminalTypes.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import type { AgentHostToolContext, AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
-import { bindAgentToolFallbackContext } from "./AgentToolFallbackContext.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "./AgentToolProcessEnvelope.js";
 import { createAgentShellExecutionProfile } from "./AgentShellCommandRuntime.js";
 import { resolveAgentExecutionResourceWaitTimeoutMs } from "../ExecutionResources/AgentExecutionResourceConfig.js";
@@ -98,11 +97,7 @@ export function createAgentExecutionResourceHostHandlers(
     startShell: withValidatedArguments(ShellStartArgumentsSchema, async (args, context) => {
       const cwdResult = await context.executionEnv.canonicalPath(args.cwd ?? ".");
       if (!cwdResult.ok) throw cwdResult.error;
-      const profile = bindAgentToolFallbackContext({
-        profile: createAgentShellExecutionProfile(context.tool),
-        tool: context.tool,
-        correlation: context,
-      });
+      const profile = createAgentShellExecutionProfile(context.tool, requireExecutionPlan(context));
       const snapshot = await broker.startTerminal({
         command: args.command.script,
         args: [],
@@ -160,6 +155,13 @@ export function createAgentExecutionResourceHostHandlers(
       resources: await broker.stopAll(resourceOwner(context)),
     })),
   };
+}
+
+function requireExecutionPlan(context: AgentHostToolContext) {
+  if (!context.executionPlan) {
+    throw new Error(`Tool ${context.tool.name} is missing its resolved execution plan.`);
+  }
+  return context.executionPlan;
 }
 
 function withValidatedArguments<TSchema extends z.ZodType<Record<string, unknown>>>(

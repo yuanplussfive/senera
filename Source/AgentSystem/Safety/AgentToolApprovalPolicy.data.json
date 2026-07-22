@@ -1,7 +1,6 @@
 {
   "Entrypoints": {
     "ToolDecision": "senera/tool/decision",
-    "ExecutionFallback": "senera/execution/fallback",
     "ResourceAccess": "senera/resource/decision"
   },
   "Reasons": {
@@ -17,14 +16,7 @@
     "DefaultAllow": "工具未声明需要审批的高风险信号。",
     "PolicyUnavailable": "OPA 策略产物不可用，工具调用需要人工确认。",
     "EntrypointMismatch": "OPA 策略入口不匹配，工具调用已被拒绝。",
-    "FallbackStrictSandbox": "工具要求严格沙箱隔离，禁止切换到本地进程。",
-    "FallbackNotAllowed": "工具没有声明允许本地回退。",
-    "FallbackMissingTool": "工具或插件身份无法由注册表确认，禁止本地回退。",
-    "FallbackUntrusted": "未受信任插件禁止在宿主本地进程中运行。",
-    "FallbackHighImpactApproval": "高影响进程权限从 OS 沙箱降级到宿主执行，需要用户确认。",
-    "FallbackExternalApproval": "外部插件请求从 OS 沙箱降级为本地进程，需要用户确认。",
-    "FallbackSystemAllow": "系统插件明确允许在沙箱不可用时使用本地执行边界。",
-    "FallbackDefaultDeny": "执行边界降级没有匹配允许规则，已拒绝本地执行。",
+    "LocalExecution": "该工具可在 OS 沙箱之外的宿主本机环境执行，需要用户确认。",
     "ResourceOutsideScope": "资源不属于允许的文件系统作用域。",
     "ResourceUnresolved": "资源真实路径无法可靠解析，已拒绝访问。",
     "ResourceLinkEscape": "资源路径经过工作区外部链接或损坏链接。",
@@ -43,12 +35,6 @@
       "memory-write"
     ],
     "ToolPermissionTerms": ["shell", "write", "memory"]
-  },
-  "Fallback": {
-    "DenyTrustLevels": ["Untrusted"],
-    "ApprovalPermissions": ["process:shell"],
-    "ApprovalTrustLevels": ["External", "Local"],
-    "AutoAllowTrustLevels": ["System"]
   },
   "ResourceAccess": {
     "AllowedScopes": ["workspace", "temporary"],

@@ -62,6 +62,11 @@ describe("ToolSearch runtime behavior", () => {
           priority: 50,
           rootKind: "User",
           loading: "Dynamic",
+          source: {
+            id: "web",
+            title: "Web",
+            description: "Public internet information and current external data.",
+          },
         }),
       ]) as unknown as AgentPluginRegistry,
       createToolSearchConfig(),
@@ -163,6 +168,62 @@ describe("ToolSearch runtime behavior", () => {
       }),
     ).toEqual(["ToolSearchTool", "WorkspaceReadFile"]);
 
+    runtime.close();
+  });
+
+  test("projects the loaded source catalog into the host contract and validates preferences", async () => {
+    const registry = createRegistry([
+      createTool({
+        name: "TavilySearchTool",
+        title: "Web search",
+        summary: "Search current public information",
+        tags: ["web", "search"],
+        actions: ["search"],
+        targets: ["web"],
+        priority: 10,
+        source: {
+          id: "web",
+          title: "Web",
+          description: "Public internet information.",
+        },
+      }),
+    ]) as unknown as AgentPluginRegistry;
+    const runtime = new AgentToolSearchRuntime(
+      registry,
+      createToolSearchConfig(),
+      createToolLearningConfig(),
+      "E:/workspace",
+      createModelProvider(),
+    );
+    const contract = runtime.createHostContractProjection();
+    const schema = contract.projectInvocationSchema?.({} as never, {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        preferredSources: { type: "array", items: { type: "string" } },
+      },
+    });
+    const handler = runtime.createHostHandler();
+    const invalid = await handler(
+      { query: "current information", preferredSources: ["unknown"] },
+      hostToolContext({ visibleToolNames: [] }),
+    );
+    const valid = await handler(
+      { query: "current information", preferredSources: ["web"] },
+      hostToolContext({ visibleToolNames: [] }),
+    );
+
+    expect(schema).toMatchObject({
+      properties: {
+        preferredSources: {
+          uniqueItems: true,
+          items: { enum: ["web"] },
+        },
+      },
+    });
+    expect(contract.projectDescription?.({} as never, "Search tools")).toContain("web: Web");
+    expect(invalid.response.ok).toBe(false);
+    expect(valid.response.ok).toBe(true);
     runtime.close();
   });
 
@@ -373,6 +434,7 @@ function searchResult(overrides: Partial<AgentToolSearchResult> = {}): AgentTool
     toolName: "WorkspaceReadFile",
     title: "Read file",
     pluginName: "WorkspacePlugin",
+    sources: [],
     summary: "Read workspace files",
     whenToUse: "Inspect files",
     score: 1,

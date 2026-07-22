@@ -10,14 +10,16 @@ import { deriveFeedModel, statusTextClass, type FeedItem } from "../workflow/fee
 /** A quiet disclosure for completed execution details. */
 export function ThinkingSummaryBar({
   run,
+  presentation = "terminal-only",
   onViewWorkflow,
 }: {
   run?: RunRecord;
+  presentation?: "terminal-only" | "live-final-answer";
   onViewWorkflow?: () => void;
 }): JSX.Element | null {
   const [expanded, setExpanded] = useState(false);
 
-  if (!run || run.status === "running" || run.steps.length === 0) return null;
+  if (!run || (run.status === "running" && presentation !== "live-final-answer") || run.steps.length === 0) return null;
 
   const summary = summarizeRun(run);
   const statusLabel = readRunStatusLabel(run.status);

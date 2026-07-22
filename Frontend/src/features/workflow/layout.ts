@@ -3,8 +3,7 @@ import { type Edge, type Node, Position } from "@xyflow/react";
 import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
-export type StepNodeData = Record<string, unknown> &
-  (
+export type StepNodeData = Record<string, unknown> & { layout: WorkflowNodeLayout } & (
     | {
         kind: "step";
         step: TimelineStep;
@@ -14,6 +13,39 @@ export type StepNodeData = Record<string, unknown> &
         group: ScopeNodeData;
       }
   );
+
+export type WorkflowLayoutDirection = "vertical" | "horizontal";
+
+export interface WorkflowNodeLayout {
+  readonly direction: WorkflowLayoutDirection;
+  readonly width: number;
+  readonly height: number;
+}
+
+interface WorkflowLayoutConfiguration {
+  readonly rankDirection: "TB" | "LR";
+  readonly nodeSeparation: number;
+  readonly rankSeparation: number;
+  readonly sourcePosition: Position;
+  readonly targetPosition: Position;
+}
+
+const WORKFLOW_LAYOUTS: Record<WorkflowLayoutDirection, WorkflowLayoutConfiguration> = {
+  vertical: {
+    rankDirection: "TB",
+    nodeSeparation: 28,
+    rankSeparation: 40,
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
+  },
+  horizontal: {
+    rankDirection: "LR",
+    nodeSeparation: 32,
+    rankSeparation: 72,
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
+  },
+};
 
 export interface ScopeNodeData {
   id: string;
@@ -48,17 +80,21 @@ interface FlowNode {
 }
 
 /** Convert timeline steps into positioned React Flow nodes and edges. */
-export function layoutSteps(steps: TimelineStep[]): {
+export function layoutSteps(
+  steps: TimelineStep[],
+  layoutDirection: WorkflowLayoutDirection = "vertical",
+): {
   nodes: Node<StepNodeData>[];
   edges: Edge[];
 } {
   if (steps.length === 0) return { nodes: [], edges: [] };
 
+  const layout = WORKFLOW_LAYOUTS[layoutDirection];
   const g = new dagre.graphlib.Graph();
   g.setGraph({
-    rankdir: "TB",
-    nodesep: 28,
-    ranksep: 40,
+    rankdir: layout.rankDirection,
+    nodesep: layout.nodeSeparation,
+    ranksep: layout.rankSeparation,
     marginx: 24,
     marginy: 24,
   });
@@ -86,11 +122,13 @@ export function layoutSteps(steps: TimelineStep[]): {
 
   const addStepNode = (step: TimelineStep): void => {
     if (flowNodes.has(step.id)) return;
+    const height = estimateNodeHeight(step);
     flowNodes.set(step.id, {
       id: step.id,
       width: NODE_WIDTH,
-      height: estimateNodeHeight(step),
+      height,
       data: {
+        layout: createWorkflowNodeLayout(layoutDirection, NODE_WIDTH, height),
         kind: "step",
         step,
       },
@@ -119,6 +157,7 @@ export function layoutSteps(steps: TimelineStep[]): {
       width: NODE_WIDTH,
       height: SCOPE_NODE_HEIGHT,
       data: {
+        layout: createWorkflowNodeLayout(layoutDirection, NODE_WIDTH, SCOPE_NODE_HEIGHT),
         kind: "scope",
         group,
       },
@@ -221,14 +260,33 @@ export function layoutSteps(steps: TimelineStep[]): {
         x: pos.x - node.width / 2,
         y: pos.y - node.height / 2,
       },
-      sourcePosition: Position.Bottom,
-      targetPosition: Position.Top,
+      sourcePosition: layout.sourcePosition,
+      targetPosition: layout.targetPosition,
       data: node.data,
       draggable: true,
     };
   });
 
   return { nodes, edges };
+}
+
+function createWorkflowNodeLayout(
+  direction: WorkflowLayoutDirection,
+  width: number,
+  height: number,
+): WorkflowNodeLayout {
+  return { direction, width, height };
+}
+
+export function readWorkflowHandlePositions(layoutDirection: WorkflowLayoutDirection): {
+  source: Position;
+  target: Position;
+} {
+  const layout = WORKFLOW_LAYOUTS[layoutDirection];
+  return {
+    source: layout.sourcePosition,
+    target: layout.targetPosition,
+  };
 }
 
 type LayoutEntry =

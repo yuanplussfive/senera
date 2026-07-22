@@ -5,180 +5,153 @@ strict = true
 [[form.sections]]
 id = "senera"
 label = "启用状态"
-description = "控制图片识别技能是否参与外部技能集。"
 
 [[form.sections.fields]]
-path = ["senera", "enabled"]
+path = [ "senera", "enabled" ]
 label = "启用插件"
-description = "关闭后图片识别技能不会参与外部工具集。"
 type = "boolean"
 
 [[form.sections]]
 id = "vision"
 label = "图片识别参数"
-description = "配置图片输入限制和模型提示词模板。"
 
 [[form.sections.fields]]
-path = ["vision", "maxImageMb"]
+path = [ "vision", "maxImageMb" ]
 label = "图片大小上限"
-description = "允许送入视觉模型的最大图片大小，单位 MB。"
 type = "number"
 min = 0.1
 step = 0.5
 
 [[form.sections.fields]]
-path = ["vision", "allowedMimes"]
+path = [ "vision", "allowedMimes" ]
 label = "允许图片类型"
-description = "允许识别的图片 MIME 列表。"
 type = "array"
 itemType = "string"
 
 [[form.sections.fields]]
-path = ["vision", "systemTemplate"]
+path = [ "vision", "systemTemplate" ]
 label = "系统提示词"
-description = "发送给视觉模型的系统提示词模板。"
 type = "string"
 multiline = true
 
 [[form.sections.fields]]
-path = ["vision", "promptTemplate"]
+path = [ "vision", "promptTemplate" ]
 label = "用户提示词"
-description = "发送给视觉模型的用户提示词模板，可使用 task、question、name、mime、size。"
 type = "string"
 multiline = true
 
 [[form.sections]]
 id = "vision.provider"
 label = "识图供应商"
-description = "独立配置 ImageVisionTool 使用的视觉模型连接参数。"
 
 [[form.sections.fields]]
-path = ["vision", "provider", "id"]
+path = [ "vision", "provider", "id" ]
 label = "供应商 ID"
-description = "图片识别技能内部使用的供应商标识。"
 type = "string"
 
 [[form.sections.fields]]
-path = ["vision", "provider", "title"]
+path = [ "vision", "provider", "title" ]
 label = "供应商名称"
-description = "用于界面和产物摘要展示的供应商名称。"
 type = "string"
 
 [[form.sections.fields]]
-path = ["vision", "provider", "kind"]
+path = [ "vision", "provider", "kind" ]
 label = "供应商类型"
-description = "当前运行时使用 OpenAI 兼容模型连接器。"
 type = "string"
-options = ["OpenAICompatible"]
+options = [ "OpenAICompatible" ]
 
 [[form.sections.fields]]
-path = ["vision", "provider", "endpoint"]
+path = [ "vision", "provider", "endpoint" ]
 label = "接口协议"
-description = "选择视觉模型调用协议。"
 type = "string"
-options = ["Responses", "ChatCompletions", "ClaudeMessages", "GoogleGenerateContent"]
+options = [ "Responses", "ChatCompletions", "ClaudeMessages", "GoogleGenerateContent" ]
 
 [[form.sections.fields]]
-path = ["vision", "provider", "baseUrl"]
+path = [ "vision", "provider", "baseUrl" ]
 label = "服务地址"
-description = "视觉模型服务 base URL。"
 type = "string"
-placeholder = "https://api.openai.com/v1"
 
 [[form.sections.fields]]
-path = ["vision", "provider", "apiKey"]
+path = [ "vision", "provider", "apiKey" ]
 label = "接口密钥"
-description = "视觉模型供应商 API key。"
 type = "string"
 secret = true
 
 [[form.sections.fields]]
-path = ["vision", "provider", "apiVersion"]
+path = [ "vision", "provider", "apiVersion" ]
 label = "接口版本"
-description = "Claude 等供应商需要的 API version；OpenAI 兼容接口可保留默认值。"
 type = "string"
 
 [[form.sections.fields]]
-path = ["vision", "provider", "model"]
+path = [ "vision", "provider", "model" ]
 label = "模型"
-description = "支持图片输入的视觉模型名称。"
 type = "string"
 
 [[form.sections.fields]]
-path = ["vision", "provider", "temperature"]
+path = [ "vision", "provider", "temperature" ]
 label = "温度"
-description = "视觉模型采样温度。"
 type = "number"
 min = 0
 max = 2
 step = 0.1
 
 [[form.sections.fields]]
-path = ["vision", "provider", "maxOutputTokens"]
+path = [ "vision", "provider", "maxOutputTokens" ]
 label = "最大输出 tokens"
-description = "-1 表示不向供应商请求体传递输出 token 限制。"
 type = "number"
 min = -1
 step = 1
 
 [[form.sections.fields]]
-path = ["vision", "provider", "timeoutSeconds"]
+path = [ "vision", "provider", "timeoutSeconds" ]
 label = "请求超时"
-description = "等待模型响应头的超时时间，单位秒。"
 type = "number"
 min = 0.1
 step = 1
 
 [[form.sections.fields]]
-path = ["vision", "provider", "firstTokenTimeoutSeconds"]
+path = [ "vision", "provider", "firstTokenTimeoutSeconds" ]
 label = "首 token 超时"
-description = "-1 表示不启用首 token 超时；非流式识图通常保持 -1，其他值单位秒。"
 type = "number"
 min = -1
 step = 1
 
 [[form.sections.fields]]
-path = ["vision", "provider", "maxRequestSeconds"]
+path = [ "vision", "provider", "maxRequestSeconds" ]
 label = "总请求时限"
-description = "-1 表示不启用总请求时限，其他值单位秒。"
 type = "number"
 min = -1
 step = 1
 
 [[form.sections.fields]]
-path = ["vision", "provider", "maxNetworkRetries"]
+path = [ "vision", "provider", "maxNetworkRetries" ]
 label = "网络重试次数"
-description = "模型请求遇到可重试网络错误时的重试次数。"
 type = "number"
 min = 0
 step = 1
 
 [[form.sections.fields]]
-path = ["vision", "provider", "retryBaseDelaySeconds"]
+path = [ "vision", "provider", "retryBaseDelaySeconds" ]
 label = "重试基础等待"
-description = "指数退避的起始等待时间，单位秒。"
 type = "number"
 min = 0.001
-step = 0.05
+step = 0.1
 
 [[form.sections.fields]]
-path = ["vision", "provider", "retryMaxDelaySeconds"]
+path = [ "vision", "provider", "retryMaxDelaySeconds" ]
 label = "重试最大等待"
-description = "指数退避的最长等待时间，单位秒。"
 type = "number"
 min = 0.001
 step = 1
 
 [[form.sections.fields]]
-path = ["vision", "provider", "retryAfterMaxDelaySeconds"]
+path = [ "vision", "provider", "retryAfterMaxDelaySeconds" ]
 label = "Retry-After 最大等待"
-description = "供应商 Retry-After 响应允许的最长等待时间，单位秒。"
 type = "number"
 min = 0.001
 step = 1
 
 [[form.sections.fields]]
-path = ["vision", "provider", "headers"]
+path = [ "vision", "provider", "headers" ]
 label = "附加请求头"
-description = "发送给视觉模型服务的额外请求头。"
 type = "table"

@@ -127,6 +127,24 @@ test("message presentation preserves assistant content and run provider labels",
   ).toBe("deepseek");
 });
 
+test("message presentation consumes the active tool preface from the shared stream", () => {
+  expect(
+    readAssistantDisplayContent(
+      {
+        id: "preface-1",
+        content: "完整的工具前言",
+        kind: "AssistantToolPreface",
+        requestId: "request_a",
+      },
+      {
+        requestId: "request_a",
+        displayMessageId: "preface-1",
+        displayText: "流式工具前言",
+      },
+    ),
+  ).toBe("流式工具前言");
+});
+
 function model(id, chat, isDefault) {
   return {
     id,

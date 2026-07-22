@@ -70,7 +70,7 @@ export async function createAgentProtocolE2eHarness(
     workspaceRoot,
     configSnapshot: () => config,
   });
-  sandboxRuntimeService.markFallback(new Error("E2E intentionally runs without OS sandbox preparation."));
+  sandboxRuntimeService.markUnavailable(new Error("E2E intentionally runs without OS sandbox preparation."));
 
   const sessionManager = new AgentSessionManager({
     store,

@@ -50,37 +50,32 @@ test("approval strip resolves the selected pending tool approval", async () => {
   expect(onResolve).toHaveBeenCalledWith("approval_shell", "approve_once");
 });
 
-test("fallback approval exposes explicit local execution scopes", async () => {
+test("tool approval exposes the selected local execution plan", async () => {
   const onResolve = vi.fn();
   render(
     React.createElement(ApprovalRequestStrip, {
       approvals: [
         {
-          approvalId: "approval_fallback",
-          approvalKind: "execution_fallback",
+          approvalId: "approval_local",
+          approvalKind: "tool_call",
           status: "pending",
-          title: "允许外部搜索在本机运行",
-          reason: "操作系统沙箱当前不可用",
-          rule: "execution.fallback.external_approval",
+          title: "允许工具调用：SearchTool",
+          reason: "本机执行需要确认",
+          rule: "execution.target.local",
           riskSignals: ["plugin.trustLevel:External"],
-          availableDecisions: ["approve_once", "approve_session", "deny", "deny_and_interrupt"],
+          availableDecisions: ["approve_once", "deny", "deny_and_interrupt"],
           createdAt: "2026-07-09T00:00:00.000Z",
           subject: {
-            kind: "execution_fallback",
-            pluginName: "SearchPlugin",
-            pluginTitle: "外部搜索",
-            pluginVersion: "1.0.0",
-            manifestDigest: "a".repeat(64),
-            rootKind: "User",
-            trustLevel: "External",
+            kind: "tool_call",
             toolName: "SearchTool",
-            boundary: "SandboxPreferred",
-            network: "Allow",
-            workspace: "ReadOnly",
-            permissions: ["network:http"],
-            fromBackend: "microsandbox",
-            toBackend: "node",
-            failureReason: "sandbox_unavailable",
+            arguments: { query: "Senera" },
+            execution: {
+              target: "Local",
+              backend: "local",
+              network: "default",
+              workspaceMount: "readonly",
+              availableTargets: ["Sandbox", "Local"],
+            },
           },
         },
       ],
@@ -88,12 +83,13 @@ test("fallback approval exposes explicit local execution scopes", async () => {
     }),
   );
 
-  expect(screen.getByText("无操作系统隔离")).toBeInTheDocument();
+  expect(screen.getByText("本机执行")).toBeInTheDocument();
   expect(screen.getByText("允许网络")).toBeInTheDocument();
+  expect(screen.getByText("工作区只读")).toBeInTheDocument();
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "本会话" }));
+  await user.click(screen.getByRole("button", { name: "通过" }));
 
-  expect(onResolve).toHaveBeenCalledWith("approval_fallback", "approve_session");
+  expect(onResolve).toHaveBeenCalledWith("approval_local", "approve_once");
 });
 
 test("empty chat suggestions behave as real user actions", async () => {

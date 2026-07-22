@@ -3,7 +3,7 @@ import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
 
-test("tool preface and final answer are preserved as separate assistant messages", () => {
+test("tool preface and final answer remain separate assistant messages", () => {
   const state = createTestState();
 
   applyEvent(state, createEvent(EventKinds.RunStarted, { input: "查一下天气" }));
@@ -42,6 +42,7 @@ test("tool preface and final answer are preserved as separate assistant messages
   expect(run.visibleText).toBe("北京晴，上海多云。");
   expect(run.visibleKind).toBe("final_answer");
   expect(run.expectedOutputMode).toBe("final_text");
+  expect(run.displayMessageId).toBe("msg_final");
   expect(
     run.steps.some(
       (step) =>
@@ -49,6 +50,53 @@ test("tool preface and final answer are preserved as separate assistant messages
     ),
   ).toBe(true);
   expect(run.steps.some((step) => step.kind === "answer" && step.decisionKind === "final_answer")).toBe(true);
+});
+
+test("tool preface stream ends when the tool starts, so final text cannot inherit it", () => {
+  const state = createTestState();
+
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "搜索工具" }));
+  applyEvent(
+    state,
+    createEvent(EventKinds.AssistantMessageCreated, {
+      messageId: "msg_preface_stream",
+      kind: "tool_preface",
+      content: "我先搜索当前已加载的工具。",
+      terminal: false,
+      toolCount: 1,
+      batchId: "batch_search",
+      toolCallIds: ["call_search"],
+    }),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.ToolCallsPlanned, {
+      toolCount: 1,
+      tools: ["AgentToolSearch"],
+      status: "planned",
+      executionMode: "sequential",
+      batchId: "batch_search",
+    }),
+  );
+  applyEvent(state, createEvent(EventKinds.ModelDelta, { text: "我先搜索当前已加载的工具。" }));
+
+  let run = state.sessions[TestSessionId].runs.find((item) => item.requestId === TestRequestId);
+  expect(run.visibleKind).toBe("tool_preface");
+  expect(run.streamingRaw).toBe("我先搜索当前已加载的工具。");
+
+  applyEvent(
+    state,
+    createEvent(EventKinds.ToolCallStarted, {
+      index: 0,
+      toolName: "AgentToolSearch",
+      callId: "call_search",
+    }),
+  );
+  applyEvent(state, createEvent(EventKinds.ModelDelta, { text: "工具结果已经足够。" }));
+
+  run = state.sessions[TestSessionId].runs.find((item) => item.requestId === TestRequestId);
+  expect(run.visibleKind).toBe("final_answer");
+  expect(run.streamingRaw).toBe("工具结果已经足够。");
 });
 
 test("tool.call.result.detail attaches structured result to the matching tool call", () => {

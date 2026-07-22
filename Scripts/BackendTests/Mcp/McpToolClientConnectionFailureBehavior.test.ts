@@ -41,7 +41,6 @@ function options(): AgentMcpToolClientOptions {
       name: "fixture",
       kind: "mcp-server",
       backend: "local",
-      localFallback: "deny",
     },
     terminationGraceMs: 10,
   };

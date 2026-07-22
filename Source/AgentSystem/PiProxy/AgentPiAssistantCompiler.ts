@@ -20,7 +20,7 @@ import type {
   AgentPiPlannedToolCall,
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
-  AgentPiToolCard,
+  AgentPiToolContract,
 } from "./AgentPiAssistantMessageTypes.js";
 import type { PiOpenAiChatCompletionRequest, PiOpenAiTool } from "./AgentPiOpenAiWireTypes.js";
 import { AgentPiOpenAiPlanningProjector } from "./AgentPiOpenAiPlanningProjector.js";
@@ -93,6 +93,11 @@ interface AgentPiToolChoiceConstraint {
   requiredToolName?: string;
 }
 
+interface AgentPiControllerContext {
+  input: AgentPiControllerActionInput;
+  toolContracts: ReadonlyMap<string, AgentPiToolContract>;
+}
+
 export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
   private readonly client: AgentPiAssistantCompilerModelClient;
   private readonly planningProjector: AgentPiOpenAiPlanningProjector;
@@ -113,7 +118,8 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
 
   async compile(input: AgentPiAssistantCompileRequest): Promise<AgentPiAssistantCompilation> {
     const toolChoice = resolveToolChoiceConstraint(input.request);
-    const promptInput = this.buildControllerInput(input, toolChoice.allowedTools);
+    const controller = this.buildControllerContext(input, toolChoice.allowedTools);
+    const promptInput = controller.input;
     const preparedAction = input.runtime?.preparedAction?.take();
     const validatedPreparedAction = preparedAction ? this.parsePreparedAction(preparedAction, toolChoice) : undefined;
     const authoritativeAction =
@@ -126,13 +132,14 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
       return this.projectAction(
         authoritativeAction,
         promptInput,
+        controller.toolContracts,
         input.signal,
         validatedPreparedAction ? "preparation" : "runtime",
       );
     }
     const action = await this.selectAction(promptInput, toolChoice, input.signal);
 
-    return this.projectAction(action, promptInput, input.signal, "model");
+    return this.projectAction(action, promptInput, controller.toolContracts, input.signal, "model");
   }
 
   private async selectAction(
@@ -189,6 +196,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
   private async projectAction(
     action: ParsedPiControllerAction,
     input: AgentPiControllerActionInput,
+    toolContracts: ReadonlyMap<string, AgentPiToolContract>,
     signal: AbortSignal | undefined,
     decisionSource: "model" | "runtime" | "preparation",
   ): Promise<AgentPiAssistantCompilation> {
@@ -199,7 +207,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
         content: action.question?.trim() ?? "",
         toolCalls: [],
       }),
-      CallTools: async () => this.projectToolCallsAction(action, input, signal),
+      CallTools: async () => this.projectToolCallsAction(action, input, toolContracts, signal),
     } satisfies Record<ParsedPiControllerAction["kind"], () => Promise<AgentPiAssistantCompilation>>;
 
     return projectors[action.kind]();
@@ -229,6 +237,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
   private async projectToolCallsAction(
     action: ParsedPiControllerAction,
     input: AgentPiControllerActionInput,
+    toolContracts: ReadonlyMap<string, AgentPiToolContract>,
     signal: AbortSignal | undefined,
   ): Promise<AgentPiAssistantMessage> {
     const readyCalls = this.readyCalls(action.calls ?? [], input.openAiRequest.parallelToolCalls !== false);
@@ -239,7 +248,9 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
       );
     }
 
-    const materialized = await Promise.all(readyCalls.map((entry) => this.materializeToolCall(entry, input, signal)));
+    const materialized = await Promise.all(
+      readyCalls.map((entry) => this.materializeToolCall(entry, input, toolContracts, signal)),
+    );
     const requiredFailure = materialized.find((entry) => !entry.ok && entry.required);
     if (requiredFailure && !requiredFailure.ok) {
       return {
@@ -267,6 +278,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
       planIndex: number;
     },
     input: AgentPiControllerActionInput,
+    toolContracts: ReadonlyMap<string, AgentPiToolContract>,
     signal: AbortSignal | undefined,
   ): Promise<
     | {
@@ -279,7 +291,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
         message: string;
       }
   > {
-    const tool = input.candidateTools.find((candidate) => candidate.name === entry.call.toolName);
+    const tool = toolContracts.get(entry.call.toolName);
     if (!tool) {
       return {
         ok: false,
@@ -366,7 +378,7 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
 
   private argumentDraftIssues(
     draft: Pick<ParsedPiToolArgumentsDraft, "arguments" | "missingInputs">,
-    tool: AgentPiToolCard,
+    tool: AgentPiToolContract,
   ): string[] {
     const missing = draft.missingInputs
       .map((input) => input.trim())
@@ -395,17 +407,20 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
     return parallelToolCalls ? ready : ready.slice(0, 1);
   }
 
-  private buildControllerInput(
+  private buildControllerContext(
     input: AgentPiAssistantCompileRequest,
     allowedTools: string[],
-  ): AgentPiControllerActionInput {
+  ): AgentPiControllerContext {
     const tools = input.request.tools ?? [];
     const base = this.buildPromptInput(input);
     const allowed = new Set(allowedTools);
     const candidateTools = tools.filter((tool) => allowed.has(tool.function.name));
     return {
-      ...base,
-      candidateTools: this.planningProjector.projectToolCards(candidateTools),
+      input: {
+        ...base,
+        candidateTools: this.planningProjector.projectToolCards(candidateTools),
+      },
+      toolContracts: new Map(candidateTools.map((tool) => [tool.function.name, authoritativeToolCard(tool)])),
     };
   }
 
@@ -422,6 +437,20 @@ export class AgentPiAssistantCompiler implements AgentPiAssistantCompilerPort {
       },
     };
   }
+}
+
+function authoritativeToolCard(tool: PiOpenAiTool): AgentPiToolContract {
+  return deepFreeze({
+    name: tool.function.name,
+    description: tool.function.description,
+    parameters: structuredClone(tool.function.parameters),
+  });
+}
+
+function deepFreeze<T>(value: T): T {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const nested of Object.values(value as Record<string, unknown>)) deepFreeze(nested);
+  return Object.freeze(value);
 }
 
 function toolNames(tools: readonly PiOpenAiTool[]): string[] {

@@ -2,44 +2,17 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { parsePluginTomlConfig, readPluginTomlConfig, runMcpTool, z } = require("@senera/tool-plugin-sdk");
+const { readPluginTomlConfig, runMcpTool } = require("@senera/tool-plugin-sdk");
 const { Schema: ArgumentSchema } = require("./Schemas/WeatherToolArgumentsSchema.js");
 const { Schema: ResultSchema } = require("./Schemas/WeatherToolResultSchema.js");
+const { configuration } = require("./PluginConfig.definition.cjs");
 
 const ConfigFileName = "PluginConfig.toml";
-const DefaultTimeoutMs = 15000;
-const DefaultStateDir = ".state";
 const ProviderNames = {
   WeatherApi: "weatherapi",
   QWeather: "qweather",
   VisualCrossing: "visual_crossing",
 };
-
-const ConfigSchema = z
-  .object({
-    senera: z.unknown().optional(),
-    weather: z
-      .object({
-        provider: z
-          .enum([ProviderNames.WeatherApi, ProviderNames.QWeather, ProviderNames.VisualCrossing])
-          .default(ProviderNames.QWeather),
-        api_keys: z.array(z.string().trim().min(1)).default([]),
-        api_host: z.string().trim().min(1).optional(),
-        weather_api_host: z.string().trim().min(1).optional(),
-        base_url: z.string().trim().min(1).optional(),
-        geo_base_url: z.string().trim().min(1).optional(),
-        language: z.string().trim().min(1).default("zh"),
-        unit: z.enum(["metric", "imperial"]).default("metric"),
-        timeout_seconds: z.coerce
-          .number()
-          .positive()
-          .max(300)
-          .default(DefaultTimeoutMs / 1000),
-        state_dir: z.string().trim().min(1).default(DefaultStateDir),
-      })
-      .strict(),
-  })
-  .strict();
 
 const Providers = {
   [ProviderNames.WeatherApi]: {
@@ -129,7 +102,7 @@ function formatWeatherOutput(result) {
 
 function readConfig() {
   const parsed = readConfigFile();
-  const result = ConfigSchema.safeParse(parsed);
+  const result = configuration.schema.safeParse(parsed);
   if (!result.success) {
     throw new Error(`Weather 插件配置无效：${path.resolve(process.cwd(), ConfigFileName)}：${result.error.message}`);
   }
@@ -148,13 +121,7 @@ function readSecondsAsMilliseconds(valueSeconds) {
 }
 
 function readConfigFile() {
-  const configPath = path.resolve(process.cwd(), ConfigFileName);
-  if (!fs.existsSync(configPath)) {
-    return parsePluginTomlConfig("[weather]\n");
-  }
-  return readPluginTomlConfig(ConfigFileName, {
-    exampleFileName: "PluginConfig.example.toml",
-  });
+  return readPluginTomlConfig(ConfigFileName);
 }
 
 function withEnvironmentConfig(config) {

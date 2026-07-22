@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 3,
-  "entrypoints": ["senera/tool/decision", "senera/execution/fallback", "senera/resource/decision"],
+  "schemaVersion": 4,
+  "entrypoints": ["senera/tool/decision", "senera/resource/decision"],
   "compiler": {
     "name": "opa",
     "version": "1.18.2"
@@ -9,11 +9,7 @@
     "policies": [
       {
         "file": "AgentToolApprovalPolicy.rego",
-        "sha256": "8609ae60158bec0ec4c8e77d0ce6f025f625097fa6908bd2f711f5d1e27f9bae"
-      },
-      {
-        "file": "AgentExecutionFallbackPolicy.rego",
-        "sha256": "512005d39832806e2bc7fafe6d4e44aa1f5263d0c7c23cafb456b45fd07828dc"
+        "sha256": "3903cccbd9f1d6808e20da7cd61de6ec28459a5c93c4dc7e9a69067fbe6657c5"
       },
       {
         "file": "AgentResourceAccessPolicy.rego",
@@ -22,11 +18,11 @@
     ],
     "data": {
       "file": "AgentToolApprovalPolicy.data.json",
-      "sha256": "9e164c031609adc8ec001354f076e1bb8badaa7891ba8d6a9efd029b12910657"
+      "sha256": "751067c55f3c610b0f674beac783bfbe95c0b4ec5269a631280840cda06fc369"
     },
     "wasm": {
       "file": "AgentToolApprovalPolicy.wasm",
-      "sha256": "151e8ba1a9975af7333be5ab612dec4b79f10f5496982c218436478f33634324"
+      "sha256": "5af8a270ada34007e3675d85243fc74a01d7698e7065b7e86c84e16fa0a3458f"
     }
   }
 }

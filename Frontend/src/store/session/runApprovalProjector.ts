@@ -3,7 +3,6 @@ import {
   type ApprovalRequestedData,
   type ApprovalResolvedData,
   type ApprovalSubjectData,
-  type ExecutionFallbackStartedData,
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
@@ -40,7 +39,7 @@ export const runApprovalEventHandlers = {
     upsertStep(run, {
       id: approvalStepId(data.approvalId),
       kind: "tool",
-      title: approvalStepTitle(data.subject, data.status),
+      title: approvalStepTitle(data.status),
       description: `${data.subject.toolName} · ${data.reason}`,
       status: "pending",
       startedAt: data.createdAt,
@@ -77,31 +76,13 @@ export const runApprovalEventHandlers = {
     upsertStep(run, {
       id: approvalStepId(data.approvalId),
       kind: "tool",
-      title: approvalStepTitle(data.subject, data.status),
+      title: approvalStepTitle(data.status),
       description: approvalResolvedDescription(data),
       status: approvalStepStatus[data.status],
       startedAt: data.createdAt,
       endedAt: data.resolvedAt,
       toolName: data.subject.toolName,
       toolArgs: approvalToolArguments(data.subject),
-    });
-  },
-
-  [EventKinds.ExecutionFallbackStarted]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    const data = env.data as ExecutionFallbackStartedData;
-    upsertStep(run, {
-      id: executionFallbackStepId(data),
-      kind: "tool",
-      title: frontendMessage("workflow.projection.executionFallbackStarted"),
-      description: `${data.pluginName} · ${data.toolName} · ${data.rule}`,
-      status: "done",
-      startedAt: env.timestamp,
-      endedAt: env.timestamp,
-      toolName: data.toolName,
-      callId: data.toolCallId,
-      detailJson: data,
     });
   },
 } satisfies RunEventHandlerMap;
@@ -127,11 +108,7 @@ function approvalResolvedDescription(data: ApprovalResolvedData): string {
   return [data.subject.toolName, data.message || data.reason].filter(Boolean).join(" · ");
 }
 
-function approvalStepTitle(subject: ApprovalSubjectData, status: ApprovalRunRecord["status"]): string {
-  const target =
-    subject.kind === "execution_fallback"
-      ? frontendMessage("workflow.projection.approvalTargetFallback")
-      : frontendMessage("workflow.projection.approvalTargetTool");
+function approvalStepTitle(status: ApprovalRunRecord["status"]): string {
   const statusLabel =
     status === "pending"
       ? frontendMessage("workflow.projection.approvalPending")
@@ -142,13 +119,9 @@ function approvalStepTitle(subject: ApprovalSubjectData, status: ApprovalRunReco
           : status === "expired"
             ? frontendMessage("workflow.projection.approvalExpired")
             : frontendMessage("workflow.projection.approvalCancelled");
-  return `${target}${statusLabel}`;
+  return `${frontendMessage("workflow.projection.approvalTargetTool")}${statusLabel}`;
 }
 
 function approvalToolArguments(subject: ApprovalSubjectData): Record<string, unknown> | undefined {
-  return subject.kind === "tool_call" ? subject.arguments : undefined;
-}
-
-function executionFallbackStepId(data: ExecutionFallbackStartedData): string {
-  return `execution-fallback-${data.toolCallId ?? data.approvalId ?? data.toolName}`;
+  return subject.arguments;
 }

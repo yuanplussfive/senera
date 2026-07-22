@@ -3,7 +3,6 @@ import type {
   SeneraTerminalBoundary,
   SeneraTerminalCapability,
   SeneraTerminalCapabilityProvider,
-  SeneraTerminalFallbackMetadata,
   SeneraTerminalPersistenceScope,
 } from "../Execution/SeneraTerminalTypes.js";
 import type { SeneraShellDialect } from "../Execution/SeneraShellCommand.js";
@@ -39,7 +38,6 @@ export interface AgentExecutionResourceTerminalMetadata {
   capabilityProviders?: Partial<Record<SeneraTerminalCapability, SeneraTerminalCapabilityProvider>>;
   persistenceScope?: SeneraTerminalPersistenceScope;
   sandboxId?: string;
-  fallback?: SeneraTerminalFallbackMetadata;
   columns: number;
   rows: number;
 }

@@ -12,11 +12,12 @@ import { MotionMessageItem } from "./MotionMessageItem";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { StreamingRow } from "./StreamingRow";
 import { useMessageHeightObserver } from "./useMessageHeightObserver";
-import { readStreamingDisplayActivityRevision, useStreamingDisplayTicker } from "./useStreamingDisplayTicker";
+import { useStreamingDisplayTicker } from "./useStreamingDisplayTicker";
 import { useVirtuosoAutoStickToBottom } from "./useVirtuosoAutoStickToBottom";
 
 interface MessageListProps {
   sessionId: string;
+  uploadUrl: string;
   messages: ChatMessage[];
   runs: RunRecord[];
   currentRun?: RunRecord;
@@ -61,6 +62,7 @@ function readMeasuredMessageKey(element: HTMLElement): string | null {
 
 export function MessageList({
   sessionId,
+  uploadUrl,
   messages,
   runs,
   currentRun,
@@ -92,16 +94,22 @@ export function MessageList({
     return map;
   }, [runs]);
   const streamingRun = currentRun?.status === "running" ? currentRun : undefined;
-  const items = useMemo(
-    () => (streamingRun ? [...messages, { __streaming: true as const, run: streamingRun }] : messages),
+  const displayedMessages = useMemo(
+    () => (streamingRun ? messages.filter((message) => !shouldDeferTerminalMessage(message, streamingRun)) : messages),
     [messages, streamingRun],
   );
-  const lastItemKey = items.length > 0 ? readMessageListItemKey(items[items.length - 1]) : "";
-  const displayActivityRevision = readStreamingDisplayActivityRevision(runs, currentRun);
+  const displayedMessageIds = useMemo(
+    () => new Set(displayedMessages.map((message) => message.id)),
+    [displayedMessages],
+  );
+  const items = useMemo(
+    () =>
+      streamingRun ? [...displayedMessages, { __streaming: true as const, run: streamingRun }] : displayedMessages,
+    [displayedMessages, streamingRun],
+  );
   const autoScroll = useVirtuosoAutoStickToBottom({
     itemCount: items.length,
     resetKey: sessionId,
-    activityKey: `${lastItemKey}:${displayActivityRevision}`,
     bottomThreshold: MESSAGE_LIST_BOTTOM_THRESHOLD,
   });
   const setAutoScrollScroller = autoScroll.scrollerRef;
@@ -210,6 +218,9 @@ export function MessageList({
                   <MotionMessageItem motionKey={`streaming:${item.run.requestId}`}>
                     <StreamingRow
                       run={item.run}
+                      hasActiveToolPrefaceMessage={
+                        item.run.displayMessageId !== undefined && displayedMessageIds.has(item.run.displayMessageId)
+                      }
                       approvalDisabled={approvalDisabled}
                       onResolveApproval={onResolveApproval}
                       onResolveInteractionInput={onResolveInteractionInput}
@@ -220,7 +231,7 @@ export function MessageList({
             }
             const shouldHighlightCompletedStream =
               item.role === "assistant" && item.requestId === completedRunIdToHighlight;
-            const isRecentMessage = index >= messages.length - 2;
+            const isRecentMessage = index >= displayedMessages.length - 2;
             const shouldAnimateMount = shouldHighlightCompletedStream || isRecentMessage;
             return (
               <div
@@ -236,6 +247,7 @@ export function MessageList({
                   <MessageRow
                     message={item}
                     run={item.requestId ? runsByRequestId.get(item.requestId) : undefined}
+                    uploadUrl={uploadUrl}
                     onClickBubble={() => {
                       if (item.role !== "user") return;
                       if (!item.requestId) return;
@@ -284,4 +296,8 @@ export function MessageList({
       </div>
     </PerformanceMonitor>
   );
+}
+
+function shouldDeferTerminalMessage(message: ChatMessage, run: RunRecord): boolean {
+  return message.id === run.displayMessageId && (run.visibleKind === "final_answer" || run.visibleKind === "ask_user");
 }

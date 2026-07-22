@@ -52,24 +52,16 @@ export interface ToolRuntimeCapabilitiesManifest {
   ResumableEvents?: boolean;
 }
 
-export type ToolResourceAccessIntentManifest = "inspect" | "read" | "create" | "replace" | "remove" | "execute";
-
-export interface ToolResourceIntentCaseManifest {
-  Equals: string | number | boolean | null;
-  Intent: ToolResourceAccessIntentManifest;
-}
-
-export type ToolResourceIntentManifest =
-  | ToolResourceAccessIntentManifest
-  | {
-      Selector: string;
-      Cases: ToolResourceIntentCaseManifest[];
-      Default: ToolResourceAccessIntentManifest;
-    };
-
+/**
+ * Resource capabilities are registered by the host. Plugins depend on their
+ * stable contract identifier instead of the projector knowing plugin-specific
+ * resource kinds.
+ */
 export interface ToolResourceArgumentManifest {
+  Capability: string;
   Pointer: string;
-  Intent: ToolResourceIntentManifest;
+  Binding?: string;
+  Parameters?: Record<string, unknown>;
 }
 
 export interface ToolApprovalManifest {
@@ -77,11 +69,17 @@ export interface ToolApprovalManifest {
   Reason?: string;
 }
 
+export const ToolExecutionTargets = {
+  Sandbox: "Sandbox",
+  Local: "Local",
+} as const;
+
+export type ToolExecutionTarget = (typeof ToolExecutionTargets)[keyof typeof ToolExecutionTargets];
+
 export interface ToolExecutionManifest {
-  Boundary: "Local" | "Sandbox" | "SandboxPreferred";
+  Targets: ToolExecutionTarget[];
   Network: "Allow" | "Deny";
   Workspace: "ReadOnly" | "ReadWrite";
-  LocalFallback: "Allow" | "Deny";
 }
 
 export interface ToolEvidenceCapabilityManifest {

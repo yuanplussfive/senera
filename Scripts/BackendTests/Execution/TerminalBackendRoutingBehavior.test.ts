@@ -1,10 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   TerminalSidecarClientFrameDecoder,
   encodeTerminalSidecarServerMessage,
   type TerminalSidecarClientMessage,
 } from "@senera/terminal-sidecar";
-import type { AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { SeneraMicrosandboxBackend } from "../../../Source/AgentSystem/Execution/SeneraMicrosandboxBackend.js";
 import type {
   SeneraMicrosandboxCreateRequest,
@@ -40,8 +39,7 @@ describe("terminal backend routing", () => {
     expect(sandbox.spawnInvocations).toEqual([{ command: "/bin/sh", args: ["-lc", "printf sandbox-ok"] }]);
   });
 
-  it("authorizes a dialect capability fallback and re-resolves for the local backend", async () => {
-    const events: AgentDomainEvent[] = [];
+  it("fails a sandbox selection with an unsupported dialect without starting local execution", async () => {
     const sandbox = new FakeTerminalBackend("sandbox-posix", "sandbox", [SeneraTerminalCapabilityNames.Persistent]);
     const local = new FakeTerminalBackend(
       "local-powershell",
@@ -49,35 +47,17 @@ describe("terminal backend routing", () => {
       [SeneraTerminalCapabilityNames.Persistent],
       "powershell",
     );
-    const spawn = createSeneraAuthorizedTerminalSpawner({
-      sandbox,
-      local,
-      fallbackAuthorizer: {
-        authorize: vi.fn(async () => ({ rule: "shell.dialect.approved", reason: "approved" })),
-      },
-    });
+    const spawn = createSeneraAuthorizedTerminalSpawner({ sandbox, local });
 
-    const child = await spawn("host-shell-must-not-be-used", [], {
-      ...sandboxOptions(),
-      shellCommand: { mode: "shell", dialect: "powershell", script: "Write-Output local-ok" },
-      profile: {
-        ...sandboxOptions().profile!,
-        localFallback: "allow",
-        fallbackContext: fallbackContext((event) => events.push(event)),
-      },
-    });
+    await expect(
+      spawn("host-shell-must-not-be-used", [], {
+        ...sandboxOptions(),
+        shellCommand: { mode: "shell", dialect: "powershell", script: "Write-Output local-ok" },
+      }),
+    ).rejects.toMatchObject({ code: "sandbox_unavailable", details: { reason: "shell_dialect_unsupported" } });
 
     expect(sandbox.spawnInvocations).toEqual([]);
-    expect(local.spawnInvocations).toEqual([{ command: "pwsh.exe", args: ["-Command", "Write-Output local-ok"] }]);
-    expect(child.metadata.fallback).toEqual(
-      expect.objectContaining({ reason: "shell_dialect_unsupported", rule: "shell.dialect.approved" }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        kind: "execution.fallback.started",
-        data: expect.objectContaining({ reason: "shell_dialect_unsupported" }),
-      }),
-    );
+    expect(local.spawnInvocations).toEqual([]);
   });
 
   it("runs an interactive terminal inside microsandbox and releases the guest after exit", async () => {
@@ -117,9 +97,7 @@ describe("terminal backend routing", () => {
     expect(child.resize).toBeTypeOf("function");
   });
 
-  it("uses typed capability fallback metadata only after authorization", async () => {
-    const calls: string[] = [];
-    const events: AgentDomainEvent[] = [];
+  it("runs a local selection through only a compatible local backend", async () => {
     const sandbox = new FakeTerminalBackend("sandbox-no-resize", "sandbox", [
       SeneraTerminalCapabilityNames.Persistent,
       SeneraTerminalCapabilityNames.InteractiveInput,
@@ -131,48 +109,26 @@ describe("terminal backend routing", () => {
       SeneraTerminalCapabilityNames.Resize,
       SeneraTerminalCapabilityNames.Signals,
     ]);
-    const spawn = createSeneraAuthorizedTerminalSpawner({
-      local,
-      sandbox,
-      fallbackAuthorizer: {
-        authorize: vi.fn(async () => {
-          calls.push("authorize");
-          return { rule: "terminal.capability.approved", reason: "approved", scope: "once" as const };
-        }),
-      },
-    });
+    const spawn = createSeneraAuthorizedTerminalSpawner({ local, sandbox });
 
     const child = await spawn("shell", [], {
       ...sandboxOptions(),
       requiredCapabilities: [SeneraTerminalCapabilityNames.Resize],
       profile: {
         ...sandboxOptions().profile!,
-        localFallback: "allow",
-        fallbackContext: fallbackContext((event) => {
-          calls.push("audit");
-          events.push(event);
-        }),
+        backend: "local",
       },
     });
 
-    expect(calls).toEqual(["authorize", "audit"]);
     expect(sandbox.spawnCalls).toBe(0);
     expect(local.spawnCalls).toBe(1);
     expect(child.metadata).toEqual(
       expect.objectContaining({
-        requestedBoundary: "sandbox",
+        requestedBoundary: "local",
         effectiveBoundary: "local",
         backendId: "local-full",
-        fallback: expect.objectContaining({
-          reason: "terminal_capability_unsupported",
-          rule: "terminal.capability.approved",
-        }),
       }),
     );
-    expect(events[0]).toMatchObject({
-      kind: "execution.fallback.started",
-      data: { reason: "terminal_capability_unsupported" },
-    });
   });
 });
 
@@ -362,33 +318,10 @@ function sandboxOptions(): SeneraTerminalSpawnOptions {
       name: "sandbox-terminal",
       kind: "shell",
       backend: "sandbox",
-      localFallback: "deny",
       microsandbox: {
         workspaceMount: "writable",
         network: "disabled",
       },
-    },
-  };
-}
-
-function fallbackContext(onEvent: (event: AgentDomainEvent) => void) {
-  return {
-    sessionId: "session-terminal-fallback",
-    requestId: "request-terminal-fallback",
-    step: 1,
-    onEvent,
-    subject: {
-      pluginName: "AgentExecutionResourceToolPlugin",
-      pluginTitle: "Execution Resources",
-      pluginVersion: "0.1.0",
-      manifestDigest: "digest",
-      rootKind: "System" as const,
-      trustLevel: "System",
-      toolName: "ShellStartTool",
-      boundary: "SandboxPreferred" as const,
-      network: "Allow" as const,
-      workspace: "ReadWrite" as const,
-      permissions: ["process:shell"],
     },
   };
 }

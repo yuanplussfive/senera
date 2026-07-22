@@ -6,13 +6,18 @@
         "kind": "typescript",
         "identity": "./ToolSignature.ts#default",
         "file": "./ToolSignature.ts",
-        "sha256": "4a15b9de0860d08ab4e0ca52d38980b6a9bcf5a69377769ec18032ec21677e13"
+        "sha256": "65d4ad6d10ddaa6054ff3acf5aaa004d0c8ebcc5152aacbbd4aa055415951577"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
         "properties": {
           "query": { "type": "string", "description": "需要完成的任务、问题、错误文本或希望寻找的能力。" },
+          "preferredSources": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "优先检索的插件来源；仅影响排序，不排除其他来源。可用值由当前插件目录动态注入。"
+          },
           "includeLoaded": { "type": "boolean", "description": "是否包含当前已经加载进提示词的工具；默认 false。" }
         },
         "required": ["query"],

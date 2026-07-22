@@ -6,7 +6,7 @@
         "kind": "typescript",
         "identity": "./ToolSignature.ts#default",
         "file": "./ToolSignature.ts",
-        "sha256": "86ebb6cdf519b994f3911e800a32d5065257fcf80bb1f6fdebab2faf42144e24"
+        "sha256": "7fc830c2a9206968b9ab2a37305fda60abfc0d6675c80324e63470a846e7564e"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -20,7 +20,29 @@
             "type": "string",
             "description": "The visual task requested by the user, such as \"describe\", \"ocr\", \"inspect-ui\", or \"answer-question\"."
           },
-          "question": { "type": "string", "description": "Optional natural-language question about the image." }
+          "question": { "type": "string", "description": "Optional natural-language question about the image." },
+          "resources": {
+            "type": "object",
+            "properties": {
+              "image": {
+                "type": "object",
+                "properties": {
+                  "uploadUri": { "type": "string" },
+                  "filePath": { "type": "string" },
+                  "name": { "type": "string" },
+                  "mime": { "type": "string" },
+                  "declaredMime": { "type": "string" },
+                  "size": { "type": "number" },
+                  "sha256": { "type": "string" }
+                },
+                "required": ["uploadUri", "filePath", "name", "mime", "size", "sha256"],
+                "additionalProperties": false,
+                "description": "A host-resolved upload exposed through a declared public tool resource binding."
+              }
+            },
+            "additionalProperties": false,
+            "description": "Host-authorized upload descriptor populated from the declared resource binding."
+          }
         },
         "required": ["uploadUri", "task"],
         "additionalProperties": false,

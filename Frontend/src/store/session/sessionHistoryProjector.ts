@@ -111,13 +111,8 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
       .filter((message): message is ChatMessage => Boolean(message));
     const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
     const activeRequestId = state.historyActiveRequestIds[sessionId] ?? undefined;
-    if (data.refresh) {
-      mergeHistoryMessages(session, nextMessages);
-    } else {
-      // Run events restore visible intermediate messages; conversation entries restore durable turns.
-      // Merge them so a tool preface cannot be erased when history replay completes.
-      mergeHistoryMessages(session, nextMessages);
-    }
+    // Run events restore live progress messages and execution details; conversation entries restore durable turns.
+    mergeHistoryMessages(session, nextMessages);
     reconcileHistoryStepRuns(session, stepRuns);
     closeRecoveredRunningRuns(
       session,

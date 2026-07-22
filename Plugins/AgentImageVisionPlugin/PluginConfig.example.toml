@@ -1,0 +1,52 @@
+[senera]
+# 启用插件
+enabled = false
+
+[vision]
+# 图片大小上限
+maxImageMb = 10
+# 允许图片类型
+allowedMimes = [ "image/png", "image/jpeg", "image/webp", "image/gif" ]
+# 系统提示词
+systemTemplate = "You analyze user-provided images from Senera uploads. Answer only from visible evidence in the image. If information is unclear, say it is unclear."
+# 用户提示词
+promptTemplate = "Task: {{ task }}\\nQuestion: {{ question }}\\nImage: {{ name }} ({{ mime }}, {{ size }} bytes)\\nReturn concise observations and directly answer the question when possible."
+
+[vision.provider]
+# 供应商 ID
+id = ""
+# 供应商名称
+title = ""
+# 供应商类型
+kind = "OpenAICompatible"
+# 接口协议
+endpoint = "Responses"
+# 服务地址
+baseUrl = ""
+# 接口密钥
+apiKey = ""
+# 接口版本
+apiVersion = ""
+# 模型
+model = ""
+# 温度
+temperature = 0.2
+# 最大输出 tokens
+maxOutputTokens = -1
+# 请求超时
+timeoutSeconds = 120
+# 首 token 超时
+firstTokenTimeoutSeconds = -1
+# 总请求时限
+maxRequestSeconds = -1
+# 网络重试次数
+maxNetworkRetries = 2
+# 重试基础等待
+retryBaseDelaySeconds = 1
+# 重试最大等待
+retryMaxDelaySeconds = 30
+# Retry-After 最大等待
+retryAfterMaxDelaySeconds = 60
+
+# 附加请求头
+[vision.provider.headers]

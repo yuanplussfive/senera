@@ -226,6 +226,67 @@ test("model stream events keep visible answer text while closing the model step"
   });
 });
 
+test("planner intent classifies the next stream as a preface and the following stream as an answer", () => {
+  const state = createTestState();
+
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "搜索工作区工具" }, { sequence: 1 }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ActionPlannerStageCompleted,
+      { stage: "prepareInteraction", selectedAction: "CallTools" },
+      { step: 1, sequence: 2, phase: "decision" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.ModelStarted, { model: "test-model" }, { step: 1, sequence: 3, phase: "model" }),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ModelDelta,
+      { text: "我先搜索当前已加载的工具。" },
+      { step: 1, sequence: 4, phase: "model" },
+    ),
+  );
+
+  let run = readTestRun(state);
+  expect(run.visibleKind).toBe("tool_preface");
+  expect(run.decisionMode).toBe("tool_candidate");
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ToolCallsPlanned,
+      {
+        toolCount: 1,
+        tools: ["AgentToolSearch"],
+        status: "planned",
+        executionMode: "sequential",
+        batchId: "batch-search",
+      },
+      { step: 1, sequence: 5, phase: "tool" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ToolCallStarted,
+      { index: 0, toolName: "AgentToolSearch", callId: "call-search" },
+      { step: 1, sequence: 6, phase: "tool" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.ModelDelta, { text: "工具结果已经足够。" }, { step: 1, sequence: 7, phase: "model" }),
+  );
+
+  run = readTestRun(state);
+  expect(run.visibleKind).toBe("final_answer");
+  expect(run.decisionMode).toBe("final_text");
+});
+
 test("pi trace lifecycle merges started and completed events into one scoped step", () => {
   const state = createTestState();
 

@@ -9,6 +9,7 @@ import { summarizeRun } from "./runSummary";
 import { shouldLoadWorkflowCanvas } from "./canvasLoadPolicy";
 import { RunSelector, RunSummaryStrip } from "./WorkflowRunControls";
 import { motionSprings, motionTimings, readFocusPanelVariants, useMotionLevel } from "../../shared/motion";
+import type { WorkflowLayoutDirection } from "./layout";
 
 export type ThinkingTimelineDockTab = {
   id: string;
@@ -311,7 +312,7 @@ function TimelineFocusDialog({
               </div>
             </div>
           ) : null}
-          <CanvasArea run={run} focusVersion={open ? 1 : 0} />
+          <CanvasArea run={run} focusVersion={open ? 1 : 0} layoutDirection="horizontal" />
         </motion.div>
       </DialogContent>
     </Dialog>
@@ -323,11 +324,13 @@ function TimelineFocusDialog({
 function CanvasArea({
   run,
   focusVersion = 0,
+  layoutDirection = "vertical",
   focusOpen = false,
   onToggleFocus,
 }: {
   run?: RunRecord;
   focusVersion?: number;
+  layoutDirection?: WorkflowLayoutDirection;
   focusOpen?: boolean;
   onToggleFocus?: () => void;
 }): JSX.Element {
@@ -347,7 +350,7 @@ function CanvasArea({
     <div className="relative flex min-h-0 flex-1 overflow-hidden bg-transparent" data-workflow-execution-content>
       <CanvasFocusAction focusOpen={focusOpen} onToggleFocus={onToggleFocus} />
       <Suspense fallback={<CanvasLoading />}>
-        <LazyThinkingTimelineCanvas run={run} focusVersion={focusVersion} />
+        <LazyThinkingTimelineCanvas run={run} focusVersion={focusVersion} layoutDirection={layoutDirection} />
       </Suspense>
     </div>
   );

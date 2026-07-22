@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -13,8 +13,11 @@ const {
   readWorkflowViewportTarget,
 } = await import("../../../Frontend/src/features/workflow/ThinkingTimelineCanvas.tsx");
 const { StepNode } = await import("../../../Frontend/src/features/workflow/StepNode.tsx");
+const { layoutSteps } = await import("../../../Frontend/src/features/workflow/layout.ts");
+const { AgentExecutionFeed } = await import("../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx");
 const { ChatHeader } = await import("../../../Frontend/src/features/chat/ChatHeader.tsx");
-const { ReactFlowProvider } = await import("@xyflow/react");
+const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
+const { Position, ReactFlowProvider } = await import("@xyflow/react");
 const { useStore } = await import("../../../Frontend/src/store/sessionStore.ts");
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
 
@@ -42,6 +45,39 @@ test("thinking timeline renders its empty state and opens a focused workflow vie
   expect(document.querySelector("[data-window-drag-region]")).not.toContainElement(focusButton);
   await user.click(focusButton);
   expect(screen.getByRole("dialog", { name: frontendMessage("workflow.panel.title") })).toBeInTheDocument();
+});
+
+test("expanding the workflow keeps the dock vertical and opens a horizontal canvas", async () => {
+  const run = createRun({
+    requestId: "run-layout-direction",
+    steps: [createStep({ id: "layout-step", title: "Inspect layout direction" })],
+  });
+  resetFrontendStore({
+    activeSessionId: "session-a",
+    sessionOrder: ["session-a"],
+    sessions: {
+      "session-a": createSession([run]),
+    },
+  });
+  const user = userEvent.setup();
+  renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "panel" }));
+
+  await waitFor(() =>
+    expect(
+      document.querySelector("[data-workflow-canvas-pan='vertical'][data-workflow-layout-direction='vertical']"),
+    ).toBeInTheDocument(),
+  );
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("workflow.panel.focus") }));
+
+  await waitFor(() =>
+    expect(
+      document.querySelector("[data-workflow-canvas-pan='free'][data-workflow-layout-direction='horizontal']"),
+    ).toBeInTheDocument(),
+  );
+  expect(
+    document.querySelector("[data-workflow-canvas-pan='vertical'][data-workflow-layout-direction='vertical']"),
+  ).toBeInTheDocument();
 });
 
 test("chat header exposes one neutral workflow tool entry for panel toggling", async () => {
@@ -156,13 +192,16 @@ test("thinking timeline canvas lays out and renders real workflow nodes", async 
     "data-workflow-canvas-bounds",
     "content",
   );
+  expect(document.querySelector("[data-workflow-layout-direction='vertical']")).toBeInTheDocument();
 });
 
-test("focused workflow canvas allows free panning beyond the compact content bounds", async () => {
+test("focused workflow canvas uses a horizontal layout with free panning", async () => {
   const run = createRun({
     steps: [createStep({ id: "focused", title: "Inspect focused workflow" })],
   });
-  renderWithFrontendProviders(React.createElement(ThinkingTimelineCanvas, { run, focusVersion: 1 }));
+  renderWithFrontendProviders(
+    React.createElement(ThinkingTimelineCanvas, { run, focusVersion: 1, layoutDirection: "horizontal" }),
+  );
 
   expect(await screen.findByText("Inspect focused workflow")).toBeInTheDocument();
   expect(document.querySelector("[data-workflow-canvas-pan]")).toHaveAttribute("data-workflow-canvas-pan", "free");
@@ -170,6 +209,29 @@ test("focused workflow canvas allows free panning beyond the compact content bou
     "data-workflow-canvas-bounds",
     "unbounded",
   );
+  expect(document.querySelector("[data-workflow-layout-direction='horizontal']")).toBeInTheDocument();
+});
+
+test("workflow graph switches its rank direction and connection anchors as one layout contract", () => {
+  const steps = [createStep({ id: "first", title: "First" }), createStep({ id: "second", title: "Second" })];
+  const vertical = layoutSteps(steps, "vertical");
+  const horizontal = layoutSteps(steps, "horizontal");
+
+  expect(vertical.nodes[1].position.y).toBeGreaterThan(vertical.nodes[0].position.y);
+  expect(vertical.nodes[1].position.x).toBe(vertical.nodes[0].position.x);
+  expect(vertical.nodes[0]).toMatchObject({
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
+    data: { layout: { direction: "vertical" } },
+  });
+
+  expect(horizontal.nodes[1].position.x).toBeGreaterThan(horizontal.nodes[0].position.x);
+  expect(horizontal.nodes[1].position.y).toBe(horizontal.nodes[0].position.y);
+  expect(horizontal.nodes[0]).toMatchObject({
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
+    data: { layout: { direction: "horizontal" } },
+  });
 });
 
 test("workflow viewport starts terminal runs at the beginning and follows live runs at the latest step", () => {
@@ -189,16 +251,30 @@ test("workflow viewport starts terminal runs at the beginning and follows live r
   const startViewport = readStartWorkflowViewport(
     {
       position: { x: 100, y: 200 },
+      data: workflowNodeData("vertical", 240, 100),
     },
-    300,
+    { width: 300, height: 400 },
+    "vertical",
   );
   expect(startViewport.x + (100 + 120) * startViewport.zoom).toBeCloseTo(150);
   expect(startViewport.y + 200 * startViewport.zoom).toBeCloseTo(24);
+
+  const horizontalStartViewport = readStartWorkflowViewport(
+    {
+      position: { x: 100, y: 200 },
+      data: workflowNodeData("horizontal", 240, 100),
+    },
+    { width: 800, height: 400 },
+    "horizontal",
+  );
+  expect(horizontalStartViewport.x + 100 * horizontalStartViewport.zoom).toBeCloseTo(24);
+  expect(horizontalStartViewport.y + (200 + 50) * horizontalStartViewport.zoom).toBeCloseTo(200);
 });
 
 test("step node presents failed tool identity, error, status, and duration", () => {
   renderWorkflowNode({
     data: {
+      layout: workflowNodeLayout("vertical"),
       kind: "step",
       step: createStep({
         kind: "tool",
@@ -224,6 +300,7 @@ test("step node presents failed tool identity, error, status, and duration", () 
 test("step node presents running steps and grouped child-agent scopes", () => {
   const view = renderWorkflowNode({
     data: {
+      layout: workflowNodeLayout("vertical"),
       kind: "step",
       step: createStep({ status: "running", title: "Calling model" }),
     },
@@ -237,6 +314,7 @@ test("step node presents running steps and grouped child-agent scopes", () => {
       null,
       React.createElement(StepNode, {
         data: {
+          layout: workflowNodeLayout("horizontal"),
           kind: "scope",
           group: {
             id: "scope-research",
@@ -251,6 +329,54 @@ test("step node presents running steps and grouped child-agent scopes", () => {
   );
   expect(screen.getByText("子代理 · researcher")).toBeVisible();
   expect(screen.getByText("Research workflow")).toBeVisible();
+  expect(document.querySelector(".react-flow__handle-left")).toBeInTheDocument();
+  expect(document.querySelector(".react-flow__handle-right")).toBeInTheDocument();
+});
+
+test("execution feed keeps action batches summarized until the user expands them", async () => {
+  const user = userEvent.setup();
+  const initialRun = createToolBatchRun(["WorkspaceReadFile", "WorkspaceSearchFiles"]);
+  const view = renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run: initialRun }));
+  const group = document.querySelector("[data-feed-group='tools:batch-actions']");
+
+  expect(screen.queryByText("tool_preface")).not.toBeInTheDocument();
+  expect(group).toBeInstanceOf(HTMLButtonElement);
+  expect(group).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByText("WorkspaceReadFile")).not.toBeInTheDocument();
+  expect(screen.queryByText("WorkspaceSearchFiles")).not.toBeInTheDocument();
+
+  await user.click(group);
+  await waitFor(() => expect(screen.getByText("WorkspaceReadFile")).toBeVisible());
+  expect(screen.getByText("WorkspaceSearchFiles")).toBeVisible();
+  expect(group).toHaveAttribute("aria-expanded", "true");
+
+  view.rerender(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(AgentExecutionFeed, {
+        run: createToolBatchRun(["WorkspaceReadFile", "WorkspaceSearchFiles", "WorkspaceListDirectory"]),
+      }),
+    ),
+  );
+  expect(screen.getByText("WorkspaceListDirectory")).toBeVisible();
+  expect(document.querySelector("[data-feed-group='tools:batch-actions']")).toHaveAttribute("aria-expanded", "true");
+});
+
+test("execution feed keeps workflow steps while the answer body is projected below it", () => {
+  const run = createToolBatchRun(["WorkspaceReadFile"]);
+  run.visibleKind = "final_answer";
+  run.displayText = "最终回答正文";
+
+  renderWithFrontendProviders(
+    React.createElement(AgentExecutionFeed, {
+      run,
+      showBody: false,
+    }),
+  );
+
+  expect(document.querySelector("[data-feed-group='tools:batch-actions']")).toBeInTheDocument();
+  expect(screen.queryByText("最终回答正文")).not.toBeInTheDocument();
 });
 
 function renderWorkflowNode(props) {
@@ -264,8 +390,20 @@ function viewportNode(id, data) {
     id,
     type: "step",
     position: { x: 0, y: 0 },
-    data,
+    data: { layout: workflowNodeLayout("vertical"), ...data },
   };
+}
+
+function workflowNodeData(direction, width, height) {
+  return {
+    layout: workflowNodeLayout(direction, width, height),
+    kind: "step",
+    step: createStep(),
+  };
+}
+
+function workflowNodeLayout(direction, width = 240, height = 76) {
+  return { direction, width, height };
 }
 
 function createSession(runs) {
@@ -311,4 +449,47 @@ function createStep(overrides = {}) {
     startedAt: "2026-07-11T00:00:00.000Z",
     ...overrides,
   };
+}
+
+function createToolBatchRun(toolNames) {
+  const toolBatch = { id: "batch-actions", size: toolNames.length, executionMode: "parallel" };
+  return createRun({
+    requestId: "run-action-batch",
+    status: "running",
+    endedAt: undefined,
+    steps: [
+      createStep({
+        id: "batch-preface",
+        kind: "decision",
+        title: "Preface before tool calls",
+        description: "我先检查这一批工作区文件。",
+        status: "done",
+        decisionKind: "tool_preface",
+        toolBatch,
+      }),
+      createStep({
+        id: "batch-plan",
+        kind: "tool",
+        title: "Prepare action batch",
+        status: "done",
+        toolBatch,
+      }),
+      ...toolNames.map((toolName, index) =>
+        createStep({
+          id: `tool-${index}`,
+          kind: "tool",
+          title: `Call ${toolName}`,
+          status: "done",
+          toolName,
+          toolBatch: { ...toolBatch, index },
+        }),
+      ),
+      createStep({
+        id: "compose-answer",
+        kind: "model",
+        title: "Compose answer",
+        status: "running",
+      }),
+    ],
+  });
 }

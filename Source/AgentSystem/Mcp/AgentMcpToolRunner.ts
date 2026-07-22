@@ -9,13 +9,13 @@ import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { buildAgentMcpExecutionProfile } from "./AgentMcpExecutionProfile.js";
 import { resolveMcpServerManifest } from "./AgentMcpManifestResolver.js";
 import { withAgentMcpToolClient } from "./AgentMcpToolClient.js";
-import { bindAgentToolFallbackContext } from "../ToolRuntime/AgentToolFallbackContext.js";
 import { AgentMcpToolClientPool } from "./AgentMcpToolClientPool.js";
 import type { AgentMcpToolCallOptions, AgentMcpToolClient, AgentMcpToolProgress } from "./AgentMcpToolClient.js";
 import { AgentToolExecutionReporter } from "../ToolRuntime/AgentToolExecutionReporter.js";
 import { resolveAgentToolRuntimeCapabilities } from "../ToolRuntime/AgentToolRuntimeCapabilities.js";
 import { projectAgentMcpPluginRuntimeEnvironment } from "./AgentMcpPluginRuntimeEnvironment.js";
 import { projectAgentMcpResourceArguments } from "./AgentMcpResourceArgumentProjector.js";
+import { createAgentMcpDefaultResourceCapabilities } from "./AgentMcpDefaultResourceCapabilities.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import type { AgentInteractionInputOwner } from "../Interaction/AgentInteractionInputTypes.js";
 
@@ -62,16 +62,20 @@ export class AgentMcpToolRunner {
         tool.plugin.manifest,
         handler.server,
       );
-      const executionProfile = bindAgentToolFallbackContext({
-        profile: buildAgentMcpExecutionProfile(tool),
-        tool,
-        correlation: context,
-      });
+      const executionProfile = buildAgentMcpExecutionProfile(tool, requireExecutionPlan(tool, context));
       const runtime = resolveAgentToolRuntimeCapabilities(tool);
       if (runtime.interactiveInput && !this.options.interactionInput) {
         throw new Error(`Interactive MCP tool ${tool.name} requires the host interaction-input runtime.`);
       }
-      const normalizedArgs = await projectAgentMcpResourceArguments(args, handler.resources, this.options.executionEnv);
+      const normalizedArgs = await projectAgentMcpResourceArguments(
+        args,
+        handler.resources,
+        createAgentMcpDefaultResourceCapabilities({
+          config: this.options.config,
+          workspaceRoot: this.options.workspaceRoot,
+          executionEnv: this.options.executionEnv,
+        }),
+      );
       const connection = {
         server: resolvedServer,
         requestTimeoutMs: toolExecution.TimeoutMs,
@@ -148,6 +152,13 @@ export class AgentMcpToolRunner {
   close(): Promise<void> {
     return this.clients.close();
   }
+}
+
+function requireExecutionPlan(tool: RegisteredTool, context: AgentToolRunnerContext) {
+  if (!context.executionPlan) {
+    throw new Error(`Tool ${tool.name} is missing its resolved execution plan.`);
+  }
+  return context.executionPlan;
 }
 
 function projectInteractionOwner(tool: RegisteredTool, context: AgentToolRunnerContext): AgentInteractionInputOwner {

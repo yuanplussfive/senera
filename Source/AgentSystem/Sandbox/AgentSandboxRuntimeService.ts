@@ -44,8 +44,8 @@ export class AgentSandboxRuntimeService {
   snapshot(): AgentSandboxRuntimeSnapshot {
     const supported = this.packageAvailable();
     const paths = this.runtimePaths();
-    const state = supported ? this.preparationStatus.state : "fallback";
-    const effectiveMode = supported && state === "ready" ? "sandbox" : "fallback";
+    const state = supported ? this.preparationStatus.state : "unavailable";
+    const effectiveMode = supported && state === "ready" ? "sandbox" : "unavailable";
     const diagnostics = this.diagnostics(supported, state);
     return {
       provider: AgentSandboxRuntimeProvider,
@@ -80,9 +80,9 @@ export class AgentSandboxRuntimeService {
     };
   }
 
-  markFallback(error: unknown, message = agentErrorMessage("sandbox.fallback.statusMessage")): void {
+  markUnavailable(error: unknown, message = agentErrorMessage("sandbox.unavailable.statusMessage")): void {
     this.preparationStatus = {
-      state: "fallback",
+      state: "unavailable",
       message,
       error: errorMessage(error),
       updatedAt: this.clock().toISOString(),
@@ -102,7 +102,7 @@ export class AgentSandboxRuntimeService {
     if (!supported) {
       return ["microsandbox package is not resolvable"];
     }
-    if (state === "fallback" && this.preparationStatus.error) {
+    if (state === "unavailable" && this.preparationStatus.error) {
       return [this.preparationStatus.error];
     }
     return [];
@@ -118,8 +118,8 @@ export class AgentSandboxRuntimeService {
     if (state === "preparing") {
       return ["microsandbox host runtime is being prepared"];
     }
-    if (state === "fallback") {
-      return ["commands continue through the local fallback backend when allowed by tool policy"];
+    if (state === "unavailable") {
+      return ["tools selected for the sandbox boundary cannot run until the sandbox runtime is available"];
     }
     return [];
   }
@@ -134,8 +134,8 @@ export class AgentSandboxRuntimeService {
     if (state === "preparing") {
       return [microsandboxPreparingDiagnostic()];
     }
-    if (state === "fallback") {
-      return [microsandboxFallbackDiagnostic(this.preparationStatus.error)];
+    if (state === "unavailable") {
+      return [microsandboxUnavailableDiagnostic(this.preparationStatus.error)];
     }
     return [microsandboxConfiguredDiagnostic()];
   }
@@ -150,8 +150,8 @@ export class AgentSandboxRuntimeService {
     if (state === "preparing") {
       return this.preparationStatus.message ?? agentErrorMessage("sandbox.preparing.statusMessage");
     }
-    if (state === "fallback") {
-      return this.preparationStatus.message ?? agentErrorMessage("sandbox.fallback.snapshotMessage");
+    if (state === "unavailable") {
+      return this.preparationStatus.message ?? agentErrorMessage("sandbox.unavailable.snapshotMessage");
     }
     return agentErrorMessage("sandbox.configured.snapshotMessage");
   }
@@ -197,16 +197,18 @@ function microsandboxReadyDiagnostic(): AgentSandboxRuntimeSnapshot["diagnostics
   };
 }
 
-function microsandboxFallbackDiagnostic(error: string | undefined): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
+function microsandboxUnavailableDiagnostic(
+  error: string | undefined,
+): AgentSandboxRuntimeSnapshot["diagnostics"][number] {
   return {
-    code: "microsandbox_runtime_fallback",
-    severity: "warning",
-    message: agentErrorMessage("sandbox.fallback.message"),
-    recommendation: agentErrorMessage("sandbox.fallback.recommendation"),
+    code: "microsandbox_runtime_unavailable",
+    severity: "error",
+    message: agentErrorMessage("sandbox.unavailable.message"),
+    recommendation: agentErrorMessage("sandbox.unavailable.recommendation"),
     details: [
-      agentErrorMessage("sandbox.fallback.detail.continueLocal"),
-      agentErrorMessage("sandbox.fallback.detail.windowsVirtualization"),
-      ...(error ? [agentErrorMessage("sandbox.fallback.detail.lastError", { error })] : []),
+      agentErrorMessage("sandbox.unavailable.detail.selectedSandboxTools"),
+      agentErrorMessage("sandbox.unavailable.detail.windowsVirtualization"),
+      ...(error ? [agentErrorMessage("sandbox.unavailable.detail.lastError", { error })] : []),
     ],
   };
 }
@@ -217,7 +219,7 @@ function microsandboxMissingDiagnostic(): AgentSandboxRuntimeSnapshot["diagnosti
     severity: "warning",
     message: agentErrorMessage("sandbox.missing.message"),
     recommendation: agentErrorMessage("sandbox.missing.recommendation"),
-    details: [agentErrorMessage("sandbox.fallback.detail.continueLocal")],
+    details: [agentErrorMessage("sandbox.unavailable.detail.selectedSandboxTools")],
   };
 }
 

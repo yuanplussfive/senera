@@ -30,22 +30,6 @@ describe("OPA tool approval policy", () => {
     ).resolves.toMatchObject(expected);
   });
 
-  it.each(fallbackPolicyCases())("applies fallback rule: $name", async ({ input, expected }) => {
-    const artifact = readAgentToolApprovalPolicyArtifact(policyDirectory);
-    const client = await createAgentOpaWasmPolicyClient({
-      wasm: artifact.wasm,
-      data: {
-        senera: {
-          tool_approval: artifact.data,
-        },
-      },
-    });
-
-    await expect(
-      client.evaluate(AgentToolApprovalPolicyArtifactContract.entrypoints.executionFallback, input),
-    ).resolves.toMatchObject(expected);
-  });
-
   it.each(resourcePolicyCases())("applies resource rule: $name", async ({ input, expected }) => {
     const artifact = readAgentToolApprovalPolicyArtifact(policyDirectory);
     const client = await createAgentOpaWasmPolicyClient({
@@ -98,15 +82,6 @@ describe("OPA tool approval policy", () => {
     await expect(client.evaluate("senera/tool/unknown", { tool: { name: "UnknownTool" } })).resolves.toMatchObject({
       decision: "deny",
       rule: "policy.entrypoint.mismatch",
-    });
-
-    await expect(
-      client.evaluate(AgentToolApprovalPolicyArtifactContract.entrypoints.executionFallback, {
-        tool: { name: "UnknownTool" },
-      }),
-    ).resolves.toMatchObject({
-      decision: "deny",
-      rule: "execution.fallback.policy_unavailable",
     });
 
     await expect(
@@ -176,6 +151,14 @@ function policyCases() {
       expected: { decision: "deny", rule: "tool.manifest.deny" },
     },
     {
+      name: "a selected local target requires approval when sandbox is also available",
+      input: {
+        ...withTool({ approval: { Mode: "allow" } }),
+        execution: { target: "Local", availableTargets: ["Sandbox", "Local"] },
+      },
+      expected: { decision: "requires-approval", rule: "execution.target.local" },
+    },
+    {
       name: "missing tool before a caller supplied allow",
       input: withTool({ registered: false, approval: { Mode: "allow" } }),
       expected: { decision: "requires-approval", rule: "tool.registry.missing" },
@@ -236,77 +219,6 @@ function policyCases() {
       name: "registered low risk default",
       input: base,
       expected: { decision: "allow", rule: "risk.default.allow" },
-    },
-  ];
-}
-
-function fallbackPolicyCases() {
-  const fallbackInput = ({
-    boundary = "SandboxPreferred",
-    localFallback = "Allow",
-    registered = true,
-    rootKind = "System",
-    trustLevel = "External",
-    permissions = [],
-  }: {
-    boundary?: string;
-    localFallback?: string;
-    registered?: boolean;
-    rootKind?: string;
-    trustLevel?: string;
-    permissions?: string[];
-  }) => ({
-    tool: {
-      name: "FallbackTool",
-      registered,
-      plugin: { rootKind, trustLevel },
-    },
-    execution: {
-      boundary,
-      localFallback,
-      network: "Allow",
-      workspace: "ReadOnly",
-      permissions,
-      from: "microsandbox",
-      to: "node",
-    },
-  });
-
-  return [
-    {
-      name: "strict sandbox always denies",
-      input: fallbackInput({ boundary: "Sandbox", trustLevel: "System" }),
-      expected: { decision: "deny", rule: "execution.fallback.strict_sandbox" },
-    },
-    {
-      name: "missing registry identity denies",
-      input: fallbackInput({ registered: false }),
-      expected: { decision: "deny", rule: "execution.fallback.identity_unverified" },
-    },
-    {
-      name: "untrusted plugin denies",
-      input: fallbackInput({ trustLevel: "Untrusted" }),
-      expected: { decision: "deny", rule: "execution.fallback.untrusted" },
-    },
-    {
-      name: "external plugin requires approval",
-      input: fallbackInput({ trustLevel: "External" }),
-      expected: { decision: "requires-approval", rule: "execution.fallback.external_approval" },
-    },
-    {
-      name: "user-root plugin requires approval regardless of system trust declaration",
-      input: fallbackInput({ rootKind: "User", trustLevel: "System" }),
-      expected: { decision: "requires-approval", rule: "execution.fallback.external_approval" },
-    },
-    {
-      name: "system shell fallback requires approval",
-      input: fallbackInput({ trustLevel: "System", permissions: ["process:shell"] }),
-      expected: { decision: "requires-approval", rule: "execution.fallback.high_impact_approval" },
-    },
-    {
-      name: "registered system plugin can use policy-approved fallback",
-      input: fallbackInput({ trustLevel: "System" }),
-      expected: { decision: "allow", rule: "execution.fallback.system_allow" },
     },
   ];
 }

@@ -19,6 +19,12 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
 import { validateToolSignatureArguments } from "./AgentToolSignatureArgumentValidator.js";
+import {
+  AgentToolExecutionTargetError,
+  bindAgentToolInvocationToExecutionPlan,
+  resolveAgentToolInvocation,
+  type AgentToolExecutionPlan,
+} from "./AgentToolExecutionPlan.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -38,6 +44,7 @@ export interface AgentToolRunnerContext {
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
   signal?: AbortSignal;
+  executionPlan?: AgentToolExecutionPlan;
 }
 
 export class AgentToolRunner implements AgentToolRunnerLike {
@@ -68,9 +75,32 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     args: Record<string, unknown>,
     context: AgentToolRunnerContext = {},
   ): Promise<AgentToolProcessRunResult> {
+    let invocation;
+    try {
+      invocation = context.executionPlan
+        ? bindAgentToolInvocationToExecutionPlan(tool, args, context.executionPlan)
+        : resolveAgentToolInvocation(tool, args);
+    } catch (error) {
+      if (error instanceof AgentToolExecutionTargetError) {
+        return this.failure(
+          error.message,
+          {
+            toolName: tool.name,
+            executionTarget: error.value,
+            availableTargets: error.availableTargets,
+          },
+          AgentExecutionErrorCodes.InvalidToolArguments,
+        );
+      }
+      throw error;
+    }
     const argumentContract = tool.contract?.arguments;
     if (argumentContract) {
-      const issues = validateToolSignatureArguments({ contract: argumentContract, args, path: [tool.name] });
+      const issues = validateToolSignatureArguments({
+        contract: argumentContract,
+        args: invocation.arguments,
+        path: [tool.name],
+      });
       if (issues.length > 0) {
         return this.failure(
           `Invalid arguments for ${tool.name}.`,
@@ -110,8 +140,20 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       capabilities: runtime,
     });
     const runners = {
-      HostCapability: () => this.runHostCapability(tool, args, context, reporter),
-      McpTool: () => this.mcpRunner.run(tool, args, context, reporter),
+      HostCapability: () =>
+        this.runHostCapability(
+          tool,
+          invocation.arguments,
+          { ...context, executionPlan: invocation.executionPlan },
+          reporter,
+        ),
+      McpTool: () =>
+        this.mcpRunner.run(
+          tool,
+          invocation.arguments,
+          { ...context, executionPlan: invocation.executionPlan },
+          reporter,
+        ),
     } satisfies Record<RegisteredTool["handler"]["kind"], () => Promise<AgentToolProcessRunResult>>;
 
     let result: AgentToolProcessRunResult | undefined;
@@ -201,6 +243,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       onEvent: context.onEvent,
       visibleToolNames: context.visibleToolNames,
       signal: context.signal,
+      executionPlan: context.executionPlan,
       reporter,
     });
   }

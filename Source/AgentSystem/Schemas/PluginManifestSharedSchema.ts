@@ -3,6 +3,35 @@ import { ToolSearchSchema } from "./PluginSearchManifestSchema.js";
 
 export const PluginKindSchema = z.enum(["System", "Tool", "Resource", "Prompt", "Skill", "Adapter", "Provider"]);
 
+export const PluginDiscoverySourceSchema = z
+  .object({
+    Id: z
+      .string()
+      .regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/u, "Discovery source ids must use lowercase dot or kebab notation."),
+    Title: z.string().trim().min(1),
+    Description: z.string().trim().min(1),
+  })
+  .strict();
+
+export const PluginDiscoverySchema = z
+  .object({
+    Sources: z.array(PluginDiscoverySourceSchema).min(1),
+  })
+  .strict()
+  .superRefine((discovery, context) => {
+    const seen = new Set<string>();
+    discovery.Sources.forEach((source, index) => {
+      if (seen.has(source.Id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["Sources", index, "Id"],
+          message: `Discovery source ${source.Id} may only be declared once per plugin.`,
+        });
+      }
+      seen.add(source.Id);
+    });
+  });
+
 export const PluginMcpServerSchema = z
   .object({
     Id: z.string().min(1),

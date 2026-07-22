@@ -5,7 +5,7 @@ import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/S
 import { runShellCommandHostTool } from "../../../Source/AgentSystem/ToolRuntime/AgentShellCommandRuntime.js";
 
 describe("Shell command runtime", () => {
-  it("binds verified tool identity before an eligible sandbox fallback", async () => {
+  it("uses the resolved sandbox execution plan without a local fallback path", async () => {
     const executeShell = vi.fn(async () => ({ stdout: "ok", stderr: "", exitCode: 0, signal: null }));
     const workspaceRoot = process.cwd();
     const tool = shellTool();
@@ -25,6 +25,7 @@ describe("Shell command runtime", () => {
         requestId: "request-shell",
         step: 2,
         toolCallId: "call-shell",
+        executionPlan: sandboxPlan(),
       },
     );
 
@@ -35,18 +36,7 @@ describe("Shell command runtime", () => {
         dialect: "posix-sh",
         profile: expect.objectContaining({
           backend: "sandbox",
-          localFallback: "allow",
-          fallbackContext: expect.objectContaining({
-            sessionId: "session-shell",
-            requestId: "request-shell",
-            step: 2,
-            toolCallId: "call-shell",
-            subject: expect.objectContaining({
-              pluginName: "AgentShellToolPlugin",
-              toolName: "ShellCommandTool",
-              boundary: "SandboxPreferred",
-            }),
-          }),
+          microsandbox: { network: "default", workspaceMount: "writable" },
         }),
       }),
     );
@@ -77,6 +67,7 @@ describe("Shell command runtime", () => {
         requestId: "request-output",
         step: 3,
         toolCallId: "call-output",
+        executionPlan: sandboxPlan(),
         onEvent: async (event) => {
           events.push(event as (typeof events)[number]);
         },
@@ -109,6 +100,7 @@ describe("Shell command runtime", () => {
         requestId: "request-disconnected",
         step: 1,
         toolCallId: "call-disconnected",
+        executionPlan: sandboxPlan(),
         onEvent: async () => {
           throw new Error("socket disconnected");
         },
@@ -141,6 +133,7 @@ describe("Shell command runtime", () => {
         requestId: "request-output-disabled",
         step: 1,
         toolCallId: "call-output-disabled",
+        executionPlan: sandboxPlan(),
         onEvent: async (event) => {
           events.push(event);
         },
@@ -162,10 +155,9 @@ function shellTool(outputStreaming = true): RegisteredTool {
     name: "ShellCommandTool",
     permissions: ["process:shell", "filesystem:workspace"],
     execution: {
-      Boundary: "SandboxPreferred",
+      Targets: ["Sandbox", "Local"],
       Network: "Allow",
       Workspace: "ReadWrite",
-      LocalFallback: "Allow",
     },
     handler: { kind: "HostCapability", capability: "shell.run" },
     runtime: {
@@ -188,4 +180,14 @@ function shellTool(outputStreaming = true): RegisteredTool {
       },
     },
   } as RegisteredTool;
+}
+
+function sandboxPlan() {
+  return {
+    target: "Sandbox" as const,
+    backend: "sandbox" as const,
+    network: "default" as const,
+    workspaceMount: "writable" as const,
+    availableTargets: ["Sandbox", "Local"] as const,
+  };
 }

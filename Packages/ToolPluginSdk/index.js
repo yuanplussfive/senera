@@ -6,7 +6,7 @@ const path = require("node:path");
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
 const { InMemoryTaskStore } = require("@modelcontextprotocol/sdk/experimental/tasks");
-const { parse: parseToml } = require("smol-toml");
+const { parse: parseToml, stringify: stringifyToml } = require("smol-toml");
 const { z, ZodError } = require("zod");
 const {
   TaskEventCapabilityName,
@@ -31,6 +31,250 @@ const TaskEventsReadRequestSchema = z.object({
 });
 
 const ToolContractVersion = 1;
+
+/**
+ * Declares a plugin configuration once. The returned definition drives both
+ * plugin-side Zod validation and the static TOML artifacts consumed by the
+ * host configuration UI.
+ */
+function definePluginConfiguration(definition) {
+  const value = readRecord(definition);
+  const schema = value.schema;
+  const defaults = value.defaults;
+  const form = readRecord(value.form);
+  if (!schema || typeof schema.parse !== "function") {
+    throw new TypeError("Plugin configuration requires a Zod schema.");
+  }
+  if (!isTomlTable(defaults)) {
+    throw new TypeError("Plugin configuration defaults must be a TOML table.");
+  }
+  if (!Array.isArray(form.sections)) {
+    throw new TypeError("Plugin configuration form requires sections.");
+  }
+
+  // Reject a template that cannot be consumed by the plugin before it ever
+  // reaches a user plugin directory.
+  schema.parse(defaults);
+  assertTomlValue(defaults, []);
+  assertPluginConfigurationForm(form);
+
+  return Object.freeze({
+    schema,
+    defaults: deepFreeze(defaults),
+    form: deepFreeze({
+      version: form.version ?? 1,
+      strict: form.strict !== false,
+      sections: form.sections.map(normalizePluginConfigurationSection),
+      ...(Array.isArray(form.allowedPaths) ? { allowedPaths: form.allowedPaths.map(normalizeAllowedPath) } : {}),
+    }),
+  });
+}
+
+function createPluginConfigurationArtifacts(configuration) {
+  const definition = definePluginConfiguration(configuration);
+  const schema = {
+    form: definition.form,
+  };
+  return deepFreeze({
+    schemaToml: ensureTrailingNewline(stringifyToml(schema)),
+    exampleToml: renderPluginConfigurationExample(definition),
+  });
+}
+
+function renderPluginConfigurationExample(definition) {
+  const annotations = new Map(
+    definition.form.sections.flatMap((section) =>
+      section.fields.map((field) => [
+        field.path.join("\u0000"),
+        field.description ? `${field.label}: ${field.description}` : field.label,
+      ]),
+    ),
+  );
+  const lines = [];
+  renderTomlTable(lines, definition.defaults, [], annotations, []);
+  const document = ensureTrailingNewline(lines.join("\n"));
+  const parsed = parseToml(document);
+  if (stableJson(parsed) !== stableJson(definition.defaults)) {
+    throw new Error("Plugin configuration example renderer did not preserve the declared defaults.");
+  }
+  return document;
+}
+
+/**
+ * Produces TOML directly from the declaration tree. It deliberately never
+ * interprets serialized TOML: comments remain associated with their source
+ * field path even when a table has no direct scalar values.
+ */
+function renderTomlTable(lines, table, pathParts, annotations, tableAnnotations) {
+  const entries = Object.entries(assertTomlTable(table, pathParts));
+  const scalarEntries = entries.filter(([, value]) => !isTomlTable(value));
+  const nestedEntries = entries.filter(([, value]) => isTomlTable(value));
+  const writesHeader = pathParts.length > 0 && (scalarEntries.length > 0 || entries.length === 0);
+
+  if (writesHeader) {
+    appendTomlSectionSeparator(lines);
+    tableAnnotations.forEach((annotation) => appendTomlAnnotation(lines, annotation));
+    lines.push(`[${pathParts.map(formatTomlKey).join(".")}]`);
+  }
+  for (const [key, value] of scalarEntries) {
+    appendTomlAnnotation(lines, annotations.get([...pathParts, key].join("\u0000")));
+    lines.push(`${formatTomlKey(key)} = ${formatTomlValue(value, [...pathParts, key])}`);
+  }
+
+  for (const [index, [key, value]] of nestedEntries.entries()) {
+    const nestedAnnotations = [
+      ...(!writesHeader && index === 0 ? tableAnnotations : []),
+      annotations.get([...pathParts, key].join("\u0000")),
+    ].filter(Boolean);
+    renderTomlTable(lines, value, [...pathParts, key], annotations, nestedAnnotations);
+  }
+}
+
+function appendTomlSectionSeparator(lines) {
+  if (lines.length > 0 && lines.at(-1) !== "") lines.push("");
+}
+
+function appendTomlAnnotation(lines, annotation) {
+  if (!annotation) return;
+  if (/\r|\n/u.test(annotation)) {
+    throw new TypeError("Plugin configuration field labels and descriptions must be single-line text.");
+  }
+  lines.push(`# ${annotation}`);
+}
+
+function assertTomlTable(value, pathParts) {
+  if (isTomlTable(value)) return value;
+  const path = pathParts.length === 0 ? "defaults" : pathParts.join(".");
+  throw new TypeError(`Plugin configuration ${path} must be a TOML table.`);
+}
+
+function isTomlTable(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function formatTomlKey(value) {
+  return /^[A-Za-z0-9_-]+$/u.test(value) ? value : JSON.stringify(value);
+}
+
+function formatTomlValue(value, pathParts) {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "boolean") return String(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new TypeError(`Plugin configuration ${pathParts.join(".")} must not contain a non-finite number.`);
+    }
+    return Object.is(value, -0) ? "-0" : String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[ ${value.map((item, index) => formatTomlValue(item, [...pathParts, String(index)])).join(", ")} ]`;
+  }
+  if (isTomlTable(value)) {
+    return `{ ${Object.entries(value)
+      .map(([key, nested]) => `${formatTomlKey(key)} = ${formatTomlValue(nested, [...pathParts, key])}`)
+      .join(", ")} }`;
+  }
+  throw new TypeError(`Plugin configuration ${pathParts.join(".")} contains an unsupported TOML value.`);
+}
+
+function assertTomlValue(value, pathParts) {
+  if (typeof value === "string" || typeof value === "boolean") return;
+  if (typeof value === "number") {
+    if (Number.isFinite(value)) return;
+    throw new TypeError(`Plugin configuration ${pathParts.join(".")} must not contain a non-finite number.`);
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertTomlValue(item, [...pathParts, String(index)]));
+    return;
+  }
+  if (isTomlTable(value)) {
+    Object.entries(value).forEach(([key, nested]) => assertTomlValue(nested, [...pathParts, key]));
+    return;
+  }
+  throw new TypeError(`Plugin configuration ${pathParts.join(".")} contains an unsupported TOML value.`);
+}
+
+function assertPluginConfigurationForm(form) {
+  const paths = new Set();
+  for (const section of form.sections) {
+    const normalized = normalizePluginConfigurationSection(section);
+    for (const field of normalized.fields) {
+      const key = field.path.join("\u0000");
+      if (paths.has(key)) throw new Error(`Duplicate plugin configuration field path: ${field.path.join(".")}`);
+      paths.add(key);
+    }
+  }
+}
+
+function normalizePluginConfigurationSection(value) {
+  const section = readRecord(value);
+  const id = readOptionalString(section.id);
+  const label = readOptionalString(section.label);
+  if (!id || !label || !Array.isArray(section.fields)) {
+    throw new TypeError("Plugin configuration sections require id, label, and fields.");
+  }
+  return {
+    id,
+    label,
+    ...(readOptionalString(section.description) ? { description: section.description } : {}),
+    ...(section.level === "internal" ? { level: "internal" } : {}),
+    fields: section.fields.map(normalizePluginConfigurationField),
+  };
+}
+
+function normalizePluginConfigurationField(value) {
+  const field = readRecord(value);
+  const pathValue = Array.isArray(field.path) ? field.path : [];
+  const path = pathValue.map((part) => (typeof part === "string" ? part.trim() : ""));
+  const label = readOptionalString(field.label);
+  const type = readOptionalString(field.type);
+  if (path.length === 0 || path.some((part) => !part) || !label || !type) {
+    throw new TypeError("Plugin configuration fields require a non-empty path, label, and type.");
+  }
+  if (!["boolean", "string", "number", "array", "table"].includes(type)) {
+    throw new TypeError(`Unsupported plugin configuration field type: ${type}`);
+  }
+  const options = Array.isArray(field.options)
+    ? field.options.filter((item) => typeof item === "string" || typeof item === "number" || typeof item === "boolean")
+    : undefined;
+  const itemType = readOptionalString(field.itemType);
+  if (itemType && !["boolean", "string", "number", "table"].includes(itemType)) {
+    throw new TypeError(`Unsupported plugin configuration array item type: ${itemType}`);
+  }
+  return {
+    path,
+    label,
+    type,
+    ...(readOptionalString(field.description) ? { description: field.description } : {}),
+    ...(readOptionalString(field.placeholder) ? { placeholder: field.placeholder } : {}),
+    ...(itemType ? { itemType } : {}),
+    ...(options && options.length > 0 ? { options } : {}),
+    ...(isRecord(field.optionLabels) ? { optionLabels: field.optionLabels } : {}),
+    ...(typeof field.min === "number" ? { min: field.min } : {}),
+    ...(typeof field.max === "number" ? { max: field.max } : {}),
+    ...(typeof field.step === "number" ? { step: field.step } : {}),
+    ...(field.secret === true ? { secret: true } : {}),
+    ...(field.multiline === true ? { multiline: true } : {}),
+    ...(field.required === false ? { required: false } : {}),
+  };
+}
+
+function normalizeAllowedPath(value) {
+  const pathValue = Array.isArray(value?.path) ? value.path : [];
+  const path = pathValue.map((part) => (typeof part === "string" ? part.trim() : ""));
+  if (path.length === 0 || path.some((part) => !part)) {
+    throw new TypeError("Plugin configuration allowed paths require a non-empty path.");
+  }
+  return {
+    path,
+    ...(value?.recursive === true ? { recursive: true } : {}),
+  };
+}
+
+function ensureTrailingNewline(value) {
+  return value.endsWith("\n") ? value : `${value}\n`;
+}
 
 function createToolContractBundle(definitions, options = {}) {
   const sourceIdentity = readOptionalString(options.sourceIdentity);
@@ -376,6 +620,10 @@ function readRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function isRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
 function readOptionalString(value) {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
@@ -461,6 +709,8 @@ function parsePluginTomlConfig(content) {
 module.exports = {
   ToolContractVersion,
   createToolContractBundle,
+  createPluginConfigurationArtifacts,
+  definePluginConfiguration,
   runMcpTool,
   runMcpToolSuite,
   parsePluginTomlConfig,

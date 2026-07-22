@@ -125,6 +125,7 @@ function collectPluginSourceDependencies(
     manifestPath,
     path.join(pluginRoot, discovery.ConfigFileName),
     path.join(pluginRoot, "package.json"),
+    path.join(pluginRoot, "PluginConfig.definition.cjs"),
   ]);
   const configName = path.parse(discovery.ConfigFileName);
   dependencies.add(path.join(pluginRoot, `${configName.name}.schema${configName.ext}`));

@@ -59,6 +59,11 @@ export const runDecisionEventHandlers = {
     const run = readCurrentRun(state, env);
     if (!run) return;
     const data = env.data as ActionPlannerStageCompletedData;
+    const decisionMode = readPlannerDecisionMode(data.selectedAction);
+    if (decisionMode) {
+      run.decisionMode = decisionMode;
+      run.plannedDecisionMode = decisionMode;
+    }
     const id = plannerStageStepId(run.requestId, env.step, data.stage);
     upsertStep(run, {
       id,
@@ -134,6 +139,14 @@ export const runDecisionEventHandlers = {
     });
   },
 } satisfies RunEventHandlerMap;
+
+function readPlannerDecisionMode(
+  selectedAction: string | undefined,
+): Exclude<RunRecord["decisionMode"], "none"> | undefined {
+  if (selectedAction === "CallTools") return "tool_candidate";
+  if (selectedAction === "FinalAnswer" || selectedAction === "AskUser") return "final_text";
+  return undefined;
+}
 
 function plannerStageStepId(
   requestId: string,

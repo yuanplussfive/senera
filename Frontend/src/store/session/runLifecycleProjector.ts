@@ -28,6 +28,8 @@ export const runLifecycleEventHandlers = {
       session.runs.push(run);
     } else {
       run.status = "running";
+      run.displayMessageId = undefined;
+      run.plannedDecisionMode = undefined;
     }
     upsertStep(run, {
       id: `${run.requestId}-understand`,
@@ -170,8 +172,10 @@ export const runLifecycleEventHandlers = {
       run.xmlPreview = "";
       run.visibleText = "";
       run.displayText = "";
+      run.displayMessageId = undefined;
       run.visibleKind = "unknown";
       run.decisionMode = "none";
+      run.plannedDecisionMode = undefined;
       upsertStep(run, {
         id: `${run.requestId}-cancelled`,
         kind: "error",
