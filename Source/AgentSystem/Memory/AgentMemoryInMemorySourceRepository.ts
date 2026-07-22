@@ -26,6 +26,7 @@ import type {
   AgentMemoryItemRecord,
   AgentMemoryItemVectorRecord,
   AgentMemoryItemVectorWrite,
+  AgentMemoryLearningActionRecord,
   AgentMemoryLearningWriteInput,
   AgentMemoryLearningJobRecord,
   AgentMemoryObservationRecord,
@@ -42,6 +43,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
   private readonly vectors = new Map<string, AgentMemoryItemVectorRecord>();
   private readonly items = new Map<string, AgentMemoryItemRecord>();
   private readonly observations = new Map<string, AgentMemoryObservationRecord>();
+  private readonly observationWriteSequences = new Map<string, number>();
   private readonly learningJobs = new Map<string, AgentMemoryLearningJobRecord>();
 
   recordCompletedTurn(input: AgentMemoryCompletedTurnInput): AgentMemoryRecordedTurn {
@@ -75,7 +77,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
         const item = buildReinforcedMemoryItem(input.episode, current, action, learnedAt);
         this.items.set(item.uri, item);
         this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
-        this.recordObservation(buildMemoryObservation(input.episode, item.uri, action, learnedAt));
+        this.recordObservation(this.createMemoryObservation(input.episode, item.uri, action, learnedAt));
         written.push(item);
         continue;
       }
@@ -85,7 +87,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
         const item = buildUpdatedMemoryItem(input.episode, current, action, learnedAt);
         this.items.set(item.uri, item);
         this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
-        this.recordObservation(buildMemoryObservation(input.episode, item.uri, action, learnedAt));
+        this.recordObservation(this.createMemoryObservation(input.episode, item.uri, action, learnedAt));
         written.push(item);
         continue;
       }
@@ -107,7 +109,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
       const item = buildNewMemoryItem(input.episode, action, learnedAt);
       this.items.set(item.uri, item);
       this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
-      this.recordObservation(buildMemoryObservation(input.episode, item.uri, action, learnedAt));
+      this.recordObservation(this.createMemoryObservation(input.episode, item.uri, action, learnedAt));
       written.push(item);
     }
     return written;
@@ -123,7 +125,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
       const current = this.readExistingMemory(action.targetMemoryUri);
       const item = buildReinforcedMemoryItem(anchor, current, action, writtenAt);
       this.items.set(item.uri, item);
-      this.recordObservation(buildMemoryObservation(anchor, item.uri, action, writtenAt));
+      this.recordObservation(this.createMemoryObservation(anchor, item.uri, action, writtenAt));
       return item;
     }
 
@@ -131,7 +133,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
       const current = this.readExistingMemory(action.targetMemoryUri);
       const item = buildUpdatedMemoryItem(anchor, current, action, writtenAt);
       this.items.set(item.uri, item);
-      this.recordObservation(buildMemoryObservation(anchor, item.uri, action, writtenAt));
+      this.recordObservation(this.createMemoryObservation(anchor, item.uri, action, writtenAt));
       return item;
     }
 
@@ -151,7 +153,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
 
     const item = buildNewMemoryItem(anchor, action, writtenAt);
     this.items.set(item.uri, item);
-    this.recordObservation(buildMemoryObservation(anchor, item.uri, action, writtenAt));
+    this.recordObservation(this.createMemoryObservation(anchor, item.uri, action, writtenAt));
     return item;
   }
 
@@ -273,7 +275,7 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
   listMemoryObservations(memoryUri: string): AgentMemoryObservationRecord[] {
     return [...this.observations.values()]
       .filter((observation) => observation.memoryUri === memoryUri)
-      .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id));
+      .sort((left, right) => left.createdAtMs - right.createdAtMs || left.writeSequence - right.writeSequence);
   }
 
   upsertMemoryItemVectors(records: readonly AgentMemoryItemVectorWrite[]): void {
@@ -428,6 +430,20 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
     this.observations.set(record.uri, record);
   }
 
+  private createMemoryObservation(
+    episode: AgentMemoryEpisodeRecord,
+    memoryUri: string,
+    action: AgentMemoryLearningActionRecord,
+    observedAt: string,
+  ): AgentMemoryObservationRecord {
+    const writeSequence = (this.observationWriteSequences.get(memoryUri) ?? 0) + 1;
+    if (!Number.isSafeInteger(writeSequence)) {
+      throw new RangeError(`Memory observation write sequence exceeded the safe integer range for ${memoryUri}.`);
+    }
+    this.observationWriteSequences.set(memoryUri, writeSequence);
+    return buildMemoryObservation(episode, memoryUri, action, observedAt, writeSequence);
+  }
+
   private deleteVectorsForMemory(memoryUri: string): void {
     for (const key of this.vectors.keys()) {
       if (key.startsWith(`${memoryUri}\0`)) {
@@ -442,5 +458,6 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
         this.observations.delete(observation.uri);
       }
     }
+    this.observationWriteSequences.delete(memoryUri);
   }
 }

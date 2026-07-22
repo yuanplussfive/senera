@@ -40,6 +40,7 @@ import type {
   AgentMemoryItemRecord,
   AgentMemoryItemVectorRecord,
   AgentMemoryItemVectorWrite,
+  AgentMemoryLearningActionRecord,
   AgentMemoryLearningWriteInput,
   AgentMemoryLearningJobRecord,
   AgentMemoryObservationRecord,
@@ -104,7 +105,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
           this.statements.updateMemoryItemStmt.run(memoryItemToRow(item));
           this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
           this.statements.insertMemoryObservationStmt.run(
-            memoryObservationToRow(buildMemoryObservation(input.episode, item.uri, action, learnedAt)),
+            memoryObservationToRow(this.createMemoryObservation(input.episode, item.uri, action, learnedAt)),
           );
           written.push(item);
           continue;
@@ -116,7 +117,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
           this.statements.updateMemoryItemStmt.run(memoryItemToRow(item));
           this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
           this.statements.insertMemoryObservationStmt.run(
-            memoryObservationToRow(buildMemoryObservation(input.episode, item.uri, action, learnedAt)),
+            memoryObservationToRow(this.createMemoryObservation(input.episode, item.uri, action, learnedAt)),
           );
           written.push(item);
           continue;
@@ -130,7 +131,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
         this.statements.insertMemoryItemStmt.run(memoryItemToRow(item));
         this.markCandidatesPromoted(action.candidateUris, item.uri, learnedAt);
         this.statements.insertMemoryObservationStmt.run(
-          memoryObservationToRow(buildMemoryObservation(input.episode, item.uri, action, learnedAt)),
+          memoryObservationToRow(this.createMemoryObservation(input.episode, item.uri, action, learnedAt)),
         );
         written.push(item);
       }
@@ -151,7 +152,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
         const item = buildReinforcedMemoryItem(anchor, current, action, writtenAt);
         this.statements.updateMemoryItemStmt.run(memoryItemToRow(item));
         this.statements.insertMemoryObservationStmt.run(
-          memoryObservationToRow(buildMemoryObservation(anchor, item.uri, action, writtenAt)),
+          memoryObservationToRow(this.createMemoryObservation(anchor, item.uri, action, writtenAt)),
         );
         written = item;
         return;
@@ -162,7 +163,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
         const item = buildUpdatedMemoryItem(anchor, current, action, writtenAt);
         this.statements.updateMemoryItemStmt.run(memoryItemToRow(item));
         this.statements.insertMemoryObservationStmt.run(
-          memoryObservationToRow(buildMemoryObservation(anchor, item.uri, action, writtenAt)),
+          memoryObservationToRow(this.createMemoryObservation(anchor, item.uri, action, writtenAt)),
         );
         written = item;
         return;
@@ -175,7 +176,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
       const item = buildNewMemoryItem(anchor, action, writtenAt);
       this.statements.insertMemoryItemStmt.run(memoryItemToRow(item));
       this.statements.insertMemoryObservationStmt.run(
-        memoryObservationToRow(buildMemoryObservation(anchor, item.uri, action, writtenAt)),
+        memoryObservationToRow(this.createMemoryObservation(anchor, item.uri, action, writtenAt)),
       );
       written = item;
     });
@@ -322,6 +323,19 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
 
   close(): void {
     this.kernel.close();
+  }
+
+  private createMemoryObservation(
+    episode: AgentMemoryEpisodeRecord,
+    memoryUri: string,
+    action: AgentMemoryLearningActionRecord,
+    observedAt: string,
+  ): AgentMemoryObservationRecord {
+    const row = this.statements.nextMemoryObservationWriteSequenceStmt.get(memoryUri);
+    if (!row || !Number.isSafeInteger(row.next_write_sequence) || row.next_write_sequence < 1) {
+      throw new Error(`Unable to allocate memory observation write sequence for ${memoryUri}.`);
+    }
+    return buildMemoryObservation(episode, memoryUri, action, observedAt, row.next_write_sequence);
   }
 
   private readExistingMemory(uri: string | undefined): AgentMemoryItemRecord {

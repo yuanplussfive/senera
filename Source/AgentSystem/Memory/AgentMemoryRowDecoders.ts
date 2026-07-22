@@ -147,6 +147,7 @@ export function rowToMemoryObservation(row: MemoryObservationRow): AgentMemoryOb
     id: row.id,
     uri: row.uri,
     memoryUri: row.memory_uri,
+    writeSequence: row.write_sequence,
     operation: row.operation,
     candidateUris: parseMemoryRowStringArray(row.candidate_uris_json),
     sourceRefs: parseMemoryRowStringArray(row.source_refs_json),

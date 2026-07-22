@@ -114,15 +114,19 @@ describe("Memory persistence behavior", () => {
           confidence: 0.9,
           tags: ["release", "preview"],
           triggers: ["deploy"],
-          writtenAt: "2026-01-02T00:01:00.000Z",
+        }),
+      );
+      const updated = repository.writeDirectMemory(
+        directWrite("update", {
+          targetMemoryUri: initial.uri,
+          claim: "Use verified preview releases first",
         }),
       );
       const replacement = repository.writeDirectMemory(
         directWrite("supersede", {
-          targetMemoryUri: initial.uri,
+          targetMemoryUri: updated.uri,
           claim: "Promote verified previews without rebuilding",
           confidence: 0.95,
-          writtenAt: "2026-01-02T00:02:00.000Z",
         }),
       );
       repository.upsertMemoryItemVectors([
@@ -140,9 +144,12 @@ describe("Memory persistence behavior", () => {
       expect(repository.listActiveMemoryItems()).toEqual([
         expect.objectContaining({ uri: replacement.uri, claim: "Promote verified previews without rebuilding" }),
       ]);
-      expect(repository.listMemoryObservations(initial.uri).map((entry) => entry.operation)).toEqual([
-        "create",
-        "reinforce",
+      expect(
+        repository.listMemoryObservations(initial.uri).map((entry) => [entry.writeSequence, entry.operation]),
+      ).toEqual([
+        [1, "create"],
+        [2, "reinforce"],
+        [3, "update"],
       ]);
       expect(repository.listMemoryItemVectors("test-embedding")).toEqual([
         expect.objectContaining({ memoryUri: replacement.uri, embedding: [0.1, 0.9] }),
@@ -259,7 +266,10 @@ function learningAction(
   };
 }
 
-function directWrite(operation: "create" | "reinforce" | "supersede", overrides: Record<string, unknown> = {}) {
+function directWrite(
+  operation: "create" | "reinforce" | "update" | "supersede",
+  overrides: Record<string, unknown> = {},
+) {
   return {
     operation,
     type: "preference" as const,

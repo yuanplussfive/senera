@@ -135,6 +135,7 @@ export function memoryObservationToRow(record: AgentMemoryObservationRecord): Re
     id: record.id,
     uri: record.uri,
     memory_uri: record.memoryUri,
+    write_sequence: record.writeSequence,
     operation: record.operation,
     candidate_uris_json: JSON.stringify(record.candidateUris),
     source_refs_json: JSON.stringify(record.sourceRefs),

@@ -4,6 +4,7 @@ import type { MemoryObservationRow } from "./AgentMemorySqlRows.js";
 export interface AgentMemoryObservationSqlStatements {
   insertMemoryObservationStmt: Database.Statement;
   listMemoryObservationsStmt: Database.Statement<[string], MemoryObservationRow>;
+  nextMemoryObservationWriteSequenceStmt: Database.Statement<[string], { next_write_sequence: number }>;
 }
 
 export function prepareAgentMemoryObservationSqlStatements(db: Database.Database): AgentMemoryObservationSqlStatements {
@@ -13,6 +14,7 @@ export function prepareAgentMemoryObservationSqlStatements(db: Database.Database
         id,
         uri,
         memory_uri,
+        write_sequence,
         operation,
         candidate_uris_json,
         source_refs_json,
@@ -32,6 +34,7 @@ export function prepareAgentMemoryObservationSqlStatements(db: Database.Database
         @id,
         @uri,
         @memory_uri,
+        @write_sequence,
         @operation,
         @candidate_uris_json,
         @source_refs_json,
@@ -51,7 +54,12 @@ export function prepareAgentMemoryObservationSqlStatements(db: Database.Database
     listMemoryObservationsStmt: db.prepare<[string], MemoryObservationRow>(`
       SELECT * FROM memory_observations
       WHERE memory_uri = ?
-      ORDER BY created_at_ms ASC, id ASC
+      ORDER BY created_at_ms ASC, write_sequence ASC
+    `),
+    nextMemoryObservationWriteSequenceStmt: db.prepare<[string], { next_write_sequence: number }>(`
+      SELECT COALESCE(MAX(write_sequence), 0) + 1 AS next_write_sequence
+      FROM memory_observations
+      WHERE memory_uri = ?
     `),
   };
 }
