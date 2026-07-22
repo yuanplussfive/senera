@@ -1,6 +1,4 @@
 import { readArtifactMemoryHostTool } from "./Memory/AgentArtifactMemoryRuntime.js";
-import { documentHostTool } from "./Documents/AgentDocumentRuntime.js";
-import { imageVisionHostTool } from "./Vision/AgentImageVisionRuntime.js";
 import { recallMemoryHostTool } from "./Memory/AgentMemoryRecallRuntime.js";
 import { writeMemoryHostTool } from "./Memory/AgentMemoryWriteRuntime.js";
 import { runShellCommandHostTool } from "./ToolRuntime/AgentShellCommandRuntime.js";
@@ -23,8 +21,6 @@ export const AgentHostCapabilityNames = {
   ExecutionResourceStopAll: "execution.resource.stop_all",
   ToolSearch: "tool.search",
   ArtifactMemoryRead: "artifact.memory.read",
-  Document: "document",
-  ImageVision: "image.vision",
   MemoryRecall: "memory.recall",
   MemoryWrite: "memory.write",
   WorkspaceApplyPatch: "workspace.apply_patch",
@@ -40,8 +36,6 @@ export function createDefaultHostCapabilityRegistry(
   const registry = new AgentToolHostCapabilityRegistry()
     .register(AgentHostCapabilityNames.ShellRun, runShellCommandHostTool)
     .register(AgentHostCapabilityNames.ArtifactMemoryRead, readArtifactMemoryHostTool)
-    .register(AgentHostCapabilityNames.Document, documentHostTool)
-    .register(AgentHostCapabilityNames.ImageVision, imageVisionHostTool)
     .register(AgentHostCapabilityNames.MemoryRecall, recallMemoryHostTool)
     .register(AgentHostCapabilityNames.MemoryWrite, writeMemoryHostTool)
     .register(AgentHostCapabilityNames.WorkspaceApplyPatch, applyWorkspacePatchHostTool);
@@ -61,6 +55,10 @@ export function createDefaultHostCapabilityRegistry(
   }
 
   return options.toolSearch
-    ? registry.register(AgentHostCapabilityNames.ToolSearch, options.toolSearch.createHostHandler())
+    ? registry.register(
+        AgentHostCapabilityNames.ToolSearch,
+        options.toolSearch.createHostHandler(),
+        options.toolSearch.createHostContractProjection(),
+      )
     : registry;
 }

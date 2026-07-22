@@ -5,25 +5,21 @@ strict = true
 [[form.sections]]
 id = "senera"
 label = "启用状态"
-description = "控制天气查询插件是否参与外部技能集。"
 
 [[form.sections.fields]]
-path = ["senera", "enabled"]
+path = [ "senera", "enabled" ]
 label = "启用插件"
-description = "关闭后天气查询工具不会参与外部工具集。"
 type = "boolean"
 
 [[form.sections]]
 id = "weather"
 label = "天气参数"
-description = "配置天气服务、密钥、语言、单位和本地状态目录。"
 
 [[form.sections.fields]]
-path = ["weather", "provider"]
+path = [ "weather", "provider" ]
 label = "天气服务"
-description = "选择天气数据提供方。"
 type = "string"
-options = ["qweather", "weatherapi", "visual_crossing"]
+options = [ "qweather", "weatherapi", "visual_crossing" ]
 
 [form.sections.fields.optionLabels]
 qweather = "和风天气"
@@ -31,48 +27,59 @@ weatherapi = "国际天气服务"
 visual_crossing = "全球天气服务"
 
 [[form.sections.fields]]
-path = ["weather", "api_keys"]
+path = [ "weather", "api_keys" ]
 label = "接口密钥"
-description = "支持多个密钥轮换调用。"
 type = "array"
 itemType = "string"
 secret = true
 
 [[form.sections.fields]]
-path = ["weather", "api_host"]
+path = [ "weather", "api_host" ]
 label = "接口域名"
-description = "和风天气账号对应的接口域名。"
 type = "string"
-placeholder = "your-id.re.qweatherapi.com"
 
 [[form.sections.fields]]
-path = ["weather", "language"]
+path = [ "weather", "weather_api_host" ]
+label = "WeatherAPI 域名"
+type = "string"
+required = false
+
+[[form.sections.fields]]
+path = [ "weather", "base_url" ]
+label = "服务基础地址"
+type = "string"
+required = false
+
+[[form.sections.fields]]
+path = [ "weather", "geo_base_url" ]
+label = "地理编码地址"
+type = "string"
+required = false
+
+[[form.sections.fields]]
+path = [ "weather", "language" ]
 label = "语言"
-description = "天气服务请求语言。"
 type = "string"
 
 [[form.sections.fields]]
-path = ["weather", "unit"]
+path = [ "weather", "unit" ]
 label = "单位"
-description = "温度和风速单位。"
 type = "string"
-options = ["metric", "imperial"]
+options = [ "metric", "imperial" ]
 
 [form.sections.fields.optionLabels]
 metric = "公制"
 imperial = "英制"
 
 [[form.sections.fields]]
-path = ["weather", "timeout_seconds"]
+path = [ "weather", "timeout_seconds" ]
 label = "请求超时"
-description = "天气服务请求超时时间，单位秒。"
 type = "number"
 min = 1
 max = 300
 step = 1
 
 [[form.sections.fields]]
-path = ["weather", "state_dir"]
+path = [ "weather", "state_dir" ]
 label = "状态目录"
-description = "路径相对插件目录。"
 type = "string"

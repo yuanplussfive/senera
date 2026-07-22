@@ -39,6 +39,10 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
         migrateVersionZeroToOne(working, migratedPaths, removedPaths);
         version = 1;
         break;
+      case 1:
+        migrateVersionOneToTwo(working, removedPaths);
+        version = 2;
+        break;
       default:
         throw new AgentConfigMigrationError(`No migration is registered for configuration version ${version}.`);
     }
@@ -53,6 +57,20 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
     migratedPaths,
     removedPaths,
   };
+}
+
+function migrateVersionOneToTwo(config: Record<string, unknown>, removedPaths: string[]): void {
+  removeToolSearchIntentGate(config, "", removedPaths);
+  const defaults = config.Defaults;
+  if (isRecord(defaults)) removeToolSearchIntentGate(defaults, "Defaults.", removedPaths);
+}
+
+function removeToolSearchIntentGate(container: Record<string, unknown>, prefix: string, removedPaths: string[]): void {
+  const toolSearch = container.ToolSearch;
+  if (!isRecord(toolSearch)) return;
+  const ranking = toolSearch.Ranking;
+  if (!isRecord(ranking) || !removeProperty(ranking, "IntentGate")) return;
+  removedPaths.push(`${prefix}ToolSearch.Ranking.IntentGate`);
 }
 
 function readConfigVersion(config: Record<string, unknown>): number {

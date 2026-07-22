@@ -195,7 +195,6 @@ export class AgentPtyTerminalTransport implements AgentExecutionResourceTranspor
       capabilityProviders: this.child.metadata.capabilityProviders,
       persistenceScope: this.child.metadata.persistenceScope,
       sandboxId: this.child.metadata.sandboxId,
-      fallback: this.child.metadata.fallback,
       ...this.dimensions,
     };
   }

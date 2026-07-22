@@ -73,12 +73,18 @@ describe("Planning command handler behavior", () => {
         {
           name: "WeatherTool",
           description: "WeatherTool description",
-          parameters: { type: "object", properties: {} },
+          parameterContract: {
+            format: "json_schema",
+            schema: { type: "object", properties: {} },
+          },
         },
         {
           name: "ArtifactMemoryReadTool",
           description: "ArtifactMemoryReadTool description",
-          parameters: { type: "object", properties: {} },
+          parameterContract: {
+            format: "json_schema",
+            schema: { type: "object", properties: {} },
+          },
         },
       ],
     ]);
@@ -301,7 +307,10 @@ function createRuntimeFixture(
           (visibleToolNames === "all" ? registeredToolNames : (visibleToolNames ?? [])).map((name) => ({
             name,
             description: `${name} description`,
-            parameters: { type: "object", properties: {} },
+            parameterContract: {
+              format: "json_schema" as const,
+              schema: { type: "object", properties: {} },
+            },
           })),
       },
       retrieval: {

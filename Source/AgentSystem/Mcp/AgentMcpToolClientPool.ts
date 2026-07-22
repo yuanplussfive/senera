@@ -151,8 +151,6 @@ function projectExecutionProfileIdentity(profile: SeneraProcessExecutionProfile)
     name: profile.name,
     kind: profile.kind,
     backend: profile.backend,
-    localFallback: profile.localFallback,
     microsandbox: profile.microsandbox,
-    fallbackSubject: profile.fallbackContext?.subject,
   };
 }

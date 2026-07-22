@@ -8,6 +8,15 @@
     "Kind": "Tool",
     "Description": "把用户明确要求记住的内容直接写入 active 长期记忆。"
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "memory",
+        "Title": "Memory",
+        "Description": "Persisted conversation memory and artifact evidence available to the current agent."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 8
@@ -23,10 +32,9 @@
         "Capability": "memory.write"
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadWrite",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadWrite"
       },
       "Artifacts": {
         "Evidence": [

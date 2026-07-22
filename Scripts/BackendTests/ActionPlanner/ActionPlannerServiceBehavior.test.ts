@@ -25,7 +25,10 @@ describe("ActionPlanner service behavior", () => {
         {
           name: "WorkspaceReadFile",
           description: "Read one workspace file.",
-          parameters: { type: "object", required: ["path"] },
+          parameterContract: {
+            format: "json_schema",
+            schema: { type: "object", required: ["path"] },
+          },
         },
       ],
       onStage: (stage) => {
@@ -44,7 +47,10 @@ describe("ActionPlanner service behavior", () => {
         {
           name: "WorkspaceReadFile",
           description: "Read one workspace file.",
-          parameters: { type: "object", required: ["path"] },
+          parameterContract: {
+            format: "json_schema",
+            schema: { type: "object", required: ["path"] },
+          },
         },
       ],
     ]);

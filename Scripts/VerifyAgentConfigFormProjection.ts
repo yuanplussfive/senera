@@ -78,10 +78,6 @@ const toolSearchMaxResults = findField(form, ["ToolSearch", "Ranking", "MaxResul
 assert.equal(toolSearchMaxResults.type, "number");
 assert.equal(toolSearchMaxResults.effectiveValue, 6);
 
-const intentGateMode = findField(form, ["ToolSearch", "Ranking", "IntentGate", "Mode"]);
-assert.deepEqual(intentGateMode.options, ["disabled", "side_effect_capability"]);
-assert.equal(intentGateMode.effectiveValue, "side_effect_capability");
-
 const memoryExpansionMode = findField(form, ["ToolSearch", "Ranking", "MemoryExpansion", "Mode"]);
 assert.deepEqual(memoryExpansionMode.options, ["disabled", "fallback", "augment"]);
 assert.equal(memoryExpansionMode.effectiveValue, "fallback");

@@ -1,5 +1,5 @@
 {
-  "ConfigVersion": 1,
+  "ConfigVersion": 2,
   "Defaults": {
     "PluginRoots": {
       "System": ["./System/Plugins"],
@@ -86,9 +86,6 @@
         "MmrCandidateScoreRatio": 0.92,
         "MinScore": 0,
         "MaxResults": 6,
-        "IntentGate": {
-          "Mode": "side_effect_capability"
-        },
         "MemoryExpansion": {
           "Mode": "fallback",
           "MinConfidence": 0.8,

@@ -14,7 +14,7 @@ interface PluginManifestForVerification {
     Loading?: string;
     Handler?: { Kind?: string; Capability?: string; Server?: string; Tool?: string };
     Runtime?: { Lifecycle?: string; ProtocolVersion?: number };
-    Execution?: { Boundary?: string; Network?: string; Workspace?: string; LocalFallback?: string };
+    Execution?: { Targets?: string[]; Network?: string; Workspace?: string };
   }>;
 }
 
@@ -54,10 +54,21 @@ async function main(): Promise<void> {
         [],
         `${label}: Handler 与 Runtime 合同不兼容。`,
       );
-      assert.match(tool.Execution?.Boundary ?? "", /^(Local|Sandbox|SandboxPreferred)$/, `${label}: Boundary 缺失。`);
+      assert.ok(
+        Array.isArray(tool.Execution?.Targets) && tool.Execution.Targets.length > 0,
+        `${label}: Targets 必须非空。`,
+      );
+      assert.ok(
+        tool.Execution?.Targets?.every((target) => target === "Local" || target === "Sandbox"),
+        `${label}: Targets 包含不支持的执行目标。`,
+      );
+      assert.equal(
+        new Set(tool.Execution?.Targets).size,
+        tool.Execution?.Targets?.length,
+        `${label}: Targets 不得重复。`,
+      );
       assert.match(tool.Execution?.Network ?? "", /^(Allow|Deny)$/, `${label}: Network 缺失。`);
       assert.match(tool.Execution?.Workspace ?? "", /^(ReadOnly|ReadWrite)$/, `${label}: Workspace 缺失。`);
-      assert.match(tool.Execution?.LocalFallback ?? "", /^(Allow|Deny)$/, `${label}: LocalFallback 缺失。`);
       if (tool.Handler?.Kind === "HostCapability") {
         assert.ok(tool.Handler.Capability, `${label}: HostCapability 名称缺失。`);
       } else if (tool.Handler?.Kind === "McpTool") {

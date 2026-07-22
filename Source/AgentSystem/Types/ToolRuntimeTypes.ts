@@ -6,11 +6,13 @@ import type { RegisteredTool } from "./PluginRuntimeTypes.js";
 import type { ToolArtifactPolicyManifest } from "./PluginManifestTypes.js";
 import type { AgentToolResultSummary } from "./AgentToolResultSummaryTypes.js";
 import type { SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
+import type { AgentToolExecutionPlan } from "../ToolRuntime/AgentToolExecutionPlan.js";
 
 export interface ExecutedToolCallResult {
   callId: string;
   name: string;
   arguments: Record<string, unknown>;
+  execution?: AgentToolExecutionPlan;
   process: {
     exitCode: number | null;
     signal: NodeJS.Signals | null;

@@ -256,7 +256,7 @@ try {
       Enabled: true,
     },
     ToolExecution: {
-      Mode: "SandboxPreferred",
+      Mode: "Process",
       TimeoutSeconds: 30,
     },
     ActionPlanner: {

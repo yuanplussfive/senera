@@ -7,6 +7,7 @@ import type {
   AgentPiToolTranscriptItem,
 } from "./AgentPiAssistantMessageTypes.js";
 import type { PiOpenAiChatCompletionRequest, PiOpenAiTool } from "./AgentPiOpenAiWireTypes.js";
+import { AgentPiToolParameterContractProjector } from "./AgentPiToolParameterContractProjector.js";
 
 export interface AgentPiOpenAiPlanningProjectorOptions {
   modelProvider: Pick<ResolvedAgentModelProviderConfig, "ContextWindowTokens" | "MaxOutputTokens" | "Model">;
@@ -61,10 +62,12 @@ const PiPlanningBudgetPolicy = {
 export class AgentPiOpenAiPlanningProjector {
   private readonly limits: AgentPiOpenAiPlanningProjectionLimits;
   private readonly tokenProjector: AgentTokenProjector;
+  private readonly parameterContracts: AgentPiToolParameterContractProjector;
 
   constructor(options: AgentPiOpenAiPlanningProjectorOptions) {
     this.limits = resolveAgentPiOpenAiPlanningProjectionLimits(options.modelProvider);
     this.tokenProjector = new AgentTokenProjector(options.modelProvider.Model);
+    this.parameterContracts = new AgentPiToolParameterContractProjector(this.tokenProjector);
   }
 
   project(request: PiOpenAiChatCompletionRequest): AgentPiAssistantMessageCompileInput["openAiRequest"] {
@@ -103,11 +106,12 @@ export class AgentPiOpenAiPlanningProjector {
     const schemaTokens = Math.max(1, cardTokens - descriptionTokens);
     return tools.map((tool) => {
       const stats: ProjectionStatsAccumulator = { truncatedTextFields: 0, truncatedJsonFields: 0 };
-      const projected = this.projectToolForPlanning(tool, stats, { descriptionTokens, schemaTokens });
       return {
-        name: projected.function.name,
-        description: projected.function.description,
-        parameters: projected.function.parameters,
+        name: tool.function.name,
+        description: tool.function.description
+          ? this.previewTextField(tool.function.description, descriptionTokens, stats)
+          : undefined,
+        parameterContract: this.projectParameterContract(tool.function.parameters, schemaTokens, stats),
       };
     });
   }
@@ -193,22 +197,10 @@ export class AgentPiOpenAiPlanningProjector {
     });
   }
 
-  private projectToolForPlanning(
-    tool: PiOpenAiTool,
-    stats: ProjectionStatsAccumulator,
-    limits: { descriptionTokens: number; schemaTokens: number },
-  ): PiOpenAiTool {
-    return {
-      ...tool,
-      function: {
-        ...tool.function,
-        description: tool.function.description
-          ? this.previewTextField(tool.function.description, limits.descriptionTokens, stats)
-          : undefined,
-        parameters: this.projectUnknownForPlanning(tool.function.parameters, limits.schemaTokens, stats) as
-          Record<string, unknown> | undefined,
-      },
-    };
+  private projectParameterContract(schema: unknown, tokenLimit: number, stats: ProjectionStatsAccumulator) {
+    const projection = this.parameterContracts.project(schema, tokenLimit);
+    if (projection.truncated) stats.truncatedJsonFields += 1;
+    return projection.contract;
   }
 
   private projectUnknownForPlanning(value: unknown, tokenLimit: number, stats: ProjectionStatsAccumulator): unknown {

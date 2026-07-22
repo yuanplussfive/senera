@@ -185,7 +185,7 @@ function createLegacyConfig(): Record<string, unknown> {
         PlanningClient: { Provider: "openai-generic" },
       },
     },
-    ToolExecution: { Mode: "SandboxPreferred", TimeoutSeconds: 30 },
+    ToolExecution: { Mode: "Process", TimeoutSeconds: 30 },
     AgentLoop: { MaxSteps: 16, MaxRepairAttempts: 4, LoadedTools: "dynamic" },
     ActionPlanner: {
       MaxRepairAttempts: 7,

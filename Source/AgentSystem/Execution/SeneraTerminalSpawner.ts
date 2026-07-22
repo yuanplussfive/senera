@@ -1,10 +1,4 @@
 import { spawn } from "node:child_process";
-import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
-import type {
-  SeneraProcessFallbackAuthorization,
-  SeneraProcessFallbackAuthorizer,
-} from "./SeneraProcessFallbackAuthorization.js";
-import { DenySeneraProcessFallbackAuthorizer } from "./SeneraProcessFallbackAuthorization.js";
 import { assertSeneraExecutionNotAborted } from "./SeneraPersistentExecutionAuthorization.js";
 import { SeneraExecutionError, SeneraExecutionErrorCodes } from "./SeneraExecutionTypes.js";
 import { openSeneraTerminalSidecar } from "./SeneraTerminalSidecarClient.js";
@@ -20,7 +14,6 @@ import {
   type SeneraTerminalBackend,
   type SeneraTerminalChild,
   type SeneraTerminalExecutionMetadata,
-  type SeneraTerminalFallbackMetadata,
   type SeneraTerminalSpawner,
 } from "./SeneraTerminalTypes.js";
 import { resolveSeneraShellInvocation, resolveSeneraShellPlatform } from "./SeneraShellPlatform.js";
@@ -101,7 +94,6 @@ export interface SeneraAuthorizedTerminalSpawnerOptions {
   readonly local?: SeneraTerminalBackend;
   readonly sandbox?: SeneraTerminalBackend;
   readonly backends?: Iterable<SeneraTerminalBackend>;
-  readonly fallbackAuthorizer?: SeneraProcessFallbackAuthorizer;
   readonly environmentPolicy?: SeneraProcessEnvironmentPolicy | SeneraProcessEnvironmentPolicyOptions;
 }
 
@@ -113,8 +105,6 @@ export function createSeneraAuthorizedTerminalSpawner(
     ...(options.sandbox ? [options.sandbox] : []),
     ...(options.backends ?? []),
   ]);
-  const fallbackAuthorizer = options.fallbackAuthorizer ?? DenySeneraProcessFallbackAuthorizer;
-
   return async (command, args, spawnOptions) => {
     assertSeneraExecutionNotAborted(spawnOptions.signal);
     const profile = spawnOptions.profile;
@@ -127,47 +117,15 @@ export function createSeneraAuthorizedTerminalSpawner(
     }
 
     const requestedBoundary = profile.backend;
-    try {
-      const backend = registry.resolve({
-        boundary: requestedBoundary,
-        requiredCapabilities: spawnOptions.requiredCapabilities,
-        shellDialect: spawnOptions.shellCommand?.dialect,
-      });
-      return decorateTerminalChild(
-        await spawnWithTerminalBackend(backend, command, args, spawnOptions),
-        createExecutionMetadata(backend.descriptor, requestedBoundary),
-      );
-    } catch (error) {
-      if (requestedBoundary !== "sandbox" || !isSandboxUnavailable(error)) throw error;
-      if (profile.localFallback !== "allow" || !profile.fallbackContext) throw error;
-
-      const reason = readTerminalFallbackReason(error);
-      const fromBackend = readUnavailableBackend(error) ?? "sandbox-terminal";
-      const local = registry.resolve({
-        boundary: "local",
-        requiredCapabilities: spawnOptions.requiredCapabilities,
-        shellDialect: spawnOptions.shellCommand?.dialect,
-      });
-      const authorization = await fallbackAuthorizer.authorize({
-        fromBackend,
-        toBackend: local.descriptor.id,
-        reason,
-        error,
-        context: profile.fallbackContext,
-        signal: spawnOptions.signal,
-      });
-      assertSeneraExecutionNotAborted(spawnOptions.signal);
-      await emitFallbackStarted(profile.fallbackContext, fromBackend, local.descriptor.id, reason, authorization);
-      return decorateTerminalChild(
-        await spawnWithTerminalBackend(local, command, args, spawnOptions),
-        createExecutionMetadata(local.descriptor, requestedBoundary, {
-          reason,
-          rule: authorization.rule,
-          approvalId: authorization.approvalId,
-          scope: authorization.scope,
-        }),
-      );
-    }
+    const backend = registry.resolve({
+      boundary: requestedBoundary,
+      requiredCapabilities: spawnOptions.requiredCapabilities,
+      shellDialect: spawnOptions.shellCommand?.dialect,
+    });
+    return decorateTerminalChild(
+      await spawnWithTerminalBackend(backend, command, args, spawnOptions),
+      createExecutionMetadata(backend.descriptor, requestedBoundary),
+    );
   };
 }
 
@@ -186,7 +144,6 @@ function spawnWithTerminalBackend(
 function createExecutionMetadata(
   descriptor: SeneraTerminalBackend["descriptor"],
   requestedBoundary = descriptor.boundary,
-  fallback?: SeneraTerminalFallbackMetadata,
 ): SeneraTerminalExecutionMetadata {
   return {
     requestedBoundary,
@@ -196,7 +153,6 @@ function createExecutionMetadata(
     capabilities: [...descriptor.capabilities].sort(),
     capabilityProviders: descriptor.capabilityProviders,
     persistenceScope: descriptor.persistenceScope,
-    fallback,
   };
 }
 
@@ -221,53 +177,8 @@ function decorateTerminalChild(
   };
 }
 
-function isSandboxUnavailable(error: unknown): error is SeneraExecutionError {
-  return error instanceof SeneraExecutionError && error.code === SeneraExecutionErrorCodes.SandboxUnavailable;
-}
-
 function definedEnvironment(environment: NodeJS.ProcessEnv): Record<string, string> {
   return Object.fromEntries(
     Object.entries(environment).flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : [])),
   );
-}
-
-function readTerminalFallbackReason(error: SeneraExecutionError): SeneraTerminalFallbackMetadata["reason"] {
-  const known = new Set<SeneraTerminalFallbackMetadata["reason"]>([
-    "terminal_capability_unsupported",
-    "shell_dialect_unsupported",
-  ]);
-  return known.has(error.details.reason as SeneraTerminalFallbackMetadata["reason"])
-    ? (error.details.reason as SeneraTerminalFallbackMetadata["reason"])
-    : "sandbox_unavailable";
-}
-
-function readUnavailableBackend(error: SeneraExecutionError): string | undefined {
-  return typeof error.details.backend === "string" ? error.details.backend : undefined;
-}
-
-async function emitFallbackStarted(
-  context: NonNullable<NonNullable<Parameters<SeneraTerminalSpawner>[2]["profile"]>["fallbackContext"]>,
-  fromBackend: string,
-  toBackend: string,
-  reason: SeneraTerminalFallbackMetadata["reason"],
-  authorization: SeneraProcessFallbackAuthorization,
-): Promise<void> {
-  await emitAgentEvent(context.onEvent, {
-    kind: AgentEventKinds.ExecutionFallbackStarted,
-    context: { sessionId: context.sessionId, requestId: context.requestId, step: context.step },
-    data: {
-      toolCallId: context.toolCallId,
-      batchId: context.batchId,
-      pluginName: context.subject.pluginName,
-      pluginVersion: context.subject.pluginVersion,
-      toolName: context.subject.toolName,
-      manifestDigest: context.subject.manifestDigest,
-      fromBackend,
-      toBackend,
-      reason,
-      rule: authorization.rule,
-      approvalId: authorization.approvalId,
-      scope: authorization.scope,
-    },
-  });
 }

@@ -80,11 +80,8 @@ function ApprovalRequestItem({
   onResolve: ApprovalRequestStripProps["onResolve"];
 }): JSX.Element {
   const riskLabels = approvalRiskLabels(approval);
-  const isFallback = approval.subject.kind === "execution_fallback";
-  const argumentSummary =
-    approval.subject.kind === "tool_call" ? summarizeApprovalArguments(approval.subject.arguments) : "";
-  const displayName =
-    approval.subject.kind === "execution_fallback" ? approval.subject.pluginTitle : approval.subject.toolName;
+  const argumentSummary = summarizeApprovalArguments(approval.subject.arguments);
+  const displayName = approval.subject.toolName;
 
   return (
     <section className="rounded-xl border border-line bg-surface-raised px-3 py-2.5 shadow-panel">
@@ -94,7 +91,7 @@ function ApprovalRequestItem({
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <span className="truncate text-[12.5px] font-semibold text-content-primary">{displayName}</span>
             <MetaLabel size="sm" className="text-umber-700">
-              {frontendMessage(isFallback ? "approval.fallback.pending" : "approval.tool.pending")}
+              {frontendMessage("approval.tool.pending")}
             </MetaLabel>
             {approval.rule ? (
               <span className="rounded-[4px] bg-umber-50 px-1.5 py-0.5 font-mono text-[10px] text-umber-800">
@@ -166,20 +163,24 @@ function ApprovalDecisionButton({
 
 function approvalRiskLabels(approval: ApprovalRunRecord): string[] {
   const signals = approval.riskSignals ?? [];
-  if (approval.subject.kind === "execution_fallback") {
-    const subject = approval.subject;
-    return [
-      frontendMessage("approval.fallback.localExecution"),
-      frontendMessage(subject.network === "Allow" ? "approval.fallback.networkAllow" : "approval.fallback.networkDeny"),
-      frontendMessage(
-        subject.workspace === "ReadWrite"
-          ? "approval.fallback.workspaceReadWrite"
-          : "approval.fallback.workspaceReadOnly",
-      ),
-      ...signals,
-    ].slice(0, 5);
-  }
-  return signals.length > 0 ? signals.slice(0, 4) : ["manual-review"];
+  const execution = approval.subject.execution;
+  const executionLabels = execution
+    ? [
+        frontendMessage(execution.target === "Sandbox" ? "approval.execution.sandbox" : "approval.execution.local"),
+        frontendMessage(
+          execution.network === "default" ? "approval.execution.networkDefault" : "approval.execution.networkDisabled",
+        ),
+        frontendMessage(
+          execution.workspaceMount === "writable"
+            ? "approval.execution.workspaceWritable"
+            : "approval.execution.workspaceReadonly",
+        ),
+      ]
+    : [];
+  return [...executionLabels, ...(signals.length > 0 ? signals : [frontendMessage("approval.manualReview")])].slice(
+    0,
+    5,
+  );
 }
 
 function summarizeApprovalArguments(args: Record<string, unknown>): string {

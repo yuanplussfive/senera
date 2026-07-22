@@ -2,6 +2,19 @@ import { extension, lookup } from "mime-types";
 
 export const UnknownBinaryMimeType = "application/octet-stream";
 
+export const AgentInlineImageMimeTypes = [
+  "image/avif",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/tiff",
+  "image/webp",
+] as const;
+
+export type AgentInlineImageMimeType = (typeof AgentInlineImageMimeTypes)[number];
+
+const AgentInlineImageMimeTypeSet: ReadonlySet<string> = new Set(AgentInlineImageMimeTypes);
+
 export interface AgentUploadMimeDetection {
   effective: string;
   declared?: string;
@@ -24,6 +37,10 @@ export async function detectAgentUploadMime(input: {
     detected,
     extension: extension(effective) || undefined,
   };
+}
+
+export function isAgentInlineImageMime(value: string | undefined): value is AgentInlineImageMimeType {
+  return value !== undefined && AgentInlineImageMimeTypeSet.has(value);
 }
 
 async function detectMimeFromBytes(filePath: string): Promise<string | undefined> {

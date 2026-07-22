@@ -4,7 +4,11 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import { createSeneraExecutionEnvironments } from "../../../Source/AgentSystem/Execution/SeneraExecutionEnvFactory.js";
+import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import { projectAgentMcpResourceArguments } from "../../../Source/AgentSystem/Mcp/AgentMcpResourceArgumentProjector.js";
+import { AgentMcpResourceCapabilityRegistry } from "../../../Source/AgentSystem/Mcp/AgentMcpResourceCapabilityRegistry.js";
+import { AgentMcpUploadReadResourceCapability } from "../../../Source/AgentSystem/Mcp/AgentMcpUploadReadResourceCapability.js";
+import { AgentMcpWorkspacePathResourceCapability } from "../../../Source/AgentSystem/Mcp/AgentMcpWorkspacePathResourceCapability.js";
 import { resolveAgentRipgrepWorkspaceTarget } from "../../../Source/AgentSystem/Mcp/AgentRipgrepWorkspace.js";
 import { AgentPluginRegistry } from "../../../Source/AgentSystem/Plugin/AgentPluginRegistry.js";
 import { AgentResourceAccessPolicy } from "../../../Source/AgentSystem/Safety/AgentResourceAccessPolicy.js";
@@ -27,8 +31,8 @@ describe("MCP workspace boundary", () => {
 
     const normalized = await projectAgentMcpResourceArguments(
       { path: "Source", pattern: "needle" },
-      [{ Pointer: "/path", Intent: "read" }],
-      executionEnv,
+      [workspaceResource("/path", "read")],
+      workspaceCapabilities(executionEnv),
     );
     const target = await resolveAgentRipgrepWorkspaceTarget(workspaceRoot, String(normalized.path));
 
@@ -41,10 +45,18 @@ describe("MCP workspace boundary", () => {
     const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot });
 
     await expect(
-      projectAgentMcpResourceArguments({ path: "../outside" }, [{ Pointer: "/path", Intent: "read" }], executionEnv),
+      projectAgentMcpResourceArguments(
+        { path: "../outside" },
+        [workspaceResource("/path", "read")],
+        workspaceCapabilities(executionEnv),
+      ),
     ).rejects.toMatchObject({ code: "permission_denied" });
     await expect(
-      projectAgentMcpResourceArguments({ path: "escape" }, [{ Pointer: "/path", Intent: "read" }], executionEnv),
+      projectAgentMcpResourceArguments(
+        { path: "escape" },
+        [workspaceResource("/path", "read")],
+        workspaceCapabilities(executionEnv),
+      ),
     ).rejects.toMatchObject({ code: "permission_denied" });
     await expect(resolveAgentRipgrepWorkspaceTarget(workspaceRoot, "escape")).rejects.toMatchObject({
       code: "outside_workspace",
@@ -64,33 +76,27 @@ describe("MCP workspace boundary", () => {
       projectAgentMcpResourceArguments(
         { path: ".git/config", edits: [], dryRun: true },
         [
-          {
-            Pointer: "/path",
-            Intent: {
-              Selector: "/dryRun",
-              Cases: [{ Equals: true, Intent: "read" }],
-              Default: "replace",
-            },
-          },
+          workspaceResource("/path", {
+            Selector: "/dryRun",
+            Cases: [{ Equals: true, Intent: "read" }],
+            Default: "replace",
+          }),
         ],
-        executionEnv,
+        workspaceCapabilities(executionEnv),
       ),
     ).resolves.toMatchObject({ path: fs.realpathSync(path.join(workspaceRoot, ".git", "config")) });
     await expect(
       projectAgentMcpResourceArguments(
         { path: ".git/config", content: "blocked" },
-        [{ Pointer: "/path", Intent: "replace" }],
-        executionEnv,
+        [workspaceResource("/path", "replace")],
+        workspaceCapabilities(executionEnv),
       ),
     ).rejects.toMatchObject({ code: "permission_denied" });
     await expect(
       projectAgentMcpResourceArguments(
         { source: ".git/config", destination: "config-copy" },
-        [
-          { Pointer: "/source", Intent: "remove" },
-          { Pointer: "/destination", Intent: "create" },
-        ],
-        executionEnv,
+        [workspaceResource("/source", "remove"), workspaceResource("/destination", "create")],
+        workspaceCapabilities(executionEnv),
       ),
     ).rejects.toMatchObject({ code: "permission_denied" });
   });
@@ -104,14 +110,11 @@ describe("MCP workspace boundary", () => {
 
     const normalized = await projectAgentMcpResourceArguments(
       args,
-      [{ Pointer: "/request/targets/0/location", Intent: "read" }],
-      executionEnv,
+      [workspaceResource("/request/targets/0/location", "read")],
+      workspaceCapabilities(executionEnv),
     );
 
-    expect(normalized).toEqual({
-      request: { targets: [{ location: fs.realpathSync(source) }] },
-      mode: "inspect",
-    });
+    expect(normalized).toEqual({ request: { targets: [{ location: fs.realpathSync(source) }] }, mode: "inspect" });
     expect(args.request.targets[0]?.location).toBe("Source");
   });
 
@@ -122,10 +125,71 @@ describe("MCP workspace boundary", () => {
     await expect(
       projectAgentMcpResourceArguments(
         { request: { path: 42 } },
-        [{ Pointer: "/request/path", Intent: "read" }],
-        executionEnv,
+        [workspaceResource("/request/path", "read")],
+        workspaceCapabilities(executionEnv),
       ),
-    ).rejects.toThrow("MCP resource argument /request/path must be a string.");
+    ).rejects.toThrow("MCP workspace resource /request/path must be a string.");
+  });
+
+  it("projects a host-authorized upload through its registered capability", async () => {
+    const registry = new AgentMcpResourceCapabilityRegistry().register(
+      new AgentMcpUploadReadResourceCapability({
+        resolve: async (uploadUri) =>
+          uploadUri === "senera://upload/upl_test"
+            ? {
+                filePath: "C:/isolated/uploads/upl_test/original",
+                uploadDir: "C:/isolated/uploads/upl_test",
+                manifest: {
+                  uploadId: "upl_test",
+                  uploadUri,
+                  name: "diagram.png",
+                  mime: "image/png",
+                  size: 42,
+                  sha256: "a".repeat(64),
+                  createdAt: "2026-01-01T00:00:00.000Z",
+                  storage: { fileName: "original" },
+                },
+              }
+            : undefined,
+      }),
+    );
+    const args = {
+      uploadUri: "senera://upload/upl_test",
+      task: "inspect",
+      resources: { image: { filePath: "untrusted-model-value" } },
+    };
+
+    const projected = await projectAgentMcpResourceArguments(
+      args,
+      [
+        {
+          Capability: "senera.upload.read",
+          Pointer: "/uploadUri",
+          Binding: "image",
+        },
+      ],
+      registry,
+    );
+
+    expect(args).toEqual({
+      uploadUri: "senera://upload/upl_test",
+      task: "inspect",
+      resources: { image: { filePath: "untrusted-model-value" } },
+    });
+    expect(projected).toEqual({
+      uploadUri: "senera://upload/upl_test",
+      task: "inspect",
+      resources: {
+        image: {
+          uploadUri: "senera://upload/upl_test",
+          filePath: "C:/isolated/uploads/upl_test/original",
+          name: "diagram.png",
+          mime: "image/png",
+          size: 42,
+          sha256: "a".repeat(64),
+        },
+      },
+    });
   });
 });
 
@@ -141,4 +205,18 @@ function createFixture(): { workspaceRoot: string; outsideRoot: string } {
 
 function createDirectoryLink(target: string, linkPath: string): void {
   fs.symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : "dir");
+}
+
+function workspaceCapabilities(
+  executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath">,
+): AgentMcpResourceCapabilityRegistry {
+  return new AgentMcpResourceCapabilityRegistry().register(new AgentMcpWorkspacePathResourceCapability(executionEnv));
+}
+
+function workspaceResource(pointer: string, intent: unknown) {
+  return {
+    Capability: "senera.workspace.path",
+    Pointer: pointer,
+    Parameters: { Intent: intent },
+  };
 }

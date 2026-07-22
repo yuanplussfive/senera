@@ -59,7 +59,10 @@ describe("ActionPlanner context behavior", () => {
         {
           name: "WorkspaceInspectTool",
           description: "Inspect the workspace.",
-          parameters: { type: "object", properties: {} },
+          parameterContract: {
+            format: "json_schema",
+            schema: { type: "object", properties: {} },
+          },
         },
       ],
       { stage: "prepareInteraction" },

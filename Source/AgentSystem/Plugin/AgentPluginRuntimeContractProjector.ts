@@ -15,6 +15,7 @@ import type {
 } from "../Types/PluginRuntimeTypes.js";
 import { AgentToolContractBundleLoader } from "../ToolContracts/AgentToolContractBundleLoader.js";
 import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
+import { AgentToolExecutionTargetArgument } from "../ToolRuntime/AgentToolExecutionPlan.js";
 
 export interface AgentPluginRuntimeContributions {
   tools: RegisteredTool[];
@@ -51,6 +52,7 @@ export class AgentPluginRuntimeContractProjector {
         execution: tool.Execution,
         runtime: tool.Runtime,
         observation: tool.Observation,
+        sources: resolveToolDiscoverySources(plugin, tool),
         search: tool.Search,
         evidenceCapabilities: tool.EvidenceCapabilities ?? [],
         approval: tool.Approval,
@@ -88,6 +90,7 @@ export class AgentPluginRuntimeContractProjector {
       throw new Error(`Tool contract bundle for ${plugin.manifest.Plugin.Name} does not define ${tool.Name}.`);
     }
     const argumentsContract = this.contractProjector.project(definition.inputSchema);
+    assertExecutionTargetIsReserved(tool, argumentsContract.jsonSchema);
     const digest = crypto
       .createHash("sha256")
       .update(
@@ -129,6 +132,29 @@ export class AgentPluginRuntimeContractProjector {
       exposeToPi: template.ExposeToPi === true,
       search: template.Search,
     }));
+  }
+}
+
+function resolveToolDiscoverySources(plugin: LoadedPlugin, tool: ToolManifest) {
+  const declared = plugin.manifest.Discovery?.Sources ?? [];
+  const byId = new Map(declared.map((source) => [source.Id, source]));
+  const selected = tool.Search?.SourceIds ?? declared.map((source) => source.Id);
+  return selected.map((sourceId) => {
+    const source = byId.get(sourceId);
+    if (!source) {
+      throw new Error(
+        `Tool ${tool.Name} in plugin ${plugin.manifest.Plugin.Name} references undeclared discovery source ${sourceId}.`,
+      );
+    }
+    return deepFreeze({ ...source });
+  });
+}
+
+function assertExecutionTargetIsReserved(tool: ToolManifest, schema: Record<string, unknown>): void {
+  const properties = schema.properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return;
+  if (AgentToolExecutionTargetArgument in properties) {
+    throw new Error(`Tool ${tool.Name} reserves the ${AgentToolExecutionTargetArgument} argument.`);
   }
 }
 

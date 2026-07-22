@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  PluginDiscoverySchema,
   PluginKindSchema,
   PluginMcpServerSchema,
   PluginSandboxSchema,
@@ -29,6 +30,7 @@ export const PluginManifestSchema = z
         Description: z.string().optional(),
       })
       .strict(),
+    Discovery: PluginDiscoverySchema.optional(),
     Tools: z.array(ToolSchema).optional(),
     McpServers: z.array(PluginMcpServerSchema).optional(),
     Skills: z.array(SkillSchema).optional(),
@@ -50,4 +52,16 @@ export const PluginManifestSchema = z
         message: "Plugins that declare tools must provide a versioned tool contract bundle.",
       });
     }
+    const sourceIds = new Set(manifest.Discovery?.Sources.map((source) => source.Id) ?? []);
+    manifest.Tools?.forEach((tool, toolIndex) => {
+      tool.Search?.SourceIds?.forEach((sourceId, sourceIndex) => {
+        if (!sourceIds.has(sourceId)) {
+          context.addIssue({
+            code: "custom",
+            path: ["Tools", toolIndex, "Search", "SourceIds", sourceIndex],
+            message: `Tool source ${sourceId} is not declared by this plugin.`,
+          });
+        }
+      });
+    });
   });

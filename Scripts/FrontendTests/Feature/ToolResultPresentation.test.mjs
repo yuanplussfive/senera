@@ -52,6 +52,49 @@ test("workflow feed uses the human summary rather than raw JSON", () => {
   expect(feed.groups[0]?.items[0]?.subtitle).not.toContain("senera.tool_observation");
 });
 
+test("workflow feed does not duplicate tool prefaces or expose their internal decision kind", () => {
+  const prefaceStep = {
+    id: "assistant-preface",
+    kind: "decision",
+    title: "工具调用前回复",
+    description: "我先检查工作区文件。",
+    status: "done",
+    startedAt: "2026-07-10T00:00:01.000Z",
+    endedAt: "2026-07-10T00:00:01.000Z",
+    decisionKind: "tool_preface",
+  };
+  const baseRun = {
+    requestId: "request-project",
+    revision: 1,
+    startedAt: "2026-07-10T00:00:00.000Z",
+    status: "running",
+    input: "分析项目",
+    steps: [prefaceStep],
+    streamingRaw: "",
+    xmlPreview: "",
+    visibleText: "我先检查工作区文件。",
+    displayText: "我先检查工作区文件。",
+    expectedOutputMode: "open",
+    decisionMode: "tool_candidate",
+    pendingToolArgsByName: {},
+  };
+
+  const toolFeed = deriveFeedModel({ ...baseRun, visibleKind: "tool_calls" });
+  expect(toolFeed.bodyText).toBe("");
+  expect(toolFeed.headline.title).not.toContain("tool_preface");
+  expect(toolFeed.headline.subtitle).toBeUndefined();
+
+  const answerFeed = deriveFeedModel({
+    ...baseRun,
+    visibleKind: "final_answer",
+    visibleText: "这是最终回答。",
+    displayText: "这是最终回答。",
+    decisionMode: "final_text",
+  });
+  expect(answerFeed.bodyText).toBe("这是最终回答。");
+  expect(answerFeed.headline.subtitle).toBeUndefined();
+});
+
 function toolStep() {
   return {
     id: "tool-weather",

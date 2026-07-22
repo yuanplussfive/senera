@@ -1,3 +1,5 @@
+import type { McpUploadResource } from "@senera/tool-plugin-sdk";
+
 export type DocumentToolArguments = {
   // Opaque upload handle copied from an attachment, for example "senera://upload/upl_0123abcd".
   uploadUri: string;
@@ -7,6 +9,11 @@ export type DocumentToolArguments = {
   // probe: return registration/probe facts only.
   // extract: require text extraction.
   mode?: string;
+
+  // Host-authorized upload descriptor populated from the declared resource binding.
+  resources?: {
+    document?: McpUploadResource;
+  };
 };
 
 export type DocumentToolResult = {

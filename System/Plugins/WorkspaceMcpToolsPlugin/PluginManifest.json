@@ -8,6 +8,15 @@
     "Kind": "Tool",
     "Description": "通过标准 Model Context Protocol server 暴露工作区文件读取、目录查看和内容检索能力。"
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "workspace",
+        "Title": "Workspace",
+        "Description": "Files, directories, and source code in the current workspace."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 78
@@ -37,13 +46,12 @@
         "Kind": "McpTool",
         "Server": "filesystem",
         "Tool": "read_text_file",
-        "Resources": [{ "Pointer": "/path", "Intent": "read" }]
+        "Resources": [{ "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "read" } }]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["filesystem:read:workspace"],
@@ -69,13 +77,12 @@
         "Kind": "McpTool",
         "Server": "filesystem",
         "Tool": "list_directory",
-        "Resources": [{ "Pointer": "/path", "Intent": "read" }]
+        "Resources": [{ "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "read" } }]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["filesystem:read:workspace"],
@@ -101,13 +108,12 @@
         "Kind": "McpTool",
         "Server": "filesystem",
         "Tool": "search_files",
-        "Resources": [{ "Pointer": "/path", "Intent": "read" }]
+        "Resources": [{ "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "read" } }]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["filesystem:read:workspace"],
@@ -133,13 +139,12 @@
         "Kind": "McpTool",
         "Server": "ripgrep",
         "Tool": "search",
-        "Resources": [{ "Pointer": "/path", "Intent": "read" }]
+        "Resources": [{ "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "read" } }]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["filesystem:read:workspace", "process:run:ripgrep"],
@@ -165,13 +170,12 @@
         "Kind": "McpTool",
         "Server": "ripgrep",
         "Tool": "list-files",
-        "Resources": [{ "Pointer": "/path", "Intent": "read" }]
+        "Resources": [{ "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "read" } }]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "ArtifactPolicyFile": "./ArtifactPolicy.json",
       "Permissions": ["filesystem:read:workspace", "process:run:ripgrep"],
@@ -199,20 +203,22 @@
         "Tool": "edit_file",
         "Resources": [
           {
+            "Capability": "senera.workspace.path",
             "Pointer": "/path",
-            "Intent": {
-              "Selector": "/dryRun",
-              "Cases": [{ "Equals": true, "Intent": "read" }],
-              "Default": "replace"
+            "Parameters": {
+              "Intent": {
+                "Selector": "/dryRun",
+                "Cases": [{ "Equals": true, "Intent": "read" }],
+                "Default": "replace"
+              }
             }
           }
         ]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadWrite",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadWrite"
       },
       "ArtifactPolicyFile": "./WorkspaceWriteArtifactPolicy.json",
       "Permissions": ["filesystem:read:workspace", "filesystem:write:workspace"],
@@ -274,13 +280,14 @@
         "Kind": "McpTool",
         "Server": "filesystem",
         "Tool": "write_file",
-        "Resources": [{ "Pointer": "/path", "Intent": "replace" }]
+        "Resources": [
+          { "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "replace" } }
+        ]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadWrite",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadWrite"
       },
       "ArtifactPolicyFile": "./WorkspaceWriteArtifactPolicy.json",
       "Permissions": ["filesystem:write:workspace"],
@@ -334,13 +341,14 @@
         "Kind": "McpTool",
         "Server": "filesystem",
         "Tool": "create_directory",
-        "Resources": [{ "Pointer": "/path", "Intent": "create" }]
+        "Resources": [
+          { "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "create" } }
+        ]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadWrite",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadWrite"
       },
       "ArtifactPolicyFile": "./WorkspaceWriteArtifactPolicy.json",
       "Permissions": ["filesystem:write:workspace"],
@@ -371,15 +379,14 @@
         "Server": "filesystem",
         "Tool": "move_file",
         "Resources": [
-          { "Pointer": "/source", "Intent": "remove" },
-          { "Pointer": "/destination", "Intent": "create" }
+          { "Capability": "senera.workspace.path", "Pointer": "/source", "Parameters": { "Intent": "remove" } },
+          { "Capability": "senera.workspace.path", "Pointer": "/destination", "Parameters": { "Intent": "create" } }
         ]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadWrite",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadWrite"
       },
       "ArtifactPolicyFile": "./WorkspaceWriteArtifactPolicy.json",
       "Permissions": ["filesystem:write:workspace"],

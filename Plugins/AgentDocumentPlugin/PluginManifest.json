@@ -8,10 +8,28 @@
     "Kind": "Tool",
     "Description": "按 uploadUri 统一处理上传文档：登记、探测 MIME/容器事实，并按配置选择内容抽取器生成正文、Markdown 预览和 chunks。"
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "uploads",
+        "Title": "Uploads",
+        "Description": "Files and media explicitly uploaded by the user."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 8
   },
+  "McpServers": [
+    {
+      "Id": "document",
+      "Transport": "stdio",
+      "Command": "${node}",
+      "Args": ["${runtimeModule:Plugins/AgentDocumentPlugin/Runtime.js}"],
+      "Cwd": "${pluginRoot}"
+    }
+  ],
   "Tools": [
     {
       "Name": "DocumentTool",
@@ -19,14 +37,21 @@
       "DescriptionFile": "./docs/Tool.md",
       "Permissions": ["filesystem:read:uploads"],
       "Handler": {
-        "Kind": "HostCapability",
-        "Capability": "document"
+        "Kind": "McpTool",
+        "Server": "document",
+        "Tool": "DocumentTool",
+        "Resources": [
+          {
+            "Capability": "senera.upload.read",
+            "Pointer": "/uploadUri",
+            "Binding": "document"
+          }
+        ]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Artifacts": {
         "Evidence": [
@@ -188,7 +213,6 @@
       },
       "Runtime": {
         "Lifecycle": "Immediate",
-        "ProtocolVersion": 2,
         "Capabilities": {
           "Cancellation": true
         }

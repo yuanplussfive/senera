@@ -12,8 +12,7 @@ import {
   type SeneraExecutionErrorCode,
 } from "../Execution/SeneraExecutionTypes.js";
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
-import { resolveAgentToolExecutionPolicy } from "./AgentToolExecutionPolicy.js";
-import { bindAgentToolFallbackContext } from "./AgentToolFallbackContext.js";
+import type { AgentToolExecutionPlan } from "./AgentToolExecutionPlan.js";
 import { SeneraShellCommandSpecSchema } from "../Execution/SeneraShellCommand.js";
 import { openAgentHostToolReportingScope } from "./AgentToolHostCapabilityRegistry.js";
 import path from "node:path";
@@ -80,11 +79,7 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
 
   const toolExecution = resolveToolExecutionConfig(context.config);
   const artifactsConfig = resolveArtifactsConfig(context.config);
-  const executionProfile = bindAgentToolFallbackContext({
-    profile: createAgentShellExecutionProfile(context.tool),
-    tool: context.tool,
-    correlation: context,
-  });
+  const executionProfile = createAgentShellExecutionProfile(context.tool, requireExecutionPlan(context));
   const reporting = openAgentHostToolReportingScope(context);
   let outputSpool: Awaited<ReturnType<typeof createSeneraOutputSpool>> | undefined;
   let cleanupOutputSpool = false;
@@ -160,21 +155,27 @@ export const runShellCommandHostTool: AgentHostToolHandler = async (args, contex
 
 export function createAgentShellExecutionProfile(
   tool: Parameters<AgentHostToolHandler>[1]["tool"],
+  executionPlan: AgentToolExecutionPlan,
 ): SeneraProcessExecutionProfile {
-  const policy = resolveAgentToolExecutionPolicy(tool);
-  const local = policy.mode === "local";
+  const local = executionPlan.backend === "local";
   return {
     name: ShellExecutionProfileName,
     kind: "shell",
-    backend: local ? "local" : "sandbox",
-    localFallback: policy.localFallback,
+    backend: executionPlan.backend,
     microsandbox: local
       ? undefined
       : {
-          network: policy.network,
-          workspaceMount: policy.workspaceMount,
+          network: executionPlan.network,
+          workspaceMount: executionPlan.workspaceMount,
         },
   };
+}
+
+function requireExecutionPlan(context: Parameters<AgentHostToolHandler>[1]): AgentToolExecutionPlan {
+  if (!context.executionPlan) {
+    throw new Error(`Tool ${context.tool.name} is missing its resolved execution plan.`);
+  }
+  return context.executionPlan;
 }
 
 function shellFailure(error: NonNullable<AgentToolProcessRunResult["response"]["error"]>): AgentToolProcessRunResult {

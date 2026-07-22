@@ -1,9 +1,6 @@
 import { spawn } from "cross-spawn";
-import type { SeneraProcessFallbackAuthorizer } from "./SeneraProcessFallbackAuthorization.js";
-import {
-  assertSeneraExecutionNotAborted,
-  runAuthorizedPersistentExecution,
-} from "./SeneraPersistentExecutionAuthorization.js";
+import { SeneraExecutionError, SeneraExecutionErrorCodes } from "./SeneraExecutionTypes.js";
+import { assertSeneraExecutionNotAborted } from "./SeneraPersistentExecutionAuthorization.js";
 import type { SeneraPersistentProcessChild, SeneraPersistentProcessSpawner } from "./SeneraPersistentProcessTypes.js";
 import { SeneraProcessEnvironmentPolicy } from "./SeneraProcessEnvironment.js";
 import type { SeneraProcessEnvironmentPolicyOptions } from "./SeneraProcessEnvironment.js";
@@ -38,7 +35,6 @@ export function createSeneraLocalPersistentProcessSpawner(
 
 export interface SeneraAuthorizedPersistentProcessSpawnerOptions {
   readonly local?: SeneraPersistentProcessSpawner;
-  readonly fallbackAuthorizer?: SeneraProcessFallbackAuthorizer;
   readonly environmentPolicy?: SeneraProcessEnvironmentPolicy | SeneraProcessEnvironmentPolicyOptions;
 }
 
@@ -46,14 +42,17 @@ export function createSeneraAuthorizedPersistentProcessSpawner(
   options: SeneraAuthorizedPersistentProcessSpawnerOptions = {},
 ): SeneraPersistentProcessSpawner {
   const local = options.local ?? createSeneraLocalPersistentProcessSpawner(options.environmentPolicy);
-  return (command, args, spawnOptions) =>
-    runAuthorizedPersistentExecution({
-      profile: spawnOptions.profile,
-      signal: spawnOptions.signal,
-      fallbackAuthorizer: options.fallbackAuthorizer,
-      localBackend: "node-persistent",
-      sandboxBackend: "microsandbox-persistent",
-      capability: "长连接进程",
-      startLocal: () => local(command, args, spawnOptions),
-    });
+  return async (command, args, spawnOptions) => {
+    if (spawnOptions.signal?.aborted) {
+      throw new SeneraExecutionError(SeneraExecutionErrorCodes.Aborted, "aborted");
+    }
+    if (spawnOptions.profile?.backend === "sandbox") {
+      throw new SeneraExecutionError(
+        SeneraExecutionErrorCodes.SandboxUnavailable,
+        "长连接 MCP 进程尚未实现沙箱后端。",
+        { backend: "microsandbox-persistent", profile: spawnOptions.profile.name },
+      );
+    }
+    return local(command, args, spawnOptions);
+  };
 }

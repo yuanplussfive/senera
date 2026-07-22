@@ -17,6 +17,7 @@ export function createRunRecord(input: { requestId: string; startedAt: string; i
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",
+    plannedDecisionMode: undefined,
     pendingToolArgsByName: {},
     approvals: [],
     interactionInputs: [],
@@ -60,6 +61,12 @@ export function projectStreamingVisibility(run: RunRecord): void {
   if (run.decisionMode === "final_text") {
     run.visibleText = run.streamingRaw;
     run.visibleKind = "final_answer";
+    return;
+  }
+
+  if (run.decisionMode === "tool_candidate") {
+    run.visibleText = run.streamingRaw;
+    run.visibleKind = "tool_preface";
     return;
   }
 

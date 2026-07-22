@@ -215,6 +215,101 @@ describe("Pi assistant final-answer compilation", () => {
     expect(client.selectInputs).toHaveLength(0);
   });
 
+  test("validates prepared arguments against the complete schema when its planning card is truncated", async () => {
+    const client = new FinalAnswerCompilerClient(new Error("No model stage should run."));
+    const compilation = await createCompiler(client).compile({
+      request: {
+        model: "test-model",
+        messages: [{ role: "user", content: "Search for the current release." }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "LargeSearchTool",
+              description: "Search current external sources.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: { type: "string", description: "q".repeat(100_000) },
+                },
+                required: ["query"],
+                additionalProperties: false,
+              },
+            },
+          },
+        ],
+      },
+      runtime: {
+        requestId: "request-large-tool-schema",
+        rootCommand: toolRootCommand(),
+        preparedAction: new AgentPiPreparedActionLease({
+          kind: "CallTools",
+          preface: "Searching current sources.",
+          calls: [
+            {
+              toolName: "LargeSearchTool",
+              purpose: "Find the current release.",
+              required: true,
+              argumentHints: { query: "current release" },
+            },
+          ],
+        }),
+      },
+    });
+
+    expect(compilation).toMatchObject({
+      kind: "tool_calls",
+      toolCalls: [{ name: "LargeSearchTool", arguments: { query: "current release" } }],
+    });
+    expect(client.selectInputs).toHaveLength(0);
+  });
+
+  test("fills model-selected arguments from the complete schema after bounded tool planning", async () => {
+    const client = new ToolArgumentCompilerClient();
+    const compilation = await createCompiler(client).compile({
+      request: {
+        model: "test-model",
+        messages: [{ role: "user", content: "Search for the current release." }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "LargeSearchTool",
+              description: "Search current external sources.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: { type: "string", description: "q".repeat(100_000) },
+                },
+                required: ["query"],
+                additionalProperties: false,
+              },
+            },
+          },
+        ],
+      },
+      runtime: {
+        requestId: "request-fill-large-tool-schema",
+        rootCommand: toolRootCommand(),
+      },
+    });
+
+    expect(compilation).toMatchObject({
+      kind: "tool_calls",
+      toolCalls: [{ name: "LargeSearchTool", arguments: { query: "current release" } }],
+    });
+    expect(client.selectInputs[0]?.candidateTools[0]?.parameterContract).toMatchObject({
+      format: "json_schema_outline",
+      rootTypes: ["object"],
+      properties: [{ path: "query", types: ["string"], required: true }],
+      omittedProperties: 0,
+    });
+    expect(client.fillInputs[0]?.tool.parameters).toMatchObject({
+      type: "object",
+      required: ["query"],
+    });
+  });
+
   test("repairs legacy FinalAnswer output that still contains user-visible answer text", async () => {
     const client = new FinalAnswerCompilerClient(
       {
@@ -298,6 +393,8 @@ describe("Pi assistant final-answer compilation", () => {
     expect(input).not.toHaveProperty("allowedTools");
     expect(input?.openAiRequest).not.toHaveProperty("tools");
     expect(JSON.stringify(input?.candidateTools).length).toBeLessThan(12_000);
+    expect(JSON.stringify(input?.candidateTools)).not.toContain("senera.token_preview.v1");
+    expect(input?.candidateTools[0]?.parameterContract.format).toBe("json_schema_outline");
     expect(input?.openAiRequest.toolTranscript[0]?.observation).toEqual({
       status: "success",
       summary: "Complete",
@@ -339,6 +436,43 @@ class FinalAnswerCompilerClient implements AgentPiAssistantCompilerModelClient {
 
   async repairPiToolArguments(_input: AgentPiToolArgumentsRepairInput): Promise<never> {
     throw new Error("FinalAnswer compilation must not repair tool arguments.");
+  }
+}
+
+class ToolArgumentCompilerClient implements AgentPiAssistantCompilerModelClient {
+  readonly selectInputs: AgentPiControllerActionInput[] = [];
+  readonly fillInputs: AgentPiToolArgumentsInput[] = [];
+
+  async selectPiAction(input: AgentPiControllerActionInput): Promise<unknown> {
+    this.selectInputs.push(input);
+    return {
+      kind: "CallTools",
+      preface: "Searching current sources.",
+      calls: [
+        {
+          toolName: "LargeSearchTool",
+          purpose: "Find the current release.",
+          required: true,
+        },
+      ],
+    };
+  }
+
+  async repairPiAction(): Promise<never> {
+    throw new Error("The selected action should be valid.");
+  }
+
+  async fillPiToolArguments(input: AgentPiToolArgumentsInput): Promise<unknown> {
+    this.fillInputs.push(input);
+    return {
+      arguments: { query: "current release" },
+      missingInputs: [],
+      assumptions: [],
+    };
+  }
+
+  async repairPiToolArguments(): Promise<never> {
+    throw new Error("The generated arguments should be valid.");
   }
 }
 

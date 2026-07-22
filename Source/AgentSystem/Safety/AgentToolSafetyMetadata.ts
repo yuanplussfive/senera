@@ -13,5 +13,6 @@ export function projectAgentToolSafetyMetadata(tool: RegisteredTool): AgentToolS
     ),
     capabilityEffects: (tool.search?.Capabilities ?? []).flatMap((capability) => capability.Facets?.Effects ?? []),
     security: tool.plugin.manifest.Security,
+    executionTargets: [...tool.execution.Targets],
   };
 }

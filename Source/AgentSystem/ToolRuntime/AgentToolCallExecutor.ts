@@ -24,6 +24,7 @@ import type {
   AskUserControlResult,
 } from "./AgentToolCallExecutionTypes.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
+import { resolveAgentToolInvocation } from "./AgentToolExecutionPlan.js";
 
 export interface AgentToolCallExecutorOptions {
   registry: AgentPluginRegistry;
@@ -46,6 +47,7 @@ export class AgentToolCallExecutor {
   private readonly ownedToolRunner?: AgentToolRunner;
   private readonly workspaceCapture: AgentWorkspaceChangeCapture;
   private readonly emitLifecycleEvents: boolean;
+  private readonly hostCapabilities: AgentToolHostCapabilityRegistry;
   private closePromise: Promise<void> | undefined;
 
   constructor(private readonly options: AgentToolCallExecutorOptions) {
@@ -59,16 +61,18 @@ export class AgentToolCallExecutor {
     this.workspaceCapture = new AgentWorkspaceChangeCapture({
       workspaceRoot,
     });
+    this.hostCapabilities =
+      options.hostCapabilities ??
+      createDefaultHostCapabilityRegistry({
+        toolSearch: options.toolSearch,
+        executionResources: options.executionResources,
+      });
     this.ownedToolRunner = options.toolRunner
       ? undefined
       : new AgentToolRunner(
           options.config,
           workspaceRoot,
-          options.hostCapabilities ??
-            createDefaultHostCapabilityRegistry({
-              toolSearch: options.toolSearch,
-              executionResources: options.executionResources,
-            }),
+          this.hostCapabilities,
           options.registry,
           executionEnv,
           options.interactionInput,
@@ -78,6 +82,17 @@ export class AgentToolCallExecutor {
 
   close(): Promise<void> {
     return (this.closePromise ??= this.ownedToolRunner?.close() ?? Promise.resolve());
+  }
+
+  projectToolInvocationSchema(
+    tool: RegisteredTool,
+    schema: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    return this.hostCapabilities.projectInvocationSchema(tool, schema);
+  }
+
+  projectToolDescription(tool: RegisteredTool, description: string): string {
+    return this.hostCapabilities.projectDescription(tool, description);
   }
 
   async execute(
@@ -120,7 +135,9 @@ export class AgentToolCallExecutor {
     throwIfAborted(context.signal);
     const callId = request.callId ?? createToolCallId();
     const index = request.index ?? 0;
-    const args = request.arguments ?? {};
+    const requestedArguments = request.arguments ?? {};
+    const invocation = resolveAgentToolInvocation(tool, requestedArguments);
+    const args = invocation.arguments;
     const capture = await this.workspaceCapture.prepare({
       policy: tool.artifactPolicy,
       args,
@@ -148,6 +165,7 @@ export class AgentToolCallExecutor {
       onEvent: context.onEvent,
       visibleToolNames: context.loadedToolNames === "all" ? undefined : context.loadedToolNames,
       signal: context.signal,
+      executionPlan: invocation.executionPlan,
     });
     throwIfAborted(context.signal);
 
@@ -156,7 +174,8 @@ export class AgentToolCallExecutor {
     const executedBase: ExecutedToolCallResult = {
       callId,
       name: tool.name,
-      arguments: args,
+      arguments: requestedArguments,
+      execution: invocation.executionPlan,
       process: {
         exitCode: execution.exitCode,
         signal: execution.signal,

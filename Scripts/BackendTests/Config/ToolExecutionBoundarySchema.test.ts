@@ -1,19 +1,44 @@
 import { describe, expect, test } from "vitest";
-import { ToolSchema } from "../../../Source/AgentSystem/Schemas/PluginToolManifestSchema.js";
+import {
+  AgentToolExecutionTargetArgument,
+  AgentToolExecutionPlanError,
+  AgentToolExecutionTargetError,
+  projectAgentToolInvocationSchema,
+  bindAgentToolInvocationToExecutionPlan,
+  resolveAgentToolInvocation,
+} from "../../../Source/AgentSystem/ToolRuntime/AgentToolExecutionPlan.js";
 import { PluginManifestSchema } from "../../../Source/AgentSystem/Schemas/PluginManifestSchema.js";
+import { ToolSchema } from "../../../Source/AgentSystem/Schemas/PluginToolManifestSchema.js";
+import type { RegisteredTool } from "../../../Source/AgentSystem/Types/PluginRuntimeTypes.js";
 
-describe("tool execution boundary schema", () => {
-  test.each([
-    ["Local", "Deny"],
-    ["Sandbox", "Deny"],
-    ["SandboxPreferred", "Allow"],
-  ] as const)("accepts %s with LocalFallback=%s", (boundary, localFallback) => {
-    expect(ToolSchema.safeParse(tool(boundary, localFallback)).success).toBe(true);
+describe("tool execution manifest schema", () => {
+  const targetCases: Array<[Array<"Sandbox" | "Local">]> = [[["Local"]], [["Sandbox"]], [["Sandbox", "Local"]]];
+
+  test.each(targetCases)("accepts Targets=%o", (targets) => {
+    expect(ToolSchema.safeParse(tool(targets)).success).toBe(true);
+  });
+
+  test("requires at least one execution target", () => {
+    const result = ToolSchema.safeParse(tool([]));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ["Execution", "Targets"] }));
+    }
+  });
+
+  test("rejects duplicate execution targets", () => {
+    const result = ToolSchema.safeParse(tool(["Local", "Local"]));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({ path: ["Execution", "Targets", 1], message: expect.stringContaining("once") }),
+      );
+    }
   });
 
   test("accepts declarative streaming runtime capabilities", () => {
     const result = ToolSchema.safeParse({
-      ...tool("Local", "Deny"),
+      ...tool(["Local"]),
       Runtime: {
         Lifecycle: "Persistent",
         ProtocolVersion: 2,
@@ -32,7 +57,7 @@ describe("tool execution boundary schema", () => {
 
   test("rejects removed private protocol versions", () => {
     const result = ToolSchema.safeParse({
-      ...tool("Local", "Deny"),
+      ...tool(["Local"]),
       Runtime: {
         Lifecycle: "Persistent",
         ProtocolVersion: 1,
@@ -43,7 +68,7 @@ describe("tool execution boundary schema", () => {
   });
 
   test("requires every host capability to declare private protocol v2", () => {
-    const value = tool("Local", "Deny");
+    const value = tool(["Local"]);
     delete (value.Runtime as Partial<typeof value.Runtime>).ProtocolVersion;
     const result = ToolSchema.safeParse(value);
 
@@ -73,7 +98,7 @@ describe("tool execution boundary schema", () => {
     }
   });
 
-  test("accepts declarative MCP resource arguments and conditional access intents", () => {
+  test("accepts capability-declared MCP resource arguments", () => {
     const result = ToolSchema.safeParse({
       ...mcpTool(),
       Handler: {
@@ -82,11 +107,14 @@ describe("tool execution boundary schema", () => {
         Tool: "edit_file",
         Resources: [
           {
+            Capability: "senera.workspace.path",
             Pointer: "/request/path",
-            Intent: {
-              Selector: "/dryRun",
-              Cases: [{ Equals: true, Intent: "read" }],
-              Default: "replace",
+            Parameters: {
+              Intent: {
+                Selector: "/dryRun",
+                Cases: [{ Equals: true, Intent: "read" }],
+                Default: "replace",
+              },
             },
           },
         ],
@@ -97,22 +125,9 @@ describe("tool execution boundary schema", () => {
   });
 
   test.each([
-    [{ Pointer: "path", Intent: "read" }, "Pointer"],
-    [{ Pointer: "/path", Intent: "unknown" }, "Intent"],
-    [
-      {
-        Pointer: "/path",
-        Intent: {
-          Selector: "/dryRun",
-          Cases: [
-            { Equals: true, Intent: "read" },
-            { Equals: true, Intent: "replace" },
-          ],
-          Default: "replace",
-        },
-      },
-      "Cases",
-    ],
+    [{ Capability: "senera.workspace.path", Pointer: "path" }, "Pointer"],
+    [{ Capability: "", Pointer: "/path" }, "Capability"],
+    [{ Capability: "senera.upload.read", Pointer: "/path", Binding: "not a binding" }, "Binding"],
   ] as const)("rejects invalid MCP resource declaration %#", (resource, issueField) => {
     const result = ToolSchema.safeParse({
       ...mcpTool(),
@@ -184,81 +199,113 @@ describe("tool execution boundary schema", () => {
   });
 
   test("requires cancellation for RemoteJob", () => {
-    const result = ToolSchema.safeParse({
-      ...mcpTool(),
-      Runtime: { Lifecycle: "RemoteJob" },
-    });
+    const result = ToolSchema.safeParse({ ...mcpTool(), Runtime: { Lifecycle: "RemoteJob" } });
 
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues).toContainEqual(
-        expect.objectContaining({
-          path: ["Runtime", "Capabilities", "Cancellation"],
-        }),
+        expect.objectContaining({ path: ["Runtime", "Capabilities", "Cancellation"] }),
       );
     }
   });
 
-  test.each(["Persistent", "RemoteJob"] as const)("requires an explicit v2 protocol for %s runtimes", (lifecycle) => {
-    const result = ToolSchema.safeParse({
-      ...tool("Local", "Deny"),
-      Runtime: {
-        Lifecycle: lifecycle,
-      },
-    });
+  test.each(["Persistent", "RemoteJob"] as const)(
+    "requires an explicit v2 protocol for %s host runtimes",
+    (lifecycle) => {
+      const result = ToolSchema.safeParse({ ...tool(["Local"]), Runtime: { Lifecycle: lifecycle } });
 
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues).toContainEqual(
-        expect.objectContaining({
-          path: ["Runtime", "ProtocolVersion"],
-        }),
-      );
-    }
-  });
-
-  test.each([
-    ["Local", "Allow"],
-    ["Sandbox", "Allow"],
-    ["SandboxPreferred", "Deny"],
-  ] as const)("rejects %s with LocalFallback=%s", (boundary, localFallback) => {
-    const result = ToolSchema.safeParse(tool(boundary, localFallback));
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues).toContainEqual(
-        expect.objectContaining({
-          path: ["Execution", "LocalFallback"],
-        }),
-      );
-    }
-  });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ["Runtime", "ProtocolVersion"] }));
+      }
+    },
+  );
 
   test.each(["Handler", "Runtime"] as const)("rejects v2 tools without %s", (field) => {
-    const value: Record<string, unknown> = { ...tool("Local", "Deny") };
+    const value: Record<string, unknown> = { ...tool(["Local"]) };
     delete value[field];
     expect(ToolSchema.safeParse(value).success).toBe(false);
   });
 
   test("rejects plugin manifests without ManifestVersion 2", () => {
     expect(
-      PluginManifestSchema.safeParse({
-        Plugin: { Name: "LegacyPlugin", Version: "1.0.0", Kind: "Tool" },
-      }).success,
+      PluginManifestSchema.safeParse({ Plugin: { Name: "LegacyPlugin", Version: "1.0.0", Kind: "Tool" } }).success,
     ).toBe(false);
   });
 });
 
-function tool(Boundary: "Local" | "Sandbox" | "SandboxPreferred", LocalFallback: "Allow" | "Deny") {
+describe("tool execution plan", () => {
+  test("uses a tool's only target and does not expose a selector", () => {
+    const invocation = resolveAgentToolInvocation(registeredTool(["Sandbox"]), { command: "pwd" });
+
+    expect(invocation).toEqual({
+      arguments: { command: "pwd" },
+      executionPlan: expect.objectContaining({ target: "Sandbox", backend: "sandbox" }),
+    });
+    expect(projectAgentToolInvocationSchema(registeredTool(["Sandbox"]), objectSchema()).properties).not.toHaveProperty(
+      AgentToolExecutionTargetArgument,
+    );
+  });
+
+  test("requires a declared target for multi-target tools and removes it before invocation", () => {
+    const tool_ = registeredTool(["Sandbox", "Local"]);
+
+    expect(() => resolveAgentToolInvocation(tool_, { command: "pwd" })).toThrow(
+      expect.objectContaining({ name: "AgentToolExecutionTargetError", kind: "missing" }),
+    );
+
+    const invocation = resolveAgentToolInvocation(tool_, { command: "pwd", executionTarget: "Local" });
+    expect(invocation.arguments).toEqual({ command: "pwd" });
+    expect(invocation.executionPlan).toEqual(
+      expect.objectContaining({ target: "Local", backend: "local", availableTargets: ["Sandbox", "Local"] }),
+    );
+    const schema = projectAgentToolInvocationSchema(tool_, objectSchema());
+    expect(schema.properties).toMatchObject({
+      executionTarget: { type: "string", enum: ["Sandbox", "Local"] },
+    });
+    expect(schema.required).toEqual(["command", "executionTarget"]);
+  });
+
+  test("rejects an undeclared target for all tools", () => {
+    expect(() => resolveAgentToolInvocation(registeredTool(["Local"]), { executionTarget: "Sandbox" })).toThrow(
+      AgentToolExecutionTargetError,
+    );
+  });
+
+  test("verifies an inherited execution plan and keeps its selector out of plugin arguments", () => {
+    const tool_ = registeredTool(["Sandbox", "Local"]);
+    const invocation = bindAgentToolInvocationToExecutionPlan(
+      tool_,
+      { command: "pwd", executionTarget: "Sandbox" },
+      {
+        target: "Sandbox",
+        backend: "sandbox",
+        network: "disabled",
+        workspaceMount: "readonly",
+        availableTargets: ["Sandbox", "Local"],
+      },
+    );
+    expect(invocation.arguments).toEqual({ command: "pwd" });
+
+    expect(() =>
+      bindAgentToolInvocationToExecutionPlan(
+        tool_,
+        { command: "pwd" },
+        {
+          ...invocation.executionPlan,
+          backend: "local",
+        },
+      ),
+    ).toThrow(AgentToolExecutionPlanError);
+  });
+});
+
+function tool(Targets: Array<"Sandbox" | "Local">) {
   return {
     Name: "BoundaryTool",
     Handler: { Kind: "HostCapability", Capability: "test" },
     Runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 as const },
-    Execution: {
-      Boundary,
-      Network: "Deny",
-      Workspace: "ReadOnly",
-      LocalFallback,
-    },
+    Execution: { Targets, Network: "Deny", Workspace: "ReadOnly" },
   };
 }
 
@@ -266,15 +313,29 @@ function mcpTool(protocolVersion?: 2) {
   return {
     Name: "McpBoundaryTool",
     Handler: { Kind: "McpTool", Server: "test", Tool: "test" },
-    Runtime: {
-      Lifecycle: "OneShot",
-      ...(protocolVersion === undefined ? {} : { ProtocolVersion: protocolVersion }),
-    },
-    Execution: {
-      Boundary: "Local",
-      Network: "Deny",
-      Workspace: "ReadOnly",
-      LocalFallback: "Deny",
-    },
+    Runtime: { Lifecycle: "OneShot", ...(protocolVersion === undefined ? {} : { ProtocolVersion: protocolVersion }) },
+    Execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
+  };
+}
+
+function registeredTool(Targets: Array<"Sandbox" | "Local">): RegisteredTool {
+  return {
+    plugin: {} as RegisteredTool["plugin"],
+    name: "BoundaryTool",
+    loading: "Dynamic",
+    permissions: [],
+    sources: [],
+    execution: { Targets, Network: "Deny", Workspace: "ReadOnly" },
+    handler: { kind: "HostCapability", capability: "test" },
+    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 },
+    evidenceCapabilities: [],
+  };
+}
+
+function objectSchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: { command: { type: "string" } },
+    required: ["command"],
   };
 }

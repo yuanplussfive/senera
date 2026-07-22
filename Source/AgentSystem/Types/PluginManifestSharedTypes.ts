@@ -4,6 +4,16 @@ export type PluginKind = "System" | "Tool" | "Resource" | "Prompt" | "Skill" | "
 
 export type PluginRootKind = "System" | "User";
 
+export interface PluginDiscoverySourceManifest {
+  Id: string;
+  Title: string;
+  Description: string;
+}
+
+export interface PluginDiscoveryManifest {
+  Sources: PluginDiscoverySourceManifest[];
+}
+
 export interface PluginPromptingManifest {
   Audience?: "Model" | "User" | "System";
   Priority?: number;

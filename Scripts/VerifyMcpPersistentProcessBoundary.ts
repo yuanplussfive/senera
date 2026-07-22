@@ -18,7 +18,6 @@ async function main(): Promise<void> {
     name: "verify-mcp",
     kind: "mcp-server",
     backend: "sandbox",
-    localFallback: "allow",
     microsandbox: {
       network: "disabled",
       workspaceMount: "readonly",
@@ -271,7 +270,6 @@ void runMcpToolSuite([
       name: "verify-mcp-sdk",
       kind: "mcp-server" as const,
       backend: "local" as const,
-      localFallback: "deny" as const,
     },
     spawnPersistentProcess: executionEnv.spawnPersistentProcess,
   };

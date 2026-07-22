@@ -4,6 +4,7 @@ import { projectAgentToolSafetyMetadata } from "../Safety/AgentToolSafetyMetadat
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type { AgentPiToolProjectionContext } from "./AgentPiTypes.js";
 import { readPiProxyToolCallBatchId } from "../PiProxy/AgentPiProxyRuntimeContext.js";
+import { AgentToolExecutionTargetError, resolveAgentToolInvocation } from "../ToolRuntime/AgentToolExecutionPlan.js";
 
 export interface AgentPiToolPermissionHookOptions {
   registry: AgentPluginRegistry;
@@ -33,6 +34,15 @@ export class AgentPiToolPermissionHook {
     }
 
     const tool = this.options.registry.getTool(event.toolName);
+    let invocation;
+    try {
+      invocation = tool ? resolveAgentToolInvocation(tool, event.input) : undefined;
+    } catch (error) {
+      if (error instanceof AgentToolExecutionTargetError) {
+        return { block: true, reason: error.message };
+      }
+      throw error;
+    }
     try {
       await this.options.permissionGate.authorize({
         sessionId: context.sessionId ?? context.requestId ?? event.toolCallId,
@@ -41,7 +51,8 @@ export class AgentPiToolPermissionHook {
         batchId: readPiProxyToolCallBatchId(context.piProxyRuntimeContextId, event.toolCallId),
         step: context.step ?? 1,
         toolName: event.toolName,
-        arguments: event.input,
+        arguments: invocation?.arguments ?? event.input,
+        executionPlan: invocation?.executionPlan,
         visibleToolNames: context.visibleToolNames,
         tool: tool ? projectAgentToolSafetyMetadata(tool) : undefined,
         runtimeContext: {

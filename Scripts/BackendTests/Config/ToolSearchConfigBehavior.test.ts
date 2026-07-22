@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { resolveToolSearchConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
 import { ToolSearchSchema } from "../../../Source/AgentSystem/Schemas/AgentToolMemoryConfigSchema.js";
+import { migrateAgentConfigPayload } from "../../../Source/AgentSystem/Config/AgentConfigMigration.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("tool search configuration", () => {
@@ -20,17 +21,13 @@ describe("tool search configuration", () => {
     ).toBe(true);
   });
 
-  test.each(["disabled", "side_effect_capability"] as const)("accepts intent gate mode %s", (mode) => {
-    expect(ToolSearchSchema.safeParse({ Ranking: { IntentGate: { Mode: mode } } }).success).toBe(true);
-  });
-
   test.each([
     { Ranking: { MaxResults: 0 } },
     { Ranking: { MemoryExpansion: { Mode: "unknown" } } },
     { Ranking: { MemoryExpansion: { MinConfidence: 1.1 } } },
     { Ranking: { MemoryExpansion: { MinEvidence: -1 } } },
     { Ranking: { MemoryExpansion: { MaxResults: 0 } } },
-    { Ranking: { IntentGate: { Mode: "unknown" } } },
+    { Ranking: { IntentGate: { Mode: "side_effect_capability" } } },
   ])("rejects invalid bounded retrieval policy %#", (value) => {
     expect(ToolSearchSchema.safeParse(value).success).toBe(false);
   });
@@ -59,14 +56,30 @@ describe("tool search configuration", () => {
 
     expect(resolved.Ranking).toMatchObject({
       MaxResults: 6,
-      IntentGate: {
-        Mode: "side_effect_capability",
-      },
       MemoryExpansion: {
         Mode: "augment",
         MinConfidence: 0.8,
         MinEvidence: 5,
         MaxResults: 2,
+      },
+    });
+  });
+
+  test("migrates the retired discovery intent gate out of runtime and default settings", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 1,
+      ToolSearch: { Ranking: { IntentGate: { Mode: "side_effect_capability" } } },
+      Defaults: { ToolSearch: { Ranking: { IntentGate: { Mode: "disabled" } } } },
+    });
+
+    expect(migrated).toMatchObject({
+      sourceVersion: 1,
+      targetVersion: 2,
+      removedPaths: ["ToolSearch.Ranking.IntentGate", "Defaults.ToolSearch.Ranking.IntentGate"],
+      config: {
+        ConfigVersion: 2,
+        ToolSearch: { Ranking: {} },
+        Defaults: { ToolSearch: { Ranking: {} } },
       },
     });
   });

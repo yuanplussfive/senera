@@ -5,7 +5,6 @@ import { SeneraRoutingProcessBackend } from "./SeneraRoutingProcessBackend.js";
 import type { SeneraExecutionEnv } from "./SeneraExecutionTypes.js";
 import type { SeneraMicrosandboxSettings } from "./SeneraMicrosandboxDefaults.js";
 import type { AgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
-import type { SeneraProcessFallbackAuthorizer } from "./SeneraProcessFallbackAuthorization.js";
 import { createSeneraAuthorizedPersistentProcessSpawner } from "./SeneraPersistentProcessSpawner.js";
 import type { SeneraResourceAccessAuthorizer } from "./SeneraResourceAccess.js";
 import { createSeneraAuthorizedTerminalSpawner } from "./SeneraTerminalSpawner.js";
@@ -17,7 +16,6 @@ export interface SeneraExecutionEnvFactoryOptions {
   resourcesPath?: string;
   microsandboxSettings?: Partial<SeneraMicrosandboxSettings>;
   sandboxRuntimePaths?: AgentSandboxRuntimePaths;
-  fallbackAuthorizer?: SeneraProcessFallbackAuthorizer;
   resourceAccessPolicy?: SeneraResourceAccessAuthorizer;
   environmentPolicy?: SeneraProcessEnvironmentPolicy | SeneraProcessEnvironmentPolicyOptions;
   terminationGraceMs?: number;
@@ -65,17 +63,14 @@ function createSharedExecutionDependencies(options: SeneraExecutionEnvFactoryOpt
   const processBackend = new SeneraRoutingProcessBackend({
     local: localBackend,
     sandbox: sandboxBackend,
-    fallbackAuthorizer: options.fallbackAuthorizer,
   });
 
   return {
     processBackend,
     persistentProcessSpawner: createSeneraAuthorizedPersistentProcessSpawner({
-      fallbackAuthorizer: options.fallbackAuthorizer,
       environmentPolicy,
     }),
     terminalSpawner: createSeneraAuthorizedTerminalSpawner({
-      fallbackAuthorizer: options.fallbackAuthorizer,
       sandbox: sandboxBackend,
       environmentPolicy,
     }),

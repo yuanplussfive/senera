@@ -8,6 +8,7 @@ export const ToolSearchDocumentSearchFields = [
   "title",
   "pluginName",
   "pluginTitle",
+  "sourceText",
   "tags",
   "summary",
   "whenToUse",
@@ -31,6 +32,13 @@ export const ToolSearchDocumentStoreFields = [
 export class AgentToolSearchDocumentBuilder {
   build(tool: RegisteredTool): ToolSearchDocument {
     const search = tool.search;
+    const sources = tool.sources.map((source) => ({
+      id: source.Id,
+      title: source.Title,
+      description: source.Description,
+    }));
+    const sourceIds = sources.map((source) => source.id);
+    const sourceText = sources.map((source) => `${source.id} ${source.title} ${source.description}`).join(" ");
     const title = tool.plugin.manifest.Plugin.Title ?? tool.name;
     const summary = search?.Summary ?? tool.plugin.manifest.Plugin.Description ?? "";
     const whenToUse = (search?.UseCases ?? []).join(" ");
@@ -56,6 +64,7 @@ export class AgentToolSearchDocumentBuilder {
       title,
       tool.plugin.manifest.Plugin.Name,
       tool.plugin.manifest.Plugin.Title,
+      sourceText,
       tags,
       summary,
       whenToUse,
@@ -74,6 +83,9 @@ export class AgentToolSearchDocumentBuilder {
       title,
       pluginName: tool.plugin.manifest.Plugin.Name,
       pluginTitle: tool.plugin.manifest.Plugin.Title ?? "",
+      sourceText,
+      sourceIds,
+      sources,
       tags,
       summary,
       whenToUse,

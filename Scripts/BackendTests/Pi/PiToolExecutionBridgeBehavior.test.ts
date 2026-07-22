@@ -321,14 +321,14 @@ function registeredTool(name: string, observation?: ToolObservationManifest): Re
     },
     name,
     permissions: [],
+    sources: [],
     handler: { kind: "HostCapability", capability: name },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
     observation,
     execution: {
-      Boundary: "Local",
+      Targets: ["Local"],
       Network: "Deny",
       Workspace: "ReadOnly",
-      LocalFallback: "Deny",
     },
     evidenceCapabilities: [],
   };

@@ -102,10 +102,6 @@ const eventPayloadSources: Record<
 };
 
 const eventPayloadSourceOverrides: Partial<Record<AgentEventKind, { label: string; path: string }>> = {
-  [AgentEventKinds.ExecutionFallbackStarted]: {
-    label: "执行事件类型",
-    path: "../../Source/AgentSystem/Execution/SeneraExecutionEventTypes.ts",
-  },
   [AgentEventKinds.InteractionInputRequested]: {
     label: "交互输入事件类型",
     path: "../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts",

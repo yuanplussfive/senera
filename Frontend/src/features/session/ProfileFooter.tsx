@@ -161,8 +161,8 @@ function SandboxStatusMeta({ status }: { status?: SandboxStatusSnapshotData | nu
   const state = status?.state ?? "unknown";
   const detail = status?.message ?? frontendMessage("sandbox.status.unsynced");
   const suffix =
-    status?.effectiveMode === "fallback"
-      ? frontendMessage("sandbox.status.fallbackSuffix")
+    status?.effectiveMode === "unavailable"
+      ? frontendMessage("sandbox.status.unavailableSuffix")
       : frontendMessage("sandbox.status.sandboxSuffix");
   const table = {
     unknown: {
@@ -180,8 +180,8 @@ function SandboxStatusMeta({ status }: { status?: SandboxStatusSnapshotData | nu
       Icon: ShieldCheck,
       className: "text-moss-600",
     },
-    fallback: {
-      label: frontendMessage("sandbox.status.fallback"),
+    unavailable: {
+      label: frontendMessage("sandbox.status.unavailable"),
       Icon: ShieldAlert,
       className: "text-brick-600",
     },

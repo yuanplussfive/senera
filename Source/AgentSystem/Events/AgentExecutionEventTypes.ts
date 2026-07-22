@@ -2,7 +2,6 @@ import type { AgentModelDomainEvent } from "./AgentModelEventTypes.js";
 import type { AgentPlannerDomainEvent } from "./AgentPlannerEventTypes.js";
 import type { AgentPromptDomainEvent } from "./AgentPromptEventTypes.js";
 import type { AgentRunDomainEvent } from "./AgentRunEventTypes.js";
-import type { SeneraExecutionDomainEvent } from "../Execution/SeneraExecutionEventTypes.js";
 import type { AgentExecutionResourceDomainEvent } from "../ExecutionResources/AgentExecutionResourceEventTypes.js";
 
 export type AgentExecutionDomainEvent =
@@ -10,5 +9,4 @@ export type AgentExecutionDomainEvent =
   | AgentPromptDomainEvent
   | AgentPlannerDomainEvent
   | AgentModelDomainEvent
-  | SeneraExecutionDomainEvent
   | AgentExecutionResourceDomainEvent;

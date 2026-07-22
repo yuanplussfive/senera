@@ -164,9 +164,13 @@ export interface RunRecord {
   visibleText: string;
   /** 前端平滑消费 visibleText 后真正展示的文本，不影响 streamingRaw 准确性 */
   displayText: string;
-  visibleKind: "final_answer" | "ask_user" | "tool_calls" | "unknown";
+  /** 当前 visibleText 对应的助手消息；切换模型阶段时清除 */
+  displayMessageId?: string;
+  visibleKind: "final_answer" | "ask_user" | "tool_calls" | "tool_preface" | "unknown";
   expectedOutputMode: "unknown" | "final_text" | "open";
   decisionMode: "none" | "tool_candidate" | "final_text";
+  /** Planner decision to apply to the next model stream, before that stream starts. */
+  plannedDecisionMode?: "tool_candidate" | "final_text";
   /** 工具参数暂存，供工具节点显示 */
   pendingToolArgsByName: Record<string, unknown>;
   approvals?: ApprovalRunRecord[];
@@ -312,6 +316,7 @@ export interface StoreState {
   truncateFromRequest: (sessionId: string, fromRequestId: string) => void;
   advanceStreamingDisplay: (sessionId: string, requestId: string) => boolean;
   ingest: (env: EventEnvelope) => void;
+  ingestMany: (events: readonly EventEnvelope[]) => void;
   removeSession: (sessionId: string) => void;
   clearAllSessions: (sessionIds?: string[]) => void;
   markHistoryLoading: (sessionId: string) => void;
@@ -639,6 +644,14 @@ export const useStore = create<StoreState>()(
           applyEvent(state, env);
           syncActiveSessionModelSelection(state);
         }),
+
+      ingestMany: (events) => {
+        if (events.length === 0) return;
+        set((state) => {
+          for (const env of events) applyEvent(state, env);
+          syncActiveSessionModelSelection(state);
+        });
+      },
     })),
     sessionPersistOptions,
   ),

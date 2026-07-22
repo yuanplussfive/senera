@@ -4,6 +4,7 @@ import type { AgentToolSearchRerankDocument } from "./AgentToolSearchReranker.js
 
 export interface AgentToolSearchOptions {
   query: string;
+  preferredSourceIds?: readonly string[];
   plannerTags?: readonly string[];
   includeLoaded?: boolean;
   loadedToolNames?: readonly string[];
@@ -14,6 +15,7 @@ export interface AgentToolSearchResult {
   toolName: string;
   title: string;
   pluginName: string;
+  sources: AgentToolSearchSource[];
   summary: string;
   whenToUse: string;
   permissions: string[];
@@ -22,6 +24,12 @@ export interface AgentToolSearchResult {
   matchedTerms: string[];
   matchedCapabilities: AgentToolSearchCapabilityMatch[];
   learningSignals: AgentToolSearchLearningSignal[];
+}
+
+export interface AgentToolSearchSource {
+  id: string;
+  title: string;
+  description: string;
 }
 
 export interface AgentToolSearchLearningSignal {
@@ -45,9 +53,11 @@ export interface AgentToolSearchCapabilityMatch {
 
 export interface ToolSearchDocument extends AgentToolSearchRerankDocument {
   id: string;
+  sourceIds: string[];
+  sources: AgentToolSearchSource[];
   capabilities: ToolSearchCapabilityManifest[];
 }
 
-export type AgentToolSearchRankerName = "bm25" | "exact" | "memory" | "priority";
+export type AgentToolSearchRankerName = "bm25" | "exact" | "memory" | "priority" | "source";
 export type AgentToolSearchRankMap = Map<string, number>;
 export type AgentToolSearchRankedEntry = { toolName: string; score: number };

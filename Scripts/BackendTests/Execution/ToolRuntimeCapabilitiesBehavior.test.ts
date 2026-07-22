@@ -53,11 +53,11 @@ function runtimeTool(
     name: "RuntimeTool",
     loading: "Dynamic",
     permissions: [],
+    sources: [],
     execution: {
-      Boundary: "Local",
+      Targets: ["Local"],
       Network: "Deny",
       Workspace: "ReadOnly",
-      LocalFallback: "Deny",
     },
     handler,
     runtime: {

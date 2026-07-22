@@ -101,7 +101,7 @@ export async function createRealRuntimeE2eHarness(): Promise<RealRuntimeE2eHarne
         }),
     });
     const sandboxRuntimeService = new AgentSandboxRuntimeService({ workspaceRoot, configSnapshot });
-    sandboxRuntimeService.markFallback(new Error("Runtime E2E uses deterministic host capabilities."));
+    sandboxRuntimeService.markUnavailable(new Error("Runtime E2E uses deterministic host capabilities."));
     const server = new AgentWebSocketServer({
       config,
       configService,

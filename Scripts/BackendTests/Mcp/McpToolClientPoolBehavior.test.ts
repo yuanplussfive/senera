@@ -114,7 +114,6 @@ function connection(): Omit<AgentMcpToolClientOptions, "signal"> {
       name: "pool-fixture",
       kind: "mcp-server",
       backend: "local",
-      localFallback: "deny",
     },
     spawnPersistentProcess: async () => {
       throw new Error("unused");

@@ -24,7 +24,6 @@ export interface FeedGroup {
   variant?: "tools" | "delegation" | "trace";
   meta?: string;
   items: FeedItem[];
-  defaultExpanded?: boolean;
   collapsible?: boolean;
 }
 
@@ -81,6 +80,7 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
   const rootToolGroups = collectRootToolGroups(rootSteps);
   const traceItems = rootSteps
     .filter((step) => step.id !== activeStep?.id)
+    .filter((step) => !isToolPrefaceStep(step))
     .filter((step) => !(step.kind === "tool" && step.toolName))
     .filter((step) => !isGroupedToolPlan(step, rootToolGroups.batchIds))
     .slice(-3)
@@ -101,7 +101,7 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
   return {
     headline: mapHeadlineItem(run, activeStep, latestDecision),
     groups,
-    bodyText: run.displayText,
+    bodyText: run.visibleKind === "tool_calls" ? "" : run.displayText,
     placeholder: derivePendingLabel(run, activeStep, latestDecision),
     footer: deriveFooter(activeStep),
   };
@@ -151,8 +151,6 @@ function collectRootToolGroups(rootSteps: TimelineStep[]): {
       variant: "tools" as const,
       meta: toolGroup.meta,
       items,
-      defaultExpanded:
-        items.some((item) => item.status === "running" || item.status === "failed") || index === entries.length - 1,
       collapsible: true,
     };
   });
@@ -188,7 +186,6 @@ function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
       variant: "delegation",
       meta: scopedGroupMeta(group.items, group.workflowName),
       items: group.items,
-      defaultExpanded: group.items.some((item) => item.status === "running" || item.status === "failed"),
       collapsible: true,
     }));
 }
@@ -224,7 +221,7 @@ function resolveActiveStep(
   latestDecision?: TimelineStep,
 ): TimelineStep | undefined {
   if (runningStep?.kind === "tool") return runningStep;
-  if (run.visibleKind === "tool_calls") return latestDecision;
+  if (run.visibleKind === "tool_calls" || run.visibleKind === "tool_preface") return latestDecision;
   if (runningStep?.kind === "model") return runningStep;
   if (run.visibleKind === "final_answer" || run.visibleKind === "ask_user") {
     return latestDecision;
@@ -248,14 +245,15 @@ function mapHeadlineItem(
     };
   }
 
-  if (run.visibleKind === "tool_calls") {
+  if (run.visibleKind === "tool_calls" || run.visibleKind === "tool_preface") {
     return {
       id: latestDecision?.id ?? "decision-tool-calls",
       kind: "trace",
       status: "done",
-      title: latestDecision?.decisionKind
-        ? frontendMessage("workflow.feed.action", { kind: friendlyDecisionKind(latestDecision.decisionKind) })
-        : frontendMessage("workflow.feed.actionDecision"),
+      title:
+        latestDecision?.decisionKind && !isToolPrefaceStep(latestDecision)
+          ? frontendMessage("workflow.feed.action", { kind: friendlyDecisionKind(latestDecision.decisionKind) })
+          : frontendMessage("workflow.feed.actionDecision"),
       subtitle: summarizeDecisionSubtitle(latestDecision),
     };
   }
@@ -364,6 +362,10 @@ function mapTraceItem(step: TimelineStep): FeedItem {
   };
 }
 
+function isToolPrefaceStep(step: TimelineStep): boolean {
+  return step.kind === "decision" && step.decisionKind === "tool_preface";
+}
+
 function summarizeToolSubtitle(step: TimelineStep): string | undefined {
   if (step.toolErrorMessage) return step.toolErrorMessage;
 
@@ -395,6 +397,7 @@ function summarizeToolResult(value: unknown): string | undefined {
 
 function summarizeDecisionSubtitle(step?: TimelineStep): string | undefined {
   if (!step) return undefined;
+  if (isToolPrefaceStep(step)) return undefined;
   if (step.detailJson && typeof step.detailJson === "object") {
     const record = step.detailJson as Record<string, unknown>;
     const toolCalls = record.tool_calls;
@@ -419,7 +422,7 @@ function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDec
       : frontendMessage("workflow.feed.preparingTool", { toolName: activeStep.toolName });
   }
 
-  if (run.visibleKind === "tool_calls") {
+  if (run.visibleKind === "tool_calls" || run.visibleKind === "tool_preface") {
     const tools = summarizeDecisionSubtitle(latestDecision);
     return tools
       ? frontendMessage("workflow.feed.preparingToolsWithNames", { tools })

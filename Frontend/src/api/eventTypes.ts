@@ -290,8 +290,8 @@ export interface ProviderModelsFailedData {
   details?: unknown;
 }
 
-export type SandboxEffectiveMode = "sandbox" | "fallback";
-export type SandboxRuntimeState = "unknown" | "preparing" | "ready" | "fallback";
+export type SandboxEffectiveMode = "sandbox" | "unavailable";
+export type SandboxRuntimeState = "unknown" | "preparing" | "ready" | "unavailable";
 
 export interface SandboxDiagnosticData {
   code: string;
@@ -762,7 +762,6 @@ export type {
 } from "./approvalEventTypes";
 
 export type {
-  ExecutionFallbackStartedData,
   ExecutionResourceCreatedData,
   ExecutionResourceOutputData,
   ExecutionResourceRemovedData,

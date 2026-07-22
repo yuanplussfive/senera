@@ -8,7 +8,7 @@ import { ChatPanel } from "./features/chat";
 import { SessionList } from "./features/session";
 import { ThinkingTimeline } from "./features/workflow";
 import { AppShell, readAppShellRenderPlan, type WorkflowDockTool } from "./layout/AppShell";
-import { type EventEnvelope, type WsRequest } from "./api/eventTypes";
+import { EventKinds, type EventEnvelope, type WsRequest } from "./api/eventTypes";
 import { useChatCommands, type LastSentMessage } from "./app/useChatCommands";
 import { useGlobalShortcuts } from "./app/useGlobalShortcuts";
 import { useSessionCommands } from "./app/useSessionCommands";
@@ -46,6 +46,7 @@ export function App({
   uploadCsrfToken?: string;
 }): JSX.Element {
   const ingest = useStore((s) => s.ingest);
+  const ingestMany = useStore((s) => s.ingestMany);
   const registerSession = useStore((s) => s.registerCreatingSession);
   const appendUserMessage = useStore((s) => s.appendUserMessage);
   const activeId = useStore((s) => s.activeSessionId);
@@ -158,6 +159,7 @@ export function App({
     handleSessionNotFound,
     notifySocketError,
     ingest,
+    ingestMany,
     runSocketPostIngestEffects,
     ingestSandboxEvent,
   });
@@ -168,6 +170,7 @@ export function App({
       handleSessionNotFound,
       notifySocketError,
       ingest,
+      ingestMany,
       runSocketPostIngestEffects,
       ingestSandboxEvent,
     };
@@ -175,22 +178,34 @@ export function App({
 
   const { status, send } = useAgentSocket({
     url: WS_URL,
-    onEvent: useCallback(
-      (env) => {
+    onEvents: useCallback(
+      (events) => {
         const handlers = eventHandlersRef.current;
+        let pendingProjection: EventEnvelope[] = [];
 
-        handlers.syncServerKnownSessionFromEvent(env);
+        const flushProjection = (): void => {
+          if (pendingProjection.length === 0) return;
+          const projectedEvents = pendingProjection;
+          pendingProjection = [];
+          handlers.ingestMany(projectedEvents);
+          for (const env of projectedEvents) {
+            handlers.notifySocketError(env);
+            handlers.runSocketPostIngestEffects(env);
+            handlers.ingestSandboxEvent(env);
+            settingsEventHandlerRef.current(env);
+            executionResourceEventHandlerRef.current(env);
+          }
+        };
 
-        if (handlers.handleSessionNotFound(env)) {
-          return;
+        for (const env of events) {
+          handlers.syncServerKnownSessionFromEvent(env);
+          if (env.kind === EventKinds.SessionNotFound) {
+            flushProjection();
+            if (handlers.handleSessionNotFound(env)) continue;
+          }
+          pendingProjection.push(env);
         }
-
-        handlers.notifySocketError(env);
-        handlers.ingest(env);
-        handlers.runSocketPostIngestEffects(env);
-        handlers.ingestSandboxEvent(env);
-        settingsEventHandlerRef.current(env);
-        executionResourceEventHandlerRef.current(env);
+        flushProjection();
       },
       [], // Empty deps - handlers read from ref
     ),

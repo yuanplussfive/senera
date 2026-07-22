@@ -6,6 +6,10 @@ const SCROLL_TOWARD_BOTTOM_KEYS = new Set<KeyboardEvent["key"]>(["ArrowDown", "P
 const SCROLLBAR_HIT_SLOP_PX = 24;
 const USER_SCROLL_UP_EPSILON_PX = 2;
 type VirtuosoScrollBehavior = "auto" | "smooth";
+type ScheduledScroll = {
+  kind: "align-bottom" | "last-item";
+  behavior: VirtuosoScrollBehavior;
+};
 
 export function shouldResumeAutoStickToBottom({
   atBottom,
@@ -24,17 +28,15 @@ export function shouldResumeAutoStickToBottom({
 export function useVirtuosoAutoStickToBottom({
   itemCount,
   resetKey,
-  activityKey,
   bottomThreshold,
 }: {
   itemCount: number;
   resetKey: string;
-  activityKey: string;
   bottomThreshold: number;
 }): {
   ref: RefObject<VirtuosoHandle>;
   scrollerRef: (ref: HTMLElement | Window | null) => void;
-  followOutput: (isAtBottom: boolean) => "auto" | false;
+  followOutput: false;
   atBottomStateChange: (atBottom: boolean) => void;
   totalListHeightChanged: (height: number) => void;
   scrollToBottom: (behavior?: VirtuosoScrollBehavior) => void;
@@ -51,6 +53,8 @@ export function useVirtuosoAutoStickToBottom({
   const scrollbarDragRef = useRef(false);
   const scrollerTargetRef = useRef<HTMLElement | Window | null>(null);
   const frameRef = useRef<number | null>(null);
+  const scheduledScrollRef = useRef<ScheduledScroll | null>(null);
+  const previousItemCountRef = useRef(itemCount);
   const [scroller, setScroller] = useState<HTMLElement | Window | null>(null);
   itemCountRef.current = itemCount;
 
@@ -58,6 +62,7 @@ export function useVirtuosoAutoStickToBottom({
     if (frameRef.current === null) return;
     window.cancelAnimationFrame(frameRef.current);
     frameRef.current = null;
+    scheduledScrollRef.current = null;
   }, []);
 
   const markScrollAwayIntent = useCallback((): void => {
@@ -82,23 +87,45 @@ export function useVirtuosoAutoStickToBottom({
     lastScrollTopRef.current = readScrollMetrics(target).scrollTop;
   }, []);
 
-  const scrollToBottom = useCallback(
-    (behavior: VirtuosoScrollBehavior = "auto") => {
-      const nextItemCount = itemCountRef.current;
-      if (nextItemCount <= 0) return;
-      cancelPendingScroll();
+  const scheduleScroll = useCallback(
+    (request: ScheduledScroll): void => {
+      scheduledScrollRef.current = mergeScheduledScroll(scheduledScrollRef.current, request);
+      if (frameRef.current !== null) return;
       frameRef.current = window.requestAnimationFrame(() => {
         frameRef.current = null;
-        ref.current?.scrollToIndex({
-          index: nextItemCount - 1,
-          align: "end",
-          behavior,
-        });
-        window.requestAnimationFrame(() => syncScrollPosition());
+        const scheduled = scheduledScrollRef.current;
+        scheduledScrollRef.current = null;
+        if (!scheduled) return;
+
+        if (scheduled.kind === "last-item") {
+          const nextItemCount = itemCountRef.current;
+          if (nextItemCount > 0) {
+            ref.current?.scrollToIndex({
+              index: nextItemCount - 1,
+              align: "end",
+              behavior: scheduled.behavior,
+            });
+          }
+        } else {
+          alignScrollTargetToBottom(scrollerTargetRef.current);
+        }
+        syncScrollPosition();
       });
     },
-    [cancelPendingScroll, syncScrollPosition],
+    [syncScrollPosition],
   );
+
+  const scrollToBottom = useCallback(
+    (behavior: VirtuosoScrollBehavior = "auto") => {
+      if (itemCountRef.current <= 0) return;
+      scheduleScroll({ kind: "last-item", behavior });
+    },
+    [scheduleScroll],
+  );
+
+  const alignToBottom = useCallback((): void => {
+    scheduleScroll({ kind: "align-bottom", behavior: "auto" });
+  }, [scheduleScroll]);
 
   const scrollToBottomAndResume = useCallback(
     (behavior: VirtuosoScrollBehavior = "auto") => {
@@ -251,19 +278,23 @@ export function useVirtuosoAutoStickToBottom({
 
   useEffect(() => {
     resumeStickToBottom();
+    lastListHeightRef.current = 0;
+    previousItemCountRef.current = itemCountRef.current;
     scrollToBottom();
   }, [resetKey, resumeStickToBottom, scrollToBottom]);
 
   useEffect(() => {
-    if (stickToBottomRef.current) scrollToBottom();
-  }, [activityKey, scrollToBottom]);
+    const changed = previousItemCountRef.current !== itemCount;
+    previousItemCountRef.current = itemCount;
+    if (changed && stickToBottomRef.current) scrollToBottom();
+  }, [itemCount, scrollToBottom]);
 
   useEffect(() => cancelPendingScroll, [cancelPendingScroll]);
 
   return {
     ref,
     scrollerRef,
-    followOutput: () => (stickToBottomRef.current ? "auto" : false),
+    followOutput: false,
     atBottomStateChange: (atBottom) => {
       if (
         shouldResumeAutoStickToBottom({
@@ -279,10 +310,33 @@ export function useVirtuosoAutoStickToBottom({
     totalListHeightChanged: (height) => {
       if (height === lastListHeightRef.current) return;
       lastListHeightRef.current = height;
-      if (stickToBottomRef.current) scrollToBottom();
+      if (stickToBottomRef.current) alignToBottom();
     },
     scrollToBottom: scrollToBottomAndResume,
   };
+}
+
+export function mergeScheduledScroll(current: ScheduledScroll | null, incoming: ScheduledScroll): ScheduledScroll {
+  if (!current) return incoming;
+  if (current.kind === "last-item" && incoming.kind === "align-bottom") return current;
+  if (current.kind === "align-bottom" && incoming.kind === "last-item") return incoming;
+  return {
+    kind: current.kind,
+    behavior: current.behavior === "smooth" || incoming.behavior === "smooth" ? "smooth" : "auto",
+  };
+}
+
+function alignScrollTargetToBottom(target: HTMLElement | Window | null): void {
+  if (!target) return;
+  const element =
+    target instanceof Window ? (target.document.scrollingElement ?? target.document.documentElement) : target;
+  const viewportHeight = target instanceof Window ? target.innerHeight : element.clientHeight;
+  const scrollTop = Math.max(0, element.scrollHeight - viewportHeight);
+  if (target instanceof Window) {
+    target.scrollTo({ top: scrollTop, behavior: "auto" });
+    return;
+  }
+  target.scrollTop = scrollTop;
 }
 
 function readScrollMetrics(target: HTMLElement | Window): {

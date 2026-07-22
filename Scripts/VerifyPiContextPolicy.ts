@@ -14,10 +14,9 @@ import type { ToolExecutionManifest } from "../Source/AgentSystem/Types/PluginMa
 const policy = new AgentPiContextPolicy("test-model");
 
 const DefaultExecution = {
-  Boundary: "Local",
+  Targets: ["Local"],
   Network: "Deny",
   Workspace: "ReadOnly",
-  LocalFallback: "Allow",
 } satisfies ToolExecutionManifest;
 
 interface PolicyEnvelopeFixture {
@@ -282,6 +281,7 @@ function registeredToolFixture(name: string, capability: string): RegisteredTool
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
     execution: DefaultExecution,
     permissions: [],
+    sources: [],
     evidenceCapabilities: [
       {
         Produces: capability,

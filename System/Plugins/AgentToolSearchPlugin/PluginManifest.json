@@ -8,6 +8,15 @@
     "Kind": "Tool",
     "Description": "Searches the registered tool catalog and loads matching tool cards."
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "tools",
+        "Title": "Tools",
+        "Description": "Capabilities contributed by the currently loaded plugin catalog."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 10
@@ -23,10 +32,9 @@
         "Capability": "tool.search"
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Artifacts": {
         "Evidence": [

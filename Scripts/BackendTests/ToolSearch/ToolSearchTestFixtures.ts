@@ -10,10 +10,32 @@ import { createModelProvider } from "../Support/AgentTestFixtures.js";
 
 export function createRegistry(tools: RegisteredTool[]): AgentToolSearchRegistryReader & {
   getTool(name: string): RegisteredTool | undefined;
+  listDiscoverySources(): Array<{ id: string; title: string; description: string; pluginNames: string[] }>;
 } {
   return {
     listTools: () => tools,
     getTool: (name: string) => tools.find((tool) => tool.name === name),
+    listDiscoverySources: () => {
+      const sources = new Map<string, { id: string; title: string; description: string; pluginNames: string[] }>();
+      for (const tool of tools) {
+        for (const source of tool.sources) {
+          const registered = sources.get(source.Id);
+          if (registered) {
+            if (!registered.pluginNames.includes(tool.plugin.manifest.Plugin.Name)) {
+              registered.pluginNames.push(tool.plugin.manifest.Plugin.Name);
+            }
+          } else {
+            sources.set(source.Id, {
+              id: source.Id,
+              title: source.Title,
+              description: source.Description,
+              pluginNames: [tool.plugin.manifest.Plugin.Name],
+            });
+          }
+        }
+      }
+      return [...sources.values()].sort((left, right) => left.id.localeCompare(right.id));
+    },
   };
 }
 
@@ -27,7 +49,17 @@ export function createTool(options: {
   priority: number;
   rootKind?: PluginRootKind;
   loading?: ToolLoadingMode;
+  source?: {
+    id: string;
+    title: string;
+    description: string;
+  };
 }): RegisteredTool {
+  const source = options.source ?? {
+    id: "workspace",
+    title: "Workspace",
+    description: "Files and source code in the current workspace.",
+  };
   return {
     loading: options.loading ?? "Dynamic",
     plugin: {
@@ -58,6 +90,9 @@ export function createTool(options: {
           Kind: "Tool",
           Description: options.summary,
         },
+        Discovery: {
+          Sources: [{ Id: source.id, Title: source.title, Description: source.description }],
+        },
         Prompting: {
           Priority: options.priority,
         },
@@ -65,13 +100,19 @@ export function createTool(options: {
     },
     name: options.name,
     permissions: [],
+    sources: [
+      {
+        Id: source.id,
+        Title: source.title,
+        Description: source.description,
+      },
+    ],
     handler: { kind: "HostCapability", capability: options.name },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Cancellation: true } },
     execution: {
-      Boundary: "Local",
+      Targets: ["Local"],
       Network: "Deny",
       Workspace: "ReadOnly",
-      LocalFallback: "Deny",
     },
     evidenceCapabilities: [],
     search: {
@@ -115,9 +156,6 @@ export function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
       MmrCandidateScoreRatio: 0.92,
       MinScore: 0,
       MaxResults: 6,
-      IntentGate: {
-        Mode: "side_effect_capability",
-      },
       MemoryExpansion: {
         Mode: "fallback",
         MinConfidence: 0.8,

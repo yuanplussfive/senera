@@ -7,6 +7,15 @@
     "Version": "0.1.0",
     "Kind": "Tool"
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "interaction",
+        "Title": "Interaction",
+        "Description": "Direct interaction with the user for clarification, confirmation, and decisions."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 20
@@ -18,10 +27,9 @@
       "DescriptionFile": "./docs/Tool.md",
       "Permissions": [],
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Artifacts": {
         "Evidence": [

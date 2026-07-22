@@ -44,7 +44,6 @@ export class SeneraNodeProcessBackend implements SeneraProcessExecutionBackend {
 
   async executeProcess(request: SeneraProcessExecutionRequest): Promise<SeneraShellExecutionResult> {
     assertNotAborted(request.signal);
-    assertLocalBackendAllowed(request);
 
     return new Promise((resolve, reject) => {
       const child = spawn(request.command, [...request.args], {
@@ -422,18 +421,5 @@ function buildRejectionError(
 function assertNotAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
     throw new SeneraExecutionError(SeneraExecutionErrorCodes.Aborted, "aborted");
-  }
-}
-
-function assertLocalBackendAllowed(request: SeneraProcessExecutionRequest): void {
-  if (request.profile?.backend === "sandbox" && request.profile.localFallback === "deny") {
-    throw new SeneraExecutionError(
-      SeneraExecutionErrorCodes.SandboxUnavailable,
-      "执行策略要求使用沙箱，已拒绝本地进程后端。",
-      {
-        backend: "node-local",
-        profile: request.profile.name,
-      },
-    );
   }
 }

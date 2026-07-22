@@ -7,6 +7,15 @@
     "Version": "0.1.0",
     "Kind": "Tool"
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "web",
+        "Title": "Web",
+        "Description": "Public internet information, online services, and current external data."
+      }
+    ]
+  },
   "McpServers": [
     {
       "Id": "weather",
@@ -43,10 +52,9 @@
         "network:https://weather.visualcrossing.com"
       ],
       "Execution": {
-        "Boundary": "SandboxPreferred",
+        "Targets": ["Local"],
         "Network": "Allow",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Allow"
+        "Workspace": "ReadOnly"
       },
       "Artifacts": {
         "Redact": {

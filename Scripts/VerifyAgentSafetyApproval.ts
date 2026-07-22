@@ -23,10 +23,9 @@ import type { LoadedPlugin, RegisteredTool } from "../Source/AgentSystem/Types/P
 import { writeToolContractFixture } from "./Support/ToolContractFixture.js";
 
 const DefaultExecution = {
-  Boundary: "Local",
+  Targets: ["Local"],
   Network: "Deny",
   Workspace: "ReadOnly",
-  LocalFallback: "Allow",
 } satisfies ToolExecutionManifest;
 const pluginFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-safety-plugin-"));
 process.on("exit", () => fs.rmSync(pluginFixtureRoot, { recursive: true, force: true }));
@@ -733,6 +732,7 @@ function createToolFixture(
     loading: "Dynamic",
     descriptionFile: undefined,
     permissions: options.permissions ?? [],
+    sources: [],
     handler: {
       kind: "HostCapability",
       capability: "verify",

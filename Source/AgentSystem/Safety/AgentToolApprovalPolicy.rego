@@ -18,6 +18,14 @@ decision := {
   input.tool.approval.Mode == "deny"
 } else := {
   "decision": "requires-approval",
+  "reason": data.senera.tool_approval.Reasons.LocalExecution,
+  "rule": "execution.target.local",
+  "riskSignals": risk_signals,
+} if {
+  input.execution.target == "Local"
+  "Sandbox" in input.execution.availableTargets
+} else := {
+  "decision": "requires-approval",
   "reason": data.senera.tool_approval.Reasons.MissingTool,
   "rule": "tool.registry.missing",
   "riskSignals": risk_signals,
@@ -119,10 +127,10 @@ risk_signals contains "security.requiresApproval:true" if {
   input.tool.security.RequiresApproval == true
 }
 
-approval_reason(fallback) := reason if {
+approval_reason(default_reason) := reason if {
   reason := input.tool.approval.Reason
 }
 
-approval_reason(fallback) := fallback if {
+approval_reason(default_reason) := default_reason if {
   not input.tool.approval.Reason
 }

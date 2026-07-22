@@ -77,6 +77,7 @@ export class AgentToolPermissionGate {
           kind: AgentApprovalKinds.ToolCall,
           toolName: request.toolName,
           arguments: request.arguments,
+          execution: request.executionPlan,
         },
       },
     });

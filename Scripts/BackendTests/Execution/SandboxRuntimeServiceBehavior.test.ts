@@ -3,7 +3,7 @@ import { AgentSandboxRuntimeService } from "../../../Source/AgentSystem/Sandbox/
 import { agentErrorMessage } from "../../../Source/AgentSystem/I18n/AgentMessageCatalog.js";
 
 describe("sandbox runtime service behavior", () => {
-  test("projects localized status snapshots for package, ready, preparing, and fallback states", () => {
+  test("projects localized status snapshots for package, ready, preparing, and unavailable states", () => {
     const service = new AgentSandboxRuntimeService({
       clock: () => new Date("2026-01-01T00:00:00.000Z"),
       packageAvailable: () => true,
@@ -11,7 +11,7 @@ describe("sandbox runtime service behavior", () => {
 
     expect(service.snapshot()).toMatchObject({
       state: "unknown",
-      effectiveMode: "fallback",
+      effectiveMode: "unavailable",
       message: agentErrorMessage("sandbox.configured.snapshotMessage"),
       diagnostics: [
         expect.objectContaining({
@@ -46,16 +46,16 @@ describe("sandbox runtime service behavior", () => {
       ],
     });
 
-    service.markFallback(new Error("runtime unavailable"));
+    service.markUnavailable(new Error("runtime unavailable"));
     expect(service.snapshot()).toMatchObject({
-      state: "fallback",
-      effectiveMode: "fallback",
-      message: agentErrorMessage("sandbox.fallback.statusMessage"),
+      state: "unavailable",
+      effectiveMode: "unavailable",
+      message: agentErrorMessage("sandbox.unavailable.statusMessage"),
       diagnostics: [
         expect.objectContaining({
-          message: agentErrorMessage("sandbox.fallback.message"),
+          message: agentErrorMessage("sandbox.unavailable.message"),
           details: expect.arrayContaining([
-            agentErrorMessage("sandbox.fallback.detail.lastError", { error: "runtime unavailable" }),
+            agentErrorMessage("sandbox.unavailable.detail.lastError", { error: "runtime unavailable" }),
           ]),
         }),
       ],
@@ -68,7 +68,7 @@ describe("sandbox runtime service behavior", () => {
     });
 
     expect(service.snapshot()).toMatchObject({
-      state: "fallback",
+      state: "unavailable",
       supported: false,
       message: agentErrorMessage("sandbox.missing.snapshotMessage"),
       paths: undefined,

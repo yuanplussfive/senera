@@ -1,4 +1,4 @@
-import type { RootCommandManifest } from "../Types/PluginManifestTypes.js";
+import type { PluginDiscoverySourceManifest, RootCommandManifest } from "../Types/PluginManifestTypes.js";
 import type { LoadedPlugin, RegisteredSkill, RegisteredTemplate, RegisteredTool } from "../Types/PluginRuntimeTypes.js";
 import { isLoadedPluginAvailable } from "./AgentPluginConfig.js";
 import {
@@ -16,6 +16,7 @@ export class AgentPluginRegistry {
   private readonly rootCommandPolicies = new Map<string, RootCommandManifest>();
   private readonly rootCommandPolicyPlugins = new Map<string, LoadedPlugin>();
   private readonly declaredToolNames = new Set<string>();
+  private readonly discoverySources = new Map<string, RegisteredPluginDiscoverySourceState>();
 
   registerPlugin(plugin: LoadedPlugin): void {
     this.registerDeclaredTools(plugin);
@@ -29,6 +30,7 @@ export class AgentPluginRegistry {
       throw new Error(agentErrorMessage("plugin.duplicateName", { pluginName }));
     }
 
+    this.registerDiscoverySources(plugin);
     this.plugins.set(pluginName, plugin);
     this.registerRuntimeContributions(plugin, this.contractProjector.project(plugin));
   }
@@ -43,6 +45,12 @@ export class AgentPluginRegistry {
 
   listTools(): RegisteredTool[] {
     return [...this.tools.values()];
+  }
+
+  listDiscoverySources(): RegisteredPluginDiscoverySource[] {
+    return [...this.discoverySources.values()]
+      .map((source) => ({ ...source, pluginNames: [...source.pluginNames] }))
+      .sort((left, right) => left.id.localeCompare(right.id));
   }
 
   filterAvailableToolNames(toolNames: readonly string[]): string[] {
@@ -103,6 +111,32 @@ export class AgentPluginRegistry {
       (templateName) => agentErrorMessage("plugin.duplicateTemplateName", { templateName }),
     );
     this.registerRootCommandPolicies(plugin, contributions.rootCommandPolicies);
+  }
+
+  private registerDiscoverySources(plugin: LoadedPlugin): void {
+    const pluginName = plugin.manifest.Plugin.Name;
+    const sources = plugin.manifest.Discovery?.Sources ?? [];
+    for (const source of sources) {
+      const registered = this.discoverySources.get(source.Id);
+      if (registered && !sameDiscoverySource(registered, source)) {
+        throw new Error(
+          `Discovery source ${source.Id} has conflicting metadata in plugins ${registered.pluginNames.join(", ")} and ${pluginName}.`,
+        );
+      }
+    }
+    for (const source of sources) {
+      const registered = this.discoverySources.get(source.Id);
+      if (registered) {
+        if (!registered.pluginNames.includes(pluginName)) registered.pluginNames.push(pluginName);
+        continue;
+      }
+      this.discoverySources.set(source.Id, {
+        id: source.Id,
+        title: source.Title,
+        description: source.Description,
+        pluginNames: [pluginName],
+      });
+    }
   }
 
   private registerUnique<T>(
@@ -206,4 +240,25 @@ export class AgentPluginRegistry {
     const pluginName = plugin?.manifest.Plugin.Name ?? "unknown";
     return `${kind} "${name}" in plugin "${pluginName}"`;
   }
+}
+
+export interface RegisteredPluginDiscoverySource {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly pluginNames: readonly string[];
+}
+
+interface RegisteredPluginDiscoverySourceState {
+  id: string;
+  title: string;
+  description: string;
+  pluginNames: string[];
+}
+
+function sameDiscoverySource(
+  registered: RegisteredPluginDiscoverySource,
+  source: PluginDiscoverySourceManifest,
+): boolean {
+  return registered.title === source.Title && registered.description === source.Description;
 }

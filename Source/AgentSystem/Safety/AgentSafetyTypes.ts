@@ -4,6 +4,7 @@ import type {
   ToolApprovalManifest,
   ToolSearchCapabilityRiskManifest,
 } from "../Types/PluginManifestTypes.js";
+import type { AgentToolExecutionPlan } from "../ToolRuntime/AgentToolExecutionPlan.js";
 
 export const AgentPermissionActions = {
   Allow: "allow",
@@ -21,6 +22,7 @@ export interface AgentToolPermissionRequest {
   step: number;
   toolName: string;
   arguments: Record<string, unknown>;
+  executionPlan?: AgentToolExecutionPlan;
   visibleToolNames?: "all" | readonly string[];
   tool?: AgentToolSafetyMetadata;
 }
@@ -34,6 +36,7 @@ export interface AgentToolSafetyMetadata {
   capabilityRisks: readonly ToolSearchCapabilityRiskManifest[];
   capabilityEffects: readonly string[];
   security?: PluginSecurityManifest;
+  executionTargets?: readonly string[];
 }
 
 export type AgentPermissionDecision =

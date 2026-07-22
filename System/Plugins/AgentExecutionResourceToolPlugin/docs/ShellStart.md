@@ -14,7 +14,7 @@
 
 ## 输入
 
-`command` 是结构化 shell 命令：`mode` 固定为 `shell`，`dialect` 明确声明 `posix-sh` 或 `powershell`，`script` 是脚本文本。该工具是 `SandboxPreferred`，正常情况下必须生成 Linux `posix-sh` 脚本。`cwd` 是工作区内执行目录，`justification` 说明执行目的。
+`command` 是结构化 shell 命令：`mode` 固定为 `shell`，`dialect` 明确声明 `posix-sh` 或 `powershell`，`script` 是脚本文本。该工具同时支持 `Sandbox` 与 `Local`，调用时必须通过 `executionTarget` 明确选择；`Sandbox` 使用 Linux `posix-sh`，`Local` 使用宿主 shell。`cwd` 是工作区内执行目录，`justification` 说明执行目的。
 
 ## 输出
 
@@ -22,6 +22,6 @@
 
 ## 执行约束
 
-资源只允许同一会话访问；没有会话标识时退化为同一请求访问。输出按预算有界保留，断线后可用游标恢复并继续接收工作区事件。沙箱不可用或缺少所需能力时，只有声明允许本地回退并通过 OPA/审批后才会在宿主机启动；命令失败不会触发宿主重试。
+资源只允许同一会话访问；没有会话标识时退化为同一请求访问。输出按预算有界保留，断线后可用游标恢复并继续接收工作区事件。沙箱不可用或缺少所需能力时，选择 `Sandbox` 的调用会直接失败；运行时不会改在宿主机启动，也不会重试到另一目标。
 
 shell 方言必须与实际后端一致。运行时不会把 PowerShell 自动翻译为 POSIX shell，也不会把不兼容脚本静默转到宿主机。

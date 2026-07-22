@@ -8,7 +8,7 @@
 
 需要真实执行本地命令、验证构建/类型检查、运行测试、执行 git、运行项目脚本，或用当前平台 shell 快速组合只读检查时使用。
 
-该工具是 `SandboxPreferred`：正常执行目标为 Linux sandbox，使用 `posix-sh`。只有执行策略明确选择 `Local` 时，Windows 才使用 PowerShell。必须根据 `execution_environment.execution_targets` 选择方言。
+该工具同时声明 `Sandbox` 与 `Local`。调用时必须在公开的 `executionTarget` 参数中明确选择一个目标：`Sandbox` 使用 Linux `posix-sh`；`Local` 使用宿主 shell（Windows 通常为 PowerShell）。必须根据 `execution_environment.execution_targets` 和本次选择的目标生成匹配方言的脚本。
 
 ## 不要使用的情况
 

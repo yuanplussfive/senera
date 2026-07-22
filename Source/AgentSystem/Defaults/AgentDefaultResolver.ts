@@ -83,10 +83,6 @@ export function resolveAgentDefaults(
       Ranking: {
         ...AgentDefaults.ToolSearch.Ranking,
         ...defaults?.ToolSearch?.Ranking,
-        IntentGate: {
-          ...AgentDefaults.ToolSearch.Ranking.IntentGate,
-          ...defaults?.ToolSearch?.Ranking?.IntentGate,
-        },
         MemoryExpansion: {
           ...AgentDefaults.ToolSearch.Ranking.MemoryExpansion,
           ...defaults?.ToolSearch?.Ranking?.MemoryExpansion,

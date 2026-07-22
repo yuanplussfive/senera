@@ -4,14 +4,15 @@ import { cn } from "../../lib/util";
 import { ConversationFrame } from "../../shared/ui";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motionTimings, readTapScale, useMotionLevel } from "../../shared/motion";
-import { FilePreviewIcon } from "./FilePreviewIcon";
 import { MessageActions } from "./MessageActions";
+import { MessageAttachments } from "./MessageAttachments";
 import { MessageAvatar, MessageMeta } from "./MessageChrome";
 import { InlineMessageEditor } from "./InlineMessageEditor";
 
 export interface UserMessageRowProps {
   message: ChatMessage;
   run?: RunRecord;
+  uploadUrl: string;
   userProfile: UserProfile;
   showInlineActions: boolean;
   onClickBubble?: () => void;
@@ -29,6 +30,7 @@ export interface UserMessageRowProps {
 export function UserMessageRow({
   message,
   run,
+  uploadUrl,
   userProfile,
   showInlineActions,
   onClickBubble,
@@ -49,7 +51,7 @@ export function UserMessageRow({
       <div className="flex min-w-0 max-w-full flex-col items-end">
         <MessageMeta align="right" timestamp={message.createdAt} />
         {message.attachments && message.attachments.length > 0 ? (
-          <MessageAttachments attachments={message.attachments} />
+          <MessageAttachments attachments={message.attachments} uploadUrl={uploadUrl} />
         ) : null}
         {isEditing ? (
           <InlineMessageEditor
@@ -92,32 +94,4 @@ export function UserMessageRow({
       <MessageAvatar role="user" profile={userProfile} />
     </ConversationFrame>
   );
-}
-
-function MessageAttachments({ attachments }: { attachments: NonNullable<ChatMessage["attachments"]> }): JSX.Element {
-  return (
-    <div className="mt-1 flex max-w-full flex-col items-end gap-1">
-      {attachments.map((attachment) => (
-        <div
-          key={attachment.uploadUri}
-          className="flex max-w-full items-center gap-1.5 rounded-md border border-line-subtle bg-surface-raised px-2 py-1 text-[11px] text-content-secondary"
-          title={attachment.uploadUri}
-        >
-          <FilePreviewIcon name={attachment.name} mime={attachment.mime} />
-          <span className="min-w-0 truncate">{attachment.name}</span>
-          <span className="shrink-0 font-mono text-[10px] text-content-muted">
-            {attachment.mime} · {formatFileSize(attachment.size)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)}KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(mb < 10 ? 1 : 0)}MB`;
 }

@@ -1,4 +1,4 @@
-export type ApprovalKind = "tool_call" | "execution_fallback";
+export type ApprovalKind = "tool_call";
 export type ApprovalResolutionScope = "once" | "session";
 export type ApprovalDecision = "approve_once" | "approve_session" | "deny" | "deny_and_interrupt";
 export type ApprovalDisposition = "proceed" | "continue" | "interrupt";
@@ -8,27 +8,16 @@ export interface ToolCallApprovalSubjectData {
   kind: "tool_call";
   toolName: string;
   arguments: Record<string, unknown>;
+  execution?: {
+    target: "Sandbox" | "Local";
+    backend: "sandbox" | "local";
+    network: "default" | "disabled";
+    workspaceMount: "readonly" | "writable";
+    availableTargets: Array<"Sandbox" | "Local">;
+  };
 }
 
-export interface ExecutionFallbackApprovalSubjectData {
-  kind: "execution_fallback";
-  pluginName: string;
-  pluginTitle: string;
-  pluginVersion: string;
-  manifestDigest: string;
-  rootKind: "System" | "User";
-  trustLevel?: string;
-  toolName: string;
-  boundary: "Sandbox" | "SandboxPreferred";
-  network: "Allow" | "Deny";
-  workspace: "ReadOnly" | "ReadWrite";
-  permissions: string[];
-  fromBackend: string;
-  toBackend: string;
-  failureReason: "sandbox_unavailable" | "persistent_sandbox_unsupported" | "terminal_capability_unsupported";
-}
-
-export type ApprovalSubjectData = ToolCallApprovalSubjectData | ExecutionFallbackApprovalSubjectData;
+export type ApprovalSubjectData = ToolCallApprovalSubjectData;
 
 interface ApprovalEventData {
   approvalId: string;

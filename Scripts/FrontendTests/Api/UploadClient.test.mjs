@@ -1,5 +1,10 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { buildUploadUrl, DEFAULT_UPLOAD_TIMEOUT_MS, uploadFile } from "../../../Frontend/src/api/uploadClient.ts";
+import {
+  buildUploadContentUrl,
+  buildUploadUrl,
+  DEFAULT_UPLOAD_TIMEOUT_MS,
+  uploadFile,
+} from "../../../Frontend/src/api/uploadClient.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 
 afterEach(() => {
@@ -44,6 +49,28 @@ test("upload client projects secure WebSocket URLs and reports upload progress",
     { loaded: 2, total: 5, ratio: 0.4 },
     { loaded: 5, total: 5, ratio: 1 },
   ]);
+});
+
+test("upload client builds credential-free content URLs from opaque upload references", () => {
+  expect(
+    buildUploadContentUrl(
+      "https://user:password@agent.example.test/api/uploads?token=secret#fragment",
+      "senera://upload/upl_fixture",
+    ),
+  ).toBe("https://agent.example.test/api/uploads/upl_fixture/content");
+  expect(buildUploadContentUrl("wss://agent.example.test/socket", "senera://upload/a%20b")).toBe(
+    "https://agent.example.test/api/uploads/a%20b/content",
+  );
+});
+
+test.each([
+  "https://example.test/file",
+  "senera://other/upl_fixture",
+  "senera://upload/a/b",
+  "senera://upload/..%2Foutside",
+  "senera://upload/upl_fixture?token=secret",
+])("upload client rejects invalid upload reference %s", (uploadUri) => {
+  expect(buildUploadContentUrl("https://agent.example.test/api/uploads", uploadUri)).toBeUndefined();
 });
 
 test.each([

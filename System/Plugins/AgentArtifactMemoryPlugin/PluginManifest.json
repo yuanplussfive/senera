@@ -8,6 +8,15 @@
     "Kind": "Tool",
     "Description": "Loads persisted artifact memories by canonical artifact URI."
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "memory",
+        "Title": "Memory",
+        "Description": "Persisted conversation memory and artifact evidence available to the current agent."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 8
@@ -23,10 +32,9 @@
         "Capability": "artifact.memory.read"
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Observation": {
         "MaxTokens": 6000,

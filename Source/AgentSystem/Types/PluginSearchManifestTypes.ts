@@ -1,4 +1,5 @@
 export interface ToolSearchManifest {
+  SourceIds?: string[];
   Summary?: string;
   Tags?: string[];
   Capabilities?: ToolSearchCapabilityManifest[];

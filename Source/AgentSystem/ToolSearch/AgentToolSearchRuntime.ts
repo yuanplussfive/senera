@@ -10,6 +10,7 @@ import type {
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import type { AgentHostToolContractProjection } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { AgentToolSearchIndex, type AgentToolSearchResult } from "./AgentToolSearchIndex.js";
 import { AgentToolSearchMemory, type AgentToolUsePattern } from "./AgentToolSearchMemory.js";
 import {
@@ -19,7 +20,7 @@ import {
 } from "./AgentToolSearchRuntimeTypes.js";
 import { ToolLoadingModes } from "../Types/PluginToolManifestTypes.js";
 import {
-  ToolSearchArgumentsSchema,
+  createToolSearchArgumentsSchema,
   invalidToolSearchArgumentsResult,
   okToolSearchResult,
   type ToolSearchArguments,
@@ -41,6 +42,10 @@ export class AgentToolSearchRuntime {
   private readonly learningRuntime: AgentToolLearningRuntime;
   private index?: AgentToolSearchIndex;
   private readonly projectId: string;
+  private readonly invocationSchemaCache = new WeakMap<
+    object,
+    { catalogIdentity: string; schema: Record<string, unknown> }
+  >();
 
   constructor(
     private readonly registry: AgentPluginRegistry,
@@ -68,6 +73,13 @@ export class AgentToolSearchRuntime {
         requestId: context.requestId,
         visibleToolNames: context.visibleToolNames,
       });
+    };
+  }
+
+  createHostContractProjection(): AgentHostToolContractProjection {
+    return {
+      projectInvocationSchema: (_tool, schema) => this.projectInvocationSchema(schema),
+      projectDescription: (_tool, description) => this.projectDescription(description),
     };
   }
 
@@ -162,6 +174,7 @@ export class AgentToolSearchRuntime {
 
   search(options: {
     query: string;
+    preferredSourceIds?: readonly string[];
     plannerTags?: readonly string[];
     includeLoaded?: boolean;
     loadedToolNames?: readonly string[];
@@ -203,7 +216,7 @@ export class AgentToolSearchRuntime {
       visibleToolNames?: readonly string[];
     },
   ): Promise<AgentToolProcessRunResult> {
-    const parsed = ToolSearchArgumentsSchema.safeParse(args);
+    const parsed = createToolSearchArgumentsSchema(this.discoverySourceIds()).safeParse(args);
     if (!parsed.success) {
       return invalidToolSearchArgumentsResult(parsed.error.issues);
     }
@@ -225,6 +238,7 @@ export class AgentToolSearchRuntime {
   private buildToolSearchResult(args: ToolSearchArguments, loadedToolNames: readonly string[]) {
     const results = this.search({
       query: args.query,
+      preferredSourceIds: args.preferredSources,
       includeLoaded: args.includeLoaded ?? false,
       loadedToolNames,
     });
@@ -263,6 +277,48 @@ export class AgentToolSearchRuntime {
     this.index ??= new AgentToolSearchIndex(this.registry, this.config);
     return this.index;
   }
+
+  private discoverySourceIds(): string[] {
+    return this.registry.listDiscoverySources().map((source) => source.id);
+  }
+
+  private projectInvocationSchema(schema: Readonly<Record<string, unknown>>): Record<string, unknown> {
+    const catalog = this.registry.listDiscoverySources();
+    const catalogIdentity = JSON.stringify(catalog);
+    const cached = this.invocationSchemaCache.get(schema);
+    if (cached?.catalogIdentity === catalogIdentity) return cached.schema;
+
+    const properties = readSchemaRecord(schema.properties, "ToolSearchTool input schema properties");
+    const preferredSources = readSchemaRecord(
+      properties.preferredSources,
+      "ToolSearchTool preferredSources property schema",
+    );
+    const items = readSchemaRecord(preferredSources.items, "ToolSearchTool preferredSources item schema");
+    const projected = deepFreeze({
+      ...schema,
+      properties: {
+        ...properties,
+        preferredSources: {
+          ...preferredSources,
+          description: "优先检索的能力来源；这是排序偏好，不会排除其他来源。省略时在全部来源中搜索。",
+          uniqueItems: true,
+          items: {
+            ...items,
+            enum: catalog.map((source) => source.id),
+          },
+        },
+      },
+    });
+    this.invocationSchemaCache.set(schema, { catalogIdentity, schema: projected });
+    return projected;
+  }
+
+  private projectDescription(description: string): string {
+    const sources = this.registry.listDiscoverySources();
+    if (sources.length === 0) return description;
+    const sourceCatalog = sources.map((source) => `- ${source.id}: ${source.title} — ${source.description}`).join("\n");
+    return `${description}\n\n可选能力来源（preferredSources 仅影响排序）：\n${sourceCatalog}`;
+  }
 }
 
 const CurrentSetProjectors = {
@@ -276,4 +332,17 @@ const CurrentSetProjectors = {
 
 function createProjectId(workspaceRoot: string): string {
   return crypto.createHash("sha1").update(workspaceRoot.toLowerCase()).digest("hex");
+}
+
+function readSchemaRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${label} must be an object.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const nested of Object.values(value as Record<string, unknown>)) deepFreeze(nested);
+  return Object.freeze(value);
 }

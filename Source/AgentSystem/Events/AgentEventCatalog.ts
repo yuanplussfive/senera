@@ -60,7 +60,6 @@ export const AgentEventKinds = {
   ApprovalResolved: "approval.resolved",
   InteractionInputRequested: "interaction.input.requested",
   InteractionInputResolved: "interaction.input.resolved",
-  ExecutionFallbackStarted: "execution.fallback.started",
   ExecutionResourceCreated: "execution.resource.created",
   ExecutionResourceOutput: "execution.resource.output",
   ExecutionResourceResized: "execution.resource.resized",
@@ -245,10 +244,6 @@ export const AgentEventSpecTable: {
   [AgentEventKinds.InteractionInputResolved]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Tool,
-  },
-  [AgentEventKinds.ExecutionFallbackStarted]: {
-    layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Approval,
   },
   [AgentEventKinds.ExecutionResourceCreated]: {
     layer: AgentEventLayers.Snapshot,

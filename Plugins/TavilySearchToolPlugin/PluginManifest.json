@@ -7,6 +7,15 @@
     "Version": "0.1.0",
     "Kind": "Tool"
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "web",
+        "Title": "Web",
+        "Description": "Public internet information, online services, and current external data."
+      }
+    ]
+  },
   "McpServers": [
     {
       "Id": "tavily",
@@ -37,10 +46,9 @@
       "DescriptionFile": "./docs/Tool.md",
       "Permissions": ["network:https://api.tavily.com", "filesystem:read:PluginConfig.toml", "filesystem:write:.state"],
       "Execution": {
-        "Boundary": "SandboxPreferred",
+        "Targets": ["Local"],
         "Network": "Allow",
-        "Workspace": "ReadWrite",
-        "LocalFallback": "Allow"
+        "Workspace": "ReadWrite"
       },
       "Artifacts": {
         "Redact": {

@@ -1,22 +1,3 @@
-export interface ExecutionFallbackStartedData {
-  toolCallId?: string;
-  batchId?: string;
-  pluginName: string;
-  pluginVersion: string;
-  toolName: string;
-  manifestDigest: string;
-  fromBackend: string;
-  toBackend: string;
-  reason:
-    | "sandbox_unavailable"
-    | "persistent_sandbox_unsupported"
-    | "terminal_capability_unsupported"
-    | "shell_dialect_unsupported";
-  rule: string;
-  approvalId?: string;
-  scope?: "once" | "session";
-}
-
 export interface ExecutionResourceOutputData {
   resourceId: string;
   toolCallId?: string;
@@ -76,12 +57,6 @@ export interface ExecutionResourceTerminalData {
   >;
   persistenceScope?: ExecutionResourceTerminalPersistenceScope;
   sandboxId?: string;
-  fallback?: {
-    reason: "sandbox_unavailable" | "terminal_capability_unsupported" | "shell_dialect_unsupported";
-    rule: string;
-    approvalId?: string;
-    scope?: "once" | "session";
-  };
   columns: number;
   rows: number;
 }

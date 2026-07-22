@@ -42,7 +42,6 @@ import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlann
 import { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import { createSeneraExecutionEnvironments } from "../Execution/SeneraExecutionEnvFactory.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
-import { AgentExecutionFallbackAuthorizer } from "../Safety/AgentExecutionFallbackAuthorizer.js";
 import { resolveAgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
 import { AgentPiCompactionSummarizer } from "../Pi/AgentPiCompactionSummarizer.js";
 import { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
@@ -114,11 +113,6 @@ export class AgentSystemRuntime {
       },
       environmentPolicy: resolveToolExecutionConfig(config).Environment,
       terminationGraceMs: executionResourceLimits.terminationGraceMs,
-      fallbackAuthorizer: new AgentExecutionFallbackAuthorizer({
-        registry: this.registry,
-        approvalRuntime: this.approvalRuntime,
-        policyClient: authorizationPolicyClient,
-      }),
       resourceAccessPolicy: new AgentResourceAccessPolicy(authorizationPolicyClient),
     });
     this.executionEnv = executionEnvironments.system;

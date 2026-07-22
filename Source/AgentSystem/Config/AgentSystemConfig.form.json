@@ -916,18 +916,6 @@
             "required": false
           },
           {
-            "path": ["ToolSearch", "Ranking", "IntentGate", "Mode"],
-            "label": "副作用工具意图门",
-            "description": "要求带副作用的工具命中声明式 capability，或由请求明确写出完整工具名。",
-            "type": "string",
-            "options": ["disabled", "side_effect_capability"],
-            "optionLabels": {
-              "disabled": "禁用",
-              "side_effect_capability": "能力意图匹配"
-            },
-            "required": false
-          },
-          {
             "path": ["ToolSearch", "Ranking", "MemoryExpansion", "Mode"],
             "label": "工具学习扩展模式",
             "description": "回退模式仅在词法召回为空时允许学习记忆独立补充候选。",

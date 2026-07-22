@@ -1,5 +1,5 @@
 export type ShellCommandToolArguments = {
-  // 明确声明脚本方言。SandboxPreferred 默认目标是 Linux/posix-sh；只有 Local 工具才使用 powershell。
+  // executionTarget=Sandbox uses Linux/posix-sh; executionTarget=Local uses the host shell.
   command: {
     mode: "shell";
     dialect: "posix-sh" | "powershell";

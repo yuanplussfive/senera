@@ -6,7 +6,7 @@
         "kind": "typescript",
         "identity": "./ToolSignature.ts#default",
         "file": "./ToolSignature.ts",
-        "sha256": "836012943f1c5f9f4aa0ce9f68fede477d8ca241e8da7b9d9c447b9409fd3d09"
+        "sha256": "7bacb0a55d8f846856766c06e033cd36a14fed5e2d8b8bab3d5a76d12a5bc2cc"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -19,6 +19,28 @@
           "mode": {
             "type": "string",
             "description": "Optional processing mode. If omitted, the plugin TOML defaultMode is used. auto: probe first and extract text only when a configured parser matches. probe: return registration/probe facts only. extract: require text extraction."
+          },
+          "resources": {
+            "type": "object",
+            "properties": {
+              "document": {
+                "type": "object",
+                "properties": {
+                  "uploadUri": { "type": "string" },
+                  "filePath": { "type": "string" },
+                  "name": { "type": "string" },
+                  "mime": { "type": "string" },
+                  "declaredMime": { "type": "string" },
+                  "size": { "type": "number" },
+                  "sha256": { "type": "string" }
+                },
+                "required": ["uploadUri", "filePath", "name", "mime", "size", "sha256"],
+                "additionalProperties": false,
+                "description": "A host-resolved upload exposed through a declared public tool resource binding."
+              }
+            },
+            "additionalProperties": false,
+            "description": "Host-authorized upload descriptor populated from the declared resource binding."
           }
         },
         "required": ["uploadUri"],

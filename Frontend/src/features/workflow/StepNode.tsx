@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { Handle, type Node, type NodeProps } from "@xyflow/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
@@ -18,7 +18,7 @@ import type { TimelineStep, TimelineStepKind } from "../../store/sessionStore";
 import { cn, formatDuration } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
-import type { StepNodeData } from "./layout";
+import { readWorkflowHandlePositions, type StepNodeData, type WorkflowLayoutDirection } from "./layout";
 import { readStepStatusLabel } from "./stepPresentation";
 
 const KindIcon: Record<TimelineStepKind, React.ComponentType<{ className?: string }>> = {
@@ -37,9 +37,10 @@ type WorkflowStepNode = Node<StepNodeData>;
 
 function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Element {
   const { level, reduceMotion, disableMotion } = useMotionLevel();
+  const handlePositions = readWorkflowHandlePositions(data.layout.direction);
 
   if (data.kind === "scope") {
-    return <ScopeNode group={data.group} selected={selected} />;
+    return <ScopeNode group={data.group} layoutDirection={data.layout.direction} selected={selected} />;
   }
 
   const step = data.step;
@@ -66,10 +67,11 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
         statusClass,
         selected ? "outline outline-2 outline-offset-2 outline-accent-focus" : "",
       )}
+      data-workflow-layout-direction={data.layout.direction}
     >
       <Handle
         type="target"
-        position={Position.Top}
+        position={handlePositions.target}
         className="!h-1.5 !w-1.5 !border-surface-raised !bg-content-muted"
       />
 
@@ -108,7 +110,7 @@ function StepNodeBase({ data, selected }: NodeProps<WorkflowStepNode>): JSX.Elem
 
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={handlePositions.source}
         className="!h-1.5 !w-1.5 !border-surface-raised !bg-content-muted"
       />
     </div>
@@ -119,11 +121,14 @@ export const StepNode = memo(StepNodeBase);
 
 function ScopeNode({
   group,
+  layoutDirection,
   selected,
 }: {
   group: Extract<StepNodeData, { kind: "scope" }>["group"];
+  layoutDirection: WorkflowLayoutDirection;
   selected: boolean;
 }): JSX.Element {
+  const handlePositions = readWorkflowHandlePositions(layoutDirection);
   const statusClass =
     group.status === "failed"
       ? "border-brick-300"
@@ -138,10 +143,11 @@ function ScopeNode({
         statusClass,
         selected ? "outline outline-2 outline-offset-2 outline-accent-focus" : "",
       )}
+      data-workflow-layout-direction={layoutDirection}
     >
       <Handle
         type="target"
-        position={Position.Top}
+        position={handlePositions.target}
         className="!h-1.5 !w-1.5 !border-surface-raised !bg-content-muted"
       />
       <div className="flex items-start gap-2.5">
@@ -160,7 +166,7 @@ function ScopeNode({
       </div>
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={handlePositions.source}
         className="!h-1.5 !w-1.5 !border-surface-raised !bg-content-muted"
       />
     </div>

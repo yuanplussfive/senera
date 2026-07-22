@@ -238,6 +238,10 @@ export function resolveFilePreview(input: FilePreviewInput): FilePreviewDescript
   );
 }
 
+export function isImageFilePreview(input: FilePreviewInput): boolean {
+  return resolveFilePreview(input).id === "image";
+}
+
 function indexProfiles(
   profiles: readonly FilePreviewProfile[],
   key: "names" | "extensions" | "mimes",

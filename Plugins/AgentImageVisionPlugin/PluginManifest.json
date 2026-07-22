@@ -8,10 +8,28 @@
     "Kind": "Tool",
     "Description": "按 uploadUri 读取用户上传图片，并通过插件配置的视觉模型进行识别、OCR 或问答。"
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "uploads",
+        "Title": "Uploads",
+        "Description": "Files and media explicitly uploaded by the user."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 8
   },
+  "McpServers": [
+    {
+      "Id": "image-vision",
+      "Transport": "stdio",
+      "Command": "${node}",
+      "Args": ["${runtimeModule:Plugins/AgentImageVisionPlugin/Runtime.js}"],
+      "Cwd": "${pluginRoot}"
+    }
+  ],
   "Tools": [
     {
       "Name": "ImageVisionTool",
@@ -19,14 +37,21 @@
       "DescriptionFile": "./docs/Tool.md",
       "Permissions": ["filesystem:read:uploads", "network:model-provider"],
       "Handler": {
-        "Kind": "HostCapability",
-        "Capability": "image.vision"
+        "Kind": "McpTool",
+        "Server": "image-vision",
+        "Tool": "ImageVisionTool",
+        "Resources": [
+          {
+            "Capability": "senera.upload.read",
+            "Pointer": "/uploadUri",
+            "Binding": "image"
+          }
+        ]
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Allow",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Artifacts": {
         "Evidence": [
@@ -118,7 +143,6 @@
       },
       "Runtime": {
         "Lifecycle": "Immediate",
-        "ProtocolVersion": 2,
         "Capabilities": {
           "Cancellation": true
         }

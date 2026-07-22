@@ -1,4 +1,5 @@
 import type {
+  PluginDiscoveryManifest,
   PluginKind,
   PluginPromptingManifest,
   PluginMcpServerManifest,
@@ -31,6 +32,8 @@ export type {
   ToolArtifactWorkspacePathManifest,
 } from "./PluginArtifactManifestTypes.js";
 export type {
+  PluginDiscoveryManifest,
+  PluginDiscoverySourceManifest,
   PluginKind,
   PluginPromptingManifest,
   PluginMcpServerManifest,
@@ -58,15 +61,13 @@ export type {
   ToolApprovalManifest,
   ToolEvidenceCapabilityManifest,
   ToolExecutionManifest,
+  ToolExecutionTarget,
   ToolHandlerManifest,
   ToolLoadingMode,
   ToolManifest,
   ToolRuntimeCapabilitiesManifest,
   ToolRuntimeManifest,
-  ToolResourceAccessIntentManifest,
   ToolResourceArgumentManifest,
-  ToolResourceIntentCaseManifest,
-  ToolResourceIntentManifest,
   ToolObservationContinuationManifest,
   ToolObservationManifest,
 } from "./PluginToolManifestTypes.js";
@@ -83,6 +84,7 @@ export interface PluginManifest {
     Kind: PluginKind;
     Description?: string;
   };
+  Discovery?: PluginDiscoveryManifest;
   Tools?: ToolManifest[];
   McpServers?: PluginMcpServerManifest[];
   Skills?: SkillManifest[];

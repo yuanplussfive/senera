@@ -4,10 +4,16 @@ import type { ToolSearchArguments } from "./AgentToolSearchToolProtocol.js";
 export function buildToolSearchResultProjection(args: ToolSearchArguments, results: readonly AgentToolSearchResult[]) {
   return {
     query: args.query,
+    preferredSources: {
+      item: args.preferredSources ?? [],
+    },
     tools: {
       item: results.map((result) => ({
         name: result.toolName,
         title: result.title,
+        sources: {
+          item: result.sources,
+        },
         summary: result.summary,
         whenToUse: result.whenToUse,
         score: result.score,

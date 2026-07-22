@@ -15,8 +15,10 @@ export const runModelStreamEventHandlers = {
     run.xmlPreview = "";
     run.visibleText = "";
     run.displayText = "";
+    run.displayMessageId = undefined;
     run.visibleKind = "unknown";
-    run.decisionMode = "none";
+    run.decisionMode = run.plannedDecisionMode ?? "none";
+    run.plannedDecisionMode = undefined;
     upsertStep(run, {
       id: `${run.requestId}-model-${env.step ?? 0}`,
       kind: "model",

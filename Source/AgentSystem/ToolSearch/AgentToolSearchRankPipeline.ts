@@ -11,12 +11,9 @@ import type {
   ToolSearchDocument,
 } from "./AgentToolSearchTypes.js";
 import {
-  AgentToolSearchIntentGateModes,
-  type AgentToolSearchIntentGateMode,
   AgentToolSearchMemoryExpansionModes,
   type AgentToolSearchMemoryExpansionMode,
 } from "../Types/AgentToolAndMemoryConfigTypes.js";
-import { matchToolCapabilities } from "./AgentToolSearchCapabilities.js";
 
 export interface AgentToolSearchRankPipelineResult {
   entries: AgentToolSearchRankedEntry[];
@@ -41,9 +38,7 @@ export class AgentToolSearchRankPipeline {
 
   rank(options: AgentToolSearchOptions): AgentToolSearchRankPipelineResult {
     const keywordTokens = this.tokenizer.keywords(options.query);
-    const queryTokens = this.rankableQueryTokens(
-      keywordTokens.length > 0 ? keywordTokens : this.tokenizer.tokenize(options.query),
-    );
+    const queryTokens = keywordTokens.length > 0 ? keywordTokens : this.tokenizer.tokenize(options.query);
     const visible = new Set(options.loadedToolNames ?? []);
     const candidates = this.docs.filter((doc) => options.includeLoaded !== false || !visible.has(doc.toolName));
     const initialNames = new Set(candidates.map((doc) => doc.toolName));
@@ -58,8 +53,7 @@ export class AgentToolSearchRankPipeline {
       memoryByTool: toMemoryEvidenceMap(options.memoryEvidence ?? []),
       inverseDocumentFrequency: (token) => this.inverseDocumentFrequency(token),
     });
-    const intentGated = reranked.filter((entry) => this.allowsIntent(entry, queryTokens));
-    const diversified = this.diversify(intentGated, queryTokens);
+    const diversified = this.diversify(reranked, queryTokens);
 
     return {
       entries: diversified
@@ -76,13 +70,12 @@ export class AgentToolSearchRankPipeline {
     candidateNames: Set<string>,
   ): Record<AgentToolSearchRankerName, AgentToolSearchRankMap> {
     const bm25 = this.bm25Rank(options.query, candidateNames);
-    const lexicalCandidates = bm25.size > 0 ? new Set(bm25.keys()) : candidateNames;
-
     return {
       bm25,
-      exact: this.exactRank(queryTokens, lexicalCandidates),
+      exact: this.exactRank(queryTokens, candidateNames),
       memory: this.memoryRank(options.memoryEvidence ?? [], candidateNames),
       priority: this.priorityRank(candidateNames),
+      source: this.sourcePreferenceRank(options.preferredSourceIds ?? [], candidateNames),
     };
   }
 
@@ -139,6 +132,19 @@ export class AgentToolSearchRankPipeline {
     return toRankMap(ranked.map((doc) => doc.toolName));
   }
 
+  private sourcePreferenceRank(
+    preferredSourceIds: readonly string[],
+    candidateNames: ReadonlySet<string>,
+  ): AgentToolSearchRankMap {
+    if (preferredSourceIds.length === 0) return new Map();
+    const preferred = new Set(preferredSourceIds);
+    return new Map(
+      [...candidateNames]
+        .filter((toolName) => this.docsByTool.get(toolName)?.sourceIds.some((sourceId) => preferred.has(sourceId)))
+        .map((toolName) => [toolName, 1]),
+    );
+  }
+
   private fuse(
     rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,
     candidateNames: Set<string>,
@@ -186,16 +192,6 @@ export class AgentToolSearchRankPipeline {
     return selected;
   }
 
-  private allowsIntent(entry: AgentToolSearchRankedEntry, queryTokens: readonly string[]): boolean {
-    const doc = this.docsByTool.get(entry.toolName);
-    if (!doc) return false;
-    return IntentGatePolicies[this.config.Ranking.IntentGate.Mode]({
-      doc,
-      queryTokens,
-      tokenizer: this.tokenizer,
-    });
-  }
-
   private diversifiedScore(
     entry: AgentToolSearchRankedEntry,
     selected: AgentToolSearchRankedEntry[],
@@ -223,7 +219,7 @@ export class AgentToolSearchRankPipeline {
     rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,
     memoryEvidence: readonly AgentToolSearchMemoryEvidence[],
   ): Set<string> {
-    const lexical = new Set(rankers.exact.size > 0 ? rankers.exact.keys() : rankers.bm25.keys());
+    const lexical = new Set([...rankers.bm25.keys(), ...rankers.exact.keys()]);
     const memory = this.qualifiedMemoryCandidates(memoryEvidence, rankers.memory);
     const expand = MemoryExpansionPolicies[this.config.Ranking.MemoryExpansion.Mode];
     return new Set([...lexical, ...expand({ lexical, memory })]);
@@ -263,21 +259,6 @@ export class AgentToolSearchRankPipeline {
     return Math.log(1 + (this.docs.length + 1) / (df + 1));
   }
 
-  private rankableQueryTokens(tokens: string[]): string[] {
-    const present = tokens.filter((token) => this.documentFrequency.has(token));
-    if (present.length === 0) {
-      return tokens;
-    }
-
-    const information = present
-      .map((token) => this.inverseDocumentFrequency(token))
-      .sort((left, right) => left - right);
-    const pivot = information[Math.floor(information.length / 2)];
-    const selected =
-      pivot === undefined ? [] : present.filter((token) => this.inverseDocumentFrequency(token) >= pivot);
-    return selected.length > 0 ? selected : present;
-  }
-
   private buildDocumentFrequency(): void {
     for (const doc of this.docs) {
       for (const token of new Set(this.tokenizer.tokenize(doc.coreText))) {
@@ -297,39 +278,6 @@ const MemoryExpansionPolicies = {
   [AgentToolSearchMemoryExpansionModes.Fallback]: ({ lexical, memory }) => (lexical.size === 0 ? [...memory] : []),
   [AgentToolSearchMemoryExpansionModes.Augment]: ({ memory }) => [...memory],
 } satisfies Record<AgentToolSearchMemoryExpansionMode, (input: MemoryExpansionPolicyInput) => string[]>;
-
-interface IntentGatePolicyInput {
-  doc: ToolSearchDocument;
-  queryTokens: readonly string[];
-  tokenizer: AgentToolSearchTokenizer;
-}
-
-const IntentGatePolicies = {
-  [AgentToolSearchIntentGateModes.Disabled]: () => true,
-  [AgentToolSearchIntentGateModes.SideEffectCapability]: ({ doc, queryTokens, tokenizer }) => {
-    if (!declaresSideEffect(doc)) return true;
-    if (matchesExplicitToolName(doc, queryTokens, tokenizer)) return true;
-    return matchToolCapabilities(doc, queryTokens, tokenizer).length > 0;
-  },
-} satisfies Record<AgentToolSearchIntentGateMode, (input: IntentGatePolicyInput) => boolean>;
-
-function declaresSideEffect(doc: ToolSearchDocument): boolean {
-  return doc.capabilities.some(
-    (capability) =>
-      Boolean(capability.Risk?.SideEffect) ||
-      Boolean(capability.Facets?.Effects && capability.Facets.Effects.length > 0),
-  );
-}
-
-function matchesExplicitToolName(
-  doc: ToolSearchDocument,
-  queryTokens: readonly string[],
-  tokenizer: AgentToolSearchTokenizer,
-): boolean {
-  const query = new Set(queryTokens);
-  const identity = [...new Set(tokenizer.tokenize(doc.toolName))];
-  return identity.length > 0 && identity.every((token) => query.has(token));
-}
 
 function toRankMap(toolNames: string[]): AgentToolSearchRankMap {
   return new Map(toolNames.map((toolName, index) => [toolName, index + 1]));

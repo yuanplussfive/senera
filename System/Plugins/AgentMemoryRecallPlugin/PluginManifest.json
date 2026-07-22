@@ -8,6 +8,15 @@
     "Kind": "Tool",
     "Description": "查询已经沉淀的长期记忆；未命中时降级召回普通历史对话。"
   },
+  "Discovery": {
+    "Sources": [
+      {
+        "Id": "memory",
+        "Title": "Memory",
+        "Description": "Persisted conversation memory and artifact evidence available to the current agent."
+      }
+    ]
+  },
   "Prompting": {
     "Audience": "Model",
     "Priority": 8
@@ -23,10 +32,9 @@
         "Capability": "memory.recall"
       },
       "Execution": {
-        "Boundary": "Local",
+        "Targets": ["Local"],
         "Network": "Deny",
-        "Workspace": "ReadOnly",
-        "LocalFallback": "Deny"
+        "Workspace": "ReadOnly"
       },
       "Artifacts": {
         "Evidence": [

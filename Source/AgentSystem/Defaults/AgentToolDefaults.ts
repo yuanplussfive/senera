@@ -27,10 +27,6 @@ export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgen
     Ranking: {
       ...defaults.ToolSearch.Ranking,
       ...config.ToolSearch?.Ranking,
-      IntentGate: {
-        ...defaults.ToolSearch.Ranking.IntentGate,
-        ...config.ToolSearch?.Ranking?.IntentGate,
-      },
       MemoryExpansion: {
         ...defaults.ToolSearch.Ranking.MemoryExpansion,
         ...config.ToolSearch?.Ranking?.MemoryExpansion,

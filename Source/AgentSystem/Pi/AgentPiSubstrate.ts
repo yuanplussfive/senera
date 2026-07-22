@@ -58,6 +58,8 @@ export interface AgentPiSubstrateOptions {
 
 export interface AgentPiToolCallExecutorPort {
   execute: AgentToolCallExecutor["execute"];
+  projectToolInvocationSchema?: AgentToolCallExecutor["projectToolInvocationSchema"];
+  projectToolDescription?: AgentToolCallExecutor["projectToolDescription"];
 }
 
 export interface AgentPiArtifactRecorderPort {
@@ -160,6 +162,14 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         recordToolArtifacts: options.artifactRecorder.record.bind(options.artifactRecorder),
         model: options.modelProvider.Model,
       }),
+      runtimeContracts: {
+        projectToolInvocationSchema: (tool, schema) =>
+          options.toolCallExecutor.projectToolInvocationSchema?.call(options.toolCallExecutor, tool, schema) ??
+          (schema as Record<string, unknown>),
+        projectToolDescription: (tool, description) =>
+          options.toolCallExecutor.projectToolDescription?.call(options.toolCallExecutor, tool, description) ??
+          description,
+      },
     });
   }
 

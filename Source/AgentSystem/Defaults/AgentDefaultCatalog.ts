@@ -10,10 +10,7 @@ import { moduleDirPath } from "../Core/AgentPath.js";
 import { SeneraMicrosandboxDefaults } from "../Execution/SeneraMicrosandboxDefaults.js";
 import { SeneraDefaultTerminationGraceMs } from "../Execution/SeneraTerminationPolicy.js";
 import { AgentPiSessionCacheDefaults } from "../Pi/AgentPiSessionCachePolicy.js";
-import {
-  AgentToolSearchIntentGateModes,
-  AgentToolSearchMemoryExpansionModes,
-} from "../Types/AgentToolAndMemoryConfigTypes.js";
+import { AgentToolSearchMemoryExpansionModes } from "../Types/AgentToolAndMemoryConfigTypes.js";
 import { AgentModelResponseBudgetDefaults } from "../ModelEndpoints/ModelResponseBudget.js";
 import { SeneraDefaultProcessEnvironmentIncludeOnly } from "../Execution/SeneraProcessEnvironment.js";
 
@@ -133,9 +130,6 @@ export const AgentDefaults = {
       MmrCandidateScoreRatio: 0.92,
       MinScore: 0,
       MaxResults: 6,
-      IntentGate: {
-        Mode: AgentToolSearchIntentGateModes.SideEffectCapability,
-      },
       MemoryExpansion: {
         Mode: AgentToolSearchMemoryExpansionModes.Fallback,
         MinConfidence: 0.8,

@@ -47,8 +47,3 @@ export function useStreamingDisplayTicker(sessionId: string, runs: readonly RunR
     };
   }, [advanceStreamingDisplay, motionLevel, pendingRunIds, sessionId]);
 }
-
-export function readStreamingDisplayActivityRevision(runs: readonly RunRecord[], currentRun?: RunRecord): number {
-  const pendingRun = [...runs].reverse().find((run) => run.displayText !== run.visibleText);
-  return pendingRun?.revision ?? currentRun?.revision ?? 0;
-}

@@ -1,6 +1,7 @@
 import type { LoadedPluginConfig } from "./PluginConfigTypes.js";
 import type {
   PluginManifest,
+  PluginDiscoverySourceManifest,
   PluginRootKind,
   SkillEvidenceRequirementManifest,
   ToolArtifactPolicyManifest,
@@ -51,6 +52,7 @@ export interface RegisteredTool {
   execution: ToolExecutionManifest;
   runtime: ToolRuntimeManifest;
   observation?: ToolObservationManifest;
+  sources: readonly PluginDiscoverySourceManifest[];
   search?: ToolSearchManifest;
   evidenceCapabilities: ToolEvidenceCapabilityManifest[];
   approval?: ToolApprovalManifest;

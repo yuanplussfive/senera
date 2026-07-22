@@ -1,7 +1,7 @@
 export const AgentSandboxRuntimeProvider = "microsandbox";
 
-export type AgentSandboxEffectiveMode = "sandbox" | "fallback";
-export type AgentSandboxRuntimeState = "unknown" | "preparing" | "ready" | "fallback";
+export type AgentSandboxEffectiveMode = "sandbox" | "unavailable";
+export type AgentSandboxRuntimeState = "unknown" | "preparing" | "ready" | "unavailable";
 export type AgentSandboxDiagnosticSeverity = "warning" | "error";
 
 export interface AgentSandboxDiagnostic {

@@ -120,6 +120,7 @@ export function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][numbe
     visibleKind: "unknown",
     expectedOutputMode: "unknown",
     decisionMode: "none",
+    plannedDecisionMode: undefined,
     pendingToolArgsByName: {},
     approvals: [],
     interactionInputs: [],

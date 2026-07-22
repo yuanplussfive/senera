@@ -13,15 +13,13 @@ import "@xyflow/react/dist/style.css";
 import { type RunRecord } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { StepNode } from "./StepNode";
-import { layoutSteps, type StepNodeData } from "./layout";
+import { layoutSteps, type StepNodeData, type WorkflowLayoutDirection } from "./layout";
 import { NodeDetailDrawer } from "./NodeDetailDrawer";
 
 const NODE_TYPES = { step: StepNode };
 const FIT_VIEW_DURATION_MS = 240;
-const WORKFLOW_NODE_WIDTH = 240;
-const WORKFLOW_NODE_CENTER_Y = 54;
 const WORKFLOW_VIEWPORT_ZOOM = 0.86;
-const WORKFLOW_VIEWPORT_TOP_INSET = 24;
+const WORKFLOW_VIEWPORT_EDGE_INSET = 24;
 type WorkflowViewportMode = "start" | "latest";
 
 export function readInitialWorkflowViewportMode(status: RunRecord["status"]): WorkflowViewportMode {
@@ -42,31 +40,60 @@ export function readWorkflowViewportTarget(
 }
 
 export function readStartWorkflowViewport(
-  node: Pick<Node<StepNodeData>, "position">,
-  canvasWidth: number,
+  node: Pick<Node<StepNodeData>, "data" | "position">,
+  canvas: { width: number; height: number },
+  layoutDirection: WorkflowLayoutDirection,
 ): { x: number; y: number; zoom: number } {
+  const center = readWorkflowNodeCenter(node);
+  if (layoutDirection === "horizontal") {
+    return {
+      x: WORKFLOW_VIEWPORT_EDGE_INSET - node.position.x * WORKFLOW_VIEWPORT_ZOOM,
+      y: canvas.height / 2 - center.y * WORKFLOW_VIEWPORT_ZOOM,
+      zoom: WORKFLOW_VIEWPORT_ZOOM,
+    };
+  }
   return {
-    x: canvasWidth / 2 - (node.position.x + WORKFLOW_NODE_WIDTH / 2) * WORKFLOW_VIEWPORT_ZOOM,
-    y: WORKFLOW_VIEWPORT_TOP_INSET - node.position.y * WORKFLOW_VIEWPORT_ZOOM,
+    x: canvas.width / 2 - center.x * WORKFLOW_VIEWPORT_ZOOM,
+    y: WORKFLOW_VIEWPORT_EDGE_INSET - node.position.y * WORKFLOW_VIEWPORT_ZOOM,
     zoom: WORKFLOW_VIEWPORT_ZOOM,
+  };
+}
+
+function readWorkflowNodeCenter(node: Pick<Node<StepNodeData>, "data" | "position">): {
+  x: number;
+  y: number;
+} {
+  return {
+    x: node.position.x + node.data.layout.width / 2,
+    y: node.position.y + node.data.layout.height / 2,
   };
 }
 
 export function ThinkingTimelineCanvas({
   run,
   focusVersion = 0,
+  layoutDirection = "vertical",
 }: {
   run: RunRecord;
   focusVersion?: number;
+  layoutDirection?: WorkflowLayoutDirection;
 }): JSX.Element {
   return (
     <ReactFlowProvider>
-      <CanvasArea run={run} focusVersion={focusVersion} />
+      <CanvasArea run={run} focusVersion={focusVersion} layoutDirection={layoutDirection} />
     </ReactFlowProvider>
   );
 }
 
-function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: number }): JSX.Element {
+function CanvasArea({
+  run,
+  focusVersion = 0,
+  layoutDirection,
+}: {
+  run: RunRecord;
+  focusVersion?: number;
+  layoutDirection: WorkflowLayoutDirection;
+}): JSX.Element {
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [flowReady, setFlowReady] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -76,7 +103,7 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
   const selectedStep = useMemo(() => steps.find((step) => step.id === selectedStepId) ?? null, [steps, selectedStepId]);
 
   const { nodes, edges, translateExtent } = useMemo(() => {
-    const { nodes, edges } = layoutSteps(steps);
+    const { nodes, edges } = layoutSteps(steps, layoutDirection);
     if (nodes.length === 0) {
       return {
         nodes,
@@ -106,7 +133,7 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
         [maxX + padding, maxY + padding],
       ] as [[number, number], [number, number]],
     };
-  }, [steps]);
+  }, [layoutDirection, steps]);
 
   const positionCanvas = useCallback(
     (mode: WorkflowViewportMode, duration = FIT_VIEW_DURATION_MS): void => {
@@ -115,29 +142,33 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
         try {
           const targetNode = readWorkflowViewportTarget(nodes, mode);
           if (!targetNode) return;
-          if (mode === "start" && canvasRef.current?.clientWidth) {
-            void rf.setViewport(readStartWorkflowViewport(targetNode, canvasRef.current.clientWidth), { duration });
+          if (mode === "start" && canvasRef.current?.clientWidth && canvasRef.current.clientHeight) {
+            void rf.setViewport(
+              readStartWorkflowViewport(
+                targetNode,
+                { width: canvasRef.current.clientWidth, height: canvasRef.current.clientHeight },
+                layoutDirection,
+              ),
+              { duration },
+            );
             return;
           }
-          void rf.setCenter(
-            targetNode.position.x + WORKFLOW_NODE_WIDTH / 2,
-            targetNode.position.y + WORKFLOW_NODE_CENTER_Y,
-            {
-              zoom: WORKFLOW_VIEWPORT_ZOOM,
-              duration,
-            },
-          );
+          const targetCenter = readWorkflowNodeCenter(targetNode);
+          void rf.setCenter(targetCenter.x, targetCenter.y, {
+            zoom: WORKFLOW_VIEWPORT_ZOOM,
+            duration,
+          });
         } catch {
           /* ignore */
         }
       });
     },
-    [flowReady, nodes, rf],
+    [flowReady, layoutDirection, nodes, rf],
   );
 
   useEffect(() => {
     if (!flowReady || nodes.length === 0) return;
-    const viewportKey = `${run.requestId}:${focusVersion}`;
+    const viewportKey = `${run.requestId}:${focusVersion}:${layoutDirection}`;
     const previousSession = viewportSessionRef.current;
     const isInitialPosition = previousSession?.key !== viewportKey;
     const followLive = isInitialPosition ? run.status === "running" : previousSession.followLive;
@@ -148,7 +179,7 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
       viewportSessionRef.current = { key: viewportKey, followLive };
     }, 80);
     return () => window.clearTimeout(timer);
-  }, [flowReady, focusVersion, nodes.length, positionCanvas, run.requestId, run.status, steps.length]);
+  }, [flowReady, focusVersion, layoutDirection, nodes.length, positionCanvas, run.requestId, run.status, steps.length]);
 
   useEffect(() => {
     if (!selectedStepId) return;
@@ -174,6 +205,7 @@ function CanvasArea({ run, focusVersion = 0 }: { run: RunRecord; focusVersion?: 
       className="relative flex-1 overflow-hidden bg-transparent"
       data-workflow-canvas-pan={focusVersion > 0 ? "free" : "vertical"}
       data-workflow-canvas-bounds={focusVersion > 0 ? "unbounded" : "content"}
+      data-workflow-layout-direction={layoutDirection}
     >
       <ReactFlow
         nodes={nodes}

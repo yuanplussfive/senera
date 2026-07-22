@@ -11,7 +11,7 @@ export interface AgentExecutionEnvironmentContext {
     invocation: string;
   };
   executionTargets: {
-    sandboxPreferred: AgentExecutionShellTarget;
+    sandbox: AgentExecutionShellTarget;
     local: AgentExecutionShellTarget;
   };
   workspace: {
@@ -55,7 +55,7 @@ export function buildAgentExecutionEnvironmentContext(
           invocation: shell.invocation,
         },
     executionTargets: {
-      sandboxPreferred: {
+      sandbox: {
         os: "Linux",
         boundary: "sandbox",
         shellDialect: "posix-sh",
@@ -78,15 +78,15 @@ export function buildAgentExecutionEnvironmentContext(
     guidance: {
       shell: windows
         ? [
-            "SandboxPreferred shell tools run in the Linux sandbox with the posix-sh dialect.",
-            `Only tools whose execution boundary is Local run in ${shell.command} with the powershell dialect.`,
+            "Sandbox shell tools run in the Linux sandbox with the posix-sh dialect.",
+            `Local shell tools run in ${shell.command} with the powershell dialect.`,
             "Set command.mode, command.dialect, and command.script explicitly; never send PowerShell syntax to a posix-sh target.",
             "Use PowerShell syntax only for Local execution, for example: $c=Get-Content -Path Source\\File.ts; $c[0..120].",
             "Use Get-ChildItem, Select-String, Get-Content, Get-Command, and rg when they fit the task.",
             "Do not use Bash-only commands such as which, test, grep pipelines, or POSIX path syntax unless you explicitly invoke a POSIX shell.",
           ]
         : [
-            "SandboxPreferred shell tools run in the Linux sandbox with the posix-sh dialect.",
+            "Sandbox shell tools run in the Linux sandbox with the posix-sh dialect.",
             "Local shell tools run in POSIX sh on this platform.",
             "Set command.mode, command.dialect, and command.script explicitly.",
             "Use POSIX shell syntax for local inspection, for example: sed -n '1,120p' Source/File.ts.",

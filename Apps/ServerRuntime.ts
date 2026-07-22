@@ -355,8 +355,8 @@ function startSandboxRuntimePreparation(input: {
       publishStatus();
     },
     (error: unknown) => {
-      input.sandboxRuntimeService.markFallback(error);
-      input.logger.warn("sandbox.runtime.fallback", {
+      input.sandboxRuntimeService.markUnavailable(error);
+      input.logger.warn("sandbox.runtime.unavailable", {
         message: error instanceof Error ? error.message : String(error),
       });
       publishStatus();

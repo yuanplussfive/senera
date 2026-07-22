@@ -30,6 +30,7 @@ export const runToolAndAnswerEventHandlers = {
     const data = env.data as AssistantMessageCreatedData;
     const content = data.content.trim();
     if (!content) return;
+    const policy = AssistantMessageProjectionPolicies[data.kind];
     const messageId = data.messageId?.trim() || `${env.requestId ?? "assistant"}-message-${env.sequence}`;
 
     upsertMessageByRequestId(session, {
@@ -37,20 +38,19 @@ export const runToolAndAnswerEventHandlers = {
       role: "assistant",
       content,
       createdAt: env.timestamp,
-      kind: chatMessageKindForAssistantMessage(data.kind),
+      kind: policy.chatMessageKind,
       requestId: env.requestId,
       metadata: run?.modelProvider ? { run: { modelProvider: run.modelProvider } } : undefined,
     });
     bumpSessionMessageCount(session);
 
     if (run) {
-      projectAssistantMessageRunState(run, data, content);
-      const title = assistantStepTitle(data.kind);
+      projectAssistantMessageRunState(run, messageId, data, content, policy);
       upsertStep(run, {
         id: `${run.requestId}-assistant-message-${messageId}`,
-        kind: data.kind === "tool_preface" ? "decision" : "answer",
-        title,
-        description: truncate(content, data.kind === "tool_preface" ? 80 : 60),
+        kind: policy.stepKind,
+        title: frontendMessage(policy.stepTitleKey),
+        description: truncate(content, policy.descriptionLength),
         status: "done",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
@@ -90,6 +90,7 @@ export const runToolAndAnswerEventHandlers = {
     const run = readCurrentRun(state, env);
     if (!run) return;
     const data = env.data as ToolCallStartedData;
+    resetCompletedAssistantStreamBeforeTool(run);
     upsertStep(run, {
       id: `tool-${data.callId}`,
       kind: "tool",
@@ -217,52 +218,67 @@ export const runToolAndAnswerEventHandlers = {
   },
 } satisfies RunEventHandlerMap;
 
-function chatMessageKindForAssistantMessage(kind: AssistantMessageCreatedData["kind"]) {
-  const map = {
-    tool_preface: "AssistantToolPreface",
-    final_answer: "AssistantFinal",
-    ask_user: "AssistantAsk",
-  } as const satisfies Record<
-    AssistantMessageCreatedData["kind"],
-    "AssistantToolPreface" | "AssistantFinal" | "AssistantAsk"
-  >;
-  return map[kind];
+function resetCompletedAssistantStreamBeforeTool(run: NonNullable<ReturnType<typeof currentRun>>): void {
+  run.streamingRaw = "";
+  run.visibleText = "";
+  run.displayText = "";
+  run.displayMessageId = undefined;
+  run.visibleKind = "unknown";
+  run.decisionMode = "none";
+  run.plannedDecisionMode = undefined;
 }
 
-function assistantStepTitle(kind: AssistantMessageCreatedData["kind"]): string {
-  const map = {
-    tool_preface: "workflow.projection.assistantToolPreface",
-    final_answer: "workflow.projection.assistantFinalAnswer",
-    ask_user: "workflow.projection.assistantAskUser",
-  } as const satisfies Record<AssistantMessageCreatedData["kind"], Parameters<typeof frontendMessage>[0]>;
-  return frontendMessage(map[kind]);
+interface AssistantMessageProjectionPolicy {
+  readonly chatMessageKind: "AssistantFinal" | "AssistantAsk" | "AssistantToolPreface";
+  readonly stepKind: "decision" | "answer";
+  readonly stepTitleKey: Parameters<typeof frontendMessage>[0];
+  readonly descriptionLength: number;
+  readonly decisionMode: "tool_candidate" | "final_text";
+  readonly visibleKind: "tool_calls" | "final_answer" | "ask_user";
 }
+
+const AssistantMessageProjectionPolicies = {
+  tool_preface: {
+    chatMessageKind: "AssistantToolPreface",
+    stepKind: "decision",
+    stepTitleKey: "workflow.projection.assistantToolPreface",
+    descriptionLength: 80,
+    decisionMode: "tool_candidate",
+    visibleKind: "tool_calls",
+  },
+  final_answer: {
+    chatMessageKind: "AssistantFinal",
+    stepKind: "answer",
+    stepTitleKey: "workflow.projection.assistantFinalAnswer",
+    descriptionLength: 60,
+    decisionMode: "final_text",
+    visibleKind: "final_answer",
+  },
+  ask_user: {
+    chatMessageKind: "AssistantAsk",
+    stepKind: "answer",
+    stepTitleKey: "workflow.projection.assistantAskUser",
+    descriptionLength: 60,
+    decisionMode: "final_text",
+    visibleKind: "ask_user",
+  },
+} as const satisfies Record<AssistantMessageCreatedData["kind"], AssistantMessageProjectionPolicy>;
 
 function projectAssistantMessageRunState(
   run: NonNullable<ReturnType<typeof currentRun>>,
+  messageId: string,
   data: AssistantMessageCreatedData,
   content: string,
+  policy: AssistantMessageProjectionPolicy,
 ): void {
   run.xmlPreview = "";
-  run.visibleKind = visibleKindForAssistantMessage(data.kind);
-  run.decisionMode = data.kind === "tool_preface" ? "tool_candidate" : "final_text";
+  run.displayMessageId = messageId;
+  run.visibleKind = policy.visibleKind;
+  run.decisionMode = policy.decisionMode;
+  run.plannedDecisionMode = undefined;
   if (data.terminal) {
     run.expectedOutputMode = "final_text";
   }
   run.visibleText = content;
   alignRunDisplayTarget(run);
-}
-
-function visibleKindForAssistantMessage(
-  kind: AssistantMessageCreatedData["kind"],
-): NonNullable<ReturnType<typeof currentRun>>["visibleKind"] {
-  const map = {
-    tool_preface: "tool_calls",
-    final_answer: "final_answer",
-    ask_user: "ask_user",
-  } as const satisfies Record<
-    AssistantMessageCreatedData["kind"],
-    NonNullable<ReturnType<typeof currentRun>>["visibleKind"]
-  >;
-  return map[kind];
 }

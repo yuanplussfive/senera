@@ -36,6 +36,17 @@ export interface McpToolDefinition<TArguments = unknown, TResult = unknown> {
   execute(arguments_: TArguments, context: McpToolContext): TResult | Promise<TResult>;
 }
 
+/** A host-resolved upload exposed through a declared public tool resource binding. */
+export interface McpUploadResource {
+  uploadUri: string;
+  filePath: string;
+  name: string;
+  mime: string;
+  declaredMime?: string;
+  size: number;
+  sha256: string;
+}
+
 export interface McpToolSuiteOptions {
   serverName?: string;
   serverVersion?: string;
@@ -75,12 +86,71 @@ export interface ReadPluginTomlConfigOptions {
   exampleFileName?: string;
 }
 
+export type PluginConfigurationFieldType = "boolean" | "string" | "number" | "array" | "table";
+
+export interface PluginConfigurationField {
+  path: readonly string[];
+  label: string;
+  type: PluginConfigurationFieldType;
+  description?: string;
+  placeholder?: string;
+  itemType?: Exclude<PluginConfigurationFieldType, "array">;
+  options?: readonly (string | number | boolean)[];
+  optionLabels?: Readonly<Record<string, string>>;
+  min?: number;
+  max?: number;
+  step?: number;
+  secret?: boolean;
+  multiline?: boolean;
+  required?: boolean;
+}
+
+export interface PluginConfigurationSection {
+  id: string;
+  label: string;
+  description?: string;
+  level?: "internal";
+  fields: readonly PluginConfigurationField[];
+}
+
+export interface PluginConfigurationDefinition<TConfig> {
+  schema: z.ZodType<TConfig>;
+  defaults: TConfig;
+  form: {
+    version?: 1;
+    strict?: boolean;
+    sections: readonly PluginConfigurationSection[];
+    allowedPaths?: readonly { path: readonly string[]; recursive?: boolean }[];
+  };
+}
+
+export interface PluginConfiguration<TConfig> {
+  readonly schema: z.ZodType<TConfig>;
+  readonly defaults: TConfig;
+  readonly form: Required<Pick<PluginConfigurationDefinition<TConfig>["form"], "sections">> & {
+    version: 1;
+    strict: boolean;
+    allowedPaths?: readonly { path: readonly string[]; recursive?: boolean }[];
+  };
+}
+
+export interface PluginConfigurationArtifacts {
+  readonly schemaToml: string;
+  readonly exampleToml: string;
+}
+
 export function runMcpTool<TArguments, TResult>(definition: McpToolDefinition<TArguments, TResult>): Promise<void>;
 export const ToolContractVersion: 1;
 export function createToolContractBundle(
   definitions: readonly McpToolDefinition[],
   options?: ToolContractBundleOptions,
 ): ToolContractBundle;
+export function definePluginConfiguration<TConfig>(
+  definition: PluginConfigurationDefinition<TConfig>,
+): PluginConfiguration<TConfig>;
+export function createPluginConfigurationArtifacts<TConfig>(
+  configuration: PluginConfigurationDefinition<TConfig> | PluginConfiguration<TConfig>,
+): PluginConfigurationArtifacts;
 export function runMcpToolSuite(
   definitions: readonly McpToolDefinition[],
   options?: McpToolSuiteOptions,

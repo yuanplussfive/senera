@@ -1,105 +1,56 @@
-import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
-import type { AgentResourceAccessIntent } from "../Execution/SeneraResourceAccess.js";
-import type { ToolResourceArgumentManifest, ToolResourceIntentManifest } from "../Types/PluginToolManifestTypes.js";
-
-interface JsonPointerLookup {
-  readonly found: boolean;
-  readonly value?: unknown;
-}
+import type { ToolResourceArgumentManifest } from "../Types/PluginToolManifestTypes.js";
+import type { AgentMcpResourceCapabilityRegistry } from "./AgentMcpResourceCapabilityRegistry.js";
+import { readAgentMcpJsonPointer, replaceAgentMcpJsonPointer } from "./AgentMcpJsonPointer.js";
 
 export async function projectAgentMcpResourceArguments(
   args: Readonly<Record<string, unknown>>,
   resources: readonly ToolResourceArgumentManifest[],
-  executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath">,
+  capabilities: AgentMcpResourceCapabilityRegistry,
 ): Promise<Record<string, unknown>> {
-  let projected: unknown = args;
+  let projected: Record<string, unknown> = { ...args };
+  const resourceBindings = new Set<string>();
   for (const resource of resources) {
-    const candidate = readJsonPointer(projected, resource.Pointer);
-    if (!candidate.found) continue;
-    if (typeof candidate.value !== "string") {
-      throw new TypeError(`MCP resource argument ${resource.Pointer} must be a string.`);
+    const value = readAgentMcpJsonPointer(projected, resource.Pointer);
+    if (!value.found) continue;
+    const result = await capabilities.project(resource, value.value, projected);
+    if (result.target === "argument") {
+      projected = replaceJsonPointer(projected, resource.Pointer, result.value);
+    } else {
+      if (resourceBindings.has(result.binding)) {
+        throw new Error(`Duplicate MCP resource binding declaration: ${result.binding}`);
+      }
+      resourceBindings.add(result.binding);
+      projected = appendPublicResource(projected, result.binding, result.value);
     }
-
-    const intent = resolveResourceIntent(resource.Intent, projected);
-    const canonical = await executionEnv.resolveResourcePath(candidate.value, intent);
-    if (!canonical.ok) throw canonical.error;
-    projected = replaceJsonPointer(projected, resource.Pointer, canonical.value);
   }
-  return readRecord(projected);
+  return projected;
 }
 
-function resolveResourceIntent(intent: ToolResourceIntentManifest, args: unknown): AgentResourceAccessIntent {
-  if (typeof intent === "string") return intent;
-  const selected = readJsonPointer(args, intent.Selector);
-  return (
-    intent.Cases.find((entry) => selected.found && Object.is(entry.Equals, selected.value))?.Intent ?? intent.Default
-  );
+function appendPublicResource(args: Record<string, unknown>, binding: string, value: unknown): Record<string, unknown> {
+  const resources = readPublicResources(args.resources);
+  return {
+    ...args,
+    resources: {
+      ...resources,
+      [binding]: value,
+    },
+  };
 }
 
-function readJsonPointer(value: unknown, pointer: string): JsonPointerLookup {
-  let current = value;
-  for (const token of parseJsonPointer(pointer)) {
-    if (Array.isArray(current)) {
-      const index = parseArrayIndex(token, current.length);
-      if (index === undefined) return { found: false };
-      current = current[index];
-      continue;
+export type AgentMcpResourceProjection =
+  | {
+      target: "argument";
+      value: unknown;
     }
-    if (!isRecord(current) || !Object.hasOwn(current, token)) return { found: false };
-    current = current[token];
-  }
-  return { found: true, value: current };
-}
+  | {
+      target: "resource";
+      binding: string;
+      value: unknown;
+    };
 
-function replaceJsonPointer(value: unknown, pointer: string, replacement: unknown): unknown {
-  const tokens = parseJsonPointer(pointer);
-  return replaceJsonPointerTokens(value, tokens, replacement, pointer);
-}
-
-function replaceJsonPointerTokens(
-  value: unknown,
-  tokens: readonly string[],
-  replacement: unknown,
-  pointer: string,
-): unknown {
-  const [token, ...remaining] = tokens;
-  if (token === undefined) return replacement;
-
-  if (Array.isArray(value)) {
-    const index = parseArrayIndex(token, value.length);
-    if (index === undefined) throw new Error(`MCP resource argument pointer does not exist: ${pointer}`);
-    const result = [...value];
-    result[index] = replaceJsonPointerTokens(result[index], remaining, replacement, pointer);
-    return result;
-  }
-
-  if (!isRecord(value) || !Object.hasOwn(value, token)) {
-    throw new Error(`MCP resource argument pointer does not exist: ${pointer}`);
-  }
-  const result = { ...value };
-  Object.defineProperty(result, token, {
-    configurable: true,
-    enumerable: true,
-    writable: true,
-    value: replaceJsonPointerTokens(value[token], remaining, replacement, pointer),
-  });
-  return result;
-}
-
-function parseJsonPointer(pointer: string): string[] {
-  if (!pointer.startsWith("/")) throw new TypeError(`Invalid MCP resource JSON Pointer: ${pointer}`);
-  return pointer.slice(1).split("/").map(decodeJsonPointerToken);
-}
-
-function decodeJsonPointerToken(token: string): string {
-  if (/~(?:[^01]|$)/u.test(token)) throw new TypeError(`Invalid JSON Pointer escape in token: ${token}`);
-  return token.replace(/~1/gu, "/").replace(/~0/gu, "~");
-}
-
-function parseArrayIndex(token: string, length: number): number | undefined {
-  if (!/^(?:0|[1-9]\d*)$/u.test(token)) return undefined;
-  const index = Number(token);
-  return Number.isSafeInteger(index) && index < length ? index : undefined;
+function replaceJsonPointer(value: unknown, pointer: string, replacement: unknown): Record<string, unknown> {
+  const result = replaceAgentMcpJsonPointer(value, pointer, replacement);
+  return readRecord(result);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -109,4 +60,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function readRecord(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw new TypeError("MCP tool arguments must be an object.");
   return value;
+}
+
+function readPublicResources(value: unknown): Record<string, unknown> {
+  if (value === undefined) return {};
+  if (isRecord(value)) return value;
+  throw new TypeError("MCP tool resources must be an object.");
 }

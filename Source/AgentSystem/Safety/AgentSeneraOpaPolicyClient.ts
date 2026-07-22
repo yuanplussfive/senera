@@ -9,7 +9,6 @@ import {
   readAgentToolApprovalPolicyArtifact,
   readAgentToolApprovalPolicyData,
 } from "./AgentToolApprovalPolicyArtifact.js";
-import { projectAgentToolFallbackSubject } from "../ToolRuntime/AgentToolFallbackContext.js";
 import { createAgentOpaWasmPolicyClient } from "./AgentOpaWasmPolicyClient.js";
 
 export interface AgentSeneraOpaPolicyClientOptions {
@@ -62,18 +61,10 @@ interface AgentToolApprovalPolicyInputShape {
       readonly TrustLevel?: unknown;
     };
   };
-}
-
-interface AgentExecutionFallbackPolicyInputShape {
-  readonly tool?: {
-    readonly name?: unknown;
-    readonly registered?: unknown;
-    readonly plugin?: {
-      readonly manifestDigest?: unknown;
-      readonly [key: string]: unknown;
-    };
+  readonly execution?: {
+    readonly target?: unknown;
+    readonly availableTargets?: readonly unknown[];
   };
-  readonly execution?: Record<string, unknown>;
 }
 
 interface AgentResourceAccessPolicyInputShape {
@@ -136,8 +127,7 @@ export class AgentSeneraOpaPolicyClient implements PolicyClient {
 
 function evaluateFailClosedPolicy(
   pathName: string,
-  input:
-    AgentToolApprovalPolicyInputShape | AgentExecutionFallbackPolicyInputShape | AgentResourceAccessPolicyInputShape,
+  input: AgentToolApprovalPolicyInputShape | AgentResourceAccessPolicyInputShape,
   data: AgentToolApprovalPolicyData,
   loadFailure: string | undefined,
 ): AgentSeneraOpaDecision {
@@ -149,11 +139,6 @@ function evaluateFailClosedPolicy(
       riskSignals: ["resource.policy:unavailable"],
     };
   }
-  if (pathName === data.Entrypoints.ExecutionFallback) {
-    const facts = buildFacts(input as AgentToolApprovalPolicyInputShape);
-    return decision("deny", "execution.fallback.policy_unavailable", data.Reasons.FallbackDefaultDeny, facts);
-  }
-
   const toolInput = input as AgentToolApprovalPolicyInputShape;
   const facts = buildFacts(toolInput);
   if (pathName !== data.Entrypoints.ToolDecision) {
@@ -176,53 +161,14 @@ function projectPolicyInput(
   pathName: string,
   input: unknown,
   registry: AgentPluginRegistry,
-): AgentToolApprovalPolicyInputShape | AgentExecutionFallbackPolicyInputShape | AgentResourceAccessPolicyInputShape {
+): AgentToolApprovalPolicyInputShape | AgentResourceAccessPolicyInputShape {
   if (pathName === AgentToolApprovalPolicyArtifactContract.entrypoints.toolDecision) {
     return enrichPolicyInput(readPolicyInput(input), registry);
-  }
-  if (pathName === AgentToolApprovalPolicyArtifactContract.entrypoints.executionFallback) {
-    return enrichFallbackPolicyInput(readFallbackPolicyInput(input), registry);
   }
   if (pathName === AgentToolApprovalPolicyArtifactContract.entrypoints.resourceAccess) {
     return readResourceAccessPolicyInput(input);
   }
   return readPolicyInput(input);
-}
-
-function enrichFallbackPolicyInput(
-  input: AgentExecutionFallbackPolicyInputShape,
-  registry: AgentPluginRegistry,
-): AgentExecutionFallbackPolicyInputShape {
-  const toolName = readString(input.tool?.name);
-  const tool = toolName ? registry.getTool(toolName) : undefined;
-  const subject = tool ? projectAgentToolFallbackSubject(tool) : undefined;
-  const suppliedDigest = readString(input.tool?.plugin?.manifestDigest);
-  const registered = Boolean(subject && suppliedDigest === subject.manifestDigest);
-
-  return {
-    tool: {
-      name: toolName,
-      registered,
-      plugin: subject
-        ? {
-            name: subject.pluginName,
-            title: subject.pluginTitle,
-            version: subject.pluginVersion,
-            manifestDigest: subject.manifestDigest,
-            rootKind: subject.rootKind,
-            trustLevel: subject.trustLevel,
-          }
-        : undefined,
-    },
-    execution: {
-      ...input.execution,
-      boundary: subject?.boundary,
-      localFallback: tool?.execution.LocalFallback,
-      network: subject?.network,
-      workspace: subject?.workspace,
-      permissions: subject?.permissions ?? [],
-    },
-  };
 }
 
 function enrichPolicyInput(
@@ -252,6 +198,10 @@ function enrichPolicyInput(
       },
       security: tool?.plugin.manifest.Security ?? input.tool?.security,
     } as AgentToolApprovalPolicyInputShape["tool"] & { registered: boolean },
+    execution: {
+      target: readString(input.execution?.target),
+      availableTargets: tool?.execution.Targets ?? readStringArray(input.execution?.availableTargets),
+    },
   };
 }
 
@@ -313,12 +263,6 @@ function registeredToolEffects(tool: RegisteredTool | undefined): string[] {
 function readPolicyInput(input: unknown): AgentToolApprovalPolicyInputShape {
   return input && typeof input === "object" && !Array.isArray(input)
     ? (input as AgentToolApprovalPolicyInputShape)
-    : {};
-}
-
-function readFallbackPolicyInput(input: unknown): AgentExecutionFallbackPolicyInputShape {
-  return input && typeof input === "object" && !Array.isArray(input)
-    ? (input as AgentExecutionFallbackPolicyInputShape)
     : {};
 }
 

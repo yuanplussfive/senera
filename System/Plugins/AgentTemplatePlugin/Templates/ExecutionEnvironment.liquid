@@ -14,11 +14,11 @@
   </shell>
   <execution_targets>
     <sandbox_preferred>
-      <boundary>{{ ExecutionEnvironment.executionTargets.sandboxPreferred.boundary | escape }}</boundary>
-      <os>{{ ExecutionEnvironment.executionTargets.sandboxPreferred.os | escape }}</os>
-      <image>{{ ExecutionEnvironment.executionTargets.sandboxPreferred.image | escape }}</image>
-      <shell_dialect>{{ ExecutionEnvironment.executionTargets.sandboxPreferred.shellDialect | escape }}</shell_dialect>
-      <shell_command>{{ ExecutionEnvironment.executionTargets.sandboxPreferred.shellCommand | escape }}</shell_command>
+      <boundary>{{ ExecutionEnvironment.executionTargets.sandbox.boundary | escape }}</boundary>
+      <os>{{ ExecutionEnvironment.executionTargets.sandbox.os | escape }}</os>
+      <image>{{ ExecutionEnvironment.executionTargets.sandbox.image | escape }}</image>
+      <shell_dialect>{{ ExecutionEnvironment.executionTargets.sandbox.shellDialect | escape }}</shell_dialect>
+      <shell_command>{{ ExecutionEnvironment.executionTargets.sandbox.shellCommand | escape }}</shell_command>
     </sandbox_preferred>
     <local>
       <boundary>{{ ExecutionEnvironment.executionTargets.local.boundary | escape }}</boundary>

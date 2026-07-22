@@ -8,11 +8,18 @@ import { AgentPromptDocumentationReader } from "../Prompt/AgentPromptDocumentati
 import { resolveAgentPromptSections } from "../Prompt/AgentPromptSectionResolver.js";
 import type { AgentPiToolExecutionBridge } from "./AgentPiToolExecutionBridge.js";
 import type { AgentPiToolDefinition, AgentPiToolProjectionContext } from "./AgentPiTypes.js";
+import { projectAgentToolInvocationSchema } from "../ToolRuntime/AgentToolExecutionPlan.js";
+
+export interface AgentPiToolRuntimeContractProjector {
+  projectToolInvocationSchema(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown>;
+  projectToolDescription(tool: RegisteredTool, description: string): string;
+}
 
 export interface AgentPiToolRegistryProjectorOptions {
   config: AgentSystemConfig;
   registry: AgentPluginRegistry;
   execution: AgentPiToolExecutionBridge;
+  runtimeContracts?: AgentPiToolRuntimeContractProjector;
 }
 
 export interface AgentPiToolSet {
@@ -87,11 +94,14 @@ export class AgentPiToolRegistryProjector {
   }
 
   private projectDescriptor(tool: RegisteredTool): Omit<AgentPiToolDefinition, "execute"> {
+    const staticSchema = tool.contract?.arguments?.jsonSchema ?? EmptyObjectParameterSchema;
+    const runtimeSchema =
+      this.options.runtimeContracts?.projectToolInvocationSchema(tool, staticSchema) ?? staticSchema;
     return Object.freeze({
       name: tool.name,
       label: tool.plugin.manifest.Plugin.Title ?? tool.name,
       description: this.projectDescription(tool),
-      parameters: tool.contract?.arguments?.jsonSchema ?? EmptyObjectParameterSchema,
+      parameters: projectAgentToolInvocationSchema(tool, runtimeSchema),
       executionMode: "sequential" as const,
     });
   }
@@ -103,9 +113,14 @@ export class AgentPiToolRegistryProjector {
     const trigger = normalizeMarkdownSectionText(document.sections.get(sections.trigger));
     const fallback = tool.search?.Summary ?? tool.plugin.manifest.Plugin.Description ?? "";
 
-    return [summary || fallback, trigger, ...tool.permissions.map((permission) => `permission: ${permission}`)]
+    const description = [
+      summary || fallback,
+      trigger,
+      ...tool.permissions.map((permission) => `permission: ${permission}`),
+    ]
       .filter(Boolean)
       .join("\n\n");
+    return this.options.runtimeContracts?.projectToolDescription(tool, description) ?? description;
   }
 }
 

@@ -10,9 +10,12 @@ export function readAssistantDisplayName(
 }
 
 export function readAssistantDisplayContent(
-  message: Pick<ChatMessage, "content" | "kind" | "requestId">,
-  _run?: Pick<RunRecord, "requestId" | "visibleText" | "displayText">,
+  message: Pick<ChatMessage, "id" | "content" | "kind" | "requestId">,
+  run?: Pick<RunRecord, "requestId" | "displayMessageId" | "displayText">,
 ): string {
+  if (message.kind === "AssistantToolPreface" && run?.displayMessageId === message.id) {
+    return run.displayText;
+  }
   return message.content;
 }
 
