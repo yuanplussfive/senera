@@ -181,6 +181,7 @@ export interface AgentMemoryObservationRecord {
   id: string;
   uri: string;
   memoryUri: string;
+  writeSequence: number;
   operation: AgentMemoryLearningOperation;
   candidateUris: string[];
   sourceRefs: string[];

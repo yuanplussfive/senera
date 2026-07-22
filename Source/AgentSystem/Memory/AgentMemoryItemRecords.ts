@@ -113,6 +113,7 @@ export function buildMemoryObservation(
   memoryUri: string,
   action: AgentMemoryLearningActionRecord,
   observedAt: string,
+  writeSequence: number,
 ): AgentMemoryObservationRecord {
   const id = randomMemoryId("obs");
   const time = projectMemoryTime(observedAt);
@@ -120,6 +121,7 @@ export function buildMemoryObservation(
     id,
     uri: memoryObservationUri(id),
     memoryUri,
+    writeSequence,
     operation: action.operation,
     candidateUris: actionCandidateUris(action),
     sourceRefs: uniqueTrimmed(action.sourceRefs),

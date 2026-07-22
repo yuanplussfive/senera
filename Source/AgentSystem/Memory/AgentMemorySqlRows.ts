@@ -121,6 +121,7 @@ export interface MemoryObservationRow {
   id: string;
   uri: string;
   memory_uri: string;
+  write_sequence: number;
   operation: AgentMemoryLearningOperation;
   candidate_uris_json: string;
   source_refs_json: string;
