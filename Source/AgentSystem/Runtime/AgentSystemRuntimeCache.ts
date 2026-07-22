@@ -6,6 +6,7 @@ import { AgentSystemRuntime } from "./AgentSystemRuntime.js";
 import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import { createAgentRuntimePreparationFingerprint } from "./AgentRuntimePreparationFingerprint.js";
+import type { AgentMcpRuntimeModuleResolver } from "../Mcp/AgentMcpRuntimeModuleResolver.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -28,6 +29,7 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
+  runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
   executionResources?: AgentExecutionResourceBroker;
 }
 
@@ -47,6 +49,7 @@ export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRunt
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
+  runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
   executionResources?: AgentExecutionResourceBroker;
   maxIdleEntries?: number;
   runtimeFactory?: (input: AgentSystemRuntimeCacheRuntimeFactoryInput) => TRuntime;
@@ -119,6 +122,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         interactionInput: this.options.interactionInput,
         piSessionRegistry: this.options.piSessionRegistry,
         resourcesPath: this.options.resourcesPath,
+        runtimeModuleResolver: this.options.runtimeModuleResolver,
         executionResources: this.options.executionResources,
       });
     }
@@ -133,6 +137,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       interactionInput: this.options.interactionInput,
       piSessionRegistry: this.options.piSessionRegistry,
       resourcesPath: this.options.resourcesPath,
+      runtimeModuleResolver: this.options.runtimeModuleResolver,
       executionResources: this.options.executionResources,
     }) as unknown as TRuntime;
   }

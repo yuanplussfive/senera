@@ -25,6 +25,7 @@ import type {
 } from "./AgentToolCallExecutionTypes.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import { resolveAgentToolInvocation } from "./AgentToolExecutionPlan.js";
+import type { AgentMcpRuntimeModuleResolver } from "../Mcp/AgentMcpRuntimeModuleResolver.js";
 
 export interface AgentToolCallExecutorOptions {
   registry: AgentPluginRegistry;
@@ -36,6 +37,7 @@ export interface AgentToolCallExecutorOptions {
   toolSearch?: AgentToolSearchRuntime;
   executionResources?: AgentExecutionResourceBroker;
   executionEnv?: SeneraExecutionEnv;
+  runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
   configPath?: string;
   emitLifecycleEvents?: boolean;
   interactionInput?: AgentInteractionInputRuntime;
@@ -75,6 +77,7 @@ export class AgentToolCallExecutor {
           this.hostCapabilities,
           options.registry,
           executionEnv,
+          options.runtimeModuleResolver,
           options.interactionInput,
         );
     this.toolRunner = options.toolRunner ?? this.ownedToolRunner!;

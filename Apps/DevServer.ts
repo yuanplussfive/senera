@@ -1,9 +1,9 @@
 import { startSeneraServer } from "./ServerRuntime.js";
-import { createCompiledAgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
+import { createSourceAgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
 
 function main(): void {
   const handle = startSeneraServer({
-    runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(process.cwd()),
+    runtimeModuleResolver: createSourceAgentMcpRuntimeModuleResolver(process.cwd()),
   });
   let shutdownPromise: Promise<void> | undefined;
   const shutdown = (): void => {

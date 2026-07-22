@@ -15,6 +15,7 @@ import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolic
 import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
 import { desktopMessage } from "./DesktopMessageCatalog.js";
 import { resolveAgentExternalUrl } from "../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
+import { createCompiledAgentMcpRuntimeModuleResolver } from "../../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
 
 let serverHandle: SeneraServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -72,6 +73,7 @@ app
         seedConfig,
         label: paths.configDatabasePath,
       },
+      runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(paths.resourceRoot),
       runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
     });
     mainWindow = createMainWindow();

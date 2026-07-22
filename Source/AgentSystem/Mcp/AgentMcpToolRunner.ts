@@ -18,10 +18,12 @@ import { projectAgentMcpResourceArguments } from "./AgentMcpResourceArgumentProj
 import { createAgentMcpDefaultResourceCapabilities } from "./AgentMcpDefaultResourceCapabilities.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import type { AgentInteractionInputOwner } from "../Interaction/AgentInteractionInputTypes.js";
+import type { AgentMcpRuntimeModuleResolver } from "./AgentMcpRuntimeModuleResolver.js";
 
 export interface AgentMcpToolRunnerOptions {
   config: AgentSystemConfig;
   workspaceRoot: string;
+  runtimeModuleResolver: AgentMcpRuntimeModuleResolver;
   executionEnv: SeneraExecutionEnv;
   interactionInput?: AgentInteractionInputRuntime;
 }
@@ -58,6 +60,7 @@ export class AgentMcpToolRunner {
         resolveMcpServerManifest(server, {
           workspaceRoot: this.options.workspaceRoot,
           pluginRoot: tool.plugin.rootPath,
+          runtimeModuleResolver: this.options.runtimeModuleResolver,
         }),
         tool.plugin.manifest,
         handler.server,

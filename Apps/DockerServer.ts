@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { startSeneraServer } from "./ServerRuntime.js";
+import { createCompiledAgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
 import { syncRuntimeDirectory } from "./RuntimeAssetSync.js";
 import { resolveFrontendConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
@@ -44,6 +45,7 @@ function main(): void {
     configPath: ConfigPath,
     staticFrontendRoot: FrontendRoot,
     resourcesPath: AppRoot,
+    runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(AppRoot),
     runtimeConfigProjection: runtimeProjection,
   });
 

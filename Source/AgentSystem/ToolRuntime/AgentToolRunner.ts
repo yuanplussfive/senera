@@ -13,6 +13,10 @@ import { explainUnsupportedAgentToolRuntime } from "./AgentToolRuntimeCapabiliti
 import { resolveAgentToolRuntimeCapabilities } from "./AgentToolRuntimeCapabilities.js";
 import { AgentToolExecutionReporter } from "./AgentToolExecutionReporter.js";
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
+import {
+  createCompiledAgentMcpRuntimeModuleResolver,
+  type AgentMcpRuntimeModuleResolver,
+} from "../Mcp/AgentMcpRuntimeModuleResolver.js";
 import { resolveArtifactsConfig } from "../AgentDefaults.js";
 import { createSeneraOutputSpool, updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
 import path from "node:path";
@@ -56,11 +60,13 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     private readonly hostCapabilities: AgentToolHostCapabilityRegistry,
     private readonly registry: AgentPluginRegistryLike,
     private readonly executionEnv: SeneraExecutionEnv,
+    runtimeModuleResolver: AgentMcpRuntimeModuleResolver = createCompiledAgentMcpRuntimeModuleResolver(process.cwd()),
     interactionInput?: AgentInteractionInputRuntime,
   ) {
     this.mcpRunner = new AgentMcpToolRunner({
       config,
       workspaceRoot,
+      runtimeModuleResolver,
       executionEnv,
       interactionInput,
     });
