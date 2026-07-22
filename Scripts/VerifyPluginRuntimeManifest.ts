@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
@@ -8,7 +9,7 @@ interface PluginManifestForVerification {
   ManifestVersion?: number;
   Plugin?: { Name?: string; Entry?: unknown };
   Runtime?: unknown;
-  McpServers?: Array<{ Id?: string; Transport?: string; Command?: string }>;
+  McpServers?: Array<{ Id?: string; Transport?: string; Command?: string; Args?: string[] }>;
   Tools?: Array<{
     Name?: string;
     Loading?: string;
@@ -35,6 +36,7 @@ async function main(): Promise<void> {
     for (const server of manifest.McpServers ?? []) {
       assert.equal(server.Transport, "stdio", `${pluginName}.${server.Id}: MCP transport 必须显式声明。`);
       assert.ok(server.Command, `${pluginName}.${server.Id}: MCP command 必须声明。`);
+      verifyRuntimeModuleEntries(pluginName, server);
     }
     for (const tool of manifest.Tools ?? []) {
       const label = `${pluginName}.${tool.Name ?? "<unnamed>"}`;
@@ -79,6 +81,39 @@ async function main(): Promise<void> {
   }
 
   console.log("Plugin runtime manifest verification passed.");
+}
+
+function verifyRuntimeModuleEntries(
+  pluginName: string,
+  server: NonNullable<PluginManifestForVerification["McpServers"]>[number],
+): void {
+  for (const argument of server.Args ?? []) {
+    for (const entry of argument.matchAll(/\$\{runtimeModule:([^}]+)\}/gu)) {
+      const modulePath = entry[1];
+      assert.ok(modulePath, `${pluginName}.${server.Id}: MCP runtime module path 不能为空。`);
+      const outputPath = resolveRuntimeModuleOutput(modulePath);
+      assert.ok(outputPath, `${pluginName}.${server.Id}: MCP runtime module 必须位于 Dist 根目录内：${modulePath}`);
+      assert.ok(isFile(outputPath), `${pluginName}.${server.Id}: MCP runtime module 未编译到 Dist：${modulePath}`);
+    }
+  }
+}
+
+function resolveRuntimeModuleOutput(modulePath: string): string | undefined {
+  if (path.isAbsolute(modulePath)) {
+    return undefined;
+  }
+  const outputRoot = path.resolve(process.cwd(), "Dist");
+  const outputPath = path.resolve(outputRoot, modulePath);
+  const relative = path.relative(outputRoot, outputPath);
+  return relative && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative) ? outputPath : undefined;
+}
+
+function isFile(filePath: string): boolean {
+  try {
+    return statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
 }
 
 await main();

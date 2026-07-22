@@ -46,6 +46,7 @@ import { resolveAgentExecutionResourceLimits } from "../Source/AgentSystem/Execu
 import { AgentInteractionInputRuntime } from "../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
 import { createAgentRequestCancellationResource } from "../Source/AgentSystem/Session/AgentSessionRunResource.js";
 import { AgentArtifactRetentionService } from "../Source/AgentSystem/Artifacts/AgentArtifactRetentionService.js";
+import type { AgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
@@ -54,6 +55,7 @@ export interface SeneraServerOptions {
   resourcesPath?: string;
   configSource?: AgentConfigSourceOptions;
   runtimeConfigProjection?: (config: AgentSystemConfig) => AgentSystemConfig;
+  runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
 }
 
 export interface SeneraServerHandle {
@@ -128,6 +130,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     interactionInput,
     piSessionRegistry,
     resourcesPath: options.resourcesPath,
+    runtimeModuleResolver: options.runtimeModuleResolver,
     executionResources,
   });
 

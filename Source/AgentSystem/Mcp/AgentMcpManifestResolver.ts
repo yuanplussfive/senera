@@ -1,7 +1,7 @@
-import fs from "node:fs";
 import path from "node:path";
 import { createAgentMcpNodeRuntimeLaunch } from "./AgentMcpNodeRuntime.js";
 import { resolveNodePackageBin } from "./AgentMcpPackageResolver.js";
+import type { AgentMcpRuntimeModuleResolver } from "./AgentMcpRuntimeModuleResolver.js";
 import type { PluginMcpServerManifest } from "../Types/PluginManifestTypes.js";
 
 const NodeCommandTemplate = "${node}";
@@ -27,6 +27,7 @@ const RuntimeModulePattern = /\$\{runtimeModule:([^}]+)\}/g;
 export interface AgentMcpManifestTemplateContext {
   workspaceRoot: string;
   pluginRoot: string;
+  runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
 }
 
 export interface ResolvedMcpServerManifest {
@@ -39,12 +40,12 @@ export interface ResolvedMcpServerManifest {
 
 interface ResolvedMcpServerArgs {
   values: string[];
-  requiresTsxLoader: boolean;
+  nodeImports: Set<string>;
 }
 
 interface ResolvedRuntimeModulePath {
   value: string;
-  requiresTsxLoader: boolean;
+  nodeImports: readonly string[];
 }
 
 export function resolveMcpServerManifest(
@@ -92,16 +93,16 @@ function resolveServerArgs(args: readonly string[], context: AgentMcpManifestTem
       const next = resolveArgTemplate(arg, context);
       return {
         values: [...state.values, next.value],
-        requiresTsxLoader: state.requiresTsxLoader || next.requiresTsxLoader,
+        nodeImports: new Set([...state.nodeImports, ...next.nodeImports]),
       };
     },
     {
       values: [],
-      requiresTsxLoader: false,
+      nodeImports: new Set(),
     },
   );
 
-  return resolved.requiresTsxLoader ? ["--import", "tsx", ...resolved.values] : resolved.values;
+  return [...resolved.nodeImports].flatMap((moduleName) => ["--import", moduleName]).concat(resolved.values);
 }
 
 function resolvePathTemplate(value: string, context: AgentMcpManifestTemplateContext): string {
@@ -119,30 +120,18 @@ function resolveTemplate(value: string, context: AgentMcpManifestTemplateContext
 }
 
 function resolveArgTemplate(value: string, context: AgentMcpManifestTemplateContext): ResolvedRuntimeModulePath {
-  let requiresTsxLoader = false;
+  const nodeImports = new Set<string>();
   const resolved = resolveTemplate(value, context).replace(RuntimeModulePattern, (_match, modulePath: string) => {
-    const runtimeModule = resolveRuntimeModulePath(context.workspaceRoot, modulePath);
-    requiresTsxLoader = requiresTsxLoader || runtimeModule.requiresTsxLoader;
-    return runtimeModule.value;
+    const runtimeModule = context.runtimeModuleResolver?.resolve(modulePath);
+    if (!runtimeModule) {
+      throw new Error(`MCP runtime module resolver is unavailable for ${modulePath}.`);
+    }
+    for (const nodeImport of runtimeModule.nodeImports) nodeImports.add(nodeImport);
+    return runtimeModule.entryPath;
   });
 
   return {
     value: resolved,
-    requiresTsxLoader,
+    nodeImports: [...nodeImports],
   };
-}
-
-function resolveRuntimeModulePath(workspaceRoot: string, modulePath: string): ResolvedRuntimeModulePath {
-  const distPath = path.resolve(workspaceRoot, "Dist", modulePath);
-  const sourcePath = path.resolve(workspaceRoot, modulePath.replace(/\.js$/u, ".ts"));
-  const useSource = process.argv.some((arg) => arg.includes("tsx")) || !fs.existsSync(distPath);
-  return useSource
-    ? {
-        value: sourcePath,
-        requiresTsxLoader: true,
-      }
-    : {
-        value: distPath,
-        requiresTsxLoader: false,
-      };
 }

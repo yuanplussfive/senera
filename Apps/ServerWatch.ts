@@ -153,7 +153,7 @@ async function restartServer(changedPath: string): Promise<void> {
 }
 
 function startServer(): void {
-  server = spawn(process.execPath, ["--import", "tsx", "Apps/Server.ts"], {
+  server = spawn(process.execPath, ["--import", "tsx", "Apps/DevServer.ts"], {
     cwd: workspaceRoot,
     env: process.env,
     stdio: "inherit",

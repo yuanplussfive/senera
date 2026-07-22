@@ -204,7 +204,7 @@ function inspectRootScripts(): string[] {
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts --strict",
     "check.types": "tsc --noEmit",
     build:
-      "npm run verify.plugin-config && npm run verify.tool-contracts && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
+      "npm run verify.plugin-config && npm run verify.tool-contracts && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts && node Dist/Scripts/VerifyPluginRuntimeManifest.js",
     dev: 'concurrently -k -n server,frontend -c blue,green "npm run dev.server" "npm run dev.frontend"',
     "docker.up": "docker compose pull && docker compose up -d",
     "docker.down": "docker compose down",

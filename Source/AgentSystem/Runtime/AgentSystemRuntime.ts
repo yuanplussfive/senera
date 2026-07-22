@@ -47,6 +47,10 @@ import { AgentPiCompactionSummarizer } from "../Pi/AgentPiCompactionSummarizer.j
 import { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import { resolveAgentExecutionResourceLimits } from "../ExecutionResources/AgentExecutionResourceConfig.js";
 import { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
+import {
+  createCompiledAgentMcpRuntimeModuleResolver,
+  type AgentMcpRuntimeModuleResolver,
+} from "../Mcp/AgentMcpRuntimeModuleResolver.js";
 
 export class AgentSystemRuntime {
   readonly registry = new AgentPluginRegistry();
@@ -95,6 +99,7 @@ export class AgentSystemRuntime {
     injectedInteractionInput?: AgentInteractionInputRuntime,
     injectedPiSessionRegistry?: AgentPiActiveSessionRegistry,
     readonly resourcesPath?: string,
+    runtimeModuleResolver?: AgentMcpRuntimeModuleResolver,
     injectedExecutionResources?: AgentExecutionResourceBroker,
   ) {
     this.approvalRuntime = injectedApprovalRuntime ?? new AgentApprovalRuntime();
@@ -177,6 +182,7 @@ export class AgentSystemRuntime {
       protocol: this.xmlPolicy.protocol,
       workspaceRoot: this.workspaceRoot,
       executionEnv: this.toolExecutionEnv,
+      runtimeModuleResolver: runtimeModuleResolver ?? createCompiledAgentMcpRuntimeModuleResolver(process.cwd()),
       toolSearch: this.toolSearch,
       executionResources: this.executionResources,
       configPath: this.configPath,
@@ -250,6 +256,7 @@ export class AgentSystemRuntime {
       interactionInput?: AgentInteractionInputRuntime;
       piSessionRegistry?: AgentPiActiveSessionRegistry;
       resourcesPath?: string;
+      runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
       executionResources?: AgentExecutionResourceBroker;
     } = {},
   ): AgentSystemRuntime {
@@ -267,6 +274,7 @@ export class AgentSystemRuntime {
       options.interactionInput,
       options.piSessionRegistry,
       options.resourcesPath,
+      options.runtimeModuleResolver,
       options.executionResources,
     );
     const scanner = new AgentPluginScanner(workspaceRoot, runtime.config);
@@ -289,6 +297,7 @@ export class AgentSystemRuntime {
     interactionInput?: AgentInteractionInputRuntime;
     piSessionRegistry?: AgentPiActiveSessionRegistry;
     resourcesPath?: string;
+    runtimeModuleResolver?: AgentMcpRuntimeModuleResolver;
     executionResources?: AgentExecutionResourceBroker;
   }): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
@@ -305,6 +314,7 @@ export class AgentSystemRuntime {
       options.interactionInput,
       options.piSessionRegistry,
       options.resourcesPath,
+      options.runtimeModuleResolver,
       options.executionResources,
     );
     const scanner = new AgentPluginScanner(workspaceRoot, runtime.config);
