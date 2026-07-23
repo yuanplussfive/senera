@@ -1,21 +1,39 @@
+import readline from "node:readline";
 import { parseArgs } from "node:util";
 
 export const AdminAccessCommandNames = ["init", "reset-password"] as const;
 export const AdminAccessUsage = `用法：senera-admin-access <${AdminAccessCommandNames.join(
   "|",
-)}> [--workspace <path>] [--account-file <path>]`;
+)}> [--workspace <path>] [--account-file <path>] [--login-name <name>] [--display-name <name>] [--password-stdin]`;
 
 export type AdminAccessCommandName = (typeof AdminAccessCommandNames)[number];
 
-export interface AdminAccessInvocation {
+interface AdminAccessInvocationBase {
   readonly command: AdminAccessCommandName;
   readonly workspace?: string;
   readonly accountFile?: string;
 }
 
+export type AdminAccessInvocation = AdminAccessInvocationBase &
+  (
+    | {
+        readonly loginName?: string;
+        readonly displayName?: string;
+        readonly passwordStdin: false;
+      }
+    | {
+        readonly loginName: string;
+        readonly displayName: string;
+        readonly passwordStdin: true;
+      }
+  );
+
 const AdminAccessOptions = {
   workspace: { type: "string" },
   "account-file": { type: "string" },
+  "login-name": { type: "string" },
+  "display-name": { type: "string" },
+  "password-stdin": { type: "boolean" },
 } as const;
 
 export function parseAdminAccessInvocation(args: readonly string[]): AdminAccessInvocation {
@@ -31,11 +49,50 @@ export function parseAdminAccessInvocation(args: readonly string[]): AdminAccess
   }
 
   const command = parseAdminAccessCommand(parsed.positionals[0]);
-  return {
+  const passwordStdin = parsed.values["password-stdin"] ?? false;
+  const loginName = parsed.values["login-name"];
+  const displayName = parsed.values["display-name"];
+  const base = {
     command,
     workspace: parsed.values.workspace,
     accountFile: parsed.values["account-file"],
   };
+  if (passwordStdin) {
+    if (!loginName?.trim() || !displayName?.trim()) {
+      throw adminAccessArgumentError("--password-stdin 必须同时提供 --login-name 和 --display-name。");
+    }
+    return {
+      ...base,
+      loginName,
+      displayName,
+      passwordStdin: true,
+    };
+  }
+  return {
+    ...base,
+    loginName,
+    displayName,
+    passwordStdin: false,
+  };
+}
+
+export async function readAdminAccessPassword(input: NodeJS.ReadableStream): Promise<string> {
+  const lines = readline.createInterface({ input, crlfDelay: Infinity, terminal: false });
+  let password: string | undefined;
+  try {
+    for await (const line of lines) {
+      if (password !== undefined) {
+        throw new Error("--password-stdin 只能接收一行密码。");
+      }
+      password = line;
+    }
+  } finally {
+    lines.close();
+  }
+  if (password === undefined) {
+    throw new Error("--password-stdin 未收到密码。");
+  }
+  return password;
 }
 
 function parseAdminAccessArguments(args: readonly string[]) {
