@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.6.0](https://github.com/yuanplussfive/senera/compare/v1.5.1...v1.6.0) (2026-07-23)
+
+
+### 新增功能
+
+* **runtime:** streamline configuration and execution feedback ([#50](https://github.com/yuanplussfive/senera/issues/50)) ([eb06019](https://github.com/yuanplussfive/senera/commit/eb0601907d6e5f4cbccad32f98a9351e49c3a40c))
+
 ## [1.5.1](https://github.com/yuanplussfive/senera/compare/v1.5.0...v1.5.1) (2026-07-22)
 
 
