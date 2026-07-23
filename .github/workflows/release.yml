@@ -241,6 +241,7 @@ jobs:
         env:
           IMAGE: ${{ needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest }}
           CONTAINER_NAME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          VOLUME_NAME: senera-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
 
@@ -251,12 +252,21 @@ jobs:
               docker logs "$CONTAINER_NAME" || true
             fi
             docker rm --force "$CONTAINER_NAME" >/dev/null 2>&1 || true
+            docker volume rm "$VOLUME_NAME" >/dev/null 2>&1 || true
             exit "$status"
           }
           trap cleanup EXIT
 
           docker pull "$IMAGE"
-          docker run --detach --name "$CONTAINER_NAME" "$IMAGE" >/dev/null
+          openssl rand -hex 24 | docker run --rm --interactive \
+            --volume "$VOLUME_NAME:/data" \
+            "$IMAGE" \
+            node Dist/Apps/AdminAccess.js init \
+            --workspace /data \
+            --login-name release-smoke-admin \
+            --display-name "Release Smoke Administrator" \
+            --password-stdin
+          docker run --detach --name "$CONTAINER_NAME" --volume "$VOLUME_NAME:/data" "$IMAGE" >/dev/null
           deadline=$((SECONDS + CONTAINER_HEALTH_TIMEOUT_SECONDS))
           while true; do
             state="$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME")"

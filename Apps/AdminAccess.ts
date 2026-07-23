@@ -1,8 +1,16 @@
 import path from "node:path";
 import process from "node:process";
 import readline from "node:readline/promises";
-import { AgentLocalAdminAccountStore } from "../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
-import { parseAdminAccessInvocation } from "./AdminAccessCommand.js";
+import {
+  type AgentLocalAdminAccount,
+  type AgentLocalAdminAccountInput,
+  AgentLocalAdminAccountStore,
+} from "../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
+import {
+  type AdminAccessInvocation,
+  parseAdminAccessInvocation,
+  readAdminAccessPassword,
+} from "./AdminAccessCommand.js";
 
 const DefaultAccountFile = ".senera/access/admin-account.json";
 
@@ -30,25 +38,43 @@ async function main(): Promise<void> {
     throw new Error(`管理员账户尚未初始化：${accountFile}`);
   }
 
+  const input = await readAccountInput(invocation, existing);
+  const account = invocation.command === "init" ? await store.initialize(input) : await store.resetPassword(input);
+  process.stdout.write(`管理员账户已${invocation.command === "init" ? "初始化" : "重置"}：${account.loginName}\n`);
+  process.stdout.write(`账户文件：${accountFile}\n`);
+}
+
+async function readAccountInput(
+  invocation: AdminAccessInvocation,
+  existing: AgentLocalAdminAccount | undefined,
+): Promise<AgentLocalAdminAccountInput> {
+  if (invocation.passwordStdin) {
+    return {
+      loginName: invocation.loginName,
+      displayName: invocation.displayName,
+      password: await readAdminAccessPassword(process.stdin),
+    };
+  }
+
   const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const loginName = await promptValue(prompt, "登录用户名", existing?.loginName);
-    const displayName = await promptValue(prompt, "显示名称", existing?.displayName);
-    const password = await promptPassword("管理员密码");
-    const confirmation = await promptPassword("确认管理员密码");
-    if (password !== confirmation) {
-      throw new Error("两次输入的密码不一致。");
-    }
-
-    const account =
-      invocation.command === "init"
-        ? await store.initialize({ loginName, displayName, password })
-        : await store.resetPassword({ loginName, displayName, password });
-    process.stdout.write(`管理员账户已${invocation.command === "init" ? "初始化" : "重置"}：${account.loginName}\n`);
-    process.stdout.write(`账户文件：${accountFile}\n`);
+    return {
+      loginName: await promptValue(prompt, "登录用户名", invocation.loginName ?? existing?.loginName),
+      displayName: await promptValue(prompt, "显示名称", invocation.displayName ?? existing?.displayName),
+      password: await promptConfirmedPassword(),
+    };
   } finally {
     prompt.close();
   }
+}
+
+async function promptConfirmedPassword(): Promise<string> {
+  const password = await promptPassword("管理员密码");
+  const confirmation = await promptPassword("确认管理员密码");
+  if (password !== confirmation) {
+    throw new Error("两次输入的密码不一致。");
+  }
+  return password;
 }
 
 async function promptValue(prompt: readline.Interface, label: string, fallback?: string): Promise<string> {
