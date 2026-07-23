@@ -1,7 +1,6 @@
 import { createOpaqueId } from "../Core/AgentIds.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
-import { emitAgentEvent, type AgentEventSink } from "../Events/AgentEvent.js";
-import { createPiTraceEvent } from "./AgentPiTraceProjector.js";
+import { AgentPiDiagnosticSources, emitAgentPiDiagnostic, type AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import type { AgentPiRuntimeService } from "./AgentPiSubstrate.js";
 
 export interface AgentPiSessionMutationRuntime {
@@ -17,12 +16,12 @@ export interface AgentPiSessionMutationRuntimeLease {
 
 export interface AgentPiSessionMutationServiceOptions {
   acquireRuntime: (modelProviderId?: string) => AgentPiSessionMutationRuntimeLease;
+  diagnostics?: AgentPiDiagnosticSink;
 }
 
 export interface AgentPiSessionMutationRequest {
   sessionId: string;
   modelProviderId?: string;
-  onEvent?: AgentEventSink;
 }
 
 export interface AgentPiSessionMutationPort {
@@ -71,7 +70,7 @@ export class AgentPiSessionMutationService implements AgentPiSessionMutationPort
     const requestId = createOpaqueId("pi_session_mutation");
     try {
       const mutated = await mutate(runtimeLease.runtime);
-      await this.emitTrace(request, requestId, 0, completedEventType, {
+      await this.emitDiagnostic(request, requestId, 0, completedEventType, {
         sessionId: request.sessionId,
         mutated,
         runtimeAcquireMs,
@@ -80,7 +79,7 @@ export class AgentPiSessionMutationService implements AgentPiSessionMutationPort
       });
       return mutated;
     } catch (error) {
-      await this.emitTrace(request, requestId, 0, failedEventType, {
+      await this.emitDiagnostic(request, requestId, 0, failedEventType, {
         sessionId: request.sessionId,
         runtimeAcquireMs,
         operationMs: elapsedMilliseconds(operationStartedAt),
@@ -93,23 +92,19 @@ export class AgentPiSessionMutationService implements AgentPiSessionMutationPort
     }
   }
 
-  private async emitTrace(
+  private async emitDiagnostic(
     request: AgentPiSessionMutationRequest,
     requestId: string,
     step: number,
-    eventType: string,
-    payload: unknown,
+    name: string,
+    details: unknown,
   ): Promise<void> {
-    await emitAgentEvent(
-      request.onEvent,
-      createPiTraceEvent({
-        requestId,
-        step,
-        source: "substrate",
-        eventType,
-        payload,
-      }),
-    );
+    await emitAgentPiDiagnostic(this.options.diagnostics, {
+      context: { sessionId: request.sessionId, requestId, step },
+      source: AgentPiDiagnosticSources.Substrate,
+      name,
+      details,
+    });
   }
 }
 

@@ -10,7 +10,7 @@ import { bumpSessionMessageCount, currentRun, ensureSession, upsertStep } from "
 import { createRunRecord, touchRun } from "./sessionRunProjection";
 import { truncate } from "./sessionPresentation";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
-import type { StoreState } from "./types";
+import type { RunRecord, StoreState, TimelineStepStatus } from "./types";
 
 export const runLifecycleEventHandlers = {
   [EventKinds.RunStarted]: (state, env) => {
@@ -28,6 +28,8 @@ export const runLifecycleEventHandlers = {
       session.runs.push(run);
     } else {
       run.status = "running";
+      run.liveActivity = undefined;
+      run.activities = [];
       run.displayMessageId = undefined;
       run.plannedDecisionMode = undefined;
     }
@@ -74,6 +76,7 @@ export const runLifecycleEventHandlers = {
     const run = readCurrentRun(state, env);
     if (!run) return;
     run.status = "completed";
+    settleRunActivities(run, "done", env.timestamp);
     run.endedAt = env.timestamp;
     touchRun(run);
     const session = state.sessions[env.sessionId ?? ""];
@@ -108,6 +111,7 @@ export const runLifecycleEventHandlers = {
     }
     if (run) {
       run.status = "failed";
+      settleRunActivities(run, "failed", env.timestamp);
       run.endedAt = env.timestamp;
       upsertStep(run, {
         id: `${run.requestId}-error`,
@@ -143,6 +147,7 @@ export const runLifecycleEventHandlers = {
     const run = session.runs.find((item) => item.requestId === rejectedRequestId);
     if (run) {
       run.status = "failed";
+      settleRunActivities(run, "failed", env.timestamp);
       run.endedAt = env.timestamp;
       upsertStep(run, {
         id: `${run.requestId}-busy`,
@@ -167,6 +172,7 @@ export const runLifecycleEventHandlers = {
     const run = currentRun(session, env.requestId);
     if (run) {
       run.status = "cancelled";
+      settleRunActivities(run, "failed", env.timestamp);
       run.endedAt = env.timestamp;
       run.streamingRaw = "";
       run.xmlPreview = "";
@@ -190,6 +196,19 @@ export const runLifecycleEventHandlers = {
     session.updatedAt = env.timestamp;
   },
 } satisfies RunEventHandlerMap;
+
+function settleRunActivities(
+  run: RunRecord,
+  status: Extract<TimelineStepStatus, "done" | "failed">,
+  endedAt: string,
+): void {
+  run.liveActivity = undefined;
+  for (const activity of run.activities ?? []) {
+    if (activity.status !== "running") continue;
+    activity.status = status;
+    activity.endedAt = endedAt;
+  }
+}
 
 const cancellationComponentMessages = {
   agent_loop: "run.cancellation.component.agent_loop",

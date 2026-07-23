@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-export const LoadedToolsSchema = z.union([z.literal("all"), z.literal("dynamic"), z.array(z.string().min(1))]);
-
 const AgentPiCompactionSchema = z
   .object({
     Enabled: z.boolean().optional(),
@@ -41,7 +39,6 @@ const AgentPiCompactionSchema = z
 
 export const AgentLoopSchema = z
   .object({
-    LoadedTools: LoadedToolsSchema.optional(),
     PiTurnLeaseTimeoutSeconds: z.number().positive().optional(),
     RunSettlementTimeoutSeconds: z.number().positive().max(300).optional(),
     PiSessions: z

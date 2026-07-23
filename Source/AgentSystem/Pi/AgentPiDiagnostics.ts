@@ -1,60 +1,90 @@
 import type { AgentEvent as AgentSessionEvent } from "@earendil-works/pi-agent-core";
-import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 
-export type AgentPiTraceSource = "session" | "proxy" | "tool_bridge" | "substrate";
+export const AgentPiDiagnosticSources = {
+  Session: "session",
+  Proxy: "proxy",
+  Substrate: "substrate",
+} as const;
 
-export interface AgentPiTraceInput {
-  sessionId?: string;
-  requestId: string;
-  step: number;
-  source: AgentPiTraceSource;
-  eventType: string;
-  summary?: string;
-  payload?: unknown;
+export type AgentPiDiagnosticSource = (typeof AgentPiDiagnosticSources)[keyof typeof AgentPiDiagnosticSources];
+
+export interface AgentPiDiagnosticContext {
+  readonly sessionId?: string;
+  readonly requestId?: string;
+  readonly step?: number;
 }
 
-const SensitiveTraceKeyNames = new Set(["authorization", "secret", "password", "credential"]);
-const SensitiveTokenQualifiers = new Set(["access", "api", "auth", "bearer", "csrf", "id", "refresh", "session"]);
-const MaxTraceStringLength = 1_024;
-const MaxTracePayloadStringCharacters = 16_384;
-const MaxTracePayloadEntries = 24;
-const MaxTraceDepth = 4;
+export interface AgentPiDiagnosticInput {
+  readonly context?: AgentPiDiagnosticContext;
+  readonly source: AgentPiDiagnosticSource;
+  readonly name: string;
+  readonly summary?: string;
+  readonly details?: unknown;
+}
 
-interface TraceProjectionBudget {
+export interface AgentPiDiagnosticEvent {
+  readonly context: AgentPiDiagnosticContext;
+  readonly source: AgentPiDiagnosticSource;
+  readonly name: string;
+  readonly summary: string;
+  readonly details?: unknown;
+}
+
+export type AgentPiDiagnosticSink = (event: AgentPiDiagnosticEvent) => void | Promise<void>;
+
+const SensitiveDiagnosticKeyNames = new Set(["authorization", "secret", "password", "credential"]);
+const SensitiveTokenQualifiers = new Set(["access", "api", "auth", "bearer", "csrf", "id", "refresh", "session"]);
+const MaxDiagnosticStringLength = 1_024;
+const MaxDiagnosticStringCharacters = 16_384;
+const MaxDiagnosticEntries = 24;
+const MaxDiagnosticDepth = 4;
+
+interface DiagnosticProjectionBudget {
   remainingEntries: number;
   remainingStringCharacters: number;
 }
 
-export function createPiTraceEvent(input: AgentPiTraceInput): AgentDomainEvent {
+export async function emitAgentPiDiagnostic(
+  sink: AgentPiDiagnosticSink | undefined,
+  input: AgentPiDiagnosticInput,
+): Promise<void> {
+  if (!sink) return;
+  await sink(createAgentPiDiagnosticEvent(input));
+}
+
+export function createAgentPiDiagnosticEvent(input: AgentPiDiagnosticInput): AgentPiDiagnosticEvent {
   return {
-    kind: AgentEventKinds.PiTrace,
-    context: {
-      sessionId: input.sessionId,
-      requestId: input.requestId,
-      step: input.step,
-    },
-    data: {
-      source: input.source,
-      eventType: input.eventType,
-      summary: input.summary ?? summarizePiTracePayload(input.payload),
-      payload: sanitizePiTracePayload(input.payload),
-    },
+    context: input.context ?? {},
+    source: input.source,
+    name: input.name,
+    summary: input.summary ?? summarizeDiagnosticDetails(input.details),
+    details: sanitizeDiagnosticDetails(input.details),
   };
 }
 
-export function projectPiSessionTraceEvent(options: {
-  requestId: string;
-  step: number;
+export function projectPiSessionDiagnosticEvent(options: {
+  context: AgentPiDiagnosticContext;
   event: AgentSessionEvent;
-}): AgentDomainEvent {
-  return createPiTraceEvent({
-    requestId: options.requestId,
-    step: options.step,
-    source: "session",
-    eventType: options.event.type,
+}): AgentPiDiagnosticEvent {
+  return createAgentPiDiagnosticEvent({
+    context: options.context,
+    source: AgentPiDiagnosticSources.Session,
+    name: options.event.type,
     summary: summarizePiSessionEvent(options.event),
-    payload: options.event,
+    details: options.event,
   });
+}
+
+export function createAgentPiDiagnosticLogger(logger: AgentLogger): AgentPiDiagnosticSink {
+  return (event) => {
+    const label = `pi.${event.source}.${event.name}`;
+    logger.info(label, {
+      ...event.context,
+      summary: event.summary || undefined,
+    });
+    if (event.details !== undefined) logger.tree(`${label} details`, event.details);
+  };
 }
 
 function summarizePiSessionEvent(event: AgentSessionEvent): string {
@@ -72,38 +102,36 @@ function summarizePiSessionEvent(event: AgentSessionEvent): string {
   return summaryProjectors[event.type]?.(event) ?? event.type;
 }
 
-function summarizePiTracePayload(value: unknown): string {
+function summarizeDiagnosticDetails(value: unknown): string {
   if (value === undefined || value === null) return "";
   if (typeof value === "string") return summarizeText(value);
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   const record = readRecord(value);
   if (!record) return "";
   return takeEnumerableEntries(record, 6)
-    .entries.map(([key, entry]) => `${key}=${isSensitiveTraceKey(key) ? "[redacted]" : summarizePrimitive(entry)}`)
+    .entries.map(([key, entry]) => `${key}=${isSensitiveDiagnosticKey(key) ? "[redacted]" : summarizePrimitive(entry)}`)
     .join(" ");
 }
 
-function sanitizePiTracePayload(
+function sanitizeDiagnosticDetails(
   value: unknown,
-  budget: TraceProjectionBudget = createTraceProjectionBudget(),
+  budget: DiagnosticProjectionBudget = createDiagnosticProjectionBudget(),
   seen = new WeakSet<object>(),
   depth = 0,
 ): unknown {
   if (value === undefined || value === null) return value;
-  if (typeof value === "string") return projectTraceString(value, budget);
+  if (typeof value === "string") return projectDiagnosticString(value, budget);
   if (typeof value === "number" || typeof value === "boolean") return value;
-  if (depth >= MaxTraceDepth) return "[truncated]";
+  if (depth >= MaxDiagnosticDepth) return "[truncated]";
   if (Array.isArray(value)) {
     if (seen.has(value)) return "[circular]";
     seen.add(value);
     const entries: unknown[] = [];
     for (const entry of value) {
-      if (!consumeTraceEntry(budget)) break;
-      entries.push(sanitizePiTracePayload(entry, budget, seen, depth + 1));
+      if (!consumeDiagnosticEntry(budget)) break;
+      entries.push(sanitizeDiagnosticDetails(entry, budget, seen, depth + 1));
     }
-    if (entries.length < value.length) {
-      entries.push(`[${value.length - entries.length} additional entries omitted]`);
-    }
+    if (entries.length < value.length) entries.push(`[${value.length - entries.length} additional entries omitted]`);
     return entries;
   }
 
@@ -116,50 +144,48 @@ function sanitizePiTracePayload(
   let truncated = false;
   for (const key in record) {
     if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
-    if (!consumeTraceEntry(budget)) {
+    if (!consumeDiagnosticEntry(budget)) {
       truncated = true;
       break;
     }
     entries.push([
       summarizeText(key, 128),
-      isSensitiveTraceKey(key) ? "[redacted]" : sanitizePiTracePayload(record[key], budget, seen, depth + 1),
+      isSensitiveDiagnosticKey(key) ? "[redacted]" : sanitizeDiagnosticDetails(record[key], budget, seen, depth + 1),
     ]);
   }
   const sanitized = Object.fromEntries(entries);
-  if (truncated) {
-    sanitized["[truncated]"] = "additional properties omitted";
-  }
+  if (truncated) sanitized["[truncated]"] = "additional properties omitted";
   return sanitized;
 }
 
-function isSensitiveTraceKey(key: string): boolean {
+function isSensitiveDiagnosticKey(key: string): boolean {
   const words = key
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(Boolean);
-  if (words.some((word) => SensitiveTraceKeyNames.has(word))) return true;
+  if (words.some((word) => SensitiveDiagnosticKeyNames.has(word))) return true;
   if (words.length === 1 && words[0] === "token") return true;
 
   const tokenIndex = words.indexOf("token");
   return tokenIndex >= 0 && words.some((word, index) => index !== tokenIndex && SensitiveTokenQualifiers.has(word));
 }
 
-function createTraceProjectionBudget(): TraceProjectionBudget {
+function createDiagnosticProjectionBudget(): DiagnosticProjectionBudget {
   return {
-    remainingEntries: MaxTracePayloadEntries,
-    remainingStringCharacters: MaxTracePayloadStringCharacters,
+    remainingEntries: MaxDiagnosticEntries,
+    remainingStringCharacters: MaxDiagnosticStringCharacters,
   };
 }
 
-function consumeTraceEntry(budget: TraceProjectionBudget): boolean {
+function consumeDiagnosticEntry(budget: DiagnosticProjectionBudget): boolean {
   if (budget.remainingEntries <= 0) return false;
   budget.remainingEntries -= 1;
   return true;
 }
 
-function projectTraceString(value: string, budget: TraceProjectionBudget): string {
-  const limit = Math.min(MaxTraceStringLength, budget.remainingStringCharacters);
+function projectDiagnosticString(value: string, budget: DiagnosticProjectionBudget): string {
+  const limit = Math.min(MaxDiagnosticStringLength, budget.remainingStringCharacters);
   if (limit <= 0) return "[truncated]";
   const projected = summarizeText(value, limit);
   budget.remainingStringCharacters = Math.max(0, budget.remainingStringCharacters - projected.length);
@@ -172,12 +198,8 @@ function takeEnumerableEntries(
 ): { entries: Array<[string, unknown]>; truncated: boolean } {
   const entries: Array<[string, unknown]> = [];
   for (const key in record) {
-    if (!Object.prototype.hasOwnProperty.call(record, key)) {
-      continue;
-    }
-    if (entries.length === limit) {
-      return { entries, truncated: true };
-    }
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+    if (entries.length === limit) return { entries, truncated: true };
     entries.push([key, record[key]]);
   }
   return { entries, truncated: false };
@@ -204,7 +226,7 @@ function readAssistantText(event: AgentSessionEvent): string {
     : "";
 }
 
-function summarizeText(value: string, maxLength = 1200): string {
+function summarizeText(value: string, maxLength = 1_200): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...[truncated]` : value;
 }
 

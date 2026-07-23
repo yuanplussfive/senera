@@ -11,7 +11,7 @@ export interface AgentLoopStartRequest {
   input: string;
   messages?: AgentLanguageModelMessage[];
   conversationEntries?: AgentConversationEntry[];
-  loadedToolNames: "all" | string[];
+  loadedToolNames: string[];
   rootCommand?: AgentRootCommand;
   systemPromptPreamble?: string;
   emitRunStarted?: boolean;

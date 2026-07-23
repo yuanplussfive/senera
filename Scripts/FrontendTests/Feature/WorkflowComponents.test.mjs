@@ -17,6 +17,7 @@ const { layoutSteps } = await import("../../../Frontend/src/features/workflow/la
 const { AgentExecutionFeed } = await import("../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx");
 const { ChatHeader } = await import("../../../Frontend/src/features/chat/ChatHeader.tsx");
 const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
+const { AppMotionProvider } = await import("../../../Frontend/src/shared/motion/MotionProvider.tsx");
 const { Position, ReactFlowProvider } = await import("@xyflow/react");
 const { useStore } = await import("../../../Frontend/src/store/sessionStore.ts");
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
@@ -337,11 +338,16 @@ test("execution feed keeps action batches summarized until the user expands them
   const user = userEvent.setup();
   const initialRun = createToolBatchRun(["WorkspaceReadFile", "WorkspaceSearchFiles"]);
   const view = renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run: initialRun }));
+  const feed = document.querySelector("[data-execution-feed]");
   const group = document.querySelector("[data-feed-group='tools:batch-actions']");
 
+  expect(feed).toBeInTheDocument();
+  expect(feed).not.toHaveClass("rounded-xl", "border", "bg-surface-raised", "shadow-panel");
+  expect(document.querySelector("[data-execution-rail]")).toBeInTheDocument();
   expect(screen.queryByText("tool_preface")).not.toBeInTheDocument();
   expect(group).toBeInstanceOf(HTMLButtonElement);
   expect(group).toHaveAttribute("aria-expanded", "false");
+  expect(document.querySelector("[data-feed-detail-surface]")).not.toBeInTheDocument();
   expect(screen.queryByText("WorkspaceReadFile")).not.toBeInTheDocument();
   expect(screen.queryByText("WorkspaceSearchFiles")).not.toBeInTheDocument();
 
@@ -349,6 +355,10 @@ test("execution feed keeps action batches summarized until the user expands them
   await waitFor(() => expect(screen.getByText("WorkspaceReadFile")).toBeVisible());
   expect(screen.getByText("WorkspaceSearchFiles")).toBeVisible();
   expect(group).toHaveAttribute("aria-expanded", "true");
+  expect(document.querySelector("[data-feed-detail-surface]")).toHaveClass(
+    "border-line-subtle",
+    "bg-surface-subtle/70",
+  );
 
   view.rerender(
     React.createElement(
@@ -377,6 +387,59 @@ test("execution feed keeps workflow steps while the answer body is projected bel
 
   expect(document.querySelector("[data-feed-group='tools:batch-actions']")).toBeInTheDocument();
   expect(screen.queryByText("最终回答正文")).not.toBeInTheDocument();
+});
+
+test("execution feed renders Senera live activities without adding workflow nodes", () => {
+  const run = createToolBatchRun([]);
+  const workflowStepCount = run.steps.length;
+  run.liveActivity = "running_agent_turn";
+  run.activities = [
+    {
+      id: "activity-context",
+      activity: "preparing_context",
+      status: "done",
+      step: 1,
+      startedAt: run.startedAt,
+      endedAt: run.startedAt,
+    },
+    {
+      id: "activity-model",
+      activity: "running_agent_turn",
+      status: "running",
+      step: 1,
+      startedAt: run.startedAt,
+    },
+  ];
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run }));
+
+  expect(screen.getByText(frontendMessage("workflow.feed.seneraActivity"))).toBeVisible();
+  expect(screen.getByText(frontendMessage("workflow.activity.preparingContext"))).toBeVisible();
+  expect(screen.getByText(frontendMessage("workflow.activity.runningAgentTurn"))).toBeVisible();
+  expect(document.querySelector("[data-feed-group-variant='activity']")).toBeInTheDocument();
+  expect(document.querySelector("[data-feed-detail-surface]")).not.toBeInTheDocument();
+  expect(run.steps).toHaveLength(workflowStepCount);
+});
+
+test("execution feed contains failed events and respects reduced motion", () => {
+  const run = createRun({
+    status: "running",
+    endedAt: undefined,
+    steps: [
+      createStep({ id: "failed-context", status: "failed", title: "Prepare context" }),
+      createStep({ id: "running-model", status: "running", title: "Generate response" }),
+    ],
+  });
+
+  renderWithFrontendProviders(
+    React.createElement(AppMotionProvider, { level: "reduced" }, React.createElement(AgentExecutionFeed, { run })),
+  );
+
+  expect(screen.getByText("Prepare context").parentElement?.parentElement).toHaveClass(
+    "border-brick-200",
+    "bg-brick-50",
+  );
+  expect(document.querySelector("[data-execution-feed] .animate-spin")).not.toBeInTheDocument();
 });
 
 function renderWorkflowNode(props) {

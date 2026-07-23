@@ -52,8 +52,7 @@ export class AgentActionPlannerContextBuilder {
     requestId?: string;
     userMessage: string;
     currentStep: number;
-    dynamicTools: boolean;
-    loadedToolNames: "all" | readonly string[];
+    loadedToolNames: readonly string[];
     messages: readonly AgentLanguageModelMessage[];
     conversationEntries?: readonly AgentConversationEntry[];
     ledger: AgentActionPlannerLedger;
@@ -62,8 +61,7 @@ export class AgentActionPlannerContextBuilder {
     turnUnderstanding?: TurnUnderstanding;
     roleplayPreset?: AgentPlannerRoleplayPresetContext;
   }): ActionPlanInput {
-    const loadedTools =
-      options.loadedToolNames === "all" ? options.toolCatalog.map((tool) => tool.name) : [...options.loadedToolNames];
+    const loadedTools = [...options.loadedToolNames];
     const visibleTools = new Set(loadedTools);
     const memory = this.memoryProjector.project(options.conversationEntries ?? [], {
       excludeEvidenceRequestId: options.requestId,
@@ -94,7 +92,6 @@ export class AgentActionPlannerContextBuilder {
       roleplayPreset: options.roleplayPreset,
       runState: {
         currentStep: options.currentStep,
-        dynamicTools: options.dynamicTools,
         loadedTools,
         progress: {
           totalToolCalls: options.ledger.calls.length,

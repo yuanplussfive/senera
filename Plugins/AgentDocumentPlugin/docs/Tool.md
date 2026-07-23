@@ -15,7 +15,7 @@
 ## 输入
 
 - `uploadUri`：附件卡片里的上传句柄，例如 `senera://upload/upl_0123abcd...`。
-- `mode`：可选。省略时使用插件 TOML 的 `document.defaultMode`。
+- `mode`：可选。省略时使用 `auto`。
 
 ## mode
 

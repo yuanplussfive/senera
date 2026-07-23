@@ -10,6 +10,7 @@ label = "启用状态"
 path = [ "senera", "enabled" ]
 label = "启用插件"
 type = "boolean"
+required = true
 
 [[form.sections]]
 id = "tavily"
@@ -21,6 +22,7 @@ label = "接口密钥"
 type = "array"
 itemType = "string"
 secret = true
+required = true
 
 [[form.sections.fields]]
 path = [ "tavily", "base_url" ]

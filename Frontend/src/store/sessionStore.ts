@@ -72,8 +72,7 @@ export interface ChatMessage {
   metadata?: ConversationEntryMetadata;
 }
 
-export type TimelineStepKind =
-  "understand" | "prompt" | "model" | "pi" | "decision" | "tool" | "retry" | "answer" | "error";
+export type TimelineStepKind = "understand" | "prompt" | "model" | "decision" | "tool" | "retry" | "answer" | "error";
 
 export type TimelineStepStatus = "pending" | "running" | "done" | "failed";
 
@@ -137,13 +136,20 @@ export interface TimelineStep {
   retryCode?: string;
   errorMessage?: string;
   modelName?: string;
-  traceSource?: string;
-  eventType?: string;
   promptChars?: number;
   promptLines?: number;
   promptTokenCount?: number;
   decisionKind?: string;
   xmlRoot?: string;
+}
+
+export interface RunActivityRecord {
+  id: string;
+  activity: import("../api/eventTypes").RunActivity;
+  status: TimelineStepStatus;
+  step?: number;
+  startedAt: string;
+  endedAt?: string;
 }
 
 export interface RunRecord {
@@ -153,6 +159,10 @@ export interface RunRecord {
   startedAt: string;
   endedAt?: string;
   status: "running" | "completed" | "failed" | "cancelled";
+  /** 左侧对话使用的瞬时运行阶段；不进入工作流步骤或历史图。 */
+  liveActivity?: import("../api/eventTypes").RunActivity;
+  /** 左侧对话使用的实时活动流；与右侧工作流步骤完全独立。 */
+  activities?: RunActivityRecord[];
   activeFlags?: Array<"waiting_for_approval" | "waiting_for_input">;
   input: string;
   steps: TimelineStep[];

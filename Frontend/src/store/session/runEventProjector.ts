@@ -4,16 +4,16 @@ import { runDecisionEventHandlers } from "./runDecisionProjector";
 import { type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { runLifecycleEventHandlers } from "./runLifecycleProjector";
 import { runModelStreamEventHandlers } from "./runModelStreamProjector";
-import { runPiTraceEventHandlers } from "./runPiTraceProjector";
 import { runToolAndAnswerEventHandlers } from "./runToolAndAnswerProjector";
 import { runInteractionInputEventHandlers } from "./runInteractionInputProjector";
 import type { StoreState } from "./types";
+import { runActivityEventHandlers } from "./runActivityProjector";
 
 const runEventHandlers: RunEventHandlerMap = {
   ...runLifecycleEventHandlers,
+  ...runActivityEventHandlers,
   ...runDecisionEventHandlers,
   ...runModelStreamEventHandlers,
-  ...runPiTraceEventHandlers,
   ...runApprovalEventHandlers,
   ...runInteractionInputEventHandlers,
   ...runToolAndAnswerEventHandlers,

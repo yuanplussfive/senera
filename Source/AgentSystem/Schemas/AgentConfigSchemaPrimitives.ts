@@ -1,14 +1,11 @@
 import { z } from "zod";
 
 export const disabledOrPositiveInteger = (fieldName: string) =>
-  z
-    .number()
-    .int()
-    .refine((value) => value === -1 || value >= 1, {
-      message: `${fieldName} 必须为 -1，或大于等于 1。`,
-    });
+  z.union([z.literal(-1), z.number().int().min(1)], {
+    error: `${fieldName} 必须为 -1，或大于等于 1。`,
+  });
 
 export const disabledOrPositiveNumber = (fieldName: string) =>
-  z.number().refine((value) => value === -1 || value > 0, {
-    message: `${fieldName} 必须为 -1，或大于 0。`,
+  z.union([z.literal(-1), z.number().positive()], {
+    error: `${fieldName} 必须为 -1，或大于 0。`,
   });

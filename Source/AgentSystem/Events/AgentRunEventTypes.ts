@@ -6,12 +6,41 @@ type AgentVisibleAssistantContext = AgentRequestContext & Partial<Pick<AgentEven
 
 export type AgentAssistantMessageKind = "tool_preface" | "final_answer" | "ask_user";
 
+export const AgentRunActivities = {
+  PreparingContext: "preparing_context",
+  InitializingRuntime: "initializing_runtime",
+  SynchronizingContext: "synchronizing_context",
+  EvaluatingContext: "evaluating_context",
+  RunningAgentTurn: "running_agent_turn",
+  GeneratingResponse: "generating_response",
+  FinalizingResponse: "finalizing_response",
+} as const;
+
+export type AgentRunActivity = (typeof AgentRunActivities)[keyof typeof AgentRunActivities];
+
+export const AgentRunActivityStates = {
+  Started: "started",
+  Completed: "completed",
+  Failed: "failed",
+} as const;
+
+export type AgentRunActivityState = (typeof AgentRunActivityStates)[keyof typeof AgentRunActivityStates];
+
 export type AgentRunDomainEvent =
   | {
       kind: typeof AgentEventKinds.RunStarted;
       context: AgentRequestContext;
       data: {
         input: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.RunActivityChanged;
+      context: AgentVisibleAssistantContext;
+      data: {
+        activityId: string;
+        activity: AgentRunActivity;
+        state: AgentRunActivityState;
       };
     }
   | {

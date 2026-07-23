@@ -27,6 +27,7 @@ import {
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createModelProvider, createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import type { AgentPiDiagnosticEvent } from "../../../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -175,11 +176,11 @@ describe("Pi session lifecycle behavior", () => {
     expect(await reopened.session.getLeafId()).toBe(boundaryId);
   });
 
-  test("creates, reuses, traces, and closes substrate sessions through explicit lifecycle ports", async () => {
+  test("creates, reuses, diagnoses, and closes substrate sessions through explicit lifecycle ports", async () => {
     const workspaceRoot = createWorkspace();
     const store = new RecordingSessionStore([sessionResult("session-1", "created", 0)]);
     const pool = new RecordingHarnessPool();
-    const events: unknown[] = [];
+    const diagnostics: AgentPiDiagnosticEvent[] = [];
     const substrate = new AgentPiSubstrate({
       workspaceRoot,
       config: piTestConfig,
@@ -190,6 +191,9 @@ describe("Pi session lifecycle behavior", () => {
       executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
       sessionStore: store,
       harnessPool: pool,
+      diagnostics: (event) => {
+        diagnostics.push(event);
+      },
     });
 
     const first = await substrate.leaseTurn({
@@ -198,9 +202,6 @@ describe("Pi session lifecycle behavior", () => {
       step: 1,
       input: "Inspect the release workflow",
       visibleToolNames: [],
-      onEvent: (event) => {
-        events.push(event);
-      },
     });
     const second = await substrate.leaseTurn({
       sessionId: "session-1",
@@ -208,9 +209,6 @@ describe("Pi session lifecycle behavior", () => {
       step: 2,
       input: "Promote the preview",
       visibleToolNames: [],
-      onEvent: (event) => {
-        events.push(event);
-      },
     });
     await expect(substrate.rewindSession("session-1", "boundary-a")).resolves.toBe(true);
     await substrate.close();
@@ -238,7 +236,7 @@ describe("Pi session lifecycle behavior", () => {
     expect(pool.closeCount).toBe(1);
     expect(pool.rewinds).toEqual([{ sessionId: "session-1", entryId: "boundary-a" }]);
     expect(store.rewinds).toEqual([{ sessionId: "session-1", entryId: "boundary-a" }]);
-    expect(traceTypes(events)).toEqual([
+    expect(diagnosticNames(diagnostics)).toEqual([
       "core.turn.lease.started",
       "core.turn.lease.completed",
       "core.turn.lease.timing",
@@ -246,7 +244,7 @@ describe("Pi session lifecycle behavior", () => {
       "core.turn.lease.completed",
       "core.turn.lease.timing",
     ]);
-    expect(tracePayloads(events, "core.turn.lease.timing")).toEqual([
+    expect(diagnosticDetails(diagnostics, "core.turn.lease.timing")).toEqual([
       expect.objectContaining({
         sessionOpenSource: "session_store",
         sessionOpenMs: expect.any(Number),
@@ -460,25 +458,12 @@ function createWorkspace(): string {
   return workspace;
 }
 
-function traceTypes(events: readonly unknown[]): string[] {
-  return events.flatMap((event) => {
-    if (!event || typeof event !== "object" || !("kind" in event) || event.kind !== "pi.trace") {
-      return [];
-    }
-    const data = "data" in event ? event.data : undefined;
-    return data && typeof data === "object" && "eventType" in data && typeof data.eventType === "string"
-      ? [data.eventType]
-      : [];
-  });
+function diagnosticNames(events: readonly AgentPiDiagnosticEvent[]): string[] {
+  return events.map((event) => event.name);
 }
 
-function tracePayloads(events: readonly unknown[], eventType: string): unknown[] {
-  return events.flatMap((event) => {
-    if (!event || typeof event !== "object" || !("kind" in event) || event.kind !== "pi.trace") return [];
-    const data = "data" in event ? event.data : undefined;
-    if (!data || typeof data !== "object" || !("eventType" in data) || data.eventType !== eventType) return [];
-    return "payload" in data ? [data.payload] : [];
-  });
+function diagnosticDetails(events: readonly AgentPiDiagnosticEvent[], name: string): unknown[] {
+  return events.filter((event) => event.name === name).map((event) => event.details);
 }
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {

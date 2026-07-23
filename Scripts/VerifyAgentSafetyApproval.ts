@@ -581,7 +581,6 @@ function createHookContext(events: AgentDomainEvent[], requestId: string) {
     sessionId: `${requestId}-session`,
     requestId,
     step: 1,
-    visibleToolNames: "all" as const,
     onEvent: async (event: AgentDomainEvent) => {
       events.push(event);
     },

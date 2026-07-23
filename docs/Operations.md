@@ -2,18 +2,6 @@
 
 这份文档写给实际部署、更新和排查 Senera 的人。日常本地开发看 README 就够了；跑 Docker、更新镜像、处理数据目录权限和沙箱状态时，看这里。
 
-## 会话历史维护
-
-新的 Pi 诊断事件在持久化前会被投影为轻量历史 span。已有数据库可以显式分析和压缩，不会把昂贵维护偷偷放进服务启动链路。
-
-```powershell
-npm run maintenance.sessions
-npm run maintenance.sessions.apply
-npm run maintenance.sessions.vacuum
-```
-
-默认命令只分析。apply 使用行数和字节数双重有界的批事务重写可压缩 `pi.trace`，每个写批次后执行 WAL checkpoint，不会删除对话、运行快照、step trace 或非 Pi 事件。apply 和 vacuum 应在 Senera 服务停止时执行。`maintenance.sessions.json` 输出机器可读分析结果。
-
 ## Artifact 维护
 
 服务运行期间会按 `Artifacts.MaintenanceIntervalMinutes` 自动执行 artifact 保留、总量配额和半成品回收。目录扫描使用 `Artifacts.MaintenanceMaxConcurrency` 控制文件系统并发，默认值为 4，避免大量 artifact 同时打开过多文件句柄。需要手动检查时，默认命令只分析，不删除文件：
@@ -24,12 +12,6 @@ npm run maintenance.artifacts.json
 ```
 
 确认报告后使用 `npm run maintenance.artifacts.apply` 执行清理。工作区、配置文件或 artifact 根目录不在默认位置时，可传 `--workspace`、`--config` 或 `--root`。
-
-自定义参数需要使用当前 npm 版本要求的双分隔符，例如：
-
-```powershell
-npm run maintenance.sessions -- -- --database=E:\data\senera.db --batch-size=100 --max-transaction-mib=16
-```
 
 ## Pi Planner 延迟基准
 

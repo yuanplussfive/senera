@@ -8,12 +8,8 @@ const configuration = definePluginConfiguration({
       senera: z.object({ enabled: z.boolean() }).passthrough(),
       weather: z
         .object({
-          provider: z.enum(["qweather", "weatherapi", "visual_crossing"]),
           api_keys: z.array(z.string().trim().min(1)),
-          api_host: z.string().trim().min(1),
-          weather_api_host: z.string().trim().min(1).optional(),
-          base_url: z.string().trim().min(1).optional(),
-          geo_base_url: z.string().trim().min(1).optional(),
+          api_host: z.string().trim().url(),
           language: z.string().trim().min(1),
           unit: z.enum(["metric", "imperial"]),
           timeout_seconds: z.number().positive().max(300),
@@ -25,9 +21,8 @@ const configuration = definePluginConfiguration({
   defaults: {
     senera: { enabled: false },
     weather: {
-      provider: "qweather",
       api_keys: [],
-      api_host: "your-id.re.qweatherapi.com",
+      api_host: "https://your-id.re.qweatherapi.com",
       language: "zh",
       unit: "metric",
       timeout_seconds: 15,
@@ -39,24 +34,27 @@ const configuration = definePluginConfiguration({
       {
         id: "senera",
         label: "启用状态",
-        fields: [{ path: ["senera", "enabled"], label: "启用插件", type: "boolean" }],
+        fields: [{ path: ["senera", "enabled"], label: "启用插件", type: "boolean", required: true }],
       },
       {
         id: "weather",
-        label: "天气参数",
+        label: "和风天气",
         fields: [
           {
-            path: ["weather", "provider"],
-            label: "天气服务",
-            type: "string",
-            options: ["qweather", "weatherapi", "visual_crossing"],
-            optionLabels: { qweather: "和风天气", weatherapi: "国际天气服务", visual_crossing: "全球天气服务" },
+            path: ["weather", "api_keys"],
+            label: "接口密钥",
+            type: "array",
+            itemType: "string",
+            secret: true,
+            required: true,
           },
-          { path: ["weather", "api_keys"], label: "接口密钥", type: "array", itemType: "string", secret: true },
-          { path: ["weather", "api_host"], label: "接口域名", type: "string" },
-          { path: ["weather", "weather_api_host"], label: "WeatherAPI 域名", type: "string", required: false },
-          { path: ["weather", "base_url"], label: "服务基础地址", type: "string", required: false },
-          { path: ["weather", "geo_base_url"], label: "地理编码地址", type: "string", required: false },
+          {
+            path: ["weather", "api_host"],
+            label: "API URL",
+            description: "和风天气控制台分配的专属 API Host，必须包含 https://。",
+            type: "string",
+            required: true,
+          },
           { path: ["weather", "language"], label: "语言", type: "string" },
           {
             path: ["weather", "unit"],

@@ -6,7 +6,6 @@ import {
   withAgentPiSessionLifecycle,
 } from "../Pi/AgentPiSessionLifecycleMetadata.js";
 import type { AgentPiSessionMutationPort } from "../Pi/AgentPiSessionMutationService.js";
-import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
 import type { AgentSession } from "./AgentSession.js";
 import {
@@ -41,10 +40,10 @@ export class AgentSessionHistoryMutationCoordinator {
     return results;
   }
 
-  recoverSession(sessionId: string, onEvent?: AgentEventSink): Promise<AgentSessionHistoryMutationResult | undefined> {
+  recoverSession(sessionId: string): Promise<AgentSessionHistoryMutationResult | undefined> {
     return this.leases.run(sessionId, async () => {
       const mutation = this.options.store.loadPendingHistoryMutation(sessionId);
-      return mutation ? this.recoverMutation(mutation, onEvent) : undefined;
+      return mutation ? this.recoverMutation(mutation) : undefined;
     });
   }
 
@@ -52,33 +51,30 @@ export class AgentSessionHistoryMutationCoordinator {
     session: AgentSession;
     fromRequestId: string;
     preparation?: AgentTurnPreparationSnapshot;
-    onEvent?: AgentEventSink;
   }): Promise<AgentSessionHistoryMutationResult> {
     return this.leases.run(request.session.id, async () => {
       const pending = this.options.store.loadPendingHistoryMutation(request.session.id);
-      if (pending) await this.recoverMutation(pending, request.onEvent);
+      if (pending) await this.recoverMutation(pending);
 
       const mutation = createHistoryMutation(request.session, request.fromRequestId, request.preparation);
       this.options.store.stageHistoryMutation(mutation);
-      return this.applyAndCommit(mutation, request.session, request.onEvent);
+      return this.applyAndCommit(mutation, request.session);
     });
   }
 
   private async recoverMutation(
     mutation: AgentSessionHistoryMutation,
-    onEvent?: AgentEventSink,
   ): Promise<AgentSessionHistoryMutationResult | undefined> {
     const lookup = this.options.store.get(mutation.sessionId);
     if (lookup.kind === "missing") return undefined;
-    return this.applyAndCommit(mutation, lookup.session, onEvent);
+    return this.applyAndCommit(mutation, lookup.session);
   }
 
   private async applyAndCommit(
     mutation: AgentSessionHistoryMutation,
     session: AgentSession,
-    onEvent?: AgentEventSink,
   ): Promise<AgentSessionHistoryMutationResult> {
-    const piState = await this.applyPiMutation(mutation, onEvent);
+    const piState = await this.applyPiMutation(mutation);
     const committedSession: AgentSession = {
       ...session,
       updatedAt: new Date().toISOString(),
@@ -95,7 +91,6 @@ export class AgentSessionHistoryMutationCoordinator {
 
   private async applyPiMutation(
     mutation: AgentSessionHistoryMutation,
-    onEvent?: AgentEventSink,
   ): Promise<(typeof AgentPiSessionLifecycleStates)[keyof typeof AgentPiSessionLifecycleStates] | undefined> {
     const pi = mutation.pi;
     if (pi.kind === AgentSessionPiMutationKinds.None) return undefined;
@@ -105,7 +100,6 @@ export class AgentSessionHistoryMutationCoordinator {
     const context = {
       sessionId: mutation.sessionId,
       modelProviderId: pi.modelProviderId,
-      onEvent,
     };
     if (pi.kind === AgentSessionPiMutationKinds.Reset) {
       await service.reset(context);

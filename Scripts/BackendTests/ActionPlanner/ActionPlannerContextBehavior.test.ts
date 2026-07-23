@@ -47,7 +47,6 @@ describe("ActionPlanner context behavior", () => {
     const input = new AgentActionPlannerContextBuilder(process.cwd(), ".senera/artifacts").buildInput({
       userMessage: "Inspect the workspace",
       currentStep: 1,
-      dynamicTools: true,
       loadedToolNames: ["WorkspaceInspectTool"],
       messages: [],
       ledger: EmptyActionPlannerLedger,
@@ -128,7 +127,6 @@ describe("ActionPlanner context behavior", () => {
       requestId: "planner-request",
       userMessage: "Inspect the workspace",
       currentStep: 3,
-      dynamicTools: true,
       loadedToolNames: ["WorkspaceInspectTool"],
       messages: [{ role: "user", content: "Inspect the workspace" }],
       ledger,
@@ -168,8 +166,7 @@ describe("ActionPlanner context behavior", () => {
     const input = builder.buildInput({
       userMessage: "Explain the current state",
       currentStep: 99,
-      dynamicTools: false,
-      loadedToolNames: "all",
+      loadedToolNames: ["WorkspaceInspectTool"],
       messages: [],
       ledger: EmptyActionPlannerLedger,
       toolCatalog: [workspaceTool()],

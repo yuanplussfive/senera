@@ -20,12 +20,12 @@ const RunEventHistoryPhases = new Set<AgentEventPhase>([
 ]);
 
 const RunEventHistoryExcludedKinds = new Set<AgentEventKind>([
+  AgentEventKinds.RunActivityChanged,
   AgentEventKinds.ModelDelta,
   AgentEventKinds.ToolCallResultDetail,
 ]);
 
 const RunEventHistoryDataProjectors = new Map<AgentEventKind, RunEventHistoryDataProjector>([
-  [AgentEventKinds.PiTrace, projectPiTraceForHistory],
   [
     AgentEventKinds.ModelCompleted,
     (data) => ({
@@ -44,25 +44,6 @@ const RunEventHistoryDataProjectors = new Map<AgentEventKind, RunEventHistoryDat
     },
   ],
 ]);
-
-const PiTraceHistoryPayloadKeys = [
-  "durationMs",
-  "decisionSource",
-  "firstTokenMs",
-  "requestCharacters",
-  "responseCharacters",
-  "stage",
-  "status",
-  "providerId",
-  "model",
-  "callId",
-  "toolCallId",
-  "batchId",
-  "entryId",
-  "sessionEntryId",
-  "kind",
-  "storage",
-] as const;
 
 export const AgentRunEventHistoryReplayChunkSize = 120;
 
@@ -103,33 +84,4 @@ function readString(value: unknown): string {
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function projectPiTraceForHistory(data: unknown): unknown {
-  const trace = readRecord(data);
-  const payload = readRecord(trace.payload);
-  const projectedPayload = Object.fromEntries(
-    PiTraceHistoryPayloadKeys.flatMap((key) => {
-      const value = payload[key];
-      return isHistoryScalar(value) ? [[key, value] as const] : [];
-    }),
-  );
-  const error = projectTraceError(payload.error ?? payload.message);
-  if (error) projectedPayload.error = error;
-
-  return {
-    source: readString(trace.source),
-    eventType: readString(trace.eventType),
-    summary: readString(trace.summary),
-    payload: Object.keys(projectedPayload).length > 0 ? projectedPayload : undefined,
-  };
-}
-
-function isHistoryScalar(value: unknown): value is string | number | boolean {
-  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
-}
-
-function projectTraceError(value: unknown): string | undefined {
-  if (typeof value === "string") return readOptionalString(value);
-  return readOptionalString(readRecord(value).message);
 }

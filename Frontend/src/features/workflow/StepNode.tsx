@@ -25,7 +25,6 @@ const KindIcon: Record<TimelineStepKind, React.ComponentType<{ className?: strin
   understand: MessageSquareText,
   prompt: FileCode2,
   model: Cpu,
-  pi: GitBranch,
   decision: Braces,
   tool: Globe,
   retry: RotateCcw,

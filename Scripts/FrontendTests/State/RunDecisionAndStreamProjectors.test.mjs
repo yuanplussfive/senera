@@ -88,7 +88,7 @@ test("decision events project prompt, route, planner stage, and fallback plan st
         objective: "检查项目测试",
         preferredTools: ["WorkspaceReadFile"],
         discoveryQueries: ["tests"],
-        loadedTools: "all",
+        loadedTools: ["SystemTool", "WorkspaceSearchFiles"],
         expectedOutputMode: "open",
       },
       { step: 1, sequence: 3, phase: "decision" },
@@ -226,6 +226,57 @@ test("model stream events keep visible answer text while closing the model step"
   });
 });
 
+test("run activity updates the left-side live status without creating workflow steps", () => {
+  const state = createTestState();
+
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "检查项目" }, { sequence: 1 }));
+  const initialStepCount = readTestRun(state).steps.length;
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.RunActivityChanged,
+      {
+        activityId: "activity-model",
+        activity: "running_agent_turn",
+        state: "started",
+      },
+      { step: 1, sequence: 2, phase: "run" },
+    ),
+  );
+
+  let run = readTestRun(state);
+  expect(run.liveActivity).toBe("running_agent_turn");
+  expect(run.steps).toHaveLength(initialStepCount);
+  expect(run.activities).toEqual([
+    expect.objectContaining({
+      id: "activity-model",
+      activity: "running_agent_turn",
+      status: "running",
+      step: 1,
+    }),
+  ]);
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.RunActivityChanged,
+      {
+        activityId: "activity-model",
+        activity: "running_agent_turn",
+        state: "completed",
+      },
+      { step: 1, sequence: 3, phase: "run" },
+    ),
+  );
+  run = readTestRun(state);
+  expect(run.liveActivity).toBeUndefined();
+  expect(run.activities?.[0]).toMatchObject({ status: "done", endedAt: expect.any(String) });
+  expect(run.steps).toHaveLength(initialStepCount);
+
+  applyEvent(state, createEvent(EventKinds.RunCompleted, {}, { sequence: 4, phase: "run" }));
+  expect(readTestRun(state).liveActivity).toBeUndefined();
+});
+
 test("planner intent classifies the next stream as a preface and the following stream as an answer", () => {
   const state = createTestState();
 
@@ -285,60 +336,6 @@ test("planner intent classifies the next stream as a preface and the following s
   run = readTestRun(state);
   expect(run.visibleKind).toBe("final_answer");
   expect(run.decisionMode).toBe("final_text");
-});
-
-test("pi trace lifecycle merges started and completed events into one scoped step", () => {
-  const state = createTestState();
-
-  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "查上下文" }, { sequence: 1 }));
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.PiTrace,
-      {
-        source: "session",
-        eventType: "message.started",
-        summary: "pi started",
-        payload: { phase: "start" },
-      },
-      {
-        step: 1,
-        sequence: 2,
-        phase: "model",
-        scope: { workflowName: "root", agentName: "pi" },
-      },
-    ),
-  );
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.PiTrace,
-      {
-        source: "session",
-        eventType: "message.completed",
-        summary: "pi completed",
-        payload: { phase: "done" },
-      },
-      {
-        step: 1,
-        sequence: 3,
-        phase: "model",
-        scope: { workflowName: "root", agentName: "pi" },
-      },
-    ),
-  );
-
-  const run = readTestRun(state);
-  const piSteps = run.steps.filter((step) => step.kind === "pi");
-  expect(piSteps).toHaveLength(1);
-  expect(piSteps[0]).toMatchObject({
-    id: "pi:session:message",
-    status: "done",
-    description: "pi completed",
-    traceSource: "session",
-    eventType: "message.completed",
-    scope: { workflowName: "root", agentName: "pi" },
-  });
 });
 
 function readTestRun(state) {

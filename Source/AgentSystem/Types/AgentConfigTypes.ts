@@ -27,7 +27,6 @@ export type {
   AgentArtifactsConfig,
   AgentConfigStoreConfig,
   AgentExecutionResourcesConfig,
-  AgentLoadedToolsConfig,
   AgentLoopConfig,
   AgentPiCompactionConfig,
   AgentPresetsConfig,

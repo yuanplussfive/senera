@@ -12,6 +12,7 @@ import { AgentMemoryService, type AgentMemoryLearningSink } from "../Memory/Agen
 import type { AgentMemorySourceRepository } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentPiSessionMutationPort } from "../Pi/AgentPiSessionMutationService.js";
+import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentSession } from "./AgentSession.js";
 import { AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
@@ -51,6 +52,7 @@ export interface AgentSessionManagerOptions {
   runResources?: readonly AgentSessionRunResource[];
   sessionResources?: readonly AgentSessionResource[];
   piSessions?: AgentPiActiveSessionRegistry;
+  piDiagnostics?: AgentPiDiagnosticSink;
   piSessionMutations?: AgentPiSessionMutationPort;
   runControl: AgentSessionRunControlPolicy;
   artifactSessionCleanup?: {
@@ -98,6 +100,7 @@ export class AgentSessionManager {
       logger: options.logger,
       runResources: options.runResources,
       piSessions: options.piSessions,
+      piDiagnostics: options.piDiagnostics,
       runControl: options.runControl,
       loopFactory: options.loopFactory,
     });
@@ -125,7 +128,7 @@ export class AgentSessionManager {
     await this.sessionAdmissions.run(request.sessionId ?? createOpaqueId("automatic_session_creation"), async () => {
       await this.ready();
       const opened = this.store.open(request.sessionId);
-      await this.recoverSessionHistoryMutation(opened.session.id, request.onEvent);
+      await this.recoverSessionHistoryMutation(opened.session.id);
 
       await emitAgentEvent(
         request.onEvent,
@@ -150,7 +153,7 @@ export class AgentSessionManager {
         found: async ({ session }) => {
           let closed: AgentSessionCloseResult;
           try {
-            closed = await this.cleanupAndDeleteSession(session, request.onEvent);
+            closed = await this.cleanupAndDeleteSession(session);
           } catch (error) {
             this.persistSessionCloseFailure(session, error);
             throw error;
@@ -167,13 +170,12 @@ export class AgentSessionManager {
     });
   }
 
-  private async releaseSessionResources(session: AgentSession, onEvent?: AgentEventSink): Promise<void> {
+  private async releaseSessionResources(session: AgentSession): Promise<void> {
     const piSession = resolveAgentPiSessionLifecycle(session.metadata);
     const piReset = piSession.initialized
       ? this.options.piSessionMutations?.reset({
           sessionId: session.id,
           modelProviderId: piSession.modelProviderId,
-          onEvent,
         })
       : undefined;
     const [piOutcome, resourceFailures] = await Promise.all([
@@ -201,12 +203,9 @@ export class AgentSessionManager {
     if (failures.length > 1) throw new AggregateError(failures, `Session ${session.id} cleanup failed.`);
   }
 
-  private async cleanupAndDeleteSession(
-    session: AgentSession,
-    onEvent?: AgentEventSink,
-  ): Promise<AgentSessionCloseResult> {
+  private async cleanupAndDeleteSession(session: AgentSession): Promise<AgentSessionCloseResult> {
     await this.runCoordinator.discardActiveRun(session);
-    await this.releaseSessionResources(session, onEvent);
+    await this.releaseSessionResources(session);
     await this.options.artifactSessionCleanup?.removeSessionArtifacts(session.id);
     this.memory.deleteSession(session.id);
     this.regenerationLineages.delete(session.id);
@@ -302,7 +301,7 @@ export class AgentSessionManager {
         await emitAgentEvent(request.onEvent, this.eventFactory.notFound(sessionId, "session.message"));
       },
       found: async ({ session }) => {
-        await this.recoverSessionHistoryMutation(session.id, request.onEvent);
+        await this.recoverSessionHistoryMutation(session.id);
         const gate = this.runCoordinator.assertAvailable(session);
         await matchByKind(gate, {
           available: ({ current }) => {
@@ -363,7 +362,7 @@ export class AgentSessionManager {
   async replayHistory(request: { sessionId: string; refresh?: boolean; onEvent?: AgentEventSink }): Promise<void> {
     await this.sessionAdmissions.run(request.sessionId, async () => {
       await this.ready();
-      await this.recoverSessionHistoryMutation(request.sessionId, request.onEvent);
+      await this.recoverSessionHistoryMutation(request.sessionId);
       await this.historyReplay.replay(request);
     });
   }
@@ -424,7 +423,6 @@ export class AgentSessionManager {
           session: lookup.session,
           fromRequestId: request.requestId,
           preparation,
-          onEvent: request.onEvent,
         });
       }
       this.deleteMutationMemory(truncated);
@@ -478,7 +476,6 @@ export class AgentSessionManager {
               session: lookup.session,
               fromRequestId: truncationRequestId,
               preparation,
-              onEvent: request.onEvent,
             })
           : undefined;
       this.deleteMutationMemory(mutationResult);
@@ -522,7 +519,7 @@ export class AgentSessionManager {
     onEvent?: AgentEventSink;
   }): Promise<void> {
     await this.ready();
-    await this.recoverSessionHistoryMutation(request.sourceSessionId, request.onEvent);
+    await this.recoverSessionHistoryMutation(request.sourceSessionId);
     const result = this.store.fork(request);
     switch (result.kind) {
       case "source_missing":
@@ -639,8 +636,8 @@ export class AgentSessionManager {
     }
   }
 
-  private async recoverSessionHistoryMutation(sessionId: string, onEvent?: AgentEventSink): Promise<void> {
-    this.deleteMutationMemory(await this.historyMutations.recoverSession(sessionId, onEvent));
+  private async recoverSessionHistoryMutation(sessionId: string): Promise<void> {
+    this.deleteMutationMemory(await this.historyMutations.recoverSession(sessionId));
   }
 
   private deleteMutationMemory(result: AgentSessionHistoryMutationResult | undefined): void {

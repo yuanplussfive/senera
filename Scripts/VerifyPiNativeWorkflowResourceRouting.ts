@@ -16,7 +16,6 @@ import {
 import type { AgentActivatedSkill } from "../Source/AgentSystem/Skills/AgentSkillActivation.js";
 import type { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import type { LoadedToolsState } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
-import type { ResolvedAgentLoopConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const route = routeFixture();
 const turnUnderstanding: TurnUnderstanding = {
@@ -48,9 +47,6 @@ const handler = new AgentPlanningCommandHandler({
       return input;
     },
   } as unknown as AgentActionPlannerContextBuilder,
-  agentLoopConfig: {
-    LoadedTools: "dynamic",
-  } as ResolvedAgentLoopConfig,
 });
 
 const result = await handler.prepareInteraction(routeCommand());
@@ -122,8 +118,8 @@ function fakeRuntime(): AgentSystemRuntime {
         }),
       },
       pi: {
-        planningToolCards: ({ visibleToolNames }: { visibleToolNames?: "all" | readonly string[] } = {}) =>
-          (visibleToolNames === "all" ? [] : (visibleToolNames ?? [])).map((name) => ({
+        planningToolCards: ({ visibleToolNames }: { visibleToolNames?: readonly string[] } = {}) =>
+          (visibleToolNames ?? []).map((name) => ({
             name,
             description: `${name} verification tool`,
             parameters: { type: "object", properties: {} },
@@ -148,7 +144,6 @@ function fakeRuntime(): AgentSystemRuntime {
       retrieval: {
         resolvePlannedLoadedTools: (options: ToolResolutionCall) => {
           observed.resolveCalls.push(options);
-          if (options.currentLoadedTools === "all") return "all";
           return uniqueTools(["SystemTool", ...(options.currentLoadedTools ?? []), ...(options.preferredTools ?? [])]);
         },
         rememberAutoSearch: (_requestId: string, _query: string, loadedTools: LoadedToolsState) => {
@@ -220,7 +215,6 @@ function workflowSkillFixture(): AgentActivatedSkill {
 }
 
 function rootCommandFixture(loadedToolNames: LoadedToolsState, preferredTools: readonly string[]): AgentRootCommand {
-  const toolNames = loadedToolNames === "all" ? [] : loadedToolNames;
   return {
     authority: "senera_runtime_root",
     action: "use_tools",
@@ -228,7 +222,7 @@ function rootCommandFixture(loadedToolNames: LoadedToolsState, preferredTools: r
     toolAccess: "restricted",
     objective: "继续全面优化拓展代码质量",
     instruction: "Implementation work should run through Pi tool loop.",
-    allowedTools: toolNames,
+    allowedTools: loadedToolNames,
     forbiddenOutputs: ["unregistered_tools"],
     insufficiencyPolicy: "缺少工具能力时说明阻塞。",
     preferredTools: [...preferredTools],
@@ -254,6 +248,5 @@ function uniqueTools(values: readonly string[]): string[] {
 
 function assertToolSet(actual: LoadedToolsState | undefined, expected: readonly string[]): void {
   assert.notEqual(actual, undefined);
-  assert.notEqual(actual, "all");
   assert.deepEqual(new Set(actual), new Set(expected));
 }

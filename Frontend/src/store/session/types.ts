@@ -8,6 +8,7 @@ export type {
   MessageRole,
   ApprovalRunRecord,
   InteractionInputRunRecord,
+  RunActivityRecord,
   RunRecord,
   SessionRecord,
   StoreState,

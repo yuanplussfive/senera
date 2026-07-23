@@ -7,6 +7,7 @@ import { readConfigFormDocument } from "./AgentConfigFormDocument.js";
 export function projectAgentConfigForm(config: AgentSystemConfig): AgentConfigFormSnapshot {
   const document = readConfigFormDocument();
   const source = config as unknown as Record<string, unknown>;
+  const inheritedSource = (config.Defaults ?? {}) as Record<string, unknown>;
   const effectiveSource = projectEffectiveConfig(config) as unknown as Record<string, unknown>;
 
   return {
@@ -21,6 +22,7 @@ export function projectAgentConfigForm(config: AgentSystemConfig): AgentConfigFo
               field,
               section: section.id,
               source,
+              inheritedSource,
               effectiveSource,
               basePath: [],
             }),

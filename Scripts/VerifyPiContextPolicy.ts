@@ -56,7 +56,6 @@ function verifyHistoricalEvidenceAndRetrievalTools(): void {
       registeredToolFixture("ArtifactReader", AgentHostCapabilityNames.ArtifactMemoryRead),
       registeredToolFixture("MemoryLookup", AgentHostCapabilityNames.MemoryRecall),
     ],
-    visibleToolNames: "all",
     createdAt: "2026-01-01T00:00:01.000Z",
   });
 
@@ -131,7 +130,6 @@ function verifyEmptyEvidenceDoesNotInjectPolicy(): void {
     model: "test-model",
     conversationEntries: [],
     registeredTools: [registeredToolFixture("MemoryLookup", AgentHostCapabilityNames.MemoryRecall)],
-    visibleToolNames: "all",
   });
 
   assert.equal(countPolicyMessages(policy.apply([userMessage("普通问题")], frame)), 0);

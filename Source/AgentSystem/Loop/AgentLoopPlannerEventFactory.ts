@@ -17,7 +17,7 @@ export class AgentLoopPlannerEventFactory {
     requestId: string,
     step: number,
     plan: AgentActionPlanResult,
-    loadedToolNames: "all" | string[],
+    loadedToolNames: string[],
     rootCommand?: AgentRootCommand,
     activeSkills: readonly AgentActivatedSkill[] = [],
   ): AgentDomainEvent[] {
@@ -63,7 +63,7 @@ export class AgentLoopPlannerEventFactory {
     requestId: string,
     step: number,
     route: AgentInteractionRouteResult,
-    loadedToolNames: "all" | string[],
+    loadedToolNames: string[],
     rootCommand?: AgentRootCommand,
   ): AgentDomainEvent[] {
     return [
@@ -75,7 +75,7 @@ export class AgentLoopPlannerEventFactory {
           objective: route.objective,
           preferredTools: [...route.preferredTools],
           discoveryQueries: [...route.discoveryQueries],
-          loadedTools: loadedToolNames === "all" ? "all" : [...loadedToolNames],
+          loadedTools: [...loadedToolNames],
           expectedOutputMode: rootCommand?.outputMode,
         },
       },

@@ -10,7 +10,6 @@ export interface AgentServerEventLoggerOptions {
 const HiddenCompactEvents = new Set<string>([AgentEventKinds.ModelDelta, AgentEventKinds.ToolCallResultDetail]);
 
 const FullPayloadEvents = new Set<string>([
-  AgentEventKinds.PiTrace,
   AgentEventKinds.RunFailed,
   AgentEventKinds.RequestInvalid,
   AgentEventKinds.ConfigFailed,

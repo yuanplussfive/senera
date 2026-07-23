@@ -45,7 +45,7 @@ export interface AgentPromptContext {
 }
 
 export interface AgentPromptContextOptions {
-  loadedToolNames?: string[] | "all";
+  loadedToolNames?: string[];
   toolSections?: AgentPromptSectionOptions;
   summarySection?: string;
   triggerSection?: string;
@@ -64,5 +64,5 @@ export interface AgentPromptSectionOptions {
 
 export interface AgentPromptRootCommandOptions {
   decision: AgentActionDecision;
-  loadedToolNames: "all" | readonly string[];
+  loadedToolNames: readonly string[];
 }

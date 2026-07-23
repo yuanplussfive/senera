@@ -7,6 +7,7 @@ import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentEx
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import { createAgentRuntimePreparationFingerprint } from "./AgentRuntimePreparationFingerprint.js";
 import type { AgentMcpRuntimeModuleResolver } from "../Mcp/AgentMcpRuntimeModuleResolver.js";
+import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -25,6 +26,7 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   snapshot: AgentSystemRuntimeCacheSnapshot;
   modelProviderId?: string;
   logger?: AgentLogger;
+  piDiagnostics?: AgentPiDiagnosticSink;
   approvalRuntime?: AgentApprovalRuntime;
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
@@ -45,6 +47,7 @@ export interface AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRunt
   configPath: string;
   snapshot: () => AgentSystemRuntimeCacheSnapshot;
   logger?: AgentLogger;
+  piDiagnostics?: AgentPiDiagnosticSink;
   approvalRuntime?: AgentApprovalRuntime;
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
@@ -118,6 +121,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
         snapshot,
         modelProviderId,
         logger: this.options.logger,
+        piDiagnostics: this.options.piDiagnostics,
         approvalRuntime: this.options.approvalRuntime,
         interactionInput: this.options.interactionInput,
         piSessionRegistry: this.options.piSessionRegistry,
@@ -133,6 +137,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       config: snapshot.config,
       modelProviderId,
       logger: this.options.logger,
+      piDiagnostics: this.options.piDiagnostics,
       approvalRuntime: this.options.approvalRuntime,
       interactionInput: this.options.interactionInput,
       piSessionRegistry: this.options.piSessionRegistry,

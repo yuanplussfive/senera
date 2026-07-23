@@ -10,6 +10,7 @@ label = "启用状态"
 path = [ "senera", "enabled" ]
 label = "启用插件"
 type = "boolean"
+required = true
 
 [[form.sections]]
 id = "vision"
@@ -70,6 +71,7 @@ options = [ "Responses", "ChatCompletions", "ClaudeMessages", "GoogleGenerateCon
 path = [ "vision", "provider", "baseUrl" ]
 label = "服务地址"
 type = "string"
+required = true
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "apiKey" ]
@@ -86,6 +88,7 @@ type = "string"
 path = [ "vision", "provider", "model" ]
 label = "模型"
 type = "string"
+required = true
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "temperature" ]

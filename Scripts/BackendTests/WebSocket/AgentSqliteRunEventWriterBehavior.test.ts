@@ -143,9 +143,9 @@ function createEvent(index: number): AgentEventEnvelope {
   return {
     eventId: `event-batch-${index}`,
     channel: AgentEventChannels.AgentEvent,
-    kind: AgentEventKinds.PiTrace,
+    kind: AgentEventKinds.ModelStarted,
     layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Run,
+    phase: AgentEventPhases.Model,
     sessionId: "session-batched-events",
     requestId: "request-batched-events",
     timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),

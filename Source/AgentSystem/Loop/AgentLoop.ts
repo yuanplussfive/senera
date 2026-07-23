@@ -14,7 +14,6 @@ import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
 import type { AgentCompletedRunResult } from "../Runtime/AgentExecutionProjector.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { createOpaqueId } from "../Core/AgentIds.js";
-import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import { AgentModelUsageLedger, withAgentModelUsageLedger } from "../ModelEndpoints/AgentModelUsage.js";
 import {
   createAgentTurnPreparationSnapshot,
@@ -25,7 +24,6 @@ import {
 export interface AgentLoopOptions extends AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
   model: AgentLanguageModel;
-  agentLoopConfig?: ResolvedAgentLoopConfig;
   preparationFingerprint?: string;
 }
 
@@ -35,7 +33,7 @@ export interface AgentRunRequest {
   input: string;
   messages?: AgentLanguageModelMessage[];
   conversationEntries?: AgentConversationEntry[];
-  loadedToolNames?: "all" | string[];
+  loadedToolNames?: string[];
   systemPromptPreamble?: string;
   onEvent?: AgentEventSink;
   signal?: AbortSignal;
@@ -48,17 +46,12 @@ export interface AgentRunRequest {
 }
 
 export class AgentLoop {
-  private readonly agentLoopConfig: ResolvedAgentLoopConfig;
   private readonly stateMachine: AgentLoopStateMachine;
   private readonly commandExecutor: AgentLoopCommandExecutor;
 
   constructor(private readonly options: AgentLoopOptions) {
-    this.agentLoopConfig = options.agentLoopConfig ?? options.runtime.agentLoopConfig;
     this.stateMachine = new AgentLoopStateMachine();
-    this.commandExecutor = new AgentLoopCommandExecutor({
-      ...options,
-      agentLoopConfig: this.agentLoopConfig,
-    });
+    this.commandExecutor = new AgentLoopCommandExecutor(options);
   }
 
   async run(request: AgentRunRequest): Promise<AgentCompletedRunResult> {
@@ -83,11 +76,7 @@ export class AgentLoop {
     }
 
     const loadedToolNames =
-      request.loadedToolNames ??
-      this.options.runtime.services.retrieval.resolveInitialLoadedTools(
-        request.input,
-        this.agentLoopConfig.LoadedTools,
-      );
+      request.loadedToolNames ?? this.options.runtime.services.retrieval.resolveInitialLoadedTools(request.input);
     const preparation = isAgentTurnPreparationReusable(request.preparation, {
       runtimeFingerprint: this.options.preparationFingerprint,
       userInput: request.input,

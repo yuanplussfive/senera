@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import type { TestSuitePolicy } from "./TestCoveragePolicy.js";
+export { resolveWorkspaceRoot } from "./WorkspaceRoot.js";
 
 const ignoredDirectories = new Set(["node_modules", "dist", "build"]);
 
@@ -30,18 +31,6 @@ export function verifyTestGovernance(options: TestGovernanceOptions): number {
   assertCoveragePolicy(options.policy);
 
   return testFiles.length;
-}
-
-export function resolveWorkspaceRoot(): string {
-  const cwd = process.cwd();
-  if (existsSync(path.join(cwd, "Frontend", "src")) && existsSync(path.join(cwd, "Source"))) {
-    return cwd;
-  }
-  const parent = path.resolve(cwd, "..");
-  if (existsSync(path.join(parent, "Frontend", "src")) && existsSync(path.join(parent, "Source"))) {
-    return parent;
-  }
-  return cwd;
 }
 
 function assertRequiredLayers(

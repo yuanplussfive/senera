@@ -8,11 +8,32 @@ import {
 import { projectAgentRunEventForHistory } from "../../../Source/AgentSystem/Events/AgentRunEventHistoryPolicy.js";
 
 describe("run event history policy", () => {
-  test("persists Pi traces as lightweight spans instead of raw provider payloads", () => {
+  test("does not persist transient run activity", () => {
     const projected = projectAgentRunEventForHistory({
       channel: AgentEventChannels.AgentEvent,
-      kind: AgentEventKinds.PiTrace,
+      kind: AgentEventKinds.RunActivityChanged,
       layer: AgentEventLayers.Progress,
+      phase: AgentEventPhases.Run,
+      sequence: 1,
+      timestamp: "2026-07-17T00:00:00.000Z",
+      sessionId: "session-1",
+      requestId: "request-1",
+      step: 1,
+      data: {
+        activityId: "activity-1",
+        activity: "running_agent_turn",
+        state: "started",
+      },
+    });
+
+    expect(projected).toBeUndefined();
+  });
+
+  test("persists model completion metadata without duplicating response text", () => {
+    const projected = projectAgentRunEventForHistory({
+      channel: AgentEventChannels.AgentEvent,
+      kind: AgentEventKinds.ModelCompleted,
+      layer: AgentEventLayers.Snapshot,
       phase: AgentEventPhases.Model,
       sequence: 1,
       timestamp: "2026-07-17T00:00:00.000Z",
@@ -20,30 +41,16 @@ describe("run event history policy", () => {
       requestId: "request-1",
       step: 1,
       data: {
-        source: "proxy",
-        eventType: "provider_response",
-        summary: "kind=final_answer",
-        payload: {
-          durationMs: 1250,
-          model: "fast-planner",
-          callId: "call-1",
-          error: { message: "provider warning", stack: "x".repeat(100_000) },
-          transcript: "x".repeat(4_000_000),
-          messages: Array.from({ length: 100 }, () => ({ content: "large" })),
-        },
+        text: "x".repeat(4_000_000),
+        provider: { endpointId: "provider-1", model: "fast-planner" },
+        usage: { inputTokens: 120, outputTokens: 30, totalTokens: 150 },
       },
     });
 
     expect(projected?.data).toEqual({
-      source: "proxy",
-      eventType: "provider_response",
-      summary: "kind=final_answer",
-      payload: {
-        durationMs: 1250,
-        model: "fast-planner",
-        callId: "call-1",
-        error: "provider warning",
-      },
+      text: "",
+      provider: { endpointId: "provider-1", model: "fast-planner" },
+      usage: { inputTokens: 120, outputTokens: 30, totalTokens: 150 },
     });
     expect(JSON.stringify(projected).length).toBeLessThan(1_000);
   });

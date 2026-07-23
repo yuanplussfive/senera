@@ -29,7 +29,7 @@ export class AgentLoopEventFactory {
     requestId: string,
     step: number,
     plan: AgentActionPlanResult,
-    loadedToolNames: "all" | string[],
+    loadedToolNames: string[],
     rootCommand?: AgentRootCommand,
     activeSkills: readonly AgentActivatedSkill[] = [],
   ): AgentDomainEvent[] {
@@ -40,7 +40,7 @@ export class AgentLoopEventFactory {
     requestId: string,
     step: number,
     route: AgentInteractionRouteResult,
-    loadedToolNames: "all" | string[],
+    loadedToolNames: string[],
     rootCommand?: AgentRootCommand,
   ): AgentDomainEvent[] {
     return this.plannerEvents.interactionRouted(requestId, step, route, loadedToolNames, rootCommand);

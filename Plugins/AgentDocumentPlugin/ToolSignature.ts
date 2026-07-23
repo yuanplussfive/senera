@@ -1,14 +1,15 @@
 import type { McpUploadResource } from "@senera/tool-plugin-sdk";
+import type { DocumentToolMode } from "./DocumentModeContract.js";
 
 export type DocumentToolArguments = {
   // Opaque upload handle copied from an attachment, for example "senera://upload/upl_0123abcd".
   uploadUri: string;
 
-  // Optional processing mode. If omitted, the plugin TOML defaultMode is used.
+  // Optional processing mode. If omitted, auto is used.
   // auto: probe first and extract text only when a configured parser matches.
   // probe: return registration/probe facts only.
   // extract: require text extraction.
-  mode?: string;
+  mode?: DocumentToolMode;
 
   // Host-authorized upload descriptor populated from the declared resource binding.
   resources?: {

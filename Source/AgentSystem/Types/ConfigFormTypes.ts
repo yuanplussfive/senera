@@ -4,6 +4,8 @@ export type AgentConfigFormFieldOptionValue = string | number | boolean;
 
 export type AgentConfigFormFieldLevel = "basic" | "advanced" | "internal";
 
+export type AgentConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
+
 export interface AgentConfigFormSnapshot {
   version: 1;
   sections: AgentConfigFormSection[];
@@ -28,6 +30,8 @@ export interface AgentConfigFormField {
   value: unknown;
   effectiveValue: unknown;
   configured: boolean;
+  missing: boolean;
+  valueSource: AgentConfigFormValueSource;
   description?: string;
   placeholder?: string;
   options?: AgentConfigFormFieldOptionValue[];
@@ -39,7 +43,7 @@ export interface AgentConfigFormField {
   step?: number;
   secret?: boolean;
   multiline?: boolean;
-  required?: boolean;
+  required: boolean;
   addLabel?: string;
   itemLabelPath?: string[];
   itemFields?: AgentConfigFormField[];

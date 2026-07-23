@@ -39,7 +39,7 @@ export interface AgentBamlToolRiskAuditPromptInput {
     readonly toolCallId?: string;
     readonly toolName: string;
     readonly arguments: Record<string, unknown>;
-    readonly visibleToolNames?: "all" | readonly string[];
+    readonly visibleToolNames?: readonly string[];
   };
   readonly tool?: AgentToolApprovalPolicyInput["tool"];
   readonly runtimeContext?: unknown;

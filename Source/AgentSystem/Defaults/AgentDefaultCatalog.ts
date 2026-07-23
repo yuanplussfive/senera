@@ -88,7 +88,6 @@ export const AgentDefaults = {
     Images: [SeneraMicrosandboxDefaults.image],
   },
   AgentLoop: {
-    LoadedTools: "dynamic",
     PiTurnLeaseTimeoutSeconds: 120,
     PiTurnLeaseTimeoutMs: 120000,
     RunSettlementTimeoutSeconds: 15,
@@ -115,11 +114,10 @@ export const AgentDefaults = {
       Model: "text-embedding-3-large",
       Dimensions: -1,
       BatchSize: 64,
-      InputMaxChars: 12000,
+      InputMaxChars: -1,
       ScoreThreshold: 0,
     },
     Memory: {
-      Kind: "sqlite",
       DatabasePath: ".senera/ToolSearchLearning.sqlite",
       MaxEpisodes: 5000,
       HalfLifeDays: 30,
@@ -153,7 +151,7 @@ export const AgentDefaults = {
       MaxNetworkRetries: 1,
       Dimensions: -1,
       BatchSize: 64,
-      InputMaxChars: 12000,
+      InputMaxChars: -1,
     },
     Rerank: {
       Enabled: true,
@@ -162,8 +160,8 @@ export const AgentDefaults = {
       TimeoutSeconds: 20,
       MaxNetworkRetries: 1,
       EndpointPath: "/rerank",
-      CandidateLimit: 32,
-      TopK: 16,
+      CandidateLimit: -1,
+      TopK: -1,
     },
   },
   ToolLearning: {

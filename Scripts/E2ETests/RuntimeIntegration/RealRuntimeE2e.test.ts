@@ -159,17 +159,9 @@ describe("real runtime E2E", () => {
         afterSequence: regeneratedAnswer.sequence,
       },
     );
-    const leaseSources = harness.client
-      .snapshot()
-      .filter(
-        (event) => event.kind === AgentEventKinds.PiTrace && readData(event).eventType === "core.turn.lease.completed",
-      )
-      .map((event) => readRecord(readData(event).payload)?.sessionOpenSource);
-
     expect(harness.modelServer.count("prepareInteraction")).toBe(2);
     expect(harness.modelServer.count("selectPiAction")).toBe(0);
     expect(harness.modelServer.count("generatePiFinalAnswer")).toBe(3);
-    expect(leaseSources).toEqual(["session_store", "harness_pool", "harness_pool"]);
   }, 30_000);
 
   test("runs BAML planning, Pi proxy model streaming, a host tool, and persisted session replay", async () => {
@@ -201,20 +193,6 @@ describe("real runtime E2E", () => {
       timeoutMs: 20_000,
       afterSequence: finalAnswer.sequence,
     });
-    const modelTiming = await harness.client.waitForEvent(
-      AgentEventKinds.PiTrace,
-      (event) => {
-        const data = readData(event);
-        const payload = readRecord(data.payload);
-        return (
-          event.requestId === requestId &&
-          data.eventType === "model_timing" &&
-          payload?.stage === "SelectPiAction" &&
-          typeof payload.firstTokenMs === "number"
-        );
-      },
-      { timeoutMs: 20_000 },
-    );
     expect(harness.modelServer.stages).toEqual(expect.arrayContaining(["prepareInteraction", "selectPiAction"]));
     expect(harness.modelServer.count("selectPiAction")).toBe(1);
     expect(harness.modelServer.count("generatePiFinalAnswer")).toBe(1);
@@ -231,14 +209,9 @@ describe("real runtime E2E", () => {
     expect(JSON.stringify(history.data)).toContain('"stage":"PrepareInteraction"');
     expect(JSON.stringify(history.data)).toContain('"stage":"AuditToolRisk"');
     expect(JSON.stringify(history.data)).toContain('"stage":"GeneratePiFinalAnswer"');
-    expect(readRecord(readData(modelTiming).payload)?.firstTokenMs).toEqual(expect.any(Number));
   }, 30_000);
 });
 
 function readData(event: { data: unknown }): Record<string, unknown> {
   return event.data as Record<string, unknown>;
-}
-
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }

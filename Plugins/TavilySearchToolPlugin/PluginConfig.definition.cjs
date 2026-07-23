@@ -30,13 +30,20 @@ const configuration = definePluginConfiguration({
       {
         id: "senera",
         label: "启用状态",
-        fields: [{ path: ["senera", "enabled"], label: "启用插件", type: "boolean" }],
+        fields: [{ path: ["senera", "enabled"], label: "启用插件", type: "boolean", required: true }],
       },
       {
         id: "tavily",
         label: "网页搜索参数",
         fields: [
-          { path: ["tavily", "api_keys"], label: "接口密钥", type: "array", itemType: "string", secret: true },
+          {
+            path: ["tavily", "api_keys"],
+            label: "接口密钥",
+            type: "array",
+            itemType: "string",
+            secret: true,
+            required: true,
+          },
           { path: ["tavily", "base_url"], label: "服务地址", type: "string" },
           { path: ["tavily", "timeout_seconds"], label: "请求超时", type: "number", min: 1, max: 300, step: 1 },
           { path: ["tavily", "state_dir"], label: "状态目录", type: "string" },

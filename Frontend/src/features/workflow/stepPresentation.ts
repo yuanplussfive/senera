@@ -13,7 +13,6 @@ export const stepKindLabels = {
   understand: "workflow.step.kind.understand",
   prompt: "workflow.step.kind.prompt",
   model: "workflow.step.kind.model",
-  pi: "workflow.step.kind.pi",
   decision: "workflow.step.kind.decision",
   tool: "workflow.step.kind.tool",
   retry: "workflow.step.kind.retry",
@@ -92,12 +91,6 @@ export function readStepAccent(step: Pick<TimelineStep, "kind" | "status">): Ste
         border: "border-ink-200/70",
         iconBg: "bg-ink-900",
         iconFg: "text-paper-50",
-      };
-    case "pi":
-      return {
-        border: "border-sky-100",
-        iconBg: "bg-sky-50",
-        iconFg: "text-sky-600",
       };
     case "decision":
       return {

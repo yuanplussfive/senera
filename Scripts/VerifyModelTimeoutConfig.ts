@@ -118,6 +118,8 @@ assert.equal(defaulted.ProviderId, "test-endpoint");
 assert.equal(defaulted.ApiKey, "test");
 assert.equal(defaulted.Kind, "OpenAICompatible");
 assert.equal(defaulted.Temperature, 0);
+assert.equal(defaulted.ContextWindowTokens, -1);
+assert.equal(defaulted.MaxModelOutputTokens, -1);
 assert.equal(defaulted.MaxOutputTokens, -1);
 assert.equal(defaulted.Stream, true);
 assert.equal(defaulted.TimeoutMs, 480000);

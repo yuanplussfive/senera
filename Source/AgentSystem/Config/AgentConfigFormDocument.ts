@@ -28,7 +28,6 @@ type ConfigFormFieldSchemaInput = {
   step?: number;
   secret?: boolean;
   multiline?: boolean;
-  required?: boolean;
   level?: z.infer<typeof ConfigFormFieldLevelSchema>;
   addLabel?: string;
   itemLabelPath?: string[];
@@ -57,7 +56,6 @@ const ConfigFormFieldSchema: z.ZodType<ConfigFormFieldSchemaInput> = z.lazy(() =
       step: z.number().optional(),
       secret: z.boolean().optional(),
       multiline: z.boolean().optional(),
-      required: z.boolean().optional(),
       level: ConfigFormFieldLevelSchema.optional(),
       addLabel: z.string().min(1).optional(),
       itemLabelPath: z.array(z.string().min(1)).optional(),

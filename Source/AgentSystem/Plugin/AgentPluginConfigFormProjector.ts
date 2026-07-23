@@ -100,7 +100,7 @@ function projectSchemaField(
     step: schemaField.step,
     secret: schemaField.secret,
     multiline: schemaField.multiline,
-    required: schemaField.required ?? true,
+    required: schemaField.type === "boolean" || schemaField.required === true,
   };
 }
 
@@ -109,7 +109,7 @@ function validatePluginConfigField(field: LoadedPluginConfigField): string[] {
   const label = field.label;
 
   if (field.value === undefined) {
-    return field.required === false ? [] : [agentErrorMessage("plugin.configFieldRequired", { label })];
+    return field.required ? [agentErrorMessage("plugin.configFieldRequired", { label })] : [];
   }
 
   if (field.type === "boolean" && typeof field.value !== "boolean") {

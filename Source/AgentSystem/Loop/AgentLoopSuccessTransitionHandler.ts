@@ -64,7 +64,7 @@ export class AgentLoopSuccessTransitionHandler {
           usage: entry.usage,
           conversationEntries: [...state.conversationEntries, ...entry.conversationEntries],
           turnUnderstanding: state.turnUnderstanding,
-          loadedToolNames: state.loadedToolNames === "all" ? "all" : [...state.loadedToolNames],
+          loadedToolNames: [...state.loadedToolNames],
           stepTraces: [...state.stepTraces, ...entry.stepTraces],
         },
       },

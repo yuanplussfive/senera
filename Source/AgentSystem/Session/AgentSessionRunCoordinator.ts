@@ -12,7 +12,11 @@ import { type AgentMemoryService } from "../Memory/AgentMemoryService.js";
 import type { AgentMemoryCompletedTurnInput } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentPiSession } from "../Pi/AgentPiSubstrate.js";
-import { createPiTraceEvent } from "../Pi/AgentPiTraceProjector.js";
+import {
+  AgentPiDiagnosticSources,
+  emitAgentPiDiagnostic,
+  type AgentPiDiagnosticSink,
+} from "../Pi/AgentPiDiagnostics.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
 import {
@@ -48,6 +52,7 @@ export interface AgentSessionRunCoordinatorOptions {
   logger?: AgentLogger;
   runResources?: readonly AgentSessionRunResource[];
   piSessions?: AgentPiActiveSessionRegistry;
+  piDiagnostics?: AgentPiDiagnosticSink;
   runControl: AgentSessionRunControlPolicy;
   loopFactory: (modelProviderId?: string) => AgentLoopRunner;
 }
@@ -437,22 +442,21 @@ export class AgentSessionRunCoordinator {
     request.session.updatedAt = timestamp;
     this.options.store.persistMetadata(request.session);
 
-    await emitAgentEvent(
-      request.onEvent ?? run.onEvent,
-      createPiTraceEvent({
+    await emitAgentPiDiagnostic(this.options.piDiagnostics, {
+      context: {
+        sessionId: request.session.id,
         requestId: run.requestId,
         step: handle.step,
-        source: "substrate",
-        eventType: `runtime_queue.${ActiveRunQueueEventTypes[queueMode]}.accepted`,
-        payload: {
-          sessionId: request.session.id,
-          queueMode,
-          steeringRequestId: requestId,
-          inputChars: request.input.length,
-          attachmentCount: request.attachments?.length ?? 0,
-        },
-      }),
-    );
+      },
+      source: AgentPiDiagnosticSources.Substrate,
+      name: `runtime_queue.${ActiveRunQueueEventTypes[queueMode]}.accepted`,
+      details: {
+        queueMode,
+        steeringRequestId: requestId,
+        inputChars: request.input.length,
+        attachmentCount: request.attachments?.length ?? 0,
+      },
+    });
     return true;
   }
 

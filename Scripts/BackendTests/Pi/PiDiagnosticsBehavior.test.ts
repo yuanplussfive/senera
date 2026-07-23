@@ -1,14 +1,16 @@
 import { describe, expect, test } from "vitest";
-import { createPiTraceEvent } from "../../../Source/AgentSystem/Pi/AgentPiTraceProjector.js";
+import {
+  AgentPiDiagnosticSources,
+  createAgentPiDiagnosticEvent,
+} from "../../../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 
-describe("Pi trace projection", () => {
-  test("preserves token timing and usage metrics while redacting authentication tokens", () => {
-    const event = createPiTraceEvent({
-      requestId: "request-a",
-      step: 1,
-      source: "proxy",
-      eventType: "model_timing",
-      payload: {
+describe("Pi diagnostics", () => {
+  test("preserves timing and usage metrics while redacting authentication tokens", () => {
+    const event = createAgentPiDiagnosticEvent({
+      context: { requestId: "request-a", step: 1 },
+      source: AgentPiDiagnosticSources.Proxy,
+      name: "model_timing",
+      details: {
         firstTokenMs: 42,
         inputTokens: 120,
         outputTokens: 30,
@@ -19,8 +21,7 @@ describe("Pi trace projection", () => {
       },
     });
 
-    const data = event.data as { payload: unknown; summary: string };
-    expect(data.payload).toEqual({
+    expect(event.details).toEqual({
       firstTokenMs: 42,
       inputTokens: 120,
       outputTokens: 30,
@@ -31,7 +32,7 @@ describe("Pi trace projection", () => {
     });
     expect(JSON.stringify(event)).not.toContain("access-secret");
     expect(JSON.stringify(event)).not.toContain("api-secret");
-    expect(data.summary).toContain("firstTokenMs=42");
-    expect(data.summary).toContain("accessToken=[redacted]");
+    expect(event.summary).toContain("firstTokenMs=42");
+    expect(event.summary).toContain("accessToken=[redacted]");
   });
 });

@@ -79,7 +79,7 @@ const configuration = definePluginConfiguration({
       {
         id: "senera",
         label: "启用状态",
-        fields: [{ path: ["senera", "enabled"], label: "启用插件", type: "boolean" }],
+        fields: [{ path: ["senera", "enabled"], label: "启用插件", type: "boolean", required: true }],
       },
       {
         id: "vision",
@@ -99,10 +99,15 @@ const configuration = definePluginConfiguration({
           { path: ["vision", "provider", "title"], label: "供应商名称", type: "string" },
           { path: ["vision", "provider", "kind"], label: "供应商类型", type: "string", options: ["OpenAICompatible"] },
           { path: ["vision", "provider", "endpoint"], label: "接口协议", type: "string", options: EndpointNames },
-          { path: ["vision", "provider", "baseUrl"], label: "服务地址", type: "string" },
+          {
+            path: ["vision", "provider", "baseUrl"],
+            label: "服务地址",
+            type: "string",
+            required: true,
+          },
           { path: ["vision", "provider", "apiKey"], label: "接口密钥", type: "string", secret: true },
           { path: ["vision", "provider", "apiVersion"], label: "接口版本", type: "string" },
-          { path: ["vision", "provider", "model"], label: "模型", type: "string" },
+          { path: ["vision", "provider", "model"], label: "模型", type: "string", required: true },
           { path: ["vision", "provider", "temperature"], label: "温度", type: "number", min: 0, max: 2, step: 0.1 },
           {
             path: ["vision", "provider", "maxOutputTokens"],

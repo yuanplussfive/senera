@@ -37,6 +37,7 @@ export const AgentEventKinds = {
   SessionTruncated: "session.truncated",
   SessionForked: "session.forked",
   RunStarted: "run.started",
+  RunActivityChanged: "run.activity.changed",
   RunCancellationProgress: "run.cancellation.progress",
   PromptSummary: "prompt.summary",
   ActionPlannerStageStarted: "action.planner.stage.started",
@@ -47,7 +48,6 @@ export const AgentEventKinds = {
   ModelStarted: "model.started",
   ModelDelta: "model.delta",
   ModelCompleted: "model.completed",
-  PiTrace: "pi.trace",
   ToolCallsPlanned: "tool.calls.planned",
   ToolCallStarted: "tool.call.started",
   ToolCallOutput: "tool.call.output",
@@ -153,6 +153,10 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Run,
   },
+  [AgentEventKinds.RunActivityChanged]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Run,
+  },
   [AgentEventKinds.RunCancellationProgress]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Run,
@@ -191,10 +195,6 @@ export const AgentEventSpecTable: {
   },
   [AgentEventKinds.ModelCompleted]: {
     layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Model,
-  },
-  [AgentEventKinds.PiTrace]: {
-    layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Model,
   },
   [AgentEventKinds.ToolCallsPlanned]: {

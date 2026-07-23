@@ -8,67 +8,17 @@ const { Schema: ResultSchema } = require("./Schemas/WeatherToolResultSchema.js")
 const { configuration } = require("./PluginConfig.definition.cjs");
 
 const ConfigFileName = "PluginConfig.toml";
-const ProviderNames = {
-  WeatherApi: "weatherapi",
-  QWeather: "qweather",
-  VisualCrossing: "visual_crossing",
-};
 
-const Providers = {
-  [ProviderNames.WeatherApi]: {
-    title: "WeatherAPI.com",
-    defaultBaseUrl: "https://api.weatherapi.com/v1",
-    async fetch(options) {
-      const endpoint = options.args.days > 1 ? "/forecast.json" : "/current.json";
-      const url = new URL(endpoint, options.config.base_url);
-      url.searchParams.set("key", options.apiKey);
-      url.searchParams.set("q", options.args.location);
-      url.searchParams.set("lang", options.language);
-      url.searchParams.set("aqi", "yes");
-      if (options.args.days > 1) {
-        url.searchParams.set("days", String(options.args.days));
-        url.searchParams.set("alerts", "no");
-      }
-      return normalizeWeatherApi(
-        await fetchJson(url, options.timeoutMs, undefined, options.signal),
-        options.args.location,
-        options.config.unit,
-      );
-    },
-  },
-  [ProviderNames.QWeather]: {
-    title: "QWeather",
-    defaultBaseUrl: "https://devapi.qweather.com",
-    async fetch(options) {
-      const location = await lookupQWeatherLocation(options);
-      const nowUrl = new URL("/v7/weather/now", options.config.base_url);
-      nowUrl.searchParams.set("location", location.id);
-      nowUrl.searchParams.set("lang", options.language);
-      nowUrl.searchParams.set("unit", options.config.unit === "imperial" ? "i" : "m");
-      const now = await fetchQWeatherJson(nowUrl, options.timeoutMs, options.apiKey, options.signal);
-      const forecast = options.args.days > 1 ? await fetchQWeatherForecast(options, location.id) : undefined;
-      return normalizeQWeather(now, forecast, location, options.args.location, options.config.unit);
-    },
-  },
-  [ProviderNames.VisualCrossing]: {
-    title: "Visual Crossing",
-    defaultBaseUrl: "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline",
-    async fetch(options) {
-      const encodedLocation = encodeURIComponent(options.args.location);
-      const url = new URL(`${trimTrailingSlash(options.config.base_url)}/${encodedLocation}`);
-      url.searchParams.set("key", options.apiKey);
-      url.searchParams.set("unitGroup", options.config.unit === "imperial" ? "us" : "metric");
-      url.searchParams.set("lang", options.language);
-      url.searchParams.set("include", options.args.days > 1 ? "current,days" : "current");
-      url.searchParams.set("contentType", "json");
-      return normalizeVisualCrossing(
-        await fetchJson(url, options.timeoutMs, undefined, options.signal),
-        options.args.location,
-        options.args.days,
-      );
-    },
-  },
-};
+async function fetchQWeather(options) {
+  const location = await lookupQWeatherLocation(options);
+  const nowUrl = new URL("/v7/weather/now", options.config.baseUrl);
+  nowUrl.searchParams.set("location", location.id);
+  nowUrl.searchParams.set("lang", options.language);
+  nowUrl.searchParams.set("unit", options.config.unit === "imperial" ? "i" : "m");
+  const now = await fetchQWeatherJson(nowUrl, options.timeoutMs, options.apiKey, options.signal);
+  const forecast = options.args.days > 1 ? await fetchQWeatherForecast(options, location.id) : undefined;
+  return normalizeQWeather(now, forecast, location, options.args.location, options.config.unit);
+}
 
 void runMcpTool({
   toolName: "WeatherTool",
@@ -77,13 +27,12 @@ void runMcpTool({
   resultText: (result) => formatWeatherOutput(result).trim(),
   async execute(args, context) {
     await context.reportProgress({ completed: 0, total: 1, message: "正在请求天气服务" });
-    const config = readConfig();
-    const provider = Providers[config.provider];
+    const config = resolveQWeatherConfig(readConfig());
     const apiKey = await claimNextApiKey(config);
-    const result = await provider.fetch({
+    const result = await fetchQWeather({
       args,
       apiKey,
-      config: resolveProviderConfig(config, provider),
+      config,
       language: args.language ?? config.language,
       timeoutMs: args.timeoutMs ?? config.timeoutMs,
       signal: context.signal,
@@ -127,32 +76,25 @@ function readConfigFile() {
 function withEnvironmentConfig(config) {
   return {
     ...config,
-    api_keys: appendDefined(config.api_keys, process.env.WEATHER_API_KEY, process.env.QWEATHER_API_KEY),
-    api_host: process.env.WEATHER_API_HOST ?? config.api_host ?? config.weather_api_host,
+    api_keys: appendDefined(config.api_keys, process.env.QWEATHER_API_KEY),
+    api_host: process.env.QWEATHER_API_HOST ?? config.api_host,
     language: process.env.WEATHER_LANG ?? config.language,
   };
 }
 
-function resolveProviderConfig(config, provider) {
-  const qWeatherHost = config.provider === ProviderNames.QWeather ? normalizeBaseUrl(config.api_host) : undefined;
-  const baseUrl = normalizeBaseUrl(config.base_url) ?? qWeatherHost ?? provider.defaultBaseUrl;
+function resolveQWeatherConfig(config) {
+  const baseUrl = new URL(config.api_host);
+  if (baseUrl.protocol !== "https:") {
+    throw new Error("Weather 插件的 weather.api_host 必须使用 HTTPS URL。");
+  }
   return {
     ...config,
-    base_url: baseUrl,
-    geo_base_url: normalizeBaseUrl(config.geo_base_url) ?? qWeatherHost ?? provider.defaultGeoBaseUrl ?? baseUrl,
+    baseUrl: baseUrl.toString(),
   };
 }
 
 function appendDefined(values, ...candidates) {
   return [...values, ...candidates.filter((value) => typeof value === "string" && value.trim().length > 0)];
-}
-
-function normalizeBaseUrl(value) {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
 async function claimNextApiKey(config) {
@@ -239,7 +181,7 @@ function writeJsonFileAtomic(filePath, value) {
 }
 
 async function fetchQWeatherForecast(options, locationId) {
-  const url = new URL("/v7/weather/3d", options.config.base_url);
+  const url = new URL("/v7/weather/3d", options.config.baseUrl);
   url.searchParams.set("location", locationId);
   url.searchParams.set("lang", options.language);
   url.searchParams.set("unit", options.config.unit === "imperial" ? "i" : "m");
@@ -247,7 +189,7 @@ async function fetchQWeatherForecast(options, locationId) {
 }
 
 async function lookupQWeatherLocation(options) {
-  const url = new URL(qWeatherGeoLookupPath(options.config), options.config.geo_base_url);
+  const url = new URL("/geo/v2/city/lookup", options.config.baseUrl);
   url.searchParams.set("location", options.args.location);
   url.searchParams.set("lang", options.language);
   url.searchParams.set("number", "1");
@@ -257,18 +199,6 @@ async function lookupQWeatherLocation(options) {
     throw new Error(`QWeather 没有找到天气位置：${options.args.location}`);
   }
   return location;
-}
-
-function qWeatherGeoLookupPath(config) {
-  return isLegacyQWeatherGeoHost(config.geo_base_url) ? "/v2/city/lookup" : "/geo/v2/city/lookup";
-}
-
-function isLegacyQWeatherGeoHost(value) {
-  try {
-    return new URL(value).hostname === "geoapi.qweather.com";
-  } catch {
-    return false;
-  }
 }
 
 async function fetchQWeatherJson(url, timeoutMs, apiKey, signal) {
@@ -315,59 +245,6 @@ function formatMillisecondsAsSeconds(valueMs) {
   return Number((valueMs / 1000).toFixed(3));
 }
 
-function normalizeWeatherApi(value, originalLocation, unit) {
-  const location = asRecord(value.location);
-  const current = asRecord(value.current);
-  const condition = asRecord(current.condition);
-  const metric = unit === "metric";
-  return {
-    location: originalLocation,
-    resolvedLocation: joinLocation([location.name, location.region, location.country]),
-    country: stringOrUndefined(location.country),
-    region: stringOrUndefined(location.region),
-    latitude: numberOrUndefined(location.lat),
-    longitude: numberOrUndefined(location.lon),
-    timezone: stringOrUndefined(location.tz_id),
-    localTime: stringOrUndefined(location.localtime),
-    observationTime: stringOrUndefined(current.last_updated),
-    temperature: numberOrUndefined(metric ? current.temp_c : current.temp_f),
-    feelsLike: numberOrUndefined(metric ? current.feelslike_c : current.feelslike_f),
-    temperatureUnit: metric ? "celsius" : "fahrenheit",
-    condition: stringOrUndefined(condition.text) ?? "",
-    humidity: numberOrUndefined(current.humidity),
-    windSpeed: numberOrUndefined(metric ? current.wind_kph : current.wind_mph),
-    windSpeedUnit: metric ? "kph" : "mph",
-    windDirection: stringOrUndefined(current.wind_dir),
-    airQualityIndex: numberOrUndefined(asRecord(current.air_quality)["us-epa-index"]),
-    forecast: normalizeWeatherApiForecast(value.forecast, unit),
-    source: "WeatherAPI.com",
-  };
-}
-
-function normalizeWeatherApiForecast(forecast, unit) {
-  const metric = unit === "metric";
-  const days = asArray(asRecord(forecast).forecastday).map((entry) => {
-    const record = asRecord(entry);
-    const day = asRecord(record.day);
-    const astro = asRecord(record.astro);
-    const condition = asRecord(day.condition);
-    return {
-      date: stringValue(record.date),
-      condition: stringOrUndefined(condition.text) ?? "",
-      maxTemperature: numberOrUndefined(metric ? day.maxtemp_c : day.maxtemp_f),
-      minTemperature: numberOrUndefined(metric ? day.mintemp_c : day.mintemp_f),
-      avgTemperature: numberOrUndefined(metric ? day.avgtemp_c : day.avgtemp_f),
-      temperatureUnit: metric ? "celsius" : "fahrenheit",
-      chanceOfRain: numberOrUndefined(day.daily_chance_of_rain),
-      precipitation: numberOrUndefined(metric ? day.totalprecip_mm : day.totalprecip_in),
-      precipitationUnit: metric ? "mm" : "in",
-      sunrise: stringOrUndefined(astro.sunrise),
-      sunset: stringOrUndefined(astro.sunset),
-    };
-  });
-  return days.length > 0 ? { item: days } : undefined;
-}
-
 function normalizeQWeather(nowResponse, forecastResponse, location, originalLocation, unit) {
   const now = asRecord(nowResponse.now);
   const metric = unit === "metric";
@@ -412,49 +289,6 @@ function normalizeQWeatherForecast(response, unit) {
   return days.length > 0 ? { item: days } : undefined;
 }
 
-function normalizeVisualCrossing(value, originalLocation, days) {
-  const current = asRecord(value.currentConditions);
-  return {
-    location: originalLocation,
-    resolvedLocation: stringOrUndefined(value.resolvedAddress) ?? originalLocation,
-    latitude: numberOrUndefined(value.latitude),
-    longitude: numberOrUndefined(value.longitude),
-    timezone: stringOrUndefined(value.timezone),
-    observationTime: stringOrUndefined(current.datetime),
-    temperature: numberOrUndefined(current.temp),
-    feelsLike: numberOrUndefined(current.feelslike),
-    temperatureUnit: "celsius",
-    condition: stringOrUndefined(current.conditions) ?? "",
-    humidity: numberOrUndefined(current.humidity),
-    windSpeed: numberOrUndefined(current.windspeed),
-    windSpeedUnit: "kph",
-    windDirection: stringOrUndefined(current.winddir),
-    forecast: normalizeVisualCrossingForecast(value.days, days),
-    source: "Visual Crossing",
-  };
-}
-
-function normalizeVisualCrossingForecast(value, maxDays) {
-  const days = asArray(value)
-    .slice(0, maxDays)
-    .map((entry) => {
-      const record = asRecord(entry);
-      return {
-        date: stringValue(record.datetime),
-        condition: stringOrUndefined(record.conditions) ?? "",
-        maxTemperature: numberOrUndefined(record.tempmax),
-        minTemperature: numberOrUndefined(record.tempmin),
-        avgTemperature: numberOrUndefined(record.temp),
-        temperatureUnit: "celsius",
-        precipitation: numberOrUndefined(record.precip),
-        precipitationUnit: "mm",
-        sunrise: stringOrUndefined(record.sunrise),
-        sunset: stringOrUndefined(record.sunset),
-      };
-    });
-  return days.length > 0 ? { item: days } : undefined;
-}
-
 function asRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -478,10 +312,6 @@ function stringValue(value) {
 
 function joinLocation(values) {
   return values.map(stringOrUndefined).filter(Boolean).join(", ");
-}
-
-function trimTrailingSlash(value) {
-  return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
 function sleep(ms) {

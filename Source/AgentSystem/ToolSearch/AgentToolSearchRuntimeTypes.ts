@@ -1,4 +1,4 @@
-export type LoadedToolsState = "all" | string[];
+export type LoadedToolsState = string[];
 
 export const AgentToolSearchCurrentSetPolicies = {
   Retain: "retain",

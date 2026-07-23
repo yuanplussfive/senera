@@ -8,14 +8,19 @@ import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 import type { AgentOpenAiTranscriptMessage } from "../Conversation/AgentOpenAiTranscript.js";
 import { readPiProxyToolCallBatchId, takePiProxyExecutedToolResult } from "../PiProxy/AgentPiProxyRuntimeContext.js";
-import { projectPiSessionTraceEvent } from "./AgentPiTraceProjector.js";
+import { AgentRunActivities } from "../Events/AgentRunEventTypes.js";
+import { AgentRunActivityReporter, type AgentRunActivityHandle } from "../Events/AgentRunActivityReporter.js";
+import { projectPiSessionDiagnosticEvent, type AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 
 export interface AgentPiRunCollectorOptions {
+  sessionId?: string;
   requestId: string;
   step: number;
   onEvent?: AgentEventSink;
+  diagnostics?: AgentPiDiagnosticSink;
   streamModelDeltas?: boolean;
   piProxyRuntimeContextId?: string;
+  activityReporter?: AgentRunActivityReporter;
 }
 
 export interface AgentPiRunProjection {
@@ -31,34 +36,27 @@ interface ActiveToolTrace {
   args: unknown;
 }
 
-type ProjectablePiEvent =
-  | Extract<AgentSessionEvent, { type: "tool_execution_start" }>
-  | Extract<AgentSessionEvent, { type: "tool_execution_end" }>
-  | Extract<AgentSessionEvent, { type: "message_update" }>;
-
-type PiEventProjector = (event: ProjectablePiEvent) => readonly AgentDomainEvent[];
-
 export class AgentPiRunCollector {
   private readonly eventFactory = new AgentLoopEventFactory();
-  private readonly projectors: Partial<Record<AgentSessionEvent["type"], PiEventProjector>> = {
-    tool_execution_start: (event) => [
-      this.toolExecutionStarted(event as Extract<ProjectablePiEvent, { type: "tool_execution_start" }>),
-    ],
-    tool_execution_end: (event) =>
-      this.toolExecutionEnded(event as Extract<ProjectablePiEvent, { type: "tool_execution_end" }>),
-    message_update: (event) => {
-      const projected = this.messageUpdated(event as Extract<ProjectablePiEvent, { type: "message_update" }>);
-      return projected ? [projected] : [];
-    },
-  };
+  private readonly activityReporter: AgentRunActivityReporter;
   private readonly traces: StepTrace[] = [];
   private readonly activeToolTraces = new Map<string, ActiveToolTrace>();
   private readonly executedTools: ExecutedToolCallResult[] = [];
   private readonly openAiMessages: AgentOpenAiTranscriptMessage[] = [];
   private pending = Promise.resolve();
   private textDelta = "";
+  private activeAssistantResponse?: AgentRunActivityHandle;
 
-  constructor(private readonly options: AgentPiRunCollectorOptions) {}
+  constructor(private readonly options: AgentPiRunCollectorOptions) {
+    this.activityReporter =
+      options.activityReporter ??
+      new AgentRunActivityReporter({
+        sessionId: options.sessionId,
+        requestId: options.requestId,
+        step: options.step,
+        onEvent: options.onEvent,
+      });
+  }
 
   collect(event: AgentSessionEvent): Promise<void> {
     this.pending = this.pending.then(
@@ -82,23 +80,58 @@ export class AgentPiRunCollector {
 
   private async projectEvent(event: AgentSessionEvent): Promise<void> {
     if (event.type !== "message_update") {
-      await this.emit(
-        projectPiSessionTraceEvent({
-          requestId: this.options.requestId,
-          step: this.options.step,
+      await this.options.diagnostics?.(
+        projectPiSessionDiagnosticEvent({
+          context: {
+            sessionId: this.options.sessionId,
+            requestId: this.options.requestId,
+            step: this.options.step,
+          },
           event,
         }),
       );
     }
 
-    if (event.type === "turn_end") {
-      this.recordOpenAiTurn(event);
+    switch (event.type) {
+      case "message_start":
+        await this.messageStarted(event);
+        break;
+      case "message_update": {
+        const projected = this.messageUpdated(event);
+        if (projected) await this.emit(projected);
+        break;
+      }
+      case "message_end":
+        await this.messageEnded(event);
+        break;
+      case "tool_execution_start":
+        await this.emit(this.toolExecutionStarted(event));
+        break;
+      case "tool_execution_end":
+        for (const projected of this.toolExecutionEnded(event)) {
+          await this.emit(projected);
+        }
+        break;
+      case "turn_end":
+        this.recordOpenAiTurn(event);
+        break;
     }
+  }
 
-    const projected = this.projectors[event.type]?.(event as ProjectablePiEvent) ?? [];
-    for (const event of projected) {
-      await this.emit(event);
+  private async messageStarted(event: Extract<AgentSessionEvent, { type: "message_start" }>): Promise<void> {
+    if (event.message.role !== "assistant") return;
+    if (this.activeAssistantResponse) {
+      throw new Error("Pi emitted overlapping assistant message lifecycles.");
     }
+    this.textDelta = "";
+    this.activeAssistantResponse = await this.activityReporter.start(AgentRunActivities.GeneratingResponse);
+  }
+
+  private async messageEnded(event: Extract<AgentSessionEvent, { type: "message_end" }>): Promise<void> {
+    if (event.message.role !== "assistant") return;
+    const activity = this.activeAssistantResponse;
+    this.activeAssistantResponse = undefined;
+    await activity?.complete();
   }
 
   private toolExecutionStarted(event: Extract<AgentSessionEvent, { type: "tool_execution_start" }>): AgentDomainEvent {

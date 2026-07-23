@@ -109,13 +109,12 @@ assert.equal(answerRootCommand.action, "answer");
 
 const loadedTools = runtime.services.retrieval.resolvePlannedLoadedTools({
   input: "检查项目结构并总结作用",
-  loadedTools: "dynamic",
   preferredTools: [],
   queries: ["项目结构"],
   needs: [],
   discover: true,
 });
-assert.ok(loadedTools === "all" || Array.isArray(loadedTools));
+assert.ok(loadedTools.includes("ToolSearchTool"));
 
 let observedAutoSearch:
   | {

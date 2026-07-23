@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import type { AgentActionCapabilityNeed } from "../ActionPlanner/AgentActionPlanner.js";
 import type { AgentPluginRegistry } from "../Plugin/AgentPluginRegistry.js";
 import type {
-  AgentLoadedToolsConfig,
   ResolvedAgentToolLearningConfig,
   ResolvedAgentToolSearchConfig,
   ResolvedAgentModelProviderConfig,
@@ -32,9 +31,15 @@ import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { AgentToolLearningRuntime } from "./AgentToolLearningRuntime.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import type { AgentToolSearchMemoryStore } from "./AgentToolSearchMemoryTypes.js";
 
 export type { LoadedToolsState } from "./AgentToolSearchRuntimeTypes.js";
 export { ToolSearchToolName } from "./AgentToolSearchRuntimeTypes.js";
+
+export interface AgentToolSearchRuntimeOptions {
+  logger?: AgentLogger;
+  memoryStore?: AgentToolSearchMemoryStore;
+}
 
 export class AgentToolSearchRuntime {
   private readonly memory: AgentToolSearchMemory;
@@ -53,11 +58,11 @@ export class AgentToolSearchRuntime {
     private readonly learningConfig: ResolvedAgentToolLearningConfig,
     private readonly workspaceRoot: string,
     model: ResolvedAgentModelProviderConfig,
-    logger?: AgentLogger,
+    options: AgentToolSearchRuntimeOptions = {},
   ) {
-    this.memory = new AgentToolSearchMemory(config, workspaceRoot);
+    this.memory = new AgentToolSearchMemory(config, workspaceRoot, options.memoryStore);
     this.projectId = createProjectId(workspaceRoot);
-    this.learningRuntime = new AgentToolLearningRuntime(registry, model, learningConfig, this.memory, logger);
+    this.learningRuntime = new AgentToolLearningRuntime(registry, model, learningConfig, this.memory, options.logger);
     this.usageMemory = new AgentToolSearchUsageMemory(
       this.memory,
       this.projectId,
@@ -83,11 +88,7 @@ export class AgentToolSearchRuntime {
     };
   }
 
-  resolveInitialLoadedTools(input: string, loadedTools: AgentLoadedToolsConfig): LoadedToolsState {
-    if (loadedTools !== "dynamic") {
-      return loadedTools;
-    }
-
+  resolveInitialLoadedTools(input: string): LoadedToolsState {
     const bootstrap = this.bootstrapToolNames();
     const discovered = this.search({
       query: input,
@@ -100,7 +101,6 @@ export class AgentToolSearchRuntime {
 
   resolvePlannedLoadedTools(options: {
     input: string;
-    loadedTools: AgentLoadedToolsConfig;
     currentLoadedTools?: LoadedToolsState;
     currentSetPolicy?: AgentToolSearchCurrentSetPolicy;
     preferredTools?: readonly string[];
@@ -108,10 +108,6 @@ export class AgentToolSearchRuntime {
     needs?: readonly AgentActionCapabilityNeed[];
     discover?: boolean;
   }): LoadedToolsState {
-    if (options.loadedTools !== "dynamic") {
-      return options.loadedTools;
-    }
-
     const bootstrap = this.bootstrapToolNames();
     const current = this.projectCurrentLoadedTools(
       options.currentLoadedTools,
@@ -131,10 +127,6 @@ export class AgentToolSearchRuntime {
   }
 
   rememberAutoSearch(requestId: string, query: string, loadedToolNames: LoadedToolsState): void {
-    if (loadedToolNames === "all") {
-      return;
-    }
-
     const candidates = loadedToolNames.filter((name) => !this.bootstrapToolNames().includes(name));
     if (candidates.length === 0) {
       return;
@@ -156,15 +148,10 @@ export class AgentToolSearchRuntime {
   afterToolResults(options: {
     requestId: string;
     loadedTools: LoadedToolsState;
-    dynamicTools: boolean;
     execution: { value: ExecutedToolCallResult[] };
     turnUnderstanding?: TurnUnderstanding;
   }): LoadedToolsState {
     this.usageMemory.recordToolUsage(options.requestId, options.execution.value, options.turnUnderstanding);
-    if (!options.dynamicTools || options.loadedTools === "all") {
-      return options.loadedTools;
-    }
-
     return this.mergeVisibleTools([
       ...options.loadedTools,
       ...options.execution.value.map((result) => result.name),
@@ -254,10 +241,7 @@ export class AgentToolSearchRuntime {
     current: LoadedToolsState | undefined,
     policy: AgentToolSearchCurrentSetPolicy,
   ): string[] {
-    return CurrentSetProjectors[policy](
-      current,
-      this.registry.listTools().map((tool) => tool.name),
-    );
+    return CurrentSetProjectors[policy](current);
   }
 
   private mergeVisibleTools(toolNames: readonly string[]): string[] {
@@ -322,13 +306,9 @@ export class AgentToolSearchRuntime {
 }
 
 const CurrentSetProjectors = {
-  [AgentToolSearchCurrentSetPolicies.Retain]: (current: LoadedToolsState | undefined, allTools: readonly string[]) =>
-    current === "all" ? [...allTools] : [...(current ?? [])],
+  [AgentToolSearchCurrentSetPolicies.Retain]: (current: LoadedToolsState | undefined) => [...(current ?? [])],
   [AgentToolSearchCurrentSetPolicies.Replace]: () => [],
-} satisfies Record<
-  AgentToolSearchCurrentSetPolicy,
-  (current: LoadedToolsState | undefined, allTools: readonly string[]) => string[]
->;
+} satisfies Record<AgentToolSearchCurrentSetPolicy, (current: LoadedToolsState | undefined) => string[]>;
 
 function createProjectId(workspaceRoot: string): string {
   return crypto.createHash("sha1").update(workspaceRoot.toLowerCase()).digest("hex");

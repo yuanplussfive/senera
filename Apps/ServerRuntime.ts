@@ -38,6 +38,7 @@ import { AgentServerEventLogger } from "../Source/AgentSystem/Diagnostics/AgentS
 import { AgentApprovalRuntime } from "../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
 import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import { AgentPiSessionMutationService } from "../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
+import { createAgentPiDiagnosticLogger } from "../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 import { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
 import { prepareAgentSandboxRuntime } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
@@ -81,6 +82,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     logger,
     detail: eventLogDetail,
   });
+  const piDiagnostics = eventLogDetail === "verbose" ? createAgentPiDiagnosticLogger(logger) : undefined;
 
   const configService = new AgentConfigService({
     workspaceRoot,
@@ -126,6 +128,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     configPath,
     snapshot: runtimeSnapshot,
     logger,
+    piDiagnostics,
     approvalRuntime,
     interactionInput,
     piSessionRegistry,
@@ -161,6 +164,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
   };
   const piSessionMutations = new AgentPiSessionMutationService({
     acquireRuntime: (modelProviderId) => runtimeCache.acquire(modelProviderId),
+    diagnostics: piDiagnostics,
   });
 
   const persistence = resolvePersistenceConfig(initialConfig);
@@ -201,6 +205,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
       },
     ],
     piSessions: piSessionRegistry,
+    piDiagnostics,
     piSessionMutations,
     runControl: {
       get settlementTimeoutMs() {
@@ -234,6 +239,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     executionResources,
     logger,
     eventLogger,
+    piDiagnostics,
     eventWriter,
   });
   approvalRuntime.setEventSink((event) => server.broadcast(event));

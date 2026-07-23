@@ -107,7 +107,6 @@ export interface ActionPlanInput {
 
 export interface ActionRunState {
   currentStep: number
-  dynamicTools: boolean
   loadedTools: string[]
   progress: ProgressSignals
   warnings: RepeatedCallWarning[]

@@ -21,6 +21,13 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
     message: "任务开始",
     tokens: [readRequestHandle(event.requestId)],
   }),
+  "run.activity.changed": (event) => {
+    const data = normalizeRecord(event.data);
+    return {
+      message: "任务运行状态",
+      tokens: [formatStepToken(event.step), readStringToken(data.activity), readStringToken(data.state)],
+    };
+  },
   "run.cancellation.progress": (event) => {
     const data = normalizeRecord(event.data);
     return {
@@ -114,18 +121,6 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
     message: "模型输出完成",
     tokens: [formatStepToken(event.step)],
   }),
-  "pi.trace": (event) => {
-    const data = normalizeRecord(event.data);
-    return {
-      message: "Pi 原生轨迹",
-      tokens: [
-        formatStepToken(event.step),
-        readStringToken(data.source),
-        readStringToken(data.eventType),
-        readStringToken(data.summary),
-      ],
-    };
-  },
   "tool.call.result.detail": (event) => {
     const data = normalizeRecord(event.data);
     return {

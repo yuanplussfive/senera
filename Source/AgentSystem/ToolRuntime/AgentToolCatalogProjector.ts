@@ -50,8 +50,8 @@ export class AgentToolCatalogProjector {
     return this.registry.listTools().map((tool) => this.project(tool));
   }
 
-  listVisible(visible: "all" | readonly string[]): AgentToolCatalogItem[] {
-    if (visible === "all") {
+  listVisible(visible?: readonly string[]): AgentToolCatalogItem[] {
+    if (!visible) {
       return this.list();
     }
 

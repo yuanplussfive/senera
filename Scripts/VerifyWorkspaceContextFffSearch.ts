@@ -96,9 +96,7 @@ async function executeWorkspaceTool(name: string, args: Record<string, unknown>)
       name,
       arguments: args,
     },
-    {
-      loadedToolNames: "all",
-    },
+    {},
   );
 
   assert.equal(result.kind, "ToolResults");

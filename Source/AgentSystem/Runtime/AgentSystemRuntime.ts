@@ -32,6 +32,7 @@ import { AgentRuntimeModuleComposer, type AgentRuntimeModule } from "./AgentRunt
 import { createDefaultAgentRuntimeServices, type AgentRuntimeServices } from "./AgentRuntimeServices.js";
 import { AgentPiSubstrate } from "../Pi/AgentPiSubstrate.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 import { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
 import { AgentToolPermissionGate } from "../Safety/AgentToolPermissionGate.js";
 import { createAgentToolApprovalPolicy } from "../Safety/AgentToolApprovalPolicyFactory.js";
@@ -95,6 +96,7 @@ export class AgentSystemRuntime {
     readonly modelProviderId?: string,
     readonly runtimeModules: readonly AgentRuntimeModule[] = [],
     readonly logger?: AgentLogger,
+    readonly piDiagnostics?: AgentPiDiagnosticSink,
     injectedApprovalRuntime?: AgentApprovalRuntime,
     injectedInteractionInput?: AgentInteractionInputRuntime,
     injectedPiSessionRegistry?: AgentPiActiveSessionRegistry,
@@ -148,7 +150,7 @@ export class AgentSystemRuntime {
       this.toolLearningConfig,
       this.workspaceRoot,
       this.modelProviderConfig,
-      this.logger,
+      { logger: this.logger },
     );
     this.toolCatalog = new AgentToolCatalogProjector(this.registry);
     this.artifactRecorder = new AgentToolExecutionArtifactRecorder({
@@ -209,6 +211,7 @@ export class AgentSystemRuntime {
           { maxRepairAttempts: this.actionPlannerConfig.MaxRepairAttempts },
         ),
       ),
+      diagnostics: this.piDiagnostics,
     });
     this.services = new AgentRuntimeModuleComposer().compose(
       createDefaultAgentRuntimeServices({
@@ -252,6 +255,7 @@ export class AgentSystemRuntime {
       modelProviderId?: string;
       runtimeModules?: readonly AgentRuntimeModule[];
       logger?: AgentLogger;
+      piDiagnostics?: AgentPiDiagnosticSink;
       approvalRuntime?: AgentApprovalRuntime;
       interactionInput?: AgentInteractionInputRuntime;
       piSessionRegistry?: AgentPiActiveSessionRegistry;
@@ -270,6 +274,7 @@ export class AgentSystemRuntime {
       options.modelProviderId,
       options.runtimeModules,
       options.logger,
+      options.piDiagnostics,
       options.approvalRuntime,
       options.interactionInput,
       options.piSessionRegistry,
@@ -293,6 +298,7 @@ export class AgentSystemRuntime {
     modelProviderId?: string;
     runtimeModules?: readonly AgentRuntimeModule[];
     logger?: AgentLogger;
+    piDiagnostics?: AgentPiDiagnosticSink;
     approvalRuntime?: AgentApprovalRuntime;
     interactionInput?: AgentInteractionInputRuntime;
     piSessionRegistry?: AgentPiActiveSessionRegistry;
@@ -310,6 +316,7 @@ export class AgentSystemRuntime {
       options.modelProviderId,
       options.runtimeModules,
       options.logger,
+      options.piDiagnostics,
       options.approvalRuntime,
       options.interactionInput,
       options.piSessionRegistry,

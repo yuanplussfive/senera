@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ChevronDown, GitBranch, Wrench } from "lucide-react";
+import { ChevronDown, GitBranch } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { RunRecord } from "../../store/sessionStore";
 import { summarizeRun } from "../workflow/runSummary";
 import { readRunStatusLabel } from "../workflow/stepPresentation";
 import { deriveFeedModel, statusTextClass, type FeedItem } from "../workflow/feedModel";
+import { FeedItemIconCatalog } from "../workflow/feedPresentation";
 
 /** A quiet disclosure for completed execution details. */
 export function ThinkingSummaryBar({
@@ -75,7 +76,7 @@ function SummaryDetail({ run, onViewWorkflow }: { run: RunRecord; onViewWorkflow
 }
 
 function SummaryRow({ item }: { item: FeedItem }): JSX.Element {
-  const Icon = item.kind === "tool" ? Wrench : GitBranch;
+  const Icon = FeedItemIconCatalog[item.kind];
   return (
     <div className="flex min-w-0 items-start gap-2 px-1 py-2">
       <Icon className="mt-[2px] h-3.5 w-3.5 shrink-0 text-ink-400" />

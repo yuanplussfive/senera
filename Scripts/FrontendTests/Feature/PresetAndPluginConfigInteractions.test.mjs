@@ -144,6 +144,56 @@ test("plugin settings route tool and field changes while parse failures disable 
   expect(screen.getByText("SearchTool").closest("button")).toBeDisabled();
 });
 
+test("plugin settings default to essential fields and can reveal other optional fields", async () => {
+  const user = userEvent.setup();
+  const plugin = createPlugin();
+  const optionalField = {
+    section: "General",
+    key: "Region",
+    path: ["General", "Region"],
+    label: "Search region",
+    type: "string",
+    value: "global",
+    required: false,
+  };
+  const optionalSwitch = {
+    section: "General",
+    key: "CacheEnabled",
+    path: ["General", "CacheEnabled"],
+    label: "Cache search results",
+    type: "boolean",
+    value: false,
+    required: false,
+  };
+  const sections = [
+    {
+      ...plugin.sections[0],
+      keyCount: 3,
+      fields: [...plugin.sections[0].fields, optionalSwitch, optionalField],
+    },
+  ];
+  renderWithFrontendProviders(
+    React.createElement(SettingsView, {
+      plugin,
+      sections,
+      parsedDraft: { General: { Enabled: true, CacheEnabled: false, Region: "global" } },
+      toolsDisabled: false,
+      onSetToolEnabled: vi.fn(),
+      onUpdateField: vi.fn(),
+    }),
+  );
+
+  expect(screen.getByText("Enable search")).toBeVisible();
+  expect(screen.getByText("Cache search results")).toBeVisible();
+  expect(screen.queryByText("Search region")).not.toBeInTheDocument();
+  expect(screen.getAllByText("必填")).toHaveLength(2);
+
+  await user.click(screen.getByRole("button", { name: /全部/ }));
+
+  expect(screen.getByText("Search region")).toBeVisible();
+  expect(screen.getAllByText("可选")).not.toHaveLength(0);
+});
+
 test("plugin source controls expose view changes, diagnostics, templates, and TOML edits", async () => {
   const onViewChange = vi.fn();
   const onDraftChange = vi.fn();
@@ -347,6 +397,7 @@ function createPlugin(overrides = {}) {
     label: "Enable search",
     type: "boolean",
     value: true,
+    required: true,
   };
   return {
     name: "SearchPlugin",

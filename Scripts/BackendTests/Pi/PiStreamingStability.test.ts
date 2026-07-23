@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { AgentEvent, AgentHarness } from "@earendil-works/pi-agent-core";
 import { AgentConversationProjector } from "../../../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { AgentEventKinds } from "../../../Source/AgentSystem/Events/AgentEvent.js";
+import { AgentRunActivities, AgentRunActivityStates } from "../../../Source/AgentSystem/Events/AgentRunEventTypes.js";
 import type { AgentLoopCommand } from "../../../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
 import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import { AgentPiHarnessSession } from "../../../Source/AgentSystem/Pi/AgentPiHarnessSession.js";
@@ -15,7 +16,11 @@ import {
   AgentPiTurnExecutor,
   type AgentPiTurnRuntimePort,
 } from "../../../Source/AgentSystem/Pi/AgentPiTurnExecutor.js";
-import { createPiTraceEvent } from "../../../Source/AgentSystem/Pi/AgentPiTraceProjector.js";
+import {
+  AgentPiDiagnosticSources,
+  createAgentPiDiagnosticEvent,
+  type AgentPiDiagnosticEvent,
+} from "../../../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 import type { AgentPiModelProjection } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
 
 describe("Pi streaming stability", () => {
@@ -45,7 +50,7 @@ describe("Pi streaming stability", () => {
     expect(listenerSettled).toBe(true);
   });
 
-  test("projects ordered model deltas without retaining redundant Pi traces", async () => {
+  test("projects ordered model deltas without emitting internal diagnostics as domain events", async () => {
     const emitted: Array<{ kind: string; data: unknown }> = [];
     const collector = new AgentPiRunCollector({
       requestId: "streaming-request",
@@ -63,8 +68,57 @@ describe("Pi streaming stability", () => {
       expect.objectContaining({ data: { text: "first" } }),
       expect.objectContaining({ data: { text: " second" } }),
     ]);
-    expect(emitted.some((event) => event.kind === AgentEventKinds.PiTrace)).toBe(false);
+    expect(emitted.every((event) => event.kind === AgentEventKinds.ModelDelta)).toBe(true);
     expect(collector.snapshot()).not.toHaveProperty("events");
+  });
+
+  test("projects assistant message lifecycles and resets cumulative text between Pi turns", async () => {
+    const emitted: Array<{ kind: string; data: Record<string, unknown> }> = [];
+    const collector = new AgentPiRunCollector({
+      requestId: "lifecycle-request",
+      step: 2,
+      onEvent: async (event) => {
+        emitted.push(event as { kind: string; data: Record<string, unknown> });
+      },
+    });
+
+    await collector.collect(assistantMessageEvent("message_start", ""));
+    await collector.collect(messageUpdate("first response"));
+    await collector.collect(assistantMessageEvent("message_end", "first response"));
+    await collector.collect(assistantMessageEvent("message_start", ""));
+    await collector.collect(messageUpdate("second response"));
+    await collector.collect(assistantMessageEvent("message_end", "second response"));
+    await collector.drain();
+
+    expect(
+      emitted
+        .filter((event) => event.kind === AgentEventKinds.RunActivityChanged)
+        .map((event) => ({ activity: event.data.activity, state: event.data.state, source: event.data.source })),
+    ).toEqual([
+      {
+        activity: AgentRunActivities.GeneratingResponse,
+        state: AgentRunActivityStates.Started,
+        source: undefined,
+      },
+      {
+        activity: AgentRunActivities.GeneratingResponse,
+        state: AgentRunActivityStates.Completed,
+        source: undefined,
+      },
+      {
+        activity: AgentRunActivities.GeneratingResponse,
+        state: AgentRunActivityStates.Started,
+        source: undefined,
+      },
+      {
+        activity: AgentRunActivities.GeneratingResponse,
+        state: AgentRunActivityStates.Completed,
+        source: undefined,
+      },
+    ]);
+    expect(
+      emitted.filter((event) => event.kind === AgentEventKinds.ModelDelta).map((event) => event.data.text),
+    ).toEqual(["first response", "second response"]);
   });
 
   test("applies model-delta backpressure through the Pi turn executor", async () => {
@@ -96,9 +150,9 @@ describe("Pi streaming stability", () => {
     expect(promptWasBlocked).toBe(true);
   });
 
-  test("traces Pi session mutations and releases their runtime lease", async () => {
+  test("reports Pi session mutations through diagnostics and releases their runtime lease", async () => {
     let releases = 0;
-    const events: Array<{ kind: string; data: Record<string, unknown> }> = [];
+    const diagnostics: AgentPiDiagnosticEvent[] = [];
     const runtime = {
       services: {
         pi: {
@@ -113,42 +167,39 @@ describe("Pi streaming stability", () => {
           releases += 1;
         },
       }),
+      diagnostics: (event) => {
+        diagnostics.push(event);
+      },
     });
 
     await expect(
       mutations.rewind({
         sessionId: "rewind-session",
         entryId: "turn-boundary",
-        onEvent: (event) => {
-          events.push(event as (typeof events)[number]);
-        },
       }),
     ).resolves.toBe(true);
 
     expect(releases).toBe(1);
-    expect(events).toEqual([
+    expect(diagnostics).toEqual([
       expect.objectContaining({
-        kind: AgentEventKinds.PiTrace,
-        data: expect.objectContaining({
-          eventType: "session.rewind.completed",
-          payload: expect.objectContaining({
-            mutated: true,
-            runtimeAcquireMs: expect.any(Number),
-            operationMs: expect.any(Number),
-            durationMs: expect.any(Number),
-          }),
+        source: AgentPiDiagnosticSources.Substrate,
+        name: "session.rewind.completed",
+        details: expect.objectContaining({
+          mutated: true,
+          runtimeAcquireMs: expect.any(Number),
+          operationMs: expect.any(Number),
+          durationMs: expect.any(Number),
         }),
       }),
     ]);
   });
 
-  test("bounds diagnostic Pi trace payloads before event serialization", () => {
-    const trace = createPiTraceEvent({
-      requestId: "trace-request",
-      step: 1,
-      source: "session",
-      eventType: "before_provider_payload",
-      payload: {
+  test("bounds Pi diagnostic details before they reach a sink", () => {
+    const diagnostic = createAgentPiDiagnosticEvent({
+      context: { requestId: "diagnostic-request", step: 1 },
+      source: AgentPiDiagnosticSources.Session,
+      name: "before_provider_payload",
+      details: {
         text: "x".repeat(8_000),
         entries: Array.from({ length: 40 }, (_, index) => index),
         nested: {
@@ -166,19 +217,16 @@ describe("Pi streaming stability", () => {
         },
       },
     });
-    if (trace.kind !== AgentEventKinds.PiTrace) {
-      throw new Error("Expected a Pi trace event.");
-    }
-    const payload = trace.data.payload as {
+    const details = diagnostic.details as {
       text: string;
       entries: unknown[];
       nested: { one: { two: { three: { four: unknown } } } };
     };
 
-    expect(payload.text.length).toBeLessThan(1_050);
-    expect(payload.text).toContain("[truncated]");
-    expect(payload.entries.length).toBeLessThanOrEqual(24);
-    expect(JSON.stringify(payload).length).toBeLessThan(20_000);
+    expect(details.text.length).toBeLessThan(1_050);
+    expect(details.text).toContain("[truncated]");
+    expect(details.entries.length).toBeLessThanOrEqual(24);
+    expect(JSON.stringify(details).length).toBeLessThan(20_000);
   });
 
   test("does not read every property from a wide trace payload", () => {
@@ -194,19 +242,15 @@ describe("Pi streaming stability", () => {
       });
     }
 
-    const trace = createPiTraceEvent({
-      requestId: "wide-trace-request",
-      step: 1,
-      source: "session",
-      eventType: "before_provider_payload",
-      payload: widePayload,
+    const diagnostic = createAgentPiDiagnosticEvent({
+      context: { requestId: "wide-diagnostic-request", step: 1 },
+      source: AgentPiDiagnosticSources.Session,
+      name: "before_provider_payload",
+      details: widePayload,
     });
-    if (trace.kind !== AgentEventKinds.PiTrace) {
-      throw new Error("Expected a Pi trace event.");
-    }
 
     expect(reads).toBeLessThan(40);
-    expect(Object.keys(trace.data.payload as Record<string, unknown>)).toHaveLength(25);
+    expect(Object.keys(diagnostic.details as Record<string, unknown>)).toHaveLength(25);
   });
 });
 
@@ -239,6 +283,16 @@ function messageUpdate(text: string): AgentEvent {
     },
     assistantMessageEvent: {},
   } as unknown as AgentEvent;
+}
+
+function assistantMessageEvent(type: "message_start" | "message_end", text: string): AgentEvent {
+  return {
+    type,
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text }],
+    },
+  } as AgentEvent;
 }
 
 function createModel(): AgentPiModelProjection {

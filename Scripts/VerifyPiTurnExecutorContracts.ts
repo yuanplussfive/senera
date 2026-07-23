@@ -20,6 +20,7 @@ import {
 import type { ExecutedToolCallResult } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import type { AgentLoopCommand, AgentLoopCommandResult } from "../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
 import type { ResolvedAgentModelProviderConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { AgentPiDiagnosticEvent } from "../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 
 const modelProviderConfig: ResolvedAgentModelProviderConfig = {
   Id: "verification-model",
@@ -45,7 +46,8 @@ const modelProviderConfig: ResolvedAgentModelProviderConfig = {
 
 async function main(): Promise<void> {
   const pi = new FakePiRuntime();
-  const runtime = createRuntime(pi);
+  const diagnostics: AgentPiDiagnosticEvent[] = [];
+  const runtime = createRuntime(pi, diagnostics);
   const executor = new AgentPiTurnExecutor({ runtime });
   const events: AgentDomainEvent[] = [];
   const command = createRunPiTurnCommand();
@@ -98,12 +100,12 @@ async function main(): Promise<void> {
     events.some((event) => event.kind === AgentEventKinds.ToolCallResultDetail),
     true,
   );
-  assertPiTrace(events, "turn.started");
-  assertPiTrace(events, "session.lease.started");
-  assertPiTrace(events, "session.lease.completed");
-  assertPiTrace(events, "session.prompt.started");
-  assertPiTrace(events, "session.prompt.completed");
-  assertPiTrace(events, "turn.completed");
+  assertDiagnostic(diagnostics, "turn.started");
+  assertDiagnostic(diagnostics, "session.lease.started");
+  assertDiagnostic(diagnostics, "session.lease.completed");
+  assertDiagnostic(diagnostics, "session.prompt.started");
+  assertDiagnostic(diagnostics, "session.prompt.completed");
+  assertDiagnostic(diagnostics, "turn.completed");
 
   assert.equal(output.stepTraces.length, 2);
   assert.equal(output.stepTraces[0]?.kind, "tool");
@@ -158,7 +160,7 @@ async function main(): Promise<void> {
   console.log("Pi turn executor contracts verified.");
 }
 
-function createRuntime(pi: FakePiRuntime): AgentPiTurnRuntimePort {
+function createRuntime(pi: FakePiRuntime, diagnostics: AgentPiDiagnosticEvent[] = []): AgentPiTurnRuntimePort {
   const piSessions = new AgentPiActiveSessionRegistry();
   pi.sessionRegistry = piSessions;
   return {
@@ -174,6 +176,9 @@ function createRuntime(pi: FakePiRuntime): AgentPiTurnRuntimePort {
       estimate: (text: string) => ({ tokenCount: text.length }),
     },
     conversationProjector: new AgentConversationProjector(),
+    piDiagnostics: (event) => {
+      diagnostics.push(event);
+    },
   };
 }
 
@@ -239,20 +244,15 @@ async function verifyProviderFailureDoesNotSucceed(
 ): Promise<void> {
   const failingPi = new FakePiRuntime();
   failingPi.session.promptFailure = new Error("500 Invalid option: expected one of system|user|assistant|tool");
-  const runtime = createRuntime(failingPi);
+  const diagnostics: AgentPiDiagnosticEvent[] = [];
+  const runtime = createRuntime(failingPi, diagnostics);
   const executor = new AgentPiTurnExecutor({ runtime });
-  const events: AgentDomainEvent[] = [];
 
-  await assert.rejects(
-    executor.run(command, (event) => {
-      events.push(event);
-    }),
-    /Invalid option/,
-  );
+  await assert.rejects(executor.run(command), /Invalid option/);
 
   assert.equal(failingPi.session.disposed, true);
   assert.equal(failingPi.session.unsubscribeCount, 1);
-  assertPiTrace(events, "turn.failed");
+  assertDiagnostic(diagnostics, "turn.failed");
 }
 
 async function verifyHarnessSessionRejectsFailedAssistant(): Promise<void> {
@@ -739,16 +739,12 @@ function executedToolResult(): ExecutedToolCallResult {
   };
 }
 
-function assertPiTrace(events: readonly AgentDomainEvent[], eventType: string): void {
+function assertDiagnostic(events: readonly AgentPiDiagnosticEvent[], name: string): void {
   assert.equal(
-    events.some((event) => event.kind === AgentEventKinds.PiTrace && readRecord(event.data)?.eventType === eventType),
+    events.some((event) => event.name === name),
     true,
-    `Expected Pi trace event ${eventType}`,
+    `Expected Pi diagnostic ${name}`,
   );
-}
-
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 main().catch((error: unknown) => {

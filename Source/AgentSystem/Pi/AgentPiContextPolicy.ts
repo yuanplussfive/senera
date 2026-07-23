@@ -456,9 +456,9 @@ function projectRetrievalTool(
 
 function isVisibleTool(
   tool: RegisteredTool,
-  visibleToolNames: AgentPiToolProjectionContext["visibleToolNames"] = "all",
+  visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"],
 ): boolean {
-  return visibleToolNames === "all" || visibleToolNames.includes(tool.name);
+  return !visibleToolNames || visibleToolNames.includes(tool.name);
 }
 
 function clampOptionalText(value: string | undefined, tokenProjector: AgentTokenProjector): string | undefined {

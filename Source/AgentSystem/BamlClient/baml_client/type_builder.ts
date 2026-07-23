@@ -26,98 +26,98 @@ export { FieldType, EnumBuilder, ClassBuilder }
 
 export default class TypeBuilder {
     private tb: _TypeBuilder;
-    
+
     ActionPlanInput: ClassViewer<'ActionPlanInput', "currentUserTurn" | "turnUnderstanding" | "roleplayPreset" | "runState" | "timeline" | "evidenceMemory" | "evidenceState" | "plannerJournal" | "toolTagCatalog" | "compactToolCatalog" | "toolCatalog" | "activeSkills">;
-    
-    ActionRunState: ClassViewer<'ActionRunState', "currentStep" | "dynamicTools" | "loadedTools" | "progress" | "warnings" | "calls">;
-    
+
+    ActionRunState: ClassViewer<'ActionRunState', "currentStep" | "loadedTools" | "progress" | "warnings" | "calls">;
+
     EvidenceSlot: ClassViewer<'EvidenceSlot', "name" | "value">;
-    
+
     InteractionPreparation: ClassViewer<'InteractionPreparation', "turnUnderstanding" | "initialAction">;
-    
+
     InteractionRoute: ClassViewer<'InteractionRoute', "mode" | "objective" | "preferredTools" | "discoveryQueries">;
-    
+
     MemoryCandidate: ClassViewer<'MemoryCandidate', "type" | "subject" | "claim" | "howToApply" | "tags" | "triggers" | "sourceRefs" | "reason" | "confidence">;
-    
+
     MemoryConsolidationAction: ClassViewer<'MemoryConsolidationAction', "operation" | "type" | "subject" | "claim" | "howToApply" | "tags" | "triggers" | "sourceRefs" | "candidateUris" | "targetMemoryUri" | "reason" | "confidence">;
-    
+
     MemoryConsolidationResult: ClassViewer<'MemoryConsolidationResult', "actions">;
-    
+
     MemoryLearningResult: ClassViewer<'MemoryLearningResult', "candidates">;
-    
+
     MemoryWriteDecision: ClassViewer<'MemoryWriteDecision', "operation" | "type" | "subject" | "claim" | "howToApply" | "tags" | "triggers" | "sourceRefs" | "candidateUris" | "targetMemoryUri" | "reason" | "confidence">;
-    
+
     MemoryWriteResolutionResult: ClassViewer<'MemoryWriteResolutionResult', "decision">;
-    
+
     PiCompactionDecision: ClassViewer<'PiCompactionDecision', "decision" | "rationale">;
-    
+
     PiCompactionSummary: ClassViewer<'PiCompactionSummary', "goals" | "constraints" | "completed" | "inProgress" | "blocked" | "decisions" | "nextSteps" | "criticalContext">;
-    
+
     PiControllerAction: ClassViewer<'PiControllerAction', "kind" | "answerPlan" | "question" | "preface" | "calls">;
-    
+
     PiPlannedToolCall: ClassViewer<'PiPlannedToolCall', "toolName" | "purpose" | "required" | "dependsOn" | "argumentHints">;
-    
+
     PiToolArgumentsDraft: ClassViewer<'PiToolArgumentsDraft', "arguments" | "missingInputs" | "assumptions">;
-    
+
     PlannerActiveSkill: ClassViewer<'PlannerActiveSkill', "name" | "title" | "summary" | "useCases" | "avoid" | "recommendedTools" | "evidenceRequirements">;
-    
+
     PlannerCurrentUserTurn: ClassViewer<'PlannerCurrentUserTurn', "requestId" | "content">;
-    
+
     PlannerEvidenceMemoryItem: ClassViewer<'PlannerEvidenceMemoryItem', "evidenceUri" | "kind" | "locator" | "display" | "label" | "toolName" | "artifactUri" | "facts" | "artifactRefs">;
-    
+
     PlannerEvidenceRequirement: ClassViewer<'PlannerEvidenceRequirement', "need" | "accepts" | "minimumQuality" | "minimum" | "purpose">;
-    
+
     PlannerEvidenceStateItem: ClassViewer<'PlannerEvidenceStateItem', "evidenceUri" | "kind" | "toolName" | "artifactUri" | "locator" | "display" | "label" | "source" | "confidence" | "facts" | "artifactRefs">;
-    
+
     PlannerJournalItem: ClassViewer<'PlannerJournalItem', "requestId" | "step" | "selectedAction" | "evidenceUris" | "artifactUris" | "loadedTools" | "outcome">;
-    
+
     PlannerRoleplayPreset: ClassViewer<'PlannerRoleplayPreset', "enabled" | "activePresetName" | "documents">;
-    
+
     PlannerRoleplayPresetDocument: ClassViewer<'PlannerRoleplayPresetDocument', "name" | "format" | "title" | "updatedAt" | "content">;
-    
+
     PlannerTimelineTurn: ClassViewer<'PlannerTimelineTurn', "index" | "role" | "kind" | "step" | "content" | "payloadJson" | "evidenceUris" | "artifactUris">;
-    
+
     PlannerToolCallStateItem: ClassViewer<'PlannerToolCallStateItem', "step" | "toolName" | "status" | "artifactUri" | "evidenceUris" | "resultKind" | "argumentsPreview" | "error">;
-    
+
     ProgressSignals: ClassViewer<'ProgressSignals', "totalToolCalls" | "totalEvidence" | "lastNewEvidenceStep" | "repeatedCallCount" | "stalled">;
-    
+
     RepeatedCallWarning: ClassViewer<'RepeatedCallWarning', "toolName" | "argsHash" | "count" | "lastStep">;
-    
+
     ToolCapabilityFacets: ClassViewer<'ToolCapabilityFacets', "Actions" | "Targets" | "Inputs" | "Outputs" | "Evidence" | "Effects">;
-    
+
     ToolCapabilityItem: ClassViewer<'ToolCapabilityItem', "id" | "title" | "description" | "facets" | "risk">;
-    
+
     ToolCapabilityRisk: ClassViewer<'ToolCapabilityRisk', "sideEffect" | "permission">;
-    
+
     ToolCatalogItem: ClassViewer<'ToolCatalogItem', "name" | "title" | "summary" | "capabilities" | "tags" | "useCases" | "examples" | "avoid" | "permissions" | "evidenceCapabilities" | "loaded">;
-    
+
     ToolCatalogSummaryItem: ClassViewer<'ToolCatalogSummaryItem', "name" | "title" | "summary" | "capabilities" | "evidence" | "effects" | "outputs" | "permissions" | "loaded" | "rootKind">;
-    
+
     ToolEvidenceCapabilityItem: ClassViewer<'ToolEvidenceCapabilityItem', "produces" | "quality" | "satisfies" | "kinds" | "capabilityIds">;
-    
+
     ToolLearningRecord: ClassViewer<'ToolLearningRecord', "toolName" | "tags" | "sourceTerms" | "triggers" | "reason" | "confidence">;
-    
+
     ToolLearningResult: ClassViewer<'ToolLearningResult', "records">;
-    
+
     ToolRiskAudit: ClassViewer<'ToolRiskAudit', "decision" | "riskLevel" | "confidence" | "tripwire" | "reason" | "matchedConcerns" | "safeAlternative">;
-    
+
     TurnUnderstanding: ClassViewer<'TurnUnderstanding', "rawUserTurn" | "standaloneRequest" | "contextMode" | "contextBasis" | "missingContext">;
-    
-    
+
+
     ExecutionDeltaOp: EnumViewer<'ExecutionDeltaOp', "AddCall" | "AddEvidence" | "AddWarning">;
-    
+
     InteractionRunMode: EnumViewer<'InteractionRunMode', "DirectResponse" | "ToolAgentLoop">;
-    
+
     PiControllerActionKind: EnumViewer<'PiControllerActionKind', "FinalAnswer" | "AskUser" | "CallTools">;
-    
+
     ToolCallStatus: EnumViewer<'ToolCallStatus', "Success" | "Failure" | "Empty">;
-    
+
     ToolRiskAuditDecision: EnumViewer<'ToolRiskAuditDecision', "Allow" | "Ask" | "Deny">;
-    
+
     ToolRiskLevel: EnumViewer<'ToolRiskLevel', "Low" | "Medium" | "High" | "Critical">;
-    
+
     TurnContextMode: EnumViewer<'TurnContextMode', "None" | "Used" | "Insufficient">;
-    
+
 
     constructor() {
         this.tb = new _TypeBuilder({
@@ -129,188 +129,188 @@ export default class TypeBuilder {
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
-        
+
         this.ActionPlanInput = this.tb.classViewer("ActionPlanInput", [
           "currentUserTurn","turnUnderstanding","roleplayPreset","runState","timeline","evidenceMemory","evidenceState","plannerJournal","toolTagCatalog","compactToolCatalog","toolCatalog","activeSkills",
         ]);
-        
+
         this.ActionRunState = this.tb.classViewer("ActionRunState", [
-          "currentStep","dynamicTools","loadedTools","progress","warnings","calls",
+          "currentStep","loadedTools","progress","warnings","calls",
         ]);
-        
+
         this.EvidenceSlot = this.tb.classViewer("EvidenceSlot", [
           "name","value",
         ]);
-        
+
         this.InteractionPreparation = this.tb.classViewer("InteractionPreparation", [
           "turnUnderstanding","initialAction",
         ]);
-        
+
         this.InteractionRoute = this.tb.classViewer("InteractionRoute", [
           "mode","objective","preferredTools","discoveryQueries",
         ]);
-        
+
         this.MemoryCandidate = this.tb.classViewer("MemoryCandidate", [
           "type","subject","claim","howToApply","tags","triggers","sourceRefs","reason","confidence",
         ]);
-        
+
         this.MemoryConsolidationAction = this.tb.classViewer("MemoryConsolidationAction", [
           "operation","type","subject","claim","howToApply","tags","triggers","sourceRefs","candidateUris","targetMemoryUri","reason","confidence",
         ]);
-        
+
         this.MemoryConsolidationResult = this.tb.classViewer("MemoryConsolidationResult", [
           "actions",
         ]);
-        
+
         this.MemoryLearningResult = this.tb.classViewer("MemoryLearningResult", [
           "candidates",
         ]);
-        
+
         this.MemoryWriteDecision = this.tb.classViewer("MemoryWriteDecision", [
           "operation","type","subject","claim","howToApply","tags","triggers","sourceRefs","candidateUris","targetMemoryUri","reason","confidence",
         ]);
-        
+
         this.MemoryWriteResolutionResult = this.tb.classViewer("MemoryWriteResolutionResult", [
           "decision",
         ]);
-        
+
         this.PiCompactionDecision = this.tb.classViewer("PiCompactionDecision", [
           "decision","rationale",
         ]);
-        
+
         this.PiCompactionSummary = this.tb.classViewer("PiCompactionSummary", [
           "goals","constraints","completed","inProgress","blocked","decisions","nextSteps","criticalContext",
         ]);
-        
+
         this.PiControllerAction = this.tb.classViewer("PiControllerAction", [
           "kind","answerPlan","question","preface","calls",
         ]);
-        
+
         this.PiPlannedToolCall = this.tb.classViewer("PiPlannedToolCall", [
           "toolName","purpose","required","dependsOn","argumentHints",
         ]);
-        
+
         this.PiToolArgumentsDraft = this.tb.classViewer("PiToolArgumentsDraft", [
           "arguments","missingInputs","assumptions",
         ]);
-        
+
         this.PlannerActiveSkill = this.tb.classViewer("PlannerActiveSkill", [
           "name","title","summary","useCases","avoid","recommendedTools","evidenceRequirements",
         ]);
-        
+
         this.PlannerCurrentUserTurn = this.tb.classViewer("PlannerCurrentUserTurn", [
           "requestId","content",
         ]);
-        
+
         this.PlannerEvidenceMemoryItem = this.tb.classViewer("PlannerEvidenceMemoryItem", [
           "evidenceUri","kind","locator","display","label","toolName","artifactUri","facts","artifactRefs",
         ]);
-        
+
         this.PlannerEvidenceRequirement = this.tb.classViewer("PlannerEvidenceRequirement", [
           "need","accepts","minimumQuality","minimum","purpose",
         ]);
-        
+
         this.PlannerEvidenceStateItem = this.tb.classViewer("PlannerEvidenceStateItem", [
           "evidenceUri","kind","toolName","artifactUri","locator","display","label","source","confidence","facts","artifactRefs",
         ]);
-        
+
         this.PlannerJournalItem = this.tb.classViewer("PlannerJournalItem", [
           "requestId","step","selectedAction","evidenceUris","artifactUris","loadedTools","outcome",
         ]);
-        
+
         this.PlannerRoleplayPreset = this.tb.classViewer("PlannerRoleplayPreset", [
           "enabled","activePresetName","documents",
         ]);
-        
+
         this.PlannerRoleplayPresetDocument = this.tb.classViewer("PlannerRoleplayPresetDocument", [
           "name","format","title","updatedAt","content",
         ]);
-        
+
         this.PlannerTimelineTurn = this.tb.classViewer("PlannerTimelineTurn", [
           "index","role","kind","step","content","payloadJson","evidenceUris","artifactUris",
         ]);
-        
+
         this.PlannerToolCallStateItem = this.tb.classViewer("PlannerToolCallStateItem", [
           "step","toolName","status","artifactUri","evidenceUris","resultKind","argumentsPreview","error",
         ]);
-        
+
         this.ProgressSignals = this.tb.classViewer("ProgressSignals", [
           "totalToolCalls","totalEvidence","lastNewEvidenceStep","repeatedCallCount","stalled",
         ]);
-        
+
         this.RepeatedCallWarning = this.tb.classViewer("RepeatedCallWarning", [
           "toolName","argsHash","count","lastStep",
         ]);
-        
+
         this.ToolCapabilityFacets = this.tb.classViewer("ToolCapabilityFacets", [
           "Actions","Targets","Inputs","Outputs","Evidence","Effects",
         ]);
-        
+
         this.ToolCapabilityItem = this.tb.classViewer("ToolCapabilityItem", [
           "id","title","description","facets","risk",
         ]);
-        
+
         this.ToolCapabilityRisk = this.tb.classViewer("ToolCapabilityRisk", [
           "sideEffect","permission",
         ]);
-        
+
         this.ToolCatalogItem = this.tb.classViewer("ToolCatalogItem", [
           "name","title","summary","capabilities","tags","useCases","examples","avoid","permissions","evidenceCapabilities","loaded",
         ]);
-        
+
         this.ToolCatalogSummaryItem = this.tb.classViewer("ToolCatalogSummaryItem", [
           "name","title","summary","capabilities","evidence","effects","outputs","permissions","loaded","rootKind",
         ]);
-        
+
         this.ToolEvidenceCapabilityItem = this.tb.classViewer("ToolEvidenceCapabilityItem", [
           "produces","quality","satisfies","kinds","capabilityIds",
         ]);
-        
+
         this.ToolLearningRecord = this.tb.classViewer("ToolLearningRecord", [
           "toolName","tags","sourceTerms","triggers","reason","confidence",
         ]);
-        
+
         this.ToolLearningResult = this.tb.classViewer("ToolLearningResult", [
           "records",
         ]);
-        
+
         this.ToolRiskAudit = this.tb.classViewer("ToolRiskAudit", [
           "decision","riskLevel","confidence","tripwire","reason","matchedConcerns","safeAlternative",
         ]);
-        
+
         this.TurnUnderstanding = this.tb.classViewer("TurnUnderstanding", [
           "rawUserTurn","standaloneRequest","contextMode","contextBasis","missingContext",
         ]);
-        
-        
+
+
         this.ExecutionDeltaOp = this.tb.enumViewer("ExecutionDeltaOp", [
           "AddCall","AddEvidence","AddWarning",
         ]);
-        
+
         this.InteractionRunMode = this.tb.enumViewer("InteractionRunMode", [
           "DirectResponse","ToolAgentLoop",
         ]);
-        
+
         this.PiControllerActionKind = this.tb.enumViewer("PiControllerActionKind", [
           "FinalAnswer","AskUser","CallTools",
         ]);
-        
+
         this.ToolCallStatus = this.tb.enumViewer("ToolCallStatus", [
           "Success","Failure","Empty",
         ]);
-        
+
         this.ToolRiskAuditDecision = this.tb.enumViewer("ToolRiskAuditDecision", [
           "Allow","Ask","Deny",
         ]);
-        
+
         this.ToolRiskLevel = this.tb.enumViewer("ToolRiskLevel", [
           "Low","Medium","High","Critical",
         ]);
-        
+
         this.TurnContextMode = this.tb.enumViewer("TurnContextMode", [
           "None","Used","Insufficient",
         ]);
-        
+
     }
 
     reset(): void {
@@ -322,7 +322,7 @@ export default class TypeBuilder {
         // wraps over the Rust type builder, so we only need to call tb.reset().
         // In JS it's not possible unless we refactor the way class builders are
         // accessed.
-        
+
     }
 
     __tb() {
@@ -384,4 +384,4 @@ export default class TypeBuilder {
     addBaml(baml: string): void {
         this.tb.addBaml(baml);
     }
-}
+}

@@ -8,6 +8,7 @@ import {
 import { probeAgentDocument } from "../../Source/AgentSystem/Documents/AgentDocumentProbe.js";
 import type { AgentDocumentProbeResult } from "../../Source/AgentSystem/Documents/AgentDocumentProbeTypes.js";
 import type { AgentDocumentExtractorConfig } from "../../Source/AgentSystem/Documents/AgentDocumentExtractorTypes.js";
+import { DefaultDocumentToolMode, DocumentToolModes, type DocumentToolMode } from "./DocumentModeContract.js";
 
 const nodeRequire = createRequire(path.join(process.cwd(), "PluginConfig.definition.cjs"));
 const { configuration } = nodeRequire("./PluginConfig.definition.cjs") as {
@@ -29,7 +30,7 @@ const DocumentResourcesSchema = z.object({ document: UploadResourceSchema.option
 const DocumentArgumentsSchema = z
   .object({
     uploadUri: z.string().trim().min(1),
-    mode: z.string().trim().min(1).optional(),
+    mode: z.enum(DocumentToolModes).optional(),
     resources: DocumentResourcesSchema.optional(),
   })
   .strict();
@@ -55,7 +56,6 @@ const DocumentResultSchema = z
   .strict();
 
 interface DocumentPluginConfig {
-  document: { defaultMode: string; modes: string[] };
   extractors: Record<string, AgentDocumentExtractorConfig>;
   probe: {
     sampleBytes: number;
@@ -94,7 +94,7 @@ void runMcpTool({
       throw new Error("DocumentTool received an upload resource that does not match uploadUri.");
     }
     const config = readDocumentPluginConfig();
-    const mode = resolveDocumentMode(args.mode, config);
+    const mode = args.mode ?? DefaultDocumentToolMode;
     const probe = await probeAgentDocument(
       {
         filePath: upload.filePath,
@@ -168,12 +168,6 @@ function readDocumentPluginConfig(): DocumentPluginConfig {
   return configuration.schema.parse(readPluginTomlConfig("PluginConfig.toml")) as DocumentPluginConfig;
 }
 
-function resolveDocumentMode(value: string | undefined, config: DocumentPluginConfig): string {
-  const mode = value ?? config.document.defaultMode;
-  if (!config.document.modes.includes(mode)) throw new Error(`DocumentTool mode is not configured: ${mode}`);
-  return mode;
-}
-
 function toProbeOptions(config: DocumentPluginConfig): Parameters<typeof probeAgentDocument>[1] {
   return {
     sampleBytes: config.probe.sampleBytes,
@@ -187,7 +181,7 @@ function toProbeOptions(config: DocumentPluginConfig): Parameters<typeof probeAg
 
 function toProbeRecord(input: {
   upload: z.infer<typeof UploadResourceSchema>;
-  mode: string;
+  mode: DocumentToolMode;
   probe: AgentDocumentProbeResult;
 }) {
   return {
