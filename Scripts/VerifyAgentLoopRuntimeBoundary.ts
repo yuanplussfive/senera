@@ -85,7 +85,6 @@ function assertNoDeadMachineConfig() {
 
 function assertPiRuntimeFieldsRemain() {
   for (const field of [
-    "LoadedTools",
     "PiTurnLeaseTimeoutSeconds",
     "PiSessions",
     "PiTurnLeaseTimeoutMs",

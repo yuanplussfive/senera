@@ -349,7 +349,7 @@ export interface PluginConfigField {
   step?: number;
   secret?: boolean;
   multiline?: boolean;
-  required?: boolean;
+  required: boolean;
 }
 
 export interface PluginConfigDiagnostic {
@@ -466,6 +466,8 @@ export type ConfigFormFieldType = "boolean" | "string" | "number" | "array" | "t
 
 export type ConfigFormFieldOptionValue = string | number | boolean;
 
+export type ConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
+
 export interface ConfigFormSnapshotData {
   version: 1;
   sections: ConfigFormSectionData[];
@@ -490,6 +492,8 @@ export interface ConfigFormFieldData {
   value: unknown;
   effectiveValue: unknown;
   configured: boolean;
+  missing: boolean;
+  valueSource: ConfigFormValueSource;
   description?: string;
   placeholder?: string;
   options?: ConfigFormFieldOptionValue[];
@@ -501,7 +505,7 @@ export interface ConfigFormFieldData {
   step?: number;
   secret?: boolean;
   multiline?: boolean;
-  required?: boolean;
+  required: boolean;
   addLabel?: string;
   itemLabelPath?: string[];
   itemFields?: ConfigFormFieldData[];
@@ -602,6 +606,23 @@ export interface RunStartedData {
   input: string;
 }
 
+export type RunActivity =
+  | "preparing_context"
+  | "initializing_runtime"
+  | "synchronizing_context"
+  | "evaluating_context"
+  | "running_agent_turn"
+  | "generating_response"
+  | "finalizing_response";
+
+export type RunActivityState = "started" | "completed" | "failed";
+
+export interface RunActivityChangedData {
+  activityId: string;
+  activity: RunActivity;
+  state: RunActivityState;
+}
+
 export interface PromptSummaryData {
   chars: number;
   lines: number;
@@ -624,7 +645,7 @@ export interface ActionPlannedData {
   }>;
   preferredTools: string[];
   toolSearchQueries: string[];
-  loadedTools: string[] | "all";
+  loadedTools: string[];
   currentStep?: number;
   runState?: {
     totalToolCalls: number;
@@ -646,7 +667,7 @@ export interface InteractionRoutedData {
   objective: string;
   preferredTools: string[];
   discoveryQueries: string[];
-  loadedTools: string[] | "all";
+  loadedTools: string[];
   expectedOutputMode?: "final_text" | "open";
 }
 
@@ -663,13 +684,6 @@ export interface ModelCompletedData {
   text: string;
   provider?: ModelProviderMetadata;
   usage?: ModelUsageMetadata;
-}
-
-export interface PiTraceData {
-  source: "session" | "proxy" | "tool_bridge" | "substrate";
-  eventType: string;
-  summary: string;
-  payload?: unknown;
 }
 
 export interface ToolCallsPlannedData {

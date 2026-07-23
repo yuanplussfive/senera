@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { InteractionRunMode, TurnContextMode } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { AgentLoopStateMachine } from "../../../Source/AgentSystem/Loop/AgentLoopStateMachine.js";
 import {
+  AgentTurnPreparationSnapshotSchemaVersion,
   createAgentTurnPreparationSnapshot,
   isAgentTurnPreparationReusable,
   parseAgentTurnPreparationSnapshot,
@@ -61,10 +62,15 @@ describe("Turn preparation behavior", () => {
     const snapshot = preparation();
 
     expect(parseAgentTurnPreparationSnapshot(snapshot)).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: AgentTurnPreparationSnapshotSchemaVersion,
       initialAction: { kind: "CallTools" },
     });
-    expect(parseAgentTurnPreparationSnapshot({ ...snapshot, schemaVersion: 1 })).toBeUndefined();
+    expect(
+      parseAgentTurnPreparationSnapshot({
+        ...snapshot,
+        schemaVersion: AgentTurnPreparationSnapshotSchemaVersion - 1,
+      }),
+    ).toBeUndefined();
     expect(
       parseAgentTurnPreparationSnapshot({
         ...snapshot,

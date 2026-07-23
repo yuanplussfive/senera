@@ -23,7 +23,6 @@ export interface AgentToolSearchConfig {
     ScoreThreshold?: number;
   };
   Memory?: {
-    Kind?: "sqlite" | "memory";
     DatabasePath?: string;
     MaxEpisodes?: number;
     HalfLifeDays?: number;
@@ -60,7 +59,6 @@ export interface ResolvedAgentToolSearchConfig {
     ScoreThreshold: number;
   };
   Memory: {
-    Kind: "sqlite" | "memory";
     DatabasePath: string;
     MaxEpisodes: number;
     HalfLifeDays: number;

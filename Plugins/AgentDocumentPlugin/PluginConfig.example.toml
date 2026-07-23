@@ -2,12 +2,6 @@
 # 启用插件
 enabled = true
 
-[document]
-# 默认处理模式
-defaultMode = "auto"
-# 允许模式
-modes = [ "auto", "probe", "extract" ]
-
 [probe]
 # 采样字节数
 sampleBytes = 65536

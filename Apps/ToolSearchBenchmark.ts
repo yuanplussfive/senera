@@ -55,7 +55,7 @@ async function main(): Promise<void> {
 
 function benchmarkPrompt(runtime: AgentSystemRuntime, prompt: string, bootstrapTools: readonly string[]) {
   const startedAt = performance.now();
-  const loadedTools = runtime.toolSearch.resolveInitialLoadedTools(prompt, "dynamic");
+  const loadedTools = runtime.toolSearch.resolveInitialLoadedTools(prompt);
   const durationMs = elapsedMilliseconds(startedAt);
   const ranked = runtime.toolSearch.search({
     query: prompt,
@@ -67,7 +67,7 @@ function benchmarkPrompt(runtime: AgentSystemRuntime, prompt: string, bootstrapT
     prompt,
     durationMs,
     loadedTools,
-    loadedToolCount: loadedTools === "all" ? runtime.registry.listTools().length : loadedTools.length,
+    loadedToolCount: loadedTools.length,
     ranked: ranked.map((result) => ({
       toolName: result.toolName,
       score: result.score,

@@ -124,7 +124,6 @@ function toolInput(): AgentToolApprovalPolicyInput {
     step: 1,
     toolName: "ShellCommandTool",
     arguments: { command: "example" },
-    visibleToolNames: "all",
     tool: {
       pluginName: "AgentShellToolPlugin",
       pluginTitle: "Shell",

@@ -95,6 +95,58 @@ test("workflow feed does not duplicate tool prefaces or expose their internal de
   expect(answerFeed.headline.subtitle).toBeUndefined();
 });
 
+test("workflow feed presents transient run activity without requiring a workflow step", () => {
+  const feed = deriveFeedModel({
+    requestId: "request-live-activity",
+    revision: 1,
+    startedAt: "2026-07-10T00:00:00.000Z",
+    status: "running",
+    liveActivity: "running_agent_turn",
+    activities: [
+      {
+        id: "activity-context",
+        activity: "preparing_context",
+        status: "done",
+        step: 1,
+        startedAt: "2026-07-10T00:00:00.000Z",
+        endedAt: "2026-07-10T00:00:00.100Z",
+      },
+      {
+        id: "activity-model",
+        activity: "running_agent_turn",
+        status: "running",
+        step: 1,
+        startedAt: "2026-07-10T00:00:00.100Z",
+      },
+    ],
+    input: "分析项目",
+    steps: [],
+    streamingRaw: "",
+    xmlPreview: "",
+    visibleText: "",
+    displayText: "",
+    visibleKind: "unknown",
+    expectedOutputMode: "open",
+    decisionMode: "none",
+    pendingToolArgsByName: {},
+  });
+
+  expect(feed).toMatchObject({
+    headline: { id: "live-activity", title: "Senera 正在执行当前轮次", status: "running" },
+    groups: [
+      {
+        label: "Senera 运行状态",
+        variant: "activity",
+        items: [
+          { id: "activity-context", title: "准备对话上下文", status: "done" },
+          { id: "activity-model", title: "执行当前轮次", status: "running" },
+        ],
+      },
+    ],
+    placeholder: "Senera 正在执行当前轮次",
+  });
+});
+
 function toolStep() {
   return {
     id: "tool-weather",

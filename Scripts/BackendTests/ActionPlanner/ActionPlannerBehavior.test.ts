@@ -172,7 +172,6 @@ function createActionPlanInput(): Parameters<AgentInteractionRouter["route"]>[0]
     },
     runState: {
       currentStep: 1,
-      dynamicTools: true,
       loadedTools: [],
       progress: {
         totalToolCalls: 0,

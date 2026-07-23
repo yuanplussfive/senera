@@ -2,31 +2,31 @@ import type { AgentSessionMetadata } from "../ModelEndpoints/AgentModelMetadata.
 
 export interface AgentToolAvailabilitySnapshot {
   runtimeFingerprint: string;
-  loadedToolNames: "all" | string[];
+  loadedToolNames: string[];
   updatedAt: string;
 }
 
 export function resolveAgentToolAvailabilitySnapshot(
   metadata: AgentSessionMetadata | undefined,
   runtimeFingerprint: string | undefined,
-): "all" | string[] | undefined {
+): string[] | undefined {
   const snapshot = metadata?.toolAvailability;
   if (!snapshot || !runtimeFingerprint || snapshot.runtimeFingerprint !== runtimeFingerprint) {
     return undefined;
   }
-  return snapshot.loadedToolNames === "all" ? "all" : [...snapshot.loadedToolNames];
+  return [...snapshot.loadedToolNames];
 }
 
 export function withAgentToolAvailabilitySnapshot(
   metadata: AgentSessionMetadata | undefined,
   runtimeFingerprint: string,
-  loadedToolNames: "all" | readonly string[],
+  loadedToolNames: readonly string[],
 ): AgentSessionMetadata {
   return {
     ...metadata,
     toolAvailability: {
       runtimeFingerprint,
-      loadedToolNames: loadedToolNames === "all" ? "all" : [...new Set(loadedToolNames)],
+      loadedToolNames: [...new Set(loadedToolNames)],
       updatedAt: new Date().toISOString(),
     },
   };

@@ -30,14 +30,4 @@ export type AgentModelDomainEvent =
         provider?: AgentModelProviderMetadata;
         usage?: AgentModelUsageValue;
       };
-    }
-  | {
-      kind: typeof AgentEventKinds.PiTrace;
-      context: AgentStepContext;
-      data: {
-        source: "session" | "proxy" | "tool_bridge" | "substrate";
-        eventType: string;
-        summary: string;
-        payload?: unknown;
-      };
     };

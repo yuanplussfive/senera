@@ -256,7 +256,9 @@ function normalizePluginConfigurationField(value) {
     ...(typeof field.step === "number" ? { step: field.step } : {}),
     ...(field.secret === true ? { secret: true } : {}),
     ...(field.multiline === true ? { multiline: true } : {}),
-    ...(field.required === false ? { required: false } : {}),
+    ...(type === "boolean" || typeof field.required === "boolean"
+      ? { required: type === "boolean" || field.required === true }
+      : {}),
   };
 }
 

@@ -5,14 +5,12 @@ import { AgentPlanningCommandHandler } from "../ActionPlanner/AgentPlanningComma
 import { matchByKind } from "../Core/AgentMatch.js";
 import { AgentPiTurnExecutor } from "../Pi/AgentPiTurnExecutor.js";
 import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
-import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import type { AgentLoopCommand, AgentLoopCommandResult } from "./AgentLoopStateTypes.js";
 
 export interface AgentLoopCommandExecutorOptions {
   runtime: AgentSystemRuntime;
   model: AgentLanguageModel;
-  agentLoopConfig?: ResolvedAgentLoopConfig;
 }
 
 export class AgentLoopCommandExecutor {
@@ -21,7 +19,6 @@ export class AgentLoopCommandExecutor {
   private readonly piTurn: AgentPiTurnExecutor;
 
   constructor(private readonly options: AgentLoopCommandExecutorOptions) {
-    const agentLoopConfig = options.agentLoopConfig ?? options.runtime.agentLoopConfig;
     const actionPlannerContextBuilder = new AgentActionPlannerContextBuilder(
       options.runtime.workspaceRoot,
       options.runtime.artifactsConfig.RootDir,
@@ -33,7 +30,6 @@ export class AgentLoopCommandExecutor {
       runtime: options.runtime,
       eventFactory: this.eventFactory,
       actionPlannerContextBuilder,
-      agentLoopConfig,
     });
     this.piTurn = new AgentPiTurnExecutor({
       runtime: options.runtime,

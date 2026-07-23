@@ -466,7 +466,7 @@ describe("Session run coordinator behavior", () => {
       "request-steer",
       "request-follow-up",
     ]);
-    expect(events).toEqual([expect.objectContaining({ kind: AgentEventKinds.PiTrace })]);
+    expect(events).toEqual([]);
 
     unregister();
     await fixture.coordinator.cancelActiveRun({ sessionId: fixture.session.id });

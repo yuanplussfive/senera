@@ -8,16 +8,11 @@ import { projectInteractionRoute } from "../../../Source/AgentSystem/ActionPlann
 import { AgentLoopEventFactory } from "../../../Source/AgentSystem/Loop/AgentLoopEventFactory.js";
 import type { AgentRootCommand } from "../../../Source/AgentSystem/AgentRootCommand.js";
 import type { AgentActivatedSkill } from "../../../Source/AgentSystem/Skills/AgentSkillActivation.js";
-import type {
-  AgentLoadedToolsConfig,
-  ResolvedAgentLoopConfig,
-} from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { InteractionRunMode } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import type { AgentPromptRootCommandOptions } from "../../../Source/AgentSystem/Prompt/AgentPromptContextTypes.js";
 import type { LoadedToolsState } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchRuntimeTypes.js";
 import type { AgentToolSearchCurrentSetPolicy } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchRuntimeTypes.js";
 import type { AgentLanguageModelMessage } from "../../../Source/AgentSystem/ModelEndpoints/AgentLanguageModel.js";
-import { AgentPiSessionCacheDefaults } from "../../../Source/AgentSystem/Pi/AgentPiSessionCachePolicy.js";
 import type { ParsedPiControllerAction } from "../../../Source/AgentSystem/PiProxy/AgentPiAssistantMessageSchema.js";
 import {
   createActionPlanInput,
@@ -27,13 +22,12 @@ import {
 import { AgentActionPlannerValidationError } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerSchema.js";
 
 describe("Planning command handler behavior", () => {
-  test("routes tool interactions through dynamic discovery, skill recommendations, and Pi root projection", async () => {
+  test("routes tool interactions through on-demand discovery, skill recommendations, and Pi root projection", async () => {
     const fixture = createRuntimeFixture();
     const handler = new AgentPlanningCommandHandler({
       runtime: fixture.runtime,
       eventFactory: new AgentLoopEventFactory(),
       actionPlannerContextBuilder: fixture.contextBuilder,
-      agentLoopConfig: dynamicLoopConfig,
     });
 
     const result = await handler.prepareInteraction({
@@ -116,7 +110,6 @@ describe("Planning command handler behavior", () => {
       runtime: fixture.runtime,
       eventFactory: new AgentLoopEventFactory(),
       actionPlannerContextBuilder: fixture.contextBuilder,
-      agentLoopConfig: dynamicLoopConfig,
     });
 
     const result = await handler.prepareInteraction({
@@ -171,7 +164,6 @@ describe("Planning command handler behavior", () => {
       runtime: fixture.runtime,
       eventFactory: new AgentLoopEventFactory(),
       actionPlannerContextBuilder: fixture.contextBuilder,
-      agentLoopConfig: dynamicLoopConfig,
     });
 
     const result = await handler.prepareInteraction({
@@ -201,29 +193,6 @@ describe("Planning command handler behavior", () => {
   });
 });
 
-const dynamicLoopConfig: ResolvedAgentLoopConfig = {
-  LoadedTools: "dynamic",
-  PiTurnLeaseTimeoutSeconds: 20,
-  PiTurnLeaseTimeoutMs: 20_000,
-  RunSettlementTimeoutSeconds: 15,
-  RunSettlementTimeoutMs: 15_000,
-  PiSessions: {
-    RootDir: ".senera/pi-sessions",
-    MaxCachedSessions: AgentPiSessionCacheDefaults.Capacity,
-    Compaction: {
-      Enabled: true,
-      TriggerRatio: 0.8,
-      HardLimitRatio: 0.95,
-      TargetRatio: 0.5,
-      SummaryMaxTokens: 4096,
-      TimeoutSeconds: 120,
-      TimeoutMs: 120_000,
-      UnknownContextWindowTokens: 128_000,
-      UnknownModelOutputTokens: 8_192,
-    },
-  },
-};
-
 function createRuntimeFixture(
   options: {
     route?: ReturnType<typeof createInteractionRoute>;
@@ -239,7 +208,7 @@ function createRuntimeFixture(
     preferredTools: readonly string[];
     currentSetPolicy?: AgentToolSearchCurrentSetPolicy;
   }> = [];
-  const autoSearches: Array<{ requestId: string; input: string; loadedToolNames: "all" | string[] }> = [];
+  const autoSearches: Array<{ requestId: string; input: string; loadedToolNames: string[] }> = [];
   const route = options.route ?? createInteractionRoute();
   const initialAction: ParsedPiControllerAction =
     options.initialAction ??
@@ -303,8 +272,8 @@ function createRuntimeFixture(
         },
       },
       pi: {
-        planningToolCards: ({ visibleToolNames }: { visibleToolNames?: "all" | readonly string[] } = {}) =>
-          (visibleToolNames === "all" ? registeredToolNames : (visibleToolNames ?? [])).map((name) => ({
+        planningToolCards: ({ visibleToolNames }: { visibleToolNames?: readonly string[] } = {}) =>
+          (visibleToolNames ?? registeredToolNames).map((name) => ({
             name,
             description: `${name} description`,
             parameterContract: {
@@ -316,7 +285,6 @@ function createRuntimeFixture(
       retrieval: {
         resolvePlannedLoadedTools: (request: {
           input: string;
-          loadedTools: AgentLoadedToolsConfig;
           currentLoadedTools?: LoadedToolsState;
           currentSetPolicy?: AgentToolSearchCurrentSetPolicy;
           preferredTools?: readonly string[];
@@ -326,15 +294,12 @@ function createRuntimeFixture(
             preferredTools: request.preferredTools ?? [],
             currentSetPolicy: request.currentSetPolicy,
           });
-          const current =
-            request.currentSetPolicy === "retain" && request.currentLoadedTools !== "all"
-              ? (request.currentLoadedTools ?? [])
-              : [];
+          const current = request.currentSetPolicy === "retain" ? (request.currentLoadedTools ?? []) : [];
           return [...new Set([...current, ...(request.preferredTools ?? [])])].filter((name) =>
             registeredToolNames.includes(name),
           );
         },
-        rememberAutoSearch: (requestId: string, input: string, loadedToolNames: "all" | string[]) => {
+        rememberAutoSearch: (requestId: string, input: string, loadedToolNames: string[]) => {
           autoSearches.push({ requestId, input, loadedToolNames });
         },
       },
@@ -405,7 +370,7 @@ function skill(name: string, score: number, recommendedTools: string[]): AgentAc
 
 function rootCommand(
   action: AgentPromptRootCommandOptions["decision"]["action"],
-  loadedToolNames: "all" | readonly string[],
+  loadedToolNames: readonly string[],
 ): AgentRootCommand {
   return {
     authority: "senera_runtime_root",
@@ -414,7 +379,7 @@ function rootCommand(
     toolAccess: "restricted",
     objective: "Test objective",
     instruction: null,
-    allowedTools: loadedToolNames === "all" ? [] : [...loadedToolNames],
+    allowedTools: [...loadedToolNames],
     forbiddenOutputs: [],
     insufficiencyPolicy: "ask",
     preferredTools: [],

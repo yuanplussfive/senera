@@ -416,7 +416,6 @@ function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
       ScoreThreshold: 0,
     },
     Memory: {
-      Kind: "memory",
       DatabasePath: "",
       MaxEpisodes: 100,
       HalfLifeDays: 30,

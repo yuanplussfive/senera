@@ -6,6 +6,7 @@ import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentPiPreparedActionLeasePort } from "./AgentPiPreparedActionLease.js";
+import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 
 export const AgentPiProxyContextHeader = "x-senera-pi-context-id";
 export const AgentPiProxyModelProviderHeader = "x-senera-model-provider-id";
@@ -27,6 +28,7 @@ export interface AgentPiProxyRuntimeContext {
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;
+  diagnostics?: AgentPiDiagnosticSink;
   rootCommand?: AgentRootCommand;
   interactionRoute?: AgentInteractionRouteResult;
   turnUnderstanding?: TurnUnderstanding;

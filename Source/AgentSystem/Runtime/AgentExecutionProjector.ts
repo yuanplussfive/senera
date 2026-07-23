@@ -30,7 +30,7 @@ export interface AgentCompletedRunResult {
   conversationEntries: AgentConversationEntry[];
   stepTraces: StepTrace[];
   turnUnderstanding?: TurnUnderstanding;
-  loadedToolNames?: "all" | string[];
+  loadedToolNames?: string[];
 }
 
 export class AgentExecutionProjector {

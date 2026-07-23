@@ -1,9 +1,15 @@
+import { useState } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Code2, Settings2 } from "lucide-react";
 import type { TomlTableWithoutBigInt } from "smol-toml";
 import type { PluginConfigField, PluginConfigItem, PluginConfigSection } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { ScrollArea, SwitchTrack } from "../../shared/ui";
+import {
+  ConfigFieldVisibilityControl,
+  filterConfigFields,
+  type ConfigFieldVisibility,
+} from "../../shared/config/ConfigFieldVisibility";
 import { FieldControl } from "./PluginConfigFields";
 import { readDraftValue } from "./pluginConfigDraft";
 
@@ -72,6 +78,11 @@ export function SettingsView({
   onUpdateField: (field: PluginConfigField, value: unknown) => void;
   onCommit?: () => void;
 }): JSX.Element {
+  const [fieldVisibility, setFieldVisibility] = useState<ConfigFieldVisibility>("essential");
+  const allFields = sections.flatMap((section) => section.fields);
+  const visibleSections = sections
+    .map((section) => ({ ...section, fields: filterConfigFields(section.fields, fieldVisibility) }))
+    .filter((section) => section.fields.length > 0);
   const content = (
     <div
       onBlurCapture={onCommit}
@@ -86,14 +97,16 @@ export function SettingsView({
         </div>
       ) : null}
 
-      {sections.length > 0 ? (
+      <ConfigFieldVisibilityControl fields={allFields} value={fieldVisibility} onChange={setFieldVisibility} />
+
+      {visibleSections.length > 0 ? (
         <div className={cn("space-y-7", parseError && "opacity-60")}>
           <PluginToolsSection
             plugin={plugin}
             disabled={toolsDisabled || Boolean(parseError)}
             onSetToolEnabled={onSetToolEnabled}
           />
-          {sections.map((section, sectionIndex) => (
+          {visibleSections.map((section, sectionIndex) => (
             <SettingsSection
               key={section.name}
               section={section}
@@ -112,7 +125,9 @@ export function SettingsView({
             onSetToolEnabled={onSetToolEnabled}
           />
           <div className="grid min-h-64 place-items-center rounded-lg border border-ink-200/70 bg-paper-50 text-[13px] text-ink-400 shadow-panel">
-            {frontendMessage("runtime.migrated.features.chat.PluginConfigViews.106.13")}
+            {fieldVisibility === "essential" && allFields.length > 0
+              ? frontendMessage("settings.config.noEssentialFields")
+              : frontendMessage("runtime.migrated.features.chat.PluginConfigViews.106.13")}
           </div>
         </div>
       )}

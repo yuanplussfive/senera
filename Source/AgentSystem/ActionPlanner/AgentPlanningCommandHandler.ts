@@ -9,7 +9,6 @@ import type {
   AgentRetrievalService,
 } from "../Runtime/AgentRuntimeServices.js";
 import type { AgentActionPlannerContextBuilder } from "./AgentActionPlannerContext.js";
-import type { ResolvedAgentLoopConfig } from "../Types/AgentConfigTypes.js";
 import { AgentInteractionRunModes } from "./AgentInteractionRouter.js";
 import type { AgentInteractionRouteResult } from "./AgentInteractionRouter.js";
 import type { ActionPlanInput, TurnUnderstanding } from "../BamlClient/baml_client/types.js";
@@ -30,7 +29,6 @@ export interface AgentPlanningCommandHandlerOptions {
   runtime: AgentPlanningCommandRuntime;
   eventFactory: Pick<AgentLoopEventFactory, "actionPlannerStage">;
   actionPlannerContextBuilder: Pick<AgentActionPlannerContextBuilder, "buildInput">;
-  agentLoopConfig: ResolvedAgentLoopConfig;
 }
 
 export interface AgentPlanningCommandRuntime {
@@ -54,7 +52,6 @@ export class AgentPlanningCommandHandler {
     onEvent?: AgentEventSink,
     signal?: AbortSignal,
   ): Promise<AgentLoopCommandResult> {
-    const dynamicTools = this.options.agentLoopConfig.LoadedTools === "dynamic";
     const timelineMessages = this.buildActionPlannerTimelineMessages(command);
     const roleplayPreset = await this.options.runtime.services.promptContext.plannerRoleplayPreset();
     const preRouteSkills = this.options.runtime.services.promptContext.activateSkills({
@@ -71,12 +68,11 @@ export class AgentPlanningCommandHandler {
             queries: [],
           })
         : command.loadedToolNames;
-    const buildPlanningInput = (loadedToolNames: "all" | string[]) =>
+    const buildPlanningInput = (loadedToolNames: string[]) =>
       this.options.actionPlannerContextBuilder.buildInput({
         requestId: command.requestId,
         userMessage: command.input,
         currentStep: command.step,
-        dynamicTools,
         loadedToolNames,
         messages: timelineMessages,
         conversationEntries: command.conversationEntries,
@@ -167,15 +163,15 @@ export class AgentPlanningCommandHandler {
     requestId: string;
     step: number;
     input: string;
-    planningLoadedToolNames: "all" | string[];
-    buildInput: (loadedToolNames: "all" | string[]) => ActionPlanInput;
+    planningLoadedToolNames: string[];
+    buildInput: (loadedToolNames: string[]) => ActionPlanInput;
     onEvent?: AgentEventSink;
     signal?: AbortSignal;
   }): Promise<{
     routed: Awaited<ReturnType<AgentPlanningService["prepareInteraction"]>>;
-    loadedToolNames: "all" | string[];
+    loadedToolNames: string[];
   }> {
-    const prepare = (loadedToolNames: "all" | string[], candidateTools: readonly AgentPiToolCard[]) =>
+    const prepare = (loadedToolNames: string[], candidateTools: readonly AgentPiToolCard[]) =>
       this.options.runtime.services.planning.prepareInteraction({
         input: options.buildInput(loadedToolNames),
         candidateTools,
@@ -194,7 +190,7 @@ export class AgentPlanningCommandHandler {
         loadedToolNames: options.planningLoadedToolNames,
       };
     } catch (error) {
-      const allTools = this.options.runtime.services.pi.planningToolCards({ visibleToolNames: "all" });
+      const allTools = this.options.runtime.services.pi.planningToolCards();
       const registeredTools = new Map(allTools.map((tool) => [tool.name, tool] as const));
       const promotedToolNames = collectPlannerFailureToolNames(error).filter(
         (toolName) => registeredTools.has(toolName) && !candidateTools.some((tool) => tool.name === toolName),
@@ -223,14 +219,13 @@ export class AgentPlanningCommandHandler {
 
   private resolveRouteLoadedTools(options: {
     input: string;
-    currentLoadedTools: "all" | string[];
+    currentLoadedTools: string[];
     currentSetPolicy: AgentToolSearchCurrentSetPolicy;
     preferredTools: readonly string[];
     queries: readonly string[];
-  }): "all" | string[] {
+  }): string[] {
     return this.options.runtime.services.retrieval.resolvePlannedLoadedTools({
       input: options.input,
-      loadedTools: this.options.agentLoopConfig.LoadedTools,
       currentLoadedTools: options.currentLoadedTools,
       currentSetPolicy: options.currentSetPolicy,
       preferredTools: options.preferredTools,
@@ -243,7 +238,7 @@ export class AgentPlanningCommandHandler {
   private buildRuntimeRootCommand(
     route: AgentInteractionRouteResult,
     initialAction: ParsedPiControllerAction,
-    loadedToolNames: "all" | string[],
+    loadedToolNames: string[],
     preferredTools: readonly string[],
   ) {
     const decision = projectInitialActionDecision(initialAction, route, preferredTools);

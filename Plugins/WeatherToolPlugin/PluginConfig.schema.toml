@@ -10,21 +10,11 @@ label = "启用状态"
 path = [ "senera", "enabled" ]
 label = "启用插件"
 type = "boolean"
+required = true
 
 [[form.sections]]
 id = "weather"
-label = "天气参数"
-
-[[form.sections.fields]]
-path = [ "weather", "provider" ]
-label = "天气服务"
-type = "string"
-options = [ "qweather", "weatherapi", "visual_crossing" ]
-
-[form.sections.fields.optionLabels]
-qweather = "和风天气"
-weatherapi = "国际天气服务"
-visual_crossing = "全球天气服务"
+label = "和风天气"
 
 [[form.sections.fields]]
 path = [ "weather", "api_keys" ]
@@ -32,29 +22,14 @@ label = "接口密钥"
 type = "array"
 itemType = "string"
 secret = true
+required = true
 
 [[form.sections.fields]]
 path = [ "weather", "api_host" ]
-label = "接口域名"
+label = "API URL"
 type = "string"
-
-[[form.sections.fields]]
-path = [ "weather", "weather_api_host" ]
-label = "WeatherAPI 域名"
-type = "string"
-required = false
-
-[[form.sections.fields]]
-path = [ "weather", "base_url" ]
-label = "服务基础地址"
-type = "string"
-required = false
-
-[[form.sections.fields]]
-path = [ "weather", "geo_base_url" ]
-label = "地理编码地址"
-type = "string"
-required = false
+description = "和风天气控制台分配的专属 API Host，必须包含 https://。"
+required = true
 
 [[form.sections.fields]]
 path = [ "weather", "language" ]

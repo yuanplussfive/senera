@@ -244,18 +244,21 @@ function VectorModelCard({
             <NumberLine
               label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.202.31")}
               value={readNumber(value.Dimensions)}
+              min={-1}
               disabled={disabled || !enabled}
               onChange={(Dimensions) => onChange({ Dimensions })}
             />
             <NumberLine
               label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.203.31")}
               value={readNumber(value.BatchSize)}
+              min={1}
               disabled={disabled || !enabled}
               onChange={(BatchSize) => onChange({ BatchSize })}
             />
             <NumberLine
               label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.204.31")}
               value={readNumber(value.InputMaxChars)}
+              min={-1}
               disabled={disabled || !enabled}
               onChange={(InputMaxChars) => onChange({ InputMaxChars })}
             />
@@ -271,12 +274,14 @@ function VectorModelCard({
             <NumberLine
               label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.209.31")}
               value={readNumber(value.CandidateLimit)}
+              min={-1}
               disabled={disabled || !enabled}
               onChange={(CandidateLimit) => onChange({ CandidateLimit })}
             />
             <NumberLine
               label="TopK"
               value={readNumber(value.TopK)}
+              min={-1}
               disabled={disabled || !enabled}
               onChange={(TopK) => onChange({ TopK })}
             />
@@ -285,12 +290,14 @@ function VectorModelCard({
         <NumberLine
           label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.213.27")}
           value={readNumber(value.TimeoutSeconds)}
+          min={1}
           disabled={disabled || !enabled}
           onChange={(TimeoutSeconds) => onChange({ TimeoutSeconds })}
         />
         <NumberLine
           label={frontendMessage("runtime.migrated.features.chat.VectorModelConfigView.214.27")}
           value={readNumber(value.MaxNetworkRetries)}
+          min={0}
           disabled={disabled || !enabled}
           onChange={(MaxNetworkRetries) => onChange({ MaxNetworkRetries })}
         />
@@ -344,11 +351,13 @@ function SettingLine({
 function NumberLine({
   label,
   value,
+  min,
   disabled,
   onChange,
 }: {
   label: string;
   value?: number;
+  min?: number;
   disabled: boolean;
   onChange: (value: number | undefined) => void;
 }): JSX.Element {
@@ -357,6 +366,7 @@ function NumberLine({
       <input
         type="number"
         value={value ?? ""}
+        min={min}
         disabled={disabled}
         className={inputClassName}
         onChange={(event) => {

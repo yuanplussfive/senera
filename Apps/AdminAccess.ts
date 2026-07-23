@@ -2,30 +2,31 @@ import path from "node:path";
 import process from "node:process";
 import readline from "node:readline/promises";
 import { AgentLocalAdminAccountStore } from "../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
+import { parseAdminAccessInvocation } from "./AdminAccessCommand.js";
 
 const DefaultAccountFile = ".senera/access/admin-account.json";
 
-void main();
+void main().catch((error) => {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.exitCode = 1;
+});
 
 async function main(): Promise<void> {
-  const command = process.argv[2];
-  if (command !== "init" && command !== "reset-password") {
-    throw new Error("用法：senera-admin-access <init|reset-password> [--workspace <path>] [--account-file <path>]");
-  }
-
-  const options = readOptions(process.argv.slice(3));
-  const workspaceRoot = path.resolve(options.workspace ?? process.env.SENERA_WORKSPACE_ROOT?.trim() ?? process.cwd());
+  const invocation = parseAdminAccessInvocation(process.argv.slice(2));
+  const workspaceRoot = path.resolve(
+    invocation.workspace ?? process.env.SENERA_WORKSPACE_ROOT?.trim() ?? process.cwd(),
+  );
   const accountFile = path.resolve(
     workspaceRoot,
-    options.accountFile ?? process.env.SENERA_ADMIN_ACCOUNT_FILE?.trim() ?? DefaultAccountFile,
+    invocation.accountFile ?? process.env.SENERA_ADMIN_ACCOUNT_FILE?.trim() ?? DefaultAccountFile,
   );
   const store = new AgentLocalAdminAccountStore(accountFile);
   const existing = store.read();
 
-  if (command === "init" && existing) {
+  if (invocation.command === "init" && existing) {
     throw new Error(`管理员账户已初始化：${accountFile}`);
   }
-  if (command === "reset-password" && !existing) {
+  if (invocation.command === "reset-password" && !existing) {
     throw new Error(`管理员账户尚未初始化：${accountFile}`);
   }
 
@@ -40,35 +41,14 @@ async function main(): Promise<void> {
     }
 
     const account =
-      command === "init"
+      invocation.command === "init"
         ? await store.initialize({ loginName, displayName, password })
         : await store.resetPassword({ loginName, displayName, password });
-    process.stdout.write(`管理员账户已${command === "init" ? "初始化" : "重置"}：${account.loginName}\n`);
+    process.stdout.write(`管理员账户已${invocation.command === "init" ? "初始化" : "重置"}：${account.loginName}\n`);
     process.stdout.write(`账户文件：${accountFile}\n`);
   } finally {
     prompt.close();
   }
-}
-
-function readOptions(values: readonly string[]): { workspace?: string; accountFile?: string } {
-  const result: { workspace?: string; accountFile?: string } = {};
-  for (let index = 0; index < values.length; index += 2) {
-    const key = values[index];
-    const value = values[index + 1];
-    if (!key || !value) {
-      throw new Error("参数必须使用 --workspace <path> 或 --account-file <path> 的形式。");
-    }
-    if (key === "--workspace") {
-      result.workspace = value;
-      continue;
-    }
-    if (key === "--account-file") {
-      result.accountFile = value;
-      continue;
-    }
-    throw new Error(`未知参数：${key}`);
-  }
-  return result;
 }
 
 async function promptValue(prompt: readline.Interface, label: string, fallback?: string): Promise<string> {

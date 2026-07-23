@@ -23,7 +23,7 @@ export interface AgentToolPermissionRequest {
   toolName: string;
   arguments: Record<string, unknown>;
   executionPlan?: AgentToolExecutionPlan;
-  visibleToolNames?: "all" | readonly string[];
+  visibleToolNames?: readonly string[];
   tool?: AgentToolSafetyMetadata;
 }
 

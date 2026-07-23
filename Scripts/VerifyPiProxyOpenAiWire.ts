@@ -27,6 +27,7 @@ import type {
   ResolvedAgentModelProviderConfig,
 } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentRootCommand } from "../Source/AgentSystem/AgentRootCommand.js";
+import type { AgentPiDiagnosticEvent } from "../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 
 const config: AgentSystemConfig = {
   Server: {
@@ -220,12 +221,16 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
     },
   ];
   const events: unknown[] = [];
+  const diagnostics: AgentPiDiagnosticEvent[] = [];
   const compiler = new SpyCompiler();
   const api = new AgentPiProxyHttpApi({
     configSnapshot: () => config,
     compilerFactory: () => compiler,
     onEvent: (event) => {
       events.push(event);
+    },
+    diagnostics: (event) => {
+      diagnostics.push(event);
     },
   });
   const uploadStore = new AgentUploadStore({
@@ -297,11 +302,7 @@ async function verifyPiProxyRuntimeContextForwarding(): Promise<void> {
   assert.equal(compiler.lastRequest?.runtime?.rootCommand, rootCommand);
   assert.deepEqual(compiler.lastRequest?.runtime?.activeSkills, activeSkills);
   assert.equal(
-    events.some(
-      (event) =>
-        readRecord(event).kind === "pi.trace" &&
-        readRecord(readRecord(event).context).requestId === "verify-pi-proxy-context",
-    ),
+    diagnostics.some((event) => event.context.requestId === "verify-pi-proxy-context"),
     true,
   );
   assert.equal(

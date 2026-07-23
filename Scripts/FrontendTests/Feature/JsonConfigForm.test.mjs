@@ -116,7 +116,7 @@ test("multi-section settings expose lightweight section navigation", () => {
         {
           name: "planning",
           label: "Planning",
-          fields: [{ path: ["Plan"], label: "Plan", type: "string", effectiveValue: "" }],
+          fields: [{ path: ["Plan"], label: "Plan", type: "string", effectiveValue: "", required: true }],
         },
       ],
       value: initialConfig,
@@ -138,6 +138,56 @@ test("multi-section settings expose lightweight section navigation", () => {
   );
   expect(screen.queryByRole("heading", { name: "Runtime" })).not.toBeInTheDocument();
 });
+
+test("settings default to required fields and switches, then reveal all optional fields on demand", async () => {
+  const user = userEvent.setup();
+  render(
+    React.createElement(JsonConfigSettingsView, {
+      sections: [
+        {
+          name: "scope",
+          label: "Scope",
+          fields: [
+            {
+              path: ["RequiredValue"],
+              label: "Required value",
+              type: "string",
+              effectiveValue: "ready",
+              required: true,
+            },
+            {
+              path: ["OptionalValue"],
+              label: "Optional value",
+              type: "string",
+              effectiveValue: "default",
+              required: false,
+            },
+            {
+              path: ["OptionalSwitch"],
+              label: "Optional switch",
+              type: "boolean",
+              effectiveValue: false,
+              required: false,
+            },
+          ],
+        },
+      ],
+      value: {},
+      onChange: vi.fn(),
+    }),
+  );
+
+  expect(screen.getByText("Required value")).toBeVisible();
+  expect(screen.getByText("Optional switch")).toBeVisible();
+  expect(screen.queryByText("Optional value")).not.toBeInTheDocument();
+  expect(screen.getAllByText("必填")).toHaveLength(2);
+
+  await user.click(screen.getByRole("button", { name: /全部/ }));
+
+  expect(screen.getByText("Optional value")).toBeVisible();
+  expect(screen.getAllByText("可选")).not.toHaveLength(0);
+});
+
 test("disabled settings form blocks every mutable control", () => {
   render(
     React.createElement(JsonConfigSettingsView, {
@@ -187,6 +237,7 @@ const configSections = [
         label: "Enabled",
         type: "boolean",
         effectiveValue: false,
+        required: true,
       },
       {
         path: ["Mode"],
@@ -195,6 +246,7 @@ const configSections = [
         options: ["fast", "safe"],
         optionLabels: { fast: "Fast", safe: "Safe" },
         effectiveValue: "fast",
+        required: true,
       },
       {
         path: ["Retries"],
@@ -203,6 +255,7 @@ const configSections = [
         min: 0,
         max: 5,
         effectiveValue: 1,
+        required: true,
       },
       {
         path: ["Tags"],
@@ -211,6 +264,7 @@ const configSections = [
         itemType: "string",
         addLabel: "添加标签",
         effectiveValue: ["release"],
+        required: true,
       },
       {
         path: ["Headers"],
@@ -218,6 +272,7 @@ const configSections = [
         type: "record",
         itemType: "string",
         effectiveValue: { existing: "value" },
+        required: true,
       },
     ],
   },

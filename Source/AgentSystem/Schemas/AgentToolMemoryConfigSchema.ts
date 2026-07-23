@@ -19,7 +19,6 @@ export const ToolSearchSchema = z
       .optional(),
     Memory: z
       .object({
-        Kind: z.union([z.literal("sqlite"), z.literal("memory")]).optional(),
         DatabasePath: z.string().min(1).optional(),
         MaxEpisodes: z.number().int().min(1).optional(),
         HalfLifeDays: z.number().positive().optional(),
@@ -84,8 +83,8 @@ export const VectorModelsSchema = z
       .optional(),
     Rerank: VectorModelHttpSchema.extend({
       EndpointPath: z.string().min(1).optional(),
-      CandidateLimit: z.number().int().min(1).optional(),
-      TopK: z.number().int().min(1).optional(),
+      CandidateLimit: disabledOrPositiveInteger("VectorModels.Rerank.CandidateLimit").optional(),
+      TopK: disabledOrPositiveInteger("VectorModels.Rerank.TopK").optional(),
     })
       .strict()
       .optional(),

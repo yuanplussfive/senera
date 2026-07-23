@@ -20,6 +20,7 @@ import {
   renderPiHarnessSystemPrompt,
 } from "../Source/AgentSystem/Pi/AgentPiPromptFrameProjector.js";
 import { SeneraLocalExecutionEnv } from "../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
+import type { AgentPiDiagnosticEvent } from "../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 
 const sessionsRoot = createTemporarySessionsRoot("turn-lease");
 const config: AgentSystemConfig = {
@@ -73,7 +74,7 @@ const modelProvider: ResolvedAgentModelProviderConfig = {
   Capabilities: {},
 };
 
-const events: unknown[] = [];
+const diagnostics: AgentPiDiagnosticEvent[] = [];
 const registry = new AgentPluginRegistry();
 registerPlugin(registry, "System/Plugins/AgentCapabilitySkillsPlugin");
 const executionEnv = new SeneraLocalExecutionEnv({
@@ -118,6 +119,9 @@ const substrate = new AgentPiSubstrate({
     model: modelProvider.Model,
   }),
   executionEnv,
+  diagnostics: (event) => {
+    diagnostics.push(event);
+  },
 });
 
 const result = await withTimeout(
@@ -128,9 +132,6 @@ const result = await withTimeout(
     systemPrompt: "<agent_system></agent_system>",
     visibleToolNames: [],
     activeSkills,
-    onEvent: (event) => {
-      events.push(event);
-    },
   }),
 );
 
@@ -145,15 +146,15 @@ await result.session.setResources({
   skills: resources.harnessResources.skills,
   promptTemplates: resources.harnessResources.promptTemplates,
 });
-assert.equal(hasPiTraceEvent("core.turn.lease.started"), true);
-assert.equal(hasPiTraceEvent("core.turn.lease.completed"), true);
-assert.deepEqual(piTracePayload("core.turn.lease.completed")?.skillNames, ["WorkspaceInvestigationSkill"]);
-assertContainsAll(readStringArray(piTracePayload("core.turn.lease.completed")?.promptTemplateNames), [
+assert.equal(hasDiagnostic("core.turn.lease.started"), true);
+assert.equal(hasDiagnostic("core.turn.lease.completed"), true);
+assert.deepEqual(diagnosticDetails("core.turn.lease.completed")?.skillNames, ["WorkspaceInvestigationSkill"]);
+assertContainsAll(readStringArray(diagnosticDetails("core.turn.lease.completed")?.promptTemplateNames), [
   "TddExecution",
   "TodoWorkflow",
   "ImplementationWorkflow",
 ]);
-assertContainsAll(readStringArray(piTracePayload("core.turn.lease.completed")?.selectedPromptTemplateNames), [
+assertContainsAll(readStringArray(diagnosticDetails("core.turn.lease.completed")?.selectedPromptTemplateNames), [
   "TddExecution",
   "TodoWorkflow",
   "ImplementationWorkflow",
@@ -194,11 +195,7 @@ assert.match(prompt, /todo-workflow/);
 assert.match(prompt, /implementation-workflow/);
 assert.match(prompt, /Execution contract/);
 assert.equal(
-  substrate
-    .toolDefinitions({
-      visibleToolNames: "all",
-    })
-    .every((tool) => tool.executionMode === "sequential"),
+  substrate.toolDefinitions().every((tool) => tool.executionMode === "sequential"),
   true,
 );
 result.session.dispose();
@@ -213,25 +210,17 @@ function createTemporarySessionsRoot(name: string): string {
   return root;
 }
 
-function hasPiTraceEvent(eventType: string): boolean {
-  return events.some((event) => {
-    const record = readRecord(event);
-    const data = readRecord(record.data);
-    return record.kind === "pi.trace" && data.eventType === eventType;
-  });
+function hasDiagnostic(name: string): boolean {
+  return diagnostics.some((event) => event.name === name);
 }
 
-function piTracePayload(eventType: string): Record<string, unknown> | undefined {
-  const event = events.find((candidate) => {
-    const record = readRecord(candidate);
-    const data = readRecord(record.data);
-    return record.kind === "pi.trace" && data.eventType === eventType;
-  });
-  return readRecord(readRecord(readRecord(event).data).payload);
+function diagnosticDetails(name: string): Record<string, unknown> | undefined {
+  const details = diagnostics.find((event) => event.name === name)?.details;
+  return details === undefined ? undefined : readRecord(details);
 }
 
-function readSelectedTemplatePayloads(eventType: string): Record<string, unknown>[] {
-  const templates = piTracePayload(eventType)?.selectedPromptTemplates;
+function readSelectedTemplatePayloads(name: string): Record<string, unknown>[] {
+  const templates = diagnosticDetails(name)?.selectedPromptTemplates;
   return Array.isArray(templates) ? templates.map(readRecord) : [];
 }
 

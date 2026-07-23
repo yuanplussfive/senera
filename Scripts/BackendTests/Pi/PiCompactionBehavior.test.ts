@@ -18,6 +18,7 @@ import type {
 } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createModelProvider, createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import { resolveAgentLoopConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
+import type { AgentPiDiagnosticEvent } from "../../../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -48,13 +49,16 @@ describe("Pi compaction behavior", () => {
       criticalContext: ["sessionId=session-compact"],
     }));
     const compactionConfig = createCompactionConfig();
-    const traceEvents: unknown[] = [];
+    const diagnostics: AgentPiDiagnosticEvent[] = [];
     const pool = new AgentPiHarnessSessionPool({
       env,
       provider: projectSeneraModelProviderToPi(provider, config),
       modelProvider: provider,
       compactionPolicy: new AgentPiCompactionPolicy(compactionConfig, provider),
       compactionSummarizer: new AgentPiCompactionSummarizer({ compactPiSession }),
+      diagnostics: (event) => {
+        diagnostics.push(event);
+      },
     });
     const lease = await pool.lease({
       sessionId: persistent.sessionId,
@@ -69,9 +73,6 @@ describe("Pi compaction behavior", () => {
       frame: {
         sessionId: persistent.sessionId,
         selectedPromptTemplates: [],
-        onEvent: (event) => {
-          traceEvents.push(event);
-        },
       },
       preflight: async () => undefined,
     });
@@ -95,7 +96,7 @@ describe("Pi compaction behavior", () => {
       summary: expect.stringContaining("## Goal"),
     });
     expect(context.messages.length).toBeLessThan(history.length);
-    expect(readPiTracePayload(traceEvents, "compaction.check.timing")).toEqual({
+    expect(readDiagnosticDetails(diagnostics, "compaction.check.timing")).toEqual({
       durationMs: expect.any(Number),
       branchEntryCount: history.length,
     });
@@ -504,13 +505,6 @@ const config: AgentSystemConfig = {
   ],
 };
 
-function readPiTracePayload(events: readonly unknown[], eventType: string): unknown {
-  for (const event of events) {
-    if (!event || typeof event !== "object" || !("kind" in event) || event.kind !== "pi.trace") continue;
-    const data = "data" in event ? event.data : undefined;
-    if (data && typeof data === "object" && "eventType" in data && data.eventType === eventType) {
-      return "payload" in data ? data.payload : undefined;
-    }
-  }
-  return undefined;
+function readDiagnosticDetails(events: readonly AgentPiDiagnosticEvent[], name: string): unknown {
+  return events.find((event) => event.name === name)?.details;
 }

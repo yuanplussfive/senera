@@ -4,6 +4,7 @@ import type { PluginConfigField } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { Switch } from "../../shared/ui";
+import { ConfigFieldRequirementLabel } from "../../shared/config/ConfigFieldVisibility";
 import {
   coerceArrayItem,
   defaultArrayItem,
@@ -31,7 +32,10 @@ export function FieldControl({
       className="plugin-config-field grid min-w-0 gap-3 px-4 py-3.5 transition hover:bg-paper-100/45"
     >
       <div className="min-w-0 pr-2">
-        <div className="text-[13px] font-medium text-ink-900">{field.label}</div>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <div className="min-w-0 text-[13px] font-medium text-ink-900">{field.label}</div>
+          <ConfigFieldRequirementLabel required={field.required} type={field.type} />
+        </div>
         {field.description ? <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>
       <div className="plugin-config-field__control min-w-0">{renderFieldInput(field, value, disabled, onChange)}</div>

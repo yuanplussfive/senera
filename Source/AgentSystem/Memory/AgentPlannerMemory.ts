@@ -85,7 +85,7 @@ export class AgentPlannerMemoryProjector {
     requestId: string;
     step: number;
     plan: AgentActionPlanResult;
-    loadedToolNames: "all" | readonly string[];
+    loadedToolNames: readonly string[];
     timestamp?: string;
   }): Extract<AgentConversationEntry, { kind: "planner.journal" }> {
     const createdAt = options.timestamp ?? new Date().toISOString();
@@ -101,7 +101,7 @@ export class AgentPlannerMemoryProjector {
         decision: options.plan.decision,
         evidenceUris: options.plan.input.timeline.flatMap((turn) => turn.evidenceUris),
         artifactUris: options.plan.input.timeline.flatMap((turn) => turn.artifactUris),
-        loadedTools: options.loadedToolNames === "all" ? ["all"] : [...options.loadedToolNames],
+        loadedTools: [...options.loadedToolNames],
         result: options.plan.kind,
         createdAt,
       },
@@ -169,7 +169,7 @@ export function createPlannerJournalEntry(options: {
   requestId: string;
   step: number;
   plan: AgentActionPlanResult;
-  loadedToolNames: "all" | readonly string[];
+  loadedToolNames: readonly string[];
   timestamp?: string;
 }): Extract<AgentConversationEntry, { kind: "planner.journal" }> {
   return new AgentPlannerMemoryProjector().createJournalEntry(options);

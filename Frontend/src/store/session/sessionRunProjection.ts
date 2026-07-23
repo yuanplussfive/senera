@@ -9,6 +9,7 @@ export function createRunRecord(input: { requestId: string; startedAt: string; i
     startedAt: input.startedAt,
     status: "running",
     input: input.input,
+    activities: [],
     steps: [],
     streamingRaw: "",
     xmlPreview: "",

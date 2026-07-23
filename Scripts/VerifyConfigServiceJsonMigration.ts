@@ -55,6 +55,7 @@ function verifyLegacyJsonMigration(): void {
   assert.equal("Mode" in (snapshot.value.Defaults?.ToolExecution ?? {}), false);
   assert.equal("MaxSteps" in (snapshot.value.AgentLoop ?? {}), false);
   assert.equal("MaxRepairAttempts" in (snapshot.value.AgentLoop ?? {}), false);
+  assert.equal("LoadedTools" in (snapshot.value.AgentLoop ?? {}), false);
   assert.equal("DecisionActionDescription" in (snapshot.value.PluginDocumentation ?? {}), false);
   assert.equal(fs.readFileSync(`${configPath}.v0.bak`, "utf8"), originalText);
 
@@ -186,7 +187,7 @@ function createLegacyConfig(): Record<string, unknown> {
       },
     },
     ToolExecution: { Mode: "Process", TimeoutSeconds: 30 },
-    AgentLoop: { MaxSteps: 16, MaxRepairAttempts: 4, LoadedTools: "dynamic" },
+    AgentLoop: { MaxSteps: 16, MaxRepairAttempts: 4, LoadedTools: "all" },
     ActionPlanner: {
       MaxRepairAttempts: 7,
       Client: { Provider: "legacy-model" },

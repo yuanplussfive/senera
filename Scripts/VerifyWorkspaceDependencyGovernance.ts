@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import fg from "fast-glob";
 import { E2eTestPolicy, ProjectTestCoveragePolicies } from "./TestCoveragePolicy.js";
+import { inspectContainerReleasePipeline } from "./ContainerReleaseWorkflowGovernance.js";
 
 interface PackageJson {
   name?: string;
@@ -336,6 +337,7 @@ function inspectApplicationEntrypoints(): string[] {
   const expectedFiles = [
     "Apps/Server.ts",
     "Apps/ServerRuntime.ts",
+    "Apps/AdminAccessCommand.ts",
     "Apps/Desktop/Main.ts",
     "Apps/Desktop/DesktopRuntime.ts",
     "Apps/Desktop/DesktopFrontendSource.ts",
@@ -551,34 +553,29 @@ function inspectPullRequestJobGate(workflow: string, file: string, jobName: stri
 }
 
 function inspectReleaseWorkflowGates(): string[] {
-  return inspectTextIncludes(productReleaseWorkflow, ".github/workflows/release.yml", [
-    "workflow_run:",
-    "workflow_dispatch:",
-    "release_tag:",
-    "googleapis/release-please-action@v4",
-    "needs.release-please.outputs.release_created == 'true'",
-    "Build/ProductReleaseInfo.ts",
-    "Require release source to match triggering verification",
-    "VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}",
-    'test "$RELEASE_SHA" = "$VERIFIED_SHA"',
-    "Require successful verification",
-    "if: github.event_name == 'workflow_dispatch'",
-    "gh run list --workflow verify.yml",
-    "npm run desktop.pack",
-    "gh release upload",
-    "type=raw,value=${{ needs.metadata.outputs.container_version_tag }}",
-    "type=raw,value=${{ needs.metadata.outputs.container_minor_tag }}",
-    "type=raw,value=sha-${{ needs.metadata.outputs.source_sha }}",
-    "type=raw,value=latest",
-    "cache-from: type=gha",
-    "cache-to: type=gha,mode=max",
-    "container-smoke:",
-    "load: true",
-    'docker exec "$CONTAINER_NAME" node Dist/Scripts/VerifyDockerNativeSqlite.js',
-    "- container-smoke",
-    "Publish Verified Release",
-    "--draft=false --latest",
-  ]);
+  return [
+    ...inspectTextIncludes(productReleaseWorkflow, ".github/workflows/release.yml", [
+      "workflow_run:",
+      "workflow_dispatch:",
+      "release_tag:",
+      "googleapis/release-please-action@v4",
+      "needs.release-please.outputs.release_created == 'true'",
+      "Build/ProductReleaseInfo.ts",
+      "Require release source to match triggering verification",
+      "VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}",
+      'test "$RELEASE_SHA" = "$VERIFIED_SHA"',
+      "Require successful verification",
+      "if: github.event_name == 'workflow_dispatch'",
+      "gh run list --workflow verify.yml",
+      "npm run desktop.pack",
+      "gh release upload",
+      "container-build:",
+      "container-smoke:",
+      "Publish Verified Release",
+      "--draft=false --latest",
+    ]),
+    ...inspectContainerReleasePipeline(productReleaseWorkflow),
+  ];
 }
 
 function inspectWorkspaceNpmrcFiles(): string[] {

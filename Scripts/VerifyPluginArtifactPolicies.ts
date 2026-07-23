@@ -572,8 +572,7 @@ function assertPlannerProjection(
   const input = new AgentActionPlannerContextBuilder(workspaceRoot, artifactRoot).buildInput({
     userMessage: "verify artifact policies",
     currentStep: 2,
-    dynamicTools: true,
-    loadedToolNames: "all",
+    loadedToolNames: [],
     messages: [],
     ledger,
     toolCatalog: [],

@@ -44,13 +44,7 @@
       "Name": "WeatherTool",
       "Loading": "Dynamic",
       "DescriptionFile": "./docs/Tool.md",
-      "Permissions": [
-        "network:https://api.weatherapi.com",
-        "network:https://devapi.qweather.com",
-        "network:https://geoapi.qweather.com",
-        "network:https://*.qweatherapi.com",
-        "network:https://weather.visualcrossing.com"
-      ],
+      "Permissions": ["network:https://*.qweatherapi.com"],
       "Execution": {
         "Targets": ["Local"],
         "Network": "Allow",
@@ -230,7 +224,7 @@
             "Risk": {
               "SideEffect": "network",
               "Permission": "external-api",
-              "Notes": ["Uses configured weather providers."]
+              "Notes": ["Uses the configured QWeather API host."]
             }
           }
         ],

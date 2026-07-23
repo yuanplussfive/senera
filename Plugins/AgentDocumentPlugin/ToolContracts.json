@@ -6,7 +6,7 @@
         "kind": "typescript",
         "identity": "./ToolSignature.ts#default",
         "file": "./ToolSignature.ts",
-        "sha256": "7bacb0a55d8f846856766c06e033cd36a14fed5e2d8b8bab3d5a76d12a5bc2cc"
+        "sha256": "3e8010051bcf3f7c03cb3f53955206728ff7d1b4a320469d69b931824dabfd09"
       },
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -18,7 +18,8 @@
           },
           "mode": {
             "type": "string",
-            "description": "Optional processing mode. If omitted, the plugin TOML defaultMode is used. auto: probe first and extract text only when a configured parser matches. probe: return registration/probe facts only. extract: require text extraction."
+            "enum": ["auto", "probe", "extract"],
+            "description": "Optional processing mode. If omitted, auto is used. auto: probe first and extract text only when a configured parser matches. probe: return registration/probe facts only. extract: require text extraction."
           },
           "resources": {
             "type": "object",

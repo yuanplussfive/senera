@@ -8,11 +8,7 @@ import {
   singleTermWeights,
   weightedSimilarity,
 } from "./AgentToolSearchMemoryProjection.js";
-import {
-  InMemoryToolSearchMemoryStore,
-  SqliteToolSearchMemoryStore,
-  resolveToolSearchMemoryDatabasePath,
-} from "./AgentToolSearchMemoryStore.js";
+import { SqliteToolSearchMemoryStore, resolveToolSearchMemoryDatabasePath } from "./AgentToolSearchMemoryStore.js";
 import type {
   AgentToolLearningSignal,
   AgentToolSearchEpisode,
@@ -40,13 +36,11 @@ export class AgentToolSearchMemory {
   constructor(
     private readonly config: ResolvedAgentToolSearchConfig,
     workspaceRoot: string,
+    store?: AgentToolSearchMemoryStore,
   ) {
     this.store =
-      config.Memory.Kind === "sqlite"
-        ? new SqliteToolSearchMemoryStore(
-            resolveToolSearchMemoryDatabasePath(workspaceRoot, config.Memory.DatabasePath),
-          )
-        : new InMemoryToolSearchMemoryStore();
+      store ??
+      new SqliteToolSearchMemoryStore(resolveToolSearchMemoryDatabasePath(workspaceRoot, config.Memory.DatabasePath));
   }
 
   record(episode: AgentToolSearchEpisode): void {

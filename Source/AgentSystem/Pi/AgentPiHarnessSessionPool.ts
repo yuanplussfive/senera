@@ -7,7 +7,6 @@ import {
 } from "@earendil-works/pi-agent-core";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
-import { emitAgentEvent } from "../Events/AgentEvent.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
@@ -15,8 +14,8 @@ import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { AgentKeyedLeaseQueue } from "../Core/AgentKeyedLeaseQueue.js";
 import { AgentPiProxyContextHeader } from "../PiProxy/AgentPiProxyRuntimeContext.js";
-import type { AgentPiHarnessEvent, AgentPiHarnessTraceContext } from "./AgentPiHarnessEvents.js";
-import { isPiCoreAgentEvent, projectPiHarnessTraceEvent } from "./AgentPiHarnessEvents.js";
+import type { AgentPiHarnessDiagnosticContext, AgentPiHarnessEvent } from "./AgentPiHarnessEvents.js";
+import { isPiCoreAgentEvent, projectPiHarnessDiagnosticEvent } from "./AgentPiHarnessEvents.js";
 import { AgentPiHarnessSession } from "./AgentPiHarnessSession.js";
 import type { AgentPiSession } from "./AgentPiSubstrate.js";
 import { renderPiHarnessSystemPrompt, type AgentPiSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
@@ -30,7 +29,7 @@ import type {
   AgentPiCompactionPolicy,
 } from "./AgentPiCompactionPolicy.js";
 import type { AgentPiCompactionSummarizer } from "./AgentPiCompactionSummarizer.js";
-import { createPiTraceEvent } from "./AgentPiTraceProjector.js";
+import { AgentPiDiagnosticSources, emitAgentPiDiagnostic, type AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import { resolveAgentPiSessionCacheCapacity } from "./AgentPiSessionCachePolicy.js";
 
 type AgentPiHarness = AgentHarness<Skill, PromptTemplate, AgentPiToolDefinition>;
@@ -41,6 +40,7 @@ export interface AgentPiHarnessSessionFrame {
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;
+  diagnostics?: AgentPiDiagnosticSink;
   systemPrompt?: string;
   piProxyRuntimeContextId?: string;
   activeSkills?: readonly AgentActivatedSkill[];
@@ -58,6 +58,7 @@ export interface AgentPiHarnessSessionPoolOptions {
   harnessFactory?: (options: AgentPiHarnessOptions) => AgentPiHarness;
   compactionPolicy?: AgentPiCompactionPolicy;
   compactionSummarizer?: AgentPiCompactionSummarizer;
+  diagnostics?: AgentPiDiagnosticSink;
 }
 
 export interface AgentPiHarnessLeaseInput {
@@ -174,7 +175,7 @@ export class AgentPiHarnessSessionPool {
             pooled!.compactionRequest = request;
           },
           onCompactionEvent: (event, inspection, payload) =>
-            this.emitCompactionTrace(pooled!.frame.snapshot(), event, inspection, payload),
+            this.emitCompactionDiagnostic(pooled!.frame.snapshot(), event, inspection, payload),
           release: () => this.releasePooledHarness(input.sessionId, pooled!, releaseLease),
         }),
       };
@@ -272,7 +273,7 @@ export class AgentPiHarnessSessionPool {
       this.options.harnessFactory?.(harnessOptions) ??
       new AgentHarness<Skill, PromptTemplate, AgentPiToolDefinition>(harnessOptions);
     const disposeTrace = harness.subscribe((event) =>
-      this.emitHarnessTrace(frame.snapshot(), event as AgentPiHarnessEvent),
+      this.emitHarnessDiagnostic(frame.snapshot(), event as AgentPiHarnessEvent),
     );
     const disposeContextPolicy = harness.on("context", (event) => ({
       messages: applyAgentPiContextPolicy(event.messages, frame.snapshot().contextPolicy),
@@ -407,18 +408,20 @@ export class AgentPiHarnessSessionPool {
     return this.accessSequence;
   }
 
-  private async emitHarnessTrace(frame: AgentPiHarnessSessionFrame, event: AgentPiHarnessEvent): Promise<void> {
+  private async emitHarnessDiagnostic(frame: AgentPiHarnessSessionFrame, event: AgentPiHarnessEvent): Promise<void> {
+    const diagnostics = frame.diagnostics ?? this.options.diagnostics;
+    if (!diagnostics) return;
     if (isPiCoreAgentEvent(event)) {
       return;
     }
 
-    const projected = projectPiHarnessTraceEvent(traceContextFromFrame(frame), event);
+    const projected = projectPiHarnessDiagnosticEvent(diagnosticContextFromFrame(frame), event);
     if (projected) {
-      await emitAgentEvent(frame.onEvent, projected);
+      await diagnostics(projected);
     }
   }
 
-  private async emitCompactionTrace(
+  private async emitCompactionDiagnostic(
     frame: AgentPiHarnessSessionFrame,
     event: "checked" | "skipped" | "started" | "completed" | "failed",
     inspection: AgentPiCompactionInspection,
@@ -426,34 +429,28 @@ export class AgentPiHarnessSessionPool {
   ): Promise<void> {
     const check = projectCompactionCheck(payload);
     if (event === "checked" && check) {
-      await emitAgentEvent(
-        frame.onEvent,
-        createPiTraceEvent({
-          ...traceContextFromFrame(frame),
-          source: "substrate",
-          eventType: "compaction.check.timing",
-          payload: check,
-        }),
-      );
+      await emitAgentPiDiagnostic(frame.diagnostics ?? this.options.diagnostics, {
+        context: diagnosticContextFromFrame(frame),
+        source: AgentPiDiagnosticSources.Substrate,
+        name: "compaction.check.timing",
+        details: check,
+      });
     }
-    await emitAgentEvent(
-      frame.onEvent,
-      createPiTraceEvent({
-        ...traceContextFromFrame(frame),
-        source: "substrate",
-        eventType: `compaction.${event}`,
-        payload: {
-          ...inspection,
-          result:
-            event === "completed"
-              ? projectCompactionResult(payload)
-              : event === "skipped"
-                ? projectCompactionSkipResult(payload)
-                : undefined,
-          error: event === "failed" && payload instanceof Error ? payload.message : undefined,
-        },
-      }),
-    );
+    await emitAgentPiDiagnostic(frame.diagnostics ?? this.options.diagnostics, {
+      context: diagnosticContextFromFrame(frame),
+      source: AgentPiDiagnosticSources.Substrate,
+      name: `compaction.${event}`,
+      details: {
+        ...inspection,
+        result:
+          event === "completed"
+            ? projectCompactionResult(payload)
+            : event === "skipped"
+              ? projectCompactionSkipResult(payload)
+              : undefined,
+        error: event === "failed" && payload instanceof Error ? payload.message : undefined,
+      },
+    });
   }
 }
 
@@ -517,7 +514,7 @@ function projectCompactionSkipResult(value: unknown): Record<string, unknown> | 
   };
 }
 
-function traceContextFromFrame(frame: AgentPiHarnessSessionFrame): AgentPiHarnessTraceContext {
+function diagnosticContextFromFrame(frame: AgentPiHarnessSessionFrame): AgentPiHarnessDiagnosticContext {
   return {
     sessionId: frame.sessionId,
     requestId: frame.requestId ?? "pi-substrate",

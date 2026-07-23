@@ -43,6 +43,14 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
         migrateVersionOneToTwo(working, removedPaths);
         version = 2;
         break;
+      case 2:
+        migrateVersionTwoToThree(working, removedPaths);
+        version = 3;
+        break;
+      case 3:
+        migrateVersionThreeToFour(working, removedPaths);
+        version = 4;
+        break;
       default:
         throw new AgentConfigMigrationError(`No migration is registered for configuration version ${version}.`);
     }
@@ -57,6 +65,36 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
     migratedPaths,
     removedPaths,
   };
+}
+
+function migrateVersionThreeToFour(config: Record<string, unknown>, removedPaths: string[]): void {
+  removeToolSearchMemoryKind(config, "", removedPaths);
+  const defaults = config.Defaults;
+  if (isRecord(defaults)) removeToolSearchMemoryKind(defaults, "Defaults.", removedPaths);
+}
+
+function removeToolSearchMemoryKind(container: Record<string, unknown>, prefix: string, removedPaths: string[]): void {
+  const toolSearch = container.ToolSearch;
+  if (!isRecord(toolSearch)) return;
+  const memory = toolSearch.Memory;
+  if (!isRecord(memory) || !removeProperty(memory, "Kind")) return;
+  removedPaths.push(`${prefix}ToolSearch.Memory.Kind`);
+}
+
+function migrateVersionTwoToThree(config: Record<string, unknown>, removedPaths: string[]): void {
+  removeLoadedToolsConfig(config, "", removedPaths);
+  const defaults = config.Defaults;
+  if (isRecord(defaults)) removeLoadedToolsConfig(defaults, "Defaults.", removedPaths);
+}
+
+function removeLoadedToolsConfig(container: Record<string, unknown>, prefix: string, removedPaths: string[]): void {
+  const agentLoop = container.AgentLoop;
+  if (!isRecord(agentLoop) || !removeProperty(agentLoop, "LoadedTools")) return;
+  removedPaths.push(`${prefix}AgentLoop.LoadedTools`);
+  if (Object.keys(agentLoop).length === 0) {
+    delete container.AgentLoop;
+    removedPaths.push(`${prefix}AgentLoop`);
+  }
 }
 
 function migrateVersionOneToTwo(config: Record<string, unknown>, removedPaths: string[]): void {

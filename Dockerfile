@@ -1,10 +1,15 @@
-FROM node:22-trixie-slim AS builder
+# syntax=docker/dockerfile:1.7
+
+ARG NODE_IMAGE=node:22-trixie-slim
+
+FROM ${NODE_IMAGE} AS builder
 
 WORKDIR /app
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ bubblewrap socat ripgrep \
-  && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+  apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ bubblewrap socat ripgrep
 
 COPY package.json package-lock.json .npmrc ./
 COPY Frontend/package.json ./Frontend/package.json
@@ -12,17 +17,17 @@ COPY Packages ./Packages
 COPY System/Plugins ./System/Plugins
 COPY Plugins ./Plugins
 
-RUN npm ci --ignore-scripts
-RUN npm rebuild better-sqlite3 --build-from-source
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm rebuild better-sqlite3 --build-from-source
 
 COPY . .
 
 RUN npm run build
 RUN npm --workspace senera-frontend run build
-RUN npm prune --omit=dev
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm prune --omit=dev
 RUN node Dist/Scripts/VerifyDockerNativeSqlite.js
 
-FROM node:22-trixie-slim AS runtime
+FROM ${NODE_IMAGE} AS runtime
 
 WORKDIR /app
 

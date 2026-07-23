@@ -4,6 +4,12 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData, ConfigFormFieldOptionValue, ConfigFormSectionData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { ScrollArea, Switch } from "../ui";
+import {
+  ConfigFieldRequirementLabel,
+  ConfigFieldVisibilityControl,
+  type ConfigFieldVisibility,
+} from "./ConfigFieldVisibility";
+import { projectJsonConfigFieldVisibility } from "./JsonConfigFieldVisibility";
 import { JsonConfigRecordField } from "./JsonConfigRecordField";
 
 export type JsonConfigObject = Record<string, unknown>;
@@ -27,13 +33,15 @@ export function JsonConfigSettingsView({
   onChange: (value: JsonConfigObject, mode?: "debounced" | "immediate") => void;
   onCommit?: () => void;
 }): JSX.Element {
-  const visibleSections = sections.filter((section) => section.fields.length > 0);
+  const [fieldVisibility, setFieldVisibility] = useState<ConfigFieldVisibility>("essential");
+  const { allFields, visibleSections } = projectJsonConfigFieldVisibility(sections, fieldVisibility);
 
   const content = (
     <div
       onBlurCapture={onCommit}
       className={cn("mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-7", layoutMode === "panel" && "min-h-full")}
     >
+      <ConfigFieldVisibilityControl fields={allFields} value={fieldVisibility} onChange={setFieldVisibility} />
       {visibleSections.length > 0 ? (
         <>
           {visibleSections.length > 1 ? (
@@ -75,7 +83,9 @@ export function JsonConfigSettingsView({
         </>
       ) : (
         <div className="grid min-h-64 place-items-center border-y border-ink-200/70 bg-paper-50 text-[13px] text-ink-400">
-          {emptyText}
+          {fieldVisibility === "essential" && allFields.length > 0
+            ? frontendMessage("settings.config.noEssentialFields")
+            : emptyText}
         </div>
       )}
     </div>
@@ -158,7 +168,12 @@ function JsonFieldControl({
       )}
     >
       <div className={cn("min-w-0 pr-2", wide && "pr-0")}>
-        <div className={cn("text-[13px] font-medium text-ink-900", wide && "text-[13.5px]")}>{field.label}</div>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <div className={cn("min-w-0 text-[13px] font-medium text-ink-900", wide && "text-[13.5px]")}>
+            {field.label}
+          </div>
+          <ConfigFieldRequirementLabel required={field.required} type={field.type} />
+        </div>
         {field.description ? <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>
       <div className={cn("min-w-0 md:justify-self-end", wide && "md:w-full md:justify-self-stretch")}>

@@ -15,6 +15,8 @@ import {
 } from "../../../Source/AgentSystem/Pi/AgentPiTurnExecutor.js";
 import type { AgentLoopCommand } from "../../../Source/AgentSystem/Loop/AgentLoopStateTypes.js";
 import type { ResolvedAgentModelProviderConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { AgentPiDiagnosticEvent } from "../../../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
+import { AgentRunActivities, AgentRunActivityStates } from "../../../Source/AgentSystem/Events/AgentRunEventTypes.js";
 
 describe("Pi turn executor behavior", () => {
   test("migrates history, records the transcript, and clears the active session after a completed turn", async () => {
@@ -45,7 +47,23 @@ describe("Pi turn executor behavior", () => {
       expect.objectContaining({ kind: AgentConversationEntryKinds.OpenAiTranscript }),
     ]);
     expect(events.some((event) => event.kind === AgentEventKinds.ModelDelta)).toBe(true);
-    expect(traceTypes(events)).toEqual(
+    expect(
+      events
+        .filter((event) => event.kind === AgentEventKinds.RunActivityChanged)
+        .map((event) => ({ activity: event.data.activity, state: event.data.state })),
+    ).toEqual([
+      { activity: AgentRunActivities.PreparingContext, state: AgentRunActivityStates.Started },
+      { activity: AgentRunActivities.PreparingContext, state: AgentRunActivityStates.Completed },
+      { activity: AgentRunActivities.InitializingRuntime, state: AgentRunActivityStates.Started },
+      { activity: AgentRunActivities.InitializingRuntime, state: AgentRunActivityStates.Completed },
+      { activity: AgentRunActivities.SynchronizingContext, state: AgentRunActivityStates.Started },
+      { activity: AgentRunActivities.SynchronizingContext, state: AgentRunActivityStates.Completed },
+      { activity: AgentRunActivities.RunningAgentTurn, state: AgentRunActivityStates.Started },
+      { activity: AgentRunActivities.RunningAgentTurn, state: AgentRunActivityStates.Completed },
+      { activity: AgentRunActivities.FinalizingResponse, state: AgentRunActivityStates.Started },
+      { activity: AgentRunActivities.FinalizingResponse, state: AgentRunActivityStates.Completed },
+    ]);
+    expect(diagnosticNames(fixture.diagnostics)).toEqual(
       expect.arrayContaining(["turn.started", "session.lease.completed", "turn.completed"]),
     );
   });
@@ -119,7 +137,7 @@ describe("Pi turn executor behavior", () => {
     expect(fixture.session.disposed).toBe(true);
   });
 
-  test("emits a failure trace and disposes a provider-failed session", async () => {
+  test("reports a failure diagnostic and disposes a provider-failed session", async () => {
     const fixture = new PiTurnRuntimeFixture({ promptFailure: new Error("provider rejected request") });
     const events: AgentDomainEvent[] = [];
 
@@ -131,7 +149,16 @@ describe("Pi turn executor behavior", () => {
 
     expect(fixture.session.disposed).toBe(true);
     expect(fixture.session.unsubscribeCount).toBe(1);
-    expect(traceTypes(events)).toContain("turn.failed");
+    expect(diagnosticNames(fixture.diagnostics)).toContain("turn.failed");
+    expect(
+      events
+        .filter((event) => event.kind === AgentEventKinds.RunActivityChanged)
+        .slice(-2)
+        .map((event) => ({ activity: event.data.activity, state: event.data.state })),
+    ).toEqual([
+      { activity: AgentRunActivities.RunningAgentTurn, state: AgentRunActivityStates.Started },
+      { activity: AgentRunActivities.RunningAgentTurn, state: AgentRunActivityStates.Failed },
+    ]);
   });
 });
 
@@ -159,6 +186,7 @@ const modelProviderConfig: ResolvedAgentModelProviderConfig = {
 
 class PiTurnRuntimeFixture {
   readonly activeSessions = new AgentPiActiveSessionRegistry();
+  readonly diagnostics: AgentPiDiagnosticEvent[] = [];
   readonly session: ScriptedPiSession;
   readonly runtime: AgentPiTurnRuntimePort;
   lastSessionOptions?: AgentPiSessionOptions;
@@ -222,6 +250,9 @@ class PiTurnRuntimeFixture {
       agentLoopConfig: { PiTurnLeaseTimeoutMs: 5_000 },
       tokenEstimator: { estimate: (text) => ({ tokenCount: text.length }) },
       conversationProjector: new AgentConversationProjector(),
+      piDiagnostics: (event) => {
+        this.diagnostics.push(event);
+      },
     };
   }
 
@@ -419,12 +450,6 @@ function piModel() {
   };
 }
 
-function traceTypes(events: readonly AgentDomainEvent[]): string[] {
-  return events.flatMap((event) => {
-    if (event.kind !== AgentEventKinds.PiTrace || !event.data || typeof event.data !== "object") {
-      return [];
-    }
-    const eventType = "eventType" in event.data ? event.data.eventType : undefined;
-    return typeof eventType === "string" ? [eventType] : [];
-  });
+function diagnosticNames(events: readonly AgentPiDiagnosticEvent[]): string[] {
+  return events.map((event) => event.name);
 }

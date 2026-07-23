@@ -14,6 +14,7 @@ import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentEx
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import type { AgentWebSocketEventPersistenceOptions } from "./AgentWebSocketEventSender.js";
 import type { AgentRunEventWriter } from "./AgentRunEventWriter.js";
+import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 
 export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
@@ -26,6 +27,7 @@ export interface AgentWebSocketServerOptions {
   pluginConfigManager?: AgentPluginConfigManager;
   logger?: AgentLogger;
   eventLogger?: AgentServerEventLogger;
+  piDiagnostics?: AgentPiDiagnosticSink;
   approvalRuntime?: AgentApprovalRuntime;
   interactionInput?: AgentInteractionInputRuntime;
   sandboxRuntimeService?: AgentSandboxRuntimeService;

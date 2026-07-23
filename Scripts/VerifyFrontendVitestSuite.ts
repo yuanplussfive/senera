@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
 import { FrontendTestCoveragePolicy } from "./TestCoveragePolicy.js";
+import { resolveWorkspaceRoot } from "./WorkspaceRoot.js";
 
 const workspaceRoot = resolveWorkspaceRoot();
 const vitestBin = path.join(workspaceRoot, "node_modules", "vitest", "vitest.mjs");
@@ -38,15 +38,3 @@ await new Promise<void>((resolve, reject) => {
 });
 
 console.log("Frontend Vitest suite verified.");
-
-function resolveWorkspaceRoot(): string {
-  const cwd = process.cwd();
-  if (existsSync(path.join(cwd, "Frontend", "src"))) {
-    return cwd;
-  }
-  const parent = path.resolve(cwd, "..");
-  if (existsSync(path.join(parent, "Frontend", "src"))) {
-    return parent;
-  }
-  return cwd;
-}

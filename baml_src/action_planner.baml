@@ -88,7 +88,6 @@ class ToolCapabilityRisk {
 
 class ActionRunState {
   currentStep int
-  dynamicTools bool
   loadedTools string[]
   progress ProgressSignals
   warnings RepeatedCallWarning[]

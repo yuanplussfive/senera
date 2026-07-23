@@ -23,7 +23,7 @@ export interface AgentToolCallExecutionContext {
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;
-  loadedToolNames?: "all" | readonly string[];
+  loadedToolNames?: readonly string[];
   batchId?: string;
   signal?: AbortSignal;
 }

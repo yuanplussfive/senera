@@ -166,7 +166,7 @@ export class AgentToolCallExecutor {
       batchId: context.batchId,
       configPath: this.options.configPath,
       onEvent: context.onEvent,
-      visibleToolNames: context.loadedToolNames === "all" ? undefined : context.loadedToolNames,
+      visibleToolNames: context.loadedToolNames,
       signal: context.signal,
       executionPlan: invocation.executionPlan,
     });
@@ -246,7 +246,7 @@ export class AgentToolCallExecutor {
 
   private allowedToolNames(loadedToolNames: AgentToolCallExecutionContext["loadedToolNames"]): Set<string> {
     const tools = this.options.registry.listTools();
-    if (!loadedToolNames || loadedToolNames === "all") {
+    if (!loadedToolNames) {
       return new Set(tools.map((tool) => tool.name));
     }
 

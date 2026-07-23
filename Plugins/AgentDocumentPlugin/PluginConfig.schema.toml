@@ -10,22 +10,7 @@ label = "启用状态"
 path = [ "senera", "enabled" ]
 label = "启用插件"
 type = "boolean"
-
-[[form.sections]]
-id = "document"
-label = "文档模式"
-
-[[form.sections.fields]]
-path = [ "document", "defaultMode" ]
-label = "默认处理模式"
-type = "string"
-options = [ "auto", "probe", "extract" ]
-
-[[form.sections.fields]]
-path = [ "document", "modes" ]
-label = "允许模式"
-type = "array"
-itemType = "string"
+required = true
 
 [[form.sections]]
 id = "probe"
@@ -65,41 +50,49 @@ label = "解析选项"
 path = [ "parse", "ocr" ]
 label = "启用 OCR"
 type = "boolean"
+required = true
 
 [[form.sections.fields]]
 path = [ "parse", "extractAttachments" ]
 label = "抽取附件"
 type = "boolean"
+required = true
 
 [[form.sections.fields]]
 path = [ "parse", "includeRawContent" ]
 label = "保留原始内容"
 type = "boolean"
+required = true
 
 [[form.sections.fields]]
 path = [ "parse", "ignoreNotes" ]
 label = "忽略备注"
 type = "boolean"
+required = true
 
 [[form.sections.fields]]
 path = [ "parse", "ignoreComments" ]
 label = "忽略批注"
 type = "boolean"
+required = true
 
 [[form.sections.fields]]
 path = [ "parse", "ignoreHeadersAndFooters" ]
 label = "忽略页眉页脚"
 type = "boolean"
+required = true
 
 [[form.sections.fields]]
 path = [ "parse", "ignoreSlideMasters" ]
 label = "忽略母版"
 type = "boolean"
+required = true
 
 [[form.sections.fields]]
 path = [ "parse", "ignoreInternalLinks" ]
 label = "忽略内部链接"
 type = "boolean"
+required = true
 
 [[form.sections.fields]]
 path = [ "parse", "newlineDelimiter" ]

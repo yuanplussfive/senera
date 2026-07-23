@@ -11,7 +11,7 @@ import { AgentToolExecutionArtifactRecorder } from "../Source/AgentSystem/Artifa
 import { resolveArtifactsConfig } from "../Source/AgentSystem/Defaults/AgentAppDefaults.js";
 import { PluginManifestSchema } from "../Source/AgentSystem/Schemas/PluginManifestSchema.js";
 import { SeneraLocalExecutionEnv } from "../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
-import type { AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
+import type { AgentPiDiagnosticEvent } from "../Source/AgentSystem/Pi/AgentPiDiagnostics.js";
 import type {
   AgentSystemConfig,
   ResolvedAgentModelProviderConfig,
@@ -75,6 +75,7 @@ registerPlugin(registry, "System/Plugins/AgentCapabilitySkillsPlugin");
 const executionEnv = new SeneraLocalExecutionEnv({
   workspaceRoot: process.cwd(),
 });
+const diagnostics: AgentPiDiagnosticEvent[] = [];
 const substrate = new AgentPiSubstrate({
   workspaceRoot: process.cwd(),
   config,
@@ -94,10 +95,12 @@ const substrate = new AgentPiSubstrate({
     model: modelProvider.Model,
   }),
   executionEnv,
+  diagnostics: (event) => {
+    diagnostics.push(event);
+  },
 });
 
 const sessionId = `verify-pi-harness-reuse-${randomUUID()}`;
-const events: AgentDomainEvent[] = [];
 const first = await substrate.leaseTurn({
   sessionId,
   requestId: "verify-pi-harness-reuse-1",
@@ -105,9 +108,6 @@ const first = await substrate.leaseTurn({
   input: "第一次请求",
   systemPrompt: "<agent_system>first</agent_system>",
   visibleToolNames: [],
-  onEvent: (event) => {
-    events.push(event);
-  },
 });
 first.session.dispose();
 
@@ -118,9 +118,6 @@ const second = await substrate.leaseTurn({
   input: "第二次请求",
   systemPrompt: "<agent_system>second</agent_system>",
   visibleToolNames: [],
-  onEvent: (event) => {
-    events.push(event);
-  },
 });
 second.session.dispose();
 await substrate.close();
@@ -129,15 +126,15 @@ assert.equal(first.piSessionId, sessionId);
 assert.equal(second.piSessionId, sessionId);
 assert.equal(first.historyMigrationRequired, true);
 assert.deepEqual(
-  tracePayloads(events, "core.turn.lease.completed").map((payload) => payload.harnessStorage),
+  diagnosticDetails(diagnostics, "core.turn.lease.completed").map((details) => details.harnessStorage),
   ["created", "existing"],
 );
 assert.deepEqual(
-  tracePayloads(events, "core.turn.lease.completed").map((payload) => payload.piSessionStorage),
+  diagnosticDetails(diagnostics, "core.turn.lease.completed").map((details) => details.piSessionStorage),
   ["created", "existing"],
 );
 assert.deepEqual(
-  tracePayloads(events, "core.turn.lease.completed").map((payload) => payload.piSessionId),
+  diagnosticDetails(diagnostics, "core.turn.lease.completed").map((details) => details.piSessionId),
   [sessionId, sessionId],
 );
 
@@ -151,14 +148,8 @@ function createTemporarySessionsRoot(name: string): string {
   return root;
 }
 
-function tracePayloads(events: readonly AgentDomainEvent[], eventType: string): Record<string, unknown>[] {
-  return events.flatMap((event) => {
-    const data = readRecord(event.data);
-    if (event.kind !== "pi.trace" || data.eventType !== eventType) {
-      return [];
-    }
-    return [readRecord(data.payload)];
-  });
+function diagnosticDetails(events: readonly AgentPiDiagnosticEvent[], name: string): Record<string, unknown>[] {
+  return events.filter((event) => event.name === name).map((event) => readRecord(event.details));
 }
 
 function readRecord(value: unknown): Record<string, unknown> {

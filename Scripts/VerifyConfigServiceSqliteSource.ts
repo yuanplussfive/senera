@@ -302,7 +302,7 @@ try {
   assert.equal(migratedSnapshot.value.ToolExecution?.TimeoutSeconds, 30);
   assert.equal(migratedSnapshot.value.ActionPlanner?.MaxRepairAttempts, 7);
   assert.equal("Mode" in (migratedSnapshot.value.ToolExecution ?? {}), false);
-  assert.equal(migratedSnapshot.value.AgentLoop?.LoadedTools, "dynamic");
+  assert.equal("LoadedTools" in (migratedSnapshot.value.AgentLoop ?? {}), false);
   assert.equal("MaxSteps" in (migratedSnapshot.value.AgentLoop ?? {}), false);
   assert.equal("MaxRepairAttempts" in (migratedSnapshot.value.AgentLoop ?? {}), false);
   assert.equal("Cli" in (migratedSnapshot.value.Defaults ?? {}), false);

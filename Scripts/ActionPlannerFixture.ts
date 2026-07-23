@@ -28,7 +28,6 @@ export function createActionPlanInputFixture(userMessage = "inspect project"): A
     },
     runState: {
       currentStep: 1,
-      dynamicTools: true,
       loadedTools: [],
       progress: {
         totalToolCalls: 0,

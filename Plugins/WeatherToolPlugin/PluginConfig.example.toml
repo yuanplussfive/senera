@@ -3,12 +3,10 @@
 enabled = false
 
 [weather]
-# 天气服务
-provider = "qweather"
 # 接口密钥
 api_keys = [  ]
-# 接口域名
-api_host = "your-id.re.qweatherapi.com"
+# API URL: 和风天气控制台分配的专属 API Host，必须包含 https://。
+api_host = "https://your-id.re.qweatherapi.com"
 # 语言
 language = "zh"
 # 单位

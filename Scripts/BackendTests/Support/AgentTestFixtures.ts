@@ -29,7 +29,6 @@ export function createActionPlanInput(overrides: Partial<ActionPlanInput> = {}):
     },
     runState: {
       currentStep: 1,
-      dynamicTools: true,
       loadedTools: [],
       progress: {
         totalToolCalls: 0,

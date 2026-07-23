@@ -1,10 +1,25 @@
 import { describe, expect, test } from "vitest";
 import { resolveToolSearchConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
-import { ToolSearchSchema } from "../../../Source/AgentSystem/Schemas/AgentToolMemoryConfigSchema.js";
+import {
+  ToolSearchSchema,
+  VectorModelsSchema,
+} from "../../../Source/AgentSystem/Schemas/AgentToolMemoryConfigSchema.js";
 import { migrateAgentConfigPayload } from "../../../Source/AgentSystem/Config/AgentConfigMigration.js";
+import { CurrentAgentConfigVersion } from "../../../Source/AgentSystem/Config/AgentConfigVersion.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("tool search configuration", () => {
+  test("accepts unbounded vector model limits and rejects zero", () => {
+    expect(
+      VectorModelsSchema.safeParse({
+        Embedding: { InputMaxChars: -1 },
+        Rerank: { CandidateLimit: -1, TopK: -1 },
+      }).success,
+    ).toBe(true);
+    expect(VectorModelsSchema.safeParse({ Rerank: { CandidateLimit: 0 } }).success).toBe(false);
+    expect(VectorModelsSchema.safeParse({ Rerank: { TopK: 0 } }).success).toBe(false);
+  });
+
   test.each(["disabled", "fallback", "augment"] as const)("accepts memory expansion mode %s", (mode) => {
     expect(
       ToolSearchSchema.safeParse({
@@ -22,6 +37,7 @@ describe("tool search configuration", () => {
   });
 
   test.each([
+    { Memory: { Kind: "memory" } },
     { Ranking: { MaxResults: 0 } },
     { Ranking: { MemoryExpansion: { Mode: "unknown" } } },
     { Ranking: { MemoryExpansion: { MinConfidence: 1.1 } } },
@@ -74,12 +90,31 @@ describe("tool search configuration", () => {
 
     expect(migrated).toMatchObject({
       sourceVersion: 1,
-      targetVersion: 2,
+      targetVersion: CurrentAgentConfigVersion,
       removedPaths: ["ToolSearch.Ranking.IntentGate", "Defaults.ToolSearch.Ranking.IntentGate"],
       config: {
-        ConfigVersion: 2,
+        ConfigVersion: CurrentAgentConfigVersion,
         ToolSearch: { Ranking: {} },
         Defaults: { ToolSearch: { Ranking: {} } },
+      },
+    });
+  });
+
+  test("migrates the retired tool learning storage selector to the SQLite-only contract", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 3,
+      ToolSearch: { Memory: { Kind: "memory", DatabasePath: ".senera/tools.sqlite" } },
+      Defaults: { ToolSearch: { Memory: { Kind: "sqlite", MaxEpisodes: 500 } } },
+    });
+
+    expect(migrated).toMatchObject({
+      sourceVersion: 3,
+      targetVersion: CurrentAgentConfigVersion,
+      removedPaths: ["ToolSearch.Memory.Kind", "Defaults.ToolSearch.Memory.Kind"],
+      config: {
+        ConfigVersion: CurrentAgentConfigVersion,
+        ToolSearch: { Memory: { DatabasePath: ".senera/tools.sqlite" } },
+        Defaults: { ToolSearch: { Memory: { MaxEpisodes: 500 } } },
       },
     });
   });

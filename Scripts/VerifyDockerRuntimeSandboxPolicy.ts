@@ -7,6 +7,7 @@ const dockerfile = fs.readFileSync(path.join(workspaceRoot, "Dockerfile"), "utf8
 const dockerServer = fs.readFileSync(path.join(workspaceRoot, "Apps", "DockerServer.ts"), "utf8");
 const readme = fs.readFileSync(path.join(workspaceRoot, "README.md"), "utf8");
 const operations = fs.readFileSync(path.join(workspaceRoot, "docs", "Operations.md"), "utf8");
+const compose = fs.readFileSync(path.join(workspaceRoot, "compose.yaml"), "utf8");
 const releaseWorkflow = fs.readFileSync(path.join(workspaceRoot, ".github", "workflows", "release.yml"), "utf8");
 
 assert.ok(
@@ -36,6 +37,14 @@ assert.ok(
 assertAdminInitializationPrecedesStartup(readme, "README.md");
 assertAdminInitializationPrecedesStartup(operations, "docs/Operations.md");
 assert.ok(
+  compose.includes("x-senera-runtime: &senera-runtime") && compose.match(/<<: \*senera-runtime/gu)?.length === 2,
+  "compose.yaml must share one runtime image, environment, and volume contract across service entrypoints.",
+);
+assert.ok(
+  compose.includes("senera-admin:") && compose.includes("- admin") && compose.includes("- Dist/Apps/AdminAccess.js"),
+  "compose.yaml must expose the administrator command through an opt-in service profile.",
+);
+assert.ok(
   releaseWorkflow.includes("node Dist/Scripts/VerifyDockerUserPluginWrite.js"),
   "Release container smoke must verify that the node user can write the persistent plugin root.",
 );
@@ -43,8 +52,12 @@ assert.ok(
 console.log("Docker runtime sandbox policy verified.");
 
 function assertAdminInitializationPrecedesStartup(document: string, label: string): void {
-  const initialize = document.indexOf("docker compose run --rm -it senera node Dist/Apps/AdminAccess.js init");
-  const startup = document.indexOf("docker compose up -d");
+  const initialize = document.indexOf("docker compose run --rm -it senera-admin init");
+  const startup = document.indexOf("docker compose up -d --pull always");
   assert.ok(initialize >= 0, `${label} must document Docker administrator initialization.`);
   assert.ok(startup > initialize, `${label} must initialize the Docker administrator before starting the service.`);
+  assert.ok(
+    !document.includes("docker compose run --rm -it senera node Dist/Apps/AdminAccess.js"),
+    `${label} must not expose the container's internal administrator script path.`,
+  );
 }

@@ -1,7 +1,4 @@
-export type AgentLoadedToolsConfig = "all" | "dynamic" | string[];
-
 export interface AgentLoopConfig {
-  LoadedTools?: AgentLoadedToolsConfig;
   PiTurnLeaseTimeoutSeconds?: number;
   RunSettlementTimeoutSeconds?: number;
   PiSessions?: AgentPiSessionsConfig;
@@ -43,7 +40,6 @@ export interface ResolvedAgentPiCompactionConfig {
 }
 
 export interface ResolvedAgentLoopConfig {
-  LoadedTools: AgentLoadedToolsConfig;
   PiTurnLeaseTimeoutSeconds: number;
   PiTurnLeaseTimeoutMs: number;
   RunSettlementTimeoutSeconds: number;

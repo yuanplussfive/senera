@@ -20,7 +20,7 @@ export interface RunningAgentLoopMachineState {
   step: number;
   messages: AgentLanguageModelMessage[];
   conversationEntries: AgentConversationEntry[];
-  loadedToolNames: "all" | string[];
+  loadedToolNames: string[];
   plannerLedger: AgentActionPlannerLedger;
   rootCommand?: AgentRootCommand;
   interactionRoute?: AgentInteractionRouteResult;
@@ -48,7 +48,7 @@ export type AgentLoopCommand =
       input: string;
       messages: AgentLanguageModelMessage[];
       conversationEntries: AgentConversationEntry[];
-      loadedToolNames: "all" | string[];
+      loadedToolNames: string[];
       plannerLedger: AgentActionPlannerLedger;
     }
   | {
@@ -56,7 +56,7 @@ export type AgentLoopCommand =
       requestId: string;
       step: number;
       input: string;
-      loadedToolNames: "all" | string[];
+      loadedToolNames: string[];
       rootCommand?: AgentRootCommand;
       systemPromptPreamble?: string;
       activeSkills?: readonly AgentActivatedSkill[];
@@ -71,7 +71,7 @@ export type AgentLoopCommand =
       messages: AgentLanguageModelMessage[];
       conversationEntries: AgentConversationEntry[];
       rootCommand?: AgentRootCommand;
-      loadedToolNames: "all" | string[];
+      loadedToolNames: string[];
       turnUnderstanding?: TurnUnderstanding;
       interactionRoute?: AgentInteractionRouteResult;
       initialAction?: ParsedPiControllerAction;
@@ -85,7 +85,7 @@ export type AgentLoopCommandSucceeded =
       requestId: string;
       step: number;
       route: AgentInteractionRouteResult;
-      loadedToolNames: "all" | string[];
+      loadedToolNames: string[];
       rootCommand?: AgentRootCommand;
       initialAction: ParsedPiControllerAction;
       turnUnderstanding?: TurnUnderstanding;

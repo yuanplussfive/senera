@@ -66,8 +66,8 @@ export class AgentPiToolRegistryProjector {
     };
   }
 
-  private visibleTools(visibleToolNames: AgentPiToolProjectionContext["visibleToolNames"] = "all"): RegisteredTool[] {
-    if (visibleToolNames === "all") {
+  private visibleTools(visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"]): RegisteredTool[] {
+    if (!visibleToolNames) {
       return this.options.registry.listTools();
     }
 

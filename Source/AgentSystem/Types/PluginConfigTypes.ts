@@ -40,7 +40,7 @@ export interface LoadedPluginConfigField {
   step?: number;
   secret?: boolean;
   multiline?: boolean;
-  required?: boolean;
+  required: boolean;
 }
 
 export type LoadedPluginConfigFieldType = "boolean" | "string" | "number" | "array" | "table";

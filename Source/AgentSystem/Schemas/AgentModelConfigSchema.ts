@@ -28,13 +28,7 @@ export const ModelProviderSchema = z
     Endpoint: ModelEndpointSchema,
     Model: z.string().min(1),
     Temperature: z.number().min(0).max(2).optional(),
-    MaxOutputTokens: z
-      .number()
-      .int()
-      .refine((value) => value === -1 || value >= 1, {
-        message: "MaxOutputTokens 必须为 -1，或大于等于 1。",
-      })
-      .optional(),
+    MaxOutputTokens: disabledOrPositiveInteger("MaxOutputTokens").optional(),
     Stream: z.boolean().optional(),
     TimeoutSeconds: z.number().positive().optional(),
     FirstTokenTimeoutSeconds: disabledOrPositiveNumber("FirstTokenTimeoutSeconds").optional(),

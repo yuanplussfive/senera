@@ -9,7 +9,7 @@ import type {
 } from "./AgentExecutionEventSharedTypes.js";
 
 type AgentStepContext = Required<Pick<AgentEventContext, "requestId" | "step">>;
-type AgentLoadedToolNames = "all" | string[];
+type AgentLoadedToolNames = string[];
 type AgentExpectedOutputMode = "final_text" | "open";
 
 export type AgentPlannerDomainEvent =

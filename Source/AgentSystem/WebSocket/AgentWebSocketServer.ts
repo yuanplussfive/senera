@@ -74,6 +74,7 @@ export class AgentWebSocketServer {
       piProxyApi: new AgentPiProxyHttpApi({
         configSnapshot,
         onEvent: (event) => this.broadcast(event),
+        diagnostics: options.piDiagnostics,
         maxRequestBytes: this.serverConfig.RequestMaxBytes,
       }),
       staticFrontendApi: options.staticFrontendRoot

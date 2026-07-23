@@ -24,7 +24,7 @@ export interface AgentPiToolProjectionContext {
   requestId?: string;
   step?: number;
   onEvent?: AgentEventSink;
-  visibleToolNames?: "all" | readonly string[];
+  visibleToolNames?: readonly string[];
   piProxyRuntimeContextId?: string;
   signal?: AbortSignal;
   activeSkills?: readonly AgentActivatedSkill[];

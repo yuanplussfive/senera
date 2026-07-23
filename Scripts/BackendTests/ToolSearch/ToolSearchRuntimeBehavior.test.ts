@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import type { TurnUnderstanding } from "../../../Source/AgentSystem/BamlClient/baml_client/types.js";
 import { AgentToolSearchMemory } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemory.js";
+import { InMemoryToolSearchMemoryStore } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryStore.js";
 import { projectLearningProjection } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryProjection.js";
 import {
   AgentToolSearchRuntime,
@@ -73,19 +74,18 @@ describe("ToolSearch runtime behavior", () => {
       createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
+      { memoryStore: new InMemoryToolSearchMemoryStore() },
     );
 
     expect(
       runtime.resolvePlannedLoadedTools({
         input: "no matching capability",
-        loadedTools: "dynamic",
         currentLoadedTools: [],
       }),
     ).toEqual([ToolSearchToolName]);
     expect(
       runtime.resolvePlannedLoadedTools({
         input: "run a shell command",
-        loadedTools: "dynamic",
         currentLoadedTools: ["WeatherTool"],
         currentSetPolicy: "replace",
         preferredTools: ["ShellCommandTool"],
@@ -94,7 +94,6 @@ describe("ToolSearch runtime behavior", () => {
     expect(
       runtime.resolvePlannedLoadedTools({
         input: "run a shell command",
-        loadedTools: "dynamic",
         currentLoadedTools: ["WeatherTool"],
         currentSetPolicy: "retain",
         preferredTools: ["ShellCommandTool"],
@@ -133,6 +132,7 @@ describe("ToolSearch runtime behavior", () => {
       createToolLearningConfig({ Enabled: true }),
       "E:/workspace",
       createModelProvider(),
+      { memoryStore: new InMemoryToolSearchMemoryStore() },
     );
     const handler = runtime.createHostHandler();
 
@@ -151,7 +151,6 @@ describe("ToolSearch runtime behavior", () => {
     expect(
       runtime.afterToolResults({
         requestId: "request-1",
-        dynamicTools: true,
         loadedTools: ["ToolSearchTool"],
         execution: {
           value: [
@@ -194,6 +193,7 @@ describe("ToolSearch runtime behavior", () => {
       createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
+      { memoryStore: new InMemoryToolSearchMemoryStore() },
     );
     const contract = runtime.createHostContractProjection();
     const schema = contract.projectInvocationSchema?.({} as never, {
@@ -228,7 +228,7 @@ describe("ToolSearch runtime behavior", () => {
   });
 
   test("memory ranks learned keywords and projects reusable tool patterns", () => {
-    const memory = new AgentToolSearchMemory(createToolSearchConfig(), "E:/workspace");
+    const memory = createInMemoryToolSearchMemory();
     memory.record(
       toolSearchEpisode({
         learnedKeywords: [
@@ -264,7 +264,7 @@ describe("ToolSearch runtime behavior", () => {
   });
 
   test("usage memory enqueues successful learning drafts and clears failed searches", () => {
-    const memory = new AgentToolSearchMemory(createToolSearchConfig(), "E:/workspace");
+    const memory = createInMemoryToolSearchMemory();
     const learningRuntime = { enqueue: vi.fn() };
     const usage = new AgentToolSearchUsageMemory(
       memory,
@@ -324,7 +324,7 @@ describe("ToolSearch runtime behavior", () => {
   });
 
   test("request finalization discards abandoned search-learning state", () => {
-    const memory = new AgentToolSearchMemory(createToolSearchConfig(), "E:/workspace");
+    const memory = createInMemoryToolSearchMemory();
     const learningRuntime = { enqueue: vi.fn() };
     const usage = new AgentToolSearchUsageMemory(
       memory,
@@ -505,6 +505,10 @@ function hostToolContext(
     executionEnv: unusedExecutionEnv,
     ...overrides,
   };
+}
+
+function createInMemoryToolSearchMemory(): AgentToolSearchMemory {
+  return new AgentToolSearchMemory(createToolSearchConfig(), "E:/workspace", new InMemoryToolSearchMemoryStore());
 }
 
 const toolSearchHostConfig: AgentHostToolContext["config"] = {

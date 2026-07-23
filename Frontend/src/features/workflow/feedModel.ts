@@ -1,13 +1,15 @@
 import {
   friendlyDecisionKind,
+  type RunActivityRecord,
   type RunRecord,
   type TimelineStep,
   type TimelineStepStatus,
 } from "../../store/sessionStore";
 import { truncate } from "../../store/session/sessionPresentation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { activeRunActivityLabel, runActivityLabel } from "./runActivityPresentation";
 
-export type FeedItemKind = "tool" | "trace";
+export type FeedItemKind = "activity" | "tool" | "trace";
 
 export interface FeedItem {
   id: string;
@@ -21,7 +23,7 @@ export interface FeedItem {
 export interface FeedGroup {
   id: string;
   label: string;
-  variant?: "tools" | "delegation" | "trace";
+  variant?: "activity" | "tools" | "delegation" | "trace";
   meta?: string;
   items: FeedItem[];
   collapsible?: boolean;
@@ -87,6 +89,8 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
     .map((step) => mapTraceItem(step));
   const groups: FeedGroup[] = [];
 
+  const activityGroup = collectActivityGroup(run.activities ?? []);
+  if (activityGroup) groups.push(activityGroup);
   groups.push(...rootToolGroups.groups);
   groups.push(...scopedGroups);
   if (traceItems.length > 0) {
@@ -104,6 +108,30 @@ export function deriveFeedModel(run: RunRecord): FeedModel {
     bodyText: run.visibleKind === "tool_calls" ? "" : run.displayText,
     placeholder: derivePendingLabel(run, activeStep, latestDecision),
     footer: deriveFooter(activeStep),
+  };
+}
+
+function collectActivityGroup(activities: readonly RunActivityRecord[]): FeedGroup | undefined {
+  const latestStep = activities.at(-1)?.step;
+  const currentActivities =
+    latestStep === undefined ? activities : activities.filter((activity) => activity.step === latestStep);
+  if (currentActivities.length === 0) return undefined;
+
+  return {
+    id: `activity-${latestStep ?? "current"}`,
+    label: frontendMessage("workflow.feed.seneraActivity"),
+    variant: "activity",
+    items: currentActivities.map(mapActivityItem),
+  };
+}
+
+function mapActivityItem(activity: RunActivityRecord): FeedItem {
+  return {
+    id: activity.id,
+    kind: "activity",
+    status: activity.status,
+    title: runActivityLabel(activity.activity),
+    meta: statusLabel(activity.status),
   };
 }
 
@@ -290,6 +318,16 @@ function mapHeadlineItem(
     };
   }
 
+  const liveActivity = liveActivityLabel(run);
+  if (liveActivity) {
+    return {
+      id: "live-activity",
+      kind: "trace",
+      status: "running",
+      title: liveActivity,
+    };
+  }
+
   if (activeStep) {
     return {
       id: activeStep.id,
@@ -437,16 +475,15 @@ function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDec
     return frontendMessage("workflow.feed.generatingAnswer");
   }
 
+  const liveActivity = liveActivityLabel(run);
+  if (liveActivity) {
+    return liveActivity;
+  }
+
   if (activeStep?.kind === "model") {
     return activeStep.modelName
       ? frontendMessage("workflow.feed.callingModelNamed", { modelName: activeStep.modelName })
       : frontendMessage("workflow.feed.callingModel");
-  }
-
-  if (activeStep?.kind === "pi") {
-    return activeStep.eventType
-      ? frontendMessage("workflow.feed.piProcessingWithEvent", { eventType: activeStep.eventType })
-      : frontendMessage("workflow.feed.piProcessing");
   }
 
   if (activeStep?.title) {
@@ -458,6 +495,11 @@ function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDec
   return run.status === "running"
     ? frontendMessage("workflow.feed.nextStep")
     : frontendMessage("workflow.feed.waitingOutput");
+}
+
+function liveActivityLabel(run: RunRecord): string | undefined {
+  if (!run.liveActivity) return undefined;
+  return activeRunActivityLabel(run.liveActivity);
 }
 
 function summarizeStepSubtitle(step: TimelineStep): string | undefined {
@@ -483,11 +525,6 @@ function summarizeStepSubtitle(step: TimelineStep): string | undefined {
   }
   if (step.decisionKind) {
     return friendlyDecisionKind(step.decisionKind);
-  }
-  if (step.kind === "pi") {
-    return [step.traceSource, step.eventType, step.description]
-      .filter((value): value is string => Boolean(value))
-      .join(" · ");
   }
   return step.description;
 }

@@ -5,7 +5,7 @@ import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import { parsePiControllerAction, type ParsedPiControllerAction } from "../PiProxy/AgentPiAssistantMessageSchema.js";
 
-export const AgentTurnPreparationSnapshotSchemaVersion = 2 as const;
+export const AgentTurnPreparationSnapshotSchemaVersion = 3 as const;
 
 export interface AgentTurnPreparationSnapshot {
   schemaVersion: typeof AgentTurnPreparationSnapshotSchemaVersion;
@@ -14,7 +14,7 @@ export interface AgentTurnPreparationSnapshot {
   piBranchBoundaryId?: string;
   turnUnderstanding?: TurnUnderstanding;
   route: AgentInteractionRouteResult;
-  loadedToolNames: "all" | string[];
+  loadedToolNames: string[];
   rootCommand?: AgentRootCommand;
   initialAction: ParsedPiControllerAction;
   activeSkills: AgentActivatedSkill[];
@@ -25,7 +25,7 @@ export function createAgentTurnPreparationSnapshot(input: {
   userInput: string;
   turnUnderstanding?: TurnUnderstanding;
   route: AgentInteractionRouteResult;
-  loadedToolNames: "all" | readonly string[];
+  loadedToolNames: readonly string[];
   rootCommand?: AgentRootCommand;
   initialAction: ParsedPiControllerAction;
   activeSkills: readonly AgentActivatedSkill[];
@@ -36,7 +36,7 @@ export function createAgentTurnPreparationSnapshot(input: {
     inputDigest: digestAgentTurnInput(input.userInput),
     turnUnderstanding: input.turnUnderstanding,
     route: structuredClone(input.route),
-    loadedToolNames: input.loadedToolNames === "all" ? "all" : [...input.loadedToolNames],
+    loadedToolNames: [...input.loadedToolNames],
     rootCommand: input.rootCommand ? structuredClone(input.rootCommand) : undefined,
     initialAction: structuredClone(input.initialAction),
     activeSkills: input.activeSkills.map((skill) => structuredClone(skill)),
@@ -73,7 +73,7 @@ export function parseAgentTurnPreparationSnapshot(value: unknown): AgentTurnPrep
     typeof record.runtimeFingerprint !== "string" ||
     typeof record.inputDigest !== "string" ||
     !record.route ||
-    (record.loadedToolNames !== "all" && !Array.isArray(record.loadedToolNames)) ||
+    !Array.isArray(record.loadedToolNames) ||
     !Array.isArray(record.activeSkills) ||
     !record.initialAction
   ) {
@@ -83,27 +83,12 @@ export function parseAgentTurnPreparationSnapshot(value: unknown): AgentTurnPrep
     return {
       ...(record as AgentTurnPreparationSnapshot),
       initialAction: parsePiControllerAction(record.initialAction, {
-        allowedTools:
-          record.loadedToolNames === "all" ? readPreparedActionToolNames(record.initialAction) : record.loadedToolNames,
+        allowedTools: record.loadedToolNames,
       }),
     };
   } catch {
     return undefined;
   }
-}
-
-function readPreparedActionToolNames(value: unknown): string[] {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  const calls = (value as { calls?: unknown }).calls;
-  return Array.isArray(calls)
-    ? calls.flatMap((call) => {
-        const toolName =
-          call && typeof call === "object" && !Array.isArray(call)
-            ? (call as { toolName?: unknown }).toolName
-            : undefined;
-        return typeof toolName === "string" ? [toolName] : [];
-      })
-    : [];
 }
 
 function digestAgentTurnInput(value: string): string {

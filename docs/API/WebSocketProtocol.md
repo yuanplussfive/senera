@@ -144,6 +144,7 @@
 | `session.truncated` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.forked` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `run.started` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
+| `run.activity.changed` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `run.cancellation.progress` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `prompt.summary` | `progress` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
 | `action.planner.stage.started` | `progress` | `decision` | [规划事件类型](../../Source/AgentSystem/Events/AgentPlannerEventTypes.ts) |
@@ -154,7 +155,6 @@
 | `model.started` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `model.delta` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `model.completed` | `snapshot` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
-| `pi.trace` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `tool.calls.planned` | `progress` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `tool.call.started` | `progress` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `tool.call.output` | `progress` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |

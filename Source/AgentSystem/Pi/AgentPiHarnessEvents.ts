@@ -1,14 +1,14 @@
 import type { AgentEvent, AgentHarnessEvent, PromptTemplate, Skill } from "@earendil-works/pi-agent-core";
-import { createPiTraceEvent } from "./AgentPiTraceProjector.js";
-import type { AgentDomainEvent } from "../Events/AgentEvent.js";
+import {
+  AgentPiDiagnosticSources,
+  createAgentPiDiagnosticEvent,
+  type AgentPiDiagnosticContext,
+  type AgentPiDiagnosticEvent,
+} from "./AgentPiDiagnostics.js";
 
 export type AgentPiHarnessEvent = AgentHarnessEvent<Skill, PromptTemplate>;
 
-export interface AgentPiHarnessTraceContext {
-  sessionId?: string;
-  requestId: string;
-  step: number;
-}
+export type AgentPiHarnessDiagnosticContext = AgentPiDiagnosticContext;
 
 const CoreAgentEventTypes = new Set<AgentEvent["type"]>([
   "agent_start",
@@ -88,20 +88,20 @@ export function isPiCoreAgentEvent(event: AgentPiHarnessEvent): event is AgentEv
   return CoreAgentEventTypes.has(event.type as AgentEvent["type"]);
 }
 
-export function projectPiHarnessTraceEvent(
-  context: AgentPiHarnessTraceContext,
+export function projectPiHarnessDiagnosticEvent(
+  context: AgentPiHarnessDiagnosticContext,
   event: AgentPiHarnessEvent,
-): AgentDomainEvent | undefined {
+): AgentPiDiagnosticEvent | undefined {
   if (isPiCoreAgentEvent(event)) {
     return undefined;
   }
 
   const payload = HarnessEventSummaries[event.type]?.(event) ?? event;
-  return createPiTraceEvent({
-    ...context,
-    source: "session",
-    eventType: event.type,
-    payload,
+  return createAgentPiDiagnosticEvent({
+    context,
+    source: AgentPiDiagnosticSources.Session,
+    name: event.type,
+    details: payload,
   });
 }
 

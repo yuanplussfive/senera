@@ -1,5 +1,5 @@
 {
-  "ConfigVersion": 2,
+  "ConfigVersion": 4,
   "Defaults": {
     "PluginRoots": {
       "System": ["./System/Plugins"],
@@ -10,7 +10,6 @@
       "ConfigFileName": "PluginConfig.toml"
     },
     "AgentLoop": {
-      "LoadedTools": "dynamic",
       "PiTurnLeaseTimeoutSeconds": 120,
       "RunSettlementTimeoutSeconds": 15,
       "PiSessions": {
@@ -75,7 +74,6 @@
     },
     "ToolSearch": {
       "Memory": {
-        "Kind": "sqlite",
         "DatabasePath": ".senera/ToolSearch.sqlite",
         "MaxEpisodes": 5000,
         "HalfLifeDays": 30
@@ -109,7 +107,7 @@
         "MaxNetworkRetries": 1,
         "Dimensions": -1,
         "BatchSize": 64,
-        "InputMaxChars": 12000
+        "InputMaxChars": -1
       },
       "Rerank": {
         "Enabled": true,
@@ -118,8 +116,8 @@
         "TimeoutSeconds": 20,
         "MaxNetworkRetries": 1,
         "EndpointPath": "/rerank",
-        "CandidateLimit": 32,
-        "TopK": 16
+        "CandidateLimit": -1,
+        "TopK": -1
       }
     },
     "MemoryLearning": {
@@ -244,7 +242,7 @@
       },
       "Endpoint": "ChatCompletions",
       "Model": "mistral-large-latest",
-      "MaxOutputTokens": 4096,
+      "MaxOutputTokens": -1,
       "MaxNetworkRetries": 1,
       "RetryBaseDelaySeconds": 0.25,
       "RetryMaxDelaySeconds": 10,

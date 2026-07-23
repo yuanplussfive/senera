@@ -93,15 +93,18 @@ async function main(): Promise<void> {
           ProviderId: "vector-test",
           Model: "qwen3-reranker-0.6b",
           EndpointPath: "/rerank",
-          CandidateLimit: 2,
-          TopK: 2,
         },
       },
     } satisfies AgentSystemConfig);
     const client = new AgentVectorModelClient(config);
+    const untrimmedInput = "不".repeat(12_001);
+
+    assert.equal(config.Embedding.InputMaxChars, -1);
+    assert.equal(config.Rerank.CandidateLimit, -1);
+    assert.equal(config.Rerank.TopK, -1);
 
     const embedding = await client.embed({
-      input: ["不要硬编码", "从源头解决"],
+      input: [untrimmedInput, "从源头解决"],
     });
     assert.equal(embedding.model, "qwen3-embedding-0.6b");
     assert.deepEqual(embedding.vectors, [
@@ -114,6 +117,7 @@ async function main(): Promise<void> {
       documents: [
         { id: "a", text: "用户喜欢快速回答" },
         { id: "b", text: "用户要求不要硬编码" },
+        { id: "c", text: "用户要求从源头解决" },
       ],
     });
     assert.deepEqual(
@@ -125,6 +129,31 @@ async function main(): Promise<void> {
     assert.equal(requests[0]?.authorization, "Bearer test-key");
     assert.equal((requests[0]?.body as { model?: string }).model, "qwen3-embedding-0.6b");
     assert.equal((requests[1]?.body as { model?: string }).model, "qwen3-reranker-0.6b");
+    assert.equal((requests[0]?.body as { input?: string[] }).input?.[0], untrimmedInput);
+    const rerankBody = requests[1]?.body as { documents?: string[]; top_n?: number };
+    assert.equal(rerankBody.documents?.length, 3);
+    assert.equal("top_n" in rerankBody, false);
+
+    const boundedClient = new AgentVectorModelClient({
+      ...config,
+      Rerank: {
+        ...config.Rerank,
+        CandidateLimit: 2,
+        TopK: 2,
+      },
+    });
+    await boundedClient.rerank({
+      query: "代码质量偏好",
+      documents: [
+        { id: "a", text: "用户喜欢快速回答" },
+        { id: "b", text: "用户要求不要硬编码" },
+        { id: "c", text: "用户要求从源头解决" },
+      ],
+    });
+    const boundedRerankBody = requests[2]?.body as { documents?: string[]; top_n?: number };
+    assert.equal(boundedRerankBody.documents?.length, 2);
+    assert.equal(boundedRerankBody.top_n, 2);
+
     assert.equal(Number(cosineSimilarity([1, 0], [1, 0]).toFixed(6)), 1);
     assert.equal(Number(cosineSimilarity([1, 0], [0, 1]).toFixed(6)), 0);
 

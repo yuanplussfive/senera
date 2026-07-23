@@ -14,12 +14,6 @@ const configuration = definePluginConfiguration({
   schema: z
     .object({
       senera: z.object({ enabled: z.boolean() }).passthrough(),
-      document: z
-        .object({
-          defaultMode: z.string().trim().min(1),
-          modes: z.array(z.string().trim().min(1)).min(1),
-        })
-        .strict(),
       extractors: z.record(z.string().trim().min(1), ExtractorSchema).refine((value) => Object.keys(value).length > 0),
       probe: z
         .object({
@@ -55,7 +49,6 @@ const configuration = definePluginConfiguration({
     .strict(),
   defaults: {
     senera: { enabled: true },
-    document: { defaultMode: "auto", modes: ["auto", "probe", "extract"] },
     probe: {
       sampleBytes: 65536,
       containerMaxEntries: 80,
@@ -132,20 +125,7 @@ const configuration = definePluginConfiguration({
       {
         id: "senera",
         label: "启用状态",
-        fields: [{ path: ["senera", "enabled"], label: "启用插件", type: "boolean" }],
-      },
-      {
-        id: "document",
-        label: "文档模式",
-        fields: [
-          {
-            path: ["document", "defaultMode"],
-            label: "默认处理模式",
-            type: "string",
-            options: ["auto", "probe", "extract"],
-          },
-          { path: ["document", "modes"], label: "允许模式", type: "array", itemType: "string" },
-        ],
+        fields: [{ path: ["senera", "enabled"], label: "启用插件", type: "boolean", required: true }],
       },
       {
         id: "probe",

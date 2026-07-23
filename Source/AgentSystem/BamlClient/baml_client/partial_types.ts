@@ -52,7 +52,6 @@ export namespace partial_types {
     }
     export interface ActionRunState {
       currentStep?: number | null
-      dynamicTools?: boolean | null
       loadedTools: string[]
       progress?: ProgressSignals | null
       warnings: RepeatedCallWarning[]

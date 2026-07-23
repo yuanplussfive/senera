@@ -249,7 +249,7 @@ async function projectBenchmarkCandidateTools(
 ): Promise<{ cards: AgentPiToolCard[]; tools: PiOpenAiTool[] }> {
   const runtime = AgentSystemRuntime.load({ workspaceRoot, configPath });
   try {
-    const visibleToolNames = runtime.toolSearch.resolveInitialLoadedTools(prompt, runtime.agentLoopConfig.LoadedTools);
+    const visibleToolNames = runtime.toolSearch.resolveInitialLoadedTools(prompt);
     const definitions = runtime.services.pi.toolDefinitions({ visibleToolNames });
     return {
       cards: runtime.services.pi.planningToolCards({ visibleToolNames }),
@@ -316,7 +316,6 @@ function createPreparationInput(prompt: string): ActionPlanInput {
     roleplayPreset: { enabled: false, activePresetName: null, documents: [] },
     runState: {
       currentStep: 1,
-      dynamicTools: true,
       loadedTools: [],
       progress: {
         totalToolCalls: 0,

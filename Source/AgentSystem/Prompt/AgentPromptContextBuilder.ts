@@ -97,11 +97,8 @@ export class AgentPromptContextBuilder {
     });
   }
 
-  private resolveLoadedTools(loadedToolNames: "all" | readonly string[]): RegisteredTool[] {
+  private resolveLoadedTools(loadedToolNames: readonly string[]): RegisteredTool[] {
     const tools = this.registry.listTools();
-    if (loadedToolNames === "all") {
-      return tools;
-    }
     const loadedToolNameSet = new Set(loadedToolNames);
     return tools.filter((tool) => loadedToolNameSet.has(tool.name));
   }
@@ -110,9 +107,6 @@ export class AgentPromptContextBuilder {
     tools: readonly RegisteredTool[],
     loadedToolNames: AgentPromptContextOptions["loadedToolNames"],
   ): RegisteredTool[] {
-    if (loadedToolNames === "all") {
-      return [...tools];
-    }
     const loadedToolNameSet = new Set(loadedToolNames ?? []);
     return tools.filter((tool) => loadedToolNameSet.has(tool.name));
   }

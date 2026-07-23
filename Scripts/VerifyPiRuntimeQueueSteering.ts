@@ -75,23 +75,12 @@ async function main(): Promise<void> {
     events.some((event) => event.kind === AgentEventKinds.SessionBusy),
     false,
   );
-  assert.equal(hasPiTrace(events, "runtime_queue.steer.accepted"), true);
   assert.equal(
     store.loadConversation(sessionId).filter((entry) => entry.kind === AgentConversationEntryKinds.UserMessage).length,
     2,
   );
 
   console.log("Pi runtime queue steering verification passed.");
-}
-
-function hasPiTrace(events: readonly AgentDomainEvent[], eventType: string): boolean {
-  return events.some(
-    (event) => event.kind === AgentEventKinds.PiTrace && readRecord(event.data)?.eventType === eventType,
-  );
-}
-
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 const VerificationPiModel = {

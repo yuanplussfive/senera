@@ -82,14 +82,15 @@ export class AgentVectorModelClient {
       };
     }
 
-    const limited = request.documents.slice(0, config.CandidateLimit);
+    const limited = takeUpTo(request.documents, config.CandidateLimit);
+    const topK = request.topK ?? config.TopK;
     const response = await postJson(
       urlFor(config.BaseUrl, config.EndpointPath),
       {
         model: config.Model,
         query: request.query,
         documents: limited.map((document) => document.text),
-        top_n: request.topK ?? config.TopK,
+        ...optionalNumberField("top_n", topK),
       },
       config,
       request.signal,
@@ -246,6 +247,10 @@ function trimEmbeddingInput(value: string, maxChars: number): string {
 
 function optionalNumberField(key: string, value: number): Record<string, number> {
   return value === -1 ? {} : { [key]: value };
+}
+
+function takeUpTo<T>(values: readonly T[], limit: number): T[] {
+  return limit === -1 ? [...values] : values.slice(0, limit);
 }
 
 function chunk<T>(values: readonly T[], size: number): T[][] {

@@ -20,8 +20,7 @@ import { AgentPiHarnessSessionPool, type AgentPiHarnessSessionPoolPort } from ".
 import { AgentPiSessionStore, type AgentPiSessionStorePort } from "./AgentPiSessionStore.js";
 import { AgentPiResourceProjector } from "./AgentPiResourceProjector.js";
 import { projectSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
-import { createPiTraceEvent } from "./AgentPiTraceProjector.js";
-import { emitAgentEvent } from "../Events/AgentEvent.js";
+import { AgentPiDiagnosticSources, emitAgentPiDiagnostic, type AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import { resolveAgentLoopConfig } from "../AgentDefaults.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { TurnUnderstanding } from "../BamlClient/baml_client/types.js";
@@ -54,6 +53,7 @@ export interface AgentPiSubstrateOptions {
   sessionStore?: AgentPiSessionStorePort;
   harnessPool?: AgentPiHarnessSessionPoolPort;
   compactionSummarizer?: AgentPiCompactionSummarizer;
+  diagnostics?: AgentPiDiagnosticSink;
 }
 
 export interface AgentPiToolCallExecutorPort {
@@ -74,6 +74,7 @@ export interface AgentPiSessionOptions extends AgentPiToolProjectionContext {
   activeSkills?: readonly AgentActivatedSkill[];
   rootCommand?: AgentRootCommand;
   turnUnderstanding?: TurnUnderstanding;
+  diagnostics?: AgentPiDiagnosticSink;
 }
 
 export type AgentPiSessionEventListener = (event: AgentEvent) => void | Promise<void>;
@@ -149,6 +150,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
           ? new AgentPiCompactionPolicy(piSessionsConfig.Compaction, options.modelProvider)
           : undefined,
         compactionSummarizer: options.compactionSummarizer,
+        diagnostics: options.diagnostics,
       });
     this.permissionHook = new AgentPiToolPermissionHook({
       registry: options.registry,
@@ -228,7 +230,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       }),
     );
     const projectionMs = elapsedMilliseconds(leaseStartedAt);
-    await this.emitSubstrateTrace(options, "core.turn.lease.started", {
+    await this.emitSubstrateDiagnostic(options, "core.turn.lease.started", {
       model: this.provider.model.id,
       provider: this.provider.providerId,
       toolCount: toolSet.activeToolNames.length,
@@ -274,6 +276,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         requestId: options.requestId,
         step: options.step,
         onEvent: options.onEvent,
+        diagnostics: options.diagnostics ?? this.options.diagnostics,
         systemPrompt: options.systemPrompt,
         piProxyRuntimeContextId: options.piProxyRuntimeContextId,
         activeSkills: options.activeSkills,
@@ -287,7 +290,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
     try {
       throwIfAborted(options.signal);
       const harnessLeaseMs = elapsedMilliseconds(harnessLeaseStartedAt);
-      await this.emitSubstrateTrace(options, "core.turn.lease.completed", {
+      await this.emitSubstrateDiagnostic(options, "core.turn.lease.completed", {
         piSessionId: persistentSession.sessionId,
         piSessionStorage: persistentSession.storage,
         harnessStorage: harnessLease.storage,
@@ -308,7 +311,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
           selectionScore: template.selectionScore,
         })),
       });
-      await this.emitSubstrateTrace(options, "core.turn.lease.timing", {
+      await this.emitSubstrateDiagnostic(options, "core.turn.lease.timing", {
         projectionMs,
         sessionOpenMs,
         historyInspectionMs,
@@ -347,18 +350,21 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
     return this.harnessPool.close();
   }
 
-  private async emitSubstrateTrace(options: AgentPiSessionOptions, eventType: string, payload: unknown): Promise<void> {
-    await emitAgentEvent(
-      options.onEvent,
-      createPiTraceEvent({
+  private async emitSubstrateDiagnostic(
+    options: AgentPiSessionOptions,
+    eventType: string,
+    payload: unknown,
+  ): Promise<void> {
+    await emitAgentPiDiagnostic(options.diagnostics ?? this.options.diagnostics, {
+      context: {
         sessionId: options.sessionId,
-        requestId: options.requestId ?? "pi-substrate",
-        step: options.step ?? 0,
-        source: "substrate",
-        eventType,
-        payload,
-      }),
-    );
+        requestId: options.requestId,
+        step: options.step,
+      },
+      source: AgentPiDiagnosticSources.Substrate,
+      name: eventType,
+      details: payload,
+    });
   }
 }
 

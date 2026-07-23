@@ -22,7 +22,11 @@ import {
   readPiProxyRuntimeContext,
 } from "./AgentPiProxyRuntimeContext.js";
 import { createAssistantMessageId, createToolBatchId } from "../Core/AgentIds.js";
-import { createPiTraceEvent } from "../Pi/AgentPiTraceProjector.js";
+import {
+  AgentPiDiagnosticSources,
+  emitAgentPiDiagnostic,
+  type AgentPiDiagnosticSink,
+} from "../Pi/AgentPiDiagnostics.js";
 import { projectPiModelsResponse } from "./AgentPiOpenAiResponseProjector.js";
 import { AgentPiFinalAnswerGenerator, type AgentPiFinalAnswerGeneratorPort } from "./AgentPiFinalAnswerGenerator.js";
 import { createAgentPiOpenAiResponseWriter } from "./AgentPiOpenAiResponseWriter.js";
@@ -45,6 +49,7 @@ export interface AgentPiProxyHttpApiOptions {
     timingSink?: AgentModelTimingSink,
   ) => AgentPiFinalAnswerGeneratorPort;
   onEvent?: AgentEventSink;
+  diagnostics?: AgentPiDiagnosticSink;
   maxRequestBytes?: number;
 }
 
@@ -116,13 +121,13 @@ export class AgentPiProxyHttpApi {
       requestUsage.record(call);
       runtime?.usageLedger?.record(call);
     };
-    const timingSink: AgentModelTimingSink = (timing) => this.emitProxyTrace(runtime, "model_timing", timing);
+    const timingSink: AgentModelTimingSink = (timing) => this.emitProxyDiagnostic(runtime, "model_timing", timing);
     const compiler = this.compiler(config, provider, usageSink, timingSink);
     const finalAnswers = this.finalAnswerGenerator(config, provider, usageSink, timingSink);
     const lifetime = new AgentPiProxyRequestLifetime(request, response);
     const requestStartedAt = performance.now();
     try {
-      await this.emitProxyTrace(runtime, "provider_request", {
+      await this.emitProxyDiagnostic(runtime, "provider_request", {
         model: payload.model,
         stream: payload.stream === true,
         messageCount: payload.messages.length,
@@ -134,7 +139,7 @@ export class AgentPiProxyHttpApi {
         runtime,
         signal: lifetime.signal,
       });
-      await this.emitProxyTrace(runtime, "provider_response", {
+      await this.emitProxyDiagnostic(runtime, "provider_response", {
         ...projectCompilationTrace(compilation),
         durationMs: Math.round(performance.now() - requestStartedAt),
       });
@@ -146,7 +151,7 @@ export class AgentPiProxyHttpApi {
         streaming: payload.stream === true,
         usage: () => requestUsage.contextUsage(),
         onFirstOutput: () =>
-          this.emitProxyTrace(runtime, "first_output", {
+          this.emitProxyDiagnostic(runtime, "first_output", {
             durationMs: Math.round(performance.now() - requestStartedAt),
             streaming: payload.stream === true,
           }),
@@ -157,7 +162,7 @@ export class AgentPiProxyHttpApi {
         finalAnswers,
         compileRequest: { request: payload, runtime, signal: lifetime.signal },
       });
-      await this.emitProxyTrace(runtime, "completed", {
+      await this.emitProxyDiagnostic(runtime, "completed", {
         kind: assistantMessage.kind,
         contentChars: assistantMessage.content.length,
         toolCallCount: assistantMessage.toolCalls.length,
@@ -226,22 +231,21 @@ export class AgentPiProxyHttpApi {
     return resolveModelProviderConfig(this.options.configSnapshot()).Model;
   }
 
-  private async emitProxyTrace(
+  private async emitProxyDiagnostic(
     runtime: ReturnType<typeof readPiProxyRuntimeContext>,
-    eventType: string,
-    payload: unknown,
+    name: string,
+    details: unknown,
   ): Promise<void> {
-    const sink = runtime?.onEvent ?? this.options.onEvent;
-    await sink?.(
-      createPiTraceEvent({
+    await emitAgentPiDiagnostic(runtime?.diagnostics ?? this.options.diagnostics, {
+      context: {
         sessionId: runtime?.sessionId,
-        requestId: runtime?.requestId ?? "pi-proxy",
-        step: runtime?.step ?? 0,
-        source: "proxy",
-        eventType,
-        payload,
-      }),
-    );
+        requestId: runtime?.requestId,
+        step: runtime?.step,
+      },
+      source: AgentPiDiagnosticSources.Proxy,
+      name,
+      details,
+    });
   }
 
   private async emitAssistantVisibleEvents(
