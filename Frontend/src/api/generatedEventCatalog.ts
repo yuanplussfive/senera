@@ -1,5 +1,5 @@
-// Generated from Source/AgentSystem/Events/AgentEventCatalog.ts.
-// Run `npm run generate.frontend-events` after editing the backend event catalog.
+// Generated from backend event and transport protocol contracts.
+// Run `npm run generate.frontend-events` after editing those contracts.
 
 export const EventLayers = {
   Progress: "progress",
@@ -84,3 +84,21 @@ export const EventKinds = {
   PresetFailed: "preset.failed",
 } as const;
 export type EventKind = (typeof EventKinds)[keyof typeof EventKinds];
+
+export const AuthenticationSessionStates = {
+  Disabled: "disabled",
+  Anonymous: "anonymous",
+  Authenticated: "authenticated",
+} as const;
+export type AuthenticationSessionState = (typeof AuthenticationSessionStates)[keyof typeof AuthenticationSessionStates];
+
+export const WebSocketCloseCodes = {
+  AuthenticationRequired: 4401,
+  AccessForbidden: 4403,
+} as const;
+export type WebSocketCloseCode = (typeof WebSocketCloseCodes)[keyof typeof WebSocketCloseCodes];
+
+export const WebSocketCloseReasons = {
+  AuthenticationRequired: "authentication_required",
+  AccessForbidden: "access_forbidden",
+} as const;

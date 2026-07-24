@@ -16,11 +16,12 @@ afterEach(() => {
 });
 
 test("agent socket retry delay uses capped exponential backoff", () => {
-  expect(readAgentSocketRetryDelayMs(0)).toBe(1000);
-  expect(readAgentSocketRetryDelayMs(1)).toBe(2000);
-  expect(readAgentSocketRetryDelayMs(4)).toBe(15000);
-  expect(readAgentSocketRetryDelayMs(20)).toBe(15000);
-  expect(readAgentSocketRetryDelayMs(-1)).toBe(1000);
+  expect(readAgentSocketRetryDelayMs(0, () => 0)).toBe(500);
+  expect(readAgentSocketRetryDelayMs(0, () => 1)).toBe(1000);
+  expect(readAgentSocketRetryDelayMs(1, () => 1)).toBe(2000);
+  expect(readAgentSocketRetryDelayMs(4, () => 1)).toBe(15000);
+  expect(readAgentSocketRetryDelayMs(20, () => 1)).toBe(15000);
+  expect(readAgentSocketRetryDelayMs(-1, () => 1)).toBe(1000);
 });
 
 test("agent socket event parser accepts string event payloads and rejects malformed frames", () => {
@@ -44,6 +45,7 @@ test("agent socket event parser accepts string event payloads and rejects malfor
 
 test("agent socket owns connection state, ordered streaming delivery, malformed frames, and retry", () => {
   vi.useFakeTimers();
+  vi.spyOn(Math, "random").mockReturnValue(1);
   vi.stubGlobal("WebSocket", TestWebSocket);
   vi.stubGlobal("requestAnimationFrame", (callback) => window.setTimeout(() => callback(performance.now()), 16));
   vi.stubGlobal("cancelAnimationFrame", (id) => window.clearTimeout(id));
@@ -125,6 +127,7 @@ test("agent socket delivers one ordered transaction for events received in the s
 
 test("agent socket turns synchronous connection failures into retryable error state", () => {
   vi.useFakeTimers();
+  vi.spyOn(Math, "random").mockReturnValue(1);
   vi.stubGlobal(
     "WebSocket",
     class RejectingWebSocket {
@@ -145,6 +148,55 @@ test("agent socket turns synchronous connection failures into retryable error st
   expect(handleRef.current.status).toBe("error");
   act(() => vi.advanceTimersByTime(readAgentSocketRetryDelayMs(0)));
   expect(handleRef.current.status).toBe("error");
+});
+
+test("agent socket does not connect while disabled and cancels pending reconnects when disabled", () => {
+  vi.useFakeTimers();
+  vi.spyOn(Math, "random").mockReturnValue(1);
+  vi.stubGlobal("WebSocket", TestWebSocket);
+  const handleRef = { current: null };
+  const props = {
+    handleRef,
+    onEvent: vi.fn(),
+    url: "ws://agent.test/runtime",
+  };
+  const { rerender } = render(React.createElement(SocketHarness, { ...props, enabled: false }));
+
+  expect(TestWebSocket.instances).toHaveLength(0);
+  expect(handleRef.current.status).toBe("idle");
+
+  rerender(React.createElement(SocketHarness, { ...props, enabled: true }));
+  expect(TestWebSocket.instances).toHaveLength(1);
+  act(() => TestWebSocket.instances[0].disconnect());
+
+  rerender(React.createElement(SocketHarness, { ...props, enabled: false }));
+  act(() => vi.advanceTimersByTime(15_000));
+  expect(TestWebSocket.instances).toHaveLength(1);
+  expect(handleRef.current.status).toBe("idle");
+});
+
+test("agent socket delegates a failed handshake to the reconnect policy and honors a stop decision", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", TestWebSocket);
+  const reconnectPolicy = vi.fn(async () => "stop");
+  const handleRef = { current: null };
+  render(
+    React.createElement(SocketHarness, {
+      handleRef,
+      onEvent: vi.fn(),
+      reconnectPolicy,
+      url: "ws://agent.test/runtime",
+    }),
+  );
+
+  await act(async () => {
+    TestWebSocket.instances[0].disconnect(1006, "", false);
+    await Promise.resolve();
+  });
+
+  expect(reconnectPolicy).toHaveBeenCalledWith({ code: 1006, reason: "", wasClean: false, opened: false });
+  act(() => vi.advanceTimersByTime(15_000));
+  expect(TestWebSocket.instances).toHaveLength(1);
 });
 
 function SocketHarness({ handleRef, ...options }) {
@@ -194,9 +246,9 @@ class TestWebSocket {
     this.onmessage?.({ data });
   }
 
-  disconnect() {
+  disconnect(code = 1006, reason = "", wasClean = false) {
     this.readyState = TestWebSocket.CLOSED;
-    this.onclose?.({ type: "close" });
+    this.onclose?.({ type: "close", code, reason, wasClean });
   }
 
   close() {

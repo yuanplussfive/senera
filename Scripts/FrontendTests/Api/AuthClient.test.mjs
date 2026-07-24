@@ -20,11 +20,11 @@ describe("server authentication API", () => {
     );
   });
 
-  test("treats an unauthorized session lookup as an anonymous authenticated-server state", async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response("", { status: 401 }));
+  test("reads an anonymous session probe as normal server state", async () => {
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({ ok: true, session: { state: "anonymous" } }));
     vi.stubGlobal("fetch", fetch);
 
-    await expect(readServerAuthentication("ws://agent.test")).resolves.toEqual({ required: true });
+    await expect(readServerAuthentication("ws://agent.test")).resolves.toEqual({ state: "anonymous" });
     expect(fetch).toHaveBeenCalledWith(
       "http://agent.test/api/auth/session",
       expect.objectContaining({ credentials: "include" }),
@@ -35,10 +35,11 @@ describe("server authentication API", () => {
     const fetch = vi.fn().mockResolvedValue(
       jsonResponse({
         ok: true,
-        authentication: {
-          required: true,
+        session: {
+          state: "authenticated",
           account: { id: "account", loginName: "owner", displayName: "Owner", role: "owner" },
           csrfToken: "csrf",
+          expiresAt: "2026-07-25T00:00:00.000Z",
         },
       }),
     );
@@ -77,12 +78,18 @@ describe("server authentication API", () => {
     });
   });
 
-  test("does not turn failed authentication responses into an authenticated state", async () => {
+  test("rejects malformed or failed authentication responses", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ ok: false, error: { message: "Denied" } }, 403)));
 
     await expect(
       loginServerAuthentication("ws://agent.test", { loginName: "owner", password: "secret" }),
     ).rejects.toEqual(expect.objectContaining({ name: ServerAuthenticationError.name, status: 403 }));
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ ok: true, session: { state: "unknown" } })));
+    await expect(readServerAuthentication("ws://agent.test")).rejects.toMatchObject({
+      name: ServerAuthenticationError.name,
+      status: 200,
+    });
   });
 });
 

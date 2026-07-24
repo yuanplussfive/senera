@@ -24,8 +24,8 @@ describe("administrator authentication HTTP API", () => {
   test("returns anonymous status before a local administrator logs in", async () => {
     const harness = await createHarness();
     const response = await fetch(`${harness.baseUrl}/api/auth/session`);
-    expect(response.status).toBe(401);
-    expect(await response.json()).toMatchObject({ ok: false, error: { code: "authentication_required" } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, session: { state: "anonymous" } });
   });
 
   test("issues an HttpOnly session cookie and exposes only the CSRF token to the browser", async () => {
@@ -41,10 +41,10 @@ describe("administrator authentication HTTP API", () => {
     });
     expect(await session.json()).toMatchObject({
       ok: true,
-      authentication: {
-        required: true,
+      session: {
+        state: "authenticated",
         account: { loginName: "owner", role: "owner" },
-        csrfToken: login.payload.authentication.csrfToken,
+        csrfToken: login.payload.session.csrfToken,
       },
     });
   });
@@ -63,7 +63,7 @@ describe("administrator authentication HTTP API", () => {
       headers: {
         Cookie: login.cookie,
         Origin,
-        "X-Senera-Csrf": login.payload.authentication.csrfToken,
+        "X-Senera-Csrf": login.payload.session.csrfToken,
       },
     });
     expect(logout.status).toBe(200);
@@ -71,13 +71,14 @@ describe("administrator authentication HTTP API", () => {
     const session = await fetch(`${harness.baseUrl}/api/auth/session`, {
       headers: { Cookie: login.cookie },
     });
-    expect(session.status).toBe(401);
+    expect(session.status).toBe(200);
+    expect(await session.json()).toEqual({ ok: true, session: { state: "anonymous" } });
   });
 
   test("returns credentialed CORS headers only for an approved browser origin", async () => {
     const harness = await createHarness();
     const allowed = await fetch(`${harness.baseUrl}/api/auth/session`, { headers: { Origin } });
-    expect(allowed.status).toBe(401);
+    expect(allowed.status).toBe(200);
     expect(allowed.headers.get("access-control-allow-origin")).toBe(Origin);
     expect(allowed.headers.get("access-control-allow-credentials")).toBe("true");
     expect(allowed.headers.get("vary")).toContain("Origin");
@@ -157,7 +158,7 @@ async function createHarness(): Promise<{ baseUrl: string; close: () => Promise<
 async function loginAsOwner(baseUrl: string): Promise<{
   response: Response;
   cookie: string;
-  payload: { authentication: { csrfToken: string } };
+  payload: { session: { csrfToken: string } };
 }> {
   const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
@@ -167,7 +168,7 @@ async function loginAsOwner(baseUrl: string): Promise<{
     },
     body: JSON.stringify({ loginName: "owner", password: "a long administrator password" }),
   });
-  const payload = (await response.json()) as { authentication: { csrfToken: string } };
+  const payload = (await response.json()) as { session: { csrfToken: string } };
   const cookie = response.headers.get("set-cookie")?.split(";")[0];
   if (!cookie) {
     throw new Error("Expected a session cookie from login.");

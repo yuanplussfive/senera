@@ -59,6 +59,6 @@ USER node
 VOLUME ["/data"]
 EXPOSE 8787
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "const port = process.env.SENERA_SERVER_PORT || 8787; fetch('http://127.0.0.1:' + port + '/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1));"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "const port = process.env.SENERA_SERVER_PORT || 8787; fetch('http://127.0.0.1:' + port + '/health/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1));"
 
 CMD ["node", "Dist/Apps/DockerServer.js"]

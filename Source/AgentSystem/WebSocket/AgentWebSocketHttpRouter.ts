@@ -5,6 +5,7 @@ import type { AgentPiProxyHttpApi } from "../PiProxy/AgentPiProxyHttpApi.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { type AgentAuthenticationHttpApi } from "../Auth/AgentAuthenticationHttpApi.js";
 import type { AgentAccessFailure, AgentServerAccessGuard } from "../Auth/AgentServerAccessGuard.js";
+import type { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
@@ -13,6 +14,7 @@ export class AgentWebSocketHttpRouter {
       piProxyApi?: AgentPiProxyHttpApi;
       staticFrontendApi?: AgentStaticFrontendHttpApi;
       authenticationApi?: AgentAuthenticationHttpApi;
+      healthApi?: AgentHealthHttpApi;
       accessGuard?: AgentServerAccessGuard;
     },
   ) {}
@@ -20,6 +22,11 @@ export class AgentWebSocketHttpRouter {
   async handle(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
     if (this.options.authenticationApi?.canHandle(request)) {
       await this.options.authenticationApi.handle(request, response);
+      return;
+    }
+
+    if (this.options.healthApi?.canHandle(request)) {
+      this.options.healthApi.handle(request, response);
       return;
     }
 

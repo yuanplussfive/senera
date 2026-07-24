@@ -1,8 +1,0 @@
-services:
-  senera:
-    environment:
-      SENERA_SANDBOX_DEPLOYMENT: kvm
-    devices:
-      - /dev/kvm:/dev/kvm
-    cap_add:
-      - NET_ADMIN

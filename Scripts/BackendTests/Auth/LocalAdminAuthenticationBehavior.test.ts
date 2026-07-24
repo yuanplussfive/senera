@@ -188,6 +188,29 @@ describe("server access guard", () => {
     ).toThrow(/公网监听/);
   });
 
+  test("rejects plaintext remote login unless insecure HTTP is explicitly enabled", async () => {
+    const { guard } = await createRemoteGuard(false);
+
+    await expect(
+      guard.login(request({ origin: "http://192.168.1.20:8787" }, "192.168.1.30"), {
+        loginName: "owner",
+        password: "a long administrator password",
+      }),
+    ).resolves.toMatchObject({ ok: false, failure: { code: "forbidden_origin" } });
+  });
+
+  test("allows an exact allowlisted IP origin when insecure HTTP is explicitly enabled", async () => {
+    const { guard } = await createRemoteGuard(true);
+
+    await expect(
+      guard.login(request({ origin: "http://192.168.1.20:8787" }, "192.168.1.30"), {
+        loginName: "owner",
+        password: "a long administrator password",
+      }),
+    ).resolves.toMatchObject({ ok: true, session: { principal: { loginName: "owner" } } });
+    expect(guard.cookieName).toBe("senera_local_session");
+  });
+
   test("requires a valid local administrator session for protected HTTP requests", async () => {
     const { guard, store } = await createRequiredGuard();
     const login = await guard.login(request({ origin: "http://app.test" }), {
@@ -306,11 +329,43 @@ async function createRequiredGuard(): Promise<{
   return { guard, store };
 }
 
-function request(headers: Record<string, string> = {}): import("node:http").IncomingMessage {
+async function createRemoteGuard(allowInsecureHttp: boolean): Promise<{
+  guard: AgentServerAccessGuard;
+  store: AgentLocalAdminAccountStore;
+}> {
+  const root = createTemporaryRoot();
+  const store = new AgentLocalAdminAccountStore(path.join(root, "admin-account.json"));
+  await store.initialize({
+    loginName: "owner",
+    displayName: "Owner",
+    password: "a long administrator password",
+  });
+  const guard = new AgentServerAccessGuard({
+    workspaceRoot: root,
+    server: resolveServerConfig({
+      ...minimalConfig(),
+      Server: {
+        Host: "0.0.0.0",
+        AccessControl: {
+          Mode: "required",
+          AccountFile: "admin-account.json",
+          AllowedOrigins: ["http://192.168.1.20:8787"],
+          AllowInsecureHttp: allowInsecureHttp,
+        },
+      },
+    }),
+  });
+  return { guard, store };
+}
+
+function request(
+  headers: Record<string, string> = {},
+  remoteAddress = "127.0.0.1",
+): import("node:http").IncomingMessage {
   return {
     headers,
     socket: {
-      remoteAddress: "127.0.0.1",
+      remoteAddress,
     },
   } as import("node:http").IncomingMessage;
 }

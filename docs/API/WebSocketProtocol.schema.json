@@ -1504,6 +1504,9 @@
                         "AllowInsecureLoopback": {
                           "type": "boolean"
                         },
+                        "AllowInsecureHttp": {
+                          "type": "boolean"
+                        },
                         "Session": {
                           "type": "object",
                           "properties": {
@@ -3103,6 +3106,9 @@
                       }
                     },
                     "AllowInsecureLoopback": {
+                      "type": "boolean"
+                    },
+                    "AllowInsecureHttp": {
                       "type": "boolean"
                     },
                     "Session": {
