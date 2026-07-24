@@ -14,6 +14,8 @@ const strictSchema = [
   'path = ["senera", "enabled"]',
   'label = "启用插件"',
   'type = "boolean"',
+  "required = true",
+  "essential = true",
   "",
 ].join("\n");
 
@@ -39,7 +41,7 @@ assert.ok(
   missingSwitchResult.diagnostics.some(
     (diagnostic) => diagnostic.severity === "error" && diagnostic.message.includes("启用插件"),
   ),
-  "boolean switches should always be required",
+  "declared required switches should report missing values",
 );
 
 const missingSchemaResult = parseLoadedPluginConfigToml("[senera]\nenabled = true\n[demo]\nextra = true\n", {
@@ -68,11 +70,14 @@ const requiredSchema = [
   'label = "服务地址"',
   'type = "string"',
   "required = true",
+  "essential = true",
   "",
   "[[form.sections.fields]]",
   'path = ["service", "timeout"]',
   'label = "请求超时"',
   'type = "number"',
+  "required = false",
+  "essential = false",
   "",
 ].join("\n");
 
@@ -83,6 +88,8 @@ const requiredResult = parseLoadedPluginConfigToml("[service]\n", {
 });
 assert.equal(requiredResult.sections[0]?.fields[0]?.required, true);
 assert.equal(requiredResult.sections[0]?.fields[1]?.required, false);
+assert.equal(requiredResult.sections[0]?.fields[0]?.essential, true);
+assert.equal(requiredResult.sections[0]?.fields[1]?.essential, false);
 assert.ok(
   requiredResult.diagnostics.some(
     (diagnostic) => diagnostic.severity === "error" && diagnostic.message.includes("服务地址"),

@@ -7,8 +7,11 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { LoadedPluginConfig, LoadedPluginConfigDiagnostic } from "../Types/PluginConfigTypes.js";
 import {
+  collectTomlLeafPaths,
   defaultPluginConfigToml,
   ensureFinalNewline,
+  pathMatchesAllowedPath,
+  readTomlValueAtPath,
   resolvePluginConfigSchemaPath,
   resolvePluginConfigTemplatePath,
   setTomlValueAtPath,
@@ -62,28 +65,40 @@ export function readLoadedPluginConfig(
   const templateExists = fs.existsSync(templatePath);
   const schemaExists = fs.existsSync(schemaPath);
   const templateToml = templateExists ? fs.readFileSync(templatePath, "utf8") : undefined;
+  const schemaToml = schemaExists ? fs.readFileSync(schemaPath, "utf8") : undefined;
 
   if (options.materialize && !fs.existsSync(configPath)) {
     materializePluginConfig(configPath, templateToml ?? defaultPluginConfigToml());
   }
 
-  const exists = fs.existsSync(configPath);
-  const toml = exists ? fs.readFileSync(configPath, "utf8") : (templateToml ?? defaultPluginConfigToml());
-  const source =
-    templateToml !== undefined && toml === templateToml
-      ? "example"
-      : templateToml === undefined && toml === defaultPluginConfigToml()
-        ? "default"
-        : exists
-          ? "file"
-          : templateExists
-            ? "example"
-            : "default";
-  const parsed = parseLoadedPluginConfigToml(toml, {
+  let exists = fs.existsSync(configPath);
+  let toml = exists ? fs.readFileSync(configPath, "utf8") : (templateToml ?? defaultPluginConfigToml());
+  let source = resolvePluginConfigSource({ exists, toml, templateToml });
+  let parsed = parseLoadedPluginConfigToml(toml, {
     schemaPath,
-    schemaToml: schemaExists ? fs.readFileSync(schemaPath, "utf8") : undefined,
+    schemaToml,
     requireSchema: source !== "default",
   });
+
+  const schema = parsePluginConfigSchema({ schemaPath, schemaToml }).schema;
+  if (
+    options.materialize &&
+    exists &&
+    templateToml &&
+    schema &&
+    requiresPluginConfigRebuild(toml, templateToml, schema, parsed)
+  ) {
+    validatePluginConfigTomlForWrite(templateToml, configPath);
+    replacePluginConfigAtomically(configPath, templateToml);
+    exists = true;
+    toml = templateToml;
+    source = "example";
+    parsed = parseLoadedPluginConfigToml(toml, {
+      schemaPath,
+      schemaToml,
+      requireSchema: true,
+    });
+  }
 
   return {
     fileName,
@@ -98,6 +113,49 @@ export function readLoadedPluginConfig(
   };
 }
 
+function resolvePluginConfigSource(input: {
+  exists: boolean;
+  toml: string;
+  templateToml: string | undefined;
+}): "file" | "example" | "default" {
+  if (input.templateToml !== undefined && input.toml === input.templateToml) return "example";
+  if (input.templateToml === undefined && input.toml === defaultPluginConfigToml()) return "default";
+  if (input.exists) return "file";
+  return input.templateToml !== undefined ? "example" : "default";
+}
+
+function requiresPluginConfigRebuild(
+  toml: string,
+  templateToml: string,
+  schema: NonNullable<ReturnType<typeof parsePluginConfigSchema>["schema"]>,
+  parsed: Pick<LoadedPluginConfig, "diagnostics">,
+): boolean {
+  if (parsed.diagnostics.some((diagnostic) => diagnostic.severity === "error")) return true;
+
+  try {
+    const document = parseToml(toml) as TomlTableWithoutBigInt;
+    const template = parseToml(templateToml) as TomlTableWithoutBigInt;
+    const expectedPaths = collectTomlLeafPaths(template);
+    const allowedPaths = [
+      ...expectedPaths.map((pathParts) => ({ path: pathParts, recursive: false })),
+      ...(schema.form.allowedPaths ?? []),
+      {
+        path: [AgentPluginConfigDefaults.FrameworkSection, "tools"],
+        recursive: true,
+      },
+    ];
+    const actualPaths = collectTomlLeafPaths(document);
+    return (
+      expectedPaths.some((pathParts) => readTomlValueAtPath(document, pathParts) === undefined) ||
+      actualPaths.some(
+        (pathParts) => !allowedPaths.some((allowedPath) => pathMatchesAllowedPath(pathParts, allowedPath)),
+      )
+    );
+  } catch {
+    return true;
+  }
+}
+
 function materializePluginConfig(configPath: string, toml: string): void {
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   try {
@@ -106,6 +164,17 @@ function materializePluginConfig(configPath: string, toml: string): void {
     if (!isFileExistsError(error)) {
       throw error;
     }
+  }
+}
+
+function replacePluginConfigAtomically(configPath: string, toml: string): void {
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  const temporaryPath = path.join(path.dirname(configPath), `.${path.basename(configPath)}.${randomUUID()}.tmp`);
+  try {
+    fs.writeFileSync(temporaryPath, toml, { encoding: "utf8", flag: "wx" });
+    fs.renameSync(temporaryPath, configPath);
+  } finally {
+    fs.rmSync(temporaryPath, { force: true });
   }
 }
 
@@ -184,14 +253,7 @@ export function writePluginConfigToml(configPath: string, toml: string): boolean
   const next = ensureFinalNewline(toml);
   if (fs.existsSync(configPath) && fs.readFileSync(configPath, "utf8") === next) return false;
 
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  const temporaryPath = path.join(path.dirname(configPath), `.${path.basename(configPath)}.${randomUUID()}.tmp`);
-  try {
-    fs.writeFileSync(temporaryPath, next, { encoding: "utf8", flag: "wx" });
-    fs.renameSync(temporaryPath, configPath);
-  } finally {
-    fs.rmSync(temporaryPath, { force: true });
-  }
+  replacePluginConfigAtomically(configPath, next);
   return true;
 }
 

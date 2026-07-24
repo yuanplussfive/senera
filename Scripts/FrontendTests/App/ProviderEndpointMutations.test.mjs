@@ -1,21 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
-import {
-  readConfigRevisionGuard,
-  resolveProviderEndpointMutationEvent,
-} from "../../../Frontend/src/app/providerEndpointMutations.ts";
+import { resolveProviderEndpointMutationEvent } from "../../../Frontend/src/app/providerEndpointMutations.ts";
 
 describe("provider endpoint mutation helpers", () => {
-  it("prefers revision guards and falls back to snapshot version", () => {
-    expect(readConfigRevisionGuard(configSnapshot({ revision: 12, version: 4 }))).toEqual({
-      expectedRevision: 12,
-    });
-    expect(readConfigRevisionGuard(configSnapshot({ version: 4 }))).toEqual({
-      expectedVersion: 4,
-    });
-  });
-
-  it("matches endpoint success by request id and operation kind", () => {
+  it("matches endpoint success by command id and operation kind", () => {
     const pending = new Map([["req-upsert", { kind: "provider.endpoint.upsert", providerId: "custom-openai" }]]);
 
     expect(
@@ -23,7 +11,7 @@ describe("provider endpoint mutation helpers", () => {
         event(EventKinds.ConfigSnapshot, {
           ...configSnapshot({ revision: 13, version: 5 }),
           operation: {
-            requestId: "req-upsert",
+            commandId: "req-upsert",
             kind: "provider.endpoint.upsert",
           },
         }),
@@ -33,7 +21,7 @@ describe("provider endpoint mutation helpers", () => {
       kind: "success",
       operationKind: "provider.endpoint.upsert",
       providerId: "custom-openai",
-      requestId: "req-upsert",
+      commandId: "req-upsert",
     });
   });
 
@@ -46,7 +34,7 @@ describe("provider endpoint mutation helpers", () => {
           configPath: "Config.toml",
           message: "stale revision",
           operation: {
-            requestId: "req-rename",
+            commandId: "req-rename",
             kind: "provider.endpoint.rename",
           },
         }),
@@ -56,7 +44,7 @@ describe("provider endpoint mutation helpers", () => {
       kind: "failure",
       operationKind: "provider.endpoint.rename",
       providerId: "custom-openai",
-      requestId: "req-rename",
+      commandId: "req-rename",
       message: "stale revision",
     });
   });
@@ -69,7 +57,7 @@ describe("provider endpoint mutation helpers", () => {
         event(EventKinds.ConfigSnapshot, {
           ...configSnapshot({ version: 5 }),
           operation: {
-            requestId: "req-endpoint",
+            commandId: "req-endpoint",
             kind: "provider.model.upsert",
           },
         }),
@@ -82,7 +70,7 @@ describe("provider endpoint mutation helpers", () => {
         event(EventKinds.ConfigSnapshot, {
           ...configSnapshot({ version: 5 }),
           operation: {
-            requestId: "req-endpoint",
+            commandId: "req-endpoint",
             kind: "provider.endpoint.rename",
           },
         }),

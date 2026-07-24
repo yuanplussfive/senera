@@ -79,10 +79,11 @@ try {
     ],
   };
 
-  const second = service.update({
+  const second = service.replaceConfig({
+    commandId: "replace-json-config-1",
+    baseRevision: first.revision,
     config: updatedConfig,
     source: "ui_update",
-    mirrorJson: true,
   });
   assert.equal(second.source, "sqlite");
   assert.equal(second.revision, 2);
@@ -110,15 +111,17 @@ try {
         : provider,
     ),
   };
-  const moved = service.update({
+  const moved = service.replaceConfig({
+    commandId: "replace-json-config-2",
+    baseRevision: second.revision,
     config: movedConfig,
     source: "ui_update",
   });
   assert.equal(moved.source, "sqlite");
-  assert.equal(moved.revision, 1);
+  assert.equal(moved.revision, 3);
   assert.equal(moved.value.ModelProviders[0].Model, "moved-model");
   assert.equal(moved.value.ModelProviderEndpoints?.at(-1)?.Id, "secondary");
-  assert.ok(moved.databasePath?.endsWith(path.join(".senera", "ConfigMoved.sqlite")));
+  assert.ok(moved.databasePath?.endsWith(path.join(".senera", "Config.sqlite")));
 
   const movedMirror = JSON.parse(fs.readFileSync(configPath, "utf8")) as AgentSystemConfig;
   assert.equal(movedMirror.ConfigStore?.DatabasePath, ".senera/ConfigMoved.sqlite");
@@ -172,7 +175,9 @@ try {
   assert.equal(service.snapshot().revision, 1);
   assert.equal(service.snapshot().value.ModelProviders[0].Model, "seed-model");
 
-  const desktopUpdated = service.update({
+  const desktopUpdated = service.replaceConfig({
+    commandId: "replace-desktop-config-1",
+    baseRevision: service.snapshot().revision,
     config: {
       ...service.snapshot().value,
       DefaultModelProviderId: "desktop/updated-model",
@@ -185,7 +190,6 @@ try {
       ],
     },
     source: "ui_update",
-    mirrorJson: true,
   });
   assert.equal(desktopUpdated.revision, 2);
   assert.equal(desktopUpdated.value.ModelProviders[0].Model, "updated-desktop-model");
@@ -274,7 +278,9 @@ try {
       LoadedTools: "dynamic",
     },
   } as unknown as AgentSystemConfig;
-  const legacyRevision = service.update({
+  const legacyRevision = service.replaceConfig({
+    commandId: "replace-desktop-config-2",
+    baseRevision: service.snapshot().revision,
     config: service.snapshot().value,
     source: "ui_update",
   });
@@ -364,10 +370,10 @@ function removeTempWorkspace(targetPath: string): void {
       fs.rmSync(targetPath, { recursive: true, force: true });
       return;
     } catch (error) {
-      if (!isBusyFileError(error) || attempt === attempts) {
+      if (!isBusyFileError(error)) {
         throw error;
       }
-      sleep(100 * attempt);
+      if (attempt < attempts) sleep(100 * attempt);
     }
   }
 

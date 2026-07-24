@@ -84,9 +84,8 @@ export const ToolExecutionSchema = z
 
 export const SandboxRuntimeSchema = z
   .object({
+    Enabled: z.boolean().optional(),
     BaseDir: z.string().min(1).optional(),
-    BundleDir: z.string().min(1).optional(),
-    ImportBundlesOnStartup: z.boolean().optional(),
     Images: z.array(z.string().min(1)).optional(),
   })
   .strict();

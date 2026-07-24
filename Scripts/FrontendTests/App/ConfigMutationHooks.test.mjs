@@ -94,7 +94,7 @@ test("useConfigMutationController handles offline commands and unmatched events 
     expect(handleRef.current.savePreset({ name: "default", format: "toml", content: "x = 1" })).toBe(null);
     expect(
       handleRef.current.ingestConfigMutationEvent(
-        event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: "unknown", kind: "config_update" } }),
+        event(EventKinds.ConfigSnapshot, "config", { operation: { commandId: "unknown", kind: "config_update" } }),
       ),
     ).toBe(false);
   });
@@ -208,7 +208,7 @@ test("useConfigMutationController rejects provider model mutations without confi
     expect(
       handleRef.current.ingestConfigMutationEvent(
         event(EventKinds.ConfigSnapshot, "config", {
-          operation: { requestId: "unknown-model", kind: "provider.model.upsert" },
+          operation: { commandId: "unknown-model", kind: "provider.model.upsert" },
         }),
       ),
     ).toBe(false);
@@ -255,23 +255,24 @@ test("useConfigMutationController covers provider model commands and acknowledge
     deleteId = handleRef.current.deleteProviderModel({ modelId: "old", providerId: "openai" });
     defaultId = handleRef.current.setDefaultProviderModel("gpt");
   });
-  expect(send).toHaveBeenCalledTimes(3);
+  expect(send).toHaveBeenCalledTimes(1);
   await act(async () => {
     handleRef.current.ingestConfigMutationEvent(
-      event(EventKinds.ConfigSnapshot, "config", { operation: { requestId: upsertId, kind: "provider.model.upsert" } }),
+      event(EventKinds.ConfigSnapshot, "config", { operation: { commandId: upsertId, kind: "provider.model.upsert" } }),
     );
     handleRef.current.ingestConfigMutationEvent(
       event(EventKinds.ConfigFailed, "config", {
         message: "delete failed",
-        operation: { requestId: deleteId, kind: "provider.model.delete" },
+        operation: { commandId: deleteId, kind: "provider.model.delete" },
       }),
     );
     handleRef.current.ingestConfigMutationEvent(
       event(EventKinds.ConfigSnapshot, "config", {
-        operation: { requestId: defaultId, kind: "provider.defaultModel.set" },
+        operation: { commandId: defaultId, kind: "provider.defaultModel.set" },
       }),
     );
   });
+  expect(send).toHaveBeenCalledTimes(3);
   expect(handleRef.current.providerModelOperations.gpt.status).toBe("success");
   expect(handleRef.current.providerModelOperations.old.status).toBe("error");
 });
@@ -382,7 +383,7 @@ test("useConfigMutationController routes preset and main config acknowledgements
       handleRef.current.ingestConfigMutationEvent(
         event(EventKinds.ConfigSnapshot, "config", {
           config: {},
-          operation: { requestId: configRequestId, kind: "config_update" },
+          operation: { commandId: configRequestId, kind: "config_update" },
         }),
       ),
     ).toBe(true);
@@ -498,31 +499,13 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
         Icon: "sparkles",
         Kind: "OpenAICompatible",
       },
-      expectedRevision: 31,
-      requestId: upsertRequestId,
-      mirrorJson: true,
-    },
-    {
-      type: "provider.endpoint.rename",
-      providerId: "custom-old",
-      nextProviderId: "custom-new",
-      expectedRevision: 31,
-      requestId: renameRequestId,
-      mirrorJson: true,
-    },
-    {
-      type: "provider.endpoint.delete",
-      providerId: "custom-delete",
-      cascadeModels: true,
-      expectedRevision: 31,
-      requestId: deleteRequestId,
-      mirrorJson: true,
+      commandId: upsertRequestId,
     },
   ]);
   expect(send.mock.calls.every(([request]) => request.type !== "config.update" && !("config" in request))).toBe(true);
   expect(handleRef.current.providerEndpointOperations["custom-openai"]).toEqual(
     expect.objectContaining({
-      requestId: upsertRequestId,
+      commandId: upsertRequestId,
       kind: "provider.endpoint.upsert",
       status: "pending",
     }),
@@ -534,7 +517,7 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
         ...configSnapshot,
         revision: 32,
         operation: {
-          requestId: upsertRequestId,
+          commandId: upsertRequestId,
           kind: "provider.endpoint.upsert",
         },
       }),
@@ -544,7 +527,7 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
         configPath: "Config.toml",
         message: "stale revision",
         operation: {
-          requestId: renameRequestId,
+          commandId: renameRequestId,
           kind: "provider.endpoint.rename",
         },
       }),
@@ -553,7 +536,7 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
       event(EventKinds.ConfigSnapshot, "config", {
         ...configSnapshot,
         operation: {
-          requestId: deleteRequestId,
+          commandId: deleteRequestId,
           kind: "provider.model.delete",
         },
       }),
@@ -578,6 +561,91 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
       options: { description: "stale revision" },
     }),
   );
+});
+
+test("system config queue coalesces unsent provider patches by provider id", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  render(
+    React.createElement(ConfigMutationHarness, {
+      configSnapshot: createConfigSnapshot(),
+      send,
+      status: "open",
+      handleRef,
+    }),
+  );
+
+  let activeCommandId;
+  let firstPatchCommandId;
+  let latestPatchCommandId;
+  await act(async () => {
+    activeCommandId = handleRef.current.setDefaultProviderModel("gpt");
+    firstPatchCommandId = handleRef.current.upsertProviderEndpoint({
+      Id: "custom",
+      BaseUrl: "https://first.example.test/v1",
+    });
+    latestPatchCommandId = handleRef.current.upsertProviderEndpoint({
+      Id: "custom",
+      BaseUrl: "https://latest.example.test/v1",
+    });
+  });
+
+  expect(firstPatchCommandId).toBe(latestPatchCommandId);
+  expect(send).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    handleRef.current.ingestConfigMutationEvent(
+      event(EventKinds.ConfigSnapshot, "config", {
+        ...createConfigSnapshot({ revision: 5 }),
+        operation: { commandId: activeCommandId, kind: "provider.defaultModel.set" },
+      }),
+    );
+  });
+
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(send.mock.calls[1][0]).toEqual({
+    type: "provider.endpoint.upsert",
+    commandId: latestPatchCommandId,
+    endpoint: {
+      Id: "custom",
+      BaseUrl: "https://latest.example.test/v1",
+    },
+  });
+});
+
+test("system config queue resolves active and queued operations when the socket closes", async () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  const view = render(
+    React.createElement(ConfigMutationHarness, {
+      configSnapshot: createConfigSnapshot(),
+      send,
+      status: "open",
+      handleRef,
+    }),
+  );
+
+  await act(async () => {
+    handleRef.current.upsertProviderModel({
+      model: { Id: "active", ProviderId: "openai", Endpoint: "Responses", Model: "active" },
+    });
+    handleRef.current.deleteProviderModel({ modelId: "queued" });
+  });
+  expect(send).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ConfigMutationHarness, {
+        configSnapshot: createConfigSnapshot(),
+        send,
+        status: "idle",
+        handleRef,
+      }),
+    );
+  });
+
+  expect(handleRef.current.providerModelOperations.active).toMatchObject({ status: "error" });
+  expect(handleRef.current.providerModelOperations.queued).toMatchObject({ status: "error" });
 });
 function ConfigMutationHarness({ configSnapshot = null, send, status, handleRef }) {
   const sendRef = useRef(send);

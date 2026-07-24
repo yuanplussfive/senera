@@ -322,8 +322,6 @@ function createRuntimeConfig(input: {
       ToolLearning: { Enabled: false },
       SandboxRuntime: {
         BaseDir: ".senera/sandbox-runtime",
-        BundleDir: ".senera/sandbox-bundles",
-        ImportBundlesOnStartup: false,
         Images: [],
       },
       Presets: {

@@ -5,26 +5,28 @@ import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { resolveAgentModelCompatibility } from "./ModelCompatibility.js";
 import { buildOpenAiInput } from "./OpenAiMessageProjection.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
+import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
 
 const OpenAiResponsesUsageSchema = z
   .object({
-    input_tokens: z.number().optional(),
-    output_tokens: z.number().optional(),
-    total_tokens: z.number().optional(),
+    input_tokens: ModelUsageNumberWireSchema,
+    output_tokens: ModelUsageNumberWireSchema,
+    total_tokens: ModelUsageNumberWireSchema,
     input_tokens_details: z
       .object({
-        cached_tokens: z.number().optional(),
+        cached_tokens: ModelUsageNumberWireSchema,
       })
       .passthrough()
-      .optional(),
+      .nullish(),
     output_tokens_details: z
       .object({
-        reasoning_tokens: z.number().optional(),
+        reasoning_tokens: ModelUsageNumberWireSchema,
       })
       .passthrough()
-      .optional(),
+      .nullish(),
   })
-  .passthrough();
+  .passthrough()
+  .nullish();
 
 const TextPartSchema = z
   .object({
@@ -44,7 +46,7 @@ const ResponsesBodySchema = z
           .passthrough(),
       )
       .optional(),
-    usage: OpenAiResponsesUsageSchema.optional(),
+    usage: OpenAiResponsesUsageSchema,
   })
   .passthrough();
 
@@ -52,10 +54,10 @@ const ResponsesStreamEventSchema = z
   .object({
     type: z.string().optional(),
     delta: z.string().optional(),
-    usage: OpenAiResponsesUsageSchema.optional(),
+    usage: OpenAiResponsesUsageSchema,
     response: z
       .object({
-        usage: OpenAiResponsesUsageSchema.optional(),
+        usage: OpenAiResponsesUsageSchema,
       })
       .passthrough()
       .optional(),
@@ -136,17 +138,15 @@ export class OpenAiResponsesEndpoint implements TextGenerationEndpoint {
   }
 }
 
-function projectResponsesUsage(
-  usage: z.infer<typeof OpenAiResponsesUsageSchema> | undefined,
-): AgentModelUsageValue | undefined {
+function projectResponsesUsage(usage: z.infer<typeof OpenAiResponsesUsageSchema>): AgentModelUsageValue | undefined {
   if (!usage) return undefined;
-  const cacheReadTokens = usage.input_tokens_details?.cached_tokens;
+  const cacheReadTokens = projectModelUsageNumber(usage.input_tokens_details?.cached_tokens);
+  const inputTokens = projectModelUsageNumber(usage.input_tokens);
   return createProviderReportedUsage({
-    inputTokens:
-      usage.input_tokens === undefined ? undefined : Math.max(0, usage.input_tokens - (cacheReadTokens ?? 0)),
-    outputTokens: usage.output_tokens,
-    totalTokens: usage.total_tokens,
+    inputTokens: inputTokens === undefined ? undefined : Math.max(0, inputTokens - (cacheReadTokens ?? 0)),
+    outputTokens: projectModelUsageNumber(usage.output_tokens),
+    totalTokens: projectModelUsageNumber(usage.total_tokens),
     cacheReadTokens,
-    reasoningTokens: usage.output_tokens_details?.reasoning_tokens,
+    reasoningTokens: projectModelUsageNumber(usage.output_tokens_details?.reasoning_tokens),
   });
 }

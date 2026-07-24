@@ -4,15 +4,17 @@ import type { EndpointRuntime, TextGenerationEndpoint, TextGenerationEndpointRes
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
+import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
 
 const ClaudeUsageSchema = z
   .object({
-    input_tokens: z.number().optional(),
-    output_tokens: z.number().optional(),
-    cache_read_input_tokens: z.number().optional(),
-    cache_creation_input_tokens: z.number().optional(),
+    input_tokens: ModelUsageNumberWireSchema,
+    output_tokens: ModelUsageNumberWireSchema,
+    cache_read_input_tokens: ModelUsageNumberWireSchema,
+    cache_creation_input_tokens: ModelUsageNumberWireSchema,
   })
-  .passthrough();
+  .passthrough()
+  .nullish();
 
 const ClaudeContentBlockSchema = z
   .object({
@@ -24,7 +26,7 @@ const ClaudeContentBlockSchema = z
 const ClaudeMessageBodySchema = z
   .object({
     content: z.array(ClaudeContentBlockSchema).optional(),
-    usage: ClaudeUsageSchema.optional(),
+    usage: ClaudeUsageSchema,
   })
   .passthrough();
 
@@ -39,11 +41,11 @@ const ClaudeStreamEventSchema = z
       .optional(),
     message: z
       .object({
-        usage: ClaudeUsageSchema.optional(),
+        usage: ClaudeUsageSchema,
       })
       .passthrough()
       .optional(),
-    usage: ClaudeUsageSchema.optional(),
+    usage: ClaudeUsageSchema,
   })
   .passthrough();
 
@@ -119,12 +121,12 @@ export class ClaudeMessagesEndpoint implements TextGenerationEndpoint {
   }
 }
 
-function projectClaudeUsage(usage: z.infer<typeof ClaudeUsageSchema> | undefined): AgentModelUsageValue | undefined {
+function projectClaudeUsage(usage: z.infer<typeof ClaudeUsageSchema>): AgentModelUsageValue | undefined {
   if (!usage) return undefined;
   return createProviderReportedUsage({
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheReadTokens: usage.cache_read_input_tokens,
-    cacheWriteTokens: usage.cache_creation_input_tokens,
+    inputTokens: projectModelUsageNumber(usage.input_tokens),
+    outputTokens: projectModelUsageNumber(usage.output_tokens),
+    cacheReadTokens: projectModelUsageNumber(usage.cache_read_input_tokens),
+    cacheWriteTokens: projectModelUsageNumber(usage.cache_creation_input_tokens),
   });
 }

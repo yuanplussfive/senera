@@ -51,6 +51,49 @@ describe("plugin config materialization", () => {
     expect(loaded.toml).toBe(defaultPluginConfigToml());
   });
 
+  test("rebuilds a user config with missing or unexpected paths from its declared example", () => {
+    const pluginRoot = createTemporaryDirectory("senera-plugin-config-rebuild");
+    temporaryDirectories.push(pluginRoot);
+    const example = pluginConfigExample();
+    fs.writeFileSync(path.join(pluginRoot, "PluginConfig.example.toml"), example, "utf8");
+    fs.writeFileSync(path.join(pluginRoot, "PluginConfig.schema.toml"), pluginConfigSchema(), "utf8");
+    fs.writeFileSync(
+      path.join(pluginRoot, "PluginConfig.toml"),
+      [
+        "[senera.fields.senera.enabled]",
+        'label = "启用插件"',
+        'type = "boolean"',
+        "",
+        "[service]",
+        'api_key = "obsolete"',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const loaded = readLoadedPluginConfig(pluginRoot, emptyAgentConfig(), { materialize: true });
+
+    expect(loaded.source).toBe("example");
+    expect(loaded.toml).toBe(example);
+    expect(loaded.diagnostics).toEqual([]);
+    expect(fs.readFileSync(path.join(pluginRoot, "PluginConfig.toml"), "utf8")).toBe(example);
+  });
+
+  test("preserves a complete user config that conforms to its declared example and schema", () => {
+    const pluginRoot = createTemporaryDirectory("senera-plugin-config-preserve");
+    temporaryDirectories.push(pluginRoot);
+    const configured = pluginConfigExample().replace('api_key = ""', 'api_key = "configured"');
+    fs.writeFileSync(path.join(pluginRoot, "PluginConfig.example.toml"), pluginConfigExample(), "utf8");
+    fs.writeFileSync(path.join(pluginRoot, "PluginConfig.schema.toml"), pluginConfigSchema(), "utf8");
+    fs.writeFileSync(path.join(pluginRoot, "PluginConfig.toml"), configured, "utf8");
+
+    const loaded = readLoadedPluginConfig(pluginRoot, emptyAgentConfig(), { materialize: true });
+
+    expect(loaded.source).toBe("file");
+    expect(loaded.toml).toBe(configured);
+    expect(loaded.diagnostics).toEqual([]);
+  });
+
   test("does not write system-style plugin roots unless materialization is requested", () => {
     const pluginRoot = createTemporaryDirectory("senera-plugin-config-readonly");
     temporaryDirectories.push(pluginRoot);
@@ -110,4 +153,46 @@ function writeMinimalPlugin(workspaceRoot: string, rootName: string, pluginName:
   );
   fs.writeFileSync(path.join(pluginRoot, "PluginConfig.example.toml"), "[senera]\nenabled = true\n", "utf8");
   return pluginRoot;
+}
+
+function pluginConfigExample(): string {
+  return ["[senera]", "enabled = false", "", "[service]", 'api_key = ""', "timeout_seconds = 30", ""].join("\n");
+}
+
+function pluginConfigSchema(): string {
+  return [
+    "[form]",
+    "version = 1",
+    "strict = true",
+    "",
+    "[[form.sections]]",
+    'id = "senera"',
+    'label = "启用状态"',
+    "",
+    "[[form.sections.fields]]",
+    'path = ["senera", "enabled"]',
+    'label = "启用插件"',
+    'type = "boolean"',
+    "required = true",
+    "essential = true",
+    "",
+    "[[form.sections]]",
+    'id = "service"',
+    'label = "服务"',
+    "",
+    "[[form.sections.fields]]",
+    'path = ["service", "api_key"]',
+    'label = "密钥"',
+    'type = "string"',
+    "required = false",
+    "essential = false",
+    "",
+    "[[form.sections.fields]]",
+    'path = ["service", "timeout_seconds"]',
+    'label = "超时"',
+    'type = "number"',
+    "required = false",
+    "essential = false",
+    "",
+  ].join("\n");
 }

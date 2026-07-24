@@ -5,28 +5,30 @@ import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { resolveAgentModelCompatibility } from "./ModelCompatibility.js";
 import { buildOpenAiInput } from "./OpenAiMessageProjection.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
+import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
 
 const OpenAiUsageSchema = z
   .object({
-    prompt_tokens: z.number().optional(),
-    completion_tokens: z.number().optional(),
-    total_tokens: z.number().optional(),
+    prompt_tokens: ModelUsageNumberWireSchema,
+    completion_tokens: ModelUsageNumberWireSchema,
+    total_tokens: ModelUsageNumberWireSchema,
     prompt_tokens_details: z
       .object({
-        cached_tokens: z.number().optional(),
-        cache_write_tokens: z.number().optional(),
+        cached_tokens: ModelUsageNumberWireSchema,
+        cache_write_tokens: ModelUsageNumberWireSchema,
       })
       .passthrough()
-      .optional(),
+      .nullish(),
     completion_tokens_details: z
       .object({
-        reasoning_tokens: z.number().optional(),
+        reasoning_tokens: ModelUsageNumberWireSchema,
       })
       .passthrough()
-      .optional(),
-    prompt_cache_hit_tokens: z.number().optional(),
+      .nullish(),
+    prompt_cache_hit_tokens: ModelUsageNumberWireSchema,
   })
-  .passthrough();
+  .passthrough()
+  .nullish();
 
 const TextContentPartSchema = z
   .object({
@@ -42,7 +44,7 @@ const ChatCompletionBodySchema = z
       .array(
         z
           .object({
-            usage: OpenAiUsageSchema.optional(),
+            usage: OpenAiUsageSchema,
             message: z
               .object({
                 content: TextContentSchema,
@@ -53,7 +55,7 @@ const ChatCompletionBodySchema = z
           .passthrough(),
       )
       .optional(),
-    usage: OpenAiUsageSchema.optional(),
+    usage: OpenAiUsageSchema,
   })
   .passthrough();
 
@@ -63,7 +65,7 @@ const ChatCompletionStreamEventSchema = z
       .array(
         z
           .object({
-            usage: OpenAiUsageSchema.optional(),
+            usage: OpenAiUsageSchema,
             delta: z
               .object({
                 content: TextContentSchema,
@@ -74,7 +76,7 @@ const ChatCompletionStreamEventSchema = z
           .passthrough(),
       )
       .optional(),
-    usage: OpenAiUsageSchema.optional(),
+    usage: OpenAiUsageSchema,
   })
   .passthrough();
 
@@ -141,21 +143,23 @@ export class OpenAiChatCompletionsEndpoint implements TextGenerationEndpoint {
   }
 }
 
-function projectOpenAiUsage(usage: z.infer<typeof OpenAiUsageSchema> | undefined): AgentModelUsageValue | undefined {
+function projectOpenAiUsage(usage: z.infer<typeof OpenAiUsageSchema>): AgentModelUsageValue | undefined {
   if (!usage) return undefined;
-  const cacheReadTokens = usage.prompt_tokens_details?.cached_tokens ?? usage.prompt_cache_hit_tokens;
-  const cacheWriteTokens = usage.prompt_tokens_details?.cache_write_tokens;
-  const promptTokens = usage.prompt_tokens;
+  const cacheReadTokens = projectModelUsageNumber(
+    usage.prompt_tokens_details?.cached_tokens ?? usage.prompt_cache_hit_tokens,
+  );
+  const cacheWriteTokens = projectModelUsageNumber(usage.prompt_tokens_details?.cache_write_tokens);
+  const promptTokens = projectModelUsageNumber(usage.prompt_tokens);
   return createProviderReportedUsage({
     inputTokens:
       promptTokens === undefined
         ? undefined
         : Math.max(0, promptTokens - (cacheReadTokens ?? 0) - (cacheWriteTokens ?? 0)),
-    outputTokens: usage.completion_tokens,
-    totalTokens: usage.total_tokens,
+    outputTokens: projectModelUsageNumber(usage.completion_tokens),
+    totalTokens: projectModelUsageNumber(usage.total_tokens),
     cacheReadTokens,
     cacheWriteTokens,
-    reasoningTokens: usage.completion_tokens_details?.reasoning_tokens,
+    reasoningTokens: projectModelUsageNumber(usage.completion_tokens_details?.reasoning_tokens),
   });
 }
 

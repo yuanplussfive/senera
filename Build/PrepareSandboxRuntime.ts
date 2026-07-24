@@ -12,9 +12,7 @@ import { prepareSeneraTerminalSidecarGuestRuntime } from "./PrepareTerminalSidec
 export interface PrepareOptions {
   strict: boolean;
   skipImagePull: boolean;
-  importBundles: boolean;
   baseDir?: string;
-  bundleDir?: string;
   exportBundlePath?: string;
 }
 
@@ -37,7 +35,7 @@ export async function prepareSandboxRuntime(
   prepareTerminalRuntime: typeof prepareSeneraTerminalSidecarGuestRuntime = prepareSeneraTerminalSidecarGuestRuntime,
 ): Promise<void> {
   const config = buildSandboxRuntimeConfig(options);
-  const images = normalizeSandboxImages(config.Images, discoverSandboxImages());
+  const images = normalizeSandboxImages(config.Images);
   process.stdout.write(`sandbox images: ${images.join(", ")}\n`);
   const prepared = await prepareAgentSandboxRuntime({
     workspaceRoot,
@@ -45,7 +43,6 @@ export async function prepareSandboxRuntime(
     images,
     strict: options.strict,
     skipImagePull: options.skipImagePull,
-    importBundles: options.importBundles,
     exportBundlePath: options.exportBundlePath,
     microsandbox,
     log: (message) => process.stdout.write(`${message}\n`),
@@ -57,17 +54,11 @@ export async function prepareSandboxRuntime(
   });
 }
 
-export function discoverSandboxImages(): string[] {
-  return [];
-}
-
 export function readOptions(args: readonly string[]): PrepareOptions {
   return {
     strict: args.includes("--strict"),
     skipImagePull: args.includes("--skip-image-pull"),
-    importBundles: args.includes("--import-bundles"),
     baseDir: readOptionValue(args, "--base-dir"),
-    bundleDir: readOptionValue(args, "--bundle-dir"),
     exportBundlePath: readOptionValue(args, "--export-bundle"),
   };
 }
@@ -77,7 +68,6 @@ function buildSandboxRuntimeConfig(options: PrepareOptions): ResolvedAgentSandbo
   return {
     ...defaults,
     BaseDir: options.baseDir ?? defaults.BaseDir,
-    BundleDir: options.bundleDir ?? defaults.BundleDir,
   };
 }
 

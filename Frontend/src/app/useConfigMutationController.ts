@@ -7,6 +7,7 @@ import type {
   PresetMutationState,
   PluginConfigMutationState,
   ProviderModelEndpointInput,
+  ProviderModelEndpointPatchInput,
   WsRequest,
 } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
@@ -17,6 +18,7 @@ import { usePluginSettingsCommands } from "./usePluginSettingsCommands";
 import { usePresetCommands } from "./usePresetCommands";
 import { useProviderEndpointMutations } from "./useProviderEndpointMutations";
 import { useProviderModelMutations } from "./useProviderModelMutations";
+import { useSystemConfigCommandQueue } from "./useSystemConfigCommandQueue";
 
 type SendRequest = (request: WsRequest) => boolean;
 
@@ -47,7 +49,7 @@ export interface ConfigMutationController {
   setActivePreset: (name: string | null) => string | null;
   setPluginEnabled: (pluginName: string, enabled: boolean, toolName?: string) => string | null;
   deletePreset: (name: string) => string | null;
-  upsertProviderEndpoint: (endpoint: ProviderModelEndpointInput) => string | null;
+  upsertProviderEndpoint: (endpoint: ProviderModelEndpointPatchInput) => string | null;
   upsertProviderModel: (input: ProviderModelUpsertInput) => string | null;
   deleteProviderModel: (input: ProviderModelDeleteInput) => string | null;
   setDefaultProviderModel: (modelId: string) => string | null;
@@ -59,24 +61,27 @@ export function useConfigMutationController({
   statusRef,
 }: SocketTransportRefs): ConfigMutationController {
   const socketStatus = statusRef.current;
-  const configCommands = useConfigCommands({ configSnapshot, sendRef, statusRef });
-  const endpointMutations = useProviderEndpointMutations({ configSnapshot, sendRef, statusRef });
-  const providerModelMutations = useProviderModelMutations({ configSnapshot, sendRef, statusRef });
+  const systemConfigQueue = useSystemConfigCommandQueue({ configSnapshot, sendRef, status: socketStatus });
+  const configCommands = useConfigCommands({ commandQueue: systemConfigQueue, sendRef, statusRef });
+  const endpointMutations = useProviderEndpointMutations({ commandQueue: systemConfigQueue });
+  const providerModelMutations = useProviderModelMutations({ commandQueue: systemConfigQueue });
   const send = sendRef.current ?? (() => false);
   const pluginMutations = usePluginSettingsCommands({ send, status: statusRef.current });
   const presetMutations = usePresetCommands({ send, status: statusRef.current });
 
   const ingestConfigMutationEvent = useCallback(
     (env: EventEnvelope): boolean => {
+      const queueHandled = systemConfigQueue.ingest(env);
       return (
         providerModelMutations.ingestConfigMutationEvent(env) ||
         endpointMutations.ingestProviderEndpointMutationEvent(env) ||
         pluginMutations.handlePluginSettingsEvent(env) ||
         presetMutations.handlePresetEvent(env) ||
-        configCommands.ingestConfigCommandEvent(env)
+        configCommands.ingestConfigCommandEvent(env) ||
+        queueHandled
       );
     },
-    [configCommands, endpointMutations, pluginMutations, presetMutations, providerModelMutations],
+    [configCommands, endpointMutations, pluginMutations, presetMutations, providerModelMutations, systemConfigQueue],
   );
 
   return useMemo(

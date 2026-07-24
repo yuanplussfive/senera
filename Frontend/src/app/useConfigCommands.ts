@@ -12,15 +12,14 @@ import {
   type WsRequest,
 } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
-import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { readConfigFailureCode } from "./configMutationFailure";
-import { readConfigRevisionGuard } from "./providerEndpointMutations";
+import type { SystemConfigCommandQueue, SystemConfigCommandTransportFailure } from "./useSystemConfigCommandQueue";
 
 type SendRequest = (request: WsRequest) => boolean;
 
 export interface ConfigCommandTransport {
-  configSnapshot?: ConfigSnapshotData | null;
+  commandQueue: SystemConfigCommandQueue;
   sendRef: MutableRefObject<SendRequest | null>;
   statusRef: MutableRefObject<SocketStatus>;
 }
@@ -32,7 +31,7 @@ type Action =
   | { type: "finished"; providerId: string };
 const initialState: State = { configOperation: null, providerModelLoadingIds: {} };
 
-export function useConfigCommands({ configSnapshot = null, sendRef, statusRef }: ConfigCommandTransport) {
+export function useConfigCommands({ commandQueue, sendRef, statusRef }: ConfigCommandTransport) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const pendingRef = useRef(new Set<string>());
   const refreshConfig = useCallback(() => sendIfOpen(sendRef, statusRef, { type: "config.get" }), [sendRef, statusRef]);
@@ -46,38 +45,58 @@ export function useConfigCommands({ configSnapshot = null, sendRef, statusRef }:
   );
   const saveConfig = useCallback(
     (config: Record<string, unknown>): string | null => {
-      const send = sendRef.current;
-      if (statusRef.current !== "open" || !send) {
-        toast.error(frontendMessage("config.mainOffline"));
-        return null;
-      }
-      if (!configSnapshot) {
-        toast.error(frontendMessage("config.mainFailed"));
-        return null;
-      }
-      const requestId = generateId();
-      pendingRef.current.add(requestId);
+      let commandId: string | null = null;
+      const handleTransportFailure = (failure: SystemConfigCommandTransportFailure): void => {
+        if (commandId) {
+          pendingRef.current.delete(commandId);
+          dispatch({
+            type: "config",
+            operation: {
+              commandId,
+              kind: "config_update",
+              status: "error",
+              message: frontendMessage(
+                failure === "config_unavailable"
+                  ? "config.mainFailed"
+                  : failure === "offline"
+                    ? "config.mainOffline"
+                    : "config.mainDisconnected",
+              ),
+              updatedAt: timestamp(),
+            },
+          });
+        }
+        toast.error(
+          frontendMessage(
+            failure === "config_unavailable"
+              ? "config.mainFailed"
+              : failure === "offline"
+                ? "config.mainOffline"
+                : "config.mainDisconnected",
+          ),
+        );
+      };
+      commandId = commandQueue.enqueue({
+        operationKind: "config_update",
+        coalesceKey: "config.update",
+        request: (snapshot) => ({
+          type: "config.update",
+          config,
+          ...(typeof snapshot.revision === "number"
+            ? { baseRevision: snapshot.revision }
+            : { baseVersion: snapshot.version }),
+        }),
+        onTransportFailure: handleTransportFailure,
+      });
+      if (!commandId) return null;
+      pendingRef.current.add(commandId);
       dispatch({
         type: "config",
-        operation: { requestId, kind: "config_update", status: "pending", updatedAt: timestamp() },
+        operation: { commandId, kind: "config_update", status: "pending", updatedAt: timestamp() },
       });
-      if (
-        !send({
-          type: "config.update",
-          requestId,
-          config,
-          ...readConfigRevisionGuard(configSnapshot),
-          mirrorJson: true,
-        })
-      ) {
-        pendingRef.current.delete(requestId);
-        dispatch({ type: "config", operation: null });
-        toast.error(frontendMessage("config.mainDisconnected"));
-        return null;
-      }
-      return requestId;
+      return commandId;
     },
-    [configSnapshot, sendRef, statusRef],
+    [commandQueue],
   );
   const fetchProviderModels = useCallback(
     (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput): void => {
@@ -106,19 +125,20 @@ export function useConfigCommands({ configSnapshot = null, sendRef, statusRef }:
       return true;
     }
     const data = env.data as ConfigSnapshotData | ConfigFailedData;
-    const requestId = data.operation?.requestId;
-    if (!requestId || !pendingRef.current.has(requestId) || data.operation?.kind !== "config_update") return false;
-    pendingRef.current.delete(requestId);
+    const operation = data.operation && "commandId" in data.operation ? data.operation : undefined;
+    const commandId = operation?.commandId;
+    if (!commandId || !pendingRef.current.has(commandId) || operation.kind !== "config_update") return false;
+    pendingRef.current.delete(commandId);
     if (env.kind === EventKinds.ConfigSnapshot) {
       dispatch({
         type: "config",
-        operation: { requestId, kind: "config_update", status: "success", updatedAt: timestamp() },
+        operation: { commandId, kind: "config_update", status: "success", updatedAt: timestamp() },
       });
     } else if (env.kind === EventKinds.ConfigFailed) {
       dispatch({
         type: "config",
         operation: {
-          requestId,
+          commandId,
           kind: "config_update",
           status: "error",
           message: (data as ConfigFailedData).message,

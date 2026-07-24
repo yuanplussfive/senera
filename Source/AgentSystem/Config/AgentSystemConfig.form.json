@@ -13,7 +13,9 @@
             "label": "默认模型",
             "description": "启动和未指定模型时使用的 ModelProviders[].Id。",
             "type": "string",
-            "placeholder": "选择一个已启用模型"
+            "placeholder": "选择一个已启用模型",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ModelProviderEndpoints"],
@@ -34,14 +36,18 @@
               {
                 "path": ["Enabled"],
                 "label": "启用供应商",
-                "type": "boolean"
+                "type": "boolean",
+                "required": false,
+                "essential": true
               },
               {
                 "path": ["Icon"],
                 "label": "图标",
                 "description": "供应商列表里显示的图标名称。",
                 "type": "string",
-                "placeholder": "选择图标"
+                "placeholder": "选择图标",
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["Id"],
@@ -49,7 +55,9 @@
                 "description": "供模型、向量模型和学习模型引用。",
                 "type": "string",
                 "placeholder": "自定义唯一 ID",
-                "minLength": 1
+                "minLength": 1,
+                "required": true,
+                "essential": true
               },
               {
                 "path": ["BaseUrl"],
@@ -57,7 +65,9 @@
                 "description": "供应商 API 地址，通常以 /v1 结尾。",
                 "type": "string",
                 "placeholder": "https://.../v1",
-                "minLength": 1
+                "minLength": 1,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["ApiKey"],
@@ -65,14 +75,18 @@
                 "description": "供应商访问密钥。",
                 "type": "string",
                 "secret": true,
-                "placeholder": "sk-..."
+                "placeholder": "sk-...",
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["ApiVersion"],
                 "label": "API Version",
                 "description": "需要版本参数的供应商可填写。",
                 "type": "string",
-                "placeholder": "2023-06-01"
+                "placeholder": "2023-06-01",
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["Headers"],
@@ -81,9 +95,13 @@
                 "type": "record",
                 "itemType": "string",
                 "keyPlaceholder": "Header-Name",
-                "valuePlaceholder": "value"
+                "valuePlaceholder": "value",
+                "required": false,
+                "essential": false
               }
-            ]
+            ],
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ModelProviders"],
@@ -129,56 +147,76 @@
                 "description": "填写上方供应商端点中的供应商 ID。",
                 "type": "string",
                 "placeholder": "选择供应商",
-                "minLength": 1
+                "minLength": 1,
+                "required": true,
+                "essential": true
               },
               {
                 "path": ["Icon"],
                 "label": "图标",
                 "description": "模型列表里显示的图标名称。",
                 "type": "string",
-                "placeholder": "选择图标"
+                "placeholder": "选择图标",
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["Capabilities", "Chat"],
                 "label": "对话",
-                "type": "boolean"
+                "type": "boolean",
+                "required": false,
+                "essential": true
               },
               {
                 "path": ["Capabilities", "Embedding"],
                 "label": "向量嵌入",
-                "type": "boolean"
+                "type": "boolean",
+                "required": false,
+                "essential": true
               },
               {
                 "path": ["Capabilities", "Rerank"],
                 "label": "重排序",
-                "type": "boolean"
+                "type": "boolean",
+                "required": false,
+                "essential": true
               },
               {
                 "path": ["Capabilities", "Vision"],
                 "label": "识图",
-                "type": "boolean"
+                "type": "boolean",
+                "required": false,
+                "essential": true
               },
               {
                 "path": ["Capabilities", "ImageOutput"],
                 "label": "图像输出",
-                "type": "boolean"
+                "type": "boolean",
+                "required": false,
+                "essential": true
               },
               {
                 "path": ["Capabilities", "Reasoning"],
                 "label": "推理",
-                "type": "boolean"
+                "type": "boolean",
+                "required": false,
+                "essential": true
               },
               {
                 "path": ["Capabilities", "DeveloperRole"],
                 "label": "Developer Role",
                 "description": "供应商原生支持 OpenAI developer 消息角色时启用；关闭时自动降级为 system 指令。",
-                "type": "boolean"
+                "type": "boolean",
+                "required": false,
+                "essential": true
               },
               {
                 "path": ["Capabilities", "StreamingUsage"],
                 "label": "流式 Usage",
                 "description": "供应商支持 stream_options.include_usage 时启用；不兼容的网关可关闭并使用本地 token 估算。",
-                "type": "boolean"
+                "type": "boolean",
+                "required": false,
+                "essential": true
               },
               {
                 "path": ["ContextWindowTokens"],
@@ -186,7 +224,9 @@
                 "description": "-1 表示未知或不声明。",
                 "type": "number",
                 "min": -1,
-                "step": 1
+                "step": 1,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["MaxModelOutputTokens"],
@@ -194,7 +234,9 @@
                 "description": "-1 表示未知或不声明。",
                 "type": "number",
                 "min": -1,
-                "step": 1
+                "step": 1,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["Endpoint"],
@@ -207,14 +249,18 @@
                   "Responses": "Responses",
                   "ClaudeMessages": "Claude Messages",
                   "GoogleGenerateContent": "Google Generate Content"
-                }
+                },
+                "required": true,
+                "essential": true
               },
               {
                 "path": ["Model"],
                 "label": "模型名",
                 "type": "string",
                 "placeholder": "从供应商模型列表选择",
-                "minLength": 1
+                "minLength": 1,
+                "required": true,
+                "essential": true
               },
               {
                 "path": ["Temperature"],
@@ -223,7 +269,9 @@
                 "type": "number",
                 "min": 0,
                 "max": 2,
-                "step": 0.1
+                "step": 0.1,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["MaxOutputTokens"],
@@ -231,12 +279,16 @@
                 "description": "-1 表示不发送限制字段。",
                 "type": "number",
                 "min": -1,
-                "step": 1
+                "step": 1,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["Stream"],
                 "label": "流式输出",
-                "type": "boolean"
+                "type": "boolean",
+                "required": false,
+                "essential": true
               },
               {
                 "path": ["TimeoutSeconds"],
@@ -244,7 +296,9 @@
                 "description": "单位秒。",
                 "type": "number",
                 "min": 1,
-                "step": 1
+                "step": 1,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["FirstTokenTimeoutSeconds"],
@@ -252,7 +306,9 @@
                 "description": "单位秒，-1 表示关闭该检查。",
                 "type": "number",
                 "min": -1,
-                "step": 1
+                "step": 1,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["MaxRequestSeconds"],
@@ -260,14 +316,18 @@
                 "description": "单位秒，-1 表示不限制。",
                 "type": "number",
                 "min": -1,
-                "step": 1
+                "step": 1,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["MaxNetworkRetries"],
                 "label": "网络重试次数",
                 "type": "number",
                 "min": 0,
-                "step": 1
+                "step": 1,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["RetryBaseDelaySeconds"],
@@ -275,7 +335,9 @@
                 "description": "单位秒；指数退避从该值开始。",
                 "type": "number",
                 "min": 0.001,
-                "step": 0.05
+                "step": 0.05,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["RetryMaxDelaySeconds"],
@@ -283,7 +345,9 @@
                 "description": "单位秒；指数退避不会超过该值。",
                 "type": "number",
                 "min": 0.001,
-                "step": 1
+                "step": 1,
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["RetryAfterMaxDelaySeconds"],
@@ -291,9 +355,13 @@
                 "description": "单位秒；限制供应商 Retry-After 响应要求的最长等待。",
                 "type": "number",
                 "min": 0.001,
-                "step": 1
+                "step": 1,
+                "required": false,
+                "essential": false
               }
-            ]
+            ],
+            "required": true,
+            "essential": true
           },
           {
             "path": ["ModelGroups"],
@@ -320,20 +388,26 @@
                 "label": "分组 ID",
                 "type": "string",
                 "placeholder": "唯一 ID",
-                "minLength": 1
+                "minLength": 1,
+                "required": true,
+                "essential": true
               },
               {
                 "path": ["Label"],
                 "label": "名称",
                 "type": "string",
                 "placeholder": "分组名称",
-                "minLength": 1
+                "minLength": 1,
+                "required": true,
+                "essential": true
               },
               {
                 "path": ["Icon"],
                 "label": "图标",
                 "type": "string",
-                "placeholder": "选择图标"
+                "placeholder": "选择图标",
+                "required": false,
+                "essential": false
               },
               {
                 "path": ["Strategies"],
@@ -356,18 +430,26 @@
                       "includes": "包含",
                       "exact": "精确",
                       "suffix": "后缀"
-                    }
+                    },
+                    "required": true,
+                    "essential": true
                   },
                   {
                     "path": ["Values"],
                     "label": "匹配词",
                     "type": "array",
                     "itemType": "string",
-                    "placeholder": "例如 claude-"
+                    "placeholder": "例如 claude-",
+                    "required": true,
+                    "essential": true
                   }
-                ]
+                ],
+                "required": false,
+                "essential": false
               }
-            ]
+            ],
+            "required": false,
+            "essential": false
           }
         ]
       },
@@ -384,14 +466,18 @@
             "type": "number",
             "min": 1,
             "max": 300,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["AgentLoop", "PiSessions", "RootDir"],
             "label": "Pi 会话目录",
             "description": "Pi 原生 session tree 的持久化目录，支持相对工作区路径。",
             "type": "string",
-            "placeholder": ".senera/pi-sessions"
+            "placeholder": ".senera/pi-sessions",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["AgentLoop", "PiSessions", "MaxCachedSessions"],
@@ -399,13 +485,17 @@
             "description": "同时保留的 Pi session tree 与 harness 数量上限；超出后按最近使用顺序释放空闲会话。设为 0 可禁用空闲缓存。",
             "type": "number",
             "min": 0,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["AgentLoop", "PiSessions", "Compaction", "Enabled"],
             "label": "自动压缩会话",
             "description": "当 Pi 分支存在足够的可回收历史时生成结构化摘要；固定工具和系统上下文开销不会伪装成可压缩历史。",
-            "type": "boolean"
+            "type": "boolean",
+            "required": false,
+            "essential": true
           },
           {
             "path": ["AgentLoop", "PiSessions", "Compaction", "TriggerRatio"],
@@ -414,7 +504,9 @@
             "type": "number",
             "min": 0.5,
             "max": 0.95,
-            "step": 0.05
+            "step": 0.05,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["AgentLoop", "PiSessions", "Compaction", "TargetRatio"],
@@ -423,7 +515,9 @@
             "type": "number",
             "min": 0.2,
             "max": 0.8,
-            "step": 0.05
+            "step": 0.05,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["AgentLoop", "PiSessions", "Compaction", "HardLimitRatio"],
@@ -432,7 +526,9 @@
             "type": "number",
             "min": 0.6,
             "max": 1,
-            "step": 0.05
+            "step": 0.05,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["AgentLoop", "PiSessions", "Compaction", "SummaryMaxTokens"],
@@ -441,7 +537,9 @@
             "type": "number",
             "min": 512,
             "max": 32768,
-            "step": 512
+            "step": 512,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["AgentLoop", "PiSessions", "Compaction", "TimeoutSeconds"],
@@ -449,7 +547,9 @@
             "description": "单次自动压缩允许的最长时间，单位秒。",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["AgentLoop", "PiSessions", "Compaction", "UnknownContextWindowTokens"],
@@ -457,7 +557,9 @@
             "description": "模型未声明上下文窗口时用于预算和压缩判断的保守 token 数。",
             "type": "number",
             "min": 16384,
-            "step": 1024
+            "step": 1024,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["AgentLoop", "PiSessions", "Compaction", "UnknownModelOutputTokens"],
@@ -466,7 +568,9 @@
             "type": "number",
             "min": 512,
             "max": 131072,
-            "step": 512
+            "step": 512,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "TimeoutSeconds"],
@@ -474,28 +578,36 @@
             "description": "单次工具进程最长运行时间，单位秒。",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "MaxStdoutBytes"],
             "label": "工具 stdout 上限",
             "type": "number",
             "min": 1,
-            "step": 1024
+            "step": 1024,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "MaxStderrBytes"],
             "label": "工具 stderr 上限",
             "type": "number",
             "min": 1,
-            "step": 1024
+            "step": 1024,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Environment", "Inherit"],
             "label": "子进程环境继承",
             "description": "决定本地 shell、PTY 和长连接进程是否继承宿主环境变量。",
             "type": "string",
-            "options": ["all", "none"]
+            "options": ["all", "allowlist", "none"],
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Environment", "IncludeOnly"],
@@ -503,7 +615,9 @@
             "description": "非空时只允许这些变量进入本地子进程。",
             "type": "array",
             "itemType": "string",
-            "placeholder": "PATH"
+            "placeholder": "PATH",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Environment", "Exclude"],
@@ -511,7 +625,9 @@
             "description": "从继承或调用方提供的环境中删除指定变量。",
             "type": "array",
             "itemType": "string",
-            "placeholder": "SECRET_NAME"
+            "placeholder": "SECRET_NAME",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Environment", "Set"],
@@ -520,7 +636,9 @@
             "type": "record",
             "itemType": "string",
             "keyPlaceholder": "NAME",
-            "valuePlaceholder": "value"
+            "valuePlaceholder": "value",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Resources", "MaxActive"],
@@ -529,7 +647,9 @@
             "type": "number",
             "min": 1,
             "max": 1000,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Resources", "MaxBufferedBytes"],
@@ -537,14 +657,18 @@
             "description": "每个后台资源在内存中保留的可恢复输出字节预算。",
             "type": "number",
             "min": 1024,
-            "step": 1024
+            "step": 1024,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Resources", "MaxInputBytes"],
             "label": "资源单次输入上限",
             "type": "number",
             "min": 1,
-            "step": 1024
+            "step": 1024,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Resources", "MaxWaitSeconds"],
@@ -553,7 +677,9 @@
             "type": "number",
             "min": 1,
             "max": 300,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Resources", "IdleTtlSeconds"],
@@ -561,7 +687,9 @@
             "description": "无人访问的运行中资源在自动终止前保留的秒数。",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Resources", "TerminalTtlSeconds"],
@@ -569,14 +697,18 @@
             "description": "已完成资源的输出和状态继续可恢复的秒数。",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Resources", "SweepIntervalSeconds"],
             "label": "资源清理间隔",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolExecution", "Resources", "TerminationGraceSeconds"],
@@ -585,13 +717,17 @@
             "type": "number",
             "min": 1,
             "max": 60,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Server", "Host"],
             "label": "服务 Host",
             "type": "string",
-            "placeholder": "127.0.0.1"
+            "placeholder": "127.0.0.1",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Server", "Port"],
@@ -599,19 +735,25 @@
             "type": "number",
             "min": 1,
             "max": 65535,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Server", "HotReload"],
             "label": "热重载",
-            "type": "boolean"
+            "type": "boolean",
+            "required": false,
+            "essential": true
           },
           {
             "path": ["Server", "RequestMaxBytes"],
             "label": "请求体上限",
             "type": "number",
             "min": 1,
-            "step": 1024
+            "step": 1024,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Persistence", "Kind"],
@@ -621,30 +763,40 @@
             "optionLabels": {
               "sqlite": "SQLite",
               "memory": "内存"
-            }
+            },
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Persistence", "DatabasePath"],
             "label": "会话数据库",
             "type": "string",
-            "placeholder": ".senera/senera.db"
+            "placeholder": ".senera/senera.db",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ConfigStore", "Enabled"],
             "label": "配置数据库",
-            "type": "boolean"
+            "type": "boolean",
+            "required": false,
+            "essential": true
           },
           {
             "path": ["ConfigStore", "DatabasePath"],
             "label": "配置数据库路径",
             "type": "string",
-            "placeholder": ".senera/Config.sqlite"
+            "placeholder": ".senera/Config.sqlite",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ConfigStore", "MirrorJson"],
             "label": "同步 JSON 镜像",
             "description": "保存数据库配置时同步写回 senera.config.json。",
-            "type": "boolean"
+            "type": "boolean",
+            "required": false,
+            "essential": true
           }
         ]
       },
@@ -657,28 +809,36 @@
           {
             "path": ["ActionPlanner", "Enabled"],
             "label": "启用 Planner",
-            "type": "boolean"
+            "type": "boolean",
+            "required": false,
+            "essential": true
           },
           {
             "path": ["ActionPlanner", "MaxRepairAttempts"],
             "label": "Planner 修复次数",
             "type": "number",
             "min": 0,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ActionPlanner", "Evidence", "StalledStepLag"],
             "label": "证据停滞步距",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ActionPlanner", "Client", "ModelProviderId"],
             "label": "Planner 模型",
             "description": "为空时继承当前主模型。",
             "type": "string",
-            "placeholder": "选择已启用模型"
+            "placeholder": "选择已启用模型",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ActionPlanner", "Client", "Temperature"],
@@ -686,7 +846,9 @@
             "type": "number",
             "min": 0,
             "max": 2,
-            "step": 0.1
+            "step": 0.1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ActionPlanner", "Client", "MaxTokens"],
@@ -694,14 +856,18 @@
             "description": "-1 表示不发送限制字段。",
             "type": "number",
             "min": -1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ActionPlanner", "FinalAnswerClient", "ModelProviderId"],
             "label": "最终回答模型",
             "description": "为空时继承 Planner 模型。",
             "type": "string",
-            "placeholder": "选择已启用模型"
+            "placeholder": "选择已启用模型",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ActionPlanner", "FinalAnswerClient", "Temperature"],
@@ -709,7 +875,9 @@
             "type": "number",
             "min": 0,
             "max": 2,
-            "step": 0.1
+            "step": 0.1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ActionPlanner", "FinalAnswerClient", "MaxTokens"],
@@ -717,19 +885,25 @@
             "description": "-1 表示不发送限制字段。",
             "type": "number",
             "min": -1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolLearning", "Enabled"],
             "label": "启用工具学习",
-            "type": "boolean"
+            "type": "boolean",
+            "required": false,
+            "essential": true
           },
           {
             "path": ["ToolLearning", "MaxRepairAttempts"],
             "label": "工具学习修复次数",
             "type": "number",
             "min": 0,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolLearning", "Patterns", "MinSupport"],
@@ -737,7 +911,9 @@
             "description": "聚合同类成功样本时需要的最少样本数。",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolLearning", "Patterns", "MaxPromptPatterns"],
@@ -745,7 +921,9 @@
             "description": "PiProxy 编译工具调用时最多读取的相关工具使用经验数量。",
             "type": "number",
             "min": 0,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["MemoryLearning", "Promotion", "MinSupport"],
@@ -753,14 +931,18 @@
             "description": "至少多少条相似候选才晋升为长期记忆。",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["MemoryLearning", "Promotion", "MaxClusterSize"],
             "label": "记忆聚类上限",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["MemoryLearning", "Promotion", "MinSimilarity"],
@@ -768,7 +950,9 @@
             "type": "number",
             "min": -1,
             "max": 1,
-            "step": 0.01
+            "step": 0.01,
+            "required": false,
+            "essential": false
           }
         ]
       },
@@ -782,14 +966,18 @@
             "path": ["ToolSearch", "Memory", "DatabasePath"],
             "label": "工具学习数据库",
             "type": "string",
-            "placeholder": ".senera/ToolSearch.sqlite"
+            "placeholder": ".senera/ToolSearchLearning.sqlite",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolSearch", "Memory", "MaxEpisodes"],
             "label": "工具样本上限",
             "type": "number",
             "min": 1,
-            "step": 100
+            "step": 100,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolSearch", "Memory", "HalfLifeDays"],
@@ -797,7 +985,9 @@
             "description": "单位天。",
             "type": "number",
             "min": 0,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolSearch", "Ranking", "MaxResults"],
@@ -805,7 +995,9 @@
             "description": "限制单次工具检索进入模型上下文的候选数量。",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolSearch", "Ranking", "MemoryExpansion", "Mode"],
@@ -817,7 +1009,9 @@
               "disabled": "禁用",
               "fallback": "仅作回退",
               "augment": "始终补充"
-            }
+            },
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolSearch", "Ranking", "MemoryExpansion", "MinConfidence"],
@@ -825,57 +1019,75 @@
             "type": "number",
             "min": 0,
             "max": 1,
-            "step": 0.05
+            "step": 0.05,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolSearch", "Ranking", "MemoryExpansion", "MinEvidence"],
             "label": "学习扩展最低证据量",
             "type": "number",
             "min": 0,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolSearch", "Ranking", "MemoryExpansion", "MaxResults"],
             "label": "学习扩展候选上限",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolSearch", "Rerank", "Enabled"],
             "label": "工具重排序",
-            "type": "boolean"
+            "type": "boolean",
+            "required": false,
+            "essential": true
           },
           {
             "path": ["ToolSearch", "Rerank", "CandidateLimit"],
             "label": "重排序候选数",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["ToolSearch", "Rerank", "ScoreScale"],
             "label": "重排序分数缩放",
             "type": "number",
             "min": 0,
-            "step": 0.001
+            "step": 0.001,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["VectorModels", "Embedding", "Enabled"],
             "label": "启用嵌入模型",
-            "type": "boolean"
+            "type": "boolean",
+            "required": false,
+            "essential": true
           },
           {
             "path": ["VectorModels", "Embedding", "ProviderId"],
             "label": "嵌入供应商 ID",
             "type": "string",
-            "placeholder": "选择供应商"
+            "placeholder": "选择供应商",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["VectorModels", "Embedding", "Model"],
             "label": "嵌入模型",
             "type": "string",
-            "placeholder": "选择嵌入模型"
+            "placeholder": "选择嵌入模型",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["VectorModels", "Embedding", "Dimensions"],
@@ -883,14 +1095,18 @@
             "description": "-1 表示由供应商默认决定。",
             "type": "number",
             "min": -1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["VectorModels", "Embedding", "BatchSize"],
             "label": "嵌入批量",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["VectorModels", "Embedding", "InputMaxChars"],
@@ -898,30 +1114,40 @@
             "description": "-1 表示不裁剪。",
             "type": "number",
             "min": -1,
-            "step": 1000
+            "step": 1000,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["VectorModels", "Rerank", "Enabled"],
             "label": "启用向量重排",
-            "type": "boolean"
+            "type": "boolean",
+            "required": false,
+            "essential": true
           },
           {
             "path": ["VectorModels", "Rerank", "ProviderId"],
             "label": "重排供应商 ID",
             "type": "string",
-            "placeholder": "选择供应商"
+            "placeholder": "选择供应商",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["VectorModels", "Rerank", "Model"],
             "label": "重排模型",
             "type": "string",
-            "placeholder": "选择重排模型"
+            "placeholder": "选择重排模型",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["VectorModels", "Rerank", "EndpointPath"],
             "label": "重排接口路径",
             "type": "string",
-            "placeholder": "/rerank"
+            "placeholder": "/rerank",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["VectorModels", "Rerank", "CandidateLimit"],
@@ -929,7 +1155,9 @@
             "description": "-1 表示不预先裁剪候选。",
             "type": "number",
             "min": -1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["VectorModels", "Rerank", "TopK"],
@@ -937,7 +1165,9 @@
             "description": "-1 表示不发送 top_n，由供应商决定返回数量。",
             "type": "number",
             "min": -1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           }
         ]
       },
@@ -950,183 +1180,237 @@
           {
             "path": ["Presets", "Enabled"],
             "label": "启用预设",
-            "type": "boolean"
+            "type": "boolean",
+            "required": false,
+            "essential": true
           },
           {
             "path": ["Presets", "RootDir"],
             "label": "预设目录",
             "type": "string",
-            "placeholder": ".senera/presets"
+            "placeholder": ".senera/presets",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Presets", "StateFile"],
             "label": "预设状态文件",
             "type": "string",
-            "placeholder": ".senera/presets-state.json"
+            "placeholder": ".senera/presets-state.json",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "RootDir"],
             "label": "产物目录",
             "type": "string",
-            "placeholder": ".senera/artifacts/runs"
+            "placeholder": ".senera/artifacts/runs",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "SummaryMaxChars"],
             "label": "产物摘要字符上限",
             "type": "number",
             "min": 256,
-            "step": 100
+            "step": 100,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "RawJsonMaxBytes"],
             "label": "原始 JSON 上限",
             "type": "number",
             "min": 1024,
-            "step": 1024
+            "step": 1024,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "TextFileMaxBytes"],
             "label": "文本文件读取上限",
             "type": "number",
             "min": 1024,
-            "step": 1024
+            "step": 1024,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "MemoryReadStructuredJsonMaxBytes"],
             "label": "结构化 JSON 读取上限",
             "type": "number",
             "min": 1024,
-            "step": 1048576
+            "step": 1048576,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "MemoryReadMaxArtifacts"],
             "label": "单次产物读取数量",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "MemoryReadMaxRefs"],
             "label": "单次引用读取数量",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "MemoryReadMaxConcurrency"],
             "label": "产物读取并发数",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "MemoryReadCacheMaxBytes"],
             "label": "产物记忆缓存字节上限",
             "type": "number",
             "min": 0,
-            "step": 1048576
+            "step": 1048576,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "MemoryReadCacheMaxEntries"],
             "label": "产物记忆缓存条目上限",
             "type": "number",
             "min": 0,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "OutputCaptureMaxBytes"],
             "label": "命令输出捕获上限",
             "type": "number",
             "min": 1024,
-            "step": 1048576
+            "step": 1048576,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Artifacts", "MaintenanceMaxConcurrency"],
             "label": "Artifact 维护并发数",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Uploads", "RootDir"],
             "label": "上传目录",
             "type": "string",
-            "placeholder": ".senera/uploads"
+            "placeholder": ".senera/uploads",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Uploads", "MaxFileBytes"],
             "label": "上传文件上限",
             "type": "number",
             "min": 1,
-            "step": 1024
+            "step": 1024,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Uploads", "MaxRequestBytes"],
             "label": "单次上传请求上限",
             "type": "number",
             "min": 1,
-            "step": 1024
+            "step": 1024,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Uploads", "MaxFilesPerRequest"],
             "label": "单次上传文件数",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Uploads", "MaxConcurrentUploads"],
             "label": "并发上传数",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Uploads", "MaxStoredBytes"],
             "label": "上传存储总量",
             "type": "number",
             "min": 1,
-            "step": 1048576
+            "step": 1048576,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Uploads", "RetentionHours"],
             "label": "上传保留小时数",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Uploads", "MaintenanceIntervalMinutes"],
             "label": "上传维护间隔（分钟）",
             "type": "number",
             "min": 1,
-            "step": 1
+            "step": 1,
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Frontend", "Client", "WebSocketUrl"],
             "label": "前端 WebSocket",
             "description": "为空时根据服务端 Host/Port 推导。",
             "type": "string",
-            "placeholder": "ws://127.0.0.1:8787"
+            "placeholder": "ws://127.0.0.1:8787",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Frontend", "Client", "ModelLabel"],
             "label": "前端模型标签",
             "type": "string",
-            "placeholder": "senera"
+            "placeholder": "senera",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Frontend", "Client", "UserName"],
             "label": "默认用户名",
             "type": "string",
-            "placeholder": "you"
+            "placeholder": "you",
+            "required": false,
+            "essential": false
           },
           {
             "path": ["Frontend", "Client", "EmptySuggestions"],
             "label": "空会话建议",
             "type": "array",
             "itemType": "string",
-            "addLabel": "添加建议"
+            "addLabel": "添加建议",
+            "required": false,
+            "essential": false
           }
         ]
       }

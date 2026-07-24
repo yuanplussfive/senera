@@ -100,7 +100,8 @@ function projectSchemaField(
     step: schemaField.step,
     secret: schemaField.secret,
     multiline: schemaField.multiline,
-    required: schemaField.type === "boolean" || schemaField.required === true,
+    required: schemaField.required,
+    essential: schemaField.essential,
   };
 }
 

@@ -34,7 +34,7 @@ export function FieldControl({
       <div className="min-w-0 pr-2">
         <div className="flex min-w-0 items-baseline gap-2">
           <div className="min-w-0 text-[13px] font-medium text-ink-900">{field.label}</div>
-          <ConfigFieldRequirementLabel required={field.required} type={field.type} />
+          <ConfigFieldRequirementLabel required={field.required} />
         </div>
         {field.description ? <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>

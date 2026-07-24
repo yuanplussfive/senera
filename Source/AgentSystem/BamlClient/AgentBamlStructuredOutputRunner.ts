@@ -52,6 +52,27 @@ export interface AgentBamlStructuredOutputRepairInput {
   error: unknown;
 }
 
+export class AgentBamlModelCallError extends Error {
+  readonly functionName: string;
+  readonly attempts: AgentBamlStructuredOutputAttempt[];
+  readonly issues: string[];
+  readonly originalError: unknown;
+
+  constructor(input: {
+    functionName: string;
+    attempts: AgentBamlStructuredOutputAttempt[];
+    issues: string[];
+    error: unknown;
+  }) {
+    super(`${input.functionName} model call failed: ${input.issues.join("; ")}`, { cause: input.error });
+    this.name = "AgentBamlModelCallError";
+    this.functionName = input.functionName;
+    this.attempts = input.attempts;
+    this.issues = input.issues;
+    this.originalError = input.error;
+  }
+}
+
 export class AgentBamlStructuredOutputError extends Error {
   readonly functionName: string;
   readonly attempts: AgentBamlStructuredOutputAttempt[];
@@ -109,36 +130,28 @@ export class AgentBamlStructuredOutputRunner {
     for (let attempt = 1; ; attempt += 1) {
       throwIfAborted(options.signal);
       const phase = repairAttempt > 0 ? "repair" : "initial";
-      let rawOutput = "";
+      let rawOutput: string;
 
       try {
         rawOutput = await this.options.complete(request, options.signal);
       } catch (error) {
         const issues = this.describeIssues(error);
-        const structuredIssues = this.describeStructuredIssues(error, issues);
-        const diagnostics = this.describeRawOutputDiagnostics(rawOutput, structuredIssues);
         attempts.push(
           await this.record({
             functionName: options.functionName,
             phase,
             attempt,
             requestId: request.requestId,
-            rawOutput,
             status: "failed",
             issues,
-            structuredIssues,
-            diagnostics,
             request,
             error,
           }),
         );
-        throw new AgentBamlStructuredOutputError({
+        throw new AgentBamlModelCallError({
           functionName: options.functionName,
           attempts,
           issues,
-          structuredIssues,
-          diagnostics,
-          rawOutput,
           error,
         });
       }

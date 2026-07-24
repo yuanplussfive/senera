@@ -8,15 +8,16 @@ const dockerServer = fs.readFileSync(path.join(workspaceRoot, "Apps", "DockerSer
 const readme = fs.readFileSync(path.join(workspaceRoot, "README.md"), "utf8");
 const operations = fs.readFileSync(path.join(workspaceRoot, "docs", "Operations.md"), "utf8");
 const compose = fs.readFileSync(path.join(workspaceRoot, "compose.yaml"), "utf8");
+const kvmCompose = fs.readFileSync(path.join(workspaceRoot, "compose.kvm.yaml"), "utf8");
 const releaseWorkflow = fs.readFileSync(path.join(workspaceRoot, ".github", "workflows", "release.yml"), "utf8");
 
 assert.ok(
-  !dockerfile.includes("PrepareSandboxRuntime"),
-  "Dockerfile must not prepare microsandbox during image build; runtime startup owns sandbox installation.",
+  !dockerfile.includes("sandbox.seed") && !dockerfile.includes("SandboxSeed"),
+  "Dockerfile must not scan or copy platform-specific Microsandbox runtime files.",
 );
 assert.ok(
-  !dockerfile.includes("sandbox-runtime"),
-  "Dockerfile must not copy build-time sandbox runtime directories into the image.",
+  !dockerfile.includes("PrepareSandboxRuntime"),
+  "Dockerfile must not start or download the microsandbox runtime while building the image.",
 );
 assert.ok(
   dockerfile.includes("npm rebuild better-sqlite3 --build-from-source"),
@@ -27,12 +28,12 @@ assert.ok(
   "Dockerfile must run the native SQLite smoke test before producing the runtime image.",
 );
 assert.ok(
-  dockerServer.includes('BaseDir: "/data/.senera/sandbox-runtime"'),
-  "Docker sandbox runtime must install under the mounted /data volume.",
+  dockerfile.includes("apt-get install -y --no-install-recommends ca-certificates"),
+  "Docker runtime must provide the system CA bundle required by the Microsandbox native HTTP client.",
 );
 assert.ok(
-  dockerServer.includes('BundleDir: "/data/.senera/sandbox-bundles"'),
-  "Docker sandbox bundles must live under the mounted /data volume.",
+  dockerServer.includes('BaseDir: "/data/.senera/sandbox-runtime"'),
+  "Docker sandbox runtime must install under the mounted /data volume.",
 );
 assertAdminInitializationPrecedesStartup(readme, "README.md");
 assertAdminInitializationPrecedesStartup(operations, "docs/Operations.md");
@@ -43,6 +44,22 @@ assert.ok(
 assert.ok(
   compose.includes("senera-admin:") && compose.includes("- admin") && compose.includes("- Dist/Apps/AdminAccess.js"),
   "compose.yaml must expose the administrator command through an opt-in service profile.",
+);
+assert.ok(
+  compose.includes("SENERA_SANDBOX_DEPLOYMENT: standard") &&
+    !compose.includes("/dev/kvm:/dev/kvm") &&
+    !compose.includes("NET_ADMIN"),
+  "compose.yaml must provide a standard deployment without KVM or NET_ADMIN requirements.",
+);
+assert.ok(
+  kvmCompose.includes("SENERA_SANDBOX_DEPLOYMENT: kvm") &&
+    kvmCompose.includes("/dev/kvm:/dev/kvm") &&
+    kvmCompose.includes("NET_ADMIN"),
+  "compose.kvm.yaml must opt into the KVM-specific sandbox capabilities.",
+);
+assert.ok(
+  dockerServer.includes("prepareDockerSandboxRuntime") && dockerServer.includes("sandboxRuntimePrepared"),
+  "Docker KVM deployment must prepare microsandbox before starting the web server and publish the verified state.",
 );
 assert.ok(
   releaseWorkflow.includes("node Dist/Scripts/VerifyDockerUserPluginWrite.js"),

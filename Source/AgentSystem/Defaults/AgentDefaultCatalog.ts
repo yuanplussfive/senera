@@ -82,9 +82,8 @@ export const AgentDefaults = {
     },
   },
   SandboxRuntime: {
+    Enabled: true,
     BaseDir: ".senera/sandbox-runtime",
-    BundleDir: ".senera/sandbox-bundles",
-    ImportBundlesOnStartup: true,
     Images: [SeneraMicrosandboxDefaults.image],
   },
   AgentLoop: {

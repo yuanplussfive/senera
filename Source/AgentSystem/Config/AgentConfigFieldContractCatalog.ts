@@ -3,6 +3,7 @@ import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 
 interface JsonSchemaNode {
   readonly type?: string | readonly string[];
+  readonly enum?: readonly (string | number | boolean)[];
   readonly properties?: Readonly<Record<string, JsonSchemaNode>>;
   readonly required?: readonly string[];
   readonly items?: JsonSchemaNode;
@@ -10,6 +11,7 @@ interface JsonSchemaNode {
 
 export interface AgentConfigFieldContract {
   readonly required: boolean;
+  readonly options?: readonly (string | number | boolean)[];
 }
 
 const AgentSystemConfigJsonSchema = z.toJSONSchema(AgentSystemConfigSchema, {
@@ -18,7 +20,7 @@ const AgentSystemConfigJsonSchema = z.toJSONSchema(AgentSystemConfigSchema, {
   unrepresentable: "throw",
 }) as JsonSchemaNode;
 
-export function readAgentConfigFieldContract(path: readonly string[], fieldType: string): AgentConfigFieldContract {
+export function readAgentConfigFieldContract(path: readonly string[]): AgentConfigFieldContract {
   if (path.length === 0) {
     throw new TypeError("Agent config form field path must not be empty.");
   }
@@ -35,7 +37,10 @@ export function readAgentConfigFieldContract(path: readonly string[], fieldType:
     current = property;
   }
 
-  return { required: fieldType === "boolean" || required };
+  return {
+    required,
+    ...(current.enum ? { options: current.enum } : {}),
+  };
 }
 
 function unwrapArrayItems(schema: JsonSchemaNode, path: readonly string[]): JsonSchemaNode {

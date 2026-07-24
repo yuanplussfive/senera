@@ -67,14 +67,13 @@
       }
     },
     "SandboxRuntime": {
+      "Enabled": true,
       "BaseDir": ".senera/sandbox-runtime",
-      "BundleDir": ".senera/sandbox-bundles",
-      "ImportBundlesOnStartup": true,
       "Images": ["node:22-bookworm-slim"]
     },
     "ToolSearch": {
       "Memory": {
-        "DatabasePath": ".senera/ToolSearch.sqlite",
+        "DatabasePath": ".senera/ToolSearchLearning.sqlite",
         "MaxEpisodes": 5000,
         "HalfLifeDays": 30
       },

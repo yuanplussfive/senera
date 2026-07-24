@@ -6,10 +6,9 @@ import {
   type EventEnvelope,
 } from "../api/eventTypes";
 import type {
-  ConfigRevisionGuardRequestInput,
   ProviderModelConfigInput,
   ProviderModelConfigOperationKind,
-  ProviderModelConfigRequest as ProviderModelCommandRequest,
+  ProviderModelConfigCommandDraft as ProviderModelCommandDraft,
   ProviderModelGroupAssignmentInput,
 } from "../api/providerModelCommandTypes";
 import { readConfigFailureCode } from "./configMutationFailure";
@@ -20,7 +19,7 @@ export type ProviderModelOperationKind = Extract<
 >;
 
 export type ProviderModelConfigRequest = Extract<
-  ProviderModelCommandRequest,
+  ProviderModelCommandDraft,
   {
     type: ProviderModelOperationKind;
   }
@@ -36,21 +35,13 @@ export interface ProviderModelMutationState extends ConfigMutationState {
   modelId: string;
 }
 
-export function readConfigRevisionGuardForModel(
-  snapshot: ConfigSnapshotData,
-): Pick<ConfigRevisionGuardRequestInput, "expectedRevision" | "expectedVersion"> {
-  return typeof snapshot.revision === "number"
-    ? { expectedRevision: snapshot.revision }
-    : { expectedVersion: snapshot.version };
-}
-
 export function readMatchingProviderModelOperation(
   env: EventEnvelope,
   pending: ReadonlyMap<string, PendingProviderModelOperation>,
 ): {
   kind: "success" | "failure";
   operation: PendingProviderModelOperation;
-  requestId: string;
+  commandId: string;
   message?: string;
   errorCode?: string;
 } | null {
@@ -60,15 +51,16 @@ export function readMatchingProviderModelOperation(
       : env.kind === EventKinds.ConfigFailed
         ? (env.data as ConfigFailedData)
         : null;
-  const requestId = data?.operation?.requestId;
-  const operationKind = data?.operation?.kind;
-  if (!requestId || !isProviderModelOperationKind(operationKind)) return null;
-  const operation = pending.get(requestId);
+  const eventOperation = data?.operation && "commandId" in data.operation ? data.operation : undefined;
+  const commandId = eventOperation?.commandId;
+  const operationKind = eventOperation?.kind;
+  if (!commandId || !isProviderModelOperationKind(operationKind)) return null;
+  const operation = pending.get(commandId);
   if (!operation || operation.kind !== operationKind) return null;
   return {
     kind: env.kind === EventKinds.ConfigSnapshot ? "success" : "failure",
     operation,
-    requestId,
+    commandId,
     ...(env.kind === EventKinds.ConfigFailed
       ? {
           message: (data as ConfigFailedData).message,

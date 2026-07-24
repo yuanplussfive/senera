@@ -4,6 +4,7 @@ import { SeneraNodeProcessBackend } from "./SeneraNodeProcessBackend.js";
 import { SeneraRoutingProcessBackend } from "./SeneraRoutingProcessBackend.js";
 import type { SeneraExecutionEnv } from "./SeneraExecutionTypes.js";
 import type { SeneraMicrosandboxSettings } from "./SeneraMicrosandboxDefaults.js";
+import type { SeneraMicrosandboxSdkAdapter } from "./SeneraMicrosandboxTypes.js";
 import type { AgentSandboxRuntimePaths } from "../Sandbox/AgentSandboxRuntimePreparation.js";
 import { createSeneraAuthorizedPersistentProcessSpawner } from "./SeneraPersistentProcessSpawner.js";
 import type { SeneraResourceAccessAuthorizer } from "./SeneraResourceAccess.js";
@@ -19,6 +20,9 @@ export interface SeneraExecutionEnvFactoryOptions {
   resourceAccessPolicy?: SeneraResourceAccessAuthorizer;
   environmentPolicy?: SeneraProcessEnvironmentPolicy | SeneraProcessEnvironmentPolicyOptions;
   terminationGraceMs?: number;
+  sandboxEnabled?: boolean;
+  sandboxRuntimeReady?: () => boolean;
+  microsandboxSdk?: SeneraMicrosandboxSdkAdapter;
 }
 
 export function createSeneraExecutionEnv(options: SeneraExecutionEnvFactoryOptions): SeneraExecutionEnv {
@@ -59,10 +63,13 @@ function createSharedExecutionDependencies(options: SeneraExecutionEnvFactoryOpt
     workspaceRoot: options.workspaceRoot,
     settings: options.microsandboxSettings,
     runtimePaths: options.sandboxRuntimePaths,
+    runtimeReady: options.sandboxRuntimeReady,
+    sdk: options.microsandboxSdk,
   });
   const processBackend = new SeneraRoutingProcessBackend({
     local: localBackend,
     sandbox: sandboxBackend,
+    sandboxEnabled: options.sandboxEnabled,
   });
 
   return {
@@ -71,7 +78,8 @@ function createSharedExecutionDependencies(options: SeneraExecutionEnvFactoryOpt
       environmentPolicy,
     }),
     terminalSpawner: createSeneraAuthorizedTerminalSpawner({
-      sandbox: sandboxBackend,
+      sandbox: options.sandboxEnabled === false ? undefined : sandboxBackend,
+      sandboxEnabled: options.sandboxEnabled,
       environmentPolicy,
     }),
   };

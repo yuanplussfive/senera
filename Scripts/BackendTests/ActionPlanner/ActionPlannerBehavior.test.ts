@@ -25,7 +25,11 @@ import {
   AgentActionPlannerValidationError,
   parseInteractionPreparation,
 } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerSchema.js";
-import { AgentBamlStructuredOutputError } from "../../../Source/AgentSystem/BamlClient/AgentBamlStructuredOutputRunner.js";
+import {
+  AgentBamlModelCallError,
+  AgentBamlStructuredOutputError,
+  AgentBamlStructuredOutputRunner,
+} from "../../../Source/AgentSystem/BamlClient/AgentBamlStructuredOutputRunner.js";
 
 describe("ActionPlanner behavior", () => {
   test("projects BAML interaction routes into runtime routing decisions without sharing arrays", () => {
@@ -112,6 +116,47 @@ describe("ActionPlanner behavior", () => {
     const routed = new Error("Interaction Router failed.", { cause: structured });
 
     expect(collectPlannerFailureToolNames(routed)).toEqual(["ShellCommandTool"]);
+  });
+
+  test("keeps model-call failures outside structured-output repair and classification", async () => {
+    const providerFailure = new Error("provider response contract rejected usage");
+    const runner = new AgentBamlStructuredOutputRunner({
+      complete: async () => Promise.reject(providerFailure),
+      maxRepairAttempts: 2,
+      isRepairable: () => true,
+    });
+    let parseCalls = 0;
+    let repairCalls = 0;
+
+    const failure = await runner
+      .run({
+        functionName: "PrepareInteraction",
+        request: {
+          requestId: "action-planner:prepareInteraction",
+          step: 1,
+          systemPrompt: "Route the turn.",
+          messages: [{ role: "user", content: "Inspect the workspace." }],
+        },
+        parse: () => {
+          parseCalls += 1;
+          return createPreparation();
+        },
+        repair: () => {
+          repairCalls += 1;
+          throw new Error("repair must not run for model-call failures");
+        },
+      })
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(AgentBamlModelCallError);
+    expect(failure).toMatchObject({
+      originalError: providerFailure,
+      attempts: [expect.objectContaining({ status: "failed", rawOutput: undefined })],
+    });
+    expect(parseCalls).toBe(0);
+    expect(repairCalls).toBe(0);
+    expect(summarizePlannerFailure(failure)).toContain("action_planner_model_request_failed");
+    expect(summarizePlannerFailure(failure)).not.toContain("invalid_structured_output");
   });
 
   test("validates initial actions against candidate tools", () => {

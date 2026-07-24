@@ -1,0 +1,2 @@
+-- table: tool_search_episodes
+create table tool_search_episodes ( id integer primary key autoincrement , query text not null , query_tokens text not null , planner_tags text not null , candidates text not null , chosen_tools text not null , outcome text not null , calls text not null , final_score real not null , final_outcome text not null , project_id text not null , timestamp integer not null );

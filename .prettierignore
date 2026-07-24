@@ -8,6 +8,12 @@ Frontend/dist/
 node_modules/
 Release/
 Source/AgentSystem/BamlClient/baml_client/
+Source/AgentSystem/**/Database/contract.json
+Source/AgentSystem/**/Database/runtime.json
+Source/AgentSystem/**/Database/snapshots/
+Source/AgentSystem/Config/CommandContracts/contract.json
+Source/AgentSystem/Config/CommandContracts/runtime.json
+Source/AgentSystem/Config/CommandContracts/snapshots/
 Plugins/**/Schemas/**/*.js
 docs/API/WebSocketProtocol.md
 docs/API/WebSocketProtocol.schema.json

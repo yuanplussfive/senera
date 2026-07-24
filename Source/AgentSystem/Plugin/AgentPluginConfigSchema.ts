@@ -47,7 +47,8 @@ const ConfigSchemaFieldSchema = z
     step: z.number().optional(),
     secret: z.boolean().optional(),
     multiline: z.boolean().optional(),
-    required: z.boolean().optional(),
+    required: z.boolean(),
+    essential: z.boolean(),
     level: ConfigFieldLevelSchema.optional(),
   })
   .strict();

@@ -1,0 +1,30 @@
+{
+  "id": "agent-memory",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "memory-schema-baseline",
+      "migration": "migrations/0001-memory-schema-baseline.sql",
+      "migrationSha256": "b46089f4826a59d769f07193d688a81b358cb4a4441c05aea2e04401229b8b3b",
+      "snapshot": "snapshots/0001.schema.sql",
+      "snapshotSha256": "6b73f4ca0bf588713b6522d104ab592fb507ecbce68ed0e1aa32211ef5ba23ba"
+    },
+    {
+      "version": 2,
+      "name": "memory-learning-jobs",
+      "migration": "migrations/0002-memory-learning-jobs.sql",
+      "migrationSha256": "1d8af06bf0598cf5fcf9516eee2eab05ec19ff0bd1870d85aab54a74a80726dc",
+      "snapshot": "snapshots/0002.schema.sql",
+      "snapshotSha256": "5167374c11e5be06082ec15318cb7fbf82b82295146740ed63d7dd298ba7c46e"
+    },
+    {
+      "version": 3,
+      "name": "memory-observation-write-sequence",
+      "migration": "migrations/0003-memory-observation-write-sequence.sql",
+      "migrationSha256": "e2080ed82dbad69e8d708aead739ff10d5537f7b4f48a21e70d72e8182eca68b",
+      "snapshot": "snapshots/0003.schema.sql",
+      "snapshotSha256": "4804da26c8dafa557a649238a171dd3538a3ea07eff4df289ea22f74bc0ef90e"
+    }
+  ]
+}

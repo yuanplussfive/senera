@@ -1,16 +1,8 @@
-import { useCallback, useMemo, useReducer, useRef, type MutableRefObject } from "react";
+import { useCallback, useMemo, useReducer, useRef } from "react";
 import { toast } from "sonner";
-import {
-  type ConfigMutationState,
-  type ConfigSnapshotData,
-  type EventEnvelope,
-  type WsRequest,
-} from "../api/eventTypes";
-import type { SocketStatus } from "../api/useAgentSocket";
-import { generateId } from "../lib/util";
+import { type ConfigMutationState, type EventEnvelope } from "../api/eventTypes";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import {
-  readConfigRevisionGuardForModel,
   readMatchingProviderModelOperation,
   type PendingProviderModelOperation,
   type ProviderModelConfigRequest,
@@ -18,13 +10,10 @@ import {
   type ProviderModelOperationKind,
   type ProviderModelUpsertInput,
 } from "./providerModelMutations";
-
-type SendRequest = (request: WsRequest) => boolean;
+import type { SystemConfigCommandQueue, SystemConfigCommandTransportFailure } from "./useSystemConfigCommandQueue";
 
 export interface ProviderModelMutationTransport {
-  configSnapshot?: ConfigSnapshotData | null;
-  sendRef: MutableRefObject<SendRequest | null>;
-  statusRef: MutableRefObject<SocketStatus>;
+  commandQueue: SystemConfigCommandQueue;
 }
 
 interface State {
@@ -35,42 +24,47 @@ type Action = { type: "upsert"; modelId: string; operation: ConfigMutationState 
 
 const initialState: State = { operations: {} };
 
-export function useProviderModelMutations({
-  configSnapshot = null,
-  sendRef,
-  statusRef,
-}: ProviderModelMutationTransport) {
+export function useProviderModelMutations({ commandQueue }: ProviderModelMutationTransport) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const pendingRef = useRef<Map<string, PendingProviderModelOperation>>(new Map());
-  const readOpenTransport = useCallback((): SendRequest | null => {
-    const send = sendRef.current;
-    if (statusRef.current !== "open" || !send) {
-      toast.error(frontendMessage("config.mainOffline"));
-      return null;
-    }
-    return send;
-  }, [sendRef, statusRef]);
-
   const start = useCallback(
     (kind: ProviderModelOperationKind, modelId: string, request: ProviderModelConfigRequest): string | null => {
-      const send = readOpenTransport();
-      if (!send) return null;
-      if (!configSnapshot) {
-        toast.error(frontendMessage("config.mainFailed"));
-        return null;
-      }
-      const requestId = generateId();
-      pendingRef.current.set(requestId, { kind, modelId });
-      dispatch({ type: "upsert", modelId, operation: { requestId, kind, status: "pending", updatedAt: timestamp() } });
-      if (!send({ ...request, ...readConfigRevisionGuardForModel(configSnapshot), requestId, mirrorJson: true })) {
-        pendingRef.current.delete(requestId);
-        dispatch({ type: "remove", modelId });
-        toast.error(frontendMessage("config.mainDisconnected"));
-        return null;
-      }
-      return requestId;
+      let commandId: string | null = null;
+      const handleTransportFailure = (failure: SystemConfigCommandTransportFailure): void => {
+        const messageKey =
+          failure === "config_unavailable"
+            ? "config.mainFailed"
+            : failure === "offline"
+              ? "config.mainOffline"
+              : "config.mainDisconnected";
+        if (commandId) {
+          pendingRef.current.delete(commandId);
+          dispatch({
+            type: "upsert",
+            modelId,
+            operation: {
+              commandId,
+              kind,
+              status: "error",
+              message: frontendMessage(messageKey),
+              updatedAt: timestamp(),
+            },
+          });
+        }
+        toast.error(frontendMessage(messageKey));
+      };
+      commandId = commandQueue.enqueue({
+        operationKind: kind,
+        request,
+        ...(kind === "provider.model.upsert" ? { coalesceKey: kind + ":" + modelId } : {}),
+        onTransportFailure: handleTransportFailure,
+      });
+      if (!commandId) return null;
+      pendingRef.current.set(commandId, { kind, modelId });
+      dispatch({ type: "upsert", modelId, operation: { commandId, kind, status: "pending", updatedAt: timestamp() } });
+      return commandId;
     },
-    [configSnapshot, readOpenTransport],
+    [commandQueue],
   );
 
   const upsertProviderModel = useCallback(
@@ -102,12 +96,12 @@ export function useProviderModelMutations({
   const ingestConfigMutationEvent = useCallback((env: EventEnvelope): boolean => {
     const resolution = readMatchingProviderModelOperation(env, pendingRef.current);
     if (!resolution) return false;
-    pendingRef.current.delete(resolution.requestId);
+    pendingRef.current.delete(resolution.commandId);
     dispatch({
       type: "upsert",
       modelId: resolution.operation.modelId,
       operation: {
-        requestId: resolution.requestId,
+        commandId: resolution.commandId,
         kind: resolution.operation.kind,
         status: resolution.kind === "success" ? "success" : "error",
         ...(resolution.message ? { message: resolution.message, errorCode: resolution.errorCode } : {}),

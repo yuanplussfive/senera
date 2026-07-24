@@ -16,7 +16,8 @@ import type {
 } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 
 const workspaceRoot = path.resolve(process.cwd());
-const artifactRoot = ".senera/artifacts/policy-verification";
+const temporaryArtifactRoot = createTemporaryArtifactRoot();
+const artifactRoot = path.relative(workspaceRoot, temporaryArtifactRoot);
 
 const config: AgentSystemConfig = {
   PluginRoots: {
@@ -353,7 +354,9 @@ function executionResourceFixture(state: "running" | "completed" | "cancelled"):
   };
 }
 
-void main();
+void main().finally(() => {
+  fs.rmSync(temporaryArtifactRoot, { force: true, recursive: true });
+});
 
 async function main(): Promise<void> {
   assertNoLegacyPolicyKeys();
@@ -658,6 +661,12 @@ function findManifestPaths(root: string): string[] {
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(root, entry.name, "PluginManifest.json"))
     .filter((manifestPath) => fs.existsSync(manifestPath));
+}
+
+function createTemporaryArtifactRoot(): string {
+  const artifactParent = path.join(workspaceRoot, ".senera", "artifacts");
+  fs.mkdirSync(artifactParent, { recursive: true });
+  return fs.mkdtempSync(path.join(artifactParent, "plugin-artifact-policy-"));
 }
 
 function sampleArguments(toolName: string): Record<string, unknown> {

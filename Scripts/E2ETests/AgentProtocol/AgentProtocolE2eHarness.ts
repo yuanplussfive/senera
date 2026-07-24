@@ -333,8 +333,6 @@ function createE2eConfig(port: number, authentication?: AgentProtocolE2eAuthenti
       },
       SandboxRuntime: {
         BaseDir: ".senera/sandbox-runtime",
-        BundleDir: ".senera/sandbox-bundles",
-        ImportBundlesOnStartup: false,
         Images: [],
       },
       PluginRoots: {

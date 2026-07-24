@@ -4,15 +4,17 @@ import {
   parsePiControllerAction,
   parsePiToolArgumentsDraft,
 } from "../Source/AgentSystem/PiProxy/AgentPiAssistantMessageSchema.js";
-import { verificationConfigPath } from "./VerificationConfig.js";
+import { createIsolatedVerificationRuntimeConfig } from "./VerificationRuntimeConfig.js";
 
 void main();
 
 async function main(): Promise<void> {
-  const workspaceRoot = process.cwd();
+  const sourceRoot = process.cwd();
+  const isolatedConfig = await createIsolatedVerificationRuntimeConfig(sourceRoot);
+  const workspaceRoot = sourceRoot;
   const runtime = AgentSystemRuntime.load({
     workspaceRoot,
-    configPath: verificationConfigPath(workspaceRoot),
+    configPath: isolatedConfig.configPath,
   });
 
   try {
@@ -100,6 +102,7 @@ async function main(): Promise<void> {
     console.log("Tool signature mapping and Pi tool-call validation verified.");
   } finally {
     runtime.toolSearch.close();
+    await isolatedConfig.dispose();
   }
 }
 

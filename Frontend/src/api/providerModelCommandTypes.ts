@@ -11,6 +11,10 @@ export interface ProviderModelEndpointInput {
   Headers?: Record<string, string>;
 }
 
+export type ProviderModelEndpointPatchInput = Pick<ProviderModelEndpointInput, "Id"> & {
+  [Key in Exclude<keyof ProviderModelEndpointInput, "Id">]?: ProviderModelEndpointInput[Key] | null;
+};
+
 export type ProviderModelEndpointKind = "Responses" | "ChatCompletions" | "ClaudeMessages" | "GoogleGenerateContent";
 
 export interface ProviderModelConfigInput {
@@ -45,10 +49,13 @@ export interface ProviderModelBulkImportGroupAssignmentInput extends ProviderMod
 }
 
 export interface ConfigRevisionGuardRequestInput {
-  requestId?: string;
-  expectedRevision?: number;
-  expectedVersion?: number;
-  mirrorJson?: boolean;
+  commandId: string;
+  baseRevision?: number;
+  baseVersion?: number;
+}
+
+export interface ConfigCommandRequestInput {
+  commandId: string;
 }
 
 export type ProviderModelConfigOperationKind =
@@ -61,32 +68,38 @@ export type ProviderModelConfigOperationKind =
   | "provider.defaultModel.set";
 
 export type ProviderModelConfigRequest =
-  | (ConfigRevisionGuardRequestInput & { type: "provider.endpoint.upsert"; endpoint: ProviderModelEndpointInput })
-  | (ConfigRevisionGuardRequestInput & {
+  | (ConfigCommandRequestInput & { type: "provider.endpoint.upsert"; endpoint: ProviderModelEndpointPatchInput })
+  | (ConfigCommandRequestInput & {
       type: "provider.endpoint.delete";
       providerId: string;
       cascadeModels?: boolean;
       replacementDefaultModelId?: string;
     })
-  | (ConfigRevisionGuardRequestInput & {
+  | (ConfigCommandRequestInput & {
       type: "provider.endpoint.rename";
       providerId: string;
       nextProviderId: string;
     })
-  | (ConfigRevisionGuardRequestInput & {
+  | (ConfigCommandRequestInput & {
       type: "provider.model.upsert";
       model: ProviderModelConfigInput;
       group?: ProviderModelGroupAssignmentInput;
     })
-  | (ConfigRevisionGuardRequestInput & {
+  | (ConfigCommandRequestInput & {
       type: "provider.model.delete";
       modelId: string;
       replacementDefaultModelId?: string;
     })
-  | (ConfigRevisionGuardRequestInput & {
+  | (ConfigCommandRequestInput & {
       type: "provider.model.bulkImport";
       models: ProviderModelConfigInput[];
       overwriteExisting?: boolean;
       groupAssignments?: ProviderModelBulkImportGroupAssignmentInput[];
     })
-  | (ConfigRevisionGuardRequestInput & { type: "provider.defaultModel.set"; modelId: string });
+  | (ConfigCommandRequestInput & { type: "provider.defaultModel.set"; modelId: string });
+
+export type ProviderModelConfigCommandDraft = ProviderModelConfigRequest extends infer Request
+  ? Request extends ConfigCommandRequestInput
+    ? Omit<Request, "commandId">
+    : never
+  : never;

@@ -302,7 +302,7 @@ test("useConfigMutationController routes preset and main config acknowledgements
       handleRef.current.ingestConfigMutationEvent(
         event(EventKinds.ConfigSnapshot, "config", {
           config: {},
-          operation: { requestId: configRequestId, kind: "config_update" },
+          operation: { commandId: configRequestId, kind: "config_update" },
         }),
       ),
     ).toBe(true);
@@ -418,31 +418,13 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
         Icon: "sparkles",
         Kind: "OpenAICompatible",
       },
-      expectedRevision: 31,
-      requestId: upsertRequestId,
-      mirrorJson: true,
-    },
-    {
-      type: "provider.endpoint.rename",
-      providerId: "custom-old",
-      nextProviderId: "custom-new",
-      expectedRevision: 31,
-      requestId: renameRequestId,
-      mirrorJson: true,
-    },
-    {
-      type: "provider.endpoint.delete",
-      providerId: "custom-delete",
-      cascadeModels: true,
-      expectedRevision: 31,
-      requestId: deleteRequestId,
-      mirrorJson: true,
+      commandId: upsertRequestId,
     },
   ]);
   expect(send.mock.calls.every(([request]) => request.type !== "config.update" && !("config" in request))).toBe(true);
   expect(handleRef.current.providerEndpointOperations["custom-openai"]).toEqual(
     expect.objectContaining({
-      requestId: upsertRequestId,
+      commandId: upsertRequestId,
       kind: "provider.endpoint.upsert",
       status: "pending",
     }),
@@ -454,7 +436,7 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
         ...configSnapshot,
         revision: 32,
         operation: {
-          requestId: upsertRequestId,
+          commandId: upsertRequestId,
           kind: "provider.endpoint.upsert",
         },
       }),
@@ -464,7 +446,7 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
         configPath: "Config.toml",
         message: "stale revision",
         operation: {
-          requestId: renameRequestId,
+          commandId: renameRequestId,
           kind: "provider.endpoint.rename",
         },
       }),
@@ -473,7 +455,7 @@ test("useConfigMutationController sends guarded provider endpoint commands and t
       event(EventKinds.ConfigSnapshot, "config", {
         ...configSnapshot,
         operation: {
-          requestId: deleteRequestId,
+          commandId: deleteRequestId,
           kind: "provider.model.delete",
         },
       }),

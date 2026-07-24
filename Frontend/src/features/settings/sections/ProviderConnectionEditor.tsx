@@ -64,6 +64,7 @@ export function ProviderConnectionEditor({
   const protectedProvider = isProtectedProvider(provider.Id);
   const pending = operation?.status === "pending";
   const operationError = operation?.status === "error" ? operation.message : null;
+  const errorMessage = localError ?? operationError;
 
   return (
     <div className="bg-paper-50">
@@ -80,7 +81,7 @@ export function ProviderConnectionEditor({
           })}
           actions={
             <>
-              {(operationError || localError) && dirty ? (
+              {errorMessage && dirty ? (
                 <Button size="sm" variant="outline" disabled={disabled || pending} onClick={() => onConfirm()}>
                   <RotateCcw className="h-3.5 w-3.5" />
                   {frontendMessage("settings.action.retry")}
@@ -159,10 +160,7 @@ export function ProviderConnectionEditor({
           </ConnectionField>
         </div>
 
-        <div className="mt-2">
-          {localError ? <ProviderFormError message={localError} /> : null}
-          {operationError ? <ProviderFormError message={operationError} /> : null}
-        </div>
+        <div className="mt-2">{errorMessage ? <ProviderFormError message={errorMessage} /> : null}</div>
       </div>
       <Dialog
         open={requestConfigOpen}

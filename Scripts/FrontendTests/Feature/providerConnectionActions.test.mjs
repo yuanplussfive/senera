@@ -66,7 +66,7 @@ test("selected provider changes to the renamed ID only after its snapshot arrive
         onRenameProviderEndpoint,
         operations: {
           alpha: {
-            requestId: "rename-request",
+            commandId: "rename-request",
             kind: "provider.endpoint.rename",
             status: "success",
             updatedAt: "2026-07-12T00:00:00.000Z",
@@ -137,7 +137,7 @@ test("new provider presets remain editable after the identity snapshot arrives",
         onUpsertProviderEndpoint,
         operations: {
           beta: {
-            requestId: "add-request",
+            commandId: "add-request",
             kind: "provider.endpoint.upsert",
             status: "success",
             updatedAt: "2026-07-12T00:00:00.000Z",
@@ -178,7 +178,7 @@ test("provider connection commits the latest draft and immediate patches", async
         onUpsertProviderEndpoint,
         operations: {
           alpha: {
-            requestId: "save-request",
+            commandId: "save-request",
             kind: "provider.endpoint.upsert",
             status: "success",
             updatedAt: "2026-07-12T00:00:00.000Z",
@@ -218,7 +218,7 @@ test("provider connection sends the newest draft after an in-flight save complet
         onUpsertProviderEndpoint,
         operations: {
           alpha: {
-            requestId: "first-save",
+            commandId: "first-save",
             kind: "provider.endpoint.upsert",
             status: "success",
             updatedAt: "2026-07-12T00:00:00.000Z",
@@ -261,7 +261,7 @@ test("provider reset follows the saved snapshot when the response arrives", asyn
         onUpsertProviderEndpoint,
         operations: {
           alpha: {
-            requestId: "save-request",
+            commandId: "save-request",
             kind: "provider.endpoint.upsert",
             status: "success",
             updatedAt: "2026-07-12T00:00:00.000Z",
@@ -307,7 +307,7 @@ test("provider drafts and errors stay isolated when switching during a save", as
         onUpsertProviderEndpoint,
         operations: {
           alpha: {
-            requestId: "alpha-save",
+            commandId: "alpha-save",
             kind: "provider.endpoint.upsert",
             status: "error",
             message: "alpha rejected",

@@ -11,6 +11,7 @@ path = [ "senera", "enabled" ]
 label = "启用插件"
 type = "boolean"
 required = true
+essential = true
 
 [[form.sections]]
 id = "probe"
@@ -22,6 +23,8 @@ label = "采样字节数"
 type = "number"
 min = 1
 step = 1024
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "probe", "containerMaxEntries" ]
@@ -29,6 +32,8 @@ label = "容器入口数"
 type = "number"
 min = 1
 step = 1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "probe", "containerMaxEntryBytes" ]
@@ -36,11 +41,15 @@ label = "容器入口字节数"
 type = "number"
 min = 1
 step = 1024
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "probe", "contentTypesEntryName" ]
 label = "内容类型入口"
 type = "string"
+required = false
+essential = false
 
 [[form.sections]]
 id = "parse"
@@ -50,54 +59,64 @@ label = "解析选项"
 path = [ "parse", "ocr" ]
 label = "启用 OCR"
 type = "boolean"
-required = true
+required = false
+essential = true
 
 [[form.sections.fields]]
 path = [ "parse", "extractAttachments" ]
 label = "抽取附件"
 type = "boolean"
-required = true
+required = false
+essential = true
 
 [[form.sections.fields]]
 path = [ "parse", "includeRawContent" ]
 label = "保留原始内容"
 type = "boolean"
-required = true
+required = false
+essential = true
 
 [[form.sections.fields]]
 path = [ "parse", "ignoreNotes" ]
 label = "忽略备注"
 type = "boolean"
-required = true
+required = false
+essential = true
 
 [[form.sections.fields]]
 path = [ "parse", "ignoreComments" ]
 label = "忽略批注"
 type = "boolean"
-required = true
+required = false
+essential = true
 
 [[form.sections.fields]]
 path = [ "parse", "ignoreHeadersAndFooters" ]
 label = "忽略页眉页脚"
 type = "boolean"
-required = true
+required = false
+essential = true
 
 [[form.sections.fields]]
 path = [ "parse", "ignoreSlideMasters" ]
 label = "忽略母版"
 type = "boolean"
-required = true
+required = false
+essential = true
 
 [[form.sections.fields]]
 path = [ "parse", "ignoreInternalLinks" ]
 label = "忽略内部链接"
 type = "boolean"
-required = true
+required = false
+essential = true
 
 [[form.sections.fields]]
 path = [ "parse", "newlineDelimiter" ]
 label = "换行分隔符"
 type = "string"
+required = false
+essential = false
 
 [[form.sections]]
 id = "output"
@@ -109,6 +128,8 @@ label = "最大文件字节数"
 type = "number"
 min = 1
 step = 1024
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "output", "maxTextChars" ]
@@ -116,6 +137,8 @@ label = "文本预览字符数"
 type = "number"
 min = 0
 step = 100
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "output", "maxMarkdownChars" ]
@@ -123,6 +146,8 @@ label = "Markdown 预览字符数"
 type = "number"
 min = 0
 step = 100
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "output", "maxChunks" ]
@@ -130,6 +155,8 @@ label = "Chunk 数量"
 type = "number"
 min = 0
 step = 1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "output", "maxChunkChars" ]
@@ -137,6 +164,8 @@ label = "Chunk 字符数"
 type = "number"
 min = 0
 step = 100
+required = false
+essential = false
 
 [[form.sections]]
 id = "extractors"
@@ -147,6 +176,8 @@ description = "抽取器是可扩展的具名表；保留默认映射或按插�
 path = [ "extractors" ]
 label = "抽取器配置"
 type = "table"
+required = false
+essential = false
 
 [[form.allowedPaths]]
 path = [ "extractors" ]

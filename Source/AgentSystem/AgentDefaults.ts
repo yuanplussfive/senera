@@ -14,7 +14,11 @@ export {
   resolveUploadsConfig,
 } from "./Defaults/AgentAppDefaults.js";
 
-export { resolveModelProviderCatalog, resolveModelProviderConfig } from "./Defaults/AgentModelProviderDefaults.js";
+export {
+  resolveModelProviderCatalog,
+  resolveModelProviderConfig,
+  resolveModelProviderRuntimeDefaults,
+} from "./Defaults/AgentModelProviderDefaults.js";
 
 export { resolveActionPlannerConfig } from "./Defaults/AgentPlannerDefaults.js";
 

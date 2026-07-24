@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
+import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 async function main(): Promise<void> {
   const service = new AgentSandboxRuntimeService({
@@ -47,6 +48,17 @@ async function main(): Promise<void> {
   assert.equal(unavailableSnapshot.state, "unavailable");
   assert.equal(unavailableSnapshot.effectiveMode, "unavailable");
   assert.equal(unavailableSnapshot.diagnostics[0]?.code, "microsandbox_package_missing");
+
+  const disabledSnapshot = new AgentSandboxRuntimeService({
+    configSnapshot: () =>
+      ({
+        ModelProviders: [],
+        SandboxRuntime: { Enabled: false },
+      }) satisfies AgentSystemConfig,
+  }).snapshot();
+  assert.equal(disabledSnapshot.state, "disabled");
+  assert.equal(disabledSnapshot.effectiveMode, "disabled");
+  assert.equal(disabledSnapshot.diagnostics[0]?.code, "microsandbox_disabled_by_runtime_configuration");
 
   console.log("Senera sandbox runtime service verification passed.");
 }

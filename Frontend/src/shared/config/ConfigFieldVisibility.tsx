@@ -3,20 +3,16 @@ import { cn } from "../../lib/util";
 
 export type ConfigFieldVisibility = "essential" | "all";
 
-export interface ConfigFieldRequirement {
+export interface ConfigFieldPresentation {
   readonly required: boolean;
-  readonly type: string;
+  readonly essential: boolean;
 }
 
-export function filterConfigFields<TField extends ConfigFieldRequirement>(
+export function filterConfigFields<TField extends ConfigFieldPresentation>(
   fields: readonly TField[],
   visibility: ConfigFieldVisibility,
 ): TField[] {
-  return visibility === "essential" ? fields.filter(isConfigFieldRequired) : [...fields];
-}
-
-export function isConfigFieldRequired(field: ConfigFieldRequirement): boolean {
-  return field.type === "boolean" || field.required;
+  return visibility === "essential" ? fields.filter((field) => field.essential) : [...fields];
 }
 
 export function ConfigFieldVisibilityControl({
@@ -24,7 +20,7 @@ export function ConfigFieldVisibilityControl({
   value,
   onChange,
 }: {
-  fields: readonly ConfigFieldRequirement[];
+  fields: readonly ConfigFieldPresentation[];
   value: ConfigFieldVisibility;
   onChange: (value: ConfigFieldVisibility) => void;
 }): JSX.Element | null {
@@ -76,11 +72,10 @@ export function ConfigFieldVisibilityControl({
   );
 }
 
-export function ConfigFieldRequirementLabel({ required, type }: ConfigFieldRequirement): JSX.Element {
-  const isRequired = isConfigFieldRequired({ required, type });
+export function ConfigFieldRequirementLabel({ required }: Pick<ConfigFieldPresentation, "required">): JSX.Element {
   return (
-    <span className={cn("text-[10.5px] font-normal", isRequired ? "text-brick-600" : "text-ink-350")}>
-      {frontendMessage(isRequired ? "settings.config.fieldRequired" : "settings.config.fieldOptional")}
+    <span className={cn("text-[10.5px] font-normal", required ? "text-brick-600" : "text-ink-350")}>
+      {frontendMessage(required ? "settings.config.fieldRequired" : "settings.config.fieldOptional")}
     </span>
   );
 }

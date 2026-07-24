@@ -4,12 +4,15 @@ import type { EventKind, EventLayer, EventPhase } from "./generatedEventCatalog"
 import type { ProviderModelConfigOperationKind } from "./providerModelCommandTypes";
 
 export type {
+  ConfigCommandRequestInput,
   ConfigRevisionGuardRequestInput,
   ProviderModelBulkImportGroupAssignmentInput,
   ProviderModelConfigInput,
+  ProviderModelConfigCommandDraft,
   ProviderModelConfigOperationKind,
   ProviderModelConfigRequest,
   ProviderModelEndpointInput,
+  ProviderModelEndpointPatchInput,
   ProviderModelEndpointKind,
   ProviderModelGroupAssignmentInput,
 } from "./providerModelCommandTypes";
@@ -290,34 +293,15 @@ export interface ProviderModelsFailedData {
   details?: unknown;
 }
 
-export type SandboxEffectiveMode = "sandbox" | "unavailable";
-export type SandboxRuntimeState = "unknown" | "preparing" | "ready" | "unavailable";
-
-export interface SandboxDiagnosticData {
-  code: string;
-  severity: "warning" | "error";
-  message: string;
-  recommendation: string;
-  details: string[];
-  manualCommands?: string[];
-}
-
-export interface SandboxDependencySnapshotData {
-  errors: string[];
-  warnings: string[];
-}
-
-export interface SandboxStatusSnapshotData {
-  provider: string;
-  platform: string;
-  state: SandboxRuntimeState;
-  supported: boolean;
-  effectiveMode: SandboxEffectiveMode;
-  dependencies: SandboxDependencySnapshotData;
-  diagnostics: SandboxDiagnosticData[];
-  message: string;
-  updatedAt: string;
-}
+export type {
+  SandboxDependencySnapshotData,
+  SandboxDiagnosticData,
+  SandboxEffectiveMode,
+  SandboxPreparationProgressData,
+  SandboxPreparationStage,
+  SandboxRuntimeState,
+  SandboxStatusSnapshotData,
+} from "./sandboxRuntimeEventTypes";
 
 export interface PluginConfigSection {
   name: string;
@@ -350,6 +334,7 @@ export interface PluginConfigField {
   secret?: boolean;
   multiline?: boolean;
   required: boolean;
+  essential: boolean;
 }
 
 export interface PluginConfigDiagnostic {
@@ -452,7 +437,7 @@ export type ConfigSnapshotSource = "sqlite" | "json";
 export type ConfigOperationKind = "config_update" | ProviderModelConfigOperationKind;
 
 export interface ConfigOperationResult {
-  requestId?: string;
+  commandId: string;
   kind: ConfigOperationKind;
 }
 
@@ -506,6 +491,7 @@ export interface ConfigFormFieldData {
   secret?: boolean;
   multiline?: boolean;
   required: boolean;
+  essential: boolean;
   addLabel?: string;
   itemLabelPath?: string[];
   itemFields?: ConfigFormFieldData[];
@@ -539,7 +525,7 @@ export interface PluginConfigMutationState {
 }
 
 export interface ConfigMutationState {
-  requestId: string;
+  commandId: string;
   kind: ConfigOperationKind;
   status: PluginConfigMutationStatus;
   message?: string;

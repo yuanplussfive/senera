@@ -12,6 +12,8 @@ import {
   toProviderEndpointInput,
 } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft, ProviderModelEndpointInput } from "../../chat/modelConfigTypes";
+import type { ProviderModelEndpointPatchInput } from "../../../api/eventTypes";
+import { createJsonMergePatch } from "../../../shared/config/jsonMergePatch";
 import { readModelServiceState, type ModelServiceState } from "./modelServiceState";
 
 export interface ProviderConnectionStateInput {
@@ -29,10 +31,12 @@ export interface ProviderConnectionDraftState {
   dirty: boolean;
 }
 
-export type ProviderEndpointMutationInput =
+export type ProviderEndpointMutationInput<
+  Endpoint extends ProviderModelEndpointInput | ProviderModelEndpointPatchInput = ProviderModelEndpointPatchInput,
+> =
   | {
       ok: true;
-      endpoint: ProviderModelEndpointInput;
+      endpoint: Endpoint;
       providerId: string;
     }
   | {
@@ -118,7 +122,15 @@ export function resetProviderConnectionDraft(
 
 export function buildProviderEndpointMutationInput(
   connectionDraft: ProviderEndpointDraft | null,
-): ProviderEndpointMutationInput {
+): ProviderEndpointMutationInput<ProviderModelEndpointInput>;
+export function buildProviderEndpointMutationInput(
+  connectionDraft: ProviderEndpointDraft | null,
+  baseDraft: ProviderEndpointDraft,
+): ProviderEndpointMutationInput<ProviderModelEndpointPatchInput>;
+export function buildProviderEndpointMutationInput(
+  connectionDraft: ProviderEndpointDraft | null,
+  baseDraft?: ProviderEndpointDraft,
+): ProviderEndpointMutationInput<ProviderModelEndpointInput | ProviderModelEndpointPatchInput> {
   if (!connectionDraft) {
     return {
       ok: false,
@@ -132,13 +144,16 @@ export function buildProviderEndpointMutationInput(
       message: frontendMessage("settings.provider.idRequired"),
     };
   }
+  const endpoint = toProviderEndpointInput({
+    ...connectionDraft,
+    Id: providerId,
+  });
   return {
     ok: true,
     providerId,
-    endpoint: toProviderEndpointInput({
-      ...connectionDraft,
-      Id: providerId,
-    }),
+    endpoint: baseDraft
+      ? createJsonMergePatch(toProviderEndpointInput(baseDraft), endpoint, ["Id"] as const)
+      : endpoint,
   };
 }
 

@@ -33,7 +33,7 @@ readAgentToolApprovalPolicyArtifact(resolveAgentToolApprovalPolicyArtifactDirect
 process.stdout.write(`Runtime assets copied: ${runtimeAssets.length + extraRuntimeAssets.length}\n`);
 
 function discoverRuntimeAssets(root: string): string[] {
-  const copiedExtensions = new Set([".json", ".rego", ".wasm"]);
+  const copiedExtensions = new Set([".json", ".rego", ".sql", ".wasm"]);
   return walkFiles(root)
     .filter((file) => copiedExtensions.has(path.extname(file)))
     .sort((left, right) => left.localeCompare(right));

@@ -45,6 +45,7 @@ export interface SeneraMicrosandboxBackendOptions {
   sandboxNameFactory?: () => string;
   clock?: () => number;
   terminalRuntime?: SeneraTerminalSidecarRuntime;
+  runtimeReady?: () => boolean;
 }
 
 export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend, SeneraTerminalBackend {
@@ -75,6 +76,7 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
   private readonly sandboxNameFactory: () => string;
   private readonly clock: () => number;
   private readonly terminalRuntime: SeneraTerminalSidecarRuntime | undefined;
+  private readonly runtimeReady: () => boolean;
   private unavailableUntil = 0;
   private unavailableError: SeneraExecutionError | undefined;
 
@@ -86,6 +88,7 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
     this.sandboxNameFactory = options.sandboxNameFactory ?? (() => createMicrosandboxName(this.settings));
     this.clock = options.clock ?? Date.now;
     this.terminalRuntime = options.terminalRuntime;
+    this.runtimeReady = options.runtimeReady ?? (() => true);
   }
 
   resolveShellInvocation(command: string): SeneraShellInvocation {
@@ -275,6 +278,13 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
     rootfsCopies: SeneraMicrosandboxCreateRequest["rootfsCopies"],
     maxDurationMs: number,
   ): Promise<{ id: string; session: SeneraMicrosandboxSession }> {
+    if (!this.runtimeReady()) {
+      throw new SeneraExecutionError(
+        SeneraExecutionErrorCodes.SandboxUnavailable,
+        "The microsandbox runtime is not ready. Wait for sandbox preparation to finish before running a Sandbox tool.",
+        { backend: this.descriptor.id, reason: "sandbox_runtime_not_ready" },
+      );
+    }
     const id = this.sandboxNameFactory();
     try {
       const session = await this.sdk.createSandbox({
@@ -291,13 +301,6 @@ export class SeneraMicrosandboxBackend implements SeneraProcessExecutionBackend,
         memoryMiB: settings.memoryMiB,
         network: settings.network,
         pullPolicy: settings.pullPolicy,
-        runtime: this.runtimePaths
-          ? {
-              baseDir: this.runtimePaths.baseDir,
-              msbPath: this.runtimePaths.msbPath,
-              libkrunfwPath: this.runtimePaths.libkrunfwPath,
-            }
-          : undefined,
         maxDurationSeconds: timeoutSeconds(maxDurationMs),
       });
       return { id, session };

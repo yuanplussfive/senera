@@ -61,7 +61,7 @@ export function useConfigSettingsDraftState({
     () => (snapshot ? validateJsonConfigDraft(snapshot.form.sections, draft) : []),
     [draft, snapshot],
   );
-  const saveOperation = saveRequestId && operation?.requestId === saveRequestId ? operation : null;
+  const saveOperation = saveRequestId && operation?.commandId === saveRequestId ? operation : null;
   const saving = saveRequestId !== null && saveOperation?.status !== "success" && saveOperation?.status !== "error";
 
   useEffect(() => {

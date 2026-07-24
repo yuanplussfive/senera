@@ -41,6 +41,7 @@ export interface LoadedPluginConfigField {
   secret?: boolean;
   multiline?: boolean;
   required: boolean;
+  essential: boolean;
 }
 
 export type LoadedPluginConfigFieldType = "boolean" | "string" | "number" | "array" | "table";

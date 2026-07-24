@@ -10,6 +10,8 @@ import { isSeneraShellDialectCompatible } from "./SeneraShellCommand.js";
 export interface SeneraRoutingProcessBackendOptions {
   readonly local: SeneraProcessExecutionBackend;
   readonly sandbox: SeneraProcessExecutionBackend;
+  /** Whether this runtime is allowed to create a microsandbox guest. */
+  readonly sandboxEnabled?: boolean;
 }
 
 export class SeneraRoutingProcessBackend implements SeneraProcessExecutionBackend {
@@ -48,6 +50,16 @@ export class SeneraRoutingProcessBackend implements SeneraProcessExecutionBacken
       throw new SeneraExecutionError(SeneraExecutionErrorCodes.SandboxUnavailable, "执行请求缺少明确的后端边界。", {
         profile: profile?.name,
       });
+    }
+    if (profile.backend === "sandbox" && this.options.sandboxEnabled === false) {
+      throw new SeneraExecutionError(
+        SeneraExecutionErrorCodes.SandboxUnavailable,
+        "Sandbox execution is disabled by the active runtime deployment.",
+        {
+          reason: "sandbox_disabled",
+          profile: profile.name,
+        },
+      );
     }
     return profile.backend === "local"
       ? execute(this.options.local, "local")

@@ -1,6 +1,6 @@
 import { parentPort, workerData } from "node:worker_threads";
 import Database from "better-sqlite3";
-import { AgentSessionDatabaseMigrations } from "../SessionPersistence/AgentSessionSqlSchema.js";
+import { AgentSessionDatabaseContract } from "../SessionPersistence/AgentSessionSqlSchema.js";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 
@@ -40,7 +40,7 @@ if (!port) throw new Error("SQLite event writer worker requires parentPort.");
 const options = readWorkerOptions(workerData);
 const kernel = new AgentSqliteDatabaseKernel({
   databasePath: options.databasePath,
-  migrations: AgentSessionDatabaseMigrations,
+  contract: AgentSessionDatabaseContract,
 });
 const db = kernel.connection;
 const appendRunEvent = db.prepare(`

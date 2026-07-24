@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "id": "agent-config",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "config-schema-baseline",
+      "sql": "CREATE TABLE IF NOT EXISTS config_metadata (\n  key TEXT PRIMARY KEY,\n  value TEXT NOT NULL\n);\n\nCREATE TABLE IF NOT EXISTS config_revisions (\n  revision INTEGER PRIMARY KEY,\n  config_json TEXT NOT NULL,\n  source TEXT NOT NULL,\n  created_at TEXT NOT NULL\n) STRICT;\n",
+      "checksum": "8394b5c4ee68b38053f55a84585b8b29cbe12f38869b9ec8ad3cbe1793c52691",
+      "snapshot": "-- table: config_metadata\ncreate table config_metadata ( key text primary key , value text not null );\n\n-- table: config_revisions\ncreate table config_revisions ( revision integer primary key , config_json text not null , source text not null , created_at text not null ) strict;\n",
+      "snapshotChecksum": "587319db376a924779eef144086e15cf6cfe60ffea5d911943c2a57b48d460fe"
+    },
+    {
+      "version": 2,
+      "name": "remove-legacy-config-metadata",
+      "sql": "DROP TABLE config_metadata;\n",
+      "checksum": "f30101f3cf082bb51bfc7e39f3477688e971bcee568fe6050a3a1a236fb7b99e",
+      "snapshot": "-- table: config_revisions\ncreate table config_revisions ( revision integer primary key , config_json text not null , source text not null , created_at text not null ) strict;\n",
+      "snapshotChecksum": "d9e53c8040d9688cde87798b3f36a6325469b082029a6c5eeb82e41f20261fb4"
+    },
+    {
+      "version": 3,
+      "name": "config-command-receipts",
+      "sql": "CREATE TABLE config_command_receipts (\n  command_id TEXT PRIMARY KEY,\n  operation_kind TEXT NOT NULL,\n  payload_hash TEXT NOT NULL,\n  revision INTEGER NOT NULL REFERENCES config_revisions(revision),\n  created_at TEXT NOT NULL\n) STRICT;\n",
+      "checksum": "44a585a4cda07e30a62a5e9ca6e55886192bc9cffcf95ef9ced3951a7095ebda",
+      "snapshot": "-- table: config_command_receipts\ncreate table config_command_receipts ( command_id text primary key , operation_kind text not null , payload_hash text not null , revision integer not null references config_revisions ( revision ) , created_at text not null ) strict;\n\n-- table: config_revisions\ncreate table config_revisions ( revision integer primary key , config_json text not null , source text not null , created_at text not null ) strict;\n",
+      "snapshotChecksum": "df923fb6d1da31d1b59fcd30e8c864788bfaae2bfc920b7ace868fff3c4a3f93"
+    }
+  ]
+}

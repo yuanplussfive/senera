@@ -2,6 +2,7 @@ import type {
   ConfigMutationState,
   ConfigSnapshotData,
   ProviderModelEndpointInput,
+  ProviderModelEndpointPatchInput,
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
 } from "../../api/eventTypes";
@@ -20,7 +21,7 @@ export interface SettingsConfigCommands {
   refreshConfig: () => void;
   saveConfig: (config: Record<string, unknown>) => string | null;
   fetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
-  upsertProviderEndpoint: (endpoint: ProviderModelEndpointInput) => string | null;
+  upsertProviderEndpoint: (endpoint: ProviderModelEndpointPatchInput) => string | null;
   renameProviderEndpoint: (providerId: string, nextProviderId: string) => string | null;
   deleteProviderEndpoint: (providerId: string, options?: ProviderEndpointDeleteOptions) => string | null;
   upsertProviderModel: (input: ProviderModelUpsertInput) => string | null;

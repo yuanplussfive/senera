@@ -422,22 +422,19 @@
           "type": "string",
           "const": "config.update"
         },
-        "requestId": {
+        "commandId": {
           "type": "string",
           "minLength": 1
         },
-        "expectedRevision": {
+        "baseRevision": {
           "type": "integer",
           "minimum": 1,
           "maximum": 9007199254740991
         },
-        "expectedVersion": {
+        "baseVersion": {
           "type": "integer",
           "minimum": 1,
           "maximum": 9007199254740991
-        },
-        "mirrorJson": {
-          "type": "boolean"
         },
         "config": {
           "type": "object",
@@ -586,16 +583,12 @@
                 "SandboxRuntime": {
                   "type": "object",
                   "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
                     "BaseDir": {
                       "type": "string",
                       "minLength": 1
-                    },
-                    "BundleDir": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "ImportBundlesOnStartup": {
-                      "type": "boolean"
                     },
                     "Images": {
                       "type": "array",
@@ -1715,16 +1708,12 @@
             "SandboxRuntime": {
               "type": "object",
               "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                },
                 "BaseDir": {
                   "type": "string",
                   "minLength": 1
-                },
-                "BundleDir": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "ImportBundlesOnStartup": {
-                  "type": "boolean"
                 },
                 "Images": {
                   "type": "array",
@@ -3064,6 +3053,7 @@
       },
       "required": [
         "type",
+        "commandId",
         "config"
       ],
       "additionalProperties": false
@@ -3075,22 +3065,9 @@
           "type": "string",
           "const": "provider.endpoint.upsert"
         },
-        "requestId": {
+        "commandId": {
           "type": "string",
           "minLength": 1
-        },
-        "expectedRevision": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "expectedVersion": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "mirrorJson": {
-          "type": "boolean"
         },
         "endpoint": {
           "type": "object",
@@ -3100,36 +3077,85 @@
               "minLength": 1
             },
             "Icon": {
-              "type": "string",
-              "minLength": 1
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "Enabled": {
-              "type": "boolean"
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "Kind": {
-              "type": "string",
-              "const": "OpenAICompatible"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "OpenAICompatible"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "BaseUrl": {
-              "type": "string",
-              "format": "uri"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uri"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "ApiKey": {
-              "type": "string",
-              "minLength": 1
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "ApiVersion": {
-              "type": "string",
-              "minLength": 1
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "Headers": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {
-                "type": "string"
-              }
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -3140,6 +3166,7 @@
       },
       "required": [
         "type",
+        "commandId",
         "endpoint"
       ],
       "additionalProperties": false
@@ -3151,22 +3178,9 @@
           "type": "string",
           "const": "provider.endpoint.delete"
         },
-        "requestId": {
+        "commandId": {
           "type": "string",
           "minLength": 1
-        },
-        "expectedRevision": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "expectedVersion": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "mirrorJson": {
-          "type": "boolean"
         },
         "providerId": {
           "type": "string",
@@ -3182,6 +3196,7 @@
       },
       "required": [
         "type",
+        "commandId",
         "providerId"
       ],
       "additionalProperties": false
@@ -3193,22 +3208,9 @@
           "type": "string",
           "const": "provider.endpoint.rename"
         },
-        "requestId": {
+        "commandId": {
           "type": "string",
           "minLength": 1
-        },
-        "expectedRevision": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "expectedVersion": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "mirrorJson": {
-          "type": "boolean"
         },
         "providerId": {
           "type": "string",
@@ -3221,6 +3223,7 @@
       },
       "required": [
         "type",
+        "commandId",
         "providerId",
         "nextProviderId"
       ],
@@ -3233,22 +3236,9 @@
           "type": "string",
           "const": "provider.model.upsert"
         },
-        "requestId": {
+        "commandId": {
           "type": "string",
           "minLength": 1
-        },
-        "expectedRevision": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "expectedVersion": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "mirrorJson": {
-          "type": "boolean"
         },
         "model": {
           "type": "object",
@@ -3448,6 +3438,7 @@
       },
       "required": [
         "type",
+        "commandId",
         "model"
       ],
       "additionalProperties": false
@@ -3459,22 +3450,9 @@
           "type": "string",
           "const": "provider.model.delete"
         },
-        "requestId": {
+        "commandId": {
           "type": "string",
           "minLength": 1
-        },
-        "expectedRevision": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "expectedVersion": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "mirrorJson": {
-          "type": "boolean"
         },
         "modelId": {
           "type": "string",
@@ -3487,6 +3465,7 @@
       },
       "required": [
         "type",
+        "commandId",
         "modelId"
       ],
       "additionalProperties": false
@@ -3498,22 +3477,9 @@
           "type": "string",
           "const": "provider.model.bulkImport"
         },
-        "requestId": {
+        "commandId": {
           "type": "string",
           "minLength": 1
-        },
-        "expectedRevision": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "expectedVersion": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "mirrorJson": {
-          "type": "boolean"
         },
         "models": {
           "type": "array",
@@ -3727,6 +3693,7 @@
       },
       "required": [
         "type",
+        "commandId",
         "models"
       ],
       "additionalProperties": false
@@ -3738,22 +3705,9 @@
           "type": "string",
           "const": "provider.defaultModel.set"
         },
-        "requestId": {
+        "commandId": {
           "type": "string",
           "minLength": 1
-        },
-        "expectedRevision": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "expectedVersion": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "mirrorJson": {
-          "type": "boolean"
         },
         "modelId": {
           "type": "string",
@@ -3762,6 +3716,7 @@
       },
       "required": [
         "type",
+        "commandId",
         "modelId"
       ],
       "additionalProperties": false

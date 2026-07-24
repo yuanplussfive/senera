@@ -11,6 +11,7 @@ path = [ "senera", "enabled" ]
 label = "启用插件"
 type = "boolean"
 required = true
+essential = true
 
 [[form.sections]]
 id = "vision"
@@ -22,24 +23,32 @@ label = "图片大小上限"
 type = "number"
 min = 0.1
 step = 0.5
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "allowedMimes" ]
 label = "允许图片类型"
 type = "array"
 itemType = "string"
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "systemTemplate" ]
 label = "系统提示词"
 type = "string"
 multiline = true
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "promptTemplate" ]
 label = "用户提示词"
 type = "string"
 multiline = true
+required = false
+essential = false
 
 [[form.sections]]
 id = "vision.provider"
@@ -49,46 +58,60 @@ label = "识图供应商"
 path = [ "vision", "provider", "id" ]
 label = "供应商 ID"
 type = "string"
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "title" ]
 label = "供应商名称"
 type = "string"
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "kind" ]
 label = "供应商类型"
 type = "string"
 options = [ "OpenAICompatible" ]
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "endpoint" ]
 label = "接口协议"
 type = "string"
 options = [ "Responses", "ChatCompletions", "ClaudeMessages", "GoogleGenerateContent" ]
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "baseUrl" ]
 label = "服务地址"
 type = "string"
 required = true
+essential = true
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "apiKey" ]
 label = "接口密钥"
 type = "string"
 secret = true
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "apiVersion" ]
 label = "接口版本"
 type = "string"
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "model" ]
 label = "模型"
 type = "string"
 required = true
+essential = true
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "temperature" ]
@@ -97,6 +120,8 @@ type = "number"
 min = 0
 max = 2
 step = 0.1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "maxOutputTokens" ]
@@ -104,6 +129,8 @@ label = "最大输出 tokens"
 type = "number"
 min = -1
 step = 1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "timeoutSeconds" ]
@@ -111,6 +138,8 @@ label = "请求超时"
 type = "number"
 min = 0.1
 step = 1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "firstTokenTimeoutSeconds" ]
@@ -118,6 +147,8 @@ label = "首 token 超时"
 type = "number"
 min = -1
 step = 1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "maxRequestSeconds" ]
@@ -125,6 +156,8 @@ label = "总请求时限"
 type = "number"
 min = -1
 step = 1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "maxNetworkRetries" ]
@@ -132,6 +165,8 @@ label = "网络重试次数"
 type = "number"
 min = 0
 step = 1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "retryBaseDelaySeconds" ]
@@ -139,6 +174,8 @@ label = "重试基础等待"
 type = "number"
 min = 0.001
 step = 0.1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "retryMaxDelaySeconds" ]
@@ -146,6 +183,8 @@ label = "重试最大等待"
 type = "number"
 min = 0.001
 step = 1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "retryAfterMaxDelaySeconds" ]
@@ -153,8 +192,12 @@ label = "Retry-After 最大等待"
 type = "number"
 min = 0.001
 step = 1
+required = false
+essential = false
 
 [[form.sections.fields]]
 path = [ "vision", "provider", "headers" ]
 label = "附加请求头"
 type = "table"
+required = false
+essential = false

@@ -1,0 +1,46 @@
+{
+  "id": "agent-session",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "session-schema-baseline",
+      "migration": "migrations/0001-session-schema-baseline.sql",
+      "migrationSha256": "9eeaceafd22febde72286d3a1b9b934ce8e2774166304f76014c33d96466fd84",
+      "snapshot": "snapshots/0001.schema.sql",
+      "snapshotSha256": "7c43c72811fb7e7c4f257c7ca9dc15f6aeddf04099b826c091e309ec88fcab0d"
+    },
+    {
+      "version": 2,
+      "name": "session-history-and-turn-preparations",
+      "migration": "migrations/0002-session-history-and-turn-preparations.sql",
+      "migrationSha256": "996346c8d95c25fb2b38596c9bf05343cdefe7018c36c6811a3197a1b36738d3",
+      "snapshot": "snapshots/0002.schema.sql",
+      "snapshotSha256": "ece0b385c273e1a2566fc3e666380693485c52274c653a64c3d5bf66c61b963a"
+    },
+    {
+      "version": 3,
+      "name": "run-event-identity",
+      "migration": "migrations/0003-run-event-identity.sql",
+      "migrationSha256": "a93cf5cdbc74620df1f2ca5d82753f1cade5493779d63d371d326f0ee2cc6481",
+      "snapshot": "snapshots/0003.schema.sql",
+      "snapshotSha256": "cab0e89222bd045194d12e0ffb5468249566ab9f10638326435359abca1206d0"
+    },
+    {
+      "version": 4,
+      "name": "run-event-outbox",
+      "migration": "migrations/0004-run-event-outbox.sql",
+      "migrationSha256": "d126d48605b7f7cddb4e4b6bb85552da332e8532239fc7f2d95cb2e77baef311",
+      "snapshot": "snapshots/0004.schema.sql",
+      "snapshotSha256": "3326fe50a516bba7cf0842a853b68d4a87eeee76d89f5ea3c0f8028789ba3a6c"
+    },
+    {
+      "version": 5,
+      "name": "run-event-outbox-retention-index",
+      "migration": "migrations/0005-run-event-outbox-retention-index.sql",
+      "migrationSha256": "24c898f7fafe8cbcd89a5b68700f1875e86cd3056077fbfada69d7d08527b988",
+      "snapshot": "snapshots/0005.schema.sql",
+      "snapshotSha256": "712ea5ce2b11cc2bc34583bcda6e62d912bd31261d777a7a43bca0169a6e9bb2"
+    }
+  ]
+}

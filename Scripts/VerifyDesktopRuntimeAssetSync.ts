@@ -2,12 +2,39 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { syncRuntimeDirectory } from "../Apps/RuntimeAssetSync.js";
+import { createDesktopMicrosandboxModuleLoader } from "../Apps/Desktop/DesktopMicrosandboxModuleLoader.js";
 
+const projectRoot = process.cwd();
+const rootPackage = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8")) as {
+  build?: {
+    extraResources?: Array<{ from?: string; to?: string }>;
+    asarUnpack?: string[];
+  };
+};
+const desktopPack = fs.readFileSync(path.join(projectRoot, "Apps", "Desktop", "PackageDesktop.ts"), "utf8");
+const desktopRuntime = fs.readFileSync(path.join(projectRoot, "Apps", "Desktop", "DesktopRuntime.ts"), "utf8");
 const tempRoot = path.join(process.cwd(), ".senera", "tmp", "verify-desktop-runtime-sync");
 fs.mkdirSync(tempRoot, { recursive: true });
 const workspaceRoot = fs.mkdtempSync(path.join(tempRoot, "run-"));
 
 try {
+  assert.ok(
+    !rootPackage.build?.extraResources?.some((resource) => resource.to === "SandboxSeed"),
+    "Desktop packages must not ship a copied Microsandbox seed.",
+  );
+  assert.ok(
+    !desktopPack.includes("sandbox.seed"),
+    "Desktop packaging must delegate Microsandbox runtime provisioning to the application runtime.",
+  );
+  assert.ok(
+    desktopRuntime.includes("SandboxRuntime"),
+    "Desktop runtime must keep Microsandbox state inside application-managed user data.",
+  );
+  assert.ok(
+    rootPackage.build?.asarUnpack?.includes("Dist/Apps/Desktop/DesktopMicrosandboxRuntimeBridge.js"),
+    "Desktop packages must unpack the Microsandbox ESM runtime bridge.",
+  );
+
   const sourceRoot = path.join(workspaceRoot, "source");
   const targetRoot = path.join(workspaceRoot, "target");
 
@@ -40,9 +67,20 @@ try {
 
   assert.equal(readText(path.join(packageTargetRoot, "generated.cache")), "keep");
 
+  await verifyElectronMicrosandboxRuntimeBridge(workspaceRoot);
+
   console.log("Desktop runtime asset sync verification passed.");
 } finally {
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
+}
+
+async function verifyElectronMicrosandboxRuntimeBridge(root: string): Promise<void> {
+  const bridgePath = path.join(root, "DesktopMicrosandboxRuntimeBridge.mjs");
+  writeText(bridgePath, "export const loadDesktopMicrosandboxModule = async () => ({ runtime: 'unpacked' });\n");
+  const loadMicrosandbox = createDesktopMicrosandboxModuleLoader(bridgePath);
+  const microsandboxModule = await loadMicrosandbox();
+  assert.ok(microsandboxModule && typeof microsandboxModule === "object");
+  assert.equal("runtime" in microsandboxModule ? microsandboxModule.runtime : undefined, "unpacked");
 }
 
 function writeText(filePath: string, value: string): void {

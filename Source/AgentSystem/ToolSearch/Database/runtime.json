@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "id": "tool-search-learning",
+  "dataClass": "derived",
+  "versions": [
+    {
+      "version": 1,
+      "name": "tool-search-learning-schema",
+      "sql": "CREATE TABLE tool_search_episodes (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  query TEXT NOT NULL,\n  query_tokens TEXT NOT NULL,\n  planner_tags TEXT NOT NULL,\n  candidates TEXT NOT NULL,\n  chosen_tools TEXT NOT NULL,\n  learned_keywords TEXT NOT NULL,\n  outcome TEXT NOT NULL,\n  calls TEXT NOT NULL,\n  final_score REAL NOT NULL,\n  final_outcome TEXT NOT NULL,\n  project_id TEXT NOT NULL,\n  timestamp INTEGER NOT NULL\n);\nCREATE INDEX idx_tool_search_episodes_project_time ON tool_search_episodes(project_id, timestamp DESC);\n\nCREATE TABLE tool_learning_terms (\n  project_id TEXT NOT NULL,\n  tool_name TEXT NOT NULL,\n  term TEXT NOT NULL,\n  source TEXT NOT NULL,\n  support REAL NOT NULL,\n  weight REAL NOT NULL,\n  last_seen_at INTEGER NOT NULL,\n  PRIMARY KEY (project_id, tool_name, term, source)\n);\nCREATE INDEX idx_tool_learning_terms_project_tool ON tool_learning_terms(project_id, tool_name);\n\nCREATE TABLE tool_use_patterns (\n  project_id TEXT NOT NULL,\n  tool_name TEXT NOT NULL,\n  pattern_key TEXT NOT NULL,\n  trigger_terms TEXT NOT NULL,\n  argument_keys TEXT NOT NULL,\n  evidence_kinds TEXT NOT NULL,\n  support REAL NOT NULL,\n  last_seen_at INTEGER NOT NULL,\n  PRIMARY KEY (project_id, tool_name, pattern_key)\n);\nCREATE INDEX idx_tool_use_patterns_project_tool ON tool_use_patterns(project_id, tool_name);\n",
+      "checksum": "6176cb1f781ba43eae15528b83bd00f7f4cb74b6527c8e4a84eeed0864d88bff",
+      "snapshot": "-- table: tool_learning_terms\ncreate table tool_learning_terms ( project_id text not null , tool_name text not null , term text not null , source text not null , support real not null , weight real not null , last_seen_at integer not null , primary key ( project_id , tool_name , term , source ) );\n\n-- table: tool_search_episodes\ncreate table tool_search_episodes ( id integer primary key autoincrement , query text not null , query_tokens text not null , planner_tags text not null , candidates text not null , chosen_tools text not null , learned_keywords text not null , outcome text not null , calls text not null , final_score real not null , final_outcome text not null , project_id text not null , timestamp integer not null );\n\n-- table: tool_use_patterns\ncreate table tool_use_patterns ( project_id text not null , tool_name text not null , pattern_key text not null , trigger_terms text not null , argument_keys text not null , evidence_kinds text not null , support real not null , last_seen_at integer not null , primary key ( project_id , tool_name , pattern_key ) );\n\n-- index: idx_tool_learning_terms_project_tool\ncreate index idx_tool_learning_terms_project_tool on tool_learning_terms ( project_id , tool_name );\n\n-- index: idx_tool_search_episodes_project_time\ncreate index idx_tool_search_episodes_project_time on tool_search_episodes ( project_id , timestamp desc );\n\n-- index: idx_tool_use_patterns_project_tool\ncreate index idx_tool_use_patterns_project_tool on tool_use_patterns ( project_id , tool_name );\n",
+      "snapshotChecksum": "569c3bd325b9ac740e46b01d5ae144a06e8fc050b543d1eebc0fec35727f0e08"
+    }
+  ],
+  "legacySnapshots": [
+    {
+      "id": "tool-search-pre-learned-keywords",
+      "snapshot": "-- table: tool_search_episodes\ncreate table tool_search_episodes ( id integer primary key autoincrement , query text not null , query_tokens text not null , planner_tags text not null , candidates text not null , chosen_tools text not null , outcome text not null , calls text not null , final_score real not null , final_outcome text not null , project_id text not null , timestamp integer not null );\n",
+      "checksum": "28bef14bc301dfb129838667ca80d99ce28c9e9d0868b99033ba285fc0182b46"
+    }
+  ]
+}

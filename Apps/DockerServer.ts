@@ -3,10 +3,11 @@ import path from "node:path";
 import { startSeneraServer } from "./ServerRuntime.js";
 import { createCompiledAgentMcpRuntimeModuleResolver } from "../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
 import { syncRuntimeDirectory } from "./RuntimeAssetSync.js";
-import { resolveFrontendConfig } from "../Source/AgentSystem/AgentDefaults.js";
+import { resolveFrontendConfig, resolveSandboxRuntimeConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { writeAgentConfigJsonMirror } from "../Source/AgentSystem/Config/AgentConfigServicePaths.js";
 import { moduleDirPath } from "../Source/AgentSystem/Core/AgentPath.js";
+import { prepareAgentSandboxRuntime } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimePreparation.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const AppRoot = resolveAppRoot();
@@ -24,20 +25,32 @@ const DockerPluginRoots = {
 const BundledDockerUserPluginRoot = path.join(AppRoot, "Plugins");
 const DockerSandboxRuntime = {
   BaseDir: "/data/.senera/sandbox-runtime",
-  BundleDir: "/data/.senera/sandbox-bundles",
+} as const;
+const DockerSandboxDeploymentEnvironment = "SENERA_SANDBOX_DEPLOYMENT";
+const DockerSandboxDeployments = {
+  standard: {
+    sandboxEnabled: false,
+  },
+  kvm: {
+    sandboxEnabled: true,
+  },
 } as const;
 
-main();
+type DockerSandboxDeployment = keyof typeof DockerSandboxDeployments;
 
-function main(): void {
+await main();
+
+async function main(): Promise<void> {
   fs.mkdirSync(WorkspaceRoot, { recursive: true });
   syncBundledUserPlugins();
   ensureFrontendBundleExists();
   ensureRuntimeConfigFile();
 
+  const deployment = resolveDockerSandboxDeployment();
   const config = loadConfigFile(ConfigPath);
-  const runtimeProjection = createDockerRuntimeProjection();
+  const runtimeProjection = createDockerRuntimeProjection(deployment);
   const projectedConfig = runtimeProjection(config);
+  await prepareDockerSandboxRuntime(projectedConfig, deployment);
   writeFrontendRuntimeConfig(projectedConfig);
 
   const server = startSeneraServer({
@@ -47,6 +60,7 @@ function main(): void {
     resourcesPath: AppRoot,
     runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(AppRoot),
     runtimeConfigProjection: runtimeProjection,
+    sandboxRuntimePrepared: DockerSandboxDeployments[deployment].sandboxEnabled,
   });
 
   writeJsonLine({
@@ -55,6 +69,7 @@ function main(): void {
     configPath: server.configPath,
     webUrl: `http://localhost:${resolveDockerPort()}`,
     websocketUrl: server.websocketUrl,
+    sandboxDeployment: deployment,
   });
 }
 
@@ -82,7 +97,9 @@ function ensureRuntimeConfigFile(): void {
   writeAgentConfigJsonMirror(seedConfig, ConfigPath);
 }
 
-function createDockerRuntimeProjection(): (config: AgentSystemConfig) => AgentSystemConfig {
+function createDockerRuntimeProjection(
+  deployment: DockerSandboxDeployment,
+): (config: AgentSystemConfig) => AgentSystemConfig {
   return (config) => ({
     ...config,
     PluginRoots: {
@@ -92,6 +109,7 @@ function createDockerRuntimeProjection(): (config: AgentSystemConfig) => AgentSy
     SandboxRuntime: {
       ...config.SandboxRuntime,
       ...DockerSandboxRuntime,
+      Enabled: DockerSandboxDeployments[deployment].sandboxEnabled,
     },
     Server: {
       ...config.Server,
@@ -104,6 +122,38 @@ function createDockerRuntimeProjection(): (config: AgentSystemConfig) => AgentSy
       },
     },
   });
+}
+
+function resolveDockerSandboxDeployment(): DockerSandboxDeployment {
+  const deployment = (process.env[DockerSandboxDeploymentEnvironment] ?? "standard").trim().toLowerCase();
+  if (Object.hasOwn(DockerSandboxDeployments, deployment)) {
+    return deployment as DockerSandboxDeployment;
+  }
+
+  const supported = Object.keys(DockerSandboxDeployments).join(", ");
+  throw new Error(`${DockerSandboxDeploymentEnvironment} must be one of: ${supported}.`);
+}
+
+async function prepareDockerSandboxRuntime(
+  config: AgentSystemConfig,
+  deployment: DockerSandboxDeployment,
+): Promise<void> {
+  if (!DockerSandboxDeployments[deployment].sandboxEnabled) {
+    return;
+  }
+
+  try {
+    await prepareAgentSandboxRuntime({
+      workspaceRoot: WorkspaceRoot,
+      config: resolveSandboxRuntimeConfig(config),
+      strict: true,
+      log: (message) => writeJsonLine({ kind: "senera.docker.sandbox.prepare", message }),
+      onProgress: (progress) => writeJsonLine({ kind: "senera.docker.sandbox.progress", progress }),
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`KVM sandbox deployment could not be prepared: ${detail}`, { cause: error });
+  }
 }
 
 function writeFrontendRuntimeConfig(config: AgentSystemConfig): void {

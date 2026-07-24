@@ -124,26 +124,25 @@ observability channel.
 `ShellStartTool` creates a PTY-backed terminal resource and returns immediately with an opaque `resourceId`.
 Generic inspect, wait, write, resize, signal, list, and stop-all tools control it without adding provider-specific
 action kinds. Pipe-backed process resources use the same broker contract. Terminal metadata records the requested
-and effective execution boundary, backend id, supported capabilities, sandbox id, approved fallback, and
-character-grid dimensions.
+and effective execution boundary, backend id, supported capabilities, sandbox id, and character-grid dimensions.
 
 Terminal implementations register through `SeneraTerminalBackendRegistry`. The local backend uses ConPTY or a
 Unix PTY. The microsandbox backend creates a TTY inside the guest and exposes asynchronous stdin, output, signals,
 and lifecycle cleanup through the same session contract. Backend selection is capability-driven; a backend that
-does not advertise resize cannot receive a resize call. A sandbox capability or availability failure can enter
-the existing OPA-backed local fallback flow, but command failures, non-zero exits, and runtime errors never cause
-an automatic host retry.
+does not advertise resize cannot receive a resize call. A sandbox capability or availability failure is a typed
+failure for that selected boundary; command failures, non-zero exits, and runtime errors never cause an automatic
+host retry.
 
 Shell commands use the structured `{ mode: "shell", dialect, script }` contract. Terminal routing carries the raw
 script until the execution boundary is selected, validates the requested dialect against the backend descriptor,
 and only then resolves the concrete invocation. Microsandbox resolves `posix-sh` to `/bin/sh -lc`; a Windows local
 backend resolves `powershell` to its configured PowerShell invocation. A dialect mismatch is a typed capability
-failure and may enter the existing OPA fallback flow, but the runtime never translates scripts between dialects.
+failure; the runtime never translates scripts between dialects or changes the selected execution boundary.
 
 The microsandbox adapter normalizes both public SDK `kind` events and native `eventType` events. PTY-merged
 `output` is projected into terminal output; malformed or unknown events fail with `terminal_event_invalid` rather
 than leaking an untyped adapter exception. Runtime command errors remain ordinary terminal exits and do not
-trigger fallback.
+change execution boundary.
 
 The broker is shared across model-specific runtime generations in the server. A config reload or model switch
 therefore does not invalidate a live resource. Standalone runtimes own their broker and close its resources when
@@ -176,9 +175,9 @@ selects whether the host environment is considered, `IncludeOnly` and `Exclude` 
 values, and `Set` applies authoritative overrides. Microsandbox guests continue to receive only explicitly
 projected guest environment values.
 
-The model prompt publishes separate local and sandbox-preferred execution targets. Tool callers must choose the
-declared shell dialect before producing a script. Sandbox-preferred shell tools normally target the Linux
-`posix-sh` environment; PowerShell requests require a compatible local backend and the normal fallback policy.
+The model prompt publishes separate local and sandbox execution targets. Tool callers must choose the declared
+shell dialect before producing a script. Sandbox shell tools normally target the Linux `posix-sh` environment;
+PowerShell requests require an explicitly selected compatible local backend.
 
 ## Patch policy
 
@@ -191,6 +190,6 @@ execution environment's atomic write implementation and workspace boundary polic
 
 Third-party tools use MCP rather than a private plugin-process wire protocol. Plugin manifests bind a tool to an
 explicit MCP server and tool name; the runtime validates the declared lifecycle before dispatch. Stdio MCP servers
-inherit the same execution policy and fallback approval boundary as other persistent processes. Host-native tools
-use named capabilities, while interactive shell sessions use the execution-resource broker and its cursor,
+inherit the same explicit execution-target policy as other persistent processes. Host-native tools use named
+capabilities, while interactive shell sessions use the execution-resource broker and its cursor,
 ownership, input, resize, signal, and bounded-replay contracts.

@@ -10,16 +10,18 @@ import { rawPathSegment } from "./ModelHttpClient.js";
 import { shouldSendMaxOutputTokens } from "./ModelPayloadOptions.js";
 import { projectOpenAiCompatibleTextMessages } from "./OpenAiCompatibleMessageProjector.js";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
+import { ModelUsageNumberWireSchema, projectModelUsageNumber } from "./ModelUsageWireSchema.js";
 
 const GoogleUsageSchema = z
   .object({
-    promptTokenCount: z.number().optional(),
-    candidatesTokenCount: z.number().optional(),
-    totalTokenCount: z.number().optional(),
-    cachedContentTokenCount: z.number().optional(),
-    thoughtsTokenCount: z.number().optional(),
+    promptTokenCount: ModelUsageNumberWireSchema,
+    candidatesTokenCount: ModelUsageNumberWireSchema,
+    totalTokenCount: ModelUsageNumberWireSchema,
+    cachedContentTokenCount: ModelUsageNumberWireSchema,
+    thoughtsTokenCount: ModelUsageNumberWireSchema,
   })
-  .passthrough();
+  .passthrough()
+  .nullish();
 
 const GooglePartSchema = z
   .object({
@@ -43,7 +45,7 @@ const GoogleGenerateContentBodySchema = z
           .passthrough(),
       )
       .optional(),
-    usageMetadata: GoogleUsageSchema.optional(),
+    usageMetadata: GoogleUsageSchema,
   })
   .passthrough();
 
@@ -118,18 +120,19 @@ export class GoogleGenerateContentEndpoint implements TextGenerationEndpoint {
   }
 }
 
-function projectGoogleUsage(usage: z.infer<typeof GoogleUsageSchema> | undefined): AgentModelUsageValue | undefined {
+function projectGoogleUsage(usage: z.infer<typeof GoogleUsageSchema>): AgentModelUsageValue | undefined {
   if (!usage) return undefined;
-  const cacheReadTokens = usage.cachedContentTokenCount;
-  const thoughtsTokens = usage.thoughtsTokenCount;
+  const cacheReadTokens = projectModelUsageNumber(usage.cachedContentTokenCount);
+  const thoughtsTokens = projectModelUsageNumber(usage.thoughtsTokenCount);
+  const promptTokens = projectModelUsageNumber(usage.promptTokenCount);
+  const candidateTokens = projectModelUsageNumber(usage.candidatesTokenCount);
   return createProviderReportedUsage({
-    inputTokens:
-      usage.promptTokenCount === undefined ? undefined : Math.max(0, usage.promptTokenCount - (cacheReadTokens ?? 0)),
+    inputTokens: promptTokens === undefined ? undefined : Math.max(0, promptTokens - (cacheReadTokens ?? 0)),
     outputTokens:
-      usage.candidatesTokenCount === undefined && thoughtsTokens === undefined
+      candidateTokens === undefined && thoughtsTokens === undefined
         ? undefined
-        : (usage.candidatesTokenCount ?? 0) + (thoughtsTokens ?? 0),
-    totalTokens: usage.totalTokenCount,
+        : (candidateTokens ?? 0) + (thoughtsTokens ?? 0),
+    totalTokens: projectModelUsageNumber(usage.totalTokenCount),
     cacheReadTokens,
     reasoningTokens: thoughtsTokens,
   });

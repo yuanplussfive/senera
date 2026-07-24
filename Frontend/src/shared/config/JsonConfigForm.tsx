@@ -172,7 +172,7 @@ function JsonFieldControl({
           <div className={cn("min-w-0 text-[13px] font-medium text-ink-900", wide && "text-[13.5px]")}>
             {field.label}
           </div>
-          <ConfigFieldRequirementLabel required={field.required} type={field.type} />
+          <ConfigFieldRequirementLabel required={field.required} />
         </div>
         {field.description ? <p className="mt-1 text-[12px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>

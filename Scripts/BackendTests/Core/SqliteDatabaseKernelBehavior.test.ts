@@ -3,13 +3,16 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, test } from "vitest";
+import { AgentConfigDatabaseContract } from "../../../Source/AgentSystem/Config/AgentConfigSqlSchema.js";
 import { AgentSqliteDatabaseKernel } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseKernel.js";
-import { defineAgentSqliteMigration } from "../../../Source/AgentSystem/Database/AgentSqliteMigration.js";
+import type { AgentSqliteStoreContract } from "../../../Source/AgentSystem/Database/AgentSqliteStoreContract.js";
 import {
   AgentSqliteMigrationError,
   AgentSqliteMigrationErrorCodes,
-  runAgentSqliteMigrations,
 } from "../../../Source/AgentSystem/Database/AgentSqliteMigrationRunner.js";
+import { AgentMemoryDatabaseContract } from "../../../Source/AgentSystem/Memory/AgentMemorySqlSchema.js";
+import { AgentSessionDatabaseContract } from "../../../Source/AgentSystem/SessionPersistence/AgentSessionSqlSchema.js";
+import { AgentToolSearchLearningStoreContract } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemorySqlSchema.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -20,96 +23,192 @@ afterEach(() => {
 });
 
 describe("SQLite database kernel", () => {
-  test("opens an absolute database path and applies migrations exactly once", () => {
-    const databasePath = temporaryDatabasePath("nested", "kernel.sqlite");
-    const migrations = [
-      migration(1, "create_records", "CREATE TABLE records (id INTEGER PRIMARY KEY, value TEXT NOT NULL) STRICT;"),
-      migration(2, "seed_record", "INSERT INTO records (id, value) VALUES (1, 'seed');"),
-    ];
+  test("adopts the declared configuration baseline and migrates it without losing revisions", () => {
+    const databasePath = temporaryDatabasePath("config.sqlite");
+    const legacy = new Database(databasePath);
+    legacy.exec(AgentConfigDatabaseContract.migrations[0].sql);
+    legacy
+      .prepare("INSERT INTO config_revisions (revision, config_json, source, created_at) VALUES (?, ?, ?, ?)")
+      .run(1, '{"Server":{"Port":8787}}', "seed", "2026-07-23T00:00:00.000Z");
+    legacy.close();
 
-    const first = new AgentSqliteDatabaseKernel({ databasePath, migrations });
-    expect(first.databasePath).toBe(path.resolve(databasePath));
-    expect(first.inspectHealth()).toEqual({ integrity: "ok", foreignKeyViolations: [] });
-    first.close();
-
-    const second = new AgentSqliteDatabaseKernel({ databasePath, migrations });
-    const count = second.connection.prepare<[], { count: number }>("SELECT COUNT(*) AS count FROM records").get();
-    const ledger = second.connection.prepare("SELECT version, name FROM schema_migrations ORDER BY version").all();
-    expect(count?.count).toBe(1);
-    expect(ledger).toEqual([
-      { version: 1, name: "create_records" },
-      { version: 2, name: "seed_record" },
-    ]);
-    second.close();
+    withDatabaseKernel(databasePath, AgentConfigDatabaseContract, (kernel) => {
+      expect(kernel.connection.prepare("SELECT revision FROM config_revisions").all()).toEqual([{ revision: 1 }]);
+      expect(userTable(kernel.connection, "config_metadata")).toBe(false);
+      expect(recordedVersions(kernel.connection)).toEqual(declaredVersions(AgentConfigDatabaseContract));
+    });
   });
 
-  test("fails closed when an applied migration changes", () => {
-    const databasePath = temporaryDatabasePath("drift.sqlite");
-    const original = migration(1, "create_records", "CREATE TABLE records (id INTEGER PRIMARY KEY) STRICT;");
-    new AgentSqliteDatabaseKernel({ databasePath, migrations: [original] }).close();
+  test("adopts the declared session baseline then applies all later structure migrations", () => {
+    const databasePath = temporaryDatabasePath("sessions.sqlite");
+    const legacy = new Database(databasePath);
+    legacy.exec(AgentSessionDatabaseContract.migrations[0].sql);
+    legacy
+      .prepare(
+        "INSERT INTO sessions (id, title, status, created_at, updated_at, active_request_id, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("session-1", "Saved session", "idle", "2026-07-23T00:00:00.000Z", "2026-07-23T00:00:00.000Z", null, "{}");
+    legacy.close();
 
-    const changed = migration(1, "create_records", "CREATE TABLE records (id INTEGER PRIMARY KEY, value TEXT) STRICT;");
-    expect(() => new AgentSqliteDatabaseKernel({ databasePath, migrations: [changed] })).toThrowError(
-      expect.objectContaining<Partial<AgentSqliteMigrationError>>({ code: AgentSqliteMigrationErrorCodes.Drift }),
-    );
+    withDatabaseKernel(databasePath, AgentSessionDatabaseContract, (kernel) => {
+      expect(kernel.connection.prepare("SELECT id, title FROM sessions").all()).toEqual([
+        { id: "session-1", title: "Saved session" },
+      ]);
+      expect(columnNames(kernel.connection, "run_events")).toEqual(expect.arrayContaining(["event_id", "reliability"]));
+      expect(userTable(kernel.connection, "session_history_mutations")).toBe(true);
+      expect(userTable(kernel.connection, "turn_preparations")).toBe(true);
+      expect(userTable(kernel.connection, "event_outbox")).toBe(true);
+      expect(recordedVersions(kernel.connection)).toEqual(declaredVersions(AgentSessionDatabaseContract));
+    });
   });
 
-  test("rolls back the schema and ledger when a migration fails", () => {
-    const databasePath = temporaryDatabasePath("rollback.sqlite");
-    const database = new Database(databasePath);
-    const migrations = [
-      migration(1, "create_records", "CREATE TABLE records (id INTEGER PRIMARY KEY) STRICT;"),
-      migration(2, "invalid_change", "ALTER TABLE missing_table ADD COLUMN value TEXT;"),
-    ];
+  test("adopts the declared memory baseline and applies subsequent migrations", () => {
+    const databasePath = temporaryDatabasePath("memory.sqlite");
+    const legacy = new Database(databasePath);
+    legacy.exec(AgentMemoryDatabaseContract.migrations[0].sql);
+    legacy.close();
 
-    expect(() => runAgentSqliteMigrations(database, migrations)).toThrow();
-    const tables = database
-      .prepare<[], { name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-      .all();
-    expect(tables).toEqual([]);
-    database.close();
+    withDatabaseKernel(databasePath, AgentMemoryDatabaseContract, (kernel) => {
+      expect(userTable(kernel.connection, "memory_learning_jobs")).toBe(true);
+      expect(columnNames(kernel.connection, "memory_observations")).toEqual(expect.arrayContaining(["write_sequence"]));
+      expect(recordedVersions(kernel.connection)).toEqual(declaredVersions(AgentMemoryDatabaseContract));
+    });
   });
 
-  test("rejects non-contiguous migration plans before changing the database", () => {
-    const databasePath = temporaryDatabasePath("invalid-plan.sqlite");
+  test("rebuilds only the declared stale derived schema", () => {
+    const databasePath = temporaryDatabasePath("tool-search.sqlite");
+    const legacy = new Database(databasePath);
+    legacy.exec(AgentToolSearchLearningStoreContract.legacySnapshots[0].snapshot);
+    legacy
+      .prepare(
+        "INSERT INTO tool_search_episodes (query, query_tokens, planner_tags, candidates, chosen_tools, outcome, calls, final_score, final_outcome, project_id, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("old query", "[]", "[]", "[]", "[]", "success", "[]", 1, "{}", "project", 1);
+    legacy.close();
+
+    withDatabaseKernel(databasePath, AgentToolSearchLearningStoreContract, (kernel) => {
+      expect(columnNames(kernel.connection, "tool_search_episodes")).toEqual(
+        expect.arrayContaining(["learned_keywords"]),
+      );
+      expect(kernel.connection.prepare("SELECT COUNT(*) AS count FROM tool_search_episodes").get()).toEqual({
+        count: 0,
+      });
+      expect(recordedVersions(kernel.connection)).toEqual(declaredVersions(AgentToolSearchLearningStoreContract));
+    });
+  });
+
+  test("rebuilds an unrecognized authoritative database into its declared current contract", () => {
+    const databasePath = temporaryDatabasePath("unknown.sqlite");
+    const unknown = new Database(databasePath);
+    unknown.exec("CREATE TABLE unrelated_records (id INTEGER PRIMARY KEY) STRICT;");
+    unknown.close();
+
+    withDatabaseKernel(databasePath, AgentConfigDatabaseContract, (kernel) => {
+      expect(userTable(kernel.connection, "unrelated_records")).toBe(false);
+      expect(userTable(kernel.connection, "config_revisions")).toBe(true);
+      expect(recordedVersions(kernel.connection)).toEqual(declaredVersions(AgentConfigDatabaseContract));
+    });
+  });
+
+  test("rebuilds a manually changed authoritative schema after validating a replacement", () => {
+    const databasePath = temporaryDatabasePath("changed-config.sqlite");
+    const initial = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
+    initial.connection
+      .prepare("INSERT INTO config_revisions (revision, config_json, source, created_at) VALUES (?, ?, ?, ?)")
+      .run(1, "{}", "seed", "2026-07-23T00:00:00.000Z");
+    initial.close();
+
+    const changed = new Database(databasePath);
+    changed.exec("ALTER TABLE config_revisions ADD COLUMN unexpected_value TEXT;");
+    changed.close();
+
+    const rebuilt = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
+    expect(columnNames(rebuilt.connection, "config_revisions")).not.toContain("unexpected_value");
+    expect(rebuilt.connection.prepare("SELECT COUNT(*) AS count FROM config_revisions").get()).toEqual({ count: 0 });
+    rebuilt.close();
+  });
+
+  test("rejects an unrecognized derived database instead of deleting an arbitrary SQLite file", () => {
+    const databasePath = temporaryDatabasePath("unknown-derived.sqlite");
+    const unknown = new Database(databasePath);
+    unknown.exec("CREATE TABLE unrelated_records (id INTEGER PRIMARY KEY) STRICT;");
+    unknown.close();
+
     expect(
-      () => new AgentSqliteDatabaseKernel({ databasePath, migrations: [migration(2, "late", "SELECT 1;")] }),
+      () => new AgentSqliteDatabaseKernel({ databasePath, contract: AgentToolSearchLearningStoreContract }),
     ).toThrowError(
       expect.objectContaining<Partial<AgentSqliteMigrationError>>({
-        code: AgentSqliteMigrationErrorCodes.InvalidPlan,
+        code: AgentSqliteMigrationErrorCodes.UntrackedDatabase,
       }),
     );
   });
 
-  test("adopts a legacy database without rewriting its records", () => {
-    const databasePath = temporaryDatabasePath("legacy.sqlite");
-    const legacy = new Database(databasePath);
-    legacy.exec("CREATE TABLE records (id INTEGER PRIMARY KEY, value TEXT NOT NULL) STRICT;");
-    legacy.prepare("INSERT INTO records (id, value) VALUES (?, ?)").run(7, "preserved");
-    legacy.close();
+  test("rejects an explicitly identified different store instead of rebuilding over it", () => {
+    const databasePath = temporaryDatabasePath("other-store.sqlite");
+    const toolStore = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentToolSearchLearningStoreContract });
+    toolStore.close();
 
-    const kernel = new AgentSqliteDatabaseKernel({
-      databasePath,
-      migrations: [
-        migration(
-          1,
-          "records_baseline",
-          "CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY, value TEXT NOT NULL) STRICT;",
-        ),
-      ],
-    });
-    expect(kernel.connection.prepare("SELECT id, value FROM records").all()).toEqual([{ id: 7, value: "preserved" }]);
-    expect(kernel.connection.prepare("SELECT version FROM schema_migrations").all()).toEqual([{ version: 1 }]);
-    kernel.close();
+    expect(() => new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract })).toThrowError(
+      expect.objectContaining<Partial<AgentSqliteMigrationError>>({
+        code: AgentSqliteMigrationErrorCodes.ContractIdentityMismatch,
+      }),
+    );
+
+    const unchanged = new Database(databasePath);
+    expect(userTable(unchanged, "tool_search_episodes")).toBe(true);
+    expect(userTable(unchanged, "config_revisions")).toBe(false);
+    unchanged.close();
+  });
+
+  test("preserves a current derived database when its immutable contract has not changed", () => {
+    const databasePath = temporaryDatabasePath("current-tool-search.sqlite");
+    const first = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentToolSearchLearningStoreContract });
+    first.connection
+      .prepare(
+        "INSERT INTO tool_search_episodes (query, query_tokens, planner_tags, candidates, chosen_tools, learned_keywords, outcome, calls, final_score, final_outcome, project_id, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("query", "[]", "[]", "[]", "[]", "[]", "success", "[]", 1, "{}", "project", 1);
+    first.close();
+
+    const reopened = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentToolSearchLearningStoreContract });
+    expect(reopened.connection.prepare("SELECT query FROM tool_search_episodes").all()).toEqual([{ query: "query" }]);
+    reopened.close();
   });
 });
 
-function migration(version: number, name: string, sql: string) {
-  return defineAgentSqliteMigration({ version, name, sql });
+function recordedVersions(database: Database.Database): Array<{ version: number }> {
+  return database.prepare("SELECT version FROM __senera_schema_migrations ORDER BY version").all() as Array<{
+    version: number;
+  }>;
 }
 
-function temporaryDatabasePath(...segments: string[]): string {
+function declaredVersions(contract: AgentSqliteStoreContract): Array<{ version: number }> {
+  return contract.migrations.map(({ version }) => ({ version }));
+}
+
+function withDatabaseKernel(
+  databasePath: string,
+  contract: AgentSqliteStoreContract,
+  inspect: (kernel: AgentSqliteDatabaseKernel) => void,
+): void {
+  const kernel = new AgentSqliteDatabaseKernel({ databasePath, contract });
+  try {
+    inspect(kernel);
+  } finally {
+    kernel.close();
+  }
+}
+
+function userTable(database: Database.Database, tableName: string): boolean {
+  return Boolean(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(tableName));
+}
+
+function columnNames(database: Database.Database, tableName: string): string[] {
+  return (database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>).map(({ name }) => name);
+}
+
+function temporaryDatabasePath(fileName: string): string {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "senera-sqlite-kernel-"));
   temporaryDirectories.push(directory);
-  return path.join(directory, ...segments);
+  return path.join(directory, fileName);
 }
