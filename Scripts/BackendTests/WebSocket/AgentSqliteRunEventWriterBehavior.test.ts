@@ -17,7 +17,7 @@ describe("SQLite run event writer behavior", () => {
     const directory = createTemporaryDirectory("senera-run-event-writer");
     const databasePath = path.join(directory, "sessions.db");
     const repository = new SqliteSessionRepository(databasePath);
-    const writer = new AgentSqliteRunEventWriter({ databasePath, drainBatchSize: 4, closeTimeoutMs: 500 });
+    const writer = new AgentSqliteRunEventWriter({ databasePath, drainBatchSize: 4 });
     try {
       repository.upsertSession({
         id: "session-batched-events",
@@ -62,7 +62,7 @@ describe("SQLite run event writer behavior", () => {
     });
     const events = Array.from({ length: 9 }, (_, index) => createEvent(index));
     seedPendingOutbox(databasePath, events);
-    const writer = new AgentSqliteRunEventWriter({ databasePath, drainBatchSize: 4, closeTimeoutMs: 500 });
+    const writer = new AgentSqliteRunEventWriter({ databasePath, drainBatchSize: 4 });
     try {
       await withWriterDeadline(writer.flush(), writer, 2_000);
 
@@ -87,7 +87,7 @@ describe("SQLite run event writer behavior", () => {
       conversation: [],
     });
     seedCommittedOutbox(databasePath, createEvent(0));
-    const writer = new AgentSqliteRunEventWriter({ databasePath, committedRetentionMs: 1, closeTimeoutMs: 500 });
+    const writer = new AgentSqliteRunEventWriter({ databasePath, committedRetentionMs: 1 });
     try {
       await withWriterDeadline(writer.flush(), writer, 2_000);
       expect(readOutboxStateCounts(databasePath)).toEqual([]);
@@ -102,7 +102,7 @@ describe("SQLite run event writer behavior", () => {
     const directory = createTemporaryDirectory("senera-run-event-maintenance-lock");
     const databasePath = path.join(directory, "sessions.db");
     const repository = new SqliteSessionRepository(databasePath);
-    const writer = new AgentSqliteRunEventWriter({ databasePath, closeTimeoutMs: 1_000 });
+    const writer = new AgentSqliteRunEventWriter({ databasePath });
     const maintenance = new Database(databasePath);
     try {
       repository.upsertSession({

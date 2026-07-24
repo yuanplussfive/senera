@@ -88,6 +88,7 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
   private readonly pending = new Map<number, PendingRequest>();
   private restartTimer?: NodeJS.Timeout;
   private closePromise?: Promise<void>;
+  private shutdownRequestId?: number;
   private committedBatches = 0;
   private readonly committedEventWatermarks: Record<string, number> = {};
   private failedBatches = 0;
@@ -164,7 +165,11 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
     worker.on("message", (message: WorkerResponse) => this.handleResponse(message));
     worker.on("error", (error) => this.handleWorkerFailure(error));
     worker.on("exit", (code) => {
-      if (this.state !== AgentEventPersistenceStates.Draining && this.state !== AgentEventPersistenceStates.Stopped) {
+      if (this.state === AgentEventPersistenceStates.Draining) {
+        this.handleWorkerShutdownExit(code);
+        return;
+      }
+      if (this.state !== AgentEventPersistenceStates.Stopped) {
         this.handleWorkerFailure(new Error(`SQLite event writer worker exited with code ${code}.`));
       }
     });
@@ -253,20 +258,34 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
       this.rejectPending(new Error("事件持久化 writer 没有可用 Worker。"));
       return;
     }
+    const shutdownRequestId = this.nextId();
+    this.shutdownRequestId = shutdownRequestId;
     try {
-      await Promise.race([
-        this.send({ type: "shutdown", requestId: this.nextId() }),
-        new Promise<never>((_, reject) => {
-          const timer = setTimeout(() => reject(new Error("事件持久化 writer 关闭超时。")), this.closeTimeoutMs);
-          timer.unref();
-        }),
-      ]);
+      await withDeadline(
+        this.send({ type: "shutdown", requestId: shutdownRequestId }),
+        this.closeTimeoutMs,
+        "事件持久化 writer 关闭超时。",
+      );
     } finally {
+      this.shutdownRequestId = undefined;
       await worker.terminate();
       this.worker = undefined;
       this.state = AgentEventPersistenceStates.Stopped;
       this.rejectPending(new Error("事件持久化 writer 在关闭前仍有未完成请求。"));
     }
+  }
+
+  private handleWorkerShutdownExit(code: number): void {
+    const requestId = this.shutdownRequestId;
+    if (requestId === undefined) return;
+    const pending = this.pending.get(requestId);
+    if (!pending) return;
+    this.pending.delete(requestId);
+    if (code === 0) {
+      pending.resolve();
+      return;
+    }
+    pending.reject(new Error(`SQLite event writer worker exited with code ${code} during shutdown.`));
   }
 
   private rejectPending(error: Error): void {
@@ -306,4 +325,19 @@ function createError(error: { readonly name: string; readonly message: string; r
   result.name = error.name;
   if (error.code) Object.assign(result, { code: error.code });
   return result;
+}
+
+async function withDeadline<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+        timer.unref();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
