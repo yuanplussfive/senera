@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.8.0](https://github.com/yuanplussfive/senera/compare/v1.7.0...v1.8.0) (2026-07-24)
+
+
+### 新增功能
+
+* **sandbox:** distribute versioned runtime bundles ([#57](https://github.com/yuanplussfive/senera/issues/57)) ([b29da43](https://github.com/yuanplussfive/senera/commit/b29da4305daf2d113f33c4a9a6f13af112e7f635))
+
 ## [1.7.0](https://github.com/yuanplussfive/senera/compare/v1.6.1...v1.7.0) (2026-07-24)
 
 
