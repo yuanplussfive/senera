@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.8.2](https://github.com/yuanplussfive/senera/compare/v1.8.1...v1.8.2) (2026-07-24)
+
+
+### 问题修复
+
+* **sandbox:** normalize release bundle images ([#61](https://github.com/yuanplussfive/senera/issues/61)) ([61216ed](https://github.com/yuanplussfive/senera/commit/61216ed0015b856b0f12826dd6cc1406aac78c94))
+
 ## [1.8.1](https://github.com/yuanplussfive/senera/compare/v1.8.0...v1.8.1) (2026-07-24)
 
 
