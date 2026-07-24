@@ -75,7 +75,6 @@
   "plugin.skillRecommendedToolMissing": "{member} 的 RecommendedTools 引用了未声明工具：{toolName}",
   "plugin.manifestInvalid": "插件声明无效：{manifestPath}",
   "rootCommand.policyActionMismatch": "RootCommand policy 与行动不匹配：{policyAction} != {decisionAction}",
-  "sandbox.bundleImageRequired": "导出 sandbox bundle 前必须至少准备一个镜像。",
   "sandbox.configured.detail.readOnlyWorkspace": "默认使用只读工作区挂载。",
   "sandbox.configured.detail.sandboxNetworkDenied": "默认禁用沙箱网络。",
   "sandbox.configured.detail.uacNotUsed": "不会再触发旧的 Windows UAC 安装或修复流程。",

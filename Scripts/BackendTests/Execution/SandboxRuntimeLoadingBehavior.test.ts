@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
-import type { AgentSandboxBundleInstallation } from "../../../Source/AgentSystem/Sandbox/AgentSandboxBundleInstaller.js";
+import type { AgentSandboxArchiveInstallation } from "../../../Source/AgentSystem/Sandbox/AgentSandboxArchiveInstaller.js";
 import {
   prepareAgentSandboxRuntime,
   resolveAgentSandboxRuntimePaths,
@@ -80,27 +80,29 @@ describe("sandbox runtime loading", () => {
     const pullPolicies: string[] = [];
     const sourceImage = "registry.example/runtime@sha256:bundle";
     const runtimeImage = "senera.local/test-runtime:1.0.1-x64";
-    const bundleInstallation = {
-      bundlePath: path.join(workspaceRoot, "bundle.tar.zst"),
+    const archiveInstallation = {
+      archivePath: path.join(workspaceRoot, "image.oci.tar"),
       imported: true,
       manifest: {
-        formatVersion: 2,
+        formatVersion: 3,
         distributionId: "test",
-        bundleVersion: "1.0.0",
+        archiveVersion: "1.0.2",
         productVersion: "1.2.3",
         microsandboxVersion: "0.6.4",
         target: "x64",
         sourceImage,
         runtimeImage,
         asset: {
-          fileName: "bundle.tar.zst",
-          url: "https://example.test/bundle.tar.zst",
+          format: "oci",
+          mediaType: "application/vnd.oci.image.layout.v1.tar",
+          fileName: "image.oci.tar",
+          url: "https://example.test/image.oci.tar",
           sizeBytes: 1,
           sha256: "0".repeat(64),
         },
       },
-    } satisfies AgentSandboxBundleInstallation;
-    const bundleInstaller = vi.fn(async () => bundleInstallation);
+    } satisfies AgentSandboxArchiveInstallation;
+    const archiveInstaller = vi.fn(async () => archiveInstallation);
     try {
       const prepared = await prepareAgentSandboxRuntime({
         workspaceRoot,
@@ -111,10 +113,10 @@ describe("sandbox runtime loading", () => {
         },
         productVersion: "1.2.3",
         microsandbox: createMicrosandbox(createdImages, pullPolicies),
-        bundleInstaller,
+        archiveInstaller,
       });
 
-      expect(bundleInstaller).toHaveBeenCalledOnce();
+      expect(archiveInstaller).toHaveBeenCalledOnce();
       expect(prepared.preparedImages).toEqual([runtimeImage]);
       expect(createdImages).toEqual([runtimeImage]);
       expect(pullPolicies).toEqual(["never"]);
@@ -176,15 +178,8 @@ function sandboxConfig(baseDir: string, images: string[] = ["alpine"]): Resolved
 
 function createMicrosandbox(createdImages: string[] = [], pullPolicies: string[] = []): MicrosandboxModule {
   return {
-    Snapshot: {
-      import: async () => undefined,
-      export: async () => undefined,
-    },
     Sandbox: {
       builder: () => new FakeSandboxBuilder(createdImages, pullPolicies),
-      get: async () => {
-        throw new Error("snapshot export was not expected");
-      },
     },
   };
 }

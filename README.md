@@ -131,7 +131,7 @@ docker compose up -d --pull always
 
 容器会在每次启动时同步 Compose 声明的管理员资料：未变化时不重写，用户名、显示名或密码变化时更新账户；磁盘只保存 `scrypt` 密码哈希。服务通过 `8787:8787` 发布，随后可打开 `http://localhost:8787` 或已加入 Origin 白名单的 IP 地址。运行数据默认保存在 Docker volume 里。部署、日志、非 root 容器权限和沙箱说明见 [部署与运维](docs/Operations.md)，版本变化见 [更新记录](CHANGELOG.md)。
 
-Docker 始终使用 KVM microVM OS Sandbox。它会在启动前下载与 Senera 版本匹配的官方 Snapshot Bundle，校验清单、大小和 SHA-256 后离线导入并启动一次受限 microVM；任何步骤失败都会停止容器，绝不会切换为本机执行。没有 KVM 的 Docker 主机不满足 Senera 容器部署要求。完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
+Docker 始终使用 KVM microVM OS Sandbox。它会在启动前下载与 Senera 版本匹配的官方 OCI 镜像归档，校验清单、媒体类型、大小和 SHA-256 后通过 microsandbox 官方 `image load` 离线导入，并以 `pullPolicy("never")` 启动一次受限 microVM；任何步骤失败都会停止容器，绝不会切换为本机执行或访问其他镜像源。没有 KVM 的 Docker 主机不满足 Senera 容器部署要求。完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
 
 ### 本地开发
 

@@ -20,8 +20,8 @@ export interface ProductReleaseInfo {
   desktopArtifactPath: string;
   containerVersionTag: string;
   containerMinorTag: string;
-  sandboxBundleArtifactName: string;
-  sandboxBundleManifestArtifactName: string;
+  sandboxArchiveArtifactName: string;
+  sandboxArchiveManifestArtifactName: string;
   sourceSha: string;
 }
 
@@ -68,8 +68,8 @@ export function createProductReleaseInfo(input: {
     desktopArtifactPath: `Release/SeneraSetup-${version}.exe`,
     containerVersionTag: version,
     containerMinorTag: `${parsedVersion.major}.${parsedVersion.minor}`,
-    sandboxBundleArtifactName: sandboxTarget.bundleAssetName,
-    sandboxBundleManifestArtifactName: sandboxDistribution.release.manifestAssetName,
+    sandboxArchiveArtifactName: sandboxTarget.archive.assetName,
+    sandboxArchiveManifestArtifactName: sandboxDistribution.release.manifestAssetName,
     sourceSha: input.sourceSha ?? "",
   };
 }
@@ -94,8 +94,8 @@ export function writeGitHubOutputs(info: ProductReleaseInfo, env: NodeJS.Process
     desktop_artifact_path: info.desktopArtifactPath,
     container_version_tag: info.containerVersionTag,
     container_minor_tag: info.containerMinorTag,
-    sandbox_bundle_artifact_name: info.sandboxBundleArtifactName,
-    sandbox_bundle_manifest_artifact_name: info.sandboxBundleManifestArtifactName,
+    sandbox_archive_artifact_name: info.sandboxArchiveArtifactName,
+    sandbox_archive_manifest_artifact_name: info.sandboxArchiveManifestArtifactName,
     source_sha: info.sourceSha,
   };
 

@@ -51,6 +51,7 @@ import {
   SeneraMicrosandboxDynamicSdkAdapter,
   type SeneraMicrosandboxModuleLoader,
 } from "../Source/AgentSystem/Execution/SeneraMicrosandboxSdkAdapter.js";
+import type { AgentMicrosandboxPackageEntryResolver } from "../Source/AgentSystem/Sandbox/AgentMicrosandboxCli.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
@@ -67,6 +68,7 @@ export interface SeneraServerOptions {
    */
   sandboxRuntimePrepared?: boolean;
   microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
+  microsandboxPackageEntryResolver?: AgentMicrosandboxPackageEntryResolver;
 }
 
 export interface SeneraServerHandle {
@@ -284,6 +286,7 @@ export function startSeneraServer(options: SeneraServerOptions = {}): SeneraServ
     logger,
     prepared: options.sandboxRuntimePrepared ?? false,
     microsandboxModuleLoader: options.microsandboxModuleLoader,
+    microsandboxPackageEntryResolver: options.microsandboxPackageEntryResolver,
   });
   if (configSource.kind === "json" && resolveServerConfig(initialConfig).HotReload) {
     const jsonConfigPath = configSource.configPath;
@@ -362,6 +365,7 @@ function startSandboxRuntimePreparation(input: {
   logger: AgentLogger;
   prepared: boolean;
   microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
+  microsandboxPackageEntryResolver?: AgentMicrosandboxPackageEntryResolver;
 }): void {
   const sandboxRuntimeConfig = resolveSandboxRuntimeConfig(input.config);
   if (!sandboxRuntimeConfig.Enabled) {
@@ -384,6 +388,7 @@ function startSandboxRuntimePreparation(input: {
     .prepare({
       config: sandboxRuntimeConfig,
       microsandboxModuleLoader: input.microsandboxModuleLoader,
+      microsandboxPackageEntryResolver: input.microsandboxPackageEntryResolver,
       log: (message) => input.logger.info("sandbox.runtime.prepare", { message }),
     })
     .then(

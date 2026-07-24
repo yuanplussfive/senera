@@ -124,8 +124,8 @@ jobs:
       desktop_artifact_path: ${{ steps.release.outputs.desktop_artifact_path }}
       container_version_tag: ${{ steps.release.outputs.container_version_tag }}
       container_minor_tag: ${{ steps.release.outputs.container_minor_tag }}
-      sandbox_bundle_artifact_name: ${{ steps.release.outputs.sandbox_bundle_artifact_name }}
-      sandbox_bundle_manifest_artifact_name: ${{ steps.release.outputs.sandbox_bundle_manifest_artifact_name }}
+      sandbox_archive_artifact_name: ${{ steps.release.outputs.sandbox_archive_artifact_name }}
+      sandbox_archive_manifest_artifact_name: ${{ steps.release.outputs.sandbox_archive_manifest_artifact_name }}
       source_sha: ${{ steps.source.outputs.sha }}
     env:
       RELEASE_TAG: ${{ inputs.release_tag || needs.release-please.outputs.tag_name }}
@@ -156,8 +156,8 @@ jobs:
           successful_runs="$(gh run list --workflow verify.yml --commit "$SOURCE_SHA" --status success --limit 1 --json databaseId --jq 'length')"
           test "$successful_runs" -ge 1
 
-  sandbox-bundle:
-    name: Build Microsandbox Release Bundle
+  sandbox-archive:
+    name: Build Microsandbox OCI Archive
     needs:
       - metadata
     if: needs.metadata.result == 'success'
@@ -176,23 +176,23 @@ jobs:
           test -c /dev/kvm
           sudo chmod 0666 /dev/kvm
       - run: npm run build
-      - name: Build content-addressed sandbox assets
-        run: node Dist/Build/BuildSandboxBundle.js --output Release/SandboxBundle
+      - name: Build and verify portable sandbox image assets
+        run: node Dist/Build/BuildSandboxImageArchive.js --output Release/SandboxImage
       - uses: actions/upload-artifact@v4
         with:
-          name: senera-sandbox-bundle-${{ needs.metadata.outputs.version }}
+          name: senera-sandbox-image-${{ needs.metadata.outputs.version }}
           path: |
-            Release/SandboxBundle/${{ needs.metadata.outputs.sandbox_bundle_artifact_name }}
-            Release/SandboxBundle/${{ needs.metadata.outputs.sandbox_bundle_manifest_artifact_name }}
+            Release/SandboxImage/${{ needs.metadata.outputs.sandbox_archive_artifact_name }}
+            Release/SandboxImage/${{ needs.metadata.outputs.sandbox_archive_manifest_artifact_name }}
           if-no-files-found: error
       - name: Attach sandbox assets to GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
-          BUNDLE_PATH: Release/SandboxBundle/${{ needs.metadata.outputs.sandbox_bundle_artifact_name }}
-          MANIFEST_PATH: Release/SandboxBundle/${{ needs.metadata.outputs.sandbox_bundle_manifest_artifact_name }}
-        run: gh release upload "$RELEASE_TAG" "$BUNDLE_PATH" "$MANIFEST_PATH" --clobber
+          ARCHIVE_PATH: Release/SandboxImage/${{ needs.metadata.outputs.sandbox_archive_artifact_name }}
+          MANIFEST_PATH: Release/SandboxImage/${{ needs.metadata.outputs.sandbox_archive_manifest_artifact_name }}
+        run: gh release upload "$RELEASE_TAG" "$ARCHIVE_PATH" "$MANIFEST_PATH" --clobber
 
   desktop:
     name: Build Windows Installer
@@ -264,11 +264,11 @@ jobs:
     name: Verify Container Runtime
     needs:
       - metadata
-      - sandbox-bundle
+      - sandbox-archive
       - container-build
     if: >-
       needs.metadata.result == 'success' &&
-      needs.sandbox-bundle.result == 'success' &&
+      needs.sandbox-archive.result == 'success' &&
       needs.container-build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -394,12 +394,12 @@ jobs:
     name: Publish Verified Release
     needs:
       - metadata
-      - sandbox-bundle
+      - sandbox-archive
       - desktop
       - container
     if: >-
       needs.metadata.result == 'success' &&
-      needs.sandbox-bundle.result == 'success' &&
+      needs.sandbox-archive.result == 'success' &&
       needs.desktop.result == 'success' &&
       needs.container.result == 'success'
     runs-on: ubuntu-latest

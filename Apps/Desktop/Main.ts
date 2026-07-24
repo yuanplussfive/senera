@@ -16,7 +16,7 @@ import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibilit
 import { desktopMessage } from "./DesktopMessageCatalog.js";
 import { resolveAgentExternalUrl } from "../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
 import { createCompiledAgentMcpRuntimeModuleResolver } from "../../Source/AgentSystem/Mcp/AgentMcpRuntimeModuleResolver.js";
-import { createDesktopMicrosandboxModuleLoader } from "./DesktopMicrosandboxModuleLoader.js";
+import { createDesktopMicrosandboxRuntimeAccess } from "./DesktopMicrosandboxModuleLoader.js";
 import {
   DesktopMicrosandboxRuntimeSmokeArgument,
   runDesktopMicrosandboxRuntimeSmoke,
@@ -76,6 +76,7 @@ app
     });
     registerDesktopIpc();
     const seedConfig = loadConfigFile(paths.configSeedPath);
+    const microsandboxRuntime = createDesktopMicrosandboxRuntimeAccess(paths.microsandboxRuntimeBridgePath);
     serverHandle = startSeneraServer({
       workspaceRoot: paths.workspaceRoot,
       configSource: {
@@ -87,7 +88,8 @@ app
       runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(paths.resourceRoot),
       runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config, { packaged: app.isPackaged }),
       productVersion: app.getVersion(),
-      microsandboxModuleLoader: createDesktopMicrosandboxModuleLoader(paths.microsandboxRuntimeBridgePath),
+      microsandboxModuleLoader: microsandboxRuntime.moduleLoader,
+      microsandboxPackageEntryResolver: microsandboxRuntime.packageEntryResolver,
     });
     mainWindow = createMainWindow();
     void loadDesktopFrontend(mainWindow, frontendSource);

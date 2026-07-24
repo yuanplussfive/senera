@@ -40,7 +40,7 @@ assert.ok(
 );
 assert.ok(
   dockerServer.includes('{ Kind: "ReleaseBundle" }') && dockerServer.includes("productVersion: ProductVersion"),
-  "Docker deployment must consume the version-matched release bundle without an OCI fallback.",
+  "Docker deployment must consume the version-matched release archive without an OCI registry fallback.",
 );
 assert.ok(
   compose.includes("SENERA_ADMIN_LOGIN_NAME") &&

@@ -10,7 +10,6 @@ import { prepareSeneraTerminalSidecarGuestRuntime } from "./PrepareTerminalSidec
 
 export interface PrepareOptions {
   baseDir?: string;
-  exportBundlePath?: string;
 }
 
 const workspaceRoot = process.cwd();
@@ -30,7 +29,6 @@ export async function prepareSandboxRuntime(
   const prepared = await prepareAgentSandboxRuntime({
     workspaceRoot,
     config,
-    exportBundlePath: options.exportBundlePath,
     microsandbox,
     log: (message) => process.stdout.write(`${message}\n`),
   });
@@ -44,7 +42,6 @@ export async function prepareSandboxRuntime(
 export function readOptions(args: readonly string[]): PrepareOptions {
   return {
     baseDir: readOptionValue(args, "--base-dir"),
-    exportBundlePath: readOptionValue(args, "--export-bundle"),
   };
 }
 
