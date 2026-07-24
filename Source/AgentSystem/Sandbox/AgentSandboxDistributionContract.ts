@@ -19,21 +19,28 @@ const SafeAssetNameSchema = z
   .string()
   .min(1)
   .refine((value) => path.basename(value) === value && value !== "." && value !== "..", "Invalid asset name.");
+const OciArchiveSchema = z
+  .object({
+    format: z.literal("oci"),
+    mediaType: z.literal("application/vnd.oci.image.layout.v1.tar"),
+    assetName: SafeAssetNameSchema,
+  })
+  .strict();
 
 const AgentSandboxDistributionTargetSchema = z
   .object({
     sourceImage: ImmutableOciReferenceSchema,
     runtimeImage: RuntimeOciReferenceSchema,
     probe: SandboxProbeSchema,
-    bundleAssetName: SafeAssetNameSchema,
+    archive: OciArchiveSchema,
   })
   .strict();
 
 export const AgentSandboxDistributionContractSchema = z
   .object({
-    formatVersion: z.literal(2),
+    formatVersion: z.literal(3),
     id: DistributionIdSchema,
-    bundleVersion: StableVersionSchema,
+    archiveVersion: StableVersionSchema,
     microsandboxVersion: StableVersionSchema,
     targets: z.record(TargetIdSchema, AgentSandboxDistributionTargetSchema),
     release: z
@@ -47,7 +54,7 @@ export const AgentSandboxDistributionContractSchema = z
       .object({
         requestTimeoutMs: z.number().int().positive(),
         manifestMaxBytes: z.number().int().positive(),
-        bundleMaxBytes: z.number().int().positive(),
+        archiveMaxBytes: z.number().int().positive(),
       })
       .strict(),
   })
@@ -56,11 +63,11 @@ export const AgentSandboxDistributionContractSchema = z
 export type AgentSandboxDistributionContract = z.infer<typeof AgentSandboxDistributionContractSchema>;
 export type AgentSandboxDistributionTarget = z.infer<typeof AgentSandboxDistributionTargetSchema>;
 
-export const AgentSandboxBundleManifestSchema = z
+export const AgentSandboxArchiveManifestSchema = z
   .object({
-    formatVersion: z.literal(2),
+    formatVersion: z.literal(3),
     distributionId: DistributionIdSchema,
-    bundleVersion: StableVersionSchema,
+    archiveVersion: StableVersionSchema,
     productVersion: StableVersionSchema,
     microsandboxVersion: StableVersionSchema,
     target: TargetIdSchema,
@@ -68,6 +75,8 @@ export const AgentSandboxBundleManifestSchema = z
     runtimeImage: RuntimeOciReferenceSchema,
     asset: z
       .object({
+        format: z.literal("oci"),
+        mediaType: z.literal("application/vnd.oci.image.layout.v1.tar"),
         fileName: SafeAssetNameSchema,
         url: z.url().refine((value) => new URL(value).protocol === "https:", "HTTPS is required."),
         sizeBytes: z.number().int().positive(),
@@ -77,14 +86,14 @@ export const AgentSandboxBundleManifestSchema = z
   })
   .strict();
 
-export type AgentSandboxBundleManifest = z.infer<typeof AgentSandboxBundleManifestSchema>;
+export type AgentSandboxArchiveManifest = z.infer<typeof AgentSandboxArchiveManifestSchema>;
 
 export interface AgentSandboxReleaseLocation {
   targetId: string;
   target: AgentSandboxDistributionTarget;
   releaseTag: string;
   manifestUrl: string;
-  bundleUrl: string;
+  archiveUrl: string;
 }
 
 export function resolveAgentSandboxDistributionTarget(
@@ -93,7 +102,7 @@ export function resolveAgentSandboxDistributionTarget(
 ): AgentSandboxDistributionTarget {
   const target = contract.targets[architecture];
   if (!target) {
-    throw new Error(`Sandbox distribution ${contract.id} does not publish a bundle for ${architecture}.`);
+    throw new Error(`Sandbox distribution ${contract.id} does not publish an image archive for ${architecture}.`);
   }
   return target;
 }
@@ -123,43 +132,47 @@ export function resolveAgentSandboxReleaseLocation(
     target,
     releaseTag,
     manifestUrl: new URL(encodeURIComponent(contract.release.manifestAssetName), releaseRoot).href,
-    bundleUrl: new URL(encodeURIComponent(target.bundleAssetName), releaseRoot).href,
+    archiveUrl: new URL(encodeURIComponent(target.archive.assetName), releaseRoot).href,
   };
 }
 
-export function assertAgentSandboxBundleManifest(
-  manifest: AgentSandboxBundleManifest,
+export function assertAgentSandboxArchiveManifest(
+  manifest: AgentSandboxArchiveManifest,
   contract: AgentSandboxDistributionContract,
   productVersion: string,
   location: AgentSandboxReleaseLocation,
 ): void {
   const expected = {
     distributionId: contract.id,
-    bundleVersion: contract.bundleVersion,
+    archiveVersion: contract.archiveVersion,
     productVersion,
     microsandboxVersion: contract.microsandboxVersion,
     target: location.targetId,
     sourceImage: location.target.sourceImage,
     runtimeImage: location.target.runtimeImage,
-    fileName: location.target.bundleAssetName,
-    url: location.bundleUrl,
+    format: location.target.archive.format,
+    mediaType: location.target.archive.mediaType,
+    fileName: location.target.archive.assetName,
+    url: location.archiveUrl,
   };
   const actual = {
     distributionId: manifest.distributionId,
-    bundleVersion: manifest.bundleVersion,
+    archiveVersion: manifest.archiveVersion,
     productVersion: manifest.productVersion,
     microsandboxVersion: manifest.microsandboxVersion,
     target: manifest.target,
     sourceImage: manifest.sourceImage,
     runtimeImage: manifest.runtimeImage,
+    format: manifest.asset.format,
+    mediaType: manifest.asset.mediaType,
     fileName: manifest.asset.fileName,
     url: manifest.asset.url,
   };
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`Sandbox bundle manifest does not match distribution contract ${contract.id}.`);
+    throw new Error(`Sandbox archive manifest does not match distribution contract ${contract.id}.`);
   }
-  if (manifest.asset.sizeBytes > contract.downloadPolicy.bundleMaxBytes) {
-    throw new Error(`Sandbox bundle exceeds the declared download limit: ${manifest.asset.sizeBytes} bytes.`);
+  if (manifest.asset.sizeBytes > contract.downloadPolicy.archiveMaxBytes) {
+    throw new Error(`Sandbox image archive exceeds the declared download limit: ${manifest.asset.sizeBytes} bytes.`);
   }
 }
 

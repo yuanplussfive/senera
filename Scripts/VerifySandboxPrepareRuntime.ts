@@ -7,15 +7,8 @@ import { SeneraMicrosandboxDefaults } from "../Source/AgentSystem/Execution/Sene
 
 class FakeMicrosandboxModule {
   readonly createdImages: string[] = [];
-  readonly Snapshot = {
-    import: async (_archive: string): Promise<void> => {},
-    export: async (_nameOrPath: string, _out: string): Promise<void> => {},
-  };
   readonly Sandbox = {
     builder: (name: string) => new FakeSandboxBuilder(name, this.createdImages, this.runtimeAvailable),
-    get: async (_name: string) => ({
-      snapshotTo: async (_path: string): Promise<void> => {},
-    }),
   };
 
   constructor(private readonly runtimeAvailable: boolean) {}
@@ -98,7 +91,6 @@ class FakeSandbox {
 
 assert.deepEqual(readOptions([]), {
   baseDir: undefined,
-  exportBundlePath: undefined,
 });
 
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-prepare-"));
@@ -130,6 +122,5 @@ function prepareOptionsFixture(root: string, name: string): PrepareOptions {
   const baseDir = path.join(root, name, "runtime");
   return {
     baseDir,
-    exportBundlePath: undefined,
   };
 }

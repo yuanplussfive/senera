@@ -32,9 +32,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
   } else {
     violations.push(
       ...inspectTextIncludes(smokeJob, `${ReleaseWorkflowLabel} job container-smoke`, [
-        "- sandbox-bundle",
+        "- sandbox-archive",
         "- container-build",
-        "needs.sandbox-bundle.result == 'success'",
+        "needs.sandbox-archive.result == 'success'",
         "timeout-minutes: 5",
         "CONTAINER_HEALTH_TIMEOUT_SECONDS: 180",
         "needs.container-build.outputs.reference }}@${{ needs.container-build.outputs.digest",

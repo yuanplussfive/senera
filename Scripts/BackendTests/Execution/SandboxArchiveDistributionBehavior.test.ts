@@ -1,90 +1,97 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
-import { buildSandboxBundle } from "../../../Build/BuildSandboxBundle.js";
+import { buildSandboxImageArchive } from "../../../Build/BuildSandboxImageArchive.js";
 import type { MicrosandboxDistributionRuntime } from "../../../Build/MicrosandboxDistributionRuntime.js";
-import { installAgentSandboxReleaseBundle } from "../../../Source/AgentSystem/Sandbox/AgentSandboxBundleInstaller.js";
+import { installAgentSandboxReleaseArchive } from "../../../Source/AgentSystem/Sandbox/AgentSandboxArchiveInstaller.js";
 import {
   resolveAgentSandboxReleaseLocation,
   type AgentSandboxDistributionContract,
 } from "../../../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
+import type { AgentMicrosandboxImageArchiveLoader } from "../../../Source/AgentSystem/Sandbox/AgentMicrosandboxCli.js";
 
-const BundleContents = Buffer.from("verified-sandbox-bundle");
+const ArchiveContents = Buffer.from("verified-oci-image-archive");
 
-describe("sandbox bundle distribution", () => {
-  test("downloads, verifies, imports, and then reuses one release bundle without network fallback", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-install-"));
+describe("sandbox OCI image archive distribution", () => {
+  test("downloads, verifies, imports, and then reuses one release archive without registry fallback", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-archive-install-"));
     const contract = distributionContract();
     const location = resolveAgentSandboxReleaseLocation(contract, "1.2.3", "x64");
-    const manifest = bundleManifest(contract, "1.2.3");
+    const manifest = archiveManifest(contract, "1.2.3");
     const requestedUrls: string[] = [];
     const fetchImplementation = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       requestedUrls.push(url);
       if (url === location.manifestUrl) {
-        return new Response(JSON.stringify(manifest), {
+        const content = JSON.stringify(manifest);
+        return new Response(content, {
           status: 200,
-          headers: { "content-length": String(Buffer.byteLength(JSON.stringify(manifest))) },
+          headers: { "content-length": String(Buffer.byteLength(content)) },
         });
       }
-      if (url === location.bundleUrl) {
-        return new Response(BundleContents, {
+      if (url === location.archiveUrl) {
+        return new Response(ArchiveContents, {
           status: 200,
-          headers: { "content-length": String(BundleContents.byteLength) },
+          headers: { "content-length": String(ArchiveContents.byteLength) },
         });
       }
       throw new Error(`Unexpected distribution URL: ${url}`);
     }) as typeof fetch;
-    const importSnapshot = vi.fn(async () => undefined);
+    const loadArchive = vi.fn(async () => undefined);
+    const imageArchive = createImageArchiveApi(loadArchive);
     const stages: string[] = [];
 
     try {
-      const first = await installAgentSandboxReleaseBundle({
+      const first = await installAgentSandboxReleaseArchive({
         baseDir: root,
         productVersion: "1.2.3",
         architecture: "x64",
         contract,
         fetch: fetchImplementation,
-        snapshot: { import: importSnapshot },
+        imageArchive,
         onProgress: ({ stage }) => stages.push(stage),
       });
       expect(first.imported).toBe(true);
-      expect(requestedUrls).toEqual([location.manifestUrl, location.bundleUrl]);
-      expect(importSnapshot).toHaveBeenCalledTimes(1);
-      expect(stages).toEqual(["resolving_bundle", "downloading_bundle", "verifying_bundle", "importing_bundle"]);
+      expect(requestedUrls).toEqual([location.manifestUrl, location.archiveUrl]);
+      expect(loadArchive).toHaveBeenCalledWith({
+        baseDir: root,
+        archivePath: first.archivePath,
+        reference: location.target.runtimeImage,
+      });
+      expect(stages).toEqual(["resolving_archive", "downloading_archive", "verifying_archive", "importing_image"]);
 
       requestedUrls.length = 0;
       stages.length = 0;
-      importSnapshot.mockClear();
-      const second = await installAgentSandboxReleaseBundle({
+      loadArchive.mockClear();
+      const second = await installAgentSandboxReleaseArchive({
         baseDir: root,
         productVersion: "1.2.3",
         architecture: "x64",
         contract,
         fetch: fetchImplementation,
-        snapshot: { import: importSnapshot },
+        imageArchive,
         onProgress: ({ stage }) => stages.push(stage),
       });
       expect(second.imported).toBe(false);
       expect(requestedUrls).toEqual([]);
-      expect(importSnapshot).not.toHaveBeenCalled();
-      expect(stages).toEqual(["resolving_bundle", "verifying_bundle"]);
+      expect(loadArchive).not.toHaveBeenCalled();
+      expect(stages).toEqual(["resolving_archive", "verifying_archive"]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  test("builds a strict manifest and content-addressed bundle from the declared OCI image", async () => {
-    const outputRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-build-"));
+  test("publishes only an OCI archive that starts after its source cache has been removed", async () => {
+    const outputRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-archive-build-"));
     const contract = distributionContract();
     const savedImages: string[] = [];
     const loadedImages: string[] = [];
     const preparedImages: Array<{ reference: string; pullPolicy: string }> = [];
-    const runtime = createBuildRuntime({ savedImages, loadedImages, preparedImages });
+    const runtime = createBuildRuntime({ savedImages, loadedImages, preparedImages, requireCleanImport: true });
     try {
-      const result = await buildSandboxBundle({
+      const result = await buildSandboxImageArchive({
         workspaceRoot: process.cwd(),
         outputRoot,
         productVersion: "1.2.3",
@@ -92,16 +99,19 @@ describe("sandbox bundle distribution", () => {
         contract,
         runtime,
       });
-      expect(await readFile(result.bundlePath)).toEqual(BundleContents);
+      expect(await readFile(result.archivePath)).toEqual(ArchiveContents);
       expect(JSON.parse(await readFile(result.manifestPath, "utf8"))).toEqual(result.manifest);
       expect(result.manifest).toMatchObject({
+        formatVersion: 3,
         distributionId: contract.id,
         productVersion: "1.2.3",
         sourceImage: contract.targets.x64?.sourceImage,
         runtimeImage: contract.targets.x64?.runtimeImage,
         asset: {
-          sizeBytes: BundleContents.byteLength,
-          sha256: createHash("sha256").update(BundleContents).digest("hex"),
+          format: "oci",
+          mediaType: "application/vnd.oci.image.layout.v1.tar",
+          sizeBytes: ArchiveContents.byteLength,
+          sha256: createHash("sha256").update(ArchiveContents).digest("hex"),
         },
       });
       expect(savedImages).toEqual([contract.targets.x64?.sourceImage]);
@@ -109,10 +119,9 @@ describe("sandbox bundle distribution", () => {
       expect(preparedImages).toEqual([
         { reference: contract.targets.x64?.sourceImage, pullPolicy: "if-missing" },
         { reference: contract.targets.x64?.runtimeImage, pullPolicy: "never" },
-        { reference: contract.targets.x64?.runtimeImage, pullPolicy: "never" },
       ]);
       await expect(
-        buildSandboxBundle({
+        buildSandboxImageArchive({
           workspaceRoot: process.cwd(),
           outputRoot,
           productVersion: "1.2.3",
@@ -126,22 +135,22 @@ describe("sandbox bundle distribution", () => {
     }
   });
 
-  test("does not publish a bundle that fails clean-runtime import verification", async () => {
-    const outputRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-rejected-"));
+  test("does not publish an archive that fails clean-runtime load verification", async () => {
+    const outputRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-archive-rejected-"));
     const contract = distributionContract();
     const location = resolveAgentSandboxReleaseLocation(contract, "1.2.3", "x64");
     try {
       await expect(
-        buildSandboxBundle({
+        buildSandboxImageArchive({
           workspaceRoot: process.cwd(),
           outputRoot,
           productVersion: "1.2.3",
           architecture: "x64",
           contract,
-          runtime: createBuildRuntime({ importError: new Error("raw manifest digest mismatch") }),
+          runtime: createBuildRuntime({ loadError: new Error("OCI archive import failed") }),
         }),
-      ).rejects.toThrow("raw manifest digest mismatch");
-      await expect(readFile(path.join(outputRoot, location.target.bundleAssetName))).rejects.toMatchObject({
+      ).rejects.toThrow("OCI archive import failed");
+      await expect(readFile(path.join(outputRoot, location.target.archive.assetName))).rejects.toMatchObject({
         code: "ENOENT",
       });
       await expect(readFile(path.join(outputRoot, contract.release.manifestAssetName))).rejects.toMatchObject({
@@ -155,73 +164,97 @@ describe("sandbox bundle distribution", () => {
 
 function distributionContract(): AgentSandboxDistributionContract {
   return {
-    formatVersion: 2,
+    formatVersion: 3,
     id: "senera-test-runtime",
-    bundleVersion: "1.0.1",
+    archiveVersion: "1.0.2",
     microsandboxVersion: "0.6.4",
     targets: {
       x64: {
         sourceImage: "docker.io/library/node@sha256:8607a9064d4a571140998ae9e52a3b3fcf9cff361d04642d5971e6cd76d39e27",
-        runtimeImage: "senera.local/senera-test-runtime:1.0.1-x64",
+        runtimeImage: "senera.local/senera-test-runtime:1.0.2-x64",
         probe: { command: "node", arguments: ["--version"] },
-        bundleAssetName: "SeneraSandboxBundle-1.0.1-x64.tar.zst",
+        archive: {
+          format: "oci",
+          mediaType: "application/vnd.oci.image.layout.v1.tar",
+          assetName: "SeneraSandboxImage-1.0.2-x64.oci.tar",
+        },
       },
     },
     release: {
       repositoryUrl: "https://example.test/senera",
       tagTemplate: "v{productVersion}",
-      manifestAssetName: "SeneraSandboxBundleManifest.json",
+      manifestAssetName: "SeneraSandboxImageManifest.json",
     },
     downloadPolicy: {
       requestTimeoutMs: 30_000,
       manifestMaxBytes: 65_536,
-      bundleMaxBytes: 1_048_576,
+      archiveMaxBytes: 1_048_576,
     },
   };
 }
 
-function bundleManifest(contract: AgentSandboxDistributionContract, productVersion: string) {
+function archiveManifest(contract: AgentSandboxDistributionContract, productVersion: string) {
   const location = resolveAgentSandboxReleaseLocation(contract, productVersion, "x64");
   return {
-    formatVersion: 2 as const,
+    formatVersion: 3 as const,
     distributionId: contract.id,
-    bundleVersion: contract.bundleVersion,
+    archiveVersion: contract.archiveVersion,
     productVersion,
     microsandboxVersion: contract.microsandboxVersion,
     target: location.targetId,
     sourceImage: location.target.sourceImage,
     runtimeImage: location.target.runtimeImage,
     asset: {
-      fileName: location.target.bundleAssetName,
-      url: location.bundleUrl,
-      sizeBytes: BundleContents.byteLength,
-      sha256: createHash("sha256").update(BundleContents).digest("hex"),
+      format: location.target.archive.format,
+      mediaType: location.target.archive.mediaType,
+      fileName: location.target.archive.assetName,
+      url: location.archiveUrl,
+      sizeBytes: ArchiveContents.byteLength,
+      sha256: createHash("sha256").update(ArchiveContents).digest("hex"),
     },
   };
 }
 
 function createBuildRuntime(
   options: {
-    importError?: Error;
+    loadError?: Error;
     savedImages?: string[];
     loadedImages?: string[];
     preparedImages?: Array<{ reference: string; pullPolicy: string }>;
+    requireCleanImport?: boolean;
   } = {},
 ): MicrosandboxDistributionRuntime {
+  let sourceRuntimeRoot: string | undefined;
   return {
-    prepareImage: async ({ reference, pullPolicy }) => {
+    prepareImage: async ({ baseDir, reference, pullPolicy }) => {
+      sourceRuntimeRoot ??= baseDir;
       options.preparedImages?.push({ reference, pullPolicy });
     },
-    saveOciImage: async ({ reference, outputPath }) => {
+    saveOciImage: async ({ baseDir, reference, outputPath }) => {
+      sourceRuntimeRoot = baseDir;
       options.savedImages?.push(reference);
-      await writeFile(outputPath, "normalized-image");
+      await writeFile(outputPath, ArchiveContents);
     },
     loadOciImage: async ({ reference }) => {
+      if (options.requireCleanImport && sourceRuntimeRoot && (await pathExists(sourceRuntimeRoot))) {
+        throw new Error("source runtime still exists during clean archive verification");
+      }
       options.loadedImages?.push(reference);
-    },
-    exportSandboxBundle: async ({ outputPath }) => writeFile(outputPath, BundleContents),
-    importSandboxBundle: async () => {
-      if (options.importError) throw options.importError;
+      if (options.loadError) throw options.loadError;
     },
   };
+}
+
+function createImageArchiveApi(load: AgentMicrosandboxImageArchiveLoader["load"]): AgentMicrosandboxImageArchiveLoader {
+  return { load };
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return false;
+    throw error;
+  }
 }

@@ -24,8 +24,8 @@ assert.deepEqual(release, {
   desktopArtifactPath: "Release/SeneraSetup-1.2.3.exe",
   containerVersionTag: "1.2.3",
   containerMinorTag: "1.2",
-  sandboxBundleArtifactName: "SeneraSandboxBundle-1.0.1-x64.tar.zst",
-  sandboxBundleManifestArtifactName: "SeneraSandboxBundleManifest.json",
+  sandboxArchiveArtifactName: "SeneraSandboxImage-1.0.2-x64.oci.tar",
+  sandboxArchiveManifestArtifactName: "SeneraSandboxImageManifest.json",
   sourceSha: "abcdef1234567890",
 });
 
@@ -64,8 +64,8 @@ try {
   assert.equal(outputs.tag, "v2.4.6");
   assert.equal(outputs.desktop_artifact_name, "SeneraSetup-2.4.6.exe");
   assert.equal(outputs.container_minor_tag, "2.4");
-  assert.equal(outputs.sandbox_bundle_artifact_name, "SeneraSandboxBundle-1.0.1-x64.tar.zst");
-  assert.equal(outputs.sandbox_bundle_manifest_artifact_name, "SeneraSandboxBundleManifest.json");
+  assert.equal(outputs.sandbox_archive_artifact_name, "SeneraSandboxImage-1.0.2-x64.oci.tar");
+  assert.equal(outputs.sandbox_archive_manifest_artifact_name, "SeneraSandboxImageManifest.json");
   assert.equal(outputs.source_sha, "release-sha");
 } finally {
   fs.rmSync(workspaceRoot, { recursive: true, force: true });

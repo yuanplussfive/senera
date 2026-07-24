@@ -1,24 +1,25 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { link, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { isMainModule } from "../Source/AgentSystem/Core/AgentPath.js";
 import {
-  AgentSandboxBundleManifestSchema,
-  assertAgentSandboxBundleManifest,
+  AgentSandboxArchiveManifestSchema,
+  assertAgentSandboxArchiveManifest,
   readAgentSandboxDistributionContract,
   resolveAgentSandboxReleaseLocation,
-  type AgentSandboxBundleManifest,
+  type AgentSandboxArchiveManifest,
   type AgentSandboxDistributionContract,
 } from "../Source/AgentSystem/Sandbox/AgentSandboxDistributionContract.js";
+import { resolveAgentMicrosandboxPackage } from "../Source/AgentSystem/Sandbox/AgentMicrosandboxCli.js";
 import {
   createMicrosandboxDistributionRuntime,
   type MicrosandboxDistributionRuntime,
 } from "./MicrosandboxDistributionRuntime.js";
 import { readProductReleaseInfo } from "./ProductReleaseInfo.js";
 
-export interface BuildSandboxBundleOptions {
+export interface BuildSandboxImageArchiveOptions {
   workspaceRoot: string;
   outputRoot: string;
   productVersion: string;
@@ -28,17 +29,17 @@ export interface BuildSandboxBundleOptions {
   log?: (message: string) => void;
 }
 
-export interface SandboxBundleBuildResult {
-  bundlePath: string;
+export interface SandboxImageArchiveBuildResult {
+  archivePath: string;
   manifestPath: string;
-  manifest: AgentSandboxBundleManifest;
+  manifest: AgentSandboxArchiveManifest;
 }
 
 if (isMainModule(import.meta.url)) {
   const workspaceRoot = process.cwd();
   const release = readProductReleaseInfo({ workspaceRoot });
   const outputRoot = resolveOutputRoot(workspaceRoot, process.argv.slice(2));
-  const result = await buildSandboxBundle({
+  const result = await buildSandboxImageArchive({
     workspaceRoot,
     outputRoot,
     productVersion: release.version,
@@ -47,31 +48,25 @@ if (isMainModule(import.meta.url)) {
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
-export async function buildSandboxBundle(options: BuildSandboxBundleOptions): Promise<SandboxBundleBuildResult> {
+export async function buildSandboxImageArchive(
+  options: BuildSandboxImageArchiveOptions,
+): Promise<SandboxImageArchiveBuildResult> {
   const contract = options.contract ?? readAgentSandboxDistributionContract();
   const location = resolveAgentSandboxReleaseLocation(contract, options.productVersion, options.architecture);
-  await assertMicrosandboxVersion(options.workspaceRoot, contract.microsandboxVersion);
+  await assertMicrosandboxVersion(contract.microsandboxVersion);
   await mkdir(options.outputRoot, { recursive: true });
 
-  const stagingBundlePath = path.join(
-    options.outputRoot,
-    `.${location.target.bundleAssetName}.${process.pid}.${randomUUID()}.tmp`,
-  );
-  const bundlePath = path.join(options.outputRoot, location.target.bundleAssetName);
+  const archivePath = path.join(options.outputRoot, location.target.archive.assetName);
   const manifestPath = path.join(options.outputRoot, contract.release.manifestAssetName);
-  await assertOutputsAbsent([bundlePath, manifestPath]);
-  const sourceRuntimeRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-source-"));
-  const normalizedRuntimeRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-normalized-"));
-  const verificationRuntimeRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-verification-"));
-  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-bundle-snapshot-"));
-  const imageArchivePath = path.join(
+  const stagingArchivePath = path.join(
     options.outputRoot,
-    `.${location.target.bundleAssetName}.${process.pid}.${randomUUID()}.oci.tar`,
+    `.${location.target.archive.assetName}.${process.pid}.${randomUUID()}.tmp`,
   );
+  await assertOutputsAbsent([archivePath, manifestPath]);
+
+  let sourceRuntimeRoot: string | undefined = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-image-source-"));
+  const verificationRuntimeRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-image-verification-"));
   const buildId = randomUUID().replaceAll("-", "").slice(0, 16);
-  const sourceSandboxName = `senera-bundle-source-${buildId}`;
-  const normalizedSandboxName = `senera-bundle-normalized-${buildId}`;
-  const verificationSandboxName = `senera-bundle-verification-${buildId}`;
   try {
     const runtime =
       options.runtime ??
@@ -80,89 +75,77 @@ export async function buildSandboxBundle(options: BuildSandboxBundleOptions): Pr
     await runtime.prepareImage({
       baseDir: sourceRuntimeRoot,
       reference: location.target.sourceImage,
-      sandboxName: sourceSandboxName,
+      sandboxName: `senera-image-source-${buildId}`,
       pullPolicy: "if-missing",
       probe: location.target.probe,
     });
     await runtime.saveOciImage({
       baseDir: sourceRuntimeRoot,
       reference: location.target.sourceImage,
-      outputPath: imageArchivePath,
+      outputPath: stagingArchivePath,
     });
+    const archiveStat = await stat(stagingArchivePath);
+    if (!archiveStat.isFile() || archiveStat.size <= 0) {
+      throw new Error(`Microsandbox did not produce a valid OCI image archive: ${stagingArchivePath}`);
+    }
+    if (archiveStat.size > contract.downloadPolicy.archiveMaxBytes) {
+      throw new Error(`Sandbox image archive exceeds the distribution limit: ${archiveStat.size} bytes.`);
+    }
+
+    // Verification must have no access to the cache that produced the archive.
+    await rm(sourceRuntimeRoot, { recursive: true, force: true });
+    sourceRuntimeRoot = undefined;
+
     await runtime.loadOciImage({
-      baseDir: normalizedRuntimeRoot,
-      archivePath: imageArchivePath,
-      reference: location.target.runtimeImage,
-    });
-    await runtime.prepareImage({
-      baseDir: normalizedRuntimeRoot,
-      reference: location.target.runtimeImage,
-      sandboxName: normalizedSandboxName,
-      pullPolicy: "never",
-      probe: location.target.probe,
-    });
-    await runtime.exportSandboxBundle({
-      baseDir: normalizedRuntimeRoot,
-      sandboxName: normalizedSandboxName,
-      snapshotPath: path.join(snapshotRoot, "snapshot"),
-      outputPath: stagingBundlePath,
-    });
-    const bundleStat = await stat(stagingBundlePath);
-    if (!bundleStat.isFile() || bundleStat.size <= 0) {
-      throw new Error(`Microsandbox did not produce a valid bundle: ${stagingBundlePath}`);
-    }
-    if (bundleStat.size > contract.downloadPolicy.bundleMaxBytes) {
-      throw new Error(`Sandbox bundle exceeds the distribution limit: ${bundleStat.size} bytes.`);
-    }
-    await runtime.importSandboxBundle({
       baseDir: verificationRuntimeRoot,
-      bundlePath: stagingBundlePath,
+      archivePath: stagingArchivePath,
+      reference: location.target.runtimeImage,
     });
     await runtime.prepareImage({
       baseDir: verificationRuntimeRoot,
       reference: location.target.runtimeImage,
-      sandboxName: verificationSandboxName,
+      sandboxName: `senera-image-verification-${buildId}`,
       pullPolicy: "never",
       probe: location.target.probe,
     });
 
-    const manifest = AgentSandboxBundleManifestSchema.parse({
-      formatVersion: 2,
+    const manifest = AgentSandboxArchiveManifestSchema.parse({
+      formatVersion: 3,
       distributionId: contract.id,
-      bundleVersion: contract.bundleVersion,
+      archiveVersion: contract.archiveVersion,
       productVersion: options.productVersion,
       microsandboxVersion: contract.microsandboxVersion,
       target: location.targetId,
       sourceImage: location.target.sourceImage,
       runtimeImage: location.target.runtimeImage,
       asset: {
-        fileName: location.target.bundleAssetName,
-        url: location.bundleUrl,
-        sizeBytes: bundleStat.size,
-        sha256: await sha256File(stagingBundlePath),
+        format: location.target.archive.format,
+        mediaType: location.target.archive.mediaType,
+        fileName: location.target.archive.assetName,
+        url: location.archiveUrl,
+        sizeBytes: archiveStat.size,
+        sha256: await sha256File(stagingArchivePath),
       },
     });
-    assertAgentSandboxBundleManifest(manifest, contract, options.productVersion, location);
-    await publishFile(stagingBundlePath, bundlePath);
+    assertAgentSandboxArchiveManifest(manifest, contract, options.productVersion, location);
+    await publishFile(stagingArchivePath, archivePath);
     await writeFileAtomically(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-    return { bundlePath, manifestPath, manifest };
+    return { archivePath, manifestPath, manifest };
   } finally {
     await Promise.all([
-      rm(sourceRuntimeRoot, { recursive: true, force: true }),
-      rm(normalizedRuntimeRoot, { recursive: true, force: true }),
+      sourceRuntimeRoot ? rm(sourceRuntimeRoot, { recursive: true, force: true }) : Promise.resolve(),
       rm(verificationRuntimeRoot, { recursive: true, force: true }),
-      rm(snapshotRoot, { recursive: true, force: true }),
-      rm(imageArchivePath, { force: true }),
-      rm(stagingBundlePath, { force: true }),
+      rm(stagingArchivePath, { force: true }),
     ]);
   }
 }
 
-async function assertMicrosandboxVersion(workspaceRoot: string, expectedVersion: string): Promise<void> {
-  const packagePath = path.join(workspaceRoot, "node_modules", "microsandbox", "package.json");
-  const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as unknown;
-  if (!isRecord(packageJson) || packageJson.version !== expectedVersion) {
-    throw new Error(`Sandbox distribution requires microsandbox ${expectedVersion}: ${packagePath}`);
+async function assertMicrosandboxVersion(expectedVersion: string): Promise<void> {
+  const microsandboxPackage = await resolveAgentMicrosandboxPackage();
+  if (microsandboxPackage.version !== expectedVersion) {
+    throw new Error(
+      `Sandbox distribution requires microsandbox ${expectedVersion}, received ${microsandboxPackage.version}: ${microsandboxPackage.rootPath}`,
+    );
   }
 }
 
@@ -208,9 +191,5 @@ function nodeErrorCode(error: unknown): string | undefined {
 function resolveOutputRoot(workspaceRoot: string, arguments_: readonly string[]): string {
   const outputIndex = arguments_.indexOf("--output");
   const configured = outputIndex >= 0 ? arguments_[outputIndex + 1]?.trim() : undefined;
-  return path.resolve(workspaceRoot, configured || path.join("Release", "SandboxBundle"));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return path.resolve(workspaceRoot, configured || path.join("Release", "SandboxImage"));
 }

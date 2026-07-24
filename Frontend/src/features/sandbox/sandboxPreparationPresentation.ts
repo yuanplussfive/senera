@@ -25,23 +25,21 @@ function describeSandboxPreparation(progress: SandboxPreparationProgressData): s
       return frontendMessage("sandbox.progress.checkingHostRuntime");
     case "loading_runtime":
       return frontendMessage("sandbox.progress.loadingRuntime");
-    case "resolving_bundle":
-      return frontendMessage("sandbox.progress.resolvingBundle");
-    case "downloading_bundle":
-      return frontendMessage("sandbox.progress.downloadingBundle", {
+    case "resolving_archive":
+      return frontendMessage("sandbox.progress.resolvingArchive");
+    case "downloading_archive":
+      return frontendMessage("sandbox.progress.downloadingArchive", {
         progress: formatImageProgress(progress) ?? progressCount,
       });
-    case "verifying_bundle":
-      return frontendMessage("sandbox.progress.verifyingBundle");
-    case "importing_bundle":
-      return frontendMessage("sandbox.progress.importingBundle");
+    case "verifying_archive":
+      return frontendMessage("sandbox.progress.verifyingArchive");
+    case "importing_image":
+      return frontendMessage("sandbox.progress.importingImage");
     case "warming_image":
       return frontendMessage("sandbox.progress.warmingImage", {
         item: progress.item ?? "",
         progress: formatImageProgress(progress) ?? progressCount,
       });
-    case "exporting_bundle":
-      return frontendMessage("sandbox.progress.exportingBundle");
   }
 }
 

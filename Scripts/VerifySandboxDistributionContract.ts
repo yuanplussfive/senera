@@ -19,13 +19,15 @@ assert.equal(readLockfilePackageVersion(lockfile, "node_modules/microsandbox"), 
 
 for (const [architecture, target] of Object.entries(contract.targets)) {
   assert.match(target.sourceImage, /^[^\s@]+@sha256:[a-f0-9]{64}$/u, `${architecture} image must be immutable.`);
-  assert.ok(target.runtimeImage.includes(contract.bundleVersion), `${architecture} runtime image must be versioned.`);
+  assert.ok(target.runtimeImage.includes(contract.archiveVersion), `${architecture} runtime image must be versioned.`);
   assert.ok(target.runtimeImage.includes(architecture), `${architecture} runtime image must identify its target.`);
   assert.ok(target.probe.command.length > 0, `${architecture} runtime probe must declare a command.`);
-  assert.equal(path.basename(target.bundleAssetName), target.bundleAssetName);
+  assert.equal(target.archive.format, "oci");
+  assert.equal(target.archive.mediaType, "application/vnd.oci.image.layout.v1.tar");
+  assert.equal(path.basename(target.archive.assetName), target.archive.assetName);
   const location = resolveAgentSandboxReleaseLocation(contract, "1.2.3", architecture);
   assert.equal(location.releaseTag, "v1.2.3");
-  assert.ok(location.bundleUrl.endsWith(`/${encodeURIComponent(target.bundleAssetName)}`));
+  assert.ok(location.archiveUrl.endsWith(`/${encodeURIComponent(target.archive.assetName)}`));
 }
 
 assert.equal(
@@ -34,12 +36,12 @@ assert.equal(
   "Sandbox distribution contracts must reject undeclared fields.",
 );
 for (const fragment of [
-  "sandbox-bundle:",
-  "node Dist/Build/BuildSandboxBundle.js",
-  "sandbox_bundle_artifact_name",
-  "sandbox_bundle_manifest_artifact_name",
+  "sandbox-archive:",
+  "node Dist/Build/BuildSandboxImageArchive.js",
+  "sandbox_archive_artifact_name",
+  "sandbox_archive_manifest_artifact_name",
   "gh release upload",
-  "needs.sandbox-bundle.result == 'success'",
+  "needs.sandbox-archive.result == 'success'",
 ]) {
   assert.ok(
     releaseWorkflow.includes(fragment),

@@ -206,7 +206,7 @@ function inspectRootScripts(): string[] {
     "verify.config-command-contracts": "tsx Build/GenerateConfigCommandContracts.ts --check",
     "terminal.prepare": "tsx Build/PrepareTerminalSidecarGuestRuntime.ts",
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts",
-    "sandbox.bundle": "tsx Build/BuildSandboxBundle.ts",
+    "sandbox.archive": "tsx Build/BuildSandboxImageArchive.ts",
     "check.types": "tsc --noEmit",
     build:
       "npm run verify.config-command-contracts && npm run verify.database-contracts && npm run verify.plugin-config && npm run verify.tool-contracts && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts && node Dist/Scripts/VerifyPluginRuntimeManifest.js",

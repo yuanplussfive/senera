@@ -273,13 +273,13 @@ docker compose up -d
 
 ## 沙箱状态
 
-Docker 在 Web 服务监听前读取随程序发布的版本化分发契约，从同版本 GitHub Release 下载 Snapshot Bundle 清单和归档。运行时严格核对分发 ID、产品版本、microsandbox 版本、目标架构、固定 OCI digest、资产 URL、文件大小和 SHA-256，然后调用官方 `Snapshot.import()` 导入包含镜像缓存的归档，并以 `pullPolicy("never")` 启动一次真实 microVM 作为就绪依据。Bundle 缓存在 `/data/.senera/sandbox-runtime`，已安装版本仍会重新校验归档摘要，但不会重新访问网络或重复导入。
+Docker 在 Web 服务监听前读取随程序发布的版本化分发契约，从同版本 GitHub Release 下载 OCI 镜像归档清单和归档。运行时严格核对分发 ID、产品版本、microsandbox 版本、目标架构、归档格式与媒体类型、固定 OCI digest、资产 URL、文件大小和 SHA-256，然后调用官方 `msb image load` 将镜像物化到当前 `MSB_HOME`，并以 `pullPolicy("never")` 启动一次真实 microVM 作为就绪依据。归档缓存在 `/data/.senera/sandbox-runtime`，已安装版本仍会重新校验归档摘要，但不会重新访问网络或重复导入。
 
-Microsandbox 的平台运行时由 npm 可选平台包随 Senera 一起交付，SDK 使用自己的 resolver 选择匹配的 `msb` 和原生库；Senera 不扫描包目录、不推断平台文件名，也不覆盖 SDK 的二进制路径。`MSB_HOME` 只指定 Microsandbox 的持久状态目录。清单下载、摘要校验、Bundle 导入、KVM 或 capability 任一步骤失败，容器都会输出 `Docker OS sandbox could not be prepared` 并退出；不存在改拉 Docker Hub、改用其他镜像或改为本机执行的隐式路径。
+Microsandbox 的平台运行时由 npm 可选平台包随 Senera 一起交付。Senera 从 `microsandbox` 包入口向上解析其权威 `package.json`，并只执行包内 `bin.msb` 声明；平台二进制仍由 microsandbox 自己选择，Senera 不维护平台映射、不推断可执行文件名，也不覆盖供应商二进制路径。`MSB_HOME` 只指定 Microsandbox 的持久状态目录。清单下载、摘要校验、OCI 导入、KVM 或 capability 任一步骤失败，容器都会输出 `Docker OS sandbox could not be prepared` 并退出；不存在改拉 Docker Hub、改用其他镜像或改为本机执行的隐式路径。
 
-桌面安装包、源码开发和 Docker 使用同一个准备器及 SDK 官方解析链路。正式桌面安装包和 Docker 默认使用 `ReleaseBundle`；源码开发默认使用分发契约中固定 digest 的 `Oci` 模式，便于修改镜像后显式测试。前端和终端会持续显示清单解析、Bundle 下载、摘要校验、导入及离线探测进度。用户不需要另行安装 Node、npm、Microsandbox 或平台运行时；平台包缺失、宿主虚拟化不可用或准备失败时，Sandbox 调用会明确失败，Local 调用保持独立。
+桌面安装包、源码开发和 Docker 使用同一个准备器及官方 OCI 导入链路。正式桌面安装包和 Docker 默认使用 `ReleaseBundle`，这里的 Bundle 由版本化清单和标准 OCI image-layout tar 组成；源码开发默认使用分发契约中固定 digest 的 `Oci` 模式，便于修改镜像后显式测试。前端和终端会持续显示清单解析、归档下载、摘要校验、镜像导入及离线探测进度。用户不需要另行安装 Node、npm、Microsandbox 或平台运行时；平台包缺失、宿主虚拟化不可用或准备失败时，Sandbox 调用会明确失败，Local 调用保持独立。
 
-高级部署可以在系统配置中显式选择 `Oci` 并声明镜像与 registry 配置。Basic 凭据只引用环境变量名，真实值不会写入配置。`Oci` 与 `ReleaseBundle` 是互斥的配置形状，运行时只执行选中的来源；不会在认证失败、下载失败或缓存损坏时切换来源。
+高级部署可以在系统配置中显式选择 `Oci` 并声明镜像与 registry 配置。Basic 凭据只引用环境变量名，真实值不会写入配置。`Oci` 与 `ReleaseBundle` 是互斥的配置形状，运行时只执行选中的来源；Release Bundle 安装不会访问 OCI registry，也不会在认证失败、下载失败或缓存损坏时切换来源。
 
 PTY 后台终端也通过同一执行边界路由。资源快照会返回 `requestedBoundary`、`effectiveBoundary`、
 `backend`、`capabilities`、`sandboxId` 和回退审批信息。microsandbox 当前支持交互输入和信号，但 SDK

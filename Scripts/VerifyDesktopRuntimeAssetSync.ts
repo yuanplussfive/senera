@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { syncRuntimeDirectory } from "../Apps/RuntimeAssetSync.js";
-import { createDesktopMicrosandboxModuleLoader } from "../Apps/Desktop/DesktopMicrosandboxModuleLoader.js";
+import { createDesktopMicrosandboxRuntimeAccess } from "../Apps/Desktop/DesktopMicrosandboxModuleLoader.js";
 
 const projectRoot = process.cwd();
 const rootPackage = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8")) as {
@@ -33,6 +34,11 @@ try {
   assert.ok(
     rootPackage.build?.asarUnpack?.includes("Dist/Apps/Desktop/DesktopMicrosandboxRuntimeBridge.js"),
     "Desktop packages must unpack the Microsandbox ESM runtime bridge.",
+  );
+  assert.ok(
+    rootPackage.build?.asarUnpack?.includes("node_modules/microsandbox/**/*") &&
+      rootPackage.build?.asarUnpack?.includes("node_modules/@superradcompany/microsandbox-*/**/*"),
+    "Desktop packages must unpack the official Microsandbox CLI and platform runtime packages.",
   );
 
   const sourceRoot = path.join(workspaceRoot, "source");
@@ -76,11 +82,22 @@ try {
 
 async function verifyElectronMicrosandboxRuntimeBridge(root: string): Promise<void> {
   const bridgePath = path.join(root, "DesktopMicrosandboxRuntimeBridge.mjs");
-  writeText(bridgePath, "export const loadDesktopMicrosandboxModule = async () => ({ runtime: 'unpacked' });\n");
-  const loadMicrosandbox = createDesktopMicrosandboxModuleLoader(bridgePath);
-  const microsandboxModule = await loadMicrosandbox();
+  writeText(
+    bridgePath,
+    [
+      "export const loadDesktopMicrosandboxModule = async () => ({ runtime: 'unpacked' });",
+      "export const resolveDesktopMicrosandboxPackageEntry = () => new URL('./microsandbox/index.js', import.meta.url).href;",
+      "",
+    ].join("\n"),
+  );
+  const runtime = createDesktopMicrosandboxRuntimeAccess(bridgePath);
+  const microsandboxModule = await runtime.moduleLoader();
   assert.ok(microsandboxModule && typeof microsandboxModule === "object");
   assert.equal("runtime" in microsandboxModule ? microsandboxModule.runtime : undefined, "unpacked");
+  assert.equal(
+    await runtime.packageEntryResolver(),
+    new URL("./microsandbox/index.js", pathToFileURL(bridgePath)).href,
+  );
 }
 
 function writeText(filePath: string, value: string): void {

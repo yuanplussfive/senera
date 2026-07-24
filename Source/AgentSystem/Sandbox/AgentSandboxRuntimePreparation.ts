@@ -1,11 +1,15 @@
-import { readFile, mkdir, mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
+import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { SeneraMicrosandboxModuleLoader } from "../Execution/SeneraMicrosandboxSdkAdapter.js";
 import type { ResolvedAgentSandboxRuntimeConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentSandboxRegistryConfig } from "../Types/AgentRuntimeConfigTypes.js";
-import { installAgentSandboxReleaseBundle } from "./AgentSandboxBundleInstaller.js";
+import { installAgentSandboxReleaseArchive } from "./AgentSandboxArchiveInstaller.js";
+import {
+  createAgentMicrosandboxCli,
+  createAgentMicrosandboxImageArchive,
+  type AgentMicrosandboxImageArchiveLoader,
+  type AgentMicrosandboxPackageEntryResolver,
+} from "./AgentMicrosandboxCli.js";
 import { normalizeSandboxImages } from "./AgentSandboxRuntimeImages.js";
 import { AgentSandboxPreparationStages, type AgentSandboxPreparationProgress } from "./AgentSandboxRuntimeTypes.js";
 
@@ -20,10 +24,11 @@ export interface AgentSandboxRuntimePreparationOptions {
   config: ResolvedAgentSandboxRuntimeConfig;
   productVersion?: string;
   architecture?: string;
-  exportBundlePath?: string;
   microsandbox?: MicrosandboxModule;
   microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
-  bundleInstaller?: typeof installAgentSandboxReleaseBundle;
+  microsandboxPackageEntryResolver?: AgentMicrosandboxPackageEntryResolver;
+  imageArchive?: AgentMicrosandboxImageArchiveLoader;
+  archiveInstaller?: typeof installAgentSandboxReleaseArchive;
   log?: (message: string) => void;
   onProgress?: (progress: AgentSandboxPreparationProgress) => void;
 }
@@ -31,20 +36,12 @@ export interface AgentSandboxRuntimePreparationOptions {
 export interface AgentSandboxRuntimePreparationResult {
   paths: AgentSandboxRuntimePaths;
   preparedImages: string[];
-  exportedBundlePath?: string;
 }
 
 export interface MicrosandboxModule {
-  Snapshot: MicrosandboxSnapshotApi;
   Sandbox: {
     builder(name: string): MicrosandboxSandboxBuilder;
-    get(name: string): Promise<MicrosandboxSandboxHandle>;
   };
-}
-
-export interface MicrosandboxSnapshotApi {
-  import(archive: string, dest?: string): Promise<unknown>;
-  export(nameOrPath: string, out: string, opts?: { withImage?: boolean }): Promise<void>;
 }
 
 export interface MicrosandboxSandboxBuilder {
@@ -94,10 +91,6 @@ export interface MicrosandboxSandbox {
   kill(): Promise<unknown>;
 }
 
-export interface MicrosandboxSandboxHandle {
-  snapshotTo(path: string): Promise<unknown>;
-}
-
 const SandboxPreparePrefix = "senera-sandbox-prepare";
 
 export async function prepareAgentSandboxRuntime(
@@ -130,16 +123,6 @@ export async function prepareAgentSandboxRuntime(
       report,
     );
     result.preparedImages.push(image);
-  }
-
-  if (options.exportBundlePath) {
-    report({ stage: AgentSandboxPreparationStages.ExportingBundle });
-    result.exportedBundlePath = await exportSandboxBundle(
-      microsandbox,
-      options.exportBundlePath,
-      result.preparedImages,
-      log,
-    );
   }
 
   return result;
@@ -247,11 +230,19 @@ async function resolveSandboxProvisioning(
   if (!productVersion) {
     throw new Error("ReleaseBundle sandbox provisioning requires the application product version.");
   }
-  const installation = await (options.bundleInstaller ?? installAgentSandboxReleaseBundle)({
+  const imageArchive =
+    options.imageArchive ??
+    createAgentMicrosandboxImageArchive(
+      createAgentMicrosandboxCli({
+        cwd: options.workspaceRoot,
+        packageEntryResolver: options.microsandboxPackageEntryResolver,
+      }),
+    );
+  const installation = await (options.archiveInstaller ?? installAgentSandboxReleaseArchive)({
     baseDir: paths.baseDir,
     productVersion,
     architecture: options.architecture,
-    snapshot: microsandbox.Snapshot,
+    imageArchive,
     onProgress: report,
   });
   return {
@@ -326,33 +317,6 @@ async function consumeImagePullProgress(
       downloadedBytes: sumNumbers(layerDownloads.values()),
       totalBytes,
     });
-  }
-}
-
-async function exportSandboxBundle(
-  microsandbox: MicrosandboxModule,
-  exportBundlePath: string,
-  preparedImages: readonly string[],
-  log: (message: string) => void,
-): Promise<string> {
-  const image = preparedImages[0];
-  if (!image) {
-    throw new Error(agentErrorMessage("sandbox.bundleImageRequired"));
-  }
-
-  const sandboxName = `${SandboxPreparePrefix}-${safeImageName(image)}-${process.pid}`;
-  const snapshotRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-snapshot-"));
-  const snapshotPath = path.join(snapshotRoot, "snapshot");
-  await mkdir(path.dirname(exportBundlePath), { recursive: true });
-  try {
-    log(`Creating sandbox snapshot ${snapshotPath}...`);
-    const sandbox = await microsandbox.Sandbox.get(sandboxName);
-    await sandbox.snapshotTo(snapshotPath);
-    log(`Exporting sandbox bundle ${exportBundlePath}...`);
-    await microsandbox.Snapshot.export(snapshotPath, exportBundlePath, { withImage: true });
-    return exportBundlePath;
-  } finally {
-    await rm(snapshotRoot, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 

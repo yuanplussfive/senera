@@ -3,12 +3,11 @@ export type SandboxRuntimeState = "disabled" | "unknown" | "preparing" | "ready"
 export type SandboxPreparationStage =
   | "checking_host_runtime"
   | "loading_runtime"
-  | "resolving_bundle"
-  | "downloading_bundle"
-  | "verifying_bundle"
-  | "importing_bundle"
-  | "warming_image"
-  | "exporting_bundle";
+  | "resolving_archive"
+  | "downloading_archive"
+  | "verifying_archive"
+  | "importing_image"
+  | "warming_image";
 
 export interface SandboxPreparationProgressData {
   stage: SandboxPreparationStage;
