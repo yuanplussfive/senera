@@ -23,7 +23,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: product-release-${{ inputs.release_tag || github.event.workflow_run.head_sha || github.sha }}
+  group: product-release-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
@@ -42,11 +42,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
       - id: release-state
         name: Inspect Current Release State
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           current_version="$(node --input-type=module -e 'import fs from "node:fs"; const manifest = JSON.parse(fs.readFileSync("Build/Release/ReleasePleaseManifest.json", "utf8")); console.log(manifest["."]);')"
           current_tag="v${current_version}"
@@ -57,6 +59,11 @@ jobs:
           if git ls-remote --exit-code --tags origin "refs/tags/${current_tag}" >/dev/null 2>&1; then
             echo "skip_pull_request=false" >> "$GITHUB_OUTPUT"
           else
+            current_version_sha="$(git log -1 --format=%H -- Build/Release/ReleasePleaseManifest.json)"
+            if [ -z "$current_version_sha" ] || [ "$current_version_sha" != "$VERIFIED_SHA" ]; then
+              echo "::error::Current manifest release ${current_tag} belongs to ${current_version_sha:-unknown}, but this run verified ${VERIFIED_SHA}. Rerun Verify for the release commit before recovering its tag."
+              exit 1
+            fi
             echo "skip_pull_request=true" >> "$GITHUB_OUTPUT"
             echo "::warning::Git tag ${current_tag} is missing; release PR creation is disabled until the current manifest release is recovered."
           fi
@@ -141,20 +148,14 @@ jobs:
           SENERA_RELEASE_TAG: ${{ env.RELEASE_TAG }}
           SENERA_RELEASE_SHA: ${{ steps.source.outputs.sha }}
         run: npx tsx Build/ProductReleaseInfo.ts
-      - name: Require release source to match triggering verification
-        if: github.event_name == 'workflow_run'
+      - name: Require verified release source
         env:
-          RELEASE_SHA: ${{ steps.source.outputs.sha }}
-          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: test "$RELEASE_SHA" = "$VERIFIED_SHA"
-      - name: Require successful verification
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ steps.source.outputs.sha }}
-        run: |
-          successful_runs="$(gh run list --workflow verify.yml --commit "$SOURCE_SHA" --status success --limit 1 --json databaseId --jq 'length')"
-          test "$successful_runs" -ge 1
+          GITHUB_TOKEN: ${{ github.token }}
+          SENERA_RELEASE_SHA: ${{ steps.source.outputs.sha }}
+          SENERA_RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
+          SENERA_RELEASE_TRIGGER_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+          SENERA_VERIFY_WORKFLOW: verify.yml
+        run: npx tsx Scripts/VerifyProductReleaseSource.ts
 
   sandbox-archive:
     name: Build Microsandbox OCI Archive
