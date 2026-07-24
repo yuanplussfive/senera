@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.8.4](https://github.com/yuanplussfive/senera/compare/v1.8.3...v1.8.4) (2026-07-24)
+
+
+### 问题修复
+
+* **persistence:** stabilize SQLite writer shutdown ([#65](https://github.com/yuanplussfive/senera/issues/65)) ([8d5b784](https://github.com/yuanplussfive/senera/commit/8d5b784ece2975be76feaebfe9ae1d99c0ed7706))
+
 ## [1.8.3](https://github.com/yuanplussfive/senera/compare/v1.8.2...v1.8.3) (2026-07-24)
 
 
