@@ -1,3 +1,5 @@
+import { AuthenticationSessionStates } from "./generatedEventCatalog";
+
 export interface ServerAuthenticationAccount {
   readonly id: string;
   readonly loginName: string;
@@ -5,12 +7,25 @@ export interface ServerAuthenticationAccount {
   readonly role: "owner";
 }
 
-export interface ServerAuthentication {
-  readonly required: boolean;
-  readonly account?: ServerAuthenticationAccount;
-  readonly csrfToken?: string;
-  readonly expiresAt?: string;
-}
+export type ServerAuthentication =
+  | { readonly state: typeof AuthenticationSessionStates.Disabled }
+  | { readonly state: typeof AuthenticationSessionStates.Anonymous }
+  | {
+      readonly state: typeof AuthenticationSessionStates.Authenticated;
+      readonly account: ServerAuthenticationAccount;
+      readonly csrfToken: string;
+      readonly expiresAt: string;
+    };
+
+export type ServerAuthorizedAuthentication = Exclude<
+  ServerAuthentication,
+  { readonly state: typeof AuthenticationSessionStates.Anonymous }
+>;
+
+export type ServerAuthenticatedSession = Extract<
+  ServerAuthentication,
+  { readonly state: typeof AuthenticationSessionStates.Authenticated }
+>;
 
 export class ServerAuthenticationError extends Error {
   constructor(
@@ -36,16 +51,13 @@ export async function readServerAuthentication(webSocketUrl: string): Promise<Se
     credentials: "include",
     headers: { Accept: "application/json" },
   });
-  if (response.status === 401) {
-    return { required: true };
-  }
   return readAuthenticationResponse(response);
 }
 
 export async function loginServerAuthentication(
   webSocketUrl: string,
   credentials: { loginName: string; password: string },
-): Promise<ServerAuthentication> {
+): Promise<ServerAuthenticatedSession> {
   const response = await fetch(buildServerApiUrl(webSocketUrl, "/api/auth/login"), {
     method: "POST",
     credentials: "include",
@@ -55,7 +67,11 @@ export async function loginServerAuthentication(
     },
     body: JSON.stringify(credentials),
   });
-  return readAuthenticationResponse(response);
+  const authentication = await readAuthenticationResponse(response);
+  if (authentication.state !== AuthenticationSessionStates.Authenticated) {
+    throw new ServerAuthenticationError(response.status, "");
+  }
+  return authentication;
 }
 
 export async function logoutServerAuthentication(webSocketUrl: string, csrfToken: string | undefined): Promise<void> {
@@ -76,12 +92,40 @@ async function readAuthenticationResponse(response: Response): Promise<ServerAut
   const payload = (await response.json().catch(() => undefined)) as
     | {
         ok?: boolean;
-        authentication?: ServerAuthentication;
+        session?: unknown;
         error?: { message?: string };
       }
     | undefined;
-  if (!response.ok || !payload?.ok || !payload.authentication) {
+  if (!response.ok || !payload?.ok || !isServerAuthentication(payload.session)) {
     throw new ServerAuthenticationError(response.status, payload?.error?.message ?? "");
   }
-  return payload.authentication;
+  return payload.session;
+}
+
+function isServerAuthentication(value: unknown): value is ServerAuthentication {
+  if (!value || typeof value !== "object") return false;
+  const session = value as Record<string, unknown>;
+  if (
+    session.state === AuthenticationSessionStates.Disabled ||
+    session.state === AuthenticationSessionStates.Anonymous
+  ) {
+    return true;
+  }
+  return (
+    session.state === AuthenticationSessionStates.Authenticated &&
+    isServerAuthenticationAccount(session.account) &&
+    typeof session.csrfToken === "string" &&
+    typeof session.expiresAt === "string"
+  );
+}
+
+function isServerAuthenticationAccount(value: unknown): value is ServerAuthenticationAccount {
+  if (!value || typeof value !== "object") return false;
+  const account = value as Partial<ServerAuthenticationAccount>;
+  return (
+    typeof account.id === "string" &&
+    typeof account.loginName === "string" &&
+    typeof account.displayName === "string" &&
+    account.role === "owner"
+  );
 }

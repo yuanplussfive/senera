@@ -3,12 +3,13 @@ import { z } from "zod";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { applyCredentialedCors, writeCorsPreflight } from "./AgentCredentialedCors.js";
 import { AgentServerAccessGuard, type AgentAccessFailure } from "./AgentServerAccessGuard.js";
+import {
+  AgentAuthenticationHttpRoutes,
+  AgentAuthenticationSessionStates,
+  type AgentAuthenticationSessionResponse,
+} from "./AgentAuthenticationProtocol.js";
 
-export const AgentAuthenticationHttpRoutes = {
-  Session: "/api/auth/session",
-  Login: "/api/auth/login",
-  Logout: "/api/auth/logout",
-} as const;
+export { AgentAuthenticationHttpRoutes } from "./AgentAuthenticationProtocol.js";
 
 const LoginRequestSchema = z
   .object({
@@ -64,25 +65,36 @@ export class AgentAuthenticationHttpApi {
     if (!this.access.isAuthenticationRequired) {
       this.writeJson(response, 200, {
         ok: true,
-        authentication: { required: false },
-      });
+        session: { state: AgentAuthenticationSessionStates.Disabled },
+      } satisfies AgentAuthenticationSessionResponse);
       return;
     }
 
     const result = this.access.authorizeHttp(request, { requireCsrf: false });
     if (!result.ok) {
+      if (result.failure.code === "authentication_required") {
+        this.writeJson(response, 200, {
+          ok: true,
+          session: { state: AgentAuthenticationSessionStates.Anonymous },
+        } satisfies AgentAuthenticationSessionResponse);
+        return;
+      }
       this.writeFailure(response, result.failure);
       return;
     }
+    const session = result.access.session;
+    if (!session) {
+      throw new Error("Authenticated access did not include its server session.");
+    }
     this.writeJson(response, 200, {
       ok: true,
-      authentication: {
-        required: true,
+      session: {
+        state: AgentAuthenticationSessionStates.Authenticated,
         account: result.access.principal,
-        csrfToken: result.access.session?.csrfToken,
-        expiresAt: result.access.session ? new Date(result.access.session.expiresAt).toISOString() : undefined,
+        csrfToken: session.csrfToken,
+        expiresAt: new Date(session.expiresAt).toISOString(),
       },
-    });
+    } satisfies AgentAuthenticationSessionResponse);
   }
 
   private async handleLogin(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -113,13 +125,13 @@ export class AgentAuthenticationHttpApi {
     response.setHeader("Set-Cookie", this.access.issueCookie(result.token));
     this.writeJson(response, 200, {
       ok: true,
-      authentication: {
-        required: true,
+      session: {
+        state: AgentAuthenticationSessionStates.Authenticated,
         account: result.session.principal,
         csrfToken: result.session.csrfToken,
         expiresAt: new Date(result.session.expiresAt).toISOString(),
       },
-    });
+    } satisfies AgentAuthenticationSessionResponse);
   }
 
   private handleLogout(request: IncomingMessage, response: ServerResponse): void {

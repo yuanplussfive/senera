@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Toaster } from "sonner";
 import { TooltipProvider, ErrorBoundary } from "./shared/ui";
-import { useAgentSocket, type SocketStatus } from "./api/useAgentSocket";
+import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
 import { buildUploadUrl } from "./api/uploadClient";
 import { useStore } from "./store/sessionStore";
 import { ChatPanel } from "./features/chat";
@@ -40,9 +40,11 @@ installCopyableToasts();
 
 export function App({
   onLogout,
+  socketReconnectPolicy,
   uploadCsrfToken,
 }: {
   onLogout?: () => Promise<void>;
+  socketReconnectPolicy: AgentSocketReconnectPolicy;
   uploadCsrfToken?: string;
 }): JSX.Element {
   const ingest = useStore((s) => s.ingest);
@@ -178,6 +180,7 @@ export function App({
 
   const { status, send } = useAgentSocket({
     url: WS_URL,
+    reconnectPolicy: socketReconnectPolicy,
     onEvents: useCallback(
       (events) => {
         const handlers = eventHandlersRef.current;

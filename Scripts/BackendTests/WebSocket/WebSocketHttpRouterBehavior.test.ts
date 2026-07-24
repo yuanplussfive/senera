@@ -6,6 +6,7 @@ import type { AgentPiProxyHttpApi } from "../../../Source/AgentSystem/PiProxy/Ag
 import type { AgentUploadHttpApi } from "../../../Source/AgentSystem/Uploads/AgentUploadHttpApi.js";
 import type { AgentStaticFrontendHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentStaticFrontendHttpApi.js";
 import { AgentWebSocketHttpRouter } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketHttpRouter.js";
+import type { AgentHealthHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentHealthHttpApi.js";
 
 describe("WebSocket HTTP router", () => {
   test("routes authentication before generic access control", async () => {
@@ -25,6 +26,16 @@ describe("WebSocket HTTP router", () => {
 
     expect(fixture.authorizeHttp).not.toHaveBeenCalled();
     expect(fixture.upload.handle).toHaveBeenCalledTimes(1);
+  });
+
+  test("routes health probes without authentication or static frontend projection", async () => {
+    const fixture = createRouterFixture({ health: true, staticFrontend: true });
+
+    await fixture.router.handle(request("GET", "/health/ready"), fixture.response.value);
+
+    expect(fixture.health.handle).toHaveBeenCalledTimes(1);
+    expect(fixture.staticFrontend.handle).not.toHaveBeenCalled();
+    expect(fixture.authorizeHttp).not.toHaveBeenCalled();
   });
 
   test("requires CSRF for mutating uploads and projects access failures", async () => {
@@ -97,6 +108,7 @@ describe("WebSocket HTTP router", () => {
 function createRouterFixture(
   options: {
     authentication?: boolean;
+    health?: boolean;
     upload?: boolean;
     pi?: boolean;
     staticFrontend?: boolean;
@@ -104,6 +116,7 @@ function createRouterFixture(
   } = {},
 ) {
   const authentication = createApi(options.authentication ?? false);
+  const health = createApi(options.health ?? false);
   const upload = createApi(options.upload ?? false);
   const pi = createApi(options.pi ?? false);
   const staticFrontend = createApi(options.staticFrontend ?? false);
@@ -111,6 +124,7 @@ function createRouterFixture(
   const response = createResponse();
   return {
     authentication,
+    health,
     upload,
     pi,
     staticFrontend,
@@ -118,6 +132,7 @@ function createRouterFixture(
     response,
     router: new AgentWebSocketHttpRouter({
       authenticationApi: authentication as unknown as AgentAuthenticationHttpApi,
+      healthApi: health as unknown as AgentHealthHttpApi,
       uploadApi: upload as unknown as AgentUploadHttpApi,
       piProxyApi: pi as unknown as AgentPiProxyHttpApi,
       staticFrontendApi: staticFrontend as unknown as AgentStaticFrontendHttpApi,

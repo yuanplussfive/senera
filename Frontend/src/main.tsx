@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
 import { App } from "./App";
@@ -9,8 +9,9 @@ import { buildSettingsSurfaceSyncRequests } from "./app/settingsSurfaceSync";
 import { ServerAuthenticationBoundary } from "./app/ServerAuthenticationGate";
 import { useServerAuthentication } from "./app/useServerAuthentication";
 import { useSettingsRuntime } from "./app/useSettingsRuntime";
-import { useAgentSocket, type SocketStatus } from "./api/useAgentSocket";
+import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
 import type { WsRequest } from "./api/eventTypes";
+import { AuthenticationSessionStates } from "./api/generatedEventCatalog";
 import { resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { installMotionDevTools } from "./dev/motionDevTools";
 import { SettingsWorkbench } from "./features/settings";
@@ -52,6 +53,11 @@ function Root(): JSX.Element {
   const surface = resolveAppSurface(window.location, isDesktop);
   const settingsSection = resolveSettingsSection(window.location);
   const authentication = useServerAuthentication(WS_URL);
+  const revalidateAuthentication = authentication.revalidate;
+  const socketReconnectPolicy = useCallback<AgentSocketReconnectPolicy>(async () => {
+    const result = await revalidateAuthentication();
+    return result === "anonymous" || result === "rejected" ? "stop" : "retry";
+  }, [revalidateAuthentication]);
 
   return (
     <FrontendI18nProvider>
@@ -74,11 +80,21 @@ function Root(): JSX.Element {
                       if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
                     }}
                     onMotionLevelChange={setMotionLevel}
+                    socketReconnectPolicy={socketReconnectPolicy}
                   />
                 ) : (
                   <App
-                    onLogout={resolvedAuthentication.account ? authentication.logout : undefined}
-                    uploadCsrfToken={resolvedAuthentication.csrfToken}
+                    onLogout={
+                      resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
+                        ? authentication.logout
+                        : undefined
+                    }
+                    uploadCsrfToken={
+                      resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
+                        ? resolvedAuthentication.csrfToken
+                        : undefined
+                    }
+                    socketReconnectPolicy={socketReconnectPolicy}
                   />
                 )
               }
@@ -96,12 +112,14 @@ function DesktopSettingsSurface({
   motionLevel,
   onValueChange,
   onMotionLevelChange,
+  socketReconnectPolicy,
 }: {
   initialSection: SettingsSectionId;
   values: React.ComponentProps<typeof SettingsWorkbench>["values"];
   motionLevel: React.ComponentProps<typeof SettingsWorkbench>["motionLevel"];
   onValueChange: React.ComponentProps<typeof SettingsWorkbench>["onValueChange"];
   onMotionLevelChange: React.ComponentProps<typeof SettingsWorkbench>["onMotionLevelChange"];
+  socketReconnectPolicy: AgentSocketReconnectPolicy;
 }): JSX.Element {
   const [section, setSection] = useState(initialSection);
   const [pendingChanges, setPendingChanges] = useState(false);
@@ -112,6 +130,7 @@ function DesktopSettingsSurface({
   const settingsEventHandlerRef = useRef<(env: Parameters<typeof ingest>[0]) => boolean>(() => false);
   const { status, send } = useAgentSocket({
     url: WS_URL,
+    reconnectPolicy: socketReconnectPolicy,
     onEvent: (env) => {
       ingest(env);
       settingsEventHandlerRef.current(env);

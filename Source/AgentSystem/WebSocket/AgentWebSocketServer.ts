@@ -22,6 +22,8 @@ import {
   type AgentAccessFailure,
   type AgentAuthenticatedAccess,
 } from "../Auth/AgentServerAccessGuard.js";
+import { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
+import { AgentWebSocketCloseCodes, AgentWebSocketCloseReasons } from "./AgentWebSocketCloseContract.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
@@ -81,6 +83,7 @@ export class AgentWebSocketServer {
         ? new AgentStaticFrontendHttpApi({ rootDir: options.staticFrontendRoot })
         : undefined,
       authenticationApi: new AgentAuthenticationHttpApi(this.accessGuard),
+      healthApi: new AgentHealthHttpApi(),
       accessGuard: this.accessGuard,
     });
     this.messageRouter = new AgentWebSocketMessageRouter({
@@ -176,7 +179,7 @@ export class AgentWebSocketServer {
     socket.on("message", (data) => {
       const authorization = this.accessGuard.authorizeMessage(socket);
       if (!authorization.ok) {
-        socket.close(authorization.failure.status === 429 ? 1013 : 1008, "Access denied");
+        this.closeForAccessFailure(socket, authorization.failure);
         return;
       }
       void this.messageRouter.handleMessage(socket, data).catch((error) => {
@@ -197,7 +200,10 @@ export class AgentWebSocketServer {
   private heartbeat(): void {
     for (const socket of this.server?.clients ?? []) {
       if (this.accessGuard.shouldTerminateConnection(socket)) {
-        socket.close(1008, "Session expired");
+        socket.close(
+          AgentWebSocketCloseCodes.AuthenticationRequired,
+          AgentWebSocketCloseReasons.AuthenticationRequired,
+        );
         continue;
       }
       if (socket.readyState === socket.OPEN) {
@@ -221,6 +227,18 @@ export class AgentWebSocketServer {
     }
     socket.write(`${headers.join("\r\n")}\r\n\r\n`);
     socket.destroy();
+  }
+
+  private closeForAccessFailure(socket: WebSocket, failure: AgentAccessFailure): void {
+    if (failure.code === "authentication_required") {
+      socket.close(AgentWebSocketCloseCodes.AuthenticationRequired, AgentWebSocketCloseReasons.AuthenticationRequired);
+      return;
+    }
+    if (failure.code === "forbidden_origin") {
+      socket.close(AgentWebSocketCloseCodes.AccessForbidden, AgentWebSocketCloseReasons.AccessForbidden);
+      return;
+    }
+    socket.close(1013, failure.code);
   }
 
   private handleListening(): void {

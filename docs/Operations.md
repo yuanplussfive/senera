@@ -50,6 +50,15 @@ docker compose logs -f senera
 
 容器每次启动都会读取这三个管理员环境变量并与 `/data/.senera/access/admin-account.json` 对账。内容相同则不重写；登录名、显示名或密码变化时原子更新账户，因此编辑 YAML 后重启即可生效。密码只以 `scrypt` 哈希写入账户文件，但原始密码仍会出现在部署 YAML 和 Docker 容器环境中，因此不得提交包含真实密码的 `compose.yaml`。启动成功后打开 `http://localhost:8787` 或已加入 Origin 白名单的 IP 地址。
 
+容器健康检查使用 `GET /health/ready`，不会把登录状态误判成服务故障。排障时可以分别检查：
+
+```bash
+curl http://127.0.0.1:8787/health/live
+curl http://127.0.0.1:8787/health/ready
+```
+
+两者都不要求管理员会话，也不会返回账户或配置内容。`live` 失败表示 HTTP 进程不可达；`ready` 失败表示服务尚未完成启动。`GET /api/auth/session` 则专门返回 `disabled`、`anonymous` 或 `authenticated` 会话状态，匿名状态是正常的 `200` 响应。
+
 ### 原生 SQLite 依赖
 
 Docker 镜像运行的是标准 Node.js 22，不是 Electron，因此不需要安装系统 `sqlite3` 命令，也不需要执行 Electron ABI 重建。应用使用的 SQLite 驱动是 npm 依赖 `better-sqlite3`；镜像构建会在跳过依赖安装脚本后，使用镜像内的编译工具为 Node ABI 构建该原生模块，并在裁剪生产依赖后运行 SQLite smoke test。桌面端则由 Electron 打包流程单独准备自己的原生模块。

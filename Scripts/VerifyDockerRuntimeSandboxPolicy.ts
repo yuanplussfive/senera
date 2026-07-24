@@ -27,6 +27,10 @@ assert.ok(
   "Dockerfile must run the native SQLite smoke test before producing the runtime image.",
 );
 assert.ok(
+  dockerfile.includes("/health/ready") && !dockerfile.includes("fetch('http://127.0.0.1:' + port + '/')"),
+  "Docker healthcheck must use the explicit readiness endpoint instead of the public frontend route.",
+);
+assert.ok(
   dockerfile.includes("apt-get install -y --no-install-recommends ca-certificates"),
   "Docker runtime must provide the system CA bundle required by the Microsandbox native HTTP client.",
 );

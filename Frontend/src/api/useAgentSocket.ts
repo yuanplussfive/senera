@@ -8,8 +8,22 @@ import {
 
 export type SocketStatus = "idle" | "connecting" | "open" | "closed" | "error";
 
+export interface AgentSocketDisconnect {
+  readonly code: number;
+  readonly reason: string;
+  readonly wasClean: boolean;
+  readonly opened: boolean;
+}
+
+export type AgentSocketReconnectDecision = "retry" | "stop";
+export type AgentSocketReconnectPolicy = (
+  disconnect: AgentSocketDisconnect,
+) => AgentSocketReconnectDecision | Promise<AgentSocketReconnectDecision>;
+
 interface UseAgentSocketBaseOptions {
   url: string;
+  enabled?: boolean;
+  reconnectPolicy?: AgentSocketReconnectPolicy;
   onMalformedEvent?: (error: unknown) => void;
 }
 
@@ -25,8 +39,12 @@ export interface AgentSocketHandle {
   reconnect: () => void;
 }
 
-export function readAgentSocketRetryDelayMs(attempt: number): number {
-  return Math.min(15000, 1000 * 2 ** Math.max(0, attempt));
+const AgentSocketStableConnectionMs = 30_000;
+
+export function readAgentSocketRetryDelayMs(attempt: number, random = Math.random): number {
+  const ceiling = Math.min(15_000, 1_000 * 2 ** Math.max(0, attempt));
+  const boundedRandom = Math.min(1, Math.max(0, random()));
+  return Math.round(ceiling / 2 + (ceiling / 2) * boundedRandom);
 }
 
 export function parseAgentSocketEventData(data: unknown): EventEnvelope {
@@ -41,19 +59,25 @@ export function parseAgentSocketEventData(data: unknown): EventEnvelope {
  * 让状态层在一次事务中完成投影；最大等待窗口保证后台标签页仍能及时推进。
  */
 export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
-  const { url, onEvent, onEvents, onMalformedEvent } = opts;
+  const { url, enabled = true, reconnectPolicy, onEvent, onEvents, onMalformedEvent } = opts;
   const [status, setStatus] = useState<SocketStatus>("idle");
   const wsRef = useRef<WebSocket | null>(null);
   const connectSeqRef = useRef(0);
   const retryRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
+  const stableTimerRef = useRef<number | null>(null);
+  const reconnectPolicySeqRef = useRef<number | null>(null);
   const closedByUserRef = useRef(false);
+  const enabledRef = useRef(enabled);
   const onEventRef = useRef(onEvent);
   const onEventsRef = useRef(onEvents);
   const onMalformedEventRef = useRef(onMalformedEvent);
+  const reconnectPolicyRef = useRef(reconnectPolicy);
+  enabledRef.current = enabled;
   onEventRef.current = onEvent;
   onEventsRef.current = onEvents;
   onMalformedEventRef.current = onMalformedEvent;
+  reconnectPolicyRef.current = reconnectPolicy;
 
   // rAF 批量队列
   const pendingRef = useRef<EventEnvelope[]>([]);
@@ -68,6 +92,17 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     if (latencyTimerRef.current !== null) {
       clearTimeout(latencyTimerRef.current);
       latencyTimerRef.current = null;
+    }
+  }, []);
+
+  const clearRetrySchedule = useCallback((): void => {
+    if (retryTimerRef.current !== null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    if (stableTimerRef.current !== null) {
+      clearTimeout(stableTimerRef.current);
+      stableTimerRef.current = null;
     }
   }, []);
 
@@ -119,8 +154,40 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   );
 
   const scheduleRetryRef = useRef<() => void>(() => undefined);
+  const requestReconnect = useCallback((disconnect: AgentSocketDisconnect, connectSeq: number): void => {
+    const applyDecision = (decision: AgentSocketReconnectDecision): void => {
+      if (
+        decision !== "retry" ||
+        !enabledRef.current ||
+        closedByUserRef.current ||
+        connectSeq !== connectSeqRef.current
+      ) {
+        return;
+      }
+      scheduleRetryRef.current();
+    };
+
+    const policy = reconnectPolicyRef.current;
+    if (!policy) {
+      applyDecision("retry");
+      return;
+    }
+    try {
+      reconnectPolicySeqRef.current = connectSeq;
+      const settle = (decision: AgentSocketReconnectDecision): void => {
+        if (reconnectPolicySeqRef.current !== connectSeq) return;
+        reconnectPolicySeqRef.current = null;
+        applyDecision(decision);
+      };
+      void Promise.resolve(policy(disconnect)).then(settle, () => settle("stop"));
+    } catch {
+      reconnectPolicySeqRef.current = null;
+      applyDecision("stop");
+    }
+  }, []);
 
   const connect = useCallback((): void => {
+    if (!enabledRef.current || wsRef.current) return;
     const connectSeq = ++connectSeqRef.current;
     closedByUserRef.current = false;
     setStatus("connecting");
@@ -129,18 +196,26 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       ws = new WebSocket(url);
     } catch {
       setStatus("error");
-      scheduleRetryRef.current();
+      requestReconnect(
+        { code: 1006, reason: "connection_constructor_failed", wasClean: false, opened: false },
+        connectSeq,
+      );
       return;
     }
     wsRef.current = ws;
+    let opened = false;
 
     ws.onopen = () => {
       if (connectSeq !== connectSeqRef.current || wsRef.current !== ws) {
         ws.close();
         return;
       }
-      retryRef.current = 0;
+      opened = true;
       setStatus("open");
+      stableTimerRef.current = window.setTimeout(() => {
+        stableTimerRef.current = null;
+        retryRef.current = 0;
+      }, AgentSocketStableConnectionMs);
     };
 
     ws.onmessage = (evt) => {
@@ -159,20 +234,32 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       setStatus("error");
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       if (connectSeq !== connectSeqRef.current || wsRef.current !== ws) {
         return;
+      }
+      if (stableTimerRef.current !== null) {
+        clearTimeout(stableTimerRef.current);
+        stableTimerRef.current = null;
       }
       setStatus("closed");
       wsRef.current = null;
       if (!closedByUserRef.current) {
-        scheduleRetryRef.current();
+        requestReconnect(
+          {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+            opened,
+          },
+          connectSeq,
+        );
       }
     };
-  }, [dispatch, url]);
+  }, [dispatch, requestReconnect, url]);
 
   const scheduleRetry = useCallback((): void => {
-    if (retryTimerRef.current !== null) return;
+    if (retryTimerRef.current !== null || !enabledRef.current || navigator.onLine === false) return;
     const attempt = retryRef.current;
     retryRef.current = attempt + 1;
     const delay = readAgentSocketRetryDelayMs(attempt);
@@ -185,20 +272,36 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   scheduleRetryRef.current = scheduleRetry;
 
   useEffect(() => {
-    connect();
-    return () => {
+    if (!enabled) {
       closedByUserRef.current = true;
-      if (retryTimerRef.current !== null) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
+      clearRetrySchedule();
       clearFlushSchedule();
       connectSeqRef.current += 1;
+      reconnectPolicySeqRef.current = null;
       wsRef.current?.close();
       wsRef.current = null;
+      pendingRef.current = [];
+      setStatus("idle");
+      return;
+    }
+
+    connect();
+    const handleOnline = (): void => {
+      if (!wsRef.current && retryTimerRef.current === null && reconnectPolicySeqRef.current === null) connect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+    window.addEventListener("online", handleOnline);
+    return () => {
+      closedByUserRef.current = true;
+      window.removeEventListener("online", handleOnline);
+      clearRetrySchedule();
+      clearFlushSchedule();
+      connectSeqRef.current += 1;
+      reconnectPolicySeqRef.current = null;
+      wsRef.current?.close();
+      wsRef.current = null;
+      pendingRef.current = [];
+    };
+  }, [clearFlushSchedule, clearRetrySchedule, connect, enabled]);
 
   const send = useCallback((req: WsRequest): boolean => {
     const ws = wsRef.current;
@@ -208,14 +311,15 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   }, []);
 
   const reconnect = useCallback((): void => {
-    if (retryTimerRef.current !== null) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
+    if (!enabledRef.current) return;
+    clearRetrySchedule();
+    connectSeqRef.current += 1;
+    reconnectPolicySeqRef.current = null;
     wsRef.current?.close();
+    wsRef.current = null;
     retryRef.current = 0;
     connect();
-  }, [connect]);
+  }, [clearRetrySchedule, connect]);
 
   return { status, send, reconnect };
 }

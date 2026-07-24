@@ -14,11 +14,20 @@
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| `GET` | `/api/auth/session` | 获取当前登录状态；未登录时返回 401。 |
-| `POST` | `/api/auth/login` | 提交 `{ loginName, password }`，成功后设置 HttpOnly session Cookie，并返回内存 CSRF token。 |
+| `GET` | `/api/auth/session` | 获取 `disabled`、`anonymous` 或 `authenticated` 会话状态；未登录是正常的 200 响应。 |
+| `POST` | `/api/auth/login` | 提交 `{ loginName, password }`，成功后设置 HttpOnly session Cookie，并返回已认证会话及内存 CSRF token。 |
 | `POST` | `/api/auth/logout` | 需要 `X-Senera-Csrf`，撤销当前会话并清除 Cookie。 |
 
-服务端会在 WebSocket 升级前验证 Cookie 和 Origin。未认证、跨 Origin、超出连接配额或超过握手频率的连接不会建立。远程部署必须使用 HTTPS/WSS；反向代理终止 TLS 时仅应配置明确可信的代理地址。
+服务端会在 WebSocket 升级前验证 Cookie 和 Origin。未认证、跨 Origin、超出连接配额或超过握手频率的连接不会建立。已建立连接的会话失效时使用应用关闭码 `4401`；浏览器应停止盲目重连并重新检查会话。远程部署必须使用 HTTPS/WSS；反向代理终止 TLS 时仅应配置明确可信的代理地址。
+
+## 健康检查
+
+健康检查不要求管理员会话，也不返回账户、配置或运行数据。容器编排应使用 readiness，而不是通过前端首页推断服务是否可用。
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET` / `HEAD` | `/health/live` | 确认 HTTP 进程仍可响应。 |
+| `GET` / `HEAD` | `/health/ready` | 确认服务已经完成启动并可接收请求。 |
 
 ## 客户端请求
 

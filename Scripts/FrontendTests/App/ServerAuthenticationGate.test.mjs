@@ -40,8 +40,10 @@ describe("server authentication gate", () => {
         state: {
           status: "authenticated",
           authentication: {
-            required: true,
+            state: "authenticated",
             account: { id: "owner", loginName: "owner", displayName: "Owner", role: "owner" },
+            csrfToken: "csrf",
+            expiresAt: "2026-07-25T00:00:00.000Z",
           },
         },
       }),
