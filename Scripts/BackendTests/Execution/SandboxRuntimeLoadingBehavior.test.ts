@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
+import type { AgentSandboxBundleInstallation } from "../../../Source/AgentSystem/Sandbox/AgentSandboxBundleInstaller.js";
 import {
   prepareAgentSandboxRuntime,
   resolveAgentSandboxRuntimePaths,
@@ -26,17 +27,21 @@ describe("sandbox runtime loading", () => {
         workspaceRoot,
         config,
         microsandbox: createMicrosandbox(),
-        strict: true,
-        skipImagePull: true,
         onProgress: ({ stage }) => stages.push(stage),
       });
 
-      expect(prepared).toMatchObject({ paths: { baseDir: paths.baseDir }, preparedImages: [] });
+      expect(prepared).toMatchObject({ paths: { baseDir: paths.baseDir }, preparedImages: ["alpine"] });
       expect(Object.keys(prepared.paths)).toEqual(["baseDir"]);
       expect(process.env.MSB_HOME).toBe(paths.baseDir);
       expect(process.env.MSB_PATH).toBe("provider-owned-msb");
       expect(process.env.MSB_LIBKRUNFW_PATH).toBe("provider-owned-libkrunfw");
-      expect(stages).toEqual(["checking_host_runtime", "loading_runtime"]);
+      expect(stages).toEqual([
+        "checking_host_runtime",
+        "loading_runtime",
+        "warming_image",
+        "warming_image",
+        "warming_image",
+      ]);
     } finally {
       restoreEnvironment("MSB_HOME", previousMsbHome);
       restoreEnvironment("MSB_PATH", previousMsbPath);
@@ -59,7 +64,6 @@ describe("sandbox runtime loading", () => {
         workspaceRoot,
         config: sandboxConfig(".senera/runtime", ["alpine"]),
         microsandbox,
-        strict: true,
       });
 
       expect(prepared.preparedImages).toEqual(["alpine"]);
@@ -69,24 +73,113 @@ describe("sandbox runtime loading", () => {
       await rm(workspaceRoot, { recursive: true, force: true });
     }
   });
+
+  test("imports a release bundle and probes only its declared image with network pulling disabled", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-runtime-"));
+    const createdImages: string[] = [];
+    const pullPolicies: string[] = [];
+    const sourceImage = "registry.example/runtime@sha256:bundle";
+    const bundleInstallation = {
+      bundlePath: path.join(workspaceRoot, "bundle.tar.zst"),
+      imported: true,
+      manifest: {
+        formatVersion: 1,
+        distributionId: "test",
+        bundleVersion: "1.0.0",
+        productVersion: "1.2.3",
+        microsandboxVersion: "0.6.4",
+        target: "x64",
+        sourceImage,
+        asset: {
+          fileName: "bundle.tar.zst",
+          url: "https://example.test/bundle.tar.zst",
+          sizeBytes: 1,
+          sha256: "0".repeat(64),
+        },
+      },
+    } satisfies AgentSandboxBundleInstallation;
+    const bundleInstaller = vi.fn(async () => bundleInstallation);
+    try {
+      const prepared = await prepareAgentSandboxRuntime({
+        workspaceRoot,
+        config: {
+          Enabled: true,
+          BaseDir: ".senera/runtime",
+          Provisioning: { Kind: "ReleaseBundle" },
+        },
+        productVersion: "1.2.3",
+        microsandbox: createMicrosandbox(createdImages, pullPolicies),
+        bundleInstaller,
+      });
+
+      expect(bundleInstaller).toHaveBeenCalledOnce();
+      expect(prepared.preparedImages).toEqual([sourceImage]);
+      expect(createdImages).toEqual([sourceImage]);
+      expect(pullPolicies).toEqual(["never"]);
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects missing declared registry credentials before contacting the OCI registry", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "senera-sandbox-runtime-"));
+    const usernameVariable = "SENERA_TEST_SANDBOX_REGISTRY_USERNAME_MISSING";
+    const passwordVariable = "SENERA_TEST_SANDBOX_REGISTRY_PASSWORD_MISSING";
+    const previousUsername = process.env[usernameVariable];
+    const previousPassword = process.env[passwordVariable];
+    delete process.env[usernameVariable];
+    delete process.env[passwordVariable];
+    const createdImages: string[] = [];
+    try {
+      await expect(
+        prepareAgentSandboxRuntime({
+          workspaceRoot,
+          config: {
+            Enabled: true,
+            BaseDir: ".senera/runtime",
+            Provisioning: {
+              Kind: "Oci",
+              Images: ["registry.example/runtime@sha256:digest"],
+              Registry: {
+                Authentication: {
+                  Kind: "Basic",
+                  UsernameEnvironmentVariable: usernameVariable,
+                  PasswordEnvironmentVariable: passwordVariable,
+                },
+              },
+            },
+          },
+          microsandbox: createMicrosandbox(createdImages),
+        }),
+      ).rejects.toThrow(`Sandbox registry environment variable is not set: ${usernameVariable}`);
+      expect(createdImages).toEqual([]);
+    } finally {
+      restoreEnvironment(usernameVariable, previousUsername);
+      restoreEnvironment(passwordVariable, previousPassword);
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
 });
 
-function sandboxConfig(baseDir: string, images: string[] = []): ResolvedAgentSandboxRuntimeConfig {
+function sandboxConfig(baseDir: string, images: string[] = ["alpine"]): ResolvedAgentSandboxRuntimeConfig {
   return {
     Enabled: true,
     BaseDir: baseDir,
-    Images: images,
+    Provisioning: {
+      Kind: "Oci",
+      Images: images,
+    },
   };
 }
 
-function createMicrosandbox(createdImages: string[] = []): MicrosandboxModule {
+function createMicrosandbox(createdImages: string[] = [], pullPolicies: string[] = []): MicrosandboxModule {
   return {
     Snapshot: {
       import: async () => undefined,
       export: async () => undefined,
     },
     Sandbox: {
-      builder: () => new FakeSandboxBuilder(createdImages),
+      builder: () => new FakeSandboxBuilder(createdImages, pullPolicies),
       get: async () => {
         throw new Error("snapshot export was not expected");
       },
@@ -97,14 +190,22 @@ function createMicrosandbox(createdImages: string[] = []): MicrosandboxModule {
 class FakeSandboxBuilder {
   private selectedImage = "";
 
-  constructor(private readonly createdImages: string[]) {}
+  constructor(
+    private readonly createdImages: string[],
+    private readonly pullPolicies: string[],
+  ) {}
 
   image(value: string): this {
     this.selectedImage = value;
     return this;
   }
 
-  pullPolicy(): this {
+  pullPolicy(policy: string): this {
+    this.pullPolicies.push(policy);
+    return this;
+  }
+
+  registry(): this {
     return this;
   }
 

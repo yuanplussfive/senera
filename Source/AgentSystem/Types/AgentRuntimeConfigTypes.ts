@@ -102,14 +102,40 @@ export interface ResolvedAgentExecutionResourcesConfig extends Required<AgentExe
 export interface AgentSandboxRuntimeConfig {
   Enabled?: boolean;
   BaseDir?: string;
-  Images?: string[];
+  Provisioning?: AgentSandboxProvisioningConfig;
 }
 
 export interface ResolvedAgentSandboxRuntimeConfig {
   Enabled: boolean;
   BaseDir: string;
-  Images: string[];
+  Provisioning: ResolvedAgentSandboxProvisioningConfig;
 }
+
+export type AgentSandboxProvisioningConfig =
+  | {
+      Kind: "Oci";
+      Images: string[];
+      Registry?: AgentSandboxRegistryConfig;
+    }
+  | {
+      Kind: "ReleaseBundle";
+    };
+
+export type ResolvedAgentSandboxProvisioningConfig = AgentSandboxProvisioningConfig;
+
+export interface AgentSandboxRegistryConfig {
+  Authentication?: AgentSandboxRegistryAuthenticationConfig;
+  Insecure?: boolean;
+  CertificateFiles?: string[];
+}
+
+export type AgentSandboxRegistryAuthenticationConfig =
+  | { Kind: "Anonymous" }
+  | {
+      Kind: "Basic";
+      UsernameEnvironmentVariable: string;
+      PasswordEnvironmentVariable: string;
+    };
 
 export interface AgentPresetsConfig {
   Enabled?: boolean;

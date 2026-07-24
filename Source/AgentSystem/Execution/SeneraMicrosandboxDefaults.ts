@@ -1,7 +1,15 @@
+import {
+  readAgentSandboxDistributionContract,
+  resolveAgentSandboxDistributionTarget,
+} from "../Sandbox/AgentSandboxDistributionContract.js";
+
 export const SeneraMicrosandboxProviderId = "microsandbox";
 
+const sandboxDistribution = readAgentSandboxDistributionContract();
+const defaultSandboxTarget = resolveAgentSandboxDistributionTarget(sandboxDistribution);
+
 export const SeneraMicrosandboxDefaults = {
-  image: "node:22-bookworm-slim",
+  image: defaultSandboxTarget.sourceImage,
   guestWorkspaceRoot: "/workspace",
   cpus: 1,
   memoryMiB: 512,

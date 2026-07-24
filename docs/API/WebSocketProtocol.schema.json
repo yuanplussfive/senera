@@ -441,7 +441,7 @@
           "properties": {
             "ConfigVersion": {
               "type": "number",
-              "const": 4
+              "const": 5
             },
             "Defaults": {
               "type": "object",
@@ -590,12 +590,100 @@
                       "type": "string",
                       "minLength": 1
                     },
-                    "Images": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1
-                      }
+                    "Provisioning": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "Kind": {
+                              "type": "string",
+                              "const": "Oci"
+                            },
+                            "Images": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "Registry": {
+                              "type": "object",
+                              "properties": {
+                                "Authentication": {
+                                  "oneOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "Kind": {
+                                          "type": "string",
+                                          "const": "Anonymous"
+                                        }
+                                      },
+                                      "required": [
+                                        "Kind"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "Kind": {
+                                          "type": "string",
+                                          "const": "Basic"
+                                        },
+                                        "UsernameEnvironmentVariable": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "PasswordEnvironmentVariable": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        }
+                                      },
+                                      "required": [
+                                        "Kind",
+                                        "UsernameEnvironmentVariable",
+                                        "PasswordEnvironmentVariable"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                },
+                                "Insecure": {
+                                  "type": "boolean"
+                                },
+                                "CertificateFiles": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  }
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "Kind",
+                            "Images"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "Kind": {
+                              "type": "string",
+                              "const": "ReleaseBundle"
+                            }
+                          },
+                          "required": [
+                            "Kind"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
                     }
                   },
                   "additionalProperties": false
@@ -1715,12 +1803,100 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "Images": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
+                "Provisioning": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "Kind": {
+                          "type": "string",
+                          "const": "Oci"
+                        },
+                        "Images": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "Registry": {
+                          "type": "object",
+                          "properties": {
+                            "Authentication": {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "Kind": {
+                                      "type": "string",
+                                      "const": "Anonymous"
+                                    }
+                                  },
+                                  "required": [
+                                    "Kind"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "Kind": {
+                                      "type": "string",
+                                      "const": "Basic"
+                                    },
+                                    "UsernameEnvironmentVariable": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "PasswordEnvironmentVariable": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  },
+                                  "required": [
+                                    "Kind",
+                                    "UsernameEnvironmentVariable",
+                                    "PasswordEnvironmentVariable"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            },
+                            "Insecure": {
+                              "type": "boolean"
+                            },
+                            "CertificateFiles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "Kind",
+                        "Images"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "Kind": {
+                          "type": "string",
+                          "const": "ReleaseBundle"
+                        }
+                      },
+                      "required": [
+                        "Kind"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
                 }
               },
               "additionalProperties": false

@@ -1,9 +1,11 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { readFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { SeneraMicrosandboxModuleLoader } from "../Execution/SeneraMicrosandboxSdkAdapter.js";
 import type { ResolvedAgentSandboxRuntimeConfig } from "../Types/AgentConfigTypes.js";
+import type { AgentSandboxRegistryConfig } from "../Types/AgentRuntimeConfigTypes.js";
+import { installAgentSandboxReleaseBundle } from "./AgentSandboxBundleInstaller.js";
 import { normalizeSandboxImages } from "./AgentSandboxRuntimeImages.js";
 import { AgentSandboxPreparationStages, type AgentSandboxPreparationProgress } from "./AgentSandboxRuntimeTypes.js";
 
@@ -16,12 +18,12 @@ export interface AgentSandboxRuntimePaths {
 export interface AgentSandboxRuntimePreparationOptions {
   workspaceRoot: string;
   config: ResolvedAgentSandboxRuntimeConfig;
-  images?: readonly string[];
-  strict?: boolean;
-  skipImagePull?: boolean;
+  productVersion?: string;
+  architecture?: string;
   exportBundlePath?: string;
   microsandbox?: MicrosandboxModule;
   microsandboxModuleLoader?: SeneraMicrosandboxModuleLoader;
+  bundleInstaller?: typeof installAgentSandboxReleaseBundle;
   log?: (message: string) => void;
   onProgress?: (progress: AgentSandboxPreparationProgress) => void;
 }
@@ -30,7 +32,6 @@ export interface AgentSandboxRuntimePreparationResult {
   paths: AgentSandboxRuntimePaths;
   preparedImages: string[];
   exportedBundlePath?: string;
-  skippedReason?: string;
 }
 
 export interface MicrosandboxModule {
@@ -48,6 +49,7 @@ export interface MicrosandboxSnapshotApi {
 
 export interface MicrosandboxSandboxBuilder {
   image(image: string): this;
+  registry(configure: (registry: MicrosandboxRegistryConfigBuilder) => MicrosandboxRegistryConfigBuilder): this;
   pullPolicy(policy: string): this;
   cpus(value: number): this;
   memory(value: number): this;
@@ -58,6 +60,12 @@ export interface MicrosandboxSandboxBuilder {
   maxDuration(seconds: number): this;
   create(): Promise<MicrosandboxSandbox>;
   createWithPullProgress(): Promise<MicrosandboxPullProgressCreate>;
+}
+
+export interface MicrosandboxRegistryConfigBuilder {
+  auth(auth: { kind: "anonymous" } | { kind: "basic"; username: string; password: string }): this;
+  insecure(): this;
+  caCerts(pemData: Buffer): this;
 }
 
 export interface MicrosandboxPullProgressCreate extends AsyncIterable<MicrosandboxPullProgressEvent> {
@@ -103,36 +111,35 @@ export async function prepareAgentSandboxRuntime(
     preparedImages: [],
   };
 
-  try {
-    report({ stage: AgentSandboxPreparationStages.CheckingHostRuntime });
-    await mkdir(paths.baseDir, { recursive: true });
-    configureMicrosandboxRuntime(paths);
-    report({ stage: AgentSandboxPreparationStages.LoadingRuntime });
-    const microsandbox = options.microsandbox ?? (await loadMicrosandbox(options.microsandboxModuleLoader));
+  report({ stage: AgentSandboxPreparationStages.CheckingHostRuntime });
+  await mkdir(paths.baseDir, { recursive: true });
+  configureMicrosandboxRuntime(paths);
+  report({ stage: AgentSandboxPreparationStages.LoadingRuntime });
+  const microsandbox = options.microsandbox ?? (await loadMicrosandbox(options.microsandboxModuleLoader));
 
-    if (!options.skipImagePull) {
-      const images = normalizeSandboxImages(options.config.Images, options.images);
-      for (const [index, image] of images.entries()) {
-        await warmSandboxImage(microsandbox, image, index, images.length, log, report);
-        result.preparedImages.push(image);
-      }
-    }
+  const provisioning = await resolveSandboxProvisioning(options, microsandbox, paths, report);
+  for (const [index, image] of provisioning.images.entries()) {
+    await warmSandboxImage(
+      microsandbox,
+      image,
+      provisioning.pullPolicy,
+      provisioning.registry,
+      index,
+      provisioning.images.length,
+      log,
+      report,
+    );
+    result.preparedImages.push(image);
+  }
 
-    if (options.exportBundlePath) {
-      report({ stage: AgentSandboxPreparationStages.ExportingBundle });
-      result.exportedBundlePath = await exportSandboxBundle(
-        microsandbox,
-        options.exportBundlePath,
-        result.preparedImages,
-        log,
-      );
-    }
-  } catch (error) {
-    if (options.strict) {
-      throw error;
-    }
-    result.skippedReason = errorMessage(error);
-    log(`sandbox prepare skipped: ${result.skippedReason}`);
+  if (options.exportBundlePath) {
+    report({ stage: AgentSandboxPreparationStages.ExportingBundle });
+    result.exportedBundlePath = await exportSandboxBundle(
+      microsandbox,
+      options.exportBundlePath,
+      result.preparedImages,
+      log,
+    );
   }
 
   return result;
@@ -157,6 +164,8 @@ async function loadMicrosandbox(loader: SeneraMicrosandboxModuleLoader = () => i
 async function warmSandboxImage(
   microsandbox: MicrosandboxModule,
   image: string,
+  pullPolicy: "if-missing" | "never",
+  registry: ResolvedSandboxRegistry | undefined,
   imageIndex: number,
   imageCount: number,
   log: (message: string) => void,
@@ -172,9 +181,9 @@ async function warmSandboxImage(
     total: imageCount,
   });
   try {
-    const creation = await microsandbox.Sandbox.builder(name)
-      .image(image)
-      .pullPolicy("if-missing")
+    const builder = microsandbox.Sandbox.builder(name).image(image).pullPolicy(pullPolicy);
+    configureRegistry(builder, registry);
+    const creation = await builder
       .cpus(1)
       .memory(256)
       .replace()
@@ -201,6 +210,96 @@ async function warmSandboxImage(
       });
     }
   }
+}
+
+interface ResolvedSandboxProvisioning {
+  images: string[];
+  pullPolicy: "if-missing" | "never";
+  registry?: ResolvedSandboxRegistry;
+}
+
+interface ResolvedSandboxRegistry {
+  authentication?: { kind: "anonymous" } | { kind: "basic"; username: string; password: string };
+  insecure: boolean;
+  certificates: Buffer[];
+}
+
+async function resolveSandboxProvisioning(
+  options: AgentSandboxRuntimePreparationOptions,
+  microsandbox: MicrosandboxModule,
+  paths: AgentSandboxRuntimePaths,
+  report: (progress: AgentSandboxPreparationProgress) => void,
+): Promise<ResolvedSandboxProvisioning> {
+  const provisioning = options.config.Provisioning;
+  if (provisioning.Kind === "Oci") {
+    const images = normalizeSandboxImages(provisioning.Images);
+    if (images.length === 0) throw new Error("OCI sandbox provisioning requires at least one image.");
+    return {
+      images,
+      pullPolicy: "if-missing",
+      registry: provisioning.Registry
+        ? await resolveSandboxRegistry(options.workspaceRoot, provisioning.Registry)
+        : undefined,
+    };
+  }
+
+  const productVersion = options.productVersion?.trim();
+  if (!productVersion) {
+    throw new Error("ReleaseBundle sandbox provisioning requires the application product version.");
+  }
+  const installation = await (options.bundleInstaller ?? installAgentSandboxReleaseBundle)({
+    baseDir: paths.baseDir,
+    productVersion,
+    architecture: options.architecture,
+    snapshot: microsandbox.Snapshot,
+    onProgress: report,
+  });
+  return {
+    images: [installation.manifest.sourceImage],
+    pullPolicy: "never",
+  };
+}
+
+async function resolveSandboxRegistry(
+  workspaceRoot: string,
+  registry: AgentSandboxRegistryConfig,
+): Promise<ResolvedSandboxRegistry> {
+  const authentication = registry.Authentication;
+  const certificates = await Promise.all(
+    (registry.CertificateFiles ?? []).map((filePath) => readFile(resolveConfiguredPath(workspaceRoot, filePath))),
+  );
+  if (!authentication || authentication.Kind === "Anonymous") {
+    return {
+      authentication: authentication ? { kind: "anonymous" } : undefined,
+      insecure: registry.Insecure ?? false,
+      certificates,
+    };
+  }
+  return {
+    authentication: {
+      kind: "basic",
+      username: requireEnvironmentVariable(authentication.UsernameEnvironmentVariable),
+      password: requireEnvironmentVariable(authentication.PasswordEnvironmentVariable),
+    },
+    insecure: registry.Insecure ?? false,
+    certificates,
+  };
+}
+
+function configureRegistry(builder: MicrosandboxSandboxBuilder, registry: ResolvedSandboxRegistry | undefined): void {
+  if (!registry) return;
+  builder.registry((configuration) => {
+    if (registry.authentication) configuration.auth(registry.authentication);
+    if (registry.insecure) configuration.insecure();
+    for (const certificate of registry.certificates) configuration.caCerts(certificate);
+    return configuration;
+  });
+}
+
+function requireEnvironmentVariable(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Sandbox registry environment variable is not set: ${name}`);
+  return value;
 }
 
 async function consumeImagePullProgress(
@@ -247,28 +346,8 @@ async function exportSandboxBundle(
   await mkdir(path.dirname(exportBundlePath), { recursive: true });
   try {
     log(`Creating sandbox snapshot ${snapshotPath}...`);
-    await microsandbox.Sandbox.get(sandboxName).then(
-      (handle) => handle.snapshotTo(snapshotPath),
-      async () => {
-        const sandbox = await microsandbox.Sandbox.builder(sandboxName)
-          .image(image)
-          .pullPolicy("if-missing")
-          .cpus(1)
-          .memory(256)
-          .replace()
-          .quietLogs()
-          .disableMetricsSample()
-          .disableNetwork()
-          .maxDuration(60)
-          .create();
-        try {
-          await sandbox.stopWithTimeout(1_000);
-        } finally {
-          await sandbox.kill().catch(() => undefined);
-        }
-        await microsandbox.Sandbox.get(sandboxName).then((handle) => handle.snapshotTo(snapshotPath));
-      },
-    );
+    const sandbox = await microsandbox.Sandbox.get(sandboxName);
+    await sandbox.snapshotTo(snapshotPath);
     log(`Exporting sandbox bundle ${exportBundlePath}...`);
     await microsandbox.Snapshot.export(snapshotPath, exportBundlePath, { withImage: true });
     return exportBundlePath;
@@ -287,10 +366,6 @@ function safeImageName(image: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 48);
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function sumNumbers(values: Iterable<number>): number {

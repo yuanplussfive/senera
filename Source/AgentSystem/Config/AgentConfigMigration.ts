@@ -51,6 +51,10 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
         migrateVersionThreeToFour(working, removedPaths);
         version = 4;
         break;
+      case 4:
+        migrateVersionFourToFive(working, migratedPaths, removedPaths);
+        version = 5;
+        break;
       default:
         throw new AgentConfigMigrationError(`No migration is registered for configuration version ${version}.`);
     }
@@ -65,6 +69,41 @@ export function migrateAgentConfigPayload(config: unknown): AgentConfigMigration
     migratedPaths,
     removedPaths,
   };
+}
+
+function migrateVersionFourToFive(
+  config: Record<string, unknown>,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  migrateSandboxProvisioning(config, "", migratedPaths, removedPaths);
+  const defaults = config.Defaults;
+  if (isRecord(defaults)) migrateSandboxProvisioning(defaults, "Defaults.", migratedPaths, removedPaths);
+}
+
+function migrateSandboxProvisioning(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  const sandboxRuntime = container.SandboxRuntime;
+  if (!isRecord(sandboxRuntime) || !Object.hasOwn(sandboxRuntime, "Images")) return;
+  if (Object.hasOwn(sandboxRuntime, "Provisioning")) {
+    throw new AgentConfigMigrationError(
+      `${prefix}SandboxRuntime cannot declare both legacy Images and Provisioning during v5 migration.`,
+    );
+  }
+  const images = sandboxRuntime.Images;
+  if (!Array.isArray(images) || images.some((image) => typeof image !== "string" || image.trim().length === 0)) {
+    throw new AgentConfigMigrationError(`${prefix}SandboxRuntime.Images must be an array of non-empty strings.`);
+  }
+  delete sandboxRuntime.Images;
+  removedPaths.push(`${prefix}SandboxRuntime.Images`);
+  if (images.length > 0) {
+    sandboxRuntime.Provisioning = { Kind: "Oci", Images: [...images] };
+    migratedPaths.push(`${prefix}SandboxRuntime.Provisioning`);
+  }
 }
 
 function migrateVersionThreeToFour(config: Record<string, unknown>, removedPaths: string[]): void {

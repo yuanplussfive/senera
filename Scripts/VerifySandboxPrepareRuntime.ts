@@ -39,6 +39,10 @@ class FakeSandboxBuilder {
     return this;
   }
 
+  registry(): this {
+    return this;
+  }
+
   cpus(_value: number): this {
     return this;
   }
@@ -92,15 +96,7 @@ class FakeSandbox {
   async kill(): Promise<void> {}
 }
 
-assert.deepEqual(readOptions(["--strict"]), {
-  strict: true,
-  skipImagePull: false,
-  baseDir: undefined,
-  exportBundlePath: undefined,
-});
-assert.deepEqual(readOptions(["--skip-image-pull"]), {
-  strict: false,
-  skipImagePull: true,
+assert.deepEqual(readOptions([]), {
   baseDir: undefined,
   exportBundlePath: undefined,
 });
@@ -113,12 +109,12 @@ try {
     return { runtimeRoot: options.sandboxRuntimeBaseDir, prepared: true, fingerprint: "verify" };
   };
   const available = new FakeMicrosandboxModule(true);
-  const availableOptions = prepareOptionsFixture(tempRoot, "available", false);
+  const availableOptions = prepareOptionsFixture(tempRoot, "available");
   await prepareSandboxRuntime(availableOptions, available, prepareTerminalRuntime);
   assert.deepEqual(available.createdImages, [SeneraMicrosandboxDefaults.image]);
 
   const missing = new FakeMicrosandboxModule(false);
-  const missingOptions = prepareOptionsFixture(tempRoot, "missing", false);
+  const missingOptions = prepareOptionsFixture(tempRoot, "missing");
   await assert.rejects(() => prepareSandboxRuntime(missingOptions, missing, prepareTerminalRuntime), {
     message: /official microsandbox runtime unavailable/u,
   });
@@ -130,11 +126,9 @@ try {
 
 console.log("Sandbox prepare runtime verification passed.");
 
-function prepareOptionsFixture(root: string, name: string, skipImagePull: boolean): PrepareOptions {
+function prepareOptionsFixture(root: string, name: string): PrepareOptions {
   const baseDir = path.join(root, name, "runtime");
   return {
-    strict: true,
-    skipImagePull,
     baseDir,
     exportBundlePath: undefined,
   };

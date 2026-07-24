@@ -35,6 +35,10 @@ assert.ok(
   dockerServer.includes('BaseDir: "/data/.senera/sandbox-runtime"'),
   "Docker sandbox runtime must install under the mounted /data volume.",
 );
+assert.ok(
+  dockerServer.includes('{ Kind: "ReleaseBundle" }') && dockerServer.includes("productVersion: ProductVersion"),
+  "Docker KVM deployment must consume the version-matched release bundle without an OCI fallback.",
+);
 assertAdminInitializationPrecedesStartup(readme, "README.md");
 assertAdminInitializationPrecedesStartup(operations, "docs/Operations.md");
 assert.ok(

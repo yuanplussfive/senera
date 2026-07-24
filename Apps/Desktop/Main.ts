@@ -65,7 +65,7 @@ app
     );
     const paths = runtimePaths;
     if (microsandboxRuntimeSmoke) {
-      await runDesktopMicrosandboxRuntimeSmoke(paths);
+      await runDesktopMicrosandboxRuntimeSmoke(paths, app.getVersion());
       app.quit();
       return;
     }
@@ -85,7 +85,8 @@ app
         label: paths.configDatabasePath,
       },
       runtimeModuleResolver: createCompiledAgentMcpRuntimeModuleResolver(paths.resourceRoot),
-      runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
+      runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config, { packaged: app.isPackaged }),
+      productVersion: app.getVersion(),
       microsandboxModuleLoader: createDesktopMicrosandboxModuleLoader(paths.microsandboxRuntimeBridgePath),
     });
     mainWindow = createMainWindow();
