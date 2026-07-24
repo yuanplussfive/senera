@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.8.1](https://github.com/yuanplussfive/senera/compare/v1.8.0...v1.8.1) (2026-07-24)
+
+
+### 内部重构
+
+* **docker:** unify sandbox deployment and server access ([#59](https://github.com/yuanplussfive/senera/issues/59)) ([c184ee3](https://github.com/yuanplussfive/senera/commit/c184ee3ff15039cbcaf631c5714252140f942df6))
+
 ## [1.8.0](https://github.com/yuanplussfive/senera/compare/v1.7.0...v1.8.0) (2026-07-24)
 
 
