@@ -4,6 +4,13 @@
 
 从下一个版本开始，本文件由 Release Please 根据 Conventional Commits 自动维护。内部测试、格式调整和无用户影响的维护工作默认不会进入发布说明。
 
+## [1.7.0](https://github.com/yuanplussfive/senera/compare/v1.6.1...v1.7.0) (2026-07-24)
+
+
+### 新增功能
+
+* **runtime:** 重构配置存储与沙箱部署 ([#55](https://github.com/yuanplussfive/senera/issues/55)) ([c6eb739](https://github.com/yuanplussfive/senera/commit/c6eb7392f024d1618817319f5a991a19466c0361))
+
 ## [1.6.1](https://github.com/yuanplussfive/senera/compare/v1.6.0...v1.6.1) (2026-07-23)
 
 
