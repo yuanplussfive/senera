@@ -7,6 +7,7 @@ import {
   AgentToolContractVersion,
   type AgentToolContractBundle,
 } from "../Source/AgentSystem/ToolContracts/AgentToolContractTypes.js";
+import { readOptionalUtf8, writeUtf8Atomically } from "./GeneratedTextFile.js";
 import { AgentTypescriptToolContractProjector } from "./ToolContracts/AgentTypescriptToolContractProjector.js";
 
 interface SourceToolManifest {
@@ -141,43 +142,6 @@ function resolveInsidePluginRoot(pluginRoot: string, file: string): string {
     throw new Error(`Tool contract authoring source must stay inside its plugin root: ${file}`);
   }
   return resolved;
-}
-
-function readOptionalUtf8(filePath: string): string | undefined {
-  try {
-    return fs.readFileSync(filePath, "utf8");
-  } catch (error) {
-    if (nodeErrorCode(error) === "ENOENT") return undefined;
-    throw error;
-  }
-}
-
-function writeUtf8Atomically(filePath: string, content: string): void {
-  const temporaryPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
-  );
-  fs.writeFileSync(temporaryPath, content, { encoding: "utf8", flag: "wx" });
-  try {
-    fs.renameSync(temporaryPath, filePath);
-  } catch (error) {
-    try {
-      fs.unlinkSync(temporaryPath);
-    } catch (cleanupError) {
-      if (nodeErrorCode(cleanupError) !== "ENOENT") {
-        throw new AggregateError([error, cleanupError], `Could not replace generated tool contract: ${filePath}`, {
-          cause: cleanupError,
-        });
-      }
-    }
-    throw error;
-  }
-}
-
-function nodeErrorCode(error: unknown): string | undefined {
-  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
-    ? error.code
-    : undefined;
 }
 
 function normalizeRelativePath(filePath: string): string {

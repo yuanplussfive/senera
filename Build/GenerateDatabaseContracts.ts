@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { snapshotAgentSqliteSchema } from "../Source/AgentSystem/Database/AgentSqliteDatabaseSchema.js";
+import { readOptionalUtf8, writeUtf8Atomically } from "./GeneratedTextFile.js";
 
 interface ContractManifest {
   id?: unknown;
@@ -188,13 +189,12 @@ function resolveResource(directory: string, value: unknown, label: string): stri
 }
 
 function synchronizeTextFile(filePath: string, expected: string, verifyOnly: boolean): void {
-  const actual = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : undefined;
+  const actual = readOptionalUtf8(filePath);
   if (actual === expected) return;
   if (verifyOnly) {
     throw new Error(`${relativePath(filePath)} is stale. Run npm run generate.database-contracts.`);
   }
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, expected, "utf8");
+  writeUtf8Atomically(filePath, expected);
 }
 
 function discoverContractManifests(root: string): string[] {

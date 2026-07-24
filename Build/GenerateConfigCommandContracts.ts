@@ -9,6 +9,7 @@ import {
 } from "../Source/AgentSystem/Config/AgentConfigCommandContract.js";
 import { AgentConfigCommandSchemaCatalog } from "../Source/AgentSystem/Config/AgentConfigCommandSchemaCatalog.js";
 import { createAgentJsonMergePatchSchema } from "../Source/AgentSystem/Core/AgentJsonMergePatch.js";
+import { readOptionalUtf8, writeUtf8Atomically } from "./GeneratedTextFile.js";
 
 interface ContractManifest {
   formatVersion?: unknown;
@@ -69,12 +70,13 @@ function synchronizeVersion(version: ContractVersion, latest: boolean): void {
     return;
   }
 
-  if (!fs.existsSync(snapshotPath)) throw new Error(`Missing version ${number} snapshot: ${relative(snapshotPath)}.`);
-  const snapshotChecksum = sha256(fs.readFileSync(snapshotPath, "utf8"));
+  const snapshotSource = readOptionalUtf8(snapshotPath);
+  if (snapshotSource === undefined) throw new Error(`Missing version ${number} snapshot: ${relative(snapshotPath)}.`);
+  const snapshotChecksum = sha256(snapshotSource);
   synchronizeImmutableChecksum(version, "snapshotSha256", snapshotChecksum, `version ${number} snapshot`);
   if (latest) {
     const expected = `${JSON.stringify(projectSnapshot(number, definition), null, 2)}\n`;
-    if (fs.readFileSync(snapshotPath, "utf8") !== expected) {
+    if (snapshotSource !== expected) {
       throw new Error(`Version ${number} schema changed after publication. Append a new command contract version.`);
     }
   }
@@ -151,11 +153,10 @@ function resolveResource(value: unknown, label: string): string {
 }
 
 function synchronizeFile(filePath: string, content: string): void {
-  const actual = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : undefined;
+  const actual = readOptionalUtf8(filePath);
   if (actual === content) return;
   if (check) throw new Error(`${relative(filePath)} is stale. Run npm run generate.config-command-contracts.`);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, content, "utf8");
+  writeUtf8Atomically(filePath, content);
 }
 
 function readIdentifier(value: unknown, label: string): string {
